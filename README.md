@@ -6,7 +6,7 @@ MK 的瀏覽器遊戲合集，每個資料夾自成一體。線上遊玩：https
 
 | 遊戲 | 資料夾 | 類型 |
 |---|---|---|
-| [Cobble Keep](https://k-mertin.github.io/littlethings/cobblekeep/) | [`cobblekeep/`](cobblekeep/README.md) | DOOM 風格第一人稱射擊，方塊像素材質 |
+| [Cobble Keep](https://k-mertin.github.io/littlethings/cobblekeep/) | [`cobblekeep/`](cobblekeep/README.md) | DOOM 操作的第一人稱射擊，明亮可愛的方塊像素風，5 個關卡 |
 | [字甲戰線](https://k-mertin.github.io/littlethings/zijia/) | [`zijia/`](zijia/README.md) | 以漢字為機體的機器人戰棋 |
 
 ## 遊玩
