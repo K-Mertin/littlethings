@@ -16,6 +16,17 @@ Open `index.html` in a browser and click **Start**, or play it at https://k-mert
 | Arrow keys | turn and move without a mouse |
 | P | pause |
 
+## Phones and tablets
+Touch controls turn on automatically on phones and tablets:
+- **Left thumb:** drag anywhere on the left side to walk. Push far to run.
+- **Right thumb:** drag on the right side to turn.
+- **FIRE:** hold to shoot. You can drag while holding it to turn and shoot at the same time.
+- **USE:** open doors and ring the goal block.
+- **TOY:** switch weapon.
+- **MAP** and **II:** the map and pause.
+
+Landscape plays best. In portrait the view sits at the top and the controls fill the space below. Aiming is a little more forgiving on touch.
+
 ## Stages
 1. **Sunny Meadow**: hedges, a cottage (confetti cannon) and a well house with the red key. One secret.
 2. **Cozy Castle**: courtyard, library (red key), a great hall with pillars (blue key). One secret.

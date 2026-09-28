@@ -38,10 +38,37 @@
   .hall{position:absolute;top:16px;left:16px;font-size:14px;color:var(--ink);text-decoration:none;padding:6px 10px;border:3px solid var(--ink);background:var(--card);box-shadow:3px 3px 0 var(--pink)}
   .hall:hover,.hall:focus-visible{background:var(--sun);outline:none}
   @media (max-width:520px){.keys{font-size:12px}.card{padding:16px}}
+  @media (max-height:460px){.card{gap:8px;padding:14px}.card h1{font-size:36px}.keys{font-size:11px}.note{display:none}.sub{font-size:14px}}
+  /* touch controls */
+  body.touch, body.touch #game, #touch{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+  body.touch #game, #touch{touch-action:none}
+  #touch{position:absolute;inset:0;z-index:2}
+  #stick{position:absolute;width:112px;height:112px;margin:-56px 0 0 -56px;border-radius:50%;border:3px solid rgba(74,43,107,.55);background:rgba(255,255,255,.28);display:none;pointer-events:none}
+  #knob{position:absolute;left:50%;top:50%;width:48px;height:48px;margin:-24px 0 0 -24px;border-radius:50%;background:rgba(255,255,255,.85);border:3px solid var(--ink)}
+  .tb{position:absolute;border-radius:50%;padding:0;font-size:15px;box-shadow:0 3px 0 var(--ink);background:rgba(255,250,242,.82);touch-action:none}
+  .tb.on{background:var(--sun);transform:translateY(2px);box-shadow:0 1px 0 var(--ink)}
+  #tFire{width:92px;height:92px;right:calc(22px + env(safe-area-inset-right,0px));bottom:26%;background:rgba(255,127,176,.85);color:#fff;font-size:17px}
+  #tUse{width:64px;height:64px;right:calc(128px + env(safe-area-inset-right,0px));bottom:22%}
+  #tToy{width:58px;height:58px;right:calc(38px + env(safe-area-inset-right,0px));bottom:calc(26% + 108px)}
+  .tb.sm{width:46px;height:46px;font-size:12px;top:calc(12px + env(safe-area-inset-top,0px))}
+  #tPause{right:calc(14px + env(safe-area-inset-right,0px))}
+  #tMap{right:calc(70px + env(safe-area-inset-right,0px))}
+  @media (orientation:portrait){
+    body.touch #wrap{align-items:flex-start;padding-top:calc(56px + env(safe-area-inset-top,0px))}
+    #tFire{bottom:calc(64px + env(safe-area-inset-bottom,0px))} #tUse{bottom:calc(40px + env(safe-area-inset-bottom,0px))} #tToy{bottom:calc(172px + env(safe-area-inset-bottom,0px))}
+  }
 </style>
 
 <div id="wrap">
   <canvas id="game" width="400" height="225"></canvas>
+  <div id="touch" hidden>
+    <div id="stick"><div id="knob"></div></div>
+    <button type="button" class="tb" id="tFire" data-b="fire">FIRE</button>
+    <button type="button" class="tb" id="tUse" data-b="use">USE</button>
+    <button type="button" class="tb" id="tToy" data-b="toy">TOY</button>
+    <button type="button" class="tb sm" id="tMap" data-b="map">MAP</button>
+    <button type="button" class="tb sm" id="tPause" data-b="pause">II</button>
+  </div>
   <div id="ov">
     <a class="hall" href="../index.html">&larr; Game Hall</a>
     <div class="card" id="card"></div>
@@ -631,7 +658,60 @@ addEventListener('mouseup', e => { if (e.button === 0) mouseDown = false; });
 addEventListener('mousemove', e => { if (locked && state === 'play') turnAcc += e.movementX; });
 addEventListener('wheel', e => { if (state !== 'play') return; const dir = e.deltaY > 0 ? 1 : -1; for (let k = 1; k <= 4; k++) { const w = (player.want + dir * k + 8) % 4; if (player.has[w]) { selectW(w); break; } } }, { passive: true });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseDown = false; });
-function tryLock() { try { const p = cv.requestPointerLock(); if (p && p.catch) p.catch(() => { }); } catch (e) { } }
+/* ---- touch controls: left thumb = joystick, right thumb = turn, buttons for fire/use/toy ---- */
+let touchMode = matchMedia('(pointer: coarse)').matches, tFire = false;
+const tmove = { x: 0, y: 0 }, TZ = document.getElementById('touch'), STICK = document.getElementById('stick'), KNOB = document.getElementById('knob');
+let stickId = null, stickO = [0, 0], lookId = null, lookX = 0, fireId = null;
+function setTouchMode(on) { touchMode = on; document.body.classList.toggle('touch', on); }
+setTouchMode(touchMode);
+addEventListener('touchstart', () => { if (!touchMode) { setTouchMode(true); if (state === 'title') titleScreen(); } }, { capture: true, passive: true });
+function tbtn(name, down) {
+  const el = TZ.querySelector(`[data-b="${name}"]`); if (el) el.classList.toggle('on', down);
+  if (!down) { if (name === 'fire') tFire = false; return; }
+  audioInit();
+  if (name === 'fire') tFire = true;
+  else if (name === 'use') use();
+  else if (name === 'toy') { for (let k = 1; k <= 4; k++) { const w = (player.want + k) % 4; if (player.has[w]) { selectW(w); break; } } }
+  else if (name === 'map') showMap = !showMap;
+  else if (name === 'pause') pause();
+}
+TZ.addEventListener('touchstart', e => {
+  e.preventDefault(); if (state !== 'play') return;
+  for (const t of e.changedTouches) {
+    const b = t.target.closest && t.target.closest('[data-b]');
+    if (b) { if (b.dataset.b === 'fire') { fireId = t.identifier; lookX = t.clientX; } tbtn(b.dataset.b, true); continue; }
+    if (t.clientX < innerWidth * .45 && stickId === null) { stickId = t.identifier; stickO = [t.clientX, t.clientY]; STICK.style.left = t.clientX + 'px'; STICK.style.top = t.clientY + 'px'; STICK.style.display = 'block'; KNOB.style.transform = ''; }
+    else if (lookId === null) { lookId = t.identifier; lookX = t.clientX; }
+  }
+}, { passive: false });
+TZ.addEventListener('touchmove', e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    if (t.identifier === stickId) {
+      let dx = t.clientX - stickO[0], dy = t.clientY - stickO[1]; const m = Math.hypot(dx, dy), R = 50;
+      if (m > R) { dx *= R / m; dy *= R / m; }
+      KNOB.style.transform = `translate(${dx}px,${dy}px)`;
+      const mag = Math.min(1, m / R), dz = mag < .15 ? 0 : (mag - .15) / .85;
+      tmove.x = m ? dx / Math.min(m, R) * dz : 0; tmove.y = m ? dy / Math.min(m, R) * dz : 0;
+    } else if (t.identifier === lookId || t.identifier === fireId) { turnAcc += (t.clientX - lookX) * 2.3; lookX = t.clientX; }
+  }
+}, { passive: false });
+function touchEnd(e) {
+  for (const t of e.changedTouches) {
+    if (t.identifier === stickId) { stickId = null; tmove.x = tmove.y = 0; STICK.style.display = 'none'; }
+    if (t.identifier === lookId) lookId = null;
+    if (t.identifier === fireId) { fireId = null; tbtn('fire', false); }
+    const b = t.target.closest && t.target.closest('[data-b]'); if (b && b.dataset.b !== 'fire') tbtn(b.dataset.b, false);
+  }
+}
+TZ.addEventListener('touchend', touchEnd); TZ.addEventListener('touchcancel', touchEnd);
+function resetTouch() { stickId = lookId = fireId = null; tmove.x = tmove.y = 0; tFire = false; STICK.style.display = 'none'; TZ.querySelectorAll('.on').forEach(b => b.classList.remove('on')); }
+document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
+function goFullscreen() {
+  if (!touchMode || document.fullscreenElement) return;
+  try { const r = document.documentElement.requestFullscreen && document.documentElement.requestFullscreen({ navigationUI: 'hide' }); if (r && r.then) r.then(() => { try { screen.orientation.lock('landscape').catch(() => { }); } catch (e) { } }).catch(() => { }); } catch (e) { }
+}
+function tryLock() { if (touchMode) return; try { const p = cv.requestPointerLock(); if (p && p.catch) p.catch(() => { }); } catch (e) { } }
 document.addEventListener('pointerlockchange', () => {
   if (document.pointerLockElement === cv) locked = true;
   else { const was = locked; locked = false; if (was && state === 'play') pause(); }
@@ -698,7 +778,7 @@ function hitscan(n, spread, range, dmin, dmax, kind) {
       if (e.state === 'dead') continue;
       const vx = e.x - p.x, vy = e.y - p.y, al = vx * dx + vy * dy;
       if (al <= 0 || al > bd) continue;
-      if (Math.abs(vx * dy - vy * dx) < e.T.r) { best = e; bd = al; }
+      if (Math.abs(vx * dy - vy * dx) < e.T.r + (touchMode ? .2 : 0)) { best = e; bd = al; }
     }
     if (best) { hurtEnemy(best, rnd(dmin, dmax) | 0, a); any = true; if (kind === 'bubble') burst(best.x - dx * .2, best.y - dy * .2, .4, [200, 240, 255], 4); }
     else if (wd < range) { const hx = p.x + dx * (wd - .04), hy = p.y + dy * (wd - .04); burst(hx, hy, rnd(.3, .6), kind === 'confetti' ? null : kind === 'bubble' ? [200, 240, 255] : [255, 230, 120], kind === 'melee' ? 5 : 2); }
@@ -839,16 +919,18 @@ function updatePlayer(dt) {
   if (p.dead) return;
   const turn = (keys.ArrowLeft ? -1 : 0) + (keys.ArrowRight ? 1 : 0);
   p.a += turn * 2.6 * dt + turnAcc * .0026; turnAcc = 0;
-  const fw = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0), st = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
-  const run = keys.ShiftLeft || keys.ShiftRight ? 1.6 : 1, dx = Math.cos(p.a), dy = Math.sin(p.a);
+  const fw = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0) - tmove.y, st = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + tmove.x;
+  const tmag = Math.hypot(tmove.x, tmove.y);
+  const run = keys.ShiftLeft || keys.ShiftRight || tmag > .9 ? 1.6 : 1, dx = Math.cos(p.a), dy = Math.sin(p.a);
   let mx = dx * fw - dy * st, my = dy * fw + dx * st; const ml = Math.hypot(mx, my);
   if (ml > 0) {
-    mx /= ml; my /= ml; const sp = 3.4 * run * dt, nx = p.x + mx * sp, ny = p.y + my * sp;
+    const analog = tmag > 0 ? Math.min(1, .35 + tmag * .75) : 1;
+    mx /= ml; my /= ml; const sp = 3.4 * run * analog * dt, nx = p.x + mx * sp, ny = p.y + my * sp;
     if (canStand(nx, p.y, .22)) p.x = nx;
     if (canStand(p.x, ny, .22)) p.y = ny;
     p.bob += dt * 9 * run;
   } else p.bob *= .9;
-  if (mouseDown || keys.ControlLeft || keys.KeyF) fire();
+  if (mouseDown || tFire || keys.ControlLeft || keys.KeyF) fire();
   for (const it of pickups) if (!it.taken && Math.hypot(it.x - p.x, it.y - p.y) < .55) pickup(it);
   if (ST.hazardDmg && hazard[(p.y | 0) * MW + (p.x | 0)]) { p.hazT -= dt; if (p.hazT <= 0) { p.hazT = .5; SFX.splash(); hurtPlayer(ST.hazardDmg); } } else p.hazT = 0;
 }
@@ -1090,7 +1172,7 @@ function drawOverlay(dt) {
     ctx.fillStyle = '#ff5ab0'; ctx.fillRect(bx, by, bw * Math.max(0, boss.hp) / boss.T.hp, 4);
   }
   if (showMap) drawMap();
-  if (!locked && state === 'play' && !p.dead) { const s = 'CLICK TO CAPTURE MOUSE'; text(s, (W / 2 - tw(s) / 2) | 0, VH - 12, '#ffffff'); }
+  if (!locked && !touchMode && state === 'play' && !p.dead) { const s = 'CLICK TO CAPTURE MOUSE'; text(s, (W / 2 - tw(s) / 2) | 0, VH - 12, '#ffffff'); }
 }
 
 /* ================= FLOW: TITLE / STAGES / RESULTS ================= */
@@ -1105,9 +1187,9 @@ function beginStage(i, L) {
   const s = loadStage(i); player = mkPlayer(s[0], s[1], L); stageStart = { i, L: JSON.parse(JSON.stringify(L)) };
   flow = null; time = 0; mStep = 0;
   say(`STAGE ${i + 1}: ${ST.name.toUpperCase()}`); setTimeout(() => { if (state === 'play' && SI === i) say(ST.tip.toUpperCase()); }, 1400);
-  state = 'play'; ov.hidden = true; tryLock(); last = performance.now();
+  state = 'play'; ov.hidden = true; resetTouch(); goFullscreen(); tryLock(); last = performance.now();
 }
-function resume() { audioInit(); state = 'play'; ov.hidden = true; tryLock(); last = performance.now(); }
+function resume() { audioInit(); state = 'play'; ov.hidden = true; resetTouch(); goFullscreen(); tryLock(); last = performance.now(); }
 function pause() {
   if (state !== 'play') return; state = 'paused'; mouseDown = false;
   if (document.pointerLockElement) document.exitPointerLock();
@@ -1140,17 +1222,20 @@ function titleScreen() {
   state = 'title';
   if (document.pointerLockElement) document.exitPointerLock();
   const btns = STAGES.map((s, i) => `<button type="button" data-s="${i}" ${i + 1 > unlocked ? 'disabled' : ''} class="${i + 1 === unlocked ? 'cur' : ''}">${i + 1}. ${i + 1 > unlocked ? 'Locked' : s.name}</button>`).join('');
-  showCard(`<div class="eyebrow">5 stages · Keyboard + mouse</div><h1>Cobble Keep</h1>
+  showCard(`<div class="eyebrow">5 stages · ${touchMode ? 'Touch controls' : 'Keyboard + mouse'}</div><h1>Cobble Keep</h1>
     <p class="sub">Bonk jellies, collect keys and ring the goal block at the end of each stage.</p>
     <button id="go" type="button">${unlocked > 1 ? `Continue · Stage ${unlocked}` : 'Start'}</button>
     <div class="stages">${btns}</div>
-    <div class="keys"><b>WASD</b><span>move · Shift run</span><b>Mouse</b><span>look · click to shoot</span><b>E / Space</b><span>open doors · ring goal</span><b>1 2 3 4</b><span>hammer · bubbles · confetti · stars</span><b>Tab / M</b><span>map · N music</span><b>Arrows</b><span>turn without a mouse</span></div>
+    ${touchMode
+      ? `<div class="keys"><b>Left thumb</b><span>drag to walk · push far to run</span><b>Right thumb</b><span>drag to turn</span><b>FIRE</b><span>hold to shoot · drag it to turn too</span><b>USE</b><span>open doors · ring goal</span><b>TOY</b><span>switch weapon</span></div><p class="note">Plays best sideways. Portrait works too.</p>`
+      : `<div class="keys"><b>WASD</b><span>move · Shift run</span><b>Mouse</b><span>look · click to shoot</span><b>E / Space</b><span>open doors · ring goal</span><b>1 2 3 4</b><span>hammer · bubbles · confetti · stars</span><b>Tab / M</b><span>map · N music</span><b>Arrows</b><span>turn without a mouse</span></div>`}
     <p class="note">Some walls are not what they seem.</p>`, () => beginStage(unlocked - 1, STAGES[unlocked - 1].loadout));
   card.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { const i = +b.dataset.s; beginStage(i, STAGES[i].loadout); });
 }
 
 function frame(now) {
   const dt = Math.min(.05, (now - last) / 1000 || 0); last = now;
+  TZ.hidden = !(touchMode && state === 'play');
   if (state === 'play') {
     time += dt; stats.time += dt;
     updatePlayer(dt); updateDoors(dt); updateEnemies(dt); updateProjs(dt);
