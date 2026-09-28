@@ -28,7 +28,7 @@ button{font:inherit;color:inherit}
 #app{max-width:1300px;margin:0 auto;padding-inline:16px;padding-block:14px 40px}
 .top{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 16px;padding-bottom:12px;border-bottom:1px solid var(--line);margin-bottom:16px}
 .brand{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
-.hall{align-self:center;font-size:12px;color:var(--mute);text-decoration:none;border:1px solid var(--line);border-radius:4px;padding:2px 8px}
+.hall{position:relative;z-index:70;align-self:center;font-size:12px;color:var(--mute);text-decoration:none;border:1px solid var(--line);border-radius:4px;padding:2px 8px}
 .hall:hover,.hall:focus-visible{color:var(--ink);border-color:var(--pline);outline:none}
 .logo{font-family:var(--serif);font-weight:900;font-size:24px;letter-spacing:.12em;color:var(--ink)}
 .logo b{color:var(--amber);font-weight:900}
@@ -307,6 +307,8 @@ table.shop{width:100%;border-collapse:collapse;font-size:13px}table.shop td{padd
 .wswitch .btn small{font-family:var(--mono);font-size:11px;color:var(--mute)}
 .wswitch .btn.on{border-color:var(--amber);color:var(--amber)}
 @media (hover:none){.fmenu kbd{display:none}}
+a.btn{text-decoration:none;color:var(--ink)}
+.stlist .hallbtn{border-style:dashed}
 </style>
 <div id="app">
   <header class="top">
@@ -332,6 +334,7 @@ table.shop{width:100%;border-collapse:collapse;font-size:13px}table.shop td{padd
         <label><input type="checkbox" id="optAuto"> 被攻擊時自動反擊</label>
         <label><input type="checkbox" id="optIcons"> 地圖顯示機體圖示</label>
         <label><input type="checkbox" id="optFast"> 快速敵方回合</label>
+        <label><input type="checkbox" id="optSfx" checked> 音效</label>
       </div>
       <div class="box actions" id="actions"></div>
       <div class="box" id="info"></div>
@@ -3615,6 +3618,57 @@ const dist=(a,b)=>Math.abs(a.x-b.x)+Math.abs(a.y-b.y);
 const pick=a=>a[Math.floor(Math.random()*a.length)];
 const fmt=n=>Math.round(n).toLocaleString('en-US');
 const CH=()=>CHAPTERS[G.chapterId];
+const IN_HALL=typeof location!=='undefined'&&/\/zijia\/(index\.html)?$/.test(location.pathname);   // 只有放在遊戲大廳（littlethings）裡時才顯示返回連結
+const HALL_URL='../index.html';
+// ---------------- 音效 ----------------
+const SFX={on:true,vol:0.3,ctx:null};
+try{ const v=localStorage.getItem('zijia2-sfx'); if(v==='0') SFX.on=false; }catch(e){}
+function sfxCtx(){
+  if(!SFX.on||typeof window==='undefined'||!(window.AudioContext||window.webkitAudioContext)) return null;
+  if(!SFX.ctx){ try{ SFX.ctx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return null; } }
+  if(SFX.ctx.state==='suspended') SFX.ctx.resume();
+  return SFX.ctx;
+}
+function tone(freq,dur,o={}){
+  const c=sfxCtx(); if(!c) return;
+  const t=c.currentTime+(o.delay||0), osc=c.createOscillator(), g=c.createGain();
+  osc.type=o.type||'square'; osc.frequency.setValueAtTime(freq,t);
+  if(o.slide) osc.frequency.exponentialRampToValueAtTime(Math.max(30,freq*o.slide),t+dur);
+  g.gain.setValueAtTime(0.0001,t); g.gain.linearRampToValueAtTime(SFX.vol*(o.vol??1),t+0.006); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  osc.connect(g); g.connect(c.destination); osc.start(t); osc.stop(t+dur+0.03);
+}
+function noise(dur,o={}){
+  const c=sfxCtx(); if(!c) return;
+  const t=c.currentTime+(o.delay||0), n=Math.floor(c.sampleRate*dur), buf=c.createBuffer(1,n,c.sampleRate), d=buf.getChannelData(0);
+  for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*(1-i/n);
+  const src=c.createBufferSource(); src.buffer=buf;
+  const f=c.createBiquadFilter(); f.type=o.hp?'highpass':'lowpass'; f.frequency.value=o.hp||o.lp||2400;
+  const g=c.createGain(); g.gain.setValueAtTime(SFX.vol*(o.vol??1),t); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  src.connect(f); f.connect(g); g.connect(c.destination); src.start(t); src.stop(t+dur+0.02);
+}
+const arp=(notes,step,o)=>notes.forEach((f,i)=>tone(f,o.len||step*1.4,{...o,delay:(o.delay||0)+i*step}));
+const SOUNDS={
+  select:()=>tone(880,0.06,{vol:.25}),
+  menu:()=>tone(660,0.04,{vol:.18}),
+  cancel:()=>tone(420,0.08,{vol:.22,slide:.6}),
+  move:()=>{ tone(300,0.05,{type:'triangle',vol:.3}); tone(360,0.05,{type:'triangle',vol:.25,delay:.06}); },
+  fire:()=>{ noise(0.1,{vol:.35,hp:1500}); tone(260,0.09,{type:'sawtooth',vol:.18,slide:.5}); },
+  hit:()=>{ noise(0.2,{vol:.7,lp:1600}); tone(140,0.16,{vol:.3,slide:.5}); },
+  crit:()=>{ noise(0.3,{vol:.9,lp:2600}); tone(100,0.3,{type:'sawtooth',vol:.4,slide:.4}); tone(1400,0.08,{vol:.22,delay:.03}); },
+  miss:()=>tone(1000,0.16,{type:'sine',vol:.25,slide:.45}),
+  boom:()=>{ noise(0.7,{vol:.9,lp:700}); tone(90,0.6,{type:'sawtooth',vol:.4,slide:.3}); },
+  levelup:()=>arp([523,659,784,1047],0.08,{type:'square',vol:.28}),
+  spirit:()=>arp([784,988,1319],0.05,{type:'triangle',vol:.3}),
+  heal:()=>arp([660,880,1175],0.07,{type:'sine',vol:.32}),
+  buy:()=>arp([988,1319],0.06,{type:'square',vol:.2}),
+  phaseP:()=>arp([392,523,659],0.09,{type:'triangle',vol:.3}),
+  phaseE:()=>arp([330,277,220],0.1,{type:'sawtooth',vol:.2}),
+  talk:()=>tone(520+Math.random()*80,0.035,{vol:.1}),
+  join:()=>arp([523,784,1047,1319],0.07,{type:'triangle',vol:.3}),
+  win:()=>arp([523,659,784,1047,784,1047],0.11,{type:'square',vol:.25,len:.18}),
+  lose:()=>arp([392,349,311,262],0.18,{type:'triangle',vol:.3,len:.3}),
+};
+function sfx(n){ try{ if(SFX.on&&!G.skip&&SOUNDS[n]) SOUNDS[n](); }catch(e){} }
 // ---------------- 像素圖示 ----------------
 const _iconCache={};
 function iconURL(k){
@@ -3820,6 +3874,7 @@ function gainExp(u,amt){
   const m=u.member; if(!m||u.side!=='P') return;
   const r=addExp(m,amt*DIFF[G.diff==null?1:G.diff].exp);
   if(r.pp&&!r.up) log(`${u.pilot} 獲得 ${r.pp} PP。`,'lvl');
+  if(r.up&&!G.anim) setTimeout(()=>sfx('levelup'),200);
   if(r.up){
     const s=statsOf(m.cls,m.lv,CHARS[m.cid].mod);
     const dh=s.hp-u.maxHp, de=s.en-u.maxEn;
@@ -4042,7 +4097,7 @@ function ask(html,cls=''){
   });
 }
 async function banner(text,side){
-  const b=$('#banner'); b.className='banner '+side; b.textContent=text; b.hidden=false;
+  const b=$('#banner'); b.className='banner '+side; b.textContent=text; b.hidden=false; sfx(side==='E'?'phaseE':'phaseP');
   b.style.animation='none'; void b.offsetWidth; b.style.animation='';
   await wait(G.anim&&!G.fast?900:250); b.hidden=true;
 }
@@ -4072,7 +4127,7 @@ function playScene(lines){
       sc.insertAdjacentHTML('beforeend',`<div class="sctrl"><span>${i+1} / ${ls.length}</span><button class="btn" id="sceneSkip">跳過劇情</button></div>`);
       $('#sceneSkip').onclick=e=>{e.stopPropagation();done();};
     };
-    const next=()=>{ i++; if(i>=ls.length) done(); else show(); };
+    const next=()=>{ i++; if(i>=ls.length) done(); else { sfx('talk'); show(); } };
     const done=()=>{ sc.hidden=true; sc.onclick=null; document.removeEventListener('keydown',kd); res(); };
     const kd=e=>{ if(e.key==='Enter'||e.key===' '){e.preventDefault();next();} else if(e.key==='Escape') done(); };
     sc.onclick=next; document.addEventListener('keydown',kd);
@@ -4110,7 +4165,9 @@ async function doBattle(att,w,def,react,cw,sup){
   if(first){ log(`${def.pilot} 的先制反擊！`,'sys'); strike(def,cw,att,null,seq); if(att.hp>0) strike(att,w,def,react,seq); }
   else { strike(att,w,def,react,seq); if(def.hp>0&&att.hp>0&&react==='counter'&&cw) strike(def,cw,att,null,seq); }
   if(sup&&def.hp>0&&sup.u.hp>0){ log(`${sup.u.pilot} 援護攻擊！`,'sys'); sup.u.supA--; strike(sup.u,sup.w,def,null,seq); }
+  const animated=G.anim&&!(G.fast&&att.side==='E');
   await playBattle(att,def,seq,hp0,line);
+  if(!animated){ sfx(seq.some(x=>x.after===0&&x.hit)?'boom':seq.some(x=>x.crit)?'crit':seq.some(x=>x.hit)?'hit':'miss'); if(G.lvUps.length) setTimeout(()=>sfx('levelup'),250); }
   render();
 }
 async function playBattle(L,R,seq,hp0,line){
@@ -4125,18 +4182,19 @@ async function playBattle(L,R,seq,hp0,line){
     const fromL=s.a===L||(s.a!==R&&s.a.side===L.side), tgt=fromL?'#bt-R':'#bt-L';
     $('#bt-w').textContent=`${s.a.ch}【${s.w.name}】`;
     const ar=$('#bt-arrow'); ar.className='bt-arrow'; void ar.offsetWidth; ar.className='bt-arrow '+(fromL?'ltr':'rtl');
+    sfx('fire');
     const res=$('#bt-res'); res.textContent=''; res.className='bt-res';
     await sleep(480);
     if(s.hit){
-      res.textContent=(s.crit?'會心！ ':'')+'−'+fmt(s.dmg); res.className='bt-res '+(s.crit?'crit':'hit');
+      res.textContent=(s.crit?'會心！ ':'')+'−'+fmt(s.dmg); res.className='bt-res '+(s.crit?'crit':'hit'); sfx(s.crit?'crit':'hit');
       const t=$(tgt); t.querySelector('.bar i').style.width=(s.after/s.d.maxHp*100)+'%';
       t.querySelector('.bt-hp').textContent=`${fmt(s.after)} / ${fmt(s.d.maxHp)}`;
       const g=t.querySelector('.bt-g'); g.classList.remove('shake'); void g.offsetWidth; g.classList.add('shake');
-      if(s.after===0){ await sleep(300); g.classList.add('down'); res.textContent='擊墜！'; }
-    } else { res.textContent=s.note||'MISS'; res.className='bt-res miss'; }
+      if(s.after===0){ await sleep(300); g.classList.add('down'); res.textContent='擊墜！'; sfx('boom'); }
+    } else { res.textContent=s.note||'MISS'; res.className='bt-res miss'; sfx('miss'); }
     await sleep(750);
   }
-  if(G.lvUps.length){ $('#bt-line').innerHTML=`<span class="lvtxt">▲ LEVEL UP　${G.lvUps.join('　')}</span>`; await sleep(900); }
+  if(G.lvUps.length){ $('#bt-line').innerHTML=`<span class="lvtxt">▲ LEVEL UP　${G.lvUps.join('　')}</span>`; sfx('levelup'); await sleep(900); }
   await sleep(200);
   ov.hidden=true; ov.onclick=null; G.skip=false; G.sleepers.length=0;
 }
@@ -4196,9 +4254,10 @@ function freeNear(x,y){
 // =====================================================================
 // 我方操作
 // =====================================================================
-function selectUnit(u){G.menuOpen=false;G.sel=u;G.mode='unit';G.origin={x:u.x,y:u.y};G.reach=reachable(u);G.inspect=null;G.threatOne=null;render();}
+function selectUnit(u){sfx('select');G.menuOpen=false;G.sel=u;G.mode='unit';G.origin={x:u.x,y:u.y};G.reach=reachable(u);G.inspect=null;G.threatOne=null;render();}
 async function animateMove(u,reach,x,y){
   const path=pathTo(reach,x,y);
+  if(u.side==='P'&&path.length>1) sfx('move');
   for(const p of path.slice(1)){u.x=p.x;u.y=p.y;renderMap(); await wait(G.anim?60:0);}
 }
 function quickPlan(s,t){
@@ -4263,7 +4322,7 @@ async function onCell(x,y){
   }
   if(G.mode==='repair'&&u&&G.targets.includes(u)){
     const amt=Math.min(u.maxHp-u.hp,Math.round(u.maxHp*s.skills.heal.pct/100)); u.hp+=amt; addWill(s,2);
-    log(`${s.ch}${s.name} 修理 ${u.ch}${u.name}，回復 ${fmt(amt)} HP。`,'good'); G.lvUps=[]; gainExp(s,EXP.repair); finishUnit(s); return;
+    log(`${s.ch}${s.name} 修理 ${u.ch}${u.name}，回復 ${fmt(amt)} HP。`,'good'); sfx('heal'); G.lvUps=[]; gainExp(s,EXP.repair); finishUnit(s); return;
   }
   if(G.mode==='talk'&&u&&G.targets.includes(u)){ await doTalk(s,u); return; }
 }
@@ -4275,7 +4334,7 @@ async function doTalk(s,e){
   e.dead=true; G.units=G.units.filter(u=>u!==e);
   if(t.join){
     const m=joinChar(t.join);
-    if(m){ const nu=mkPlayerUnit(m,e.x,e.y); nu.acted=true; nu.hp=Math.max(1,Math.round(nu.maxHp*Math.max(.3,e.hp/e.maxHp))); G.units.push(nu); log(`${nu.pilot} 加入了字甲隊！`,'good'); }
+    if(m){ const nu=mkPlayerUnit(m,e.x,e.y); nu.acted=true; nu.hp=Math.max(1,Math.round(nu.maxHp*Math.max(.3,e.hp/e.maxHp))); G.units.push(nu); log(`${nu.pilot} 加入了字甲隊！`,'good'); sfx('join'); }
   }
   G.busy=false;
   if(await checkEnd()) return;
@@ -4293,6 +4352,7 @@ async function onAction(a){
 }
 function cancel(){
   const s=G.sel; if(!s||G.busy||G.phase!=='P') return;
+  sfx('cancel');
   if(['target','weapon','repair','talk'].includes(G.mode)){ G.mode=G.mode==='target'?'weapon':'unit'; G.weapon=null; G.targets=[]; render(); return; }
   if(s.moved){s.x=G.origin.x;s.y=G.origin.y;s.moved=false;G.menuOpen=false;G.reach=reachable(s);render();return;}
   if(G.menuOpen){ G.menuOpen=false; render(); return; }
@@ -4306,6 +4366,7 @@ async function itemMenu(s){
     <div class="foot"><button class="btn" data-v="">關閉</button></div>`);
   if(!v) return;
   G.inv[v]--; s.itemUsed=true;
+  sfx('heal');
   if(v==='kit'){ const h=Math.min(s.maxHp-s.hp,Math.round(s.maxHp*.5)); s.hp+=h; log(`${s.pilot} 使用修理套件，HP +${fmt(h)}。`,'good'); }
   if(v==='ecell'){ const e=Math.min(s.maxEn-s.en,80); s.en+=e; log(`${s.pilot} 使用能源補給，EN +${e}。`,'good'); }
   render();
@@ -4322,7 +4383,7 @@ async function spiritMenu(s){
   if(v==='激勵') G.units.filter(u=>u.side==='P').forEach(u=>addWill(u,5));
   if(v==='根性') s.hp=Math.min(s.maxHp,s.hp+Math.round(s.maxHp*.3));
   if(v==='加速'&&G.sel===s&&!s.moved) G.reach=reachable(s);
-  log(`${s.pilot} 使用精神「${v}」。`,'sys'); render();
+  log(`${s.pilot} 使用精神「${v}」。`,'sys'); sfx(v==='根性'?'heal':'spirit'); render();
 }
 function bestSupporter(s,t){
   let best=null;
@@ -4632,7 +4693,7 @@ async function shopMenu(){
       <div class="foot"><button class="btn pri" data-v="back">完成</button></div>`,'wide');
     if(v==='back') return;
     const k=v.slice(4), it=PARTS[k]||ITEMS[k]; if(!it||G.gold<it.price) continue;
-    G.gold-=it.price; G.inv[k]=(G.inv[k]||0)+1;
+    G.gold-=it.price; G.inv[k]=(G.inv[k]||0)+1; sfx('buy');
   }
 }
 async function equipMenu(cid){
@@ -4708,7 +4769,7 @@ async function startBattle(){
   await startPlayerPhase();
 }
 async function win(){
-  if(G.over) return; G.over=true; G.busy=false; render();
+  if(G.over) return; G.over=true; G.busy=false; render(); sfx('win');
   const ch=CH();
   const alive=new Set(G.units.filter(u=>u.side==='P'&&u.member).map(u=>u.cid));
   const lv=[];
@@ -4753,7 +4814,7 @@ async function showEnding(e,route){
     <div class="foot" style="justify-content:center"><button class="btn pri" data-v="ok">回到標題</button></div></div>`,'wide');
 }
 async function lose(msg){
-  if(G.over) return; G.over=true; G.busy=false; render();
+  if(G.over) return; G.over=true; G.busy=false; render(); sfx('lose');
   const v=await ask(`<h2>作戰失敗</h2><p>${msg}</p><p style="color:var(--mute)">提示：開啟「敵方威脅範圍」，避免主角機被圍攻；重擊前可以用「鐵壁」或選擇「防禦」。</p>
     <div class="foot"><button class="btn" data-v="title">標題畫面</button><button class="btn pri" data-v="retry">回到出擊準備</button></div>`);
   if(v==='retry'){ restore(G.prepSnap); return prep(); }
@@ -4824,7 +4885,7 @@ async function classInfo(m,c,can){
     ${c.weapons.map(w=>`<tr><td>${w.name}${!w.post?'<span class="tag">P✕</span>':''}</td><td>${fmt(w.pow)}</td><td>${w.min===w.max?w.min:w.min+'–'+w.max}</td><td>${w.hit>=0?'+':''}${w.hit}</td><td>${costTxt({...w,left:w.ammo})}</td></tr>`).join('')}</tbody></table>
     <div class="foot"><button class="btn" data-v="b">返回</button>${can?`<button class="btn pri" data-v="go">轉職為 ${c.name}</button>`:''}</div>`,'wide');
   if(v!=='go') return;
-  m.cls=c.id; m.lv=1; m.exp=0;
+  m.cls=c.id; m.lv=1; m.exp=0; sfx('levelup');
   await ask(`<div class="title"><small class="eyebrow">CLASS CHANGE</small><div class="t-logo" style="font-size:clamp(28px,7vw,40px)">${c.name}</div><p>${CHARS[m.cid].pilot}轉職成功！${unlockedSpirits(m).length>0?`<br><span style="color:var(--mute)">可用精神：${unlockedSpirits(m).join('、')}</span>`:''}</p><div class="foot" style="justify-content:center"><button class="btn pri" data-v="ok">好</button></div></div>`);
   return 'done';
 }
@@ -4848,6 +4909,7 @@ async function titleScreen(){
       <button class="btn ${auto?'pri':''}" data-v="cont" ${auto?'':'disabled'}><span>繼續</span><small>${auto?saveDesc(auto):'沒有自動存檔'}</small></button>
       <button class="btn" data-v="load"><span>讀取存檔</span><small>存檔 1–3</small></button>
       <button class="btn" data-v="help"><span>遊戲說明與設定</span><small>必讀</small></button>
+      ${IN_HALL?`<a class="btn hallbtn" href="${HALL_URL}"><span>返回遊戲大廳</span><small>← 大廳</small></a>`:''}
     </div>
     <p class="t-end">已見結局（${seen.length}/${allEndings().length}）：${endingList(new Set(seen))}</p></div>`);
   if(v==='help'){await showHelp();return titleScreen();}
@@ -4944,12 +5006,14 @@ $('#btnThreat').onclick=()=>{G.threatAll=!G.threatAll;render();};
 $('#btnHelp').onclick=()=>{ if(!$('#modal').hidden) return; showHelp(); };
 $('#btnMenu').onclick=async()=>{ if(G.busy||!$('#modal').hidden) return;
   if(G.over){ return; }
-  const v=await ask(`<h2>選單</h2><div class="stlist" style="max-width:none"><button class="btn" data-v="turn" ${G.turnSnap?'':'disabled'}><span>重來本回合</span><small>回到第 ${G.turn} 回合我方行動開始時</small></button><button class="btn" data-v="retry"><span>重新開始本章</span><small>回到出擊準備</small></button><button class="btn" data-v="title"><span>回到標題畫面</span><small>未存檔的戰鬥進度會遺失</small></button></div><div class="foot"><button class="btn pri" data-v="">繼續戰鬥</button></div>`);
+  const v=await ask(`<h2>選單</h2><div class="stlist" style="max-width:none"><button class="btn" data-v="turn" ${G.turnSnap?'':'disabled'}><span>重來本回合</span><small>回到第 ${G.turn} 回合我方行動開始時</small></button><button class="btn" data-v="retry"><span>重新開始本章</span><small>回到出擊準備</small></button><button class="btn" data-v="title"><span>回到標題畫面</span><small>未存檔的戰鬥進度會遺失</small></button>${IN_HALL?`<a class="btn hallbtn" href="${HALL_URL}"><span>返回遊戲大廳</span><small>未存檔的戰鬥進度會遺失</small></a>`:''}</div><div class="foot"><button class="btn pri" data-v="">繼續戰鬥</button></div>`);
   if(v==='turn'&&G.turnSnap){ restoreTurn(G.turnSnap); return; }
   if(v==='retry'){ G.over=true; restore(G.prepSnap); prep(); } else if(v==='title'){ G.over=true; titleScreen(); } };
 $('#optAnim').onchange=e=>{G.anim=e.target.checked;};
 $('#optAuto').onchange=e=>{G.autoCounter=e.target.checked;};
 $('#optFast').onchange=e=>{G.fast=e.target.checked;};
+if($('#optSfx')){ $('#optSfx').checked=SFX.on; $('#optSfx').onchange=e=>{ SFX.on=e.target.checked; try{localStorage.setItem('zijia2-sfx',SFX.on?'1':'0');}catch(_){} if(SFX.on) sfx('select'); }; }
+if(!IN_HALL){ const h=document.querySelector('.hall'); if(h&&h.remove) h.remove(); }
 $('#optIcons').onchange=e=>{G.mapIcons=e.target.checked; try{localStorage.setItem(SAVE+'mapIcons',e.target.checked?'1':'0');}catch(_){} renderMap();};
 try{ if(localStorage.getItem(SAVE+'mapIcons')==='1'){ G.mapIcons=true; $('#optIcons').checked=true; } }catch(_){}
 document.addEventListener('keydown',e=>{
@@ -4966,7 +5030,7 @@ document.addEventListener('keydown',e=>{
   if(G.mode==='weapon'&&/^[1-9]$/.test(k)){ const i=+k-1, b=document.querySelector(`#actions [data-w="${i}"]:not([disabled])`); if(b){ e.preventDefault(); pickWeapon(i); } }
 });
 $('#map').addEventListener('contextmenu',e=>{ e.preventDefault(); if(G.phase==='P'&&!G.busy) cancel(); });
-$('#fmenu').addEventListener('click',e=>{const b=e.target.closest('button'); if(!b||b.disabled) return; e.stopPropagation(); if(b.dataset.w!=null) pickWeapon(+b.dataset.w); else onAction(b.dataset.a);});
+$('#fmenu').addEventListener('click',e=>{const b=e.target.closest('button'); if(!b||b.disabled) return; e.stopPropagation(); if(b.dataset.a!=='cancel'&&b.dataset.a!=='back') sfx('menu'); if(b.dataset.w!=null) pickWeapon(+b.dataset.w); else onAction(b.dataset.a);});
 window.addEventListener('resize',()=>renderFMenu());
 document.querySelector('.mapwrap').addEventListener('scroll',()=>renderFMenu());
 window.addEventListener('resize',()=>{fitMap();});
