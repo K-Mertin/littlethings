@@ -292,6 +292,21 @@ img.px{image-rendering:pixelated;image-rendering:crisp-edges;display:block;width
 table.shop{width:100%;border-collapse:collapse;font-size:13px}table.shop td{padding:7px 8px 7px 0;border-bottom:1px solid var(--line);vertical-align:middle}table.shop td:last-child{text-align:right}
 .slots{display:grid;grid-template-columns:1fr 1fr;gap:10px}.slot{background:var(--panel2);border-radius:6px;padding:10px 12px;display:flex;flex-direction:column;gap:4px;align-items:flex-start}
 .mchip{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#1c3b5a;color:#bfe3ff;font-family:var(--serif);font-weight:900;font-size:13px}
+.board{position:relative}
+.fmenu{position:absolute;z-index:20;width:max-content;min-width:128px;max-width:240px;background:#0f151a;border:1px solid #3a4753;border-radius:6px;padding:6px;display:flex;flex-direction:column;gap:4px;box-shadow:0 8px 24px rgba(0,0,0,.55)}
+.fmenu .fm-h{font-size:11.5px;color:var(--mute);padding:2px 4px 4px;border-bottom:1px solid var(--line);margin-bottom:2px;white-space:nowrap}
+.fmenu .btn{padding:5px 10px;text-align:left;display:flex;justify-content:space-between;align-items:center;gap:14px;font-size:13.5px}
+.fmenu .wbtn{display:grid;grid-template-columns:1fr auto;gap:0 12px}
+.fmenu .wbtn small{grid-column:1/-1;font-family:var(--mono);font-size:11px;color:var(--mute)}
+.fmenu .wbtn small.why{color:var(--bad);font-family:var(--sans)}
+.fmenu kbd{font-family:var(--mono);font-size:10.5px;color:var(--dim);border:1px solid var(--line);border-radius:3px;padding:0 4px;min-width:1.2em;text-align:center}
+.fmenu .btn.pri kbd{color:#5a430f;border-color:#b8892c}
+.hint.keys{margin-top:8px!important;font-size:12px;color:var(--dim)}
+.wswitch{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+.wswitch .btn{display:flex;flex-direction:column;align-items:flex-start;padding:5px 10px;font-size:13px}
+.wswitch .btn small{font-family:var(--mono);font-size:11px;color:var(--mute)}
+.wswitch .btn.on{border-color:var(--amber);color:var(--amber)}
+@media (hover:none){.fmenu kbd{display:none}}
 </style>
 <div id="app">
   <header class="top">
@@ -302,6 +317,7 @@ table.shop{width:100%;border-collapse:collapse;font-size:13px}table.shop td{padd
   <main class="layout">
     <section class="board">
       <div class="mapwrap"><div id="map" class="map" role="grid" aria-label="戰場地圖"></div></div>
+      <div id="fmenu" class="fmenu" hidden></div>
       <div class="legend" id="legend"></div>
     </section>
     <aside class="panel">
@@ -3831,7 +3847,43 @@ function fitMap(){
   document.documentElement.style.setProperty('--cs',cs+'px');
   document.documentElement.style.setProperty('--cols',G.W);
 }
-function render(){renderMap();renderHeader();renderActions();renderInfo();}
+function render(){renderMap();renderHeader();renderActions();renderInfo();renderFMenu();}
+function fmenuHtml(s){
+  if(G.mode==='unit'){
+    const anyTarget=weaponsOf(s).some(w=>targetsFor(s,w).length);
+    const rep=s.skills.heal, canRep=repairTargets(s).length>0, tk=talkTargets(s).length>0;
+    const b=(a,label,key,ok=true,cls='')=>`<button class="btn ${cls}" data-a="${a}" ${ok?'':'disabled'}><span>${label}</span><kbd>${key}</kbd></button>`;
+    return `<div class="fm-h">${s.ch} ${s.pilot}${s.moved?'':'（原地）'}</div>
+      ${b('attack','攻擊','A',anyTarget,'pri')}
+      ${tk?b('talk','說服','T',true,'talkbtn'):''}
+      ${rep?b('repair','修理','R',canRep):''}
+      ${b('spirit','精神','S',s.spirits.length>0)}
+      ${!s.merc&&Object.keys(ITEMS).some(k=>(G.inv||{})[k]>0)?b('item','道具','I',!s.itemUsed):''}
+      ${b('wait','待機','W')}
+      ${b('cancel',s.moved?'取消移動':'取消','Esc')}`;
+  }
+  if(G.mode==='weapon'){
+    return `<div class="fm-h">選擇武器</div>${weaponsOf(s).map((w,i)=>{ const why=whyNot(s,w,null,s.moved), n=why?0:targetsFor(s,w).length;
+      return `<button class="btn wbtn${w.combo?' combo':''}" data-w="${i}" ${(!why&&n)?'':'disabled'} title="威力 ${fmt(w.pow)} · 射程 ${w.min}–${wMax(s,w)} · 命中 ${w.hit>=0?'+':''}${w.hit} · ${costTxt(w)}"><span>${w.name}${w.combo?`<small class="ctag">與${w.combo.pilot}</small>`:''}</span><kbd>${i<9?i+1:''}</kbd><small class="${why||!n?'why':''}">${why||(n?`${fmt(w.pow)} · ${w.min}–${wMax(s,w)}格`:'射程內無目標')}</small></button>`;}).join('')}
+      <button class="btn" data-a="back"><span>返回</span><kbd>Esc</kbd></button>`;
+  }
+  const tip={target:`【${G.weapon&&G.weapon.name}】點選紅框敵機`,repair:'點選綠框友軍修理',talk:'點選綠框敵機說服'}[G.mode];
+  return `<div class="fm-h">${tip||''}</div><button class="btn" data-a="back"><span>返回</span><kbd>Esc</kbd></button>`;
+}
+function renderFMenu(){
+  const fm=$('#fmenu'), s=G.sel; if(!fm) return;
+  const show=G.phase==='P'&&!G.over&&!G.busy&&s&&s.side==='P'&&G.units.includes(s)&&((G.mode==='unit'&&(s.moved||G.menuOpen))||['weapon','target','repair','talk'].includes(G.mode));
+  if(!show){ fm.hidden=true; return; }
+  fm.innerHTML=fmenuHtml(s); fm.hidden=false;
+  const cell=document.querySelector(`.c[data-x="${s.x}"][data-y="${s.y}"]`), board=$('.board');
+  if(!cell||!board||!cell.getBoundingClientRect) return;
+  const cr=cell.getBoundingClientRect(), br=board.getBoundingClientRect(), fw=fm.offsetWidth, fh=fm.offsetHeight;
+  let x=cr.right-br.left+6, y=cr.top-br.top-4;
+  if(x+fw>br.width-4) x=cr.left-br.left-fw-6;
+  if(x<4) x=Math.min(br.width-fw-4,cr.left-br.left);
+  y=Math.max(0,Math.min(y,br.height-fh));
+  fm.style.left=x+'px'; fm.style.top=y+'px';
+}
 function renderHeader(){
   const ch=CH();
   $('#stageName').innerHTML=ch?`第 ${ch.no} 章　${ch.title}${ch.route!=='common'?`<span class="rt">${ROUTE_NAME[ch.route]}</span>`:''}`:'';
@@ -3900,12 +3952,13 @@ function renderActions(){
   if(G.phase!=='P'){el.innerHTML='<h3>敵方行動中</h3><p class="hint">被攻擊時你可以選擇反擊、防禦或迴避。</p>';return;}
   if(G.mode==='idle'||!s){
     const left=G.units.filter(u=>u.side==='P'&&!u.acted).length;
-    el.innerHTML=`<h3>指令</h3><p class="hint">點選藍色的我方機體開始行動（尚有 ${left} 台未行動）。點選紅色敵機可查看它的威脅範圍。帶<span style="color:var(--good)">綠點</span>的敵機可以說服。</p>`;return;}
+    el.innerHTML=`<h3>指令</h3><p class="hint">點選藍色的我方機體開始行動（尚有 ${left} 台未行動）。選取後：點藍色格子移動，<b>直接點敵機</b>就會自動移動到最佳位置並攻擊；再點一次自己的機體可原地行動。</p>
+      <p class="hint keys">快捷鍵：A 攻擊・S 精神・W 待機・R 修理・T 說服・I 道具・1–9 選武器・Tab 下一台・E 結束回合・Esc／右鍵 取消</p>`;return;}
   if(G.mode==='unit'){
     const anyTarget=weaponsOf(s).some(w=>targetsFor(s,w).length);
     const rep=s.skills.heal, canRep=repairTargets(s).length>0, tk=talkTargets(s).length>0;
     el.innerHTML=`<h3>${s.name}（${s.pilot}）</h3>
-      <p class="hint" style="margin-bottom:10px">${s.moved?'已移動。選擇行動：':'藍色格子為可移動範圍，點擊即可移動；也可以原地行動。'}</p>
+      <p class="hint" style="margin-bottom:10px">${s.moved?'已移動。選擇行動，或直接點敵機攻擊：':'點藍色格子移動；直接點敵機＝自動移動並攻擊；再點一次自己＝原地行動。'}</p>
       <div class="row">
         <button class="btn pri" data-a="attack" ${anyTarget?'':'disabled'}>攻擊</button>
         ${tk?'<button class="btn talkbtn" data-a="talk">說服</button>':''}
@@ -4143,10 +4196,36 @@ function freeNear(x,y){
 // =====================================================================
 // 我方操作
 // =====================================================================
-function selectUnit(u){G.sel=u;G.mode='unit';G.origin={x:u.x,y:u.y};G.reach=reachable(u);G.inspect=null;G.threatOne=null;render();}
+function selectUnit(u){G.menuOpen=false;G.sel=u;G.mode='unit';G.origin={x:u.x,y:u.y};G.reach=reachable(u);G.inspect=null;G.threatOne=null;render();}
 async function animateMove(u,reach,x,y){
   const path=pathTo(reach,x,y);
   for(const p of path.slice(1)){u.x=p.x;u.y=p.y;renderMap(); await wait(G.anim?60:0);}
+}
+function quickPlan(s,t){
+  const ox=s.x, oy=s.y;
+  const cells=s.moved?[{x:s.x,y:s.y,c:0}]:[...G.reach.values()].filter(v=>v.stop);
+  let best=null;
+  for(const v of cells){ const moved=s.moved||!(v.x===G.origin.x&&v.y===G.origin.y); s.x=v.x; s.y=v.y; const d=dist(s,t);
+    for(const w of weaponsOf(s)){ if(whyNot(s,w,d,moved)) continue;
+      const r=aiReact(t,s,d), hr=hitRate(s,w,t,r.react)/100, dm=calcDmg(s,w,t,r.react);
+      let sc=hr*Math.min(dm,t.hp)+(dm>=t.hp?1500*hr:0)-(v.c||0)*3-(w.en||0)*2-(w.combo?300:0)+(s.fly?0:terrAt(v.x,v.y).def*300);
+      if(r.cw) sc-=0.5*hitRate(t,r.cw,s,null)/100*calcDmg(t,r.cw,s,null);
+      if(!best||sc>best.sc) best={sc,v,w};
+    }}
+  s.x=ox; s.y=oy; return best;
+}
+async function quickAttack(s,t,plan){
+  if(!(plan.v.x===s.x&&plan.v.y===s.y)){ G.busy=true; await animateMove(s,G.reach,plan.v.x,plan.v.y); s.moved=true; G.busy=false; }
+  G.menuOpen=true; G.mode='unit'; render();
+  await confirmAttack(s,plan.w,t);
+}
+function nextUnit(){
+  const list=G.units.filter(u=>u.side==='P'&&!u.acted);
+  if(!list.length) return;
+  if(G.sel&&G.sel.moved) return;
+  const i=G.sel?list.indexOf(G.sel):-1, u=list[(i+1)%list.length];
+  selectUnit(u);
+  const cell=document.querySelector(`.c[data-x="${u.x}"][data-y="${u.y}"]`); if(cell&&cell.scrollIntoView) cell.scrollIntoView({block:'nearest',inline:'nearest'});
 }
 async function onCell(x,y){
   showTerrain(x,y);
@@ -4158,15 +4237,23 @@ async function onCell(x,y){
     else {G.inspect=null;G.threatOne=null;render();}
     return;
   }
-  if(G.mode==='unit'){
+  if(G.mode==='unit'||G.mode==='weapon'){
+    if(u===s){ G.mode='unit'; G.menuOpen=s.moved?true:!G.menuOpen; render(); return; }
+    if(u&&u.side==='E'){
+      if(u.talk&&u.talk.by.includes(s.cid)&&dist(u,s)===1){ await doTalk(s,u); return; }
+      const plan=quickPlan(s,u);
+      if(plan){ await quickAttack(s,u,plan); return; }
+      G.inspect=u; renderInfo(); return;
+    }
     const v=G.reach&&G.reach.get(key(x,y));
     if(!s.moved&&v&&v.stop&&!(x===s.x&&y===s.y)){
-      G.busy=true; await animateMove(s,G.reach,x,y); s.moved=true; G.busy=false; render();
+      G.busy=true; await animateMove(s,G.reach,x,y); s.moved=true; G.busy=false; G.menuOpen=true; G.mode='unit'; render();
       if(CH().win.type==='escape') await checkEnd();
       return;
     }
     if(u&&u.side==='P'&&!u.acted&&u!==s&&!s.moved){selectUnit(u);return;}
-    if(u){G.inspect=u===s?null:u;renderInfo();}
+    if(u){G.inspect=u;renderInfo();return;}
+    if(!s.moved){ cancel(); return; }   // 點空白處：取消選取
     return;
   }
   if(G.mode==='target'){
@@ -4207,7 +4294,8 @@ async function onAction(a){
 function cancel(){
   const s=G.sel; if(!s||G.busy||G.phase!=='P') return;
   if(['target','weapon','repair','talk'].includes(G.mode)){ G.mode=G.mode==='target'?'weapon':'unit'; G.weapon=null; G.targets=[]; render(); return; }
-  if(s.moved){s.x=G.origin.x;s.y=G.origin.y;s.moved=false;G.reach=reachable(s);render();return;}
+  if(s.moved){s.x=G.origin.x;s.y=G.origin.y;s.moved=false;G.menuOpen=false;G.reach=reachable(s);render();return;}
+  if(G.menuOpen){ G.menuOpen=false; render(); return; }
   G.sel=null;G.mode='idle';G.reach=null;render();
 }
 function pickWeapon(i){ const s=G.sel,w=weaponsOf(s)[i]; G.weapon=w; G.targets=targetsFor(s,w); G.mode='target'; render(); }
@@ -4245,13 +4333,17 @@ function bestSupporter(s,t){
 }
 async function confirmAttack(s,w,t){
   const d=dist(s,t);
-  const sup=w.combo?null:bestSupporter(s,t);
-  const {react,cw}=aiReact(t,s,d);
+  let v, sup, react, cw;
+  for(;;){
+  const usable=weaponsOf(s).filter(x=>!whyNot(s,x,d,s.moved));
+  sup=w.combo?null:bestSupporter(s,t);
+  ({react,cw}=aiReact(t,s,d));
   const h=hitRate(s,w,t,react), dm=calcDmg(s,w,t,react);
   let ch='—',cd='—';
   if(cw){ ch=hitRate(t,cw,s,null)+'%'; const cdd=calcDmg(t,cw,s,null); cd=fmt(cdd)+(cdd>=s.hp?'<span class="kill">可能被擊墜</span>':''); }
   const first=cw&&t.skills.counterFirst;
-  const v=await ask(`<h2>攻擊確認</h2>
+  v=await ask(`<h2>攻擊確認</h2>
+   ${usable.length>1?`<div class="wswitch">${usable.map((x,i)=>`<button class="btn${x===w?' on':''}" data-v="w:${i}">${x.name}<small>${fmt(calcDmg(s,x,t,react))}・${hitRate(s,x,t,react)}%</small></button>`).join('')}</div>`:''}
    <div class="vs">
     <div class="P"><div class="who"><span class="g">${s.ch}</span><div><b>${s.name}</b><br><small style="color:var(--mute)">【${w.name}】</small></div></div>
       <dl><dt>命中率</dt><dd>${h}%</dd><dt>預估傷害</dt><dd>${fmt(dm)}${dm>=t.hp?'<span class="kill">可擊墜</span>':''}</dd><dt>目標 HP</dt><dd>${fmt(t.hp)}</dd></dl></div>
@@ -4263,7 +4355,10 @@ async function confirmAttack(s,w,t){
    ${w.combo?`<p style="margin-top:10px;color:var(--amber)">合體攻擊：${w.combo.pilot}也會消耗 EN ${w.en} 並結束行動。</p>`:''}
    ${sup?`<label class="supline"><input type="checkbox" id="supOn" checked> 援護攻擊：${sup.u.ch} ${sup.u.pilot}【${sup.w.name}】 命中 ${hitRate(sup.u,sup.w,t,null)}% · 預估 ${fmt(calcDmg(sup.u,sup.w,t,null))}（剩 ${sup.u.supA} 次）</label>`:''}
    <div class="foot"><button class="btn" data-v="no">返回</button><button class="btn pri" data-v="yes">確認攻擊</button></div>`);
-  if(v!=='yes') return;
+  if(v&&v.startsWith('w:')){ w=usable[+v.slice(2)]; continue; }
+  break;
+  }
+  if(v!=='yes'){ G.menuOpen=true; render(); return; }
   const useSup=sup&&$('#supOn')&&$('#supOn').checked?sup:null;
   G.busy=true; renderHeader();
   await doBattle(s,w,t,react,cw,useSup);
@@ -4815,7 +4910,9 @@ async function showHelp(){
    <li><b>駕駛技能</b>：升級獲得 PP，等級已滿時每 ${EXP.perLv} EXP 也換成 1 PP。可學習：${Object.values(PSKILLS).map(p=>p.name).join('、')}。</li>
    <li><b>傭兵</b>：每位角色可僱用 2 隊傭兵（指揮系職業 3 隊），只在本章有效。待在指揮官 2 格內會獲得加成，指揮官被擊墜就會撤退。</li></ul>
    <h4>操作</h4>
-   <ul><li>點選藍色我方機體 → 藍色格子為移動範圍 → 選擇攻擊、說服、修理、精神、待機。「取消移動」可回到原位。</li>
+   <ul><li>點選藍色我方機體 → 藍色格子為移動範圍。移動後，機體旁邊會出現指令選單（攻擊、說服、修理、精神、道具、待機）。</li>
+   <li><b>直接點敵機</b>：自動移動到最適合的位置、選好武器並進入攻擊確認（確認畫面可以切換武器）。<b>再點一次自己的機體</b>：原地叫出指令選單。</li>
+   <li>快捷鍵：A 攻擊・S 精神・W 待機・R 修理・T 說服・I 道具・1–9 選武器・Tab 下一台・E 結束回合・Esc 或右鍵 取消。</li>
    <li>被攻擊時選擇：<b>反擊</b>、<b>防禦</b>（傷害減半）、<b>迴避</b>（敵命中率減半）。</li>
    <li>「敵方威脅範圍」顯示全部敵機能攻擊到的格子。選取我方機體時，淡紅色格子是移動後能攻擊到的範圍。Esc：取消／返回。劇情中按 Enter 或點擊前進。</li>
    <li>「選單」裡的「重來本回合」可以回到這回合我方行動開始時的狀態。勾選「快速敵方回合」會略過敵方攻擊的戰鬥動畫。</li>
@@ -4855,7 +4952,23 @@ $('#optAuto').onchange=e=>{G.autoCounter=e.target.checked;};
 $('#optFast').onchange=e=>{G.fast=e.target.checked;};
 $('#optIcons').onchange=e=>{G.mapIcons=e.target.checked; try{localStorage.setItem(SAVE+'mapIcons',e.target.checked?'1':'0');}catch(_){} renderMap();};
 try{ if(localStorage.getItem(SAVE+'mapIcons')==='1'){ G.mapIcons=true; $('#optIcons').checked=true; } }catch(_){}
-document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&$('#modal').hidden&&$('#battle').hidden&&$('#scene').hidden) cancel(); });
+document.addEventListener('keydown',e=>{
+  if(!$('#modal').hidden||!$('#battle').hidden||!$('#scene').hidden) return;
+  if(e.target&&(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')) return;
+  if(e.key==='Escape'){ cancel(); return; }
+  if(G.phase!=='P'||G.busy||G.over) return;
+  const k=(e.key||'').toLowerCase();
+  if(k==='tab'){ e.preventDefault(); nextUnit(); return; }
+  if(k==='e'&&!e.metaKey&&!e.ctrlKey){ if(G.sel&&G.sel.moved) return; G.sel=null; G.mode='idle'; endPlayerPhase(); return; }
+  if(!G.sel) return;
+  const act={a:'attack',s:'spirit',w:'wait',r:'repair',t:'talk',i:'item'}[k];
+  if(act&&G.mode==='unit'){ const btn=document.querySelector(`#actions [data-a="${act}"]:not([disabled])`); if(btn){ e.preventDefault(); onAction(act); } return; }
+  if(G.mode==='weapon'&&/^[1-9]$/.test(k)){ const i=+k-1, b=document.querySelector(`#actions [data-w="${i}"]:not([disabled])`); if(b){ e.preventDefault(); pickWeapon(i); } }
+});
+$('#map').addEventListener('contextmenu',e=>{ e.preventDefault(); if(G.phase==='P'&&!G.busy) cancel(); });
+$('#fmenu').addEventListener('click',e=>{const b=e.target.closest('button'); if(!b||b.disabled) return; e.stopPropagation(); if(b.dataset.w!=null) pickWeapon(+b.dataset.w); else onAction(b.dataset.a);});
+window.addEventListener('resize',()=>renderFMenu());
+document.querySelector('.mapwrap').addEventListener('scroll',()=>renderFMenu());
 window.addEventListener('resize',()=>{fitMap();});
 
 renderLegend();
