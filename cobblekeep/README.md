@@ -17,15 +17,19 @@ Open `index.html` in a browser and click **Start**, or play it at https://k-mert
 | P | pause |
 
 ## Phones and tablets
-Touch controls turn on automatically on phones and tablets:
-- **Left thumb:** drag anywhere on the left side to walk. Push far to run.
-- **Right thumb:** drag on the right side to turn.
-- **FIRE:** hold to shoot. You can drag while holding it to turn and shoot at the same time.
-- **USE:** open doors and ring the goal block.
-- **TOY:** switch weapon.
-- **MAP** and **II:** the map and pause.
+Touch controls turn on automatically. There are two control schemes, chosen on the title or pause screen:
 
-Landscape plays best. In portrait the view sits at the top and the controls fill the space below. Aiming is a little more forgiving on touch.
+- **Easy (default):** the left stick works like DOOM's arrow keys: up and down walk, left and right turn. You can play with one thumb.
+- **Dual stick:** the left stick walks and sidesteps, and you drag on the right side to turn.
+
+In both schemes:
+- **Aiming:** dragging on the right side aims. One drag across about half the screen turns you around, on any screen size. Turn speed can be set to Slow, Normal or Fast.
+- **Aim help:** the view gently pulls toward an enemy near the crosshair.
+- **Auto-fire** (on by default) shoots when an enemy is lined up. You can still hold **FIRE**.
+- **Doors and the goal block** open when you walk into them. Secret walls still need **USE**.
+- **180°** spins you around. **TOY** switches weapon, and **MAP** and **II** open the map and pause.
+
+Settings are saved in the browser. Landscape plays best. In portrait the view sits at the top and the controls fill the space below.
 
 ## Stages
 1. **Sunny Meadow**: hedges, a cottage (confetti cannon) and a well house with the red key. One secret.
