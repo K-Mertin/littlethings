@@ -15,6 +15,8 @@ Open `index.html` in a browser, pick a track, a car color, laps and rival diffic
 | P / Esc | pause |
 | M | sound on/off |
 
+**Grip:** the tyres have a limit. Take a corner too fast and the car slides wide and loses speed, so brake before the tight ones.
+
 **Drift boost:** hold drift while turning. The bar under the speedometer fills: blue sparks give a short boost when you let go, orange sparks a longer one. Hitting a wall cancels the drift.
 
 **Boost pads:** the blue pads with yellow arrows give a burst of speed.
@@ -29,11 +31,20 @@ Touch controls turn on automatically. The car accelerates by itself. Steer with 
 Best race time (per track and lap count) and best lap (per track) are saved in this browser.
 
 ## Rivals
-Bolt, Pip, Rosa, Mango and Zippy. They follow the track, slow down for corners, change lanes to pass, and use the boost pads. Their pace is set by **Easy / Normal / Hard**, with gentle catch-up so races stay close.
+Bolt, Pip, Rosa, Mango and Zippy. They brake for corners, change lanes to pass and use the boost pads. You start at the back of the grid.
+
+| Level | How the rivals drive |
+|---|---|
+| Easy | about 10% slower on the straights, careful in corners |
+| Normal | close to your top speed, sometimes boost out of corners |
+| Hard | slightly faster than you, carry speed through corners and often boost out of them. You will need drift boosts to win. |
+
+If you pull ahead, the rivals speed up a little to keep the race close (more on Hard).
 
 ## How it is built
 - Each track is a closed Catmull-Rom spline through a list of points. It is sampled about once per meter, and the road, kerbs, run-off and walls are built as ribbons along it.
-- Cars use simple arcade physics: grip is lowered while drifting so the car slides, and grass slows you down. A fixed 120 Hz step keeps it the same on every device.
+- Cars use arcade physics with a tyre grip limit: past it the car slides wide and scrubs speed. Grip is lower while drifting, and grass slows you down. A fixed 120 Hz step keeps it the same on every device.
+- The cars are modelled at real size (about 4.5 m) from extruded side profiles, with glass, five-spoke rims, brake calipers, lights, a rear wing and door numbers, and are scaled up slightly to read well at speed. Paint uses a clear-coat material with reflections. The road is 11 m wide.
 - Lap counting needs a halfway checkpoint, so cutting back over the line does not count.
 - Rendering is Three.js (WebGL) with sun shadows, fog and a gradient sky. Textures (asphalt, kerbs, boost pads, banner) are painted in code on canvases. Trees, palms and the crowd are instanced meshes.
 - On slower devices the game lowers resolution and then turns off shadows to keep the frame rate up.
