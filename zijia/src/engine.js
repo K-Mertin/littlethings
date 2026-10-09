@@ -248,6 +248,8 @@ const SOUNDS={
   hit:()=>{ noise(0.2,{vol:.7,lp:1600}); tone(140,0.16,{vol:.3,slide:.5}); },
   crit:()=>{ noise(0.3,{vol:.9,lp:2600}); tone(100,0.3,{type:'sawtooth',vol:.4,slide:.4}); tone(1400,0.08,{vol:.22,delay:.03}); },
   miss:()=>tone(1000,0.16,{type:'sine',vol:.25,slide:.45}),
+  beam:()=>{ tone(1600,0.35,{type:'sawtooth',vol:.18,slide:.25}); noise(0.3,{vol:.25,hp:2500}); },
+  missile:()=>{ noise(0.35,{vol:.3,hp:800}); tone(500,0.3,{type:'triangle',vol:.15,slide:1.8}); },
   boom:()=>{ noise(0.7,{vol:.9,lp:700}); tone(90,0.6,{type:'sawtooth',vol:.4,slide:.3}); },
   levelup:()=>arp([523,659,784,1047],0.08,{type:'square',vol:.28}),
   spirit:()=>arp([784,988,1319],0.05,{type:'triangle',vol:.3}),
@@ -472,6 +474,7 @@ function gainExp(u,amt){
     const dh=s.hp-u.maxHp, de=s.en-u.maxEn;
     u.maxHp=s.hp; u.hp=clamp(u.hp+dh,0,u.maxHp); u.maxEn=s.en; u.en=clamp(u.en+de,0,u.maxEn);
     Object.assign(u,{atk:s.atk,def:s.def,hit:s.hit,eva:s.eva,lv:m.lv});
+    if(typeof mapFx==='function') mapFx(u.x,u.y,'LV UP','#ffd25a',{delay:500,dur:1400});
     log(`▲ ${u.pilot} 升到 Lv ${m.lv}！獲得 ${r.pp} PP。${canChange(m)?'（戰鬥後可以轉職）':''}`,'lvl');
     G.lvUps.push(`${u.pilot} Lv ${m.lv}`);
   }
@@ -490,9 +493,12 @@ function expFor(a,d,kill){
 function fitMap(){
   const wrap=$('.board'); if(!wrap) return;
   const avail=wrap.clientWidth-2;
-  const cs=clamp(Math.floor((avail-(G.W-1))/G.W),21,46);
+  const spr=typeof gfxActive==='function'&&gfxActive();
+  const cs=spr?gfxPickCs(avail,G.W):clamp(Math.floor((avail-(G.W-1))/G.W),21,46);
+  if(spr) GFX.cs=cs;
   document.documentElement.style.setProperty('--cs',cs+'px');
   document.documentElement.style.setProperty('--cols',G.W);
+  if(typeof gfxResize==='function') gfxResize();
 }
 function render(){renderMap();renderHeader();renderActions();renderInfo();renderFMenu();}
 function fmenuHtml(s){
@@ -560,6 +566,13 @@ function renderMap(){
   if(G.mode==='talk') G.targets.forEach(t=>talk.add(key(t.x,t.y)));
   if(G.threatAll){ G.units.filter(u=>u.side==='E').forEach(e=>threatCells(e).forEach(k=>thr.add(k))); }
   else if(G.threatOne&&G.threatOne.hp>0&&G.units.includes(G.threatOne)){ thr=threatCells(G.threatOne); }
+  const ally=new Set([...rep,...talk]);
+  G.ov={mv,ra,atk,thr,rep:ally,ally,tgt,exit};
+  if(typeof GFX!=='undefined'&&GFX.mapOn){
+    const m=$('#map');
+    if(m.childElementCount!==G.W*G.H||m.dataset.w!=G.W){ let hh=''; for(let y=0;y<G.H;y++)for(let x=0;x<G.W;x++) hh+=`<div class="c" data-x="${x}" data-y="${y}"></div>`; m.innerHTML=hh; m.dataset.w=G.W; }
+    return;
+  }
   let h='';
   for(let y=0;y<G.H;y++)for(let x=0;x<G.W;x++){
     const t=terrAt(x,y),k=key(x,y),u=unitAt(x,y);
@@ -574,11 +587,11 @@ function renderMap(){
     if(tgt.has(k)) cls+=' tgt';
     if(u&&u===G.sel) cls+=' sel';
     h+=`<div class="${cls}" data-x="${x}" data-y="${y}">`;
-    if(u){ h+=`<span class="u ${u.side}${u.merc?' merc':''}${u.guest?' guest':''}${u.boss?' boss':''}${u.fly?' fly':''}${u.acted?' acted':''}${u.talk?' talkable':''}" style="--h:${Math.round(u.hp/u.maxHp*100)}%">${G.mapIcons&&iconKey(u)?face(u,u.ch):u.ch}<i></i></span>`; }
+    if(u){ h+=`<span class="u ${u.side}${u.merc?' merc':''}${u.guest?' guest':''}${u.boss?' boss':''}${u.fly?' fly':''}${u.acted?' acted':''}${u.talk?' talkable':''}" style="--h:${Math.round(u.hp/u.maxHp*100)}%">${u.ch}<i></i></span>`; }
     else h+=`<span class="tg">${t.g}</span>`;
     h+='</div>';
   }
-  $('#map').innerHTML=h;
+  $('#map').innerHTML=h; $('#map').dataset.w='';
 }
 function talkTargets(s){ if(!s.cid) return []; return G.units.filter(u=>u.side==='E'&&u.talk&&dist(u,s)===1&&u.talk.by.includes(s.cid)); }
 function repairTargets(s){ const h=s.skills.heal; if(!h) return []; return G.units.filter(u=>u.side==='P'&&u!==s&&u.hp<u.maxHp&&dist(u,s)>=h.min&&dist(u,s)<=h.max); }
@@ -665,7 +678,8 @@ function unitCard(u){
   </tbody></table></div>`;
 }
 function renderLegend(){
-  $('#legend').innerHTML=Object.values(TERRAIN).map(t=>`<span><span class="sw t-${t.k}"><span class="tg" style="font-size:12px">${t.g}</span></span>${t.name}<span class="num">${t.block?'不可通行':`移${t.cost}${t.def?` 防+${t.def*100}%`:''}${t.eva?` 閃${t.eva>0?'+':''}${t.eva}`:''}${t.heal?' 回復':''}`}</span></span>`).join('')
+  const spr=typeof gfxActive==='function'&&gfxActive();
+  $('#legend').innerHTML=Object.values(TERRAIN).map(t=>`<span>${spr?`<img class="swimg" src="${tileURL(t.k)}" alt="">`:`<span class="sw t-${t.k}"><span class="tg" style="font-size:12px">${t.g}</span></span>`}${t.name}<span class="num">${t.block?'不可通行':`移${t.cost}${t.def?` 防+${t.def*100}%`:''}${t.eva?` 閃${t.eva>0?'+':''}${t.eva}`:''}${t.heal?' 回復':''}`}</span></span>`).join('')
    +`<span><span class="sw" style="background:var(--pbg);color:var(--p);font-family:var(--serif);font-weight:900">我</span>我方</span><span><span class="sw" style="background:var(--ebg);color:var(--e);font-family:var(--serif);font-weight:900">敵</span>敵方</span><span><span class="sw t-plain exit"></span>脫離點</span>`;
 }
 function showTerrain(x,y){
@@ -760,10 +774,12 @@ async function doBattle(att,w,def,react,cw,sup){
   const animated=G.anim&&!(G.fast&&att.side==='E');
   await playBattle(att,def,seq,hp0,line);
   if(!animated){ sfx(seq.some(x=>x.after===0&&x.hit)?'boom':seq.some(x=>x.crit)?'crit':seq.some(x=>x.hit)?'hit':'miss'); if(G.lvUps.length) setTimeout(()=>sfx('levelup'),250); }
+  if(typeof mapFx==='function') seq.forEach((x,i)=>mapFx(x.d.x,x.d.y,x.hit?fmt(x.dmg):(x.note||'MISS'),x.hit?(x.crit?'#ffd25a':'#ffffff'):'#c8d0d8',{delay:i*160,big:x.crit}));
   render();
 }
 async function playBattle(L,R,seq,hp0,line){
   if(!G.anim||(G.fast&&L.side==='E')) return;
+  if(!G.classic&&typeof playBattleScene==='function'&&typeof requestAnimationFrame!=='undefined') return playBattleScene(L,R,seq,hp0,line);
   G.skip=false;
   const ov=$('#battle');
   const side=(u,cls)=>`<div class="bt-side ${u.side}" id="bt-${cls}"><div class="bt-g${iconKey(u)?' hasicon':''}">${face(u,u.ch)}</div><div class="bt-name">${u.name}｜${u.pilot}<br>${CLS(u.cls).name} Lv${u.lv}</div><div class="bar hp"><i style="width:${hp0[u.uid]/u.maxHp*100}%"></i></div><div class="bt-hp">${fmt(hp0[u.uid])} / ${fmt(u.maxHp)}</div></div>`;
@@ -792,7 +808,7 @@ async function playBattle(L,R,seq,hp0,line){
 }
 async function afterCombat(){
   // 陣亡
-  for(const u of G.units) if(u.hp<=0&&!u.dead){u.dead=true; log(`${u.ch}${u.name} 被擊墜！`,u.side==='P'?'bad':'good'); if(G.pstat){ if(u.side==='P') G.pstat.lost++; else G.pstat.kills++; }}
+  for(const u of G.units) if(u.hp<=0&&!u.dead){u.dead=true; if(typeof mapBoom==='function') mapBoom(u.x,u.y); log(`${u.ch}${u.name} 被擊墜！`,u.side==='P'?'bad':'good'); if(G.pstat){ if(u.side==='P') G.pstat.lost++; else G.pstat.kills++; }}
   G.units=G.units.filter(u=>!u.dead);
   // 撤退
   for(const e of G.units.filter(u=>u.side==='E'&&u.retreat&&u.hp<=u.maxHp*u.retreat)){
@@ -914,7 +930,7 @@ async function onCell(x,y){
   }
   if(G.mode==='repair'&&u&&G.targets.includes(u)){
     const amt=Math.min(u.maxHp-u.hp,Math.round(u.maxHp*s.skills.heal.pct/100)); u.hp+=amt; addWill(s,2);
-    log(`${s.ch}${s.name} 修理 ${u.ch}${u.name}，回復 ${fmt(amt)} HP。`,'good'); sfx('heal'); G.lvUps=[]; gainExp(s,EXP.repair); finishUnit(s); return;
+    log(`${s.ch}${s.name} 修理 ${u.ch}${u.name}，回復 ${fmt(amt)} HP。`,'good'); sfx('heal'); if(typeof mapFx==='function') mapFx(u.x,u.y,'+'+fmt(amt),'#6fe08c'); G.lvUps=[]; gainExp(s,EXP.repair); finishUnit(s); return;
   }
   if(G.mode==='talk'&&u&&G.targets.includes(u)){ await doTalk(s,u); return; }
 }
@@ -959,7 +975,7 @@ async function itemMenu(s){
   if(!v) return;
   G.inv[v]--; s.itemUsed=true;
   sfx('heal');
-  if(v==='kit'){ const h=Math.min(s.maxHp-s.hp,Math.round(s.maxHp*.5)); s.hp+=h; log(`${s.pilot} 使用修理套件，HP +${fmt(h)}。`,'good'); }
+  if(v==='kit'){ const h=Math.min(s.maxHp-s.hp,Math.round(s.maxHp*.5)); s.hp+=h; if(typeof mapFx==='function') mapFx(s.x,s.y,'+'+fmt(h),'#6fe08c'); log(`${s.pilot} 使用修理套件，HP +${fmt(h)}。`,'good'); }
   if(v==='ecell'){ const e=Math.min(s.maxEn-s.en,80); s.en+=e; log(`${s.pilot} 使用能源補給，EN +${e}。`,'good'); }
   render();
 }
@@ -1493,9 +1509,9 @@ async function titleScreen(){
   const demo=`<span class="m">▲ ▲</span> · · <span class="f">♣︎</span> · · · <span class="e">兵</span>
  <span class="p">剛</span> · · · <span class="w">≈ ≈</span> · · ·
  · <span class="p">狙</span> · · · · · <span class="e">砲</span> ·`;
+  if(typeof startTitleBg==='function') startTitleBg();
   const v=await ask(`<div class="title"><div class="t-logo">字<b>甲</b>戰線</div>
-    <div class="t-sub">以文字為機體、以符號為戰場的機器人戰棋<br>全 15 章・三條路線・五種結局・職業轉職</div>
-    <div class="t-demo">${demo}</div>
+    <div class="t-sub">像素機器人戰棋<br>全 15 章・三條路線・五種結局・職業轉職</div>
     <div class="stlist">
       <button class="btn ${auto?'':'pri'}" data-v="new"><span>新遊戲</span><small>從第一章開始</small></button>
       <button class="btn ${auto?'pri':''}" data-v="cont" ${auto?'':'disabled'}><span>繼續</span><small>${auto?saveDesc(auto):'沒有自動存檔'}</small></button>
@@ -1504,6 +1520,7 @@ async function titleScreen(){
       ${IN_HALL?`<a class="btn hallbtn" href="${HALL_URL}"><span>返回遊戲大廳</span><small>← 大廳</small></a>`:''}
     </div>
     <p class="t-end">已見結局（${seen.length}/${allEndings().length}）：${endingList(new Set(seen))}</p></div>`);
+  if(typeof stopTitleBg==='function') stopTitleBg();
   if(v==='help'){await showHelp();return titleScreen();}
   if(v==='load'){ if(!(await loadMenu())) return titleScreen(); return; }
   if(v==='cont'){ restore(auto); clearLog(); return prep(); }
@@ -1570,6 +1587,7 @@ async function showHelp(){
    <li>被攻擊時選擇：<b>反擊</b>、<b>防禦</b>（傷害減半）、<b>迴避</b>（敵命中率減半）。</li>
    <li>「敵方威脅範圍」顯示全部敵機能攻擊到的格子。選取我方機體時，淡紅色格子是移動後能攻擊到的範圍。Esc：取消／返回。劇情中按 Enter 或點擊前進。</li>
    <li>「選單」裡的「重來本回合」可以回到這回合我方行動開始時的狀態。勾選「快速敵方回合」會略過敵方攻擊的戰鬥動畫。</li>
+   <li><b>畫面</b>：地圖為像素地形與 Q 版機體，戰鬥有動畫（近戰、光束、飛彈、射擊、擊墜爆炸）。想看原本的文字地圖，可以勾選「經典文字地圖」。</li>
    <li>難度：簡單（敵人等級 −2、經驗 ×1.25）、普通、困難（敵人等級 +2）。在出擊準備畫面可以隨時更改。</li></ul>
    <h4>地形</h4>
    <table><thead><tr><th></th><th>地形</th><th>移動</th><th>防禦</th><th>迴避</th><th>備註</th></tr></thead><tbody>${ts}</tbody></table>
@@ -1589,9 +1607,9 @@ async function showHelp(){
 // 事件綁定
 // =====================================================================
 $('#map').addEventListener('click',e=>{const c=e.target.closest('.c'); if(c) onCell(+c.dataset.x,+c.dataset.y);});
-$('#map').addEventListener('mouseover',e=>{const c=e.target.closest('.c'); if(!c) return; const x=+c.dataset.x,y=+c.dataset.y; showTerrain(x,y);
+$('#map').addEventListener('mouseover',e=>{const c=e.target.closest('.c'); if(!c) return; const x=+c.dataset.x,y=+c.dataset.y; showTerrain(x,y); if(typeof GFX!=='undefined') GFX.hover={x,y};
   const u=unitAt(x,y); if(G.phase==='P'&&!G.busy){ const want=u||null; if(want!==G.inspect&&(want||G.mode!=='idle'||!G.threatOne)){G.inspect=want;renderInfo();} }});
-$('#map').addEventListener('mouseleave',()=>{if(G.phase==='P'&&!G.busy){G.inspect=G.threatOne||null;renderInfo();}});
+$('#map').addEventListener('mouseleave',()=>{ if(typeof GFX!=='undefined') GFX.hover=null;if(G.phase==='P'&&!G.busy){G.inspect=G.threatOne||null;renderInfo();}});
 $('#actions').addEventListener('click',e=>{const b=e.target.closest('button'); if(!b||b.disabled) return; if(b.dataset.w!=null) pickWeapon(+b.dataset.w); else onAction(b.dataset.a);});
 $('#btnEnd').onclick=()=>{ if(G.sel&&G.sel.moved) cancel(); G.sel=null; G.mode='idle'; endPlayerPhase(); };
 $('#btnThreat').onclick=()=>{G.threatAll=!G.threatAll;render();};
@@ -1606,8 +1624,8 @@ $('#optAuto').onchange=e=>{G.autoCounter=e.target.checked;};
 $('#optFast').onchange=e=>{G.fast=e.target.checked;};
 if($('#optSfx')){ $('#optSfx').checked=SFX.on; $('#optSfx').onchange=e=>{ SFX.on=e.target.checked; try{localStorage.setItem('zijia2-sfx',SFX.on?'1':'0');}catch(_){} if(SFX.on) sfx('select'); }; }
 if(!IN_HALL){ const h=document.querySelector('.hall'); if(h&&h.remove) h.remove(); }
-$('#optIcons').onchange=e=>{G.mapIcons=e.target.checked; try{localStorage.setItem(SAVE+'mapIcons',e.target.checked?'1':'0');}catch(_){} renderMap();};
-try{ if(localStorage.getItem(SAVE+'mapIcons')==='1'){ G.mapIcons=true; $('#optIcons').checked=true; } }catch(_){}
+$('#optIcons').onchange=e=>{G.classic=e.target.checked; try{localStorage.setItem(SAVE+'classic',G.classic?'1':'0');}catch(_){} fitMap(); renderLegend(); render();};
+try{ if(localStorage.getItem(SAVE+'classic')==='1'){ G.classic=true; $('#optIcons').checked=true; } }catch(_){}
 document.addEventListener('keydown',e=>{
   if(!$('#modal').hidden||!$('#battle').hidden||!$('#scene').hidden) return;
   if(e.target&&(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')) return;
@@ -1627,5 +1645,7 @@ window.addEventListener('resize',()=>renderFMenu());
 document.querySelector('.mapwrap').addEventListener('scroll',()=>renderFMenu());
 window.addEventListener('resize',()=>{fitMap();});
 
+fitMap();
 renderLegend();
+if(typeof startMapLoop==='function') startMapLoop();
 titleScreen();

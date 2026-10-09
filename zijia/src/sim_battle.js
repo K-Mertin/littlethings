@@ -11,7 +11,7 @@ function makeWorld(seed){
     window:{addEventListener(){}},localStorage:{_:{},getItem(k){return this._[k]??null},setItem(k,v){this._[k]=String(v)}}};
   ctx.Math.random=rnd;
   vm.createContext(ctx);
-  const src=['story.js','icons.js','engine.js'].map(f=>fs.readFileSync(path.join(dir,f),'utf8')).join('\n')
+  const src=['story.js','icons.js','gfx.js','engine.js'].map(f=>fs.readFileSync(path.join(dir,f),'utf8')).join('\n')
     +'\n;globalThis.__E={G,CHAPTERS,START,CHARS,GUESTS,CLS,TERRAIN,SPIRITS,EXP,DIFF,MAX_LV,CC_LV,PARTS:(typeof PARTS!=="undefined"?PARTS:null)};globalThis.__F={terrAt,unitAt,inMap,dist,sk,moveCost,terrBonus,addWill,effMove,wMax,key};';
   vm.runInContext(src,ctx); Object.assign(ctx,ctx.__F);
   return ctx;

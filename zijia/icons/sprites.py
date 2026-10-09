@@ -122,3 +122,14 @@ def grid(sp):
         g.append(list(r+r[::-1]))
     for (y,x),v in sp.get('over',{}).items(): g[y][x]=v
     return g
+
+# ---------- 傭兵（友軍淡藍色系，單眼） ----------
+MERC=dict(H='#5aa8e0',F='#123048',E='#bff0ff',B='#3a6a8a',b='#2f6c9f',c='#dfe7ee',g='#9aa0a8',y='#f3c43b',s='#bfe3ff',o='#e8eef5')
+def spearx(d):
+    for y in range(0,11): d[(y,15)]='g'
+    d[(0,14)]='g'; d[(1,14)]='g'; d[(0,13)]='o'
+S['m_inf']=mk('步兵機','傭兵',MERC,rows=MONO,hi='mono',extra=nomouth)
+S['m_spear']=mk('槍兵機','傭兵',{**MERC,'H':'#4a90c8'},rows=MONO,hi='mono',extra=combo(nomouth,spearx))
+S['m_bow']=mk('射兵機','傭兵',{**MERC,'H':'#6ab0a0'},rows=MONO,hi='mono',extra=combo(nomouth,lambda d:(d.__setitem__((0,11),'k'),d.__setitem__((1,11),'g'),d.__setitem__((2,11),'g'))))
+S['m_fly']=mk('飛兵機','傭兵',{**MERC,'H':'#8ac8f0'},rows=MONO,hi='mono',extra=combo(nomouth,lambda d:wings(d)))
+S['m_guard']=mk('衛兵機','傭兵',{**MERC,'H':'#4a7aa8'},rows=BOX,hi='mono',extra=combo(nomouth,shield,lambda d:[d.__setitem__((y,x),'E') for y in (7,8,9) for x in (6,7,8,9)]))
