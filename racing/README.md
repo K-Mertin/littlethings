@@ -3,7 +3,7 @@
 A bright toy-car arcade racer in 3D. Race five rivals over 3 or 5 laps, drift through corners for a mini-turbo and hit the boost pads. Everything runs from one file (`index.html`) with no build step and no image or sound files. The only download is Three.js, loaded from a CDN, so it needs an internet connection the first time it loads.
 
 ## Play
-Open `index.html` in a browser, pick a track, a car color, laps and rival difficulty, then press **Race!** (or Enter).
+Open `index.html` in a browser, pick a track, your car and its color, laps and rival difficulty, then press **Race!** (or Enter). The menu shows your car in a showroom view.
 
 | Key | Action |
 |---|---|
@@ -24,9 +24,25 @@ Open `index.html` in a browser, pick a track, a car color, laps and rival diffic
 ## Phones and tablets
 Touch controls turn on automatically. The car accelerates by itself. Steer with ◀ ▶ on the left, hold **DRIFT** while turning and let go for a boost, and hold **BRAKE** to slow down or reverse. **II** pauses; the pause menu has **Back on track** if you get turned around. Both orientations work; landscape plays best.
 
+## Cars
+Six models, each with its own look and a small handling difference. You pick one; your five rivals drive the others.
+
+| Car | Character |
+|---|---|
+| GT Coupe | Balanced all-rounder: fastback, rear wing, five-spoke rims |
+| Muscle | Highest top speed but heavier in corners: long bonnet, hood scoop, twin stripes, chrome bumpers, quad round lights |
+| Rally Hatch | Quickest off the line and nimble: light pod, roof spoiler, mud flaps, white rally rims |
+| Prototype | Le Mans racer with high downforce: bubble canopy, shark fin, big wing, but slower to accelerate |
+| Roadster | Classic open-top, charges drift boosts fastest: driver in helmet, leather seats, wire wheels |
+| Baja Truck | Lifted off-road truck that is barely slowed by grass: roll cage, light bar, bull bar, spare wheel |
+
+In a test where the same driver drove every car, average lap times were within about half a second of each other.
+
 ## Tracks
-1. **Meadow Loop**: green fields, a hairpin and a fast back straight. About 1 km.
-2. **Sunset Coast**: an island loop with palms, an S-bend and sea all around. About 950 m.
+1. **Meadow Loop**: a hairpin and a fast back straight through farmland, with snowy mountains, a village and church, barns and silos, wind turbines, ponds and hot-air balloons. About 1 km.
+2. **Sunset Coast**: an island loop with an S-bend, palms, a lighthouse, a pier, beach huts, hotels, a Ferris wheel, boats sailing round and a city on the next island. About 950 m.
+
+Both tracks have a grandstand, pit garages, a footbridge, advertising boards, tyre walls and gravel traps on the outside of the bends. The road is 13.5 m wide.
 
 Best race time (per track and lap count) and best lap (per track) are saved in this browser.
 
@@ -44,7 +60,7 @@ If you pull ahead, the rivals speed up a little to keep the race close (more on 
 ## How it is built
 - Each track is a closed Catmull-Rom spline through a list of points. It is sampled about once per meter, and the road, kerbs, run-off and walls are built as ribbons along it.
 - Cars use arcade physics with a tyre grip limit: past it the car slides wide and scrubs speed. Grip is lower while drifting, and grass slows you down. A fixed 120 Hz step keeps it the same on every device.
-- The cars are modelled at real size (about 4.5 m) from extruded side profiles, with glass, five-spoke rims, brake calipers, lights, a rear wing and door numbers, and are scaled up slightly to read well at speed. Paint uses a clear-coat material with reflections. The road is 11 m wide.
+- Each car model is built at real size (4–4.8 m) from an extruded side profile and glasshouse, plus its own details, wheels and rims. They are scaled up slightly to read well at speed. Paint uses a clear-coat material with reflections. Models and their stats are in `MODELS` in `index.html`.
 - Lap counting needs a halfway checkpoint, so cutting back over the line does not count.
 - Rendering is Three.js (WebGL) with sun shadows, fog and a gradient sky. Textures (asphalt, kerbs, boost pads, banner) are painted in code on canvases. Trees, palms and the crowd are instanced meshes.
 - On slower devices the game lowers resolution and then turns off shadows to keep the frame rate up.
