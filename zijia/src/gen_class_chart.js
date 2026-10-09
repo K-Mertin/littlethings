@@ -46,7 +46,7 @@ const sections=ROLES.map(([role,name,root,desc,pilots])=>`
 </section>`).join('');
 const t4=D.classes.filter(c=>c.tier===4);
 const pilotRows=Object.entries(D.chars).map(([k,p])=>`<tr><td><span class="pc"><span class="g">${p.ch}</span>${p.pilot}</span></td><td>${p.mech}</td><td>${C[p.cls].name}</td><td>${JOIN[k]}</td><td>${p.spirits.map(([n,t])=>`<span class="sp t${t}">${n}<small>${TN[t]}</small></span>`).join('')}</td></tr>`).join('');
-const html=`<title>字甲轉職圖鑑</title>
+const html=`<title>銘甲轉職圖鑑</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@700;900&family=JetBrains+Mono:wght@400;600&display=swap">
 <style>
@@ -119,7 +119,7 @@ td{padding:8px 10px 8px 0;border-bottom:1px solid #252f37;vertical-align:middle}
 .foot{color:var(--dim);font-size:12.5px}
 </style>
 <div class="wrap">
-<header class="hero"><div><p class="eyebrow">字甲戰線 · CLASS CHART</p><h1>字<b>甲</b>轉職圖鑑</h1>
+<header class="hero"><div><p class="eyebrow">銘甲戰記 · CLASS CHART</p><h1>字<b>甲</b>轉職圖鑑</h1>
 <p class="lead">六個系統、四十一種職業。每一系從初階起步，Lv 8 可以轉職，每一階有兩條分支。轉職後等級回到 1，但基礎能力大幅提升，並換上新的武器與特殊能力。卡片上的數值為該職業 Lv 1 的基本能力（不含角色個人加成）。</p></div>
 <div class="flow"><span class="step"><span class="tier t1">初階</span> Lv 1–10</span><span class="arrow">→ Lv 8 轉職 →</span><span class="step"><span class="tier t2">中階</span></span><span class="arrow">→</span><span class="step"><span class="tier t3">上階</span></span><span class="arrow">→ 雷隼限定 →</span><span class="step"><span class="tier t4">極</span></span></div>
 </header>

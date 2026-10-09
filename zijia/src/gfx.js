@@ -1,9 +1,12 @@
 'use strict';
 // =====================================================================
-// 字甲戰線 — 圖像模組：像素地形、畫布地圖、戰鬥演出、標題背景
+// 銘甲戰記 — 圖像模組：像素地形、畫布地圖、戰鬥演出、標題背景
 // （只在瀏覽器中被呼叫；模擬器載入時不會執行任何繪圖）
 // =====================================================================
 
+// 地圖設施與寶箱的像素圖
+const OBJ_ICONS={"gate": {"pal": {"k": "#1a0f2e", "p": "#5b2a9a", "P": "#9b5cf0", "w": "#e6d0ff", "E": "#ff3a6a", "g": "#3a3550", "G": "#6a6488"}, "rows": ["................", ".......kk.......", "......kPPk......", ".....kPwwPk.....", "....kPwPPpPk....", "...kPwPEEPppk...", "...kPPPEEPppk...", "....kPPPPppk....", ".....kPpppk.....", "......kppk......", ".......kk.......", "....kkkkkkkk....", "...kGGGGGGGGk...", "..kGgGgGgGgGgk..", "..kgggggggggk...", "...kkkkkkkkk...."]}, "tower": {"pal": {"k": "#1c222b", "s": "#7d8ba2", "S": "#a9b6c9", "b": "#2b3442", "r": "#ff4a3a", "y": "#f3c43b", "d": "#5a6476"}, "rows": ["................", "..........kkkkk.", "......kkkkbbbbbk", ".....kSSSkkkkkk.", "....kSssssk.....", "....kSsrrsk.....", "....kSsrrsk.....", "....kSssssk.....", "...kkkkkkkkk....", "...kSSSSSSSk....", "...kSsssssdk....", "..kSSsssssddk...", "..kSsyyyyysdk...", "..kSssssssddk...", ".kkkkkkkkkkkkk..", "................"]}, "bwall": {"pal": {"k": "#22272e", "s": "#8a929c", "S": "#b3bac2", "c": "#3a3f46", "d": "#6a727c"}, "rows": ["................", "kkkkkkkkkkkkkkkk", "kSSSsskSSSSsskSk", "ksssddkssscddksk", "kkkkkkkkkkckkkkk", "kSskSSSSskcSSSsk", "ksdkssscdccsssdk", "kkkkkkkkckkkkkkk", "kSSSsskScckSSSsk", "ksssddkcsddksssk", "kkkkkkckkkkkkkkk", "kSskSScSskSSSSsk", "ksdkssssdkssssdk", "kkkkkkkkkkkkkkkk", "................", "................"]}, "chest": {"pal": {"k": "#3a220f", "w": "#9a5a2a", "W": "#c47a3a", "y": "#f3c43b", "Y": "#fff0a0"}, "rows": ["................", "................", "................", "...kkkkkkkkkk...", "..kWWWWWWWWWWk..", "..kWwwwwwwwwWk..", "..kyyyyyyyyyyk..", "..kwwwwkkwwwwk..", "..kkkkkyYkkkkk..", "..kWWWWyyWWWWk..", "..kwwwwkkwwwwk..", "..kwwwwwwwwwwk..", "..kyyyyyyyyyyk..", "...kkkkkkkkkk...", "................", "................"]}};
+if(typeof ICONS!=='undefined') Object.assign(ICONS,OBJ_ICONS);
 const GFX={tiles:{}, sprites:{}, mapOn:false, cs:32, dpr:1, hover:null, fx:[], last:0, raf:0, titleRaf:0};
 
 function mkCanvas(w,h){ const c=document.createElement('canvas'); c.width=w; c.height=h; return c; }
@@ -121,6 +124,12 @@ function drawMap(now){
   fill(ov.rep,'rgba(80,220,120,.38)','rgba(170,255,200,.6)');
   if(ov.exit){ const pulse=.5+.5*Math.sin(now/300); ctx.setLineDash([4,3]); ctx.strokeStyle=`rgba(120,255,160,${.5+pulse*.5})`; ctx.lineWidth=2;
     for(const k of ov.exit){ const [x,y]=k.split(',').map(Number); ctx.strokeRect(x*cs+3,y*cs+3,cs-6,cs-6); } ctx.setLineDash([]); }
+  // 寶箱
+  const cs2=spriteSet('chest');
+  for(const c of (G.chests||[])){ if(c.taken||!cs2) continue; const b=Math.sin(now/400+c.x)*cs*.03;
+    ctx.globalAlpha=.25; ctx.fillStyle='#000'; ctx.beginPath(); ctx.ellipse(c.x*cs+cs/2,c.y*cs+cs*.86,cs*.3,cs*.08,0,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1;
+    ctx.drawImage(cs2.n,c.x*cs,c.y*cs+b,cs,cs);
+    if(Math.floor(now/250+c.x*3)%8===0){ ctx.fillStyle='#fff8c0'; ctx.fillRect(c.x*cs+cs*.66,c.y*cs+cs*.25+b,Math.max(2,cs/12),Math.max(2,cs/12)); } }
   // 機體
   const us=[...G.units].sort((a,b)=>a.y-b.y);
   for(const u of us) drawUnit(ctx,u,cs,now,dt);
@@ -140,14 +149,14 @@ function drawUnit(ctx,u,cs,now,dt){
   if(u._px==null||Math.abs(u._px-u.x)+Math.abs(u._py-u.y)>4){ u._px=u.x; u._py=u.y; }
   const k=Math.min(1,dt*16); u._px+=(u.x-u._px)*k; u._py+=(u.y-u._py)*k;
   const X=u._px*cs, Y=u._py*cs, sc=cs/16, phase=(u.uid||0)*0.9;
-  const bob=u.acted?0:Math.round(Math.sin(now/380+phase)*(u.fly?1.6:0.6)*sc)/1;
+  const wall=u.cls==='bwall', bob=(u.acted||u.obj)?0:Math.round(Math.sin(now/380+phase)*(u.fly?1.6:0.6)*sc)/1;
   const lift=u.fly?Math.round(3*sc):0;
   // 影子與陣營底座
-  ctx.fillStyle='rgba(0,0,0,.28)'; ctx.beginPath(); ctx.ellipse(X+cs/2,Y+cs*.86,cs*(u.fly?.26:.36),cs*.11,0,0,Math.PI*2); ctx.fill();
+  if(!wall){ ctx.fillStyle='rgba(0,0,0,.28)'; ctx.beginPath(); ctx.ellipse(X+cs/2,Y+cs*.86,cs*(u.fly?.26:.36),cs*.11,0,0,Math.PI*2); ctx.fill();
   ctx.strokeStyle=teamColor(u); ctx.globalAlpha=u.acted?.35:.9; ctx.lineWidth=Math.max(1.5,cs/18);
-  ctx.beginPath(); ctx.ellipse(X+cs/2,Y+cs*.86,cs*.38,cs*.13,0,0,Math.PI*2); ctx.stroke(); ctx.globalAlpha=1;
+  ctx.beginPath(); ctx.ellipse(X+cs/2,Y+cs*.86,cs*.38,cs*.13,0,0,Math.PI*2); ctx.stroke(); ctx.globalAlpha=1; }
   const key=iconKey(u), sp=key&&spriteSet(key);
-  const size=cs*(u.merc?.78:.92), sx=X+(cs-size)/2, sy=Y+cs-size-cs*.06-lift+bob;
+  const size=wall?cs:cs*(u.merc?.78:.92), sx=X+(cs-size)/2, sy=wall?Y:Y+cs-size-cs*.06-lift+bob;
   if(sp){ ctx.drawImage(u.acted?sp.g:sp.n,sx,sy,size,size); }
   else { ctx.fillStyle=u.side==='E'?'#5a1d1b':'#153250'; ctx.beginPath(); ctx.arc(X+cs/2,sy+size/2,size*.42,0,Math.PI*2); ctx.fill();
     ctx.fillStyle=u.side==='E'?'#ff8f7e':'#8fd0ff'; ctx.font=`900 ${Math.round(size*.5)}px "Noto Serif TC",serif`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(u.ch,X+cs/2,sy+size/2+1); }
@@ -257,16 +266,27 @@ async function playBattleScene(L,R,seq,hp0,line){
       ctx.font=`${t.size}px "Press Start 2P","DotGothic16",monospace`; ctx.textAlign='center'; ctx.textBaseline='middle';
       ctx.lineWidth=7; ctx.strokeStyle='#10161b'; ctx.strokeText(t.text,0,0); ctx.fillStyle=t.col; ctx.fillText(t.text,0,0); ctx.restore(); ctx.globalAlpha=1; }
     ctx.restore();
+    if(S.cut) drawCutIn(ctx,S.cut,now,W,H);
     if(S.flashA>0){ ctx.fillStyle=`rgba(255,255,255,${S.flashA})`; ctx.fillRect(0,0,W,H); S.flashA=Math.max(0,S.flashA-dt*2.2); }
     requestAnimationFrame(draw); };
   requestAnimationFrame(draw);
   const burst=(x,y,n,cols,spd=260,g=420,size=5)=>{ for(let i=0;i<n;i++){ const a=Math.random()*Math.PI*2, v=spd*(.35+Math.random()*.8); S.parts.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-80,g,col:cols[i%cols.length],s:size*(.6+Math.random()*.8),life:.5+Math.random()*.5,max:1}); } };
   const pop=(x,y,text,col,size=22,dur=1100)=>S.texts.push({x,y,text,col,size,t0:performance.now(),dur});
+  const lineEl=$('#bt-line');
+  const say=(u,kind,opp)=>{ const t=typeof pickQuote==='function'?pickQuote(u,kind,opp):''; if(!t||!lineEl) return false;
+    lineEl.innerHTML=`<span class="bq ${u.side}"><span class="bqf${iconKey(u)?' hasicon':''}">${face(u,u.ch)}</span><span><b>${u.pilot}</b>「${t}」</span></span>`; return true; };
+  const named=u=>!!(u.cid||u.tag||u.boss);
   await sleep(250);
   for(const s of seq){
     const atkL=s.a===L||(s.a!==R&&s.a.side===L.side), A=atkL?S.A:S.B, D=atkL?S.B:S.A, dir=atkL?1:-1;
     const support=s.a!==L&&s.a!==R;
     $('#bt-w').innerHTML=`${support?'<small>援護</small> ':''}${s.a.ch}【${s.w.name}】`;
+    const special=s.w.will>0&&named(s.a);
+    if(special&&!G.skip){
+      const q=typeof pickQuote==='function'?pickQuote(s.a,'sp',s.d):'';
+      if(q) say(s.a,'sp',s.d);
+      sfx('cutin'); S.cut=makeCut(s.a,s.w,q,atkL); await sleep(S.cut.dur); S.cut=null;
+    } else if(s===seq[0]||Math.random()<.45) say(s.a,'atk',s.d);
     const kind=weaponKind(s.w), col=A.u.side==='E'?'#ff7a5a':'#6fd0ff';
     const ax=A.x+A.off, ay=A.y-56, dx=D.x, dy=D.y-56;
     if(kind==='melee'){
@@ -284,8 +304,9 @@ async function playBattleScene(L,R,seq,hp0,line){
       await sleep(travel+(n-1)*70-40);
     }
     if(s.hit){
-      D.flash=1; S.shake=s.crit?22:12; if(s.crit) S.flashA=.55;
-      burst(D.x,dy,s.crit?30:16,['#fff3b0','#ffcf3a','#ff8a3a','#ffffff']);
+      D.flash=1; S.shake=(s.crit?22:12)+(special?10:0); if(s.crit||special) S.flashA=special?.7:.55;
+      burst(D.x,dy,(s.crit?30:16)+(special?24:0),['#fff3b0','#ffcf3a','#ff8a3a','#ffffff']);
+      if(special) burst(D.x,dy,18,[col,'#ffffff'],420,120,8);
       pop(D.x,dy-40,(s.crit?'':'')+fmt(s.dmg),s.crit?'#ffd25a':'#ffffff',s.crit?28:22);
       if(s.crit) pop(D.x,dy-84,'CRITICAL!','#ff6a3a',14,1000);
       sfx(s.crit?'crit':'hit');
@@ -294,10 +315,13 @@ async function playBattleScene(L,R,seq,hp0,line){
       if(s.after===0){ await sleep(200); sfx('boom'); S.shake=26; S.flashA=.35;
         burst(D.x,dy,40,['#ffffff','#fff3b0','#ffcf3a','#ff8a3a','#ff4a3a','#555c66'],380,300,7);
         pop(D.x,dy-90,'擊墜！','#ff6a3a',22,1200);
-        await tween(600,p=>{ D.alpha=1-p; D.sink=p*30; }); }
+        say(s.d,'down',s.a);
+        await tween(600,p=>{ D.alpha=1-p; D.sink=p*30; });
+        if(named(s.a)&&say(s.a,'kill',s.d)) await sleep(500); }
+      else if(Math.random()<.5) say(s.d,'hit',s.a);
     } else {
       pop(D.x,dy-40,s.note||'MISS','#c8d0d8',s.note?18:20);
-      sfx('miss');
+      sfx('miss'); say(s.d,'dodge',s.a);
       await tween(140,p=>D.hop=dir*34*ease.out(p)); await tween(220,p=>D.hop=dir*34*(1-ease.io(p)));
       if(kind==='melee') await tween(240,p=>A.off=dir*(Math.abs(dx-ax)-96)*(1-ease.out(p)));
     }
@@ -306,6 +330,39 @@ async function playBattleScene(L,R,seq,hp0,line){
   if(G.lvUps.length){ $('#bt-line').innerHTML=`<span class="lvtxt">▲ LEVEL UP　${G.lvUps.join('　')}</span>`; sfx('levelup'); pop(W/2,90,'LEVEL UP!','#ffd25a',20,1200); await sleep(900); }
   await sleep(200);
   running=false; ov.hidden=true; ov.onclick=null; G.skip=false; G.sleepers.length=0;
+}
+// 必殺技切入演出
+function makeCut(u,w,quote,left){
+  const r=rng((u.uid||7)*131+w.name.length), lines=[];
+  for(let i=0;i<26;i++) lines.push({y:r(),len:60+r()*180,sp:900+r()*900,off:r()*800,w:1+Math.floor(r()*3)});
+  return {u,w,quote,left,t0:performance.now(),dur:1350,lines,sp:spriteSet(iconKey(u)||'')};
+}
+function drawCutIn(ctx,c,now,W,H){
+  const p=Math.min(1,(now-c.t0)/c.dur); if(p<0) return;
+  const open=p<.12?ease.out(p/.12):p>.88?1-ease.in((p-.88)/.12):1;
+  const cy=H*.46, bh=150*open, sk=22, dir=c.left?1:-1;
+  const team=c.u.side==='E'?['#3a0d10','#7a1e1e','#ff7a5a']:['#0b1f3a','#1f4f8a','#6fd0ff'];
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,'+(.45*open)+')'; ctx.fillRect(0,0,W,H);
+  ctx.beginPath(); ctx.moveTo(-10,cy-bh/2+sk*dir); ctx.lineTo(W+10,cy-bh/2-sk*dir); ctx.lineTo(W+10,cy+bh/2-sk*dir); ctx.lineTo(-10,cy+bh/2+sk*dir); ctx.closePath();
+  const g=ctx.createLinearGradient(0,cy-bh/2,0,cy+bh/2); g.addColorStop(0,team[1]); g.addColorStop(.5,team[0]); g.addColorStop(1,team[1]);
+  ctx.fillStyle=g; ctx.fill(); ctx.lineWidth=4; ctx.strokeStyle=team[2]; ctx.stroke(); ctx.clip();
+  // 速度線
+  const el=(now-c.t0)/1000;
+  for(const l of c.lines){ const x=((l.off+el*l.sp)%(W+l.len))-l.len; const xx=c.left?W-x-l.len:x;
+    ctx.fillStyle='rgba(255,255,255,'+(.15+l.w*.1)+')'; ctx.fillRect(xx,cy-bh/2+l.y*bh,l.len,l.w); }
+  // 機體頭像
+  const size=200, slide=p<.2?1-ease.out(p/.2):0, px=c.left?150-slide*260:W-150+slide*260;
+  ctx.imageSmoothingEnabled=false;
+  if(c.sp){ ctx.save(); ctx.translate(px,cy); if(!c.left) ctx.scale(-1,1); ctx.drawImage(c.sp.n,-size/2,-size/2+16,size,size); ctx.restore(); }
+  else { ctx.fillStyle=team[2]; ctx.font='900 120px "Noto Serif TC",serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(c.u.ch,px,cy); }
+  // 文字
+  const tp=p<.28?0:Math.min(1,(p-.28)/.15), tx=c.left?W-40:40, ta=c.left?'right':'left', tslide=(1-ease.out(tp))*120*dir;
+  ctx.globalAlpha=tp; ctx.textAlign=ta; ctx.textBaseline='middle';
+  ctx.font='700 15px "Noto Sans TC",sans-serif'; ctx.fillStyle=team[2]; ctx.fillText(`${c.u.pilot}　${c.u.name}`,tx+tslide,cy-42);
+  ctx.font='900 44px "Noto Serif TC",serif'; ctx.lineWidth=8; ctx.strokeStyle='#05080c'; ctx.strokeText(c.w.name,tx+tslide,cy-2); ctx.fillStyle='#fff6d0'; ctx.fillText(c.w.name,tx+tslide,cy-2);
+  if(c.quote){ ctx.font='500 15px "Noto Sans TC",sans-serif'; ctx.fillStyle='#e8eef2'; ctx.fillText('「'+c.quote+'」',tx+tslide,cy+36); }
+  ctx.restore();
 }
 function drawFighter(ctx,sd,now){
   const u=sd.u, size=112, flip=!sd.left, lift=u.fly?40:0, bob=Math.sin(now/300+(sd.left?0:1.7))*(u.fly?6:2);
