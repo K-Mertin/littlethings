@@ -3,7 +3,13 @@
 A bright, cute 3D first-person shooter that plays like DOOM: keys, doors, secrets, a status bar and a face that reacts. Five stages, with a boss at the end. Everything runs from one file (`index.html`) with no build step and no image or sound files. The only download is Three.js, loaded from a CDN, so it needs an internet connection the first time it loads.
 
 ## Play
-Open `index.html` in a browser and click **Start**, or play it at https://k-mertin.github.io/littlethings/cobblekeep/. Click inside the view to capture the mouse; press Esc to release it and pause. Cleared stages unlock on the title screen (saved in this browser).
+Open `index.html` in a browser, or play it at https://k-mertin.github.io/littlethings/cobblekeep/.
+
+- **Pick a stage:** every stage can be chosen from the title screen on any device. Nothing is locked.
+- **Records:** cleared stages show a tick, your best time and stars. These are saved in that browser.
+- **Direct link:** add `#stage7` (or any number 1–10) to the URL to open the title screen with that stage ready to play.
+- **Mouse:** click inside the view to capture the mouse. Press Esc to release it and pause. The pause menu can restart the stage or return to stage select.
+- **Length:** a full playthrough of all 10 stages takes about an hour.
 
 | Key | Action |
 |---|---|
@@ -15,6 +21,16 @@ Open `index.html` in a browser and click **Start**, or play it at https://k-mert
 | N | music on/off |
 | Arrow keys | turn and move without a mouse |
 | P | pause |
+
+**Difficulty:**
+- **Relaxed:** enemies hit softer and have less health.
+- **Normal:** the standard balance.
+- **Tough:** enemies hit harder and have more health.
+
+**Stars:** each stage awards up to three stars, one each for:
+- popping every enemy
+- collecting every treat
+- finding every secret
 
 ## Phones and tablets
 Touch controls turn on automatically. There are two control schemes, chosen on the title or pause screen:
@@ -32,22 +48,35 @@ In both schemes:
 Settings are saved in the browser. Landscape plays best. In portrait the view sits at the top and the controls fill the space below.
 
 ## Stages
-1. **Sunny Meadow**: hedges, a cottage (confetti cannon) and a well house with the red key. One secret.
-2. **Cozy Castle**: courtyard, library (red key), a great hall with pillars (blue key). One secret.
-3. **Sandy Temple**: desert ruin (red key), temple hall (star launcher), side chamber (yellow key), sanctum. One secret.
-4. **Frosty Peaks**: frozen lake with icy water that hurts, a log cabin, and an ice castle that needs all three keys.
-5. **Sugar Keep**: candy garden, a hall with a jam river, then the arena where the Jelly King waits. You have to pop him before the goal block will ring.
+Five worlds, two stages each. The second stage of each world is bigger and ends with a boss you must pop before the goal block will ring.
 
-Your health, shield and toys carry over between stages. If you get bonked, the stage restarts with whatever you had when you entered it.
+| # | Stage | Keys | Boss |
+|---|---|---|---|
+| 1 | Sunny Meadow | red | |
+| 2 | Windmill Farm | red, blue | Boulder Bob |
+| 3 | Cozy Castle | red, blue | |
+| 4 | Royal Kitchen | red, yellow | Puff Queen |
+| 5 | Sandy Temple | red, yellow | |
+| 6 | Oasis Ruins | red, blue | Mega Shroom |
+| 7 | Frosty Peaks | red, blue, yellow | |
+| 8 | Crystal Caverns | red, blue, yellow | Frost Jelly |
+| 9 | Candy Town | red, yellow | |
+| 10 | Sugar Keep | red, blue | Jelly King |
+
+**Carry-over:** your health, shield and toys carry over between stages. If you start from stage select, you get a fair starting kit for that stage.
+
+**Retrying:** if you get bonked, the stage restarts with whatever you had when you entered it.
 
 ## Friends and foes
 - **Jelly**: bouncy, bites up close. Its color changes with each stage.
 - **Shroom**: stands back and spits spores.
 - **Puff**: a flying cloud that throws zaps and floats over hazards.
 - **Rocky**: a slow stone golem that hits hard.
-- **Jelly King**: the boss. Throws a fan of orbs, summons jellies and speeds up at half health.
+- **Bee**: fast and flying, dives in for quick stings.
+- **Teapot**: a turret that stays put and puffs out three bursts of steam.
+- **Bosses**: Boulder Bob, Puff Queen, Mega Shroom, Frost Jelly and the Jelly King. Each fires fans and rings of orbs, summons helpers and speeds up at half health.
 
-Pickups: hearts (+25), super hearts (+100, up to 200), bubble shields (armor), ammo jars/boxes, and red, blue and yellow keys.
+Pickups: hearts (+25), super hearts (+100, up to 200), bubble shields (armor), ammo jars and boxes, red, blue and yellow keys, and **Sugar Rush** candy (double damage and faster running for 20 seconds, usually hidden in secrets).
 
 ## How it is built
 - The game logic runs on a 2D tile grid, the same way DOOM does. That covers movement, collision, enemy pathfinding, hit-scan weapons and doors.
@@ -65,6 +94,6 @@ The maps are the `MAPS` array in `index.html`; stage settings (name, textures, s
 - **Walls:** `G` grass block, `L` hedge, `P` planks, `W` log, `C` cobble, `B` cream brick, `K` bookshelf, `U` `V` `Y` pink/blue/yellow wool, `N` sandstone, `H` chiseled sandstone, `I` ice, `Q` snow brick, `R` spruce, `J` candy stripe, `Z` cake, `E` chocolate.
 - **Doors and goal:** `D` door, `1` red door, `2` blue door, `3` yellow door, `S` secret wall, `X` goal block.
 - **Floors:** `.` and `,` are indoor floors, `~` and `-` are outdoor floors (open sky), `=` is water or jam. Each stage picks the textures for these.
-- **Enemies:** `p` player start, `j` jelly, `m` shroom, `f` puff, `g` rocky, `q` Jelly King.
-- **Pickups:** `h` heart, `u` super heart, `a` shield, `b` bubbles, `c` confetti, `s` stars, `w` confetti cannon, `x` star launcher, `r` `e` `y` red/blue/yellow keys.
+- **Enemies:** `p` player start, `j` jelly, `m` shroom, `f` puff, `g` rocky, `d` bee, `v` teapot, `z` the stage's boss (set by `boss` in `STAGES`), `q` Jelly King.
+- **Pickups:** `h` heart, `u` super heart, `a` shield, `b` bubbles, `c` confetti, `s` stars, `i` Sugar Rush, `w` confetti cannon, `x` star launcher, `r` `e` `y` red/blue/yellow keys.
 - **Decorations:** `t` lantern, `o` flower, `k` cactus, `n` snowman, `l` lollipop.
