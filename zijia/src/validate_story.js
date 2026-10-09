@@ -11,7 +11,7 @@ const E = (id, m) => errs.push(`[${id}] ${m}`);
 const W = (id, m) => warns.push(`[${id}] ${m}`);
 
 const TERRAIN = new Set('.fmw#br'.split(''));
-const ENEMY_TIER = {bing:1,lian:1,pao:1,yi:1,dun:1,jia:1, jing:2,zhong:2,lian2:2,qi:2,ying:2, wei:3,te:3,ye:3,xu:3};
+const ENEMY_TIER = {bing:1,lian:1,pao:1,yi:1,dun:1,jia:1, jing:2,zhong:2,lian2:2,qi:2,ying:2, wei:3,te:3,ye:3,xu:3, gate:3,tower:2,bwall:1};
 const BOSS_TIER = {general:3, cmdr:3, emperor:3, wuking:4, yuanwu:4};
 const PLAYER_CLASSES = 's1 s2a s2b s3a s3b s3c s3d g1 g2a g2b g3a g3b g3c g3d r1 r2a r2b r3a r3b r3c r3d p1 p2a p2b p3a p3b p3c p3d t1 t2a t2b t3a t3b t3c t3d k2 k3a k3b'.split(' ');
 const playerTier = c => c === 'k2' || /^[sgrpt]2/.test(c) ? 2 : /^k3|^[sgrpt]3/.test(c) ? 3 : 1;
@@ -153,7 +153,7 @@ for (const id in CHAPTERS) {
     if (isPlayer && !en.pilot) E(id, `${what}: player-class enemy must be named`);
     if (!(Number.isInteger(en.lv) && en.lv >= 1 && en.lv <= 10)) E(id, `${what}: bad lv ${en.lv}`);
     if (en.ai && !['aggr', 'hold'].includes(en.ai)) E(id, `${what}: bad ai`);
-    if (en.tag) { if (tags.has(en.tag)) E(id, 'dup tag ' + en.tag); tags.add(en.tag); }
+    if (en.tag) { if (tags.has(en.tag) && en.tag !== 'core') E(id, 'dup tag ' + en.tag); tags.add(en.tag); }
     if (en.retreatLines) checkLines(id, what + ' retreatLines', en.retreatLines);
     if (en.talk) {
       if (!['lena', 'lei', 'yu'].includes(en.talk.join)) E(id, 'bad talk.join ' + en.talk.join);
@@ -163,7 +163,9 @@ for (const id in CHAPTERS) {
       if (en.talk.lines.length < 4 || en.talk.lines.length > 8) W(id, `talk length ${en.talk.lines.length}`);
     }
     // balance
-    if (en.c === 'wuking' || en.c === 'yuanwu') { if (en.lv < 6 || en.lv > 8) E(id, `${what}: ${en.c} lv ${en.lv} not in 6–8`); }
+    const OBJ = ['gate','tower','bwall'];
+    if (OBJ.includes(en.c)) {}
+    else if (en.c === 'wuking' || en.c === 'yuanwu') { if (en.lv < 6 || en.lv > 8) E(id, `${what}: ${en.c} lv ${en.lv} not in 6–8`); }
     else if (!isBoss) {
       const tier = isPlayer ? playerTier(en.c) : ENEMY_TIER[en.c];
       const rank = (tier - 1) * 10 + en.lv;
@@ -175,7 +177,7 @@ for (const id in CHAPTERS) {
       }
     }
   };
-  ch.enemies.forEach((en, i) => { checkEnemy(en, 'enemy' + i); place(en.x, en.y, 'enemy' + i + '(' + en.c + ')'); });
+  ch.enemies.forEach((en, i) => { checkEnemy(en, 'enemy' + i); if (en.c === 'bwall') { if (at(en.x, en.y) !== '#') E(id, 'bwall must be on a wall'); } else place(en.x, en.y, 'enemy' + i + '(' + en.c + ')'); });
   for (const [px, py] of ch.deploy) for (const en of ch.enemies) if (Math.abs(px - en.x) + Math.abs(py - en.y) <= 1) W(id, `enemy adjacent to deploy at (${en.x},${en.y})`);
 
   let spawnCount = 0;
@@ -196,7 +198,7 @@ for (const id in CHAPTERS) {
       }
     });
   });
-  const total = ch.enemies.length + spawnCount;
+  const total = ch.enemies.filter(e => !['gate','tower','bwall'].includes(e.c)).length + spawnCount;
   const [lo, hi] = countBand(ch.no);
   if (total < lo || total > hi) E(id, `enemy total ${total} outside ${lo}–${hi}`);
 
@@ -204,13 +206,15 @@ for (const id in CHAPTERS) {
   if (w.type === 'boss') { if (!tags.has(w.target)) E(id, 'boss target tag missing ' + w.target); }
   else if (w.type === 'survive') { if (!(w.turns > 0)) E(id, 'survive turns'); }
   else if (w.type === 'escape') { if (w.who !== 'gang') E(id, 'escape who'); w.cells.forEach(([x, y]) => okCell(x, y, 'escape cell')); }
+  else if (w.type === 'destroy') { if (!ch.enemies.some(e => e.tag === w.target)) E(id, 'destroy target missing'); }
+  else if (w.type === 'capture') w.cells.forEach(([x, y]) => okCell(x, y, 'capture cell'));
   else if (w.type !== 'all') E(id, 'bad win type ' + w.type);
 
   // BFS from deploy[0]
   const [sx, sy] = ch.deploy[0]; const seen = new Set([sx + ',' + sy]); const qq = [[sx, sy]];
   while (qq.length) { const [x, y] = qq.shift(); for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) { const nx = x + dx, ny = y + dy, t = at(nx, ny); if (t && t !== '#' && !seen.has(nx + ',' + ny)) { seen.add(nx + ',' + ny); qq.push([nx, ny]); } } }
   const unreach = (x, y, what) => { if (!seen.has(x + ',' + y)) E(id, `${what} unreachable (${x},${y})`); };
-  ch.enemies.forEach((en, i) => unreach(en.x, en.y, 'enemy' + i));
+  ch.enemies.forEach((en, i) => { if (en.c !== 'bwall') unreach(en.x, en.y, 'enemy' + i); });
   (ch.events || []).forEach(ev => (ev.spawn || []).forEach(en => unreach(en.x, en.y, 'spawn')));
   ch.deploy.forEach(([x, y]) => unreach(x, y, 'deploy'));
   (ch.guests || []).forEach(g => unreach(g.x, g.y, 'guest'));

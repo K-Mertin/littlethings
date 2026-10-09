@@ -1,6 +1,6 @@
 'use strict';
 // =====================================================================
-// 字甲戰線 — 遊戲引擎（劇情資料在 story.js：SPEAKERS / CHAPTERS / START）
+// 銘甲戰記 — 遊戲引擎（劇情資料在 story.js：SPEAKERS / CHAPTERS / START）
 // =====================================================================
 
 // ---------------- 地形 ----------------
@@ -101,7 +101,7 @@ C('k3b','黑騎型',3,'knight','k2',{atk:6,mov:1},{dmgUp:15,crit:10},[wp('黑劍
 
 // ---------------- 敵方職業 ----------------
 const ECLASSES={};
-function E(id,ch,name,tier,stats,skills,weapons,opt={}){ECLASSES[id]={id,ch,name,tier,stats,skills:skills||{},weapons,fly:!!opt.fly,enemy:true};}
+function E(id,ch,name,tier,stats,skills,weapons,opt={}){ECLASSES[id]={id,ch,name,tier,stats,skills:skills||{},weapons,fly:!!opt.fly,obj:!!opt.obj,enemy:true};}
 E('bing','兵','量產機',1,{hp:2200,en:100,atk:12,def:850,hit:95,eva:70,mov:4},{},[wp('機槍',1500,1,2,10),wp('飛彈',1700,2,4,0,{ammo:4})]);
 E('lian','聯','聯合量產機',1,{hp:2300,en:100,atk:13,def:900,hit:95,eva:72,mov:5},{},[wp('光束刀',1800,1,1,10),wp('光束步槍',1600,1,3,5)]);
 E('pao','砲','砲擊機',1,{hp:2600,en:100,atk:14,def:1050,hit:95,eva:55,mov:3},{},[wp('近接爪',1400,1,1,5),wp('巨砲',2400,3,5,0,{en:10,post:false})]);
@@ -122,6 +122,10 @@ E('cmdr','艾','聯合司令機',3,{hp:8000,en:200,atk:28,def:1500,hit:110,eva:9
 E('emperor','貝','皇機',3,{hp:8500,en:200,atk:30,def:1600,hit:110,eva:95,mov:5},{aura:{range:2,hit:10,eva:10,dmg:5}},[wp('皇劍',3600,1,1,20),wp('赤環光輪',3400,1,3,10,{en:20})]);
 E('yuanwu','原','原初之無',4,{hp:18000,en:400,atk:42,def:2100,hit:118,eva:90,mov:4},{regen:5,dmgDown:10},[wp('原初之爪',4400,1,1,15),wp('名之崩壞',4600,1,5,10,{en:30}),wp('萬象歸無',5600,2,6,5,{en:60,post:false})]);
 E('wuking','無','始源虛甲',4,{hp:15000,en:300,atk:38,def:1900,hit:112,eva:88,mov:4},{regen:6,dmgDown:10},[wp('虛無之爪',4000,1,1,15),wp('萬字崩壞',4200,1,5,10,{en:30}),wp('無銘終焉',5000,2,6,5,{en:60,post:false})]);
+// 地圖設施（不會移動）
+E('gate','核','虛無核心',3,{hp:9000,en:0,atk:0,def:1300,hit:0,eva:0,mov:0},{},[],{obj:true});
+E('tower','塔','防衛砲台',2,{hp:4200,en:200,atk:22,def:1200,hit:100,eva:0,mov:0},{},[wp('砲台主砲',2600,2,5,10)],{obj:true});
+E('bwall','壁','破損城牆',1,{hp:2600,en:0,atk:0,def:800,hit:0,eva:0,mov:0},{},[],{obj:true});
 // ---------------- 零件（每台 2 格）與道具 ----------------
 const PARTS={
   armor1:{name:'強化裝甲',price:600,desc:'裝甲 +200',mod:{def:200}},
@@ -172,7 +176,7 @@ const CLS=id=>CLASSES[id]||ECLASSES[id];
 const CHARS={
   gang: {pilot:'雷隼',mech:'剛鐵號',ch:'剛',cls:'s1',lv:1,mod:{hp:300,atk:3,hit:3},sp:50,
          spirits:[['必中',1],['熱血',1],['鐵壁',2],['氣合',2],['魂',3],['再動',4]],
-         lines:['上吧，剛鐵號！','這一擊，給我接好！','別小看字甲隊！','氣勢正旺啊！']},
+         lines:['上吧，剛鐵號！','這一擊，給我接好！','別小看銘甲隊！','氣勢正旺啊！']},
   feng: {pilot:'夏蓮',mech:'疾風號',ch:'疾',cls:'r1',lv:1,mod:{eva:5},sp:45,
          spirits:[['集中',1],['閃避',1],['加速',2],['必中',2],['再動',3]],lines:['太慢了。','跟得上我嗎？','疾風號，全速。']},
   lei:  {pilot:'冬木',mech:'遠雷號',ch:'狙',cls:'g1',lv:1,mod:{hit:5},sp:45,
@@ -251,6 +255,7 @@ const SOUNDS={
   beam:()=>{ tone(1600,0.35,{type:'sawtooth',vol:.18,slide:.25}); noise(0.3,{vol:.25,hp:2500}); },
   missile:()=>{ noise(0.35,{vol:.3,hp:800}); tone(500,0.3,{type:'triangle',vol:.15,slide:1.8}); },
   boom:()=>{ noise(0.7,{vol:.9,lp:700}); tone(90,0.6,{type:'sawtooth',vol:.4,slide:.3}); },
+  cutin:()=>{ noise(0.5,{vol:.35,hp:3000}); arp([392,523,784,1047,1568],0.05,{type:'sawtooth',vol:.16}); tone(80,0.6,{type:'square',vol:.25,slide:2.5,delay:.2}); },
   levelup:()=>arp([523,659,784,1047],0.08,{type:'square',vol:.28}),
   spirit:()=>arp([784,988,1319],0.05,{type:'triangle',vol:.3}),
   heal:()=>arp([660,880,1175],0.07,{type:'sine',vol:.32}),
@@ -378,7 +383,7 @@ function mkEnemy(d){
   const u=baseUnit({side:'E',cls:d.c,lv,name:d.name||c.name,pilot:d.pilot||(c.enemy?'敵兵':c.name+'駕駛'),ch:d.ch||c.ch||'敵',x:d.x,y:d.y,s,c,
     sp:0,spirits:[],lines:[],will:d.boss?115:100});
   u.rankLv=clamp(d.lv||1,1,MAX_LV);
-  Object.assign(u,{ai:d.ai||'aggr',tag:d.tag||null,boss:!!d.boss,retreat:d.retreat||0,retreatLines:d.retreatLines||null,talk:d.talk||null});
+  Object.assign(u,{ai:c.obj?'hold':(d.ai||'aggr'),tag:d.tag||null,boss:!!d.boss,retreat:d.retreat||0,retreatLines:d.retreatLines||null,talk:d.talk||null,obj:!!c.obj,phase2:d.phase2||null});
   if(u.tag) G.seenTags.add(u.tag);
   return u;
 }
@@ -552,7 +557,7 @@ function renderMap(){
   const mv=new Set(),atk=new Set(),tgt=new Set(),rep=new Set(),talk=new Set(),exit=new Set();
   let thr=new Set();
   const s=G.sel, ch=CH();
-  if(ch&&ch.win.type==='escape') ch.win.cells.forEach(([x,y])=>exit.add(key(x,y)));
+  if(ch&&(ch.win.type==='escape'||ch.win.type==='capture')) ch.win.cells.forEach(([x,y])=>exit.add(key(x,y)));
   const ra=new Set();
   if(G.mode==='unit'&&s&&!s.moved&&G.reach){ for(const v of G.reach.values()) if(v.stop) mv.add(key(v.x,v.y));
     if(G.showRange!==false) for(const v of G.reach.values()){ if(!v.stop) continue; const moved=!(v.x===s.x&&v.y===s.y);
@@ -588,6 +593,7 @@ function renderMap(){
     if(u&&u===G.sel) cls+=' sel';
     h+=`<div class="${cls}" data-x="${x}" data-y="${y}">`;
     if(u){ h+=`<span class="u ${u.side}${u.merc?' merc':''}${u.guest?' guest':''}${u.boss?' boss':''}${u.fly?' fly':''}${u.acted?' acted':''}${u.talk?' talkable':''}" style="--h:${Math.round(u.hp/u.maxHp*100)}%">${u.ch}<i></i></span>`; }
+    else if(chestAt(x,y)) h+=`<span class="tg chest">寶</span>`;
     else h+=`<span class="tg">${t.g}</span>`;
     h+='</div>';
   }
@@ -680,7 +686,7 @@ function unitCard(u){
 function renderLegend(){
   const spr=typeof gfxActive==='function'&&gfxActive();
   $('#legend').innerHTML=Object.values(TERRAIN).map(t=>`<span>${spr?`<img class="swimg" src="${tileURL(t.k)}" alt="">`:`<span class="sw t-${t.k}"><span class="tg" style="font-size:12px">${t.g}</span></span>`}${t.name}<span class="num">${t.block?'不可通行':`移${t.cost}${t.def?` 防+${t.def*100}%`:''}${t.eva?` 閃${t.eva>0?'+':''}${t.eva}`:''}${t.heal?' 回復':''}`}</span></span>`).join('')
-   +`<span><span class="sw" style="background:var(--pbg);color:var(--p);font-family:var(--serif);font-weight:900">我</span>我方</span><span><span class="sw" style="background:var(--ebg);color:var(--e);font-family:var(--serif);font-weight:900">敵</span>敵方</span><span><span class="sw t-plain exit"></span>脫離點</span>`;
+   +`<span><span class="sw" style="background:var(--pbg);color:var(--p);font-family:var(--serif);font-weight:900">我</span>我方</span><span><span class="sw" style="background:var(--ebg);color:var(--e);font-family:var(--serif);font-weight:900">敵</span>敵方</span><span><span class="sw t-plain exit"></span>脫離／佔領點</span>${spr&&typeof iconURL==='function'&&iconURL('chest')?`<span><img class="swimg" src="${iconURL('chest')}" alt="">寶箱</span>`:'<span><span class="sw" style="color:var(--amber)">寶</span>寶箱</span>'}`;
 }
 function showTerrain(x,y){
   const t=terrAt(x,y);
@@ -807,8 +813,17 @@ async function playBattle(L,R,seq,hp0,line){
   ov.hidden=true; ov.onclick=null; G.skip=false; G.sleepers.length=0;
 }
 async function afterCombat(){
+  // 頭目第二形態
+  for(const u of G.units.filter(u=>u.hp<=0&&u.phase2&&!u.phased)){
+    const ph=u.phase2; u.phased=true;
+    if(typeof mapFx==='function') mapFx(u.x,u.y,'覺醒！','#ff6a3a',{big:true,dur:1600});
+    sfx('cutin'); render(); await playScene(ph.lines||[['',`${u.name} 的形態改變了！`]]);
+    u.maxHp=Math.round(u.maxHp*(ph.hp||.6)); u.hp=u.maxHp; u.atk+=ph.atk||8; u.def+=ph.def||0; u.en=u.maxEn; u.will=150;
+    if(ph.name) u.name=ph.name; if(ph.ch) u.ch=ph.ch;
+    log(`${u.pilot} 進入第二形態！`,'bad');
+  }
   // 陣亡
-  for(const u of G.units) if(u.hp<=0&&!u.dead){u.dead=true; if(typeof mapBoom==='function') mapBoom(u.x,u.y); log(`${u.ch}${u.name} 被擊墜！`,u.side==='P'?'bad':'good'); if(G.pstat){ if(u.side==='P') G.pstat.lost++; else G.pstat.kills++; }}
+  for(const u of G.units) if(u.hp<=0&&!u.dead){u.dead=true; if(u.cls==='bwall'&&G.map[u.y]) G.map[u.y][u.x]='r'; if(typeof mapBoom==='function') mapBoom(u.x,u.y); log(`${u.ch}${u.name} 被擊墜！`,u.side==='P'?'bad':'good'); if(G.pstat){ if(u.side==='P') G.pstat.lost++; else G.pstat.kills++; }}
   G.units=G.units.filter(u=>!u.dead);
   // 撤退
   for(const e of G.units.filter(u=>u.side==='E'&&u.retreat&&u.hp<=u.maxHp*u.retreat)){
@@ -826,10 +841,12 @@ async function afterCombat(){
 async function checkEnd(){
   if(G.over) return true;
   const ch=CH();
-  if(!G.units.some(u=>u.cid==='gang'&&u.side==='P')){ lose('剛鐵號被擊墜，字甲隊被迫撤退。'); return true; }
+  if(!G.units.some(u=>u.cid==='gang'&&u.side==='P')){ lose('剛鐵號被擊墜，銘甲隊被迫撤退。'); return true; }
   for(const p of (ch.protect||[])) if(!G.units.some(u=>u.cid===p)){ lose(`${GUESTS[p]?GUESTS[p].pilot:p} 被擊墜了。`); return true; }
-  const es=G.units.filter(u=>u.side==='E');
+  const es=G.units.filter(u=>u.side==='E'&&!(u.obj&&!u.weapons.length));
   const w=ch.win;
+  if(w.type==='destroy'&&!G.units.some(u=>u.side==='E'&&u.tag===w.target)){ win(); return true; }
+  if(w.type==='capture'&&G.units.some(u=>u.side==='P'&&!u.merc&&w.cells.some(([x,y])=>u.x===x&&u.y===y))){ win(); return true; }
   if(w.type==='boss'&&G.seenTags.has(w.target)&&!es.some(u=>u.tag===w.target)){ win(); return true; }
   if(w.type==='escape'){ const g=G.units.find(u=>u.cid===(w.who||'gang')); if(g&&w.cells.some(([x,y])=>g.x===x&&g.y===y)){ win(); return true; } }
   if(es.length===0&&w.type!=='survive'&&w.type!=='escape'){
@@ -915,7 +932,7 @@ async function onCell(x,y){
     const v=G.reach&&G.reach.get(key(x,y));
     if(!s.moved&&v&&v.stop&&!(x===s.x&&y===s.y)){
       G.busy=true; await animateMove(s,G.reach,x,y); s.moved=true; G.busy=false; G.menuOpen=true; G.mode='unit'; render();
-      if(CH().win.type==='escape') await checkEnd();
+      if(CH().win.type==='escape'||CH().win.type==='capture') await checkEnd();
       return;
     }
     if(u&&u.side==='P'&&!u.acted&&u!==s&&!s.moved){selectUnit(u);return;}
@@ -942,7 +959,7 @@ async function doTalk(s,e){
   e.dead=true; G.units=G.units.filter(u=>u!==e);
   if(t.join){
     const m=joinChar(t.join);
-    if(m){ const nu=mkPlayerUnit(m,e.x,e.y); nu.acted=true; nu.hp=Math.max(1,Math.round(nu.maxHp*Math.max(.3,e.hp/e.maxHp))); G.units.push(nu); log(`${nu.pilot} 加入了字甲隊！`,'good'); sfx('join'); }
+    if(m){ const nu=mkPlayerUnit(m,e.x,e.y); nu.acted=true; nu.hp=Math.max(1,Math.round(nu.maxHp*Math.max(.3,e.hp/e.maxHp))); G.units.push(nu); log(`${nu.pilot} 加入了銘甲隊！`,'good'); sfx('join'); }
   }
   G.busy=false;
   if(await checkEnd()) return;
@@ -1036,7 +1053,35 @@ async function confirmAttack(s,w,t){
   if(await afterCombat()) return;
   if(s.hp>0&&G.units.includes(s)) finishUnit(s); else {G.sel=null;G.mode='idle';render();autoEndCheck();}
 }
+// ---------------- 寶箱 ----------------
+const CHEST_POOL=[
+  [['gold',400],['kit'],['ecell'],['armor1'],['hp1'],['cell'],['gold',600]],
+  [['gold',900],['kit'],['scope'],['chip'],['armor1'],['hp1'],['gold',1200]],
+  [['gold',1600],['boost'],['mind'],['armor2'],['radar'],['kit'],['gold',2000]],
+];
+function makeChests(ch){
+  if(ch.chests) return ch.chests.map(c=>({...c,taken:false}));
+  const r=rng([...(G.chapterId||'x')].reduce((a,c)=>(a*31+c.charCodeAt(0))|0,7)), n=ch.no<=2?1:2, out=[];
+  const pool=CHEST_POOL[ch.no<=4?0:ch.no<=9?1:2];
+  const occ=(x,y)=>G.units.some(u=>u.x===x&&u.y===y)||ch.deploy.some(([a,b])=>a===x&&b===y);
+  for(let tries=0;out.length<n&&tries<400;tries++){
+    const x=Math.floor(G.W*.3+r()*G.W*.45), y=Math.floor(r()*G.H), t=terrAt(x,y);
+    if(t.block||t.k==='water'||occ(x,y)||out.some(c=>Math.abs(c.x-x)+Math.abs(c.y-y)<4)) continue;
+    const it=pool[Math.floor(r()*pool.length)]; out.push({x,y,k:it[0],n:it[1]||1,taken:false});
+  }
+  return out;
+}
+function chestAt(x,y){ return (G.chests||[]).find(c=>!c.taken&&c.x===x&&c.y===y); }
+function chestName(c){ return c.k==='gold'?`${fmt(c.n)} G`:(ITEMS[c.k]||PARTS[c.k]||{name:c.k}).name; }
+function openChest(u){
+  const c=chestAt(u.x,u.y); if(!c) return;
+  c.taken=true;
+  if(c.k==='gold') G.gold=(G.gold||0)+c.n; else { G.inv=G.inv||{}; G.inv[c.k]=(G.inv[c.k]||0)+c.n; }
+  log(`${u.pilot} 打開了寶箱：獲得 ${chestName(c)}！`,'good'); sfx('buy');
+  if(typeof mapFx==='function') mapFx(u.x,u.y,chestName(c),'#ffd25a',{dur:1500});
+}
 function finishUnit(u){
+  if(u.side==='P') openChest(u);
   if(u.st.again&&!G.over){ u.st.again=false; u.moved=false; u.acted=false; log(`${u.pilot}「再動」！可以再行動一次。`,'sys'); G.sel=null;G.mode='idle';G.reach=null;G.targets=[];render(); return; }
   u.acted=true;u.moved=false;G.sel=null;G.mode='idle';G.weapon=null;G.targets=[];G.reach=null;render();autoEndCheck();
 }
@@ -1073,6 +1118,7 @@ async function startPlayerPhase(){
   if(G.pstat&&G.turn>1){ const p=G.pstat; log(`── 敵方回合結果：我方受到 ${fmt(p.taken)} 傷害${p.lost?`、被擊墜 ${p.lost} 台`:''}；反擊造成 ${fmt(p.dealt)} 傷害${p.kills?`、擊墜 ${p.kills} 台`:''}。`,'sys'); }
   G.pstat=null;
   G.busy=true; render();
+  if(typeof battleBgm==='function') battleBgm('P');
   await banner(`第 ${G.turn} 回合　我方`, 'P');
   await runEvents('P');
   G.busy=false;
@@ -1083,6 +1129,7 @@ async function startPlayerPhase(){
 async function endPlayerPhase(){
   if(G.phase!=='P'||G.busy||G.over) return;
   G.phase='E';G.sel=null;G.mode='idle';G.inspect=null;G.busy=true;render();
+  if(typeof battleBgm==='function') battleBgm('E');
   await banner('敵方回合','E');
   G.pstat={taken:0,dealt:0,lost:0,kills:0};
   phaseUpkeep('E');
@@ -1147,6 +1194,7 @@ function approachDest(e,reach){
   return best.v;
 }
 async function enemyAct(e){
+  if(e.obj&&!e.weapons.length) return;
   G.sel=e; G.inspect=e; render();
   const cell=document.querySelector(`.c[data-x="${e.x}"][data-y="${e.y}"]`); if(cell) cell.scrollIntoView({block:'nearest',inline:'nearest'});
   await wait(G.anim&&!G.fast?260:20);
@@ -1219,12 +1267,12 @@ function leaveChar(cid){ const m=G.roster.find(x=>x.cid===cid); if(m){ G.alumni=
 const SAVE='zijia2-';
 function turnSnapshot(){
   const units=G.units.map(u=>{const c={...u,member:null,memberCid:u.member?u.member.cid:null,st:{...u.st},weapons:u.weapons.map(w=>({...w}))};return c;});
-  return {units:JSON.parse(JSON.stringify(units)),gold:G.gold,inv:{...(G.inv||{})},roster:JSON.parse(JSON.stringify(G.roster)),flags:{...G.flags},alumni:JSON.parse(JSON.stringify(G.alumni||{})),seen:[...G.seenTags],fired:[...G.firedEvents],turn:G.turn,uid:G.uid};
+  return {units:JSON.parse(JSON.stringify(units)),gold:G.gold,inv:{...(G.inv||{})},roster:JSON.parse(JSON.stringify(G.roster)),flags:{...G.flags},alumni:JSON.parse(JSON.stringify(G.alumni||{})),seen:[...G.seenTags],fired:[...G.firedEvents],turn:G.turn,uid:G.uid,chests:JSON.parse(JSON.stringify(G.chests||[])),map:G.map.map(r=>r.join(''))};
 }
 function restoreTurn(t){
   G.roster=JSON.parse(JSON.stringify(t.roster)); G.gold=t.gold; G.inv={...t.inv}; G.flags={...t.flags}; G.alumni=JSON.parse(JSON.stringify(t.alumni));
   G.units=JSON.parse(JSON.stringify(t.units)).map(u=>{ const c=CLS(u.cls); u.skills=c.skills; u.member=u.memberCid?G.roster.find(m=>m.cid===u.memberCid)||null:null; delete u.memberCid; return u; });
-  G.seenTags=new Set(t.seen); G.firedEvents=new Set(t.fired); G.turn=t.turn; G.uid=t.uid;
+  G.seenTags=new Set(t.seen); G.firedEvents=new Set(t.fired); G.turn=t.turn; G.uid=t.uid; if(t.chests) G.chests=JSON.parse(JSON.stringify(t.chests)); if(t.map) G.map=t.map.map(r=>r.split(''));
   G.phase='P'; G.mode='idle'; G.sel=null; G.inspect=null; G.reach=null; G.targets=[]; G.over=false; G.busy=false;
   log(`── 重來第 ${G.turn} 回合。`,'sys'); render();
 }
@@ -1243,6 +1291,7 @@ function setupMap(ch){
   G.map=ch.map.map(r=>r.split('')); G.H=G.map.length; G.W=G.map[0].length;
   G.units=[]; G.uid=0; G.seenTags=new Set(); G.firedEvents=new Set();
   for(const d of ch.enemies) G.units.push(mkEnemy(d));
+  G.chests=makeChests(ch);
   G.turn=1; G.phase='P'; G.mode='idle'; G.sel=null; G.inspect=null; G.threatOne=null; G.reach=null; G.targets=[];
   fitMap();
 }
@@ -1256,7 +1305,7 @@ async function gotoChapter(id){
 }
 async function prep(){
   const ch=CH();
-  G.prepSnap=snapshot(); store('auto',G.prepSnap);
+  G.prepSnap=snapshot(); store('auto',G.prepSnap); if(typeof bgm==='function') bgm('prep');
   setupMap(ch); render();
   for(;;){
     const v=await ask(prepHtml(),'wide prep');
@@ -1377,7 +1426,7 @@ async function startBattle(){
   await startPlayerPhase();
 }
 async function win(){
-  if(G.over) return; G.over=true; G.busy=false; render(); sfx('win');
+  if(G.over) return; G.over=true; G.busy=false; render(); if(typeof bgm==='function'&&BGM.on) bgm('win'); else sfx('win');
   const ch=CH();
   const alive=new Set(G.units.filter(u=>u.side==='P'&&u.member).map(u=>u.cid));
   const lv=[];
@@ -1391,7 +1440,7 @@ async function win(){
     <p style="color:var(--mute)">全員獲得通關經驗（出擊存活 ${EXP.clearAlive}／被擊墜 ${EXP.clearDown}／待命 ${EXP.clearBench}）。${lv.length?`<br>升級：${lv.join('、')}`:''}${ready.length?`<br><span style="color:var(--amber)">可以轉職：${ready.join('、')}</span>`:''}</p>
     <div class="foot"><button class="btn pri" data-v="ok">繼續</button></div>`);
   await playScene(ch.post);
-  (ch.join||[]).forEach(c=>{ if(joinChar(c)) log(`${CHARS[c].pilot} 加入了字甲隊。`,'good'); });
+  (ch.join||[]).forEach(c=>{ if(joinChar(c)) log(`${CHARS[c].pilot} 加入了銘甲隊。`,'good'); });
   if(ch.ending){ await showEnding(ch.ending, ch.route); return titleScreen(); }
   let next=ch.next;
   if(next&&typeof next==='object'&&next.branch){ const hit=next.branch.find(b=>(b.all||[]).every(f=>G.flags[f])&&!(b.none||[]).some(f=>G.flags[f])); next=hit?hit.next:next.else; }
@@ -1422,7 +1471,7 @@ async function showEnding(e,route){
     <div class="foot" style="justify-content:center"><button class="btn pri" data-v="ok">回到標題</button></div></div>`,'wide');
 }
 async function lose(msg){
-  if(G.over) return; G.over=true; G.busy=false; render(); sfx('lose');
+  if(G.over) return; G.over=true; G.busy=false; render(); if(typeof bgm==='function'&&BGM.on) bgm('lose'); else sfx('lose');
   const v=await ask(`<h2>作戰失敗</h2><p>${msg}</p><p style="color:var(--mute)">提示：開啟「敵方威脅範圍」，避免主角機被圍攻；重擊前可以用「鐵壁」或選擇「防禦」。</p>
     <div class="foot"><button class="btn" data-v="title">標題畫面</button><button class="btn pri" data-v="retry">回到出擊準備</button></div>`);
   if(v==='retry'){ restore(G.prepSnap); return prep(); }
@@ -1502,7 +1551,7 @@ async function classInfo(m,c,can){
 // 標題與說明
 // =====================================================================
 async function titleScreen(){
-  G.over=true; G.phase='P'; G.sel=null;
+  G.over=true; G.phase='P'; G.sel=null; if(typeof bgm==='function') bgm('title');
   if(!G.chapterId){ G.chapterId=START; setupMap(CH()); }
   render();
   let auto=load('auto'); if(auto&&!CHAPTERS[auto.chapter]) auto=null; const seen=endingsSeen().filter(id=>allEndings().some(e=>e[0]===id));
@@ -1510,7 +1559,7 @@ async function titleScreen(){
  <span class="p">剛</span> · · · <span class="w">≈ ≈</span> · · ·
  · <span class="p">狙</span> · · · · · <span class="e">砲</span> ·`;
   if(typeof startTitleBg==='function') startTitleBg();
-  const v=await ask(`<div class="title"><div class="t-logo">字<b>甲</b>戰線</div>
+  const v=await ask(`<div class="title"><div class="t-logo">銘<b>甲</b>戰記</div>
     <div class="t-sub">像素機器人戰棋<br>全 15 章・三條路線・五種結局・職業轉職</div>
     <div class="stlist">
       <button class="btn ${auto?'':'pri'}" data-v="new"><span>新遊戲</span><small>從第一章開始</small></button>
@@ -1561,7 +1610,7 @@ async function showHelp(){
     return `<div><b>${ROLE_NAME[role]}</b><pre class="treepre">${lines.join('\n')}</pre></div>`;}).join('');
   await ask(`<div class="help"><h2>遊戲說明與基本設定</h2>
    <h4>世界觀</h4>
-   <p>新曆 217 年，人類用「字甲」稱呼人型戰鬥機體，每台字甲都以一個漢字作為識別碼。赤環帝國越過邊境入侵，聯合軍獨立第七小隊「字甲隊」奉命迎擊。然而戰爭的背後，還有一群想要抹去一切名字的「無銘者」……</p>
+   <p>新曆 217 年，人類用「銘甲」稱呼人型戰鬥機體，每台銘甲的核心都刻著駕駛者的名字，名字越強，機體越強。赤環帝國越過邊境入侵，聯合軍獨立第七小隊「銘甲隊」奉命迎擊。然而戰爭的背後，還有一群想要抹去一切名字的「無銘者」……</p>
    <h4>流程</h4>
    <ul><li>全 15 章。第 5 章結束時會面臨抉擇，分成三條路線：<b>守護之字</b>、<b>赤環之誓</b>、<b>無銘之甲</b>；每條路線中後段還有一次抉擇。共有五種結局，其中一種需要滿足隱藏條件。</li><li>每次抉擇前會自動建立「分歧點存檔」，可以從讀取畫面回到分歧點重選。</li>
    <li>每章開始前是「出擊準備」：可以轉職、查看轉職樹、存檔。進入準備畫面時會自動存檔。</li>
@@ -1588,6 +1637,9 @@ async function showHelp(){
    <li>「敵方威脅範圍」顯示全部敵機能攻擊到的格子。選取我方機體時，淡紅色格子是移動後能攻擊到的範圍。Esc：取消／返回。劇情中按 Enter 或點擊前進。</li>
    <li>「選單」裡的「重來本回合」可以回到這回合我方行動開始時的狀態。勾選「快速敵方回合」會略過敵方攻擊的戰鬥動畫。</li>
    <li><b>畫面</b>：地圖為像素地形與 Q 版機體，戰鬥有動畫（近戰、光束、飛彈、射擊、擊墜爆炸）。想看原本的文字地圖，可以勾選「經典文字地圖」。</li>
+   <li><b>寶箱</b>：地圖上的寶箱裡有資金、道具或零件。讓我方機體停在寶箱上並結束行動就能拿到。</li>
+   <li><b>地圖設施</b>：「防衛砲台」不會移動，但射程很遠；「破損城牆」擊破後會變成通道；「虛無核心」是破壞目標。部分關卡的勝利條件是佔領指定格子（綠色虛線框）或破壞設施。</li>
+   <li><b>必殺技</b>：使用需要氣力的武器時，會有切入演出。最終頭目被擊破後可能會進入第二形態。</li>
    <li>難度：簡單（敵人等級 −2、經驗 ×1.25）、普通、困難（敵人等級 +2）。在出擊準備畫面可以隨時更改。</li></ul>
    <h4>地形</h4>
    <table><thead><tr><th></th><th>地形</th><th>移動</th><th>防禦</th><th>迴避</th><th>備註</th></tr></thead><tbody>${ts}</tbody></table>
@@ -1622,6 +1674,7 @@ $('#btnMenu').onclick=async()=>{ if(G.busy||!$('#modal').hidden) return;
 $('#optAnim').onchange=e=>{G.anim=e.target.checked;};
 $('#optAuto').onchange=e=>{G.autoCounter=e.target.checked;};
 $('#optFast').onchange=e=>{G.fast=e.target.checked;};
+if($('#optBgm')){ $('#optBgm').checked=BGM.on; $('#optBgm').onchange=e=>{ BGM.on=e.target.checked; try{localStorage.setItem('zijia2-bgm',BGM.on?'1':'0');}catch(_){} if(BGM.on){ const w=BGM.want; BGM.want=null; bgm(w); } else bgmStop(); }; }
 if($('#optSfx')){ $('#optSfx').checked=SFX.on; $('#optSfx').onchange=e=>{ SFX.on=e.target.checked; try{localStorage.setItem('zijia2-sfx',SFX.on?'1':'0');}catch(_){} if(SFX.on) sfx('select'); }; }
 if(!IN_HALL){ const h=document.querySelector('.hall'); if(h&&h.remove) h.remove(); }
 $('#optIcons').onchange=e=>{G.classic=e.target.checked; try{localStorage.setItem(SAVE+'classic',G.classic?'1':'0');}catch(_){} fitMap(); renderLegend(); render();};

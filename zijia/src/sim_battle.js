@@ -1,4 +1,4 @@
-// 字甲戰線 — 無頭戰鬥模擬：用機器人實際打完每一章，統計勝率、回合數、陣亡數
+// 銘甲戰記 — 無頭戰鬥模擬：用機器人實際打完每一章，統計勝率、回合數、陣亡數
 // 用法：node sim_battle.js [次數=3] [難度=1] [路線選擇,如 0,1] ...
 const fs=require('fs'), vm=require('vm'), path=require('path');
 const dir=__dirname;
@@ -11,7 +11,7 @@ function makeWorld(seed){
     window:{addEventListener(){}},localStorage:{_:{},getItem(k){return this._[k]??null},setItem(k,v){this._[k]=String(v)}}};
   ctx.Math.random=rnd;
   vm.createContext(ctx);
-  const src=['story.js','icons.js','gfx.js','engine.js'].map(f=>fs.readFileSync(path.join(dir,f),'utf8')).join('\n')
+  const src=['story.js','icons.js','gfx.js','quotes.js','bgm.js','engine.js'].map(f=>fs.readFileSync(path.join(dir,f),'utf8')).join('\n')
     +'\n;globalThis.__E={G,CHAPTERS,START,CHARS,GUESTS,CLS,TERRAIN,SPIRITS,EXP,DIFF,MAX_LV,CC_LV,PARTS:(typeof PARTS!=="undefined"?PARTS:null)};globalThis.__F={terrAt,unitAt,inMap,dist,sk,moveCost,terrBonus,addWill,effMove,wMax,key};';
   vm.runInContext(src,ctx); Object.assign(ctx,ctx.__F);
   return ctx;
@@ -70,13 +70,16 @@ function playChapter(W,E,ch,persuade){
     const gang=G.units.some(u=>u.cid==='gang'&&u.side==='P'&&u.hp>0);
     if(!gang) return 'lose:gang';
     for(const p of (ch.protect||[])) if(!G.units.some(u=>u.cid===p&&u.hp>0)) return 'lose:protect';
-    const es=G.units.filter(u=>u.side==='E'&&u.hp>0), w=ch.win;
+    const es=G.units.filter(u=>u.side==='E'&&u.hp>0&&!(u.obj&&!u.weapons.length)), w=ch.win;
+    if(w.type==='destroy'&&!G.units.some(u=>u.side==='E'&&u.hp>0&&u.tag===w.target)) return 'win';
+    if(w.type==='capture'&&G.units.some(u=>u.side==='P'&&u.hp>0&&!u.merc&&w.cells.some(([x,y])=>u.x===x&&u.y===y))) return 'win';
     if(w.type==='boss'&&G.seenTags.has(w.target)&&!es.some(u=>u.tag===w.target)) return 'win';
     if(w.type==='escape'){ const g=G.units.find(u=>u.cid===(w.who||'gang')); if(g&&w.cells.some(([x,y])=>g.x===x&&g.y===y)) return 'win'; }
     if(es.length===0&&w.type!=='escape'){ const pend=(ch.events||[]).some((e,i)=>!G.firedEvents.has(i)&&(e.spawn||[]).length); if(pend){ (ch.events||[]).forEach((e,i)=>{ if(!G.firedEvents.has(i)){ G.firedEvents.add(i); for(const d of (e.spawn||[])){ let {x,y}=d; if(W.unitAt(x,y)||W.terrAt(x,y).block){const f=W.freeNear(x,y); if(!f) continue; x=f.x;y=f.y;} G.units.push(W.mkEnemy({...d,x,y})); } } }); return null; } return 'win'; }
     return null;
   };
-  const cleanup=()=>{ for(const u of G.units) if(u.hp<=0) u.dead=true;
+  const cleanup=()=>{ for(const u of G.units) if(u.hp<=0&&u.phase2&&!u.phased){ const ph=u.phase2; u.phased=true; u.maxHp=Math.round(u.maxHp*(ph.hp||.6)); u.hp=u.maxHp; u.atk+=ph.atk||8; u.def+=ph.def||0; u.en=u.maxEn; u.will=150; }
+    for(const u of G.units) if(u.hp<=0){ u.dead=true; if(u.cls==='bwall') G.map[u.y][u.x]='r'; }
     for(const e of G.units) if(e.side==='E'&&!e.dead&&e.retreat&&e.hp<=e.maxHp*e.retreat) e.dead=true;
     G.units=G.units.filter(u=>!u.dead); };
   let lost=0; const lostSet=new Set();
@@ -128,7 +131,7 @@ function dangerMap(W,E){
 function botAct(W,E,u,ch,persuade){
   const G=E.G, key=(x,y)=>x+','+y;
   const reach=W.reachable(u), ox=u.x, oy=u.y, dm=dangerMap(W,E);
-  const enemies=G.units.filter(x=>x.side==='E');
+  const enemies=G.units.filter(x=>x.side==='E'&&!(x.obj&&!x.weapons.length&&!(ch.win.type==='destroy'&&x.tag===ch.win.target)));
   // 精神：低 HP 時鐵壁／根性
   const useSp=n=>{ const sp=E.SPIRITS[n]; if(u.spirits.includes(n)&&u.sp>=sp.cost&&!(sp.flag&&u.st[sp.flag])){ u.sp-=sp.cost; if(sp.flag) u.st[sp.flag]=true; if(n==='根性') u.hp=Math.min(u.maxHp,u.hp+Math.round(u.maxHp*.3)); if(n==='氣合') W.addWill(u,10); return true;} return false; };
   if(u.hp<u.maxHp*0.35){ useSp('根性')||useSp('鐵壁'); }
