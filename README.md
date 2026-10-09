@@ -6,7 +6,7 @@ MK 的瀏覽器遊戲合集，每個資料夾自成一體。線上遊玩：https
 
 | 遊戲 | 資料夾 | 類型 |
 |---|---|---|
-| [Cobble Keep](https://k-mertin.github.io/littlethings/cobblekeep/) | [`cobblekeep/`](cobblekeep/README.md) | DOOM 操作的第一人稱射擊，明亮可愛的方塊像素風，5 個關卡 |
+| [Cobble Keep](https://k-mertin.github.io/littlethings/cobblekeep/) | [`cobblekeep/`](cobblekeep/README.md) | DOOM 操作的 3D 第一人稱射擊，明亮可愛風格，5 個關卡，支援手機 |
 | [字甲戰線](https://k-mertin.github.io/littlethings/zijia/) | [`zijia/`](zijia/README.md) | 以漢字為機體的機器人戰棋 |
 
 ## 遊玩
@@ -21,7 +21,7 @@ python3 -m http.server 8000   # 然後打開 http://localhost:8000
 ## 結構
 ```
 index.html        遊戲大廳
-cobblekeep/       單一檔案，無建置步驟
+cobblekeep/       單一檔案，無建置步驟（Three.js 由 CDN 載入）
 zijia/            index.html 由 src/ 建置：cd zijia/src && sh build.sh && cp index.html ..
 ```
 

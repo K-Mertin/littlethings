@@ -1,6 +1,6 @@
 # Cobble Keep
 
-A bright, cute first-person shooter that plays like DOOM: keys, doors, secrets, a status bar and a face that reacts. The world is blocky pixel art. Five stages, with a boss at the end. Everything runs from one file (`index.html`) with no build step and no image or sound files.
+A bright, cute 3D first-person shooter that plays like DOOM: keys, doors, secrets, a status bar and a face that reacts. Five stages, with a boss at the end. Everything runs from one file (`index.html`) with no build step and no image or sound files. The only download is Three.js, loaded from a CDN, so it needs an internet connection the first time it loads.
 
 ## Play
 Open `index.html` in a browser and click **Start**, or play it at https://k-mertin.github.io/littlethings/cobblekeep/. Click inside the view to capture the mouse; press Esc to release it and pause. Cleared stages unlock on the title screen (saved in this browser).
@@ -48,6 +48,16 @@ Your health, shield and toys carry over between stages. If you get bonked, the s
 - **Jelly King**: the boss. Throws a fan of orbs, summons jellies and speeds up at half health.
 
 Pickups: hearts (+25), super hearts (+100, up to 200), bubble shields (armor), ammo jars/boxes, and red, blue and yellow keys.
+
+## How it is built
+- The game logic runs on a 2D tile grid, the same way DOOM does. That covers movement, collision, enemy pathfinding, hit-scan weapons and doors.
+- The world is drawn in real 3D with [Three.js](https://threejs.org) (WebGL):
+  - Walls, floors and ceilings are built from the map.
+  - Lighting comes from the sun and the sky, with soft shadows, distance fog and a gradient sky with clouds.
+- Textures are painted in code on 256×256 canvases (brick, wood grain, stone, frosting, ice and so on). Bump maps give them surface relief.
+- Characters, pickups and the toy weapons are 3D models built from smooth shapes, with glossy materials and cute faces.
+- The HUD and menus are HTML on top of the 3D view.
+- On slower devices the game automatically lowers resolution and then turns off shadows to keep frame rates smooth.
 
 ## Editing stages
 The maps are the `MAPS` array in `index.html`; stage settings (name, textures, sky, starting toys) are in `STAGES`.
