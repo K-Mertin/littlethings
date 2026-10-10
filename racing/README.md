@@ -38,6 +38,19 @@ Six models, each with its own look and a small handling difference. Bodies are l
 
 In a test where the same driver drove every car, average lap times were within about half a second of each other.
 
+## Garage: parts
+Each base car can be fitted with parts in the **Garage** (in the menu, under the car list). Parts change how the car looks and drives, and each costs tuning points from a budget of 8, so you have to choose.
+
+| Slot | Options (points) | Effect |
+|---|---|---|
+| Rear wing | None, Lip spoiler (1), GT wing (2), Race wing (3) | More grip in corners, less top speed |
+| Tyres | Street, Sport (1), Slicks (2), Off-road (1) | Slicks grip best on tarmac but are hopeless on grass and slow to charge drifts; off-road tyres barely slow down on grass but grip less |
+| Engine | Stock, Tuned (2), Turbo (4) | More top speed and acceleration; the turbo also makes the rear step out more |
+| Body kit | None, Aero kit (2), Lightweight (2), Rally kit (1) | Aero: more grip, worse on grass. Lightweight: quicker but easier to push around. Rally: better on grass, slightly slower |
+| Rims, rim finish | Six styles, five finishes | Looks only |
+
+Every car starts with its stock parts, which give it the character described above. The stat bars show your build against stock. Parts are saved per car. Rivals race on stock parts.
+
 ## Tracks
 1. **Meadow Loop**: 2.4 km with a hairpin, esses and a fast back straight through farmland, with snowy mountains, villages, barns and silos, wind turbines, ponds and hot-air balloons. Laps take about 70 seconds.
 2. **Sunset Coast**: 2.2 km round an island with sweepers and an S-bend, palms, a lighthouse, a pier, beach huts, hotels, a Ferris wheel, boats sailing round and a city on the next island. About 65 seconds.
