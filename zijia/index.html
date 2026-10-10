@@ -4579,11 +4579,28 @@ function renderFMenu(){
   const cell=document.querySelector(`.c[data-x="${s.x}"][data-y="${s.y}"]`), board=$('.board');
   if(!cell||!board||!cell.getBoundingClientRect) return;
   const cr=cell.getBoundingClientRect(), br=board.getBoundingClientRect(), fw=fm.offsetWidth, fh=fm.offsetHeight;
-  let x=cr.right-br.left+6, y=cr.top-br.top-4;
-  if(x+fw>br.width-4) x=cr.left-br.left-fw-6;
-  if(x<4) x=Math.min(br.width-fw-4,cr.left-br.left);
-  y=Math.max(0,Math.min(y,br.height-fh));
-  fm.style.left=x+'px'; fm.style.top=y+'px';
+  const mp=$('#map').getBoundingClientRect(), cs=cr.width, pitch=G.W>1?(mp.width-cs)/(G.W-1):cs;
+  // 需要保持可見的格子與權重：可選目標最重要，其次是自己與其他機體、移動範圍
+  const imp=new Map(), addW=(x,y,w)=>{ const k=key(x,y); imp.set(k,Math.max(imp.get(k)||0,w)); };
+  if(G.mode==='unit'&&!s.moved&&G.reach) for(const v of G.reach.values()) if(v.stop) addW(v.x,v.y,1);
+  for(const u of G.units) addW(u.x,u.y,u.side==='E'?4:3);
+  addW(s.x,s.y,8);
+  const tg=['target','repair','talk'].includes(G.mode)?G.targets:G.mode==='weapon'||G.mode==='unit'?[...new Set(weaponsOf(s).flatMap(w=>whyNot(s,w,null,s.moved)?[]:targetsFor(s,w))),...repairTargets(s),...talkTargets(s)]:[];
+  for(const t of tg) addW(t.x,t.y,20);
+  const cells=[...imp].map(([k,w])=>{ const [x,y]=k.split(',').map(Number); const L=cr.left-br.left+(x-s.x)*pitch, T=cr.top-br.top+(y-s.y)*pitch; return {L,T,R:L+cs,B:T+cs,w}; });
+  const ux=cr.left-br.left, uy=cr.top-br.top, g=6;
+  const cand=[[ux+cs+g,uy-4],[ux+cs+g,uy+cs-fh+4],[ux-fw-g,uy-4],[ux-fw-g,uy+cs-fh+4],[ux,uy-fh-g],[ux+cs-fw,uy-fh-g],[ux,uy+cs+g],[ux+cs-fw,uy+cs+g],
+    [ux+cs*2+g,uy-4],[ux-fw-cs-g,uy-4],[ux+cs+g,uy-fh/2],[ux-fw-g,uy-fh/2],
+    [mp.left-br.left+4,mp.top-br.top+4],[mp.right-br.left-fw-4,mp.top-br.top+4],[mp.left-br.left+4,mp.bottom-br.top-fh-4],[mp.right-br.left-fw-4,mp.bottom-br.top-fh-4],
+    [ux+cs/2-fw/2,mp.bottom-br.top+4,1],[mp.left-br.left+4,mp.bottom-br.top+4,1],[mp.right-br.left-fw-4,mp.bottom-br.top+4,1]];
+  let best=null;
+  for(let [x,y,free] of cand){
+    x=Math.max(4,Math.min(x,br.width-fw-4)); y=Math.max(0,free?y:Math.min(y,br.height-fh));
+    let sc=0; for(const c of cells){ const ox=Math.min(x+fw,c.R)-Math.max(x,c.L), oy=Math.min(y+fh,c.B)-Math.max(y,c.T); if(ox>2&&oy>2) sc+=c.w*Math.min(1,ox*oy/(cs*cs)+.35); }
+    sc+=Math.hypot(x+fw/2-(ux+cs/2),y+fh/2-(uy+cs/2))/(cs*8);
+    if(!best||sc<best.sc) best={x,y,sc};
+  }
+  fm.style.left=best.x+'px'; fm.style.top=best.y+'px';
 }
 function renderHeader(){
   const ch=CH();
