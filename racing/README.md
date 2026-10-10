@@ -25,7 +25,7 @@ Open `index.html` in a browser, pick a track, your car and its color, laps and r
 Touch controls turn on automatically. The car accelerates by itself. Steer with ◀ ▶ on the left, hold **DRIFT** while turning and let go for a boost, and hold **BRAKE** to slow down or reverse. **II** pauses; the pause menu has **Back on track** if you get turned around. Both orientations work; landscape plays best.
 
 ## Cars
-Six models, each with its own look and a small handling difference. You pick one; your five rivals drive the others.
+Six models, each with its own look and a small handling difference. Bodies are lofted: a smooth cross-section is swept along the car with its own width, floor and roof curves, so they have rounded shoulders, fender hips, tapered noses and cut wheel arches. Glasshouses have painted pillars and roof with glass windows, tyres have rounded shoulders, and rims, brake discs and calipers are modelled. Paint, glass and chrome reflect the track's own sky. You pick one; your five rivals drive the others.
 
 | Car | Character |
 |---|---|
@@ -39,8 +39,8 @@ Six models, each with its own look and a small handling difference. You pick one
 In a test where the same driver drove every car, average lap times were within about half a second of each other.
 
 ## Tracks
-1. **Meadow Loop**: a hairpin and a fast back straight through farmland, with snowy mountains, a village and church, barns and silos, wind turbines, ponds and hot-air balloons. About 1 km.
-2. **Sunset Coast**: an island loop with an S-bend, palms, a lighthouse, a pier, beach huts, hotels, a Ferris wheel, boats sailing round and a city on the next island. About 950 m.
+1. **Meadow Loop**: 2.4 km with a hairpin, esses and a fast back straight through farmland, with snowy mountains, a village and church, barns and silos, wind turbines, ponds and hot-air balloons. Laps take about 70 seconds.
+2. **Sunset Coast**: 2.2 km round an island with sweepers and an S-bend, palms, a lighthouse, a pier, beach huts, hotels, a Ferris wheel, boats sailing round and a city on the next island. Laps take about 65 seconds.
 
 Both tracks have a grandstand, pit garages, a footbridge, advertising boards, tyre walls and gravel traps on the outside of the bends. The road is 13.5 m wide.
 
@@ -60,7 +60,7 @@ If you pull ahead, the rivals speed up a little to keep the race close (more on 
 ## How it is built
 - Each track is a closed Catmull-Rom spline through a list of points. It is sampled about once per meter, and the road, kerbs, run-off and walls are built as ribbons along it.
 - Cars use arcade physics with a tyre grip limit: past it the car slides wide and scrubs speed. Grip is lower while drifting, and grass slows you down. A fixed 120 Hz step keeps it the same on every device.
-- Each car model is built at real size (4–4.8 m) from an extruded side profile and glasshouse, plus its own details, wheels and rims. They are scaled up slightly to read well at speed. Paint uses a clear-coat material with reflections. Models and their stats are in `MODELS` in `index.html`.
+- Each car model is built at real size (4–4.8 m) as a lofted body and glasshouse (`makeLoft`), plus its own details, wheels and rims. They are scaled up slightly to read well at speed. Paint uses a clear-coat material with reflections. Models and their stats are in `MODELS` in `index.html`.
 - Lap counting needs a halfway checkpoint, so cutting back over the line does not count.
 - Rendering is Three.js (WebGL) with sun shadows, fog and a gradient sky. Textures (asphalt, kerbs, boost pads, banner) are painted in code on canvases. Trees, palms and the crowd are instanced meshes.
 - On slower devices the game lowers resolution and then turns off shadows to keep the frame rate up.
