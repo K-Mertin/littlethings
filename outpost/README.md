@@ -1,6 +1,6 @@
 # Crystal Outpost
 
-A bright little real-time strategy game in the spirit of StarCraft. Mine crystals and gas, build a base, train an army and destroy every enemy building. Play as the **Blue Outpost** (machines) or **the Bloom** (plants and bugs), in a six-mission campaign or in skirmish matches, 1 vs 1 or 2 vs 2 with a computer ally. Everything is in one file (`index.html`): no build step, no image or sound files, no libraries.
+A bright little real-time strategy game in the spirit of StarCraft. Mine crystals and gas, build a base, train an army and destroy every enemy building. Play as the **Blue Outpost** (machines) or **the Bloom** (plants and bugs), two factions that build, grow and fight in different ways, in a six-mission campaign or in skirmish matches, 1 vs 1 or 2 vs 2 with a computer ally. Everything is in one file (`index.html`): no build step, no image or sound files, no libraries.
 
 ## Play
 Open `index.html` in a browser. The title screen has three choices; a computer-vs-computer match plays behind it.
@@ -36,7 +36,7 @@ In 2 vs 2 your ally builds its own base, defends yours, attacks on its own, and 
 | F2 or ⚔ Army | select the whole army |
 | ` (backtick) | select the next idle worker |
 | B | build menu for workers, then a building key and click to place. Hold Shift to place several |
-| R / E | abilities once researched: Rush (Troopers), Siege mode (Tanks), Harden (Beetles), Burrow (Burrowers). R on Blue workers repairs |
+| R / E | abilities: Rush (Troopers), Siege mode (Tanks), Harden (Beetles), Burrow (Burrowers) once researched; Scanner Sweep (Command Center); Uproot / Root (Thorns). R on Blue workers repairs |
 | Ctrl + 1–9 | make a group. Press the number to select it, twice to jump to it |
 | Space | jump to the last "under attack" alert |
 | Arrows, screen edge, mouse wheel, middle-drag, minimap | scroll and zoom (scrolling eases in and out) |
@@ -52,12 +52,20 @@ Tap a unit or building to select it. With units selected, tap the ground to move
 - **Gas**: build a Refinery (Blue) or grow a Sap Well (Bloom) on a green geyser. One worker at a time goes inside (4 per trip); three per geyser is plenty.
 - **Supply**: every unit takes supply. The main building gives 10, each Supply Depot / Seed Pod 8, up to 200.
 
+## How the two factions differ
+| | Blue Outpost | The Bloom |
+|---|---|---|
+| Making units | each building trains its own units, one at a time in a queue of five. More Barracks, bigger army | every creature hatches at a **Heart Tree** from **seeds**: 3 at most, a new one about every 10 seconds. Eggs grow side by side. Nest, Hive and Spire only unlock creatures |
+| Building | a worker stands next to the building until it is done, anywhere on open ground | a Sprout turns into the building and is used up. Buildings must grow on **living ground**, which spreads around Heart Trees and other Bloom buildings |
+| Healing | workers repair buildings and machines | everything heals slowly by itself, faster on living ground. Creatures also run 30% faster there |
+| Special | **Scanner Sweep**: the Command Center gathers energy (50 per sweep, 100 at most) and reveals an area, including burrowed units, for 12 seconds | Spitters hatch **in pairs**, Wasp stings **poison**, Spore Bombers leave **acid pools**, and **Thorns uproot** and walk to a new spot |
+
 ## The Blue Outpost
 Machines and soldiers. Workers build each structure by standing next to it, and they also repair damaged buildings and machines (Buggy, Tank, Hornet, Gunship). Idle workers repair anything damaged nearby on their own.
 
 | Building | Cost | Needs | Does |
 |---|---|---|---|
-| Command Center | 400 | – | trains Workers, takes resources, +10 supply |
+| Command Center | 400 | – | trains Workers, takes resources, +10 supply, Scanner Sweep (E) |
 | Supply Depot | 100 | – | +8 supply |
 | Refinery | 75 | a gas geyser | lets workers collect gas |
 | Barracks | 150 | Supply Depot | trains Troopers and Guardians, researches Rush |
@@ -77,28 +85,28 @@ Machines and soldiers. Workers build each structure by standing next to it, and 
 | Gunship | 200 + 150 gas | 4 | slow flyer that bombs the ground with splash |
 
 ## The Bloom
-Plants and bugs. A Sprout walks to the spot and **turns into the building** (the Sprout is used up), and the building then grows by itself. Bloom buildings and creatures slowly heal themselves when they haven't been hit for a few seconds, and living ground spreads under their buildings.
+Plants and bugs. A Sprout walks to the spot and **turns into the building** (the Sprout is used up), and the building then grows by itself on living ground. Every creature hatches at a Heart Tree; each egg costs one seed. A second or third Heart Tree means more seeds and a wider patch of living ground.
 
 | Building | Cost | Needs | Does |
 |---|---|---|---|
-| Heart Tree | 350 | – | grows Sprouts, takes resources, +10 supply |
+| Heart Tree | 350 | – | hatches every creature from seeds, takes resources, +10 supply |
 | Seed Pod | 100 | – | +8 supply |
 | Sap Well | 75 | a gas geyser | lets Sprouts collect sap (gas) |
-| Nest | 150 | Seed Pod | hatches Spitters and Beetles, researches Hard shell |
-| Hive | 150 + 100 gas | Nest | hatches Burrowers and Menders, researches Deep burrow |
-| Thorn | 100 | Nest | spitting plant, hits air and ground |
+| Nest | 150 | Seed Pod | unlocks Spitters and Beetles, researches Hard shell |
+| Hive | 150 + 100 gas | Nest | unlocks Burrowers and Menders, researches Deep burrow |
+| Thorn | 100 | Nest | spitting plant, hits air and ground. **Uproot (E)**: pulls up its roots and walks slowly (it can't shoot while walking), then **Root (E)** plants it again on living ground |
 | Grove | 150 + 50 gas | Nest | researches Venom (weapons) and Carapace (armor) |
-| Spire | 150 + 100 gas | Hive | hatches Wasps and Spore Bombers |
+| Spire | 150 + 100 gas | Hive | unlocks Wasps and Spore Bombers |
 
 | Unit | Cost | Supply | Notes |
 |---|---|---|---|
 | Sprout | 50 | 1 | gathers, turns into buildings |
-| Spitter | 50 | 1 | ranged acid, hits air and ground |
+| Spitter | 50 for two | 1 for two | hatch in pairs. Weak alone, ranged acid, hits air and ground |
 | Beetle | 100 | 2 | armored melee. **Harden (R)**: 60% less damage for 6 s but slower; ready again after 18 s |
-| Burrower | 100 + 50 gas | 2 | fast melee. **Burrow (E)**: hides underground where enemies can't see or hit it, bursts out when an enemy walks close, and the first hit does double damage |
+| Burrower | 100 + 50 gas | 2 | fast melee. **Burrow (E)**: hides underground where enemies can't see or hit it (unless a Scanner Sweep finds it), bursts out when an enemy walks close, and the first hit does double damage |
 | Mender | 75 + 75 gas | 2 | floating flower that heals nearby friends. Can't attack |
-| Wasp | 120 + 50 gas | 2 | fast flyer, hits air and ground |
-| Spore Bomber | 200 + 150 gas | 4 | slow floating bomber with splash, ground only |
+| Wasp | 120 + 50 gas | 2 | fast flyer, hits air and ground. Its sting poisons: 3 damage a second for 4 seconds |
+| Spore Bomber | 200 + 150 gas | 4 | slow floating bomber with splash, ground only. Each bomb leaves an acid pool that hurts ground units standing in it for 5 seconds |
 
 Flying units go straight over rocks, water and buildings. Only Troopers, Spitters, Turrets, Thorns, Hornets and Wasps can shoot at them.
 
