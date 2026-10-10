@@ -10,6 +10,7 @@ MK 的瀏覽器遊戲合集，每個資料夾自成一體。線上遊玩：https
 | [銘甲戰記](https://k-mertin.github.io/littlethings/zijia/) | [`zijia/`](zijia/README.md) | 像素風機器人戰棋 |
 | [Sunny Circuit](https://k-mertin.github.io/littlethings/racing/) | [`racing/`](racing/README.md) | 3D 賽車，6 款車、5 條賽道、五站積分制大獎賽 |
 | [Crystal Outpost](https://k-mertin.github.io/littlethings/outpost/) | [`outpost/`](outpost/README.md) | 星海爭霸風格的即時戰略：藍色前哨與綻放族兩個陣營、6 關教學任務、1v1 或 2v2（電腦盟友）、3 種地圖風格與大小、自動存檔，支援觸控 |
+| [ABC Island](https://k-mertin.github.io/littlethings/abc/) | [`abc/`](abc/README.md) | 幼兒英文：描小寫字母、開頭音、拼字、單字圖卡、和小狐狸 Pip 聊天，貼紙小島，家長區，平板優先 |
 
 ## 遊玩
 直接用瀏覽器打開 `index.html`，或在此資料夾啟動本機伺服器：
@@ -18,7 +19,7 @@ MK 的瀏覽器遊戲合集，每個資料夾自成一體。線上遊玩：https
 python3 -m http.server 8000   # 然後打開 http://localhost:8000
 ```
 
-大廳內按 `1` 進入 Cobble Keep，按 `2` 進入銘甲戰記，按 `3` 進入 Sunny Circuit，按 `4` 進入 Crystal Outpost。
+大廳內按 `1` 進入 Cobble Keep，按 `2` 進入銘甲戰記，按 `3` 進入 Sunny Circuit，按 `4` 進入 Crystal Outpost，按 `5` 進入 ABC Island。
 
 ## 結構
 ```
@@ -27,6 +28,7 @@ cobblekeep/       單一檔案，無建置步驟（Three.js 由 CDN 載入）
 zijia/            index.html 由 src/ 建置：cd zijia/src && sh build.sh && cp index.html ..
 racing/           單一檔案，無建置步驟
 outpost/          單一檔案，無建置步驟，不需任何外部函式庫
+abc/              單一檔案，無建置步驟，不需任何外部函式庫
 ```
 
 ## 新增遊戲
