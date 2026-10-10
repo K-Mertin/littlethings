@@ -1,6 +1,6 @@
 # Crystal Outpost
 
-A bright little real-time strategy game in the spirit of StarCraft. Mine crystals and gas, build a base, train an army and destroy every enemy building. Play as the **Blue Outpost** (machines) or **the Bloom** (plants and bugs), two factions that build, grow and fight in different ways, in a six-mission campaign or in skirmish matches, 1 vs 1 or 2 vs 2 with a computer ally. Everything is in one file (`index.html`): no build step, no image or sound files, no libraries.
+A bright little real-time strategy game in the spirit of StarCraft. Mine crystals and gas, build a base, train an army and destroy every enemy building. Play as the **Blue Outpost** (machines), **the Bloom** (plants and bugs) or **the Shards** (living crystal), three factions that build, grow and fight in different ways, in a six-mission campaign or in skirmish matches, 1 vs 1 or 2 vs 2 with a computer ally. Everything is in one file (`index.html`): no build step, no image or sound files, no libraries.
 
 ## Play
 Open `index.html` in a browser. The title screen has three choices; a computer-vs-computer match plays behind it.
@@ -13,7 +13,7 @@ Open `index.html` in a browser. The title screen has three choices; a computer-v
 | Option | Choices |
 |---|---|
 | Mode | 1 vs 1, or 2 vs 2 with a computer ally (needs a medium or large map) |
-| You play / Enemy | Blue Outpost, the Bloom, or a random enemy faction |
+| You play / Enemy | Blue Outpost, the Bloom, the Shards, or a random enemy faction |
 | Difficulty | Easy, Normal, Hard |
 | Map size | Small (64×64), Medium (80×80), Large (104×104) |
 | Map | Meadow, Desert, Snow or Random. Every map is randomly generated and mirrored so both sides are fair |
@@ -36,7 +36,7 @@ In 2 vs 2 your ally builds its own base, defends yours, attacks on its own, and 
 | F2 or ⚔ Army | select the whole army |
 | ` (backtick) | select the next idle worker |
 | B | build menu for workers, then a building key and click to place. Hold Shift to place several |
-| R / E | abilities: Rush (Troopers), Siege mode (Tanks), Harden (Beetles), Burrow (Burrowers) once researched; Scanner Sweep (Command Center); Uproot / Root (Thorns). R on Blue workers repairs |
+| R / E | abilities: Rush (Troopers), Siege mode (Tanks), Harden (Beetles), Burrow (Burrowers) once researched; Scanner Sweep (Command Center); Uproot / Root (Thorns); Blink (Blades, E); Barrier (Wardens, R). R on Blue workers repairs |
 | Ctrl + 1–9 | make a group. Press the number to select it, twice to jump to it |
 | Space | jump to the last "under attack" alert |
 | Arrows, screen edge, mouse wheel, middle-drag, minimap | scroll and zoom (scrolling eases in and out) |
@@ -49,16 +49,24 @@ Tap a unit or building to select it. With units selected, tap the ground to move
 
 ## Economy
 - **Crystals**: workers mine them (5 per trip) and carry them back to a Command Center or Heart Tree.
-- **Gas**: build a Refinery (Blue) or grow a Sap Well (Bloom) on a green geyser. One worker at a time goes inside (4 per trip); three per geyser is plenty.
-- **Supply**: every unit takes supply. The main building gives 10, each Supply Depot / Seed Pod 8, up to 200.
+- **Gas**: build a Refinery (Blue), grow a Sap Well (Bloom) or warp in a Prism Tap (Shards) on a green geyser. One worker at a time goes inside (4 per trip); three per geyser is plenty.
+- **Supply**: every unit takes supply. The main building gives 10, each Supply Depot / Seed Pod / Obelisk 8, up to 200.
 
-## How the two factions differ
-| | Blue Outpost | The Bloom |
+## How the three factions differ
+| | Blue Outpost | The Bloom | The Shards |
+|---|---|---|---|
+| Making units | each building trains its own units, one at a time in a queue of five. More Barracks, bigger army | every creature hatches at a **Heart Tree** from **seeds**: 3 at most, a new one about every 10 seconds. Eggs grow side by side. Nest, Hive and Spire only unlock creatures | gates train one at a time, but if a gate's rally point is inside a **power field**, the new unit **warps in right there**, even across the map |
+| Building | a worker stands next to the building until it is done, anywhere on open ground | a Sprout turns into the building and is used up. Buildings must grow on **living ground** | a Spark starts the warp and goes straight back to work; the building forms by itself. Most buildings need **power** from an Obelisk or the Crystal Core, and stop working without it |
+| Toughness and healing | workers repair buildings and machines | everything heals slowly by itself, faster on living ground. Creatures also run 30% faster there | every unit and building has a **shield** that takes damage first and grows back fast after a few seconds out of combat. Health never heals |
+| Special | **Scanner Sweep** reveals an area, including burrowed units, for 12 seconds | Spitters hatch **in pairs**, Wasp stings **poison**, Spore Bombers leave **acid pools**, **Thorns uproot** and walk | Blades **Blink**, Prisms and Monoliths fire **beams** that hit every ground enemy in a line, Wardens **recharge shields** and cast **Barrier** |
+
+Each faction has an edge in one matchup and a harder time in another:
+
+| Matchup | Edge | Why |
 |---|---|---|
-| Making units | each building trains its own units, one at a time in a queue of five. More Barracks, bigger army | every creature hatches at a **Heart Tree** from **seeds**: 3 at most, a new one about every 10 seconds. Eggs grow side by side. Nest, Hive and Spire only unlock creatures |
-| Building | a worker stands next to the building until it is done, anywhere on open ground | a Sprout turns into the building and is used up. Buildings must grow on **living ground**, which spreads around Heart Trees and other Bloom buildings |
-| Healing | workers repair buildings and machines | everything heals slowly by itself, faster on living ground. Creatures also run 30% faster there |
-| Special | **Scanner Sweep**: the Command Center gathers energy (50 per sweep, 100 at most) and reveals an area, including burrowed units, for 12 seconds | Spitters hatch **in pairs**, Wasp stings **poison**, Spore Bombers leave **acid pools**, and **Thorns uproot** and walk to a new spot |
+| Blue vs Bloom | Blue, slightly | Tank and Gunship splash is made for swarms of small creatures |
+| Bloom vs Shards | Bloom, slightly | spit acid eats halfway through shields, poison and acid pools skip them entirely, and a swarm surrounds a small army |
+| Shards vs Blue | Shards, slightly | Blades Blink onto Tanks, shields shrug off chip damage, and forward Obelisks bring reinforcements past Blue's defences |
 
 ## The Blue Outpost
 Machines and soldiers. Workers build each structure by standing next to it, and they also repair damaged buildings and machines (Buggy, Tank, Hornet, Gunship). Idle workers repair anything damaged nearby on their own.
@@ -101,24 +109,50 @@ Plants and bugs. A Sprout walks to the spot and **turns into the building** (the
 | Unit | Cost | Supply | Notes |
 |---|---|---|---|
 | Sprout | 50 | 1 | gathers, turns into buildings |
-| Spitter | 50 for two | 1 for two | hatch in pairs. Weak alone, ranged acid, hits air and ground |
+| Spitter | 50 for two | 1 for two | hatch in pairs. Weak alone, ranged acid, hits air and ground. Acid eats through shields: half of it goes straight to health |
 | Beetle | 100 | 2 | armored melee. **Harden (R)**: 60% less damage for 6 s but slower; ready again after 18 s |
 | Burrower | 100 + 50 gas | 2 | fast melee. **Burrow (E)**: hides underground where enemies can't see or hit it (unless a Scanner Sweep finds it), bursts out when an enemy walks close, and the first hit does double damage |
 | Mender | 75 + 75 gas | 2 | floating flower that heals nearby friends. Can't attack |
 | Wasp | 120 + 50 gas | 2 | fast flyer, hits air and ground. Its sting poisons: 3 damage a second for 4 seconds |
 | Spore Bomber | 200 + 150 gas | 4 | slow floating bomber with splash, ground only. Each bomb leaves an acid pool that hurts ground units standing in it for 5 seconds |
 
-Flying units go straight over rocks, water and buildings. Only Troopers, Spitters, Turrets, Thorns, Hornets and Wasps can shoot at them.
+Flying units go straight over rocks, water and buildings. Only Troopers, Spitters, Lancers, Turrets, Thorns, Shard Cannons, Hornets, Wasps and Gliders can shoot at them.
+
+## The Shards
+Living crystal. Few units, each one strong and expensive. A Spark starts a warp and goes back to mining; the building forms by itself (it can't be sped up). Shields regrow, health doesn't, so pull hurt units back for a few seconds and send them in again.
+
+| Building | Cost | Needs | Does |
+|---|---|---|---|
+| Crystal Core | 400 | – | trains Sparks, takes resources, +10 supply, powers the area around it |
+| Obelisk | 100 | – | +8 supply, powers Shard buildings within 6.5 tiles. Units from gates can warp in next to it |
+| Prism Tap | 75 | a gas geyser | lets Sparks collect gas. Needs no power |
+| Warp Gate | 150 | Obelisk | trains Lancers and Blades, researches Blink |
+| Prism Forge | 150 + 100 gas | Warp Gate | trains Prisms and Wardens, researches Barrier |
+| Shard Cannon | 125 | Warp Gate | crystal tower, hits air and ground |
+| Sanctum | 150 + 50 gas | Warp Gate | researches Resonance (weapons) and Lattice (armor) |
+| Sky Gate | 150 + 150 gas | Prism Forge | trains Gliders and Monoliths |
+
+| Unit | Cost | Supply | Shield + health | Notes |
+|---|---|---|---|---|
+| Spark | 50 | 1 | 20 + 25 | gathers, warps in buildings |
+| Lancer | 100 | 2 | 40 + 45 | throws light spears at air and ground |
+| Blade | 125 + 25 gas | 2 | 60 + 80 | fast sword fighter. **Blink (E)**: jump up to 6 tiles in an instant, ready again after 9 s |
+| Prism | 150 + 100 gas | 3 | 70 + 90 | long beam that hurts every ground enemy in a line. Ground only |
+| Warden | 75 + 100 gas | 2 | 80 + 60 | recharges the shields of nearby friends. **Barrier (R)**: fill the shields of every friend nearby at once, ready again after 30 s. Can't attack |
+| Glider | 125 + 75 gas | 2 | 50 + 70 | fast flyer, hits air and ground |
+| Monolith | 250 + 200 gas | 5 | 150 + 200 | huge floating crystal with a line beam, ground only |
 
 ## Upgrades
 | Research | Where | Cost | Effect |
 |---|---|---|---|
-| Weapons / Venom 1–2 | Armory / Grove | 100 + 100, then 175 + 175 gas | +1 damage for all units and towers (heavy units more). Level 2 needs a Factory / Hive |
-| Armor / Carapace 1–2 | Armory / Grove | 100 + 100, then 175 + 175 gas | +1 armor for all units. Level 2 needs a Factory / Hive |
+| Weapons / Venom / Resonance 1–2 | Armory / Grove / Sanctum | 100 + 100, then 175 + 175 gas | +1 damage for all units and towers (heavy units more). Level 2 needs a Factory / Hive / Prism Forge |
+| Armor / Carapace / Lattice 1–2 | Armory / Grove / Sanctum | 100 + 100, then 175 + 175 gas | +1 armor for all units. Level 2 needs a Factory / Hive / Prism Forge |
 | Rush training | Barracks | 100 + 100 gas | unlocks Rush |
 | Siege tech | Factory | 150 + 150 gas | unlocks Siege mode |
 | Hard shell | Nest | 100 + 100 gas | unlocks Harden |
 | Deep burrow | Hive | 125 + 125 gas | unlocks Burrow |
+| Blink | Warp Gate | 150 + 150 gas | unlocks Blink |
+| Barrier | Prism Forge | 125 + 125 gas | unlocks Barrier |
 
 ## Missions
 | # | Mission | You learn | Stars for |
@@ -133,7 +167,7 @@ Flying units go straight over rocks, water and buildings. Only Troopers, Spitter
 Commander Pip explains each step in small message boxes on the left that close by themselves (tap to skip). The objective list above them can be folded away with **–**. Stars and unlocked missions are saved in this browser.
 
 ## The computer
-The computer plays either faction the same way you do: workers, supply, production buildings, gas, towers, upgrades, flyers and an expansion. It attacks in waves that grow over time, defends its base, pulls back if a wave is mostly destroyed, uses Rush, Siege mode, Harden and Burrow, keeps Menders with its army, and builds more anti-air when you send flyers. As your ally in 2 vs 2 it also guards your base.
+The computer plays every faction the same way you do: workers, supply, production buildings, gas, towers, upgrades, flyers and an expansion. It attacks in waves that grow over time, defends its base, pulls back if a wave is mostly destroyed, uses Rush, Siege mode, Harden, Burrow, Blink and Barrier, keeps Menders and Wardens with its army, warps Shard reinforcements in at a forward Obelisk, and builds more anti-air when you send flyers. As your ally in 2 vs 2 it also guards your base.
 
 | Level | Income | First attack | Waves |
 |---|---|---|---|
@@ -141,11 +175,11 @@ The computer plays either faction the same way you do: workers, supply, producti
 | Normal | 100% | about 5:00 | medium |
 | Hard | 125% | about 4:00 | large, grow quickly |
 
-In test matches between two Normal computers, games last about 11–12 minutes on a medium map, both factions win about equally often, and most games reach flying units. Your skirmish wins per level are saved in this browser.
+In test matches between two Normal computers, games last about 10–11 minutes on a medium map. Across all three matchups each faction wins about as often as it loses, with the small edges shown in the matchup table above. Your skirmish wins per level are saved in this browser.
 
 ## How it is built
 - Maps are random blobs of rock, trees and water, mirrored through the centre so both sides are fair; a flood fill carves a path if any base gets cut off. Meadow, desert and snow maps use their own colors, trees (round trees, cacti and palms, snowy pines) and water.
 - Units find their way with A* on the tile grid and smooth the path with line-of-sight checks. Flyers go straight. Units push each other apart; mining workers slip past each other so mineral lines don't jam.
 - The simulation runs at a fixed 30 steps per second and units are drawn between steps, so motion stays smooth on 60 and 120 Hz screens. Fog of war is a per-tile visibility grid shared by your side, blurred when drawn.
-- Teams sit on two sides, so 2 vs 2 uses the same rules as 1 vs 1. Each faction maps its buildings onto the same roles (main building, supply, gas, barracks, factory, air, tower, tech), which lets one computer player play either faction.
+- Teams sit on two sides, so 2 vs 2 uses the same rules as 1 vs 1. Each faction maps its buildings onto the same roles (main building, supply, gas, barracks, factory, air, tower, tech), which lets one computer player play any faction.
 - All art is drawn in code on a canvas, the HUD icons reuse the same drawing code, and sounds are synthesized with the Web Audio API. Autosaves are JSON in `localStorage`.
