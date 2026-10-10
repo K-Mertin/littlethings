@@ -445,6 +445,47 @@ const Pip = {
 const HINTED = new Set();
 // a Chinese hint, only once per key per session, only when the parent left hints on
 const zh = (key, text) => { if (!S.settings.zh || HINTED.has(key)) return null; HINTED.add(key); return { zh: text }; };
+/* ---------------- recorded voice clips ----------------
+   audio/index.json lists the clips that exist; each clip is audio/<id>.m4a where
+   id = fnv1a32("<voice>|<text>") in hex, voice = pip | kid | zh. Recorded with macOS `say`
+   by tools/make-audio.sh. Anything without a clip falls back to the browser's speech. */
+const fnv = s => { let h = 0x811c9dc5; for (const ch of new TextEncoder().encode(s)) { h ^= ch; h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, '0'); };
+const Clips = {
+  have: new Set(), buf: new Map(), src: null, ready: null,
+  load() {
+    this.ready = fetch('audio/index.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : []).then(a => { this.have = new Set(a); }).catch(() => {});
+    return this.ready;
+  },
+  id(voice, text) { return fnv(voice + '|' + text); },
+  has(voice, text) { return this.have.has(this.id(voice, text)); },
+  async get(id) {
+    if (this.buf.has(id)) return this.buf.get(id);
+    const p = fetch(`audio/${id}.m4a`).then(r => { if (!r.ok) throw 0; return r.arrayBuffer(); })
+      .then(b => new Promise((ok, no) => ac().decodeAudioData(b, ok, no)))
+      .catch(() => { this.buf.delete(id); return null; });
+    this.buf.set(id, p);
+    return p;
+  },
+  prefetch(voice, texts) { for (const t of texts) if (t && this.has(voice, t)) this.get(this.id(voice, t)); },
+  stop() { if (this.src) { try { this.src.onended = null; this.src.stop(); } catch (e) {} this.src = null; } },
+  async play(voice, text, tok) {
+    const a = ac(); if (!a) return false;
+    const b = await this.get(this.id(voice, text));
+    if (!b) return false;
+    if (tok !== TTS.token) return true;
+    return new Promise(res => {
+      const s = a.createBufferSource(); s.buffer = b;
+      s.playbackRate.value = voice === 'zh' ? 1 : Math.max(0.7, Math.min(1.3, S.settings.rate / 0.85));
+      const g = a.createGain(); g.gain.value = 1;
+      s.connect(g).connect(a.destination);
+      this.src = s;
+      s.onended = () => { if (this.src === s) this.src = null; res(true); };
+      s.start();
+    });
+  }
+};
+Clips.load();
+
 const TTS = {
   ok: 'speechSynthesis' in window, en: null, zhv: null, list: [], token: 0, heard: false, broken: false, keep: [],
   load() {
@@ -460,8 +501,15 @@ const TTS = {
       || us(en)[0] || en[0] || null;
     this.zhv = vs.find(v => /zh[-_](TW|Hant)/i.test(v.lang)) || vs.find(v => /zh[-_]HK/i.test(v.lang)) || vs.find(v => /^zh/i.test(v.lang)) || null;
   },
-  cancel() { this.token++; if (this.ok) speechSynthesis.cancel(); Pip.talk(false); },
-  one(text, lang, tok, pitch) {
+  cancel() { this.token++; Clips.stop(); if (this.ok) speechSynthesis.cancel(); Pip.talk(false); },
+  async one(text, lang, tok, pitch) {
+    const voice = lang === 'zh' ? 'zh' : pitch ? 'kid' : 'pip';
+    if (Clips.has(voice, text)) { if (await Clips.play(voice, text, tok)) return; }
+    if (tok !== this.token) return;
+    if (!this.ok || this.broken) { await sleep(lang === 'zh' ? 300 : 500 + text.length * 45); return; }
+    return this.speak(text, lang, tok, pitch);
+  },
+  speak(text, lang, tok, pitch) {
     return new Promise(res => {
       if (!this.ok || tok !== this.token) { res(); return; }
       const u = new SpeechSynthesisUtterance(text);
@@ -485,6 +533,13 @@ const TTS = {
   async say(parts, show) {
     if (!Array.isArray(parts)) parts = [parts];
     parts = parts.filter(Boolean);
+    if (Clips.ready) await Clips.ready;
+    // start loading every clip of this line at once so the parts play back to back
+    for (const q of parts) {
+      if (typeof q === 'string') Clips.prefetch('pip', [q]);
+      else if (q && q.zh) Clips.prefetch('zh', [q.zh]);
+      else if (q && q.t) Clips.prefetch(q.pitch ? 'kid' : 'pip', [q.t]);
+    }
     const wasBusy = this.ok && (speechSynthesis.speaking || speechSynthesis.pending);
     this.cancel(); const tok = this.token;
     // Chrome sometimes drops an utterance spoken right after cancel(), or leaves the queue paused
@@ -577,7 +632,7 @@ Screens.start = {};
 $('#playBtn').onclick = () => {
   ac(); SFX.pop();
   if (TTS.ok) { TTS.load(); speechSynthesis.cancel(); }
-  else voiceMissing();
+  else Clips.ready.then(() => { if (!Clips.have.size) voiceMissing(); });
   if (matchMedia('(pointer:coarse)').matches && document.documentElement.requestFullscreen && !document.fullscreenElement) {
     document.documentElement.requestFullscreen().catch(() => {});
   }
@@ -697,7 +752,7 @@ function trDraw() {
     } else { c.fillStyle = col; c.beginPath(); c.arc(p.x, p.y, 4, 0, 7); c.fill(); }
   }
   // demo finger
-  if (TR.demo && TR.demo.k != null) {
+  if (TR.demo && TR.demo.k != null && TR.strokes[TR.demo.k]) {
     c.strokeStyle = 'rgba(255,92,154,.55)'; c.lineWidth = 9;
     for (let i = 0; i < TR.demo.k; i++) c.stroke(TR.strokes[i].p2);
     const s2 = TR.strokes[TR.demo.k], j = Math.round(TR.demo.f * (s2.pts.length - 1));
@@ -709,10 +764,11 @@ function trDraw() {
 function stopDemo() { if (TR.demo) { TR.demo = null; reqDraw(); } }
 function demo() {
   stopDemo();
-  const d = { t0: performance.now(), k: null, f: 0 }; TR.demo = d;
+  if (!TR.strokes.length) return;
+  const d = { t0: performance.now(), k: null, f: 0, strokes: TR.strokes }; TR.demo = d;
   const per = 1300, total = TR.strokes.length * per + 250;
   const step = now => {
-    if (TR.demo !== d) return;
+    if (TR.demo !== d || d.strokes !== TR.strokes) { if (TR.demo === d) TR.demo = null; return; }
     const t = now - d.t0;
     d.k = Math.min(TR.strokes.length - 1, Math.floor(t / per)); d.f = Math.min(1, (t - d.k * per) / (per * 0.82));
     trDraw();
@@ -742,6 +798,7 @@ function trDown(e) {
   try { TR.cv.setPointerCapture(e.pointerId); } catch (_) {}
   const p = toL(e); TR.down = true; TR.ink = [p]; TR.last = p;
   const st = TR.strokes[TR.cur];
+  if (!st) { TR.down = false; return; }
   TR.active = dist(p, st.pts[Math.min(st.prog, st.pts.length - 1)]) <= TOL[TR.stage] * 1.7;
   if (TR.active) advance(p);
   reqDraw();
@@ -1132,8 +1189,9 @@ $('#mic').onclick = async () => {
     talkChoose(o, $$('#kOpts .card')[i], f, false);
   } else {
     $$('#kOpts .card').forEach(c => { c.classList.remove('glow'); void c.offsetWidth; c.classList.add('glow'); setTimeout(() => c.classList.remove('glow'), 3000); });
-    const ask = KT.step.opts.length === 1 ? `Can you say: ${KT.step.opts[0].t}` : 'Is it ' + KT.step.opts.map(x => x.t.replace(/[!.]$/, '')).join(', or ') + '?';
-    say(['Hmm.', ask]);
+    const o1 = KT.step.opts;
+    if (o1.length === 1) say(['Hmm.', 'Can you say this?', { t: o1[0].t, pitch: 1.45 }], `Hmm. Can you say: ${o1[0].t}`);
+    else say(['Hmm.', 'Which one?', ...o1.map(x => ({ t: x.t, pitch: 1.45 }))], `Hmm. Which one? ${o1.map(x => x.t).join(' / ')}`);
   }
 };
 Screens.talk = {
