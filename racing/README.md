@@ -39,12 +39,23 @@ Six models, each with its own look and a small handling difference. Bodies are l
 In a test where the same driver drove every car, average lap times were within about half a second of each other.
 
 ## Tracks
-1. **Meadow Loop**: 2.4 km with a hairpin, esses and a fast back straight through farmland, with snowy mountains, a village and church, barns and silos, wind turbines, ponds and hot-air balloons. Laps take about 70 seconds.
-2. **Sunset Coast**: 2.2 km round an island with sweepers and an S-bend, palms, a lighthouse, a pier, beach huts, hotels, a Ferris wheel, boats sailing round and a city on the next island. Laps take about 65 seconds.
+1. **Meadow Loop**: 2.4 km with a hairpin, esses and a fast back straight through farmland, with snowy mountains, villages, barns and silos, wind turbines, ponds and hot-air balloons. Laps take about 70 seconds.
+2. **Sunset Coast**: 2.2 km round an island with sweepers and an S-bend, palms, a lighthouse, a pier, beach huts, hotels, a Ferris wheel, boats sailing round and a city on the next island. About 65 seconds.
+3. **Alpine Pass**: 2.4 km over a snowy pass, with tight hairpins between fir forests, chalets, a frozen lake, a ski lift, snowmen and falling snow under tall peaks. About 70 seconds.
+4. **Desert Canyon**: 2.6 km of fast straights through red rock: striped mesas, a stone arch, cacti, an oasis, a roadside diner and wind pumps. About 77 seconds.
+5. **Harbor City**: 2.2 km street circuit at night between lit towers, with street lamps, neon signs, a container port with cranes, stars and the moon. Cars light the road with their headlights. About 65 seconds.
 
-Both tracks have a grandstand, pit garages, a footbridge, advertising boards, tyre walls and gravel traps on the outside of the bends. The road is 13.5 m wide.
+All tracks have a grandstand, pit garages, a footbridge, advertising boards, tyre walls and gravel traps on the outside of the bends. The road is 13.5 m wide.
 
 Best race time (per track and lap count) and best lap (per track) are saved in this browser.
+
+## Grand Prix
+Choose **Grand Prix** in the menu to race all five tracks in order with the same rivals, laps and difficulty.
+
+- Points per race: 10, 8, 6, 4, 2 and 1 for 1st to 6th, plus 1 for the fastest lap.
+- After every race the results show the points earned and the championship standings. Ties are split by number of wins.
+- Progress is saved, so you can leave between races and continue later. **Abandon** in the menu starts over.
+- Finishing the championship in the top three wins a gold, silver or bronze cup for that difficulty. The best cup for Easy, Normal and Hard is shown in the menu.
 
 ## Rivals
 Bolt, Pip, Rosa, Mango and Zippy. They brake for corners, change lanes to pass and use the boost pads. You start at the back of the grid.
@@ -70,4 +81,4 @@ If you pull ahead, the rivals speed up a little to keep the race close (more on 
 Add an entry to `TRACKS` in `index.html`:
 - `pts`: the control points `[x, z]` in meters, going round the loop. The first point is the start line, so make the first two points a straight. Keep corners at least ~16 m in radius and keep separate parts of the track at least ~45 m apart.
 - `boosts`: `[fraction of the lap, lateral offset]` for each boost pad.
-- `theme`: sky colors, fog, ground colors, `deco: 'trees'` or `'palms'`, and `water` for a sea around the track.
+- `theme`: sky, fog, light and ground colors, `kind` (`meadow`, `coast`, `alpine`, `desert` or `city`, which picks the landmarks and plants), run-off and dust colors, distant `peaks` and `hillsCfg`, cloud and balloon counts, and optional `water`, `snowfall` or `night`.
