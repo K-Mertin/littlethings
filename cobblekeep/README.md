@@ -48,20 +48,20 @@ In both schemes:
 Settings are saved in the browser. Landscape plays best. In portrait the view sits at the top and the controls fill the space below.
 
 ## Stages
-Five worlds, two stages each. The second stage of each world is bigger and ends with a boss you must pop before the goal block will ring.
+Five worlds, two stages each: the meadow and village, the royal castle, the desert temple, the frozen peaks and finally the cursed royal capital, where the Dark Wizard has taken the palace. The second stage of each world is bigger and ends with a boss you must pop before the goal block will ring.
 
 | # | Stage | Keys | Boss |
 |---|---|---|---|
 | 1 | Sunny Meadow | red | |
 | 2 | Windmill Farm | red, blue | Goblin Chief |
-| 3 | Cozy Castle | red, blue | |
+| 3 | Castle Gate | red, blue | |
 | 4 | Royal Kitchen | red, yellow | Bat Queen |
 | 5 | Sandy Temple | red, yellow | |
 | 6 | Oasis Ruins | red, blue | Mummy King |
 | 7 | Frosty Peaks | red, blue, yellow | |
 | 8 | Crystal Caverns | red, blue, yellow | Frost Giant |
-| 9 | Candy Town | red, yellow | |
-| 10 | Sugar Keep | red, blue | Dark Wizard |
+| 9 | Cursed Town | red, yellow | |
+| 10 | Shadow Palace | red, blue | Dark Wizard |
 
 **Carry-over:** your health, shield and weapons carry over between stages. If you start from stage select, you get a fair starting kit for that stage.
 
@@ -95,7 +95,7 @@ The maps are the `MAPS` array in `index.html`; stage settings (name, textures, s
 
 - **Walls:** `G` grass block, `L` hedge, `P` planks, `W` log, `C` cobble, `B` cream brick, `K` bookshelf, `U` `V` `Y` pink/blue/yellow wool, `N` sandstone, `H` chiseled sandstone, `I` ice, `Q` snow brick, `R` spruce, `J` candy stripe, `Z` cake, `E` chocolate.
 - **Doors and goal:** `D` door, `1` red door, `2` blue door, `3` yellow door, `S` secret wall, `X` goal block.
-- **Floors:** `.` and `,` are indoor floors, `~` and `-` are outdoor floors (open sky), `=` is water or jam. Each stage picks the textures for these.
+- **Floors:** `.` and `,` are indoor floors, `~` and `-` are outdoor floors (open sky), `=` is water or a cursed pool (cursed pools hurt). Each stage picks the textures for these, and can repaint a wall letter with `walls` (the cursed capital turns the castle tapestries `U` into torn banners).
 - **Enemies:** `p` player start, `j` goblin, `m` imp mage, `f` fire wisp, `g` haunted knight, `d` bat, `v` crystal totem, `z` the stage's boss (set by `boss` in `STAGES`), `q` Dark Wizard. (Inside the code the old type names `jelly`, `shroom`, `puff`, `golem`, `bee` and `teapot` are kept; `TYPEMODEL` maps them to the new models.)
 - **Pickups:** `h` heart, `u` super heart, `a` magic ward, `b` mana potion, `c` quiver of bolts, `s` fire runes, `i` Sugar Rush, `w` repeater crossbow, `x` fire staff, `r` `e` `y` red/blue/yellow keys.
-- **Decorations:** `t` lantern, `o` flower, `k` cactus, `n` snowman, `l` lollipop.
+- **Decorations:** `t` iron lamp post, `o` flower, `k` cactus, `n` frost crystals, `l` cursed crystal.
