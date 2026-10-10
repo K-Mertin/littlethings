@@ -16,7 +16,7 @@ Open `index.html` in a browser, or play it at https://k-mertin.github.io/littlet
 | WASD | move (Shift to run) |
 | Mouse | look; left click to shoot (F or Ctrl also shoot) |
 | E / Space | open doors, ring the goal block |
-| 1 2 3 4 / wheel | squeaky hammer, bubble blaster, confetti cannon, star launcher |
+| 1 2 3 4 / wheel | rune sword, arcane wand, repeater crossbow, fire staff |
 | Tab / M | map |
 | N | music on/off |
 | Arrow keys | turn and move without a mouse |
@@ -63,7 +63,7 @@ Five worlds, two stages each. The second stage of each world is bigger and ends 
 | 9 | Candy Town | red, yellow | |
 | 10 | Sugar Keep | red, blue | Dark Wizard |
 
-**Carry-over:** your health, shield and toys carry over between stages. If you start from stage select, you get a fair starting kit for that stage.
+**Carry-over:** your health, shield and weapons carry over between stages. If you start from stage select, you get a fair starting kit for that stage.
 
 **Retrying:** if you get bonked, the stage restarts with whatever you had when you entered it.
 
@@ -78,7 +78,7 @@ The Dark Wizard has filled Cobble Keep with monsters. They have a teen-friendly 
 - **Crystal totem**: a rune-carved stone turret that stays put and fires three crystal bolts at a time.
 - **Bosses**: the Goblin Chief, the Bat Queen, the Mummy King, the Frost Giant and the Dark Wizard. Each fires fans and rings of orbs, summons helpers and speeds up at half health.
 
-Pickups: hearts (+25), super hearts (+100, up to 200), bubble shields (armor), ammo jars and boxes, red, blue and yellow keys, and **Sugar Rush** candy (double damage and faster running for 20 seconds, usually hidden in secrets).
+Pickups: hearts (+25), super hearts (+100, up to 200), magic wards (armor), mana potions, quivers of bolts and fire runes (ammo), red, blue and yellow keys, and **Sugar Rush** candy (double damage and faster running for 20 seconds, usually hidden in secrets).
 
 ## How it is built
 - The game logic runs on a 2D tile grid, the same way DOOM does. That covers movement, collision, enemy pathfinding, hit-scan weapons and doors.
@@ -86,16 +86,16 @@ Pickups: hearts (+25), super hearts (+100, up to 200), bubble shields (armor), a
   - Walls, floors and ceilings are built from the map.
   - Lighting comes from the sun and the sky, with soft shadows, distance fog and a gradient sky with clouds.
 - Textures are painted in code on 256×256 canvases (brick, wood grain, stone, frosting, ice and so on). Bump maps give them surface relief.
-- Characters, pickups and the toy weapons are 3D models built from smooth shapes, with glossy materials and cute faces.
+- Characters, pickups and weapons are 3D models with painted cloth, leather, wood, metal and crystal. Every enemy attack has its own projectile (rune rings, fireballs, crystal shards, rocks, screech rings, sand, icicles, void orbs), with a particle trail and a hit flash. The wand and crossbow draw glowing streaks, the sword leaves a slash arc, and fireballs burst into a ring of flame.
 - The HUD and menus are HTML on top of the 3D view.
 - On slower devices the game automatically lowers resolution and then turns off shadows to keep frame rates smooth.
 
 ## Editing stages
-The maps are the `MAPS` array in `index.html`; stage settings (name, textures, sky, starting toys) are in `STAGES`.
+The maps are the `MAPS` array in `index.html`; stage settings (name, textures, sky, starting weapons) are in `STAGES`.
 
 - **Walls:** `G` grass block, `L` hedge, `P` planks, `W` log, `C` cobble, `B` cream brick, `K` bookshelf, `U` `V` `Y` pink/blue/yellow wool, `N` sandstone, `H` chiseled sandstone, `I` ice, `Q` snow brick, `R` spruce, `J` candy stripe, `Z` cake, `E` chocolate.
 - **Doors and goal:** `D` door, `1` red door, `2` blue door, `3` yellow door, `S` secret wall, `X` goal block.
 - **Floors:** `.` and `,` are indoor floors, `~` and `-` are outdoor floors (open sky), `=` is water or jam. Each stage picks the textures for these.
 - **Enemies:** `p` player start, `j` goblin, `m` imp mage, `f` fire wisp, `g` haunted knight, `d` bat, `v` crystal totem, `z` the stage's boss (set by `boss` in `STAGES`), `q` Dark Wizard. (Inside the code the old type names `jelly`, `shroom`, `puff`, `golem`, `bee` and `teapot` are kept; `TYPEMODEL` maps them to the new models.)
-- **Pickups:** `h` heart, `u` super heart, `a` shield, `b` bubbles, `c` confetti, `s` stars, `i` Sugar Rush, `w` confetti cannon, `x` star launcher, `r` `e` `y` red/blue/yellow keys.
+- **Pickups:** `h` heart, `u` super heart, `a` magic ward, `b` mana potion, `c` quiver of bolts, `s` fire runes, `i` Sugar Rush, `w` repeater crossbow, `x` fire staff, `r` `e` `y` red/blue/yellow keys.
 - **Decorations:** `t` lantern, `o` flower, `k` cactus, `n` snowman, `l` lollipop.
