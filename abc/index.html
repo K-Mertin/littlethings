@@ -292,6 +292,16 @@ main{flex:1;min-height:0;position:relative}
     <div class="row"><button class="btn" id="brOk">✔️ OK</button></div>
   </div>
 </div>
+<div class="overlay" id="voiceOv">
+  <div class="panel parent" style="text-align:center">
+    <div class="bigstk" style="font-size:80px">🔇</div>
+    <h2>Pip 沒辦法說話</h2>
+    <p>這個瀏覽器不能播放語音（例如 Claude App 內建的瀏覽器）。音效可以聽到，但 Pip 的聲音出不來。</p>
+    <p>請改用 <b>Chrome</b>（電腦或 Android 平板）、Safari 或 Edge 打開這個遊戲。</p>
+    <p class="note">Android 平板如果還是沒聲音：到「設定 → 系統 → 語言 → 文字轉語音輸出」，選「Google 語音服務」並下載英文語音，再確認媒體音量有開。</p>
+    <div class="row"><button class="pbtn" id="voiceRetry">再試一次</button><button class="btn" id="voiceOk" style="font-family:var(--zh)">知道了</button></div>
+  </div>
+</div>
 <div class="overlay" id="gateOv">
   <div class="panel parent" style="text-align:center">
     <h2>家長區</h2>
@@ -436,7 +446,7 @@ const HINTED = new Set();
 // a Chinese hint, only once per key per session, only when the parent left hints on
 const zh = (key, text) => { if (!S.settings.zh || HINTED.has(key)) return null; HINTED.add(key); return { zh: text }; };
 const TTS = {
-  ok: 'speechSynthesis' in window, en: null, zhv: null, list: [], token: 0,
+  ok: 'speechSynthesis' in window, en: null, zhv: null, list: [], token: 0, heard: false, broken: false, keep: [],
   load() {
     if (!this.ok) return;
     const vs = speechSynthesis.getVoices(); if (!vs.length) return;
@@ -460,7 +470,12 @@ const TTS = {
       // some Android voices never fire onend; don't let a flow hang on that
       const to = setTimeout(fin, 1500 + text.length * 120 / u.rate);
       u.onend = fin; u.onerror = fin;
+      u.onstart = () => { this.heard = true; };
+      // Chrome can garbage-collect an utterance mid-speech and never fire its events; hold on to it
+      this.keep.push(u); if (this.keep.length > 8) this.keep.shift();
       speechSynthesis.speak(u);
+      // some browsers (e.g. the Claude app's built-in browser) accept speak() but never start talking
+      if (!this.heard && !this.broken) setTimeout(() => { if (!this.heard && !this.broken && tok === this.token) { this.broken = true; voiceMissing(); } }, 3000);
     });
   },
   /* parts: strings (English), {zh}, {t, pitch}, or numbers (pause ms). Resolves true if it finished without being interrupted. */
@@ -508,6 +523,14 @@ const Rec = {
   stop() { try { if (this.r) this.r.abort(); } catch (e) {} this.r = null; }
 };
 
+/* ---------------- no voice notice ---------------- */
+function voiceMissing() {
+  if ($('#voiceOv').dataset.shown) return;
+  $('#voiceOv').dataset.shown = '1'; $('#voiceOv').classList.add('on');
+}
+$('#voiceOk').onclick = () => $('#voiceOv').classList.remove('on');
+$('#voiceRetry').onclick = () => { $('#voiceOv').classList.remove('on'); TTS.broken = false; TTS.heard = false; TTS.load(); delete $('#voiceOv').dataset.shown; say('Hello! I am Pip.'); };
+
 /* ---------------- confetti ---------------- */
 function confetti(x, y, n = 10) {
   const bits = ['⭐', '✨', '🎉', '💛', '🌟'];
@@ -548,7 +571,8 @@ const setProg = (n, done) => { $('#prog').innerHTML = Array.from({ length: n }, 
 Screens.start = {};
 $('#playBtn').onclick = () => {
   ac(); SFX.pop();
-  if (TTS.ok) { TTS.load(); const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); }
+  if (TTS.ok) { TTS.load(); speechSynthesis.cancel(); }
+  else voiceMissing();
   if (matchMedia('(pointer:coarse)').matches && document.documentElement.requestFullscreen && !document.fullscreenElement) {
     document.documentElement.requestFullscreen().catch(() => {});
   }
