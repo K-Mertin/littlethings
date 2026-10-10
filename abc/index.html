@@ -452,9 +452,12 @@ const TTS = {
     const vs = speechSynthesis.getVoices(); if (!vs.length) return;
     const en = vs.filter(v => /^en([-_]|$)/i.test(v.lang));
     this.list = en;
+    // prefer voices that live on the device: network voices (Chrome desktop's "Google US English") can fail silently
+    const loc = en.filter(v => v.localService !== false);
+    const us = a => a.filter(v => /en[-_]US/i.test(v.lang));
     this.en = en.find(v => v.name === S.settings.voice)
-      || en.find(v => /en[-_]US/i.test(v.lang) && /google|samantha|aria|jenny|natural/i.test(v.name))
-      || en.find(v => /en[-_]US/i.test(v.lang)) || en[0] || null;
+      || us(loc).find(v => /samantha|google|aria|jenny|natural|zira/i.test(v.name)) || us(loc)[0] || loc[0]
+      || us(en)[0] || en[0] || null;
     this.zhv = vs.find(v => /zh[-_](TW|Hant)/i.test(v.lang)) || vs.find(v => /zh[-_]HK/i.test(v.lang)) || vs.find(v => /^zh/i.test(v.lang)) || null;
   },
   cancel() { this.token++; if (this.ok) speechSynthesis.cancel(); Pip.talk(false); },
@@ -484,7 +487,9 @@ const TTS = {
     parts = parts.filter(Boolean);
     const wasBusy = this.ok && (speechSynthesis.speaking || speechSynthesis.pending);
     this.cancel(); const tok = this.token;
-    if (wasBusy) await sleep(60);
+    // Chrome sometimes drops an utterance spoken right after cancel(), or leaves the queue paused
+    if (wasBusy) await sleep(80);
+    if (this.ok && speechSynthesis.paused) speechSynthesis.resume();
     const en = parts.filter(p => typeof p === 'string' || (p && p.t)).map(p => typeof p === 'string' ? p : p.t).join(' ');
     const zt = parts.filter(p => p && p.zh).map(p => p.zh).join(' ');
     Pip.bubble((show != null ? esc(show) : esc(en)) + (zt ? `<small>${esc(zt)}</small>` : ''));
