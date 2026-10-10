@@ -139,6 +139,9 @@ function drawMap(now){
     ctx.moveTo(X+S,Y+S-L);ctx.lineTo(X+S,Y+S);ctx.lineTo(X+S-L,Y+S); ctx.moveTo(X+L,Y+S);ctx.lineTo(X,Y+S);ctx.lineTo(X,Y+S-L); ctx.stroke(); };
   const pul=Math.sin(now/180);
   for(const k of (ov.tgt||[])){ const [x,y]=k.split(',').map(Number); bracket(x,y,'#ff5a46',1+pul*1.5,cs*.3); }
+  if(['target','repair','talk'].includes(G.mode)&&G.targets&&G.targets.length){ const n=G.targets.length, t=G.targets[((G.tgtIdx||0)%n+n)%n];
+    if(t){ const tx=t._px??t.x, ty=t._py??t.y; ctx.lineWidth=3; bracket(tx,ty,'#ffd25a',-2+pul*1.5,cs*.36); ctx.fillStyle='#ffd25a'; const ax=tx*cs+cs/2, ay=ty*cs-2-Math.abs(pul)*3;
+      ctx.beginPath(); ctx.moveTo(ax-cs*.14,ay-cs*.16); ctx.lineTo(ax+cs*.14,ay-cs*.16); ctx.lineTo(ax,ay); ctx.closePath(); ctx.fill(); } }
   for(const k of (ov.ally||[])){ const [x,y]=k.split(',').map(Number); bracket(x,y,'#6dff9a',1+pul*1.5,cs*.3); }
   if(G.sel&&G.units.includes(G.sel)){ const u=G.sel; bracket(u._px??u.x,u._py??u.y,'#ffd25a',1+pul,cs*.32); }
   if(GFX.hover&&inMap(GFX.hover.x,GFX.hover.y)) bracket(GFX.hover.x,GFX.hover.y,'rgba(255,255,255,.85)',2,cs*.22);
