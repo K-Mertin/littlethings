@@ -1,6 +1,6 @@
 # Cobble Keep
 
-A bright, cute 3D first-person shooter that plays like DOOM: keys, doors, secrets, a status bar and a face that reacts. Five stages, with a boss at the end. Everything runs from one file (`index.html`) with no build step and no image or sound files. The only download is Three.js, loaded from a CDN, so it needs an internet connection the first time it loads.
+A bright 3D first-person shooter that plays like DOOM: keys, doors, secrets, a status bar and a face that reacts. Ten stages in five worlds, each world ending with a boss. Everything runs from one file (`index.html`) with no build step and no image or sound files. The only download is Three.js, loaded from a CDN, so it needs an internet connection the first time it loads.
 
 ## Play
 Open `index.html` in a browser, or play it at https://k-mertin.github.io/littlethings/cobblekeep/.
@@ -53,28 +53,30 @@ Five worlds, two stages each. The second stage of each world is bigger and ends 
 | # | Stage | Keys | Boss |
 |---|---|---|---|
 | 1 | Sunny Meadow | red | |
-| 2 | Windmill Farm | red, blue | Boulder Bob |
+| 2 | Windmill Farm | red, blue | Goblin Chief |
 | 3 | Cozy Castle | red, blue | |
-| 4 | Royal Kitchen | red, yellow | Puff Queen |
+| 4 | Royal Kitchen | red, yellow | Bat Queen |
 | 5 | Sandy Temple | red, yellow | |
-| 6 | Oasis Ruins | red, blue | Mega Shroom |
+| 6 | Oasis Ruins | red, blue | Mummy King |
 | 7 | Frosty Peaks | red, blue, yellow | |
-| 8 | Crystal Caverns | red, blue, yellow | Frost Jelly |
+| 8 | Crystal Caverns | red, blue, yellow | Frost Giant |
 | 9 | Candy Town | red, yellow | |
-| 10 | Sugar Keep | red, blue | Jelly King |
+| 10 | Sugar Keep | red, blue | Dark Wizard |
 
 **Carry-over:** your health, shield and toys carry over between stages. If you start from stage select, you get a fair starting kit for that stage.
 
 **Retrying:** if you get bonked, the stage restarts with whatever you had when you entered it.
 
 ## Friends and foes
-- **Jelly**: bouncy, bites up close. Its color changes with each stage.
-- **Shroom**: stands back and spits spores.
-- **Puff**: a flying cloud that throws zaps and floats over hazards.
-- **Rocky**: a slow stone golem that hits hard.
-- **Bee**: fast and flying, dives in for quick stings.
-- **Teapot**: a turret that stays put and puffs out three bursts of steam.
-- **Bosses**: Boulder Bob, Puff Queen, Mega Shroom, Frost Jelly and the Jelly King. Each fires fans and rings of orbs, summons helpers and speeds up at half health.
+The Dark Wizard has filled Cobble Keep with monsters. They have a teen-friendly fantasy look: sculpted heads, painted almond eyes, cloth, leather, metal and crystal.
+
+- **Goblin**: charges in and swings a spiked club.
+- **Imp mage**: stays back and throws magic bolts from a crystal staff.
+- **Fire wisp**: a floating flame that throws fireballs and drifts over hazards.
+- **Haunted knight**: an empty suit of armour with a sword and shield. Slow, tough and hits hard.
+- **Bat**: fast and flying, dives in for quick bites.
+- **Crystal totem**: a rune-carved stone turret that stays put and fires three crystal bolts at a time.
+- **Bosses**: the Goblin Chief, the Bat Queen, the Mummy King, the Frost Giant and the Dark Wizard. Each fires fans and rings of orbs, summons helpers and speeds up at half health.
 
 Pickups: hearts (+25), super hearts (+100, up to 200), bubble shields (armor), ammo jars and boxes, red, blue and yellow keys, and **Sugar Rush** candy (double damage and faster running for 20 seconds, usually hidden in secrets).
 
@@ -94,6 +96,6 @@ The maps are the `MAPS` array in `index.html`; stage settings (name, textures, s
 - **Walls:** `G` grass block, `L` hedge, `P` planks, `W` log, `C` cobble, `B` cream brick, `K` bookshelf, `U` `V` `Y` pink/blue/yellow wool, `N` sandstone, `H` chiseled sandstone, `I` ice, `Q` snow brick, `R` spruce, `J` candy stripe, `Z` cake, `E` chocolate.
 - **Doors and goal:** `D` door, `1` red door, `2` blue door, `3` yellow door, `S` secret wall, `X` goal block.
 - **Floors:** `.` and `,` are indoor floors, `~` and `-` are outdoor floors (open sky), `=` is water or jam. Each stage picks the textures for these.
-- **Enemies:** `p` player start, `j` jelly, `m` shroom, `f` puff, `g` rocky, `d` bee, `v` teapot, `z` the stage's boss (set by `boss` in `STAGES`), `q` Jelly King.
+- **Enemies:** `p` player start, `j` goblin, `m` imp mage, `f` fire wisp, `g` haunted knight, `d` bat, `v` crystal totem, `z` the stage's boss (set by `boss` in `STAGES`), `q` Dark Wizard. (Inside the code the old type names `jelly`, `shroom`, `puff`, `golem`, `bee` and `teapot` are kept; `TYPEMODEL` maps them to the new models.)
 - **Pickups:** `h` heart, `u` super heart, `a` shield, `b` bubbles, `c` confetti, `s` stars, `i` Sugar Rush, `w` confetti cannon, `x` star launcher, `r` `e` `y` red/blue/yellow keys.
 - **Decorations:** `t` lantern, `o` flower, `k` cactus, `n` snowman, `l` lollipop.
