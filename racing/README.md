@@ -53,10 +53,10 @@ Every car starts with its stock parts, which give it the character described abo
 
 ## Tracks
 1. **Meadow Loop**: 2.4 km with a hairpin, esses and a fast back straight through farmland, with snowy mountains, villages, barns and silos, wind turbines, ponds and hot-air balloons. Laps take about 70 seconds.
-2. **Sunset Coast**: 2.2 km round an island with sweepers and an S-bend, palms, a lighthouse, a pier, beach huts, hotels, a Ferris wheel, boats sailing round and a city on the next island. About 65 seconds.
-3. **Alpine Pass**: 2.4 km over a snowy pass, with tight hairpins between fir forests, chalets, a frozen lake, a ski lift, snowmen and falling snow under tall peaks. About 70 seconds.
-4. **Desert Canyon**: 2.6 km of fast straights through red rock: striped mesas, a stone arch, cacti, an oasis, a roadside diner and wind pumps. About 77 seconds.
-5. **Harbor City**: 2.2 km street circuit at night between lit towers, with street lamps, neon signs, a container port with cranes, stars and the moon. Cars light the road with their headlights. About 65 seconds.
+2. **Sunset Coast**: 2.2 km along the shore of an island: a long fast sweeper, a hairpin at the point and a chicane, with palms, a lighthouse, a pier, beach huts, hotels, a Ferris wheel, boats sailing round and a city on the next island. About 62 seconds.
+3. **Alpine Pass**: 2.4 km mountain road of stacked switchbacks with four hairpins and a hump at the top, between fir forests, chalets, a frozen lake, a ski lift, snowmen and falling snow under tall peaks. About 70 seconds.
+4. **Desert Canyon**: 2.4 km speedway: two huge straights and a twisting canyon section through red rock: striped mesas, a stone arch, cacti, an oasis, a roadside diner and wind pumps. About 70 seconds.
+5. **Harbor City**: 2.2 km street circuit at night with right-angle corners round city blocks and a chicane, between lit towers, with street lamps, neon signs, a container port with cranes, stars and the moon. Cars light the road with their headlights. About 74 seconds.
 
 All tracks have a grandstand, pit garages, a footbridge, advertising boards, tyre walls and gravel traps on the outside of the bends. The road is 13.5 m wide.
 
@@ -92,6 +92,6 @@ If you pull ahead, the rivals speed up a little to keep the race close (more on 
 
 ## Adding a track
 Add an entry to `TRACKS` in `index.html`:
-- `pts`: the control points `[x, z]` in meters, going round the loop. The first point is the start line, so make the first two points a straight. Keep corners at least ~16 m in radius and keep separate parts of the track at least ~45 m apart.
-- `boosts`: `[fraction of the lap, lateral offset]` for each boost pad.
+- `pts`: control points `[x, z]` in meters for a smooth spline, going round the loop; or `path`: polygon corners `[x, z, radius]`, rounded to real arcs joined by straights (used for the street circuit and switchbacks). The first point is the start line, so make the first two points a straight. Keep corners at least ~16 m in radius and keep separate parts of the track at least ~45 m apart.
+- `boosts`: `[fraction of the lap, lateral offset]` for each boost pad, or `'auto'` to put them on the straights.
 - `theme`: sky, fog, light and ground colors, `kind` (`meadow`, `coast`, `alpine`, `desert` or `city`, which picks the landmarks and plants), run-off and dust colors, distant `peaks` and `hillsCfg`, cloud and balloon counts, and optional `water`, `snowfall` or `night`.
