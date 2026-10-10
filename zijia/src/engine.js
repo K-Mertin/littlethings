@@ -525,22 +525,43 @@ function fmenuHtml(s){
       return `<button class="btn wbtn${w.combo?' combo':''}" data-w="${i}" ${(!why&&n)?'':'disabled'} title="威力 ${fmt(w.pow)} · 射程 ${w.min}–${wMax(s,w)} · 命中 ${w.hit>=0?'+':''}${w.hit} · ${costTxt(w)}"><span>${w.name}${w.combo?`<small class="ctag">與${w.combo.pilot}</small>`:''}</span><kbd>${i<9?i+1:''}</kbd><small class="${why||!n?'why':''}">${why||(n?`${fmt(w.pow)} · ${w.min}–${wMax(s,w)}格`:'射程內無目標')}</small></button>`;}).join('')}
       <button class="btn" data-a="back"><span>返回</span><kbd>Esc</kbd></button>`;
   }
-  const tip={target:`【${G.weapon&&G.weapon.name}】點選紅框敵機`,repair:'點選綠框友軍修理',talk:'點選綠框敵機說服'}[G.mode];
-  return `<div class="fm-h">${tip||''}</div><button class="btn" data-a="back"><span>返回</span><kbd>Esc</kbd></button>`;
+  const tip={target:`【${G.weapon&&G.weapon.name}】`,repair:'修理',talk:'說服'}[G.mode]||'';
+  const n=G.targets.length, i=((G.tgtIdx||0)%n+n)%n, t=G.targets[i];
+  return `<div class="fm-bar"><span class="fm-tip">${tip}${t?`${t.ch} ${t.name}`:'無目標'}${n>1?` <small>${i+1}/${n}</small>`:''}</span>
+    ${n>1?`<button class="btn" data-a="tprev" title="上一個目標（←）">◀</button><button class="btn" data-a="tnext" title="下一個目標（→／Tab）">▶</button>`:''}
+    ${t?`<button class="btn pri" data-a="tok" title="確定（Enter）">確定</button>`:''}<button class="btn" data-a="back" title="返回（Esc）">返回</button></div>`;
 }
 function renderFMenu(){
   const fm=$('#fmenu'), s=G.sel; if(!fm) return;
   const show=G.phase==='P'&&!G.over&&!G.busy&&s&&s.side==='P'&&G.units.includes(s)&&((G.mode==='unit'&&(s.moved||G.menuOpen))||['weapon','target','repair','talk'].includes(G.mode));
   if(!show){ fm.hidden=true; return; }
-  fm.innerHTML=fmenuHtml(s); fm.hidden=false;
+  const compact=['target','repair','talk'].includes(G.mode);
+  if(compact&&G.targets.length){ const n=G.targets.length; G.tgtIdx=((G.tgtIdx||0)%n+n)%n; if(G.inspect!==G.targets[G.tgtIdx]){ G.inspect=G.targets[G.tgtIdx]; renderInfo(); } }
+  fm.classList.toggle('compact',compact); fm.innerHTML=fmenuHtml(s); fm.hidden=false;
   const cell=document.querySelector(`.c[data-x="${s.x}"][data-y="${s.y}"]`), board=$('.board');
   if(!cell||!board||!cell.getBoundingClientRect) return;
   const cr=cell.getBoundingClientRect(), br=board.getBoundingClientRect(), fw=fm.offsetWidth, fh=fm.offsetHeight;
-  let x=cr.right-br.left+6, y=cr.top-br.top-4;
-  if(x+fw>br.width-4) x=cr.left-br.left-fw-6;
-  if(x<4) x=Math.min(br.width-fw-4,cr.left-br.left);
-  y=Math.max(0,Math.min(y,br.height-fh));
-  fm.style.left=x+'px'; fm.style.top=y+'px';
+  const mp=$('#map').getBoundingClientRect(), cs=cr.width, pitch=G.W>1?(mp.width-cs)/(G.W-1):cs;
+  // 需要保持可見的格子與權重：可選目標最重要，其次是自己與其他機體、移動範圍
+  const imp=new Map(), addW=(x,y,w)=>{ const k=key(x,y); imp.set(k,Math.max(imp.get(k)||0,w)); };
+  if(G.mode==='unit'&&!s.moved&&G.reach) for(const v of G.reach.values()) if(v.stop) addW(v.x,v.y,1);
+  for(const u of G.units) addW(u.x,u.y,u.side==='E'?4:3);
+  addW(s.x,s.y,8);
+  const tg=['target','repair','talk'].includes(G.mode)?G.targets:G.mode==='weapon'||G.mode==='unit'?[...new Set(weaponsOf(s).flatMap(w=>whyNot(s,w,null,s.moved)?[]:targetsFor(s,w))),...repairTargets(s),...talkTargets(s)]:[];
+  for(const t of tg) addW(t.x,t.y,20);
+  const cells=[...imp].map(([k,w])=>{ const [x,y]=k.split(',').map(Number); const L=cr.left-br.left+(x-s.x)*pitch, T=cr.top-br.top+(y-s.y)*pitch; return {L,T,R:L+cs,B:T+cs,w}; });
+  const ux=cr.left-br.left, uy=cr.top-br.top, g=6;
+  // 只放在機體附近，挑遮住最少目標與機體的位置
+  const cand=compact?[[ux+cs/2-fw/2,uy-fh-g],[ux+cs/2-fw/2,uy+cs+g],[ux+cs+g,uy+cs/2-fh/2],[ux-fw-g,uy+cs/2-fh/2],[ux+cs/2-fw/2,uy-fh-g-cs],[ux+cs/2-fw/2,uy+cs*2+g]]
+    :[[ux+cs+g,uy-4],[ux+cs+g,uy+cs-fh+4],[ux-fw-g,uy-4],[ux-fw-g,uy+cs-fh+4],[ux+cs+g,uy+cs/2-fh/2],[ux-fw-g,uy+cs/2-fh/2],[ux,uy-fh-g],[ux+cs-fw,uy-fh-g],[ux,uy+cs+g],[ux+cs-fw,uy+cs+g]];
+  let best=null;
+  for(let [x,y] of cand){
+    x=Math.max(4,Math.min(x,br.width-fw-4)); y=Math.max(0,Math.min(y,br.height-fh));
+    let sc=0; for(const c of cells){ const ox=Math.min(x+fw,c.R)-Math.max(x,c.L), oy=Math.min(y+fh,c.B)-Math.max(y,c.T); if(ox>2&&oy>2) sc+=c.w*Math.min(1,ox*oy/(cs*cs)+.35); }
+    sc+=Math.hypot(x+fw/2-(ux+cs/2),y+fh/2-(uy+cs/2))/(cs*4);
+    if(!best||sc<best.sc) best={x,y,sc};
+  }
+  fm.style.left=best.x+'px'; fm.style.top=best.y+'px';
 }
 function renderHeader(){
   const ch=CH();
@@ -968,8 +989,11 @@ async function doTalk(s,e){
 async function onAction(a){
   const s=G.sel; if(!s||G.busy) return;
   if(a==='attack'){G.mode='weapon';render();}
-  else if(a==='repair'){G.targets=repairTargets(s);G.mode='repair';render();}
-  else if(a==='talk'){G.targets=talkTargets(s);G.mode='talk';render();}
+  else if(a==='repair'){G.targets=repairTargets(s);G.tgtIdx=0;G.mode='repair';render();}
+  else if(a==='talk'){G.targets=talkTargets(s);G.tgtIdx=0;G.mode='talk';render();}
+  else if(a==='tprev') cycleTarget(-1);
+  else if(a==='tnext') cycleTarget(1);
+  else if(a==='tok') confirmTarget();
   else if(a==='spirit'){await spiritMenu(s);}
   else if(a==='item'){await itemMenu(s);}
   else if(a==='wait'){finishUnit(s);}
@@ -983,7 +1007,9 @@ function cancel(){
   if(G.menuOpen){ G.menuOpen=false; render(); return; }
   G.sel=null;G.mode='idle';G.reach=null;render();
 }
-function pickWeapon(i){ const s=G.sel,w=weaponsOf(s)[i]; G.weapon=w; G.targets=targetsFor(s,w); G.mode='target'; render(); }
+function pickWeapon(i){ const s=G.sel,w=weaponsOf(s)[i]; G.weapon=w; G.targets=targetsFor(s,w).sort((a,b)=>a.hp-b.hp); G.tgtIdx=0; G.mode='target'; render(); }
+function cycleTarget(d){ if(!G.targets.length) return; G.tgtIdx=(G.tgtIdx||0)+d; sfx('menu'); render(); }
+function confirmTarget(){ const n=G.targets.length; if(!n) return; const t=G.targets[((G.tgtIdx||0)%n+n)%n]; onCell(t.x,t.y); }
 const spCost=(u,n)=>Math.round(SPIRITS[n].cost*(u.focusSk?0.8:1));
 async function itemMenu(s){
   const v=await ask(`<h2>道具</h2><p style="color:var(--mute)">${s.pilot}　HP ${fmt(s.hp)}/${fmt(s.maxHp)}　EN ${s.en}/${s.maxEn}　·　每台每回合可用一次，不消耗行動</p>
@@ -1685,6 +1711,11 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){ cancel(); return; }
   if(G.phase!=='P'||G.busy||G.over) return;
   const k=(e.key||'').toLowerCase();
+  if(['target','repair','talk'].includes(G.mode)){
+    if(k==='arrowright'||k==='arrowdown'||k==='tab'){ e.preventDefault(); cycleTarget(e.shiftKey?-1:1); return; }
+    if(k==='arrowleft'||k==='arrowup'){ e.preventDefault(); cycleTarget(-1); return; }
+    if(k==='enter'||k===' '){ e.preventDefault(); confirmTarget(); return; }
+  }
   if(k==='tab'){ e.preventDefault(); nextUnit(); return; }
   if(k==='e'&&!e.metaKey&&!e.ctrlKey){ if(G.sel&&G.sel.moved) return; G.sel=null; G.mode='idle'; endPlayerPhase(); return; }
   if(!G.sel) return;
@@ -1695,6 +1726,8 @@ document.addEventListener('keydown',e=>{
 $('#map').addEventListener('contextmenu',e=>{ e.preventDefault(); if(G.phase==='P'&&!G.busy) cancel(); });
 $('#fmenu').addEventListener('click',e=>{const b=e.target.closest('button'); if(!b||b.disabled) return; e.stopPropagation(); if(b.dataset.a!=='cancel'&&b.dataset.a!=='back') sfx('menu'); if(b.dataset.w!=null) pickWeapon(+b.dataset.w); else onAction(b.dataset.a);});
 window.addEventListener('resize',()=>renderFMenu());
+$('#map').addEventListener('mousemove',()=>{ const fm=$('#fmenu'); if(fm&&!fm.hidden) fm.classList.add('dim'); });
+$('#fmenu').addEventListener('mouseenter',e=>e.currentTarget.classList.remove('dim'));
 document.querySelector('.mapwrap').addEventListener('scroll',()=>renderFMenu());
 window.addEventListener('resize',()=>{fitMap();});
 
