@@ -691,7 +691,7 @@ Screens.tracePick = {
 /* ---------------- write: tracing ---------------- */
 const TR = { cv: null, cx: null, dpr: 1, W: 0, H: 0, s: 1, ox: 0, oy: 0, l: 'a', stage: 0, strokes: [], cur: 0, ink: [],
   down: false, active: false, last: null, demo: null, miss: 0, done: false, raf: 0 };
-const TOL = [10, 12, 14];
+const TOL = [12, 14, 16];
 const mpath = $('#mpath');
 function buildStrokes(l) {
   return STROKES[l].map(d => {
@@ -741,9 +741,18 @@ function trDraw() {
     c.strokeStyle = 'rgba(138,99,255,.55)'; c.lineWidth = 3.4; c.beginPath(); c.moveTo(TR.ink[0].x, TR.ink[0].y);
     for (const p of TR.ink) c.lineTo(p.x, p.y); c.stroke();
   }
-  // start dot + direction arrow for the current stroke
+  // demo finger
+  if (TR.demo && TR.demo.k != null && TR.strokes[TR.demo.k]) {
+    c.strokeStyle = 'rgba(255,92,154,.55)'; c.lineWidth = 9;
+    for (let i = 0; i < TR.demo.k; i++) c.stroke(TR.strokes[i].p2);
+    const s2 = TR.strokes[TR.demo.k], j = Math.round(TR.demo.f * (s2.pts.length - 1));
+    polyline(c, s2.pts, 0, j);
+    const p = s2.pts[j]; c.fillStyle = '#ff5c9a'; c.strokeStyle = '#fff'; c.lineWidth = 2;
+    c.beginPath(); c.arc(p.x, p.y, 6.5, 0, 7); c.fill(); c.stroke();
+  }
+  // drawn last so it stays on top: start dot + direction arrow for the current stroke
   const st = TR.strokes[TR.cur];
-  if (st && !TR.done && !TR.demo && (TR.stage < 2 || TR.miss >= 2)) {
+  if (st && !TR.done && (TR.stage < 2 || TR.miss >= 1)) {
     const p = st.pts[Math.min(st.prog, st.pts.length - 1)];
     if (st.prog === 0) {
       if (TR.stage === 0 && st.pts.length > 4) {
@@ -755,16 +764,7 @@ function trDraw() {
       c.fillStyle = '#2fbf68'; c.strokeStyle = '#fff'; c.lineWidth = 1.6;
       c.beginPath(); c.arc(p.x, p.y, 6, 0, 7); c.fill(); c.stroke();
       if (TR.strokes.length > 1) { c.fillStyle = '#fff'; c.font = '700 7px Fredoka, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(TR.cur + 1, p.x, p.y + 0.3); }
-    } else { c.fillStyle = col; c.beginPath(); c.arc(p.x, p.y, 4, 0, 7); c.fill(); }
-  }
-  // demo finger
-  if (TR.demo && TR.demo.k != null && TR.strokes[TR.demo.k]) {
-    c.strokeStyle = 'rgba(255,92,154,.55)'; c.lineWidth = 9;
-    for (let i = 0; i < TR.demo.k; i++) c.stroke(TR.strokes[i].p2);
-    const s2 = TR.strokes[TR.demo.k], j = Math.round(TR.demo.f * (s2.pts.length - 1));
-    polyline(c, s2.pts, 0, j);
-    const p = s2.pts[j]; c.fillStyle = '#ff5c9a'; c.strokeStyle = '#fff'; c.lineWidth = 2;
-    c.beginPath(); c.arc(p.x, p.y, 6.5, 0, 7); c.fill(); c.stroke();
+    } else { c.fillStyle = '#2fbf68'; c.strokeStyle = '#fff'; c.lineWidth = 1.6; c.beginPath(); c.arc(p.x, p.y, 5.5, 0, 7); c.fill(); c.stroke(); }
   }
 }
 function stopDemo() { if (TR.demo) { TR.demo = null; reqDraw(); } }
@@ -795,6 +795,7 @@ function advance(q) {
   if (st.prog >= st.pts.length - 1) { st.prog = st.pts.length; strokeDone(); }
 }
 function strokeDone() {
+  const st = TR.strokes[TR.cur]; if (st) st.prog = st.pts.length;
   SFX.pop(); TR.cur++; TR.ink = []; TR.active = false; TR.miss = 0;
   if (TR.cur >= TR.strokes.length) letterDone();
 }
@@ -805,7 +806,12 @@ function trDown(e) {
   const p = toL(e); TR.down = true; TR.ink = [p]; TR.last = p;
   const st = TR.strokes[TR.cur];
   if (!st) { TR.down = false; return; }
-  TR.active = dist(p, st.pts[Math.min(st.prog, st.pts.length - 1)]) <= TOL[TR.stage] * 1.7;
+  // a finger may come back anywhere on the part already traced (or a little ahead of it) and carry on;
+  // starting again from the beginning of the stroke is fine too
+  const tol = TOL[TR.stage] * 1.7, upto = Math.min(st.pts.length - 1, st.prog + 2);
+  TR.active = false;
+  for (let j = 0; j <= upto; j++) if (dist(p, st.pts[j]) <= tol) { TR.active = true; break; }
+  TR.gain = st.prog;
   if (TR.active) advance(p);
   reqDraw();
 }
@@ -827,11 +833,17 @@ function trMove(e) {
 function trUp() {
   if (!TR.down) return;
   TR.down = false;
-  if (!TR.done && !TR.active && TR.ink.length > 6) {
+  const st = TR.strokes[TR.cur];
+  if (TR.done || !st) { reqDraw(); return; }
+  // nearly there counts: a stroke traced 80% of the way is finished for the child
+  if (TR.active && st.prog >= st.pts.length * 0.8) { strokeDone(); reqDraw(); return; }
+  const stuck = TR.ink.length > 6 && (!TR.active || st.prog === TR.gain);
+  if (stuck) {
     TR.miss++; SFX.soft();
+    if (TR.miss >= 3) demo();                       // show the way again
     say(['Start at the green dot!', zh('dot', '從綠色的點開始喔！')]);
   }
-  if (!TR.active) TR.ink = [];
+  TR.ink = [];
   reqDraw();
 }
 const STAGE_INTRO = [
