@@ -1,9 +1,9 @@
 # Sunny Circuit
 
-A bright toy-car arcade racer in 3D. Race five rivals over 3 or 5 laps, drift through corners for a mini-turbo and hit the boost pads. Everything runs from one file (`index.html`) with no build step and no image or sound files. The only download is Three.js, loaded from a CDN, so it needs an internet connection the first time it loads.
+A bright toy-car arcade racer in 3D. Race five rivals or the ghost of your best lap, drift through corners for a mini-turbo, slipstream and hit the boost pads, and earn credits to buy cars and parts. Everything runs from one file (`index.html`) with no build step and no image or sound files. The only download is Three.js, loaded from a CDN, so it needs an internet connection the first time it loads.
 
 ## Play
-Open `index.html` in a browser, pick a track, your car and its color, laps and rival difficulty, then press **Race!** (or Enter). The menu shows your car in a showroom view.
+Open `index.html` in a browser, pick a mode (**Quick race**, **Grand Prix** or **Time trial**), a track and direction, your car and its color, laps and rival difficulty, then press **Race!** (or Enter). The menu shows your car in a showroom view.
 
 | Key | Action |
 |---|---|
@@ -20,6 +20,12 @@ Open `index.html` in a browser, pick a track, your car and its color, laps and r
 **Drift boost:** hold drift while turning. The bar under the speedometer fills: blue sparks give a short boost when you let go, orange sparks a longer one. Hitting a wall cancels the drift.
 
 **Boost pads:** the blue pads with yellow arrows give a burst of speed.
+
+**Perfect start:** press the gas (on touch screens, tap **DRIFT**) the moment the lights go green for a boost off the line. Hold the gas down too early and the wheels spin for a moment.
+
+**Slipstream:** tuck in close behind another car on a straight and **SLIPSTREAM** lights up above the speedometer: you get up to about 11 km/h extra top speed to pull out and pass. Rivals do it too.
+
+**Damage:** hard hits on walls and other cars lower your top speed by up to about 13%, shown as **DAMAGE** above the speedometer, and a badly damaged car smokes. It repairs very slowly during the race and fully before the next one.
 
 ## Phones and tablets
 Touch controls turn on automatically. The car accelerates by itself. Steer with ◀ ▶ on the left, hold **DRIFT** while turning and let go for a boost, and hold **BRAKE** to slow down or reverse. **II** pauses; the pause menu has **Back on track** if you get turned around. Both orientations work; landscape plays best.
@@ -38,18 +44,32 @@ Six models, each with its own look and a small handling difference. Bodies are l
 
 In a test where the same driver drove every car, average lap times were within about half a second of each other.
 
+## Career: credits
+Every race pays credits, shown at the bottom of the results:
+
+| | Easy | Normal | Hard | Expert |
+|---|---|---|---|---|
+| 1st place (3 laps) | 600 | 1,000 | 1,500 | 2,200 |
+
+- 2nd to 6th pay 70%, 50%, 35%, 25% and 15% of that. 2 laps pay two thirds, 5 laps five thirds.
+- Bonuses: fastest lap (150 × the level factor) and a clean race with no wall hits (120 × the level factor).
+- Grand Prix races pay 80% of a quick race, plus 3,000 / 2,000 / 1,200 × the level factor for finishing the championship 1st, 2nd or 3rd.
+- Time trial medals pay 300 (bronze), 600 (silver) and 1,000 (gold) per layout, once each.
+
+You start with 2,000 credits and three cars: GT Coupe, Rally Hatch and Roadster. The Baja Truck costs 3,000, the Muscle 4,500 and the Prototype 9,000; click a locked car in the menu to buy it. **Expert** rivals unlock once you finish a Hard Grand Prix in the top three. Credits, cars and parts are saved in this browser.
+
 ## Garage: parts
 Each base car can be fitted with parts in the **Garage** (in the menu, under the car list). Parts change how the car looks and drives, and each costs tuning points from a budget of 8, so you have to choose.
 
-| Slot | Options (points) | Effect |
+| Slot | Options (points, price) | Effect |
 |---|---|---|
-| Rear wing | None, Lip spoiler (1), GT wing (2), Race wing (3) | More grip in corners, less top speed |
-| Tyres | Street, Sport (1), Slicks (2), Off-road (1) | Slicks grip best on tarmac but are hopeless on grass and slow to charge drifts; off-road tyres barely slow down on grass but grip less |
-| Engine | Stock, Tuned (2), Turbo (4) | More top speed and acceleration; the turbo also makes the rear step out more |
-| Body kit | None, Aero kit (2), Lightweight (2), Rally kit (1) | Aero: more grip, worse on grass. Lightweight: quicker but easier to push around. Rally: better on grass, slightly slower |
-| Rims, rim finish | Six styles, five finishes | Looks only |
+| Rear wing | None, Lip spoiler (1, 400 cr), GT wing (2, 900 cr), Race wing (3, 1,800 cr) | More grip in corners, less top speed |
+| Tyres | Street, Sport (1, 500 cr), Slicks (2, 1,500 cr), Off-road (1, 700 cr) | Slicks grip best on tarmac but are hopeless on grass and slow to charge drifts; off-road tyres barely slow down on grass but grip less |
+| Engine | Stock, Tuned (2, 1,500 cr), Turbo (4, 4,000 cr) | More top speed and acceleration; the turbo also makes the rear step out more |
+| Body kit | None, Aero kit (2, 1,100 cr), Lightweight (2, 1,400 cr), Rally kit (1, 600 cr) | Aero: more grip, worse on grass. Lightweight: quicker but easier to push around. Rally: better on grass, slightly slower |
+| Rims, rim finish | Six styles, five finishes | Looks only, free |
 
-Every car starts with its stock parts, which give it the character described above. The stat bars show your build against stock. Parts are saved per car. Rivals race on stock parts.
+Every car comes with its stock parts, which give it the character described above. Other parts are bought once with credits and then fit every car you own; parts you have not bought show their price with a dashed border. The stat bars show your build against stock. Parts are saved per car. On Hard the rivals fit a tuned engine, on Expert a turbo where it fits their budget.
 
 ## Tracks
 1. **Meadow Loop**: 2.4 km with a hairpin, esses and a fast back straight through farmland, with snowy mountains, villages, barns and silos, wind turbines, ponds and hot-air balloons. Laps take about 70 seconds.
@@ -58,9 +78,11 @@ Every car starts with its stock parts, which give it the character described abo
 4. **Desert Canyon**: 2.4 km speedway: two huge straights and a twisting canyon section through red rock: striped mesas, a stone arch, cacti, an oasis, a roadside diner and wind pumps. About 70 seconds.
 5. **Harbor City**: 2.2 km street circuit at night with right-angle corners round city blocks and a chicane, between lit towers, with street lamps, neon signs, a container port with cranes, stars and the moon. Cars light the road with their headlights. About 74 seconds.
 
+Every track can also be driven in **Reverse** (pick it above the track list in Quick race and Time trial), which turns each corner into its mirror and needs different braking points. The Grand Prix always runs forward.
+
 All tracks have a grandstand, pit garages, a footbridge, advertising boards, tyre walls and gravel traps on the outside of the bends. The road is 13.5 m wide.
 
-Best race time (per track and lap count) and best lap (per track) are saved in this browser.
+Best race time (per track, direction and lap count) and best lap (per track and direction) are saved in this browser.
 
 ## Grand Prix
 Choose **Grand Prix** in the menu to race all five tracks in order with the same rivals, laps and difficulty.
@@ -68,18 +90,24 @@ Choose **Grand Prix** in the menu to race all five tracks in order with the same
 - Points per race: 10, 8, 6, 4, 2 and 1 for 1st to 6th, plus 1 for the fastest lap.
 - After every race the results show the points earned and the championship standings. Ties are split by number of wins.
 - Progress is saved, so you can leave between races and continue later. **Abandon** in the menu starts over.
-- Finishing the championship in the top three wins a gold, silver or bronze cup for that difficulty. The best cup for Easy, Normal and Hard is shown in the menu.
+- Finishing the championship in the top three wins a gold, silver or bronze cup for that difficulty, plus credits. The best cup for each level is shown in the menu.
+
+## Time trial
+Choose **Time trial** to drive alone. Each lap is timed, and your best lap on each layout is saved as a **ghost**: a see-through car that drives it again next time. Under the lap timer, the green or red number is how far ahead (−) or behind (+) the ghost you are at that point of the lap.
+
+Each layout has bronze, silver and gold target lap times, shown in the menu. A tidy lap in the stock GT without drift boosts earns bronze; gold needs drift boosts and clean lines all the way round.
 
 ## Rivals
-Bolt, Pip, Rosa, Mango and Zippy. They brake for corners, change lanes to pass and use the boost pads. You start at the back of the grid.
+Bolt, Pip, Rosa, Mango and Zippy. They brake for corners, take a racing line (wide on the way in, clipping the inside at the apex), change lanes to pass, slipstream, and use the boost pads. You start at the back of the grid.
 
 | Level | How the rivals drive |
 |---|---|
-| Easy | about 10% slower on the straights, careful in corners |
-| Normal | close to your top speed, sometimes boost out of corners |
-| Hard | slightly faster than you, carry speed through corners and often boost out of them. You will need drift boosts to win. |
+| Easy | a little slower than you on the straights, careful in corners, loose lines |
+| Normal | as fast as you, follow the racing line, sometimes boost out of corners and make a good start |
+| Hard | faster than you with tuned engines, carry more speed through corners and often boost out of them. You will need drift boosts and slipstream to win. |
+| Expert | turbo engines, near-perfect lines, boost out of almost every corner and usually make a perfect start. Unlocked by a Hard Grand Prix podium. |
 
-If you pull ahead, the rivals speed up a little to keep the race close (more on Hard).
+In tests with a tidy computer driver in the stock GT, Easy was a clear win, Normal a close race, Hard about 1–4 seconds short over 3 laps and Expert about 6 seconds short. If you pull ahead, the rivals speed up a little to keep the race close (more on harder levels).
 
 ## How it is built
 - Each track is a closed Catmull-Rom spline through a list of points. It is sampled about once per meter, and the road, kerbs, run-off and walls are built as ribbons along it.
