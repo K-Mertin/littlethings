@@ -27,6 +27,10 @@ Open `index.html` in a browser, pick a mode (**Quick race**, **Grand Prix** or *
 
 **Damage:** hard hits on walls and other cars lower your top speed by up to about 13%, shown as **DAMAGE** above the speedometer, and a badly damaged car smokes. It repairs very slowly during the race and fully before the next one.
 
+**Tyre wear:** tyres wear as you drive, faster when they slide or drift. **TYRES %** above the speedometer shows what is left; fully worn tyres have about a fifth less grip, so the end of a 5-lap race is slipperier than the start. Slicks wear fastest, street and off-road tyres slowest. Tyres are fresh for every race.
+
+**Weather:** choose **Dry**, **Rain** or **Random** in Quick race (on the Alpine Pass rain falls as snow). On a wet road every car has about a fifth less grip and brakes later; slicks lose a lot more, off-road and street tyres the least. The sky darkens, the road shines, cars throw up spray and you see less far ahead. Wet races pay 25% more credits. In the Grand Prix each round has its own forecast, shown in the calendar; time trials are always dry.
+
 ## Phones and tablets
 Touch controls turn on automatically. The car accelerates by itself. Steer with ◀ ▶ on the left, hold **DRIFT** while turning and let go for a boost, and hold **BRAKE** to slow down or reverse. **II** pauses; the pause menu has **Back on track** if you get turned around. Both orientations work; landscape plays best.
 
@@ -47,16 +51,16 @@ In a test where the same driver drove every car, average lap times were within a
 ## Career: credits
 Every race pays credits, shown at the bottom of the results:
 
-| | Easy | Normal | Hard | Expert |
-|---|---|---|---|---|
-| 1st place (3 laps) | 600 | 1,000 | 1,500 | 2,200 |
+| | Easy | Normal | Hard | Expert | Legend |
+|---|---|---|---|---|---|
+| 1st place (3 laps) | 600 | 1,000 | 1,500 | 2,200 | 3,000 |
 
 - 2nd to 6th pay 70%, 50%, 35%, 25% and 15% of that. 2 laps pay two thirds, 5 laps five thirds.
-- Bonuses: fastest lap (150 × the level factor) and a clean race with no wall hits (120 × the level factor).
+- Bonuses: fastest lap (150 × the level factor), a clean race with no wall hits (120 × the level factor), and +25% for a wet race.
 - Grand Prix races pay 80% of a quick race, plus 3,000 / 2,000 / 1,200 × the level factor for finishing the championship 1st, 2nd or 3rd.
 - Time trial medals pay 300 (bronze), 600 (silver) and 1,000 (gold) per layout, once each.
 
-You start with 2,000 credits and three cars: GT Coupe, Rally Hatch and Roadster. The Baja Truck costs 3,000, the Muscle 4,500 and the Prototype 9,000; click a locked car in the menu to buy it. **Expert** rivals unlock once you finish a Hard Grand Prix in the top three. Credits, cars and parts are saved in this browser.
+You start with 2,000 credits and three cars: GT Coupe, Rally Hatch and Roadster. The Baja Truck costs 3,000, the Muscle 4,500 and the Prototype 9,000; click a locked car in the menu to buy it. **Expert** rivals unlock once you finish a Hard Grand Prix in the top three, **Legend** after an Expert one. Credits, cars and parts are saved in this browser.
 
 ## Garage: parts
 Each base car can be fitted with parts in the **Garage** (in the menu, under the car list). Parts change how the car looks and drives, and each costs tuning points from a budget of 8, so you have to choose.
@@ -95,7 +99,7 @@ Choose **Grand Prix** in the menu to race all five tracks in order with the same
 ## Time trial
 Choose **Time trial** to drive alone. Each lap is timed, and your best lap on each layout is saved as a **ghost**: a see-through car that drives it again next time. Under the lap timer, the green or red number is how far ahead (−) or behind (+) the ghost you are at that point of the lap.
 
-Each layout has bronze, silver and gold target lap times, shown in the menu. A tidy lap in the stock GT without drift boosts earns bronze; gold needs drift boosts and clean lines all the way round.
+Each layout has bronze, silver and gold target lap times, shown in the menu. A tidy lap in the stock GT without drift boosts earns bronze; silver and gold need drift boosts and clean lines all the way round, and fresh tyres help, so your first flying lap is often the quickest.
 
 ## Rivals
 Bolt, Pip, Rosa, Mango and Zippy. They brake for corners, take a racing line (wide on the way in, clipping the inside at the apex), change lanes to pass, slipstream, and use the boost pads. You start at the back of the grid.
@@ -104,10 +108,11 @@ Bolt, Pip, Rosa, Mango and Zippy. They brake for corners, take a racing line (wi
 |---|---|
 | Easy | a little slower than you on the straights, careful in corners, loose lines |
 | Normal | as fast as you, follow the racing line, sometimes boost out of corners and make a good start |
-| Hard | faster than you with tuned engines, carry more speed through corners and often boost out of them. You will need drift boosts and slipstream to win. |
-| Expert | turbo engines, near-perfect lines, boost out of almost every corner and usually make a perfect start. Unlocked by a Hard Grand Prix podium. |
+| Hard | faster than you with tuned engines, carry more speed through corners and often boost out of them, and occasionally block. You will need drift boosts and slipstream to win. |
+| Expert | turbo engines, near-perfect lines, boost out of almost every corner, usually make a perfect start, and the car just ahead of you sometimes moves over to block. Unlocked by a Hard Grand Prix podium. |
+| Legend | faster again than Expert, blocking more often. Unlocked by an Expert Grand Prix podium. |
 
-In tests with a tidy computer driver in the stock GT, Easy was a clear win, Normal a close race, Hard about 1–4 seconds short over 3 laps and Expert about 6 seconds short. If you pull ahead, the rivals speed up a little to keep the race close (more on harder levels).
+In tests with a tidy computer driver in the stock GT over 3 dry laps, Easy was a clear win, Normal about 1–3 seconds short, Hard 2–6 seconds, Expert 6–10 seconds and Legend 7–14 seconds. If you pull ahead, the rivals speed up a little to keep the race close (more on harder levels).
 
 ## How it is built
 - Each track is a closed Catmull-Rom spline through a list of points. It is sampled about once per meter, and the road, kerbs, run-off and walls are built as ribbons along it.

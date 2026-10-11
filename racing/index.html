@@ -43,6 +43,7 @@
   .tags{display:flex;gap:4px;justify-content:flex-end;min-height:0}
   .tags span{font-size:10px;font-weight:800;letter-spacing:.06em;padding:2px 6px;border-radius:6px;margin-bottom:4px}
   #hDraft{background:#2fb8ff;color:#fff} #hDmg{background:#ff5a4a;color:#fff}
+  #hTyre{background:rgba(34,48,90,.1);color:var(--ink)} #hTyre.mid{background:#ffcf4a} #hTyre.low{background:#ff5a4a;color:#fff} #hWx{background:#5d6b82;color:#fff}
   body.touch .tags{justify-content:center}
   .meter{height:8px;border-radius:4px;background:rgba(34,48,90,.12);overflow:hidden;margin-top:6px}
   .meter i{display:block;height:100%;width:0;border-radius:4px;background:#5fc8ff;transition:background .15s}
@@ -192,7 +193,7 @@
   <div class="chip" id="lapBox"><div class="gp" id="hGp" hidden></div><div class="lap" id="hLap">Lap 1/3</div><div class="time" id="hTime">0:00.00</div><div class="delta" id="hDelta" hidden></div></div>
   <canvas class="chip" id="mini" width="300" height="300"></canvas>
   <button id="pauseBtn" aria-label="Pause">II</button>
-  <div class="chip" id="speedo"><div class="tags"><span id="hDraft" hidden>SLIPSTREAM</span><span id="hDmg" hidden></span></div><b id="hSpd">0</b><small>km/h</small><div class="meter"><i id="hMeter"></i></div></div>
+  <div class="chip" id="speedo"><div class="tags"><span id="hDraft" hidden>SLIPSTREAM</span><span id="hDmg" hidden></span><span id="hTyre"></span><span id="hWx" hidden></span></div><b id="hSpd">0</b><small>km/h</small><div class="meter"><i id="hMeter"></i></div></div>
 </div>
 <div id="big" hidden></div>
 <div id="toast" hidden></div>
@@ -221,6 +222,7 @@
     <div class="opts">
       <div><div class="lbl">Laps</div><div class="seg" id="lapSeg"></div></div>
       <div><div class="lbl">Rivals</div><div class="seg" id="diffSeg"></div></div>
+      <div id="wxBox"><div class="lbl">Weather</div><div class="seg" id="wxSeg"></div></div>
     </div>
     <button class="go" id="startBtn">Race!</button>
     <p class="help" id="helpKeys"><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&larr;</kbd><kbd>&rarr;</kbd> or <kbd>WASD</kbd> drive &middot; hold <kbd>Space</kbd> while turning to drift, let go for a boost &middot; press gas the moment the lights go green for a perfect start &middot; tuck in behind a car to slipstream &middot; <kbd>R</kbd> back on track &middot; <kbd>P</kbd> pause &middot; <kbd>M</kbd> sound</p>
@@ -351,12 +353,19 @@ const AI_NAMES = ['Bolt', 'Pip', 'Rosa', 'Mango', 'Zippy'];
 const DIFFS = [
   { name: 'Easy', skill: 0.96, corner: 23.5, turbo: 0.25, band: 0.05, line: 0.45, launch: 0.15, engine: null },
   { name: 'Normal', skill: 1.01, corner: 26.6, turbo: 0.55, band: 0.08, line: 0.8, launch: 0.35, engine: null },
-  { name: 'Hard', skill: 1.04, corner: 28.2, turbo: 0.8, band: 0.11, line: 0.95, launch: 0.55, engine: 'tuned' },
-  { name: 'Expert', skill: 1.06, corner: 29.2, turbo: 1, band: 0.14, line: 1, launch: 0.8, engine: 'turbo' },
+  { name: 'Hard', skill: 1.04, corner: 28.2, turbo: 0.8, band: 0.11, line: 0.95, launch: 0.55, engine: 'tuned', defend: 0.25 },
+  { name: 'Expert', skill: 1.06, corner: 29.2, turbo: 1, band: 0.14, line: 1, launch: 0.8, engine: 'turbo', defend: 0.5 },
+  { name: 'Legend', skill: 1.08, corner: 30.2, turbo: 1, band: 0.17, line: 1, launch: 0.92, engine: 'turbo', defend: 0.9 },
 ];
 const LAP_OPTS = [2, 3, 5];
 
 const W = 6.75, KERB = 1.2, WALL = W + KERB + 3.8;      // road half-width, kerb width, wall offset
+/* ---------- weather and tyres ---------- */
+const WX = { wet: false };                       // the current race's weather
+const TYRE_WEAR = { street: 0.75, sport: 1, slick: 1.6, offroad: 0.8 };
+const TYRE_WET = { street: 1, sport: 0.97, slick: 0.86, offroad: 1.02 };    // how each tyre copes with a wet road
+const WEAR_LOSS = 0.22;                          // grip lost on fully worn tyres
+const gripF = c => (WX.wet ? 0.82 * (TYRE_WET[c.parts?.tyres] || 1) : 1) * (1 - (c.wear || 0) * WEAR_LOSS);
 const PHY = { maxv: 38, acc: 25, brake: 44, rev: 11, grip: 10, driftGrip: 2.6, steer: 2.35, boost: 13, latG: 28, driftG: 24, draft: 3.2 };
 
 const settings = {
@@ -364,7 +373,8 @@ const settings = {
   color: clamp(store.get('color', 0), 0, COLORS.length - 1),
   model: clamp(store.get('model', 0), 0, 5),
   laps: LAP_OPTS.includes(store.get('laps', 3)) ? store.get('laps', 3) : 3,
-  diff: clamp(store.get('diff', 1), 0, 3),
+  diff: clamp(store.get('diff', 1), 0, 4),
+  weather: ['sun', 'rain', 'random'].includes(store.get('weather', 'sun')) ? store.get('weather', 'sun') : 'sun',
   reverse: !!store.get('reverse', false),
   sound: store.get('sound', true),
   mode: ['race', 'gp', 'tt'].includes(store.get('mode', 'race')) ? store.get('mode', 'race') : 'race',
@@ -391,6 +401,7 @@ const camera = new THREE.PerspectiveCamera(62, 1, 0.3, 4000);
 const hemi = new THREE.HemisphereLight(0xffffff, 0x88aa66, 1.0);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffffff, 2.3);
+let WX_ADD = false;
 sun.castShadow = true;
 sun.shadow.mapSize.set(TOUCH ? 1024 : 2048, TOUCH ? 1024 : 2048);
 Object.assign(sun.shadow.camera, { left: -55, right: 55, top: 55, bottom: -55, near: 1, far: 260 });
@@ -599,6 +610,50 @@ function autoBoosts() {                        // pads on the straights, spread 
   for (const i of cand) if (out.every(([f]) => Math.abs(f * N - i) > 230 / seg) && out.length < 7) out.push([i / N, lats[out.length % 3]]);
   return out;
 }
+/* rain (or snow on the Alpine Pass): streaks that follow the camera, a darker sky and a shiny road */
+const RAIN_N = 2200, rainPos = new Float32Array(RAIN_N * 6), rainGeo = new THREE.BufferGeometry();
+for (let i = 0; i < RAIN_N; i++) { const x = (Math.random() - 0.5) * 110, y = Math.random() * 40, z = (Math.random() - 0.5) * 110; rainPos.set([x, y, z, x, y - 0.9, z], i * 6); }
+rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+const rainMat = new THREE.LineBasicMaterial({ color: 0xc8d4e6, transparent: true, opacity: 0.45, depthWrite: false });
+const rain = new THREE.LineSegments(rainGeo, rainMat); rain.frustumCulled = false; rain.visible = false;
+const isSnow = () => TR.def.theme.kind === 'alpine';
+const wxName = wet => !wet ? 'Dry' : isSnow() ? 'Snow' : 'Rain';
+function mixHex(a, b, f) { const A = new THREE.Color(a), B = new THREE.Color(b); return '#' + A.lerp(B, f).getHexString(); }
+function applyWeather(wet) {
+  WX.wet = wet;
+  if (!WX_ADD) { scene.add(rain); WX_ADD = true; }
+  const th = TR.def.theme, grey = th.night ? '#0c1018' : isSnow() ? '#c9d2dc' : '#7d8794', f = th.night ? 0.4 : 0.7;
+  if (scene.background) scene.background.dispose();
+  scene.background = wet ? skyTex(mixHex(th.skyTop, grey, f), mixHex(th.skyBot, grey, f)) : skyTex(th.skyTop, th.skyBot);
+  scene.fog.color.set(wet ? mixHex(th.fog, grey, f) : th.fog);
+  scene.fog.near = wet ? 90 : 320; scene.fog.far = (TR.rad * 2 + 1300) * (wet ? 0.45 : 1);
+  hemi.intensity = (th.hemiI ?? 1.0) * (wet ? 0.8 : 1);
+  sun.intensity = (th.sunI ?? 2.3) * (wet ? 0.35 : 1);
+  renderer.toneMappingExposure = (th.exposure ?? 1.05) * (wet ? 0.95 : 1);
+  if (TR.roadMat) { TR.roadMat.roughness = wet ? 0.38 : 0.92; TR.roadMat.metalness = wet ? 0.12 : 0; TR.roadMat.color.set(wet ? 0xa9afba : 0xffffff); }
+  rain.visible = wet;
+  const snow = isSnow(); rainMat.color.set(snow ? 0xffffff : 0xc8d4e6); rainMat.opacity = snow ? 0.8 : 0.42;
+  rain.userData.speed = snow ? 5 : 32; rain.userData.len = snow ? 0.12 : 0.9;
+}
+function rainStep(dt) {
+  if (!rain.visible) return;
+  const a = rainPos, sp = rain.userData.speed * dt, len = rain.userData.len, cx = camera.position.x, cz = camera.position.z;
+  for (let i = 0; i < a.length; i += 6) {
+    a[i + 1] -= sp; a[i + 4] = a[i + 1] - len;
+    if (a[i + 1] < 0) { a[i + 1] += 40; a[i + 4] = a[i + 1] - len; }
+    let x = a[i], z = a[i + 2];                // keep the box centered on the camera
+    if (x - cx > 55) x -= 110; else if (x - cx < -55) x += 110;
+    if (z - cz > 55) z -= 110; else if (z - cz < -55) z += 110;
+    a[i] = a[i + 3] = x; a[i + 2] = a[i + 5] = z;
+  }
+  rainGeo.attributes.position.needsUpdate = true;
+}
+function raceWeather() {                         // decided when a race starts
+  if (settings.mode === 'tt') return false;
+  if (gpActive()) return !!(GP.wx && GP.wx[GP.round]);
+  return settings.weather === 'rain' || (settings.weather === 'random' && Math.random() < 0.4);
+}
+
 function buildWorld(def) {
   disposeWorld();
   TR = buildTrackData(def);
@@ -612,6 +667,7 @@ function buildWorld(def) {
   hemi.color.set(th.hemiSky); hemi.groundColor.set(th.hemiGround); hemi.intensity = th.hemiI ?? 1.0;
   sun.color.set(th.sun); sun.intensity = th.sunI ?? 2.3; renderer.toneMappingExposure = th.exposure ?? 1.05;
   sun.userData.dir = new THREE.Vector3(...th.sunDir).normalize();
+  WX.wet = false; rain.visible = false;
 
   // ground
   const gt = groundTex(th.ground); gt.repeat.set(160, 160);
@@ -630,7 +686,7 @@ function buildWorld(def) {
 
   // road, kerbs, run-off, walls
   const roadMat = new THREE.MeshStandardMaterial({ map: TEX.road, roughness: 0.92, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-  ribbon(-W, W, 0.02, 16, roadMat);
+  ribbon(-W, W, 0.02, 16, roadMat); TR.roadMat = roadMat;
   const kerbMat = new THREE.MeshStandardMaterial({ map: TEX.kerb, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   ribbon(-W - KERB, -W, 0.03, 3, kerbMat); ribbon(W, W + KERB, 0.03, 3, kerbMat);
   const runMat = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
@@ -1753,10 +1809,10 @@ const PARTS = {
     { id: 'gt', name: 'GT wing', cost: 2, mods: { grip: 0.03, top: -0.018 }, desc: 'Noticeably more grip, some drag on the straights.' },
     { id: 'big', name: 'Race wing', cost: 3, mods: { grip: 0.05, top: -0.035 }, desc: 'Most downforce of all, slowest on long straights.' } ] },
   tyres: { label: 'Tyres', opts: [
-    { id: 'street', name: 'Street', cost: 0, mods: {}, desc: 'All-rounders: fine on tarmac and grass.' },
+    { id: 'street', name: 'Street', cost: 0, mods: {}, desc: 'All-rounders: fine on tarmac and grass, good in the wet, wear slowly.' },
     { id: 'sport', name: 'Sport', cost: 1, mods: { grip: 0.025, off: -0.05 }, desc: 'Grippier on tarmac, a little worse on grass.' },
-    { id: 'slick', name: 'Slicks', cost: 2, mods: { grip: 0.05, off: -0.15, drift: -0.15 }, desc: 'Best grip on tarmac, hopeless on grass, slower to charge drifts.' },
-    { id: 'offroad', name: 'Off-road', cost: 1, mods: { grip: -0.04, off: 0.25, drift: 0.05 }, desc: 'Knobbly: barely slowed by grass, less grip on tarmac.' } ] },
+    { id: 'slick', name: 'Slicks', cost: 2, mods: { grip: 0.05, off: -0.15, drift: -0.15 }, desc: 'Best grip on a dry road, hopeless on grass and in the wet, slower to charge drifts, wear fast.' },
+    { id: 'offroad', name: 'Off-road', cost: 1, mods: { grip: -0.04, off: 0.25, drift: 0.05 }, desc: 'Knobbly: barely slowed by grass, less grip on tarmac, best in the wet.' } ] },
   engine: { label: 'Engine', opts: [
     { id: 'stock', name: 'Stock', cost: 0, mods: {}, desc: 'As it left the factory.' },
     { id: 'tuned', name: 'Tuned', cost: 2, mods: { top: 0.02, acc: 0.03, grip: -0.01 }, desc: 'More power everywhere.' },
@@ -1791,14 +1847,16 @@ function statsFor(model, parts) {
 const CAR_PRICE = { gt: 0, hatch: 0, roadster: 0, baja: 3000, muscle: 4500, proto: 9000 };
 const PART_PRICE = { 'wing.lip': 400, 'wing.gt': 900, 'wing.big': 1800, 'tyres.sport': 500, 'tyres.slick': 1500, 'tyres.offroad': 700,
   'engine.tuned': 1500, 'engine.turbo': 4000, 'kit.aero': 1100, 'kit.light': 1400, 'kit.rally': 600 };
-const PRIZE = [1000, 700, 500, 350, 250, 150], DIFF_PAY = [0.6, 1, 1.5, 2.2], GP_BONUS = [3000, 2000, 1200];
+const PRIZE = [1000, 700, 500, 350, 250, 150], DIFF_PAY = [0.6, 1, 1.5, 2.2, 3], GP_BONUS = [3000, 2000, 1200];
 const CAREER = Object.assign({ cr: 2000, cars: ['gt', 'hatch', 'roadster'], parts: [], earned: 0 }, store.get('career', {}));
 const saveCareer = () => store.set('career', CAREER);
 const fmtCr = n => n.toLocaleString('en-US') + ' cr';
 const ownsCar = mi => CAREER.cars.includes(MODELS[mi].id);
 const partPrice = (slot, id) => PARTS[slot].cosmetic ? 0 : PART_PRICE[slot + '.' + id] || 0;
 const ownsPart = (mi, slot, id) => !partPrice(slot, id) || MODELS[mi].stock[slot] === id || CAREER.parts.includes(slot + '.' + id);
-const expertOpen = () => [2, 3].some(d => store.get('cup.' + d, 0) > 0) || store.get('expert', false);
+const expertOpen = () => [2, 3, 4].some(d => store.get('cup.' + d, 0) > 0) || store.get('expert', false);
+const legendOpen = () => [3, 4].some(d => store.get('cup.' + d, 0) > 0) || store.get('legend', false);
+const diffOpen = i => i < 3 || (i === 3 ? expertOpen() : legendOpen());
 function spend(n) { if (CAREER.cr < n) return false; CAREER.cr -= n; saveCareer(); return true; }
 function earn(n) { CAREER.cr += n; CAREER.earned += n; saveCareer(); }
 function loadParts(model) {
@@ -1966,7 +2024,7 @@ function makeCars() {
     x: 0, z: 0, h: 0, vx: 0, vz: 0, vf: 0, vl: 0, steer: 0, idx: 0, prog: 0, lap: 0, cp: true, lat: 0,
     drift: 0, driftT: 0, boostT: 0, offroad: false, finished: false, place: 0, finishTime: 0, lapStart: 0, bestLap: Infinity,
     skill: 1, base: 1, lane: 0, laneGoal: 0, laneT: 0, wrongT: 0, stuckT: 0, padCD: 0, camH: 0, roll: 0, pitch: 0, emitT: 0, auto: true,
-    slip: 0, cornerG: 24, turbo: 0, cornerT: 0, wallHits: 0, yawV: 0, hitT: 0, jolt: 0, joltV: 0, damage: 0, draft: 0, spinT: 0, lineW: 0.6,
+    slip: 0, cornerG: 24, turbo: 0, cornerT: 0, wallHits: 0, yawV: 0, hitT: 0, jolt: 0, joltV: 0, damage: 0, draft: 0, spinT: 0, lineW: 0.6, wear: 0,
   });
 }
 makeCars();
@@ -2024,7 +2082,7 @@ function placeOnGrid() {
     c.drift = 0; c.driftT = 0; c.boostT = 0; c.finished = false; c.place = 0; c.finishTime = 0; c.lapStart = 0; c.bestLap = Infinity;
     c.base = c.isPlayer ? 1 : d.skill * (0.97 + 0.03 * (k / 4)); c.skill = c.base;
     c.cornerG = d.corner * (0.97 + 0.03 * (k / 4)); c.turbo = d.turbo; c.cornerT = 0; c.lineW = d.line;
-    c.damage = 0; c.draft = 0; c.spinT = 0; c.yawV = 0; c.wallHits = 0;
+    c.damage = 0; c.draft = 0; c.spinT = 0; c.yawV = 0; c.wallHits = 0; c.wear = 0; c.defT = 0; c.passT = 0;
     c.auto = !c.isPlayer; c.wrongT = c.stuckT = 0;
     updateTracking(c, true);
   });
@@ -2093,6 +2151,14 @@ function aiInput(c, dt) {
     }
     if (d > 0 && d < 14 && Math.abs(o.lat - c.lat) < 2.4) follow = Math.min(follow, o.vf + (d - 8) * 0.8);
   }
+  c.defT = Math.max(0, (c.defT || 0) - dt);
+  const dfd = DIFFS[settings.diff].defend || 0;
+  if (dfd && player && c !== player && !player.finished && state === 'race' && c.defT <= 0) {
+    const gap = c.prog - player.prog;
+    if (gap > 6 && gap < 24 && Math.abs(K[c.idx]) < 1 / 120 && Math.abs(player.lat - c.lat) > 1.2 && Math.random() < dfd * dt * 1.5) {
+      c.laneGoal = clamp(player.lat, -3.6, 3.6); c.laneT = 1.4; c.passT = 1.4; c.defT = 4;
+    }
+  }
   // racing line: swing wide before a corner, clip the inside at the apex (inside of a left turn is +lat)
   const kNear = TR.Ks ? TR.Ks[(c.idx + Math.round(14 / seg)) % N] : K[(c.idx + Math.round(14 / seg)) % N];
   const kFar = TR.Ks ? TR.Ks[(c.idx + Math.round(55 / seg)) % N] : K[(c.idx + Math.round(55 / seg)) % N];
@@ -2117,7 +2183,7 @@ function aiInput(c, dt) {
   const from = Math.round(6 / seg), to = Math.round((10 + sp * 1.5) / seg);
   for (let s = from; s < to; s += 2) kmax = Math.max(kmax, Math.abs(K[(c.idx + s) % N]));
   const top = PHY.maxv * c.skill * c.stats.top + (c.boostT > 0 ? PHY.boost : 0);
-  const vT = Math.min(top, Math.sqrt((c.cornerG || 24) * c.stats.grip / Math.max(kmax, 1e-4)));
+  const vT = Math.min(top, Math.sqrt((c.cornerG || 24) * c.stats.grip * gripF(c) / Math.max(kmax, 1e-4)));
   // a well-taken corner sometimes ends in a drift boost, like the player's
   const kNow = Math.abs(K[c.idx]);
   if (kNow > 1 / 45) c.cornerT += dt;
@@ -2159,7 +2225,7 @@ function physics(c, inp, dt) {
   const spin = c.spinT > 0 ? 0.35 : 1;                          // wheelspin after a jumped start
   if (c.spinT > 0) c.spinT -= dt;
   if (t > 0) vf += (PHY.acc * st.acc * spin + (boosting ? 22 : 0)) * t * dt * Math.max(0, 1 - (Math.max(vf, 0) / maxv) ** 2);
-  else if (t < 0) { if (vf > 0.5) vf -= PHY.brake * -t * dt; else vf = Math.max(-PHY.rev, vf - PHY.acc * 0.6 * -t * dt); }
+  else if (t < 0) { if (vf > 0.5) vf -= PHY.brake * (WX.wet ? 0.82 : 1) * -t * dt; else vf = Math.max(-PHY.rev, vf - PHY.acc * 0.6 * -t * dt); }
   vf -= vf * (t === 0 ? 0.55 : 0.12) * dt;
   if (vf > maxv) vf += (maxv - vf) * Math.min(1, dt * (c.offroad ? 2.2 : 1.1));
   if (c.drift && c.driftT > 0) vf -= 1.2 * dt;
@@ -2167,12 +2233,14 @@ function physics(c, inp, dt) {
   let dv = vl * (1 - Math.exp(-(c.drift ? PHY.driftGrip : c.offroad ? 5 : PHY.grip) * dt));
   const hit = c.hitT > 0 ? 0.3 + 0.7 * (1 - c.hitT / 0.35) : 1;   // tyres skate briefly after a hit, so the push moves the car
   if (c.hitT > 0) c.hitT -= dt;
-  const cap = (c.drift ? PHY.driftG : c.offroad ? 14 : PHY.latG) * st.grip * hit * dt;
+  const cap = (c.drift ? PHY.driftG : c.offroad ? 14 : PHY.latG) * st.grip * gripF(c) * hit * dt;
   if (Math.abs(dv) > cap) dv = Math.sign(dv) * cap;
   vl -= dv;
   const slip = Math.abs(vl);
   if (slip > 2 && vf > 0) vf -= Math.min(vf, slip * (c.drift ? 0.12 : 0.3) * dt);
   c.slip = slip;
+  if (state === 'race' || state === 'finished')            // tyres wear with distance, faster when they slide or drift
+    c.wear = Math.min(1, c.wear + dt * (0.0008 * Math.min(1, Math.abs(vf) / 30) + Math.min(slip, 8) * 0.0003 + (c.drift ? 0.002 : 0)) * (TYRE_WEAR[c.parts?.tyres] || 1) * (WX.wet ? 0.7 : 1));
   c.vx = fx * vf + lx * vl; c.vz = fz * vf + lz * vl;
   c.vf = vf; c.vl = vl;
   c.x += c.vx * dt; c.z += c.vz * dt;
@@ -2351,7 +2419,7 @@ function standings() {
 /* ---------- time trial: ghost of your best lap, medals ---------- */
 // reference laps for the stock GT; a tidy drift-free lap earns bronze, gold needs drift boosts and clean lines
 const MEDAL_REF = { meadow: 72.5, coast: 61.1, alpine: 69.3, desert: 69.6, harbor: 73.2, 'meadow-r': 71.9, 'coast-r': 62.1, 'alpine-r': 69.3, 'desert-r': 69.9, 'harbor-r': 73.4 };
-const MEDALS = [['Gold', 0.99, '#f5c242', 1000], ['Silver', 1.025, '#cfd6e0', 600], ['Bronze', 1.07, '#dd9a5e', 300]];
+const MEDALS = [['Gold', 0.99, '#f5c242', 1000], ['Silver', 1.01, '#cfd6e0', 600], ['Bronze', 1.045, '#dd9a5e', 300]];
 const medalTimes = def => { const r = MEDAL_REF[def.id] || 70; return MEDALS.map(([n, f]) => Math.round(r * f * 10) / 10); };
 const medalFor = (def, t) => { const m = medalTimes(def); for (let k = 0; k < 3; k++) if (t <= m[k]) return k + 1; return 0; };
 const medalDot = k => k ? `<span class="medal" style="background:${MEDALS[k - 1][2]}"></span>` : '';
@@ -2524,6 +2592,8 @@ function carFx(c, dt) {
     }
   }
   if (c.boostT > 0) emit(c.x - fx * 2.9, 0.6, c.z - fz * 2.2, 0xffd36a, 0.9, 0.2, 0.25, -c.vx * 0.2, 0.5, -c.vz * 0.2, 0.9, true);
+  if (WX.wet && sp > 12 && !isSnow() && Math.random() < 0.7)          // spray off the wet road
+    emit(c.x - fx * 2.4 + lx * (Math.random() - 0.5) * 2, 0.4, c.z - fz * 2.4 + lz * (Math.random() - 0.5) * 2, 0xdfe6ee, 0.5, 2.8, 0.45, -c.vx * 0.15 + (Math.random() - .5) * 2, 1.2, -c.vz * 0.15 + (Math.random() - .5) * 2, 0.35);
   if (c.damage > 0.08 && Math.random() < c.damage * 2.5)          // a battered car trails grey smoke
     emit(c.x + fx * 1.6, 1.0, c.z + fz * 1.6, 0x6a6e78, 0.6, 2.4, 0.9, (Math.random() - .5) * 1.5, 1.6, (Math.random() - .5) * 1.5, 0.5);
   if (c.draft > 0.6 && c.isPlayer)                                  // slipstream streaks
@@ -2695,7 +2765,7 @@ function flashWallet() { for (const id of ['wallet', 'gWallet']) { const w = $(i
 
 function buildMenu() {
   if (!ownsCar(settings.model)) { settings.model = 0; store.set('model', 0); assignCars(); }
-  if (settings.diff === 3 && !expertOpen() && !gpActive()) { settings.diff = 2; store.set('diff', 2); }
+  while (!diffOpen(settings.diff) && !gpActive()) { settings.diff--; store.set('diff', settings.diff); }
   const gpMode = settings.mode === 'gp';
   const msg = $('modeSeg'); msg.innerHTML = '';
   [['race', 'Quick race'], ['gp', 'Grand Prix'], ['tt', 'Time trial']].forEach(([m, label]) => {
@@ -2742,7 +2812,8 @@ function buildMenu() {
     const cv = document.createElement('canvas'); cv.width = 320; cv.height = 200; drawTrackPreview(cv, t);
     const best = store.get('best' + (t.v || 2) + '.' + t.id + '.' + settings.laps, null), bl = store.get('lap' + (t.v || 2) + '.' + t.id, null);
     b.append(cv);
-    const rnd = gpMode ? `<span class="rnd ${GP && i < GP.round ? 'done' : GP && i === GP.round ? 'next' : ''}">Round ${i + 1}${GP && i < GP.round ? ' · done' : GP && i === GP.round ? ' · next' : ''}</span>` : '';
+    const wxTag = GP && GP.wx && GP.wx[i] ? ' · ' + (t.theme.kind === 'alpine' ? '❄️' : '🌧️') : '';
+    const rnd = gpMode ? `<span class="rnd ${GP && i < GP.round ? 'done' : GP && i === GP.round ? 'next' : ''}">Round ${i + 1}${GP && i < GP.round ? ' · done' : GP && i === GP.round ? ' · next' : ''}${wxTag}</span>` : '';
     const md = store.get('medal.' + t.id, 0);
     b.insertAdjacentHTML('beforeend', `${rnd}<b>${medalDot(md)}${t.name}</b><small>${best && settings.mode !== 'tt' ? 'Best race ' + fmt(best) : t.blurb}</small>${bl ? `<small>Best lap ${fmt(bl)}</small>` : ''}`);
     b.onclick = () => { if (settings.track !== i) { settings.track = i; store.set('track', i); buildWorld(curTrack()); placeOnGrid(); buildMinimap(); } buildMenu(); };
@@ -2778,12 +2849,18 @@ function buildMenu() {
   LAP_OPTS.forEach(n => { const b = document.createElement('button'); b.textContent = n + ' laps'; b.setAttribute('aria-pressed', n === settings.laps); b.disabled = !!lockOpts; b.onclick = () => { settings.laps = n; store.set('laps', n); buildMenu(); }; ls.append(b); });
   const ds = $('diffSeg'); ds.innerHTML = '';
   DIFFS.forEach((d, i) => {
-    const b = document.createElement('button'), locked = i === 3 && !expertOpen();
+    const b = document.createElement('button'), locked = !diffOpen(i), how = `${d.name} unlocks when you finish on the podium of a${i === 3 ? ' Hard' : 'n Expert'} Grand Prix.`;
     b.innerHTML = d.name + (locked ? '<span class="lock">🔒</span>' : ''); b.setAttribute('aria-pressed', i === settings.diff); b.disabled = !!lockOpts;
-    if (locked) b.title = 'Finish on the podium of a Hard Grand Prix to unlock Expert';
-    b.onclick = () => { if (locked) { shopNote('Expert unlocks when you finish on the podium of a Hard Grand Prix.'); return; } settings.diff = i; store.set('diff', i); buildMenu(); };
+    if (locked) b.title = how;
+    b.onclick = () => { if (locked) { shopNote(how); return; } settings.diff = i; store.set('diff', i); buildMenu(); };
     ds.append(b);
   });
+  const ws = $('wxSeg'); ws.innerHTML = '';
+  [['sun', 'Dry'], ['rain', TR.def.theme.kind === 'alpine' ? 'Snow' : 'Rain'], ['random', 'Random']].forEach(([w, label]) => {
+    const b = document.createElement('button'); b.textContent = label; b.setAttribute('aria-pressed', settings.weather === w);
+    b.onclick = () => { settings.weather = w; store.set('weather', w); buildMenu(); }; ws.append(b);
+  });
+  $('wxBox').hidden = settings.mode !== 'race';
   $('helpKeys').hidden = TOUCH; $('helpTouch').hidden = !TOUCH;
   $('soundBtn').textContent = 'Sound: ' + (settings.sound ? 'on' : 'off');
 }
@@ -2834,6 +2911,9 @@ function updateHud() {
   else if (player.drift) { m.style.width = Math.min(100, player.driftT / 1.8 * 100) + '%'; m.style.background = player.driftT >= 1.8 ? '#ff7a2a' : player.driftT >= 0.85 ? '#2fb8ff' : '#b9c3dd'; }
   else { m.style.width = '0%'; }
   const dOn = player.draft > 0.5 && state === 'race'; if (dOn !== hud.draft) { hud.draft = dOn; $('hDraft').hidden = !dOn; }
+  const ty = Math.round(100 - player.wear * 100);
+  if (ty !== hud.ty) { hud.ty = ty; const e = $('hTyre'); e.textContent = 'TYRES ' + ty + '%'; e.className = ty < 55 ? 'low' : ty < 75 ? 'mid' : ''; }
+  const wn = WX.wet ? wxName(true) : ''; if (wn !== hud.wx) { hud.wx = wn; $('hWx').hidden = !wn; $('hWx').textContent = wn.toUpperCase(); }
   const dmg = Math.round(player.damage * 100 / 0.3); if (dmg !== hud.dmg) { hud.dmg = dmg; $('hDmg').hidden = dmg < 5; $('hDmg').textContent = 'DAMAGE ' + dmg + '%'; }
   if (player.wrongT > 1 && state === 'race' && !player.finished) {
     if ($('toast').classList.contains('warn') && toastT > 0) toastT = 0.4;
@@ -2859,7 +2939,7 @@ function gpStandings() {
     .sort((a, b) => b.p - a.p || b.wins - a.wins);
 }
 function gpStart() {
-  GP = { diff: settings.diff, laps: settings.laps, round: 0, pts: {}, wins: {}, rounds: [] };
+  GP = { diff: settings.diff, laps: settings.laps, round: 0, pts: {}, wins: {}, rounds: [], wx: TRACKS.map(() => Math.random() < 0.35) };
   ['You', ...AI_NAMES].forEach(n => { GP.pts[n] = 0; });
   store.set('gp', GP);
 }
@@ -2895,8 +2975,9 @@ function showUI(mode) {
 function toMenu() {
   state = 'menu'; finishCount = 0;
   if (ghost.mesh) ghost.mesh.visible = false; $('posBox').hidden = false;
+  if (WX.wet) applyWeather(false);
   if (gpActive()) gpPrepare();
-  else { settings.diff = clamp(store.get('diff', 1), 0, 3); settings.laps = LAP_OPTS.includes(store.get('laps', 3)) ? store.get('laps', 3) : 3; }
+  else { settings.diff = clamp(store.get('diff', 1), 0, 4); settings.laps = LAP_OPTS.includes(store.get('laps', 3)) ? store.get('laps', 3) : 3; }
   cars.forEach(c => c.auto = true);
   placeOnGrid(); cars.forEach(c => { c.auto = true; c.base = c.skill = 0.92 + Math.random() * 0.06; });
   anim.lamps.forEach(l => l.material.color.set(0x3a3f55));
@@ -2918,6 +2999,8 @@ function startRace() {
     ghostLoad(); player.lapTimes = [];
   } else if (ghost.mesh) ghost.mesh.visible = false;
   $('posBox').hidden = settings.mode === 'tt'; $('hDelta').hidden = true;
+  applyWeather(raceWeather());
+  if (WX.wet) setTimeout(() => { if (state === 'countdown') toast(wxName(true) + ': less grip, longer braking. Slicks struggle.', true); }, 300);
   state = 'countdown'; cdT = 0; step.lastN = -1; raceTime = 0; finishCount = 0; finishT = 0;
   hud.pos = 0; hud.lap = '';
   player.camH = player.h;
@@ -2944,6 +3027,7 @@ function racePay(st, gp) {                      // credits for the player's fini
   let fl = null; for (const c of cars) if (isFinite(c.bestLap) && (!fl || c.bestLap < fl.bestLap)) fl = c;
   if (fl === player) lines.push(['Fastest lap', Math.round(150 * mul / 10) * 10]);
   if (player.wallHits === 0) lines.push(['Clean race: no wall hits', Math.round(120 * mul / 10) * 10]);
+  if (WX.wet) { const base = lines.reduce((a, [, v]) => a + v, 0); lines.push([wxName(true) + ' race bonus (+25%)', Math.round(base * 0.25 / 10) * 10]); }
   return lines;
 }
 function showPay(lines) {
@@ -2977,6 +3061,7 @@ function showResults() {
       if (place <= 3) { $('resTrophy').innerHTML = trophySvg(place, 96); $('resTrophy').hidden = false; }
       if (place <= 3) pay.push(['Grand Prix ' + ord(place) + ' overall', Math.round(GP_BONUS[place - 1] * DIFF_PAY[GP.diff] / 10) * 10]);
       if (place <= 3 && GP.diff === 2 && !store.get('expert', false)) { store.set('expert', true); pay.push(['Expert rivals unlocked!', 0]); }
+      if (place <= 3 && GP.diff === 3 && !store.get('legend', false)) { store.set('legend', true); pay.push(['Legend rivals unlocked!', 0]); }
       GP = null; store.set('gp', null);
       again.textContent = 'New Grand Prix'; again.onclick = () => { toMenu(); };
     } else {
@@ -3099,6 +3184,7 @@ function frame(now) {
     if (n === 8) acc = 0;
     updateCarMeshes(dt);
     updateParts(dt);
+    rainStep(dt);
   }
   if (thudCD > 0) thudCD -= dt;
   if (crashCD > 0) crashCD -= dt;
