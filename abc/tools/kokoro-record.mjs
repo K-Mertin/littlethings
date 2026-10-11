@@ -11,7 +11,7 @@ import fs from 'fs';
 import path from 'path';
 import { execFileSync } from 'child_process';
 
-const [mode, tsv, out, pipVoice = 'af_heart', kidVoice = 'af_sky'] = process.argv.slice(2);
+const [mode, tsv, out, pipVoice = 'af_heart', kidVoice = 'af_sky', pipSpeed = '0.8', kidSpeed = '0.9'] = process.argv.slice(2);
 if (!mode || !tsv || !out) { console.log('usage: node kokoro-record.mjs samples|all phrases.tsv out-dir [pipVoice] [kidVoice]'); process.exit(1); }
 fs.mkdirSync(out, { recursive: true });
 
@@ -74,7 +74,9 @@ async function record(text, voice, file, speed = 0.92) {
   const audio = await tts.generate_from_ids(input_ids, { voice, speed });
   const wav = file.replace(/\.m4a$/, '.wav');
   fs.writeFileSync(wav, toWav(audio.audio, audio.sampling_rate));
-  execFileSync('afconvert', ['-f', 'm4af', '-d', 'aac', '-b', '48000', '-c', '1', wav, file]);
+  // macOS has afconvert; elsewhere use ffmpeg
+  try { execFileSync('afconvert', ['-f', 'm4af', '-d', 'aac', '-b', '48000', '-c', '1', wav, file], { stdio: 'ignore' }); }
+  catch (e) { execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', wav, '-c:a', 'aac', '-b:a', '48k', '-ac', '1', file]); }
   fs.unlinkSync(wav);
   return ph;
 }
@@ -101,11 +103,12 @@ if (mode === 'samples') {
   fs.writeFileSync(path.join(out, 'kokoro.json'), JSON.stringify(cells));
   console.log(`\nKokoro samples done (${cells.length}).`);
 } else {
-  const todo = rows.filter(r => r[1] === 'pip' || r[1] === 'kid');
+  // a line that is only a letter sound (⟦s⟧) comes from the sound bank (tools/soundbank), not from here
+  const todo = rows.filter(r => (r[1] === 'pip' || r[1] === 'kid') && !/^⟦[^⟧]+⟧$/.test(r[2]));
   let n = 0;
   for (const [id, v, text] of todo) {
     const f = path.join(out, id + '.m4a');
-    if (!fs.existsSync(f)) await record(text, v === 'kid' ? kidVoice : pipVoice, f, v === 'kid' ? 1.0 : 0.92);
+    if (!fs.existsSync(f)) await record(text, v === 'kid' ? kidVoice : pipVoice, f, +(v === 'kid' ? kidSpeed : pipSpeed));
     if (++n % 50 === 0) console.log(`  ${n} / ${todo.length}`);
   }
   console.log(`Kokoro: ${todo.length} English clips in ${out}`);
