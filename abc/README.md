@@ -30,9 +30,15 @@
 進度存在瀏覽器的 localStorage。
 
 ## 語音
-- 說話用瀏覽器內建的 Web Speech（`speechSynthesis`）。Android 平板請確認已安裝「Google 文字轉語音」的英文語音；若要中文提示，也安裝中文（台灣）語音。
-- 聊天的 🎤 用 `SpeechRecognition`（Android 的 Chrome、桌機 Chrome、Safari 支援）。只比對關鍵字，聽不懂就讓孩子選圖片，不判錯。Chrome 的語音辨識會把聲音送到 Google 處理；遊戲本身不錄音、不儲存任何聲音或對話。
-- 語音辨識需要 https 或 localhost（GitHub Pages 可以）。
+- Pip 的聲音是預先錄好的音檔（`audio/`），用開源模型 Kokoro-82M（Apache-2.0）的 af_heart 聲音錄製，小朋友角色用 af_sky。遊戲用 Web Audio 播放，所以不依賴瀏覽器的語音功能（Mac 上的 Chrome 就叫不出系統語音）。
+- 沒有音檔的句子才改用瀏覽器內建語音（`speechSynthesis`）。中文提示目前沒有音檔，畫面上會顯示中文。
+- 台詞清單在 `audio/phrases.tsv`：`id`、聲音（pip／kid／zh）、文字。字母寫成 `‹a›`，錄音時會照字母名稱唸（a 唸「ay」）。`id` 是「聲音|文字」的 FNV-1a 32-bit 雜湊。
+- 錄音工具在 `tools/`：
+  - `try-voices.sh`：做一個比較 Kokoro 和 macOS 聲音的試聽頁
+  - `kokoro-record.mjs all phrases.tsv <資料夾> af_heart af_sky`：用 Kokoro 錄全部英文（需要 Node.js，第一次會下載模型）
+  - `trim-silence.sh <資料夾>`：剪掉 Kokoro 音檔前後多餘的靜音（需要 ffmpeg）
+  - `make-audio.sh`：用 macOS `say` 錄（含中文提示，需要安裝台灣中文聲音）
+- 聊天的 🎤 用 `SpeechRecognition`（Android 的 Chrome、桌機 Chrome、Safari 支援）。只比對關鍵字，聽不懂就讓孩子選圖片，不判錯。Chrome 的語音辨識會把聲音送到 Google 處理；遊戲本身不錄音、不儲存任何聲音或對話。語音辨識需要 https 或 localhost。
 
 ## 遊玩
 ```sh
