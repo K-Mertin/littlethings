@@ -17,11 +17,26 @@ pick_voice() { for v in "$@"; do if have_voice "$v"; then echo "$v"; return; fi;
 
 PIP=$(pick_voice Samantha Ava Allison Susan Alex)
 KID=$(pick_voice Junior Ralph Samantha)
-ZH=$(say -v '?' | awk '/zh_TW/ {print $1; exit}')
-[ -z "$ZH" ] && ZH=$(say -v '?' | awk '/zh_CN|zh_HK/ {print $1; exit}')
+# Chinese: voice names can contain spaces ("Eddy (Chinese (Taiwan))"), so cut the name off at the locale,
+# and test each candidate, because a name like "Eddy" alone can resolve to the English voice.
+secs() { afinfo "$1" 2>/dev/null | awk '/estimated duration/ {print $3}'; }
+ZH=""
+T=$(mktemp -d)
+while IFS= read -r name; do
+  [ -z "$name" ] && continue
+  if say -v "$name" -o "$T/t.aiff" "從綠色的點開始，跟著箭頭描" </dev/null 2>/dev/null; then
+    d=$(secs "$T/t.aiff"); if awk -v d="${d:-0}" 'BEGIN{exit !(d > 1.2)}'; then ZH="$name"; break; fi
+  fi
+done < <( { say -v '?' | grep -E '[[:space:]]zh_TW[[:space:]]'; say -v '?' | grep -E '[[:space:]]zh_(HK|CN)[[:space:]]'; } | sed -E 's/[[:space:]]+zh_[A-Z]{2}[[:space:]].*$//')
+rm -rf "$T"
+# re-record the Chinese clips whenever the Chinese voice changes
+if [ "$(cat "$OUT/.zh-voice" 2>/dev/null)" != "$ZH" ]; then
+  awk -F'\t' '$2=="zh"{print $1}' "$TSV" | while read -r id; do rm -f "$OUT/$id.m4a"; done
+  printf '%s' "$ZH" > "$OUT/.zh-voice"
+fi
 echo "Pip voice: ${PIP:-none}   kid voice: ${KID:-none}   Chinese voice: ${ZH:-none}"
 if [ -z "$PIP" ]; then echo "No English voice found. Add one in System Settings > Accessibility > Spoken Content > System Voice > Manage Voices."; exit 1; fi
-[ -z "$ZH" ] && echo "No Chinese voice found: the Chinese hints will be skipped (the game still shows them as text)."
+[ -z "$ZH" ] && echo "No working Chinese voice: the Chinese hints are skipped (the game still shows them as text). To add one: System Settings > Accessibility > Spoken Content > System Voice > Manage Voices > Chinese (Taiwan), e.g. Meijia."
 
 TMP=$(mktemp -d)
 total=$(grep -c . "$TSV"); n=0; made=0
@@ -53,5 +68,5 @@ count=$(ls "$OUT"/*.m4a 2>/dev/null | wc -l | tr -d ' ')
 echo "Recorded $made new clips, $count in total."
 
 rm -f abc-audio.zip
-( cd "$OUT" && zip -q -r ../abc-audio.zip . )
+( cd "$OUT" && zip -q -r ../abc-audio.zip . -x '.zh-voice' )
 echo "Done: $(pwd)/abc-audio.zip ($(du -h abc-audio.zip | cut -f1))"
