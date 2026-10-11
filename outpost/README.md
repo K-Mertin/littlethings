@@ -47,6 +47,13 @@ If you prefer classic StarCraft clicks (left-click only selects), turn off **Lef
 ### Phones and tablets
 Tap a unit or building to select it. With units selected, tap the ground to move (soldiers fight on the way) or an enemy to attack. Drag with one finger to scroll (it glides when you flick), pinch to zoom, and **press and hold, then drag** to box-select. **⚔** in the top bar selects every soldier. Landscape works best.
 
+On phones the HUD switches to a compact layout (tablets and computers keep the full one):
+- the production queue sits in a slim bar right above the buttons, so it is always visible; tap an item to cancel it
+- only the buttons you can use are shown, and when the phone is held sideways they form a column on the right edge, under your thumb
+- the selection shows as one line: name, health (and shield) and what it is doing, or one chip per unit type with a count. Tap a chip to keep only that type
+- the minimap folds into a 🗺 button (it blinks when you are under attack); tap it to open the map, and – to fold it again
+- panels are slightly see-through, and the camera eases up a little when your selection would be hidden behind them
+
 ## Economy
 - **Crystals**: workers mine them (5 per trip) and carry them back to a Command Center or Heart Tree.
 - **Gas**: build a Refinery (Blue), grow a Sap Well (Bloom) or warp in a Prism Tap (Shards) on a green geyser. One worker at a time goes inside (4 per trip); three per geyser is plenty.
