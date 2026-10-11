@@ -12,3 +12,5 @@ Kokoro always puts a vowel next to a lone consonant (/s/ comes out as "ess"), so
    - bl fl st sn fr tr: the blend with a short schwa (0.36 s)
    - a e i o u: the short vowel; x: the /ks/ at the end of "box"
 3. Encode `cut_<sound>.raw` (16-bit, 24 kHz, mono) to `audio/<id>.m4a`, where id = fnv1a32("pip|⟦sound⟧").
+
+**Exceptions:** a e i o u f v l z come from human recordings on Wikimedia Commons (CC BY-SA 3.0), see `wikimedia/CREDITS.md`.

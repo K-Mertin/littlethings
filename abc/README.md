@@ -32,7 +32,7 @@
 進度存在瀏覽器的 localStorage。
 
 ## 語音
-- Pip 的聲音是預先錄好的音檔（`audio/`），用開源模型 Kokoro-82M（Apache-2.0）的 af_heart 聲音錄製（語速 0.8），小朋友角色用 af_sky（0.9）。字母的純音（自然發音）是從音節剪出來的，見 `tools/soundbank/`。遊戲用 Web Audio 播放，所以不依賴瀏覽器的語音功能（Mac 上的 Chrome 就叫不出系統語音）。
+- Pip 的聲音是預先錄好的音檔（`audio/`），用開源模型 Kokoro-82M（Apache-2.0）的 af_heart 聲音錄製（語速 0.8），小朋友角色用 af_sky（0.9）。字母的純音（自然發音）是從音節剪出來的；a e i o u f v l z 用 Wikimedia Commons 的真人錄音（CC BY-SA 3.0，出處見 `tools/soundbank/wikimedia/CREDITS.md`）。遊戲用 Web Audio 播放，所以不依賴瀏覽器的語音功能（Mac 上的 Chrome 就叫不出系統語音）。
 - 沒有音檔的句子才改用瀏覽器內建語音（`speechSynthesis`）。中文提示目前沒有音檔，畫面上會顯示中文。
 - 台詞清單在 `audio/phrases.tsv`：`id`、聲音（pip／kid／zh）、文字。字母寫成 `‹a›`，錄音時會照字母名稱唸（a 唸「ay」）。`id` 是「聲音|文字」的 FNV-1a 32-bit 雜湊。
 - 錄音工具在 `tools/`：
