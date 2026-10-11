@@ -30,15 +30,26 @@ async function words(t) {
   if (last < t.length) r += (await phonemize(t.slice(last), 'en-us')).join(' ');
   return r;
 }
+// ⟦s⟧ marks a letter SOUND (phonics). Stops get a very short schwa, continuants are held a little.
+const SOUND = { a: 'ˈæ', b: 'bə', c: 'kə', d: 'də', e: 'ˈɛ', f: 'fː', g: 'ɡə', h: 'hə', i: 'ˈɪ', j: 'dʒə', k: 'kə',
+  l: 'lː', m: 'mː', n: 'nː', o: 'ˈɑ', p: 'pə', q: 'kwə', r: 'ɹː', s: 'sː', t: 'tə', u: 'ˈʌ', v: 'vː', w: 'wə',
+  x: 'ks', y: 'jə', z: 'zː', sh: 'ʃː', ch: 'tʃə', th: 'θː', bl: 'blə', fl: 'flə', st: 'stə', sn: 'snə', fr: 'fɹə', tr: 'tɹə' };
 async function toPhonemes(text) {
-  const parts = text.replace(/[‘’]/g, "'").split(/‹(.)›/);   // odd indexes are letters
-  let ph = '';
-  for (let i = 0; i < parts.length; i++) {
-    if (i % 2) { ph += (ph && !/\s$/.test(ph) ? ' ' : '') + LETTER[parts[i]] + ' '; continue; }
-    if (parts[i].trim() === '' && parts[i] !== '') { ph += ' '; continue; }
-    const w = await words(parts[i]);
-    ph += (/^[A-Za-z]/.test(parts[i]) && ph && !/\s$/.test(ph) ? ' ' : '') + w;
+  text = text.replace(/[‘’]/g, "'");
+  let ph = '', last = 0;
+  const glue = () => { if (ph && !/\s$/.test(ph)) ph += ' '; };
+  for (const m of text.matchAll(/‹(.)›|⟦([^⟧]+)⟧/g)) {
+    const before = text.slice(last, m.index);
+    if (before.trim()) { if (/^[A-Za-z]/.test(before)) glue(); ph += await words(before); }
+    else if (before) ph += ' ';
+    glue();
+    const ipa = m[1] ? LETTER[m[1]] : SOUND[m[2]];
+    if (!ipa) throw new Error('no IPA for ' + m[0]);
+    ph += ipa + ' ';
+    last = m.index + m[0].length;
   }
+  const rest = text.slice(last);
+  if (rest.trim()) { if (/^[A-Za-z]/.test(rest)) glue(); ph += await words(rest); }
   ph = ph.replace(/ʲ/g, 'j').replace(/r/g, 'ɹ').replace(/x/g, 'k').replace(/ɬ/g, 'l').replace(/ +/g, ' ')
     .replace(/ ([,.!?])/g, '$1').trim();
   return ph;
