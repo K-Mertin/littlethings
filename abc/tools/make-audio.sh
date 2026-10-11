@@ -52,7 +52,9 @@ while IFS=$'\t' read -r id voice text; do
     *) continue ;;
   esac
   [ -z "$v" ] && continue
-  if say -v "$v" -r "$rate" -o "$TMP/c.aiff" "$text" </dev/null 2>/dev/null \
+  # ‹a› marks a letter: read it as the letter name ("ay"), not as a word
+  spoken=$(printf '%s' "$text" | sed -E 's/‹(.)›/[[char LTRL]]\1[[char NORM]]/g')
+  if say -v "$v" -r "$rate" -o "$TMP/c.aiff" "$spoken" </dev/null 2>/dev/null \
      && afconvert -f m4af -d aac -b 40000 -c 1 "$TMP/c.aiff" "$dst" 2>/dev/null; then
     made=$((made + 1))
   else

@@ -330,9 +330,13 @@ const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls)
 
 /* ---------------- content ---------------- */
 const ABC = 'abcdefghijklmnopqrstuvwxyz'.split('');
-// spoken letter names (a bare "a" is read as the word "uh" by most voices)
-const LN = { a: 'ay', b: 'bee', c: 'see', d: 'dee', e: 'ee', f: 'eff', g: 'jee', h: 'aitch', i: 'eye', j: 'jay', k: 'kay', l: 'ell', m: 'em', n: 'en', o: 'oh', p: 'pee', q: 'cue', r: 'are', s: 'ess', t: 'tee', u: 'you', v: 'vee', w: 'double you', x: 'ex', y: 'why', z: 'zee' };
-const L = l => LN[l] || l;
+// Letters inside spoken lines are written as ‹a›: the recorder turns them into "say this as a letter"
+// (SSML say-as / macOS [[char LTRL]]), the speech bubble shows the plain letter, and the browser-speech
+// fallback uses the spellings below.
+const LN = { a: 'A', b: 'bee', c: 'see', d: 'dee', e: 'ee', f: 'eff', g: 'jee', h: 'aitch', i: 'eye', j: 'jay', k: 'kay', l: 'ell', m: 'em', n: 'en', o: 'oh', p: 'pee', q: 'cue', r: 'are', s: 'ess', t: 'tee', u: 'you', v: 'vee', w: 'double you', x: 'ex', y: 'why', z: 'zee' };
+const L = l => `‹${l}›`;
+const plainLetters = t => t.replace(/‹(.)›/g, '$1');
+const spokenLetters = t => t.replace(/‹(.)›/g, (_, c) => LN[c] || c);
 const WORDS = {
   a: [['apple', '🍎'], ['ant', '🐜'], ['alligator', '🐊']], b: [['bee', '🐝'], ['bus', '🚌'], ['bear', '🐻'], ['banana', '🍌']],
   c: [['cat', '🐱'], ['car', '🚗'], ['cake', '🍰'], ['cow', '🐮']], d: [['dog', '🐶'], ['duck', '🦆'], ['door', '🚪']],
@@ -461,7 +465,7 @@ const Clips = {
   async get(id) {
     if (this.buf.has(id)) return this.buf.get(id);
     const p = fetch(`audio/${id}.m4a`).then(r => { if (!r.ok) throw 0; return r.arrayBuffer(); })
-      .then(b => new Promise((ok, no) => ac().decodeAudioData(b, ok, no)))
+      .then(b => new Promise((ok, no) => { const r = ac().decodeAudioData(b, ok, no); if (r && r.catch) r.catch(no); }))
       .catch(() => { this.buf.delete(id); return null; });
     this.buf.set(id, p);
     return p;
@@ -512,7 +516,7 @@ const TTS = {
   speak(text, lang, tok, pitch) {
     return new Promise(res => {
       if (!this.ok || tok !== this.token) { res(); return; }
-      const u = new SpeechSynthesisUtterance(text);
+      const u = new SpeechSynthesisUtterance(spokenLetters(text));
       if (lang === 'zh') { u.lang = this.zhv ? this.zhv.lang : 'zh-TW'; if (this.zhv) u.voice = this.zhv; u.rate = 1; }
       else { u.lang = this.en ? this.en.lang : 'en-US'; if (this.en) u.voice = this.en; u.rate = S.settings.rate; }
       if (pitch) u.pitch = pitch;
@@ -534,27 +538,29 @@ const TTS = {
     if (!Array.isArray(parts)) parts = [parts];
     parts = parts.filter(Boolean);
     if (Clips.ready) await Clips.ready;
-    // start loading every clip of this line at once so the parts play back to back
-    for (const q of parts) {
-      if (typeof q === 'string') Clips.prefetch('pip', [q]);
-      else if (q && q.zh) Clips.prefetch('zh', [q.zh]);
-      else if (q && q.t) Clips.prefetch(q.pitch ? 'kid' : 'pip', [q.t]);
-    }
     const wasBusy = this.ok && (speechSynthesis.speaking || speechSynthesis.pending);
     this.cancel(); const tok = this.token;
     // Chrome sometimes drops an utterance spoken right after cancel(), or leaves the queue paused
     if (wasBusy) await sleep(80);
     if (this.ok && speechSynthesis.paused) speechSynthesis.resume();
-    const en = parts.filter(p => typeof p === 'string' || (p && p.t)).map(p => typeof p === 'string' ? p : p.t).join(' ');
-    const zt = parts.filter(p => p && p.zh).map(p => p.zh).join(' ');
+    // adjacent English strings are one sentence (one clip); a number is a pause; {t, pitch} is the kid's voice
+    const segs = [];
+    for (const p of parts) {
+      const last = segs[segs.length - 1];
+      if (typeof p === 'number') segs.push(p);
+      else if (typeof p === 'string') { if (last && last.v === 'pip') last.t += ' ' + p; else segs.push({ v: 'pip', t: p }); }
+      else if (p.zh) segs.push({ v: 'zh', t: p.zh });
+      else if (p.t) segs.push({ v: p.pitch ? 'kid' : 'pip', t: p.t, pitch: p.pitch });
+    }
+    for (const g of segs) if (typeof g !== 'number') Clips.prefetch(g.v, [g.t]);
+    const en = plainLetters(segs.filter(g => g.v === 'pip' || g.v === 'kid').map(g => g.t).join(' '));
+    const zt = segs.filter(g => g.v === 'zh').map(g => g.t).join(' ');
     Pip.bubble((show != null ? esc(show) : esc(en)) + (zt ? `<small>${esc(zt)}</small>` : ''));
     Pip.talk(true);
-    for (const p of parts) {
+    for (const g of segs) {
       if (tok !== this.token) break;
-      if (typeof p === 'number') { Pip.talk(false); await sleep(p); if (tok === this.token) Pip.talk(true); continue; }
-      if (typeof p === 'string') await this.one(p, 'en', tok);
-      else if (p.zh) await this.one(p.zh, 'zh', tok);
-      else if (p.t) await this.one(p.t, 'en', tok, p.pitch);
+      if (typeof g === 'number') { Pip.talk(false); await sleep(g); if (tok === this.token) Pip.talk(true); continue; }
+      await this.one(g.t, g.v === 'zh' ? 'zh' : 'en', tok, g.pitch);
     }
     if (tok === this.token) Pip.talk(false);
     return tok === this.token;
@@ -922,7 +928,7 @@ async function soundTap(b, it, f) {
     if (!it.tries) { S.sounds[it.l].miss++; save(); if (SND.q.length < SND.total + 2) SND.q.push({ l: it.l, w: it.w, tries: 0 }); }
     it.tries++;
     $$('#sCh .bub').forEach(x => x.classList.toggle('glow', x.dataset.l === it.l));
-    say([`That is ${L(l)}.`, `Listen. ${w}.`, `${w} starts with ${L(it.l)}.`], `That is ${l}. ${w} starts with ${it.l}.`);
+    say([`That is ${L(l)}.`, 250, `Listen. ${w}.`, `${w} starts with ${L(it.l)}.`], `That is ${l}. ${w} starts with ${it.l}.`);
   }
 }
 Screens.sounds = {
@@ -978,7 +984,7 @@ async function spellTap(b, w, f) {
     SFX.soft(); b.classList.remove('shake'); void b.offsetWidth; b.classList.add('shake');
     SP.wrong++;
     if (SP.wrong >= 2) $$('#bTiles .ltile').forEach(x => x.classList.toggle('glow', !x.classList.contains('used') && x.dataset.l === need));
-    say([`That is ${L(l)}.`, `We need ${L(need)}.`], `That is ${l}. We need ${need}.`);
+    say([`That is ${L(l)}.`, 250, `We need ${L(need)}.`], `That is ${l}. We need ${need}.`);
   }
 }
 Screens.spell = {
@@ -1039,7 +1045,7 @@ async function matchTap(b, o, it, f) {
     else matchAsk();
   } else {
     SFX.soft(); b.classList.remove('shake'); void b.offsetWidth; b.classList.add('shake');
-    say([thatIs(o, pack), findLine(it, pack)]);
+    say([thatIs(o, pack), 250, findLine(it, pack)]);
   }
 }
 Screens.match = {
