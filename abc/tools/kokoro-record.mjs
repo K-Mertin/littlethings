@@ -11,7 +11,7 @@ import fs from 'fs';
 import path from 'path';
 import { execFileSync } from 'child_process';
 
-const [mode, tsv, out, pipVoice = 'af_heart', kidVoice = 'af_sky'] = process.argv.slice(2);
+const [mode, tsv, out, pipVoice = 'af_heart', kidVoice = 'af_sky', pipSpeed = '0.8', kidSpeed = '0.9'] = process.argv.slice(2);
 if (!mode || !tsv || !out) { console.log('usage: node kokoro-record.mjs samples|all phrases.tsv out-dir [pipVoice] [kidVoice]'); process.exit(1); }
 fs.mkdirSync(out, { recursive: true });
 
@@ -30,15 +30,26 @@ async function words(t) {
   if (last < t.length) r += (await phonemize(t.slice(last), 'en-us')).join(' ');
   return r;
 }
+// ⟦s⟧ marks a letter SOUND (phonics). Stops get a very short schwa, continuants are held a little.
+const SOUND = { a: 'ˈæ', b: 'bə', c: 'kə', d: 'də', e: 'ˈɛ', f: 'fː', g: 'ɡə', h: 'hə', i: 'ˈɪ', j: 'dʒə', k: 'kə',
+  l: 'lː', m: 'mː', n: 'nː', o: 'ˈɑ', p: 'pə', q: 'kwə', r: 'ɹː', s: 'sː', t: 'tə', u: 'ˈʌ', v: 'vː', w: 'wə',
+  x: 'ks', y: 'jə', z: 'zː', sh: 'ʃː', ch: 'tʃə', th: 'θː', bl: 'blə', fl: 'flə', st: 'stə', sn: 'snə', fr: 'fɹə', tr: 'tɹə' };
 async function toPhonemes(text) {
-  const parts = text.replace(/[‘’]/g, "'").split(/‹(.)›/);   // odd indexes are letters
-  let ph = '';
-  for (let i = 0; i < parts.length; i++) {
-    if (i % 2) { ph += (ph && !/\s$/.test(ph) ? ' ' : '') + LETTER[parts[i]] + ' '; continue; }
-    if (parts[i].trim() === '' && parts[i] !== '') { ph += ' '; continue; }
-    const w = await words(parts[i]);
-    ph += (/^[A-Za-z]/.test(parts[i]) && ph && !/\s$/.test(ph) ? ' ' : '') + w;
+  text = text.replace(/[‘’]/g, "'");
+  let ph = '', last = 0;
+  const glue = () => { if (ph && !/\s$/.test(ph)) ph += ' '; };
+  for (const m of text.matchAll(/‹(.)›|⟦([^⟧]+)⟧/g)) {
+    const before = text.slice(last, m.index);
+    if (before.trim()) { if (/^[A-Za-z]/.test(before)) glue(); ph += await words(before); }
+    else if (before) ph += ' ';
+    glue();
+    const ipa = m[1] ? LETTER[m[1]] : SOUND[m[2]];
+    if (!ipa) throw new Error('no IPA for ' + m[0]);
+    ph += ipa + ' ';
+    last = m.index + m[0].length;
   }
+  const rest = text.slice(last);
+  if (rest.trim()) { if (/^[A-Za-z]/.test(rest)) glue(); ph += await words(rest); }
   ph = ph.replace(/ʲ/g, 'j').replace(/r/g, 'ɹ').replace(/x/g, 'k').replace(/ɬ/g, 'l').replace(/ +/g, ' ')
     .replace(/ ([,.!?])/g, '$1').trim();
   return ph;
@@ -63,7 +74,9 @@ async function record(text, voice, file, speed = 0.92) {
   const audio = await tts.generate_from_ids(input_ids, { voice, speed });
   const wav = file.replace(/\.m4a$/, '.wav');
   fs.writeFileSync(wav, toWav(audio.audio, audio.sampling_rate));
-  execFileSync('afconvert', ['-f', 'm4af', '-d', 'aac', '-b', '48000', '-c', '1', wav, file]);
+  // macOS has afconvert; elsewhere use ffmpeg
+  try { execFileSync('afconvert', ['-f', 'm4af', '-d', 'aac', '-b', '48000', '-c', '1', wav, file], { stdio: 'ignore' }); }
+  catch (e) { execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', wav, '-c:a', 'aac', '-b:a', '48k', '-ac', '1', file]); }
   fs.unlinkSync(wav);
   return ph;
 }
@@ -90,11 +103,12 @@ if (mode === 'samples') {
   fs.writeFileSync(path.join(out, 'kokoro.json'), JSON.stringify(cells));
   console.log(`\nKokoro samples done (${cells.length}).`);
 } else {
-  const todo = rows.filter(r => r[1] === 'pip' || r[1] === 'kid');
+  // a line that is only a letter sound (⟦s⟧) comes from the sound bank (tools/soundbank), not from here
+  const todo = rows.filter(r => (r[1] === 'pip' || r[1] === 'kid') && !/^⟦[^⟧]+⟧$/.test(r[2]));
   let n = 0;
   for (const [id, v, text] of todo) {
     const f = path.join(out, id + '.m4a');
-    if (!fs.existsSync(f)) await record(text, v === 'kid' ? kidVoice : pipVoice, f, v === 'kid' ? 1.0 : 0.92);
+    if (!fs.existsSync(f)) await record(text, v === 'kid' ? kidVoice : pipVoice, f, +(v === 'kid' ? kidSpeed : pipSpeed));
     if (++n % 50 === 0) console.log(`  ${n} / ${todo.length}`);
   }
   console.log(`Kokoro: ${todo.length} English clips in ${out}`);
