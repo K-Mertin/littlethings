@@ -13,4 +13,6 @@ Kokoro always puts a vowel next to a lone consonant (/s/ comes out as "ess"), so
    - a e i o u: the short vowel; x: the /ks/ at the end of "box"
 3. Encode `cut_<sound>.raw` (16-bit, 24 kHz, mono) to `audio/<id>.m4a`, where id = fnv1a32("pip|⟦sound⟧").
 
-**Exceptions:** a e i o u f v l z come from human recordings on Wikimedia Commons (CC BY-SA 3.0), see `wikimedia/CREDITS.md`.
+**Exceptions:** a e i o u f v l z and sh ch th come from human recordings on Wikimedia Commons (CC BY-SA 3.0), see `wikimedia/CREDITS.md`.
+
+**Blends** (bl fl st sn fr tr) are cut from whole Kokoro words (blˈɑːk, flˈæɡ, stˈɑːɹ, snˈeɪk, fɹˈɑːɡ, tɹˈiː): from the start of the consonants up to the vowel, so there is no added "uh", then slowed 1.7×.
