@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>噗噗下樓梯</title>
+<link rel="stylesheet" href="mini.css">
+</head>
+<body>
+<main class="mg-stage"><canvas id="cv" aria-label="遊戲畫面"></canvas></main>
+<script src="mini.js"></script>
+<script>
+'use strict';
+MG.init({ id: 'stairs', title: '噗噗下樓梯', stats: ['floor', 'best'] });
+const W = 360, H = 560, cv = document.getElementById('cv'), x = cv.getContext('2d');
+MG.fit(cv, W, H);
+
+const R = 14, HPMAX = 10, CEIL = 22, PW = 86, PH = 12, GAP = 72;
+const TYPES = ['normal', 'normal', 'normal', 'spike', 'spring', 'left', 'right', 'fragile'];
+let P, plats, rise, spawnY, nextIdx, floor, state = 'ready', shake = 0, flash = 0, parts = [], t = 0;
+
+function reset() {
+  P = { x: W / 2, y: 280 - R, vy: 0, on: null, hp: HPMAX, inv: 0, ignore: null, ignoreT: 0, face: 'happy', squash: 0 };
+  plats = []; nextIdx = 0; floor = 0; rise = 70; t = 0; parts = [];
+  addPlat(W / 2 - PW / 2, 280, 'normal');
+  spawnY = 280;
+  while (spawnY < H + GAP) { spawnY += GAP; addPlat(MG.rand(4, W - PW - 4), spawnY, pickType()); }
+  P.on = plats[0];
+  showHud();
+}
+function pickType() {
+  // early floors are friendlier
+  if (nextIdx < 4) return 'normal';
+  const ty = MG.pick(TYPES);
+  if (ty === 'spike' && nextIdx < 10 && Math.random() < 0.5) return 'normal';
+  return ty;
+}
+function addPlat(px, py, type) { plats.push({ x: px, y: py, type, idx: nextIdx++, used: false, crumble: -1, gone: false }); }
+function showHud() { MG.stat('floor', `地下 ${floor} 層`); const b = MG.best('stairs'); MG.stat('best', `最高 ${b ?? 0}`); }
+
+// ---------- input ----------
+const keys = { l: false, r: false }; let touchDir = 0;
+addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.l = true;
+  if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.r = true;
+  if ((e.key === ' ' || e.key === 'Enter') && state !== 'play' && MG.panelOpen()) { /* button has focus */ }
+});
+addEventListener('keyup', e => {
+  if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.l = false;
+  if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.r = false;
+});
+const touches = new Map();
+const stage = cv.parentElement;
+function updTouch() { let d = 0; for (const v of touches.values()) d = v; touchDir = d; }
+stage.addEventListener('pointerdown', e => { const r = stage.getBoundingClientRect(); touches.set(e.pointerId, e.clientX < r.left + r.width / 2 ? -1 : 1); updTouch(); });
+stage.addEventListener('pointermove', e => { if (!touches.has(e.pointerId)) return; const r = stage.getBoundingClientRect(); touches.set(e.pointerId, e.clientX < r.left + r.width / 2 ? -1 : 1); updTouch(); });
+for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) stage.addEventListener(ev, e => { touches.delete(e.pointerId); updTouch(); });
+addEventListener('blur', () => { keys.l = keys.r = false; touches.clear(); touchDir = 0; });
+
+// ---------- update ----------
+function hurt(n) {
+  if (P.inv > 0) return;
+  P.hp = Math.max(0, P.hp - n); P.inv = 0.7; shake = 0.25; flash = 0.2; P.face = 'ouch'; MG.sfx('hit');
+}
+function update(dt) {
+  t += dt;
+  rise = Math.min(175, 70 + floor * 1.6);
+  const dy = rise * dt;
+  for (const p of plats) p.y -= dy;
+  spawnY -= dy;
+  while (spawnY < H + GAP) { spawnY += GAP; addPlat(MG.rand(4, W - PW - 4), spawnY, pickType()); }
+  plats = plats.filter(p => p.y > -PH && !p.gone);
+
+  // horizontal
+  let dir = (keys.r ? 1 : 0) - (keys.l ? 1 : 0); if (touchDir) dir = touchDir;
+  P.x += dir * 210 * dt;
+  if (P.on && P.on.type === 'left') P.x -= 95 * dt;
+  if (P.on && P.on.type === 'right') P.x += 95 * dt;
+  P.x = Math.max(R, Math.min(W - R, P.x));
+  P.inv = Math.max(0, P.inv - dt); P.ignoreT = Math.max(0, P.ignoreT - dt); if (!P.ignoreT) P.ignore = null;
+  if (P.inv === 0 && P.face === 'ouch') P.face = 'happy';
+  P.squash *= Math.pow(0.002, dt);
+
+  if (P.on) {
+    const p = P.on;
+    if (p.gone || P.x < p.x - R * 0.6 || P.x > p.x + PW + R * 0.6) { P.on = null; P.vy = 0; }
+    else {
+      P.y = p.y - R; P.vy = 0;
+      if (p.type === 'fragile' && p.crumble >= 0) { p.crumble += dt; if (p.crumble > 0.38) { p.gone = true; P.on = null; burst(p.x + PW / 2, p.y, '#d7a46a', 10); MG.sfx('step'); } }
+    }
+  }
+  if (!P.on) {
+    const prevFeet = P.y + R;
+    P.vy = Math.min(560, P.vy + 1500 * dt);
+    P.y += P.vy * dt;
+    const feet = P.y + R;
+    if (P.vy >= 0) for (const p of plats) {
+      if (p === P.ignore || p.gone) continue;
+      if (prevFeet <= p.y + dy + 1 && feet >= p.y && P.x > p.x - R * 0.6 && P.x < p.x + PW + R * 0.6) { land(p); break; }
+    }
+  }
+  // ceiling spikes
+  if (P.y - R < CEIL) {
+    hurt(5);
+    P.y = CEIL + R + 2;
+    if (P.on) { P.ignore = P.on; P.ignoreT = 0.35; P.on = null; }
+    P.vy = 120;
+  }
+  for (const q of parts) { q.x += q.vx * dt; q.y += q.vy * dt; q.vy += 700 * dt; q.life -= dt; }
+  parts = parts.filter(q => q.life > 0);
+  shake = Math.max(0, shake - dt); flash = Math.max(0, flash - dt);
+  if (P.hp <= 0 || P.y - R > H) gameOver();
+  showHud();
+}
+function land(p) {
+  P.on = p; P.y = p.y - R; P.squash = 0.22;
+  if (p.idx > floor) floor = p.idx;
+  if (p.type === 'spike') { if (!p.used) hurt(4); }
+  else if (!p.used && P.hp < HPMAX) P.hp++;
+  if (p.type === 'spring') { P.on = null; P.vy = -560; P.squash = -0.2; MG.sfx('jump'); }
+  else if (p.type !== 'spike') MG.sfx('step');
+  if (p.type === 'fragile' && p.crumble < 0) p.crumble = 0;
+  p.used = true;
+}
+function burst(px, py, col, n) { for (let i = 0; i < n; i++) parts.push({ x: px + MG.rand(-30, 30), y: py, vx: MG.rand(-80, 80), vy: MG.rand(-160, -20), life: MG.rand(0.4, 0.8), col }); }
+
+// ---------- draw ----------
+function draw() {
+  x.save();
+  if (shake) x.translate(MG.rand(-4, 4) * shake * 4, MG.rand(-4, 4) * shake * 4);
+  // wall
+  const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#2b3a67'); g.addColorStop(1, '#4b2f62'); x.fillStyle = g; x.fillRect(-10, -10, W + 20, H + 20);
+  x.fillStyle = 'rgba(255,255,255,.05)';
+  const off = (t * rise) % 40;
+  for (let y = -off; y < H; y += 40) for (let i = 0; i < 6; i++) x.fillRect(i * 64 + ((Math.floor((y + off + t * rise) / 40)) % 2) * 32, y, 60, 36);
+  // platforms
+  for (const p of plats) drawPlat(p);
+  // particles
+  for (const q of parts) { x.globalAlpha = Math.min(1, q.life * 2); x.fillStyle = q.col; x.fillRect(q.x - 3, q.y - 3, 6, 6); }
+  x.globalAlpha = 1;
+  // player
+  if (!(P.inv > 0 && Math.floor(P.inv * 14) % 2)) MG.puPu(x, P.x, P.y, R, P.face, P.squash);
+  // ceiling spikes
+  x.fillStyle = '#c9ccd8'; x.fillRect(0, 0, W, 10);
+  x.fillStyle = '#e9ecf5'; x.strokeStyle = '#7b8095'; x.lineWidth = 1.5;
+  for (let i = 0; i < W; i += 18) { x.beginPath(); x.moveTo(i, 9); x.lineTo(i + 9, CEIL + 2); x.lineTo(i + 18, 9); x.closePath(); x.fill(); x.stroke(); }
+  // HP bar
+  x.fillStyle = 'rgba(0,0,0,.45)'; x.beginPath(); x.roundRect(8, H - 30, 172, 22, 11); x.fill();
+  x.fillStyle = '#fff'; x.font = '700 13px system-ui,sans-serif'; x.textBaseline = 'middle'; x.fillText('生命', 18, H - 19);
+  for (let i = 0; i < HPMAX; i++) { x.fillStyle = i < P.hp ? (P.hp <= 3 ? '#ff5a4e' : '#5fe07a') : 'rgba(255,255,255,.2)'; x.fillRect(54 + i * 12, H - 25, 9, 12); }
+  if (flash) { x.fillStyle = `rgba(255,60,60,${flash * 1.6})`; x.fillRect(0, 0, W, H); }
+  x.restore();
+}
+function drawPlat(p) {
+  let px = p.x, py = p.y;
+  if (p.type === 'fragile' && p.crumble > 0) px += Math.sin(p.crumble * 80) * 2;
+  const col = { normal: ['#ffd36b', '#c99a2c'], spike: ['#cfd3e0', '#7b8095'], spring: ['#7ee0ff', '#2c8fb3'], left: ['#b7a2ff', '#6a4fc7'], right: ['#b7a2ff', '#6a4fc7'], fragile: ['#f0c79a', '#a8743c'] }[p.type];
+  if (p.type === 'spike') {
+    x.fillStyle = col[0]; x.strokeStyle = col[1]; x.lineWidth = 1.5;
+    x.fillRect(px, py + 4, PW, PH - 4); x.strokeRect(px, py + 4, PW, PH - 4);
+    x.fillStyle = '#eef1f8';
+    for (let i = 0; i < PW; i += 10.75) { x.beginPath(); x.moveTo(px + i, py + 5); x.lineTo(px + i + 5.4, py - 7); x.lineTo(px + i + 10.75, py + 5); x.closePath(); x.fill(); x.stroke(); }
+    return;
+  }
+  x.fillStyle = col[0]; x.strokeStyle = col[1]; x.lineWidth = 2;
+  x.beginPath(); x.roundRect(px, py, PW, PH, 4); x.fill(); x.stroke();
+  if (p.type === 'spring') {
+    x.strokeStyle = '#2c8fb3'; x.lineWidth = 2; x.beginPath();
+    for (let i = 0; i <= 8; i++) x.lineTo(px + 10 + i * ((PW - 20) / 8), py + PH / 2 + (i % 2 ? -3 : 3)); x.stroke();
+  } else if (p.type === 'left' || p.type === 'right') {
+    const s = p.type === 'left' ? -1 : 1, o = ((t * 40) % 16) * s;
+    x.fillStyle = '#fff';
+    for (let i = 8; i < PW - 6; i += 16) { const ax = px + ((i + o + PW) % (PW - 10)) + 4; x.beginPath(); x.moveTo(ax - 3 * s, py + 3); x.lineTo(ax + 3 * s, py + PH / 2); x.lineTo(ax - 3 * s, py + PH - 3); x.fill(); }
+  } else if (p.type === 'fragile') {
+    x.strokeStyle = '#a8743c'; x.lineWidth = 1.2; x.beginPath();
+    x.moveTo(px + PW * 0.3, py); x.lineTo(px + PW * 0.36, py + PH); x.moveTo(px + PW * 0.66, py); x.lineTo(px + PW * 0.6, py + PH); x.stroke();
+  } else {
+    x.fillStyle = 'rgba(255,255,255,.5)'; x.fillRect(px + 4, py + 2, PW - 8, 3);
+  }
+}
+
+// ---------- flow ----------
+function start() { reset(); state = 'play'; MG.hide(); }
+function gameOver() {
+  state = 'over'; MG.sfx('over'); burst(P.x, Math.min(P.y, H - 10), '#4cc96a', 16);
+  const rec = MG.record('stairs', floor);
+  showHud();
+  MG.panel({
+    title: '噗噗掉下去了！',
+    html: `<p>這次到了</p><div class="big">地下 ${floor} 層</div>` + (rec.isNew && floor > 0 ? `<p class="new">新紀錄！^_^</p>` : `<p>最高紀錄：地下 ${rec.best} 層</p>`),
+    buttons: [{ label: '再玩一次', on: start }, { label: '回遊戲區', alt: true, on: () => location.href = 'index.html' }],
+  });
+}
+reset();
+MG.panel({
+  title: '噗噗下樓梯',
+  html: `<p>天花板的尖刺一直往下壓，快跳到下面的樓梯上，看能下到幾層！</p>
+  <p>🟨 普通（補 1 格血）　⬜ 尖刺（扣血）<br>🟦 彈簧　🟪 輸送帶　🟫 會碎的木板</p>`,
+  keys: '電腦：<kbd>←</kbd><kbd>→</kbd> 或 <kbd>A</kbd><kbd>D</kbd>　手機：按住畫面左半邊或右半邊',
+  buttons: [{ label: '開始', on: start }],
+});
+MG.loop(dt => { if (state === 'play') update(dt); else { for (const q of parts) { q.x += q.vx * dt; q.y += q.vy * dt; q.vy += 700 * dt; q.life -= dt; } parts = parts.filter(q => q.life > 0); } draw(); });
+</script>
+</body>
+</html>

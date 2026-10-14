@@ -11,6 +11,7 @@ MK 的瀏覽器遊戲合集，每個資料夾自成一體。線上遊玩：https
 | [Sunny Circuit](https://k-mertin.github.io/littlethings/racing/) | [`racing/`](racing/README.md) | 3D 賽車，6 款車＋改裝、5 條賽道可反向、大獎賽、生涯獎金、計時賽幽靈車、雨天與輪胎磨耗、5 種難度 |
 | [Crystal Outpost](https://k-mertin.github.io/littlethings/outpost/) | [`outpost/`](outpost/README.md) | 星海爭霸風格的即時戰略：玩法不同的藍色前哨、綻放族與晶族三個陣營、6 關教學任務、1v1 或 2v2（電腦盟友）、3 種地圖風格與大小、自動存檔，支援觸控 |
 | [ABC Island](https://k-mertin.github.io/littlethings/abc/) | [`abc/`](abc/README.md) | 幼兒英文：描小寫字母、開頭音、拼字、單字圖卡、和小狐狸 Pip 聊天，貼紙小島，家長區，平板優先 |
+| [噗噗的遊戲小屋](https://k-mertin.github.io/littlethings/minigames/) | [`minigames/`](minigames/README.md) | 向「好玩遊戲區」致敬的小遊戲合輯：下樓梯、接水果、敲地鼠、大家來找碴、翻牌記憶、十乘十方塊 |
 
 ## 遊玩
 直接用瀏覽器打開 `index.html`，或在此資料夾啟動本機伺服器：
@@ -19,7 +20,7 @@ MK 的瀏覽器遊戲合集，每個資料夾自成一體。線上遊玩：https
 python3 -m http.server 8000   # 然後打開 http://localhost:8000
 ```
 
-大廳內按 `1` 進入 Cobble Keep，按 `2` 進入銘甲戰記，按 `3` 進入 Sunny Circuit，按 `4` 進入 Crystal Outpost，按 `5` 進入 ABC Island。
+大廳內按 `1` 進入 Cobble Keep，按 `2` 進入銘甲戰記，按 `3` 進入 Sunny Circuit，按 `4` 進入 Crystal Outpost，按 `5` 進入 ABC Island，按 `6` 進入噗噗的遊戲小屋。
 
 ## 結構
 ```
@@ -29,6 +30,7 @@ zijia/            index.html 由 src/ 建置：cd zijia/src && sh build.sh && cp
 racing/           單一檔案，無建置步驟
 outpost/          單一檔案，無建置步驟，不需任何外部函式庫
 abc/              單一檔案，無建置步驟，不需任何外部函式庫
+minigames/        每款小遊戲一個 HTML，共用 mini.js / mini.css，無建置步驟
 ```
 
 ## 新增遊戲

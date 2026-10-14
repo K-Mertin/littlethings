@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>十乘十方塊</title>
+<link rel="stylesheet" href="mini.css">
+</head>
+<body>
+<main class="mg-stage"><canvas id="cv" aria-label="遊戲畫面"></canvas></main>
+<script src="mini.js"></script>
+<script>
+'use strict';
+MG.init({ id: 'blocks', title: '十乘十方塊', stats: ['score', 'best'] });
+const N = 10, CELL = 32, cv = document.getElementById('cv'), x = cv.getContext('2d');
+let land = false;
+MG.fit(cv, (sw, sh) => { land = sw > sh * 1.1; return land ? [640, 370] : [360, 560]; });
+const BX = () => 20, BY = () => land ? 25 : 56;
+const slotRect = (i) => land ? { x: 372, y: 14 + i * 116, w: 250, h: 108 } : { x: 10 + i * 116, y: 418, w: 108, h: 128 };
+
+const SHAPES = [
+  ['#ffb72b', [[0, 0]]],
+  ['#ff8a5c', [[0, 0], [1, 0]]], ['#ff8a5c', [[0, 0], [0, 1]]],
+  ['#ff6fb5', [[0, 0], [1, 0], [2, 0]]], ['#ff6fb5', [[0, 0], [0, 1], [0, 2]]],
+  ['#ff5a4e', [[0, 0], [1, 0], [2, 0], [3, 0]]], ['#ff5a4e', [[0, 0], [0, 1], [0, 2], [0, 3]]],
+  ['#d9474a', [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]]], ['#d9474a', [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4]]],
+  ['#4cc96a', [[0, 0], [1, 0], [0, 1], [1, 1]]],
+  ['#3db7c9', [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1], [0, 2], [1, 2], [2, 2]]],
+  ['#3d9bff', [[0, 0], [1, 0], [0, 1]]], ['#3d9bff', [[0, 0], [1, 0], [1, 1]]], ['#3d9bff', [[0, 1], [1, 0], [1, 1]]], ['#3d9bff', [[0, 0], [0, 1], [1, 1]]],
+  ['#8a63ff', [[0, 0], [1, 0], [2, 0], [0, 1], [0, 2]]], ['#8a63ff', [[0, 0], [1, 0], [2, 0], [2, 1], [2, 2]]],
+  ['#8a63ff', [[0, 0], [0, 1], [0, 2], [1, 2], [2, 2]]], ['#8a63ff', [[2, 0], [2, 1], [2, 2], [1, 2], [0, 2]]],
+];
+// weights: small pieces a bit more common, 3x3 rare
+const WEIGHT = [3, 3, 3, 3, 3, 2, 2, 1.2, 1.2, 3, 0.9, 2, 2, 2, 2, 1.2, 1.2, 1.2, 1.2];
+function randPiece() {
+  let r = Math.random() * WEIGHT.reduce((a, b) => a + b, 0), i = 0;
+  while ((r -= WEIGHT[i]) > 0) i++;
+  const [col, cells] = SHAPES[i];
+  return { col, cells, w: Math.max(...cells.map(c => c[0])) + 1, h: Math.max(...cells.map(c => c[1])) + 1 };
+}
+
+let grid, tray, score, combo, state = 'ready', drag = null, ghost = null, fx = [], pops = [], t = 0, sel = 0, cur = { x: 3, y: 3 }, kbMode = false;
+function reset() {
+  grid = Array.from({ length: N }, () => Array(N).fill(null));
+  score = 0; combo = 0; fx = []; pops = []; drag = null; ghost = null; sel = 0; cur = { x: 3, y: 3 };
+  refill(); hud();
+}
+function refill() { tray = [randPiece(), randPiece(), randPiece()]; }
+function hud() { MG.stat('score', `${score} 分`); MG.stat('best', `最高 ${Math.max(score, MG.best('blocks') ?? 0)}`); }
+function fits(p, gx, gy) { return p.cells.every(([a, b]) => { const cx = gx + a, cy = gy + b; return cx >= 0 && cy >= 0 && cx < N && cy < N && !grid[cy][cx]; }); }
+function canPlaceAnywhere(p) { for (let y = 0; y < N; y++) for (let x2 = 0; x2 < N; x2++) if (fits(p, x2, y)) return true; return false; }
+
+function place(i, gx, gy) {
+  const p = tray[i];
+  if (!p || !fits(p, gx, gy)) return false;
+  for (const [a, b] of p.cells) grid[gy + b][gx + a] = p.col;
+  score += p.cells.length; MG.sfx('place');
+  tray[i] = null;
+  // clear full rows and columns
+  const rows = [], cols = [];
+  for (let k = 0; k < N; k++) { if (grid[k].every(Boolean)) rows.push(k); if (grid.every(r => r[k])) cols.push(k); }
+  const lines = rows.length + cols.length;
+  if (lines) {
+    combo++;
+    for (const r of rows) for (let c = 0; c < N; c++) fx.push({ c, r, col: grid[r][c], life: 0.35 });
+    for (const c of cols) for (let r = 0; r < N; r++) fx.push({ c, r, col: grid[r][c], life: 0.35 });
+    for (const r of rows) for (let c = 0; c < N; c++) grid[r][c] = null;
+    for (const c of cols) for (let r = 0; r < N; r++) grid[r][c] = null;
+    const pts = [0, 10, 30, 60, 100, 150, 210][Math.min(6, lines)] * (combo > 1 ? combo : 1);
+    score += pts; MG.sfx('clear');
+    const msg = lines >= 3 ? '太厲害了！' : lines === 2 ? '雙消！' : '';
+    pops.push({ x: BX() + gx * CELL + p.w * CELL / 2, y: BY() + gy * CELL, t: `+${pts}${combo > 1 ? `  連續 ×${combo}` : ''}`, sub: msg, life: 1.1 });
+  } else combo = 0;
+  if (tray.every(q => !q)) refill();
+  sel = tray.findIndex(Boolean);
+  hud();
+  if (!tray.some(q => q && canPlaceAnywhere(q))) setTimeout(gameOver, 600);
+  return true;
+}
+
+// ---------- input ----------
+const LIFT = () => drag && drag.touch ? 74 : 0;
+function trayHit(p) { for (let i = 0; i < 3; i++) { const s = slotRect(i); if (tray[i] && p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h) return i; } return -1; }
+function ghostFrom(p) {
+  const pc = tray[drag.i];
+  const gx = Math.round((p.x - BX() - pc.w * CELL / 2) / CELL), gy = Math.round((p.y - LIFT() - BY() - pc.h * CELL / 2) / CELL);
+  return { gx, gy, ok: fits(pc, gx, gy) };
+}
+cv.addEventListener('pointerdown', e => {
+  if (state !== 'play') return;
+  const p = cv.logical(e), i = trayHit(p);
+  kbMode = false;
+  if (i < 0) return;
+  try { cv.setPointerCapture(e.pointerId); } catch {}
+  drag = { i, x: p.x, y: p.y, touch: e.pointerType !== 'mouse' }; sel = i; ghost = ghostFrom(p); MG.sfx('flip');
+});
+cv.addEventListener('pointermove', e => { if (!drag) return; const p = cv.logical(e); drag.x = p.x; drag.y = p.y; ghost = ghostFrom(p); });
+cv.addEventListener('pointerup', e => {
+  if (!drag) return;
+  const g = ghostFrom(cv.logical(e));
+  if (g.ok) place(drag.i, g.gx, g.gy); else MG.sfx('step');
+  drag = null; ghost = null;
+});
+cv.addEventListener('pointercancel', () => { drag = null; ghost = null; });
+addEventListener('keydown', e => {
+  if (state !== 'play') return;
+  const k = e.key;
+  if (['1', '2', '3'].includes(k) && tray[+k - 1]) { sel = +k - 1; kbMode = true; }
+  else if (k === 'Tab') { e.preventDefault(); for (let j = 1; j <= 3; j++) { const n = (sel + j) % 3; if (tray[n]) { sel = n; break; } } kbMode = true; }
+  else if (k === 'ArrowLeft') { cur.x--; kbMode = true; } else if (k === 'ArrowRight') { cur.x++; kbMode = true; }
+  else if (k === 'ArrowUp') { cur.y--; kbMode = true; e.preventDefault(); } else if (k === 'ArrowDown') { cur.y++; kbMode = true; e.preventDefault(); }
+  else if ((k === 'Enter' || k === ' ') && kbMode && tray[sel]) { e.preventDefault(); if (!place(sel, cur.x, cur.y)) MG.sfx('step'); }
+  else return;
+  const pc = tray[sel]; if (pc) { cur.x = Math.max(0, Math.min(N - pc.w, cur.x)); cur.y = Math.max(0, Math.min(N - pc.h, cur.y)); }
+});
+
+// ---------- draw ----------
+function block(px, py, s, col, alpha = 1) {
+  x.globalAlpha = alpha;
+  x.fillStyle = col; x.beginPath(); x.roundRect(px + 1, py + 1, s - 2, s - 2, s * 0.18); x.fill();
+  x.fillStyle = 'rgba(255,255,255,.35)'; x.beginPath(); x.roundRect(px + 3, py + 3, s - 6, s * 0.28, s * 0.12); x.fill();
+  x.fillStyle = 'rgba(0,0,0,.12)'; x.fillRect(px + 3, py + s - 6, s - 6, 3);
+  x.globalAlpha = 1;
+}
+function drawPiece(p, px, py, s, alpha) { for (const [a, b] of p.cells) block(px + a * s, py + b * s, s, p.col, alpha); }
+function draw() {
+  const W = cv.lw, H = cv.lh, bx = BX(), by = BY();
+  x.fillStyle = '#fff8dc'; x.fillRect(0, 0, W, H);
+  if (!land) { x.fillStyle = '#8a7a62'; x.font = '600 14px "Noto Sans TC",system-ui,sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('把方塊拖進格子，排滿一整行或一整列就會消掉', W / 2, 30); }
+  x.fillStyle = '#e8d9ae'; x.beginPath(); x.roundRect(bx - 6, by - 6, N * CELL + 12, N * CELL + 12, 12); x.fill();
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    if (grid[r][c]) block(bx + c * CELL, by + r * CELL, CELL, grid[r][c]);
+    else { x.fillStyle = '#f6ecd0'; x.beginPath(); x.roundRect(bx + c * CELL + 1.5, by + r * CELL + 1.5, CELL - 3, CELL - 3, 5); x.fill(); }
+  }
+  // lines that the ghost would complete
+  const showG = ghost ? { ...ghost, p: tray[drag.i] } : (kbMode && tray[sel] ? { gx: cur.x, gy: cur.y, ok: fits(tray[sel], cur.x, cur.y), p: tray[sel] } : null);
+  if (showG && showG.ok) {
+    const tmp = grid.map(r => r.slice()); for (const [a, b] of showG.p.cells) tmp[showG.gy + b][showG.gx + a] = 1;
+    x.fillStyle = 'rgba(255,255,255,.45)';
+    for (let k = 0; k < N; k++) { if (tmp[k].every(Boolean)) x.fillRect(bx, by + k * CELL, N * CELL, CELL); if (tmp.every(r => r[k])) x.fillRect(bx + k * CELL, by, CELL, N * CELL); }
+    drawPiece(showG.p, bx + showG.gx * CELL, by + showG.gy * CELL, CELL, 0.45);
+  } else if (showG && kbMode) {
+    x.strokeStyle = '#ff5a4e'; x.lineWidth = 2; x.setLineDash([5, 4]); x.strokeRect(bx + cur.x * CELL, by + cur.y * CELL, showG.p.w * CELL, showG.p.h * CELL); x.setLineDash([]);
+  }
+  for (const f of fx) { const k = f.life / 0.35, s = CELL * (0.4 + k * 0.6); block(bx + f.c * CELL + (CELL - s) / 2, by + f.r * CELL + (CELL - s) / 2, s, f.col, k); }
+  // tray
+  for (let i = 0; i < 3; i++) {
+    const s = slotRect(i), p = tray[i];
+    x.fillStyle = sel === i && kbMode ? '#ffefb8' : '#fbf1d3'; x.strokeStyle = sel === i && kbMode ? '#ffb72b' : '#e2cf9c'; x.lineWidth = 2;
+    x.beginPath(); x.roundRect(s.x, s.y, s.w, s.h, 12); x.fill(); x.stroke();
+    if (!p || (drag && drag.i === i)) continue;
+    const sc = Math.min(22, (s.w - 16) / p.w, (s.h - 16) / p.h);
+    const usable = canPlaceAnywhere(p);
+    drawPiece(p, s.x + (s.w - p.w * sc) / 2, s.y + (s.h - p.h * sc) / 2, sc, usable ? 1 : 0.35);
+  }
+  if (drag) { const p = tray[drag.i]; drawPiece(p, drag.x - p.w * CELL / 2, drag.y - LIFT() - p.h * CELL / 2, CELL, 0.92); }
+  x.textAlign = 'center';
+  for (const p of pops) {
+    x.globalAlpha = Math.min(1, p.life * 2); x.font = '800 22px system-ui,sans-serif'; x.fillStyle = '#fff'; x.fillText(p.t, p.x + 1, p.y + 1); x.fillStyle = '#ff7a00'; x.fillText(p.t, p.x, p.y);
+    if (p.sub) { x.font = '800 18px "Noto Sans TC",system-ui,sans-serif'; x.fillStyle = '#e0445a'; x.fillText(p.sub, p.x, p.y + 24); }
+  }
+  x.globalAlpha = 1;
+}
+
+function start() { reset(); state = 'play'; MG.hide(); }
+function gameOver() {
+  if (state !== 'play') return;
+  state = 'over'; MG.sfx('over');
+  const rec = MG.record('blocks', score);
+  MG.panel({
+    title: '放不下了！',
+    html: `<p>這次得到</p><div class="big">${score} 分</div>` + (rec.isNew && score > 0 ? `<p class="new">新紀錄！^_^</p>` : `<p>最高紀錄：${rec.best} 分</p>`),
+    buttons: [{ label: '再玩一次', on: start }, { label: '回遊戲區', alt: true, on: () => location.href = 'index.html' }],
+  });
+}
+reset();
+MG.panel({
+  title: '十乘十方塊',
+  html: `<p>把下面的方塊拖進 10×10 的格子。排滿一整行或一整列就會消掉加分，連續消除分數加倍！</p><p>三塊都放不下就結束。方塊不能旋轉，先想好再放 ^_^</p>`,
+  keys: '拖曳方塊　鍵盤：<kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 選方塊、方向鍵移動、<kbd>Enter</kbd> 放下',
+  buttons: [{ label: '開始', on: start }],
+});
+MG.loop(dt => {
+  t += dt;
+  for (const f of fx) f.life -= dt; fx = fx.filter(f => f.life > 0);
+  for (const p of pops) { p.y -= 30 * dt; p.life -= dt; } pops = pops.filter(p => p.life > 0);
+  draw();
+});
+</script>
+</body>
+</html>
