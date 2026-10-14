@@ -12,6 +12,7 @@ MK 的瀏覽器遊戲合集，每個資料夾自成一體。線上遊玩：https
 | [Crystal Outpost](https://k-mertin.github.io/littlethings/outpost/) | [`outpost/`](outpost/README.md) | 星海爭霸風格的即時戰略：玩法不同的藍色前哨、綻放族與晶族三個陣營、6 關教學任務、1v1 或 2v2（電腦盟友）、3 種地圖風格與大小、自動存檔，支援觸控 |
 | [ABC Island](https://k-mertin.github.io/littlethings/abc/) | [`abc/`](abc/README.md) | 幼兒英文：描小寫字母、開頭音、拼字、單字圖卡、和小狐狸 Pip 聊天，貼紙小島，家長區，平板優先 |
 | [捏臉工坊](https://k-mertin.github.io/littlethings/face/) | [`face/`](face/README.md) | 2D 捏臉：臉型、五官、髮型、瀏海、配件、衣服，即時預覽縮圖、隨機、復原、存檔、下載 PNG，支援手機 |
+| [寫實捏臉 3D](https://k-mertin.github.io/littlethings/face3d/) | [`face3d/`](face3d/README.md) | 寫實 3D 捏臉：MakeHuman CC0 人體、417 個變形滑桿、寫實皮膚、3D 髮型眉毛睫毛、表情、眼睛看游標，支援手機 |
 
 ## 遊玩
 直接用瀏覽器打開 `index.html`，或在此資料夾啟動本機伺服器：
@@ -20,7 +21,7 @@ MK 的瀏覽器遊戲合集，每個資料夾自成一體。線上遊玩：https
 python3 -m http.server 8000   # 然後打開 http://localhost:8000
 ```
 
-大廳內按 `1` 進入 Cobble Keep，按 `2` 進入銘甲戰記，按 `3` 進入 Sunny Circuit，按 `4` 進入 Crystal Outpost，按 `5` 進入 ABC Island，按 `6` 進入捏臉工坊。
+大廳內按 `1` 進入 Cobble Keep，按 `2` 進入銘甲戰記，按 `3` 進入 Sunny Circuit，按 `4` 進入 Crystal Outpost，按 `5` 進入 ABC Island，按 `6` 進入捏臉工坊，按 `7` 進入寫實捏臉 3D。
 
 ## 結構
 ```
@@ -31,6 +32,7 @@ racing/           單一檔案，無建置步驟
 outpost/          單一檔案，無建置步驟，不需任何外部函式庫
 abc/              單一檔案，無建置步驟，不需任何外部函式庫
 face/             單一檔案，無建置步驟，不需任何外部函式庫（純 SVG）
+face3d/           index.html＋預先處理的 data/（Three.js 由 CDN 載入）；data/ 由 tools/build.py 從 MakeHuman 素材產生
 ```
 
 ## 新增遊戲
