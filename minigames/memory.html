@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>翻翻記憶</title>
+<link rel="stylesheet" href="mini.css">
+<style>
+#board{display:grid;gap:var(--gap);touch-action:manipulation}
+.card{position:relative;width:var(--cs);height:var(--cs);perspective:600px;cursor:pointer;border:0;padding:0;background:none}
+.card .in{position:absolute;inset:0;transition:transform .32s cubic-bezier(.3,1.4,.5,1);transform-style:preserve-3d}
+.card.up .in,.card.done .in{transform:rotateY(180deg)}
+.card .f,.card .b{position:absolute;inset:0;border-radius:12px;backface-visibility:hidden;-webkit-backface-visibility:hidden;display:flex;align-items:center;justify-content:center}
+.card .b{background:repeating-linear-gradient(45deg,#5a96ea 0 8px,#4c88dd 8px 16px);border:3px solid #2a5cab;box-shadow:0 4px 0 #2a5cab}
+.card .b::after{content:"?";color:#fff;font:700 calc(var(--cs) * .42) system-ui,sans-serif;opacity:.85}
+.card .f{transform:rotateY(180deg);background:#fff;border:3px solid #c9a95a;box-shadow:0 4px 0 #c9a95a;font-size:calc(var(--cs) * .58);line-height:1;
+  font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif}
+.card.done .f{background:#eaffd9;border-color:#4cc96a;box-shadow:0 4px 0 #4cc96a}
+.card.done{animation:yay .4s ease}
+.card.bad .f{background:#ffe4e1;border-color:#ff8a80}
+.card:focus-visible{outline:3px solid #ffb72b;outline-offset:3px;border-radius:12px}
+@keyframes yay{50%{transform:scale(1.12)}}
+.sizes{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:12px}
+.sizes .mg-btn{min-width:96px;font-size:16px}
+.sizes small{display:block;font-weight:400;font-size:12px;opacity:.85}
+</style>
+</head>
+<body>
+<main class="mg-stage"><div id="board" role="grid" aria-label="翻牌"></div></main>
+<script src="mini.js"></script>
+<script>
+'use strict';
+MG.init({ id: 'memory', title: '翻翻記憶', stats: ['moves', 'time'] });
+const SETS = ['🐶', '🐱', '🐰', '🦊', '🐼', '🐸', '🐵', '🐧', '🐙', '🦁', '🐷', '🐨', '🦄', '🐢', '🐝', '🐳', '🦉', '🐞'];
+const SIZES = { easy: { pairs: 6, label: '簡單', note: '12 張' }, normal: { pairs: 10, label: '普通', note: '20 張' }, hard: { pairs: 15, label: '困難', note: '30 張' } };
+const board = document.getElementById('board'), stage = board.parentElement;
+let size = 'easy', cards = [], open = [], moves = 0, matched = 0, time = 0, state = 'ready', lock = false;
+
+function layout() {
+  const n = SIZES[size].pairs * 2;
+  const aw = stage.clientWidth - 16, ah = stage.clientHeight - 16;
+  // try every column count and keep the one that gives the biggest card
+  let best = { cs: 0 };
+  for (let c = 2; c <= n; c++) {
+    const r = Math.ceil(n / c); if (r * c - n >= c) continue;
+    const gap = 8, cs = Math.min((aw - gap * (c - 1)) / c, (ah - gap * (r - 1)) / r);
+    if (cs > best.cs * 0.96) best = { cs, c, gap }; // lean towards more columns when sizes are close
+  }
+  const cs = Math.floor(Math.min(130, best.cs));
+  board.style.setProperty('--cs', cs + 'px');
+  board.style.setProperty('--gap', best.gap + 'px');
+  board.style.gridTemplateColumns = `repeat(${best.c}, ${cs}px)`;
+}
+addEventListener('resize', layout);
+
+function deal() {
+  const pairs = SIZES[size].pairs;
+  const faces = MG.shuffle(MG.shuffle([...SETS]).slice(0, pairs).flatMap(f => [f, f]));
+  board.innerHTML = '';
+  cards = faces.map((f, i) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'card'; b.setAttribute('aria-label', '蓋著的牌');
+    b.innerHTML = `<div class="in"><div class="b"></div><div class="f">${f}</div></div>`;
+    b.onclick = () => flip(i);
+    board.append(b);
+    return { el: b, face: f, up: false, done: false };
+  });
+  open = []; moves = 0; matched = 0; time = 0; lock = false;
+  layout(); hud();
+}
+function hud() { MG.stat('moves', `${moves} 步`); MG.stat('time', `⏱ ${fmt(time)}`); }
+const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+function flip(i) {
+  const c = cards[i];
+  if (state !== 'play' || lock || c.up || c.done) return;
+  c.up = true; c.el.classList.add('up'); c.el.setAttribute('aria-label', c.face); MG.sfx('flip');
+  open.push(c);
+  if (open.length < 2) return;
+  moves++; hud();
+  const [a, b] = open;
+  if (a.face === b.face) {
+    a.done = b.done = true; open = [];
+    setTimeout(() => { a.el.classList.add('done'); b.el.classList.add('done'); MG.sfx('good'); }, 180);
+    matched++;
+    if (matched === SIZES[size].pairs) win();
+  } else {
+    lock = true;
+    setTimeout(() => { a.el.classList.add('bad'); b.el.classList.add('bad'); }, 260);
+    setTimeout(() => {
+      for (const q of [a, b]) { q.up = false; q.el.classList.remove('up', 'bad'); q.el.setAttribute('aria-label', '蓋著的牌'); }
+      open = []; lock = false;
+    }, 850);
+  }
+}
+function win() {
+  state = 'over';
+  const key = 'memory.' + size, rec = MG.record(key, Math.round(time * 10) / 10, true);
+  const mv = MG.record('memory.moves.' + size, moves, true);
+  setTimeout(() => {
+    MG.sfx('win');
+    MG.panel({
+      title: '全部配對完成！',
+      html: `<div class="big">${fmt(time)}</div><p>${SIZES[size].label}　${moves} 步</p>` +
+        (rec.isNew ? `<p class="new">最快紀錄！^_^</p>` : `<p>最快：${fmt(rec.best)}</p>`) + (mv.isNew && !rec.isNew ? `<p class="new">最少步數紀錄！</p>` : ''),
+      buttons: [{ label: '再玩一次', on: () => start(size) }, { label: '換難度', alt: true, on: menu }, { label: '回遊戲區', alt: true, on: () => location.href = 'index.html' }],
+    });
+  }, 500);
+}
+function start(sz) { size = sz; deal(); state = 'play'; MG.hide(); }
+function menu() {
+  MG.panel({
+    title: '翻翻記憶',
+    html: `<p>翻開兩張牌，一樣的就配對成功。用最少的步數、最快的時間全部找完！</p>
+      <div class="sizes">${Object.entries(SIZES).map(([k, s]) => {
+        const b = MG.best('memory.' + k);
+        return `<button class="mg-btn${k === 'easy' ? '' : ' alt'}" data-size="${k}">${s.label}<small>${s.note}${b != null ? '・最快 ' + fmt(b) : ''}</small></button>`;
+      }).join('')}</div>`,
+    keys: '點牌翻開　鍵盤可用 <kbd>Tab</kbd> 移動、<kbd>Enter</kbd> 翻牌',
+  });
+  document.querySelectorAll('[data-size]').forEach(b => b.onclick = () => { MG.sfx('click'); MG.unlock(); start(b.dataset.size); });
+  setTimeout(() => document.querySelector('[data-size]')?.focus(), 30);
+}
+deal(); menu();
+MG.loop(dt => { if (state === 'play' && moves + open.length > 0) { time += dt; hud(); } });
+</script>
+</body>
+</html>

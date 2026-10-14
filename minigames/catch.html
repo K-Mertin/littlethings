@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>水果接接樂</title>
+<link rel="stylesheet" href="mini.css">
+</head>
+<body>
+<main class="mg-stage"><canvas id="cv" aria-label="遊戲畫面"></canvas></main>
+<script src="mini.js"></script>
+<script>
+'use strict';
+MG.init({ id: 'catch', title: '水果接接樂', stats: ['score', 'time'] });
+let W = 360, H = 560;
+const cv = document.getElementById('cv'), x = cv.getContext('2d');
+MG.fit(cv, (sw, sh) => { [W, H] = sw > sh * 1.15 ? [640, 360] : [360, 560]; return [W, H]; });
+const EMOJI = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+const FRUITS = [['🍎', 10], ['🍌', 10], ['🍇', 10], ['🍊', 10], ['🍓', 10], ['🍉', 20], ['🍍', 20]];
+const ROUND = 60, BW = 70;
+let GROUND = 0; const groundY = () => (GROUND = H - 40);
+let B, items, score, combo, hearts, left, spawnT, state = 'ready', pops = [], t = 0, slow = 0;
+
+function reset() {
+  groundY();
+  B = { x: W / 2, tx: W / 2, wob: 0, face: 'happy', faceT: 0 };
+  items = []; pops = []; score = 0; combo = 0; hearts = 3; left = ROUND; spawnT = 0.4; t = 0; slow = 0; hud();
+}
+function hud() { MG.stat('score', `${score} 分`); MG.stat('time', `⏱ ${Math.ceil(left)}`); }
+
+// ---------- input ----------
+const keys = { l: false, r: false };
+addEventListener('keydown', e => { if (e.key === 'ArrowLeft' || e.key === 'a') keys.l = true; if (e.key === 'ArrowRight' || e.key === 'd') keys.r = true; });
+addEventListener('keyup', e => { if (e.key === 'ArrowLeft' || e.key === 'a') keys.l = false; if (e.key === 'ArrowRight' || e.key === 'd') keys.r = false; });
+let dragging = false;
+cv.addEventListener('pointerdown', e => { dragging = true; try { cv.setPointerCapture(e.pointerId); } catch {} B.tx = cv.logical(e).x; });
+cv.addEventListener('pointermove', e => { if (dragging || e.pointerType === 'mouse') B.tx = cv.logical(e).x; });
+cv.addEventListener('pointerup', () => dragging = false);
+cv.addEventListener('pointercancel', () => dragging = false);
+
+// ---------- update ----------
+function spawn() {
+  const prog = 1 - left / ROUND;
+  const r = Math.random();
+  let it;
+  if (r < 0.16 + prog * 0.14) it = { kind: 'bomb', ch: '💣', pts: 0 };
+  else if (r < 0.22 + prog * 0.14) it = { kind: 'star', ch: '⭐', pts: 50 };
+  else if (r < 0.25 + prog * 0.14) it = { kind: 'snail', ch: '🐌', pts: 0 };
+  else { const f = MG.pick(FRUITS); it = { kind: 'fruit', ch: f[0], pts: f[1] }; }
+  it.x = MG.rand(22, W - 22); it.y = -24; it.vy = MG.rand(150, 210) + prog * 170; it.rot = MG.rand(-1, 1); it.spin = MG.rand(-3, 3);
+  if (it.kind === 'star') it.vx = MG.rand(-60, 60);
+  items.push(it);
+}
+function update(dt) {
+  groundY(); t += dt; left -= dt; slow = Math.max(0, slow - dt);
+  const k = slow ? 0.5 : 1;
+  if (keys.l) B.tx = B.x - 400; if (keys.r) B.tx = B.x + 400;
+  B.tx = Math.max(BW / 2, Math.min(W - BW / 2, B.tx));
+  const nx = B.x + (B.tx - B.x) * Math.min(1, dt * 16);
+  const maxStep = 560 * dt; B.x += Math.max(-maxStep, Math.min(maxStep, nx - B.x));
+  B.wob *= Math.pow(0.01, dt); B.faceT -= dt; if (B.faceT <= 0) B.face = 'happy';
+
+  spawnT -= dt;
+  if (spawnT <= 0) { spawn(); spawnT = Math.max(0.32, 0.8 - (1 - left / ROUND) * 0.45) * MG.rand(0.7, 1.2); }
+  for (const it of items) {
+    it.y += it.vy * dt * k; it.rot += it.spin * dt;
+    if (it.vx) { it.x += it.vx * dt * k; if (it.x < 20 || it.x > W - 20) it.vx *= -1; }
+    // catch zone: the top of the basket
+    if (!it.done && it.y > GROUND - 34 && it.y < GROUND - 6 && Math.abs(it.x - B.x) < BW / 2 + 6) caught(it);
+    if (!it.done && it.y > H + 30) { it.done = true; if (it.kind === 'fruit') combo = 0; }
+  }
+  items = items.filter(it => !it.done);
+  for (const p of pops) { p.y -= 40 * dt; p.life -= dt; } pops = pops.filter(p => p.life > 0);
+  if (left <= 0) { left = 0; end('時間到！'); }
+  hud();
+}
+function caught(it) {
+  it.done = true; B.wob = 1;
+  if (it.kind === 'bomb') {
+    hearts--; combo = 0; B.face = 'ouch'; B.faceT = 0.8; MG.sfx('bad'); pops.push({ x: it.x, y: GROUND - 50, t: '砰！', c: '#ff5a4e', life: 0.9 });
+    if (hearts <= 0) end('炸彈太多了…');
+    return;
+  }
+  if (it.kind === 'snail') { slow = 4; MG.sfx('good'); pops.push({ x: it.x, y: GROUND - 50, t: '慢動作！', c: '#3a7bd5', life: 1 }); return; }
+  combo++;
+  const mult = combo >= 15 ? 3 : combo >= 6 ? 2 : 1;
+  const pts = it.pts * mult; score += pts;
+  MG.sfx(it.kind === 'star' ? 'good' : 'pop');
+  pops.push({ x: it.x, y: GROUND - 50, t: `+${pts}`, c: mult > 1 ? '#ff7a00' : '#2e9a4c', life: 0.7 });
+}
+
+// ---------- draw ----------
+function draw() {
+  groundY();
+  const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#9fdcff'); g.addColorStop(1, '#e8f8ff'); x.fillStyle = g; x.fillRect(0, 0, W, H);
+  // clouds and trees
+  x.fillStyle = 'rgba(255,255,255,.85)';
+  for (const [cx, cy, s] of [[60, 70, 1], [250, 120, 1.3], [180, 40, .7]]) { const ox = ((cx + t * 8 * s) % (W + 120)) - 60; for (const [a, b, r] of [[0, 0, 18], [18, -8, 22], [38, 0, 17]]) { x.beginPath(); x.arc(ox + a * s, cy + b * s, r * s, 0, 7); x.fill(); } }
+  x.fillStyle = '#7dc957'; x.beginPath(); x.ellipse(70, GROUND + 6, 150, 40, 0, Math.PI, 0); x.fill();
+  x.fillStyle = '#6cbd4a'; x.beginPath(); x.ellipse(W - 60, GROUND + 6, 140, 34, 0, Math.PI, 0); x.fill();
+  x.fillStyle = '#5aa63c'; x.fillRect(0, GROUND, W, H - GROUND);
+  x.fillStyle = '#4b9132'; for (let i = 0; i < W; i += 14) x.fillRect(i, GROUND, 7, 4);
+  if (slow) { x.fillStyle = 'rgba(80,120,255,.08)'; x.fillRect(0, 0, W, H); }
+  // items
+  x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = `34px ${EMOJI}`;
+  for (const it of items) { x.save(); x.translate(it.x, it.y); x.rotate(it.rot * 0.4); x.fillText(it.ch, 0, 0); x.restore(); }
+  // 噗噗 with a basket
+  const bx = B.x, by = GROUND - 8, w = Math.sin(t * 30) * B.wob * 3;
+  MG.puPu(x, bx, by - 34, 15, B.face, B.wob * 0.15);
+  x.fillStyle = '#c98a3e'; x.strokeStyle = '#8a5a22'; x.lineWidth = 2;
+  x.beginPath(); x.moveTo(bx - BW / 2 + w, by - 22); x.lineTo(bx + BW / 2 + w, by - 22); x.lineTo(bx + BW / 2 - 8, by + 4); x.lineTo(bx - BW / 2 + 8, by + 4); x.closePath(); x.fill(); x.stroke();
+  x.strokeStyle = '#a8702e'; x.lineWidth = 1.5;
+  for (let i = 1; i < 6; i++) { const yy = by - 22 + i * 4.4; x.beginPath(); x.moveTo(bx - BW / 2 + 2 + i * 1.3 + w, yy); x.lineTo(bx + BW / 2 - 2 - i * 1.3 + w, yy); x.stroke(); }
+  x.fillStyle = '#e0a55a'; x.beginPath(); x.roundRect(bx - BW / 2 - 3 + w, by - 26, BW + 6, 6, 3); x.fill();
+  // pops
+  x.font = '700 18px system-ui,sans-serif';
+  for (const p of pops) { x.globalAlpha = Math.min(1, p.life * 2); x.fillStyle = '#fff'; x.fillText(p.t, p.x + 1, p.y + 1); x.fillStyle = p.c; x.fillText(p.t, p.x, p.y); }
+  x.globalAlpha = 1;
+  // hearts + combo
+  x.textAlign = 'left'; x.font = `20px ${EMOJI}`;
+  for (let i = 0; i < 3; i++) x.fillText(i < hearts ? '❤️' : '🤍', 10 + i * 26, 22);
+  if (combo >= 3) {
+    x.textAlign = 'right'; x.font = '700 16px system-ui,sans-serif'; x.fillStyle = '#ff7a00';
+    x.fillText(`${combo} 連接${combo >= 15 ? ' ×3' : combo >= 6 ? ' ×2' : ''}`, W - 10, 22);
+  }
+}
+
+// ---------- flow ----------
+function start() { reset(); state = 'play'; MG.hide(); }
+function end(msg) {
+  if (state !== 'play') return;
+  state = 'over'; MG.sfx(hearts > 0 ? 'win' : 'over');
+  const rec = MG.record('catch', score);
+  MG.panel({
+    title: msg,
+    html: `<p>這次得到</p><div class="big">${score} 分</div>` + (rec.isNew && score > 0 ? `<p class="new">新紀錄！^_^</p>` : `<p>最高紀錄：${rec.best} 分</p>`),
+    buttons: [{ label: '再玩一次', on: start }, { label: '回遊戲區', alt: true, on: () => location.href = 'index.html' }],
+  });
+}
+reset();
+MG.panel({
+  title: '水果接接樂',
+  html: `<p>幫噗噗用籃子接住掉下來的水果，60 秒內看能拿幾分！</p>
+  <p>連續接到會加倍　⭐ 50 分　🐌 慢動作<br>💣 碰到三次就結束</p>`,
+  keys: '電腦：<kbd>←</kbd><kbd>→</kbd> 或滑鼠　手機：手指在畫面上左右拖',
+  buttons: [{ label: '開始', on: start }],
+});
+MG.loop(dt => { if (state === 'play') update(dt); else { t += dt; for (const p of pops) { p.y -= 40 * dt; p.life -= dt; } pops = pops.filter(p => p.life > 0); } draw(); });
+</script>
+</body>
+</html>

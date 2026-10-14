@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>敲敲地鼠</title>
+<link rel="stylesheet" href="mini.css">
+</head>
+<body>
+<main class="mg-stage"><canvas id="cv" aria-label="遊戲畫面"></canvas></main>
+<script src="mini.js"></script>
+<script>
+'use strict';
+MG.init({ id: 'mole', title: '敲敲地鼠', stats: ['score', 'time'] });
+let W = 360, H = 520, land = false;
+const cv = document.getElementById('cv'), x = cv.getContext('2d');
+const ROUND = 45;
+const holes = []; for (let i = 0; i < 9; i++) holes.push({ x: 0, y: 0, m: null });
+function placeHoles() {
+  holes.forEach((h, i) => { const r = Math.floor(i / 3), c = i % 3;
+    if (land) { h.x = 250 + c * 118; h.y = 108 + r * 92; } else { h.x = 70 + c * 110; h.y = 190 + r * 128; } });
+}
+cv.onfit = placeHoles;
+MG.fit(cv, (sw, sh) => { land = sw > sh * 1.15; [W, H] = land ? [580, 350] : [360, 520]; return [W, H]; });
+let score, left, spawnT, state = 'ready', pops = [], hits = [], t = 0, combo = 0, misses = 0;
+
+function reset() { for (const h of holes) h.m = null; score = 0; left = ROUND; spawnT = 0.6; pops = []; hits = []; t = 0; combo = 0; misses = 0; hud(); }
+function hud() { MG.stat('score', `${score} 分`); MG.stat('time', `⏱ ${Math.ceil(left)}`); }
+
+function spawn() {
+  const free = holes.filter(h => !h.m); if (!free.length) return;
+  const h = MG.pick(free), prog = 1 - left / ROUND, r = Math.random();
+  let kind = 'mole';
+  if (r < 0.12 + prog * 0.08) kind = 'bunny';
+  else if (r < 0.22 + prog * 0.08) kind = 'gold';
+  else if (r < 0.36 + prog * 0.1) kind = 'helmet';
+  const stay = { mole: 1.05, gold: 0.62, helmet: 1.35, bunny: 1.2 }[kind] * (1 - prog * 0.38);
+  h.m = { kind, up: 0, state: 'rise', stay, hp: kind === 'helmet' ? 2 : 1, hitT: 0 };
+}
+function update(dt) {
+  t += dt; left -= dt;
+  const prog = 1 - left / ROUND;
+  spawnT -= dt;
+  if (spawnT <= 0) { spawn(); if (prog > 0.5 && Math.random() < 0.35) spawn(); spawnT = (0.72 - prog * 0.36) * MG.rand(0.7, 1.25); }
+  for (const h of holes) {
+    const m = h.m; if (!m) continue;
+    if (m.state === 'rise') { m.up = Math.min(1, m.up + dt * 7); if (m.up >= 1) m.state = 'stay'; }
+    else if (m.state === 'stay') { m.stay -= dt; if (m.stay <= 0) m.state = 'sink'; }
+    else if (m.state === 'sink' || m.state === 'bonk') {
+      if (m.state === 'bonk') { m.hitT += dt; if (m.hitT < 0.25) continue; }
+      m.up -= dt * 6;
+      if (m.up <= 0) { if (m.state === 'sink' && m.kind !== 'bunny') { combo = 0; } h.m = null; }
+    }
+  }
+  for (const p of pops) { p.y -= 36 * dt; p.life -= dt; } pops = pops.filter(p => p.life > 0);
+  for (const s of hits) s.life -= dt; hits = hits.filter(s => s.life > 0);
+  if (left <= 0) { left = 0; end(); }
+  hud();
+}
+function whack(i, px, py) {
+  if (state !== 'play') return;
+  const h = holes[i]; hits.push({ x: px ?? h.x, y: py ?? h.y - 30, life: 0.18 });
+  const m = h.m;
+  if (!m || m.state === 'bonk' || m.up < 0.35) { MG.sfx('step'); return; }
+  if (m.kind === 'bunny') {
+    score = Math.max(0, score - 20); combo = 0; m.state = 'bonk'; m.hitT = 0; MG.sfx('bad');
+    pops.push({ x: h.x, y: h.y - 70, t: '別打小兔子 −20', c: '#ff5a4e', life: 1 }); return;
+  }
+  if (m.kind === 'helmet' && m.hp > 1) { m.hp--; m.stay += 0.25; MG.sfx('hit'); pops.push({ x: h.x, y: h.y - 70, t: '鏘！', c: '#7b8095', life: 0.5 }); return; }
+  combo++;
+  const base = { mole: 10, gold: 30, helmet: 20 }[m.kind];
+  const pts = base + Math.min(10, Math.floor(combo / 5) * 2);
+  score += pts; m.state = 'bonk'; m.hitT = 0; MG.sfx(m.kind === 'gold' ? 'good' : 'pop');
+  pops.push({ x: h.x, y: h.y - 70, t: `+${pts}`, c: m.kind === 'gold' ? '#e08a00' : '#2e9a4c', life: 0.7 });
+}
+// ---------- input ----------
+cv.addEventListener('pointerdown', e => {
+  const p = cv.logical(e); let bi = -1, bd = 1e9;
+  holes.forEach((h, i) => { const d = Math.hypot(p.x - h.x, (p.y - (h.y - 28)) * 0.8); if (d < bd) { bd = d; bi = i; } });
+  if (bd < 62) whack(bi, p.x, p.y); else hits.push({ x: p.x, y: p.y, life: 0.18 });
+});
+const KEYMAP = { q: 0, w: 1, e: 2, a: 3, s: 4, d: 5, z: 6, x: 7, c: 8, '7': 0, '8': 1, '9': 2, '4': 3, '5': 4, '6': 5, '1': 6, '2': 7, '3': 8 };
+addEventListener('keydown', e => { const k = KEYMAP[e.key.toLowerCase()]; if (k != null && !e.repeat) whack(k); });
+
+// ---------- draw ----------
+function draw() {
+  x.fillStyle = '#8fd46a'; x.fillRect(0, 0, W, H);
+  x.fillStyle = '#7cc45a'; for (let i = 0; i < 60; i++) { const gx = (i * 73) % W, gy = (i * 131) % H; x.fillRect(gx, gy, 3, 7); x.fillRect(gx + 4, gy + 2, 3, 5); }
+  // sign
+  const sx = land ? 95 : W / 2, sy = land ? 120 : 16;
+  x.fillStyle = '#a4703a'; x.fillRect(sx - 4, sy + 14, 8, 60);
+  x.fillStyle = '#e8c78f'; x.strokeStyle = '#a4703a'; x.lineWidth = 3; x.beginPath(); x.roundRect(sx - (land ? 80 : 110), sy, land ? 160 : 220, 56, 10); x.fill(); x.stroke();
+  x.fillStyle = '#6b4a22'; x.font = '700 24px "Noto Sans TC",system-ui,sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText('地鼠農場', sx, sy + 28);
+  holes.forEach((h, i) => drawHole(h, i));
+  for (const s of hits) { x.save(); x.translate(s.x, s.y); x.rotate(-0.6 + (0.18 - s.life) * 6); x.fillStyle = '#a4703a'; x.fillRect(-3, -2, 6, 36); x.fillStyle = '#ff5a4e'; x.strokeStyle = '#a82a22'; x.lineWidth = 2; x.beginPath(); x.roundRect(-20, -14, 40, 22, 6); x.fill(); x.stroke(); x.restore(); }
+  x.font = '700 18px system-ui,sans-serif';
+  for (const p of pops) { x.globalAlpha = Math.min(1, p.life * 2); x.fillStyle = '#fff'; x.fillText(p.t, p.x + 1, p.y + 1); x.fillStyle = p.c; x.fillText(p.t, p.x, p.y); }
+  x.globalAlpha = 1;
+  if (combo >= 5) { x.fillStyle = '#ff7a00'; x.font = '700 16px system-ui,sans-serif'; x.fillText(`${combo} 連打！`, land ? 95 : W / 2, land ? 230 : H - 18); }
+}
+function drawHole(h, i) {
+  const hx = h.x, hy = h.y;
+  x.fillStyle = '#6b4a22'; x.beginPath(); x.ellipse(hx, hy, 46, 17, 0, 0, 7); x.fill();
+  x.fillStyle = '#3a2611'; x.beginPath(); x.ellipse(hx, hy, 40, 13, 0, 0, 7); x.fill();
+  const m = h.m;
+  if (m) {
+    x.save(); x.beginPath(); x.rect(hx - 50, hy - 110, 100, 110); x.clip();
+    const top = hy + 6 - 62 * Math.max(0, m.up);
+    drawCritter(m, hx, top);
+    x.restore();
+  }
+  x.fillStyle = '#8a6232'; x.beginPath(); x.ellipse(hx, hy + 4, 46, 13, 0, 0, Math.PI); x.fill();
+  x.fillStyle = 'rgba(255,255,255,.55)'; x.font = '600 11px system-ui,sans-serif'; x.fillText('QWEASDZXC'[i], hx + 38, hy + 14);
+}
+function drawCritter(m, cx, top) {
+  const bonk = m.state === 'bonk';
+  if (m.kind === 'bunny') {
+    x.fillStyle = '#fff'; x.strokeStyle = '#d9cfe0'; x.lineWidth = 2;
+    for (const s of [-1, 1]) { x.beginPath(); x.ellipse(cx + s * 11, top - 6, 7, 22, s * 0.15, 0, 7); x.fill(); x.stroke(); x.fillStyle = '#ffc2d4'; x.beginPath(); x.ellipse(cx + s * 11, top - 6, 3, 15, s * 0.15, 0, 7); x.fill(); x.fillStyle = '#fff'; }
+    x.beginPath(); x.ellipse(cx, top + 30, 28, 30, 0, 0, 7); x.fill(); x.stroke();
+    face(cx, top + 26, bonk, '#ff8fb0'); return;
+  }
+  const body = m.kind === 'gold' ? ['#ffd34d', '#c99a00'] : ['#a77447', '#6e4724'];
+  x.fillStyle = body[0]; x.strokeStyle = body[1]; x.lineWidth = 2.5;
+  x.beginPath(); x.ellipse(cx, top + 34, 30, 34, 0, 0, 7); x.fill(); x.stroke();
+  x.fillStyle = m.kind === 'gold' ? '#fff3c2' : '#e6c39c'; x.beginPath(); x.ellipse(cx, top + 42, 18, 16, 0, 0, 7); x.fill();
+  face(cx, top + 24, bonk, '#ff6f7f');
+  if (m.kind === 'gold') { x.fillStyle = '#fff'; x.font = '14px sans-serif'; x.fillText('✦', cx + 22, top + 6 + Math.sin(t * 9) * 2); }
+  if (m.kind === 'helmet' && m.hp > 1) {
+    x.fillStyle = '#ffcf33'; x.strokeStyle = '#b38400'; x.lineWidth = 2;
+    x.beginPath(); x.arc(cx, top + 18, 28, Math.PI, 0); x.lineTo(cx + 32, top + 20); x.lineTo(cx - 32, top + 20); x.closePath(); x.fill(); x.stroke();
+    x.fillStyle = '#fff6c9'; x.fillRect(cx - 4, top - 8, 8, 24);
+  }
+}
+function face(cx, cy, bonk, nose) {
+  x.fillStyle = '#2a1c10'; x.strokeStyle = '#2a1c10'; x.lineWidth = 2.2;
+  if (bonk) { for (const s of [-1, 1]) { x.beginPath(); x.moveTo(cx + s * 13 - 4, cy - 4); x.lineTo(cx + s * 13 + 4, cy + 4); x.moveTo(cx + s * 13 + 4, cy - 4); x.lineTo(cx + s * 13 - 4, cy + 4); x.stroke(); } x.fillStyle = '#ffd34d'; x.font = '16px sans-serif'; x.fillText('★', cx - 22, cy - 26); x.fillText('★', cx + 20, cy - 30); }
+  else for (const s of [-1, 1]) { x.beginPath(); x.arc(cx + s * 12, cy, 4, 0, 7); x.fill(); }
+  x.fillStyle = nose; x.beginPath(); x.ellipse(cx, cy + 10, 6, 4.5, 0, 0, 7); x.fill();
+}
+
+function start() { reset(); state = 'play'; MG.hide(); }
+function end() {
+  state = 'over'; MG.sfx('win');
+  const rec = MG.record('mole', score);
+  MG.panel({
+    title: '時間到！',
+    html: `<p>這次敲到</p><div class="big">${score} 分</div>` + (rec.isNew && score > 0 ? `<p class="new">新紀錄！^_^</p>` : `<p>最高紀錄：${rec.best} 分</p>`),
+    buttons: [{ label: '再玩一次', on: start }, { label: '回遊戲區', alt: true, on: () => location.href = 'index.html' }],
+  });
+}
+reset();
+MG.panel({
+  title: '敲敲地鼠',
+  html: `<p>地鼠跑出來偷吃菜了！45 秒內敲越多越好。</p>
+  <p>金色地鼠分數多但跑得快　戴安全帽的要敲兩下<br>小白兔是好朋友，<b>不要敲</b>！</p>`,
+  keys: '點地鼠就能敲　鍵盤：<kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd> / <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd> 或數字鍵盤',
+  buttons: [{ label: '開始', on: start }],
+});
+MG.loop(dt => { if (state === 'play') update(dt); else t += dt; draw(); });
+</script>
+</body>
+</html>
