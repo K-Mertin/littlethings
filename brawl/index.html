@@ -1026,9 +1026,9 @@ const SKILLS = {
 /* ------------------------------ world ------------------------------ */
 let W = null;                    // current match
 const DIFF = [
-  { name: '簡單', react: 30, maxEng: 1, block: 0.04, combo: 0.12, skill: 0.25, dodge: 0.1, atkCd: 74, eDmg: 0.45, eHp: 0.8 },
-  { name: '普通', react: 18, maxEng: 2, block: 0.18, combo: 0.35, skill: 0.45, dodge: 0.3, atkCd: 56, eDmg: 0.5, eHp: 1 },
-  { name: '困難', react: 10, maxEng: 3, block: 0.35, combo: 0.6, skill: 0.7, dodge: 0.55, atkCd: 34, eDmg: 0.85, eHp: 1.2 }
+  { name: '簡單', react: 30, maxEng: 1, block: 0.04, combo: 0.12, skill: 0.25, dodge: 0.1, atkCd: 74, eDmg: 0.45, eHp: 0.8, gap: 75, windup: 24, comboMax: 0 },
+  { name: '普通', react: 18, maxEng: 2, block: 0.18, combo: 0.35, skill: 0.45, dodge: 0.3, atkCd: 56, eDmg: 0.5, eHp: 1, gap: 38, windup: 12, comboMax: 1 },
+  { name: '困難', react: 10, maxEng: 3, block: 0.35, combo: 0.6, skill: 0.7, dodge: 0.55, atkCd: 34, eDmg: 0.85, eHp: 1.2, gap: 22, windup: 7, comboMax: 2 }
 ];
 
 function addPart(kind, x, y, z, o = {}) {
@@ -1275,6 +1275,7 @@ const FLY_STATES = new Set(['idle', 'walk', 'run', 'brake', 'land', 'atk', 'skil
 /* the heart of combat */
 function applyHit(att, v, A, dir, area) {
   if (v.dead || v.invul > 0 || v.state === 'getup' || v.invisible) return false;
+  if (att && att.def.enemy && v.ctl && v.ctl.human && v.state === 'fall') return false; // monsters never juggle you
   if (v.state === 'lying' && !A.launch) return false;
   if (v.state === 'lying') return false;
   let dmg = A.dmg * (att ? att.pow : 1);
@@ -1396,7 +1397,7 @@ class AICtl {
     if (f.dead || f.dying || W.over) return;
     if (f.entering) { I.mx = f.x < W.minX + 30 ? 1 : -1; return; }
     this.cd--;
-    if (this.defT > 0) { this.defT--; I.def = true; if (this.defT === 0 && Math.random() < L.combo * 0.6) I.atk = true; return; }
+    if (this.defT > 0) { this.defT--; I.def = true; if (this.defT === 0 && Math.random() < L.combo * 0.6 && this.ready(this.tgt, true)) { I.atk = true; this.claim(this.tgt, 0); } return; }
     if (this.wait > 0) { this.wait--; }
     // continue a combo already started
     if (f.state === 'atk' && this.comboLeft > 0 && f.st > f.atk.on + 1) { I.atk = true; this.comboLeft--; return; }
@@ -1412,9 +1413,9 @@ class AICtl {
     }
     if (this.plan === 'ranged') {
       const want = g.x - sgn(dx || 1) * 250;
-      if (adx < 90) { this.moveTo(f.x - sgn(dx) * 200, g.z + this.zoff, 10, 8, true); if (adx < 40 && this.cd <= 0 && Math.abs(dz) < 12) { this.face(dx); I.atk = true; this.cd = L.atkCd; } return; }
+      if (adx < 90) { this.moveTo(f.x - sgn(dx) * 200, g.z + this.zoff, 10, 8, true); if (adx < 40 && this.cd <= 0 && Math.abs(dz) < 12 && this.ready(g)) { this.face(dx); I.atk = true; this.cd = L.atkCd; this.claim(g, 0); } return; }
       this.moveTo(want, g.z, 40, 5);
-      if (Math.abs(dz) < 9 && adx > 120 && adx < 460 && this.cd <= 0) { this.face(dx); I.skill = 1; this.cd = L.atkCd * 2.4 * rnd(0.8, 1.3); }
+      if (Math.abs(dz) < 9 && adx > 120 && adx < 460 && this.cd <= 0 && this.ready(g, true)) { this.face(dx); I.skill = 1; this.cd = L.atkCd * 2.4 * rnd(0.8, 1.3); this.claim(g, 10); }
       return;
     }
     if (this.plan === 'hover') {
@@ -1428,13 +1429,26 @@ class AICtl {
     const near = Math.abs(f.x - tx) < 12 && Math.abs(dz) < 8;
     if (!near) {
       this.moveTo(tx, tz, 8, 5, adx > 240 && Math.abs(dz) < 30);
-      if (adx < 70 && Math.abs(dz) < 10 && this.cd <= 0 && sgn(dx) === f.face) { I.atk = true; this.cd = L.atkCd * rnd(0.7, 1.3); this.comboLeft = Math.random() < L.combo ? 2 : 0; }
+      if (adx < 70 && Math.abs(dz) < 10 && this.cd <= 0 && sgn(dx) === f.face && this.ready(g)) { I.atk = true; this.cd = L.atkCd * rnd(0.7, 1.3); this.comboLeft = Math.random() < L.combo ? this.maxCombo() : 0; this.claim(g, this.comboLeft * 16); }
     } else {
       this.face(dx);
-      if (this.cd <= 0) { I.atk = true; this.cd = L.atkCd * rnd(0.7, 1.4); this.comboLeft = Math.random() < L.combo ? 2 : Math.random() < 0.5 ? 1 : 0; }
+      if (this.cd <= 0 && this.ready(g)) { I.atk = true; this.cd = L.atkCd * rnd(0.7, 1.4); this.comboLeft = Math.random() < L.combo ? this.maxCombo() : 0; this.claim(g, this.comboLeft * 16); }
     }
   }
   face(dx) { if (sgn(dx) !== this.f.face) this.inp.mx = sgn(dx) * 0.04; }
+  /* Rhythm against a human: only one monster (or CPU) starts an attack on you at a time, with a
+     gap between attacks, and each one pauses briefly (wind-up) before swinging so you can react. */
+  ready(g, noWind) {
+    if (!g || !(g.ctl && g.ctl.human)) return true;
+    const L = W.D;
+    if (W.t < (g.pressUntil || 0)) { if (!noWind) this.wind = Math.max(this.wind || 0, L.windup); return false; }
+    if (noWind) return true;
+    if (this.wind === undefined) this.wind = L.windup;
+    if (this.wind > 0) { this.wind--; return false; }
+    return true;
+  }
+  claim(g, extra) { if (g && g.ctl && g.ctl.human) { g.pressUntil = W.t + W.D.gap * (this.f.def.boss ? 0.8 : 1) + extra; } this.wind = W.D.windup; }
+  maxCombo() { return this.f.def.boss ? Math.max(1, W.D.comboMax) : W.D.comboMax; }
   moveTo(tx, tz, ex, ez, run) {
     const f = this.f, I = this.inp, dx = tx - f.x, dz = tz - f.z;
     if (Math.abs(dx) > ex) I.mx = sgn(dx); if (Math.abs(dz) > ez) I.mz = clamp(dz / 20, -1, 1);
@@ -1466,7 +1480,7 @@ class AICtl {
       if (sk[2] === 'iron' && n === 3 && f.armorT > 0) n = 0;
       if (sk[1] === 'shadowstep' && adx > 150 && can(2) && Math.random() < 0.3) n = 2;
       if (f.def.boss && n === 1 && can(3) && Math.random() < 0.4) n = 3;
-      if (n) { this.face(dx); I.skill = n; return; }
+      if (n && this.ready(g, true)) { this.face(dx); I.skill = n; this.claim(g, 20); return; }
     }
     // grab a nearby weapon
     if (!f.hold && f.def.enemy && Math.random() < 0.3) {
@@ -1481,7 +1495,7 @@ class AICtl {
     } else {
       this.plan = 'hover'; this.side = sgn(f.x - g.x || 1); this.hx = rnd(130, 220); this.zoff = rnd(-50, 50);
     }
-    if (f.hold && f.hold.kind === 'stone' && Math.abs(dz) < 10 && adx > 80 && adx < 300) { this.face(dx); I.atk = true; }
+    if (f.hold && f.hold.kind === 'stone' && Math.abs(dz) < 10 && adx > 80 && adx < 300 && this.ready(g, true)) { this.face(dx); I.atk = true; this.claim(g, 0); }
   }
 }
 
