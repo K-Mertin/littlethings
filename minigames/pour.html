@@ -17,13 +17,18 @@ const cv = document.getElementById('cv'), x = cv.getContext('2d');
 let land = false;
 
 // ---------- data ----------
-const COLORS = ['#ff4d5e', '#ff9f1c', '#ffd93d', '#45c95f', '#3d8bff', '#9b5cff', '#ff73c0', '#8b5a2b', '#36d6d0', '#b6e03a'];
-const SHAPES = ['dot', 'star', 'tri', 'heart', 'square', 'diamond', 'moon', 'plus', 'ring', 'drop'];
-// [colours, units per bottle]; there are always two empty bottles too
-const LEVELS = [[3, 3], [3, 4], [4, 4], [5, 4], [6, 4], [7, 4], [5, 5], [8, 4], [7, 5], [9, 4], [8, 5], [10, 5]];
+const COLORS = ['#ff4d5e', '#ff9f1c', '#ffd93d', '#45c95f', '#3d8bff', '#9b5cff', '#ff73c0', '#8b5a2b', '#36d6d0', '#b6e03a', '#23358f', '#68707f', '#1d7a46', '#2b2b33'];
+const HIDDEN = '#c9d1de';           // colour of a ❓ layer that hasn't been seen yet
+const SHAPES = ['dot', 'star', 'tri', 'heart', 'square', 'diamond', 'moon', 'plus', 'ring', 'drop', 'cross', 'hex', 'bolt', 'flower'];
+// [colours, units per bottle, empty bottles = 2, mystery = false]
+// mystery: only the top layer of each bottle can be seen; the ❓ layers show up when they reach the top
+const LEVELS = [[3, 3], [3, 4], [4, 4], [5, 4], [6, 4], [7, 4], [5, 5], [8, 4], [7, 5], [9, 4], [8, 5], [10, 5],
+  [5, 4, 1], [6, 4, 2, true], [11, 5], [8, 6], [8, 5, 2, true], [13, 5], [10, 6, 2, true], [14, 6]];
+const LV = n => { const [c, k, e = 2, m = false] = LEVELS[n - 1]; return { c, k, e, m }; };
+const lvName = n => { const L = LV(n); return `${L.c}色×${L.k}格${L.e < 2 ? '・1空瓶' : ''}${L.m ? '・❓' : ''}`; };
 const BW = 52, UH = 30, NECK = 16;
 
-let bottles = [], gone = [], cap = 4, level = 1, mode = 'shape', state = 'menu';
+let bottles = [], hid = [], gone = [], cap = 4, level = 1, mode = 'shape', state = 'menu';
 let sel = -1, moves = 0, hist = [], anim = null, puzzle = null, extraUsed = false, downOn = -1;
 let fade = [], shake = [], hint = null, t = 0, pos = [], scale = 1, btns = [];
 
@@ -64,13 +69,14 @@ function solve(start, c, limit = 80000) {
   };
   return dfs(start.map(b => b.slice())) ? path : null;
 }
-function makePuzzle(nc, c) {
+function makePuzzle(nc, c, empties = 2) {
   let last = null;
-  for (let tries = 0; tries < 80; tries++) {
+  for (let tries = 0; tries < (empties < 2 ? 400 : 80); tries++) {
     const units = MG.shuffle(Array.from({ length: nc * c }, (_, i) => i % nc));
     const bs = Array.from({ length: nc }, (_, i) => units.slice(i * c, (i + 1) * c));
     if (bs.some(b => b.every(v => v === b[0]))) continue;              // nothing already finished
-    bs.push([], []); last = bs;
+    for (let k = 0; k < empties; k++) bs.push([]);
+    last = bs;
     if (solve(bs, c, 40000)) return bs;
   }
   return last;
@@ -104,11 +110,14 @@ MG.fit(cv, (sw, sh) => { land = sw > sh * 1.05; return land ? [Math.round(Math.m
 cv.onfit = () => { if (bottles.length) layout(); };
 
 // ---------- game flow ----------
-function snapshot() { return { b: bottles.map(b => b.slice()), gone: gone.slice(), moves }; }
+function snapshot() { return { b: bottles.map(b => b.slice()), h: hid.map(b => b.slice()), gone: gone.slice(), moves }; }
+const vis = i => bottles[i].map((v, k) => hid[i][k] ? -1 : v);   // what the player can see (-1 = ❓)
+function reveal() { hid.forEach((h, i) => { if (h.length) h[h.length - 1] = false; }); }
 function startLevel(lv, fresh = true) {
-  level = lv; [, cap] = LEVELS[lv - 1];
-  if (fresh || !puzzle) puzzle = makePuzzle(LEVELS[lv - 1][0], cap);
+  level = lv; const L = LV(lv); cap = L.k;
+  if (fresh || !puzzle) puzzle = makePuzzle(L.c, cap, L.e);
   bottles = puzzle.map(b => b.slice()); gone = bottles.map(() => false);
+  hid = bottles.map(b => b.map((_, k) => L.m && k < b.length - 1));
   fade = bottles.map(() => 0); shake = bottles.map(() => 0);
   sel = -1; moves = 0; hist = []; anim = null; extraUsed = false; hint = null; downOn = -1;
   layout(); hud(); state = 'play'; MG.hide();
@@ -127,8 +136,11 @@ function tryPour(i, j) {
 }
 function finishPour() {
   const { i, j } = anim; anim = null;
-  pourInto(bottles, i, j);
-  MG.sfx('pop');
+  const k = pourInto(bottles, i, j);
+  hid[i].splice(hid[i].length - k, k); for (let n = 0; n < k; n++) hid[j].push(false);
+  const wasHidden = hid.some(h => h.length && h[h.length - 1]);
+  reveal();
+  MG.sfx('pop'); if (wasHidden) MG.sfx('tick');
   if (full1(bottles[j])) {               // a bottle full of one colour: it gets a cork and pops away
     fade[j] = 0.001; MG.sfx('good');
     const p = pos[j]; MG.fx.burst(p.cx, p.by - (bh() + NECK) * scale, { n: 22, colors: [COLORS[bottles[j][0]], '#fff', '#ffd23f'], shape: 'star', speed: 220, up: 140, size: 6 });
@@ -147,7 +159,7 @@ function win() {
   MG.fx.burst(cv.lw / 2, cv.lh * 0.4, { n: 50, colors: COLORS, shape: 'star', speed: 320, up: 180, size: 7 });
   setTimeout(() => MG.panel({
     title: `第 ${level} 關完成！`,
-    html: `<p>用了 ${moves} 步，全部倒好了 ^_^</p>` + (level < LEVELS.length ? `<p>下一關：${LEVELS[level][0]} 種顏色，每瓶 ${LEVELS[level][1]} 格</p>` : '<p>你是倒水大師！可以一直玩新的題目喔</p>') + (rec.isNew ? '<p class="new">新紀錄！^_^</p>' : ''),
+    html: `<p>用了 ${moves} 步，全部倒好了 ^_^</p>` + (level < LEVELS.length ? `<p>下一關：${lvName(level + 1)}</p>` + (LV(level + 1).m && !LV(level).m ? '<p>❓ 神秘瓶：下面的顏色要倒開才看得到喔！</p>' : '') + (LV(level + 1).e < 2 && LV(level).e >= 2 ? '<p>下一關只有一個空瓶，要想清楚再倒！</p>' : '') : '<p>你是倒水大師！可以一直玩新的題目喔</p>') + (rec.isNew ? '<p class="new">新紀錄！^_^</p>' : ''),
     buttons: [
       { label: level < LEVELS.length ? '下一關' : '再來一題', on: () => { MG.store.set('pour.pickLevel', Math.min(level + 1, LEVELS.length)); startLevel(Math.min(level + 1, LEVELS.length)); } },
       { label: '這關換一題', alt: true, on: () => startLevel(level) },
@@ -158,13 +170,13 @@ function win() {
 function undo() {
   if (anim) return;
   const s = hist.pop(); if (!s) { MG.toast('已經回到最開始了'); return; }
-  bottles = s.b; gone = s.gone; moves = s.moves; fade = bottles.map(() => 0); bottles.forEach((b, i) => { if (full1(b)) gone[i] = true; }); sel = -1; hint = null; hud(); MG.sfx('place');
+  bottles = s.b; hid = s.h; gone = s.gone; moves = s.moves; fade = bottles.map(() => 0); bottles.forEach((b, i) => { if (full1(b)) gone[i] = true; }); sel = -1; hint = null; hud(); MG.sfx('place');
 }
 function addBottle() {
   if (anim) return;
   if (extraUsed) { MG.toast('每關只能加一個空瓶喔'); return; }
-  extraUsed = true; bottles.push([]); gone.push(false); fade.push(0); shake.push(0);
-  for (const s of hist) { s.b.push([]); s.gone.push(false); }
+  extraUsed = true; bottles.push([]); hid.push([]); gone.push(false); fade.push(0); shake.push(0);
+  for (const s of hist) { s.b.push([]); s.h.push([]); s.gone.push(false); }
   layout(); MG.sfx('pop'); MG.toast('多了一個空瓶子！');
 }
 function showHint() {
@@ -228,6 +240,10 @@ function shapePath(id, r) {
     case 'plus': { const w = r * 0.32; x.rect(-w, -r * 0.85, w * 2, r * 1.7); x.rect(-r * 0.85, -w, r * 1.7, w * 2); break; }
     case 'ring': x.arc(0, 0, r * 0.85, 0, 7); x.arc(0, 0, r * 0.4, 0, 7, true); break;
     case 'drop': x.moveTo(0, -r); x.quadraticCurveTo(r * 0.9, r * 0.1, 0, r * 0.85); x.quadraticCurveTo(-r * 0.9, r * 0.1, 0, -r); break;
+    case 'cross': { const w = r * 0.3; x.save(); x.rotate(Math.PI / 4); x.rect(-w, -r * 0.9, w * 2, r * 1.8); x.rect(-r * 0.9, -w, r * 1.8, w * 2); x.restore(); break; }
+    case 'hex': for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; x.lineTo(Math.cos(a) * r * 0.9, Math.sin(a) * r * 0.9); } x.closePath(); break;
+    case 'bolt': x.moveTo(r * 0.2, -r); x.lineTo(-r * 0.6, r * 0.15); x.lineTo(-r * 0.05, r * 0.15); x.lineTo(-r * 0.25, r); x.lineTo(r * 0.6, -r * 0.2); x.lineTo(r * 0.05, -r * 0.2); x.closePath(); break;
+    case 'flower': for (let i = 0; i < 5; i++) { const a = i * Math.PI * 2 / 5 - Math.PI / 2; x.moveTo(Math.cos(a) * r * 0.55 + r * 0.38, Math.sin(a) * r * 0.55); x.arc(Math.cos(a) * r * 0.55, Math.sin(a) * r * 0.55, r * 0.38, 0, 7); } break;
   }
 }
 // segs: [[colour, units], ...] from the bottom
@@ -244,17 +260,23 @@ function drawBottle(segs, done, happy, tilt = 0) {
     x.translate(0, -H / 2); x.rotate(-tilt);
     let y = -1e9; for (const sx of [-1, 1]) for (const sy of [-1, 1]) y = Math.max(y, sx * w2 * Math.sin(tilt) + sy * H / 2 * Math.cos(tilt));
     const f = Math.max(0.42, Math.cos(tilt));
-    for (const [c, n] of segs) { const h = n * UH * f; if (h <= 0.01) continue; x.fillStyle = COLORS[c]; x.fillRect(-200, y - h - 2, 400, h + 2.6); y -= h; }
+    for (const [c, n] of segs) { const h = n * UH * f; if (h <= 0.01) continue; x.fillStyle = c < 0 ? HIDDEN : COLORS[c]; x.fillRect(-200, y - h - 2, 400, h + 2.6); y -= h; }
     x.fillStyle = 'rgba(255,255,255,.3)'; x.fillRect(-200, y - 2, 400, 3);
     segs = [];
   }
   let y = -4, k = 0;
   for (const [c, n] of segs) {
     const h = n * UH; if (h <= 0.01) continue;
-    x.fillStyle = COLORS[c]; x.fillRect(-w2, y - h, BW, h + 0.6);
+    x.fillStyle = c < 0 ? HIDDEN : COLORS[c]; x.fillRect(-w2, y - h, BW, h + 0.6);
     x.fillStyle = 'rgba(0,0,0,.08)'; x.fillRect(w2 - 14, y - h, 10, h);
-    if (mode === 'shape') {
-      for (let u = 0; u < Math.floor(n + 0.001); u++) { x.save(); x.translate(0, y - (u + 0.5) * UH); x.fillStyle = 'rgba(255,255,255,.78)'; shapePath(SHAPES[c], 8.5); x.fill('evenodd'); x.restore(); }
+    if (c < 0) {                                     // ❓ layers: striped, with a question mark each
+      x.save(); x.beginPath(); x.rect(-w2, y - h, BW, h); x.clip();
+      x.strokeStyle = 'rgba(255,255,255,.45)'; x.lineWidth = 4; for (let d = -BW; d < h + BW; d += 11) { x.beginPath(); x.moveTo(-w2, y - d); x.lineTo(w2, y - d - BW); x.stroke(); }
+      x.restore();
+      x.fillStyle = '#6f7f99'; x.font = '900 20px system-ui,sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+      for (let u = 0; u < Math.floor(n + 0.001); u++) { x.fillText('?', 0, y - (u + 0.5) * UH + 1); x.fillStyle = 'rgba(111,127,153,.5)'; x.fillRect(-w2, y - u * UH - 1, BW, 1.5); x.fillStyle = '#6f7f99'; }
+    } else if (mode === 'shape') {
+      for (let u = 0; u < Math.floor(n + 0.001); u++) { x.save(); x.translate(0, y - (u + 0.5) * UH); x.fillStyle = 'rgba(255,255,255,.78)'; shapePath(SHAPES[c], 8.5); x.fill(); x.restore(); }
     }
     y -= h; k++;
   }
@@ -300,7 +322,7 @@ function draw() {
   for (const i of order) {
     if (gone[i]) continue;
     const q = pos[i];
-    let segs = segsOf(bottles[i]);
+    let segs = segsOf(vis(i));
     let cx = q.cx, by = q.by, ang = 0, a = 1, sc = scale;
     if (anim && i === anim.i) {
       const left = pos[anim.i].cx < pos[anim.j].cx ? 1 : -1, A = 1.15 * left;
@@ -313,7 +335,7 @@ function draw() {
       segs = segs.map(s => s.slice());
       while (rem > 0 && segs.length) { const s = segs[segs.length - 1], d = Math.min(s[1], rem); s[1] -= d; rem -= d; if (s[1] <= 0.0001) segs.pop(); }
     } else if (anim && i === anim.j) {
-      segs = segsOf(bottles[i]); const add = anim.k * animBits.pr;
+      segs = segsOf(vis(i)); const add = anim.k * animBits.pr;
       if (add > 0) { if (segs.length && segs[segs.length - 1][0] === anim.c) segs[segs.length - 1][1] += add; else segs.push([anim.c, add]); }
     }
     if (i === sel) by -= 18 * scale;
@@ -362,16 +384,16 @@ function menu() {
   state = 'menu';
   MG.choose({
     id: 'pour', title: '彩虹倒水瓶',
-    html: `<p>點一個瓶子，再點另一個瓶子，就會把上面的水倒過去。<b>只能倒在一樣的顏色上面，或倒進空瓶子</b>。</p><p>把每個瓶子都倒成同一個顏色，瓶子就會蓋上蓋子、開心地消失！不限時間，慢慢想 ^_^</p>`,
+    html: `<p>點一個瓶子，再點另一個瓶子，就會把上面的水倒過去。<b>只能倒在一樣的顏色上面，或倒進空瓶子</b>。</p><p>把每個瓶子都倒成同一個顏色，瓶子就會蓋上蓋子、開心地消失！不限時間，慢慢想 ^_^</p><p>第 13 關以後是挑戰關：只有一個空瓶、❓ 神秘瓶（下面的顏色要倒開才看得到）、最多 14 種顏色！</p>`,
     modes: [{ id: 'shape', label: '🔷 有小圖案', sub: '每種顏色都有圖案，比較好認' }, { id: 'plain', label: '🎨 只看顏色', sub: '挑戰眼力' }],
-    levels: { count: LEVELS.length, max: LEVELS.length, label: n => `${n}（${LEVELS[n - 1][0]}色×${LEVELS[n - 1][1]}格）` },
+    levels: { count: LEVELS.length, max: LEVELS.length, label: n => `${n}（${lvName(n)}）` },
     keys: '點瓶子或拖過去倒　<kbd>1</kbd>～<kbd>9</kbd> 選瓶子　<kbd>Z</kbd> 復原　<kbd>H</kbd> 提示',
     playing: () => state === 'play',
     start: (m, lv) => { mode = m; startLevel(lv); },
   });
 }
 // sample puzzle behind the start panel
-cap = 4; bottles = makePuzzle(4, 4); gone = bottles.map(() => false); fade = bottles.map(() => 0); shake = bottles.map(() => 0); layout();
+cap = 4; bottles = makePuzzle(4, 4); hid = bottles.map(b => b.map(() => false)); gone = bottles.map(() => false); fade = bottles.map(() => 0); shake = bottles.map(() => 0); layout();
 menu();
 
 MG.loop(dt => {
