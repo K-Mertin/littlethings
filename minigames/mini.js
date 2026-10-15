@@ -30,7 +30,7 @@ const MG = (() => {
   function stat(name, text) { if (stats[name]) stats[name].textContent = text; }
 
   // ---------- canvas fit ----------
-  const BORDER = 3;
+  const BORDER = 3, MAX_PIX = 2.1e6;   // about 1800×1170 real pixels
   // w,h can be numbers, or w can be a function(stageW, stageH) returning [w, h] so the game can pick a layout
   function fit(canvas, w0, h0) {
     const stage = canvas.parentElement;
@@ -44,9 +44,13 @@ const MG = (() => {
       const s = Math.max(0.1, Math.min(aw / w, ah / h));
       canvas.style.width = Math.floor(w * s) + 'px';
       canvas.style.height = Math.floor(h * s) + 'px';
+      // backing store: match the screen's real pixels, but cap the total so big tablets stay smooth
       const dpr = Math.min(2, window.devicePixelRatio || 1);
-      const px = Math.max(1, Math.round(s * dpr));
-      canvas.width = w * px; canvas.height = h * px;
+      let px = s * dpr;
+      if (w * h * px * px > MAX_PIX) px = Math.sqrt(MAX_PIX / (w * h));
+      px = Math.max(1, Math.min(px, s * dpr), Math.min(s, 1.5));
+      px = Math.round(px * 100) / 100;
+      canvas.width = Math.round(w * px); canvas.height = Math.round(h * px);
       canvas.getContext('2d').setTransform(px, 0, 0, px, 0, 0);
       canvas._mgScale = px;
       if (canvas.onfit) canvas.onfit();
