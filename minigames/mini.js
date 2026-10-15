@@ -298,5 +298,33 @@ const MG = (() => {
     };
   })();
 
-  return { init, stat, fit, panel, hide, panelOpen, best, record, sfx, toast, loop, rand, randi, pick, shuffle, store, puPu, fx, unlock, JELLY };
+  // ---------- start screen with a mode choice and (optionally) a level choice ----------
+  // o = { id, title, html, keys, modes: [{ id, label, sub }], levels: { count, max, label? }, start(mode, level) }
+  function choose(o) {
+    let mode = store.get(o.id + '.pickMode', o.modes ? o.modes[0].id : null);
+    if (o.modes && !o.modes.some(m => m.id === mode)) mode = o.modes[0].id;
+    let lvl = Math.min(store.get(o.id + '.pickLevel', 1), o.levels ? Math.max(1, o.levels.max) : 1);
+    const lvLabel = (o.levels && o.levels.label) || (n => `第 ${n} 關`);
+    const html = (o.html || '') +
+      (o.modes ? `<div class="mg-pick">${o.modes.map(m => `<button type="button" class="mg-opt" data-mode="${m.id}">${m.label}<small>${m.sub || ''}</small></button>`).join('')}</div>` : '') +
+      (o.levels ? `<p class="mg-pick-h">從哪一關開始？</p><div class="mg-levels">${Array.from({ length: o.levels.count }, (_, i) => i + 1).map(n => `<button type="button" class="mg-lv" data-lv="${n}" ${n > o.levels.max ? 'disabled' : ''}>${n > o.levels.max ? '🔒' : lvLabel(n)}</button>`).join('')}</div>` : '');
+    panel({ title: o.title, html, keys: o.keys, buttons: [{ label: '開始', on: () => { store.set(o.id + '.pickMode', mode); store.set(o.id + '.pickLevel', lvl); o.start(mode, lvl); } }, ...(o.extra || [])] });
+    const sync = () => {
+      over.querySelectorAll('.mg-opt').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === mode));
+      over.querySelectorAll('.mg-lv').forEach(b => b.setAttribute('aria-pressed', +b.dataset.lv === lvl));
+    };
+    over.querySelectorAll('.mg-opt').forEach(b => b.onclick = () => { mode = b.dataset.mode; sfx('click'); unlock(); sync(); });
+    over.querySelectorAll('.mg-lv').forEach(b => b.onclick = () => { lvl = +b.dataset.lv; sfx('click'); unlock(); sync(); });
+    sync();
+  }
+  // extra button in the top bar (e.g. "休息一下" to end an untimed round)
+  function barButton(label, onClick) {
+    const bar = document.querySelector('.mg-bar'), b = document.createElement('button');
+    b.type = 'button'; b.className = 'mg-barbtn'; b.textContent = label; b.hidden = true;
+    b.onclick = () => { sfx('click'); onClick(); };
+    bar.insertBefore(b, bar.querySelector('.mute'));
+    return { show(v) { b.hidden = !v; }, el: b };
+  }
+
+  return { choose, barButton, init, stat, fit, panel, hide, panelOpen, best, record, sfx, toast, loop, rand, randi, pick, shuffle, store, puPu, fx, unlock, JELLY };
 })();

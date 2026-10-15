@@ -20,6 +20,7 @@ const COLORS = [
   { c: '#ff5a6e', d: '#c0283c', name: '紅' }, { c: '#ffc93a', d: '#c98a00', name: '黃' }, { c: '#4cc96a', d: '#237a3b', name: '綠' },
   { c: '#3d9bff', d: '#1d5fb0', name: '藍' }, { c: '#b07cff', d: '#6a3fc0', name: '紫' }, { c: '#ff9f4a', d: '#c0601a', name: '橘' },
 ];
+let mode = 'relax';
 let grid, ceilY, level, score, nColors, shot, cur, nxt, aim = -Math.PI / 2, misses, dropEvery, state = 'ready', falling = [], pops = [], t = 0, shakeT = 0, combo = 0;
 
 const cols = r => (r % 2 ? COLS - 1 : COLS);
@@ -148,7 +149,7 @@ function settle() {
     if (grid.every(row => row.every(v => v < 0))) return levelClear();
   } else {
     combo = 0; misses++;
-    if (misses >= dropEvery) { misses = 0; ceilY += RH; shakeT = 0.4; MG.sfx('hit'); MG.toast('天花板往下降了！'); }
+    if (mode === 'timed' && misses >= dropEvery) { misses = 0; ceilY += RH; shakeT = 0.4; MG.sfx('hit'); MG.toast('天花板往下降了！'); }
   }
   // lost?
   for (let a = 0; a < ROWS; a++) for (let b = 0; b < cols(a); b++) if (grid[a][b] >= 0 && cy(a) + R >= DANGER) return gameOver();
@@ -183,7 +184,7 @@ function draw() {
   // ceiling plank (comes down with "ceilY") and chains
   x.fillStyle = '#a8702e'; x.fillRect(0, ceilY - 14, W, 14); x.fillStyle = '#d99a5a'; x.fillRect(0, ceilY - 14, W, 4);
   if (ceilY > TOP0) { x.strokeStyle = '#7d8792'; x.lineWidth = 3; for (const sx of [40, W - 40]) { x.setLineDash([5, 4]); x.beginPath(); x.moveTo(sx, 0); x.lineTo(sx, ceilY - 14); x.stroke(); x.setLineDash([]); } }
-  for (let i = 0; i < dropEvery; i++) { x.fillStyle = i < dropEvery - misses ? '#ffd23f' : 'rgba(255,255,255,.35)'; x.beginPath(); x.arc(W - 16 - i * 12, ceilY - 7, 4, 0, 7); x.fill(); }
+  if (mode === 'timed') for (let i = 0; i < dropEvery; i++) { x.fillStyle = i < dropEvery - misses ? '#ffd23f' : 'rgba(255,255,255,.35)'; x.beginPath(); x.arc(W - 16 - i * 12, ceilY - 7, 4, 0, 7); x.fill(); }
   // danger line
   x.strokeStyle = 'rgba(255,90,78,.7)'; x.lineWidth = 2; x.setLineDash([8, 6]); x.beginPath(); x.moveTo(X0, DANGER); x.lineTo(W - X0, DANGER); x.stroke(); x.setLineDash([]);
   // grid
@@ -224,7 +225,7 @@ function levelClear() {
   MG.fx.burst(W / 2, 260, { n: 40, colors: COLORS.map(c => c.c), speed: 260, up: 120, size: 6, shape: 'star', life: 1.2 });
   setTimeout(() => MG.panel({
     title: `第 ${level} 關過關！`, html: `<p>過關獎勵 +${bonus}</p><div class="big">${score} 分</div><p>下一關會再難一點點喔</p>`,
-    buttons: [{ label: '下一關', on: () => { newLevel(level + 1); state = 'play'; MG.hide(); } }, { label: '回遊戲區', alt: true, on: () => location.href = 'index.html' }],
+    buttons: [{ label: '下一關', on: () => { newLevel(level + 1); state = 'play'; MG.hide(); } }, { label: '選關卡', alt: true, on: menu }],
   }), 700);
 }
 function gameOver() {
@@ -232,18 +233,25 @@ function gameOver() {
   const rec = MG.record('bubble', score);
   MG.panel({
     title: '泡泡碰到紅線了！',
-    html: `<p>到了第 ${level} 關</p><div class="big">${score} 分</div>` + (rec.isNew && score > 0 ? `<p class="new">新紀錄！^_^</p>` : `<p>最高紀錄：${rec.best} 分</p>`),
-    buttons: [{ label: '從這關再來', on: () => { newLevel(level); state = 'play'; MG.hide(); } }, { label: '從第 1 關', alt: true, on: start }],
+    html: `<p>到了第 ${level} 關</p><div class="big">${score} 分</div>` + (rec.isNew && score > 0 ? `<p class="new">新紀錄！^_^</p>` : `<p>最高紀錄：${rec.best} 分</p>`) + (mode === 'timed' ? '<p>覺得太難的話，可以玩天花板不會下降的「慢慢玩」</p>' : ''),
+    buttons: [{ label: '從這關再來', on: () => { newLevel(level); state = 'play'; MG.hide(); } },
+      ...(mode === 'timed' ? [{ label: '🐢 改成慢慢玩', alt: true, on: () => { mode = 'relax'; MG.store.set('bubble.pickMode', 'relax'); newLevel(level); state = 'play'; MG.hide(); } }] : []),
+      { label: '選關卡', alt: true, on: menu }],
   });
 }
-function start() { score = 0; newLevel(1); state = 'play'; MG.hide(); }
-score = 0; newLevel(1);
-MG.panel({
-  title: '噗噗泡泡龍',
-  html: `<p>瞄準後發射泡泡，碰到<b>三個以上一樣顏色</b>就會破掉，沒黏住的泡泡會一起掉下來！</p><p>一直沒打破泡泡，天花板就會往下降，泡泡碰到紅線就輸了。</p><p>右下角是下一顆，點它可以交換。</p>${('ontouchstart' in window) && innerWidth > innerHeight ? '<p class="new">📱 把手機直放，泡泡會更大！</p>' : ''}`,
-  keys: '手指按住拖曳瞄準、放開發射　電腦：滑鼠瞄準點擊，或 <kbd>←</kbd><kbd>→</kbd> 瞄準、<kbd>空白鍵</kbd> 發射、<kbd>S</kbd> 交換',
-  buttons: [{ label: '開始', on: start }],
-});
+function start(m, lv) { mode = m; score = 0; newLevel(lv || 1); state = 'play'; MG.hide(); }
+function menu() {
+  state = 'ready';
+  MG.choose({
+    id: 'bubble', title: '噗噗泡泡龍',
+    html: `<p>瞄準後發射泡泡，碰到<b>三個以上一樣顏色</b>就會破掉，沒黏住的泡泡會一起掉下來！右下角是下一顆，點它可以交換。</p>${('ontouchstart' in window) && innerWidth > innerHeight ? '<p class="new">📱 把手機直放，泡泡會更大！</p>' : ''}`,
+    modes: [{ id: 'relax', label: '🐢 慢慢玩', sub: '天花板不會往下降' }, { id: 'timed', label: '🔥 挑戰', sub: '一直沒消除天花板會下降' }],
+    levels: { count: 12, max: 12 },
+    keys: '手指按住拖曳瞄準、放開發射　電腦：滑鼠瞄準點擊，或 <kbd>←</kbd><kbd>→</kbd> 瞄準、<kbd>空白鍵</kbd> 發射、<kbd>S</kbd> 交換',
+    start: (m, lv) => start(m, lv),
+  });
+}
+score = 0; newLevel(1); menu();
 MG.loop(dt => { if (state === 'play') update(dt); else { t += dt; MG.fx.step(dt); for (const f of falling) { f.vy += 1400 * dt; f.y += f.vy * dt; } } draw(); });
 </script>
 </body>

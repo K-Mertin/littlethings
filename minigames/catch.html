@@ -21,6 +21,10 @@ const ROUND = 60, BW = 70;
 let GROUND = 0; const groundY = () => (GROUND = H - 40);
 let shake = 0, inBasket = [];
 const JUICE = { '🍎': '#ff4f5e', '🍌': '#ffe14a', '🍇': '#9b5cff', '🍊': '#ff9f1c', '🍓': '#ff3b5c', '🍉': '#ff5a6e', '🍍': '#ffcf3a', '⭐': '#ffd23f', '🐌': '#8fd0ff' };
+let mode = 'timed';
+const prog = () => mode === 'timed' ? 1 - left / ROUND : Math.min(0.6, t / 150);
+const mmss = v => `${Math.floor(v / 60)}:${String(Math.floor(v % 60)).padStart(2, '0')}`;
+const rest = MG.barButton('休息一下', () => end('休息一下！'));
 let B, items, score, combo, hearts, left, spawnT, state = 'ready', pops = [], t = 0, slow = 0;
 
 function reset() {
@@ -28,7 +32,7 @@ function reset() {
   B = { x: W / 2, tx: W / 2, wob: 0, face: 'happy', faceT: 0, vx: 0 }; inBasket = []; MG.fx.clear(); shake = 0;
   items = []; pops = []; score = 0; combo = 0; hearts = 3; left = ROUND; spawnT = 0.4; t = 0; slow = 0; hud();
 }
-function hud() { MG.stat('score', `${score} 分`); MG.stat('time', `⏱ ${Math.ceil(left)}`); }
+function hud() { MG.stat('score', `${score} 分`); MG.stat('time', mode === 'timed' ? `⏱ ${Math.ceil(left)}` : `🐢 ${mmss(t)}`); }
 
 // ---------- input ----------
 const keys = { l: false, r: false };
@@ -42,14 +46,14 @@ cv.addEventListener('pointercancel', () => dragging = false);
 
 // ---------- update ----------
 function spawn() {
-  const prog = 1 - left / ROUND;
+  const pg = prog();
   const r = Math.random();
   let it;
-  if (r < 0.16 + prog * 0.14) it = { kind: 'bomb', ch: '💣', pts: 0 };
-  else if (r < 0.22 + prog * 0.14) it = { kind: 'star', ch: '⭐', pts: 50 };
-  else if (r < 0.25 + prog * 0.14) it = { kind: 'snail', ch: '🐌', pts: 0 };
+  if (r < 0.16 + pg * 0.14) it = { kind: 'bomb', ch: '💣', pts: 0 };
+  else if (r < 0.22 + pg * 0.14) it = { kind: 'star', ch: '⭐', pts: 50 };
+  else if (r < 0.25 + pg * 0.14) it = { kind: 'snail', ch: '🐌', pts: 0 };
   else { const f = MG.pick(FRUITS); it = { kind: 'fruit', ch: f[0], pts: f[1] }; }
-  it.x = MG.rand(22, W - 22); it.y = -24; it.vy = MG.rand(150, 210) + prog * 170; it.rot = MG.rand(-1, 1); it.spin = MG.rand(-3, 3);
+  it.x = MG.rand(22, W - 22); it.y = -24; it.vy = MG.rand(150, 210) + pg * 170; it.rot = MG.rand(-1, 1); it.spin = MG.rand(-3, 3);
   if (it.kind === 'star') it.vx = MG.rand(-60, 60);
   items.push(it);
 }
@@ -66,7 +70,7 @@ function update(dt) {
   B.wob *= Math.pow(0.01, dt); B.faceT -= dt; if (B.faceT <= 0) B.face = 'happy';
 
   spawnT -= dt;
-  if (spawnT <= 0) { spawn(); spawnT = Math.max(0.32, 0.8 - (1 - left / ROUND) * 0.45) * MG.rand(0.7, 1.2); }
+  if (spawnT <= 0) { spawn(); spawnT = Math.max(0.32, 0.8 - prog() * 0.45) * MG.rand(0.7, 1.2); }
   for (const it of items) {
     it.y += it.vy * dt * k; it.rot += it.spin * dt;
     if (it.vx) { it.x += it.vx * dt * k; if (it.x < 20 || it.x > W - 20) it.vx *= -1; }
@@ -76,11 +80,16 @@ function update(dt) {
   }
   items = items.filter(it => !it.done);
   for (const p of pops) { p.y -= 40 * dt; p.life -= dt; } pops = pops.filter(p => p.life > 0);
-  if (left <= 0) { left = 0; end('時間到！'); }
+  if (mode === 'timed' && left <= 0) { left = 0; end('時間到！'); }
   hud();
 }
 function caught(it) {
   it.done = true; B.wob = 1;
+  if (it.kind === 'bomb' && mode === 'relax') {
+    combo = 0; score = Math.max(0, score - 20); B.face = 'ouch'; B.faceT = 0.8; MG.sfx('bad'); shake = 0.3;
+    MG.fx.burst(it.x, GROUND - 30, { n: 16, colors: ['#555', '#888', '#ff7a1c', '#ffd23f'], speed: 220, up: 80, size: 6, life: 0.6 }); pops.push({ x: it.x, y: GROUND - 50, t: '砰！−20', c: '#ff5a4e', life: 0.9 });
+    return;
+  }
   if (it.kind === 'bomb') {
     hearts--; combo = 0; B.face = 'ouch'; B.faceT = 0.8; MG.sfx('bad'); shake = 0.3; inBasket = [];
     MG.fx.burst(it.x, GROUND - 30, { n: 16, colors: ['#555', '#888', '#ff7a1c', '#ffd23f'], speed: 220, up: 80, size: 6, life: 0.6 }); pops.push({ x: it.x, y: GROUND - 50, t: '砰！', c: '#ff5a4e', life: 0.9 });
@@ -208,10 +217,10 @@ function draw() {
   // HUD: hearts, time bar, combo
   x.textAlign = 'left'; x.font = `19px ${EMOJI}`;
   x.fillStyle = 'rgba(255,255,255,.75)'; x.beginPath(); x.roundRect(6, 8, 88, 28, 14); x.fill(); x.fillStyle = '#000';
-  for (let i = 0; i < 3; i++) x.fillText(i < hearts ? '❤️' : '🤍', 13 + i * 26, 23);
+  if (mode === 'timed') for (let i = 0; i < 3; i++) x.fillText(i < hearts ? '❤️' : '🤍', 13 + i * 26, 23); else x.fillText('🐢 慢慢玩', 12, 23);
   const tw = Math.min(160, W * 0.35), tx = W / 2 - tw / 2;
   x.fillStyle = 'rgba(255,255,255,.75)'; x.beginPath(); x.roundRect(tx - 4, 12, tw + 8, 16, 8); x.fill();
-  const frac = left / ROUND; x.fillStyle = frac < 0.2 ? '#ff5a4e' : '#4cc96a'; x.beginPath(); x.roundRect(tx, 15, Math.max(6, tw * frac), 10, 5); x.fill();
+  const frac = mode === 'timed' ? left / ROUND : 1; x.fillStyle = frac < 0.2 ? '#ff5a4e' : '#4cc96a'; x.beginPath(); x.roundRect(tx, 15, Math.max(6, tw * frac), 10, 5); x.fill();
   if (slow) { x.textAlign = 'center'; x.fillStyle = '#000'; x.font = `16px ${EMOJI}`; x.fillText('🐌', tx + tw + 18, 21); }
   if (combo >= 3) {
     x.textAlign = 'right'; x.font = '900 17px system-ui,"Noto Sans TC",sans-serif'; x.lineWidth = 4; x.strokeStyle = '#fff';
@@ -221,25 +230,28 @@ function draw() {
 }
 
 // ---------- flow ----------
-function start() { reset(); state = 'play'; MG.hide(); }
+function start(m) { if (m) mode = m; reset(); state = 'play'; MG.hide(); rest.show(mode === 'relax'); }
 function end(msg) {
   if (state !== 'play') return;
-  state = 'over'; MG.sfx(hearts > 0 ? 'win' : 'over');
-  const rec = MG.record('catch', score);
+  state = 'over'; rest.show(false); MG.sfx(hearts > 0 ? 'win' : 'over');
+  const rec = mode === 'timed' ? MG.record('catch', score) : null;
   MG.panel({
     title: msg,
-    html: `<p>這次得到</p><div class="big">${score} 分</div>` + (rec.isNew && score > 0 ? `<p class="new">新紀錄！^_^</p>` : `<p>最高紀錄：${rec.best} 分</p>`),
-    buttons: [{ label: '再玩一次', on: start }, { label: '回遊戲區', alt: true, on: () => location.href = 'index.html' }],
+    html: `<p>這次得到</p><div class="big">${score} 分</div>` + (rec ? (rec.isNew && score > 0 ? `<p class="new">新紀錄！^_^</p>` : `<p>最高紀錄：${rec.best} 分</p>`) : `<p>玩了 ${mmss(t)}</p>`),
+    buttons: [{ label: '再玩一次', on: () => start() }, { label: '換模式', alt: true, on: menu }],
   });
 }
-reset();
-MG.panel({
-  title: '水果接接樂',
-  html: `<p>幫噗噗用籃子接住掉下來的水果，60 秒內看能拿幾分！</p>
-  <p>連續接到會加倍　⭐ 50 分　🐌 慢動作<br>💣 碰到三次就結束</p>`,
-  keys: '電腦：<kbd>←</kbd><kbd>→</kbd> 或滑鼠　手機：手指在畫面上左右拖',
-  buttons: [{ label: '開始', on: start }],
-});
+function menu() {
+  state = 'ready';
+  MG.choose({
+    id: 'catch', title: '水果接接樂',
+    html: `<p>幫噗噗用籃子接住掉下來的水果！連續接到會加倍　⭐ 50 分　🐌 慢動作</p>`,
+    modes: [{ id: 'relax', label: '🐢 慢慢玩', sub: '不限時間・炸彈只扣分' }, { id: 'timed', label: '⏱ 60 秒挑戰', sub: '💣 碰到三次就結束' }],
+    keys: '電腦：<kbd>←</kbd><kbd>→</kbd> 或滑鼠　手機：手指在畫面上左右拖　慢慢玩時按上面的「休息一下」結束',
+    start: m => start(m),
+  });
+}
+reset(); menu();
 MG.loop(dt => { if (state === 'play') update(dt); else { t += dt; MG.fx.step(dt); for (const p of pops) { p.y -= 40 * dt; p.life -= dt; } pops = pops.filter(p => p.life > 0); } draw(); });
 </script>
 </body>
