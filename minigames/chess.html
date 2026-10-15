@@ -1,0 +1,1170 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>噗噗下棋</title>
+<link rel="stylesheet" href="mini.css">
+<style>
+.mg-stage{padding:4px}
+body.game{background:repeating-conic-gradient(#e8f4ff 0 25%,#f4faff 0 50%) 0 0/28px 28px}
+/* a tall start panel must stay scrollable to its top on small phones */
+.mg-over{align-items:flex-start}.mg-card{margin:auto}
+.mg-pick-h{margin:10px 0 2px!important}
+.mg-pick{margin-top:6px}
+.ch-score{display:flex;align-items:center;justify-content:center;gap:12px;font-size:40px;font-weight:900;color:var(--ink);margin:6px 0}
+.ch-dot{display:inline-block;width:34px;height:34px;border-radius:50%;border:3px solid;flex:none}
+.ch-dot.g{background:radial-gradient(circle at 35% 30%,#b8f5bb,#4fcf6c 45%,#2a9447);border-color:#145c2a}
+.ch-dot.p{background:radial-gradient(circle at 35% 30%,#fff,#ffd3e4 40%,#ffa8c9);border-color:#b23a6d}
+</style>
+</head>
+<body>
+<main class="mg-stage" id="stage"><canvas id="cv" aria-label="遊戲畫面"></canvas></main>
+<script src="mini.js"></script>
+<script>
+'use strict';
+// ======================================================================
+// Rules + computer players. Everything inside LOGIC() is self-contained so the
+// same code also runs in a Web Worker (the computer thinks without freezing the page).
+// Boards are flat arrays: index = row * N + col, 0 = empty, 1 = green (moves first), 2 = pink.
+// ======================================================================
+function LOGIC() {
+  const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  const rnd = Math.random;
+  const argmax = (arr, f) => { let best = arr[0], bv = -Infinity; for (const a of arr) { const v = f(a); if (v > bv) { bv = v; best = a; } } return best; };
+
+  // ---------------- 黑白棋 (Reversi) ----------------
+  const D8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+  function rvInit(N) {
+    const b = new Int8Array(N * N), h = N / 2;
+    b[(h - 1) * N + h - 1] = 2; b[h * N + h] = 2; b[(h - 1) * N + h] = 1; b[h * N + h - 1] = 1;
+    return b;
+  }
+  function rvFlips(b, N, i, p) {
+    const out = [];
+    if (b[i]) return out;
+    const r0 = (i / N) | 0, c0 = i % N, q = 3 - p;
+    for (const [dr, dc] of D8) {
+      let r = r0 + dr, c = c0 + dc, k = 0;
+      while (r >= 0 && r < N && c >= 0 && c < N && b[r * N + c] === q) { r += dr; c += dc; k++; }
+      if (k && r >= 0 && r < N && c >= 0 && c < N && b[r * N + c] === p) for (let j = 1; j <= k; j++) out.push((r0 + dr * j) * N + c0 + dc * j);
+    }
+    return out;
+  }
+  function rvCan(b, N, i, p) {
+    if (b[i]) return false;
+    const r0 = (i / N) | 0, c0 = i % N, q = 3 - p;
+    for (const [dr, dc] of D8) {
+      let r = r0 + dr, c = c0 + dc, k = 0;
+      while (r >= 0 && r < N && c >= 0 && c < N && b[r * N + c] === q) { r += dr; c += dc; k++; }
+      if (k && r >= 0 && r < N && c >= 0 && c < N && b[r * N + c] === p) return true;
+    }
+    return false;
+  }
+  function rvMoves(b, N, p) { const m = []; for (let i = 0; i < N * N; i++) if (!b[i] && rvCan(b, N, i, p)) m.push(i); return m; }
+  function rvHas(b, N, p) { for (let i = 0; i < N * N; i++) if (!b[i] && rvCan(b, N, i, p)) return true; return false; }
+  function rvPlay(b, N, i, p) { const f = rvFlips(b, N, i, p); if (!f.length) return null; b[i] = p; for (const j of f) b[j] = p; return f; }
+  function rvCount(b) { let a = 0, c = 0; for (let i = 0; i < b.length; i++) { if (b[i] === 1) a++; else if (b[i] === 2) c++; } return [a, c]; }
+  // after p has moved: who plays next? (the other one, or p again when the other must pass, or nobody = game over)
+  function rvNext(b, N, p) {
+    const q = 3 - p;
+    if (rvHas(b, N, q)) return { turn: q, pass: false, over: false };
+    if (rvHas(b, N, p)) return { turn: p, pass: true, over: false };
+    return { turn: 0, pass: false, over: true };
+  }
+  const WC = {};
+  function rvWeights(N) {
+    if (WC[N]) return WC[N];
+    const w = new Int16Array(N * N), e = N - 1, adj = [];
+    for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+      const er = r === 0 || r === e, ec = c === 0 || c === e, nr = r === 1 || r === e - 1, nc = c === 1 || c === e - 1;
+      let v;
+      if (er && ec) v = 100;
+      else if (nr && nc) v = -50;                                   // X squares
+      else if ((er && nc) || (ec && nr)) v = -20;                   // C squares
+      else if (er || ec) v = ((er && (c === 2 || c === e - 2)) || (ec && (r === 2 || r === e - 2))) ? 10 : 5;
+      else if (nr || nc) v = -2;
+      else v = -1;
+      w[r * N + c] = v;
+    }
+    // each corner with its X and C neighbours (they stop being bad once the corner is taken)
+    for (const [cr, cc] of [[0, 0], [0, e], [e, 0], [e, e]]) {
+      const dr = cr ? -1 : 1, dc = cc ? -1 : 1;
+      adj.push([cr * N + cc, [(cr + dr) * N + cc + dc, cr * N + cc + dc, (cr + dr) * N + cc]]);
+    }
+    w.adj = adj;
+    return (WC[N] = w);
+  }
+  function rvEval(b, N, p, W) {
+    const q = 3 - p; let s = 0, e = 0, mine = 0, theirs = 0;
+    for (let i = 0; i < N * N; i++) { const v = b[i]; if (!v) { e++; continue; } if (v === p) { s += W[i]; mine++; } else { s -= W[i]; theirs++; } }
+    for (const [c, nb] of W.adj) {
+      if (!b[c]) continue;
+      for (const j of nb) { if (b[j] === p) s += 4 - W[j]; else if (b[j] === q) s -= 4 - W[j]; }
+    }
+    let mp = 0, mq = 0;
+    for (let i = 0; i < N * N; i++) if (!b[i]) { if (rvCan(b, N, i, p)) mp++; if (rvCan(b, N, i, q)) mq++; }
+    s += 6 * (mp - mq);
+    if (e < 16) s += (mine - theirs) * (16 - e) * 0.6;
+    return s;
+  }
+  // 困難: iterative deepening alpha-beta (negamax), stops after timeMs and keeps the deepest finished answer
+  function rvSearch(b0, N, p, timeMs = 300, maxD = 20) {
+    const b = Int8Array.from(b0), W = rvWeights(N), t0 = now();
+    let nodes = 0, stop = false;
+    const terminal = (pl) => { const [a, c] = rvCount(b); const d = pl === 1 ? a - c : c - a; return d > 0 ? 10000 + d : d < 0 ? -10000 + d : 0; };
+    function nm(pl, d, al, be) {
+      if ((++nodes & 127) === 0 && now() - t0 > timeMs) stop = true;
+      if (stop) return 0;
+      const ms = rvMoves(b, N, pl), q = 3 - pl;
+      if (!ms.length) {
+        if (!rvHas(b, N, q)) return terminal(pl);
+        return -nm(q, d, -be, -al);
+      }
+      if (d <= 0) return rvEval(b, N, pl, W);
+      ms.sort((u, v) => W[v] - W[u]);
+      let best = -Infinity;
+      for (const m of ms) {
+        const f = rvFlips(b, N, m, pl); b[m] = pl; for (const j of f) b[j] = pl;
+        const v = -nm(q, d - 1, -be, -al);
+        b[m] = 0; for (const j of f) b[j] = q;
+        if (stop) return 0;
+        if (v > best) best = v;
+        if (v > al) al = v;
+        if (al >= be) break;
+      }
+      return best;
+    }
+    let order = rvMoves(b, N, p);
+    if (!order.length) return { move: -1, depth: 0, nodes, ms: 0 };
+    order.sort((u, v) => W[v] - W[u]);
+    let bestMove = order[0], depth = 0, score = 0;
+    if (order.length > 1) {
+      const empt = b.reduce((n, v) => n + (v ? 0 : 1), 0);
+      for (let d = 1; d <= maxD; d++) {
+        let al = -Infinity, bm = -1; const sc = new Map();
+        for (const m of order) {
+          const f = rvFlips(b, N, m, p); b[m] = p; for (const j of f) b[j] = p;
+          const v = -nm(3 - p, d - 1, -Infinity, -al);
+          b[m] = 0; for (const j of f) b[j] = 3 - p;
+          if (stop) break;
+          sc.set(m, v);
+          if (v > al) { al = v; bm = m; }
+        }
+        if (stop) break;
+        bestMove = bm; depth = d; score = al;
+        order = order.slice().sort((u, v) => (sc.get(v) ?? -1e9) - (sc.get(u) ?? -1e9));
+        if (Math.abs(al) >= 10000 || d >= empt) break;
+      }
+    }
+    return { move: bestMove, depth, nodes, score, ms: now() - t0 };
+  }
+  function rvNormal(b, N, p) {
+    const W = rvWeights(N), ms = rvMoves(b, N, p), q = 3 - p, corners = [0, N - 1, N * (N - 1), N * N - 1];
+    let best = ms[0], bv = -1e9;
+    for (const m of ms) {
+      const f = rvFlips(b, N, m, p); b[m] = p; for (const j of f) b[j] = p;
+      let v = W[m] + f.length * 1.5 + rnd() * 4;
+      if (corners.some(c => !b[c] && rvCan(b, N, c, q))) v -= 45;
+      v -= rvMoves(b, N, q).length * 1.2;
+      b[m] = 0; for (const j of f) b[j] = q;
+      if (v > bv) { bv = v; best = m; }
+    }
+    return best;
+  }
+
+  // ---------------- 五子棋 (Gomoku, free-style: five or more in a row wins) ----------------
+  const D4 = [[0, 1], [1, 0], [1, 1], [1, -1]];
+  // would p have five (or more) in a row through cell i? (i is treated as p, whatever is in it)
+  function gkWinAt(b, N, i, p) {
+    const r0 = (i / N) | 0, c0 = i % N;
+    for (const [dr, dc] of D4) {
+      let k = 1;
+      for (let s = -1; s <= 1; s += 2) { let r = r0 + dr * s, c = c0 + dc * s; while (r >= 0 && r < N && c >= 0 && c < N && b[r * N + c] === p) { k++; r += dr * s; c += dc * s; } }
+      if (k >= 5) return true;
+    }
+    return false;
+  }
+  function gkWinLine(b, N, i) {
+    const p = b[i], r0 = (i / N) | 0, c0 = i % N;
+    for (const [dr, dc] of D4) {
+      const cells = [i];
+      for (let s = -1; s <= 1; s += 2) { let r = r0 + dr * s, c = c0 + dc * s; while (r >= 0 && r < N && c >= 0 && c < N && b[r * N + c] === p) { if (s < 0) cells.unshift(r * N + c); else cells.push(r * N + c); r += dr * s; c += dc * s; } }
+      if (cells.length >= 5) return cells;
+    }
+    return null;
+  }
+  // empty cells that become winning cells for p if p plays i (looks at every 5-window through i)
+  function gkMakes(b, N, i, p) {
+    const r0 = (i / N) | 0, c0 = i % N, out = [];
+    for (const [dr, dc] of D4) {
+      for (let s = -4; s <= 0; s++) {
+        let own = 0, emp = -1, en = 0, ok = true;
+        for (let k = s; k <= s + 4; k++) {
+          if (!k) continue;
+          const r = r0 + dr * k, c = c0 + dc * k;
+          if (r < 0 || r >= N || c < 0 || c >= N) { ok = false; break; }
+          const v = b[r * N + c];
+          if (v === p) own++; else if (!v) { en++; emp = r * N + c; } else { ok = false; break; }
+        }
+        if (ok && own === 3 && en === 1 && !out.includes(emp)) out.push(emp);
+      }
+    }
+    return out;
+  }
+  function gkCands(b, N, dist = 2) {
+    const mark = new Uint8Array(N * N), out = []; let any = false;
+    for (let i = 0; i < N * N; i++) {
+      if (!b[i]) continue; any = true;
+      const r0 = (i / N) | 0, c0 = i % N;
+      for (let dr = -dist; dr <= dist; dr++) for (let dc = -dist; dc <= dist; dc++) {
+        const r = r0 + dr, c = c0 + dc;
+        if (r < 0 || r >= N || c < 0 || c >= N) continue;
+        const j = r * N + c;
+        if (!b[j] && !mark[j]) { mark[j] = 1; out.push(j); }
+      }
+    }
+    if (!any) { const h = (N / 2) | 0; out.push(h * N + h); }
+    return out;
+  }
+  const TB = [0, 3, 18, 110, 900, 100000];
+  function gkScore(b, N, i, p) {
+    const r0 = (i / N) | 0, c0 = i % N; let s = 0;
+    for (const [dr, dc] of D4) {
+      for (let st = -4; st <= 0; st++) {
+        let own = 0, ok = true;
+        for (let k = st; k <= st + 4; k++) {
+          if (!k) continue;
+          const r = r0 + dr * k, c = c0 + dc * k;
+          if (r < 0 || r >= N || c < 0 || c >= N) { ok = false; break; }
+          const v = b[r * N + c];
+          if (v === p) own++; else if (v) { ok = false; break; }
+        }
+        if (ok) s += TB[own + 1];
+      }
+    }
+    const h = (N - 1) / 2;
+    return s - (Math.abs(r0 - h) + Math.abs(c0 - h)) * 0.05;
+  }
+  const gkVal = (b, N, c, p) => gkScore(b, N, c, p) * 1.05 + gkScore(b, N, c, 3 - p) * 0.95;
+  const gkValA = (b, N, c, p) => gkScore(b, N, c, p) * 1.3 + gkScore(b, N, c, 3 - p) * 0.9;
+  const winCells = (b, N, C, p) => C.filter(c => gkWinAt(b, N, c, p));
+  // victory by continuous fours: returns the first move of a forced win for p, or -1
+  function gkVCF(b, N, p, depth, budget) {
+    const q = 3 - p;
+    function rec(d) {
+      if (--budget.n < 0) return -1;
+      const C = gkCands(b, N, 2);
+      for (const c of C) if (gkWinAt(b, N, c, p)) return c;
+      for (const c of C) if (gkWinAt(b, N, c, q)) return -1;      // must defend first: not a forcing line
+      if (d <= 0) return -1;
+      const fours = [];
+      for (const c of C) { const mk = gkMakes(b, N, c, p); if (mk.length >= 2) return c; if (mk.length === 1) fours.push([c, mk[0]]); }
+      for (const [c, w] of fours) {
+        if (gkWinAt(b, N, w, q)) continue;                           // the forced block would win for them
+        b[c] = p; b[w] = q;
+        const r = rec(d - 1);
+        b[c] = 0; b[w] = 0;
+        if (r >= 0) return c;
+        if (budget.n < 0) return -1;
+      }
+      return -1;
+    }
+    return rec(depth);
+  }
+  function gkEasy(b, N, p) {
+    const q = 3 - p, C = gkCands(b, N, 1);
+    const mw = winCells(b, N, C, p); if (mw.length && rnd() < 0.7) return mw[0];
+    const ow = winCells(b, N, C, q); if (ow.length && rnd() < 0.5) return ow[0];
+    if (rnd() < 0.35) return argmax(C, c => gkVal(b, N, c, p) + rnd() * 30);
+    return C[(rnd() * C.length) | 0];
+  }
+  function bigs(b, N, C, p) { return C.filter(c => !b[c] && gkMakes(b, N, c, p).length >= 2); }
+  // block an opponent "open three": pick the cell that leaves them the fewest ways to make an open four
+  function blockThrees(b, N, C, p, list) {
+    const q = 3 - p; let best = -1, bk = 1e9, bv = -1e18;
+    for (const d of list) {
+      b[d] = p;
+      const left = bigs(b, N, C, q).length;
+      b[d] = 0;
+      const v = gkVal(b, N, d, p);
+      if (left < bk || (left === bk && v > bv)) { bk = left; bv = v; best = d; }
+    }
+    return { move: best, left: bk };
+  }
+  function gkNormal(b, N, p) {
+    const q = 3 - p, C = gkCands(b, N, 2);
+    const mw = winCells(b, N, C, p); if (mw.length) return mw[0];
+    const ow = winCells(b, N, C, q); if (ow.length) return argmax(ow, c => gkVal(b, N, c, p));
+    const mb = bigs(b, N, C, p); if (mb.length) return argmax(mb, c => gkVal(b, N, c, p));
+    const ob = bigs(b, N, C, q); if (ob.length) return blockThrees(b, N, C, p, C).move;
+    return argmax(C, c => gkVal(b, N, c, p) + (gkMakes(b, N, c, p).length ? 400 : 0) + rnd() * 25);
+  }
+  // victory by continuous threats (fours and open threes); the defender may answer a three with
+  // any cell that kills it, or with a four of their own. Returns the first move, or -1.
+  function gkVCT(b, N, p, depth, budget, deadline) {
+    const q = 3 - p;
+    const lineCells = (c) => { const r0 = (c / N) | 0, c0 = c % N, out = []; for (const [dr, dc] of D4) for (let k = -4; k <= 4; k++) { if (!k) continue; const r = r0 + dr * k, cc = c0 + dc * k; if (r >= 0 && r < N && cc >= 0 && cc < N && !b[r * N + cc]) out.push(r * N + cc); } return out; };
+    function rec(d) {
+      if (--budget.n < 0 || now() > deadline) { budget.n = -1; return -1; }
+      const C = gkCands(b, N, 2);
+      for (const c of C) if (gkWinAt(b, N, c, p)) return c;
+      for (const c of C) if (gkWinAt(b, N, c, q)) return -1;
+      const f = gkVCF(b, N, p, 6, { n: 60 }); if (f >= 0) return f;
+      if (d <= 0) return -1;
+      if (bigs(b, N, C, q).length) return -1;                       // their open three is faster than ours
+      const oppFours = [];
+      for (const c of C) { const mk = gkMakes(b, N, c, q); if (mk.length === 1) oppFours.push([c, mk[0]]); }
+      const threes = [];
+      for (const c of C) {
+        if (gkMakes(b, N, c, p).length) continue;                   // fours are covered by the VCF above
+        b[c] = p;
+        const B = lineCells(c).filter(e => gkMakes(b, N, e, p).length >= 2);
+        b[c] = 0;
+        if (B.length) threes.push([c, B, gkVal(b, N, c, p)]);
+      }
+      threes.sort((u, v) => v[2] - u[2]);
+      for (const [c, B] of threes.slice(0, 6)) {
+        b[c] = p;
+        const area = new Set(); for (const e of B) { area.add(e); for (const z of lineCells(e)) area.add(z); }
+        const defs = [];
+        for (const dd of area) { b[dd] = q; const alive = B.some(e => e !== dd && !b[e] && gkMakes(b, N, e, p).length >= 2); b[dd] = 0; if (!alive) defs.push([dd, -1]); }
+        for (const [fc, fw] of oppFours.slice(0, 6)) if (!b[fc] && !defs.some(z => z[0] === fc)) defs.push([fc, fw]);
+        let all = defs.length > 0;
+        for (const [dd, fw] of defs) {
+          b[dd] = q;
+          let r;
+          if (fw >= 0) { if (b[fw]) r = -1; else { b[fw] = p; r = gkWinAt(b, N, fw, p) ? fw : rec(d - 1); b[fw] = 0; } }
+          else r = rec(d - 1);
+          b[dd] = 0;
+          if (r < 0) { all = false; break; }
+        }
+        b[c] = 0;
+        if (all) return c;
+        if (budget.n < 0) return -1;
+      }
+      return -1;
+    }
+    return rec(depth);
+  }
+  function gkHard(b, N, p) {
+    const q = 3 - p, C = gkCands(b, N, 2), deadline = now() + 320;
+    // 1. win now  2. block their five
+    const mw = winCells(b, N, C, p); if (mw.length) return mw[0];
+    const ow = winCells(b, N, C, q);
+    if (ow.length) return argmax(ow, c => gkVal(b, N, c, p) + gkMakes(b, N, c, p).length * 500);
+    // 3. a forced win with fours (includes open fours and four-threes)
+    const v = gkVCF(b, N, p, 12, { n: 2500 }); if (v >= 0) return v;
+    // 4. do they threaten to win? (an open three, or their own forced fours)
+    const ob = bigs(b, N, C, q);
+    const theirVCF = ob.length ? -1 : gkVCF(b, N, q, 10, { n: 1200 });
+    if (ob.length || theirVCF >= 0) {
+      const top = C.slice().sort((u, w) => gkVal(b, N, w, p) - gkVal(b, N, u, p)).slice(0, 12);
+      const list = [...new Set([...ob, ...(theirVCF >= 0 ? [theirVCF] : []), ...top])];
+      const safe = [];
+      for (const d of list) {
+        b[d] = p;
+        let ok = !bigs(b, N, C, q).length;
+        if (ok) ok = gkVCF(b, N, q, 8, { n: 300 }) < 0;
+        b[d] = 0;
+        if (ok) safe.push(d);
+      }
+      if (safe.length) return argmax(safe, d => gkVal(b, N, d, p) + threatBonus(b, N, d, p));
+      if (ob.length) return blockThrees(b, N, C, p, list).move;
+      return theirVCF;
+    }
+    // 5. a forced win with threes and fours
+    const vt = gkVCT(b, N, p, 4, { n: 220 }, deadline); if (vt >= 0) return vt;
+    // 6. build threats (fours, open threes, double threes), but don't leave them a forced win
+    const top = C.slice().sort((u, w) => gkValA(b, N, w, p) - gkValA(b, N, u, p)).slice(0, 10);
+    const sc = top.map(c => [c, gkValA(b, N, c, p) + threatBonus(b, N, c, p) + rnd() * 5]).sort((u, w) => w[1] - u[1]);
+    for (const [c] of sc.slice(0, 5)) {
+      if (now() > deadline) break;
+      b[c] = p;
+      const bad = gkVCT(b, N, q, 3, { n: 40 }, deadline) >= 0;
+      b[c] = 0;
+      if (!bad) return c;
+    }
+    return sc[0][0];
+  }
+  function threatBonus(b, N, c, p) {
+    const fours = gkMakes(b, N, c, p).length;
+    b[c] = p;
+    const r0 = (c / N) | 0, c0 = c % N; let threes = 0;
+    for (const [dr, dc] of D4) for (let k = -4; k <= 4; k++) {
+      if (!k) continue;
+      const r = r0 + dr * k, cc = c0 + dc * k;
+      if (r < 0 || r >= N || cc < 0 || cc >= N) continue;
+      const e = r * N + cc;
+      if (!b[e] && gkMakes(b, N, e, p).length >= 2) threes++;
+    }
+    b[c] = 0;
+    let s = fours * 600 + threes * 120;
+    if (threes >= 4 || (fours && threes >= 2)) s += 3000;
+    return s;
+  }
+
+  // ---------------- the computer's move (level 1 簡單, 2 普通, 3 困難) ----------------
+  function aiMove(kind, b0, N, p, lv, o = {}) {
+    const b = Int8Array.from(b0);
+    if (kind === 'rv') {
+      const ms = rvMoves(b, N, p);
+      if (!ms.length) return -1;
+      if (ms.length === 1) return ms[0];
+      if (lv === 1) return rnd() < 0.3 ? argmax(ms, m => rvFlips(b, N, m, p).length + rnd() * 0.5) : ms[(rnd() * ms.length) | 0];
+      if (lv === 2) return rvNormal(b, N, p);
+      return rvSearch(b, N, p, o.time || 300).move;
+    }
+    if (!b.some(v => v)) {
+      const h = (N / 2) | 0;
+      return lv === 1 ? (h + ((rnd() * 3) | 0) - 1) * N + h + ((rnd() * 3) | 0) - 1 : h * N + h;
+    }
+    if (!b.some(v => !v)) return -1;
+    if (lv === 1) return gkEasy(b, N, p);
+    if (lv === 2) return gkNormal(b, N, p);
+    return gkHard(b, N, p);
+  }
+  return { rvInit, rvFlips, rvCan, rvMoves, rvHas, rvPlay, rvCount, rvNext, rvWeights, rvEval, rvSearch, rvNormal,
+    gkWinAt, gkWinLine, gkMakes, gkCands, gkScore, gkVCF, gkVCT, gkEasy, gkNormal, gkHard, aiMove };
+}
+
+// ======================================================================
+// The game page
+// ======================================================================
+MG.init({ id: 'chess', title: '噗噗下棋', stats: ['a', 'b'] });
+const cv = document.getElementById('cv'), x = cv.getContext('2d');
+const FONT = '"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif';
+const EMOJI = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const LG = LOGIC();
+const BOARDS = {
+  r8: { kind: 'rv', N: 8, nm: '黑白棋' }, r6: { kind: 'rv', N: 6, nm: '小黑白棋' },
+  g13: { kind: 'gk', N: 13, nm: '五子棋' }, g15: { kind: 'gk', N: 15, nm: '大五子棋' },
+};
+const LV = ['簡單', '普通', '困難'];
+const CN = { 1: '綠色', 2: '粉色' };
+const isTouch = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || navigator.maxTouchPoints > 0;
+// stone colours: green = darker jelly, pink = light jelly (strong light/dark contrast, not only hue)
+const PAL = {
+  1: { hi: '#d9ffd9', a: '#6fdc83', b: '#2fa04e', c: '#1f7a3a', line: '#124d24', ink: '#0d2a14', ui: '#2a9447' },
+  2: { hi: '#ffffff', a: '#ffe3ee', b: '#ffb3cf', c: '#f483ae', line: '#b23a6d', ink: '#5a1a35', ui: '#e0548a' },
+};
+
+// ---------- state ----------
+let state = 'menu', gid = 'r8', kind = 'rv', N = 8, mode = 'cpu1', level = 1, vsCpu = true, human = 1, firstColor = 1;
+let board = LG.rvInit(8), turn = 1, last = -1, hist = [], moveNo = 0, winLine = null, result = null;
+let anims = new Map(), busyUntil = 0, clock = 0, t = 0, frames = 0, token = 0, think = null, passNote = null;
+let hover = -1, press = null, ghost = -1, hint = null, sayMsg = null, banner = null, lastFlipN = 0, pressedBtn = null, pressT = 0;
+let showDots = MG.store.get('chess.dots', true) !== false;
+let W = 600, H = 900, land = false, U = 1, BRD = { x: 6, y: 6, s: 588 }, P = { x: 6, y: 600, w: 588, h: 290 }, btns = [], cards = [], mid = null, cs = 60, gx = 0, gy = 0;
+let layer = null, layerKey = '';
+const sprites = new Map();
+const thinkTimes = [];
+
+function setBoardType(id) { gid = BOARDS[id] ? id : 'r8'; kind = BOARDS[gid].kind; N = BOARDS[gid].N; }
+const nameOf = p => vsCpu ? (p === human ? '你' : '電腦') : CN[p] + '噗噗';
+const cpuColor = () => 3 - human;
+const isBusy = () => clock < busyUntil;
+const humanTurn = () => state === 'play' && !result && turn > 0 && (!vsCpu || turn === human) && !isBusy() && !think;
+const cssScale = () => Math.max(0.1, (parseFloat(cv.style.width) || W) / W);
+const needConfirm = (pt) => pt !== 'mouse' && cs * cssScale() < 34;
+
+// ---------- layout ----------
+function layout() {
+  W = cv.lw; H = cv.lh; land = W > H;
+  U = clamp(0.8 / cssScale(), 1, 1.5);
+  const m = 6;
+  if (land) { BRD = { x: m, y: m, s: H - 2 * m }; P = { x: H + 2, y: m, w: W - H - 2 - m, h: H - 2 * m }; }
+  else { BRD = { x: m, y: m, s: W - 2 * m }; P = { x: m, y: W + 2, w: W - 2 * m, h: H - W - 2 - m }; }
+  const pad = kind === 'rv' ? BRD.s * 0.035 : BRD.s * 0.012;
+  cs = (BRD.s - 2 * pad) / N; gx = BRD.x + pad; gy = BRD.y + pad;
+  const g = 10, ch = Math.round(76 * U), bh = Math.round(64 * U), ids = kind === 'rv' ? ['undo', 'hint', 'dots'] : ['undo', 'hint'];
+  cards = []; btns = [];
+  let y0 = P.y + 8;
+  if (P.w >= 2 * 215 * U) { const cw = (P.w - 16 - g) / 2; cards.push({ p: 1, x: P.x + 8, y: y0, w: cw, h: ch }, { p: 2, x: P.x + 8 + cw + g, y: y0, w: cw, h: ch }); y0 += ch + g; }
+  else for (const p of [1, 2]) { cards.push({ p, x: P.x + 8, y: y0, w: P.w - 16, h: ch }); y0 += ch + g; }
+  const perRow = Math.max(1, Math.min(ids.length, Math.floor((P.w - 16 + g) / (128 * U + g))));
+  const rows = Math.ceil(ids.length / perRow), bw = (P.w - 16 - g * (perRow - 1)) / perRow;
+  const by0 = P.y + P.h - 8 - rows * bh - (rows - 1) * g;
+  ids.forEach((id, k) => {
+    const row = Math.floor(k / perRow), col = k % perRow, inRow = Math.min(perRow, ids.length - row * perRow);
+    const w2 = (P.w - 16 - g * (inRow - 1)) / inRow;
+    btns.push({ id, x: P.x + 8 + col * (w2 + g), y: by0 + row * (bh + g), w: inRow === perRow ? bw : w2, h: bh });
+  });
+  mid = { x: P.x + 8, y: y0, w: P.w - 16, h: by0 - g - y0 };
+  layerKey = ''; sprites.clear();
+}
+cv.onfit = () => layout();
+MG.fit(cv, (sw, sh) => {
+  const aw = Math.max(100, sw - 14), ah = Math.max(100, sh - 14);
+  if (aw > ah * 1.05) {
+    const u = clamp(0.8 / (ah / 600), 1, 1.5), wmin = 604 + Math.round(270 * u);
+    return [Math.round(clamp(600 * aw / ah, wmin, Math.max(wmin, 1300))), 600];
+  }
+  const u = clamp(0.8 / (aw / 600), 1, 1.5), hmin = 604 + Math.round(290 * u);
+  return [600, Math.round(clamp(600 * ah / aw, hmin, Math.max(hmin, 1200)))];
+});
+
+// ---------- painting helpers ----------
+function rr(g, x0, y0, w, h, r) { g.beginPath(); g.roundRect(x0, y0, w, h, r); }
+function dot(g, cx, cy, r) { g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill(); }
+function txt(s, px, py, size, col = '#fff', align = 'center', weight = 900, stroke = null, sw = 4, g = x) {
+  g.font = `${weight} ${size}px ${FONT}`; g.textAlign = align; g.textBaseline = 'middle';
+  if (stroke) { g.lineJoin = 'round'; g.lineWidth = sw; g.strokeStyle = stroke; g.strokeText(s, px, py); }
+  g.fillStyle = col; g.fillText(s, px, py);
+}
+function fitTxt(s, px, py, maxW, size, col, weight = 900, align = 'center', g = x) {
+  g.font = `${weight} ${size}px ${FONT}`;
+  const w0 = g.measureText(s).width, sz = w0 > maxW ? Math.max(10, size * maxW / w0) : size;
+  txt(s, px, py, sz, col, align, weight, null, 4, g);
+  return Math.min(w0, maxW);
+}
+const emoCache = new Map();
+function emo(s, px, py, size, g = x) {
+  const sc = cv._mgScale || 1, k = `${s}|${Math.round(size)}|${sc}`;
+  let c = emoCache.get(k);
+  if (!c) {
+    c = document.createElement('canvas'); const S = Math.ceil(size * 1.4 * sc); c.width = S; c.height = S;
+    const e = c.getContext('2d'); e.scale(sc, sc); e.font = `${size}px ${EMOJI}`; e.textAlign = 'center'; e.textBaseline = 'middle'; e.fillText(s, size * 0.7, size * 0.74);
+    if (emoCache.size > 200) emoCache.clear();
+    emoCache.set(k, c);
+  }
+  g.drawImage(c, px - size * 0.7, py - size * 0.7, size * 1.4, size * 1.4);
+}
+const cellXY = i => ({ x: gx + (i % N + 0.5) * cs, y: gy + (((i / N) | 0) + 0.5) * cs });
+const stoneR = () => cs * (kind === 'rv' ? 0.4 : 0.45);
+
+// a cute jelly stone with a tiny face, drawn once per colour/size into a little canvas
+function stoneSprite(col, rL) {
+  const px = cv._mgScale || 1, R = Math.max(4, Math.round(rL * px)), key = col + '|' + R;
+  let c = sprites.get(key); if (c) return c;
+  const S = Math.ceil(R * 2.9), oy = Math.round(R * 0.16);
+  c = document.createElement('canvas'); c.width = c.height = S;
+  const g = c.getContext('2d'), pl = PAL[col];
+  g.translate(S / 2, S / 2 + oy);
+  g.fillStyle = 'rgba(30,30,50,.28)'; g.beginPath(); g.ellipse(R * 0.06, R * 0.8, R * 0.9, R * 0.26, 0, 0, 7); g.fill();
+  const body = () => { g.beginPath(); g.ellipse(0, 0, R, R * 0.93, 0, 0, 7); };
+  const gr = g.createRadialGradient(-R * 0.35, -R * 0.42, R * 0.08, 0, R * 0.12, R * 1.08);
+  gr.addColorStop(0, pl.hi); gr.addColorStop(0.3, pl.a); gr.addColorStop(0.78, pl.b); gr.addColorStop(1, pl.c);
+  g.fillStyle = gr; body(); g.fill();
+  g.save(); body(); g.clip();
+  g.fillStyle = col === 1 ? 'rgba(10,60,25,.18)' : 'rgba(180,40,100,.12)'; g.beginPath(); g.ellipse(R * 0.45, R * 0.5, R * 0.75, R * 0.5, 0, 0, 7); g.fill();
+  g.fillStyle = 'rgba(255,255,255,.4)'; dot(g, -R * 0.45, R * 0.42, R * 0.07); dot(g, R * 0.5, R * 0.18, R * 0.05);
+  g.restore();
+  g.strokeStyle = pl.line; g.lineWidth = Math.max(1, R * 0.09); body(); g.stroke();
+  // top: green has a little leaf sprout, pink has a little bow
+  if (R >= 7) {
+    if (col === 1) {
+      g.strokeStyle = '#7a5520'; g.lineWidth = Math.max(1, R * 0.07); g.lineCap = 'round';
+      g.beginPath(); g.moveTo(0, -R * 0.9); g.quadraticCurveTo(R * 0.02, -R * 1.05, R * 0.08, -R * 1.1); g.stroke();
+      g.save(); g.translate(R * 0.24, -R * 1.1); g.rotate(-0.45);
+      g.fillStyle = '#ffcf3f'; g.strokeStyle = '#b86d00'; g.lineWidth = Math.max(0.8, R * 0.05);
+      g.beginPath(); g.moveTo(-R * 0.17, 0); g.quadraticCurveTo(R * 0.02, -R * 0.2, R * 0.21, 0); g.quadraticCurveTo(R * 0.02, R * 0.2, -R * 0.17, 0); g.fill(); g.stroke();
+      g.restore();
+    } else {
+      g.save(); g.translate(R * 0.2, -R * 0.86);
+      g.fillStyle = '#ff4f8b'; g.strokeStyle = '#a0204f'; g.lineWidth = Math.max(0.8, R * 0.05);
+      for (const sd of [-1, 1]) { g.beginPath(); g.moveTo(0, 0); g.lineTo(sd * R * 0.26, -R * 0.15); g.lineTo(sd * R * 0.26, R * 0.15); g.closePath(); g.fill(); g.stroke(); }
+      g.beginPath(); g.arc(0, 0, R * 0.08, 0, 7); g.fill(); g.stroke();
+      g.restore();
+    }
+  }
+  // glossy highlight
+  g.fillStyle = 'rgba(255,255,255,.8)'; g.beginPath(); g.ellipse(-R * 0.46, -R * 0.45, R * 0.2, R * 0.11, -0.75, 0, 7); g.fill();
+  // face
+  if (R >= 6) {
+    const ink = pl.ink;
+    g.fillStyle = ink;
+    for (const sd of [-1, 1]) { g.beginPath(); g.ellipse(sd * R * 0.3, R * 0.02, R * 0.1, R * 0.14, 0, 0, 7); g.fill(); }
+    if (R >= 10) { g.fillStyle = '#fff'; for (const sd of [-1, 1]) dot(g, sd * R * 0.3 - R * 0.03, -R * 0.04, R * 0.045); }
+    g.strokeStyle = ink; g.lineWidth = Math.max(1, R * 0.07); g.lineCap = 'round';
+    g.beginPath(); g.arc(0, R * 0.2, R * 0.13, 0.25, Math.PI - 0.25); g.stroke();
+    g.fillStyle = col === 1 ? 'rgba(255,140,160,.55)' : 'rgba(255,90,140,.45)';
+    for (const sd of [-1, 1]) { g.beginPath(); g.ellipse(sd * R * 0.58, R * 0.24, R * 0.13, R * 0.07, 0, 0, 7); g.fill(); }
+  }
+  c.R = R; c.S = S; c.oy = oy;
+  sprites.set(key, c);
+  return c;
+}
+function drawStone(cx, cy, r, col, o = {}) {
+  const sp = stoneSprite(col, r), k = r / sp.R;
+  x.save(); x.translate(cx, cy + (o.dy || 0));
+  if (o.rot) x.rotate(o.rot);
+  x.scale(o.sx ?? 1, o.sy ?? 1);
+  if (o.a != null) x.globalAlpha = o.a;
+  x.drawImage(sp, -sp.S / 2 * k, -(sp.S / 2 + sp.oy) * k, sp.S * k, sp.S * k);
+  x.restore();
+}
+
+// ---------- static layer: board + panel background ----------
+function buildLayer() {
+  const px = cv._mgScale || 1;
+  layer = document.createElement('canvas'); layer.width = Math.round(W * px); layer.height = Math.round(H * px);
+  const g = layer.getContext('2d'); g.scale(px, px);
+  g.fillStyle = '#f4f9ff'; g.fillRect(0, 0, W, H);
+  const B = BRD;
+  if (kind === 'rv') {
+    g.fillStyle = 'rgba(40,80,140,.25)'; rr(g, B.x + 2, B.y + 5, B.s, B.s, 18); g.fill();
+    const fr = g.createLinearGradient(0, B.y, 0, B.y + B.s); fr.addColorStop(0, '#6aa9e8'); fr.addColorStop(1, '#3f7fc8');
+    g.fillStyle = fr; rr(g, B.x, B.y, B.s, B.s, 18); g.fill();
+    g.strokeStyle = '#2d5f9e'; g.lineWidth = 3; g.stroke();
+    for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+      g.fillStyle = (r + c) % 2 ? '#c4e4f8' : '#d6eefc';
+      g.fillRect(gx + c * cs, gy + r * cs, cs, cs);
+    }
+    g.strokeStyle = 'rgba(60,110,170,.45)'; g.lineWidth = 1.5;
+    for (let k = 0; k <= N; k++) { g.beginPath(); g.moveTo(gx + k * cs, gy); g.lineTo(gx + k * cs, gy + N * cs); g.stroke(); g.beginPath(); g.moveTo(gx, gy + k * cs); g.lineTo(gx + N * cs, gy + k * cs); g.stroke(); }
+    g.strokeStyle = '#2d5f9e'; g.lineWidth = 2.5; g.strokeRect(gx, gy, N * cs, N * cs);
+    if (N === 8) { g.fillStyle = '#4a7fbf'; for (const [a, b2] of [[2, 2], [2, 6], [6, 2], [6, 6]]) dot(g, gx + a * cs, gy + b2 * cs, Math.max(2.5, cs * 0.06)); }
+    // tiny sparkles on the frame
+    g.fillStyle = 'rgba(255,255,255,.55)';
+    for (const [a, b2] of [[0.1, 0.012], [0.5, 0.012], [0.9, 0.012], [0.012, 0.3], [0.988, 0.7]]) dot(g, B.x + a * B.s, B.y + b2 * B.s, 2.4);
+  } else {
+    g.fillStyle = 'rgba(110,70,20,.28)'; rr(g, B.x + 2, B.y + 5, B.s, B.s, 14); g.fill();
+    const wd = g.createLinearGradient(B.x, B.y, B.x + B.s, B.y + B.s); wd.addColorStop(0, '#f8dc9e'); wd.addColorStop(1, '#ebbf6e');
+    g.fillStyle = wd; rr(g, B.x, B.y, B.s, B.s, 14); g.fill();
+    g.save(); rr(g, B.x, B.y, B.s, B.s, 14); g.clip();
+    g.strokeStyle = 'rgba(170,110,40,.13)'; g.lineWidth = 2;
+    for (let k = 0; k < 16; k++) { const yy = B.y + (k + 0.5) * B.s / 16; g.beginPath(); g.moveTo(B.x, yy); g.bezierCurveTo(B.x + B.s * 0.3, yy - 6, B.x + B.s * 0.6, yy + 7, B.x + B.s, yy - 2); g.stroke(); }
+    g.restore();
+    g.strokeStyle = '#a4702e'; g.lineWidth = 3; rr(g, B.x, B.y, B.s, B.s, 14); g.stroke();
+    const a0 = gx + cs / 2, a1 = gx + (N - 0.5) * cs, b0 = gy + cs / 2, b1 = gy + (N - 0.5) * cs;
+    g.strokeStyle = '#9b6a2f'; g.lineWidth = Math.max(1.2, cs * 0.045);
+    for (let k = 0; k < N; k++) { const q = gx + (k + 0.5) * cs; g.beginPath(); g.moveTo(q, b0); g.lineTo(q, b1); g.stroke(); const yy = gy + (k + 0.5) * cs; g.beginPath(); g.moveTo(a0, yy); g.lineTo(a1, yy); g.stroke(); }
+    g.lineWidth = Math.max(2, cs * 0.07); g.strokeRect(a0, b0, a1 - a0, b1 - b0);
+    const st = N === 13 ? [3, 6, 9] : [3, 7, 11];
+    g.fillStyle = '#7a4f1c';
+    for (const r of st) for (const c of st) if ((r === st[1]) === (c === st[1]) || N === 15) dot(g, gx + (c + 0.5) * cs, gy + (r + 0.5) * cs, Math.max(2.5, cs * 0.1));
+  }
+  // panel card
+  g.fillStyle = 'rgba(255,255,255,.72)'; rr(g, P.x, P.y, P.w, P.h, 16); g.fill();
+  g.strokeStyle = '#9cc8ee'; g.lineWidth = 2.5; g.stroke();
+  layerKey = `${W}x${H}:${px}:${gid}`;
+}
+
+// ---------- AI requests (Web Worker when possible) ----------
+let worker = null, wseq = 0;
+const wcb = new Map();
+try {
+  const src = `'use strict';const LG=(${LOGIC.toString()})();onmessage=e=>{const d=e.data;let m=-1,t0=Date.now();try{m=LG.aiMove(d.kind,Int8Array.from(d.b),d.N,d.p,d.lv);}catch(err){m=-1;}postMessage({id:d.id,m,ms:Date.now()-t0});};`;
+  worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+  worker.onmessage = e => { const f = wcb.get(e.data.id); wcb.delete(e.data.id); thinkTimes.push(e.data.ms); if (f) f(e.data.m); };
+  worker.onerror = () => { worker = null; for (const [id, f] of wcb) { wcb.delete(id); f(-2); } };
+} catch { worker = null; }
+function askAI(b, p, lv, cb) {
+  const sync = () => { const t0 = performance.now(); const m = LG.aiMove(kind, b, N, p, lv); thinkTimes.push(performance.now() - t0); cb(m); };
+  if (worker) {
+    const id = ++wseq;
+    wcb.set(id, m => m === -2 ? sync() : cb(m));
+    worker.postMessage({ id, kind, b: Array.from(b), N, p, lv });
+    setTimeout(() => { if (wcb.has(id)) { wcb.delete(id); sync(); } }, 5000);
+  } else setTimeout(sync, 40);
+}
+function legal(i, p = turn) { return i >= 0 && i < N * N && !board[i] && (kind === 'gk' || LG.rvCan(board, N, i, p)); }
+function fallbackMove(p) {
+  if (kind === 'rv') { const ms = LG.rvMoves(board, N, p); return ms.length ? MG.pick(ms) : -1; }
+  const C = LG.gkCands(board, N, 1); return C.length ? MG.pick(C) : -1;
+}
+function startThink() {
+  const tok = ++token, p = turn;
+  think = { tok, t0: clock, minT: 0.55 + Math.random() * 0.35, move: null };
+  askAI(board.slice(), p, level, m => {
+    if (!think || think.tok !== tok) return;
+    think.move = legal(m, p) ? m : fallbackMove(p);
+  });
+}
+
+// ---------- moves ----------
+function snap() { return { b: board.slice(), turn, last, moveNo }; }
+function say(text, sec = 2, who = 0) { sayMsg = { text, until: clock + sec, who }; }
+function doMove(i) {
+  hist.push(snap());
+  hint = null; ghost = -1; hover = -1;
+  const p = turn, q = 3 - p;
+  let flips = [];
+  if (kind === 'rv') {
+    flips = LG.rvFlips(board, N, i, p);
+    const ci = cellXY(i);
+    flips.sort((u, v) => { const a = cellXY(u), b2 = cellXY(v); return Math.hypot(a.x - ci.x, a.y - ci.y) - Math.hypot(b2.x - ci.x, b2.y - ci.y); });
+    board[i] = p;
+    flips.forEach((j, k) => { board[j] = p; anims.set(j, { type: 'flip', t0: clock + 0.22 + k * 0.085, from: q, to: p, snd: false }); });
+  } else board[i] = p;
+  anims.set(i, { type: 'drop', t0: clock, to: p });
+  last = i; moveNo++; lastFlipN = flips.length;
+  MG.sfx('place');
+  busyUntil = clock + (kind === 'rv' ? 0.22 + flips.length * 0.085 + 0.36 : 0.3);
+  if (kind === 'rv' && flips.length >= 4) say(vsCpu && p === cpuColor() ? `哎呀，被翻了 ${flips.length} 顆！` : `哇！翻了 ${flips.length} 顆！`, 1.8, vsCpu && p === cpuColor() ? human : p);
+  if (kind === 'gk') {
+    if (LG.gkWinAt(board, N, i, p)) { winLine = LG.gkWinLine(board, N, i); return finish(p); }
+    if (!board.includes(0)) return finish(0);
+    turn = q;
+  } else {
+    const nx = LG.rvNext(board, N, p);
+    if (nx.over) { const [a, c] = LG.rvCount(board); return finish(a > c ? 1 : c > a ? 2 : 0); }
+    if (nx.pass) { passNote = { who: q, at: busyUntil }; busyUntil += 1.5; }
+    turn = nx.turn;
+  }
+  hud();
+}
+function finish(w) {
+  result = { w, cel: false, at: busyUntil + 1.6, shown: false };
+  turn = 0; hud();
+}
+function celebrate() {
+  result.cel = true;
+  const w = result.w;
+  if (vsCpu && w && w !== human) MG.sfx('over'); else MG.sfx('win');
+  const cols = ['#ff8ac2', '#ffd23f', '#8fd0ff', '#b8f5a0', '#fff'];
+  if (winLine) for (const j of winLine) { const c = cellXY(j); MG.fx.burst(c.x, c.y, { n: 10, colors: cols, speed: 200, up: 80, size: 5, shape: 'star', life: 0.9 }); }
+  else for (let k = 0; k < 5; k++) MG.fx.burst(BRD.x + BRD.s * (0.15 + k * 0.175), BRD.y + BRD.s * 0.35, { n: 18, colors: cols, speed: 240, up: 140, size: 5, shape: 'sq', life: 1.1 });
+  banner = { text: w ? (vsCpu ? (w === human ? '你贏了！' : '電腦贏了') : `${CN[w]}贏了！`) : '平手！', t0: clock, life: 1.8, col: w ? PAL[w].ui : '#3a6fd8' };
+}
+function undo() {
+  if (!canUndo()) return;
+  token++; think = null; anims.clear(); busyUntil = clock + 0.15; passNote = null; ghost = -1; hint = null;
+  let s = hist.pop();
+  if (vsCpu) while (s.turn !== human && hist.length) s = hist.pop();
+  board = s.b; turn = s.turn; last = s.last; moveNo = s.moveNo; winLine = null;
+  MG.sfx('flip'); say('悔棋！再想一次 ^_^', 1.6, turn); hud();
+}
+const canUndo = () => state === 'play' && !result && hist.length > 0 && (!vsCpu || hist.some(s => s.turn === human));
+function giveHint() {
+  if (!humanTurn()) return;
+  const m = LG.aiMove(kind, board, N, turn, 3, { time: 160 });
+  if (m < 0) return;
+  hint = { cell: m, t0: clock };
+  MG.sfx('good'); say('試試看發光的地方！', 2.2, turn);
+}
+function toggleDots() {
+  showDots = !showDots; MG.store.set('chess.dots', showDots);
+  MG.toast(showDots ? '顯示可以下的地方：開' : '顯示可以下的地方：關', 1100);
+}
+
+// ---------- input ----------
+function cellAt(p) {
+  const c = Math.floor((p.x - gx) / cs), r = Math.floor((p.y - gy) / cs);
+  return c >= 0 && r >= 0 && c < N && r < N ? r * N + c : -1;
+}
+function btnAt(p) { return btns.find(b => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) || null; }
+function btnEnabled(b) {
+  if (state !== 'play' || result) return false;
+  if (b.id === 'undo') return canUndo();
+  if (b.id === 'hint') return humanTurn();
+  return true;
+}
+function pressBtn(b) {
+  if (!btnEnabled(b)) { if (b.id === 'hint' && state === 'play' && !result) MG.toast('等一下，還沒輪到你喔', 900); return; }
+  pressedBtn = b.id; pressT = 0.15; MG.sfx('click');
+  if (b.id === 'undo') undo(); else if (b.id === 'hint') giveHint(); else if (b.id === 'dots') toggleDots();
+}
+cv.addEventListener('pointerdown', e => {
+  if (MG.panelOpen()) return;
+  e.preventDefault(); MG.unlock();
+  const p = cv.logical(e);
+  if (state !== 'play') return;
+  const b = btnAt(p);
+  if (b) { pressBtn(b); return; }
+  if (!humanTurn()) { if (think && cellAt(p) >= 0) say('等一下，電腦在想…', 1.2, cpuColor()); return; }
+  const i = cellAt(p);
+  if (i < 0) return;
+  press = { id: e.pointerId, cell: i };
+  try { cv.setPointerCapture(e.pointerId); } catch {}
+  hover = i;
+});
+cv.addEventListener('pointermove', e => {
+  const p = cv.logical(e);
+  if (press && press.id === e.pointerId) { press.cell = cellAt(p); hover = press.cell; return; }
+  if (e.pointerType === 'mouse') {
+    hover = state === 'play' ? cellAt(p) : -1;
+    cv.style.cursor = (humanTurn() && legal(hover)) || btnAt(p) ? 'pointer' : 'default';
+  }
+});
+cv.addEventListener('pointerup', e => {
+  if (!press || press.id !== e.pointerId) return;
+  const i = press.cell; press = null;
+  if (e.pointerType !== 'mouse') hover = -1;
+  if (!humanTurn() || i < 0) return;
+  if (!legal(i)) {
+    if (!board[i] && kind === 'rv') { MG.sfx('tick'); say(showDots ? '這裡不能下喔，下在點點上' : '這裡夾不到喔', 1.4, turn); }
+    return;
+  }
+  if (needConfirm(e.pointerType) && ghost !== i) { ghost = i; MG.sfx('tick'); return; }
+  doMove(i);
+});
+const ptrCancel = () => { press = null; hover = -1; };
+cv.addEventListener('pointercancel', ptrCancel);
+cv.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse' && !press) hover = -1; });
+addEventListener('keydown', e => {
+  if (MG.panelOpen() || state !== 'play' || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === 'u' || e.key === 'U') { e.preventDefault(); undo(); }
+  else if (e.key === 'h' || e.key === 'H') { e.preventDefault(); giveHint(); }
+});
+document.addEventListener('contextmenu', e => e.preventDefault());
+document.addEventListener('gesturestart', e => e.preventDefault());
+
+// ---------- update ----------
+function update(dt) {
+  MG.fx.step(dt);
+  pressT = Math.max(0, pressT - dt);
+  for (const [j, a] of anims) {
+    if (a.type === 'flip' && !a.snd && clock >= a.t0) { a.snd = true; MG.sfx('flip'); }
+    if (clock > a.t0 + 0.6) anims.delete(j);
+  }
+  if (state !== 'play') return;
+  if (passNote && clock >= passNote.at) {
+    const w = passNote.who; passNote = null;
+    const msg = vsCpu ? (w === human ? '你沒有地方可以下，跳過一次！' : '電腦沒有地方可以下，換你再下！') : `${CN[w]}沒有地方可以下，跳過一次！`;
+    say(msg, 2.2, w); MG.toast(msg, 1800); MG.sfx('bad');
+    banner = { text: '跳過！', t0: clock, life: 1.2, col: PAL[w].ui };
+  }
+  if (result) {
+    if (!result.cel && clock >= busyUntil) celebrate();
+    if (!result.shown && clock >= result.at) { result.shown = true; showOver(); }
+    return;
+  }
+  if (vsCpu && turn === cpuColor() && !isBusy()) {
+    if (!think) startThink();
+    else if (think.move != null && clock >= think.t0 + think.minT) { const m = think.move; think = null; if (m >= 0) doMove(m); }
+  }
+}
+
+// ---------- draw ----------
+function drawBoard() {
+  const r = stoneR(), wl = winLine ? new Set(winLine) : null;
+  // winning line glow (under the stones)
+  if (winLine && result && result.cel) {
+    const a = cellXY(winLine[0]), b2 = cellXY(winLine[winLine.length - 1]);
+    x.save(); x.lineCap = 'round';
+    x.strokeStyle = `rgba(255,215,60,${0.55 + 0.25 * Math.sin(t * 6)})`; x.lineWidth = cs * 0.7;
+    x.beginPath(); x.moveTo(a.x, a.y); x.lineTo(b2.x, b2.y); x.stroke();
+    x.strokeStyle = 'rgba(255,255,255,.7)'; x.lineWidth = cs * 0.18; x.stroke(); x.restore();
+  }
+  const wave = result && result.cel && kind === 'rv' && result.w;
+  for (let i = 0; i < N * N; i++) {
+    const v = board[i]; if (!v) continue;
+    const c = cellXY(i), a = anims.get(i);
+    let o = {};
+    if (a && a.type === 'drop') {
+      const k = (clock - a.t0) / 0.2;
+      if (k < 1) o = { dy: -(1 - k) * (1 - k) * r * 1.4, sx: 0.92, sy: 1.08 };
+      else { const k2 = (clock - a.t0 - 0.2) / 0.3; if (k2 < 1) { const s = Math.sin(k2 * Math.PI * 2) * (1 - k2) * 0.22; o = { sx: 1 + s, sy: 1 - s, dy: s * r * 0.3 }; } }
+    } else if (a && a.type === 'flip') {
+      const k = clamp((clock - a.t0) / 0.32, 0, 1);
+      if (k <= 0) { drawStone(c.x, c.y, r, a.from); continue; }
+      const sx = Math.abs(Math.cos(k * Math.PI));
+      o = { sx: Math.max(0.06, sx), dy: -Math.sin(k * Math.PI) * r * 0.45, rot: Math.sin(k * Math.PI) * 0.35 };
+      drawStone(c.x, c.y, r, k < 0.5 ? a.from : a.to, o); continue;
+    }
+    if (wl && wl.has(i) && result.cel) o = { dy: -Math.abs(Math.sin(t * 7 + winLine.indexOf(i) * 0.6)) * r * 0.35 };
+    else if (wave && v === result.w) { const ph = t * 5 - (c.x + c.y) / 90; o = { dy: -Math.max(0, Math.sin(ph)) * r * 0.25 }; }
+    drawStone(c.x, c.y, r, v, o);
+  }
+  // last move marker
+  const la = anims.get(last);
+  if (last >= 0 && board[last] && !(la && clock < la.t0 + 0.3) && !(result && result.cel)) {
+    const c = cellXY(last);
+    x.strokeStyle = 'rgba(255,255,255,.95)'; x.lineWidth = Math.max(2, cs * 0.06);
+    x.beginPath(); x.arc(c.x, c.y, r * (1.12 + 0.05 * Math.sin(t * 4)), 0, 7); x.stroke();
+    x.strokeStyle = 'rgba(255,170,0,.85)'; x.lineWidth = Math.max(1.5, cs * 0.035);
+    x.beginPath(); x.arc(c.x, c.y, r * (1.12 + 0.05 * Math.sin(t * 4)) + x.lineWidth * 1.4, 0, 7); x.stroke();
+  }
+  if (state !== 'play' || result) return;
+  const myTurn = humanTurn();
+  // legal-move dots (黑白棋)
+  if (kind === 'rv' && showDots && myTurn) {
+    const pr = r * (0.3 + 0.04 * Math.sin(t * 3));
+    for (let i = 0; i < N * N; i++) if (!board[i] && LG.rvCan(board, N, i, turn)) {
+      const c = cellXY(i);
+      x.fillStyle = 'rgba(255,255,255,.75)'; dot(x, c.x, c.y, pr + 2.5);
+      x.fillStyle = turn === 1 ? 'rgba(47,160,78,.6)' : 'rgba(240,110,160,.7)'; dot(x, c.x, c.y, pr);
+    }
+  }
+  // hint
+  if (hint && clock - hint.t0 < 3.5 && !board[hint.cell]) {
+    const c = cellXY(hint.cell), k = 1 + 0.12 * Math.sin(t * 8);
+    x.fillStyle = 'rgba(255,230,90,.45)'; dot(x, c.x, c.y, r * 1.25 * k);
+    x.strokeStyle = '#ffb300'; x.lineWidth = Math.max(2.5, cs * 0.08); x.beginPath(); x.arc(c.x, c.y, r * 1.1 * k, 0, 7); x.stroke();
+    emo('💡', c.x + r * 0.95, c.y - r * 1.05, Math.max(14, r * 0.9));
+  }
+  // preview (hover / finger down) and the ghost waiting for a second tap
+  const pv = myTurn ? (ghost >= 0 ? ghost : hover) : -1;
+  if (pv >= 0 && legal(pv)) {
+    const c = cellXY(pv);
+    drawStone(c.x, c.y, r, turn, { a: ghost === pv ? 0.7 + 0.15 * Math.sin(t * 6) : 0.55 });
+    if (kind === 'rv') {
+      const fl = LG.rvFlips(board, N, pv, turn);
+      x.strokeStyle = turn === 1 ? '#1f9a45' : '#ff4f8b'; x.lineWidth = Math.max(2.5, cs * 0.07);
+      for (const j of fl) { const d = cellXY(j); x.beginPath(); x.arc(d.x, d.y, r * (1.05 + 0.05 * Math.sin(t * 7)), 0, 7); x.stroke(); }
+      const lab = `+${fl.length}`, fs = Math.max(16, cs * 0.36);
+      x.font = `900 ${fs}px ${FONT}`; const tw = x.measureText(lab).width + 14;
+      let bx = c.x + r * 0.55, by = c.y - r * 1.25 - fs * 0.6;
+      bx = clamp(bx, BRD.x + 4, BRD.x + BRD.s - tw - 4); by = Math.max(BRD.y + 4, by);
+      x.fillStyle = '#fff'; rr(x, bx, by, tw, fs + 8, (fs + 8) / 2); x.fill(); x.strokeStyle = PAL[turn].line; x.lineWidth = 2; x.stroke();
+      txt(lab, bx + tw / 2, by + (fs + 8) / 2 + 1, fs, PAL[turn].line);
+    }
+    if (ghost === pv) {
+      const fs = Math.max(15, Math.min(22, cs * 0.6)), lab = '再點一下確定';
+      x.font = `900 ${fs}px ${FONT}`; const tw = x.measureText(lab).width + 18;
+      let bx = clamp(c.x - tw / 2, BRD.x + 4, BRD.x + BRD.s - tw - 4), by = c.y - r - fs - 18;
+      if (by < BRD.y + 4) by = c.y + r + 8;
+      x.fillStyle = 'rgba(58,47,34,.85)'; rr(x, bx, by, tw, fs + 10, (fs + 10) / 2); x.fill();
+      txt(lab, bx + tw / 2, by + (fs + 10) / 2 + 1, fs, '#fff');
+    }
+  }
+}
+function drawCards() {
+  const [a, c] = kind === 'rv' ? LG.rvCount(board) : [0, 0];
+  for (const cd of cards) {
+    const p = cd.p, pl = PAL[p], active = state === 'play' && !result && turn === p, won = result && result.cel && result.w === p;
+    x.save();
+    if (active || won) { x.shadowColor = pl.ui; x.shadowBlur = 14; }
+    x.fillStyle = active ? (p === 1 ? '#effff0' : '#fff2f7') : '#fff'; rr(x, cd.x, cd.y, cd.w, cd.h, 14); x.fill();
+    x.restore();
+    x.strokeStyle = active || won ? pl.ui : '#d9e4ee'; x.lineWidth = active || won ? 4 : 2; rr(x, cd.x, cd.y, cd.w, cd.h, 14); x.stroke();
+    const sr = cd.h * 0.3, hop = active ? Math.abs(Math.sin(t * 4)) * sr * 0.25 : won ? Math.abs(Math.sin(t * 7)) * sr * 0.4 : 0;
+    drawStone(cd.x + cd.h * 0.5, cd.y + cd.h * 0.53 - hop, sr, p);
+    const lx = cd.x + cd.h * 0.95, rw = kind === 'rv' ? cd.h * 0.95 : 0;
+    const nm = nameOf(p) + (vsCpu && p === cpuColor() ? `・${LV[level - 1]}` : '');
+    fitTxt(nm, lx, cd.y + cd.h * 0.36, cd.x + cd.w - rw - lx - 6, 22 * U, '#3a2f22', 900, 'left');
+    const sub = won ? '贏了！' : active ? (vsCpu && p === cpuColor() ? '想一想…' : '輪到你了！'.replace('你', vsCpu ? '你' : CN[p])) : (state === 'play' && !result ? '等一下' : '');
+    if (sub) fitTxt(sub, lx, cd.y + cd.h * 0.7, cd.x + cd.w - rw - lx - 6, 16 * U, active || won ? pl.ui : '#9a8f80', 800, 'left');
+    if (kind === 'rv') txt(String(p === 1 ? a : c), cd.x + cd.w - rw / 2 - 6, cd.y + cd.h / 2 + 1, Math.min(cd.h * 0.5, 40 * U), pl.line, 'center', 900);
+  }
+}
+function curMsg() {
+  if (state !== 'play' && !result) return { text: '選一個棋來下吧！', who: 1 };
+  if (result) {
+    const w = result.w;
+    if (!w) return { text: '平手！你們一樣厲害！', who: 1 };
+    if (vsCpu) return w === human ? { text: '你贏了！好厲害！', who: w } : { text: '電腦贏了，再來一盤！', who: w };
+    return { text: `${CN[w]}噗噗贏了！`, who: w };
+  }
+  if (sayMsg && clock < sayMsg.until) return { text: sayMsg.text, who: sayMsg.who || turn };
+  if (think) return { text: '嗯…讓我想一想' + '.'.repeat(1 + Math.floor(t * 3) % 3), who: turn, think: true };
+  if (ghost >= 0 && humanTurn()) return { text: '再點一下影子就下在那裡', who: turn };
+  if (passNote) return { text: '…', who: turn };
+  if (vsCpu) {
+    if (turn === human) return { text: kind === 'rv' ? (showDots ? '換你下！下在點點上' : '換你下！把對方夾起來') : '換你下！連成五個就贏', who: turn };
+    return { text: '換電腦下', who: turn };
+  }
+  return { text: `換${CN[turn]}下！`, who: turn };
+}
+function drawMid() {
+  const M = mid; if (!M || M.h < 40) return;
+  const msg = curMsg(), fs = clamp(19 * U, 16, 26);
+  const showPu = M.h >= 96;
+  const r = showPu ? clamp(Math.min((M.h - fs - 30) * 0.32, M.w * 0.12), 16, 58 * U) : 0;
+  const bh0 = fs + 20, blockH = bh0 + 14 + r * 2.4;
+  const py = M.y + Math.max(0, (M.h - blockH) / 2) + bh0 + 14 + r * 1.3;
+  const spots = { 1: M.x + M.w * 0.27, 2: M.x + M.w * 0.73 };
+  if (showPu) for (const p of [1, 2]) {
+    const active = msg.who === p, won = result && result.cel && result.w === p, lost = result && result.cel && result.w && result.w !== p;
+    const hop = won ? Math.abs(Math.sin(t * 6)) * r * 0.35 : active ? Math.abs(Math.sin(t * 3)) * r * 0.12 : 0;
+    const look = msg.think && active ? Math.sin(t * 2.2) : p === 1 ? 0.5 : -0.5;
+    const mood = won ? 'love' : lost ? 'ouch' : msg.think && active ? 'happy' : active && lastFlipN >= 4 && sayMsg && clock < sayMsg.until ? 'wow' : 'happy';
+    const rr2 = r * (active || won ? 1 : 0.82);
+    MG.puPu(x, spots[p], py - hop + (r - rr2) * 0.9, rr2, mood, hop ? -0.04 : Math.sin(t * 2 + p) * 0.02, { pal: p === 1 ? MG.JELLY.green : MG.JELLY.pink, look, arms: won ? 'up' : false, leaf: p === 2 ? '#ff7aa8' : undefined });
+    if (msg.think && active) {   // thinking dots above the head
+      for (let k = 0; k < 3; k++) { const on = Math.floor(t * 3) % 3 >= k; x.fillStyle = on ? 'rgba(90,70,120,.85)' : 'rgba(90,70,120,.25)'; dot(x, spots[p] + r * 0.9 + k * r * 0.28, py - r * 1.35 - k * r * 0.22, r * (0.08 + k * 0.03)); }
+    }
+  }
+  // speech bubble
+  x.font = `900 ${fs}px ${FONT}`;
+  const maxW = M.w - 12, tw = Math.min(maxW, x.measureText(msg.text).width + 34), bh = fs + 20;
+  const ax = showPu ? spots[msg.who] || M.x + M.w / 2 : M.x + M.w / 2;
+  const bx = clamp(ax - tw / 2, M.x + 6, M.x + M.w - 6 - tw);
+  const by = showPu ? Math.max(M.y + 4, py - r * 1.25 - bh - 14) : M.y + (M.h - bh) / 2;
+  const bc = PAL[msg.who] ? PAL[msg.who].ui : '#7fb0e0';
+  x.fillStyle = '#fff'; x.strokeStyle = bc; x.lineWidth = 3;
+  rr(x, bx, by, tw, bh, bh / 2); x.fill(); x.stroke();
+  if (showPu) {
+    const tx = clamp(ax, bx + 18, bx + tw - 18);
+    x.beginPath(); x.moveTo(tx - 9, by + bh - 1.5); x.lineTo(tx, by + bh + 11); x.lineTo(tx + 9, by + bh - 1.5); x.closePath(); x.fill();
+    x.beginPath(); x.moveTo(tx - 9, by + bh); x.lineTo(tx, by + bh + 11); x.lineTo(tx + 9, by + bh); x.stroke();
+    x.fillStyle = '#fff'; x.fillRect(tx - 7.5, by + bh - 4, 15, 4);
+  }
+  fitTxt(msg.text, bx + tw / 2, by + bh / 2 + 1, tw - 24, fs, '#3a2f22', 900);
+}
+function drawButtons() {
+  for (const b of btns) {
+    const on = btnEnabled(b), pressed = pressedBtn === b.id && pressT > 0;
+    x.save(); if (!on) x.globalAlpha = 0.42;
+    const dy = pressed ? 3 : 0;
+    x.fillStyle = '#c9a95a'; rr(x, b.x, b.y + 4, b.w, b.h - 2, 14); x.fill();
+    const gr = x.createLinearGradient(0, b.y, 0, b.y + b.h);
+    const hot = b.id === 'hint' && on;
+    gr.addColorStop(0, hot ? '#fff7c9' : '#ffffff'); gr.addColorStop(1, hot ? '#ffe27a' : '#f3e8c8');
+    x.fillStyle = gr; rr(x, b.x, b.y + dy, b.w, b.h - 4, 14); x.fill();
+    x.strokeStyle = '#c9a95a'; x.lineWidth = 2; x.stroke();
+    const cy = b.y + dy + (b.h - 4) / 2, sz = clamp(Math.min(b.h * 0.34, 24 * U), 14, 30);
+    const ic = b.id === 'undo' ? '↩️' : b.id === 'hint' ? '💡' : '👀';
+    const label = b.id === 'undo' ? '悔棋' : b.id === 'hint' ? '提示' : '可以下的地方';
+    if (b.id === 'dots') {
+      const sw = sz * 1.9, sh = sz * 1.05, room = b.w - sw - 18 - sz * 1.4;
+      emo(ic, b.x + 12 + sz * 0.6, cy, sz * 1.05);
+      x.font = `900 ${sz * 0.8}px ${FONT}`;
+      const lab2 = x.measureText(label).width <= room ? label : '點點';
+      fitTxt(lab2, b.x + 16 + sz * 1.25, cy + 1, room, lab2 === label ? sz * 0.8 : sz, '#4a3b2a', 900, 'left');
+      const sx = b.x + b.w - 10 - sw;
+      x.fillStyle = showDots ? '#4cc96a' : '#cfc6b4'; rr(x, sx, cy - sh / 2, sw, sh, sh / 2); x.fill();
+      x.fillStyle = '#fff'; dot(x, showDots ? sx + sw - sh / 2 : sx + sh / 2, cy, sh * 0.38);
+    } else {
+      x.font = `900 ${sz}px ${FONT}`;
+      const tw = x.measureText(label).width, tot = sz * 1.25 + 8 + tw, sx = b.x + b.w / 2 - tot / 2;
+      emo(ic, sx + sz * 0.6, cy, sz * 1.1);
+      txt(label, sx + sz * 1.25 + 8, cy + 1, sz, '#4a3b2a', 'left', 900);
+    }
+    x.restore();
+  }
+}
+function drawBanner() {
+  if (!banner) return;
+  const k = (clock - banner.t0) / banner.life;
+  if (k >= 1) { banner = null; return; }
+  const a = k < 0.15 ? k / 0.15 : k > 0.75 ? (1 - k) / 0.25 : 1, sc = k < 0.15 ? 0.6 + k / 0.15 * 0.4 : 1;
+  x.save(); x.globalAlpha = a; x.translate(BRD.x + BRD.s / 2, BRD.y + BRD.s * 0.45); x.scale(sc, sc);
+  txt(banner.text, 0, 0, Math.min(72, BRD.s * 0.12), banner.col, 'center', 900, '#fff', 12);
+  x.restore();
+}
+function draw() {
+  const px = cv._mgScale || 1;
+  if (layerKey !== `${W}x${H}:${px}:${gid}`) buildLayer();
+  x.drawImage(layer, 0, 0, W, H);
+  drawBoard();
+  drawCards();
+  drawMid();
+  drawButtons();
+  MG.fx.draw(x);
+  drawBanner();
+}
+
+// ---------- flow ----------
+function hud() {
+  MG.stat('a', BOARDS[gid].nm);
+  MG.stat('b', vsCpu ? `🤖 ${LV[level - 1]}` : '👫 兩人');
+}
+function newGame() {
+  token++; think = null; result = null; winLine = null; anims.clear(); hist = []; moveNo = 0; last = -1;
+  hint = null; ghost = -1; hover = -1; press = null; passNote = null; sayMsg = null; banner = null; lastFlipN = 0;
+  MG.fx.clear();
+  board = kind === 'rv' ? LG.rvInit(N) : new Int8Array(N * N);
+  turn = vsCpu ? 1 : firstColor;
+  busyUntil = clock + 0.35;
+  state = 'play';
+  layout(); MG.hide(); hud();
+  if (vsCpu) say(human === 1 ? '你是綠色噗噗，你先下！' : '你是粉紅噗噗，電腦先下', 2.2, human);
+  else say(`${CN[turn]}先下！`, 2, turn);
+}
+function showOver() {
+  state = 'over';
+  const w = result.w;
+  let title, extra = '';
+  if (vsCpu) {
+    title = w === human ? '你贏了！🎉' : w ? '電腦贏了…' : '平手！';
+    if (w === human) {
+      const wins = MG.store.get('chess.wins', {}) || {}; const arr = wins[gid] || [0, 0, 0]; arr[level - 1]++; wins[gid] = arr; MG.store.set('chess.wins', wins);
+      const rec = MG.record('chess', level);
+      extra = `<p class="new">打贏${LV[level - 1]}的電腦！^_^</p>` + (level < 3 ? `<p>要不要挑戰「${LV[level]}」？按 ☰ 選單就可以換</p>` : '<p>你是下棋高手！</p>');
+      if (rec.isNew && level > 1) extra += '<p>🏆 新紀錄！</p>';
+    } else if (w) extra = '<p>差一點點！可以按 💡 提示幫忙，再下一盤吧</p>';
+    else extra = '<p>一樣多，好厲害！</p>';
+  } else title = w ? `${CN[w]}噗噗贏了！🎉` : '平手！';
+  let score;
+  if (kind === 'rv') { const [a, c] = LG.rvCount(board); score = `<div class="ch-score"><span class="ch-dot g"></span>${a} : ${c}<span class="ch-dot p"></span></div>`; }
+  else score = `<p>${w ? '連成五個了！' : '棋盤下滿了'}一共下了 ${moveNo} 手</p>`;
+  MG.panel({
+    title, html: score + extra,
+    buttons: [
+      { label: '再下一盤', on: newGame },
+      { label: '換顏色先下', alt: true, on: () => { if (vsCpu) human = 3 - human; else firstColor = 3 - firstColor; MG.store.set('chess.pick.first', (vsCpu ? human === 1 : firstColor === 1) ? 'me' : 'cpu'); newGame(); } },
+      { label: '選遊戲', alt: true, on: menu },
+    ],
+  });
+}
+const MENU = {
+  id: 'chess', title: '噗噗下棋', menuLabel: '☰ 選單',
+  html: '<p>綠色噗噗和粉紅噗噗來下棋！<b>黑白棋</b>：把對方夾在中間就會翻成你的顏色，最後誰多誰贏。<b>五子棋</b>：輪流放一顆，先連成五個一排就贏！</p>',
+  picks: [
+    { key: 'game', title: '下什麼棋？', def: 'r8', options: [
+      { id: 'r8', label: '⚫⚪ 黑白棋', sub: '8×8 標準棋盤' }, { id: 'r6', label: '⚫⚪ 小黑白棋', sub: '6×6 很快下完' },
+      { id: 'g13', label: '✖️⭕ 五子棋', sub: '13×13 適合小朋友' }, { id: 'g15', label: '✖️⭕ 大五子棋', sub: '15×15 大棋盤' }] },
+    { key: 'first', title: '誰先下？', def: 'me', options: [{ id: 'me', label: '🟢 我先下', sub: '我是綠色噗噗' }, { id: 'cpu', label: '💗 對方先下', sub: '我是粉紅噗噗' }] },
+  ],
+  modesTitle: '跟誰下？',
+  get modes() {
+    const bl = MG.best('chess') || 0;
+    return [
+      { id: 'cpu1', label: '🐣 簡單', sub: bl >= 1 ? '已打贏 ✓' : '電腦隨便下' },
+      { id: 'cpu2', label: '⭐ 普通', sub: bl >= 2 ? '已打贏 ✓' : '電腦會擋你' },
+      { id: 'cpu3', label: '🔥 困難', sub: bl >= 3 ? '已打贏 ✓' : '電腦很厲害' },
+      { id: 'pvp', label: '👫 兩人對下', sub: '同一台輪流下' },
+    ];
+  },
+  keys: '點格子就下棋；格子小的時候點一下會出現影子，再點一下確定　電腦：<kbd>U</kbd> 悔棋、<kbd>H</kbd> 提示',
+  playing: () => state === 'play',
+  start: (m, lv, pk) => {
+    setBoardType(pk && pk.game);
+    mode = ['cpu1', 'cpu2', 'cpu3', 'pvp'].includes(m) ? m : 'cpu1';
+    vsCpu = mode !== 'pvp'; level = vsCpu ? +mode.slice(3) : 1;
+    const meFirst = !pk || pk.first !== 'cpu';
+    human = meFirst ? 1 : 2; firstColor = meFirst ? 1 : 2;
+    newGame();
+  },
+};
+function menu() {
+  state = 'menu'; token++; think = null; result = null; winLine = null; anims.clear(); hint = null; ghost = -1; hover = -1; passNote = null; sayMsg = null; banner = null;
+  setBoardType(MG.store.get('chess.pick.game', 'r8'));
+  board = kind === 'rv' ? LG.rvInit(N) : new Int8Array(N * N);
+  if (kind === 'gk') { const h = (N / 2) | 0; board[h * N + h] = 1; board[h * N + h + 1] = 2; board[(h + 1) * N + h + 1] = 1; }
+  turn = 1; last = -1; layout(); hud();
+  MG.choose(MENU);
+}
+menu();
+
+// ---------- hooks for automated tests (read-only snapshots + helpers) ----------
+function toClient(lx, ly) { const rc = cv.getBoundingClientRect(), B = 3; return { x: rc.left + B + lx * (rc.width - 2 * B) / W, y: rc.top + B + ly * (rc.height - 2 * B) / H }; }
+window.CHT = {
+  get state() { return state; }, get gid() { return gid; }, get kind() { return kind; }, get N() { return N; }, get turn() { return turn; },
+  get human() { return human; }, get vsCpu() { return vsCpu; }, get level() { return level; }, get moveNo() { return moveNo; }, get last() { return last; },
+  get busy() { return isBusy() || !!think; }, get thinking() { return !!think; }, get myTurn() { return humanTurn(); }, get result() { return result ? { w: result.w, shown: result.shown } : null; },
+  get ghost() { return ghost; }, get hint() { return hint ? hint.cell : -1; }, get showDots() { return showDots; }, get hist() { return hist.length; },
+  get frames() { return frames; }, get worker() { return !!worker; }, get winLine() { return winLine ? winLine.slice() : null; },
+  board: () => Array.from(board), legal: () => kind === 'rv' ? LG.rvMoves(board, N, turn) : Array.from(board).map((v, i) => v ? -1 : i).filter(i => i >= 0),
+  confirm: () => needConfirm('touch'), cellCss: () => cs * cssScale(),
+  dims: () => ({ W, H, land, U, cs, BRD: { ...BRD }, P: { ...P }, mid: { ...mid } }),
+  cellPoint: i => { const c = cellXY(i); return toClient(c.x, c.y); },
+  btn: id => { const b = btns.find(q => q.id === id); return b ? toClient(b.x + b.w / 2, b.y + b.h / 2) : null; },
+  btnRects: () => btns.map(b => { const a = toClient(b.x, b.y), c = toClient(b.x + b.w, b.y + b.h); return { id: b.id, x: a.x, y: a.y, w: c.x - a.x, h: c.y - a.y }; }),
+  cardRects: () => cards.map(b => { const a = toClient(b.x, b.y), c = toClient(b.x + b.w, b.y + b.h); return { p: b.p, x: a.x, y: a.y, w: c.x - a.x, h: c.y - a.y }; }),
+  thinkTimes: () => thinkTimes.slice(), anims: () => [...anims.keys()], clock: () => clock,
+  L: LG,
+  ai(k, b, n, p, lv, o) { const t0 = performance.now(); const m = LG.aiMove(k, Int8Array.from(b), n, p, lv, o); return { m, ms: performance.now() - t0 }; },
+  // play one whole game between two computer levels (A = green, moves first); returns the winner and timings
+  match(k, n, lvA, lvB, o = {}) {
+    let b = k === 'rv' ? LG.rvInit(n) : new Int8Array(n * n), p = 1, moves = 0; const times = { 1: [], 2: [] };
+    for (;;) {
+      const lv = p === 1 ? lvA : lvB, t0 = performance.now(), m = LG.aiMove(k, b, n, p, lv, o);
+      times[p].push(performance.now() - t0);
+      if (k === 'rv') {
+        if (m < 0 || !LG.rvPlay(b, n, m, p)) return { w: -1, err: 'bad move', moves };
+        moves++;
+        const nx = LG.rvNext(b, n, p);
+        if (nx.over) { const [a, c] = LG.rvCount(b); return { w: a > c ? 1 : c > a ? 2 : 0, a, c, moves, times }; }
+        p = nx.turn;
+      } else {
+        if (m < 0 || b[m]) return { w: -1, err: 'bad move', moves };
+        b[m] = p; moves++;
+        if (LG.gkWinAt(b, n, m, p)) return { w: p, moves, times };
+        if (!b.includes(0)) return { w: 0, moves, times };
+        p = 3 - p;
+      }
+    }
+  },
+  // load a position into the running game (for screenshots / UI tests)
+  load(arr, tn) { board = Int8Array.from(arr); turn = tn; hist = []; last = -1; anims.clear(); think = null; token++; result = null; winLine = null; busyUntil = clock; hud(); },
+};
+
+MG.loop(dt => { clock += dt; t += dt; frames++; update(dt); draw(); });
+</script>
+</body>
+</html>
