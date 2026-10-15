@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>噗噗小廚房</title>
+<link rel="stylesheet" href="mini.css">
+<style>
+.days{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-top:10px}
+.days .mg-btn{min-width:0;font-size:15px;min-height:58px;padding:4px 8px;line-height:1.25}
+.days .mg-btn small{display:block;font-weight:400;font-size:12px}
+.days .mg-btn[disabled]{opacity:.45;cursor:not-allowed;box-shadow:none;transform:none}
+.stars{color:#ffb300;letter-spacing:1px}
+</style>
+</head>
+<body>
+<main class="mg-stage"><canvas id="cv" aria-label="遊戲畫面"></canvas></main>
+<script src="mini.js"></script>
+<script>
+'use strict';
+MG.init({ id: 'kitchen', title: '噗噗小廚房', stats: ['day', 'coins'] });
+const cv = document.getElementById('cv'), x = cv.getContext('2d');
+let W = 640, H = 400, land = true;
+const EMOJI = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+
+// ---------- layout ----------
+let Lo;
+function layout() {
+  if (land) Lo = {
+    seats: [130, 320, 510].map(sx => ({ x: sx, y: 96 })), counterY: 140, floorY: 172,
+    pots: [{ x: 66, y: 236, r: 32 }, { x: 160, y: 236, r: 32 }],
+    grill: { x: 228, y: 202, w: 176, h: 70 }, grillSlots: [266, 316, 366],
+    oven: { x: 424, y: 192, w: 112, h: 92 },
+    chef: { x: 590, y: 246 },
+    tops: { x: 16, y: 300, w: 56, h: 46, gap: 8 },
+    tray: { x: 424, y: 300, w: 122, h: 86 }, trash: { x: 560, y: 312, w: 66, h: 74 },
+  };
+  else Lo = {
+    seats: [62, 180, 298].map(sx => ({ x: sx, y: 100 })), counterY: 146, floorY: 178,
+    pots: [{ x: 48, y: 244, r: 28 }, { x: 122, y: 244, r: 28 }],
+    grill: { x: 168, y: 212, w: 178, h: 64 }, grillSlots: [204, 257, 310],
+    oven: { x: 14, y: 300, w: 108, h: 92 },
+    chef: null,
+    tops: { x: 12, y: 412, w: 52, h: 46, gap: 6.4 },
+    tray: { x: 134, y: 304, w: 124, h: 88 }, trash: { x: 272, y: 312, w: 74, h: 78 },
+  };
+}
+MG.fit(cv, (sw, sh) => { land = sw > sh * 1.05; [W, H] = land ? [640, 400] : [360, 476]; layout(); return [W, H]; });
+
+// ---------- data ----------
+const DISH = {
+  noodle: { name: '泡麵', cook: 4, burn: 10, tops: ['egg', 'onion'] },
+  skewer: { name: '烤肉串', cook: 3.2, burn: 9, tops: ['sauce', 'sesame'] },
+  cookie: { name: '餅乾', cook: 5, burn: 12, tops: ['choco', 'sprinkle'] },
+};
+const TOPS = [
+  { id: 'egg', name: '蛋', dish: 'noodle' }, { id: 'onion', name: '蔥花', dish: 'noodle' },
+  { id: 'sauce', name: '烤肉醬', dish: 'skewer' }, { id: 'sesame', name: '芝麻', dish: 'skewer' },
+  { id: 'choco', name: '巧克力豆', dish: 'cookie' }, { id: 'sprinkle', name: '彩色糖', dish: 'cookie' },
+];
+const DAYS = [
+  { dishes: ['noodle'], tops: ['egg'], n: 6, patience: 40, gap: 6.5, intro: '今天只賣泡麵。點鍋子開始煮，煮好點一下放到盤子上，再點客人上菜！' },
+  { dishes: ['noodle', 'skewer'], tops: ['egg', 'onion', 'sauce'], n: 7, patience: 36, gap: 6, intro: '新菜色：烤肉串！點烤架放上肉串，有的客人要加烤肉醬。' },
+  { dishes: ['noodle', 'skewer', 'cookie'], tops: ['egg', 'onion', 'sauce', 'choco'], n: 8, patience: 34, gap: 5.5, intro: '烤箱可以烤餅乾了！烤比較久，記得早點開始烤。' },
+  { dishes: ['noodle', 'skewer', 'cookie'], tops: ['egg', 'onion', 'sauce', 'sesame', 'choco', 'sprinkle'], n: 9, patience: 30, gap: 5, intro: '所有配料都上架了，看清楚客人要什麼再加喔。' },
+  { dishes: ['noodle', 'skewer', 'cookie'], tops: ['egg', 'onion', 'sauce', 'sesame', 'choco', 'sprinkle'], n: 11, patience: 26, gap: 4.2, intro: '週末大排長龍！客人比較急，動作要快 ^_^' },
+];
+const GUESTS = ['🐶', '🐱', '🐰', '🐻', '🐼', '🦊', '🐸', '🐷', '🐨', '🐯', '🐵', '🐹'];
+const SHIRTS = ['#ff8a80', '#80c8ff', '#ffd36b', '#b39dff', '#8fe0a0', '#ffb07a'];
+
+let day = 0, cfg, coins, served, missed, spawned, spawnT, state = 'ready', t = 0;
+let pots, grill, oven, tray, seats, pops = [], shakeTray = 0, chefMood = 'happy', chefT = 0;
+
+function resetDay(d) {
+  day = d; cfg = DAYS[d];
+  coins = 0; served = 0; missed = 0; spawned = 0; spawnT = 1.2; t = 0; pops = []; MG.fx.clear();
+  pots = [0, 1].map(() => ({ s: 'empty', t: 0 }));
+  grill = [0, 1, 2].map(() => ({ s: 'empty', t: 0 }));
+  oven = { s: 'empty', t: 0 };
+  tray = null; seats = [null, null, null];
+  hud();
+}
+function hud() { MG.stat('day', `第 ${day + 1} 天`); MG.stat('coins', `🪙 ${coins}`); }
+const unlocked = (d) => d === 0 || (MG.store.get('kitchen.stars', [])[d - 1] || 0) >= 1;
+
+// ---------- customers ----------
+function makeOrder() {
+  const type = MG.pick(cfg.dishes), allowed = DISH[type].tops.filter(tp => cfg.tops.includes(tp));
+  const tops = allowed.filter(() => Math.random() < (type === 'noodle' ? 0.5 : 0.45));
+  return { type, tops };
+}
+function spawnGuest() {
+  const free = seats.map((s, i) => s ? -1 : i).filter(i => i >= 0); if (!free.length) return false;
+  const i = MG.pick(free);
+  seats[i] = { face: MG.pick(GUESTS), shirt: MG.pick(SHIRTS), order: makeOrder(), pat: cfg.patience, max: cfg.patience, st: 'arrive', a: 0, shake: 0, say: '' };
+  spawned++; MG.sfx('flip');
+  return true;
+}
+function matches(o, d) { return d && o.type === d.type && o.tops.length === d.tops.length && o.tops.every(tp => d.tops.includes(tp)); }
+
+// ---------- update ----------
+function stepCook(st, kind, dt) {
+  if (st.s === 'cook' || st.s === 'ready') {
+    st.t += dt;
+    if (st.s === 'cook' && st.t >= DISH[kind].cook) { st.s = 'ready'; MG.sfx('good'); }
+    if (st.t >= DISH[kind].burn) { st.s = 'burnt'; MG.sfx('bad'); }
+  }
+}
+function update(dt) {
+  t += dt;
+  pots.forEach(p => stepCook(p, 'noodle', dt)); grill.forEach(g => stepCook(g, 'skewer', dt)); stepCook(oven, 'cookie', dt);
+  // steam / smoke
+  for (const [i, p] of pots.entries()) if (p.s !== 'empty' && Math.random() < 0.25) MG.fx.burst(Lo.pots[i].x + MG.rand(-12, 12), Lo.pots[i].y - 18, { n: 1, colors: [p.s === 'burnt' ? 'rgba(60,60,60,.5)' : 'rgba(255,255,255,.6)'], speed: 10, up: 40, grav: -20, size: 5, life: 1 });
+  for (const [i, g] of grill.entries()) if (g.s !== 'empty' && Math.random() < 0.2) MG.fx.burst(Lo.grillSlots[i] + MG.rand(-6, 6), Lo.grill.y + 18, { n: 1, colors: [g.s === 'burnt' ? 'rgba(60,60,60,.5)' : 'rgba(255,255,255,.45)'], speed: 10, up: 36, grav: -20, size: 4, life: 0.9 });
+  spawnT -= dt;
+  if (spawned < cfg.n && spawnT <= 0) { if (spawnGuest()) spawnT = cfg.gap * MG.rand(0.8, 1.2); else spawnT = 0.5; }
+  for (let i = 0; i < 3; i++) {
+    const c = seats[i]; if (!c) continue;
+    c.shake = Math.max(0, c.shake - dt);
+    if (c.st === 'arrive') { c.a = Math.min(1, c.a + dt * 3); if (c.a >= 1) c.st = 'wait'; }
+    else if (c.st === 'wait') {
+      c.pat -= dt;
+      if (c.pat <= 0) { c.st = 'sad'; c.a = 1; c.say = '等太久了…'; missed++; MG.sfx('bad'); }
+    } else { c.a -= dt * 1.4; if (c.a <= 0) seats[i] = null; }
+  }
+  shakeTray = Math.max(0, shakeTray - dt);
+  chefT -= dt; if (chefT <= 0) chefMood = 'happy';
+  for (const p of pops) { p.y -= 34 * dt; p.life -= dt; } pops = pops.filter(p => p.life > 0);
+  MG.fx.step(dt);
+  if (spawned >= cfg.n && seats.every(s => !s)) endDay();
+  hud();
+}
+
+// ---------- input ----------
+const inR = (p, r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+function topRect(i) { const T = Lo.tops; return { x: T.x + i * (T.w + T.gap), y: T.y, w: T.w, h: T.h }; }
+function take(kind, st) {
+  if (st.s === 'empty') { st.s = 'cook'; st.t = 0; MG.sfx('place'); return; }
+  if (st.s === 'cook') { MG.toast('還沒好喔，再等一下'); return; }
+  if (st.s === 'burnt') { st.s = 'empty'; st.t = 0; MG.sfx('step'); MG.toast('燒焦了，倒掉重做'); return; }
+  if (st.s === 'ready') {
+    if (tray) { shakeTray = 0.4; MG.sfx('bad'); MG.toast('盤子上已經有東西了'); return; }
+    tray = { type: kind, tops: [] }; st.s = 'empty'; st.t = 0; MG.sfx('pop');
+  }
+}
+cv.addEventListener('pointerdown', e => {
+  if (state !== 'play') return;
+  const p = cv.logical(e);
+  for (let i = 0; i < 2; i++) { const q = Lo.pots[i]; if (Math.hypot(p.x - q.x, p.y - q.y) < q.r + 10) return take('noodle', pots[i]); }
+  if (inR(p, Lo.grill)) { let bi = 0, bd = 1e9; Lo.grillSlots.forEach((gx, i) => { const d = Math.abs(gx - p.x); if (d < bd) { bd = d; bi = i; } }); return take('skewer', grill[bi]); }
+  if (inR(p, Lo.oven)) { if (cfg.dishes.includes('cookie')) take('cookie', oven); else MG.toast('第 3 天才會用到烤箱'); return; }
+  for (let i = 0; i < TOPS.length; i++) if (inR(p, topRect(i))) return addTop(TOPS[i]);
+  if (inR(p, Lo.trash)) { if (tray) { tray = null; MG.sfx('step'); } return; }
+  for (let i = 0; i < 3; i++) { const s = Lo.seats[i]; if (seats[i] && Math.abs(p.x - s.x) < (land ? 70 : 54) && p.y < Lo.counterY + 20) return serve(i); }
+});
+function addTop(tp) {
+  if (!cfg.tops.includes(tp.id)) { MG.toast(`「${tp.name}」之後才會用到`); return; }
+  if (!tray) { MG.toast('先把煮好的東西放到盤子上'); return; }
+  if (tp.dish !== tray.type) { shakeTray = 0.4; MG.sfx('bad'); MG.toast(`${DISH[tray.type].name}不能加${tp.name}喔`); return; }
+  if (tray.tops.includes(tp.id)) { MG.toast(`已經加過${tp.name}了`); return; }
+  tray.tops.push(tp.id); MG.sfx('flip');
+  const tr = Lo.tray; MG.fx.burst(tr.x + tr.w / 2, tr.y + tr.h / 2, { n: 6, colors: ['#fff', '#ffe36b'], speed: 70, size: 3, shape: 'star', life: 0.5 });
+}
+function serve(i) {
+  const c = seats[i]; if (!c || c.st !== 'wait') return;
+  if (!tray) { c.shake = 0.3; c.say = '我要點餐～'; MG.sfx('step'); return; }
+  if (!matches(c.order, tray)) { c.shake = 0.4; c.say = '不是這個耶'; MG.sfx('bad'); return; }
+  const tip = Math.round(10 * c.pat / c.max), gain = 10 + c.order.tops.length * 5 + tip;
+  coins += gain; served++; tray = null; c.st = 'happy'; c.a = 1; c.say = MG.pick(['謝謝！', '好好吃！', '讚喔！', '下次再來！']);
+  chefMood = 'wow'; chefT = 0.8;
+  MG.sfx('win'); const s = Lo.seats[i];
+  pops.push({ x: s.x, y: s.y - 50, t: `+${gain} 🪙`, life: 1 });
+  MG.fx.burst(s.x, s.y - 20, { n: 14, colors: ['#ffd23f', '#ff8ac2', '#8fd0ff', '#fff'], speed: 160, up: 120, size: 5, shape: 'star', life: 0.8 });
+}
+
+// ---------- drawing helpers ----------
+function rr(X, Y, w, h, r, fill, stroke, lw = 2) { x.beginPath(); x.roundRect(X, Y, w, h, r); if (fill) { x.fillStyle = fill; x.fill(); } if (stroke) { x.strokeStyle = stroke; x.lineWidth = lw; x.stroke(); } }
+function circ(cx, cy, r, fill) { x.fillStyle = fill; x.beginPath(); x.arc(cx, cy, r, 0, 7); x.fill(); }
+function drawDish(d, cx, cy, s = 1, burnt = false) {
+  x.save(); x.translate(cx, cy); x.scale(s, s);
+  if (d.type === 'noodle') {
+    // bowl
+    x.fillStyle = 'rgba(0,0,0,.15)'; x.beginPath(); x.ellipse(0, 16, 26, 5, 0, 0, 7); x.fill();
+    x.fillStyle = '#e8473a'; x.beginPath(); x.moveTo(-26, -2); x.quadraticCurveTo(-24, 18, 0, 18); x.quadraticCurveTo(24, 18, 26, -2); x.closePath(); x.fill();
+    x.strokeStyle = '#fff'; x.lineWidth = 1.6; x.beginPath(); for (let i = -20; i <= 20; i += 8) { x.moveTo(i - 3, 6); x.lineTo(i, 3); x.lineTo(i + 3, 6); } x.stroke();
+    x.fillStyle = '#f7e2b0'; x.beginPath(); x.ellipse(0, -2, 26, 7, 0, 0, 7); x.fill();
+    x.fillStyle = burnt ? '#5a4030' : '#f0b54a'; x.beginPath(); x.ellipse(0, -2, 23, 5.5, 0, 0, 7); x.fill();
+    x.strokeStyle = burnt ? '#3a2a20' : '#ffe08a'; x.lineWidth = 1.6;
+    for (let i = 0; i < 4; i++) { x.beginPath(); x.moveTo(-18, -4 + i * 1.2); for (let k = -18; k <= 18; k += 4) x.lineTo(k, -4 + i * 1.2 + Math.sin(k * 0.6 + i) * 1.4); x.stroke(); }
+    if (d.tops.includes('egg')) { x.fillStyle = '#fff'; x.beginPath(); x.ellipse(-8, -5, 7, 5, -0.2, 0, 7); x.fill(); circ(-8, -5, 3, '#ffb21f'); }
+    if (d.tops.includes('onion')) for (const [a, b] of [[6, -4], [11, -2], [3, -1], [14, -5], [8, 0]]) { x.strokeStyle = '#3aa845'; x.lineWidth = 1.5; x.beginPath(); x.arc(a, b, 1.6, 0, 7); x.stroke(); }
+  } else if (d.type === 'skewer') {
+    x.strokeStyle = '#c8a46a'; x.lineWidth = 2.4; x.lineCap = 'round'; x.beginPath(); x.moveTo(-28, 10); x.lineTo(28, -10); x.stroke();
+    [-14, 0, 14].forEach((k, i) => {
+      const cy2 = -k * 0.36;
+      x.fillStyle = burnt ? '#3a2a20' : (i === 1 ? '#7fc95a' : '#a5552f'); x.beginPath(); x.roundRect(k - 7, cy2 - 7, 14, 14, 4); x.fill();
+      if (!burnt && i !== 1) { x.strokeStyle = '#6e3018'; x.lineWidth = 1; x.beginPath(); x.moveTo(k - 4, cy2 - 7); x.lineTo(k - 6, cy2 + 7); x.moveTo(k + 2, cy2 - 7); x.lineTo(k, cy2 + 7); x.stroke(); }
+      if (d.tops.includes('sauce') && i !== 1) { x.fillStyle = 'rgba(120,30,10,.6)'; x.beginPath(); x.roundRect(k - 7, cy2 - 7, 14, 9, 4); x.fill(); x.fillStyle = 'rgba(255,255,255,.5)'; x.fillRect(k - 4, cy2 - 5, 4, 1.5); }
+      if (d.tops.includes('sesame')) for (const [a, b] of [[-3, -3], [2, -1], [-1, 3], [4, 3]]) { x.fillStyle = '#fff8e0'; x.beginPath(); x.ellipse(k + a, cy2 + b, 1.3, 0.8, 0.5, 0, 7); x.fill(); }
+    });
+  } else if (d.type === 'cookie') {
+    for (const [ox, oy] of [[-11, 2], [11, 2], [0, -6]]) {
+      const g = x.createRadialGradient(ox - 3, oy - 3, 2, ox, oy, 11); g.addColorStop(0, burnt ? '#5a4030' : '#f6c86f'); g.addColorStop(1, burnt ? '#2e2018' : '#c98a3a');
+      x.fillStyle = g; x.beginPath(); x.arc(ox, oy, 10, 0, 7); x.fill();
+      if (d.tops.includes('choco')) for (const [a, b] of [[-3, -3], [3, -1], [-1, 4], [4, 4]]) circ(ox + a, oy + b, 1.6, '#4a2a14');
+      if (d.tops.includes('sprinkle')) ['#ff5a8a', '#3d9bff', '#ffd23f', '#4cc96a', '#fff'].forEach((c2, k) => { x.fillStyle = c2; x.save(); x.translate(ox - 5 + k * 2.5, oy - 4 + (k % 2) * 6); x.rotate(k); x.fillRect(-1.6, -0.6, 3.2, 1.2); x.restore(); });
+    }
+  }
+  x.restore();
+}
+function topIcon(id, cx, cy, s = 1) {
+  x.save(); x.translate(cx, cy); x.scale(s, s);
+  if (id === 'egg') { x.fillStyle = '#fff'; x.beginPath(); x.ellipse(0, 0, 11, 8, 0, 0, 7); x.fill(); circ(0, 0, 4.4, '#ffb21f'); }
+  else if (id === 'onion') { x.strokeStyle = '#3aa845'; x.lineWidth = 2.2; for (const [a, b] of [[-6, -3], [0, 2], [6, -2], [-3, 5], [5, 5]]) { x.beginPath(); x.arc(a, b, 2.6, 0, 7); x.stroke(); } }
+  else if (id === 'sauce') { x.fillStyle = '#8a2a14'; x.beginPath(); x.roundRect(-6, -8, 12, 16, 3); x.fill(); x.fillStyle = '#f4e6c6'; x.fillRect(-6, -2, 12, 6); x.fillStyle = '#5a1a0a'; x.fillRect(-3, -12, 6, 4); }
+  else if (id === 'sesame') { for (const [a, b] of [[-5, -3], [2, -5], [5, 2], [-2, 4], [-6, 3], [7, -3]]) { x.fillStyle = '#fff3cc'; x.strokeStyle = '#c8a46a'; x.lineWidth = 0.6; x.beginPath(); x.ellipse(a, b, 2.4, 1.4, a, 0, 7); x.fill(); x.stroke(); } }
+  else if (id === 'choco') { for (const [a, b] of [[-5, -2], [3, -4], [5, 3], [-2, 4]]) { x.fillStyle = '#4a2a14'; x.beginPath(); x.moveTo(a, b - 4); x.lineTo(a + 3.5, b + 2); x.lineTo(a - 3.5, b + 2); x.fill(); } }
+  else if (id === 'sprinkle') { ['#ff5a8a', '#3d9bff', '#ffd23f', '#4cc96a', '#8a63ff', '#ff9f1c'].forEach((c2, k) => { x.fillStyle = c2; x.save(); x.translate(-7 + (k % 3) * 7, -3 + Math.floor(k / 3) * 7); x.rotate(k * 0.9); x.fillRect(-3, -1, 6, 2); x.restore(); }); }
+  x.restore();
+}
+function ring(cx, cy, r, frac, col) {
+  x.strokeStyle = 'rgba(0,0,0,.25)'; x.lineWidth = 5; x.beginPath(); x.arc(cx, cy, r, 0, 7); x.stroke();
+  x.strokeStyle = col; x.beginPath(); x.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, frac)); x.stroke();
+}
+function statusBadge(st, kind, cx, cy) {
+  if (st.s === 'cook') ring(cx, cy, 11, st.t / DISH[kind].cook, '#4cc96a');
+  else if (st.s === 'ready') {
+    const warn = (st.t - DISH[kind].cook) / (DISH[kind].burn - DISH[kind].cook);
+    const bob = Math.sin(t * 8) * 2;
+    rr(cx - 20, cy - 10 + bob, 40, 20, 10, warn > 0.6 ? '#ff7a4e' : '#4cc96a', '#fff', 2);
+    x.fillStyle = '#fff'; x.font = '900 12px "Noto Sans TC",system-ui,sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(warn > 0.6 ? '快焦了' : '好了！', cx, cy + bob + 0.5);
+  } else if (st.s === 'burnt') { x.font = `18px ${EMOJI}`; x.fillStyle = '#000'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('💨', cx, cy); }
+}
+
+// ---------- scene ----------
+let bgC = null, bgK = '';
+function backdrop() {
+  const k = cv._mgScale || 1, key = W + 'x' + H + k; if (key === bgK) return; bgK = key;
+  const c = document.createElement('canvas'); c.width = W * k; c.height = H * k; const g = c.getContext('2d'); g.scale(k, k);
+  // dining-room wall: wallpaper stripes + window
+  g.fillStyle = '#fff1d6'; g.fillRect(0, 0, W, Lo.counterY);
+  for (let i = 0; i < W; i += 24) { g.fillStyle = 'rgba(255,170,120,.16)'; g.fillRect(i, 0, 12, Lo.counterY); }
+  const wx = land ? W / 2 - 40 : W / 2 - 34;
+  g.fillStyle = '#8fd0ff'; g.fillRect(wx, 36, land ? 80 : 68, 50); g.fillStyle = '#c9ecff'; g.fillRect(wx, 36, land ? 80 : 68, 18);
+  g.strokeStyle = '#fff'; g.lineWidth = 4; g.strokeRect(wx, 36, land ? 80 : 68, 50); g.beginPath(); g.moveTo(wx + (land ? 40 : 34), 36); g.lineTo(wx + (land ? 40 : 34), 86); g.stroke();
+  // awning
+  for (let i = 0; i < W; i += 32) { g.fillStyle = (i / 32) % 2 ? '#fff' : '#ff6b5e'; g.beginPath(); g.moveTo(i, 0); g.lineTo(i + 32, 0); g.lineTo(i + 32, 18); g.quadraticCurveTo(i + 16, 30, i, 18); g.fill(); }
+  // counter
+  const cg = g.createLinearGradient(0, Lo.counterY, 0, Lo.floorY); cg.addColorStop(0, '#d99a5a'); cg.addColorStop(1, '#a8692e');
+  g.fillStyle = cg; g.fillRect(0, Lo.counterY, W, Lo.floorY - Lo.counterY);
+  g.fillStyle = '#f2c27a'; g.fillRect(0, Lo.counterY - 4, W, 6); g.fillStyle = 'rgba(0,0,0,.15)'; g.fillRect(0, Lo.floorY - 4, W, 4);
+  for (let i = 20; i < W; i += 60) { g.fillStyle = 'rgba(255,255,255,.12)'; g.fillRect(i, Lo.counterY + 8, 30, 3); }
+  // kitchen: tiled wall + floor
+  g.fillStyle = '#e9f4f7'; g.fillRect(0, Lo.floorY, W, H - Lo.floorY);
+  g.strokeStyle = 'rgba(120,160,175,.35)'; g.lineWidth = 1;
+  for (let yy = Lo.floorY; yy < H; yy += 22) { g.beginPath(); g.moveTo(0, yy); g.lineTo(W, yy); g.stroke(); }
+  for (let xx = 0; xx < W; xx += 22) { g.beginPath(); g.moveTo(xx, Lo.floorY); g.lineTo(xx, H); g.stroke(); }
+  bgC = c;
+}
+function drawGuest(i) {
+  const c = seats[i]; if (!c) return;
+  const s = Lo.seats[i], rise = (1 - Math.min(1, c.a)) * 70, sh = c.shake ? Math.sin(c.shake * 60) * 4 : 0;
+  x.save(); x.beginPath(); x.rect(s.x - 80, 0, 160, Lo.counterY); x.clip();
+  const bx = s.x + sh, by = s.y + rise;
+  rr(bx - 30, by + 18, 60, 50, 22, c.shirt, 'rgba(0,0,0,.2)');
+  x.fillStyle = 'rgba(255,255,255,.35)'; x.beginPath(); x.moveTo(bx - 8, by + 18); x.lineTo(bx, by + 30); x.lineTo(bx + 8, by + 18); x.fill();
+  x.font = `52px ${EMOJI}`; x.fillStyle = '#000'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  const bob = c.st === 'happy' ? Math.abs(Math.sin(t * 12)) * -6 : 0;
+  x.fillText(c.face, bx, by + bob);
+  x.restore();
+  if (c.st === 'wait' || c.st === 'arrive') {
+    // order bubble
+    const bw = 30 + 34 + c.order.tops.length * 26, bxp = Math.max(4, Math.min(W - bw - 4, s.x - bw / 2)), byp = s.y - (land ? 90 : 92);
+    const glow = matches(c.order, tray);
+    rr(bxp, byp, bw, 44, 14, '#fff', glow ? '#4cc96a' : '#d9c79c', glow ? 3.5 : 2);
+    x.fillStyle = '#fff'; x.beginPath(); x.moveTo(s.x - 6, byp + 43); x.lineTo(s.x + 6, byp + 43); x.lineTo(s.x, byp + 52); x.fill();
+    drawDish({ type: c.order.type, tops: c.order.tops }, bxp + 30, byp + 22, 0.72);
+    c.order.tops.forEach((tp, k) => { x.fillStyle = '#4cc96a'; x.font = '900 12px system-ui'; x.textAlign = 'center'; x.fillText('+', bxp + 54 + k * 26, byp + 22); topIcon(tp, bxp + 66 + k * 26, byp + 22, 0.75); });
+    // patience
+    const f = Math.max(0, c.pat / c.max);
+    rr(s.x - 28, s.y + 34, 56, 8, 4, 'rgba(0,0,0,.25)');
+    rr(s.x - 28, s.y + 34, Math.max(4, 56 * f), 8, 4, f > 0.5 ? '#4cc96a' : f > 0.25 ? '#ffb21f' : '#ff5a4e');
+  }
+  if (c.say && c.st !== 'wait' || (c.say && c.shake)) {
+    x.font = '900 14px "Noto Sans TC",system-ui,sans-serif'; x.textAlign = 'center'; x.lineWidth = 4; x.strokeStyle = '#fff';
+    x.strokeText(c.say, s.x, s.y - 52); x.fillStyle = c.st === 'sad' || c.shake ? '#d0443a' : '#2e9a4c'; x.fillText(c.say, s.x, s.y - 52);
+  }
+}
+function draw() {
+  backdrop(); x.drawImage(bgC, 0, 0, W, H);
+  for (let i = 0; i < 3; i++) drawGuest(i);
+  // stove + pots
+  const P0 = Lo.pots[0], P1 = Lo.pots[1];
+  rr(P0.x - P0.r - 12, P0.y - 8, P1.x - P0.x + P0.r * 2 + 24, P0.r + 40, 10, '#b8c2cc', '#7d8792');
+  rr(P0.x - P0.r - 12, P0.y - 8, P1.x - P0.x + P0.r * 2 + 24, 8, 4, '#d6dde3');
+  for (const [i, q] of Lo.pots.entries()) {
+    const st = pots[i];
+    if (st.s === 'cook' || st.s === 'ready') for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2 + t * 2, fl = 4 + Math.sin(t * 20 + k) * 2; x.fillStyle = k % 2 ? '#3d9bff' : '#7ec4ff'; x.beginPath(); x.ellipse(q.x + Math.cos(a) * q.r * 0.7, q.y + q.r * 0.5 + Math.sin(a) * 4, 3, fl, 0, 0, 7); x.fill(); }
+    // pot body
+    const pg = x.createLinearGradient(q.x - q.r, 0, q.x + q.r, 0); pg.addColorStop(0, '#9aa4b0'); pg.addColorStop(0.4, '#e4e9ee'); pg.addColorStop(1, '#7d8792');
+    x.fillStyle = pg; x.beginPath(); x.roundRect(q.x - q.r, q.y - q.r * 0.45, q.r * 2, q.r * 1.15, [4, 4, 12, 12]); x.fill(); x.strokeStyle = '#5d6672'; x.lineWidth = 1.5; x.stroke();
+    x.fillStyle = '#5d6672'; x.fillRect(q.x - q.r - 8, q.y - q.r * 0.3, 8, 4); x.fillRect(q.x + q.r, q.y - q.r * 0.3, 8, 4);
+    x.fillStyle = '#4a525c'; x.beginPath(); x.ellipse(q.x, q.y - q.r * 0.45, q.r, q.r * 0.28, 0, 0, 7); x.fill();
+    if (st.s !== 'empty') { x.fillStyle = st.s === 'burnt' ? '#3a2a20' : '#f0b54a'; x.beginPath(); x.ellipse(q.x, q.y - q.r * 0.45, q.r * 0.86, q.r * 0.2, 0, 0, 7); x.fill();
+      if (st.s !== 'burnt') { x.strokeStyle = '#ffe08a'; x.lineWidth = 1.4; for (let k = 0; k < 3; k++) { x.beginPath(); x.moveTo(q.x - q.r * 0.7, q.y - q.r * 0.48 + k); for (let a = -0.7; a <= 0.7; a += 0.1) x.lineTo(q.x + a * q.r, q.y - q.r * 0.48 + k + Math.sin(a * 12 + t * 3 + k) * 1.5); x.stroke(); } } }
+    else { x.fillStyle = 'rgba(255,255,255,.75)'; x.font = '700 11px "Noto Sans TC",system-ui'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('點我煮麵', q.x, q.y + q.r * 0.25); }
+    statusBadge(st, 'noodle', q.x, q.y - q.r - 6);
+  }
+  // grill
+  const G = Lo.grill;
+  rr(G.x, G.y, G.w, G.h, 10, '#3a3f4a', '#22262e');
+  for (let k = 0; k < 14; k++) { const cx2 = G.x + 10 + (k * 37) % (G.w - 20), cy2 = G.y + G.h - 16 + (k % 3) * 3; circ(cx2, cy2, 5, `rgba(255,${90 + (k * 23) % 80},40,${0.55 + Math.sin(t * 5 + k) * 0.25})`); }
+  x.strokeStyle = '#c9cede'; x.lineWidth = 2; for (let gx = G.x + 8; gx < G.x + G.w - 4; gx += 10) { x.beginPath(); x.moveTo(gx, G.y + 8); x.lineTo(gx, G.y + G.h - 8); x.stroke(); }
+  rr(G.x + 4, G.y + 4, G.w - 8, 6, 3, '#6b7280');
+  if (!cfg.dishes.includes('skewer')) { rr(G.x, G.y, G.w, G.h, 10, 'rgba(255,255,255,.65)'); x.fillStyle = '#7d8792'; x.font = '700 13px "Noto Sans TC",system-ui'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('🔒 第 2 天開放', G.x + G.w / 2, G.y + G.h / 2); }
+  else grill.forEach((st, i) => {
+    const gx = Lo.grillSlots[i], gy = G.y + G.h / 2;
+    if (st.s !== 'empty') { x.save(); x.translate(gx, gy); x.rotate(-Math.PI / 2 + 0.35); drawDish({ type: 'skewer', tops: [] }, 0, 0, 0.9, st.s === 'burnt'); x.restore(); }
+    else { x.strokeStyle = 'rgba(255,255,255,.35)'; x.setLineDash([3, 3]); x.lineWidth = 1.5; x.strokeRect(gx - 12, gy - 24, 24, 48); x.setLineDash([]); }
+    statusBadge(st, 'skewer', gx, G.y - 8);
+  });
+  // oven
+  const O = Lo.oven, ovenOn = oven.s === 'cook' || oven.s === 'ready';
+  rr(O.x, O.y, O.w, O.h, 10, '#e8ecf0', '#8a929c');
+  rr(O.x + 8, O.y + 8, O.w - 16, 14, 4, '#c5ccd4');
+  for (let k = 0; k < 3; k++) circ(O.x + 20 + k * 16, O.y + 15, 4, k === 2 && ovenOn ? '#ff5a4e' : '#7d8792');
+  const win = x.createLinearGradient(0, O.y + 28, 0, O.y + O.h - 10); win.addColorStop(0, ovenOn ? '#ffb347' : '#3a3f4a'); win.addColorStop(1, ovenOn ? '#d0602a' : '#22262e');
+  rr(O.x + 10, O.y + 28, O.w - 20, O.h - 38, 8, win, '#5d6672');
+  if (oven.s !== 'empty') drawDish({ type: 'cookie', tops: [] }, O.x + O.w / 2, O.y + 28 + (O.h - 38) / 2 + 2, 0.85, oven.s === 'burnt');
+  x.fillStyle = 'rgba(255,255,255,.25)'; x.fillRect(O.x + 14, O.y + 31, O.w - 28, 4);
+  if (!cfg.dishes.includes('cookie')) { rr(O.x, O.y, O.w, O.h, 10, 'rgba(255,255,255,.65)'); x.fillStyle = '#7d8792'; x.font = '700 12px "Noto Sans TC",system-ui'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('🔒 第 3 天', O.x + O.w / 2, O.y + O.h / 2); }
+  else statusBadge(oven, 'cookie', O.x + O.w / 2, O.y - 6);
+  // chef 噗噗
+  if (Lo.chef) {
+    const C = Lo.chef; MG.puPu(x, C.x, C.y, 24, chefMood, Math.sin(t * 3) * 0.03, { arms: chefMood === 'wow' ? 'up' : false });
+    x.fillStyle = '#fff'; x.strokeStyle = '#cfd5dc'; x.lineWidth = 1.5;
+    x.beginPath(); x.roundRect(C.x - 14, C.y - 36, 28, 12, 3); x.fill(); x.stroke();
+    for (const [a, b, r] of [[-10, -42, 9], [0, -48, 11], [10, -42, 9]]) { x.beginPath(); x.arc(C.x + a, C.y + b, r, 0, 7); x.fill(); x.stroke(); }
+    x.fillStyle = '#fff'; x.fillRect(C.x - 13, C.y - 38, 26, 6);
+  }
+  // toppings shelf
+  TOPS.forEach((tp, i) => {
+    const r = topRect(i), on = cfg.tops.includes(tp.id), hint = on && tray && tray.type === tp.dish && !tray.tops.includes(tp.id);
+    rr(r.x, r.y, r.w, r.h, 10, on ? (hint ? '#fff7d6' : '#fff') : '#e6e2d8', hint ? '#ffb21f' : '#d9c79c', hint ? 3 : 2);
+    x.globalAlpha = on ? 1 : 0.35; topIcon(tp.id, r.x + r.w / 2, r.y + r.h / 2 - 5, 1); x.globalAlpha = 1;
+    x.fillStyle = on ? '#6b4a22' : '#a8a090'; x.font = '700 10px "Noto Sans TC",system-ui'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(on ? tp.name : '🔒', r.x + r.w / 2, r.y + r.h - 8);
+  });
+  // tray
+  const T = Lo.tray, ts = shakeTray ? Math.sin(shakeTray * 60) * 3 : 0;
+  rr(T.x + ts, T.y, T.w, T.h, 14, '#c98a3a', '#8a5a22', 2.5);
+  x.fillStyle = '#fff'; x.beginPath(); x.ellipse(T.x + T.w / 2 + ts, T.y + T.h / 2 + 2, T.w * 0.38, T.h * 0.34, 0, 0, 7); x.fill();
+  x.strokeStyle = '#e2d6b8'; x.lineWidth = 2; x.beginPath(); x.ellipse(T.x + T.w / 2 + ts, T.y + T.h / 2 + 2, T.w * 0.3, T.h * 0.26, 0, 0, 7); x.stroke();
+  if (tray) drawDish(tray, T.x + T.w / 2 + ts, T.y + T.h / 2, 1.05);
+  else { x.fillStyle = '#b8a888'; x.font = '700 12px "Noto Sans TC",system-ui'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('盤子', T.x + T.w / 2, T.y + T.h / 2 + 2); }
+  // trash
+  const R = Lo.trash;
+  rr(R.x + 8, R.y + 12, R.w - 16, R.h - 12, [4, 4, 12, 12], '#8fa3b5', '#5d6f80');
+  for (let k = 0; k < 3; k++) { x.strokeStyle = 'rgba(255,255,255,.4)'; x.lineWidth = 2; x.beginPath(); x.moveTo(R.x + 22 + k * 11, R.y + 22); x.lineTo(R.x + 22 + k * 11, R.y + R.h - 8); x.stroke(); }
+  rr(R.x + 2, R.y + 4, R.w - 4, 10, 4, '#a8bccd', '#5d6f80');
+  x.fillStyle = '#fff'; x.font = '700 11px "Noto Sans TC",system-ui'; x.textAlign = 'center'; x.fillText('倒掉', R.x + R.w / 2, R.y + R.h - 14);
+  MG.fx.draw(x);
+  for (const p of pops) { x.globalAlpha = Math.min(1, p.life * 2); x.font = '900 18px system-ui,sans-serif'; x.textAlign = 'center'; x.lineWidth = 4; x.strokeStyle = '#fff'; x.strokeText(p.t, p.x, p.y); x.fillStyle = '#e08a00'; x.fillText(p.t, p.x, p.y); }
+  x.globalAlpha = 1;
+  // progress: customers left today
+  const left = cfg.n - served - missed;
+  x.font = '700 12px "Noto Sans TC",system-ui'; x.textAlign = 'right'; x.textBaseline = 'middle'; x.lineWidth = 3; x.strokeStyle = '#fff';
+  const ptxt = `今天還有 ${left} 位客人`; x.strokeText(ptxt, W - 8, Lo.floorY - 12); x.fillStyle = '#6b4a22'; x.fillText(ptxt, W - 8, Lo.floorY - 12);
+}
+
+// ---------- flow ----------
+const starsTxt = n => '★'.repeat(n) + '☆'.repeat(3 - n);
+function endDay() {
+  if (state !== 'play') return;
+  state = 'over';
+  const ratio = served / cfg.n, stars = ratio >= 0.9 ? 3 : ratio >= 0.7 ? 2 : ratio >= 0.4 ? 1 : 0;
+  const all = MG.store.get('kitchen.stars', []); all[day] = Math.max(all[day] || 0, stars); MG.store.set('kitchen.stars', all);
+  const rec = MG.record('kitchen.coins.' + day, coins);
+  const total = all.reduce((a, b) => a + (b || 0), 0); MG.record('kitchen', total);
+  MG.sfx(stars ? 'win' : 'over');
+  const next = day + 1 < DAYS.length && stars >= 1;
+  MG.panel({
+    title: stars ? `第 ${day + 1} 天打烊囉！` : '今天有點手忙腳亂…',
+    html: `<div class="big stars">${starsTxt(stars)}</div><p>招待了 ${served} 位客人，賺了 🪙 ${coins}</p>` +
+      (rec.isNew && coins > 0 ? `<p class="new">這一天的新紀錄！^_^</p>` : '') +
+      (stars ? (next ? `<p>明天：${DAYS[day + 1].intro}</p>` : (day + 1 >= DAYS.length ? `<p>五天都完成了，你是噗噗小廚房的大廚！</p>` : '')) : `<p>至少要拿到 1 顆星才能開下一天，再試一次吧！</p>`),
+    buttons: [
+      ...(next ? [{ label: '下一天', on: () => startDay(day + 1) }] : []),
+      { label: '再玩這天', alt: !!next, on: () => startDay(day) },
+      { label: '選擇天數', alt: true, on: menu },
+    ],
+  });
+}
+function startDay(d) {
+  resetDay(d); state = 'intro';
+  MG.panel({
+    title: `第 ${d + 1} 天`,
+    html: `<p>${DAYS[d].intro}</p><p>今天會來 ${DAYS[d].n} 位客人</p>`,
+    buttons: [{ label: '開店！', on: () => { state = 'play'; MG.hide(); } }],
+  });
+}
+function menu() {
+  state = 'menu';
+  const all = MG.store.get('kitchen.stars', []);
+  MG.panel({
+    title: '噗噗小廚房',
+    html: `<p>客人想吃什麼都寫在泡泡裡。點鍋子煮麵、點烤架烤肉串、點烤箱烤餅乾，煮好點一下放到盤子上，加上配料，再點客人上菜！</p>
+    <p>東西放太久會燒焦，點一下就能倒掉重做。</p>
+    <div class="days">${DAYS.map((d, i) => `<button class="mg-btn${i ? ' alt' : ''}" data-day="${i}" ${unlocked(i) ? '' : 'disabled'}>第 ${i + 1} 天<small class="stars">${unlocked(i) ? starsTxt(all[i] || 0) : '🔒'}</small></button>`).join('')}</div>`,
+    keys: '全部用點的就能玩，手機、平板、電腦都可以',
+  });
+  document.querySelectorAll('[data-day]').forEach(b => b.onclick = () => { MG.sfx('click'); MG.unlock(); startDay(+b.dataset.day); });
+  setTimeout(() => document.querySelector('[data-day]')?.focus(), 30);
+}
+resetDay(0); menu();
+MG.loop(dt => { if (state === 'play') update(dt); else { t += dt; MG.fx.step(dt); } draw(); });
+</script>
+</body>
+</html>

@@ -149,12 +149,24 @@ const MG = (() => {
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
   const shuffle = (arr) => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
 
+  // Jelly colour palettes: [highlight, light, mid, dark, outline]
+  const JELLY = {
+    green: ['#c8ffc9', '#6fdc83', '#3cb85a', '#2a9447', '#1f6e35'],
+    pink: ['#ffe0ec', '#ff9cc2', '#f06a9e', '#cf4a80', '#9a2f5d'],
+    blue: ['#dff1ff', '#8fcaff', '#4c9cf0', '#2f78cf', '#1d4f9e'],
+    yellow: ['#fff8cf', '#ffe36b', '#ffc93a', '#e8a400', '#a87400'],
+    purple: ['#efe2ff', '#c3a2ff', '#9a72f0', '#7a52d0', '#4f2f9a'],
+    orange: ['#ffe9d4', '#ffb877', '#ff8c3a', '#e06a1c', '#a04510'],
+    red: ['#ffe0dc', '#ff8f84', '#f2564a', '#d03a30', '#8e2018'],
+    mint: ['#e0fff6', '#8ff0d6', '#3fd2b0', '#22ad8e', '#147a62'],
+  };
+
   // Draw the mascot 噗噗 — a glossy green jelly with a leaf on top.
   // mood: 'happy' | 'ouch' | 'wow' | 'sleep'; squash: >0 flattens, <0 stretches; opts.look: -1..1 eye direction, opts.arms
   function puPu(ctx, cx, cy, r, mood = 'happy', squash = 0, opts = {}) {
     const now = performance.now() / 1000, seed = (cx * 7.3 + cy * 3.1) % 5;
     const blink = mood === 'happy' && ((now + seed) % 3.6) < 0.12;
-    const look = opts.look ?? 0;
+    const look = opts.look ?? 0, pal = opts.pal || JELLY.green;
     ctx.save(); ctx.translate(cx, cy);
     // ground shadow (not squashed)
     ctx.fillStyle = 'rgba(30,40,20,.18)'; ctx.beginPath(); ctx.ellipse(0, r * 0.98, r * (0.95 + squash * 0.4), r * 0.2, 0, 0, 7); ctx.fill();
@@ -170,12 +182,12 @@ const MG = (() => {
     };
     // stubby arms behind the body
     if (opts.arms) {
-      ctx.fillStyle = '#3fb85d'; ctx.strokeStyle = '#237a3b'; ctx.lineWidth = Math.max(1, r * 0.07);
+      ctx.fillStyle = pal[2]; ctx.strokeStyle = pal[4]; ctx.lineWidth = Math.max(1, r * 0.07);
       for (const sd of [-1, 1]) { const up = opts.arms === 'up'; ctx.beginPath(); ctx.ellipse(sd * r * 0.98, up ? -r * 0.15 : r * 0.35, r * 0.22, r * 0.16, sd * (up ? -1.1 : 0.5), 0, 7); ctx.fill(); ctx.stroke(); }
     }
     // body gradient + outline
     const g = ctx.createRadialGradient(-r * 0.35, -r * 0.45, r * 0.08, 0, r * 0.1, r * 1.15);
-    g.addColorStop(0, '#c8ffc9'); g.addColorStop(0.35, '#6fdc83'); g.addColorStop(0.8, '#3cb85a'); g.addColorStop(1, '#2a9447');
+    g.addColorStop(0, pal[0]); g.addColorStop(0.35, pal[1]); g.addColorStop(0.8, pal[2]); g.addColorStop(1, pal[3]);
     ctx.fillStyle = g; body(); ctx.fill();
     // inner belly glow + translucent lower part (jelly look)
     ctx.save(); body(); ctx.clip();
@@ -186,9 +198,10 @@ const MG = (() => {
       ctx.fillStyle = 'rgba(255,255,255,.45)'; ctx.beginPath(); ctx.arc(bx, by, br, 0, 7); ctx.fill();
     }
     ctx.restore();
-    ctx.strokeStyle = '#1f6e35'; ctx.lineWidth = Math.max(1.2, r * 0.075); body(); ctx.stroke();
+    ctx.strokeStyle = pal[4]; ctx.lineWidth = Math.max(1.2, r * 0.075); body(); ctx.stroke();
     // rim light on the right edge
     ctx.strokeStyle = 'rgba(230,255,220,.55)'; ctx.lineWidth = Math.max(1, r * 0.06); ctx.beginPath(); ctx.arc(0, r * 0.05, r * 0.85, -0.6, 0.6); ctx.stroke();
+    if (!opts.noLeaf) {
     // leaf with stem and vein
     ctx.strokeStyle = '#7a5520'; ctx.lineWidth = Math.max(1, r * 0.06); ctx.lineCap = 'round';
     ctx.beginPath(); ctx.moveTo(0, -r * 0.95); ctx.quadraticCurveTo(r * 0.02, -r * 1.12, r * 0.08, -r * 1.16); ctx.stroke();
@@ -198,6 +211,7 @@ const MG = (() => {
     ctx.beginPath(); ctx.moveTo(-r * 0.16, 0); ctx.quadraticCurveTo(r * 0.02, -r * 0.2, r * 0.2, 0); ctx.quadraticCurveTo(r * 0.02, r * 0.2, -r * 0.16, 0); ctx.fill(); ctx.stroke();
     ctx.strokeStyle = 'rgba(184,109,0,.7)'; ctx.beginPath(); ctx.moveTo(-r * 0.12, 0); ctx.lineTo(r * 0.15, 0); ctx.stroke();
     ctx.restore();
+    }
     // big glossy highlight
     ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.beginPath(); ctx.ellipse(-r * 0.47, -r * 0.48, r * 0.17, r * 0.1, -0.75, 0, 7); ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.beginPath(); ctx.arc(-r * 0.22, -r * 0.66, r * 0.05, 0, 7); ctx.fill();
@@ -210,6 +224,30 @@ const MG = (() => {
       ctx.fillStyle = ink; ctx.beginPath(); ctx.ellipse(0, r * 0.32, r * 0.13, r * 0.11, 0, 0, 7); ctx.fill();
       ctx.fillStyle = '#ff8aa0'; ctx.beginPath(); ctx.ellipse(0, r * 0.37, r * 0.07, r * 0.04, 0, 0, 7); ctx.fill();
       ctx.fillStyle = 'rgba(120,200,255,.9)'; ctx.beginPath(); ctx.moveTo(r * 0.62, -r * 0.45); ctx.quadraticCurveTo(r * 0.72, -r * 0.28, r * 0.62, -r * 0.22); ctx.quadraticCurveTo(r * 0.52, -r * 0.28, r * 0.62, -r * 0.45); ctx.fill();   // sweat drop
+    } else if (mood === 'wink' || mood === 'love' || mood === 'tongue') {
+      ctx.strokeStyle = ink; ctx.fillStyle = ink; ctx.lineWidth = lw;
+      if (mood === 'love') for (const sd of [-1, 1]) {
+        const hx = sd * r * 0.32 + ex, hy = -r * 0.08, hs = r * 0.15;
+        ctx.fillStyle = '#ff4f7a'; ctx.beginPath(); ctx.moveTo(hx, hy + hs * 0.9);
+        ctx.bezierCurveTo(hx - hs * 1.4, hy - hs * 0.2, hx - hs * 0.6, hy - hs * 1.3, hx, hy - hs * 0.4);
+        ctx.bezierCurveTo(hx + hs * 0.6, hy - hs * 1.3, hx + hs * 1.4, hy - hs * 0.2, hx, hy + hs * 0.9); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.beginPath(); ctx.arc(hx - hs * 0.45, hy - hs * 0.45, hs * 0.22, 0, 7); ctx.fill();
+      } else {
+        // left eye open, right eye closed (wink) or both open (tongue)
+        ctx.beginPath(); ctx.ellipse(-r * 0.32 + ex, -r * 0.08, r * 0.11, r * 0.16, 0, 0, 7); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(-r * 0.32 + ex - r * 0.035, -r * 0.15, r * 0.05, 0, 7); ctx.fill(); ctx.fillStyle = ink;
+        if (mood === 'wink') { ctx.beginPath(); ctx.moveTo(r * 0.2 + ex, -r * 0.06); ctx.quadraticCurveTo(r * 0.32 + ex, -r * 0.18, r * 0.44 + ex, -r * 0.06); ctx.stroke(); }
+        else { ctx.beginPath(); ctx.ellipse(r * 0.32 + ex, -r * 0.08, r * 0.11, r * 0.16, 0, 0, 7); ctx.fill(); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(r * 0.32 + ex - r * 0.035, -r * 0.15, r * 0.05, 0, 7); ctx.fill(); }
+      }
+      ctx.strokeStyle = ink; ctx.lineWidth = lw;
+      if (mood === 'tongue') {
+        ctx.beginPath(); ctx.moveTo(-r * 0.18, r * 0.2); ctx.lineTo(r * 0.18, r * 0.2); ctx.stroke();
+        ctx.fillStyle = '#ff6f8a'; ctx.beginPath(); ctx.moveTo(-r * 0.09, r * 0.2); ctx.lineTo(r * 0.09, r * 0.2); ctx.quadraticCurveTo(r * 0.1, r * 0.4, 0, r * 0.4); ctx.quadraticCurveTo(-r * 0.1, r * 0.4, -r * 0.09, r * 0.2); ctx.fill();
+        ctx.strokeStyle = '#d04a66'; ctx.lineWidth = Math.max(0.8, lw * 0.5); ctx.beginPath(); ctx.moveTo(0, r * 0.24); ctx.lineTo(0, r * 0.34); ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.moveTo(-r * 0.16, r * 0.17); ctx.quadraticCurveTo(0, r * 0.38, r * 0.16, r * 0.17); ctx.closePath(); ctx.fillStyle = '#7a2a33'; ctx.fill(); ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(255,110,140,.5)'; for (const sd of [-1, 1]) { ctx.beginPath(); ctx.ellipse(sd * r * 0.6 + ex * 0.5, r * 0.14, r * 0.14, r * 0.08, 0, 0, 7); ctx.fill(); }
     } else if (mood === 'sleep') {
       ctx.strokeStyle = ink; ctx.lineWidth = lw;
       for (const sd of [-1, 1]) { ctx.beginPath(); ctx.arc(sd * r * 0.32, -r * 0.08, r * 0.11, 0.2, Math.PI - 0.2); ctx.stroke(); }
@@ -260,5 +298,5 @@ const MG = (() => {
     };
   })();
 
-  return { init, stat, fit, panel, hide, panelOpen, best, record, sfx, toast, loop, rand, randi, pick, shuffle, store, puPu, fx, unlock };
+  return { init, stat, fit, panel, hide, panelOpen, best, record, sfx, toast, loop, rand, randi, pick, shuffle, store, puPu, fx, unlock, JELLY };
 })();
