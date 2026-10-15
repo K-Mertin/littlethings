@@ -1,0 +1,768 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>噗噗走迷宮</title>
+<link rel="stylesheet" href="mini.css">
+<style>.mg-stage{padding:6px}.mz-stars{font-size:38px;letter-spacing:.12em;margin:2px 0 4px}</style>
+</head>
+<body>
+<main class="mg-stage" id="stage"><canvas id="cv" aria-label="遊戲畫面"></canvas></main>
+<script src="mini.js"></script>
+<script>
+'use strict';
+MG.init({ id: 'maze', title: '噗噗走迷宮', stats: ['level', 'info'] });
+const cv = document.getElementById('cv'), x = cv.getContext('2d'), stageEl = document.getElementById('stage');
+const FONT = '"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif';
+const EMOJI = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+
+// ---------- themes (rotate by level) ----------
+const THEMES = [
+  { id: 'garden', nm: '草地花園', ic: '🌷', goal: '小房子', friend: 'pink', floor: '#f4e4b6', floor2: 'rgba(200,160,80,.10)', route: '#ff7a1a', old: 'rgba(140,100,40,.40)', ink: '#2f6b2a', card: '#6cbf55' },
+  { id: 'sea', nm: '海底世界', ic: '🐠', goal: '寶箱', friend: 'orange', floor: '#c6ecf4', floor2: 'rgba(60,150,190,.09)', route: '#ff4f9a', old: 'rgba(40,110,150,.38)', ink: '#1d5b8a', card: '#4aa8d8' },
+  { id: 'snow', nm: '雪地', ic: '⛄', goal: '雪屋', friend: 'blue', floor: '#f3f9ff', floor2: 'rgba(120,170,220,.10)', route: '#ff5a7a', old: 'rgba(80,130,190,.40)', ink: '#2d5a8c', card: '#8fbbe6' },
+  { id: 'candy', nm: '糖果王國', ic: '🍭', goal: '大蛋糕', friend: 'purple', floor: '#fff3df', floor2: 'rgba(230,140,180,.10)', route: '#7a4cff', old: 'rgba(200,100,150,.42)', ink: '#a8366e', card: '#ff9cc2' },
+  { id: 'night', nm: '夜空', ic: '🌙', goal: '月亮', friend: 'yellow', floor: '#525dae', floor2: 'rgba(255,255,255,.05)', route: '#ffe14a', old: 'rgba(210,210,255,.42)', ink: '#3a3488', card: '#9d8cff' },
+];
+// [long side, short side] per level (landscape: long = columns; portrait: long = rows)
+const SIZES = [[5, 5], [6, 5], [7, 6], [8, 6], [9, 7], [10, 8], [11, 8], [12, 9], [13, 10], [15, 11], [16, 12], [18, 14]];
+const STARS = [1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 5, 5];
+const LEVELS = SIZES.length, MIN_CSS = 26, PAD_FROM = 7;
+const TH = () => THEMES[(level - 1) % THEMES.length];
+
+// ---------- maze generation: seeded "growing tree" → a perfect maze (one path between any two cells) ----------
+// canonical cells: i = v * L + u; u runs along the long side. Openings are bits: 1 = +u, 2 = +v, 4 = −u, 8 = −v
+const DU = [1, 0, -1, 0], DV = [0, 1, 0, -1];
+function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let q = Math.imul(a ^ a >>> 15, 1 | a); q = q + Math.imul(q ^ q >>> 7, 61 | q) ^ q; return ((q ^ q >>> 14) >>> 0) / 4294967296; }; }
+const bits = n => (n & 1) + (n >> 1 & 1) + (n >> 2 & 1) + (n >> 3 & 1);
+function genMaze(Lw, Sh, sd, lvl) {
+  const n = Lw * Sh, rnd = mulberry(sd), ps = new Uint8Array(n), seen = new Uint8Array(n);
+  const nb = (i, k) => { const u = i % Lw + DU[k], v = (i / Lw | 0) + DV[k]; return u < 0 || v < 0 || u >= Lw || v >= Sh ? -1 : v * Lw + u; };
+  const act = [(rnd() * n) | 0]; seen[act[0]] = 1;
+  while (act.length) {
+    const ai = rnd() < 0.7 ? act.length - 1 : (rnd() * act.length) | 0, i = act[ai], opts = [];
+    for (let k = 0; k < 4; k++) { const j = nb(i, k); if (j >= 0 && !seen[j]) opts.push(k); }
+    if (!opts.length) { act.splice(ai, 1); continue; }
+    const k = opts[(rnd() * opts.length) | 0], j = nb(i, k);
+    ps[i] |= 1 << k; ps[j] |= 1 << ((k + 2) % 4); seen[j] = 1; act.push(j);
+  }
+  const start = 0, goal = n - 1;
+  // stars ⭐ go into dead ends, spread out (farthest from what is already chosen)
+  const ends = [];
+  for (let i = 0; i < n; i++) if (bits(ps[i]) === 1 && i !== start && i !== goal) ends.push(i);
+  for (let i = ends.length - 1; i > 0; i--) { const j = (rnd() * (i + 1)) | 0; [ends[i], ends[j]] = [ends[j], ends[i]]; }
+  const want = Math.min(STARS[Math.max(0, Math.min(LEVELS, lvl) - 1)], ends.length), stars = [], taken = [start, goal];
+  const md = (a, b) => Math.abs(a % Lw - b % Lw) + Math.abs((a / Lw | 0) - (b / Lw | 0));
+  while (stars.length < want) {
+    let best = -1, bd = -1;
+    for (const e of ends) { if (stars.includes(e)) continue; const d = Math.min(...taken.map(q => md(e, q))); if (d > bd) { bd = d; best = e; } }
+    stars.push(best); taken.push(best);
+  }
+  return { ps, start, goal, stars };
+}
+
+// ---------- state ----------
+let state = 'menu', mode = 'slow', tapOn = true, fogOn = false, level = 1, seed = 1, mazeId = 0;
+let L = 5, S = 5, pass = new Uint8Array(25), startI = 0, goalI = 24, stars = [], got = 0, dG = null;
+let pos = 0, nxt = -1, tt = 0, queue = [], steps = 0, elapsed = 0, hints = 3, hintT = 0, hintGentle = false, idleT = 0;
+let visited = new Uint8Array(25), edges = new Set(), log = [], bad = 0, frames = 0;
+let landT = 0, bumpT = 0, bumpD = 0, faceX = 0, winT = 0, t = 0, mood = 'happy', moodT = 0, stepSnd = 0, freshT = 0;
+let W = 480, H = 800, land = false, cs = 40, ox = 0, oy = 0, C = 5, R = 5, headerH = 0, showPad = false;
+let floats = [], pressed = null, pressT = 0, lastTap = 0;
+let layer = null, layerKey = '', fogMem = null, fogF = null, fogDirty = true, routeCache = { id: -1, par: null };
+const A = { maze: { x: 0, y: 0, w: 1, h: 1 } };
+let btns = [], padBtns = [];
+const isTouch = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || navigator.maxTouchPoints > 0;
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+// ---------- grid helpers (canonical ↔ what is on screen) ----------
+// landscape: column = u, row = v.  portrait: column = v, row = u (the maze is just turned over)
+function nb(i, k) { const u = i % L + DU[k], v = (i / L | 0) + DV[k]; return u < 0 || v < 0 || u >= L || v >= S ? -1 : v * L + u; }
+const canonDir = d => land ? d : [1, 0, 3, 2][d];            // screen direction (0 →, 1 ↓, 2 ←, 3 ↑) → canonical direction
+function disp(i) { const u = i % L, v = i / L | 0; return land ? { c: u, r: v } : { c: v, r: u }; }
+function fromDisp(c, r) { if (c < 0 || r < 0 || c >= C || r >= R) return -1; return land ? r * L + c : c * L + r; }
+function center(i) { const d = disp(i); return { x: ox + (d.c + 0.5) * cs, y: oy + (d.r + 0.5) * cs }; }
+function linkDir(a, b) { for (let k = 0; k < 4; k++) if (nb(a, k) === b) return k; return -1; }
+const canPass = (a, b) => { const k = linkDir(a, b); return k >= 0 && !!(pass[a] & (1 << k)); };
+function bfs(src) {
+  const n = L * S, dist = new Int16Array(n).fill(-1), par = new Int16Array(n).fill(-1), q = [src]; dist[src] = 0;
+  for (let h = 0; h < q.length; h++) { const i = q[h]; for (let k = 0; k < 4; k++) if (pass[i] & (1 << k)) { const j = nb(i, k); if (dist[j] < 0) { dist[j] = dist[i] + 1; par[j] = i; q.push(j); } } }
+  return { dist, par };
+}
+function pathBetween(a, b) {      // cells after a, up to and including b
+  if (a === b) return [];
+  const { par } = bfs(a), out = [];
+  for (let i = b; i !== a && i >= 0; i = par[i]) out.push(i);
+  return out.reverse();
+}
+function pathToGoal(from, max = 1e9) { const out = []; let i = from; while (i !== goalI && out.length < max) { let nx = -1; for (let k = 0; k < 4; k++) if (pass[i] & (1 << k)) { const j = nb(i, k); if (dG[j] === dG[i] - 1) { nx = j; break; } } if (nx < 0) break; out.push(nx); i = nx; } return out; }
+
+// ---------- layout ----------
+function cssScale() { const r = cv.getBoundingClientRect(); return Math.max(0.1, (r.width - 6) / W); }
+function mkPad(cx, cy, s) {
+  const g = 4;
+  for (const [dx, dy, d] of [[1, 0, 0], [0, 1, 1], [-1, 0, 2], [0, -1, 3]]) padBtns.push({ id: 'pad', d, x: cx + dx * (s + g) - s / 2, y: cy + dy * (s + g) - s / 2, w: s, h: s });
+}
+function layoutAreas() {
+  W = cv.lw; H = cv.lh; land = W > H; btns = []; padBtns = [];
+  if (land) {
+    const PW = 216, px0 = W - PW;
+    A.panel = { x: px0 + 2, y: 10, w: PW - 12, h: H - 20 }; A.strip = null;
+    A.maze = { x: 12, y: 12, w: px0 - 22, h: H - 24 };
+    const bx = px0 + 18, bw = PW - 44;
+    btns.push({ id: 'hint', x: bx, y: 196, w: bw, h: 58 }, { id: 'fresh', x: bx, y: 266, w: bw, h: 58 });
+    if (showPad) mkPad(px0 + PW / 2 - 4, H - 108, 58);
+  } else {
+    const B = showPad ? 188 : 86;
+    A.strip = { x: 8, y: H - B, w: W - 16, h: B - 8 }; A.panel = null;
+    A.maze = { x: 10, y: 10, w: W - 20, h: H - B - 20 };
+    if (showPad) { btns.push({ id: 'hint', x: 18, y: H - B + 14, w: 124, h: 58 }, { id: 'fresh', x: W - 142, y: H - B + 14, w: 124, h: 58 }); mkPad(W / 2, H - B / 2 - 4, 52); }
+    else btns.push({ id: 'hint', x: 18, y: H - B + 11, w: 150, h: 58 }, { id: 'fresh', x: W - 168, y: H - B + 11, w: 150, h: 58 });
+  }
+}
+function placeMaze() {
+  C = land ? L : S; R = land ? S : L;
+  const m = A.maze;
+  cs = Math.min(m.w / C, m.h / R);
+  ox = m.x + (m.w - C * cs) / 2;
+  const gap = m.h - R * cs;
+  headerH = !land && gap >= 44 ? Math.min(60, gap) : 0;
+  oy = m.y + headerH + (m.h - headerH - R * cs) / 2;
+}
+function pickDims(n) {
+  const [lg, sh] = SIZES[n - 1], k = cssScale();
+  const maxC = Math.max(4, Math.floor(A.maze.w * k / MIN_CSS)), maxR = Math.max(4, Math.floor(A.maze.h * k / MIN_CSS));
+  const c = Math.min(land ? lg : sh, maxC), r = Math.min(land ? sh : lg, maxR);
+  return land ? [c, r] : [r, c];
+}
+function relayout() { layoutAreas(); placeMaze(); layerKey = ''; fogDirty = true; }
+cv.onfit = () => relayout();
+MG.fit(cv, (sw, sh) => {
+  const l = sw > sh * 1.05;
+  if (l) { H = 600; W = Math.round(Math.min(1300, Math.max(800, H * sw / sh))); }
+  else { W = 480; H = Math.round(Math.min(1000, Math.max(640, W * sh / sw))); }
+  return [W, H];
+});
+
+// ---------- flow ----------
+function buildMaze() {
+  const m = genMaze(L, S, seed, level);
+  pass = m.ps; startI = m.start; goalI = m.goal;
+  stars = m.stars.map(i => ({ i, got: false }));
+  dG = bfs(goalI).dist; mazeId++;
+}
+function resetRun() {
+  pos = startI; nxt = -1; tt = 0; queue = []; steps = 0; elapsed = 0; got = 0; hints = 3; hintT = 0; idleT = 0;
+  visited = new Uint8Array(L * S); visited[pos] = 1; edges = new Set(); log = [pos]; bad = 0;
+  landT = 0; bumpT = 0; faceX = 0; winT = 0; floats = []; MG.fx.clear(); mood = 'happy'; moodT = 0; freshT = 0;
+  fogDirty = true; layerKey = '';
+}
+function startLevel(n, how = 'new') {
+  level = n; showPad = isTouch && n >= PAD_FROM;
+  layoutAreas();
+  if (how !== 'same') { seed = ((Math.random() * 2147483646) | 0) + 1; [L, S] = pickDims(n); }
+  buildMaze(); placeMaze(); resetRun();
+  state = 'play'; MG.hide();
+  const th = TH();
+  MG.toast(`第 ${n} 關：${th.ic} 幫噗噗走到${th.goal}！`, 2200);
+  hud(true);
+}
+function newMaze() { MG.sfx('flip'); startLevel(level, 'new'); }
+function win() {
+  state = 'won'; queue = []; winT = 0; mood = 'love'; moodT = 99;
+  MG.sfx('win');
+  const g = center(goalI);
+  for (let i = 0; i < 5; i++) setTimeout(() => { if (state === 'won') MG.fx.burst(g.x + MG.rand(-cs, cs), g.y - cs * 0.3, { n: 16, colors: ['#ff8fbf', '#ffd23f', '#4cc96a', '#4c9cf0', '#a07cf2', '#fff'], shape: MG.pick(['star', 'sq']), speed: 260, up: 180, size: Math.max(4, cs * 0.12), life: 1.2 }); }, i * 160);
+  const rec = MG.record('maze', level);
+  let bestT = null, newT = false;
+  if (mode === 'timed') { const k = 'maze.time.' + level, old = MG.store.get(k, null); newT = old == null || elapsed < old; if (newT) MG.store.set(k, elapsed); bestT = newT ? elapsed : old; }
+  const at = mazeId, total = stars.length;
+  setTimeout(() => {
+    if (state !== 'won' || mazeId !== at || MG.panelOpen()) return;
+    const nx = level < LEVELS;
+    MG.panel({
+      title: `第 ${level} 關完成！`,
+      html: (total ? `<div class="mz-stars">${'⭐'.repeat(got)}${'☆'.repeat(total - got)}</div>` : '') +
+        `<p>噗噗找到${TH().goal}了！走了 ${steps} 步${mode === 'timed' ? `，用了 <b>${mmss(elapsed)}</b>` : `，花了 ${mmss(elapsed)}`} ^_^</p>` +
+        (total ? (got === total ? '<p>星星全部撿到了，太厲害了！</p>' : `<p>撿到 ${got} 顆星星，死路裡還藏著 ${total - got} 顆喔</p>`) : '') +
+        (mode === 'timed' ? (newT ? '<p class="new">這關最快紀錄！^_^</p>' : `<p>這關最快：${mmss(bestT)}</p>`) : '') +
+        (rec.isNew && level > 1 ? '<p class="new">走到新的一關了！</p>' : '') +
+        (nx ? `<p>下一關：${THEMES[level % THEMES.length].ic} ${THEMES[level % THEMES.length].nm}，迷宮更大一點</p>` : '<p>十二關全部走完了，你是迷宮大師！</p>'),
+      buttons: [
+        { label: nx ? '下一關' : '回到第 1 關', on: () => { const n = nx ? level + 1 : 1; MG.store.set('maze.pickLevel', n); startLevel(n); } },
+        { label: '這關再玩', alt: true, on: () => startLevel(level, 'same') },
+        { label: '換一個迷宮', alt: true, on: () => startLevel(level, 'new') },
+        { label: '選關卡', alt: true, on: menu },
+      ],
+    });
+  }, 1500);
+}
+let lastHud = '';
+function hud(force) {
+  const s = `${level}|${mode}|${got}|${stars.length}|${mode === 'timed' ? Math.floor(elapsed) : 0}`;
+  if (s === lastHud && !force) return; lastHud = s;
+  MG.stat('level', `第 ${level} 關`);
+  MG.stat('info', mode === 'timed' ? `⏱ ${mmss(elapsed)}` : `⭐ ${got}/${stars.length}`);
+}
+
+// ---------- movement: a queue of cells, walked one by one with a little hop ----------
+const headCell = () => queue.length ? queue[queue.length - 1] : nxt >= 0 ? nxt : pos;
+function beforeHead() { if (queue.length >= 2) return queue[queue.length - 2]; if (queue.length === 1) return nxt >= 0 ? nxt : pos; return nxt >= 0 ? pos : -1; }
+// add one step from the head of the plan (only through an opening); stepping back onto the previous cell cancels instead
+function stepTo(j) {
+  const h = headCell();
+  if (!canPass(h, j)) return false;
+  if (j === beforeHead()) {
+    if (queue.length) queue.pop();
+    else if (nxt >= 0) { const a = pos; pos = nxt; nxt = a; tt = 1 - tt; }   // turn around in the middle of a hop
+    return true;
+  }
+  queue.push(j); return true;
+}
+function clearPlan() { queue = []; }
+function slide(dScreen) {
+  if (state !== 'play') return;
+  idleT = 0;
+  let k = canonDir(dScreen), cur = headCell();
+  if (!(pass[cur] & (1 << k))) { bump(dScreen); return; }
+  for (let n = 0; n < 500; n++) {
+    const j = nb(cur, k); stepTo(j);
+    const prev = cur; cur = j;
+    if (cur === goalI || bits(pass[cur]) !== 2) break;       // stop at a junction, a dead end or the goal
+    for (let q = 0; q < 4; q++) if ((pass[cur] & (1 << q)) && nb(cur, q) !== prev) { k = q; break; }   // follow the bend
+  }
+}
+function bump(d) { bumpT = 0.25; bumpD = d; MG.sfx('tick'); }
+function walkTo(target) {
+  if (target < 0 || state !== 'play') return;
+  idleT = 0; clearPlan();
+  const from = nxt >= 0 ? nxt : pos;
+  if (target === pos && nxt >= 0) { stepTo(pos); return; }
+  for (const c of pathBetween(from, target)) queue.push(c);
+}
+function arrive(i) {
+  const prev = pos; pos = i;
+  if (log[log.length - 1] !== i) {
+    steps++; log.push(i);
+    edges.add(Math.min(prev, i) * 4096 + Math.max(prev, i));
+    if (!visited[i]) { visited[i] = 1; punchFog(i); }
+    if (t - stepSnd > 0.06) { MG.sfx('step'); stepSnd = t; }
+  }
+  const st = stars.find(s => s.i === i && !s.got);
+  if (st) {
+    st.got = true; got++; MG.sfx('good'); mood = 'wow'; moodT = 0.9;
+    const c = center(i);
+    MG.fx.burst(c.x, c.y, { n: 14, colors: ['#ffd23f', '#fff3a0', '#fff'], shape: 'star', speed: 170, up: 90, size: Math.max(3, cs * 0.1), life: 0.8 });
+    floats.push({ x: c.x, y: c.y - cs * 0.3, text: '+1 ⭐', life: 1 });
+    hud();
+  }
+  if (i === goalI && state === 'play') { nxt = -1; tt = 0; win(); }
+}
+function update(dt) {
+  if (state === 'play') { elapsed += dt; idleT += dt; }
+  if (nxt < 0 && queue.length && state === 'play') { nxt = queue.shift(); tt = 0; }
+  if (nxt >= 0) {
+    if (!canPass(pos, nxt)) { bad++; nxt = -1; queue = []; }      // never through a wall (counted for the tests)
+    else {
+      const dur = 0.13 / (1 + Math.min(queue.length, 6) * 0.14);
+      tt += dt / dur;
+      const dx = center(nxt).x - center(pos).x; if (Math.abs(dx) > 1) faceX = dx > 0 ? 1 : -1;
+      while (tt >= 1 && nxt >= 0) {
+        const to = nxt; tt -= 1; nxt = -1; arrive(to);
+        if (state === 'play' && queue.length) { nxt = queue.shift(); if (!canPass(pos, nxt)) { bad++; nxt = -1; queue = []; } }
+        else { tt = 0; landT = 0.3; }
+      }
+      idleT = 0;
+    }
+  }
+  landT = Math.max(0, landT - dt); bumpT = Math.max(0, bumpT - dt); hintT = Math.max(0, hintT - dt); freshT = Math.max(0, freshT - dt);
+  moodT = Math.max(0, moodT - dt); if (!moodT && mood !== 'happy' && state === 'play') mood = 'happy';
+  if (state === 'won') winT += dt;
+  // a little help for the youngest: standing still for a long time shows the next few steps
+  if (state === 'play' && mode === 'slow' && idleT > 15 && hintT <= 0) { hintT = 2.2; hintGentle = true; idleT = 0; }
+  for (const f of floats) { f.life -= dt; f.y -= 30 * dt; } floats = floats.filter(f => f.life > 0);
+  pressT = Math.max(0, pressT - dt);
+  MG.fx.step(dt);
+  hud();
+}
+function useHint() {
+  if (state !== 'play') return;
+  if (mode === 'timed') { if (hints <= 0) { MG.toast('提示用完了，加油！'); MG.sfx('bad'); return; } hints--; }
+  hintT = 2.4; hintGentle = false; idleT = 0; MG.sfx('pop');
+}
+function pressFresh() {
+  if (state !== 'play') return;
+  if (freshT > 0 || steps === 0) { freshT = 0; newMaze(); return; }
+  freshT = 2.5; MG.toast('再按一次，就換一個新的迷宮', 2200);
+}
+
+// ---------- input ----------
+let drag = null;
+const inRect = (p, b) => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
+function hitButton(p) {
+  for (const b of btns) if (inRect(p, { x: b.x - 4, y: b.y - 4, w: b.w + 8, h: b.h + 8 })) return b;
+  for (const b of padBtns) if (inRect(p, { x: b.x - 2, y: b.y - 2, w: b.w + 4, h: b.h + 4 })) return b;
+  return null;
+}
+function pressButton(b) {
+  pressed = b; pressT = 0.15;
+  if (b.id === 'hint') useHint(); else if (b.id === 'fresh') pressFresh(); else if (b.id === 'pad') slide(b.d);
+}
+function playerXY() {
+  const a = center(pos);
+  if (nxt < 0) return { x: a.x, y: a.y, hop: 0 };
+  const b = center(nxt), e = tt * tt * (3 - 2 * tt);
+  return { x: a.x + (b.x - a.x) * e, y: a.y + (b.y - a.y) * e, hop: Math.sin(Math.PI * clamp(tt, 0, 1)) };
+}
+const cellAtP = p => fromDisp(Math.floor((p.x - ox) / cs), Math.floor((p.y - oy) / cs));
+// the finger drags 噗噗 along the corridors: step toward the finger, first the bigger direction, then the other one
+function dragFollow(p) {
+  const fx = clamp((p.x - ox) / cs, 0.01, C - 0.01), fy = clamp((p.y - oy) / cs, 0.01, R - 0.01);
+  for (let n = 0; n < 60; n++) {
+    const h = disp(headCell()), dx = fx - (h.c + 0.5), dy = fy - (h.r + 0.5), ax = Math.abs(dx), ay = Math.abs(dy);
+    if (ax < 0.6 && ay < 0.6) return;
+    const hx = dx > 0 ? 0 : 2, vy = dy > 0 ? 1 : 3, dirs = [];
+    if (ax >= ay) { if (ax >= 0.6) dirs.push(hx); if (ay >= 0.6) dirs.push(vy); } else { if (ay >= 0.6) dirs.push(vy); if (ax >= 0.6) dirs.push(hx); }
+    let moved = false;
+    for (const d of dirs) { const hc = headCell(), k = canonDir(d); if (pass[hc] & (1 << k)) { stepTo(nb(hc, k)); moved = true; break; } }
+    if (moved) continue;
+    // the finger cut a corner: allow a short way round, but never a long detour behind a wall
+    const f = fromDisp(Math.floor(fx), Math.floor(fy)), hc = headCell();
+    if (f < 0 || f === hc) return;
+    const way = pathBetween(hc, f), man = Math.abs(Math.floor(fx) - h.c) + Math.abs(Math.floor(fy) - h.r);
+    if (way.length && way.length <= Math.min(5, man + 2)) { for (const c of way) stepTo(c); continue; }
+    return;
+  }
+}
+function isNear(p) {
+  const pl = playerXY(), rad = Math.max(cs * 1.3, 30);
+  if (Math.hypot(p.x - pl.x, p.y - pl.y - cs * 0.05) < rad) return true;
+  const hc = center(headCell());
+  return Math.hypot(p.x - hc.x, p.y - hc.y) < cs * 0.75;
+}
+stageEl.addEventListener('pointerdown', e => {
+  if (state !== 'play' || MG.panelOpen() || drag) return;
+  const p = cv.logical(e);
+  const b = hitButton(p);
+  e.preventDefault();
+  if (b) { pressButton(b); return; }
+  const near = isNear(p);
+  drag = { id: e.pointerId, mode: near ? 'drag' : 'pend', sx: e.clientX, sy: e.clientY, t0: performance.now(), moved: 0 };
+  try { stageEl.setPointerCapture(e.pointerId); } catch {}
+  if (near) { idleT = 0; clearPlan(); dragFollow(p); }
+});
+stageEl.addEventListener('pointermove', e => {
+  if (!drag || e.pointerId !== drag.id) return;
+  drag.moved = Math.max(drag.moved, Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy));
+  if (drag.mode === 'drag' && state === 'play') { idleT = 0; dragFollow(cv.logical(e)); }
+});
+function ptrEnd(e, ok) {
+  if (!drag || e.pointerId !== drag.id) return;
+  const d = drag; drag = null;
+  if (!ok || state !== 'play') return;
+  const p = cv.logical(e), dx = e.clientX - d.sx, dy = e.clientY - d.sy;
+  if (d.mode === 'drag') {
+    if (d.moved < 14 && tapOn) { const c = cellAtP(p); if (c >= 0 && c !== headCell() && !canPass(headCell(), c)) walkTo(c); }
+    return;
+  }
+  if (d.moved >= 22) {               // swipe: slide to the next junction
+    slide(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3));
+    return;
+  }
+  const c = cellAtP(p);
+  if (c < 0) return;
+  if (tapOn) { walkTo(c); MG.sfx('click'); }
+  else if (canPass(headCell(), c)) stepTo(c);
+  else if (performance.now() - lastTap > 2500) { lastTap = performance.now(); MG.toast('按住噗噗，沿著路拖過去喔'); }
+}
+stageEl.addEventListener('pointerup', e => ptrEnd(e, true));
+stageEl.addEventListener('pointercancel', e => ptrEnd(e, false));
+addEventListener('keydown', e => {
+  if (state !== 'play' || MG.panelOpen()) return;
+  const k = e.key, d = { ArrowRight: 0, d: 0, D: 0, ArrowDown: 1, s: 1, S: 1, ArrowLeft: 2, a: 2, A: 2, ArrowUp: 3, w: 3, W: 3 }[k];
+  if (d != null) { e.preventDefault(); slide(d); }
+  else if (k === 'h' || k === 'H') { e.preventDefault(); useHint(); }
+});
+
+// ---------- painting helpers ----------
+function rr(g, x0, y0, w, h, r) { g.beginPath(); g.roundRect(x0, y0, w, h, r); }
+function dot(g, cx, cy, r) { g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill(); }
+function star5(g, cx, cy, R0, r0, rot = 0) { g.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + rot + i * Math.PI / 5, q = i % 2 ? r0 : R0; g.lineTo(cx + Math.cos(a) * q, cy + Math.sin(a) * q); } g.closePath(); }
+function star4(g, cx, cy, r) { g.beginPath(); g.moveTo(cx, cy - r); g.quadraticCurveTo(cx, cy, cx + r, cy); g.quadraticCurveTo(cx, cy, cx, cy + r); g.quadraticCurveTo(cx, cy, cx - r, cy); g.quadraticCurveTo(cx, cy, cx, cy - r); g.fill(); }
+function txt(s, px, py, size, col = '#fff', align = 'center', weight = 900, stroke = null, sw = 4, g = x) {
+  g.font = `${weight} ${size}px ${FONT}`; g.textAlign = align; g.textBaseline = 'middle';
+  if (stroke) { g.lineJoin = 'round'; g.lineWidth = sw; g.strokeStyle = stroke; g.strokeText(s, px, py); }
+  g.fillStyle = col; g.fillText(s, px, py);
+}
+function emo(s, px, py, size, g = x) { g.font = `${size}px ${EMOJI}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#000'; g.fillText(s, px, py); }
+
+// ---------- background per theme ----------
+function paintBg(g, th, rnd) {
+  const gr = g.createLinearGradient(0, 0, 0, H);
+  const cols = { garden: ['#b5e68f', '#86c95f'], sea: ['#63c7ee', '#1f6cb4'], snow: ['#e3f1ff', '#b1d0f0'], candy: ['#ffe2ef', '#ffc0da'], night: ['#1a2050', '#3d2f7e'] }[th.id];
+  gr.addColorStop(0, cols[0]); gr.addColorStop(1, cols[1]); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  const n = Math.round(W * H / 5000);
+  for (let i = 0; i < n; i++) {
+    const px = rnd() * W, py = rnd() * H, s = 0.6 + rnd() * 0.8;
+    if (th.id === 'garden') {
+      if (rnd() < 0.5) { g.strokeStyle = 'rgba(50,120,40,.35)'; g.lineWidth = 1.4; for (const a of [-0.5, 0, 0.5]) { g.beginPath(); g.moveTo(px, py); g.lineTo(px + Math.sin(a) * 6 * s, py - 8 * s); g.stroke(); } }
+      else { const col = ['#ffffff', '#ff9cc2', '#ffe14a', '#c3a2ff'][(rnd() * 4) | 0]; g.fillStyle = col; for (let k = 0; k < 5; k++) dot(g, px + Math.cos(k * 1.257) * 3.4 * s, py + Math.sin(k * 1.257) * 3.4 * s, 2.6 * s); g.fillStyle = '#ffb21f'; dot(g, px, py, 1.8 * s); }
+    } else if (th.id === 'sea') {
+      g.strokeStyle = 'rgba(255,255,255,.45)'; g.lineWidth = 1.3; g.beginPath(); g.arc(px, py, 3 + 5 * s, 0, 7); g.stroke();
+      g.fillStyle = 'rgba(255,255,255,.5)'; dot(g, px - 2 * s, py - 2 * s, 1.3 * s);
+    } else if (th.id === 'snow') {
+      g.fillStyle = `rgba(255,255,255,${0.5 + rnd() * 0.4})`; dot(g, px, py, 1.5 + 2.5 * s);
+    } else if (th.id === 'candy') {
+      g.save(); g.translate(px, py); g.rotate(rnd() * 3); g.fillStyle = ['#ff6fa5', '#7fd6ff', '#ffd23f', '#9be38a', '#b18cff'][(rnd() * 5) | 0]; rr(g, -5 * s, -1.6, 10 * s, 3.2, 1.6); g.fill(); g.restore();
+    } else {
+      g.fillStyle = `rgba(255,255,240,${0.35 + rnd() * 0.6})`; if (rnd() < 0.15) star4(g, px, py, 3 + 3 * s); else dot(g, px, py, 0.7 + s);
+    }
+  }
+  if (th.id === 'sea') {   // seaweed along the bottom
+    for (let i = 0; i < W / 60; i++) { const bx = 20 + i * 60 + rnd() * 30; g.strokeStyle = rnd() < 0.5 ? '#2f9a5a' : '#45b56c'; g.lineWidth = 6; g.lineCap = 'round'; g.beginPath(); g.moveTo(bx, H); for (let k = 1; k < 6; k++) g.lineTo(bx + Math.sin(k * 1.3 + i) * 8, H - k * 16); g.stroke(); }
+  }
+  if (th.id === 'snow') { g.fillStyle = 'rgba(255,255,255,.7)'; g.beginPath(); g.moveTo(0, H); for (let xx = 0; xx <= W; xx += 20) g.lineTo(xx, H - 26 - Math.sin(xx * 0.012) * 14); g.lineTo(W, H); g.fill(); }
+  if (th.id === 'night' && !land) { const mx = W - 60, my = 50; g.fillStyle = 'rgba(255,240,180,.9)'; dot(g, mx, my, 22); g.fillStyle = cols[0]; dot(g, mx + 10, my - 7, 19); }
+}
+function paintCard(g, b, th) {
+  g.fillStyle = 'rgba(0,0,0,.12)'; rr(g, b.x, b.y + 4, b.w, b.h, 18); g.fill();
+  g.fillStyle = th.id === 'night' ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.86)'; rr(g, b.x, b.y, b.w, b.h, 18); g.fill();
+  g.strokeStyle = th.card; g.lineWidth = 3; g.stroke();
+}
+
+// ---------- the maze itself ----------
+function wallSegs() {
+  const segs = [];
+  const openR = (c, r) => { const i = fromDisp(c, r); return !!(pass[i] & (1 << canonDir(0))); };   // opening to the right
+  const openD = (c, r) => { const i = fromDisp(c, r); return !!(pass[i] & (1 << canonDir(1))); };   // opening downward
+  for (let r = 0; r <= R; r++) {
+    let run = -1;
+    for (let c = 0; c <= C; c++) {
+      const wall = c < C && (r === 0 || r === R || !openD(c, r - 1));
+      if (wall && run < 0) run = c;
+      if (!wall && run >= 0) { segs.push([ox + run * cs, oy + r * cs, ox + c * cs, oy + r * cs]); run = -1; }
+    }
+  }
+  for (let c = 0; c <= C; c++) {
+    let run = -1;
+    for (let r = 0; r <= R; r++) {
+      const wall = r < R && (c === 0 || c === C || !openR(c - 1, r));
+      if (wall && run < 0) run = r;
+      if (!wall && run >= 0) { segs.push([ox + c * cs, oy + run * cs, ox + c * cs, oy + r * cs]); run = -1; }
+    }
+  }
+  return segs;
+}
+function segPath(segs, dx = 0, dy = 0) { const p = new Path2D(); for (const [a, b, c, d] of segs) { p.moveTo(a + dx, b + dy); p.lineTo(c + dx, d + dy); } return p; }
+function alongSegs(segs, step, fn) {
+  for (const [a, b, c, d] of segs) { const len = Math.hypot(c - a, d - b), n = Math.max(1, Math.round(len / step)); for (let k = 0; k <= n; k++) fn(a + (c - a) * k / n, b + (d - b) * k / n, a === c); }
+}
+function paintWalls(g, th, rnd) {
+  const segs = wallSegs(), wt = Math.max(4, cs * 0.2);
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  const stroke = (p, col, w) => { g.strokeStyle = col; g.lineWidth = w; g.stroke(p); };
+  const P = segPath(segs);
+  if (th.id === 'garden') {
+    stroke(segPath(segs, wt * 0.12, wt * 0.3), 'rgba(30,70,20,.32)', wt * 1.1);
+    stroke(P, '#2c7f34', wt * 1.05); stroke(segPath(segs, 0, -wt * 0.08), '#49a844', wt * 0.78);
+    alongSegs(segs, wt * 0.5, (px, py) => { g.fillStyle = ['#5fc152', '#3f9d3c', '#71d062'][(rnd() * 3) | 0]; dot(g, px + (rnd() - 0.5) * wt * 0.35, py + (rnd() - 0.5) * wt * 0.35 - wt * 0.08, wt * (0.2 + rnd() * 0.1)); });
+    alongSegs(segs, wt * 1.6, (px, py) => { if (rnd() < 0.18) { const col = ['#fff', '#ff8fbf', '#ffe14a'][(rnd() * 3) | 0]; g.fillStyle = col; for (let k = 0; k < 5; k++) dot(g, px + Math.cos(k * 1.257) * wt * 0.13, py + Math.sin(k * 1.257) * wt * 0.13 - wt * 0.1, wt * 0.1); g.fillStyle = '#f39a12'; dot(g, px, py - wt * 0.1, wt * 0.07); } });
+  } else if (th.id === 'sea') {
+    stroke(segPath(segs, 0, wt * 0.25), 'rgba(20,70,110,.28)', wt * 1.1);
+    stroke(P, '#c23a5a', wt * 1.12); stroke(P, '#ff7088', wt * 0.86);
+    alongSegs(segs, wt * 0.55, (px, py) => { g.fillStyle = rnd() < 0.5 ? '#ff92a4' : '#ff6f86'; dot(g, px + (rnd() - 0.5) * wt * 0.3, py + (rnd() - 0.5) * wt * 0.3, wt * (0.18 + rnd() * 0.12)); });
+    alongSegs(segs, wt * 0.7, (px, py) => { if (rnd() < 0.5) { g.fillStyle = 'rgba(255,225,232,.9)'; dot(g, px + (rnd() - 0.5) * wt * 0.5, py + (rnd() - 0.5) * wt * 0.5, wt * 0.07); } });
+    alongSegs(segs, wt * 3, (px, py) => { if (rnd() < 0.12) { g.fillStyle = '#ffb33a'; star5(g, px, py, wt * 0.42, wt * 0.2, rnd()); g.fill(); } });
+  } else if (th.id === 'snow') {
+    stroke(segPath(segs, 0, wt * 0.3), 'rgba(70,110,160,.3)', wt * 1.1);
+    stroke(P, '#a9c9ea', wt * 1.12); stroke(segPath(segs, 0, -wt * 0.06), '#ffffff', wt * 0.9);
+    alongSegs(segs, wt * 0.6, (px, py) => { g.fillStyle = 'rgba(255,255,255,.95)'; dot(g, px + (rnd() - 0.5) * wt * 0.3, py - wt * 0.12, wt * (0.2 + rnd() * 0.1)); });
+    alongSegs(segs, wt * 1.2, (px, py) => { if (rnd() < 0.3) { g.fillStyle = 'rgba(150,200,255,.8)'; star4(g, px + (rnd() - 0.5) * wt * 0.4, py + (rnd() - 0.5) * wt * 0.3, wt * 0.16); } });
+  } else if (th.id === 'candy') {
+    stroke(segPath(segs, wt * 0.1, wt * 0.28), 'rgba(150,40,90,.25)', wt * 1.1);
+    stroke(P, '#b83a72', wt * 1.12); stroke(P, '#ff7fb0', wt * 0.9);
+    g.save(); g.lineCap = 'butt'; g.setLineDash([wt * 0.42, wt * 0.48]); stroke(P, '#fff4f8', wt * 0.9); g.restore();
+    g.lineCap = 'round'; stroke(segPath(segs, -wt * 0.06, -wt * 0.2), 'rgba(255,255,255,.55)', wt * 0.16);
+  } else {
+    g.save(); g.shadowColor = 'rgba(170,150,255,.9)'; g.shadowBlur = wt * 1.2; stroke(P, '#8f84ff', wt * 1.12); g.restore();
+    stroke(P, '#232760', wt * 0.84);
+    alongSegs(segs, wt * 0.9, (px, py) => { if (rnd() < 0.35) { g.fillStyle = rnd() < 0.7 ? '#fff3a0' : '#ffffff'; star4(g, px + (rnd() - 0.5) * wt * 0.4, py + (rnd() - 0.5) * wt * 0.4, wt * (0.14 + rnd() * 0.14)); } });
+  }
+}
+function paintFloor(g, th, rnd) {
+  const w = C * cs, h = R * cs;
+  g.fillStyle = 'rgba(0,0,0,.16)'; rr(g, ox - cs * 0.1, oy - cs * 0.04, w + cs * 0.2, h + cs * 0.2, cs * 0.2); g.fill();
+  g.fillStyle = th.floor; g.fillRect(ox, oy, w, h);
+  g.fillStyle = th.floor2; for (let r = 0; r < R; r++) for (let c = (r & 1); c < C; c += 2) g.fillRect(ox + c * cs, oy + r * cs, cs, cs);
+  const n = C * R * 2;
+  for (let i = 0; i < n; i++) {
+    const px = ox + rnd() * w, py = oy + rnd() * h, s = cs * (0.03 + rnd() * 0.03);
+    if (th.id === 'garden') { g.fillStyle = 'rgba(170,130,70,.28)'; g.beginPath(); g.ellipse(px, py, s * 1.4, s, 0, 0, 7); g.fill(); }
+    else if (th.id === 'sea') { g.strokeStyle = 'rgba(255,255,255,.5)'; g.lineWidth = 1.2; g.beginPath(); g.arc(px, py, s * 3, Math.PI * 1.15, Math.PI * 1.85); g.stroke(); }
+    else if (th.id === 'snow') { g.fillStyle = 'rgba(150,195,240,.55)'; star4(g, px, py, s * 1.6); }
+    else if (th.id === 'candy') { if (rnd() < 0.55) continue; g.save(); g.globalAlpha = 0.45; g.translate(px, py); g.rotate(rnd() * 3); g.fillStyle = ['#ff8fbf', '#7fd6ff', '#ffd23f', '#9be38a'][(rnd() * 4) | 0]; rr(g, -s * 1.6, -s * 0.5, s * 3.2, s, s * 0.5); g.fill(); g.restore(); }
+    else { g.fillStyle = 'rgba(255,255,255,.28)'; dot(g, px, py, s * 0.7); }
+  }
+  // start mat
+  const st = center(startI);
+  g.fillStyle = 'rgba(255,255,255,.55)'; g.beginPath(); g.ellipse(st.x, st.y + cs * 0.24, cs * 0.36, cs * 0.14, 0, 0, 7); g.fill();
+  g.strokeStyle = th.route; g.lineWidth = Math.max(1.5, cs * 0.04); g.setLineDash([cs * 0.08, cs * 0.06]); g.stroke(); g.setLineDash([]);
+}
+// the place 噗噗 is walking to (drawn into the cached layer; the friend is drawn live)
+function paintGoal(g, th) {
+  const c = center(goalI), s = cs, cx = c.x - s * 0.08, cy = c.y - s * 0.02;
+  g.save(); g.translate(cx, cy); g.scale(s / 100, s / 100); g.lineJoin = 'round'; g.lineCap = 'round';
+  g.fillStyle = 'rgba(255,255,160,.45)'; dot(g, 0, 0, 44);
+  g.fillStyle = 'rgba(0,0,0,.16)'; g.beginPath(); g.ellipse(0, 33, 34, 8, 0, 0, 7); g.fill();
+  if (th.id === 'garden') {          // little house
+    g.fillStyle = '#fff3d6'; g.strokeStyle = '#a9773b'; g.lineWidth = 3; rr(g, -26, -6, 52, 38, 3); g.fill(); g.stroke();
+    g.fillStyle = '#ff5a4e'; g.strokeStyle = '#a3261c'; g.beginPath(); g.moveTo(-34, -2); g.lineTo(0, -34); g.lineTo(34, -2); g.closePath(); g.fill(); g.stroke();
+    g.fillStyle = '#ff8a7f'; g.beginPath(); g.moveTo(-22, -8); g.lineTo(0, -28); g.lineTo(-4, -8); g.fill();
+    g.fillStyle = '#9a6038'; g.strokeStyle = '#5a3418'; rr(g, -8, 10, 16, 22, 3); g.fill(); g.stroke(); g.fillStyle = '#ffd23f'; dot(g, 4, 21, 2);
+    g.fillStyle = '#8fd0ff'; g.strokeStyle = '#a9773b'; rr(g, -22, 2, 11, 10, 2); g.fill(); g.stroke(); rr(g, 12, 2, 11, 10, 2); g.fill(); g.stroke();
+    g.fillStyle = '#7a5530'; g.fillRect(14, -30, 7, 14);
+  } else if (th.id === 'sea') {      // treasure chest
+    g.fillStyle = '#a8642c'; g.strokeStyle = '#5e3412'; g.lineWidth = 3; rr(g, -28, -4, 56, 34, 4); g.fill(); g.stroke();
+    g.fillStyle = '#c47a3a'; g.beginPath(); g.moveTo(-28, -2); g.quadraticCurveTo(-28, -26, 0, -26); g.quadraticCurveTo(28, -26, 28, -2); g.closePath(); g.fill(); g.stroke();
+    g.fillStyle = '#ffc93a'; g.strokeStyle = '#a87400'; g.lineWidth = 2; g.fillRect(-30, -5, 60, 6); g.strokeRect(-30, -5, 60, 6);
+    g.fillRect(-20, -24, 6, 54); g.fillRect(14, -24, 6, 54);
+    rr(g, -6, -6, 12, 14, 3); g.fill(); g.stroke(); g.fillStyle = '#5e3412'; dot(g, 0, 1, 2);
+    g.fillStyle = '#fff'; star4(g, 22, -26, 7); star4(g, -26, -18, 4);
+  } else if (th.id === 'snow') {     // igloo
+    g.fillStyle = '#ffffff'; g.strokeStyle = '#7fa8d6'; g.lineWidth = 3; g.beginPath(); g.moveTo(-34, 30); g.arc(0, 30, 34, Math.PI, 0); g.closePath(); g.fill(); g.stroke();
+    g.strokeStyle = '#b9d3ee'; g.lineWidth = 2;
+    for (const yy of [16, 2, -12]) { const hw = Math.sqrt(34 * 34 - (30 - yy) ** 2); g.beginPath(); g.moveTo(-hw, yy); g.lineTo(hw, yy); g.stroke(); }
+    for (const [xx, y0, y1] of [[-18, 16, 30], [16, 16, 30], [-4, 2, 16], [-22, 2, 16], [16, 2, 16], [6, -12, 2], [-12, -12, 2]]) { g.beginPath(); g.moveTo(xx, y0); g.lineTo(xx, y1); g.stroke(); }
+    g.fillStyle = '#35507a'; g.beginPath(); g.moveTo(-10, 30); g.arc(0, 30, 10, Math.PI, 0); g.closePath(); g.fill();
+  } else if (th.id === 'candy') {    // big cake
+    g.fillStyle = '#ffd6e8'; g.strokeStyle = '#b03a72'; g.lineWidth = 3; rr(g, -30, 8, 60, 24, 6); g.fill(); g.stroke();
+    g.fillStyle = '#fff4e8'; rr(g, -22, -12, 44, 22, 6); g.fill(); g.stroke();
+    g.fillStyle = '#ff7fb0'; g.beginPath(); g.moveTo(-30, 12); for (let k = 0; k <= 6; k++) g.quadraticCurveTo(-30 + k * 10 - 5, 22, -30 + k * 10, 12); g.lineTo(30, 8); g.lineTo(-30, 8); g.fill();
+    g.fillStyle = '#ff4f6e'; dot(g, 0, -15, 6);
+    g.fillStyle = '#7fd6ff'; g.fillRect(-14, -30, 5, 16); g.fillStyle = '#ffb21f'; g.beginPath(); g.ellipse(-11.5, -34, 3.5, 5.5, 0, 0, 7); g.fill();
+    for (const [sx, sy, col] of [[-16, -2, '#7fd6ff'], [10, -4, '#ffd23f'], [-4, 0, '#9be38a'], [16, 20, '#fff'], [-18, 22, '#fff']]) { g.fillStyle = col; dot(g, sx, sy, 2.4); }
+  } else {                           // moon on a little cloud
+    g.fillStyle = '#ffe680'; g.strokeStyle = '#d6a400'; g.lineWidth = 3; g.beginPath(); g.arc(-2, -6, 26, 0, 7); g.fill(); g.stroke();
+    g.fillStyle = '#525dae'; g.beginPath(); g.arc(12, -14, 22, 0, 7); g.fill();
+    g.fillStyle = '#ffffff'; for (const [cx2, cy2, r2] of [[-18, 24, 12], [0, 20, 15], [18, 24, 12], [0, 28, 12]]) dot(g, cx2, cy2, r2);
+    g.fillStyle = '#ffe680'; star4(g, 24, -26, 8); g.fillStyle = '#fff'; star4(g, -28, -30, 5);
+    g.fillStyle = '#5a4300'; dot(g, -14, -6, 2.4); g.strokeStyle = '#5a4300'; g.lineWidth = 2; g.beginPath(); g.arc(-12, 2, 5, 0.3, 2.4); g.stroke();
+  }
+  g.restore();
+}
+function buildLayer() {
+  const px = cv._mgScale || 1;
+  if (!layer) layer = document.createElement('canvas');
+  if (layer.width !== cv.width || layer.height !== cv.height) { layer.width = cv.width; layer.height = cv.height; }
+  const g = layer.getContext('2d'); g.setTransform(px, 0, 0, px, 0, 0);
+  const th = TH(), rnd = mulberry(seed ^ 0x5bd1e995);
+  paintBg(g, th, rnd);
+  if (A.panel) paintCard(g, A.panel, th); if (A.strip) paintCard(g, A.strip, th);
+  paintFloor(g, th, rnd); paintWalls(g, th, rnd); paintGoal(g, th);
+  layerKey = `${W}x${H}:${px}:${mazeId}:${land}`;
+}
+
+// ---------- fog (迷霧): only the cells near 噗噗 are bright; cells already visited stay a little lit ----------
+function fogCanvas(c) { const px = cv._mgScale || 1; c = c || document.createElement('canvas'); const w = Math.ceil(C * cs * px), h = Math.ceil(R * cs * px); if (c.width !== w || c.height !== h) { c.width = w; c.height = h; } return c; }
+function punchFog(i) {
+  if (!fogOn || !fogMem || fogDirty) return;
+  const g = fogMem.getContext('2d'), px = cv._mgScale || 1, c = center(i), X = (c.x - ox) * px, Y = (c.y - oy) * px, r = cs * 0.95 * px;
+  g.globalCompositeOperation = 'destination-out';
+  const gr = g.createRadialGradient(X, Y, r * 0.2, X, Y, r); gr.addColorStop(0, 'rgba(0,0,0,.55)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = gr; g.fillRect(X - r, Y - r, r * 2, r * 2); g.globalCompositeOperation = 'source-over';
+}
+function rebuildFog() {
+  fogMem = fogCanvas(fogMem); fogF = fogCanvas(fogF); fogDirty = false;
+  const g = fogMem.getContext('2d'); g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, fogMem.width, fogMem.height);
+  g.fillStyle = TH().id === 'night' ? 'rgba(8,8,26,.95)' : 'rgba(20,26,48,.92)'; g.fillRect(0, 0, fogMem.width, fogMem.height);
+  for (let i = 0; i < visited.length; i++) if (visited[i]) punchFog(i);
+}
+function drawFog() {
+  if (fogDirty || !fogMem) rebuildFog();
+  const px = cv._mgScale || 1, g = fogF.getContext('2d');
+  g.globalCompositeOperation = 'copy'; g.drawImage(fogMem, 0, 0); g.globalCompositeOperation = 'destination-out';
+  const p = playerXY(), X = (p.x - ox) * px, Y = (p.y - oy) * px, r = cs * 2.4 * px;
+  const gr = g.createRadialGradient(X, Y, r * 0.45, X, Y, r); gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = gr; g.fillRect(X - r, Y - r, r * 2, r * 2); g.globalCompositeOperation = 'source-over';
+  x.drawImage(fogF, ox, oy, C * cs, R * cs);
+  // the goal twinkles through the fog so you know where to go
+  const gc = center(goalI), a = 0.55 + Math.sin(t * 3) * 0.3;
+  x.globalAlpha = a; x.fillStyle = '#fff6b0'; star4(x, gc.x, gc.y, cs * 0.34); x.globalAlpha = 1;
+}
+
+// ---------- live drawing ----------
+function drawTrail(th) {
+  if (!edges.size && nxt < 0) return;
+  const { par } = routeTree(), route = new Set();
+  for (let i = pos; i !== startI && i >= 0 && par[i] >= 0; i = par[i]) route.add(Math.min(i, par[i]) * 4096 + Math.max(i, par[i]));
+  const dotsOn = (a, b, col, r, step) => { const n = Math.max(1, Math.round(Math.hypot(b.x - a.x, b.y - a.y) / step)); x.fillStyle = col; for (let k = 0; k < n; k++) dot(x, a.x + (b.x - a.x) * k / n, a.y + (b.y - a.y) * k / n, r); };
+  for (const e of edges) { if (route.has(e)) continue; dotsOn(center(Math.floor(e / 4096)), center(e % 4096), th.old, cs * 0.05, cs * 0.25); }
+  for (const e of route) { const a = center(Math.floor(e / 4096)), b = center(e % 4096); dotsOn(a, b, 'rgba(255,255,255,.7)', cs * 0.095, cs * 0.25); dotsOn(a, b, th.route, cs * 0.07, cs * 0.25); }
+  if (nxt >= 0) { const a = center(pos), p = playerXY(); dotsOn(a, p, th.route, cs * 0.07, cs * 0.25); }
+}
+function routeTree() { if (routeCache.id !== mazeId) routeCache = { id: mazeId, par: bfs(startI).par }; return routeCache; }
+function drawStars() {
+  for (const s of stars) {
+    if (s.got) continue;
+    const c = center(s.i), k = Math.sin(t * 3 + s.i) * 0.08, r = cs * 0.27;
+    x.fillStyle = 'rgba(255,240,140,.45)'; dot(x, c.x, c.y, r * 1.35);
+    x.fillStyle = '#ffc93a'; x.strokeStyle = '#c98a00'; x.lineWidth = Math.max(1.2, cs * 0.035); x.lineJoin = 'round';
+    star5(x, c.x, c.y + r * 0.05, r * (1 + k), r * 0.48 * (1 + k), Math.sin(t * 2 + s.i) * 0.15); x.fill(); x.stroke();
+    x.fillStyle = 'rgba(255,255,255,.75)'; dot(x, c.x - r * 0.25, c.y - r * 0.2, r * 0.13);
+  }
+}
+function drawHint() {
+  if (hintT <= 0 || state !== 'play') return;
+  const path = pathToGoal(headCell(), hintGentle ? 4 : 1e9), a0 = Math.min(1, hintT / 0.4);
+  let prev = center(headCell());
+  path.forEach((i, j) => {
+    const c = center(i), wave = 0.5 + 0.5 * Math.sin(t * 9 - j * 0.7);
+    x.globalAlpha = a0 * (0.45 + 0.55 * wave);
+    x.fillStyle = 'rgba(255,240,120,.55)'; dot(x, c.x, c.y, cs * 0.3);
+    const ang = Math.atan2(c.y - prev.y, c.x - prev.x), mx = (c.x + prev.x) / 2, my = (c.y + prev.y) / 2, s = cs * 0.2;
+    x.save(); x.translate(mx, my); x.rotate(ang);
+    x.fillStyle = '#ff9a1c'; x.strokeStyle = '#fff'; x.lineWidth = Math.max(1.5, cs * 0.05); x.lineJoin = 'round';
+    x.beginPath(); x.moveTo(s, 0); x.lineTo(-s * 0.7, -s * 0.8); x.lineTo(-s * 0.3, 0); x.lineTo(-s * 0.7, s * 0.8); x.closePath(); x.stroke(); x.fill();
+    x.restore(); prev = c;
+  });
+  x.globalAlpha = 1;
+}
+function drawActors(th) {
+  const g = center(goalI), fr = cs * 0.2, pal = MG.JELLY[th.friend];
+  if (state === 'won') {
+    const k = Math.min(1, winT * 3), b = Math.abs(Math.sin(winT * 7)) * cs * 0.1;
+    MG.puPu(x, g.x + cs * (0.3 - 0.1 * k), g.y + cs * 0.1 - b, cs * 0.24, 'love', Math.sin(winT * 14) * 0.06, { pal, arms: 'up', look: -1, leaf: '#ff9cc2' });
+    MG.puPu(x, g.x - cs * (0.12 + 0.02 * k), g.y + cs * 0.04 - b * 0.8, cs * 0.3, 'love', Math.sin(winT * 14 + 1) * 0.06, { arms: 'up', look: 1 });
+    if ((winT * 3) % 1 < 0.05) MG.fx.burst(g.x, g.y - cs * 0.3, { n: 2, colors: ['#ff4f7a', '#ff9cc2'], shape: 'dot', speed: 60, up: 90, size: Math.max(2, cs * 0.06), life: 0.8, grav: -60 });
+    return;
+  }
+  const wave = Math.sin(t * 3) * 0.04;
+  MG.puPu(x, g.x + cs * 0.24, g.y + cs * 0.16 - Math.abs(Math.sin(t * 2.2)) * cs * 0.04, fr, 'happy', wave, { pal, arms: 'up', look: -0.8, leaf: '#ff9cc2' });
+  const p = playerXY(), r = cs * 0.32;
+  let px = p.x, py = p.y - p.hop * cs * 0.16 + cs * 0.03, sq = -0.08 * p.hop;
+  if (landT > 0) sq = Math.sin((0.3 - landT) * 22) * 0.12 * (landT / 0.3);
+  if (bumpT > 0) { const k = Math.sin((0.25 - bumpT) * 30) * bumpT * cs * 0.3, d = bumpD; px += [k, 0, -k, 0][d]; py += [0, k, 0, -k][d]; sq = 0.1; }
+  const m = bumpT > 0 ? 'ouch' : idleT > 12 && mode === 'slow' ? 'sleep' : mood;
+  MG.puPu(x, px, py, r, m, sq, { look: faceX * 0.8, arms: mood === 'wow' ? 'up' : false });
+}
+function drawButton(b, label, colA, colB, edge, on = true) {
+  const press = pressed === b && pressT > 0;
+  x.fillStyle = on ? edge : '#d9cfb8'; rr(x, b.x, b.y + 5, b.w, b.h, 18); x.fill();
+  const gr = x.createLinearGradient(0, b.y, 0, b.y + b.h); gr.addColorStop(0, on ? colA : '#f6f0e2'); gr.addColorStop(1, on ? colB : '#e8dfc8');
+  x.fillStyle = gr; x.strokeStyle = on ? edge : '#cbbd9a'; x.lineWidth = 3; rr(x, b.x, b.y + (press ? 4 : 0), b.w, b.h, 18); x.fill(); x.stroke();
+  x.fillStyle = 'rgba(255,255,255,.5)'; rr(x, b.x + 10, b.y + (press ? 4 : 0) + 5, b.w - 20, 6, 3); x.fill();
+  const [ic, ...rest] = label.split(' '), word = rest.join(' '), sz = b.w < 140 ? 19 : 21;
+  x.font = `900 ${sz}px ${FONT}`;
+  const tw = x.measureText(word).width, tot = sz * 1.15 + 6 + tw, sx = b.x + b.w / 2 - tot / 2, cy = b.y + b.h / 2 + (press ? 4 : 0) + 1;
+  emo(ic, sx + sz * 0.58, cy, sz);
+  txt(word, sx + sz * 1.15 + 6, cy + 1, sz, on ? '#4a3200' : '#a89770', 'left', 900);
+}
+function drawUI(th) {
+  const hb = btns[0], fb = btns[1];
+  const hintOn = state === 'play' && (mode === 'slow' || hints > 0);
+  drawButton(hb, mode === 'timed' ? `💡 提示×${hints}` : '💡 提示', '#fff3a8', '#ffcf3a', '#c98a00', hintOn);
+  drawButton(fb, freshT > 0 ? '🔀 再按一次' : '🔀 換一個', freshT > 0 ? '#ffd9e8' : '#d9f3ff', freshT > 0 ? '#ff9cc2' : '#7fcbff', freshT > 0 ? '#c0507e' : '#2f78cf', state === 'play');
+  for (const b of padBtns) {
+    const press = pressed === b && pressT > 0, cx = b.x + b.w / 2, cy = b.y + b.h / 2 + (press ? 3 : 0);
+    x.fillStyle = 'rgba(0,0,0,.18)'; rr(x, b.x, b.y + 4, b.w, b.h, 14); x.fill();
+    x.fillStyle = press ? '#d6f5d0' : '#ffffff'; x.strokeStyle = th.card; x.lineWidth = 3; rr(x, b.x, b.y + (press ? 3 : 0), b.w, b.h, 14); x.fill(); x.stroke();
+    x.save(); x.translate(cx, cy); x.rotate(b.d * Math.PI / 2); x.fillStyle = '#3cb85a'; x.strokeStyle = '#1f6e35'; x.lineWidth = 2.5; x.lineJoin = 'round';
+    const s = b.w * 0.26; x.beginPath(); x.moveTo(s, 0); x.lineTo(-s * 0.6, -s * 0.9); x.lineTo(-s * 0.6, s * 0.9); x.closePath(); x.fill(); x.stroke(); x.restore();
+  }
+  const starTxt = stars.length ? `${got} / ${stars.length}` : '';
+  if (land) {
+    const P = A.panel, cx = P.x + P.w / 2;
+    txt(`第 ${level} 關`, cx, 46, 30, th.ink, 'center', 900);
+    emo(th.ic, cx - 52, 86, 22); txt(th.nm, cx + 12, 87, 19, '#4a3b2a', 'center', 800);
+    txt(`走到${th.goal}！`, cx, 116, 16, '#8a7a62', 'center', 700);
+    if (starTxt) { emo('⭐', cx - 34, 150, 24); txt(starTxt, cx + 14, 151, 22, '#c98a00', 'center', 900); }
+    if (mode === 'timed') { emo('⏱', cx - 40, 180, 18); txt(mmss(elapsed), cx + 10, 181, 20, '#4a3b2a', 'center', 900); }
+    if (!showPad && P.h > 470) {   // a cheering 噗噗 fills the empty part of the side card
+      const r = Math.min(46, (P.y + P.h - 350) * 0.3), py = P.y + P.h - r * 1.6 - 14, hop = Math.abs(Math.sin(t * 3)) * 6;
+      MG.puPu(x, cx, py - hop, r, state === 'won' ? 'love' : mood === 'wow' ? 'wow' : 'happy', hop ? -0.03 : 0.05, { arms: 'up', look: Math.sin(t * 0.8) * 0.6 });
+      txt(state === 'won' ? '好棒！' : got && got === stars.length ? '星星全拿到了！' : '加油！', cx, py - r * 1.55 - 14, 18, th.ink, 'center', 900);
+    }
+  } else {
+    const S0 = A.strip;
+    if (showPad) {
+      if (starTxt) { emo('⭐', hb.x + 30, S0.y + S0.h - 52, 22); txt(starTxt, hb.x + 82, S0.y + S0.h - 51, 20, '#c98a00', 'center', 900); }
+      if (mode === 'timed') { emo('⏱', fb.x + 26, S0.y + S0.h - 52, 18); txt(mmss(elapsed), fb.x + 76, S0.y + S0.h - 51, 20, '#4a3b2a', 'center', 900); }
+      txt(`第 ${level} 關`, hb.x + hb.w / 2, S0.y + S0.h - 20, 15, '#8a7a62', 'center', 800);
+    } else {
+      const cx = W / 2, cy = hb.y + hb.h / 2;
+      const two = mode === 'timed' && starTxt;
+      if (starTxt) { emo('⭐', cx - 30, two ? cy - 13 : cy, 22); txt(starTxt, cx + 14, (two ? cy - 13 : cy) + 1, 20, '#c98a00', 'center', 900); }
+      if (mode === 'timed') { const yy = two ? cy + 15 : cy; emo('⏱', cx - 32, yy, 17); txt(mmss(elapsed), cx + 12, yy + 1, 19, '#4a3b2a', 'center', 900); }
+    }
+    if (headerH) {
+      const hy = oy - headerH / 2 - 2, label = `第 ${level} 關・幫噗噗走到${th.goal}！`;
+      x.font = `900 19px ${FONT}`; const w = x.measureText(label).width + 56;
+      x.fillStyle = 'rgba(255,255,255,.88)'; rr(x, W / 2 - w / 2, hy - 19, w, 38, 19); x.fill(); x.strokeStyle = th.card; x.lineWidth = 2.5; x.stroke();
+      emo(th.ic, W / 2 - w / 2 + 22, hy, 19); txt(label, W / 2 + 12, hy + 1, 19, th.ink, 'center', 900);
+    }
+  }
+}
+function draw() {
+  const px = cv._mgScale || 1, key = `${W}x${H}:${px}:${mazeId}:${land}`;
+  if (key !== layerKey) buildLayer();
+  x.drawImage(layer, 0, 0, W, H);
+  const th = TH();
+  drawTrail(th); drawStars(); drawHint(); drawActors(th);
+  if (fogOn && state !== 'won') drawFog();
+  MG.fx.draw(x);
+  for (const f of floats) { x.globalAlpha = clamp(f.life * 2, 0, 1); txt(f.text, f.x, f.y, Math.max(14, cs * 0.4), '#fff3a0', 'center', 900, 'rgba(90,60,0,.85)', 4); }
+  x.globalAlpha = 1;
+  drawUI(th);
+}
+
+// ---------- menu ----------
+function menu() {
+  state = 'menu';
+  level = Math.min(LEVELS, MG.store.get('maze.pickLevel', 1)); showPad = isTouch && level >= PAD_FROM;
+  layoutAreas(); seed = ((Math.random() * 2147483646) | 0) + 1; [L, S] = pickDims(level);
+  buildMaze(); placeMaze(); resetRun();
+  MG.choose({
+    id: 'maze', title: '噗噗走迷宮',
+    html: `<p>幫噗噗走出迷宮，找到好朋友！<b>按住噗噗</b>沿著路拖，噗噗就會跟著手指走，不會穿過牆壁。也可以<b>點一下</b>想去的地方，或往一個方向<b>滑一下</b>走到路口。</p>` +
+      `<p>死路裡藏著 ⭐ 星星，撿不撿都可以。走不出來就按 💡 提示 ^_^</p>`,
+    picks: [
+      { key: 'tap', title: '點一下就走過去', def: 'on', options: [{ id: 'on', label: '👆 要', sub: '點格子，噗噗自己走過去' }, { id: 'off', label: '✋ 不要', sub: '自己拖著走，比較難' }] },
+      { key: 'fog', title: '迷霧', def: 'off', options: [{ id: 'off', label: '☀️ 不要', sub: '整個迷宮都看得到' }, { id: 'on', label: '🌫️ 要', sub: '只看得到噗噗旁邊' }] },
+    ],
+    modes: [{ id: 'slow', label: '🐢 慢慢走', sub: '不計時、提示用不完' }, { id: 'timed', label: '⏱ 計時挑戰', sub: '看看幾秒走到' }],
+    levels: { count: LEVELS, max: LEVELS, label: n => `${n} ${THEMES[(n - 1) % THEMES.length].ic}` },
+    keys: '按住噗噗拖著走、點一下格子、滑一下　電腦：<kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd> 走到路口、<kbd>H</kbd> 提示',
+    playing: () => state === 'play',
+    start: (m, lv, pk) => { mode = m; tapOn = !pk || pk.tap !== 'off'; fogOn = !!pk && pk.fog === 'on'; startLevel(lv); },
+  });
+  hud(true);
+}
+menu();
+
+// small hook for automated tests: read-only snapshots
+window.MZT = {
+  get state() { return state; }, get level() { return level; }, get mode() { return mode; }, get seed() { return seed; },
+  get tapOn() { return tapOn; }, get fogOn() { return fogOn; }, get pad() { return showPad; },
+  get pos() { return pos; }, get nxt() { return nxt; }, get tt() { return tt; }, get queue() { return queue.slice(); },
+  get steps() { return steps; }, get got() { return got; }, get bad() { return bad; }, get hintT() { return hintT; }, get hints() { return hints; },
+  get frames() { return frames; }, get elapsed() { return elapsed; },
+  dims: () => ({ L, S, C, R, land, cs, ox, oy, W, H, headerH }),
+  maze: () => ({ L, S, pass: Array.from(pass), start: startI, goal: goalI, stars: stars.map(s => ({ i: s.i, got: s.got })) }),
+  log: () => log.slice(),
+  disp: i => disp(i), center: i => center(i), player: () => playerXY(),
+  btns: () => btns.map(b => ({ id: b.id, x: b.x, y: b.y, w: b.w, h: b.h })), padBtns: () => padBtns.map(b => ({ d: b.d, x: b.x, y: b.y, w: b.w, h: b.h })),
+  toClient(lx, ly) { const rc = cv.getBoundingClientRect(), B = 3; return { x: rc.left + B + lx * (rc.width - 2 * B) / W, y: rc.top + B + ly * (rc.height - 2 * B) / H }; },
+  gen: (Lw, Sh, sd, lvl) => { const m = genMaze(Lw, Sh, sd, lvl); return { pass: Array.from(m.ps), start: m.start, goal: m.goal, stars: m.stars }; },
+  sizes: SIZES,
+};
+
+MG.loop(dt => {
+  t += dt; frames++;
+  update(dt);
+  draw();
+});
+</script>
+</body>
+</html>
