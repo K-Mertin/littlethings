@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>動物連連看</title>
+<link rel="stylesheet" href="mini.css">
+</head>
+<body>
+<main class="mg-stage"><canvas id="cv" aria-label="遊戲畫面"></canvas></main>
+<script src="mini.js"></script>
+<script>
+'use strict';
+MG.init({ id: 'link', title: '動物連連看', stats: ['level', 'score'] });
+const cv = document.getElementById('cv'), x = cv.getContext('2d');
+let W = 360, H = 580, land = false;
+MG.fit(cv, (sw, sh) => { land = sw > sh * 1.1; [W, H] = land ? [660, 400] : [360, 580]; return [W, H]; });
+const EMOJI = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+const ANIMALS = ['🐶', '🐱', '🐰', '🦊', '🐼', '🐸', '🐵', '🐧', '🐙', '🦁', '🐷', '🐨', '🦄', '🐢', '🐝', '🐳', '🦉', '🐞', '🐤', '🦋', '🐯', '🐮'];
+const LEVELS = [
+  { a: 6, b: 6, types: 9, time: 150 }, { a: 6, b: 8, types: 12, time: 170 }, { a: 8, b: 8, types: 16, time: 190 },
+  { a: 8, b: 10, types: 20, time: 210 }, { a: 8, b: 10, types: 22, time: 190 },
+];
+let level, score, grid, R_, C_, tile, ox, oy, sel = null, links = [], left, maxT, hints, shuffles, state = 'ready', t = 0, combo = 0, lastMatch = -9, hintPair = null, shakeCell = null, pops = [], gone = [];
+
+function setupLevel(n) {
+  level = n; const L = LEVELS[Math.min(n, LEVELS.length) - 1];
+  // the long side of the board follows the screen
+  [R_, C_] = land ? [Math.min(L.a, L.b), Math.max(L.a, L.b)] : [Math.max(L.a, L.b), Math.min(L.a, L.b)];
+  const total = R_ * C_, types = ANIMALS.slice().sort(() => Math.random() - 0.5).slice(0, L.types), pool = [];
+  for (let i = 0; pool.length < total; i++) pool.push(types[Math.floor(i / 2) % types.length], types[Math.floor(i / 2) % types.length]);
+  pool.length = total; MG.shuffle(pool);
+  // grid with an empty one-cell border so links can go around the outside
+  grid = Array.from({ length: R_ + 2 }, () => Array(C_ + 2).fill(null));
+  for (let r = 0; r < R_; r++) for (let c = 0; c < C_; c++) grid[r + 1][c + 1] = pool[r * C_ + c];
+  maxT = L.time; left = maxT; hints = 3; shuffles = 2; sel = null; links = []; combo = 0; hintPair = null; gone = [];
+  layout(); ensureMoves(); hud();
+}
+function layout() {
+  const topH = 40;
+  tile = Math.floor(Math.min((W - 12) / (C_ + 2), (H - topH - 8) / (R_ + 2)));
+  ox = Math.round((W - tile * (C_ + 2)) / 2); oy = Math.round(topH + (H - topH - tile * (R_ + 2)) / 2);
+}
+cv.onfit = () => { if (grid) layout(); };
+function hud() { MG.stat('level', `第 ${level} 關`); MG.stat('score', `${score} 分`); }
+const cellXY = (r, c) => [ox + c * tile + tile / 2, oy + r * tile + tile / 2];
+
+// ---------- path finding: at most two turns ----------
+function findPath(a, b) {
+  const RR = R_ + 2, CC = C_ + 2, DIRS = [[0, 1], [1, 0], [0, -1], [-1, 0]];
+  const best = new Map(), q = [];
+  const key = (r, c, d) => (r * CC + c) * 4 + d;
+  for (let d = 0; d < 4; d++) q.push({ r: a[0], c: a[1], d, turns: 0, prev: null, start: true });
+  while (q.length) {
+    const s = q.shift();
+    const [dr, dc] = DIRS[s.d]; const nr = s.r + dr, nc = s.c + dc;
+    if (nr < 0 || nc < 0 || nr >= RR || nc >= CC) continue;
+    const node = { r: nr, c: nc, d: s.d, turns: s.turns, prev: s };
+    if (nr === b[0] && nc === b[1]) { const pts = []; let n = node; while (n) { pts.push([n.r, n.c]); n = n.prev; } return pts.reverse(); }
+    if (grid[nr][nc] !== null) continue;
+    const k = key(nr, nc, s.d); if (best.has(k) && best.get(k) <= s.turns) continue; best.set(k, s.turns);
+    for (let d = 0; d < 4; d++) {
+      if ((d + 2) % 4 === s.d) continue;
+      const turns = s.turns + (d !== s.d ? 1 : 0); if (turns > 2) continue;
+      const nn = { r: nr, c: nc, d, turns, prev: node };
+      if (d === s.d) q.unshift(nn); else q.push(nn);
+    }
+  }
+  return null;
+}
+function anyMove() {
+  const cells = []; for (let r = 1; r <= R_; r++) for (let c = 1; c <= C_; c++) if (grid[r][c]) cells.push([r, c]);
+  for (let i = 0; i < cells.length; i++) for (let j = i + 1; j < cells.length; j++) {
+    const [a, b] = [cells[i], cells[j]];
+    if (grid[a[0]][a[1]] === grid[b[0]][b[1]] && findPath(a, b)) return [a, b];
+  }
+  return null;
+}
+function reshuffle() {
+  const cells = [], vals = []; for (let r = 1; r <= R_; r++) for (let c = 1; c <= C_; c++) if (grid[r][c]) { cells.push([r, c]); vals.push(grid[r][c]); }
+  MG.shuffle(vals); cells.forEach(([r, c], i) => grid[r][c] = vals[i]); sel = null; hintPair = null;
+}
+function ensureMoves() { let tries = 0; while (remaining() && !anyMove() && tries++ < 30) reshuffle(); }
+const remaining = () => grid.some(row => row.some(v => v));
+
+// ---------- input ----------
+cv.addEventListener('pointerdown', e => {
+  if (state !== 'play') return;
+  const p = cv.logical(e);
+  // hint / shuffle buttons in the top strip
+  if (p.y < 40) { if (p.x > W - 96) doShuffle(); else if (p.x > W - 186) doHint(); return; }
+  const c = Math.floor((p.x - ox) / tile), r = Math.floor((p.y - oy) / tile);
+  if (r < 1 || c < 1 || r > R_ || c > C_ || !grid[r][c]) return;
+  if (!sel) { sel = [r, c]; MG.sfx('flip'); return; }
+  if (sel[0] === r && sel[1] === c) { sel = null; return; }
+  if (grid[sel[0]][sel[1]] !== grid[r][c]) { sel = [r, c]; MG.sfx('flip'); return; }
+  const path = findPath(sel, [r, c]);
+  if (!path) { shakeCell = { r, c, t: 0.3 }; MG.sfx('bad'); MG.toast('中間被擋住了，轉彎最多兩次喔'); sel = [r, c]; return; }
+  match(sel, [r, c], path); sel = null;
+});
+addEventListener('keydown', e => { if (state !== 'play') return; if (e.key === 'h' || e.key === 'H') doHint(); if (e.key === 'r' || e.key === 'R') doShuffle(); });
+function match(a, b, path) {
+  const ch = grid[a[0]][a[1]];
+  links.push({ pts: path.map(([r, c]) => cellXY(r, c)), life: 0.35 });
+  for (const [r, c] of [a, b]) { const [px, py] = cellXY(r, c); gone.push({ x: px, y: py, ch, life: 0.35 }); MG.fx.burst(px, py, { n: 8, colors: ['#ffd23f', '#ff8ac2', '#fff'], speed: 120, size: 4, shape: 'star', life: 0.5 }); grid[r][c] = null; }
+  combo = t - lastMatch < 3 ? combo + 1 : 1; lastMatch = t;
+  const pts = 10 + (combo > 1 ? Math.min(combo, 8) * 5 : 0); score += pts; MG.sfx(combo > 2 ? 'good' : 'pop');
+  const [mx, my] = cellXY(b[0], b[1]); pops.push({ x: mx, y: my - 10, t: `+${pts}${combo > 1 ? ` ${combo} 連` : ''}`, life: 0.8 });
+  if (hintPair && hintPair.some(([r, c]) => (r === a[0] && c === a[1]) || (r === b[0] && c === b[1]))) hintPair = null;
+  hud();
+  if (!remaining()) return setTimeout(levelClear, 450);
+  if (!anyMove()) { reshuffle(); ensureMoves(); MG.toast('沒有可以連的了，幫你重新洗牌'); }
+}
+function doHint() { if (hints <= 0) { MG.toast('提示用完了'); return; } const m = anyMove(); if (!m) return; hints--; hintPair = m; MG.sfx('good'); }
+function doShuffle() { if (shuffles <= 0) { MG.toast('洗牌用完了'); return; } shuffles--; reshuffle(); ensureMoves(); MG.sfx('clear'); }
+
+// ---------- draw ----------
+function drawTile(px, py, ch, s, hl) {
+  const sz = tile - 4, X = px - sz / 2, Y = py - sz / 2;
+  x.fillStyle = hl === 'sel' ? '#ffb72b' : '#d8c08c'; x.beginPath(); x.roundRect(X, Y + 3, sz, sz, sz * 0.18); x.fill();
+  const g = x.createLinearGradient(0, Y, 0, Y + sz); g.addColorStop(0, hl === 'sel' ? '#fff6c9' : hl === 'hint' ? '#e6ffe0' : '#fffdf6'); g.addColorStop(1, hl === 'sel' ? '#ffe08a' : hl === 'hint' ? '#bff0b0' : '#f3e6c6');
+  x.fillStyle = g; x.beginPath(); x.roundRect(X, Y, sz, sz, sz * 0.18); x.fill();
+  x.strokeStyle = hl === 'sel' ? '#ff9f1c' : hl === 'hint' ? '#4cc96a' : 'rgba(180,150,90,.5)'; x.lineWidth = hl ? 3 : 1.2; x.stroke();
+  x.fillStyle = 'rgba(255,255,255,.6)'; x.fillRect(X + sz * 0.15, Y + 2, sz * 0.7, 2);
+  x.save(); x.translate(px, py + 1); x.scale(s, s); x.fillStyle = '#000'; x.font = `${Math.floor(sz * 0.68)}px ${EMOJI}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(ch, 0, 1); x.restore();
+}
+function draw() {
+  const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#c9f0d8'); g.addColorStop(1, '#fff5d6'); x.fillStyle = g; x.fillRect(0, 0, W, H);
+  // leafy corners
+  for (const [lx, ly, a] of [[0, H, -0.6], [W, H, -2.5], [0, 40, 0.5], [W, 40, 2.6]]) { x.save(); x.translate(lx, ly); x.rotate(a); for (let i = 0; i < 3; i++) { x.fillStyle = ['#7fcf6a', '#5fb84f', '#94dc7a'][i]; x.beginPath(); x.ellipse(30 + i * 14, -i * 8, 34, 12, -0.3 + i * 0.3, 0, 7); x.fill(); } x.restore(); }
+  // board backing
+  x.fillStyle = 'rgba(255,255,255,.55)'; x.beginPath(); x.roundRect(ox + tile * 0.6, oy + tile * 0.6, tile * (C_ + 0.8), tile * (R_ + 0.8), 14); x.fill();
+  for (let r = 1; r <= R_; r++) for (let c = 1; c <= C_; c++) {
+    const v = grid[r][c]; if (!v) continue;
+    const [px, py] = cellXY(r, c);
+    const isSel = sel && sel[0] === r && sel[1] === c, isHint = hintPair && hintPair.some(([a, b]) => a === r && b === c);
+    let sx = 0; if (shakeCell && shakeCell.r === r && shakeCell.c === c) sx = Math.sin(shakeCell.t * 60) * 3;
+    drawTile(px + sx, py - (isSel ? 3 : 0), v, isSel ? 1.08 + Math.sin(t * 10) * 0.03 : isHint ? 1 + Math.sin(t * 8) * 0.06 : 1, isSel ? 'sel' : isHint ? 'hint' : '');
+  }
+  for (const gq of gone) { const k = gq.life / 0.35; x.globalAlpha = k; x.fillStyle = '#000'; x.font = `${Math.floor(tile * 0.68 * (1 + (1 - k) * 0.6))}px ${EMOJI}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(gq.ch, gq.x, gq.y - (1 - k) * 14); }
+  x.globalAlpha = 1;
+  for (const l of links) {
+    x.globalAlpha = Math.min(1, l.life * 4); x.strokeStyle = '#ff5a8a'; x.lineWidth = 5; x.lineCap = 'round'; x.lineJoin = 'round';
+    x.shadowColor = '#fff'; x.shadowBlur = 8; x.beginPath(); l.pts.forEach(([a, b], i) => i ? x.lineTo(a, b) : x.moveTo(a, b)); x.stroke(); x.shadowBlur = 0;
+  }
+  x.globalAlpha = 1;
+  MG.fx.draw(x);
+  for (const p of pops) { x.globalAlpha = Math.min(1, p.life * 2); x.font = '900 16px system-ui,"Noto Sans TC",sans-serif'; x.textAlign = 'center'; x.lineWidth = 4; x.strokeStyle = '#fff'; x.strokeText(p.t, p.x, p.y); x.fillStyle = '#ff7a00'; x.fillText(p.t, p.x, p.y); }
+  x.globalAlpha = 1;
+  // top strip: time bar, hint, shuffle
+  const tw = W - 200, f = Math.max(0, left / maxT);
+  x.fillStyle = 'rgba(255,255,255,.8)'; x.beginPath(); x.roundRect(8, 10, tw, 20, 10); x.fill();
+  x.fillStyle = f < 0.2 ? '#ff5a4e' : f < 0.5 ? '#ffb21f' : '#4cc96a'; x.beginPath(); x.roundRect(11, 13, Math.max(8, (tw - 6) * f), 14, 7); x.fill();
+  x.fillStyle = '#3a2f22'; x.font = '700 12px "Noto Sans TC",system-ui'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(`⏱ ${Math.ceil(left)}`, 8 + tw / 2, 20.5);
+  const btn = (bx, label, n) => { x.fillStyle = n > 0 ? '#fff' : '#eee'; x.strokeStyle = n > 0 ? '#ffb72b' : '#ccc'; x.lineWidth = 2; x.beginPath(); x.roundRect(bx, 6, 84, 28, 10); x.fill(); x.stroke(); x.fillStyle = n > 0 ? '#6b4a22' : '#aaa'; x.font = '700 13px "Noto Sans TC",system-ui'; x.fillText(`${label} ${n}`, bx + 42, 20.5); };
+  btn(W - 180, '💡 提示', hints); btn(W - 90, '🔀 洗牌', shuffles);
+}
+
+// ---------- flow ----------
+function update(dt) {
+  t += dt; left -= dt;
+  for (const l of links) l.life -= dt; links = links.filter(l => l.life > 0);
+  for (const g2 of gone) g2.life -= dt; gone = gone.filter(g2 => g2.life > 0);
+  for (const p of pops) { p.y -= 30 * dt; p.life -= dt; } pops = pops.filter(p => p.life > 0);
+  if (shakeCell) { shakeCell.t -= dt; if (shakeCell.t <= 0) shakeCell = null; }
+  MG.fx.step(dt);
+  if (left <= 0) { left = 0; timeUp(); }
+}
+function levelClear() {
+  if (state !== 'play') return;
+  state = 'between'; const bonus = Math.ceil(left) * 2; score += bonus; hud(); MG.sfx('win');
+  MG.record('link', score); MG.store.set('link.level', Math.max(MG.store.get('link.level', 1), level + 1));
+  MG.panel({ title: `第 ${level} 關完成！`, html: `<p>剩下 ${Math.ceil(left)} 秒，時間獎勵 +${bonus}</p><div class="big">${score} 分</div>`,
+    buttons: [{ label: '下一關', on: () => { setupLevel(level + 1); state = 'play'; MG.hide(); } }, { label: '回遊戲區', alt: true, on: () => location.href = 'index.html' }] });
+}
+function timeUp() {
+  state = 'over'; MG.sfx('over'); const rec = MG.record('link', score);
+  MG.panel({ title: '時間到了！', html: `<p>到了第 ${level} 關</p><div class="big">${score} 分</div>` + (rec.isNew && score > 0 ? '<p class="new">新紀錄！^_^</p>' : `<p>最高紀錄：${rec.best} 分</p>`),
+    buttons: [{ label: '再試這關', on: () => { setupLevel(level); state = 'play'; MG.hide(); } }, { label: '從第 1 關', alt: true, on: start }] });
+}
+function start() { score = 0; setupLevel(1); state = 'play'; MG.hide(); }
+score = 0; setupLevel(1);
+MG.panel({ title: '動物連連看', html: '<p>點兩隻一樣的動物，如果可以用一條<b>最多轉兩個彎</b>的線連起來，牠們就會消失！</p><p>線不能穿過別的動物，但可以從外面繞過去。全部消完就過關。</p>',
+  keys: '點選動物　<kbd>H</kbd> 提示　<kbd>R</kbd> 洗牌', buttons: [{ label: '開始', on: start }] });
+MG.loop(dt => { if (state === 'play') update(dt); else { t += dt; MG.fx.step(dt); } draw(); });
+</script>
+</body>
+</html>

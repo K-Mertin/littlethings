@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>噗噗泡泡龍</title>
+<link rel="stylesheet" href="mini.css">
+</head>
+<body>
+<main class="mg-stage"><canvas id="cv" aria-label="遊戲畫面"></canvas></main>
+<script src="mini.js"></script>
+<script>
+'use strict';
+MG.init({ id: 'bubble', title: '噗噗泡泡龍', stats: ['level', 'score'] });
+const W = 360, H = 580, cv = document.getElementById('cv'), x = cv.getContext('2d');
+MG.fit(cv, W, H);
+
+const COLS = 8, R = 19, D = R * 2, RH = D * 0.866, X0 = (W - (COLS * D + R)) / 2, TOP0 = 34, DANGER = 470, SHOOT = { x: W / 2, y: 512 }, SPEED = 950;
+const COLORS = [
+  { c: '#ff5a6e', d: '#c0283c', name: '紅' }, { c: '#ffc93a', d: '#c98a00', name: '黃' }, { c: '#4cc96a', d: '#237a3b', name: '綠' },
+  { c: '#3d9bff', d: '#1d5fb0', name: '藍' }, { c: '#b07cff', d: '#6a3fc0', name: '紫' }, { c: '#ff9f4a', d: '#c0601a', name: '橘' },
+];
+let grid, ceilY, level, score, nColors, shot, cur, nxt, aim = -Math.PI / 2, misses, dropEvery, state = 'ready', falling = [], pops = [], t = 0, shakeT = 0, combo = 0;
+
+const cols = r => (r % 2 ? COLS - 1 : COLS);
+const cx = (r, c) => X0 + R + c * D + (r % 2 ? R : 0);
+const cy = r => ceilY + R + r * RH;
+const ROWS = 15;
+function neighbors(r, c) {
+  const odd = r % 2, out = [[r, c - 1], [r, c + 1]];
+  for (const dr of [-1, 1]) { if (odd) out.push([r + dr, c], [r + dr, c + 1]); else out.push([r + dr, c - 1], [r + dr, c]); }
+  return out.filter(([a, b]) => a >= 0 && a < ROWS && b >= 0 && b < cols(a));
+}
+function newLevel(n) {
+  level = n; nColors = Math.min(6, 3 + Math.floor((n - 1) / 2));
+  const rows = Math.min(8, 4 + n);
+  dropEvery = Math.max(4, 8 - Math.floor(n / 2));
+  grid = Array.from({ length: ROWS }, (_, r) => Array(cols(r)).fill(-1));
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols(r); c++) {
+    // small clusters so there are matches to find
+    const left = c > 0 ? grid[r][c - 1] : -1, up = r > 0 ? grid[r - 1][Math.min(c, cols(r - 1) - 1)] : -1;
+    const rnd = Math.random();
+    grid[r][c] = rnd < 0.35 && left >= 0 ? left : rnd < 0.55 && up >= 0 ? up : MG.randi(0, nColors - 1);
+  }
+  ceilY = TOP0; misses = 0; shot = null; falling = []; combo = 0;
+  cur = pickColor(); nxt = pickColor();
+  hud();
+}
+function pickColor() {
+  const present = new Set(); for (const row of grid) for (const v of row) if (v >= 0) present.add(v);
+  const arr = present.size ? [...present] : [...Array(nColors).keys()];
+  return MG.pick(arr);
+}
+function hud() { MG.stat('level', `第 ${level} 關`); MG.stat('score', `${score} 分`); }
+
+// ---------- aiming / shooting ----------
+const clampAim = a => Math.max(-Math.PI + 0.16, Math.min(-0.16, a));
+function setAimTo(p) { if (p.y < SHOOT.y - 8) aim = clampAim(Math.atan2(p.y - SHOOT.y, p.x - SHOOT.x)); }
+let aiming = false;
+cv.addEventListener('pointerdown', e => {
+  if (state !== 'play') return;
+  const p = cv.logical(e);
+  if (Math.hypot(p.x - (SHOOT.x + 62), p.y - (SHOOT.y + 18)) < 26) { swap(); return; }
+  aiming = true; try { cv.setPointerCapture(e.pointerId); } catch {} setAimTo(p);
+});
+cv.addEventListener('pointermove', e => { if (state !== 'play') return; if (aiming || e.pointerType === 'mouse') setAimTo(cv.logical(e)); });
+cv.addEventListener('pointerup', e => { if (!aiming) return; aiming = false; const p = cv.logical(e); if (p.y < SHOOT.y - 8) { setAimTo(p); fire(); } });
+cv.addEventListener('pointercancel', () => aiming = false);
+const held = { l: false, r: false };
+addEventListener('keydown', e => {
+  if (state !== 'play') return;
+  if (e.key === 'ArrowLeft') held.l = true; else if (e.key === 'ArrowRight') held.r = true;
+  else if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'Enter') { e.preventDefault(); fire(); }
+  else if (e.key === 's' || e.key === 'S' || e.key === 'Shift') swap();
+});
+addEventListener('keyup', e => { if (e.key === 'ArrowLeft') held.l = false; if (e.key === 'ArrowRight') held.r = false; });
+function swap() { if (shot) return; [cur, nxt] = [nxt, cur]; MG.sfx('flip'); }
+function fire() {
+  if (shot || state !== 'play') return;
+  shot = { x: SHOOT.x, y: SHOOT.y, vx: Math.cos(aim) * SPEED, vy: Math.sin(aim) * SPEED, col: cur };
+  cur = nxt; nxt = pickColor(); MG.sfx('jump');
+}
+// guide: full trajectory with wall bounces, stops at the first bubble / ceiling
+function guide() {
+  const pts = [[SHOOT.x, SHOOT.y]]; let px = SHOOT.x, py = SHOOT.y, vx = Math.cos(aim), vy = Math.sin(aim);
+  const L = X0 + R, Rr = X0 + COLS * D + R - R;
+  for (let i = 0; i < 700; i++) {
+    px += vx * 4; py += vy * 4;
+    if (px < L) { px = L; vx = -vx; pts.push([px, py]); }
+    if (px > Rr) { px = Rr; vx = -vx; pts.push([px, py]); }
+    if (py <= ceilY + R || hits(px, py)) break;
+  }
+  pts.push([px, py]); return pts;
+}
+function hits(px, py) {
+  for (let r = 0; r < ROWS; r++) { const yy = cy(r); if (Math.abs(yy - py) > D) continue; for (let c = 0; c < cols(r); c++) if (grid[r][c] >= 0 && Math.hypot(cx(r, c) - px, yy - py) < D * 0.86) return true; }
+  return false;
+}
+
+// ---------- update ----------
+function update(dt) {
+  t += dt; shakeT = Math.max(0, shakeT - dt);
+  if (held.l) aim = clampAim(aim - dt * 1.6); if (held.r) aim = clampAim(aim + dt * 1.6);
+  if (shot) {
+    const steps = 4;
+    for (let s = 0; s < steps && shot; s++) {
+      shot.x += shot.vx * dt / steps; shot.y += shot.vy * dt / steps;
+      const L = X0 + R, Rr = X0 + COLS * D;
+      if (shot.x < L) { shot.x = L; shot.vx = Math.abs(shot.vx); MG.sfx('step'); }
+      if (shot.x > Rr) { shot.x = Rr; shot.vx = -Math.abs(shot.vx); MG.sfx('step'); }
+      if (shot.y <= ceilY + R || hits(shot.x, shot.y)) settle();
+    }
+  }
+  for (const f of falling) { f.vy += 1400 * dt; f.x += f.vx * dt; f.y += f.vy * dt; f.rot += f.vr * dt; }
+  falling = falling.filter(f => f.y < H + 40);
+  for (const p of pops) { p.y -= 40 * dt; p.life -= dt; } pops = pops.filter(p => p.life > 0);
+  MG.fx.step(dt);
+}
+function settle() {
+  // nearest empty cell to where the shot stopped
+  let best = null, bd = 1e9;
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < cols(r); c++) {
+    if (grid[r][c] >= 0) continue;
+    const d = Math.hypot(cx(r, c) - shot.x, cy(r) - shot.y);
+    if (d < bd && (r === 0 || neighbors(r, c).some(([a, b]) => grid[a][b] >= 0))) { bd = d; best = [r, c]; }
+  }
+  const col = shot.col; shot = null;
+  if (!best) return;
+  const [r, c] = best; grid[r][c] = col; MG.sfx('place');
+  // same-colour group
+  const group = [], seen = new Set([r + ',' + c]), stack = [[r, c]];
+  while (stack.length) { const [a, b] = stack.pop(); group.push([a, b]); for (const [na, nb] of neighbors(a, b)) { const k = na + ',' + nb; if (!seen.has(k) && grid[na][nb] === col) { seen.add(k); stack.push([na, nb]); } } }
+  if (group.length >= 3) {
+    combo++;
+    for (const [a, b] of group) { MG.fx.burst(cx(a, b), cy(a), { n: 7, colors: [COLORS[grid[a][b]].c, '#fff'], speed: 160, up: 40, size: 4, life: 0.5 }); grid[a][b] = -1; }
+    let pts = group.length * 10;
+    // anything no longer connected to the ceiling falls
+    const att = new Set(), st2 = [];
+    for (let c2 = 0; c2 < cols(0); c2++) if (grid[0][c2] >= 0) { att.add('0,' + c2); st2.push([0, c2]); }
+    while (st2.length) { const [a, b] = st2.pop(); for (const [na, nb] of neighbors(a, b)) { const k = na + ',' + nb; if (!att.has(k) && grid[na][nb] >= 0) { att.add(k); st2.push([na, nb]); } } }
+    let dropped = 0;
+    for (let a = 0; a < ROWS; a++) for (let b = 0; b < cols(a); b++) if (grid[a][b] >= 0 && !att.has(a + ',' + b)) {
+      falling.push({ x: cx(a, b), y: cy(a), vx: MG.rand(-60, 60), vy: MG.rand(-120, 0), col: grid[a][b], rot: 0, vr: MG.rand(-6, 6) }); grid[a][b] = -1; dropped++;
+    }
+    pts += dropped * 20; if (combo > 1) pts *= combo;
+    score += pts; MG.sfx(dropped ? 'clear' : 'pop');
+    pops.push({ x: cx(r, c), y: cy(r), t: `+${pts}${dropped ? `　掉落 ${dropped}` : ''}`, life: 1 });
+    if (grid.every(row => row.every(v => v < 0))) return levelClear();
+  } else {
+    combo = 0; misses++;
+    if (misses >= dropEvery) { misses = 0; ceilY += RH; shakeT = 0.4; MG.sfx('hit'); MG.toast('天花板往下降了！'); }
+  }
+  // lost?
+  for (let a = 0; a < ROWS; a++) for (let b = 0; b < cols(a); b++) if (grid[a][b] >= 0 && cy(a) + R >= DANGER) return gameOver();
+  // keep the queued colours valid
+  const present = new Set(); for (const row of grid) for (const v of row) if (v >= 0) present.add(v);
+  if (!present.has(cur)) cur = pickColor(); if (!present.has(nxt)) nxt = pickColor();
+  hud();
+}
+
+// ---------- draw ----------
+function bubble(px, py, col, r = R, face = true) {
+  const C = COLORS[col];
+  const g = x.createRadialGradient(px - r * 0.35, py - r * 0.4, r * 0.1, px, py, r);
+  g.addColorStop(0, '#ffffff'); g.addColorStop(0.25, C.c); g.addColorStop(1, C.d);
+  x.fillStyle = g; x.beginPath(); x.arc(px, py, r - 0.5, 0, 7); x.fill();
+  x.strokeStyle = 'rgba(0,0,0,.18)'; x.lineWidth = 1; x.stroke();
+  x.fillStyle = 'rgba(255,255,255,.75)'; x.beginPath(); x.ellipse(px - r * 0.35, py - r * 0.42, r * 0.28, r * 0.15, -0.6, 0, 7); x.fill();
+  if (face) {
+    x.fillStyle = C.d; const blink = ((t * 0.7 + col * 1.3 + px * 0.01) % 4) < 0.1;
+    for (const s of [-1, 1]) { if (blink) x.fillRect(px + s * r * 0.28 - r * 0.1, py - r * 0.02, r * 0.2, r * 0.06); else { x.beginPath(); x.arc(px + s * r * 0.28, py, r * 0.1, 0, 7); x.fill(); } }
+    x.strokeStyle = C.d; x.lineWidth = Math.max(1, r * 0.08); x.lineCap = 'round'; x.beginPath(); x.arc(px, py + r * 0.12, r * 0.18, 0.3, Math.PI - 0.3); x.stroke();
+  }
+}
+function draw() {
+  x.save();
+  if (shakeT) x.translate(MG.rand(-1, 1) * shakeT * 8, 0);
+  const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#d7f0ff'); g.addColorStop(1, '#fff2fa'); x.fillStyle = g; x.fillRect(-10, -10, W + 20, H + 20);
+  // floating background bubbles
+  for (let i = 0; i < 9; i++) { const bx = (i * 61 + Math.sin(t * 0.5 + i) * 10) % W, by = H - ((t * (12 + i * 3) + i * 90) % (H + 40)); x.strokeStyle = 'rgba(120,170,220,.25)'; x.lineWidth = 2; x.beginPath(); x.arc(bx, by, 6 + (i % 4) * 4, 0, 7); x.stroke(); }
+  // side walls
+  x.fillStyle = '#c9e4f6'; x.fillRect(0, 0, X0, H); x.fillRect(W - X0, 0, X0, H);
+  // ceiling plank (comes down with "ceilY") and chains
+  x.fillStyle = '#a8702e'; x.fillRect(0, ceilY - 14, W, 14); x.fillStyle = '#d99a5a'; x.fillRect(0, ceilY - 14, W, 4);
+  if (ceilY > TOP0) { x.strokeStyle = '#7d8792'; x.lineWidth = 3; for (const sx of [40, W - 40]) { x.setLineDash([5, 4]); x.beginPath(); x.moveTo(sx, 0); x.lineTo(sx, ceilY - 14); x.stroke(); x.setLineDash([]); } }
+  for (let i = 0; i < dropEvery; i++) { x.fillStyle = i < dropEvery - misses ? '#ffd23f' : 'rgba(255,255,255,.35)'; x.beginPath(); x.arc(W - 16 - i * 12, ceilY - 7, 4, 0, 7); x.fill(); }
+  // danger line
+  x.strokeStyle = 'rgba(255,90,78,.7)'; x.lineWidth = 2; x.setLineDash([8, 6]); x.beginPath(); x.moveTo(X0, DANGER); x.lineTo(W - X0, DANGER); x.stroke(); x.setLineDash([]);
+  // grid
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < cols(r); c++) if (grid[r][c] >= 0) bubble(cx(r, c), cy(r), grid[r][c]);
+  // guide
+  if (state === 'play' && !shot) {
+    const pts = guide(); x.fillStyle = COLORS[cur].c;
+    let acc = 0; for (let i = 1; i < pts.length; i++) {
+      const [ax, ay] = pts[i - 1], [bx, by] = pts[i], len = Math.hypot(bx - ax, by - ay);
+      for (let d = (16 - acc % 16); d < len; d += 16) { const k = d / len; x.globalAlpha = 0.85; x.beginPath(); x.arc(ax + (bx - ax) * k, ay + (by - ay) * k, 3.2, 0, 7); x.fill(); }
+      acc += len;
+    }
+    x.globalAlpha = 1;
+  }
+  if (shot) bubble(shot.x, shot.y, shot.col);
+  for (const f of falling) { x.save(); x.translate(f.x, f.y); x.rotate(f.rot); bubble(0, 0, f.col); x.restore(); }
+  // shooter: 噗噗 holding a bubble wand
+  x.fillStyle = '#b8dcf2'; x.fillRect(0, 540, W, H - 540); x.fillStyle = '#9fcbe6'; x.fillRect(0, 540, W, 4);
+  x.save(); x.translate(SHOOT.x, SHOOT.y); x.rotate(aim + Math.PI / 2);
+  x.fillStyle = '#8a92a0'; x.beginPath(); x.roundRect(-9, -46, 18, 40, 6); x.fill(); x.fillStyle = '#c9cede'; x.fillRect(-9, -46, 18, 6);
+  x.restore();
+  MG.puPu(x, SHOOT.x, SHOOT.y + 18, 20, combo > 1 ? 'wow' : 'happy', 0, { look: Math.cos(aim) * 1.5, arms: 'up' });
+  if (state === 'play' && !shot) bubble(SHOOT.x + Math.cos(aim) * 40, SHOOT.y + 18 + Math.sin(aim) * 40 - 18, cur, R * 0.9);
+  // next bubble (tap to swap)
+  x.fillStyle = 'rgba(255,255,255,.8)'; x.beginPath(); x.arc(SHOOT.x + 62, SHOOT.y + 18, 22, 0, 7); x.fill();
+  bubble(SHOOT.x + 62, SHOOT.y + 18, nxt, 15);
+  x.fillStyle = '#5a7a9a'; x.font = '700 11px "Noto Sans TC",system-ui'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('點我換', SHOOT.x + 62, SHOOT.y + 50);
+  MG.fx.draw(x);
+  for (const p of pops) { x.globalAlpha = Math.min(1, p.life * 2); x.font = '900 18px system-ui,"Noto Sans TC",sans-serif'; x.lineWidth = 4; x.strokeStyle = '#fff'; x.strokeText(p.t, p.x, p.y); x.fillStyle = '#ff7a00'; x.fillText(p.t, p.x, p.y); }
+  x.globalAlpha = 1;
+  x.restore();
+}
+
+// ---------- flow ----------
+function levelClear() {
+  state = 'between'; const bonus = 100 + level * 50; score += bonus; hud(); MG.sfx('win');
+  MG.record('bubble', score); MG.store.set('bubble.level', Math.max(MG.store.get('bubble.level', 1), level + 1));
+  MG.fx.burst(W / 2, 260, { n: 40, colors: COLORS.map(c => c.c), speed: 260, up: 120, size: 6, shape: 'star', life: 1.2 });
+  setTimeout(() => MG.panel({
+    title: `第 ${level} 關過關！`, html: `<p>過關獎勵 +${bonus}</p><div class="big">${score} 分</div><p>下一關會再難一點點喔</p>`,
+    buttons: [{ label: '下一關', on: () => { newLevel(level + 1); state = 'play'; MG.hide(); } }, { label: '回遊戲區', alt: true, on: () => location.href = 'index.html' }],
+  }), 700);
+}
+function gameOver() {
+  state = 'over'; MG.sfx('over'); shakeT = 0.4;
+  const rec = MG.record('bubble', score);
+  MG.panel({
+    title: '泡泡碰到紅線了！',
+    html: `<p>到了第 ${level} 關</p><div class="big">${score} 分</div>` + (rec.isNew && score > 0 ? `<p class="new">新紀錄！^_^</p>` : `<p>最高紀錄：${rec.best} 分</p>`),
+    buttons: [{ label: '從這關再來', on: () => { newLevel(level); state = 'play'; MG.hide(); } }, { label: '從第 1 關', alt: true, on: start }],
+  });
+}
+function start() { score = 0; newLevel(1); state = 'play'; MG.hide(); }
+score = 0; newLevel(1);
+MG.panel({
+  title: '噗噗泡泡龍',
+  html: `<p>瞄準後發射泡泡，碰到<b>三個以上一樣顏色</b>就會破掉，沒黏住的泡泡會一起掉下來！</p><p>一直沒打破泡泡，天花板就會往下降，泡泡碰到紅線就輸了。</p><p>右下角是下一顆，點它可以交換。</p>${('ontouchstart' in window) && innerWidth > innerHeight ? '<p class="new">📱 把手機直放，泡泡會更大！</p>' : ''}`,
+  keys: '手指按住拖曳瞄準、放開發射　電腦：滑鼠瞄準點擊，或 <kbd>←</kbd><kbd>→</kbd> 瞄準、<kbd>空白鍵</kbd> 發射、<kbd>S</kbd> 交換',
+  buttons: [{ label: '開始', on: start }],
+});
+MG.loop(dt => { if (state === 'play') update(dt); else { t += dt; MG.fx.step(dt); for (const f of falling) { f.vy += 1400 * dt; f.y += f.vy * dt; } } draw(); });
+</script>
+</body>
+</html>
