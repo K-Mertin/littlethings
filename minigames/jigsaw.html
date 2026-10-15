@@ -695,8 +695,9 @@ function buttonsFor(W, H) {
   const bw = 132, bh = 52, gap = 12, y = H - bh - 8, x0 = (W - (bw * 2 + gap)) / 2;
   return [{ id: 'hint', label: '💡 提示', x: x0, y, w: bw, h: bh }, { id: 'peek', label: '👀 看原圖', x: x0 + bw + gap, y, w: bw, h: bh }];
 }
-function slotsFor(W, H, board, pw, ph, pad, btns) {
-  const sp = pad * 1.3, cw = pw + sp, chh = ph + sp, M = 4;
+function slotsFor(W, H, board, pw, ph, pad, btns, spF = 1.3) {
+  // spF > 0: gaps between pieces; spF < 0: pieces may overlap a little (like a real pile), so the board can stay big
+  const sp = spF >= 0 ? pad * spF : Math.min(pw, ph) * spF, cw = pw + sp, chh = ph + sp, M = 4;
   const ncol = Math.floor((W - 2 * M + sp - 2 * pad) / cw), nrow = Math.floor((H - 2 * M + sp - 2 * pad) / chh);
   const out = [];
   if (ncol < 1 || nrow < 1) return out;
@@ -708,7 +709,7 @@ function slotsFor(W, H, board, pw, ph, pad, btns) {
     if (outer.x < M || outer.y < M || outer.x + outer.w > W - M || outer.y + outer.h > H - M) continue;
     if (btns.some(b => hit(outer, { x: b.x - 6, y: b.y - 6, w: b.w + 12, h: b.h + 12 }))) continue;
     if (overlapArea(core, board) > area * 0.32) continue;
-    out.push({ x: core.x, y: core.y, sx: sp * 0.15, sy: sp * 0.15 });
+    out.push({ x: core.x, y: core.y, sx: Math.abs(sp) * 0.15, sy: Math.abs(sp) * 0.15 });
   }
   return out;
 }
@@ -719,11 +720,14 @@ function makeLayout() {
   for (let f = 1; f >= 0.28; f -= 0.02) {
     const Bw = maxW * f, Bh = Bw * 0.75, pw = Bw / gc, ph = Bh / gr, S = Math.min(pw, ph), pad = S * 0.35 + 2;
     // centred if it fits, otherwise try pushing the board to one side to make one big tray
-    for (const [ax, ay] of [[0.5, 0.5], [0.5, 0], [0.5, 1], [0, 0.5], [1, 0.5]]) {
-      const board = { x: 12 + (W - 24 - Bw) * ax, y: top + (bot - top - Bh) * ay, w: Bw, h: Bh };
-      const slots = slotsFor(W, H, board, pw, ph, pad, btns);
-      best = { f, Bw, ax, ay, slots };
-      if (slots.length >= N) break;
+    // gaps first; only when that doesn't fit, let the scattered pieces overlap a bit instead of shrinking the board
+    search: for (const spF of f > 0.55 ? [1.3, 0.4, -0.1] : [1.3]) {
+      for (const [ax, ay] of [[0.5, 0.5], [0.5, 0], [0.5, 1], [0, 0.5], [1, 0.5]]) {
+        const board = { x: 12 + (W - 24 - Bw) * ax, y: top + (bot - top - Bh) * ay, w: Bw, h: Bh };
+        const slots = slotsFor(W, H, board, pw, ph, pad, btns, spF);
+        best = { f, Bw, ax, ay, spF, slots };
+        if (slots.length >= N) break search;
+      }
     }
     if (best.slots.length >= N) break;
   }
@@ -733,7 +737,7 @@ function makeLayout() {
   const bxpx = Math.round((12 + (W - 24 - Bw) * best.ax) * k), bypx = Math.round((top + (bot - top - Bh) * best.ay) * k);
   const board = { x: bxpx / k, y: bypx / k, w: Bw, h: Bh };
   const Ppx = Math.ceil((pad + SHM) * k);
-  return { W, H, k, btns, pw, ph, pwpx, phpx, S, pad, board, bxpx, bypx, Ppx, P: Ppx / k, slots: slotsFor(W, H, board, pw, ph, pad, btns) };
+  return { W, H, k, btns, pw, ph, pwpx, phpx, S, pad, board, bxpx, bypx, Ppx, P: Ppx / k, slots: slotsFor(W, H, board, pw, ph, pad, btns, best.spF) };
 }
 function scatterTargets() {
   const { W, H, pw, ph, pad, btns } = lay;
