@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>噗噗排球</title>
+<link rel="stylesheet" href="mini.css">
+<style>
+body.game{background:linear-gradient(#bfe6ff,#fff3d6)}
+.pad{position:fixed;bottom:max(10px,env(safe-area-inset-bottom));display:none;gap:10px;z-index:12;user-select:none;-webkit-user-select:none}
+.pad.on{display:flex}
+.pad button{width:68px;height:68px;border-radius:50%;border:3px solid rgba(255,255,255,.9);font:900 22px "Noto Sans TC",system-ui,sans-serif;color:#fff;
+  background:rgba(40,90,160,.55);box-shadow:0 4px 0 rgba(20,50,100,.45);touch-action:none;padding:0}
+.pad button.j{background:rgba(255,120,60,.7);box-shadow:0 4px 0 rgba(160,60,20,.5);width:78px;height:78px}
+.pad.p2 button{background:rgba(200,60,120,.55)} .pad.p2 button.j{background:rgba(255,120,60,.7)}
+.pad button.down{transform:translateY(3px);box-shadow:0 1px 0 rgba(0,0,0,.3);filter:brightness(1.15)}
+#padL{left:max(10px,env(safe-area-inset-left))} #padR{right:max(10px,env(safe-area-inset-right))}
+@media (orientation:portrait){ body.touch .mg-stage{bottom:120px} .pad button{width:74px;height:74px} .pad button.j{width:84px;height:84px} }
+@media (orientation:landscape){ .pad{opacity:.75} }
+.modes{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px;margin-top:10px}
+.modes .mg-btn{min-width:0;font-size:15px;min-height:56px;padding:4px 8px;line-height:1.25}
+.modes .mg-btn small{display:block;font-weight:400;font-size:12px}
+</style>
+</head>
+<body>
+<main class="mg-stage"><canvas id="cv" aria-label="遊戲畫面"></canvas></main>
+<div class="pad" id="padL"><button data-p="0" data-k="l" aria-label="左">◀</button><button data-p="0" data-k="r" aria-label="右">▶</button><button class="j" data-p="0" data-k="j">跳</button></div>
+<div class="pad" id="padR"><button class="j" data-p="1" data-k="j">跳</button><button data-p="1" data-k="l" aria-label="左">◀</button><button data-p="1" data-k="r" aria-label="右">▶</button></div>
+<script src="mini.js"></script>
+<script>
+'use strict';
+MG.init({ id: 'volley', title: '噗噗排球', stats: ['score'] });
+const W = 640, H = 360, cv = document.getElementById('cv'), x = cv.getContext('2d');
+const isTouch = matchMedia('(pointer:coarse)').matches || 'ontouchstart' in window;
+if (isTouch) document.body.classList.add('touch');
+MG.fit(cv, W, H);
+
+const GROUND = 318, NETX = 320, NETW = 8, NETTOP = 196, R = 30, BR = 15, WIN = 7;
+const GRAV_P = 1500, GRAV_B = 820, SPEED = 270, JUMP = 620;
+const LEVELS = [
+  { name: '簡單', speed: 0.5, react: 0.32, err: 40, jump: 0.3, spike: 0.08, blunder: 0.4 },
+  { name: '普通', speed: 0.8, react: 0.16, err: 18, jump: 0.65, spike: 0.35, blunder: 0.24 },
+  { name: '困難', speed: 1.0, react: 0.06, err: 6, jump: 0.95, spike: 0.75, blunder: 0.05 },
+];
+let hits = 0;
+let mode = 'cpu', level = 1, players, ball, score, server, state = 'menu', pauseT = 0, banner = null, t = 0, shake = 0, trail = [];
+const input = [{ l: false, r: false, j: false, jp: false }, { l: false, r: false, j: false, jp: false }];
+
+function makePlayer(side) {
+  return { side, x: side ? 480 : 160, y: GROUND - R, vx: 0, vy: 0, ground: true, spikeT: 0, squash: 0, mood: 'happy', moodT: 0,
+    ai: side === 1 && mode === 'cpu' ? { tx: 480, rt: 0, seen: -2, off: 0 } : null };
+}
+function resetRally(srv) {
+  server = srv;
+  players = [makePlayer(0), makePlayer(1)];
+  ball = { x: srv ? 480 : 160, y: 90, vx: 0, vy: 0, rot: 0, hold: 0.9, last: -1, spiked: 0 };
+  trail = [];
+}
+function newMatch() { score = [0, 0]; resetRally(Math.random() < 0.5 ? 0 : 1); state = 'play'; banner = { t: '開始！', life: 1 }; hud(); }
+function hud() { MG.stat('score', `${score[0]} : ${score[1]}`); }
+
+// ---------- input ----------
+const KEYS1 = { a: 'l', A: 'l', d: 'r', D: 'r', w: 'j', W: 'j' }, KEYS2 = { ArrowLeft: 'l', ArrowRight: 'r', ArrowUp: 'j' };
+function keyMap(e) {
+  if (mode === 'cpu') { const k = KEYS1[e.key] || KEYS2[e.key] || (e.key === ' ' ? 'j' : null); return k ? [0, k] : null; }
+  if (KEYS1[e.key]) return [0, KEYS1[e.key]];
+  if (KEYS2[e.key]) return [1, KEYS2[e.key]];
+  if (e.key === 'Enter') return [1, 'j'];
+  if (e.key === ' ') return [0, 'j'];
+  return null;
+}
+addEventListener('keydown', e => { const m = keyMap(e); if (!m || MG.panelOpen()) return; e.preventDefault(); const [p, k] = m; if (k === 'j' && !input[p].j) input[p].jp = true; input[p][k] = true; });
+addEventListener('keyup', e => { const m = keyMap(e); if (!m) return; input[m[0]][m[1]] = false; });
+addEventListener('blur', () => input.forEach(i => { i.l = i.r = i.j = false; }));
+document.querySelectorAll('.pad button').forEach(b => {
+  const p = +b.dataset.p, k = b.dataset.k;
+  const on = e => { e.preventDefault(); try { b.setPointerCapture(e.pointerId); } catch {} b.classList.add('down'); if (k === 'j' && !input[p].j) input[p].jp = true; input[p][k] = true; MG.unlock(); };
+  const off = () => { b.classList.remove('down'); input[p][k] = false; };
+  b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('lostpointercapture', off);
+  b.addEventListener('contextmenu', e => e.preventDefault());
+});
+const padL = document.getElementById('padL'), padR = document.getElementById('padR'), jump0 = padL.querySelector('.j');
+function showPads() {
+  padL.classList.toggle('on', isTouch);
+  padR.classList.toggle('on', isTouch);
+  if (mode === 'cpu') {          // 1P: left thumb moves, right thumb jumps
+    padR.querySelectorAll('button[data-p="1"]').forEach(b => b.style.display = 'none');
+    if (jump0.parentElement !== padR) padR.append(jump0);
+  } else {                       // 2P: each side has its own three buttons
+    padR.querySelectorAll('button[data-p="1"]').forEach(b => b.style.display = '');
+    if (jump0.parentElement !== padL) padL.append(jump0);
+  }
+}
+
+// ---------- AI ----------
+function predictX(targetY) {
+  let bx = ball.x, by = ball.y, vx = ball.vx, vy = ball.vy;
+  if (ball.hold > 0) return bx;
+  for (let i = 0; i < 240; i++) {
+    const dt = 1 / 60; vy += GRAV_B * dt; bx += vx * dt; by += vy * dt;
+    if (bx < BR) { bx = BR; vx = -vx; } if (bx > W - BR) { bx = W - BR; vx = -vx; }
+    if (vy > 0 && by >= targetY) return bx;
+  }
+  return bx;
+}
+function aiThink(p, dt) {
+  const L = LEVELS[level], a = p.ai, inp = input[1];
+  a.rt -= dt;
+  if (ball.last !== a.seen) { a.seen = ball.last; a.off = ball.last === 0 && Math.random() < L.blunder ? MG.pick([-1, 1]) * MG.rand(75, 115) : 0; }
+  if (a.rt <= 0) {
+    a.rt = L.react;
+    const px = predictX(GROUND - R * 2.2);
+    if (px > NETX) a.tx = Math.max(NETX + R, Math.min(W - R, px + 10 + (a.off || 0) + MG.rand(-L.err, L.err)));
+    else a.tx = 470 + MG.rand(-20, 20);
+  }
+  inp.l = inp.r = false;
+  const d = a.tx - p.x;
+  if (Math.abs(d) > 6) { if (Math.random() < L.speed + 0.15) { inp.l = d < 0; inp.r = d > 0; } }
+  inp.jp = false;
+  const dx = ball.x - p.x, dy = p.y - ball.y;
+  if (p.ground && ball.x > NETX && Math.abs(dx) < 46 && dy > 50 && dy < 150 && ball.vy > -100 && Math.random() < L.jump * dt * 8) inp.jp = true;
+  if (!p.ground && Math.abs(dx) < 60 && dy > -10 && dy < 90 && ball.x < 520 && Math.random() < L.spike * dt * 10) inp.jp = true;
+}
+
+// ---------- physics ----------
+function hitBall(p) {
+  const dx = ball.x - p.x, dy = ball.y - p.y, d = Math.hypot(dx, dy);
+  if (d > R + BR || d === 0) return;
+  const nx = dx / d, ny = dy / d;
+  ball.x = p.x + nx * (R + BR + 0.5); ball.y = p.y + ny * (R + BR + 0.5);
+  const toward = p.side ? -1 : 1;
+  if (p.spikeT > 0 && !p.ground) {
+    // spike: fast and downward-ish toward the other side, steeper when holding a direction
+    const inp = input[p.side], push = (inp.l || inp.r) ? 1.15 : 1;
+    ball.vx = toward * 640 * push; ball.vy = 180 + MG.rand(-40, 60);
+    if (ball.y > NETTOP - 20 && Math.abs(ball.x - NETX) < 120) ball.vy = -60; // too low near the net: lob over
+    ball.spiked = 0.6; p.spikeT = 0; shake = 0.25; MG.sfx('hit');
+    banner = { t: '殺球！', life: 0.7, x: ball.x, y: ball.y - 30 };
+    MG.fx.burst(ball.x, ball.y, { n: 18, colors: ['#ffd23f', '#ff7a1c', '#fff'], speed: 260, up: 0, size: 5, shape: 'star', life: 0.5, grav: 0 });
+  } else {
+    const sp = Math.max(500, Math.hypot(ball.vx, ball.vy) * 0.85);
+    ball.vx = nx * sp + p.vx * 0.45; ball.vy = Math.min(ny * sp + p.vy * 0.3, -330);
+    // nudge toward the net so rallies keep moving
+    if (ball.vx * toward < 150) ball.vx = toward * Math.max(150, Math.abs(ball.vx) * 0.6);
+    MG.sfx('pop'); MG.fx.burst(ball.x, ball.y, { n: 6, colors: ['#fff', '#ffe36b'], speed: 120, up: 20, size: 3, life: 0.35 });
+  }
+  const sp2 = Math.hypot(ball.vx, ball.vy); if (sp2 > 760) { ball.vx *= 760 / sp2; ball.vy *= 760 / sp2; }
+  ball.last = p.side; p.mood = 'wow'; p.moodT = 0.4; hits++;
+}
+function netCollide() {
+  const left = NETX - NETW / 2, right = NETX + NETW / 2;
+  // top cap
+  const dx = ball.x - NETX, dy = ball.y - NETTOP, d = Math.hypot(dx, dy);
+  if (d < BR + 4 && ball.y < NETTOP) { const nx = dx / d, ny = dy / d, dot = ball.vx * nx + ball.vy * ny; if (dot < 0) { ball.vx -= 1.6 * dot * nx; ball.vy -= 1.6 * dot * ny; } ball.x = NETX + nx * (BR + 4); ball.y = NETTOP + ny * (BR + 4); MG.sfx('step'); return; }
+  if (ball.y + BR > NETTOP && ball.x + BR > left && ball.x - BR < right) {
+    if (ball.x < NETX) { ball.x = left - BR; ball.vx = -Math.abs(ball.vx) * 0.7; } else { ball.x = right + BR; ball.vx = Math.abs(ball.vx) * 0.7; }
+    MG.sfx('step');
+  }
+}
+function update(dt) {
+  t += dt; shake = Math.max(0, shake - dt);
+  if (banner) { banner.life -= dt; if (banner.life <= 0) banner = null; }
+  MG.fx.step(dt);
+  if (state === 'point') { pauseT -= dt; for (const p of players) stepPlayer(p, dt, true); if (pauseT <= 0) { if (score[0] >= WIN || score[1] >= WIN) return endMatch(); resetRally(server); state = 'play'; } return; }
+  if (state !== 'play') return;
+  if (players[1].ai) aiThink(players[1], dt);
+  for (const p of players) stepPlayer(p, dt, false);
+  // ball
+  if (ball.hold > 0) { ball.hold -= dt; ball.y = 90 + Math.sin(t * 6) * 3; }
+  else {
+    const sub = 3;
+    for (let s = 0; s < sub; s++) {
+      const h = dt / sub;
+      ball.vy += GRAV_B * h; ball.x += ball.vx * h; ball.y += ball.vy * h;
+      if (ball.x < BR) { ball.x = BR; ball.vx = Math.abs(ball.vx) * 0.9; }
+      if (ball.x > W - BR) { ball.x = W - BR; ball.vx = -Math.abs(ball.vx) * 0.9; }
+      if (ball.y < BR - 120) { ball.y = BR - 120; ball.vy = Math.abs(ball.vy) * 0.5; }
+      netCollide();
+      for (const p of players) hitBall(p);
+      if (ball.y + BR >= GROUND) { ball.y = GROUND - BR; point(ball.x < NETX ? 1 : 0); break; }
+    }
+    ball.rot += ball.vx * dt / BR;
+    ball.spiked = Math.max(0, ball.spiked - dt);
+    if (ball.spiked > 0 || Math.hypot(ball.vx, ball.vy) > 560) trail.push({ x: ball.x, y: ball.y, life: 0.25 });
+  }
+  for (const q of trail) q.life -= dt; trail = trail.filter(q => q.life > 0);
+}
+function stepPlayer(p, dt, frozen) {
+  const inp = input[p.side];
+  let dir = frozen ? 0 : (inp.r ? 1 : 0) - (inp.l ? 1 : 0);
+  p.vx = dir * SPEED * (p.ai ? (0.75 + LEVELS[level].speed * 0.25) : 1);
+  if (!frozen && inp.jp) { if (p.ground) { p.vy = -JUMP; p.ground = false; p.squash = -0.2; MG.sfx('jump'); } else p.spikeT = 0.28; }
+  inp.jp = false;
+  p.spikeT = Math.max(0, p.spikeT - dt);
+  p.vy += GRAV_P * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+  if (p.y >= GROUND - R) { if (!p.ground) { p.squash = 0.22; MG.fx.burst(p.x, GROUND, { n: 6, colors: ['#f2d69a', '#e8c27a'], speed: 80, up: 40, size: 3, life: 0.4 }); } p.y = GROUND - R; p.vy = 0; p.ground = true; }
+  const lo = p.side ? NETX + NETW / 2 + R : R, hi = p.side ? W - R : NETX - NETW / 2 - R;
+  p.x = Math.max(lo, Math.min(hi, p.x));
+  p.squash *= Math.pow(0.003, dt);
+  p.moodT -= dt; if (p.moodT <= 0 && p.mood !== 'ouch') p.mood = 'happy';
+}
+function point(winner) {
+  score[winner]++; server = winner; state = 'point'; pauseT = 1.4; hud();
+  const loser = 1 - winner; players[winner].mood = 'love'; players[winner].moodT = 1.4; players[loser].mood = 'ouch'; players[loser].moodT = 1.4;
+  MG.sfx(mode === 'cpu' && winner === 1 ? 'bad' : 'good'); shake = 0.2;
+  MG.fx.burst(ball.x, GROUND, { n: 20, colors: ['#f2d69a', '#e8c27a', '#fff'], speed: 200, up: 160, size: 4, life: 0.7 });
+  MG.fx.burst(winner ? 480 : 160, 120, { n: 24, colors: ['#ff8ac2', '#ffd23f', '#8fd0ff', '#b8f5a0'], speed: 220, up: 120, size: 5, shape: 'sq', life: 1 });
+  banner = { t: `${names()[winner]} 得分！`, life: 1.3 };
+}
+const names = () => mode === 'cpu' ? ['噗噗', '電腦'] : ['綠噗噗', '粉噗噗'];
+
+// ---------- draw ----------
+let bgC = null, bgK = '';
+function beach() {
+  const k = cv._mgScale || 1; if (bgK === '' + k) return; bgK = '' + k;
+  const c = document.createElement('canvas'); c.width = W * k; c.height = H * k; const g = c.getContext('2d'); g.scale(k, k);
+  const sky = g.createLinearGradient(0, 0, 0, 200); sky.addColorStop(0, '#5fb8ff'); sky.addColorStop(1, '#d6f0ff'); g.fillStyle = sky; g.fillRect(0, 0, W, 210);
+  const sun = g.createRadialGradient(560, 56, 5, 560, 56, 70); sun.addColorStop(0, 'rgba(255,250,200,1)'); sun.addColorStop(0.35, 'rgba(255,230,120,.9)'); sun.addColorStop(1, 'rgba(255,230,120,0)');
+  g.fillStyle = sun; g.fillRect(480, 0, 160, 140);
+  // distant island
+  g.fillStyle = '#8fc3a8'; g.beginPath(); g.ellipse(120, 172, 90, 18, 0, Math.PI, 0); g.fill();
+  // sea
+  const sea = g.createLinearGradient(0, 168, 0, 262); sea.addColorStop(0, '#2b8fd0'); sea.addColorStop(1, '#6fd0ee'); g.fillStyle = sea; g.fillRect(0, 168, W, 96);
+  g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 1.5;
+  for (let i = 0; i < 40; i++) { const wx = (i * 83) % W, wy = 178 + (i * 29) % 80; g.beginPath(); g.moveTo(wx, wy); g.quadraticCurveTo(wx + 7, wy - 3, wx + 14, wy); g.stroke(); }
+  // sand
+  const sand = g.createLinearGradient(0, 250, 0, H); sand.addColorStop(0, '#fbe7b5'); sand.addColorStop(1, '#efcf8a'); g.fillStyle = sand;
+  g.beginPath(); g.moveTo(0, 258); for (let xx = 0; xx <= W; xx += 16) g.lineTo(xx, 256 + Math.sin(xx * 0.05) * 3); g.lineTo(W, H); g.lineTo(0, H); g.fill();
+  g.fillStyle = 'rgba(255,255,255,.7)'; g.beginPath(); g.moveTo(0, 258); for (let xx = 0; xx <= W; xx += 16) g.lineTo(xx, 256 + Math.sin(xx * 0.05) * 3); for (let xx = W; xx >= 0; xx -= 16) g.lineTo(xx, 262 + Math.sin(xx * 0.05 + 1) * 3); g.fill();
+  let sd = 9; const rnd = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 160; i++) { g.fillStyle = `rgba(180,130,60,${0.1 + rnd() * 0.15})`; g.fillRect(rnd() * W, 262 + rnd() * 98, 1.5, 1.5); }
+  // court lines
+  g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = 3; g.beginPath(); g.moveTo(16, GROUND + 3); g.lineTo(W - 16, GROUND + 3); g.stroke();
+  // palms
+  const palm = (px, s, flip) => {
+    g.save(); g.translate(px, 300); g.scale(flip ? -s : s, s);
+    g.strokeStyle = '#9a6a3a'; g.lineWidth = 10; g.lineCap = 'round'; g.beginPath(); g.moveTo(0, 0); g.quadraticCurveTo(14, -80, 4, -170); g.stroke();
+    g.strokeStyle = '#7a5028'; g.lineWidth = 2; for (let i = 0; i < 10; i++) { const yy = -i * 16; g.beginPath(); g.moveTo(-4 + i * 0.8, yy); g.lineTo(6 + i * 0.6, yy - 4); g.stroke(); }
+    for (let i = 0; i < 6; i++) { g.save(); g.translate(4, -170); g.rotate(-2.8 + i * 0.75); g.fillStyle = i % 2 ? '#3aa845' : '#4cc157'; g.beginPath(); g.ellipse(48, 0, 50, 10, 0.15, 0, 7); g.fill(); g.restore(); }
+    g.fillStyle = '#7a5028'; for (const [a, b] of [[-4, -164], [8, -166], [2, -158]]) { g.beginPath(); g.arc(a, b, 6, 0, 7); g.fill(); }
+    g.restore();
+  };
+  palm(26, 0.95, false); palm(W - 26, 1, true);
+  // beach umbrella + towel
+  g.fillStyle = '#ffffff'; g.fillRect(96, 268, 3, 40);
+  for (let i = 0; i < 4; i++) { g.fillStyle = i % 2 ? '#fff' : '#ff6b5e'; g.beginPath(); g.moveTo(97, 262); g.arc(97, 276, 40, Math.PI + i * Math.PI / 4, Math.PI + (i + 1) * Math.PI / 4); g.closePath(); g.fill(); }
+  g.fillStyle = '#8fd0ff'; g.save(); g.translate(540, 300); g.rotate(-0.08); g.fillRect(-30, -6, 60, 14); g.fillStyle = '#fff'; for (let i = 0; i < 4; i++) g.fillRect(-30 + i * 16, -6, 6, 14); g.restore();
+  bgC = c;
+}
+function drawBall() {
+  // shadow on sand
+  const hgt = Math.max(0, GROUND - ball.y), s = Math.max(0.3, 1 - hgt / 320);
+  x.fillStyle = `rgba(120,80,30,${0.3 * s})`; x.beginPath(); x.ellipse(ball.x, GROUND + 2, BR * 1.2 * s, 4 * s, 0, 0, 7); x.fill();
+  for (const q of trail) { x.globalAlpha = q.life * 2; x.fillStyle = ball.spiked ? '#ffb347' : '#ffffff'; x.beginPath(); x.arc(q.x, q.y, BR * q.life * 3, 0, 7); x.fill(); } x.globalAlpha = 1;
+  x.save(); x.translate(ball.x, ball.y); x.rotate(ball.rot);
+  const g = x.createRadialGradient(-5, -6, 2, 0, 0, BR); g.addColorStop(0, '#ffffff'); g.addColorStop(1, '#e8eef6'); x.fillStyle = g; x.beginPath(); x.arc(0, 0, BR, 0, 7); x.fill();
+  x.save(); x.beginPath(); x.arc(0, 0, BR, 0, 7); x.clip();
+  x.fillStyle = '#ffd23f'; x.beginPath(); x.moveTo(0, 0); x.arc(0, 0, BR, -0.4, 0.9); x.fill();
+  x.fillStyle = '#3d7bff'; x.beginPath(); x.moveTo(0, 0); x.arc(0, 0, BR, 2.0, 3.3); x.fill();
+  x.restore();
+  x.strokeStyle = '#8a96a8'; x.lineWidth = 1.4; for (const a of [-0.4, 0.9, 2.0, 3.3, 4.6]) { x.beginPath(); x.moveTo(0, 0); x.quadraticCurveTo(Math.cos(a + 0.4) * BR * 0.6, Math.sin(a + 0.4) * BR * 0.6, Math.cos(a) * BR, Math.sin(a) * BR); x.stroke(); }
+  x.beginPath(); x.arc(0, 0, BR, 0, 7); x.stroke();
+  x.restore();
+  x.fillStyle = 'rgba(255,255,255,.7)'; x.beginPath(); x.ellipse(ball.x - 5, ball.y - 6, 4, 2.5, -0.6, 0, 7); x.fill();
+}
+function drawNet() {
+  x.fillStyle = '#c0c6d0'; x.fillRect(NETX - 4, NETTOP - 6, 8, GROUND - NETTOP + 8);
+  x.fillStyle = '#8a92a0'; x.fillRect(NETX + 1, NETTOP - 6, 3, GROUND - NETTOP + 8);
+  x.save(); x.beginPath(); x.rect(NETX - 28, NETTOP + 4, 56, 74); x.clip();
+  x.fillStyle = 'rgba(30,40,60,.35)'; x.fillRect(NETX - 28, NETTOP + 4, 56, 74);
+  x.strokeStyle = 'rgba(255,255,255,.7)'; x.lineWidth = 1;
+  for (let i = -80; i < 80; i += 7) { x.beginPath(); x.moveTo(NETX + i, NETTOP); x.lineTo(NETX + i + 80, NETTOP + 80); x.moveTo(NETX + i, NETTOP); x.lineTo(NETX + i - 80, NETTOP + 80); x.stroke(); }
+  x.restore();
+  x.fillStyle = '#fff'; x.fillRect(NETX - 30, NETTOP + 2, 60, 5); x.fillRect(NETX - 30, NETTOP + 76, 60, 3);
+  x.fillStyle = '#ff5a4e'; x.beginPath(); x.arc(NETX, NETTOP - 6, 5, 0, 7); x.fill();
+}
+function drawPlayer(p) {
+  const pal = p.side ? MG.JELLY.pink : MG.JELLY.green;
+  const hgt = GROUND - (p.y + R), s = Math.max(0.4, 1 - hgt / 200);
+  x.fillStyle = `rgba(120,80,30,${0.3 * s})`; x.beginPath(); x.ellipse(p.x, GROUND + 2, R * s, 5 * s, 0, 0, 7); x.fill();
+  const look = Math.max(-1, Math.min(1, (ball.x - p.x) / 120));
+  MG.puPu(x, p.x, p.y + 2, R * 0.92, p.mood, p.squash, { pal, look, arms: p.ground ? false : 'up', noLeaf: true });
+  // sweatband
+  x.save(); x.translate(p.x, p.y + 2); x.translate(0, R * 0.83); x.scale(1 + p.squash, 1 - p.squash); x.translate(0, -R * 0.83);
+  x.fillStyle = p.side ? '#3d9bff' : '#ff5a4e'; x.beginPath(); x.ellipse(0, -R * 0.62, R * 0.72, R * 0.12, 0, Math.PI, 0); x.lineTo(R * 0.72, -R * 0.55); x.ellipse(0, -R * 0.55, R * 0.72, R * 0.12, 0, 0, Math.PI, true); x.fill();
+  x.fillStyle = '#fff'; x.fillRect(-R * 0.1, -R * 0.74, R * 0.2, R * 0.12);
+  x.restore();
+  if (p.spikeT > 0 && !p.ground) { x.strokeStyle = 'rgba(255,200,80,.8)'; x.lineWidth = 3; x.beginPath(); x.arc(p.x, p.y, R + 6, 0, 7); x.stroke(); }
+}
+function draw() {
+  beach();
+  x.save(); if (shake) x.translate(MG.rand(-1, 1) * shake * 16, MG.rand(-1, 1) * shake * 16);
+  x.drawImage(bgC, 0, 0, W, H);
+  // drifting clouds + seagull
+  for (const [cx0, cy, sp, s] of [[80, 50, 6, 1], [330, 80, 4, 0.8], [520, 34, 8, 0.7]]) { const ox = ((cx0 + t * sp) % (W + 120)) - 60; x.fillStyle = '#fff'; for (const [a, b, r] of [[0, 0, 16], [18, -8, 20], [38, 0, 15]]) { x.beginPath(); x.arc(ox + a * s, cy + b * s, r * s, 0, 7); x.fill(); } }
+  const gx = (t * 30) % (W + 80) - 40, gy = 100 + Math.sin(t) * 8, fl = Math.sin(t * 8) * 4;
+  x.strokeStyle = '#4a5260'; x.lineWidth = 2; x.beginPath(); x.moveTo(gx - 10, gy - fl); x.quadraticCurveTo(gx - 5, gy - 6, gx, gy); x.quadraticCurveTo(gx + 5, gy - 6, gx + 10, gy - fl); x.stroke();
+  drawNet();
+  for (const p of players) drawPlayer(p);
+  drawBall();
+  if (ball.hold > 0 && state === 'play') { x.fillStyle = 'rgba(255,255,255,.9)'; x.font = '900 16px "Noto Sans TC",system-ui'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('發球', ball.x, ball.y - 30); }
+  MG.fx.draw(x);
+  x.restore();
+  // scoreboard
+  const nm = names();
+  x.save(); if (ball.y < 70 && Math.abs(ball.x - W / 2) < 130) x.globalAlpha = 0.3;
+  x.fillStyle = 'rgba(255,255,255,.88)'; x.strokeStyle = '#7fb8e6'; x.lineWidth = 2; x.beginPath(); x.roundRect(W / 2 - 110, 8, 220, 44, 14); x.fill(); x.stroke();
+  x.textBaseline = 'middle'; x.textAlign = 'center';
+  x.font = '700 12px "Noto Sans TC",system-ui'; x.fillStyle = '#2e9a4c'; x.fillText(nm[0], W / 2 - 66, 20); x.fillStyle = '#cf4a80'; x.fillText(nm[1], W / 2 + 66, 20);
+  x.font = '900 24px system-ui,sans-serif'; x.fillStyle = '#2a3a5a'; x.fillText(score ? score[0] : 0, W / 2 - 66, 39); x.fillText(score ? score[1] : 0, W / 2 + 66, 39);
+  x.font = '700 12px "Noto Sans TC",system-ui'; x.fillStyle = '#7a8aa8'; x.fillText(`先拿 ${WIN} 分`, W / 2, 22); x.font = '900 18px system-ui'; x.fillText(':', W / 2, 39); x.restore();
+  if (banner) {
+    const k = Math.min(1, banner.life * 2.5), sc = 1 + Math.max(0, banner.life - 1) * 1.5;
+    x.save(); x.globalAlpha = k; x.translate(banner.x ?? W / 2, banner.y ?? 120); x.scale(sc, sc);
+    x.font = '900 34px "Noto Sans TC",system-ui,sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineWidth = 7; x.strokeStyle = '#fff'; x.strokeText(banner.t, 0, 0);
+    x.fillStyle = banner.x ? '#ff7a1c' : '#3a6fd8'; x.fillText(banner.t, 0, 0); x.restore();
+  }
+}
+
+// ---------- flow ----------
+function endMatch() {
+  state = 'over';
+  const w = score[0] > score[1] ? 0 : 1, nm = names();
+  let extra = '';
+  if (mode === 'cpu') {
+    if (w === 0) { MG.record('volley', level + 1); extra = `<p class="new">打贏${LEVELS[level].name}的電腦！^_^</p>` + (level < 2 ? `<p>要不要挑戰「${LEVELS[level + 1].name}」？</p>` : '<p>你是海灘排球冠軍！</p>'); }
+    else extra = '<p>差一點點！再來一局吧</p>';
+  }
+  MG.sfx(mode === 'cpu' && w === 1 ? 'over' : 'win');
+  MG.panel({
+    title: mode === 'cpu' ? (w === 0 ? '你贏了！' : '電腦贏了…') : `${nm[w]} 贏了！`,
+    html: `<div class="big">${score[0]} : ${score[1]}</div>${extra}`,
+    buttons: [
+      ...(mode === 'cpu' && w === 0 && level < 2 ? [{ label: `挑戰${LEVELS[level + 1].name}`, on: () => { level++; start(); } }] : []),
+      { label: '再來一局', alt: mode === 'cpu' && w === 0 && level < 2, on: start },
+      { label: '換模式', alt: true, on: menu },
+    ],
+  });
+}
+function start() { showPads(); newMatch(); MG.hide(); }
+function menu() {
+  state = 'menu'; resetRally(0); score = [0, 0]; hud();
+  const best = MG.best('volley') || 0;
+  MG.panel({
+    title: '噗噗排球',
+    html: `<p>把球打過網，讓球落在對方的沙灘上就得分，先拿 ${WIN} 分贏！</p>
+      <p>${isTouch ? '左手按 ◀ ▶ 移動，右手按「跳」；在空中再按一次「跳」就是<b>殺球</b>！' : '在空中再按一次跳就是<b>殺球</b>！'}</p>
+      ${isTouch && innerHeight > innerWidth ? '<p class="new">📱 把手機橫放，球場會更大更好玩！</p>' : ''}
+      <div class="modes">${LEVELS.map((L, i) => `<button class="mg-btn${i === 1 ? '' : ' alt'}" data-mode="cpu" data-lv="${i}">對電腦・${L.name}<small>${best > i ? '已打贏 ✓' : '　'}</small></button>`).join('')}
+      <button class="mg-btn alt" data-mode="pvp">兩人對打<small>同一台裝置</small></button></div>`,
+    keys: isTouch ? '兩人對打時，左邊和右邊各有一組按鈕' : '1 人：<kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd> 或 <kbd>A</kbd><kbd>D</kbd><kbd>W</kbd>　2 人：左邊 <kbd>A</kbd><kbd>D</kbd><kbd>W</kbd>、右邊 <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd>',
+  });
+  document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { MG.sfx('click'); MG.unlock(); mode = b.dataset.mode; if (mode === 'cpu') level = +b.dataset.lv; start(); });
+  setTimeout(() => document.querySelector('[data-lv="1"]')?.focus(), 30);
+  showPads();
+}
+menu();
+MG.loop(dt => { update(dt); draw(); });
+</script>
+</body>
+</html>
