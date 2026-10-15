@@ -161,8 +161,9 @@ body.portrait #stickZone{height:52%}
 
 <!-- pause -->
 <div class="screen dim" id="pause" hidden>
-  <div class="card" style="width:min(380px,100%)">
+  <div class="card" style="width:min(600px,100%)">
     <p class="bigTitle">暫停</p>
+    <div class="help" id="pauseHelp"></div>
     <div class="menuCol">
       <button class="go" id="resumeBtn">繼續</button>
       <button class="ghost" id="restartBtn">重新開始</button>
@@ -656,56 +657,43 @@ function drawFace(c, L, P) {
   }
 }
 
+/* Floating-limb style: round head, small egg body, and fists and shoes that float
+   where the hands and feet would be (no arms or legs are drawn). The skeleton
+   angles in pose() still place the hands and feet. */
+const LIMB = 10, BODY_H = 19;
 function drawBody(c, L, P, f) {
-  const big = L.build === 'big', lw = big ? 9.5 : 7.5, aw = big ? 8.5 : 6.5, tw = big ? 23 : L.build === 'slim' ? 14 : 16;
-  const hip = P2(0, -(TH + SH) + P.by);
-  const leg = a => { const k = P2(hip.x + Math.sin(a[0]) * TH, hip.y + Math.cos(a[0]) * TH), s = a[0] - a[1]; return { k, ft: P2(k.x + Math.sin(s) * SH, k.y + Math.cos(s) * SH), s }; };
-  const top = P2(hip.x + Math.sin(P.lean) * TO, hip.y - Math.cos(P.lean) * TO);
-  const sh = P2(top.x - Math.sin(P.lean) * 3, top.y + Math.cos(P.lean) * 3);
-  const arm = a => { const e = P2(sh.x + Math.sin(a[0]) * UA, sh.y + Math.cos(a[0]) * UA), s2 = a[0] + a[1]; return { e, h: P2(e.x + Math.sin(s2) * FA, e.y + Math.cos(s2) * FA), s2 }; };
-  const ha = P.lean + P.ht, head = P2(top.x + Math.sin(ha) * (HR + 1), top.y - Math.cos(ha) * (HR + 1));
-  const drawLeg = (a, dk) => {
-    const g = leg(a), pc = dk ? L.pantsD : L.pants;
-    if (L.shorts) { seg(c, [hip, g.k], lw + 1, pc); seg(c, [g.k, g.ft], lw - 1, dk ? L.skinD : L.skin); }
-    else seg(c, [hip, g.k, g.ft], lw, pc);
-    blob(c, g.ft.x + Math.sin(g.s + 1.57) * 3, g.ft.y + Math.cos(g.s + 1.57) * 3 + 1, big ? 7 : 6, 3.6, dk ? shade(L.shoe, -0.2) : L.shoe, -g.s * 0.2 + (g.s - 0) * 0.3);
-  };
-  const drawArm = (a, dk) => {
-    const g = arm(a), sc = dk ? L.shirtD : L.shirt, sk = dk ? L.skinD : L.skin;
-    if (L.sleeve === 'long') seg(c, [sh, g.e, g.h], aw, sc);
-    else if (L.sleeve === 'none') seg(c, [sh, g.e, g.h], aw - 0.5, sk);
-    else { seg(c, [g.e, g.h], aw - 1, sk); seg(c, [sh, g.e], aw + 1, sc); }
-    blob(c, g.h.x, g.h.y, big ? 5.2 : 4.3, big ? 5.2 : 4.3, L.glove ? (dk ? shade(L.glove, -0.2) : L.glove) : sk);
-    return g;
-  };
+  const big = L.build === 'big', R = HR, th = big ? 22 : BODY_H, tw = big ? 15 : L.build === 'slim' ? 11 : 12;
+  const hip = P2(0, -LIMB * 2 - 6 + P.by);
+  // a straight arm or a high kick reaches further, so punches and kicks read clearly
+  const reach = (bend, k) => 1 + k * clamp(1 - Math.abs(bend) / 1.4, 0, 1);
+  const leg = (a, side) => { const n = LIMB * (a[0] > 0.9 ? reach(a[1], 0.5) : 1), k = P2(hip.x + side * 4 + Math.sin(a[0]) * n, hip.y + Math.cos(a[0]) * n), s = a[0] - a[1]; return { ft: P2(k.x + Math.sin(s) * n, k.y + Math.cos(s) * n), s }; };
+  const top = P2(hip.x + Math.sin(P.lean) * th, hip.y - Math.cos(P.lean) * th);
+  const sh = P2(lerp(hip.x, top.x, 0.72), lerp(hip.y, top.y, 0.72));
+  const arm = a => { const n = LIMB * reach(a[1], 0.7), e = P2(sh.x + Math.sin(a[0]) * n, sh.y + Math.cos(a[0]) * n), s2 = a[0] + a[1]; return { e, h: P2(e.x + Math.sin(s2) * n, e.y + Math.cos(s2) * n), s2 }; };
+  const ha = P.lean + P.ht, head = P2(top.x + Math.sin(ha) * (R + 3), top.y - Math.cos(ha) * (R + 3));
+  const fist = big ? 7 : 6;
+  const hand = (a, dk) => { const g = arm(a); blob(c, g.h.x, g.h.y, fist, fist, L.glove ? (dk ? shade(L.glove, -0.2) : L.glove) : (dk ? L.skinD : L.skin)); return g; };
+  const foot = (a, side, dk) => { const g = leg(a, side); blob(c, g.ft.x + 3, g.ft.y - 1.5, big ? 9.5 : 8.5, 5.2, dk ? shade(L.shoe, -0.2) : L.shoe, -g.s * 0.3); };
   c.lineCap = 'round'; c.lineJoin = 'round';
-  // things behind the body (long hair, scarf, headband tails)
-  c.save(); c.translate(head.x, head.y); c.rotate(ha); drawHair(c, L, true, f, P); c.restore();
-  if (L.cape) { const w = Math.sin((f ? f.clock : 0) * 0.15) * 3; c.beginPath(); c.moveTo(sh.x - 4, sh.y); c.quadraticCurveTo(sh.x - 18, hip.y + 4 + w, sh.x - 14, hip.y + 14); c.lineTo(hip.x - 2, hip.y + 6); c.closePath(); c.fillStyle = L.cape; c.fill(); c.lineWidth = 2.2; c.strokeStyle = INK; c.stroke(); }
   if (L.tail) drawTail(c, L, hip, f);
-  drawArm(P.al, true);
-  if (f && f.hold && f.hold.kind === 'bow') {}
-  drawLeg(P.ll, true);
-  drawLeg(P.lr, false);
-  // torso
-  const px = Math.cos(P.lean), py = Math.sin(P.lean);
-  const w0 = tw / 2 - 1, w1 = tw / 2 + 1;
-  c.beginPath(); c.moveTo(hip.x - px * w0, hip.y - py * w0); c.lineTo(hip.x + px * w0, hip.y + py * w0);
-  c.lineTo(top.x + px * w1, top.y + py * w1); c.lineTo(top.x - px * w1, top.y - py * w1); c.closePath();
-  c.fillStyle = L.shirt; c.fill(); c.lineWidth = 2.6; c.strokeStyle = INK; c.stroke();
-  if (L.trim) { c.beginPath(); c.moveTo(lerp(hip.x, top.x, 0.55) - px * w1 * 0.9, lerp(hip.y, top.y, 0.55) - py * w1 * 0.9); c.lineTo(lerp(hip.x, top.x, 0.55) + px * w1 * 0.9, lerp(hip.y, top.y, 0.55) + py * w1 * 0.9); c.strokeStyle = L.trim; c.lineWidth = 3; c.stroke(); }
-  if (L.belly) { c.save(); c.translate(lerp(hip.x, top.x, 0.45) + px * w0 * 0.3, lerp(hip.y, top.y, 0.45) + py * w0 * 0.3); c.rotate(P.lean); c.beginPath(); c.ellipse(0, 0, tw * 0.3, TO * 0.36, 0, 0, TAU); c.fillStyle = L.belly; c.fill(); c.restore(); }
-  if (L.belt) { c.beginPath(); c.moveTo(hip.x - px * w0, hip.y - py * w0 - 2); c.lineTo(hip.x + px * w0, hip.y + py * w0 - 2); c.strokeStyle = L.belt; c.lineWidth = 3.5; c.stroke(); }
-  // head
+  c.save(); c.translate(head.x, head.y); c.rotate(ha); drawHair(c, L, true, f, P); c.restore();
+  hand(P.al, true); foot(P.ll, -1, true);
+  // body: a small egg, shirt above and pants below
+  c.save(); c.translate(hip.x, hip.y); c.rotate(P.lean);
+  const egg = () => { c.beginPath(); c.ellipse(0, -th / 2, tw, th / 2 + 4, 0, 0, TAU); };
+  egg(); c.save(); c.clip(); c.fillStyle = L.shirt; c.fillRect(-30, -40, 60, 60);
+  if (L.belly) { c.fillStyle = L.belly; c.beginPath(); c.ellipse(4, -th / 2, tw * 0.6, th * 0.38, 0, 0, TAU); c.fill(); }
+  if (!L.animal) { c.fillStyle = L.pants; c.fillRect(-30, -3, 60, 20); }
+  if (L.trim) { c.fillStyle = L.trim; c.fillRect(-30, -th * 0.62, 60, 3); }
+  if (L.belt) { c.fillStyle = L.belt; c.fillRect(-30, -6, 60, 3.5); }
+  c.restore(); egg(); c.lineWidth = 2.6; c.strokeStyle = INK; c.stroke(); c.restore();
+  foot(P.lr, 1, false);
   c.save(); c.translate(head.x, head.y); c.rotate(ha);
-  if (L.style !== 'hood') blob(c, 0, 0, HR, HR, L.fur || L.skin);
-  drawHair(c, L, false, f, P);
-  drawFace(c, L, P);
-  c.restore();
-  const g = drawArm(P.ar, false);
+  if (L.style !== 'hood') blob(c, 0, 0, R, R, L.fur || L.skin);
+  drawHair(c, L, false, f, P); drawFace(c, L, P); c.restore();
+  const g = hand(P.ar, false);
   if (f && f.hold) drawHeld(c, f.hold, g);
   if (L.sling && !(f && f.hold)) { c.save(); c.translate(g.h.x, g.h.y); c.rotate(-g.s2 + Math.PI); seg(c, [P2(0, 2), P2(0, -8)], 2.5, '#a0662f'); seg(c, [P2(0, -8), P2(-4, -15)], 2.5, '#a0662f'); seg(c, [P2(0, -8), P2(4, -15)], 2.5, '#a0662f'); c.restore(); }
-  if (f && f.look.bow) { c.save(); c.translate(g.h.x, g.h.y); c.rotate(-g.s2 + Math.PI / 2 + Math.PI); c.beginPath(); c.arc(0, 0, 16, -1.2, 1.2); c.strokeStyle = INK; c.lineWidth = 4.5; c.stroke(); c.strokeStyle = '#a0662f'; c.lineWidth = 2.5; c.stroke(); c.restore(); }
   return { head, hip, top };
 }
 
@@ -748,7 +736,7 @@ function drawHeld(c, it, g) {
   if (it.kind === 'stick') {
     const dx = Math.sin(g.s2), dy = Math.cos(g.s2);
     seg(c, [P2(g.h.x - dx * 8, g.h.y - dy * 8), P2(g.h.x + dx * 34, g.h.y + dy * 34)], 4.5, '#b07a3d');
-    blob(c, g.h.x, g.h.y, 4.3, 4.3, '#f3c79c');
+    blob(c, g.h.x, g.h.y, 6, 6, '#f3c79c');
   } else if (it.kind === 'stone') { blob(c, g.h.x, g.h.y - 6, 10, 8, '#9a9aa8'); }
 }
 
@@ -1892,6 +1880,36 @@ function drawPanel(c, f, x, y, big) {
     f.def.skills.forEach(id => { const tx = bx + bw * SKILLS[id].cost / f.maxMp; c.beginPath(); c.moveTo(tx, y + 42); c.lineTo(tx, y + 51); c.stroke(); });
   }
 }
+/* On-screen key guide for keyboard and gamepad players (touch players have buttons). H hides it. */
+let showKeys = store.get('keys', true);
+function chip(c, x, y, key, label, sub, on) {
+  c.font = '700 13px "Noto Sans TC",sans-serif'; const kw = Math.max(22, c.measureText(key).width + 12);
+  c.font = '700 14px "Noto Sans TC",sans-serif'; const lw = c.measureText(label).width;
+  c.font = '700 11px "Noto Sans TC",sans-serif'; const sw = sub ? c.measureText(sub).width + 6 : 0;
+  const w = kw + lw + sw + 18;
+  c.globalAlpha = on ? 1 : 0.5;
+  c.fillStyle = 'rgba(28,26,46,.78)'; c.beginPath(); c.roundRect ? c.roundRect(x, y, w, 28, 9) : c.rect(x, y, w, 28); c.fill();
+  c.fillStyle = on ? '#ffcc33' : '#a9a6c2'; c.beginPath(); c.roundRect ? c.roundRect(x + 4, y + 4, kw, 20, 6) : c.rect(x + 4, y + 4, kw, 20); c.fill();
+  c.fillStyle = INK; c.font = '900 13px "Noto Sans TC",sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(key, x + 4 + kw / 2, y + 15);
+  c.textAlign = 'left'; c.fillStyle = '#fff6e6'; c.font = '700 14px "Noto Sans TC",sans-serif'; c.fillText(label, x + kw + 10, y + 15);
+  if (sub) { c.fillStyle = on ? '#8fd0ff' : '#a9a6c2'; c.font = '700 11px "Noto Sans TC",sans-serif'; c.fillText(sub, x + kw + 14 + lw, y + 15.5); }
+  c.globalAlpha = 1;
+  return w;
+}
+function drawKeyHint(c) {
+  const p = W.player, pad = lastDevice === 'pad';
+  const keys = pad ? ['Y', 'RB', 'LB'] : ['U', 'I', 'O'], cmds = ['防・左右・攻', '防・上・攻', '防・下・攻'];
+  let y = VHv - offY - 76, x = 12;
+  p.def.skills.forEach((id, i) => {
+    const S = SKILLS[id], ok = p.mp >= S.cost;
+    x += chip(c, x, y, keys[i], S.name, '氣' + S.cost + (pad ? '' : '　' + cmds[i]), ok) + 8;
+  });
+  y += 34; x = 12;
+  const basic = pad
+    ? [['左搖桿', '移動'], ['推到底', '跑'], ['X', '攻擊'], ['A', '跳'], ['B', '防禦'], ['Start', '暫停']]
+    : [['WASD', '移動'], ['連按兩下', '跑'], ['J', '攻擊'], ['K', '跳'], ['L', '防禦'], ['Esc', '暫停'], ['H', '隱藏提示']];
+  for (const [k, l] of basic) x += chip(c, x, y, k, l, '', true) + 6;
+}
 function drawHUD(c) {
   const p = W.player, top = 8 + (portrait ? 0 : 0);
   drawPanel(c, p, 10, top, true);
@@ -1917,6 +1935,7 @@ function drawHUD(c) {
   const tsec = (W.t / 60) | 0, ts = `${(tsec / 60) | 0}:${String(tsec % 60).padStart(2, '0')}`;
   c.textAlign = 'center'; c.font = '700 14px "Noto Sans TC",sans-serif'; c.fillStyle = '#fff6e6'; c.lineWidth = 3;
   if (W.mode === 'battle') { c.strokeText(ts, Wv / 2, top + 20); c.fillText(ts, Wv / 2, top + 20); }
+  if (!isTouch && showKeys) drawKeyHint(c);
   if (W.msg) {
     const m = W.msg, a = Math.min(1, m.t / 10, (m.dur - m.t) / 15), s = 1 + Math.max(0, 1 - m.t / 10) * 0.4;
     c.save(); c.globalAlpha = Math.max(0, a); c.translate(Wv / 2, 200); c.scale(s, s); c.textAlign = 'center';
@@ -2011,7 +2030,7 @@ function animateCards() {
       const g = c.createLinearGradient(0, 0, 0, 192); g.addColorStop(0, sel ? 'rgba(255,204,51,.25)' : 'rgba(255,255,255,.04)'); g.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = g; c.fillRect(0, 0, 300, 192);
       const fake = { clock: (performance.now() - t0) / 16.7, state: sel ? 'win' : 'idle', st: (performance.now() - t0) / 16.7, look: CHARS[id].look, def: CHARS[id], face: 1, hold: null, vy: 0 };
       c.setTransform(2, 0, 0, 2, 0, 0); c.fillStyle = 'rgba(0,0,0,.25)'; c.beginPath(); c.ellipse(75, 88, 26, 6, 0, 0, TAU); c.fill();
-      c.translate(75, 88); c.scale(CHARS[id].look.build === 'big' ? 1.05 : 1.15, CHARS[id].look.build === 'big' ? 1.05 : 1.15); drawBody(c, CHARS[id].look, pose(fake), fake);
+      c.translate(75, 92); c.scale(CHARS[id].look.build === 'big' ? 0.98 : 1.05, CHARS[id].look.build === 'big' ? 0.98 : 1.05); drawBody(c, CHARS[id].look, pose(fake), fake);
     });
     requestAnimationFrame(loop);
   };
@@ -2074,6 +2093,7 @@ function frame(now) {
 }
 addEventListener('keydown', e => {
   if ((e.code === 'Escape' || e.code === 'KeyP') && running) { e.preventDefault(); togglePause(); }
+  if (e.code === 'KeyH' && running) { showKeys = !showKeys; store.set('keys', showKeys); }
   if (e.code === 'KeyM') { Sound.init(); Sound.setMuted(!Sound.muted); $('muteBtn').style.opacity = Sound.muted ? 0.45 : 1; }
   if (e.code === 'Enter' && !$('menu').hidden && document.activeElement && !document.activeElement.classList.contains('opt') && !document.activeElement.classList.contains('hero')) { e.preventDefault(); startGame(); }
 });
@@ -2093,6 +2113,7 @@ setInterval(() => {
   else window._gpLatch = false;
 }, 100);
 
+$('pauseHelp').innerHTML = $('help').innerHTML;
 Keyboard.init(); Touch.init(); detectTouch(); resize(); buildMenu();
 requestAnimationFrame(frame);
 /* hook for automated tests */
