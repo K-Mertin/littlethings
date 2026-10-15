@@ -161,8 +161,9 @@ body.portrait #stickZone{height:52%}
 
 <!-- pause -->
 <div class="screen dim" id="pause" hidden>
-  <div class="card" style="width:min(380px,100%)">
+  <div class="card" style="width:min(600px,100%)">
     <p class="bigTitle">暫停</p>
+    <div class="help" id="pauseHelp"></div>
     <div class="menuCol">
       <button class="go" id="resumeBtn">繼續</button>
       <button class="ghost" id="restartBtn">重新開始</button>
@@ -1879,6 +1880,36 @@ function drawPanel(c, f, x, y, big) {
     f.def.skills.forEach(id => { const tx = bx + bw * SKILLS[id].cost / f.maxMp; c.beginPath(); c.moveTo(tx, y + 42); c.lineTo(tx, y + 51); c.stroke(); });
   }
 }
+/* On-screen key guide for keyboard and gamepad players (touch players have buttons). H hides it. */
+let showKeys = store.get('keys', true);
+function chip(c, x, y, key, label, sub, on) {
+  c.font = '700 13px "Noto Sans TC",sans-serif'; const kw = Math.max(22, c.measureText(key).width + 12);
+  c.font = '700 14px "Noto Sans TC",sans-serif'; const lw = c.measureText(label).width;
+  c.font = '700 11px "Noto Sans TC",sans-serif'; const sw = sub ? c.measureText(sub).width + 6 : 0;
+  const w = kw + lw + sw + 18;
+  c.globalAlpha = on ? 1 : 0.5;
+  c.fillStyle = 'rgba(28,26,46,.78)'; c.beginPath(); c.roundRect ? c.roundRect(x, y, w, 28, 9) : c.rect(x, y, w, 28); c.fill();
+  c.fillStyle = on ? '#ffcc33' : '#a9a6c2'; c.beginPath(); c.roundRect ? c.roundRect(x + 4, y + 4, kw, 20, 6) : c.rect(x + 4, y + 4, kw, 20); c.fill();
+  c.fillStyle = INK; c.font = '900 13px "Noto Sans TC",sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(key, x + 4 + kw / 2, y + 15);
+  c.textAlign = 'left'; c.fillStyle = '#fff6e6'; c.font = '700 14px "Noto Sans TC",sans-serif'; c.fillText(label, x + kw + 10, y + 15);
+  if (sub) { c.fillStyle = on ? '#8fd0ff' : '#a9a6c2'; c.font = '700 11px "Noto Sans TC",sans-serif'; c.fillText(sub, x + kw + 14 + lw, y + 15.5); }
+  c.globalAlpha = 1;
+  return w;
+}
+function drawKeyHint(c) {
+  const p = W.player, pad = lastDevice === 'pad';
+  const keys = pad ? ['Y', 'RB', 'LB'] : ['U', 'I', 'O'], cmds = ['防・左右・攻', '防・上・攻', '防・下・攻'];
+  let y = VHv - offY - 76, x = 12;
+  p.def.skills.forEach((id, i) => {
+    const S = SKILLS[id], ok = p.mp >= S.cost;
+    x += chip(c, x, y, keys[i], S.name, '氣' + S.cost + (pad ? '' : '　' + cmds[i]), ok) + 8;
+  });
+  y += 34; x = 12;
+  const basic = pad
+    ? [['左搖桿', '移動'], ['推到底', '跑'], ['X', '攻擊'], ['A', '跳'], ['B', '防禦'], ['Start', '暫停']]
+    : [['WASD', '移動'], ['連按兩下', '跑'], ['J', '攻擊'], ['K', '跳'], ['L', '防禦'], ['Esc', '暫停'], ['H', '隱藏提示']];
+  for (const [k, l] of basic) x += chip(c, x, y, k, l, '', true) + 6;
+}
 function drawHUD(c) {
   const p = W.player, top = 8 + (portrait ? 0 : 0);
   drawPanel(c, p, 10, top, true);
@@ -1904,6 +1935,7 @@ function drawHUD(c) {
   const tsec = (W.t / 60) | 0, ts = `${(tsec / 60) | 0}:${String(tsec % 60).padStart(2, '0')}`;
   c.textAlign = 'center'; c.font = '700 14px "Noto Sans TC",sans-serif'; c.fillStyle = '#fff6e6'; c.lineWidth = 3;
   if (W.mode === 'battle') { c.strokeText(ts, Wv / 2, top + 20); c.fillText(ts, Wv / 2, top + 20); }
+  if (!isTouch && showKeys) drawKeyHint(c);
   if (W.msg) {
     const m = W.msg, a = Math.min(1, m.t / 10, (m.dur - m.t) / 15), s = 1 + Math.max(0, 1 - m.t / 10) * 0.4;
     c.save(); c.globalAlpha = Math.max(0, a); c.translate(Wv / 2, 200); c.scale(s, s); c.textAlign = 'center';
@@ -2061,6 +2093,7 @@ function frame(now) {
 }
 addEventListener('keydown', e => {
   if ((e.code === 'Escape' || e.code === 'KeyP') && running) { e.preventDefault(); togglePause(); }
+  if (e.code === 'KeyH' && running) { showKeys = !showKeys; store.set('keys', showKeys); }
   if (e.code === 'KeyM') { Sound.init(); Sound.setMuted(!Sound.muted); $('muteBtn').style.opacity = Sound.muted ? 0.45 : 1; }
   if (e.code === 'Enter' && !$('menu').hidden && document.activeElement && !document.activeElement.classList.contains('opt') && !document.activeElement.classList.contains('hero')) { e.preventDefault(); startGame(); }
 });
@@ -2080,6 +2113,7 @@ setInterval(() => {
   else window._gpLatch = false;
 }, 100);
 
+$('pauseHelp').innerHTML = $('help').innerHTML;
 Keyboard.init(); Touch.init(); detectTouch(); resize(); buildMenu();
 requestAnimationFrame(frame);
 /* hook for automated tests */
