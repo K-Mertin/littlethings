@@ -14,8 +14,14 @@ body.game{background:linear-gradient(#bfe6ff,#fff3d6)}
 .pad button.j{background:rgba(255,120,60,.7);box-shadow:0 4px 0 rgba(160,60,20,.5);width:78px;height:78px}
 .pad.p2 button{background:rgba(200,60,120,.55)} .pad.p2 button.j{background:rgba(255,120,60,.7)}
 .pad button.down{transform:translateY(3px);box-shadow:0 1px 0 rgba(0,0,0,.3);filter:brightness(1.15)}
-#padL{left:max(10px,env(safe-area-inset-left))} #padR{right:max(10px,env(safe-area-inset-right))}
-@media (orientation:portrait){ body.touch .mg-stage{bottom:120px} .pad button{width:74px;height:74px} .pad button.j{width:84px;height:84px} }
+#padL{left:max(10px,env(safe-area-inset-left))}
+.pad .slide{position:relative;width:176px;height:72px;border-radius:36px;border:3px solid rgba(255,255,255,.9);background:rgba(40,90,160,.5);
+  box-shadow:0 4px 0 rgba(20,50,100,.45);display:flex;align-items:center;justify-content:space-between;padding:0 16px;touch-action:none;
+  font:900 22px system-ui;color:rgba(255,255,255,.9)}
+.pad.p2 .slide,#padR .slide{background:rgba(200,60,120,.5)}
+.pad .slide i{position:absolute;top:8px;left:calc(50% - 28px);width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,.85);box-shadow:0 2px 6px rgba(0,0,0,.25);transition:left .06s}
+.pad .slide.l i{left:8px} .pad .slide.r i{left:calc(100% - 64px)} #padR{right:max(10px,env(safe-area-inset-right))}
+@media (orientation:portrait){ body.touch .mg-stage{bottom:120px} .pad button.j{width:84px;height:84px} }
 @media (orientation:landscape){ .pad{opacity:.75} }
 .modes{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px;margin-top:10px}
 .modes .mg-btn{min-width:0;font-size:15px;min-height:56px;padding:4px 8px;line-height:1.25}
@@ -24,8 +30,8 @@ body.game{background:linear-gradient(#bfe6ff,#fff3d6)}
 </head>
 <body>
 <main class="mg-stage"><canvas id="cv" aria-label="遊戲畫面"></canvas></main>
-<div class="pad" id="padL"><button data-p="0" data-k="l" aria-label="左">◀</button><button data-p="0" data-k="r" aria-label="右">▶</button><button class="j" data-p="0" data-k="j">跳</button></div>
-<div class="pad" id="padR"><button class="j" data-p="1" data-k="j">跳</button><button data-p="1" data-k="l" aria-label="左">◀</button><button data-p="1" data-k="r" aria-label="右">▶</button></div>
+<div class="pad" id="padL"><div class="slide" data-p="0" aria-label="左右移動"><span>◀</span><i></i><span>▶</span></div><button class="j" data-p="0" data-k="j">跳</button></div>
+<div class="pad" id="padR"><button class="j" data-p="1" data-k="j">跳</button><div class="slide" data-p="1" aria-label="左右移動"><span>◀</span><i></i><span>▶</span></div></div>
 <script src="mini.js"></script>
 <script>
 'use strict';
@@ -79,15 +85,28 @@ document.querySelectorAll('.pad button').forEach(b => {
   b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('lostpointercapture', off);
   b.addEventListener('contextmenu', e => e.preventDefault());
 });
+// slide pad: keep the thumb down and slide left/right; direction follows the thumb
+document.querySelectorAll('.pad .slide').forEach(el => {
+  const p = +el.dataset.p; let id = null;
+  const set = e => {
+    const r = el.getBoundingClientRect(), rel = (e.clientX - r.left) / r.width - 0.5;
+    const d = rel < -0.08 ? -1 : rel > 0.08 ? 1 : 0;
+    input[p].l = d < 0; input[p].r = d > 0; el.classList.toggle('l', d < 0); el.classList.toggle('r', d > 0);
+  };
+  const stop = () => { id = null; input[p].l = input[p].r = false; el.classList.remove('l', 'r'); };
+  el.addEventListener('pointerdown', e => { e.preventDefault(); id = e.pointerId; try { el.setPointerCapture(id); } catch {} set(e); MG.unlock(); });
+  el.addEventListener('pointermove', e => { if (e.pointerId === id) set(e); });
+  el.addEventListener('pointerup', stop); el.addEventListener('pointercancel', stop); el.addEventListener('lostpointercapture', stop);
+});
 const padL = document.getElementById('padL'), padR = document.getElementById('padR'), jump0 = padL.querySelector('.j');
 function showPads() {
   padL.classList.toggle('on', isTouch);
   padR.classList.toggle('on', isTouch);
   if (mode === 'cpu') {          // 1P: left thumb moves, right thumb jumps
-    padR.querySelectorAll('button[data-p="1"]').forEach(b => b.style.display = 'none');
+    padR.querySelectorAll('[data-p="1"]').forEach(b => b.style.display = 'none');
     if (jump0.parentElement !== padR) padR.append(jump0);
   } else {                       // 2P: each side has its own three buttons
-    padR.querySelectorAll('button[data-p="1"]').forEach(b => b.style.display = '');
+    padR.querySelectorAll('[data-p="1"]').forEach(b => b.style.display = '');
     if (jump0.parentElement !== padL) padL.append(jump0);
   }
 }
@@ -106,7 +125,7 @@ function predictX(targetY) {
 function aiThink(p, dt) {
   const L = LEVELS[level], a = p.ai, inp = input[1];
   a.rt -= dt;
-  if (ball.last !== a.seen) { a.seen = ball.last; a.off = ball.last === 0 && Math.random() < L.blunder ? MG.pick([-1, 1]) * MG.rand(75, 115) : 0; }
+  if (ball.last !== a.seen) { a.seen = ball.last; a.off = ball.last === 0 && Math.random() < L.blunder ? MG.pick([-1, 1]) * MG.rand(75, 115) : 0; a.adj = MG.pick([-1, 0, 0, 1]); }
   if (a.rt <= 0) {
     a.rt = L.react;
     const px = predictX(GROUND - R * 2.2);
@@ -119,32 +138,51 @@ function aiThink(p, dt) {
   inp.jp = false;
   const dx = ball.x - p.x, dy = p.y - ball.y;
   if (p.ground && ball.x > NETX && Math.abs(dx) < 46 && dy > 50 && dy < 150 && ball.vy > -100 && Math.random() < L.jump * dt * 8) inp.jp = true;
-  if (!p.ground && Math.abs(dx) < 60 && dy > -10 && dy < 90 && ball.x < 520 && Math.random() < L.spike * dt * 10) inp.jp = true;
+  if (!p.ground && Math.hypot(dx, dy) < REACH && ball.x < 540 && Math.random() < L.spike * dt * 12) inp.jp = true;
 }
 
 // ---------- physics ----------
+// make sure a shot from our side clears the net: if the planned arc would hit it,
+// lift it just enough to pass over the top
+function clearNet(toward) {
+  const dxNet = (NETX - toward * (NETW / 2 + BR + 4)) - ball.x;
+  if (dxNet * toward <= 0 || ball.vx * toward <= 0) return;
+  const tn = dxNet / ball.vx, clearY = NETTOP - BR - 8;
+  const vyMax = (clearY - ball.y - 0.5 * GRAV_B * tn * tn) / tn;
+  if (ball.vy > vyMax) ball.vy = vyMax;
+}
+function spike(p) {
+  const toward = p.side ? -1 : 1, ln = lean(p);
+  // hold toward the net = long and flat, hold away = steep and short, nothing = in between
+  ball.vx = toward * (ln > 0 ? 680 : ln < 0 ? 470 : 600);
+  ball.vy = ln > 0 ? 110 : ln < 0 ? 360 : 230;
+  clearNet(toward);
+  const d = Math.hypot(ball.x - p.x, ball.y - p.y) || 1;
+  if (d < R + BR) { ball.x = p.x + (ball.x - p.x) / d * (R + BR + 1); ball.y = p.y + (ball.y - p.y) / d * (R + BR + 1); }
+  ball.spiked = 0.6; p.spikeT = 0; p.hitCd = 0.25; shake = 0.25; MG.sfx('hit');
+  banner = { t: '殺球！', life: 0.7, x: ball.x, y: ball.y - 30 };
+  MG.fx.burst(ball.x, ball.y, { n: 18, colors: ['#ffd23f', '#ff7a1c', '#fff'], speed: 260, up: 0, size: 5, shape: 'star', life: 0.5, grav: 0 });
+  ball.last = p.side; p.mood = 'wow'; p.moodT = 0.4; hits++;
+}
 function hitBall(p) {
+  if (p.hitCd > 0) return;
   const dx = ball.x - p.x, dy = ball.y - p.y, d = Math.hypot(dx, dy);
   if (d > R + BR || d === 0) return;
+  if (p.spikeT > 0 && !p.ground) return spike(p);
   const nx = dx / d, ny = dy / d;
   ball.x = p.x + nx * (R + BR + 0.5); ball.y = p.y + ny * (R + BR + 0.5);
-  const toward = p.side ? -1 : 1;
-  if (p.spikeT > 0 && !p.ground) {
-    // spike: fast and downward-ish toward the other side, steeper when holding a direction
-    const inp = input[p.side], push = (inp.l || inp.r) ? 1.15 : 1;
-    ball.vx = toward * 640 * push; ball.vy = 180 + MG.rand(-40, 60);
-    if (ball.y > NETTOP - 20 && Math.abs(ball.x - NETX) < 120) ball.vy = -60; // too low near the net: lob over
-    ball.spiked = 0.6; p.spikeT = 0; shake = 0.25; MG.sfx('hit');
-    banner = { t: '殺球！', life: 0.7, x: ball.x, y: ball.y - 30 };
-    MG.fx.burst(ball.x, ball.y, { n: 18, colors: ['#ffd23f', '#ff7a1c', '#fff'], speed: 260, up: 0, size: 5, shape: 'star', life: 0.5, grav: 0 });
+  const toward = p.side ? -1 : 1, ln = lean(p);
+  if (!p.ground) {
+    // jumping hit without the swing: a firm push over the net
+    ball.vx = toward * (330 + ln * 90) + dx * 2; ball.vy = -380;
   } else {
-    const sp = Math.max(500, Math.hypot(ball.vx, ball.vy) * 0.85);
-    ball.vx = nx * sp + p.vx * 0.45; ball.vy = Math.min(ny * sp + p.vy * 0.3, -330);
-    // nudge toward the net so rallies keep moving
-    if (ball.vx * toward < 150) ball.vx = toward * Math.max(150, Math.abs(ball.vx) * 0.6);
-    MG.sfx('pop'); MG.fx.burst(ball.x, ball.y, { n: 6, colors: ['#fff', '#ffe36b'], speed: 120, up: 20, size: 3, life: 0.35 });
+    // bump: always goes up and over; leaning picks how far it goes
+    ball.vx = toward * (250 + ln * 120) + dx * 2.5; ball.vy = -(560 + Math.max(0, -ny) * 40);
   }
-  const sp2 = Math.hypot(ball.vx, ball.vy); if (sp2 > 760) { ball.vx *= 760 / sp2; ball.vy *= 760 / sp2; }
+  if (ball.vx * toward < 90) ball.vx = toward * 90;
+  clearNet(toward);
+  p.hitCd = 0.18;
+  MG.sfx('pop'); MG.fx.burst(ball.x, ball.y, { n: 6, colors: ['#fff', '#ffe36b'], speed: 120, up: 20, size: 3, life: 0.35 });
   ball.last = p.side; p.mood = 'wow'; p.moodT = 0.4; hits++;
 }
 function netCollide() {
@@ -187,18 +225,38 @@ function update(dt) {
 }
 function stepPlayer(p, dt, frozen) {
   const inp = input[p.side];
-  let dir = frozen ? 0 : (inp.r ? 1 : 0) - (inp.l ? 1 : 0);
-  p.vx = dir * SPEED * (p.ai ? (0.75 + LEVELS[level].speed * 0.25) : 1);
-  if (!frozen && inp.jp) { if (p.ground) { p.vy = -JUMP; p.ground = false; p.squash = -0.2; MG.sfx('jump'); } else p.spikeT = 0.28; }
+  const dir = frozen ? 0 : (inp.r ? 1 : 0) - (inp.l ? 1 : 0);
+  // ease into and out of running instead of snapping to full speed
+  const target = dir * SPEED * (p.ai ? (0.75 + LEVELS[level].speed * 0.25) : 1), acc = (p.ground ? 2600 : 1700) * dt;
+  p.vx += Math.max(-acc, Math.min(acc, target - p.vx));
+  if (!frozen && inp.jp) {
+    if (p.ground) { p.vy = -JUMP; p.ground = false; p.squash = -0.2; p.cut = false; MG.sfx('jump'); }
+    else trySpike(p);
+  }
   inp.jp = false;
-  p.spikeT = Math.max(0, p.spikeT - dt);
+  p.spikeT = Math.max(0, p.spikeT - dt); p.hitCd = Math.max(0, (p.hitCd || 0) - dt); p.swing = Math.max(0, (p.swing || 0) - dt);
   p.vy += GRAV_P * dt; p.x += p.vx * dt; p.y += p.vy * dt;
   if (p.y >= GROUND - R) { if (!p.ground) { p.squash = 0.22; MG.fx.burst(p.x, GROUND, { n: 6, colors: ['#f2d69a', '#e8c27a'], speed: 80, up: 40, size: 3, life: 0.4 }); } p.y = GROUND - R; p.vy = 0; p.ground = true; }
   const lo = p.side ? NETX + NETW / 2 + R : R, hi = p.side ? W - R : NETX - NETW / 2 - R;
-  p.x = Math.max(lo, Math.min(hi, p.x));
+  if (p.x < lo) { p.x = lo; p.vx = 0; } if (p.x > hi) { p.x = hi; p.vx = 0; }
   p.squash *= Math.pow(0.003, dt);
   p.moodT -= dt; if (p.moodT <= 0 && p.mood !== 'ouch') p.mood = 'happy';
 }
+// pressing jump in the air swings: if the ball is close it is spiked right away,
+// otherwise the swing stays "armed" for a short moment
+const REACH = R + BR + 34;
+function trySpike(p) {
+  p.swing = 0.22;
+  if (ball.hold <= 0 && Math.hypot(ball.x - p.x, ball.y - p.y) < REACH && (p.side ? ball.x > NETX - 40 : ball.x < NETX + 40)) spike(p);
+  else p.spikeT = 0.45;
+}
+// which way the player is leaning: +1 toward the net, -1 away, 0 none
+function lean(p) {
+  if (p.ai) return p.ai.adj || 0;
+  const inp = input[p.side], dir = (inp.r ? 1 : 0) - (inp.l ? 1 : 0);
+  return dir * (p.side ? -1 : 1);
+}
+
 function point(winner) {
   score[winner]++; server = winner; state = 'point'; pauseT = 1.4; hud();
   const loser = 1 - winner; players[winner].mood = 'love'; players[winner].moodT = 1.4; players[loser].mood = 'ouch'; players[loser].moodT = 1.4;
@@ -285,7 +343,11 @@ function drawPlayer(p) {
   x.fillStyle = p.side ? '#3d9bff' : '#ff5a4e'; x.beginPath(); x.ellipse(0, -R * 0.62, R * 0.72, R * 0.12, 0, Math.PI, 0); x.lineTo(R * 0.72, -R * 0.55); x.ellipse(0, -R * 0.55, R * 0.72, R * 0.12, 0, 0, Math.PI, true); x.fill();
   x.fillStyle = '#fff'; x.fillRect(-R * 0.1, -R * 0.74, R * 0.2, R * 0.12);
   x.restore();
-  if (p.spikeT > 0 && !p.ground) { x.strokeStyle = 'rgba(255,200,80,.8)'; x.lineWidth = 3; x.beginPath(); x.arc(p.x, p.y, R + 6, 0, 7); x.stroke(); }
+  if (p.swing > 0) {   // swing arc
+    const k = 1 - p.swing / 0.22, sd = p.side ? -1 : 1, a0 = sd > 0 ? -2.2 : -0.9;
+    x.strokeStyle = `rgba(255,200,80,${0.9 - k * 0.6})`; x.lineWidth = 6; x.lineCap = 'round';
+    x.beginPath(); x.arc(p.x, p.y, R + 14, sd > 0 ? a0 : a0 - k * 1.4, sd > 0 ? a0 + k * 1.4 : a0); x.stroke();
+  } else if (p.spikeT > 0 && !p.ground) { x.strokeStyle = 'rgba(255,200,80,.7)'; x.lineWidth = 3; x.beginPath(); x.arc(p.x, p.y, R + 6, 0, 7); x.stroke(); }
 }
 function draw() {
   beach();
@@ -296,6 +358,11 @@ function draw() {
   const gx = (t * 30) % (W + 80) - 40, gy = 100 + Math.sin(t) * 8, fl = Math.sin(t * 8) * 4;
   x.strokeStyle = '#4a5260'; x.lineWidth = 2; x.beginPath(); x.moveTo(gx - 10, gy - fl); x.quadraticCurveTo(gx - 5, gy - 6, gx, gy); x.quadraticCurveTo(gx + 5, gy - 6, gx + 10, gy - fl); x.stroke();
   drawNet();
+  if (state === 'play' && ball.hold <= 0) {   // where the ball will land
+    const lx = predictX(GROUND - BR), mine = lx < NETX ? 0 : 1;
+    x.strokeStyle = mine ? 'rgba(207,74,128,.65)' : 'rgba(46,154,76,.65)'; x.lineWidth = 2.5; x.setLineDash([5, 4]);
+    x.beginPath(); x.ellipse(lx, GROUND + 3, 16, 5, 0, 0, 7); x.stroke(); x.setLineDash([]);
+  }
   for (const p of players) drawPlayer(p);
   drawBall();
   if (ball.hold > 0 && state === 'play') { x.fillStyle = 'rgba(255,255,255,.9)'; x.font = '900 16px "Noto Sans TC",system-ui'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('發球', ball.x, ball.y - 30); }
@@ -344,7 +411,7 @@ function menu() {
   MG.panel({
     title: '噗噗排球',
     html: `<p>把球打過網，讓球落在對方的沙灘上就得分，先拿 ${WIN} 分贏！</p>
-      <p>${isTouch ? '左手按 ◀ ▶ 移動，右手按「跳」；在空中再按一次「跳」就是<b>殺球</b>！' : '在空中再按一次跳就是<b>殺球</b>！'}</p>
+      <p>${isTouch ? '左手在滑桿上左右滑動，右手按「跳」。<b>跳起來球靠近時再按一次跳就是殺球！</b>殺球時往網子推會打得又平又遠。' : '<b>跳起來球靠近時再按一次跳就是殺球！</b>接球時按著往網子方向會打得比較遠，往後按會打得高高的。沙灘上的虛線圈是球會掉的地方。'}</p>
       ${isTouch && innerHeight > innerWidth ? '<p class="new">📱 把手機橫放，球場會更大更好玩！</p>' : ''}
       <div class="modes">${LEVELS.map((L, i) => `<button class="mg-btn${i === 1 ? '' : ' alt'}" data-mode="cpu" data-lv="${i}">對電腦・${L.name}<small>${best > i ? '已打贏 ✓' : '　'}</small></button>`).join('')}
       <button class="mg-btn alt" data-mode="pvp">兩人對打<small>同一台裝置</small></button></div>`,
