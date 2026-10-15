@@ -29,6 +29,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .layout{flex:1;min-height:0;display:grid;grid-template-columns:1fr minmax(340px,440px)}
 .view{position:relative;min-height:0;background:radial-gradient(120% 90% at 50% 30%,#3a3f47 0%,#24272d 55%,#16181c 100%)}
 #cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.viewreset{position:absolute;right:14px;top:12px;padding:5px 12px;font-size:13px;background:rgba(31,34,39,.75)}
 .hint{position:absolute;left:16px;bottom:14px;font-size:12px;color:var(--mute);pointer-events:none}
 .loading{position:absolute;inset:0;display:grid;place-items:center;color:var(--mute);font-size:14px;letter-spacing:.1em}
 .namebar{position:absolute;left:50%;top:14px;transform:translateX(-50%)}
@@ -110,7 +111,8 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
     <canvas id="cv"></canvas>
     <div class="loading" id="loading">載入模型中…</div>
     <div class="namebar"><input id="name" maxlength="16" aria-label="角色名字" placeholder="角色名字"></div>
-    <div class="hint">拖曳旋轉 · 滾輪／雙指縮放 · 眼睛會看著游標</div>
+    <div class="hint">拖曳旋轉 · 右鍵或雙指拖曳移動 · 滾輪／雙指縮放 · 眼睛會看著游標</div>
+    <button class="btn viewreset" id="viewReset" title="重置視角">⟲ 置中</button>
   </section>
   <section class="panel">
     <nav class="tabs" id="tabs" role="tablist"></nav>
@@ -348,9 +350,12 @@ scene.environment=pmrem.fromScene(new RoomEnvironment(renderer),.04).texture;
 scene.environmentIntensity=.35;
 const camera=new THREE.PerspectiveCamera(22,1,.5,200);
 const controls=new OrbitControls(camera,canvas);
-controls.target.set(0,7.18,.45);camera.position.set(1.4,7.5,10.5);
-controls.enablePan=false;controls.enableDamping=true;controls.minDistance=5;controls.maxDistance=22;
-controls.minPolarAngle=Math.PI*.28;controls.maxPolarAngle=Math.PI*.62;
+// eye-level portrait camera; right-drag / two-finger drag pans (clamped near the face)
+const VIEW={off:new THREE.Vector3(.7,.04,10.2)};
+controls.target.set(0,7.1,.45);camera.position.copy(controls.target).add(VIEW.off);
+controls.enablePan=true;controls.screenSpacePanning=true;controls.panSpeed=.7;
+controls.enableDamping=true;controls.minDistance=4;controls.maxDistance=22;
+controls.minPolarAngle=Math.PI*.36;controls.maxPolarAngle=Math.PI*.64;
 controls.update();
 
 // three-point portrait lighting
@@ -502,6 +507,17 @@ function writeProxy(d){
 }
 // eyes: rotate each eyeball around its own centre for gaze
 let eyeRest=null,anchor=null;
+function resetView(){
+  if(!anchor)return;
+  const h=canvas.clientHeight||600,k=h<520?.88:1;   // short (phone) views: come closer so the face fills the frame
+  controls.target.set(0,anchor.y-(h<520?.06:0),anchor.z);camera.position.copy(controls.target).add(VIEW.off.clone().multiplyScalar(k));controls.update();
+}
+function clampPan(){
+  if(!anchor)return;
+  const t=controls.target,c={x:clamp(t.x,-1.2,1.2),y:clamp(t.y,anchor.y-1.8,anchor.y+1.2),z:clamp(t.z,anchor.z-.8,anchor.z+.8)};
+  const dx=c.x-t.x,dy=c.y-t.y,dz=c.z-t.z;
+  if(dx||dy||dz){t.set(c.x,c.y,c.z);camera.position.x+=dx;camera.position.y+=dy;camera.position.z+=dz;}
+}
 function aimEyes(){
   if(!eyeRest)return;
   const Q=eyeProxy.Q;Q.set(eyeRest.Q);
@@ -525,9 +541,10 @@ function rebuildMesh(){
   for(let v=0;v<n;v++){const r=Q[v*3]<0;side[v]=r?1:0;const c=r?cR:cL;c[0]+=Q[v*3];c[1]+=Q[v*3+1];c[2]+=Q[v*3+2];r?nr++:nl++;}
   cL.forEach((_,i)=>{cL[i]/=nl||1;cR[i]/=nr||1;});
   eyeRest={Q:Q.slice(),side,cL,cR};aimEyes();
-  // keep the camera framed on the face when age/gender/height move the head
-  const ay=(cL[1]+cR[1])/2-.05,az=(cL[2]+cR[2])/2-.8;
+  // keep the camera framed on the face (centre ≈ a little below the eyes) when age/gender/height move the head
+  const ay=(cL[1]+cR[1])/2-.16,az=(cL[2]+cR[2])/2-.75;
   if(anchor){const dy=ay-anchor.y,dz=az-anchor.z;controls.target.y+=dy;camera.position.y+=dy;controls.target.z+=dz;camera.position.z+=dz;key.target.position.y+=dy;}
+  else{anchor={y:ay,z:az};resetView();}
   anchor={y:ay,z:az};
 }
 const skinCache=new Map();let skinShown='';
@@ -615,7 +632,7 @@ function frame(now){
   if(dirtyMesh){rebuildMesh();dirtyMesh=false;}
   else if(gazeMoved)aimEyes();
   if(dirtyColor){recolor();dirtyColor=false;}
-  controls.update();
+  controls.update();clampPan();
   renderer.render(scene,camera);
 }
 $('#loading').remove();
@@ -778,6 +795,7 @@ function download(){
   const a=document.createElement('a');a.href=url;a.download=(state.name||'face')+'.png';document.body.append(a);a.click();a.remove();toast('截圖已下載');
 }
 
+$('#viewReset').onclick=resetView;
 $('#undo').onclick=undo;$('#rand').onclick=randomAll;$('#save').onclick=saveCurrent;$('#dl').onclick=download;
 $('#openGal').onclick=()=>{buildGallery();$('#gal').showModal();};$('#closeGal').onclick=()=>$('#gal').close();
 $('#gal').addEventListener('click',e=>{if(e.target===$('#gal'))$('#gal').close();});
