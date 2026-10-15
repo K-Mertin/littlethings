@@ -349,7 +349,7 @@ const MG = (() => {
   let chooseMenu = null;
   function choose(o) {
     const isPause = !!paused;
-    if (o.playing && !chooseMenu) chooseMenu = pauseMenu({ label: o.levels ? '☰ 選關' : '☰ 換模式', playing: o.playing, open: () => { choose(o); return o.restore; } });
+    if (o.playing && !chooseMenu) chooseMenu = pauseMenu({ label: o.menuLabel || (o.levels ? '☰ 選關' : '☰ 換模式'), playing: o.playing, open: () => { choose(o); return o.restore; } });
     let mode = store.get(o.id + '.pickMode', o.modes ? o.modes[0].id : null);
     if (o.modes && !o.modes.some(m => m.id === mode)) mode = o.modes[0].id;
     let lvl = Math.min(store.get(o.id + '.pickLevel', 1), o.levels ? Math.max(1, o.levels.max) : 1);
@@ -359,7 +359,7 @@ const MG = (() => {
     const html = (o.html || '') +
       (o.picks || []).map(pk => `<p class="mg-pick-h">${pk.title}</p><div class="mg-pick">${pk.options.map(q => `<button type="button" class="mg-opt" data-pk="${pk.key}" data-pv="${q.id}">${q.label}<small>${q.sub || ''}</small></button>`).join('')}</div>`).join('') +
       (o.modes ? `${o.picks ? `<p class="mg-pick-h">${o.modesTitle || '要不要計時？'}</p>` : ''}<div class="mg-pick">${o.modes.map(m => `<button type="button" class="mg-opt" data-mode="${m.id}">${m.label}<small>${m.sub || ''}</small></button>`).join('')}</div>` : '') +
-      (o.levels ? `<p class="mg-pick-h">從哪一關開始？</p><div class="mg-levels">${Array.from({ length: o.levels.count }, (_, i) => i + 1).map(n => `<button type="button" class="mg-lv" data-lv="${n}" ${n > o.levels.max ? 'disabled' : ''}>${n > o.levels.max ? '🔒' : lvLabel(n)}</button>`).join('')}</div>` : '');
+      (o.levels ? `<p class="mg-pick-h">${o.levelsTitle || '從哪一關開始？'}</p><div class="mg-levels">${Array.from({ length: o.levels.count }, (_, i) => i + 1).map(n => `<button type="button" class="mg-lv" data-lv="${n}" ${n > o.levels.max ? 'disabled' : ''}>${n > o.levels.max ? '🔒' : lvLabel(n)}</button>`).join('')}</div>` : '');
     panel({ title: o.title, html, keys: o.keys, buttons: [{ label: isPause ? '重新開始' : '開始', alt: !!isPause, on: () => { store.set(o.id + '.pickMode', mode); store.set(o.id + '.pickLevel', lvl); for (const k in picks) store.set(o.id + '.pick.' + k, picks[k]); o.start(mode, lvl, picks); } }, ...(o.extra || [])] });
     const sync = () => {
       over.querySelectorAll('.mg-opt[data-mode]').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === mode));
