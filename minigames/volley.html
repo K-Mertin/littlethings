@@ -7,22 +7,7 @@
 <link rel="stylesheet" href="mini.css">
 <style>
 body.game{background:linear-gradient(#bfe6ff,#fff3d6)}
-.pad{position:fixed;bottom:max(10px,env(safe-area-inset-bottom));display:none;gap:10px;z-index:12;user-select:none;-webkit-user-select:none}
-.pad.on{display:flex}
-.pad button{width:68px;height:68px;border-radius:50%;border:3px solid rgba(255,255,255,.9);font:900 22px "Noto Sans TC",system-ui,sans-serif;color:#fff;
-  background:rgba(40,90,160,.55);box-shadow:0 4px 0 rgba(20,50,100,.45);touch-action:none;padding:0}
-.pad button.j{background:rgba(255,120,60,.7);box-shadow:0 4px 0 rgba(160,60,20,.5);width:78px;height:78px}
-.pad.p2 button{background:rgba(200,60,120,.55)} .pad.p2 button.j{background:rgba(255,120,60,.7)}
-.pad button.down{transform:translateY(3px);box-shadow:0 1px 0 rgba(0,0,0,.3);filter:brightness(1.15)}
-#padL{left:max(10px,env(safe-area-inset-left))}
-.pad .slide{position:relative;width:176px;height:72px;border-radius:36px;border:3px solid rgba(255,255,255,.9);background:rgba(40,90,160,.5);
-  box-shadow:0 4px 0 rgba(20,50,100,.45);display:flex;align-items:center;justify-content:space-between;padding:0 16px;touch-action:none;
-  font:900 22px system-ui;color:rgba(255,255,255,.9)}
-.pad.p2 .slide,#padR .slide{background:rgba(200,60,120,.5)}
-.pad .slide i{position:absolute;top:8px;left:calc(50% - 28px);width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,.85);box-shadow:0 2px 6px rgba(0,0,0,.25);transition:left .06s}
-.pad .slide.l i{left:8px} .pad .slide.r i{left:calc(100% - 64px)} #padR{right:max(10px,env(safe-area-inset-right))}
-@media (orientation:portrait){ body.touch .mg-stage{bottom:120px} .pad button.j{width:84px;height:84px} }
-@media (orientation:landscape){ .pad{opacity:.75} }
+html,body{overscroll-behavior:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 .modes{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px;margin-top:10px}
 .modes .mg-btn{min-width:0;font-size:15px;min-height:56px;padding:4px 8px;line-height:1.25}
 .modes .mg-btn small{display:block;font-weight:400;font-size:12px}
@@ -30,8 +15,6 @@ body.game{background:linear-gradient(#bfe6ff,#fff3d6)}
 </head>
 <body>
 <main class="mg-stage"><canvas id="cv" aria-label="遊戲畫面"></canvas></main>
-<div class="pad" id="padL"><div class="slide" data-p="0" aria-label="左右移動"><span>◀</span><i></i><span>▶</span></div><button class="j" data-p="0" data-k="j">跳</button></div>
-<div class="pad" id="padR"><button class="j" data-p="1" data-k="j">跳</button><div class="slide" data-p="1" aria-label="左右移動"><span>◀</span><i></i><span>▶</span></div></div>
 <script src="mini.js"></script>
 <script>
 'use strict';
@@ -78,38 +61,59 @@ function keyMap(e) {
 addEventListener('keydown', e => { const m = keyMap(e); if (!m || MG.panelOpen()) return; e.preventDefault(); const [p, k] = m; if (k === 'j' && !input[p].j) input[p].jp = true; input[p][k] = true; });
 addEventListener('keyup', e => { const m = keyMap(e); if (!m) return; input[m[0]][m[1]] = false; });
 addEventListener('blur', () => input.forEach(i => { i.l = i.r = i.j = false; }));
-document.querySelectorAll('.pad button').forEach(b => {
-  const p = +b.dataset.p, k = b.dataset.k;
-  const on = e => { e.preventDefault(); try { b.setPointerCapture(e.pointerId); } catch {} b.classList.add('down'); if (k === 'j' && !input[p].j) input[p].jp = true; input[p][k] = true; MG.unlock(); };
-  const off = () => { b.classList.remove('down'); input[p][k] = false; };
-  b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('lostpointercapture', off);
-  b.addEventListener('contextmenu', e => e.preventDefault());
-});
-// slide pad: keep the thumb down and slide left/right; direction follows the thumb
-document.querySelectorAll('.pad .slide').forEach(el => {
-  const p = +el.dataset.p; let id = null;
-  const set = e => {
-    const r = el.getBoundingClientRect(), rel = (e.clientX - r.left) / r.width - 0.5;
-    const d = rel < -0.08 ? -1 : rel > 0.08 ? 1 : 0;
-    input[p].l = d < 0; input[p].r = d > 0; el.classList.toggle('l', d < 0); el.classList.toggle('r', d > 0);
-  };
-  const stop = () => { id = null; input[p].l = input[p].r = false; el.classList.remove('l', 'r'); };
-  el.addEventListener('pointerdown', e => { e.preventDefault(); id = e.pointerId; try { el.setPointerCapture(id); } catch {} set(e); MG.unlock(); });
-  el.addEventListener('pointermove', e => { if (e.pointerId === id) set(e); });
-  el.addEventListener('pointerup', stop); el.addEventListener('pointercancel', stop); el.addEventListener('lostpointercapture', stop);
-});
-const padL = document.getElementById('padL'), padR = document.getElementById('padR'), jump0 = padL.querySelector('.j');
-function showPads() {
-  padL.classList.toggle('on', isTouch);
-  padR.classList.toggle('on', isTouch);
-  if (mode === 'cpu') {          // 1P: left thumb moves, right thumb jumps
-    padR.querySelectorAll('[data-p="1"]').forEach(b => b.style.display = 'none');
-    if (jump0.parentElement !== padR) padR.append(jump0);
-  } else {                       // 2P: each side has its own three buttons
-    padR.querySelectorAll('[data-p="1"]').forEach(b => b.style.display = '');
-    if (jump0.parentElement !== padL) padL.append(jump0);
+// ---------- touch: one finger per player ----------
+// hold and drag on your half of the sand -> your jelly runs to your finger;
+// tap -> jump (and run to where you tapped); tap while in the air -> spike.
+// No buttons near the screen edges, so tablet edge swipes and multi-finger
+// system gestures are not triggered by play.
+const touches = new Map(), tTarget = [null, null], tHold = [false, false];
+let touchHintT = 0;
+const ownerOf = lx => mode === 'pvp' ? (lx < NETX ? 0 : 1) : 0;
+const sideClamp = (p, lx) => p ? Math.max(NETX + NETW / 2 + R, Math.min(W - R, lx)) : Math.max(R, Math.min(NETX - NETW / 2 - R, lx));
+const inPlay = () => state === 'play' && !MG.panelOpen();
+addEventListener('pointerdown', e => {
+  if (e.pointerType !== 'touch' || !inPlay() || e.target.closest('.mg-bar,.mg-over')) return;
+  e.preventDefault();
+  const lx = cv.logical(e).x, p = ownerOf(lx), pl = players[p];
+  const busy = [...touches.values()].some(q => q.p === p);
+  const rec = { p, x0: e.clientX, y0: e.clientY, t0: performance.now(), moved: false, jumped: false, second: busy };
+  touches.set(e.pointerId, rec);
+  if (busy || !pl.ground) { input[p].jp = true; rec.jumped = true; }      // second finger, or already flying: jump / spike right now
+  if (!busy) { tTarget[p] = sideClamp(p, lx); tHold[p] = true; }
+  MG.unlock();
+}, { passive: false });
+addEventListener('pointermove', e => {
+  const rec = touches.get(e.pointerId); if (!rec) return;
+  e.preventDefault();
+  const dx = e.clientX - rec.x0, dy = e.clientY - rec.y0;
+  if (Math.hypot(dx, dy) > 14) rec.moved = true;
+  if (!rec.second) tTarget[rec.p] = sideClamp(rec.p, cv.logical(e).x);
+  // quick upward flick also jumps
+  if (!rec.jumped && dy < -30 && performance.now() - rec.t0 < 260 && players[rec.p].ground) { input[rec.p].jp = true; rec.jumped = true; }
+}, { passive: false });
+function endTouch(e) {
+  const rec = touches.get(e.pointerId); if (!rec) return;
+  touches.delete(e.pointerId);
+  if (!rec.jumped && !rec.moved && performance.now() - rec.t0 < 280) input[rec.p].jp = true;     // a tap
+  if (!rec.second && ![...touches.values()].some(q => q.p === rec.p && !q.second)) {
+    tHold[rec.p] = false;
+    if (rec.moved) tTarget[rec.p] = null;      // let go after dragging: stop; after a tap: keep running to the tapped spot
   }
 }
+addEventListener('pointerup', endTouch); addEventListener('pointercancel', endTouch);
+// stop the browser from scrolling, zooming or long-press menus while playing
+document.addEventListener('touchmove', e => { if (state === 'play' || state === 'point') e.preventDefault(); }, { passive: false });
+document.addEventListener('gesturestart', e => e.preventDefault());
+document.addEventListener('contextmenu', e => e.preventDefault());
+function steerTouch() {
+  for (const p of [0, 1]) {
+    if (tTarget[p] == null || players[p].ai) continue;
+    const d = tTarget[p] - players[p].x;
+    input[p].l = d < -8; input[p].r = d > 8;
+    if (Math.abs(d) <= 8 && !tHold[p]) { tTarget[p] = null; input[p].l = input[p].r = false; }
+  }
+}
+function showPads() { touches.clear(); tTarget[0] = tTarget[1] = null; tHold[0] = tHold[1] = false; touchHintT = isTouch ? 4 : 0; }
 
 // ---------- AI ----------
 function predictX(targetY) {
@@ -201,6 +205,7 @@ function update(dt) {
   MG.fx.step(dt);
   if (state === 'point') { pauseT -= dt; for (const p of players) stepPlayer(p, dt, true); if (pauseT <= 0) { if (score[0] >= WIN || score[1] >= WIN) return endMatch(); resetRally(server); state = 'play'; } return; }
   if (state !== 'play') return;
+  steerTouch(); touchHintT = Math.max(0, touchHintT - dt);
   if (players[1].ai) aiThink(players[1], dt);
   for (const p of players) stepPlayer(p, dt, false);
   // ball
@@ -363,8 +368,18 @@ function draw() {
     x.strokeStyle = mine ? 'rgba(207,74,128,.65)' : 'rgba(46,154,76,.65)'; x.lineWidth = 2.5; x.setLineDash([5, 4]);
     x.beginPath(); x.ellipse(lx, GROUND + 3, 16, 5, 0, 0, 7); x.stroke(); x.setLineDash([]);
   }
+  for (const p of [0, 1]) if (tTarget[p] != null && isTouch) {
+    x.strokeStyle = p ? 'rgba(207,74,128,.8)' : 'rgba(46,154,76,.8)'; x.lineWidth = 3;
+    x.beginPath(); x.ellipse(tTarget[p], GROUND + 6, 12, 4, 0, 0, 7); x.stroke();
+  }
   for (const p of players) drawPlayer(p);
   drawBall();
+  if (touchHintT > 0 && state === 'play') {
+    x.globalAlpha = Math.min(1, touchHintT); x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = '700 15px "Noto Sans TC",system-ui';
+    const tips = mode === 'pvp' ? [[160, '👆 按住這半邊左右拖'], [480, '👆 按住這半邊左右拖']] : [[320, '👆 按住沙灘左右拖＝移動　點一下＝跳']];
+    for (const [tx, tt] of tips) { x.lineWidth = 4; x.strokeStyle = 'rgba(255,255,255,.95)'; x.strokeText(tt, tx, 150); x.fillStyle = '#2a3a5a'; x.fillText(tt, tx, 150); }
+    x.globalAlpha = 1;
+  }
   if (ball.hold > 0 && state === 'play') { x.fillStyle = 'rgba(255,255,255,.9)'; x.font = '900 16px "Noto Sans TC",system-ui'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('發球', ball.x, ball.y - 30); }
   MG.fx.draw(x);
   x.restore();
@@ -411,11 +426,11 @@ function menu() {
   MG.panel({
     title: '噗噗排球',
     html: `<p>把球打過網，讓球落在對方的沙灘上就得分，先拿 ${WIN} 分贏！</p>
-      <p>${isTouch ? '左手在滑桿上左右滑動，右手按「跳」。<b>跳起來球靠近時再按一次跳就是殺球！</b>殺球時往網子推會打得又平又遠。' : '<b>跳起來球靠近時再按一次跳就是殺球！</b>接球時按著往網子方向會打得比較遠，往後按會打得高高的。沙灘上的虛線圈是球會掉的地方。'}</p>
+      <p>${isTouch ? '<b>按住沙灘左右拖</b>，噗噗會跑到你的手指那裡；<b>點一下</b>就跳，<b>跳起來再點一下</b>就是殺球！兩人對打時，一人用一半的畫面、一根手指就好。沙灘上的虛線圈是球會掉的地方。' : '<b>跳起來球靠近時再按一次跳就是殺球！</b>接球時按著往網子方向會打得比較遠，往後按會打得高高的。沙灘上的虛線圈是球會掉的地方。'}</p>
       ${isTouch && innerHeight > innerWidth ? '<p class="new">📱 把手機橫放，球場會更大更好玩！</p>' : ''}
       <div class="modes">${LEVELS.map((L, i) => `<button class="mg-btn${i === 1 ? '' : ' alt'}" data-mode="cpu" data-lv="${i}">對電腦・${L.name}<small>${best > i ? '已打贏 ✓' : '　'}</small></button>`).join('')}
       <button class="mg-btn alt" data-mode="pvp">兩人對打<small>同一台裝置</small></button></div>`,
-    keys: isTouch ? '兩人對打時，左邊和右邊各有一組按鈕' : '1 人：<kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd> 或 <kbd>A</kbd><kbd>D</kbd><kbd>W</kbd>　2 人：左邊 <kbd>A</kbd><kbd>D</kbd><kbd>W</kbd>、右邊 <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd>',
+    keys: isTouch ? '一人一根手指：按住拖＝移動，點一下＝跳，在空中點＝殺球' : '1 人：<kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd> 或 <kbd>A</kbd><kbd>D</kbd><kbd>W</kbd>　2 人：左邊 <kbd>A</kbd><kbd>D</kbd><kbd>W</kbd>、右邊 <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd>',
   });
   document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { MG.sfx('click'); MG.unlock(); mode = b.dataset.mode; if (mode === 'cpu') level = +b.dataset.lv; start(); });
   setTimeout(() => document.querySelector('[data-lv="1"]')?.focus(), 30);
