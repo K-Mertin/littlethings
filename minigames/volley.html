@@ -67,19 +67,27 @@ addEventListener('blur', () => input.forEach(i => { i.l = i.r = i.j = false; }))
 // No buttons near the screen edges, so tablet edge swipes and multi-finger
 // system gestures are not triggered by play.
 const touches = new Map(), tTarget = [null, null], tHold = [false, false];
-let touchHintT = 0;
+let touchHintT = 0, touchSeq = 0;
 const ownerOf = lx => mode === 'pvp' ? (lx < NETX ? 0 : 1) : 0;
 const sideClamp = (p, lx) => p ? Math.max(NETX + NETW / 2 + R, Math.min(W - R, lx)) : Math.max(R, Math.min(NETX - NETW / 2 - R, lx));
-const inPlay = () => state === 'play' && !MG.panelOpen();
+// fingers are accepted during play and during the short pause after a point,
+// so a finger that lands in that pause still works when the next rally starts
+const inPlay = () => (state === 'play' || state === 'point') && !MG.panelOpen();
+const fingersOf = p => [...touches.values()].filter(q => q.p === p);
+// the finger that steers a player = the newest one that is "steering" (first finger, or one held for a while)
+function steerFinger(p) { let best = null; for (const q of touches.values()) if (q.p === p && q.steer && (!best || q.seq > best.seq)) best = q; return best; }
+function jumpNow(p) { if (state === 'play') input[p].jp = true; }
 addEventListener('pointerdown', e => {
   if (e.pointerType !== 'touch' || !inPlay() || e.target.closest('.mg-bar,.mg-over')) return;
   e.preventDefault();
   const lx = cv.logical(e).x, p = ownerOf(lx), pl = players[p];
-  const busy = [...touches.values()].some(q => q.p === p);
-  const rec = { p, x0: e.clientX, y0: e.clientY, t0: performance.now(), moved: false, jumped: false, second: busy };
+  const mine = fingersOf(p);
+  if (mine.length >= 2) return;                     // a third finger (or a palm) on the same side does nothing
+  const rec = { p, id: e.pointerId, seq: ++touchSeq, x0: e.clientX, y0: e.clientY, t0: performance.now(), lx: sideClamp(p, lx), moved: false, jumped: false, steer: mine.length === 0 };
   touches.set(e.pointerId, rec);
-  if (busy || !pl.ground) { input[p].jp = true; rec.jumped = true; }      // second finger, or already flying: jump / spike right now
-  if (!busy) { tTarget[p] = sideClamp(p, lx); tHold[p] = true; }
+  if (mine.length) { jumpNow(p); rec.jumped = true; }          // hold with one finger, tap with another = jump / spike
+  else if (!pl.ground) { jumpNow(p); rec.jumped = true; }       // tap while flying = spike
+  if (rec.steer) { tTarget[p] = rec.lx; tHold[p] = true; }
   MG.unlock();
 }, { passive: false });
 addEventListener('pointermove', e => {
@@ -87,15 +95,20 @@ addEventListener('pointermove', e => {
   e.preventDefault();
   const dx = e.clientX - rec.x0, dy = e.clientY - rec.y0;
   if (Math.hypot(dx, dy) > 14) rec.moved = true;
-  if (!rec.second) tTarget[rec.p] = sideClamp(rec.p, cv.logical(e).x);
+  rec.lx = sideClamp(rec.p, cv.logical(e).x);
+  // a second finger that is held and dragged takes over the steering (the child switched fingers)
+  if (!rec.steer && rec.moved && performance.now() - rec.t0 > 250) rec.steer = true;
+  if (steerFinger(rec.p) === rec) { tTarget[rec.p] = rec.lx; tHold[rec.p] = true; }
   // quick upward flick also jumps
-  if (!rec.jumped && dy < -30 && performance.now() - rec.t0 < 260 && players[rec.p].ground) { input[rec.p].jp = true; rec.jumped = true; }
+  if (!rec.jumped && dy < -30 && performance.now() - rec.t0 < 260 && players[rec.p].ground) { jumpNow(rec.p); rec.jumped = true; }
 }, { passive: false });
 function endTouch(e) {
   const rec = touches.get(e.pointerId); if (!rec) return;
   touches.delete(e.pointerId);
-  if (!rec.jumped && !rec.moved && performance.now() - rec.t0 < 280) input[rec.p].jp = true;     // a tap
-  if (!rec.second && ![...touches.values()].some(q => q.p === rec.p && !q.second)) {
+  if (e.type === 'pointerup' && !rec.jumped && !rec.moved && performance.now() - rec.t0 < 280) jumpNow(rec.p);     // a tap
+  const next = steerFinger(rec.p) || fingersOf(rec.p)[0];
+  if (next) { next.steer = true; tTarget[rec.p] = next.lx; tHold[rec.p] = true; }   // the other finger keeps steering
+  else if (rec.steer) {
     tHold[rec.p] = false;
     if (rec.moved) tTarget[rec.p] = null;      // let go after dragging: stop; after a tap: keep running to the tapped spot
   }
@@ -203,7 +216,7 @@ function update(dt) {
   t += dt; shake = Math.max(0, shake - dt);
   if (banner) { banner.life -= dt; if (banner.life <= 0) banner = null; }
   MG.fx.step(dt);
-  if (state === 'point') { pauseT -= dt; for (const p of players) stepPlayer(p, dt, true); if (pauseT <= 0) { if (score[0] >= WIN || score[1] >= WIN) return endMatch(); resetRally(server); state = 'play'; } return; }
+  if (state === 'point') { pauseT -= dt; steerTouch(); for (const p of players) stepPlayer(p, dt, true); if (pauseT <= 0) { if (score[0] >= WIN || score[1] >= WIN) return endMatch(); resetRally(server); state = 'play'; } return; }
   if (state !== 'play') return;
   steerTouch(); touchHintT = Math.max(0, touchHintT - dt);
   if (players[1].ai) aiThink(players[1], dt);
