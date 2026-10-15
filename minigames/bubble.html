@@ -19,8 +19,18 @@ const COLS = 8, R = 19, D = R * 2, RH = D * 0.866, X0 = (W - (COLS * D + R)) / 2
 const COLORS = [
   { c: '#ff5a6e', d: '#c0283c', name: '紅' }, { c: '#ffc93a', d: '#c98a00', name: '黃' }, { c: '#4cc96a', d: '#237a3b', name: '綠' },
   { c: '#3d9bff', d: '#1d5fb0', name: '藍' }, { c: '#b07cff', d: '#6a3fc0', name: '紫' }, { c: '#ff9f4a', d: '#c0601a', name: '橘' },
+  { c: '#3fd6d0', d: '#178a85', name: '青' }, { c: '#ff7ac8', d: '#c0398a', name: '粉' },
 ];
-let mode = 'relax';
+const ROCK = 99;                 // grey stone: never pops, only falls when what holds it is gone
+// difficulty: cl = how clumped the colours start, guide = how much aiming line is shown
+const DIFF = {
+  easy: { cl: 0.55, guide: Infinity, colors: n => Math.min(6, 3 + Math.floor((n - 1) / 2)), rows: n => Math.min(8, 4 + n), rocks: () => 0, drop: n => Math.max(4, 8 - Math.floor(n / 2)) },
+  normal: { cl: 0.3, guide: 'bounce', colors: n => Math.min(8, 4 + Math.floor((n - 1) / 3)), rows: n => Math.min(9, 5 + Math.ceil(n / 3)), rocks: n => n >= 5 ? Math.min(9, Math.floor((n - 3) / 2)) : 0, drop: n => Math.max(3, 7 - Math.floor(n / 4)) },
+  hard: { cl: 0.12, guide: 150, colors: n => Math.min(8, 5 + Math.floor((n - 1) / 4)), rows: n => Math.min(9, 6 + Math.ceil(n / 4)), rocks: n => n >= 3 ? Math.min(14, n) : 0, drop: n => Math.max(3, 6 - Math.floor(n / 4)) },
+};
+const NLEVELS = 20;
+let mode = 'relax', diff = 'normal';
+const D_ = () => DIFF[diff];
 let grid, ceilY, level, score, nColors, shot, cur, nxt, aim = -Math.PI / 2, misses, dropEvery, state = 'ready', falling = [], pops = [], t = 0, shakeT = 0, combo = 0;
 
 const cols = r => (r % 2 ? COLS - 1 : COLS);
@@ -33,22 +43,28 @@ function neighbors(r, c) {
   return out.filter(([a, b]) => a >= 0 && a < ROWS && b >= 0 && b < cols(a));
 }
 function newLevel(n) {
-  level = n; nColors = Math.min(6, 3 + Math.floor((n - 1) / 2));
-  const rows = Math.min(8, 4 + n);
-  dropEvery = Math.max(4, 8 - Math.floor(n / 2));
+  level = n; nColors = D_().colors(n);
+  const rows = D_().rows(n), cl = D_().cl;
+  dropEvery = D_().drop(n);
   grid = Array.from({ length: ROWS }, (_, r) => Array(cols(r)).fill(-1));
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols(r); c++) {
     // small clusters so there are matches to find
     const left = c > 0 ? grid[r][c - 1] : -1, up = r > 0 ? grid[r - 1][Math.min(c, cols(r - 1) - 1)] : -1;
     const rnd = Math.random();
-    grid[r][c] = rnd < 0.35 && left >= 0 ? left : rnd < 0.55 && up >= 0 ? up : MG.randi(0, nColors - 1);
+    grid[r][c] = rnd < cl * 0.64 && left >= 0 ? left : rnd < cl && up >= 0 ? up : MG.randi(0, nColors - 1);
+  }
+  // stones (never in the top two rows, never touching each other, so they can always be knocked down)
+  for (let k = 0, tries = 0; k < D_().rocks(n) && tries < 200; tries++) {
+    const r = MG.randi(2, rows - 1), c = MG.randi(0, cols(r) - 1);
+    if (grid[r][c] === ROCK || neighbors(r, c).some(([a, b]) => grid[a][b] === ROCK)) continue;
+    grid[r][c] = ROCK; k++;
   }
   ceilY = TOP0; misses = 0; shot = null; falling = []; combo = 0;
   cur = pickColor(); nxt = pickColor();
   hud();
 }
 function pickColor() {
-  const present = new Set(); for (const row of grid) for (const v of row) if (v >= 0) present.add(v);
+  const present = new Set(); for (const row of grid) for (const v of row) if (v >= 0 && v !== ROCK) present.add(v);
   const arr = present.size ? [...present] : [...Array(nColors).keys()];
   return MG.pick(arr);
 }
@@ -84,12 +100,15 @@ function fire() {
 // guide: full trajectory with wall bounces, stops at the first bubble / ceiling
 function guide() {
   const pts = [[SHOOT.x, SHOOT.y]]; let px = SHOOT.x, py = SHOOT.y, vx = Math.cos(aim), vy = Math.sin(aim);
-  const L = X0 + R, Rr = X0 + COLS * D + R - R;
+  const L = X0 + R, Rr = X0 + COLS * D + R - R, gl = D_().guide;
+  let len = 0, after = -1;
   for (let i = 0; i < 700; i++) {
-    px += vx * 4; py += vy * 4;
-    if (px < L) { px = L; vx = -vx; pts.push([px, py]); }
-    if (px > Rr) { px = Rr; vx = -vx; pts.push([px, py]); }
+    px += vx * 4; py += vy * 4; len += 4;
+    if (px < L) { px = L; vx = -vx; pts.push([px, py]); if (after < 0) after = 0; }
+    if (px > Rr) { px = Rr; vx = -vx; pts.push([px, py]); if (after < 0) after = 0; }
+    if (after >= 0) after += 4;
     if (py <= ceilY + R || hits(px, py)) break;
+    if (gl === 'bounce' ? after > 50 : len > gl) break;      // 普通: line stops a little after the first bounce; 困難: short line
   }
   pts.push([px, py]); return pts;
 }
@@ -133,7 +152,7 @@ function settle() {
   while (stack.length) { const [a, b] = stack.pop(); group.push([a, b]); for (const [na, nb] of neighbors(a, b)) { const k = na + ',' + nb; if (!seen.has(k) && grid[na][nb] === col) { seen.add(k); stack.push([na, nb]); } } }
   if (group.length >= 3) {
     combo++;
-    for (const [a, b] of group) { MG.fx.burst(cx(a, b), cy(a), { n: 7, colors: [COLORS[grid[a][b]].c, '#fff'], speed: 160, up: 40, size: 4, life: 0.5 }); grid[a][b] = -1; }
+    for (const [a, b] of group) { MG.fx.burst(cx(a, b), cy(a), { n: 7, colors: [(COLORS[grid[a][b]] || { c: '#999' }).c, '#fff'], speed: 160, up: 40, size: 4, life: 0.5 }); grid[a][b] = -1; }
     let pts = group.length * 10;
     // anything no longer connected to the ceiling falls
     const att = new Set(), st2 = [];
@@ -154,13 +173,22 @@ function settle() {
   // lost?
   for (let a = 0; a < ROWS; a++) for (let b = 0; b < cols(a); b++) if (grid[a][b] >= 0 && cy(a) + R >= DANGER) return gameOver();
   // keep the queued colours valid
-  const present = new Set(); for (const row of grid) for (const v of row) if (v >= 0) present.add(v);
+  const present = new Set(); for (const row of grid) for (const v of row) if (v >= 0 && v !== ROCK) present.add(v);
   if (!present.has(cur)) cur = pickColor(); if (!present.has(nxt)) nxt = pickColor();
   hud();
 }
 
 // ---------- draw ----------
 function bubble(px, py, col, r = R, face = true) {
+  if (col === ROCK) {
+    const g = x.createRadialGradient(px - r * 0.35, py - r * 0.4, r * 0.1, px, py, r); g.addColorStop(0, '#d9dde4'); g.addColorStop(1, '#7d8592');
+    x.fillStyle = g; x.beginPath();
+    for (let i = 0; i < 9; i++) { const a = i / 9 * Math.PI * 2, rr = r * (0.9 + ((i * 37) % 7) / 60); x.lineTo(px + Math.cos(a) * rr, py + Math.sin(a) * rr); }
+    x.closePath(); x.fill(); x.strokeStyle = 'rgba(0,0,0,.3)'; x.lineWidth = 1.2; x.stroke();
+    x.strokeStyle = 'rgba(60,64,72,.45)'; x.lineWidth = 1.4; x.beginPath(); x.moveTo(px - r * 0.3, py - r * 0.1); x.lineTo(px, py + r * 0.15); x.lineTo(px + r * 0.25, py - r * 0.05); x.stroke();
+    x.fillStyle = 'rgba(255,255,255,.5)'; x.beginPath(); x.ellipse(px - r * 0.35, py - r * 0.42, r * 0.22, r * 0.12, -0.6, 0, 7); x.fill();
+    return;
+  }
   const C = COLORS[col];
   const g = x.createRadialGradient(px - r * 0.35, py - r * 0.4, r * 0.1, px, py, r);
   g.addColorStop(0, '#ffffff'); g.addColorStop(0.25, C.c); g.addColorStop(1, C.d);
@@ -239,17 +267,19 @@ function gameOver() {
       { label: '選關卡', alt: true, on: menu }],
   });
 }
-function start(m, lv) { mode = m; score = 0; newLevel(lv || 1); state = 'play'; MG.hide(); }
+function start(m, lv, pk) { mode = m; if (pk && pk.diff) diff = pk.diff; score = 0; newLevel(lv || 1); state = 'play'; MG.hide(); }
 function menu() {
   state = 'ready';
   MG.choose({
     id: 'bubble', title: '噗噗泡泡龍',
     html: `<p>瞄準後發射泡泡，碰到<b>三個以上一樣顏色</b>就會破掉，沒黏住的泡泡會一起掉下來！右下角是下一顆，點它可以交換。</p>${('ontouchstart' in window) && innerWidth > innerHeight ? '<p class="new">📱 把手機直放，泡泡會更大！</p>' : ''}`,
-    modes: [{ id: 'relax', label: '🐢 慢慢玩', sub: '天花板不會往下降' }, { id: 'timed', label: '🔥 挑戰', sub: '一直沒消除天花板會下降' }],
-    levels: { count: 12, max: 12 },
+    modesTitle: '天花板',
+    picks: [{ key: 'diff', title: '難度', def: 'normal', options: [{ id: 'easy', label: '🐣 簡單', sub: '顏色少、瞄準線完整' }, { id: 'normal', label: '⭐ 普通', sub: '瞄準線只到第一次反彈' }, { id: 'hard', label: '🔥 困難', sub: '顏色多、石頭多、瞄準線很短' }] }],
+    modes: [{ id: 'relax', label: '🐢 慢慢玩', sub: '天花板不會往下降' }, { id: 'timed', label: '⏬ 天花板會降', sub: '一直沒消除天花板會下降' }],
+    levels: { count: NLEVELS, max: NLEVELS },
     keys: '手指按住拖曳瞄準、放開發射　電腦：滑鼠瞄準點擊，或 <kbd>←</kbd><kbd>→</kbd> 瞄準、<kbd>空白鍵</kbd> 發射、<kbd>S</kbd> 交換',
     playing: () => state === 'play',
-    start: (m, lv) => start(m, lv),
+    start: (m, lv, pk) => start(m, lv, pk),
   });
 }
 score = 0; newLevel(1); menu();
