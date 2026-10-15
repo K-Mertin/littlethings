@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>疊疊高樓</title>
+<link rel="stylesheet" href="mini.css">
+</head>
+<body>
+<main class="mg-stage"><canvas id="cv" aria-label="遊戲畫面"></canvas></main>
+<script src="mini.js"></script>
+<script>
+'use strict';
+MG.init({ id: 'stack', title: '疊疊高樓', stats: ['floor', 'best'] });
+const W = 360, H = 580, cv = document.getElementById('cv'), x = cv.getContext('2d');
+MG.fit(cv, W, H);
+const FH = 34, BASEW = 200, GROUNDY = 520;
+const HUES = [[255, 138, 128], [255, 196, 102], [140, 214, 120], [110, 190, 255], [184, 156, 255], [255, 160, 205]];
+let floors, mover, debris, camY, camT, state = 'ready', t = 0, perfect = 0, pops = [], shake = 0, stars = [];
+for (let i = 0; i < 70; i++) stars.push([Math.random() * W, Math.random() * H, Math.random() * 1.5 + 0.5]);
+
+function reset() {
+  floors = [{ x: W / 2 - BASEW / 2, w: BASEW, n: 0, seed: 1 }];
+  debris = []; camY = 0; camT = 0; perfect = 0; pops = []; MG.fx.clear();
+  spawn(); hud();
+}
+function spawn() {
+  const top = floors[floors.length - 1], n = floors.length, fromLeft = n % 2 === 1;
+  const speed = Math.min(330, 120 + n * 6);
+  mover = { x: fromLeft ? -top.w : W, w: top.w, dir: fromLeft ? 1 : -1, speed, n, seed: Math.random() * 1000 };
+}
+function hud() { MG.stat('floor', `${floors.length - 1} 層`); MG.stat('best', `最高 ${MG.best('stack') ?? 0}`); }
+const floorY = n => GROUNDY - (n + 1) * FH;   // world y of floor n's top edge
+
+function drop() {
+  if (state !== 'play') return;
+  const top = floors[floors.length - 1], m = mover;
+  let L = Math.max(m.x, top.x), Rr = Math.min(m.x + m.w, top.x + top.w);
+  if (Rr - L <= 0) { // missed completely
+    debris.push({ x: m.x, y: floorY(m.n), w: m.w, vy: 0, vx: m.dir * 40, rot: 0, vr: m.dir * 2, n: m.n, seed: m.seed });
+    mover = null; MG.sfx('bad'); return gameOver();
+  }
+  const off = m.x - top.x;
+  if (Math.abs(off) < 5) {      // perfect: snap on top
+    perfect++; L = top.x; Rr = top.x + top.w;
+    let w = top.w;
+    if (perfect >= 3 && w < BASEW) { w = Math.min(BASEW, w + 10); L -= 5; perfect = 0; pops.push({ t: '變寬了！', life: 1.1, y: floorY(m.n) - 30 }); }
+    floors.push({ x: L, w: Math.max(w, Rr - L), n: m.n, seed: m.seed, glow: 0.5 });
+    MG.sfx('good'); pops.push({ t: perfect >= 2 ? `完美 ×${perfect}` : '完美！', life: 0.9, y: floorY(m.n) - 8 });
+    MG.fx.burst(L + top.w / 2, floorY(m.n) + FH, { n: 16, colors: ['#fff', '#ffe36b', '#ffd23f'], speed: 180, up: 40, size: 4, shape: 'star', life: 0.6 });
+  } else {
+    perfect = 0;
+    floors.push({ x: L, w: Rr - L, n: m.n, seed: m.seed });
+    // the overhang falls off
+    if (m.x < L) debris.push({ x: m.x, y: floorY(m.n), w: L - m.x, vy: 0, vx: -60, rot: 0, vr: -2.5, n: m.n, seed: m.seed });
+    if (m.x + m.w > Rr) debris.push({ x: Rr, y: floorY(m.n), w: m.x + m.w - Rr, vy: 0, vx: 60, rot: 0, vr: 2.5, n: m.n, seed: m.seed });
+    MG.sfx('place'); shake = 0.12;
+  }
+  camT = Math.max(0, (floors.length - 8) * FH);
+  hud(); spawn();
+}
+cv.addEventListener('pointerdown', e => { e.preventDefault(); drop(); });
+addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowDown') { if (state === 'play') { e.preventDefault(); drop(); } } });
+
+function update(dt) {
+  t += dt; shake = Math.max(0, shake - dt);
+  if (mover) {
+    mover.x += mover.dir * mover.speed * dt;
+    if (mover.x > W - mover.w * 0.25 && mover.dir > 0) mover.dir = -1;
+    if (mover.x < -mover.w * 0.75 && mover.dir < 0) mover.dir = 1;
+  }
+  camY += (camT - camY) * Math.min(1, dt * 4);
+  for (const d of debris) { d.vy += 1300 * dt; d.y += d.vy * dt; d.x += d.vx * dt; d.rot += d.vr * dt; }
+  debris = debris.filter(d => d.y + camY < H + 200);
+  for (const f of floors) if (f.glow) f.glow = Math.max(0, f.glow - dt);
+  for (const p of pops) { p.y -= 30 * dt; p.life -= dt; } pops = pops.filter(p => p.life > 0);
+  MG.fx.step(dt);
+}
+
+// ---------- draw ----------
+const mix = (a, b, k) => a.map((v, i) => Math.round(v + (b[i] - v) * k));
+function skyColors(h) {   // h = floors climbed
+  const stops = [[0, [120, 200, 255], [220, 242, 255]], [18, [255, 160, 110], [255, 220, 170]], [32, [40, 50, 120], [120, 90, 160]], [48, [8, 10, 30], [30, 30, 70]]];
+  for (let i = 0; i < stops.length - 1; i++) { const [a, t1, b1] = stops[i], [b, t2, b2] = stops[i + 1]; if (h < b) { const k = (h - a) / (b - a); return [mix(t1, t2, k), mix(b1, b2, k)]; } }
+  return [stops[stops.length - 1][1], stops[stops.length - 1][2]];
+}
+function block(X, Y, w, n, seed, alpha = 1, glow = 0) {
+  const hue = HUES[n % HUES.length], night = floors.length > 30;
+  x.globalAlpha = alpha;
+  const g = x.createLinearGradient(0, Y, 0, Y + FH); g.addColorStop(0, `rgb(${mix(hue, [255, 255, 255], 0.25)})`); g.addColorStop(1, `rgb(${mix(hue, [0, 0, 0], 0.12)})`);
+  x.fillStyle = g; x.fillRect(X, Y, w, FH);
+  x.fillStyle = `rgba(0,0,0,.12)`; x.fillRect(X, Y + FH - 4, w, 4);
+  x.fillStyle = 'rgba(255,255,255,.5)'; x.fillRect(X, Y, w, 3);
+  // windows
+  const cols = Math.max(1, Math.floor((w - 8) / 22));
+  const gap = (w - cols * 14) / (cols + 1);
+  for (let i = 0; i < cols; i++) {
+    const wx = X + gap + i * (14 + gap), lit = night ? ((seed * 7 + i * 13) % 5 < 3) : false;
+    x.fillStyle = lit ? '#ffe68a' : 'rgba(255,255,255,.75)'; x.fillRect(wx, Y + 8, 14, 15);
+    x.fillStyle = 'rgba(60,80,120,.3)'; x.fillRect(wx + 6.5, Y + 8, 1, 15); x.fillRect(wx, Y + 15, 14, 1);
+    if ((seed + i * 31) % 17 < 1.2 && !night) { MG.puPu(x, wx + 7, Y + 18, 5, 'happy', 0, { noLeaf: true }); }   // someone waves from a window
+    else if ((seed + i * 11) % 9 < 1) { x.fillStyle = '#ff6fa8'; x.beginPath(); x.arc(wx + 4, Y + 25, 2.2, 0, 7); x.arc(wx + 10, Y + 25, 2.2, 0, 7); x.fill(); x.fillStyle = '#4cc96a'; x.fillRect(wx + 1, Y + 26, 12, 2.5); }
+  }
+  if (glow) { x.strokeStyle = `rgba(255,240,150,${glow * 2})`; x.lineWidth = 4; x.strokeRect(X - 1, Y - 1, w + 2, FH + 2); }
+  x.globalAlpha = 1;
+}
+function draw() {
+  const climbed = floors.length - 1, [skyTop, skyBot] = skyColors(climbed);
+  const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, `rgb(${skyTop})`); g.addColorStop(1, `rgb(${skyBot})`); x.fillStyle = g; x.fillRect(0, 0, W, H);
+  // stars when it gets dark
+  const dark = Math.max(0, Math.min(1, (climbed - 26) / 14));
+  if (dark > 0) for (const [sx, sy, r] of stars) { x.globalAlpha = dark * (0.5 + Math.sin(t * 3 + sx) * 0.5); x.fillStyle = '#fff'; x.beginPath(); x.arc(sx, (sy + camY * 0.2) % H, r, 0, 7); x.fill(); }
+  x.globalAlpha = 1;
+  if (climbed > 44) { x.fillStyle = '#ffb35a'; x.beginPath(); x.arc(70, 120 + (camY * 0.05) % 60, 26, 0, 7); x.fill(); x.strokeStyle = '#ffe0a0'; x.lineWidth = 3; x.beginPath(); x.ellipse(70, 120 + (camY * 0.05) % 60, 42, 9, -0.3, 0, 7); x.stroke(); }
+  else if (climbed < 26) { x.fillStyle = 'rgba(255,240,170,.9)'; x.beginPath(); x.arc(290, 70 + climbed * 6, 24, 0, 7); x.fill(); }
+  // clouds drift past as you climb
+  for (let i = 0; i < 6; i++) {
+    const cy = ((i * 170 + camY * 0.6) % (H + 200)) - 100, cx = (i * 97 + t * (6 + i)) % (W + 120) - 60;
+    x.fillStyle = dark > 0.5 ? 'rgba(255,255,255,.12)' : 'rgba(255,255,255,.85)';
+    for (const [a, b, r] of [[0, 0, 14], [16, -6, 18], [34, 0, 13]]) { x.beginPath(); x.arc(cx + a, cy + b, r, 0, 7); x.fill(); }
+  }
+  // a plane and a UFO at certain heights
+  if (climbed >= 12 && climbed < 24) { const px = (t * 60) % (W + 160) - 80, py = 150; x.fillStyle = '#fff'; x.beginPath(); x.ellipse(px, py, 26, 6, 0, 0, 7); x.fill(); x.fillStyle = '#ff5a6e'; x.beginPath(); x.moveTo(px - 4, py); x.lineTo(px - 14, py - 16); x.lineTo(px + 4, py); x.fill(); x.fillRect(px - 26, py - 10, 4, 10); }
+  if (climbed >= 38) { const ux = W / 2 + Math.sin(t * 0.8) * 120, uy = 110 + Math.sin(t * 2) * 8; x.fillStyle = 'rgba(160,255,200,.25)'; x.beginPath(); x.moveTo(ux - 10, uy + 6); x.lineTo(ux - 28, uy + 80); x.lineTo(ux + 28, uy + 80); x.lineTo(ux + 10, uy + 6); x.fill(); x.fillStyle = '#c9cede'; x.beginPath(); x.ellipse(ux, uy, 30, 8, 0, 0, 7); x.fill(); x.fillStyle = '#8fd0ff'; x.beginPath(); x.ellipse(ux, uy - 5, 13, 9, 0, Math.PI, 0); x.fill(); }
+  x.save(); if (shake) x.translate(0, Math.sin(shake * 80) * 2); x.translate(0, camY);
+  // ground
+  x.fillStyle = '#7cc45a'; x.fillRect(0, GROUNDY, W, 300); x.fillStyle = '#6cb34c'; for (let i = 0; i < W; i += 12) x.fillRect(i, GROUNDY, 6, 4);
+  x.fillStyle = '#c9b88f'; x.fillRect(W / 2 - BASEW / 2 - 14, GROUNDY - 6, BASEW + 28, 10);
+  for (const tx of [30, W - 30]) { x.fillStyle = '#8a5a34'; x.fillRect(tx - 3, GROUNDY - 30, 6, 30); x.fillStyle = '#4cae55'; x.beginPath(); x.arc(tx, GROUNDY - 36, 18, 0, 7); x.fill(); }
+  // tower
+  for (const f of floors) { if (f.n === 0) { block(f.x, floorY(0), f.w, 0, 3); x.fillStyle = '#8a5a2b'; x.fillRect(W / 2 - 13, floorY(0) + 8, 26, FH - 8); x.fillStyle = '#ffd23f'; x.beginPath(); x.arc(W / 2 + 7, floorY(0) + 22, 2, 0, 7); x.fill(); continue; }
+    if (floorY(f.n) + camY > -FH && floorY(f.n) + camY < H + FH) block(f.x, floorY(f.n), f.w, f.n, f.seed, 1, f.glow || 0); }
+  for (const d of debris) { x.save(); x.translate(d.x + d.w / 2, d.y + FH / 2); x.rotate(d.rot); block(-d.w / 2, -FH / 2, d.w, d.n, d.seed, 0.95); x.restore(); }
+  // moving block hangs from a crane rope
+  if (mover && state === 'play') {
+    const my = floorY(mover.n) - 26 + Math.sin(t * 4) * 2;
+    x.strokeStyle = '#4a4f62'; x.lineWidth = 2; x.beginPath(); x.moveTo(mover.x + mover.w / 2, my - 400); x.lineTo(mover.x + mover.w / 2, my - 6); x.stroke();
+    x.strokeStyle = '#6b7280'; x.lineWidth = 3; x.beginPath(); x.arc(mover.x + mover.w / 2, my - 6, 6, Math.PI, 0); x.stroke();
+    block(mover.x, my, mover.w, mover.n, mover.seed);
+    // drop guide
+    x.strokeStyle = 'rgba(255,255,255,.55)'; x.setLineDash([4, 5]); x.lineWidth = 1.5;
+    for (const ex of [mover.x, mover.x + mover.w]) { x.beginPath(); x.moveTo(ex, my + FH); x.lineTo(ex, floorY(mover.n) + FH); x.stroke(); }
+    x.setLineDash([]);
+  }
+  MG.fx.draw(x);
+  for (const p of pops) { x.globalAlpha = Math.min(1, p.life * 2); x.font = '900 22px "Noto Sans TC",system-ui,sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineWidth = 5; x.strokeStyle = '#fff'; x.strokeText(p.t, W / 2, p.y); x.fillStyle = '#ff7a00'; x.fillText(p.t, W / 2, p.y); }
+  x.globalAlpha = 1;
+  x.restore();
+  // big floor counter
+  x.font = '900 46px system-ui,sans-serif'; x.textAlign = 'center'; x.textBaseline = 'top'; x.fillStyle = 'rgba(255,255,255,.85)'; x.strokeStyle = 'rgba(0,0,0,.15)'; x.lineWidth = 4;
+  x.strokeText(climbed, W / 2, 18); x.fillText(climbed, W / 2, 18);
+  x.font = '700 13px "Noto Sans TC",system-ui'; x.fillText('層', W / 2, 68);
+}
+
+// ---------- flow ----------
+function gameOver() {
+  state = 'over'; MG.sfx('over'); shake = 0.3;
+  const n = floors.length - 1, rec = MG.record('stack', n); hud();
+  setTimeout(() => MG.panel({
+    title: '沒疊到！',
+    html: `<p>這次蓋了</p><div class="big">${n} 層</div>` + (rec.isNew && n > 0 ? '<p class="new">新紀錄！^_^</p>' : `<p>最高紀錄：${rec.best} 層</p>`) +
+      `<p>${n >= 48 ? '已經蓋到外太空了！' : n >= 32 ? '晚上的星星都出來了！' : n >= 18 ? '蓋到夕陽那麼高了！' : '再往上就看得到夕陽喔'}</p>`,
+    buttons: [{ label: '再蓋一次', on: start }, { label: '回遊戲區', alt: true, on: () => location.href = 'index.html' }],
+  }), 700);
+}
+function start() { reset(); state = 'play'; MG.hide(); }
+reset();
+MG.panel({ title: '疊疊高樓', html: '<p>樓層會左右移動，<b>點一下</b>就放下來。超出下面那層的部分會被切掉，樓層會越來越窄！</p><p>放得剛剛好是「完美」，連續三次完美樓層會變寬。看你能蓋多高？</p>',
+  keys: '點畫面任何地方　電腦：<kbd>空白鍵</kbd>', buttons: [{ label: '開始', on: start }] });
+MG.loop(dt => { if (state === 'play' || state === 'over') update(dt); else t += dt; draw(); });
+</script>
+</body>
+</html>

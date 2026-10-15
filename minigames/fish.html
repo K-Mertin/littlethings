@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>噗噗去釣魚</title>
+<link rel="stylesheet" href="mini.css">
+<style>
+.dex{display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:8px;margin-top:8px;max-height:46vh;overflow:auto;padding:2px}
+.dex div{border:2px solid #d8ecf7;border-radius:12px;background:#f4fbff;padding:6px 2px;font-size:12px;color:#4a6a80;line-height:1.3}
+.dex div b{display:block;font-size:30px;line-height:1.2;font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif}
+.dex div.no{background:#eef2f5;color:#aab4bc}
+.dex div.no b{filter:brightness(0) opacity(.25)}
+.dex small{display:block;color:#ff7a00}
+</style>
+</head>
+<body>
+<main class="mg-stage"><canvas id="cv" aria-label="遊戲畫面"></canvas></main>
+<script src="mini.js"></script>
+<script>
+'use strict';
+MG.init({ id: 'fish', title: '噗噗去釣魚', stats: ['score', 'time'] });
+const cv = document.getElementById('cv'), x = cv.getContext('2d');
+let W = 640, H = 400, land = true;
+MG.fit(cv, (sw, sh) => { land = sw > sh * 1.05; [W, H] = land ? [640, 400] : [360, 620]; return [W, H]; });
+const EMOJI = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+const ROUND = 60;
+const SPECIES = [
+  { id: 'fish', e: '🐟', name: '小魚', pts: 10, d: [0.08, 0.5], sp: 60, w: 30, s: 26 },
+  { id: 'tropical', e: '🐠', name: '熱帶魚', pts: 20, d: [0.2, 0.6], sp: 80, w: 20, s: 26 },
+  { id: 'puffer', e: '🐡', name: '河豚', pts: 30, d: [0.4, 0.8], sp: 40, w: 12, s: 28 },
+  { id: 'crab', e: '🦀', name: '螃蟹', pts: 25, d: [0.95, 0.97], sp: 28, w: 10, s: 26, floor: true },
+  { id: 'octo', e: '🐙', name: '章魚', pts: 40, d: [0.62, 0.92], sp: 32, w: 8, s: 32 },
+  { id: 'squid', e: '🦑', name: '烏賊', pts: 50, d: [0.5, 0.88], sp: 95, w: 6, s: 30 },
+  { id: 'turtle', e: '🐢', name: '海龜', pts: 60, d: [0.3, 0.7], sp: 30, w: 5, s: 34 },
+  { id: 'dolphin', e: '🐬', name: '海豚', pts: 80, d: [0.08, 0.35], sp: 150, w: 3, s: 40 },
+  { id: 'shark', e: '🦈', name: '鯊魚', pts: 100, d: [0.42, 0.8], sp: 120, w: 2, s: 46 },
+  { id: 'whale', e: '🐳', name: '小鯨魚', pts: 150, d: [0.55, 0.88], sp: 50, w: 1, s: 52 },
+];
+const JUNK = [{ e: '👢', name: '舊靴子' }, { e: '🥫', name: '空罐子' }, { e: '🧦', name: '一隻襪子' }];
+const TREASURE = { id: 'crown', e: '👑', name: '海底王冠', pts: 200 };
+let fishes, junk, boat, hook, score, left, state = 'ready', t = 0, pops = [], caughtNow = [], dex = MG.store.get('fish.dex', {}), newFound = [];
+
+const WATER = () => land ? 112 : 170, BOTTOM = () => H - 18;
+const depthY = d => WATER() + 20 + d * (BOTTOM() - WATER() - 40);
+function spawnFish(initial) {
+  const tot = SPECIES.reduce((a, s) => a + s.w, 0); let r = Math.random() * tot, sp = SPECIES[0];
+  for (const s of SPECIES) { r -= s.w; if (r <= 0) { sp = s; break; } }
+  const dir = Math.random() < 0.5 ? 1 : -1;
+  fishes.push({ sp, dir, x: initial ? MG.rand(30, W - 30) : (dir > 0 ? -40 : W + 40), base: depthY(MG.rand(sp.d[0], sp.d[1])), ph: Math.random() * 6, hooked: false });
+}
+function reset() {
+  fishes = []; junk = []; pops = []; caughtNow = []; newFound = []; score = 0; left = ROUND; MG.fx.clear();
+  for (let i = 0; i < (land ? 9 : 10); i++) spawnFish(true);
+  for (let i = 0; i < 3; i++) junk.push({ k: MG.pick(JUNK), x: MG.rand(40, W - 40), y: BOTTOM() - 10, rot: MG.rand(-0.6, 0.6), treasure: false });
+  if (Math.random() < 0.6) junk.push({ k: TREASURE, x: MG.rand(60, W - 60), y: BOTTOM() - 12, rot: 0, treasure: true });
+  boat = { x: W / 2, tx: W / 2 };
+  hook = { st: 'idle', x: W / 2, y: WATER() - 4, ty: 0, wait: 0, catch: null };
+  hud();
+}
+function hud() { MG.stat('score', `${score} 分`); MG.stat('time', `⏱ ${Math.ceil(left)}`); }
+
+// ---------- input: tap the water to cast there ----------
+cv.addEventListener('pointerdown', e => {
+  if (state !== 'play') return;
+  const p = cv.logical(e);
+  if (left <= 0) return;
+  if (hook.st !== 'idle') { if (hook.st === 'wait' || hook.st === 'drop') { hook.st = 'reel'; } return; }
+  boat.tx = Math.max(40, Math.min(W - 40, p.x));
+  hook.ty = Math.max(WATER() + 20, Math.min(BOTTOM() - 8, p.y));
+  hook.st = 'move'; MG.sfx('click');
+});
+addEventListener('keydown', e => {
+  if (state !== 'play') return;
+  if (e.key === 'ArrowLeft') boat.tx = Math.max(40, boat.tx - 40);
+  if (e.key === 'ArrowRight') boat.tx = Math.min(W - 40, boat.tx + 40);
+  if ((e.key === ' ' || e.key === 'ArrowDown') && hook.st === 'idle') { e.preventDefault(); hook.ty = BOTTOM() - 30; hook.st = 'move'; }
+  if (e.key === 'ArrowUp' && (hook.st === 'wait' || hook.st === 'drop')) hook.st = 'reel';
+});
+
+// ---------- update ----------
+function rodTip() { return [boat.x + 34, WATER() - 44]; }
+function update(dt) {
+  t += dt; left -= dt;
+  // fish swim
+  for (const f of fishes) {
+    if (f.hooked) continue;
+    f.x += f.dir * f.sp.sp * dt * (0.8 + Math.sin(t * 0.7 + f.ph) * 0.2);
+    f.y = f.sp.floor ? BOTTOM() - 12 : f.base + Math.sin(t * 1.6 + f.ph) * 8;
+    if (f.x < -60 || f.x > W + 60) f.gone = true;
+  }
+  fishes = fishes.filter(f => !f.gone);
+  while (fishes.filter(f => !f.hooked).length < (land ? 9 : 10)) spawnFish(false);
+  // boat
+  const dx = boat.tx - boat.x; boat.x += Math.sign(dx) * Math.min(Math.abs(dx), 240 * dt);
+  // hook
+  const [rx] = rodTip();
+  if (hook.st === 'idle') { hook.x = rx; hook.y = WATER() - 4; }
+  else if (hook.st === 'move') { hook.x = rx; if (Math.abs(boat.tx - boat.x) < 1) { hook.st = 'drop'; MG.sfx('step'); MG.fx.burst(hook.x, WATER(), { n: 8, colors: ['#fff', '#bfe8ff'], speed: 90, up: 80, size: 3, life: 0.5 }); } }
+  else if (hook.st === 'drop') { hook.x = rx; hook.y += 300 * dt; if (hook.y >= hook.ty) { hook.y = hook.ty; hook.st = 'wait'; hook.wait = 1.6; } bite(); }
+  else if (hook.st === 'wait') { hook.x = rx; hook.y = hook.ty + Math.sin(t * 5) * 3; hook.wait -= dt; bite(); if (hook.wait <= 0 && hook.st === 'wait') hook.st = 'reel'; }
+  else if (hook.st === 'reel') {
+    hook.x = rx; hook.y -= (hook.catch ? 260 : 380) * dt;
+    if (hook.catch) { hook.catch.x = hook.x; hook.catch.y = hook.y + 16; }
+    if (hook.y <= WATER() - 4) { landCatch(); hook.st = 'idle'; }
+  }
+  if (Math.random() < 0.08) MG.fx.burst(MG.rand(0, W), BOTTOM(), { n: 1, colors: ['rgba(255,255,255,.6)'], speed: 5, up: 50, grav: -30, size: 2.5, life: 2.5 });
+  for (const p of pops) { p.y -= 34 * dt; p.life -= dt; } pops = pops.filter(p => p.life > 0);
+  for (const c of caughtNow) { c.t += dt; } caughtNow = caughtNow.filter(c => c.t < 1.1);
+  MG.fx.step(dt);
+  if (left <= 0) { left = 0; if (hook.st === 'idle') end(); }
+  hud();
+}
+function bite() {
+  if (hook.catch) return;
+  for (const f of fishes) {
+    if (f.hooked) continue;
+    const mouthX = f.x + f.dir * f.sp.s * 0.35;
+    if (Math.hypot(mouthX - hook.x, f.y - hook.y) < 20 + f.sp.s * 0.2) { f.hooked = true; hook.catch = f; hook.st = 'reel'; MG.sfx('good'); MG.fx.burst(hook.x, hook.y, { n: 8, colors: ['#fff', '#bfe8ff'], speed: 70, up: 30, size: 3, life: 0.5 }); return; }
+  }
+  for (const j of junk) {
+    if (Math.hypot(j.x - hook.x, j.y - hook.y) < 22) { hook.catch = { junk: j, x: j.x, y: j.y }; junk.splice(junk.indexOf(j), 1); hook.st = 'reel'; MG.sfx(j.treasure ? 'good' : 'step'); return; }
+  }
+}
+function landCatch() {
+  const c = hook.catch; hook.catch = null; if (!c) return;
+  const [rx, ry] = rodTip();
+  if (c.junk) {
+    const j = c.junk;
+    if (j.treasure) { score += TREASURE.pts; record(TREASURE); pops.push({ x: rx, y: ry - 20, t: `+${TREASURE.pts} 寶物！`, c: '#e08a00', life: 1.4 }); MG.sfx('win'); MG.fx.burst(rx, ry, { n: 30, colors: ['#ffd23f', '#fff3a0', '#ffb300'], speed: 220, up: 120, size: 6, shape: 'star', life: 1 }); }
+    else { pops.push({ x: rx, y: ry - 20, t: `${j.k.name}…`, c: '#7d8792', life: 1.2 }); MG.sfx('bad'); setTimeout(() => junk.push({ k: MG.pick(JUNK), x: MG.rand(40, W - 40), y: BOTTOM() - 10, rot: MG.rand(-0.6, 0.6) }), 3000); }
+    caughtNow.push({ e: j.k.e, t: 0 });
+    return;
+  }
+  fishes.splice(fishes.indexOf(c), 1);
+  score += c.sp.pts; const isNew = record(c.sp);
+  pops.push({ x: rx, y: ry - 20, t: `${c.sp.name} +${c.sp.pts}${isNew ? '　新發現！' : ''}`, c: isNew ? '#ff4f8a' : '#2e9a4c', life: 1.3 });
+  caughtNow.push({ e: c.sp.e, t: 0 });
+  MG.sfx(isNew ? 'win' : 'pop'); MG.fx.burst(rx, WATER(), { n: 14, colors: ['#fff', '#bfe8ff', '#8fd0ff'], speed: 160, up: 140, size: 4, life: 0.7 });
+}
+function record(sp) { const isNew = !dex[sp.id]; dex[sp.id] = (dex[sp.id] || 0) + 1; MG.store.set('fish.dex', dex); if (isNew) newFound.push(sp); return isNew; }
+
+// ---------- draw ----------
+let bgC = null, bgK = '';
+function scenery() {
+  const k = cv._mgScale || 1, key = W + 'x' + H + k; if (key === bgK) return; bgK = key;
+  const c = document.createElement('canvas'); c.width = W * k; c.height = H * k; const g = c.getContext('2d'); g.scale(k, k);
+  const WY = WATER();
+  const sky = g.createLinearGradient(0, 0, 0, WY); sky.addColorStop(0, '#7cc6ff'); sky.addColorStop(1, '#e2f5ff'); g.fillStyle = sky; g.fillRect(0, 0, W, WY);
+  g.fillStyle = 'rgba(255,240,170,.95)'; g.beginPath(); g.arc(W - 60, 40, 22, 0, 7); g.fill();
+  // far shore with trees and a little house
+  g.fillStyle = '#9fd67a'; g.beginPath(); g.moveTo(0, WY); g.quadraticCurveTo(W * 0.25, WY - 34, W * 0.5, WY - 10); g.quadraticCurveTo(W * 0.75, WY - 30, W, WY - 6); g.lineTo(W, WY); g.fill();
+  for (let i = 0; i < 10; i++) { const tx = 20 + i * (W / 10), ty = WY - 14 - Math.sin(i) * 6; g.fillStyle = '#5aa63c'; g.beginPath(); g.arc(tx, ty, 9, 0, 7); g.fill(); }
+  g.fillStyle = '#fff3d6'; g.fillRect(W * 0.18, WY - 34, 22, 16); g.fillStyle = '#d94a3c'; g.beginPath(); g.moveTo(W * 0.18 - 3, WY - 34); g.lineTo(W * 0.18 + 11, WY - 44); g.lineTo(W * 0.18 + 25, WY - 34); g.fill();
+  // water body
+  const wg = g.createLinearGradient(0, WY, 0, H); wg.addColorStop(0, '#4fb3e8'); wg.addColorStop(0.6, '#2f86c8'); wg.addColorStop(1, '#1f5f9e'); g.fillStyle = wg; g.fillRect(0, WY, W, H - WY);
+  // sand bottom with rocks and shells
+  g.fillStyle = '#e8cf92'; g.beginPath(); g.moveTo(0, H); for (let xx = 0; xx <= W; xx += 20) g.lineTo(xx, BOTTOM() - 2 + Math.sin(xx * 0.05) * 4); g.lineTo(W, H); g.fill();
+  for (let i = 0; i < 6; i++) { const rx = (i * 137) % W, ry = BOTTOM() + 2; g.fillStyle = '#8a92a0'; g.beginPath(); g.ellipse(rx, ry, 14, 8, 0, Math.PI, 0); g.fill(); g.fillStyle = '#a8b0bc'; g.beginPath(); g.ellipse(rx - 3, ry - 3, 6, 3, 0, 0, 7); g.fill(); }
+  bgC = c;
+}
+function draw() {
+  scenery(); x.drawImage(bgC, 0, 0, W, H);
+  const WY = WATER();
+  // light rays
+  x.save(); x.globalAlpha = 0.12; x.fillStyle = '#ffffff';
+  for (let i = 0; i < 5; i++) { const rx = (i * W / 5 + Math.sin(t * 0.3 + i) * 30); x.beginPath(); x.moveTo(rx, WY); x.lineTo(rx + 30, WY); x.lineTo(rx - 40, H); x.lineTo(rx - 90, H); x.fill(); }
+  x.restore();
+  // seaweed
+  for (let i = 0; i < 7; i++) {
+    const sx = 20 + i * (W - 40) / 6, h = 50 + (i % 3) * 25;
+    x.strokeStyle = i % 2 ? '#3aa86a' : '#2f8f5a'; x.lineWidth = 6; x.lineCap = 'round'; x.beginPath(); x.moveTo(sx, BOTTOM());
+    for (let k = 1; k <= 6; k++) x.lineTo(sx + Math.sin(t * 1.5 + k * 0.8 + i) * 6 * k / 3, BOTTOM() - h * k / 6); x.stroke();
+  }
+  // junk & treasure
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  for (const j of junk) { x.save(); x.translate(j.x, j.y); x.rotate(j.rot); if (j.treasure) { x.shadowColor = '#ffe066'; x.shadowBlur = 12 + Math.sin(t * 4) * 6; } x.fillStyle = '#000'; x.font = `24px ${EMOJI}`; x.fillText(j.k.e, 0, 0); x.restore(); }
+  // fish
+  for (const f of fishes) {
+    if (f.hooked && hook.catch === f) continue;
+    x.save(); x.translate(f.x, f.y); x.scale(-f.dir, 1); x.fillStyle = '#000'; x.font = `${f.sp.s}px ${EMOJI}`; x.fillText(f.sp.e, 0, 0); x.restore();
+  }
+  MG.fx.draw(x);
+  // surface waves
+  x.fillStyle = 'rgba(255,255,255,.55)';
+  x.beginPath(); x.moveTo(0, WY); for (let xx = 0; xx <= W; xx += 8) x.lineTo(xx, WY + Math.sin(xx * 0.05 + t * 2) * 2.5); x.lineTo(W, WY + 6); x.lineTo(0, WY + 6); x.fill();
+  // fishing line + hook + catch
+  const [rx, ry] = rodTip();
+  x.strokeStyle = 'rgba(255,255,255,.9)'; x.lineWidth = 1.4; x.beginPath(); x.moveTo(rx, ry); x.lineTo(hook.x, hook.y); x.stroke();
+  x.strokeStyle = '#c9cede'; x.lineWidth = 2.4; x.beginPath(); x.arc(hook.x - 4, hook.y + 4, 5, 0, Math.PI); x.lineTo(hook.x - 9, hook.y); x.stroke();
+  x.fillStyle = '#ff5a4e'; x.beginPath(); x.arc(hook.x, hook.y - 10, 4, 0, 7); x.fill();
+  if (hook.catch) {
+    const c = hook.catch, e = c.junk ? c.junk.k.e : c.sp.e, s = c.junk ? 26 : c.sp.s;
+    x.save(); x.translate(hook.x, hook.y + 14); x.rotate(Math.sin(t * 18) * 0.35 - Math.PI / 2); x.fillStyle = '#000'; x.font = `${s}px ${EMOJI}`; x.fillText(e, 0, 0); x.restore();
+  }
+  if (hook.st === 'wait') { x.fillStyle = 'rgba(255,255,255,.85)'; x.font = '700 12px "Noto Sans TC",system-ui'; x.fillText('…等魚上鉤', hook.x, hook.y + 24); }
+  // boat with 噗噗
+  const bx = boat.x, by = WY - 6 + Math.sin(t * 2) * 2;
+  x.save(); x.translate(bx, by); x.rotate(Math.sin(t * 1.5) * 0.03);
+  x.strokeStyle = '#8a5a2b'; x.lineWidth = 3; x.beginPath(); x.moveTo(10, -26); x.quadraticCurveTo(26, -44, 34, -38); x.stroke();   // rod
+  MG.puPu(x, -2, -26, 18, hook.catch ? 'wow' : hook.st === 'wait' ? 'wink' : 'happy', 0, { arms: true, noLeaf: true, look: 0.6 });
+  // rain hat
+  x.fillStyle = '#ffd23f'; x.strokeStyle = '#c99a00'; x.lineWidth = 1.5; x.beginPath(); x.ellipse(-2, -42, 22, 5, 0, 0, 7); x.fill(); x.stroke(); x.beginPath(); x.arc(-2, -42, 12, Math.PI, 0); x.fill(); x.stroke();
+  const hg = x.createLinearGradient(0, -14, 0, 10); hg.addColorStop(0, '#d9884a'); hg.addColorStop(1, '#a35a24');
+  x.fillStyle = hg; x.beginPath(); x.moveTo(-48, -12); x.lineTo(48, -12); x.quadraticCurveTo(40, 10, 0, 10); x.quadraticCurveTo(-40, 10, -48, -12); x.fill();
+  x.fillStyle = '#f2c27a'; x.fillRect(-48, -14, 96, 5); x.fillStyle = 'rgba(0,0,0,.15)'; x.fillRect(-40, -2, 80, 2);
+  x.fillStyle = '#8fd0ff'; x.beginPath(); x.roundRect(-40, -24, 18, 12, 3); x.fill();   // bucket
+  x.restore();
+  // caught items fly into the bucket
+  for (const c of caughtNow) { const k = Math.min(1, c.t / 0.6); x.globalAlpha = 1 - Math.max(0, c.t - 0.8) * 3; x.fillStyle = '#000'; x.font = `${26 - k * 10}px ${EMOJI}`; x.fillText(c.e, bx + 34 + (-65 - 34) * k, WY - 48 - Math.sin(k * Math.PI) * 40 + k * 14); }
+  x.globalAlpha = 1;
+  for (const p of pops) { x.globalAlpha = Math.min(1, p.life * 2); x.font = '900 16px "Noto Sans TC",system-ui,sans-serif'; x.lineWidth = 4; x.strokeStyle = '#fff'; x.strokeText(p.t, Math.max(80, Math.min(W - 80, p.x)), p.y); x.fillStyle = p.c; x.fillText(p.t, Math.max(80, Math.min(W - 80, p.x)), p.y); }
+  x.globalAlpha = 1;
+  if (state === 'play' && hook.st === 'idle' && t < 8) { x.fillStyle = 'rgba(255,255,255,.9)'; x.font = '700 14px "Noto Sans TC",system-ui'; x.fillText('👆 點水裡想釣的地方', W / 2, WY + 40); }
+}
+
+// ---------- flow ----------
+function dexHtml() {
+  const all = [...SPECIES, TREASURE];
+  return `<div class="dex">${all.map(s => dex[s.id] ? `<div><b>${s.e}</b>${s.name}<small>${s.pts} 分・釣到 ${dex[s.id]} 次</small></div>` : `<div class="no"><b>${s.e}</b>？？？</div>`).join('')}</div>`;
+}
+const dexCount = () => [...SPECIES, TREASURE].filter(s => dex[s.id]).length;
+function showDex(back) { MG.panel({ title: `魚類圖鑑 ${dexCount()}/${SPECIES.length + 1}`, html: dexHtml(), buttons: [{ label: '回去', on: back }] }); }
+let endRec = null;
+function end() { state = 'over'; MG.sfx('win'); endRec = MG.record('fish', score); endPanel(); }
+function endPanel() {
+  const rec = endRec;
+  MG.panel({
+    title: '收竿囉！',
+    html: `<div class="big">${score} 分</div>` + (rec.isNew && score > 0 ? '<p class="new">新紀錄！^_^</p>' : `<p>最高紀錄：${rec.best} 分</p>`) +
+      (newFound.length ? `<p>新發現：${newFound.map(s => s.e + s.name).join('、')}</p>` : '') + `<p>圖鑑收集 ${dexCount()} / ${SPECIES.length + 1}</p>`,
+    buttons: [{ label: '再釣一次', on: start }, { label: '看圖鑑', alt: true, on: () => showDex(endPanel) }],
+  });
+}
+function start() { reset(); state = 'play'; t = 0; MG.hide(); }
+function menu() {
+  MG.panel({
+    title: '噗噗去釣魚', html: `<p>點一下水裡的地方，噗噗會把船開過去、放下魚鉤。魚碰到魚鉤就會上鉤！</p><p>越深、越少見的魚分數越高，60 秒內看你能釣到多少。小心別釣到舊靴子，海底偶爾還有寶物喔！</p><p>圖鑑收集 ${dexCount()} / ${SPECIES.length + 1}</p>`,
+    keys: '點水面下任何地方　電腦：<kbd>←</kbd><kbd>→</kbd> 移動、<kbd>↓</kbd> 放鉤、<kbd>↑</kbd> 收線',
+    buttons: [{ label: '開始釣魚', on: start }, { label: '魚類圖鑑', alt: true, on: () => showDex(menu) }],
+  });
+}
+reset(); menu();
+MG.loop(dt => { if (state === 'play') update(dt); else { t += dt; for (const f of fishes) { f.x += f.dir * f.sp.sp * dt * 0.5; if (f.x < -60) f.x = W + 50; if (f.x > W + 60) f.x = -50; f.y = f.sp.floor ? BOTTOM() - 12 : f.base + Math.sin(t * 1.6 + f.ph) * 8; } MG.fx.step(dt); } draw(); });
+</script>
+</body>
+</html>
