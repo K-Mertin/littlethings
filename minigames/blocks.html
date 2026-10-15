@@ -15,8 +15,8 @@ MG.init({ id: 'blocks', title: '十乘十方塊', stats: ['score', 'best'] });
 const N = 10, CELL = 32, cv = document.getElementById('cv'), x = cv.getContext('2d');
 let land = false;
 MG.fit(cv, (sw, sh) => { land = sw > sh * 1.1; return land ? [640, 370] : [360, 560]; });
-const BX = () => 20, BY = () => land ? 25 : 56;
-const slotRect = (i) => land ? { x: 372, y: 14 + i * 116, w: 250, h: 108 } : { x: 10 + i * 116, y: 418, w: 108, h: 128 };
+const BX = () => 20, BY = () => land ? 25 : 58;
+const slotRect = (i) => land ? { x: 372, y: 14 + i * 116, w: 250, h: 108 } : { x: 10 + i * 116, y: 420, w: 108, h: 126 };
 
 const SHAPES = [
   ['#ffb72b', [[0, 0]]],
@@ -39,9 +39,11 @@ function randPiece() {
   return { col, cells, w: Math.max(...cells.map(c => c[0])) + 1, h: Math.max(...cells.map(c => c[1])) + 1 };
 }
 
+let placedAt, bits = [];
 let grid, tray, score, combo, state = 'ready', drag = null, ghost = null, fx = [], pops = [], t = 0, sel = 0, cur = { x: 3, y: 3 }, kbMode = false;
 function reset() {
   grid = Array.from({ length: N }, () => Array(N).fill(null));
+  placedAt = Array.from({ length: N }, () => Array(N).fill(null)); bits = [];
   score = 0; combo = 0; fx = []; pops = []; drag = null; ghost = null; sel = 0; cur = { x: 3, y: 3 };
   refill(); hud();
 }
@@ -53,7 +55,7 @@ function canPlaceAnywhere(p) { for (let y = 0; y < N; y++) for (let x2 = 0; x2 <
 function place(i, gx, gy) {
   const p = tray[i];
   if (!p || !fits(p, gx, gy)) return false;
-  for (const [a, b] of p.cells) grid[gy + b][gx + a] = p.col;
+  for (const [a, b] of p.cells) { grid[gy + b][gx + a] = p.col; placedAt[gy + b][gx + a] = t; }
   score += p.cells.length; MG.sfx('place');
   tray[i] = null;
   // clear full rows and columns
@@ -62,6 +64,9 @@ function place(i, gx, gy) {
   const lines = rows.length + cols.length;
   if (lines) {
     combo++;
+    const burst = (c, r) => { for (let k = 0; k < 3; k++) bits.push({ x: BX() + c * CELL + CELL / 2, y: BY() + r * CELL + CELL / 2, vx: MG.rand(-140, 140), vy: MG.rand(-260, -60), a: MG.rand(0, 6), va: MG.rand(-8, 8), s: MG.rand(4, 8), col: grid[r][c], life: MG.rand(0.5, 0.9) }); };
+    for (const r of rows) for (let c = 0; c < N; c++) burst(c, r);
+    for (const c of cols) for (let r = 0; r < N; r++) if (!rows.includes(r)) burst(c, r);
     for (const r of rows) for (let c = 0; c < N; c++) fx.push({ c, r, col: grid[r][c], life: 0.35 });
     for (const c of cols) for (let r = 0; r < N; r++) fx.push({ c, r, col: grid[r][c], life: 0.35 });
     for (const r of rows) for (let c = 0; c < N; c++) grid[r][c] = null;
@@ -79,12 +84,20 @@ function place(i, gx, gy) {
 }
 
 // ---------- input ----------
-const LIFT = () => drag && drag.touch ? 74 : 0;
-function trayHit(p) { for (let i = 0; i < 3; i++) { const s = slotRect(i); if (tray[i] && p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h) return i; } return -1; }
+// Touch: the piece floats well above the fingertip (its bottom edge ~56 screen px above the finger),
+// so neither the finger nor the floating piece hides the landing cells. Mouse: piece sits under the cursor.
+const screenToLogical = () => { const r = cv.getBoundingClientRect(); return cv.lw / Math.max(1, r.width - 6); };
+function liftFor(pc) { return drag && drag.touch ? pc.h * CELL / 2 + 56 * screenToLogical() : 0; }
+function trayHit(p) {
+  // generous hit area: the whole slot plus a margin, so small pieces are easy to grab with a finger
+  for (let i = 0; i < 3; i++) { const s = slotRect(i); if (tray[i] && p.x >= s.x - 6 && p.x <= s.x + s.w + 6 && p.y >= s.y - 10 && p.y <= s.y + s.h + 10) return i; }
+  return -1;
+}
 function ghostFrom(p) {
   const pc = tray[drag.i];
-  const gx = Math.round((p.x - BX() - pc.w * CELL / 2) / CELL), gy = Math.round((p.y - LIFT() - BY() - pc.h * CELL / 2) / CELL);
-  return { gx, gy, ok: fits(pc, gx, gy) };
+  const fx0 = p.x - pc.w * CELL / 2, fy0 = p.y - liftFor(pc) - pc.h * CELL / 2;   // floating piece top-left
+  const gx = Math.round((fx0 - BX()) / CELL), gy = Math.round((fy0 - BY()) / CELL);
+  return { gx, gy, fx: fx0, fy: fy0, ok: fits(pc, gx, gy) };
 }
 cv.addEventListener('pointerdown', e => {
   if (state !== 'play') return;
@@ -92,9 +105,12 @@ cv.addEventListener('pointerdown', e => {
   kbMode = false;
   if (i < 0) return;
   try { cv.setPointerCapture(e.pointerId); } catch {}
-  drag = { i, x: p.x, y: p.y, touch: e.pointerType !== 'mouse' }; sel = i; ghost = ghostFrom(p); MG.sfx('flip');
+  drag = { i, x: p.x, y: p.y, touch: e.pointerType !== 'mouse', t: 0 }; sel = i; ghost = ghostFrom(p); MG.sfx('flip');
 });
-cv.addEventListener('pointermove', e => { if (!drag) return; const p = cv.logical(e); drag.x = p.x; drag.y = p.y; ghost = ghostFrom(p); });
+cv.addEventListener('pointermove', e => {
+  if (!drag) return; const p = cv.logical(e); drag.x = p.x; drag.y = p.y;
+  const g = ghostFrom(p); if (g.ok && (!ghost || !ghost.ok || g.gx !== ghost.gx || g.gy !== ghost.gy)) MG.sfx('tick'); ghost = g;
+});
 cv.addEventListener('pointerup', e => {
   if (!drag) return;
   const g = ghostFrom(cv.logical(e));
@@ -115,49 +131,129 @@ addEventListener('keydown', e => {
 });
 
 // ---------- draw ----------
+const shade = (hex, k) => { // k<0 darker, k>0 lighter
+  const n = parseInt(hex.slice(1), 16); let r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+  const f = v => Math.round(k < 0 ? v * (1 + k) : v + (255 - v) * k);
+  return `rgb(${f(r)},${f(g)},${f(b)})`;
+};
 function block(px, py, s, col, alpha = 1) {
   x.globalAlpha = alpha;
-  x.fillStyle = col; x.beginPath(); x.roundRect(px + 1, py + 1, s - 2, s - 2, s * 0.18); x.fill();
-  x.fillStyle = 'rgba(255,255,255,.35)'; x.beginPath(); x.roundRect(px + 3, py + 3, s - 6, s * 0.28, s * 0.12); x.fill();
-  x.fillStyle = 'rgba(0,0,0,.12)'; x.fillRect(px + 3, py + s - 6, s - 6, 3);
+  const r = s * 0.2;
+  // body with vertical gradient
+  const g = x.createLinearGradient(0, py, 0, py + s); g.addColorStop(0, shade(col, 0.25)); g.addColorStop(1, shade(col, -0.18));
+  x.fillStyle = shade(col, -0.35); x.beginPath(); x.roundRect(px + 1, py + 2, s - 2, s - 2, r); x.fill();          // bottom lip
+  x.fillStyle = g; x.beginPath(); x.roundRect(px + 1, py + 1, s - 2, s - 3.5, r); x.fill();
+  // bevel: lighter top-left edge, inner face
+  x.strokeStyle = 'rgba(255,255,255,.45)'; x.lineWidth = Math.max(1, s * 0.05);
+  x.beginPath(); x.roundRect(px + 2.2, py + 2.2, s - 4.4, s - 6, r * 0.8); x.stroke();
+  const ig = x.createLinearGradient(0, py + s * 0.22, 0, py + s * 0.78); ig.addColorStop(0, shade(col, 0.08)); ig.addColorStop(1, shade(col, -0.06));
+  x.fillStyle = ig; x.beginPath(); x.roundRect(px + s * 0.22, py + s * 0.2, s * 0.56, s * 0.52, r * 0.6); x.fill();
+  // gloss + sparkle
+  x.fillStyle = 'rgba(255,255,255,.55)'; x.beginPath(); x.ellipse(px + s * 0.34, py + s * 0.26, s * 0.14, s * 0.06, -0.5, 0, 7); x.fill();
+  x.fillStyle = 'rgba(255,255,255,.8)'; x.beginPath(); x.arc(px + s * 0.7, py + s * 0.62, s * 0.035, 0, 7); x.fill();
   x.globalAlpha = 1;
 }
 function drawPiece(p, px, py, s, alpha) { for (const [a, b] of p.cells) block(px + a * s, py + b * s, s, p.col, alpha); }
+
+// wood table, drawn once into an offscreen canvas per layout
+let tableCache = null, tableKey = '';
+function table(W, H) {
+  const key = W + 'x' + H + ':' + (cv._mgScale || 1);
+  if (key !== tableKey) {
+    const k = cv._mgScale || 1, c = document.createElement('canvas'); c.width = W * k; c.height = H * k;
+    const t2 = c.getContext('2d'); t2.scale(k, k);
+    const g = t2.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#f3dcae'); g.addColorStop(1, '#e8c98f'); t2.fillStyle = g; t2.fillRect(0, 0, W, H);
+    let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let i = 0; i < H; i += 26) {                                       // planks
+      t2.fillStyle = 'rgba(150,100,40,.10)'; t2.fillRect(0, i, W, 1.5);
+      for (let j = 0; j < 5; j++) {                                          // grain
+        t2.strokeStyle = `rgba(150,100,40,${0.05 + rnd() * 0.07})`; t2.lineWidth = 1; t2.beginPath();
+        const y0 = i + 4 + rnd() * 18; t2.moveTo(0, y0);
+        for (let xx = 0; xx <= W; xx += 40) t2.lineTo(xx, y0 + Math.sin(xx * 0.02 + i) * 2.2);
+        t2.stroke();
+      }
+      if (rnd() < 0.5) { const kx = rnd() * W, ky = i + 13; t2.strokeStyle = 'rgba(150,100,40,.18)'; t2.beginPath(); t2.ellipse(kx, ky, 7, 3, 0, 0, 7); t2.stroke(); t2.beginPath(); t2.ellipse(kx, ky, 3.5, 1.4, 0, 0, 7); t2.stroke(); }
+    }
+    tableCache = c; tableKey = key;
+  }
+  x.drawImage(tableCache, 0, 0, W, H);
+}
+function frame(X, Y, w, h) {
+  x.fillStyle = 'rgba(80,50,20,.25)'; x.beginPath(); x.roundRect(X + 4, Y + 7, w, h, 16); x.fill();         // drop shadow
+  const g = x.createLinearGradient(0, Y, 0, Y + h); g.addColorStop(0, '#b77a3e'); g.addColorStop(1, '#8a5626');
+  x.fillStyle = g; x.beginPath(); x.roundRect(X, Y, w, h, 16); x.fill();
+  x.strokeStyle = 'rgba(255,230,180,.55)'; x.lineWidth = 2; x.beginPath(); x.roundRect(X + 2, Y + 2, w - 4, h - 4, 14); x.stroke();
+  for (const [cx, cy] of [[X + 9, Y + 9], [X + w - 9, Y + 9], [X + 9, Y + h - 9], [X + w - 9, Y + h - 9]]) {   // brass corners
+    x.fillStyle = '#e9c35c'; x.beginPath(); x.arc(cx, cy, 3.2, 0, 7); x.fill(); x.fillStyle = '#fff3b8'; x.beginPath(); x.arc(cx - 1, cy - 1, 1.2, 0, 7); x.fill();
+  }
+}
+function socket(px, py, s) {
+  x.fillStyle = '#6e4420'; x.beginPath(); x.roundRect(px + 1.5, py + 1.5, s - 3, s - 3, 6); x.fill();
+  const g = x.createLinearGradient(0, py, 0, py + s); g.addColorStop(0, '#5a3618'); g.addColorStop(1, '#7c4f27');
+  x.fillStyle = g; x.beginPath(); x.roundRect(px + 2.5, py + 3, s - 5, s - 5, 5); x.fill();
+  x.fillStyle = 'rgba(255,220,170,.10)'; x.fillRect(px + 4, py + s - 5, s - 8, 1.5);
+}
 function draw() {
   const W = cv.lw, H = cv.lh, bx = BX(), by = BY();
-  x.fillStyle = '#fff8dc'; x.fillRect(0, 0, W, H);
-  if (!land) { x.fillStyle = '#8a7a62'; x.font = '600 14px "Noto Sans TC",system-ui,sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('把方塊拖進格子，排滿一整行或一整列就會消掉', W / 2, 30); }
-  x.fillStyle = '#e8d9ae'; x.beginPath(); x.roundRect(bx - 6, by - 6, N * CELL + 12, N * CELL + 12, 12); x.fill();
+  table(W, H);
+  if (!land) { x.fillStyle = '#7a5a2c'; x.font = '700 14px "Noto Sans TC",system-ui,sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('把方塊拖進格子，排滿一整行或一整列就會消掉', W / 2, 26); }
+  frame(bx - 9, by - 9, N * CELL + 18, N * CELL + 18);
   for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
-    if (grid[r][c]) block(bx + c * CELL, by + r * CELL, CELL, grid[r][c]);
-    else { x.fillStyle = '#f6ecd0'; x.beginPath(); x.roundRect(bx + c * CELL + 1.5, by + r * CELL + 1.5, CELL - 3, CELL - 3, 5); x.fill(); }
+    if (!grid[r][c]) { socket(bx + c * CELL, by + r * CELL, CELL); continue; }
+    const age = t - (placedAt[r][c] ?? -9), sq = age < 0.18 ? 1 + 0.16 * Math.sin(age / 0.18 * Math.PI) : 1, s2 = CELL * sq;
+    block(bx + c * CELL + (CELL - s2) / 2, by + r * CELL + (CELL - s2) / 2, s2, grid[r][c]);
   }
-  // lines that the ghost would complete
-  const showG = ghost ? { ...ghost, p: tray[drag.i] } : (kbMode && tray[sel] ? { gx: cur.x, gy: cur.y, ok: fits(tray[sel], cur.x, cur.y), p: tray[sel] } : null);
+  // ghost / drag
+  const dp = drag ? tray[drag.i] : null;
+  const showG = ghost && dp ? { ...ghost, p: dp } : (kbMode && tray[sel] ? { gx: cur.x, gy: cur.y, ok: fits(tray[sel], cur.x, cur.y), p: tray[sel] } : null);
   if (showG && showG.ok) {
     const tmp = grid.map(r => r.slice()); for (const [a, b] of showG.p.cells) tmp[showG.gy + b][showG.gx + a] = 1;
-    x.fillStyle = 'rgba(255,255,255,.45)';
+    const pulse = 0.35 + 0.15 * Math.sin(t * 10);
+    x.fillStyle = `rgba(255,248,200,${pulse})`;
     for (let k = 0; k < N; k++) { if (tmp[k].every(Boolean)) x.fillRect(bx, by + k * CELL, N * CELL, CELL); if (tmp.every(r => r[k])) x.fillRect(bx + k * CELL, by, CELL, N * CELL); }
-    drawPiece(showG.p, bx + showG.gx * CELL, by + showG.gy * CELL, CELL, 0.45);
-  } else if (showG && kbMode) {
+    // the piece snaps into the cells it will take, drawn solid with a glowing outline
+    drawPiece(showG.p, bx + showG.gx * CELL, by + showG.gy * CELL, CELL, drag ? 0.92 : 0.55);
+    x.strokeStyle = '#fffbe0'; x.lineWidth = 2.5; x.shadowColor = 'rgba(255,220,90,.9)'; x.shadowBlur = 10;
+    for (const [a, b] of showG.p.cells) { x.beginPath(); x.roundRect(bx + (showG.gx + a) * CELL + 1.5, by + (showG.gy + b) * CELL + 1.5, CELL - 3, CELL - 3, 6); x.stroke(); }
+    x.shadowBlur = 0;
+  } else if (showG && kbMode && !drag) {
     x.strokeStyle = '#ff5a4e'; x.lineWidth = 2; x.setLineDash([5, 4]); x.strokeRect(bx + cur.x * CELL, by + cur.y * CELL, showG.p.w * CELL, showG.p.h * CELL); x.setLineDash([]);
   }
   for (const f of fx) { const k = f.life / 0.35, s = CELL * (0.4 + k * 0.6); block(bx + f.c * CELL + (CELL - s) / 2, by + f.r * CELL + (CELL - s) / 2, s, f.col, k); }
+  for (const q of bits) { x.globalAlpha = Math.min(1, q.life * 2.5); x.save(); x.translate(q.x, q.y); x.rotate(q.a); x.fillStyle = q.col; x.fillRect(-q.s / 2, -q.s / 2, q.s, q.s); x.fillStyle = 'rgba(255,255,255,.5)'; x.fillRect(-q.s / 2, -q.s / 2, q.s, q.s * 0.35); x.restore(); }
+  x.globalAlpha = 1;
   // tray
   for (let i = 0; i < 3; i++) {
-    const s = slotRect(i), p = tray[i];
-    x.fillStyle = sel === i && kbMode ? '#ffefb8' : '#fbf1d3'; x.strokeStyle = sel === i && kbMode ? '#ffb72b' : '#e2cf9c'; x.lineWidth = 2;
-    x.beginPath(); x.roundRect(s.x, s.y, s.w, s.h, 12); x.fill(); x.stroke();
+    const s = slotRect(i), p = tray[i], on = sel === i && kbMode;
+    x.fillStyle = 'rgba(80,50,20,.18)'; x.beginPath(); x.roundRect(s.x + 2, s.y + 4, s.w, s.h, 14); x.fill();
+    const g = x.createLinearGradient(0, s.y, 0, s.y + s.h); g.addColorStop(0, on ? '#fff3c4' : '#fffaf0'); g.addColorStop(1, on ? '#ffe08a' : '#f4e6c6');
+    x.fillStyle = g; x.strokeStyle = on ? '#ffb72b' : '#d8bf8a'; x.lineWidth = on ? 3 : 2;
+    x.beginPath(); x.roundRect(s.x, s.y, s.w, s.h, 14); x.fill(); x.stroke();
+    x.strokeStyle = 'rgba(200,170,110,.35)'; x.lineWidth = 1; x.setLineDash([4, 4]); x.beginPath(); x.roundRect(s.x + 6, s.y + 6, s.w - 12, s.h - 12, 10); x.stroke(); x.setLineDash([]);
     if (!p || (drag && drag.i === i)) continue;
-    const sc = Math.min(22, (s.w - 16) / p.w, (s.h - 16) / p.h);
-    const usable = canPlaceAnywhere(p);
-    drawPiece(p, s.x + (s.w - p.w * sc) / 2, s.y + (s.h - p.h * sc) / 2, sc, usable ? 1 : 0.35);
+    const sc = Math.min(land ? 26 : 22, (s.w - 20) / p.w, (s.h - 20) / p.h);
+    const usable = canPlaceAnywhere(p), bob = usable ? Math.sin(t * 3 + i) * 1.2 : 0;
+    drawPiece(p, s.x + (s.w - p.w * sc) / 2, s.y + (s.h - p.h * sc) / 2 + bob, sc, usable ? 1 : 0.3);
   }
-  if (drag) { const p = tray[drag.i]; drawPiece(p, drag.x - p.w * CELL / 2, drag.y - LIFT() - p.h * CELL / 2, CELL, 0.92); }
-  x.textAlign = 'center';
+  // floating piece: only when it has nowhere valid to snap (off the board / blocked)
+  if (drag && dp && !(ghost && ghost.ok)) {
+    const fx0 = ghost.fx, fy0 = ghost.fy;
+    x.fillStyle = 'rgba(60,30,10,.18)'; x.beginPath(); x.roundRect(fx0 + 6, fy0 + 10, dp.w * CELL, dp.h * CELL, 10); x.fill();
+    drawPiece(dp, fx0, fy0, CELL, 0.82);
+  }
+  // touch: a dotted guide from the fingertip up to the piece, so you can see what you are holding
+  if (drag && drag.touch && dp) {
+    const topY = ghost && ghost.ok ? by + (ghost.gy + dp.h) * CELL : ghost.fy + dp.h * CELL;
+    x.strokeStyle = 'rgba(255,255,255,.85)'; x.lineWidth = 2; x.setLineDash([3, 5]); x.beginPath(); x.moveTo(drag.x, drag.y - 14); x.lineTo(drag.x, Math.min(drag.y - 14, topY + 4)); x.stroke(); x.setLineDash([]);
+    x.fillStyle = 'rgba(255,255,255,.85)'; x.beginPath(); x.arc(drag.x, drag.y - 10, 4, 0, 7); x.fill();
+  }
+  x.textAlign = 'center'; x.textBaseline = 'middle';
   for (const p of pops) {
-    x.globalAlpha = Math.min(1, p.life * 2); x.font = '800 22px system-ui,sans-serif'; x.fillStyle = '#fff'; x.fillText(p.t, p.x + 1, p.y + 1); x.fillStyle = '#ff7a00'; x.fillText(p.t, p.x, p.y);
-    if (p.sub) { x.font = '800 18px "Noto Sans TC",system-ui,sans-serif'; x.fillStyle = '#e0445a'; x.fillText(p.sub, p.x, p.y + 24); }
+    const k = Math.min(1, p.life * 2), sc = 1 + Math.max(0, p.life - 0.9) * 2;
+    x.globalAlpha = k; x.save(); x.translate(p.x, p.y); x.scale(sc, sc);
+    x.font = '900 24px system-ui,sans-serif'; x.lineWidth = 5; x.strokeStyle = '#fff'; x.strokeText(p.t, 0, 0); x.fillStyle = '#ff7a00'; x.fillText(p.t, 0, 0);
+    if (p.sub) { x.font = '900 20px "Noto Sans TC",system-ui,sans-serif'; x.strokeText(p.sub, 0, 26); x.fillStyle = '#e0445a'; x.fillText(p.sub, 0, 26); }
+    x.restore();
   }
   x.globalAlpha = 1;
 }
@@ -183,6 +279,7 @@ MG.panel({
 MG.loop(dt => {
   t += dt;
   for (const f of fx) f.life -= dt; fx = fx.filter(f => f.life > 0);
+  for (const q of bits) { q.x += q.vx * dt; q.y += q.vy * dt; q.vy += 900 * dt; q.a += q.va * dt; q.life -= dt; } bits = bits.filter(q => q.life > 0);
   for (const p of pops) { p.y -= 30 * dt; p.life -= dt; } pops = pops.filter(p => p.life > 0);
   draw();
 });

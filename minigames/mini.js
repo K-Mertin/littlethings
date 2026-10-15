@@ -115,6 +115,7 @@ const MG = (() => {
     step: () => tone(240, 200, 0.04, 'triangle', 0.08),
     flip: () => tone(420, 520, 0.05, 'triangle', 0.1),
     place: () => tone(300, 240, 0.06, 'triangle', 0.12),
+    tick: () => tone(900, 900, 0.025, 'triangle', 0.04),
     clear: () => { [523, 659, 784, 1046].forEach((f, i) => tone(f, f, 0.09, 'square', 0.07, i * 0.06)); },
     over: () => { [392, 330, 262, 196].forEach((f, i) => tone(f, f * 0.98, 0.16, 'triangle', 0.13, i * 0.14)); },
     win: () => { [523, 659, 784, 659, 784, 1046].forEach((f, i) => tone(f, f, 0.12, 'square', 0.07, i * 0.1)); },
@@ -148,37 +149,116 @@ const MG = (() => {
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
   const shuffle = (arr) => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
 
-  // Draw the mascot 噗噗 (a round green jelly with a leaf) at x,y with radius r
-  function puPu(x, ctx, cx, cy, r, mood = 'happy', squash = 0) {
-    ctx = x || ctx;
-    ctx.save(); ctx.translate(cx, cy); ctx.scale(1 + squash, 1 - squash);
-    ctx.fillStyle = 'rgba(0,0,0,.14)'; ctx.beginPath(); ctx.ellipse(0, r * 0.95, r * 0.95, r * 0.22, 0, 0, 7); ctx.fill();
-    const g = ctx.createRadialGradient(-r * 0.35, -r * 0.4, r * 0.1, 0, 0, r * 1.1);
-    g.addColorStop(0, '#9ff0a8'); g.addColorStop(0.6, '#4cc96a'); g.addColorStop(1, '#2e9a4c');
-    ctx.fillStyle = g; ctx.beginPath();
-    ctx.moveTo(-r, r * 0.75); ctx.bezierCurveTo(-r * 1.08, -r * 0.2, -r * 0.6, -r * 0.95, 0, -r * 0.95);
-    ctx.bezierCurveTo(r * 0.6, -r * 0.95, r * 1.08, -r * 0.2, r, r * 0.75); ctx.quadraticCurveTo(0, r * 1.05, -r, r * 0.75); ctx.fill();
-    ctx.strokeStyle = '#237a3b'; ctx.lineWidth = Math.max(1, r * 0.08); ctx.stroke();
-    // leaf
-    ctx.fillStyle = '#ffb72b'; ctx.strokeStyle = '#c47c00'; ctx.lineWidth = Math.max(1, r * 0.06);
-    ctx.beginPath(); ctx.ellipse(r * 0.18, -r * 1.08, r * 0.28, r * 0.13, -0.5, 0, 7); ctx.fill(); ctx.stroke();
-    // shine
-    ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.beginPath(); ctx.ellipse(-r * 0.45, -r * 0.45, r * 0.16, r * 0.1, -0.7, 0, 7); ctx.fill();
+  // Draw the mascot 噗噗 — a glossy green jelly with a leaf on top.
+  // mood: 'happy' | 'ouch' | 'wow' | 'sleep'; squash: >0 flattens, <0 stretches; opts.look: -1..1 eye direction, opts.arms
+  function puPu(ctx, cx, cy, r, mood = 'happy', squash = 0, opts = {}) {
+    const now = performance.now() / 1000, seed = (cx * 7.3 + cy * 3.1) % 5;
+    const blink = mood === 'happy' && ((now + seed) % 3.6) < 0.12;
+    const look = opts.look ?? 0;
+    ctx.save(); ctx.translate(cx, cy);
+    // ground shadow (not squashed)
+    ctx.fillStyle = 'rgba(30,40,20,.18)'; ctx.beginPath(); ctx.ellipse(0, r * 0.98, r * (0.95 + squash * 0.4), r * 0.2, 0, 0, 7); ctx.fill();
+    ctx.translate(0, r * 0.9); ctx.scale(1 + squash, 1 - squash); ctx.translate(0, -r * 0.9);
+    const body = () => {
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.98, r * 0.62);
+      ctx.bezierCurveTo(-r * 1.1, -r * 0.25, -r * 0.62, -r * 0.98, 0, -r * 0.98);
+      ctx.bezierCurveTo(r * 0.62, -r * 0.98, r * 1.1, -r * 0.25, r * 0.98, r * 0.62);
+      ctx.bezierCurveTo(r * 0.98, r * 0.92, r * 0.6, r * 0.98, 0, r * 0.97);
+      ctx.bezierCurveTo(-r * 0.6, r * 0.98, -r * 0.98, r * 0.92, -r * 0.98, r * 0.62);
+      ctx.closePath();
+    };
+    // stubby arms behind the body
+    if (opts.arms) {
+      ctx.fillStyle = '#3fb85d'; ctx.strokeStyle = '#237a3b'; ctx.lineWidth = Math.max(1, r * 0.07);
+      for (const sd of [-1, 1]) { const up = opts.arms === 'up'; ctx.beginPath(); ctx.ellipse(sd * r * 0.98, up ? -r * 0.15 : r * 0.35, r * 0.22, r * 0.16, sd * (up ? -1.1 : 0.5), 0, 7); ctx.fill(); ctx.stroke(); }
+    }
+    // body gradient + outline
+    const g = ctx.createRadialGradient(-r * 0.35, -r * 0.45, r * 0.08, 0, r * 0.1, r * 1.15);
+    g.addColorStop(0, '#c8ffc9'); g.addColorStop(0.35, '#6fdc83'); g.addColorStop(0.8, '#3cb85a'); g.addColorStop(1, '#2a9447');
+    ctx.fillStyle = g; body(); ctx.fill();
+    // inner belly glow + translucent lower part (jelly look)
+    ctx.save(); body(); ctx.clip();
+    const bg = ctx.createRadialGradient(0, r * 0.55, r * 0.05, 0, r * 0.55, r * 0.7); bg.addColorStop(0, 'rgba(220,255,200,.55)'); bg.addColorStop(1, 'rgba(220,255,200,0)');
+    ctx.fillStyle = bg; ctx.fillRect(-r, 0, r * 2, r);
+    ctx.fillStyle = 'rgba(20,90,40,.18)'; ctx.beginPath(); ctx.ellipse(r * 0.5, r * 0.55, r * 0.7, r * 0.5, 0, 0, 7); ctx.fill();   // core shade
+    for (const [bx, by, br] of [[-r * 0.45, r * 0.45, r * 0.06], [r * 0.15, r * 0.65, r * 0.045], [r * 0.55, r * 0.25, r * 0.035]]) {   // bubbles
+      ctx.fillStyle = 'rgba(255,255,255,.45)'; ctx.beginPath(); ctx.arc(bx, by, br, 0, 7); ctx.fill();
+    }
+    ctx.restore();
+    ctx.strokeStyle = '#1f6e35'; ctx.lineWidth = Math.max(1.2, r * 0.075); body(); ctx.stroke();
+    // rim light on the right edge
+    ctx.strokeStyle = 'rgba(230,255,220,.55)'; ctx.lineWidth = Math.max(1, r * 0.06); ctx.beginPath(); ctx.arc(0, r * 0.05, r * 0.85, -0.6, 0.6); ctx.stroke();
+    // leaf with stem and vein
+    ctx.strokeStyle = '#7a5520'; ctx.lineWidth = Math.max(1, r * 0.06); ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(0, -r * 0.95); ctx.quadraticCurveTo(r * 0.02, -r * 1.12, r * 0.08, -r * 1.16); ctx.stroke();
+    ctx.save(); ctx.translate(r * 0.22, -r * 1.16); ctx.rotate(-0.45 + Math.sin(now * 2.2 + seed) * 0.08);
+    const lg = ctx.createLinearGradient(0, -r * 0.14, 0, r * 0.14); lg.addColorStop(0, opts.leaf ? opts.leaf : '#ffd25a'); lg.addColorStop(1, opts.leaf ? opts.leaf : '#f39a12');
+    ctx.fillStyle = lg; ctx.strokeStyle = '#b86d00'; ctx.lineWidth = Math.max(0.8, r * 0.05);
+    ctx.beginPath(); ctx.moveTo(-r * 0.16, 0); ctx.quadraticCurveTo(r * 0.02, -r * 0.2, r * 0.2, 0); ctx.quadraticCurveTo(r * 0.02, r * 0.2, -r * 0.16, 0); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(184,109,0,.7)'; ctx.beginPath(); ctx.moveTo(-r * 0.12, 0); ctx.lineTo(r * 0.15, 0); ctx.stroke();
+    ctx.restore();
+    // big glossy highlight
+    ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.beginPath(); ctx.ellipse(-r * 0.47, -r * 0.48, r * 0.17, r * 0.1, -0.75, 0, 7); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.beginPath(); ctx.arc(-r * 0.22, -r * 0.66, r * 0.05, 0, 7); ctx.fill();
     // face
-    ctx.fillStyle = '#1f2a1f';
+    const ink = '#18261a', lw = Math.max(1.2, r * 0.08), ex = look * r * 0.06;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     if (mood === 'ouch') {
-      ctx.lineWidth = Math.max(1.2, r * 0.09); ctx.strokeStyle = '#1f2a1f';
-      for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(s * r * 0.42, -r * 0.2); ctx.lineTo(s * r * 0.22, -r * 0.08); ctx.lineTo(s * r * 0.42, r * 0.04); ctx.stroke(); }
-      ctx.beginPath(); ctx.ellipse(0, r * 0.32, r * 0.14, r * 0.11, 0, 0, 7); ctx.fill();
+      ctx.strokeStyle = ink; ctx.lineWidth = lw;
+      for (const sd of [-1, 1]) { ctx.beginPath(); ctx.moveTo(sd * r * 0.44, -r * 0.2); ctx.lineTo(sd * r * 0.24, -r * 0.08); ctx.lineTo(sd * r * 0.44, r * 0.04); ctx.stroke(); }
+      ctx.fillStyle = ink; ctx.beginPath(); ctx.ellipse(0, r * 0.32, r * 0.13, r * 0.11, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = '#ff8aa0'; ctx.beginPath(); ctx.ellipse(0, r * 0.37, r * 0.07, r * 0.04, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = 'rgba(120,200,255,.9)'; ctx.beginPath(); ctx.moveTo(r * 0.62, -r * 0.45); ctx.quadraticCurveTo(r * 0.72, -r * 0.28, r * 0.62, -r * 0.22); ctx.quadraticCurveTo(r * 0.52, -r * 0.28, r * 0.62, -r * 0.45); ctx.fill();   // sweat drop
+    } else if (mood === 'sleep') {
+      ctx.strokeStyle = ink; ctx.lineWidth = lw;
+      for (const sd of [-1, 1]) { ctx.beginPath(); ctx.arc(sd * r * 0.32, -r * 0.08, r * 0.11, 0.2, Math.PI - 0.2); ctx.stroke(); }
+      ctx.beginPath(); ctx.ellipse(0, r * 0.26, r * 0.06, r * 0.05, 0, 0, 7); ctx.stroke();
     } else {
-      for (const s of [-1, 1]) { ctx.beginPath(); ctx.ellipse(s * r * 0.32, -r * 0.08, r * 0.1, r * 0.15, 0, 0, 7); ctx.fill(); }
-      ctx.fillStyle = '#fff'; for (const s of [-1, 1]) { ctx.beginPath(); ctx.arc(s * r * 0.32 - r * 0.03, -r * 0.14, r * 0.04, 0, 7); ctx.fill(); }
-      ctx.strokeStyle = '#1f2a1f'; ctx.lineWidth = Math.max(1.2, r * 0.08); ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.arc(0, r * 0.18, r * 0.18, 0.2, Math.PI - 0.2); ctx.stroke();
-      ctx.fillStyle = 'rgba(255,120,140,.45)'; for (const s of [-1, 1]) { ctx.beginPath(); ctx.ellipse(s * r * 0.58, r * 0.16, r * 0.13, r * 0.08, 0, 0, 7); ctx.fill(); }
+      if (blink) { ctx.strokeStyle = ink; ctx.lineWidth = lw; for (const sd of [-1, 1]) { ctx.beginPath(); ctx.arc(sd * r * 0.32 + ex, -r * 0.04, r * 0.11, Math.PI + 0.3, -0.3); ctx.stroke(); } }
+      else for (const sd of [-1, 1]) {
+        const ey = -r * 0.08, big = mood === 'wow' ? 1.25 : 1;
+        ctx.fillStyle = ink; ctx.beginPath(); ctx.ellipse(sd * r * 0.32 + ex, ey, r * 0.11 * big, r * 0.16 * big, 0, 0, 7); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(sd * r * 0.32 + ex - r * 0.035, ey - r * 0.07, r * 0.05 * big, 0, 7); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.beginPath(); ctx.arc(sd * r * 0.32 + ex + r * 0.04, ey + r * 0.06, r * 0.022, 0, 7); ctx.fill();
+      }
+      ctx.strokeStyle = ink; ctx.lineWidth = lw;
+      if (mood === 'wow') { ctx.fillStyle = ink; ctx.beginPath(); ctx.ellipse(0, r * 0.3, r * 0.1, r * 0.13, 0, 0, 7); ctx.fill(); ctx.fillStyle = '#ff8aa0'; ctx.beginPath(); ctx.ellipse(0, r * 0.36, r * 0.06, r * 0.05, 0, 0, 7); ctx.fill(); }
+      else {
+        ctx.beginPath(); ctx.moveTo(-r * 0.16, r * 0.17); ctx.quadraticCurveTo(0, r * 0.38, r * 0.16, r * 0.17); ctx.closePath();
+        ctx.fillStyle = '#7a2a33'; ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#ff8aa0'; ctx.beginPath(); ctx.ellipse(0, r * 0.27, r * 0.07, r * 0.035, 0, 0, 7); ctx.fill();
+      }
+      ctx.fillStyle = 'rgba(255,110,140,.45)'; for (const sd of [-1, 1]) { ctx.beginPath(); ctx.ellipse(sd * r * 0.6 + ex * 0.5, r * 0.14, r * 0.14, r * 0.08, 0, 0, 7); ctx.fill(); }
     }
     ctx.restore();
   }
 
-  return { init, stat, fit, panel, hide, panelOpen, best, record, sfx, toast, loop, rand, randi, pick, shuffle, store, puPu: (ctx, cx, cy, r, mood, sq) => puPu(ctx, null, cx, cy, r, mood, sq), unlock };
+  // Simple particle pool: MG.fx.burst(x, y, {n, colors, speed, up, size, life, grav, shape}); MG.fx.step(dt); MG.fx.draw(ctx)
+  const fx = (() => {
+    let ps = [];
+    return {
+      burst(px, py, o = {}) {
+        const n = o.n ?? 10, cols = o.colors ?? ['#fff'];
+        for (let i = 0; i < n; i++) {
+          const a = o.angle != null ? o.angle + rand(-(o.spread ?? 3.2) / 2, (o.spread ?? 3.2) / 2) : rand(0, Math.PI * 2), sp = rand(0.4, 1) * (o.speed ?? 160);
+          ps.push({ x: px, y: py, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - (o.up ?? 60), g: o.grav ?? 500, life: rand(0.6, 1) * (o.life ?? 0.7), max: o.life ?? 0.7,
+            s: rand(0.6, 1) * (o.size ?? 4), col: pick(cols), shape: o.shape ?? 'dot', rot: rand(0, 6), vr: rand(-8, 8) });
+        }
+      },
+      step(dt) { for (const p of ps) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += p.g * dt; p.vx *= Math.pow(0.4, dt); p.rot += p.vr * dt; p.life -= dt; } ps = ps.filter(p => p.life > 0); },
+      draw(ctx) {
+        for (const p of ps) {
+          ctx.globalAlpha = Math.max(0, Math.min(1, p.life / p.max * 1.6)); ctx.fillStyle = p.col;
+          if (p.shape === 'star') { ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? p.s * 0.45 : p.s; ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); } ctx.fill(); ctx.restore(); }
+          else if (p.shape === 'sq') { ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillRect(-p.s / 2, -p.s / 2, p.s, p.s); ctx.restore(); }
+          else { ctx.beginPath(); ctx.arc(p.x, p.y, p.s, 0, 7); ctx.fill(); }
+        }
+        ctx.globalAlpha = 1;
+      },
+      clear() { ps = []; },
+    };
+  })();
+
+  return { init, stat, fit, panel, hide, panelOpen, best, record, sfx, toast, loop, rand, randi, pick, shuffle, store, puPu, fx, unlock };
 })();

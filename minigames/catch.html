@@ -19,11 +19,13 @@ const EMOJI = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-seri
 const FRUITS = [['🍎', 10], ['🍌', 10], ['🍇', 10], ['🍊', 10], ['🍓', 10], ['🍉', 20], ['🍍', 20]];
 const ROUND = 60, BW = 70;
 let GROUND = 0; const groundY = () => (GROUND = H - 40);
+let shake = 0, inBasket = [];
+const JUICE = { '🍎': '#ff4f5e', '🍌': '#ffe14a', '🍇': '#9b5cff', '🍊': '#ff9f1c', '🍓': '#ff3b5c', '🍉': '#ff5a6e', '🍍': '#ffcf3a', '⭐': '#ffd23f', '🐌': '#8fd0ff' };
 let B, items, score, combo, hearts, left, spawnT, state = 'ready', pops = [], t = 0, slow = 0;
 
 function reset() {
   groundY();
-  B = { x: W / 2, tx: W / 2, wob: 0, face: 'happy', faceT: 0 };
+  B = { x: W / 2, tx: W / 2, wob: 0, face: 'happy', faceT: 0, vx: 0 }; inBasket = []; MG.fx.clear(); shake = 0;
   items = []; pops = []; score = 0; combo = 0; hearts = 3; left = ROUND; spawnT = 0.4; t = 0; slow = 0; hud();
 }
 function hud() { MG.stat('score', `${score} 分`); MG.stat('time', `⏱ ${Math.ceil(left)}`); }
@@ -57,7 +59,10 @@ function update(dt) {
   if (keys.l) B.tx = B.x - 400; if (keys.r) B.tx = B.x + 400;
   B.tx = Math.max(BW / 2, Math.min(W - BW / 2, B.tx));
   const nx = B.x + (B.tx - B.x) * Math.min(1, dt * 16);
-  const maxStep = 560 * dt; B.x += Math.max(-maxStep, Math.min(maxStep, nx - B.x));
+  const maxStep = 560 * dt, ox = B.x; B.x += Math.max(-maxStep, Math.min(maxStep, nx - B.x)); B.vx = (B.x - ox) / Math.max(dt, 1e-3);
+  MG.fx.step(dt); shake = Math.max(0, shake - dt);
+  for (const it of items) if (it.kind === 'bomb' && Math.random() < 0.6) MG.fx.burst(it.x + 9, it.y - 15, { n: 1, colors: ['#ffd23f', '#ff7a1c', '#fff'], speed: 40, up: 20, size: 1.6, grav: 60, life: 0.3 });
+  for (const it of items) if (it.kind === 'star' && Math.random() < 0.5) MG.fx.burst(it.x, it.y, { n: 1, colors: ['#fff6a0', '#ffd23f'], speed: 20, up: 0, size: 3, grav: 0, life: 0.5, shape: 'star' });
   B.wob *= Math.pow(0.01, dt); B.faceT -= dt; if (B.faceT <= 0) B.face = 'happy';
 
   spawnT -= dt;
@@ -77,52 +82,142 @@ function update(dt) {
 function caught(it) {
   it.done = true; B.wob = 1;
   if (it.kind === 'bomb') {
-    hearts--; combo = 0; B.face = 'ouch'; B.faceT = 0.8; MG.sfx('bad'); pops.push({ x: it.x, y: GROUND - 50, t: '砰！', c: '#ff5a4e', life: 0.9 });
+    hearts--; combo = 0; B.face = 'ouch'; B.faceT = 0.8; MG.sfx('bad'); shake = 0.3; inBasket = [];
+    MG.fx.burst(it.x, GROUND - 30, { n: 16, colors: ['#555', '#888', '#ff7a1c', '#ffd23f'], speed: 220, up: 80, size: 6, life: 0.6 }); pops.push({ x: it.x, y: GROUND - 50, t: '砰！', c: '#ff5a4e', life: 0.9 });
     if (hearts <= 0) end('炸彈太多了…');
     return;
   }
-  if (it.kind === 'snail') { slow = 4; MG.sfx('good'); pops.push({ x: it.x, y: GROUND - 50, t: '慢動作！', c: '#3a7bd5', life: 1 }); return; }
+  if (it.kind === 'snail') { slow = 4; MG.sfx('good'); MG.fx.burst(it.x, GROUND - 30, { n: 10, colors: ['#8fd0ff', '#fff'], speed: 120, size: 4 }); pops.push({ x: it.x, y: GROUND - 50, t: '慢動作！', c: '#3a7bd5', life: 1 }); return; }
   combo++;
   const mult = combo >= 15 ? 3 : combo >= 6 ? 2 : 1;
   const pts = it.pts * mult; score += pts;
   MG.sfx(it.kind === 'star' ? 'good' : 'pop');
+  MG.fx.burst(it.x, GROUND - 32, { n: it.kind === 'star' ? 14 : 9, colors: [JUICE[it.ch] || '#fff', '#fff'], speed: 150, up: 120, size: it.kind === 'star' ? 5 : 3.5, shape: it.kind === 'star' ? 'star' : 'dot', life: 0.55 });
+  if (it.kind === 'fruit') { inBasket.push(it.ch); if (inBasket.length > 5) inBasket.shift(); }
   pops.push({ x: it.x, y: GROUND - 50, t: `+${pts}`, c: mult > 1 ? '#ff7a00' : '#2e9a4c', life: 0.7 });
 }
 
 // ---------- draw ----------
-function draw() {
-  groundY();
-  const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#9fdcff'); g.addColorStop(1, '#e8f8ff'); x.fillStyle = g; x.fillRect(0, 0, W, H);
-  // clouds and trees
-  x.fillStyle = 'rgba(255,255,255,.85)';
-  for (const [cx, cy, s] of [[60, 70, 1], [250, 120, 1.3], [180, 40, .7]]) { const ox = ((cx + t * 8 * s) % (W + 120)) - 60; for (const [a, b, r] of [[0, 0, 18], [18, -8, 22], [38, 0, 17]]) { x.beginPath(); x.arc(ox + a * s, cy + b * s, r * s, 0, 7); x.fill(); } }
-  x.fillStyle = '#7dc957'; x.beginPath(); x.ellipse(70, GROUND + 6, 150, 40, 0, Math.PI, 0); x.fill();
-  x.fillStyle = '#6cbd4a'; x.beginPath(); x.ellipse(W - 60, GROUND + 6, 140, 34, 0, Math.PI, 0); x.fill();
-  x.fillStyle = '#5aa63c'; x.fillRect(0, GROUND, W, H - GROUND);
-  x.fillStyle = '#4b9132'; for (let i = 0; i < W; i += 14) x.fillRect(i, GROUND, 7, 4);
-  if (slow) { x.fillStyle = 'rgba(80,120,255,.08)'; x.fillRect(0, 0, W, H); }
-  // items
-  x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = `34px ${EMOJI}`;
-  for (const it of items) { x.save(); x.translate(it.x, it.y); x.rotate(it.rot * 0.4); x.fillText(it.ch, 0, 0); x.restore(); }
-  // 噗噗 with a basket
-  const bx = B.x, by = GROUND - 8, w = Math.sin(t * 30) * B.wob * 3;
-  MG.puPu(x, bx, by - 34, 15, B.face, B.wob * 0.15);
-  x.fillStyle = '#c98a3e'; x.strokeStyle = '#8a5a22'; x.lineWidth = 2;
-  x.beginPath(); x.moveTo(bx - BW / 2 + w, by - 22); x.lineTo(bx + BW / 2 + w, by - 22); x.lineTo(bx + BW / 2 - 8, by + 4); x.lineTo(bx - BW / 2 + 8, by + 4); x.closePath(); x.fill(); x.stroke();
-  x.strokeStyle = '#a8702e'; x.lineWidth = 1.5;
-  for (let i = 1; i < 6; i++) { const yy = by - 22 + i * 4.4; x.beginPath(); x.moveTo(bx - BW / 2 + 2 + i * 1.3 + w, yy); x.lineTo(bx + BW / 2 - 2 - i * 1.3 + w, yy); x.stroke(); }
-  x.fillStyle = '#e0a55a'; x.beginPath(); x.roundRect(bx - BW / 2 - 3 + w, by - 26, BW + 6, 6, 3); x.fill();
-  // pops
-  x.font = '700 18px system-ui,sans-serif';
-  for (const p of pops) { x.globalAlpha = Math.min(1, p.life * 2); x.fillStyle = '#fff'; x.fillText(p.t, p.x + 1, p.y + 1); x.fillStyle = p.c; x.fillText(p.t, p.x, p.y); }
-  x.globalAlpha = 1;
-  // hearts + combo
-  x.textAlign = 'left'; x.font = `20px ${EMOJI}`;
-  for (let i = 0; i < 3; i++) x.fillText(i < hearts ? '❤️' : '🤍', 10 + i * 26, 22);
-  if (combo >= 3) {
-    x.textAlign = 'right'; x.font = '700 16px system-ui,sans-serif'; x.fillStyle = '#ff7a00';
-    x.fillText(`${combo} 連接${combo >= 15 ? ' ×3' : combo >= 6 ? ' ×2' : ''}`, W - 10, 22);
+// static scenery (mountains, hills, orchard, fence) cached per layout
+let bgCache = null, bgKey = '';
+function scenery() {
+  const k = cv._mgScale || 1, key = W + 'x' + H + ':' + k;
+  if (key === bgKey) return; bgKey = key;
+  const c = document.createElement('canvas'); c.width = W * k; c.height = H * k; const g2 = c.getContext('2d'); g2.scale(k, k);
+  let sd = 5; const rnd = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+  const G = H - 40;
+  // far mountains with snow caps
+  g2.fillStyle = '#a9c8e8';
+  g2.beginPath(); g2.moveTo(0, G - 70); for (let xx = 0; xx <= W; xx += 40) g2.lineTo(xx, G - 90 - Math.abs(Math.sin(xx * 0.013)) * 70 - rnd() * 10); g2.lineTo(W, G); g2.lineTo(0, G); g2.fill();
+  g2.fillStyle = 'rgba(255,255,255,.75)';
+  for (let xx = 60; xx < W; xx += 150) { const top = G - 90 - Math.abs(Math.sin(xx * 0.013)) * 70; g2.beginPath(); g2.moveTo(xx - 14, top + 14); g2.lineTo(xx, top - 4); g2.lineTo(xx + 14, top + 14); g2.lineTo(xx + 5, top + 10); g2.lineTo(xx, top + 16); g2.lineTo(xx - 6, top + 10); g2.fill(); }
+  // rolling hills (two layers) with tiny trees
+  const hill = (col, base, amp, f, ph) => { g2.fillStyle = col; g2.beginPath(); g2.moveTo(0, H); for (let xx = 0; xx <= W; xx += 10) g2.lineTo(xx, base - Math.sin(xx * f + ph) * amp - amp); g2.lineTo(W, H); g2.fill(); };
+  hill('#9fd67a', G - 22, 18, 0.012, 1); hill('#86c862', G - 6, 12, 0.02, 3);
+  for (let i = 0; i < W / 30; i++) { const tx = rnd() * W, ty = G - 30 - rnd() * 20; g2.fillStyle = '#6aad4c'; g2.beginPath(); g2.arc(tx, ty, 4 + rnd() * 3, 0, 7); g2.fill(); g2.fillStyle = '#7a5a3a'; g2.fillRect(tx - 0.8, ty + 3, 1.6, 4); }
+  // orchard trees at both sides
+  const tree = (tx, s) => {
+    g2.fillStyle = '#8a5a34'; g2.beginPath(); g2.moveTo(tx - 6 * s, G + 2); g2.quadraticCurveTo(tx - 3 * s, G - 40 * s, tx - 4 * s, G - 70 * s); g2.lineTo(tx + 4 * s, G - 70 * s); g2.quadraticCurveTo(tx + 3 * s, G - 40 * s, tx + 7 * s, G + 2); g2.fill();
+    g2.strokeStyle = '#6e4626'; g2.lineWidth = 1; for (let i = 0; i < 4; i++) { g2.beginPath(); g2.moveTo(tx - 2 * s, G - 10 * s - i * 14 * s); g2.lineTo(tx + 1 * s, G - 16 * s - i * 14 * s); g2.stroke(); }
+    for (const [ox, oy, r, col] of [[-26, -78, 26, '#3d9a45'], [24, -82, 28, '#3d9a45'], [0, -104, 32, '#4caf50'], [-18, -96, 22, '#5cbf5a'], [18, -100, 20, '#5cbf5a'], [-6, -116, 16, '#7ad36c']])
+      { g2.fillStyle = col; g2.beginPath(); g2.arc(tx + ox * s, G + oy * s, r * s, 0, 7); g2.fill(); }
+    for (let i = 0; i < 7; i++) { const fx = tx + (rnd() - 0.5) * 70 * s, fy = G - (80 + rnd() * 40) * s; g2.fillStyle = '#ff4f5e'; g2.beginPath(); g2.arc(fx, fy, 3.6 * s, 0, 7); g2.fill(); g2.fillStyle = 'rgba(255,255,255,.6)'; g2.beginPath(); g2.arc(fx - 1.2 * s, fy - 1.2 * s, 1.1 * s, 0, 7); g2.fill(); }
+  };
+  tree(14, 0.95); tree(W - 12, 1.05); if (W > 500) { tree(W * 0.3, 0.6); tree(W * 0.72, 0.7); }
+  // fence
+  g2.fillStyle = '#e9d3a8'; g2.strokeStyle = '#a8865a'; g2.lineWidth = 1;
+  g2.fillRect(0, G - 26, W, 4); g2.fillRect(0, G - 14, W, 4);
+  for (let xx = 6; xx < W; xx += 22) { g2.beginPath(); g2.moveTo(xx, G); g2.lineTo(xx, G - 30); g2.lineTo(xx + 4, G - 35); g2.lineTo(xx + 8, G - 30); g2.lineTo(xx + 8, G); g2.closePath(); g2.fill(); g2.stroke(); }
+  // ground: grass strip + soil
+  const gg = g2.createLinearGradient(0, G, 0, H); gg.addColorStop(0, '#5fb34a'); gg.addColorStop(0.35, '#4c9a38'); gg.addColorStop(1, '#3f8530'); g2.fillStyle = gg; g2.fillRect(0, G, W, H - G);
+  for (let i = 0; i < W; i += 3) { g2.fillStyle = `rgba(30,90,30,${0.15 + rnd() * 0.2})`; g2.fillRect(i, G + 8 + rnd() * (H - G - 10), 1.5, 3); }
+  for (let i = 0; i < W / 18; i++) { const fx = rnd() * W, fy = G + 12 + rnd() * 20; g2.fillStyle = ['#fff', '#ffd23f', '#ff8ac2'][i % 3]; for (let k2 = 0; k2 < 5; k2++) { const a = k2 * 1.256; g2.beginPath(); g2.arc(fx + Math.cos(a) * 2.2, fy + Math.sin(a) * 2.2, 1.7, 0, 7); g2.fill(); } g2.fillStyle = '#ff9f1c'; g2.beginPath(); g2.arc(fx, fy, 1.3, 0, 7); g2.fill(); }
+  bgCache = c;
+}
+function cloud(cx, cy, s) {
+  x.fillStyle = 'rgba(150,180,215,.45)';
+  for (const [a, b, r] of [[2, 6, 16], [22, 2, 20], [42, 6, 15]]) { x.beginPath(); x.arc(cx + a * s, cy + b * s + 3, r * s, 0, 7); x.fill(); }
+  x.fillStyle = '#fff';
+  for (const [a, b, r] of [[0, 0, 16], [18, -8, 21], [38, 0, 16], [20, 4, 15]]) { x.beginPath(); x.arc(cx + a * s, cy + b * s, r * s, 0, 7); x.fill(); }
+}
+function basket(bx, by, w) {
+  // back rim
+  x.fillStyle = '#8a5a22'; x.beginPath(); x.ellipse(bx + w, by - 22, BW / 2 + 1, 6, 0, 0, 7); x.fill();
+  // fruit pile peeking out
+  x.fillStyle = '#000'; x.font = `20px ${EMOJI}`; x.textAlign = 'center'; x.textBaseline = 'middle';
+  inBasket.forEach((f, i) => x.fillText(f, bx + w - 20 + i * 10, by - 25 - (i % 2) * 4));
+  // woven body
+  x.save(); x.beginPath(); x.moveTo(bx - BW / 2 + w, by - 22); x.lineTo(bx + BW / 2 + w, by - 22); x.lineTo(bx + BW / 2 - 8, by + 4); x.quadraticCurveTo(bx, by + 8, bx - BW / 2 + 8, by + 4); x.closePath(); x.clip();
+  const g = x.createLinearGradient(0, by - 22, 0, by + 6); g.addColorStop(0, '#e0a55a'); g.addColorStop(1, '#a8702e'); x.fillStyle = g; x.fillRect(bx - BW, by - 30, BW * 2, 40);
+  for (let row = 0; row < 6; row++) for (let i = -6; i < 7; i++) {
+    const cx = bx + i * 10 + (row % 2) * 5 + w * (1 - row / 6), cy = by - 20 + row * 4.4;
+    x.fillStyle = (i + row) % 2 ? 'rgba(255,220,160,.35)' : 'rgba(110,60,20,.25)'; x.beginPath(); x.ellipse(cx, cy, 5, 2, 0, 0, 7); x.fill();
   }
+  x.restore();
+  x.strokeStyle = '#7a4a1a'; x.lineWidth = 1.6; x.beginPath(); x.moveTo(bx - BW / 2 + w, by - 22); x.lineTo(bx - BW / 2 + 8, by + 4); x.quadraticCurveTo(bx, by + 8, bx + BW / 2 - 8, by + 4); x.lineTo(bx + BW / 2 + w, by - 22); x.stroke();
+  // front rim
+  const rg = x.createLinearGradient(0, by - 27, 0, by - 19); rg.addColorStop(0, '#f2c27a'); rg.addColorStop(1, '#b77a36');
+  x.fillStyle = rg; x.strokeStyle = '#7a4a1a'; x.beginPath(); x.roundRect(bx - BW / 2 - 3 + w, by - 27, BW + 6, 7, 3.5); x.fill(); x.stroke();
+}
+function draw() {
+  groundY(); scenery();
+  x.save();
+  if (shake) x.translate(MG.rand(-1, 1) * shake * 14, MG.rand(-1, 1) * shake * 14);
+  // sky
+  const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#6fc2ff'); g.addColorStop(0.55, '#c8ebff'); g.addColorStop(1, '#f3fbff'); x.fillStyle = g; x.fillRect(-20, -20, W + 40, H + 40);
+  // sun with slowly turning rays
+  const sx = W - 64, sy = 62;
+  x.save(); x.translate(sx, sy); x.rotate(t * 0.15);
+  x.fillStyle = 'rgba(255,230,120,.35)'; for (let i = 0; i < 12; i++) { x.rotate(Math.PI / 6); x.beginPath(); x.moveTo(-6, 30); x.lineTo(0, 62); x.lineTo(6, 30); x.fill(); }
+  x.restore();
+  const sg = x.createRadialGradient(sx - 6, sy - 6, 4, sx, sy, 28); sg.addColorStop(0, '#fff7c2'); sg.addColorStop(1, '#ffc93a'); x.fillStyle = sg; x.beginPath(); x.arc(sx, sy, 26, 0, 7); x.fill();
+  for (const [cx, cy, sp, s] of [[40, 70, 9, 1], [220, 118, 6, 1.2], [140, 40, 12, 0.75], [420, 90, 7, 0.9]]) { const ox = ((cx + t * sp) % (W + 160)) - 80; cloud(ox, cy, s); }
+  x.drawImage(bgCache, 0, 0, W, H);
+  // swaying grass blades along the top of the ground
+  x.strokeStyle = '#6cc451'; x.lineWidth = 1.6; x.lineCap = 'round';
+  for (let i = 3; i < W; i += 7) { const sw = Math.sin(t * 2 + i * 0.3) * 2.5; x.beginPath(); x.moveTo(i, GROUND + 3); x.quadraticCurveTo(i + sw * 0.5, GROUND - 3, i + sw, GROUND - 7 - (i * 7 % 5)); x.stroke(); }
+  // butterflies
+  for (let i = 0; i < 2; i++) {
+    const bx = (W * (0.3 + i * 0.4) + Math.sin(t * 0.7 + i * 3) * 60), by = GROUND - 70 + Math.sin(t * 1.3 + i) * 20, fl = Math.abs(Math.sin(t * 14 + i));
+    x.fillStyle = i ? '#ff8ac2' : '#ffd23f'; for (const sd of [-1, 1]) { x.beginPath(); x.ellipse(bx + sd * 4 * fl, by, 4 * fl + 0.5, 5, 0, 0, 7); x.fill(); }
+    x.fillStyle = '#333'; x.fillRect(bx - 0.7, by - 3, 1.4, 6);
+  }
+  if (slow) { x.fillStyle = 'rgba(80,120,255,.10)'; x.fillRect(0, 0, W, H); }
+  // falling items: ground shadow, motion streak, then the item
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  for (const it of items) {
+    const near = Math.max(0, Math.min(1, it.y / GROUND));
+    x.fillStyle = `rgba(20,60,20,${0.08 + near * 0.18})`; x.beginPath(); x.ellipse(it.x, GROUND + 4, 6 + near * 10, 2 + near * 2, 0, 0, 7); x.fill();
+    x.fillStyle = 'rgba(255,255,255,.35)'; x.beginPath(); x.moveTo(it.x - 7, it.y - 12); x.lineTo(it.x, it.y - 12 - it.vy * 0.08); x.lineTo(it.x + 7, it.y - 12); x.fill();
+    x.save(); x.translate(it.x, it.y); x.rotate(it.rot * 0.4);
+    if (it.kind === 'star') { x.shadowColor = '#ffe066'; x.shadowBlur = 14; }
+    x.fillStyle = '#000'; x.font = `34px ${EMOJI}`; x.fillText(it.ch, 0, 0); x.restore();
+  }
+  // 噗噗 with a basket
+  const bx = B.x, by = GROUND - 6, w = Math.sin(t * 30) * B.wob * 3, lean = Math.max(-1, Math.min(1, B.vx / 400));
+  x.fillStyle = 'rgba(20,60,20,.25)'; x.beginPath(); x.ellipse(bx, GROUND + 4, BW / 2 + 6, 5, 0, 0, 7); x.fill();
+  MG.puPu(x, bx - lean * 3, by - 36, 15, B.face, B.wob * 0.15, { look: lean, arms: 'up' });
+  basket(bx, by, w);
+  MG.fx.draw(x);
+  // pops
+  for (const p of pops) {
+    const k = Math.min(1, p.life * 2); x.globalAlpha = k; x.font = '900 19px system-ui,"Noto Sans TC",sans-serif';
+    x.lineWidth = 4; x.strokeStyle = '#fff'; x.strokeText(p.t, p.x, p.y); x.fillStyle = p.c; x.fillText(p.t, p.x, p.y);
+  }
+  x.globalAlpha = 1;
+  // HUD: hearts, time bar, combo
+  x.textAlign = 'left'; x.font = `19px ${EMOJI}`;
+  x.fillStyle = 'rgba(255,255,255,.75)'; x.beginPath(); x.roundRect(6, 8, 88, 28, 14); x.fill(); x.fillStyle = '#000';
+  for (let i = 0; i < 3; i++) x.fillText(i < hearts ? '❤️' : '🤍', 13 + i * 26, 23);
+  const tw = Math.min(160, W * 0.35), tx = W / 2 - tw / 2;
+  x.fillStyle = 'rgba(255,255,255,.75)'; x.beginPath(); x.roundRect(tx - 4, 12, tw + 8, 16, 8); x.fill();
+  const frac = left / ROUND; x.fillStyle = frac < 0.2 ? '#ff5a4e' : '#4cc96a'; x.beginPath(); x.roundRect(tx, 15, Math.max(6, tw * frac), 10, 5); x.fill();
+  if (slow) { x.textAlign = 'center'; x.fillStyle = '#000'; x.font = `16px ${EMOJI}`; x.fillText('🐌', tx + tw + 18, 21); }
+  if (combo >= 3) {
+    x.textAlign = 'right'; x.font = '900 17px system-ui,"Noto Sans TC",sans-serif'; x.lineWidth = 4; x.strokeStyle = '#fff';
+    const txt = `${combo} 連接${combo >= 15 ? ' ×3' : combo >= 6 ? ' ×2' : ''}`; x.strokeText(txt, W - 10, 23); x.fillStyle = '#ff7a00'; x.fillText(txt, W - 10, 23);
+  }
+  x.restore();
 }
 
 // ---------- flow ----------
@@ -145,7 +240,7 @@ MG.panel({
   keys: '電腦：<kbd>←</kbd><kbd>→</kbd> 或滑鼠　手機：手指在畫面上左右拖',
   buttons: [{ label: '開始', on: start }],
 });
-MG.loop(dt => { if (state === 'play') update(dt); else { t += dt; for (const p of pops) { p.y -= 40 * dt; p.life -= dt; } pops = pops.filter(p => p.life > 0); } draw(); });
+MG.loop(dt => { if (state === 'play') update(dt); else { t += dt; MG.fx.step(dt); for (const p of pops) { p.y -= 40 * dt; p.life -= dt; } pops = pops.filter(p => p.life > 0); } draw(); });
 </script>
 </body>
 </html>
