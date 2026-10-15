@@ -17,11 +17,16 @@ let W = 360, H = 580, land = false;
 MG.fit(cv, (sw, sh) => { land = sw > sh * 1.1; [W, H] = land ? [660, 400] : [360, 580]; return [W, H]; });
 const EMOJI = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
 const ANIMALS = ['🐶', '🐱', '🐰', '🦊', '🐼', '🐸', '🐵', '🐧', '🐙', '🦁', '🐷', '🐨', '🦄', '🐢', '🐝', '🐳', '🦉', '🐞', '🐤', '🦋', '🐯', '🐮'];
+// g = which way the animals slide after a pair disappears (only in the 會掉落 style)
 const LEVELS = [
-  { a: 6, b: 6, types: 9, time: 150 }, { a: 6, b: 8, types: 12, time: 170 }, { a: 8, b: 8, types: 16, time: 190 },
-  { a: 8, b: 10, types: 20, time: 210 }, { a: 8, b: 10, types: 22, time: 190 },
+  { a: 6, b: 6, types: 9, time: 150, g: 'down' }, { a: 6, b: 8, types: 12, time: 170, g: 'left' }, { a: 8, b: 8, types: 14, time: 190, g: 'up' },
+  { a: 8, b: 8, types: 16, time: 190, g: 'right' }, { a: 8, b: 10, types: 18, time: 210, g: 'midH' }, { a: 8, b: 10, types: 20, time: 210, g: 'outH' },
+  { a: 8, b: 10, types: 20, time: 200, g: 'midV' }, { a: 8, b: 10, types: 22, time: 200, g: 'outV' },
 ];
-let mode = 'relax';
+const GNAME = { down: '⬇️ 往下掉', up: '⬆️ 往上飄', left: '⬅️ 往左靠', right: '➡️ 往右靠', midH: '➡️⬅️ 往中間擠', outH: '⬅️➡️ 往兩邊分開', midV: '⬇️⬆️ 上下往中間擠', outV: '⬆️⬇️ 上下分開' };
+let mode = 'relax', style = 'classic';      // style: 'classic' (lines may go around the outside) | 'fall' (inside only, animals slide)
+const falling = () => style === 'fall';
+let slides = new Map();                      // "r,c" -> { fr, fc, t } for the slide animation
 const relax = () => mode === 'relax';
 const mmss = v => `${Math.floor(v / 60)}:${String(Math.floor(v % 60)).padStart(2, '0')}`;
 let level, score, grid, R_, C_, tile, ox, oy, sel = null, links = [], left, maxT, hints, shuffles, state = 'ready', t = 0, combo = 0, lastMatch = -9, hintPair = null, shakeCell = null, pops = [], gone = [];
@@ -36,7 +41,7 @@ function setupLevel(n) {
   // grid with an empty one-cell border so links can go around the outside
   grid = Array.from({ length: R_ + 2 }, () => Array(C_ + 2).fill(null));
   for (let r = 0; r < R_; r++) for (let c = 0; c < C_; c++) grid[r + 1][c + 1] = pool[r * C_ + c];
-  maxT = L.time; left = relax() ? 0 : maxT; hints = 3; shuffles = 2; sel = null; links = []; combo = 0; hintPair = null; gone = [];
+  maxT = L.time; left = relax() ? 0 : maxT; slides = new Map(); hints = 3; shuffles = 2; sel = null; links = []; combo = 0; hintPair = null; gone = [];
   layout(); ensureMoves(); hud();
 }
 function layout() {
@@ -58,6 +63,7 @@ function findPath(a, b) {
     const s = q.shift();
     const [dr, dc] = DIRS[s.d]; const nr = s.r + dr, nc = s.c + dc;
     if (nr < 0 || nc < 0 || nr >= RR || nc >= CC) continue;
+    if (falling() && (nr < 1 || nc < 1 || nr > R_ || nc > C_)) continue;     // 會掉落: the line has to stay on the board
     const node = { r: nr, c: nc, d: s.d, turns: s.turns, prev: s };
     if (nr === b[0] && nc === b[1]) { const pts = []; let n = node; while (n) { pts.push([n.r, n.c]); n = n.prev; } return pts.reverse(); }
     if (grid[nr][nc] !== null) continue;
@@ -98,7 +104,7 @@ cv.addEventListener('pointerdown', e => {
   if (sel[0] === r && sel[1] === c) { sel = null; return; }
   if (grid[sel[0]][sel[1]] !== grid[r][c]) { sel = [r, c]; MG.sfx('flip'); return; }
   const path = findPath(sel, [r, c]);
-  if (!path) { shakeCell = { r, c, t: 0.3 }; MG.sfx('bad'); MG.toast('中間被擋住了，轉彎最多兩次喔'); sel = [r, c]; return; }
+  if (!path) { shakeCell = { r, c, t: 0.3 }; MG.sfx('bad'); MG.toast(falling() ? '連不起來喔：最多轉兩個彎，線也不能跑到外面' : '中間被擋住了，轉彎最多兩次喔'); sel = [r, c]; return; }
   match(sel, [r, c], path); sel = null;
 });
 addEventListener('keydown', e => { if (state !== 'play') return; if (e.key === 'h' || e.key === 'H') doHint(); if (e.key === 'r' || e.key === 'R') doShuffle(); });
@@ -111,8 +117,37 @@ function match(a, b, path) {
   const [mx, my] = cellXY(b[0], b[1]); pops.push({ x: mx, y: my - 10, t: `+${pts}${combo > 1 ? ` ${combo} 連` : ''}`, life: 0.8 });
   if (hintPair && hintPair.some(([r, c]) => (r === a[0] && c === a[1]) || (r === b[0] && c === b[1]))) hintPair = null;
   hud();
+  if (falling()) slideAll(LEVELS[Math.min(level, LEVELS.length) - 1].g);
   if (!remaining()) return setTimeout(levelClear, 450);
   if (!anyMove()) { reshuffle(); ensureMoves(); MG.toast('沒有可以連的了，幫你重新洗牌'); }
+}
+// ---------- 會掉落: animals slide toward the level's direction ----------
+function slideLine(cells, toStart) {        // cells: list of [r,c] in order; pack the animals toward the start (or the end)
+  const vals = cells.map(([r, c]) => grid[r][c]).filter(Boolean);
+  const from = cells.filter(([r, c]) => grid[r][c]);
+  const order = toStart ? cells : cells.slice().reverse(), src = toStart ? from : from.slice().reverse(), vs = toStart ? vals : vals.slice().reverse();
+  cells.forEach(([r, c]) => grid[r][c] = null);
+  vs.forEach((v, i) => {
+    const [r, c] = order[i], [fr, fc] = src[i]; grid[r][c] = v;
+    if (fr !== r || fc !== c) { const old = slides.get(fr + ',' + fc); slides.set(r + ',' + c, { fr: old ? old.fr + (fr - old.fr) * 0 : fr, fc: old ? old.fc : fc, t: 0 }); }
+  });
+}
+function slideAll(g) {
+  const rows = [], cols = [];
+  for (let r = 1; r <= R_; r++) rows.push(Array.from({ length: C_ }, (_, i) => [r, i + 1]));
+  for (let c = 1; c <= C_; c++) cols.push(Array.from({ length: R_ }, (_, i) => [i + 1, c]));
+  const half = (line) => [line.slice(0, Math.floor(line.length / 2)), line.slice(Math.floor(line.length / 2))];
+  if (g === 'down') cols.forEach(l => slideLine(l, false));
+  else if (g === 'up') cols.forEach(l => slideLine(l, true));
+  else if (g === 'left') rows.forEach(l => slideLine(l, true));
+  else if (g === 'right') rows.forEach(l => slideLine(l, false));
+  else if (g === 'midH') rows.forEach(l => { const [a, b] = half(l); slideLine(a, false); slideLine(b, true); });
+  else if (g === 'outH') rows.forEach(l => { const [a, b] = half(l); slideLine(a, true); slideLine(b, false); });
+  else if (g === 'midV') cols.forEach(l => { const [a, b] = half(l); slideLine(a, false); slideLine(b, true); });
+  else if (g === 'outV') cols.forEach(l => { const [a, b] = half(l); slideLine(a, true); slideLine(b, false); });
+  if (sel && !grid[sel[0]][sel[1]]) sel = null;
+  if (sel) { for (const [k, v] of slides) if (v.t === 0 && v.fr === sel[0] && v.fc === sel[1]) { const [r, c] = k.split(',').map(Number); sel = [r, c]; break; } }
+  hintPair = null;
 }
 function doHint() { if (!relax() && hints <= 0) { MG.toast('提示用完了'); return; } const m = anyMove(); if (!m) return; if (!relax()) hints--; hintPair = m; MG.sfx('good'); }
 function doShuffle() { if (!relax() && shuffles <= 0) { MG.toast('洗牌用完了'); return; } if (!relax()) shuffles--; reshuffle(); ensureMoves(); MG.sfx('clear'); }
@@ -127,15 +162,19 @@ function drawTile(px, py, ch, s, hl) {
   x.fillStyle = 'rgba(255,255,255,.6)'; x.fillRect(X + sz * 0.15, Y + 2, sz * 0.7, 2);
   x.save(); x.translate(px, py + 1); x.scale(s, s); x.fillStyle = '#000'; x.font = `${Math.floor(sz * 0.68)}px ${EMOJI}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(ch, 0, 1); x.restore();
 }
+const easeOut = v => 1 - (1 - v) * (1 - v) * (1 - v);
 function draw() {
   const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#c9f0d8'); g.addColorStop(1, '#fff5d6'); x.fillStyle = g; x.fillRect(0, 0, W, H);
   // leafy corners
   for (const [lx, ly, a] of [[0, H, -0.6], [W, H, -2.5], [0, 40, 0.5], [W, 40, 2.6]]) { x.save(); x.translate(lx, ly); x.rotate(a); for (let i = 0; i < 3; i++) { x.fillStyle = ['#7fcf6a', '#5fb84f', '#94dc7a'][i]; x.beginPath(); x.ellipse(30 + i * 14, -i * 8, 34, 12, -0.3 + i * 0.3, 0, 7); x.fill(); } x.restore(); }
   // board backing
   x.fillStyle = 'rgba(255,255,255,.55)'; x.beginPath(); x.roundRect(ox + tile * 0.6, oy + tile * 0.6, tile * (C_ + 0.8), tile * (R_ + 0.8), 14); x.fill();
+  if (falling()) gravityArrows(LEVELS[Math.min(level, LEVELS.length) - 1].g);
   for (let r = 1; r <= R_; r++) for (let c = 1; c <= C_; c++) {
     const v = grid[r][c]; if (!v) continue;
-    const [px, py] = cellXY(r, c);
+    let [px, py] = cellXY(r, c);
+    const sl = slides.get(r + ',' + c);
+    if (sl) { const k = 1 - easeOut(Math.min(1, sl.t / 0.22)); px += (sl.fc - c) * tile * k; py += (sl.fr - r) * tile * k; }
     const isSel = sel && sel[0] === r && sel[1] === c, isHint = hintPair && hintPair.some(([a, b]) => a === r && b === c);
     let sx = 0; if (shakeCell && shakeCell.r === r && shakeCell.c === c) sx = Math.sin(shakeCell.t * 60) * 3;
     drawTile(px + sx, py - (isSel ? 3 : 0), v, isSel ? 1.08 + Math.sin(t * 10) * 0.03 : isHint ? 1 + Math.sin(t * 8) * 0.06 : 1, isSel ? 'sel' : isHint ? 'hint' : '');
@@ -159,10 +198,24 @@ function draw() {
   btn(W - 180, '💡 提示', hints); btn(W - 90, '🔀 洗牌', shuffles);
 }
 
+// faint arrows around the board that show where the animals slide
+function gravityArrows(g) {
+  const L = ox + tile * 0.6, T = oy + tile * 0.6, Wb = tile * (C_ + 0.8), Hb = tile * (R_ + 0.8), cx = L + Wb / 2, cy = T + Hb / 2;
+  const arrow = (ax, ay, ang) => { x.save(); x.translate(ax, ay); x.rotate(ang); x.fillStyle = 'rgba(255,122,0,.75)'; x.beginPath(); x.moveTo(9, 0); x.lineTo(-5, -8); x.lineTo(-2, 0); x.lineTo(-5, 8); x.closePath(); x.fill(); x.restore(); };
+  const bob = Math.sin(t * 4) * 2, D = Math.PI / 2;
+  const out = tile * 0.32;
+  const at = { down: [[cx - Wb / 4, T + Hb + out, D], [cx + Wb / 4, T + Hb + out, D]], up: [[cx - Wb / 4, T - out, -D], [cx + Wb / 4, T - out, -D]],
+    left: [[L - out, cy - Hb / 4, Math.PI], [L - out, cy + Hb / 4, Math.PI]], right: [[L + Wb + out, cy - Hb / 4, 0], [L + Wb + out, cy + Hb / 4, 0]],
+    midH: [[L - out, cy, 0], [L + Wb + out, cy, Math.PI]], outH: [[L - out, cy, Math.PI], [L + Wb + out, cy, 0]],
+    midV: [[cx, T - out, D], [cx, T + Hb + out, -D]], outV: [[cx, T - out, -D], [cx, T + Hb + out, D]] }[g] || [];
+  for (const [ax, ay, ang] of at) arrow(ax + Math.cos(ang) * bob, ay + Math.sin(ang) * bob, ang);
+}
+
 // ---------- flow ----------
 function update(dt) {
   t += dt; if (relax()) left += dt; else left -= dt;
   for (const l of links) l.life -= dt; links = links.filter(l => l.life > 0);
+  for (const [k, v] of slides) { v.t += dt; if (v.t >= 0.22) slides.delete(k); }
   for (const g2 of gone) g2.life -= dt; gone = gone.filter(g2 => g2.life > 0);
   for (const p of pops) { p.y -= 30 * dt; p.life -= dt; } pops = pops.filter(p => p.life > 0);
   if (shakeCell) { shakeCell.t -= dt; if (shakeCell.t <= 0) shakeCell = null; }
@@ -176,24 +229,26 @@ function levelClear() {
   if (!relax()) MG.record('link', score);
   MG.store.set('link.level', Math.max(MG.store.get('link.level', 1), level + 1));
   MG.panel({ title: `第 ${level} 關完成！`, html: (relax() ? `<p>花了 ${mmss(left)}，慢慢來最棒 ^_^</p>` : `<p>剩下 ${Math.ceil(left)} 秒，時間獎勵 +${bonus}</p>`) + `<div class="big">${score} 分</div>`,
-    buttons: [{ label: '下一關', on: () => { setupLevel(level + 1); state = 'play'; MG.hide(); } }, { label: '選關卡', alt: true, on: menu }] });
+    buttons: [...(level < LEVELS.length ? [{ label: '下一關', on: () => { setupLevel(level + 1); state = 'play'; MG.hide(); levelToast(); } }] : [{ label: '再玩一次', on: () => { setupLevel(level); state = 'play'; MG.hide(); levelToast(); } }]), { label: '選關卡', alt: true, on: menu }] });
 }
 function timeUp() {
   state = 'over'; MG.sfx('over'); const rec = MG.record('link', score);
   MG.panel({ title: '時間到了！', html: `<p>到了第 ${level} 關</p><div class="big">${score} 分</div>` + (rec.isNew && score > 0 ? '<p class="new">新紀錄！^_^</p>' : `<p>最高紀錄：${rec.best} 分</p>`) + '<p>覺得太趕的話，可以玩不限時的「慢慢玩」</p>',
     buttons: [{ label: '再試這關', on: () => { setupLevel(level); state = 'play'; MG.hide(); } }, { label: '🐢 改成慢慢玩', alt: true, on: () => { mode = 'relax'; MG.store.set('link.pickMode', 'relax'); setupLevel(level); state = 'play'; MG.hide(); } }, { label: '選關卡', alt: true, on: menu }] });
 }
-function start(m, lv) { mode = m; score = 0; setupLevel(lv || 1); state = 'play'; MG.hide(); }
+function start(m, lv, pk) { mode = m; if (pk && pk.style) style = pk.style; score = 0; setupLevel(lv || 1); state = 'play'; MG.hide(); levelToast(); }
+function levelToast() { if (falling()) MG.toast(`這一關：${GNAME[LEVELS[Math.min(level, LEVELS.length) - 1].g]}`, 2200); }
 function menu() {
   state = 'ready';
   MG.choose({
     id: 'link', title: '動物連連看',
-    html: '<p>點兩隻一樣的動物，如果可以用一條<b>最多轉兩個彎</b>的線連起來，牠們就會消失！線不能穿過別的動物，但可以從外面繞過去。</p>',
+    html: '<p>點兩隻一樣的動物，如果可以用一條<b>最多轉兩個彎</b>的線連起來，牠們就會消失！線不能穿過別的動物。</p>',
+    picks: [{ key: 'style', title: '選玩法', options: [{ id: 'classic', label: '🐾 經典', sub: '線可以從外面繞過去' }, { id: 'fall', label: '🌀 會掉落', sub: '線不能出框・消掉後動物會滑動，每關方向不同' }] }],
     modes: [{ id: 'relax', label: '🐢 慢慢玩', sub: '不限時間・提示和洗牌用不完' }, { id: 'timed', label: '⏱ 限時挑戰', sub: '剩下的時間換獎勵分' }],
     levels: { count: LEVELS.length, max: LEVELS.length, label: n => `${n}（${LEVELS[n - 1].a}×${LEVELS[n - 1].b}）` },
     keys: '點選動物　<kbd>H</kbd> 提示　<kbd>R</kbd> 洗牌',
     playing: () => state === 'play',
-    start: (m, lv) => start(m, lv),
+    start: (m, lv, pk) => start(m, lv, pk),
   });
 }
 score = 0; setupLevel(1); menu();
