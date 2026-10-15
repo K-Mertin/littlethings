@@ -12,7 +12,7 @@
 <script>
 'use strict';
 MG.init({ id: 'stack', title: '疊疊高樓', stats: ['floor', 'best'] });
-const W = 360, H = 580, cv = document.getElementById('cv'), x = cv.getContext('2d');
+const W = 360, H = 580, cv = document.getElementById('cv'); let x = cv.getContext('2d');
 MG.fit(cv, W, H);
 const FH = 34, BASEW = 200, GROUNDY = 520;
 const HUES = [[255, 138, 128], [255, 196, 102], [140, 214, 120], [110, 190, 255], [184, 156, 255], [255, 160, 205]];
@@ -24,20 +24,27 @@ function reset() {
   debris = []; camY = 0; camT = 0; perfect = 0; pops = []; MG.fx.clear();
   spawn(); hud();
 }
+const HANG = 58;   // how far above the tower the new floor hangs
 function spawn() {
   const top = floors[floors.length - 1], n = floors.length, fromLeft = n % 2 === 1;
-  const speed = Math.min(330, 120 + n * 6);
-  mover = { x: fromLeft ? -top.w : W, w: top.w, dir: fromLeft ? 1 : -1, speed, n, seed: Math.random() * 1000 };
+  const speed = Math.min(330, 120 + n * 6), amp = W / 2 + top.w * 0.25;
+  // sine ping-pong: slows down at the ends instead of bouncing off them
+  mover = { w: top.w, n, seed: Math.random() * 1000, amp, ph: fromLeft ? -Math.PI / 2 : Math.PI / 2, rate: speed * Math.PI / (2 * amp),
+    x: 0, y: floorY(n) - HANG - 80, vy: 0, falling: false, enter: 0 };
+  mover.x = W / 2 + Math.sin(mover.ph) * amp - mover.w / 2;
 }
 function hud() { MG.stat('floor', `${floors.length - 1} 層`); MG.stat('best', `最高 ${MG.best('stack') ?? 0}`); }
 const floorY = n => GROUNDY - (n + 1) * FH;   // world y of floor n's top edge
 
 function drop() {
-  if (state !== 'play') return;
+  if (state !== 'play' || !mover || mover.falling) return;
+  mover.falling = true; mover.vy = 60; MG.sfx('flip');
+}
+function land() {
   const top = floors[floors.length - 1], m = mover;
   let L = Math.max(m.x, top.x), Rr = Math.min(m.x + m.w, top.x + top.w);
   if (Rr - L <= 0) { // missed completely
-    debris.push({ x: m.x, y: floorY(m.n), w: m.w, vy: 0, vx: m.dir * 40, rot: 0, vr: m.dir * 2, n: m.n, seed: m.seed });
+    debris.push({ x: m.x, y: floorY(m.n), w: m.w, vy: 0, vx: (Math.cos(m.ph) >= 0 ? 1 : -1) * 40, rot: 0, vr: (Math.cos(m.ph) >= 0 ? 1 : -1) * 2, n: m.n, seed: m.seed });
     mover = null; MG.sfx('bad'); return gameOver();
   }
   const off = m.x - top.x;
@@ -45,18 +52,21 @@ function drop() {
     perfect++; L = top.x; Rr = top.x + top.w;
     let w = top.w;
     if (perfect >= 3 && w < BASEW) { w = Math.min(BASEW, w + 10); L -= 5; perfect = 0; pops.push({ t: '變寬了！', life: 1.1, y: floorY(m.n) - 30 }); }
-    floors.push({ x: L, w: Math.max(w, Rr - L), n: m.n, seed: m.seed, glow: 0.5 });
+    floors.push({ x: L, w: Math.max(w, Rr - L), n: m.n, seed: m.seed, glow: 0.5, squash: 0.25 });
     MG.sfx('good'); pops.push({ t: perfect >= 2 ? `完美 ×${perfect}` : '完美！', life: 0.9, y: floorY(m.n) - 8 });
     MG.fx.burst(L + top.w / 2, floorY(m.n) + FH, { n: 16, colors: ['#fff', '#ffe36b', '#ffd23f'], speed: 180, up: 40, size: 4, shape: 'star', life: 0.6 });
   } else {
     perfect = 0;
-    floors.push({ x: L, w: Rr - L, n: m.n, seed: m.seed });
+    floors.push({ x: L, w: Rr - L, n: m.n, seed: m.seed, squash: 0.25 });
     // the overhang falls off
     if (m.x < L) debris.push({ x: m.x, y: floorY(m.n), w: L - m.x, vy: 0, vx: -60, rot: 0, vr: -2.5, n: m.n, seed: m.seed });
     if (m.x + m.w > Rr) debris.push({ x: Rr, y: floorY(m.n), w: m.x + m.w - Rr, vy: 0, vx: 60, rot: 0, vr: 2.5, n: m.n, seed: m.seed });
-    MG.sfx('place'); shake = 0.12;
+    MG.sfx('place'); shake = 0.1;
   }
   camT = Math.max(0, (floors.length - 8) * FH);
+  const nf = floors[floors.length - 1];
+  MG.fx.burst(nf.x + 4, floorY(nf.n) + FH, { n: 5, colors: ['rgba(255,255,255,.8)'], speed: 60, up: 10, size: 3, grav: 60, life: 0.4, angle: Math.PI, spread: 1.2 });
+  MG.fx.burst(nf.x + nf.w - 4, floorY(nf.n) + FH, { n: 5, colors: ['rgba(255,255,255,.8)'], speed: 60, up: 10, size: 3, grav: 60, life: 0.4, angle: 0, spread: 1.2 });
   hud(); spawn();
 }
 cv.addEventListener('pointerdown', e => { e.preventDefault(); drop(); });
@@ -64,11 +74,18 @@ addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter' || e.k
 
 function update(dt) {
   t += dt; shake = Math.max(0, shake - dt);
-  if (mover) {
-    mover.x += mover.dir * mover.speed * dt;
-    if (mover.x > W - mover.w * 0.25 && mover.dir > 0) mover.dir = -1;
-    if (mover.x < -mover.w * 0.75 && mover.dir < 0) mover.dir = 1;
+  if (mover && state === 'play') {
+    const hangY = floorY(mover.n) - HANG;
+    if (mover.falling) {
+      mover.vy += 1800 * dt; mover.y += mover.vy * dt;
+      if (mover.y >= floorY(mover.n)) { mover.y = floorY(mover.n); land(); }
+    } else {
+      mover.ph += mover.rate * dt;
+      mover.x = W / 2 + Math.sin(mover.ph) * mover.amp - mover.w / 2;
+      mover.y += (hangY + Math.sin(t * 4) * 2 - mover.y) * Math.min(1, dt * 10);   // lowered in from above
+    }
   }
+  for (const f of floors) if (f.squash) f.squash = Math.max(0, f.squash - dt);
   camY += (camT - camY) * Math.min(1, dt * 4);
   for (const d of debris) { d.vy += 1300 * dt; d.y += d.vy * dt; d.x += d.vx * dt; d.rot += d.vr * dt; }
   debris = debris.filter(d => d.y + camY < H + 200);
@@ -84,8 +101,23 @@ function skyColors(h) {   // h = floors climbed
   for (let i = 0; i < stops.length - 1; i++) { const [a, t1, b1] = stops[i], [b, t2, b2] = stops[i + 1]; if (h < b) { const k = (h - a) / (b - a); return [mix(t1, t2, k), mix(b1, b2, k)]; } }
   return [stops[stops.length - 1][1], stops[stops.length - 1][2]];
 }
+const blockCache = new Map();
 function block(X, Y, w, n, seed, alpha = 1, glow = 0) {
-  const hue = HUES[n % HUES.length], night = floors.length > 30;
+  const night = floors.length > 30, k = cv._mgScale || 1, key = `${w.toFixed(1)}|${n}|${seed}|${night}|${k}`;
+  let img = blockCache.get(key);
+  if (!img) {
+    img = document.createElement('canvas'); img.width = Math.ceil(w * k) + 2; img.height = Math.ceil(FH * k) + 2;
+    const g = img.getContext('2d'); g.scale(k, k);
+    const keep = x; x = g; drawBlock(0, 0, w, n, seed, night); x = keep;
+    if (blockCache.size > 400) blockCache.clear();
+    blockCache.set(key, img);
+  }
+  x.globalAlpha = alpha; x.drawImage(img, X, Y, img.width / k, img.height / k); x.globalAlpha = 1;
+  if (glow) { x.strokeStyle = `rgba(255,240,150,${glow * 2})`; x.lineWidth = 4; x.strokeRect(X - 1, Y - 1, w + 2, FH + 2); }
+}
+function drawBlock(X, Y, w, n, seed, night) {
+  const alpha = 1, glow = 0;
+  const hue = HUES[n % HUES.length];
   x.globalAlpha = alpha;
   const g = x.createLinearGradient(0, Y, 0, Y + FH); g.addColorStop(0, `rgb(${mix(hue, [255, 255, 255], 0.25)})`); g.addColorStop(1, `rgb(${mix(hue, [0, 0, 0], 0.12)})`);
   x.fillStyle = g; x.fillRect(X, Y, w, FH);
@@ -129,18 +161,22 @@ function draw() {
   for (const tx of [30, W - 30]) { x.fillStyle = '#8a5a34'; x.fillRect(tx - 3, GROUNDY - 30, 6, 30); x.fillStyle = '#4cae55'; x.beginPath(); x.arc(tx, GROUNDY - 36, 18, 0, 7); x.fill(); }
   // tower
   for (const f of floors) { if (f.n === 0) { block(f.x, floorY(0), f.w, 0, 3); x.fillStyle = '#8a5a2b'; x.fillRect(W / 2 - 13, floorY(0) + 8, 26, FH - 8); x.fillStyle = '#ffd23f'; x.beginPath(); x.arc(W / 2 + 7, floorY(0) + 22, 2, 0, 7); x.fill(); continue; }
-    if (floorY(f.n) + camY > -FH && floorY(f.n) + camY < H + FH) block(f.x, floorY(f.n), f.w, f.n, f.seed, 1, f.glow || 0); }
+    if (floorY(f.n) + camY > -FH && floorY(f.n) + camY < H + FH) {
+      if (f.squash) { const k = Math.sin(f.squash / 0.25 * Math.PI) * 0.12; x.save(); x.translate(f.x + f.w / 2, floorY(f.n) + FH); x.scale(1 + k * 0.5, 1 - k); block(-f.w / 2, -FH, f.w, f.n, f.seed, 1, f.glow || 0); x.restore(); }
+      else block(f.x, floorY(f.n), f.w, f.n, f.seed, 1, f.glow || 0);
+    } }
   for (const d of debris) { x.save(); x.translate(d.x + d.w / 2, d.y + FH / 2); x.rotate(d.rot); block(-d.w / 2, -FH / 2, d.w, d.n, d.seed, 0.95); x.restore(); }
-  // moving block hangs from a crane rope
+  // moving block hangs from a crane rope; the hook lets go when it drops
   if (mover && state === 'play') {
-    const my = floorY(mover.n) - 26 + Math.sin(t * 4) * 2;
-    x.strokeStyle = '#4a4f62'; x.lineWidth = 2; x.beginPath(); x.moveTo(mover.x + mover.w / 2, my - 400); x.lineTo(mover.x + mover.w / 2, my - 6); x.stroke();
-    x.strokeStyle = '#6b7280'; x.lineWidth = 3; x.beginPath(); x.arc(mover.x + mover.w / 2, my - 6, 6, Math.PI, 0); x.stroke();
+    const cx = mover.x + mover.w / 2, my = mover.y, hookY = mover.falling ? floorY(mover.n) - HANG - (mover.y - (floorY(mover.n) - HANG)) * 0.6 : my;
+    x.strokeStyle = '#4a4f62'; x.lineWidth = 2; x.beginPath(); x.moveTo(cx, hookY - 400); x.lineTo(cx, hookY - 6); x.stroke();
+    x.strokeStyle = '#6b7280'; x.lineWidth = 3; x.beginPath(); x.arc(cx, hookY - 6, 6, Math.PI, 0); x.stroke();
     block(mover.x, my, mover.w, mover.n, mover.seed);
-    // drop guide
-    x.strokeStyle = 'rgba(255,255,255,.55)'; x.setLineDash([4, 5]); x.lineWidth = 1.5;
-    for (const ex of [mover.x, mover.x + mover.w]) { x.beginPath(); x.moveTo(ex, my + FH); x.lineTo(ex, floorY(mover.n) + FH); x.stroke(); }
-    x.setLineDash([]);
+    if (!mover.falling) {   // drop guide
+      x.strokeStyle = 'rgba(255,255,255,.55)'; x.setLineDash([4, 5]); x.lineWidth = 1.5;
+      for (const ex of [mover.x, mover.x + mover.w]) { x.beginPath(); x.moveTo(ex, my + FH); x.lineTo(ex, floorY(mover.n) + FH); x.stroke(); }
+      x.setLineDash([]);
+    }
   }
   MG.fx.draw(x);
   for (const p of pops) { x.globalAlpha = Math.min(1, p.life * 2); x.font = '900 22px "Noto Sans TC",system-ui,sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineWidth = 5; x.strokeStyle = '#fff'; x.strokeText(p.t, W / 2, p.y); x.fillStyle = '#ff7a00'; x.fillText(p.t, W / 2, p.y); }
