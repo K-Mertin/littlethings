@@ -20,7 +20,7 @@
 任何時候點 Pip，他會再說一次題目。
 
 ## 設計原則
-- 語音優先：說明都由 Pip 用英文說，第一次會接一句中文提示（可關）。
+- 語音優先：說明都由 Pip 用英文說，沒有中文提示。
 - 不懲罰：沒有扣分、沒有倒數、沒有失敗畫面；答錯就再示範一次。
 - 大按鈕（至少 64px），只用點和畫。
 - 預設 15 分鐘提醒休息。
@@ -28,20 +28,21 @@
 ## 家長區
 按住右上角的 ⚙️ 兩秒，再答一題加法，就能進入：
 - 進度：貼紙、每個字母的星星、拼過的單字、需要多練的開頭音、今天玩了多久
-- 設定：中文提示、提示字、英文語速、英文聲音、麥克風、休息提醒、全螢幕、清除進度、回遊戲大廳
+- 設定：提示字、英文語速、英文聲音、麥克風、休息提醒、全螢幕、清除進度、回遊戲大廳
 
 進度存在瀏覽器的 localStorage。
 
 ## 語音
 - Pip 的聲音是預先錄好的音檔（`audio/`），用開源模型 Kokoro-82M（Apache-2.0）的 af_heart 聲音錄製（語速 0.8），小朋友角色用 af_sky（0.9）。字母的純音（自然發音）是從音節剪出來的；a e i o u f v l z 用 Wikimedia Commons 的真人錄音（CC BY-SA 3.0，出處見 `tools/soundbank/wikimedia/CREDITS.md`）。遊戲用 Web Audio 播放，所以不依賴瀏覽器的語音功能（Mac 上的 Chrome 就叫不出系統語音）。
-- 沒有音檔的句子才改用瀏覽器內建語音（`speechSynthesis`）。中文提示目前沒有音檔，畫面上會顯示中文。
+- 沒有音檔的句子才改用瀏覽器內建語音（`speechSynthesis`）。中文提示已關閉（`zh()` 一律回傳 null）。
+- 單獨唸一個字母（例如拼字時的 ‹b›）是用 Kokoro 連唸三次「b. b. b.」再切出最後一次，因為只給一個音節時 Kokoro 會唸得很怪。
 - 台詞清單在 `audio/phrases.tsv`：`id`、聲音（pip／kid／zh）、文字。字母寫成 `‹a›`，錄音時會照字母名稱唸（a 唸「ay」）。`id` 是「聲音|文字」的 FNV-1a 32-bit 雜湊。
 - 錄音工具在 `tools/`：
   - `try-voices.sh`：做一個比較 Kokoro 和 macOS 聲音的試聽頁
   - `kokoro-record.mjs all phrases.tsv <資料夾> af_heart af_sky 0.8 0.9`：用 Kokoro 錄全部英文（純音除外；需要 Node.js，第一次會下載模型；沒有 afconvert 時用 ffmpeg）
   - `soundbank/`：產生 35 個字母純音
   - `trim-silence.sh <資料夾>`：剪掉 Kokoro 音檔前後多餘的靜音（需要 ffmpeg）
-  - `make-audio.sh`：用 macOS `say` 錄（含中文提示，需要安裝台灣中文聲音）
+  - `make-audio.sh`：用 macOS `say` 錄
 - 聊天的 🎤 用 `SpeechRecognition`（Android 的 Chrome、桌機 Chrome、Safari 支援）。只比對關鍵字，聽不懂就讓孩子選圖片，不判錯。Chrome 的語音辨識會把聲音送到 Google 處理；遊戲本身不錄音、不儲存任何聲音或對話。語音辨識需要 https 或 localhost。
 
 ## 遊玩
