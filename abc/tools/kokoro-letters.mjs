@@ -1,5 +1,6 @@
 // Lone letter names (‹b›): Kokoro says a one-syllable input oddly, so say "b. b. b." as sentences and keep the last one.
-// usage: node kokoro-letters.mjs <out-dir> [voice] [speed]   (ONLY=w LONGEST=1 for "double-you", which Kokoro sometimes says only twice)
+// usage: node kokoro-letters.mjs <out-dir> [voice] [speed]
+// w ("double-you"): MK picked the version said twice ("dˈʌbəljuː. dˈʌbəljuː.", speed 0.8) keeping the part after the longest quiet stretch (ONLY=w LONGEST=1).
 import { KokoroTTS } from 'kokoro-js';
 import fs from 'fs';
 import { execFileSync } from 'child_process';
