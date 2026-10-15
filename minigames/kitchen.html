@@ -81,7 +81,8 @@ function resetDay(d) {
   hud();
 }
 function hud() { MG.stat('day', `第 ${day + 1} 天`); MG.stat('coins', `🪙 ${coins}`); }
-const unlocked = (d) => d === 0 || (MG.store.get('kitchen.stars', [])[d - 1] || 0) >= 1;
+let kmode = MG.store.get('kitchen.mode', 'relax');   // 'relax': customers wait forever, food burns slower
+const unlocked = () => true;
 
 // ---------- customers ----------
 function makeOrder() {
@@ -103,7 +104,7 @@ function stepCook(st, kind, dt) {
   if (st.s === 'cook' || st.s === 'ready') {
     st.t += dt;
     if (st.s === 'cook' && st.t >= DISH[kind].cook) { st.s = 'ready'; MG.sfx('good'); }
-    if (st.t >= DISH[kind].burn) { st.s = 'burnt'; MG.sfx('bad'); }
+    if (st.t >= DISH[kind].burn * (kmode === 'relax' ? 2 : 1)) { st.s = 'burnt'; MG.sfx('bad'); }
   }
 }
 function update(dt) {
@@ -119,7 +120,7 @@ function update(dt) {
     c.shake = Math.max(0, c.shake - dt);
     if (c.st === 'arrive') { c.a = Math.min(1, c.a + dt * 3); if (c.a >= 1) c.st = 'wait'; }
     else if (c.st === 'wait') {
-      c.pat -= dt;
+      if (kmode === 'timed') c.pat -= dt;
       if (c.pat <= 0) { c.st = 'sad'; c.a = 1; c.say = '等太久了…'; missed++; MG.sfx('bad'); }
     } else { c.a -= dt * 1.4; if (c.a <= 0) seats[i] = null; }
   }
@@ -225,7 +226,7 @@ function ring(cx, cy, r, frac, col) {
 function statusBadge(st, kind, cx, cy) {
   if (st.s === 'cook') ring(cx, cy, 11, st.t / DISH[kind].cook, '#4cc96a');
   else if (st.s === 'ready') {
-    const warn = (st.t - DISH[kind].cook) / (DISH[kind].burn - DISH[kind].cook);
+    const warn = (st.t - DISH[kind].cook) / (DISH[kind].burn * (kmode === 'relax' ? 2 : 1) - DISH[kind].cook);
     const bob = Math.sin(t * 8) * 2;
     rr(cx - 20, cy - 10 + bob, 40, 20, 10, warn > 0.6 ? '#ff7a4e' : '#4cc96a', '#fff', 2);
     x.fillStyle = '#fff'; x.font = '900 12px "Noto Sans TC",system-ui,sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(warn > 0.6 ? '快焦了' : '好了！', cx, cy + bob + 0.5);
@@ -276,10 +277,12 @@ function drawGuest(i) {
     x.fillStyle = '#fff'; x.beginPath(); x.moveTo(s.x - 6, byp + 43); x.lineTo(s.x + 6, byp + 43); x.lineTo(s.x, byp + 52); x.fill();
     drawDish({ type: c.order.type, tops: c.order.tops }, bxp + 30, byp + 22, 0.72);
     c.order.tops.forEach((tp, k) => { x.fillStyle = '#4cc96a'; x.font = '900 12px system-ui'; x.textAlign = 'center'; x.fillText('+', bxp + 54 + k * 26, byp + 22); topIcon(tp, bxp + 66 + k * 26, byp + 22, 0.75); });
+    if (kmode === 'timed') {
     // patience
     const f = Math.max(0, c.pat / c.max);
     rr(s.x - 28, s.y + 34, 56, 8, 4, 'rgba(0,0,0,.25)');
     rr(s.x - 28, s.y + 34, Math.max(4, 56 * f), 8, 4, f > 0.5 ? '#4cc96a' : f > 0.25 ? '#ffb21f' : '#ff5a4e');
+    }
   }
   if (c.say && c.st !== 'wait' || (c.say && c.shake)) {
     x.font = '900 14px "Noto Sans TC",system-ui,sans-serif'; x.textAlign = 'center'; x.lineWidth = 4; x.strokeStyle = '#fff';
@@ -377,12 +380,12 @@ function endDay() {
   const rec = MG.record('kitchen.coins.' + day, coins);
   const total = all.reduce((a, b) => a + (b || 0), 0); MG.record('kitchen', total);
   MG.sfx(stars ? 'win' : 'over');
-  const next = day + 1 < DAYS.length && stars >= 1;
+  const next = day + 1 < DAYS.length;
   MG.panel({
     title: stars ? `第 ${day + 1} 天打烊囉！` : '今天有點手忙腳亂…',
     html: `<div class="big stars">${starsTxt(stars)}</div><p>招待了 ${served} 位客人，賺了 🪙 ${coins}</p>` +
       (rec.isNew && coins > 0 ? `<p class="new">這一天的新紀錄！^_^</p>` : '') +
-      (stars ? (next ? `<p>明天：${DAYS[day + 1].intro}</p>` : (day + 1 >= DAYS.length ? `<p>五天都完成了，你是噗噗小廚房的大廚！</p>` : '')) : `<p>至少要拿到 1 顆星才能開下一天，再試一次吧！</p>`),
+      (stars ? (next ? `<p>明天：${DAYS[day + 1].intro}</p>` : (day + 1 >= DAYS.length ? `<p>五天都完成了，你是噗噗小廚房的大廚！</p>` : '')) : `<p>可以再試一次，或是改成「慢慢來」，客人就不會走掉喔！</p>`),
     buttons: [
       ...(next ? [{ label: '下一天', on: () => startDay(day + 1) }] : []),
       { label: '再玩這天', alt: !!next, on: () => startDay(day) },
@@ -394,7 +397,7 @@ function startDay(d) {
   resetDay(d); state = 'intro';
   MG.panel({
     title: `第 ${d + 1} 天`,
-    html: `<p>${DAYS[d].intro}</p><p>今天會來 ${DAYS[d].n} 位客人</p>`,
+    html: `<p>${DAYS[d].intro}</p><p>今天會來 ${DAYS[d].n} 位客人${kmode === 'relax' ? '，慢慢做不用急 ^_^' : ''}</p>`,
     buttons: [{ label: '開店！', on: () => { state = 'play'; MG.hide(); } }],
   });
 }
@@ -405,9 +408,14 @@ function menu() {
     title: '噗噗小廚房',
     html: `<p>客人想吃什麼都寫在泡泡裡。點鍋子煮麵、點烤架烤肉串、點烤箱烤餅乾，煮好點一下放到盤子上，加上配料，再點客人上菜！</p>
     <p>東西放太久會燒焦，點一下就能倒掉重做。</p>
+    <div class="mg-pick"><button type="button" class="mg-opt" data-km="relax">🐢 慢慢來<small>客人不會走・東西比較不會焦</small></button><button type="button" class="mg-opt" data-km="timed">⏱ 挑戰<small>客人等太久會離開</small></button></div>
+    <p class="mg-pick-h">選一天開店</p>
     <div class="days">${DAYS.map((d, i) => `<button class="mg-btn${i ? ' alt' : ''}" data-day="${i}" ${unlocked(i) ? '' : 'disabled'}>第 ${i + 1} 天<small class="stars">${unlocked(i) ? starsTxt(all[i] || 0) : '🔒'}</small></button>`).join('')}</div>`,
     keys: '全部用點的就能玩，手機、平板、電腦都可以',
   });
+  const syncKm = () => document.querySelectorAll('[data-km]').forEach(b => b.setAttribute('aria-pressed', b.dataset.km === kmode));
+  document.querySelectorAll('[data-km]').forEach(b => b.onclick = () => { kmode = b.dataset.km; MG.store.set('kitchen.mode', kmode); MG.sfx('click'); syncKm(); });
+  syncKm();
   document.querySelectorAll('[data-day]').forEach(b => b.onclick = () => { MG.sfx('click'); MG.unlock(); startDay(+b.dataset.day); });
   setTimeout(() => document.querySelector('[data-day]')?.focus(), 30);
 }

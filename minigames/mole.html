@@ -22,14 +22,18 @@ function placeHoles() {
 }
 cv.onfit = placeHoles;
 MG.fit(cv, (sw, sh) => { land = sw > sh * 1.15; [W, H] = land ? [580, 350] : [360, 520]; return [W, H]; });
+let mode = 'timed';
+const progNow = () => mode === 'timed' ? 1 - left / ROUND : Math.min(0.5, t / 120);
+const mmss = v => `${Math.floor(v / 60)}:${String(Math.floor(v % 60)).padStart(2, '0')}`;
+const rest = MG.barButton('休息一下', () => end());
 let score, left, spawnT, state = 'ready', pops = [], hits = [], t = 0, combo = 0, misses = 0;
 
 function reset() { MG.fx.clear(); for (const h of holes) h.m = null; score = 0; left = ROUND; spawnT = 0.6; pops = []; hits = []; t = 0; combo = 0; misses = 0; hud(); }
-function hud() { MG.stat('score', `${score} 分`); MG.stat('time', `⏱ ${Math.ceil(left)}`); }
+function hud() { MG.stat('score', `${score} 分`); MG.stat('time', mode === 'timed' ? `⏱ ${Math.ceil(left)}` : `🐢 ${mmss(t)}`); }
 
 function spawn() {
   const free = holes.filter(h => !h.m); if (!free.length) return;
-  const h = MG.pick(free), prog = 1 - left / ROUND, r = Math.random();
+  const h = MG.pick(free), prog = progNow(), r = Math.random();
   let kind = 'mole';
   if (r < 0.12 + prog * 0.08) kind = 'bunny';
   else if (r < 0.22 + prog * 0.08) kind = 'gold';
@@ -39,7 +43,7 @@ function spawn() {
 }
 function update(dt) {
   t += dt; left -= dt; MG.fx.step(dt);
-  const prog = 1 - left / ROUND;
+  const prog = progNow();
   spawnT -= dt;
   if (spawnT <= 0) { spawn(); if (prog > 0.5 && Math.random() < 0.35) spawn(); spawnT = (0.72 - prog * 0.36) * MG.rand(0.7, 1.25); }
   for (const h of holes) {
@@ -54,7 +58,7 @@ function update(dt) {
   }
   for (const p of pops) { p.y -= 36 * dt; p.life -= dt; } pops = pops.filter(p => p.life > 0);
   for (const s of hits) s.life -= dt; hits = hits.filter(s => s.life > 0);
-  if (left <= 0) { left = 0; end(); }
+  if (mode === 'timed' && left <= 0) { left = 0; end(); }
   hud();
 }
 function whack(i, px, py) {
@@ -247,24 +251,28 @@ function face(cx, cy, bonk, nose, bunny) {
   x.fillStyle = 'rgba(255,255,255,.7)'; x.beginPath(); x.arc(cx - 1.5, cy + 7.5, 1.4, 0, 7); x.fill();
 }
 
-function start() { reset(); state = 'play'; MG.hide(); }
+function start(m) { if (m) mode = m; reset(); state = 'play'; MG.hide(); rest.show(mode === 'relax'); }
 function end() {
-  state = 'over'; MG.sfx('win');
-  const rec = MG.record('mole', score);
+  if (state !== 'play') return;
+  state = 'over'; rest.show(false); MG.sfx('win');
+  const rec = mode === 'timed' ? MG.record('mole', score) : null;
   MG.panel({
-    title: '時間到！',
-    html: `<p>這次敲到</p><div class="big">${score} 分</div>` + (rec.isNew && score > 0 ? `<p class="new">新紀錄！^_^</p>` : `<p>最高紀錄：${rec.best} 分</p>`),
-    buttons: [{ label: '再玩一次', on: start }, { label: '回遊戲區', alt: true, on: () => location.href = 'index.html' }],
+    title: mode === 'timed' ? '時間到！' : '休息一下！',
+    html: `<p>這次敲到</p><div class="big">${score} 分</div>` + (rec ? (rec.isNew && score > 0 ? `<p class="new">新紀錄！^_^</p>` : `<p>最高紀錄：${rec.best} 分</p>`) : `<p>玩了 ${mmss(t)}</p>`),
+    buttons: [{ label: '再玩一次', on: () => start() }, { label: '換模式', alt: true, on: menu }],
   });
 }
-reset();
-MG.panel({
-  title: '敲敲地鼠',
-  html: `<p>地鼠跑出來偷吃菜了！45 秒內敲越多越好。</p>
-  <p>金色地鼠分數多但跑得快　戴安全帽的要敲兩下<br>小白兔是好朋友，<b>不要敲</b>！</p>`,
-  keys: '點地鼠就能敲　鍵盤：<kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd> / <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd> 或數字鍵盤',
-  buttons: [{ label: '開始', on: start }],
-});
+function menu() {
+  state = 'ready';
+  MG.choose({
+    id: 'mole', title: '敲敲地鼠',
+    html: `<p>地鼠跑出來偷吃菜了！金色地鼠分數多但跑得快，戴安全帽的要敲兩下，小白兔是好朋友<b>不要敲</b>！</p>`,
+    modes: [{ id: 'relax', label: '🐢 慢慢玩', sub: '不限時間・速度比較慢' }, { id: 'timed', label: '⏱ 45 秒挑戰', sub: '越後面越快' }],
+    keys: '點地鼠就能敲　鍵盤：<kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd> / <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd>　慢慢玩時按上面的「休息一下」結束',
+    start: m => start(m),
+  });
+}
+reset(); menu();
 MG.loop(dt => { if (state === 'play') update(dt); else { t += dt; MG.fx.step(dt); } draw(); });
 </script>
 </body>

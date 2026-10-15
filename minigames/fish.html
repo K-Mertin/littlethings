@@ -39,6 +39,10 @@ const SPECIES = [
 ];
 const JUNK = [{ e: '👢', name: '舊靴子' }, { e: '🥫', name: '空罐子' }, { e: '🧦', name: '一隻襪子' }];
 const TREASURE = { id: 'crown', e: '👑', name: '海底王冠', pts: 200 };
+let mode = 'timed';
+const mmss = v => `${Math.floor(v / 60)}:${String(Math.floor(v % 60)).padStart(2, '0')}`;
+const rest = MG.barButton('收竿', () => { if (state === 'play') { if (hook.st === 'idle') end(); else { quitting = true; if (hook.st === 'wait' || hook.st === 'drop') hook.st = 'reel'; } } });
+let quitting = false;
 let fishes, junk, boat, hook, score, left, state = 'ready', t = 0, pops = [], caughtNow = [], dex = MG.store.get('fish.dex', {}), newFound = [];
 
 const WATER = () => land ? 112 : 170, BOTTOM = () => H - 18;
@@ -58,13 +62,13 @@ function reset() {
   hook = { st: 'idle', x: W / 2, y: WATER() - 4, ty: 0, wait: 0, catch: null };
   hud();
 }
-function hud() { MG.stat('score', `${score} 分`); MG.stat('time', `⏱ ${Math.ceil(left)}`); }
+function hud() { MG.stat('score', `${score} 分`); MG.stat('time', mode === 'timed' ? `⏱ ${Math.ceil(left)}` : `🐢 ${mmss(t)}`); }
 
 // ---------- input: tap the water to cast there ----------
 cv.addEventListener('pointerdown', e => {
   if (state !== 'play') return;
   const p = cv.logical(e);
-  if (left <= 0) return;
+  if (left <= 0 || quitting) return;
   if (hook.st !== 'idle') { if (hook.st === 'wait' || hook.st === 'drop') { hook.st = 'reel'; } return; }
   boat.tx = Math.max(40, Math.min(W - 40, p.x));
   hook.ty = Math.max(WATER() + 20, Math.min(BOTTOM() - 8, p.y));
@@ -108,7 +112,8 @@ function update(dt) {
   for (const p of pops) { p.y -= 34 * dt; p.life -= dt; } pops = pops.filter(p => p.life > 0);
   for (const c of caughtNow) { c.t += dt; } caughtNow = caughtNow.filter(c => c.t < 1.1);
   MG.fx.step(dt);
-  if (left <= 0) { left = 0; if (hook.st === 'idle') end(); }
+  if (mode === 'timed' && left <= 0) { left = 0; if (hook.st === 'idle') end(); }
+  if (quitting && hook.st === 'idle') end();
   hud();
 }
 function bite() {
@@ -222,22 +227,26 @@ function dexHtml() {
 const dexCount = () => [...SPECIES, TREASURE].filter(s => dex[s.id]).length;
 function showDex(back) { MG.panel({ title: `魚類圖鑑 ${dexCount()}/${SPECIES.length + 1}`, html: dexHtml(), buttons: [{ label: '回去', on: back }] }); }
 let endRec = null;
-function end() { state = 'over'; MG.sfx('win'); endRec = MG.record('fish', score); endPanel(); }
+function end() { if (state !== 'play') return; state = 'over'; quitting = false; rest.show(false); MG.sfx('win'); endRec = mode === 'timed' ? MG.record('fish', score) : null; endPanel(); }
 function endPanel() {
   const rec = endRec;
   MG.panel({
     title: '收竿囉！',
-    html: `<div class="big">${score} 分</div>` + (rec.isNew && score > 0 ? '<p class="new">新紀錄！^_^</p>' : `<p>最高紀錄：${rec.best} 分</p>`) +
+    html: `<div class="big">${score} 分</div>` + (rec ? (rec.isNew && score > 0 ? '<p class="new">新紀錄！^_^</p>' : `<p>最高紀錄：${rec.best} 分</p>`) : `<p>釣了 ${mmss(t)}</p>`) +
       (newFound.length ? `<p>新發現：${newFound.map(s => s.e + s.name).join('、')}</p>` : '') + `<p>圖鑑收集 ${dexCount()} / ${SPECIES.length + 1}</p>`,
-    buttons: [{ label: '再釣一次', on: start }, { label: '看圖鑑', alt: true, on: () => showDex(endPanel) }],
+    buttons: [{ label: '再釣一次', on: () => start() }, { label: '看圖鑑', alt: true, on: () => showDex(endPanel) }, { label: '換模式', alt: true, on: menu }],
   });
 }
-function start() { reset(); state = 'play'; t = 0; MG.hide(); }
+function start(m) { if (m) mode = m; reset(); state = 'play'; t = 0; quitting = false; MG.hide(); rest.show(mode === 'relax'); }
 function menu() {
-  MG.panel({
-    title: '噗噗去釣魚', html: `<p>點一下水裡的地方，噗噗會把船開過去、放下魚鉤。魚碰到魚鉤就會上鉤！</p><p>越深、越少見的魚分數越高，60 秒內看你能釣到多少。小心別釣到舊靴子，海底偶爾還有寶物喔！</p><p>圖鑑收集 ${dexCount()} / ${SPECIES.length + 1}</p>`,
+  state = 'ready';
+  MG.choose({
+    id: 'fish', title: '噗噗去釣魚',
+    html: `<p>點一下水裡的地方，噗噗會把船開過去、放下魚鉤，魚碰到魚鉤就會上鉤！越深、越少見的魚分數越高，海底偶爾還有寶物喔！</p><p>圖鑑收集 ${dexCount()} / ${SPECIES.length + 1}</p>`,
+    modes: [{ id: 'relax', label: '🐢 慢慢釣', sub: '不限時間・想停就按收竿' }, { id: 'timed', label: '⏱ 60 秒挑戰', sub: '看能釣到幾分' }],
     keys: '點水面下任何地方　電腦：<kbd>←</kbd><kbd>→</kbd> 移動、<kbd>↓</kbd> 放鉤、<kbd>↑</kbd> 收線',
-    buttons: [{ label: '開始釣魚', on: start }, { label: '魚類圖鑑', alt: true, on: () => showDex(menu) }],
+    extra: [{ label: '魚類圖鑑', alt: true, on: () => showDex(menu) }],
+    start: m => start(m),
   });
 }
 reset(); menu();
