@@ -78,7 +78,7 @@ const MG = (() => {
     });
     over.hidden = false;
   }
-  function hide() { if (over) over.hidden = true; }
+  function hide() { if (over) over.hidden = true; paused = null; }
   const panelOpen = () => over && !over.hidden;
 
   // ---------- best scores ----------
@@ -136,7 +136,7 @@ const MG = (() => {
     const tick = (now) => {
       if (!running) return;
       const dt = Math.min(0.05, (now - last) / 1000); last = now;
-      fn(dt, now / 1000);
+      if (!paused) fn(dt, now / 1000);   // frozen while the pause menu is open
       requestAnimationFrame(tick);
     };
     document.addEventListener('visibilitychange', () => { last = performance.now(); });
@@ -298,9 +298,53 @@ const MG = (() => {
     };
   })();
 
+  // ---------- pause menu: a "選關" button in the bar that works in the middle of a game ----------
+  // paused = the function that puts the game back exactly as it was (null when not paused)
+  let paused = null;
+  function resume() { const r = paused; if (!r) return; paused = null; hide(); r(); }
+  // o = { label, playing() → true while a round is running, open(isPause) → shows the menu panel, returns an optional restore fn }
+  function addResume() {
+    const card = over && !over.hidden && over.querySelector('.mg-card');
+    if (!card || card.querySelector('.mg-resume')) return;
+    const h = card.querySelector('h2');
+    h.insertAdjacentHTML('afterend', '<p class="mg-paused">— 遊戲暫停中 —</p>');
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'mg-btn mg-resume'; b.textContent = '▶ 繼續玩';
+    b.onclick = () => { sfx('click'); resume(); };
+    h.nextElementSibling.after(b);
+    setTimeout(() => b.focus({ preventScroll: true }), 40);
+  }
+  function pauseMenu(o) {
+    const btn = barButton(o.label || '☰ 選關', () => {
+      if (paused) return resume();                 // second tap = keep playing
+      const was = !!o.playing();
+      if (was) paused = () => {};                  // freeze first, so the menu can see we're paused
+      const restore = o.open(was);
+      if (!was) return;
+      if (typeof restore === 'function') paused = restore;
+      addResume();
+    });
+    const [ic, ...rest] = (o.label || '☰ 選關').split(' ');
+    btn.el.innerHTML = `${ic}<span class="mg-bl"> ${rest.join(' ')}</span>`;
+    btn.el.setAttribute('aria-label', rest.join(' ') || ic);
+    btn.el.classList.add('mg-menu');
+    btn.show(true);
+    return btn;
+  }
+  // while paused the game must not see keys or touches (key-ups still go through so held keys get released)
+  addEventListener('keydown', e => {
+    if (!paused) return;
+    if (e.key === 'Escape') { e.preventDefault(); resume(); }
+    e.stopImmediatePropagation();
+  }, true);
+  for (const t of ['pointerdown', 'pointermove']) addEventListener(t, e => { if (paused && !(e.target.closest && e.target.closest('.mg-over,.mg-bar'))) e.stopImmediatePropagation(); }, true);
+
   // ---------- start screen with a mode choice and (optionally) a level choice ----------
   // o = { id, title, html, keys, modes: [{ id, label, sub }], levels: { count, max, label? }, start(mode, level) }
+  let chooseMenu = null;
   function choose(o) {
+    const isPause = !!paused;
+    if (o.playing && !chooseMenu) chooseMenu = pauseMenu({ label: o.levels ? '☰ 選關' : '☰ 換模式', playing: o.playing, open: () => { choose(o); return o.restore; } });
     let mode = store.get(o.id + '.pickMode', o.modes ? o.modes[0].id : null);
     if (o.modes && !o.modes.some(m => m.id === mode)) mode = o.modes[0].id;
     let lvl = Math.min(store.get(o.id + '.pickLevel', 1), o.levels ? Math.max(1, o.levels.max) : 1);
@@ -308,7 +352,7 @@ const MG = (() => {
     const html = (o.html || '') +
       (o.modes ? `<div class="mg-pick">${o.modes.map(m => `<button type="button" class="mg-opt" data-mode="${m.id}">${m.label}<small>${m.sub || ''}</small></button>`).join('')}</div>` : '') +
       (o.levels ? `<p class="mg-pick-h">從哪一關開始？</p><div class="mg-levels">${Array.from({ length: o.levels.count }, (_, i) => i + 1).map(n => `<button type="button" class="mg-lv" data-lv="${n}" ${n > o.levels.max ? 'disabled' : ''}>${n > o.levels.max ? '🔒' : lvLabel(n)}</button>`).join('')}</div>` : '');
-    panel({ title: o.title, html, keys: o.keys, buttons: [{ label: '開始', on: () => { store.set(o.id + '.pickMode', mode); store.set(o.id + '.pickLevel', lvl); o.start(mode, lvl); } }, ...(o.extra || [])] });
+    panel({ title: o.title, html, keys: o.keys, buttons: [{ label: isPause ? '重新開始' : '開始', alt: !!isPause, on: () => { store.set(o.id + '.pickMode', mode); store.set(o.id + '.pickLevel', lvl); o.start(mode, lvl); } }, ...(o.extra || [])] });
     const sync = () => {
       over.querySelectorAll('.mg-opt').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === mode));
       over.querySelectorAll('.mg-lv').forEach(b => b.setAttribute('aria-pressed', +b.dataset.lv === lvl));
@@ -316,6 +360,7 @@ const MG = (() => {
     over.querySelectorAll('.mg-opt').forEach(b => b.onclick = () => { mode = b.dataset.mode; sfx('click'); unlock(); sync(); });
     over.querySelectorAll('.mg-lv').forEach(b => b.onclick = () => { lvl = +b.dataset.lv; sfx('click'); unlock(); sync(); });
     sync();
+    if (paused) addResume();
   }
   // extra button in the top bar (e.g. "休息一下" to end an untimed round)
   function barButton(label, onClick) {
@@ -326,5 +371,5 @@ const MG = (() => {
     return { show(v) { b.hidden = !v; }, el: b };
   }
 
-  return { choose, barButton, init, stat, fit, panel, hide, panelOpen, best, record, sfx, toast, loop, rand, randi, pick, shuffle, store, puPu, fx, unlock, JELLY };
+  return { choose, pauseMenu, resume, barButton, init, stat, fit, panel, hide, panelOpen, best, record, sfx, toast, loop, rand, randi, pick, shuffle, store, puPu, fx, unlock, JELLY };
 })();
