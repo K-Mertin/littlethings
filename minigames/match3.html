@@ -1,0 +1,851 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>噗噗消消樂</title>
+<link rel="stylesheet" href="mini.css">
+<style>.mg-stage{padding:6px}.m3-stars{font-size:38px;letter-spacing:.12em;margin:2px 0 4px}</style>
+</head>
+<body>
+<main class="mg-stage"><canvas id="cv" aria-label="遊戲畫面"></canvas></main>
+<script src="mini.js"></script>
+<script>
+'use strict';
+MG.init({ id: 'match3', title: '噗噗消消樂', stats: ['level', 'moves'] });
+const cv = document.getElementById('cv'), x = cv.getContext('2d');
+const FONT = '"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif';
+let land = false;
+
+// ---------- pieces: every colour also has its own shape ----------
+const KINDS = [
+  { pal: MG.JELLY.red, shape: 'heart', nm: '紅愛心' },
+  { pal: MG.JELLY.yellow, shape: 'star', nm: '黃星星' },
+  { pal: MG.JELLY.green, shape: 'square', nm: '綠方糖' },
+  { pal: MG.JELLY.blue, shape: 'drop', nm: '藍水滴' },
+  { pal: MG.JELLY.purple, shape: 'tri', nm: '紫三角' },
+  { pal: MG.JELLY.orange, shape: 'ball', nm: '橘糖球' },
+];
+// ---------- levels ----------
+// n = board size, k = how many kinds, mv = moves in 🎯 步數挑戰
+// goal: s = reach points | c = [[kind, count], ...] clear that many | j = rows of the pink jelly map ('#' = jelly)
+const LEVELS = [
+  { n: 7, k: 4, mv: 15, s: 1000 },
+  { n: 7, k: 4, mv: 14, c: [[0, 20]] },
+  { n: 7, k: 4, mv: 14, j: ['.......', '.##.##.', '.#####.', '.#####.', '..###..', '...#...', '.......'] },
+  { n: 7, k: 5, mv: 22, s: 1500 },
+  { n: 7, k: 5, mv: 21, c: [[1, 14], [3, 14]] },
+  { n: 8, k: 5, mv: 28, j: ['........', '........', '.######.', '........', '........', '.######.', '........', '........'] },
+  { n: 8, k: 5, mv: 28, s: 2000 },
+  { n: 8, k: 5, mv: 22, c: [[2, 18], [4, 18]] },
+  { n: 8, k: 5, mv: 34, j: ['........', '.#....#.', '..#..#..', '...##...', '...##...', '..#..#..', '.#....#.', '........'] },
+  { n: 8, k: 6, mv: 40, s: 2000 },
+  { n: 8, k: 6, mv: 32, c: [[0, 14], [1, 14], [5, 14]] },
+  { n: 8, k: 6, mv: 40, j: ['........', '...##...', '...##...', '.######.', '.######.', '...##...', '...##...', '........'] },
+  { n: 8, k: 6, mv: 60, j: ['........', '.##..##.', '.######.', '.######.', '.######.', '..####..', '...##...', '........'] },
+  { n: 8, k: 6, mv: 58, s: 3200 },
+  { n: 8, k: 6, mv: 58, j: ['........', '.######.', '.######.', '.######.', '.######.', '.######.', '.######.', '........'] },
+];
+const goalIcon = L => L.s ? '⭐' : L.c ? '🍬' : '💗';
+const goalText = L => L.s ? `拿到 ${L.s} 分` : L.c ? '消掉 ' + L.c.map(([k, n]) => `${n} 個${KINDS[k].nm}`).join('、') : '把粉紅果凍格子全部消掉';
+
+let L = LEVELS[0], N = 7, grid = [], jel = [], level = 1, mode = 'relax', state = 'menu', phase = 'idle';
+let score = 0, moves = 0, combo = 0, bestCombo = 0, got = [], jellyLeft = 0;
+let sel = null, drag = null, kc = null, hint = null, idleT = 0, t = 0;
+let tween = null, popT = 0, popping = [], lastMoved = [], effects = [], floats = [];
+let mood = 'happy', moodT = 0, squashT = 0, say = null, lay = null, uid = 0;
+const POP = 0.26, SWAP = 0.17;
+
+// ---------- board rules ----------
+const inB = (r, c) => r >= 0 && r < N && c >= 0 && c < N;
+const kd = (r, c) => { const p = grid[r] && grid[r][c]; return p && p.sp !== 'star' ? p.k : -1; };
+const newPiece = (k, r, c) => ({ k, sp: '', x: c, y: r, vy: 0, land: 0, flash: 0, popping: false, spent: false, id: ++uid });
+const randKind = () => MG.randi(0, L.k - 1);
+
+// all straight runs of 3+, joined into groups when they share a cell (so L / T shapes are one group)
+function groupsNow() {
+  const runs = [];
+  for (let r = 0; r < N; r++) for (let c = 0; c < N;) {
+    const k = kd(r, c); let e = c + 1;
+    if (k >= 0) while (e < N && kd(r, e) === k) e++;
+    if (k >= 0 && e - c >= 3) runs.push({ h: true, k, cells: Array.from({ length: e - c }, (_, i) => r * N + c + i) });
+    c = e;
+  }
+  for (let c = 0; c < N; c++) for (let r = 0; r < N;) {
+    const k = kd(r, c); let e = r + 1;
+    if (k >= 0) while (e < N && kd(e, c) === k) e++;
+    if (k >= 0 && e - r >= 3) runs.push({ h: false, k, cells: Array.from({ length: e - r }, (_, i) => (r + i) * N + c) });
+    r = e;
+  }
+  const par = runs.map((_, i) => i), own = new Map();
+  const root = i => par[i] === i ? i : (par[i] = root(par[i]));
+  runs.forEach((run, i) => run.cells.forEach(key => { if (own.has(key)) par[root(i)] = root(own.get(key)); else own.set(key, i); }));
+  const gs = new Map();
+  runs.forEach((run, i) => {
+    const rt = root(i); if (!gs.has(rt)) gs.set(rt, { runs: [], cells: new Set(), k: run.k });
+    const g = gs.get(rt); g.runs.push(run); run.cells.forEach(key => g.cells.add(key));
+  });
+  return [...gs.values()];
+}
+// which special a group makes, and where it appears
+function makeOf(g, moved) {
+  const big = g.runs.reduce((a, b) => b.cells.length > a.cells.length ? b : a);
+  const hasH = g.runs.some(q => q.h), hasV = g.runs.some(q => !q.h);
+  let sp = '';
+  if (big.cells.length >= 5) sp = 'star';
+  else if (hasH && hasV) sp = 'bomb';
+  else if (big.cells.length === 4) sp = big.h ? 'h' : 'v';
+  if (!sp) return null;
+  let at = moved.find(key => g.cells.has(key));
+  if (at == null && sp === 'bomb') {
+    const hs = new Set(g.runs.filter(q => q.h).flatMap(q => q.cells));
+    at = g.runs.filter(q => !q.h).flatMap(q => q.cells).find(key => hs.has(key));
+  }
+  if (at == null) at = big.cells[Math.floor(big.cells.length / 2)];
+  return { at, sp, k: g.k };
+}
+function lineLen(r, c) {
+  const k = kd(r, c); if (k < 0) return 0;
+  let a = 1, b = 1;
+  for (let i = c - 1; i >= 0 && kd(r, i) === k; i--) a++;
+  for (let i = c + 1; i < N && kd(r, i) === k; i++) a++;
+  for (let i = r - 1; i >= 0 && kd(i, c) === k; i--) b++;
+  for (let i = r + 1; i < N && kd(i, c) === k; i++) b++;
+  return (a >= 3 ? a : 0) + (b >= 3 ? b : 0);
+}
+function swapGrid(a, b) { const t1 = grid[a.r][a.c]; grid[a.r][a.c] = grid[b.r][b.c]; grid[b.r][b.c] = t1; }
+// every swap that does something, with a rough "how good" value for the hint
+function findMoves(rich = false) {
+  const out = [];
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) for (const [dr, dc] of [[0, 1], [1, 0]]) {
+    const r2 = r + dr, c2 = c + dc; if (!inB(r2, c2)) continue;
+    const pa = grid[r][c], pb = grid[r2][c2]; if (!pa || !pb) continue;
+    const a = { r, c }, b = { r: r2, c: c2 };
+    if (pa.sp === 'star' || pb.sp === 'star') { out.push({ a, b, v: 12 }); continue; }
+    if (pa.sp && pb.sp) { out.push({ a, b, v: 10 }); continue; }
+    swapGrid(a, b);
+    let v = lineLen(r, c) + lineLen(r2, c2);
+    if (v && rich) v = worth(groupsNow());
+    swapGrid(a, b);
+    if (v) out.push({ a, b, v });
+  }
+  return out;
+}
+// how much a set of matches helps the goal (used by the 💡 hint): jelly cells and wanted colours count extra
+function worth(groups) {
+  let v = 0;
+  for (const g of groups) {
+    v += g.cells.size + (g.cells.size >= 4 ? 3 : 0) + (g.runs.length > 1 ? 3 : 0);
+    for (const key of g.cells) {
+      if (jel[Math.floor(key / N)][key % N] > 0) v += 4;
+      if (L.c && L.c.some(([k, n], i) => k === g.k && got[i] < n)) v += 1.5;
+    }
+  }
+  return v;
+}
+function genBoard() {
+  for (let tries = 0; tries < 200; tries++) {
+    grid = Array.from({ length: N }, () => Array(N).fill(null));
+    for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+      const bad = new Set();
+      if (c >= 2 && kd(r, c - 1) === kd(r, c - 2)) bad.add(kd(r, c - 1));
+      if (r >= 2 && kd(r - 1, c) === kd(r - 2, c)) bad.add(kd(r - 1, c));
+      const ok = [...Array(L.k).keys()].filter(k => !bad.has(k));
+      grid[r][c] = newPiece(MG.pick(ok), r, c);
+    }
+    if (findMoves().length >= 3) return;
+  }
+}
+
+// ---------- level flow ----------
+function setupLevel(n) {
+  level = n; L = LEVELS[n - 1]; N = L.n;
+  jel = Array.from({ length: N }, (_, r) => Array.from({ length: N }, (_, c) => L.j && L.j[r][c] === '#' ? 1 : 0));
+  jellyLeft = jel.flat().reduce((a, b) => a + b, 0);
+  got = L.c ? L.c.map(() => 0) : [];
+  score = 0; moves = 0; combo = 0; bestCombo = 0; sel = null; drag = null; kc = null; hint = null; idleT = 0;
+  tween = null; popping = []; effects = []; floats = []; phase = 'idle'; say = null; mood = 'happy';
+  genBoard(); MG.fx.clear(); layout(); sprites.clear(); bgDirty = true;
+}
+function startLevel(n) {
+  setupLevel(n); state = 'play'; MG.hide(); hud();
+  talk('加油！', 2);
+  MG.toast(`${goalIcon(L)} 目標：${goalText(L)}`, 2600);
+}
+function hud() {
+  MG.stat('level', `第 ${level} 關`);
+  MG.stat('moves', mode === 'moves' ? `剩 ${Math.max(0, L.mv - moves)} 步` : `${moves} 步`);
+}
+function goalDone() {
+  if (L.s) return score >= L.s;
+  if (L.c) return L.c.every(([, n], i) => got[i] >= n);
+  return jellyLeft <= 0;
+}
+function starsNow() { const f = moves / L.mv; return f <= 0.7 ? 3 : f <= 1 ? 2 : 1; }
+function win() {
+  state = 'over'; sel = null; hint = null; MG.sfx('win');
+  mood = 'love'; moodT = 3; squashT = 0.5; talk('過關了！', 3);
+  const rec = MG.record('match3', level), st = starsNow();
+  MG.fx.burst(lay.bx + lay.B / 2, lay.by + lay.B / 2, { n: 60, colors: KINDS.map(k => k.pal[1]).concat('#fff'), shape: 'star', speed: 340, up: 180, size: 7, life: 1.2 });
+  setTimeout(() => MG.panel({
+    title: `第 ${level} 關完成！`,
+    html: `<div class="m3-stars">${'⭐'.repeat(st)}${'☆'.repeat(3 - st)}</div><div class="big">${score} 分</div><p>走了 ${moves} 步${bestCombo >= 2 ? `，最多連鎖 ${bestCombo} 次` : ''} ^_^</p>` +
+      (st < 3 ? `<p>${L.mv * 0.7 | 0} 步以內完成可以拿到三顆星喔</p>` : '<p>太厲害了，三顆星！</p>') +
+      (rec.isNew ? '<p class="new">新紀錄！^_^</p>' : '') +
+      (level < LEVELS.length ? `<p>下一關：${goalIcon(LEVELS[level])} ${goalText(LEVELS[level])}</p>` : '<p>十五關全部過關，你是消消樂大師！</p>'),
+    buttons: [
+      { label: level < LEVELS.length ? '下一關' : '回到第 1 關', on: () => { const nx = level < LEVELS.length ? level + 1 : 1; MG.store.set('match3.pickLevel', nx); startLevel(nx); } },
+      { label: '這關再玩', alt: true, on: () => startLevel(level) },
+      { label: '選關卡', alt: true, on: menu },
+    ],
+  }), 1100);
+}
+function outOfMoves() {
+  state = 'over'; sel = null; hint = null; MG.sfx('over'); mood = 'ouch'; moodT = 3; talk('差一點點！', 3);
+  setTimeout(() => MG.panel({
+    title: '步數用完了！',
+    html: `<p>還差一點點就過關了，再試一次吧 ^_^</p><div class="big">${score} 分</div><p>${goalIcon(L)} ${progressText()}</p><p>想慢慢玩的話，可以改成「🐢 慢慢玩」，步數不限喔</p>`,
+    buttons: [
+      { label: '再試一次', on: () => startLevel(level) },
+      { label: '🐢 改成慢慢玩', alt: true, on: () => { mode = 'relax'; MG.store.set('match3.pickMode', 'relax'); startLevel(level); } },
+      { label: '選關卡', alt: true, on: menu },
+    ],
+  }), 700);
+}
+function progressText() {
+  if (L.s) return `${score} / ${L.s} 分`;
+  if (L.c) return L.c.map(([k, n], i) => `${KINDS[k].nm} ${Math.min(n, got[i])}/${n}`).join('　');
+  return `粉紅果凍還剩 ${jellyLeft} 格`;
+}
+
+// ---------- turn engine ----------
+function trySwap(a, b) {
+  if (state !== 'play' || phase !== 'idle') return false;
+  if (!inB(b.r, b.c) || Math.abs(a.r - b.r) + Math.abs(a.c - b.c) !== 1) return false;
+  sel = null; hint = null; idleT = 0;
+  swapGrid(a, b);
+  phase = 'tween';
+  startTween([[grid[a.r][a.c], a], [grid[b.r][b.c], b]], SWAP, () => afterSwap(a, b));
+  MG.sfx('flip');
+  return true;
+}
+function afterSwap(a, b) {
+  const pa = grid[a.r][a.c], pb = grid[b.r][b.c], ka = a.r * N + a.c, kb = b.r * N + b.c;
+  let forced = [];
+  if (pa.sp === 'star' || pb.sp === 'star') {
+    if (pa.sp === 'star' && pb.sp === 'star') {
+      pa.spent = pb.spent = true;
+      for (let i = 0; i < N * N; i++) forced.push(i);
+      effects.push({ type: 'ring', x: cellX(a.c), y: cellY(a.r), t: 0, big: true });
+    } else {
+      const s = pa.sp === 'star' ? pa : pb, o = s === pa ? pb : pa, sk = s === pa ? ka : kb;
+      s.spent = true; forced.push(sk, sk === ka ? kb : ka);
+      zapKind(o.k, sk, forced);
+    }
+  } else if (pa.sp && pb.sp) forced = [ka, kb];
+  if (!forced.length && !groupsNow().length) {        // nothing happens: slide back
+    swapGrid(a, b); MG.sfx('step');
+    startTween([[grid[a.r][a.c], a], [grid[b.r][b.c], b]], SWAP, () => { phase = 'idle'; });
+    mood = 'ouch'; moodT = 0.6;
+    return;
+  }
+  moves++; combo = 0; hud();
+  runClear(forced, [ka, kb]);
+}
+function zapKind(k, from, out) {
+  const fr = Math.floor(from / N), fc = from % N, to = [];
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) { const p = grid[r][c]; if (p && p.sp !== 'star' && p.k === k) { out.push(r * N + c); to.push([cellX(c), cellY(r)]); } }
+  effects.push({ type: 'zap', x: cellX(fc), y: cellY(fr), to, t: 0 });
+}
+function mostKind() {
+  const cnt = Array(L.k).fill(0);
+  for (const row of grid) for (const p of row) if (p && p.sp !== 'star' && !p.popping) cnt[p.k]++;
+  return cnt.indexOf(Math.max(...cnt));
+}
+// cells a special clears when it goes off
+function blast(r, c, p, out) {
+  if (p.spent) return; p.spent = true;
+  const col = p.sp === 'star' ? '#fff' : KINDS[p.k].pal[1];
+  if (p.sp === 'h') { for (let i = 0; i < N; i++) out.push(r * N + i); effects.push({ type: 'beam', h: true, i: r, col, t: 0 }); MG.sfx('jump'); }
+  else if (p.sp === 'v') { for (let i = 0; i < N; i++) out.push(i * N + c); effects.push({ type: 'beam', h: false, i: c, col, t: 0 }); MG.sfx('jump'); }
+  else if (p.sp === 'bomb') { for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) if (inB(r + dr, c + dc)) out.push((r + dr) * N + c + dc); effects.push({ type: 'ring', x: cellX(c), y: cellY(r), t: 0, col }); MG.sfx('hit'); }
+  else if (p.sp === 'star') zapKind(mostKind(), r * N + c, out);
+}
+function hitCell(r, c, p) {
+  if (p.sp !== 'star' && L.c) L.c.forEach(([k], i) => { if (k === p.k) got[i]++; });
+  if (jel[r][c] > 0) {
+    jel[r][c]--; jellyLeft--; bgDirty = true;
+    MG.fx.burst(cellX(c), cellY(r), { n: 5, colors: ['#ff8fbd', '#ffc2dc', '#fff'], speed: 120, up: 30, size: 3.5, life: 0.5 });
+  }
+}
+function runClear(forced, moved) {
+  const groups = groupsNow();
+  if (!groups.length && !forced.length) { endTurn(); return; }
+  combo++; bestCombo = Math.max(bestCombo, combo);
+  const clear = new Set(forced), prot = new Map();
+  for (const g of groups) {
+    g.cells.forEach(key => clear.add(key));
+    const m = makeOf(g, moved); if (m && !prot.has(m.at)) prot.set(m.at, m);
+  }
+  // specials caught in the clear go off too (chains)
+  const queue = [...clear], seen = new Set();
+  while (queue.length) {
+    const key = queue.pop(); if (seen.has(key)) continue; seen.add(key);
+    const r = Math.floor(key / N), c = key % N, p = grid[r][c];
+    if (!p || !p.sp) continue;
+    const out = []; blast(r, c, p, out);
+    for (const k2 of out) if (!prot.has(k2) && !clear.has(k2)) { clear.add(k2); queue.push(k2); }
+  }
+  let n = 0;
+  for (const key of clear) {
+    const r = Math.floor(key / N), c = key % N, p = grid[r][c];
+    if (!p || p.popping) continue;
+    hitCell(r, c, p);
+    if (prot.has(key)) {           // this piece turns into a special one
+      const m = prot.get(key); p.sp = m.sp; p.k = m.k; p.spent = false; p.flash = 0.5; n++;
+      continue;
+    }
+    p.popping = true; popping.push([r, c]); n++;
+    const pal = p.sp === 'star' ? ['#ff5a6e', '#ffc93a', '#4cc96a', '#3d9bff'] : KINDS[p.k].pal;
+    MG.fx.burst(cellX(c), cellY(r), { n: p.sp ? 12 : 5, colors: [pal[1], pal[2], '#fff'], speed: p.sp ? 220 : 150, up: 50, size: p.sp ? 5 : 4, life: 0.55, shape: p.sp ? 'star' : 'dot' });
+  }
+  const pts = n * 10 * combo + prot.size * 30;
+  score += pts;
+  // feedback
+  const mid = [...clear].reduce((a, key) => [a[0] + key % N, a[1] + Math.floor(key / N)], [0, 0]).map(v => v / Math.max(1, clear.size));
+  floats.push({ x: cellX(mid[0]), y: cellY(mid[1]), text: `+${pts}`, life: 1, col: '#ff7a00', size: 0.42 });
+  if (combo >= 2) {
+    floats.push({ x: lay.bx + lay.B / 2, y: lay.by + lay.B * 0.42, text: `連鎖 x${combo}`, life: 1.3, col: '#ff4f8a', size: 0.75, big: true });
+    mood = 'wow'; moodT = 1.4; squashT = 0.4; talk(combo >= 4 ? '太厲害了！' : combo >= 3 ? '好棒棒！' : `連鎖 x${combo}！`, 1.5);
+  } else { mood = 'happy'; }
+  if (prot.size) { const m = [...prot.values()][0]; talk({ h: '條紋糖！', v: '條紋糖！', bomb: '包裝糖炸彈！', star: '彩虹星星！' }[m.sp], 1.6); mood = 'wow'; moodT = 1.2; MG.sfx('good'); }
+  ping(combo);
+  popT = 0; phase = 'pop';
+  if (!popping.length) afterPop();
+}
+function afterPop() {
+  for (const [r, c] of popping) grid[r][c] = null;
+  popping = []; lastMoved = [];
+  for (let c = 0; c < N; c++) {
+    let w = N - 1;
+    for (let r = N - 1; r >= 0; r--) {
+      const p = grid[r][c]; if (!p) continue;
+      if (r !== w) { grid[w][c] = p; grid[r][c] = null; p.vy = 0; lastMoved.push(w * N + c); }
+      w--;
+    }
+    const need = w + 1;
+    for (let i = 0; i <= w; i++) { const p = newPiece(randKind(), i, c); p.y = i - need - 0.25; grid[i][c] = p; lastMoved.push(i * N + c); }
+  }
+  phase = 'fall';
+}
+function endTurn() {
+  phase = 'idle'; combo = 0; hud();
+  if (goalDone()) { win(); return; }
+  if (mode === 'moves' && moves >= L.mv) { outOfMoves(); return; }
+  if (!findMoves().length) { MG.toast('沒有可以換的了，幫你重新洗牌', 1900); shuffleBoard(); }
+}
+function shuffleBoard() {
+  const cells = [], ps = [];
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) { cells.push({ r, c }); ps.push(grid[r][c]); }
+  let ok = false;
+  for (let tries = 0; tries < 300 && !ok; tries++) {
+    MG.shuffle(ps); cells.forEach(({ r, c }, i) => grid[r][c] = ps[i]);
+    ok = !groupsNow().length && findMoves().length > 0;
+  }
+  if (!ok) {                     // very unlucky: new colours for the plain pieces
+    for (let tries = 0; tries < 300 && !ok; tries++) {
+      for (const p of ps) if (!p.sp) p.k = randKind();
+      ok = !groupsNow().length && findMoves().length > 0;
+    }
+  }
+  phase = 'tween'; MG.sfx('flip');
+  startTween(cells.map(({ r, c }) => [grid[r][c], { r, c }]), 0.5, () => { phase = 'idle'; if (groupsNow().length) runClear([], []); });
+}
+function startTween(items, dur, done) {
+  tween = { t: 0, dur, done, items: items.map(([p, to]) => ({ p, sx: p.x, sy: p.y, tx: to.c, ty: to.r })) };
+}
+function update(dt) {
+  t += dt; MG.fx.step(dt);
+  moodT = Math.max(0, moodT - dt); if (!moodT && state === 'play' && mood !== 'happy') mood = 'happy';
+  squashT = Math.max(0, squashT - dt);
+  if (say) { say.life -= dt; if (say.life <= 0) say = null; }
+  for (const e of effects) e.t += dt; effects = effects.filter(e => e.t < 0.55);
+  for (const f of floats) { f.life -= dt; f.y -= dt * lay.cs * 0.9; } floats = floats.filter(f => f.life > 0);
+  for (const row of grid) for (const p of row) if (p) { p.land = Math.max(0, p.land - dt); p.flash = Math.max(0, p.flash - dt); }
+  if (tween) {
+    tween.t += dt; const k = Math.min(1, tween.t / tween.dur), e = k * k * (3 - 2 * k);
+    for (const it of tween.items) { it.p.x = it.sx + (it.tx - it.sx) * e; it.p.y = it.sy + (it.ty - it.sy) * e; }
+    if (k >= 1) { const tw = tween; tween = null; tw.done(); }
+  } else if (phase === 'pop') {
+    popT += dt; if (popT >= POP) afterPop();
+  } else if (phase === 'fall') {
+    let busy = false;
+    for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+      const p = grid[r][c]; p.x = c;
+      if (p.y < r) {
+        p.vy = Math.min(17, p.vy + 60 * dt); p.y += p.vy * dt;
+        if (p.y >= r) { p.y = r; p.land = 0.2; p.vy = 0; } else busy = true;
+      }
+    }
+    if (!busy) { MG.sfx('place'); runClear([], lastMoved); }
+  } else if (phase === 'idle' && state === 'play') {
+    idleT += dt;
+    if (idleT > 6 && !hint && !sel) { const h = pickHint(); if (h) hint = { ...h, gentle: true, t: 0 }; }
+  }
+  if (hint) hint.t += dt;
+}
+function pickHint() {
+  const ms = findMoves(true); if (!ms.length) return null;
+  const top = Math.max(...ms.map(m => m.v));
+  return MG.pick(ms.filter(m => m.v >= top - 0.01));
+}
+function showHint() {
+  if (state !== 'play') return;
+  if (phase !== 'idle') { MG.toast('等一下，糖果還在掉喔'); return; }
+  const h = pickHint(); if (!h) return;
+  hint = { ...h, gentle: false, t: 0 }; sel = null; idleT = 0; MG.sfx('flip');
+  talk('換這兩個！', 2);
+}
+function talk(text, s) { say = { text, life: s }; }
+
+// ---------- rising pitch for combos (own tiny synth, follows the 🔊 button) ----------
+let ac2 = null;
+function ping(n) {
+  if (MG.store.get('muted', false)) return;
+  try { ac2 = ac2 || new (window.AudioContext || window.webkitAudioContext)(); } catch { return; }
+  if (ac2.state === 'suspended') ac2.resume();
+  const f = 520 * Math.pow(2, Math.min(n - 1, 9) * 2 / 12), tt = ac2.currentTime;
+  for (const [mul, d] of [[1, 0], [1.5, 0.06]]) {
+    const o = ac2.createOscillator(), g = ac2.createGain();
+    o.type = 'triangle'; o.frequency.setValueAtTime(f * mul, tt + d); o.frequency.exponentialRampToValueAtTime(f * mul * 1.5, tt + d + 0.1);
+    g.gain.setValueAtTime(0.13, tt + d); g.gain.exponentialRampToValueAtTime(0.0008, tt + d + 0.16);
+    o.connect(g).connect(ac2.destination); o.start(tt + d); o.stop(tt + d + 0.18);
+  }
+}
+
+// ---------- layout ----------
+MG.fit(cv, (sw, sh) => {
+  land = sw > sh * 1.05;
+  return land ? [Math.round(Math.min(1100, Math.max(800, 520 * sw / sh))), 520] : [480, Math.round(Math.min(860, Math.max(720, 480 * sh / sw)))];
+});
+function layout() {
+  const W = cv.lw, H = cv.lh, M = 10;
+  const o = {};
+  if (land) {
+    const F = H - 2 * M, SW = Math.min(330, W - F - 3 * M), ox = (W - SW - M - F) / 2;
+    o.frame = { x: ox + SW + M, y: M, w: F, h: F };
+    o.goal = { x: ox, y: M, w: SW, h: L.c ? 50 + L.c.length * 50 : 128 };
+    o.info = { x: ox, y: o.goal.y + o.goal.h + M, w: SW, h: 64 };
+    o.hint = { x: ox + 14, y: H - M - 78, w: SW - 28, h: 78 };
+    const top = o.info.y + o.info.h, room = o.hint.y - top;
+    o.pu = { x: ox + SW * 0.32, y: top + room * 0.58, r: Math.min(52, room * 0.3) };
+    o.bubble = { x: ox + SW * 0.32 + o.pu.r + 8, y: top + room * 0.3, w: SW * 0.68 - o.pu.r - 10 };
+  } else {
+    const hudH = 96, botMin = 116;
+    const F = Math.min(W - 2 * M, H - hudH - botMin - 4 * M);
+    o.goal = { x: M, y: M, w: W - 3 * M - 132, h: hudH };
+    o.info = { x: W - M - 132, y: M, w: 132, h: hudH };
+    o.frame = { x: (W - F) / 2, y: M * 2 + hudH, w: F, h: F };
+    const y0 = o.frame.y + F + M, bh = H - M - y0;
+    o.hint = { w: 168, h: Math.min(88, bh - 20) }; o.hint.x = W - M - o.hint.w - 4; o.hint.y = y0 + (bh - o.hint.h) / 2;
+    o.pu = { x: M + 66, y: y0 + bh * 0.55, r: Math.min(58, bh * 0.34) };
+    o.bubble = { x: o.pu.x + o.pu.r + 10, y: o.pu.y - o.pu.r * 0.9, w: o.hint.x - (o.pu.x + o.pu.r + 10) - 10 };
+  }
+  const pad = 8;
+  o.B = o.frame.w - pad * 2; o.cs = o.B / N; o.bx = o.frame.x + pad; o.by = o.frame.y + pad;
+  lay = o;
+}
+cv.onfit = () => { if (grid.length) { layout(); sprites.clear(); bgDirty = true; } };
+const cellX = c => lay.bx + (c + 0.5) * lay.cs;
+const cellY = r => lay.by + (r + 0.5) * lay.cs;
+function cellAt(p) {
+  const c = Math.floor((p.x - lay.bx) / lay.cs), r = Math.floor((p.y - lay.by) / lay.cs);
+  return inB(r, c) ? { r, c } : null;
+}
+const inRect = (p, b) => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
+
+// ---------- input: tap one then a neighbour, or swipe ----------
+function tapCell(cell) {
+  if (sel && Math.abs(sel.r - cell.r) + Math.abs(sel.c - cell.c) === 1) { const s = sel; sel = null; trySwap(s, cell); return; }
+  if (sel && sel.r === cell.r && sel.c === cell.c) { sel = null; return; }
+  sel = cell; MG.sfx('tick');
+}
+cv.addEventListener('pointerdown', e => {
+  if (state !== 'play' || MG.panelOpen()) return;
+  const p = cv.logical(e); idleT = 0; if (hint && hint.gentle) hint = null;
+  if (inRect(p, lay.hint)) { showHint(); return; }
+  const cell = cellAt(p);
+  if (!cell) { sel = null; return; }
+  kc = null;
+  if (sel && Math.abs(sel.r - cell.r) + Math.abs(sel.c - cell.c) === 1) { const s = sel; sel = null; trySwap(s, cell); return; }
+  const was = !!(sel && sel.r === cell.r && sel.c === cell.c);
+  sel = cell; if (!was) MG.sfx('tick');
+  drag = { r: cell.r, c: cell.c, x: p.x, y: p.y, was };
+  try { cv.setPointerCapture(e.pointerId); } catch {}
+});
+cv.addEventListener('pointermove', e => {
+  if (!drag || state !== 'play') return;
+  const p = cv.logical(e), dx = p.x - drag.x, dy = p.y - drag.y;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < lay.cs * 0.32) return;
+  const a = { r: drag.r, c: drag.c }, b = Math.abs(dx) > Math.abs(dy) ? { r: a.r, c: a.c + Math.sign(dx) } : { r: a.r + Math.sign(dy), c: a.c };
+  drag = null;
+  if (inB(b.r, b.c)) { sel = null; trySwap(a, b); }
+});
+cv.addEventListener('pointerup', () => { if (drag) { if (drag.was) sel = null; drag = null; } });
+cv.addEventListener('pointercancel', () => { drag = null; });
+addEventListener('keydown', e => {
+  if (state !== 'play' || MG.panelOpen()) return;
+  const d = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[e.key];
+  idleT = 0;
+  if (d) {
+    e.preventDefault();
+    if (!kc) kc = sel ? { ...sel } : { r: N >> 1, c: N >> 1 };
+    else { kc.r = Math.max(0, Math.min(N - 1, kc.r + d[0])); kc.c = Math.max(0, Math.min(N - 1, kc.c + d[1])); }
+    return;
+  }
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (!kc) kc = { r: N >> 1, c: N >> 1 }; else tapCell({ ...kc }); }
+  else if (e.key === 'h' || e.key === 'H') showHint();
+});
+
+// ---------- drawing pieces (cached to small canvases) ----------
+function shapePath(c, shape, r) {
+  c.beginPath();
+  if (shape === 'heart') {
+    c.moveTo(0, r * 0.92); c.bezierCurveTo(-r * 1.55, -r * 0.02, -r * 0.72, -r * 1.3, 0, -r * 0.5); c.bezierCurveTo(r * 0.72, -r * 1.3, r * 1.55, -r * 0.02, 0, r * 0.92);
+  } else if (shape === 'star') {
+    for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.58 : r * 1.04; c.lineTo(Math.cos(a) * rr, Math.sin(a) * rr + r * 0.08); }
+    c.closePath();
+  } else if (shape === 'square') {
+    c.roundRect(-r * 0.82, -r * 0.82, r * 1.64, r * 1.64, r * 0.34);
+  } else if (shape === 'drop') {
+    c.moveTo(0, -r * 1.0); c.bezierCurveTo(r * 0.3, -r * 0.6, r * 0.8, -r * 0.2, r * 0.8, r * 0.2); c.arc(0, r * 0.2, r * 0.8, 0, Math.PI); c.bezierCurveTo(-r * 0.8, -r * 0.2, -r * 0.3, -r * 0.6, 0, -r * 1.0);
+  } else if (shape === 'tri') {
+    const P = [[0, -r * 0.98], [r * 1.0, r * 0.8], [-r * 1.0, r * 0.8]], rad = r * 0.28;
+    c.moveTo((P[0][0] + P[2][0]) / 2, (P[0][1] + P[2][1]) / 2);
+    for (let i = 0; i < 3; i++) { const a = P[i], b = P[(i + 1) % 3]; c.arcTo(a[0], a[1], b[0], b[1], rad); }
+    c.closePath();
+  } else {
+    c.arc(0, 0, r * 0.88, 0, Math.PI * 2);
+  }
+}
+const FACE_Y = { heart: -0.08, star: 0.12, square: 0, drop: 0.22, tri: 0.28, ball: 0 };
+function drawFace(c, r, shape) {
+  const fy = (FACE_Y[shape] || 0) * r, ink = '#2a1d24';
+  c.fillStyle = ink;
+  for (const sd of [-1, 1]) { c.beginPath(); c.ellipse(sd * r * 0.27, fy, r * 0.095, r * 0.13, 0, 0, 7); c.fill(); }
+  c.fillStyle = '#fff'; for (const sd of [-1, 1]) { c.beginPath(); c.arc(sd * r * 0.27 - r * 0.03, fy - r * 0.05, r * 0.04, 0, 7); c.fill(); }
+  c.strokeStyle = ink; c.lineWidth = Math.max(1, r * 0.075); c.lineCap = 'round';
+  c.beginPath(); c.arc(0, fy + r * 0.1, r * 0.12, 0.35, Math.PI - 0.35); c.stroke();
+  c.fillStyle = 'rgba(255,110,140,.5)'; for (const sd of [-1, 1]) { c.beginPath(); c.ellipse(sd * r * 0.47, fy + r * 0.14, r * 0.11, r * 0.065, 0, 0, 7); c.fill(); }
+}
+function paintPiece(c, k, sp, r) {
+  if (sp === 'star') {            // 🌈 rainbow star
+    c.save();
+    c.shadowColor = 'rgba(255,255,255,.9)'; c.shadowBlur = r * 0.35;
+    shapePath(c, 'star', r * 1.08);
+    let g;
+    if (c.createConicGradient) { g = c.createConicGradient(0, 0, 0); ['#ff5a6e', '#ff9f4a', '#ffd23f', '#4cc96a', '#3d9bff', '#9a72f0', '#ff5a6e'].forEach((cl, i, a) => g.addColorStop(i / (a.length - 1), cl)); }
+    else { g = c.createLinearGradient(-r, -r, r, r); ['#ff5a6e', '#ffd23f', '#4cc96a', '#3d9bff', '#9a72f0'].forEach((cl, i, a) => g.addColorStop(i / (a.length - 1), cl)); }
+    c.fillStyle = g; c.fill(); c.restore();
+    c.strokeStyle = '#fff'; c.lineWidth = r * 0.12; c.lineJoin = 'round'; shapePath(c, 'star', r * 1.08); c.stroke();
+    const gl = c.createRadialGradient(0, 0, 0, 0, 0, r * 0.55); gl.addColorStop(0, 'rgba(255,255,255,.95)'); gl.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = gl; c.beginPath(); c.arc(0, r * 0.08, r * 0.55, 0, 7); c.fill();
+    drawFace(c, r * 0.9, 'star');
+    return;
+  }
+  const K = KINDS[k], pal = K.pal;
+  if (sp === 'bomb') {            // wrapped candy: twisted wrapper on both sides
+    for (const sd of [-1, 1]) {
+      c.fillStyle = pal[1]; c.strokeStyle = pal[4]; c.lineWidth = r * 0.08; c.lineJoin = 'round';
+      c.beginPath(); c.moveTo(sd * r * 0.55, 0); c.lineTo(sd * r * 1.18, -r * 0.5); c.quadraticCurveTo(sd * r * 1.02, 0, sd * r * 1.18, r * 0.5); c.closePath(); c.fill(); c.stroke();
+      c.strokeStyle = 'rgba(255,255,255,.7)'; c.lineWidth = r * 0.05; c.beginPath(); c.moveTo(sd * r * 0.75, -r * 0.12); c.lineTo(sd * r * 1.05, -r * 0.34); c.stroke();
+    }
+  }
+  const sc = sp === 'bomb' ? 0.8 : 1, rr = r * sc;
+  const g = c.createRadialGradient(-rr * 0.35, -rr * 0.45, rr * 0.08, 0, rr * 0.1, rr * 1.2);
+  g.addColorStop(0, pal[0]); g.addColorStop(0.35, pal[1]); g.addColorStop(0.8, pal[2]); g.addColorStop(1, pal[3]);
+  c.fillStyle = g; shapePath(c, K.shape, rr); c.fill();
+  if (K.shape === 'ball') {      // candy swirl
+    c.save(); shapePath(c, 'ball', rr); c.clip();
+    c.strokeStyle = 'rgba(255,255,255,.45)'; c.lineWidth = rr * 0.16;
+    for (let i = 0; i < 3; i++) { c.beginPath(); c.arc(0, 0, rr * (0.3 + i * 0.25), Math.PI * 0.9 + i, Math.PI * 1.6 + i); c.stroke(); }
+    c.restore();
+  }
+  if (sp === 'h' || sp === 'v') { // stripes
+    c.save(); shapePath(c, K.shape, rr); c.clip();
+    c.fillStyle = 'rgba(255,255,255,.62)';
+    for (let i = -2; i <= 2; i++) { if (sp === 'h') c.fillRect(-rr * 1.3, i * rr * 0.42 - rr * 0.08, rr * 2.6, rr * 0.16); else c.fillRect(i * rr * 0.42 - rr * 0.08, -rr * 1.3, rr * 0.16, rr * 2.6); }
+    c.restore();
+  }
+  c.strokeStyle = pal[4]; c.lineWidth = Math.max(1, rr * 0.1); c.lineJoin = 'round'; shapePath(c, K.shape, rr); c.stroke();
+  c.fillStyle = 'rgba(255,255,255,.78)'; c.beginPath(); c.ellipse(-rr * 0.4, -rr * 0.45, rr * 0.2, rr * 0.11, -0.7, 0, 7); c.fill();
+  drawFace(c, rr, K.shape);
+  if (sp === 'h' || sp === 'v') { // little arrows show which way it blasts
+    c.fillStyle = '#fff'; c.strokeStyle = pal[4]; c.lineWidth = r * 0.06;
+    for (const sd of [-1, 1]) {
+      c.save(); if (sp === 'v') c.rotate(Math.PI / 2); c.translate(sd * r * 1.08, 0); c.scale(sd, 1);
+      c.beginPath(); c.moveTo(r * 0.14, 0); c.lineTo(-r * 0.1, -r * 0.18); c.lineTo(-r * 0.1, r * 0.18); c.closePath(); c.fill(); c.stroke(); c.restore();
+    }
+  }
+}
+const sprites = new Map();
+function sprite(k, sp) {
+  const px = cv._mgScale || 1, cs = lay.cs, key = `${sp === 'star' ? 's' : k}|${sp}`;
+  let s = sprites.get(key);
+  if (s) return s;
+  const size = cs * 1.3, c = document.createElement('canvas');
+  c.width = c.height = Math.ceil(size * px);
+  const g = c.getContext('2d'); g.scale(px, px); g.translate(size / 2, size / 2);
+  paintPiece(g, k, sp, cs * 0.4);
+  s = { c, size }; sprites.set(key, s);
+  return s;
+}
+function jellySprite() {
+  let s = sprites.get('jelly'); if (s) return s;
+  const px = cv._mgScale || 1, cs = lay.cs, c = document.createElement('canvas');
+  c.width = c.height = Math.ceil(cs * px);
+  const g = c.getContext('2d'); g.scale(px, px);
+  const gr = g.createLinearGradient(0, 0, 0, cs); gr.addColorStop(0, '#ffcfe3'); gr.addColorStop(1, '#ff8fbd');
+  g.fillStyle = gr; g.strokeStyle = '#ef6aa3'; g.lineWidth = Math.max(1, cs * 0.04);
+  g.beginPath(); g.roundRect(cs * 0.05, cs * 0.05, cs * 0.9, cs * 0.9, cs * 0.2); g.fill(); g.stroke();
+  g.fillStyle = 'rgba(255,255,255,.55)'; g.beginPath(); g.roundRect(cs * 0.14, cs * 0.12, cs * 0.34, cs * 0.1, cs * 0.05); g.fill();
+  s = { c }; sprites.set('jelly', s); return s;
+}
+
+// ---------- drawing the screen ----------
+function box(b, fill = 'rgba(255,255,255,.88)', stroke = '#f3b6d0') {
+  x.fillStyle = 'rgba(160,80,120,.12)'; x.beginPath(); x.roundRect(b.x, b.y + 4, b.w, b.h, 16); x.fill();
+  x.fillStyle = fill; x.strokeStyle = stroke; x.lineWidth = 2.5; x.beginPath(); x.roundRect(b.x, b.y, b.w, b.h, 16); x.fill(); x.stroke();
+}
+function txt(s, px, py, size, col = '#4a2b3a', align = 'center', weight = 800) {
+  x.font = `${weight} ${size}px ${FONT}`; x.textAlign = align; x.textBaseline = 'middle'; x.fillStyle = col; x.fillText(s, px, py);
+}
+function drawGoal() {
+  const b = lay.goal; box(b);
+  const sm = Math.min(16, b.h * 0.18);
+  txt('目標', b.x + 14, b.y + sm * 0.5 + 10, sm, '#c0507e', 'left');
+  const items = [];
+  if (L.s) items.push({ icon: 'star', a: Math.min(score, L.s), n: L.s, label: `${Math.min(score, L.s)} / ${L.s}`, done: score >= L.s, bar: true });
+  else if (L.c) L.c.forEach(([k, n], i) => items.push({ icon: k, label: got[i] >= n ? '' : `${got[i]}/${n}`, done: got[i] >= n }));
+  else items.push({ icon: 'jelly', label: jellyLeft > 0 ? `還剩 ${jellyLeft}` : '', done: jellyLeft <= 0 });
+  const top = b.y + sm + 14, h = b.h - sm - 20;
+  const col = land && items.length > 1;
+  items.forEach((it, i) => {
+    const n = items.length;
+    const cx = col ? b.x + 18 : b.x + 10 + (b.w - 20) * i / n, cw = col ? b.w - 36 : (b.w - 20) / n;
+    const cy = col ? top + h * (i + 0.5) / n : top + h * 0.5;
+    const ic = Math.min(col ? h / n * 0.8 : h * 0.72, 46);
+    const ix = cx + ic * 0.5 + (it.bar || col ? 0 : Math.max(0, cw / 2 - ic - 28));
+    const iy = it.bar ? cy - ic * 0.25 : cy;
+    if (it.icon === 'star') { x.fillStyle = '#000'; txt('⭐', ix, iy, ic * 0.8); }
+    else if (it.icon === 'jelly') { x.drawImage(jellySprite().c, ix - ic / 2, iy - ic / 2, ic, ic); }
+    else { const s = sprite(it.icon, ''); const d = ic * 1.3; x.drawImage(s.c, ix - d / 2, iy - d / 2, d, d); }
+    const tx = ix + ic * 0.62;
+    if (it.done) { txt('✔', tx + 14, iy, ic * 0.66, '#2e9a4c', 'center', 900); }
+    else txt(it.label, tx, iy, Math.min(26, ic * 0.58), '#4a2b3a', 'left');
+    if (it.bar) {
+      const bw = b.w - 28, by = cy + ic * 0.45;
+      x.fillStyle = '#f6e1ea'; x.beginPath(); x.roundRect(b.x + 14, by, bw, 12, 6); x.fill();
+      const f = Math.min(1, it.a / it.n);
+      if (f > 0) { const gr = x.createLinearGradient(b.x, 0, b.x + bw, 0); gr.addColorStop(0, '#ffd23f'); gr.addColorStop(1, '#ff8a3a'); x.fillStyle = gr; x.beginPath(); x.roundRect(b.x + 14, by, Math.max(12, bw * f), 12, 6); x.fill(); }
+    }
+  });
+}
+function drawInfo() {
+  const b = lay.info; box(b);
+  if (land) {
+    txt(mode === 'moves' ? '剩下' : '走了', b.x + 16, b.y + b.h / 2, 15, '#c0507e', 'left');
+    txt(`${mode === 'moves' ? Math.max(0, L.mv - moves) : moves} 步`, b.x + 58, b.y + b.h / 2, 26, mode === 'moves' && L.mv - moves <= 3 ? '#e0344a' : '#4a2b3a', 'left', 900);
+    txt(`${score} 分`, b.x + b.w - 16, b.y + b.h / 2, 22, '#ff7a00', 'right', 900);
+  } else {
+    txt(mode === 'moves' ? '剩下步數' : '走了', b.x + b.w / 2, b.y + 18, 14, '#c0507e');
+    txt(`${mode === 'moves' ? Math.max(0, L.mv - moves) : moves}`, b.x + b.w / 2, b.y + 46, 30, mode === 'moves' && L.mv - moves <= 3 ? '#e0344a' : '#4a2b3a', 'center', 900);
+    txt(`${score} 分`, b.x + b.w / 2, b.y + b.h - 16, 17, '#ff7a00', 'center', 900);
+  }
+}
+function drawBoard(x) {
+  const f = lay.frame, cs = lay.cs;
+  x.fillStyle = 'rgba(150,70,120,.18)'; x.beginPath(); x.roundRect(f.x, f.y + 6, f.w, f.h, 20); x.fill();
+  const g = x.createLinearGradient(0, f.y, 0, f.y + f.h); g.addColorStop(0, '#fff3f8'); g.addColorStop(1, '#f3e6ff');
+  x.fillStyle = g; x.strokeStyle = '#e59ac0'; x.lineWidth = 3; x.beginPath(); x.roundRect(f.x, f.y, f.w, f.h, 20); x.fill(); x.stroke();
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    const px = lay.bx + c * cs, py = lay.by + r * cs;
+    x.fillStyle = (r + c) % 2 ? 'rgba(255,255,255,.75)' : 'rgba(236,214,245,.6)';
+    x.beginPath(); x.roundRect(px + 1, py + 1, cs - 2, cs - 2, cs * 0.16); x.fill();
+    if (jel[r][c] > 0) x.drawImage(jellySprite().c, px, py, cs, cs);
+  }
+}
+function drawPieces() {
+  const cs = lay.cs;
+  x.save(); x.beginPath(); x.rect(lay.bx - 4, lay.by - 2, lay.B + 8, lay.B + 6); x.clip();
+  const hl = (hint && !hint.gentle && Math.floor(hint.t * 3) % 2 === 0);
+  if (hint) for (const q of [hint.a, hint.b]) {
+    x.fillStyle = hint.gentle ? 'rgba(255,214,90,.28)' : hl ? 'rgba(255,200,40,.6)' : 'rgba(255,214,90,.35)';
+    x.beginPath(); x.roundRect(lay.bx + q.c * cs + 2, lay.by + q.r * cs + 2, cs - 4, cs - 4, cs * 0.2); x.fill();
+  }
+  if (sel) {
+    x.fillStyle = 'rgba(255,236,120,.75)'; x.strokeStyle = '#ffb31a'; x.lineWidth = 3;
+    x.beginPath(); x.roundRect(lay.bx + sel.c * cs + 2, lay.by + sel.r * cs + 2, cs - 4, cs - 4, cs * 0.2); x.fill(); x.stroke();
+  }
+  const late = [];
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    const p = grid[r][c]; if (!p) continue;
+    if (p.popping || (tween && tween.items.length <= 2 && tween.items.some(it => it.p === p))) { late.push([p, r, c]); continue; }
+    drawOne(p, r, c);
+  }
+  for (const [p, r, c] of late) drawOne(p, r, c);
+  x.restore();
+  if (kc) { x.strokeStyle = '#3d7bff'; x.lineWidth = 3; x.setLineDash([6, 5]); x.beginPath(); x.roundRect(lay.bx + kc.c * cs + 3, lay.by + kc.r * cs + 3, cs - 6, cs - 6, cs * 0.2); x.stroke(); x.setLineDash([]); }
+  if (hint && !hint.gentle) {    // arrow between the two hint pieces
+    const ax = cellX(hint.a.c), ay = cellY(hint.a.r), bx = cellX(hint.b.c), by = cellY(hint.b.r), wob = Math.sin(t * 8) * cs * 0.06;
+    const mx = (ax + bx) / 2, my = (ay + by) / 2, hz = hint.a.r === hint.b.r;
+    x.save(); x.translate(mx + (hz ? 0 : wob), my + (hz ? wob : 0)); if (!hz) x.rotate(Math.PI / 2);
+    x.fillStyle = '#fff'; x.strokeStyle = '#ff8a00'; x.lineWidth = 3;
+    const s = cs * 0.26;
+    x.beginPath(); x.moveTo(-s * 1.4, 0); x.lineTo(-s * 0.6, -s * 0.7); x.lineTo(-s * 0.6, -s * 0.28); x.lineTo(s * 0.6, -s * 0.28); x.lineTo(s * 0.6, -s * 0.7); x.lineTo(s * 1.4, 0); x.lineTo(s * 0.6, s * 0.7); x.lineTo(s * 0.6, s * 0.28); x.lineTo(-s * 0.6, s * 0.28); x.lineTo(-s * 0.6, s * 0.7); x.closePath();
+    x.fill(); x.stroke(); x.restore();
+  }
+}
+function drawOne(p, r, c) {
+  const cs = lay.cs, s = sprite(p.k, p.sp);
+  let px = lay.bx + (p.x + 0.5) * cs, py = lay.by + (p.y + 0.5) * cs, sx = 1, sy = 1, rot = 0, a = 1;
+  if (p.popping) { const k = popT / POP; const sc = k < 0.3 ? 1 + k / 0.3 * 0.22 : 1.22 * (1 - (k - 0.3) / 0.7); sx = sy = Math.max(0.01, sc); a = Math.min(1, 1.6 - k * 1.4); }
+  if (p.land > 0) { const q = p.land / 0.2; sx *= 1 + 0.16 * Math.sin(q * Math.PI); sy *= 1 - 0.16 * Math.sin(q * Math.PI); py += cs * 0.06 * Math.sin(q * Math.PI); }
+  if (sel && sel.r === r && sel.c === c && phase === 'idle') { const b = Math.sin(t * 9); sx *= 1.08 + b * 0.03; sy *= 1.08 - b * 0.03; py -= cs * 0.04; }
+  if (hint && ((hint.a.r === r && hint.a.c === c) || (hint.b.r === r && hint.b.c === c))) rot = Math.sin(t * (hint.gentle ? 6 : 12)) * (hint.gentle ? 0.12 : 0.2);
+  if (p.sp === 'star') rot += Math.sin(t * 2 + p.id) * 0.15;
+  if (p.sp === 'bomb') { const b = 1 + Math.sin(t * 5 + p.id) * 0.04; sx *= b; sy *= b; }
+  x.save(); x.globalAlpha = a; x.translate(px, py); if (rot) x.rotate(rot); x.scale(sx, sy);
+  x.drawImage(s.c, -s.size / 2, -s.size / 2, s.size, s.size);
+  x.restore();
+  if (p.flash > 0) {
+    const k = 1 - p.flash / 0.5;
+    x.strokeStyle = `rgba(255,255,255,${1 - k})`; x.lineWidth = 4; x.beginPath(); x.arc(px, py, cs * (0.35 + k * 0.5), 0, 7); x.stroke();
+  }
+}
+function drawEffects() {
+  const cs = lay.cs;
+  for (const e of effects) {
+    const k = e.t / 0.55, a = 1 - k;
+    if (e.type === 'beam') {
+      x.save(); x.globalAlpha = a;
+      const w = cs * (0.85 - k * 0.5);
+      const gr = e.h ? x.createLinearGradient(0, cellY(e.i) - w / 2, 0, cellY(e.i) + w / 2) : x.createLinearGradient(cellX(e.i) - w / 2, 0, cellX(e.i) + w / 2, 0);
+      gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.5, '#fff'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+      x.fillStyle = gr;
+      if (e.h) x.fillRect(lay.bx, cellY(e.i) - w / 2, lay.B, w); else x.fillRect(cellX(e.i) - w / 2, lay.by, w, lay.B);
+      x.fillStyle = e.col; x.globalAlpha = a * 0.5;
+      if (e.h) x.fillRect(lay.bx, cellY(e.i) - 3, lay.B, 6); else x.fillRect(cellX(e.i) - 3, lay.by, 6, lay.B);
+      x.restore();
+    } else if (e.type === 'ring') {
+      x.strokeStyle = `rgba(255,190,60,${a})`; x.lineWidth = 8 * a + 1;
+      x.beginPath(); x.arc(e.x, e.y, cs * (e.big ? 6 : 1.6) * (0.3 + k), 0, 7); x.stroke();
+      x.fillStyle = `rgba(255,255,255,${a * 0.5})`; x.beginPath(); x.arc(e.x, e.y, cs * (e.big ? 5 : 1.4) * (0.3 + k * 0.8), 0, 7); x.fill();
+    } else if (e.type === 'zap') {
+      x.strokeStyle = `rgba(255,255,255,${a})`; x.lineWidth = 4; x.lineCap = 'round';
+      for (const [tx, ty] of e.to) { x.beginPath(); x.moveTo(e.x, e.y); x.lineTo(e.x + (tx - e.x) * Math.min(1, k * 3), e.y + (ty - e.y) * Math.min(1, k * 3)); x.stroke(); }
+      x.strokeStyle = `rgba(255,120,200,${a * 0.6})`; x.lineWidth = 2;
+      for (const [tx, ty] of e.to) { x.beginPath(); x.moveTo(e.x, e.y); x.lineTo(e.x + (tx - e.x) * Math.min(1, k * 3), e.y + (ty - e.y) * Math.min(1, k * 3)); x.stroke(); }
+    }
+  }
+}
+function drawFloats() {
+  for (const f of floats) {
+    const sz = Math.round(lay.cs * f.size * (f.big ? Math.min(1.25, 0.8 + (1.3 - f.life) * 2) : 1));
+    x.globalAlpha = Math.min(1, f.life * 2.5);
+    x.font = `900 ${sz}px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.lineWidth = Math.max(3, sz * 0.18); x.lineJoin = 'round'; x.strokeStyle = '#fff'; x.strokeText(f.text, f.x, f.y);
+    x.fillStyle = f.col; x.fillText(f.text, f.x, f.y);
+  }
+  x.globalAlpha = 1;
+}
+function drawPuPu() {
+  const p = lay.pu, sq = squashT > 0 ? Math.sin(squashT * 18) * 0.12 : Math.sin(t * 2.4) * 0.03;
+  const look = sel ? (cellX(sel.c) - p.x) / 300 : Math.sin(t * 0.7) * 0.4;
+  MG.puPu(x, p.x, p.y, p.r, idleT > 14 && state === 'play' ? 'sleep' : mood, sq, { look: Math.max(-1, Math.min(1, look)), arms: mood === 'wow' || mood === 'love' ? 'up' : true });
+  if (say && lay.bubble.w > 50) {
+    const b = lay.bubble, sz = Math.min(22, Math.max(15, lay.pu.r * 0.42));
+    x.font = `800 ${sz}px ${FONT}`;
+    const w = Math.min(b.w, x.measureText(say.text).width + 26), h = sz + 18, bx = b.x, by = b.y;
+    x.globalAlpha = Math.min(1, say.life * 3);
+    x.fillStyle = '#fff'; x.strokeStyle = '#e59ac0'; x.lineWidth = 2.5;
+    x.beginPath(); x.roundRect(bx, by, w, h, 14); x.fill(); x.stroke();
+    x.beginPath(); x.moveTo(bx + 6, by + h - 12); x.lineTo(bx - 10, by + h + 4); x.lineTo(bx + 18, by + h - 2); x.closePath(); x.fill();
+    x.beginPath(); x.moveTo(bx + 6, by + h - 12); x.lineTo(bx - 10, by + h + 4); x.lineTo(bx + 18, by + h - 2); x.stroke();
+    x.fillStyle = '#fff'; x.fillRect(bx + 4, by + h - 13, 16, 10);
+    txt(say.text, bx + w / 2, by + h / 2 + 1, sz, '#c0507e');
+    x.globalAlpha = 1;
+  }
+}
+function drawHintBtn() {
+  const b = lay.hint, busy = phase !== 'idle' || state !== 'play', press = hint && !hint.gentle;
+  x.fillStyle = busy ? '#e6d3a0' : '#e0a400'; x.beginPath(); x.roundRect(b.x, b.y + 5, b.w, b.h, 20); x.fill();
+  const g = x.createLinearGradient(0, b.y, 0, b.y + b.h); g.addColorStop(0, busy ? '#fff3cc' : '#fff1a8'); g.addColorStop(1, busy ? '#f2e0b0' : '#ffcf3a');
+  x.fillStyle = g; x.strokeStyle = busy ? '#d9c08a' : '#c98a00'; x.lineWidth = 3;
+  x.beginPath(); x.roundRect(b.x, b.y + (press ? 3 : 0), b.w, b.h, 20); x.fill(); x.stroke();
+  const sz = Math.min(30, b.h * 0.38);
+  x.fillStyle = '#000'; x.font = `${sz}px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText('💡', b.x + b.w / 2 - sz * 1.15, b.y + b.h / 2 + (press ? 3 : 0));
+  txt('提示', b.x + b.w / 2 + sz * 0.55, b.y + b.h / 2 + (press ? 3 : 0) + 1, sz, busy ? '#a89770' : '#6a4300', 'center', 900);
+}
+function backdrop(x) {
+  const W = cv.lw, H = cv.lh;
+  const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#ffe6f1'); g.addColorStop(1, '#e2f2ff');
+  x.fillStyle = g; x.fillRect(0, 0, W, H);
+  for (let i = 0; i < 12; i++) {
+    const bx = (i * 113 + 40) % W, by = (i * 71 + 30) % H;
+    x.fillStyle = ['rgba(255,255,255,.55)', 'rgba(255,200,225,.4)', 'rgba(200,225,255,.45)'][i % 3];
+    x.beginPath(); x.arc(bx, by, 6 + (i % 4) * 5, 0, 7); x.fill();
+  }
+}
+// the background + empty board + jelly only change now and then, so they live on their own canvas
+let bgLayer = null, bgDirty = true;
+function draw() {
+  if (!lay) { backdrop(x); return; }
+  const px = cv._mgScale || 1;
+  if (!bgLayer) bgLayer = document.createElement('canvas');
+  if (bgLayer.width !== cv.width || bgLayer.height !== cv.height) { bgLayer.width = cv.width; bgLayer.height = cv.height; bgDirty = true; }
+  if (bgDirty) { const g = bgLayer.getContext('2d'); g.setTransform(px, 0, 0, px, 0, 0); backdrop(g); drawBoard(g); bgDirty = false; }
+  x.drawImage(bgLayer, 0, 0, cv.lw, cv.lh);
+  drawGoal(); drawInfo(); drawPieces(); drawEffects();
+  MG.fx.draw(x); drawFloats(); drawPuPu(); drawHintBtn();
+}
+
+// ---------- menu ----------
+function menu() {
+  state = 'menu'; sel = null; hint = null;
+  MG.choose({
+    id: 'match3', title: '噗噗消消樂',
+    html: `<p>把<b>相鄰的兩顆糖果</b>交換，三個以上一樣的連成一排就會消掉！可以點一顆再點旁邊那顆，也可以用手指直接往旁邊滑。</p>` +
+      `<p>一次消 4 個變<b>條紋糖</b>（消掉一整排），排成 L 或 T 變<b>包裝糖炸彈</b>，一次消 5 個變<b>🌈 彩虹星星</b>（跟誰換就消掉那個顏色全部）！</p>`,
+    modes: [{ id: 'relax', label: '🐢 慢慢玩', sub: '步數不限，達成目標就過關' }, { id: 'moves', label: '🎯 步數挑戰', sub: '步數有限，用完可以再試' }],
+    levels: { count: LEVELS.length, max: LEVELS.length, label: n => `${n} ${goalIcon(LEVELS[n - 1])}` },
+    keys: '點一下再點旁邊，或用手指滑　<kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd> 移動、<kbd>Enter</kbd> 選取、<kbd>H</kbd> 提示',
+    playing: () => state === 'play',
+    start: (m, lv) => { mode = m; startLevel(lv); },
+  });
+}
+setupLevel(1); menu();
+
+// small hook for automated tests (read-only snapshot of the board)
+window.M3T = {
+  get state() { return state; }, get phase() { return phase; }, get level() { return level; }, get mode() { return mode; },
+  get moves() { return moves; }, get score() { return score; }, get combo() { return combo; }, get busy() { return phase !== 'idle' || !!tween; },
+  board: () => grid.map(row => row.map(p => p ? [p.k, p.sp] : null)),
+  jelly: () => jel.map(row => row.slice()), hint: () => hint && { a: hint.a, b: hint.b, gentle: hint.gentle }, sel: () => sel,
+  goalDone, findMoves: () => findMoves().length,
+  // client (CSS px) coords of a cell centre / the hint button
+  at(r, c) { return toClient(cellX(c), cellY(r)); }, hintBtn() { return toClient(lay.hint.x + lay.hint.w / 2, lay.hint.y + lay.hint.h / 2); },
+};
+function toClient(lx, ly) {
+  const rc = cv.getBoundingClientRect(), B = 3;
+  return { x: rc.left + B + lx * (rc.width - 2 * B) / cv.lw, y: rc.top + B + ly * (rc.height - 2 * B) / cv.lh };
+}
+
+MG.loop(dt => {
+  if (state === 'play' || state === 'over') update(dt); else { t += dt; MG.fx.step(dt); }
+  draw();
+});
+</script>
+</body>
+</html>
