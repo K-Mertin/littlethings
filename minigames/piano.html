@@ -368,6 +368,52 @@ function drawBlack(g, k, s) {
   if (s.flash) { g.fillStyle = `rgba(200,190,210,${0.3 * s.flash})`; rr(g, k.x, k.y + dn, k.w, k.h - 2, [0, 0, r, r]); g.fill(); }
 }
 const REST = { down: false, glow: 0, flash: 0 };
+// small keycap-style letter on each piano key that has a computer-keyboard key.
+// White keys: in the strip between the bottom of the black keys and the second name above the do-re-mi circle.
+// Black keys: a small light label near the bottom of the key.
+function capBox(k) {
+  const hw = k.white;
+  if (hw) {
+    // widest column of the white key that the black keys don't cover, near the top of the key
+    let segs = [[k.x + 3, k.x + k.w - 3]], blackBottom = k.y;
+    for (const b of keys) if (!b.white && b.x < k.x + k.w && b.x + b.w > k.x) {
+      blackBottom = Math.max(blackBottom, b.y + b.h);
+      segs = segs.flatMap(([l, r]) => [[l, Math.min(r, b.x - 2)], [Math.max(l, b.x + b.w + 3), r]]).filter(([l, r]) => r - l > 4);
+    }
+    if (!segs.length) return null;
+    const [l, r] = segs.reduce((m, q) => q[1] - q[0] > m[1] - m[0] ? q : m);
+    const sz = Math.min(24, (r - l) - 4, k.w * 0.5, (blackBottom - k.y) * 0.3);
+    if (sz < 11) return null;
+    return { cx: (l + r) / 2, cy: k.y + 10 + sz / 2, sz };
+  }
+  const sz = Math.min(18, k.w * 0.62, k.h * 0.2);
+  return { cx: k.x + k.w / 2, cy: k.y + k.h - 8 - sz / 2, sz };
+}
+function capBoxes() {   // one size for all white caps (and one for black) so the row looks even
+  const out = keys.map(k => CODE_OF.has(k.m) ? [k, capBox(k)] : null).filter(q => q && q[1]);
+  for (const wh of [true, false]) { const g = out.filter(q => q[0].white === wh); const m = Math.min(...g.map(q => q[1].sz)); for (const q of g) q[1].sz = m; }
+  return out;
+}
+function drawKeyCaps() {
+  for (const [k, b] of capBoxes()) {
+    const code = CODE_OF.get(k.m);
+    const label = CAP_TXT(code), on = kbd.has(code), fl = capFlash.get(k.m) || 0;
+    const dn = (held.get(k.m) || 0) > 0 || (lit.get(k.m) || 0) > 0 ? (k.white ? 4 : 3) : 0;
+    const sz = b.sz * (1 + 0.25 * fl), fs = sz * 0.68, cy = b.cy + dn;
+    x.font = `900 ${fs}px ${FONT}`;
+    const bw = Math.max(sz, x.measureText(label).width + sz * 0.5), bh = sz;
+    const x0 = b.cx - bw / 2, y0 = cy - bh / 2, rad = Math.min(6, bh * 0.28);
+    if (k.white) {
+      x.fillStyle = on || fl > 0.05 ? '#ffd23f' : '#e9e2f0'; rr(x, x0, y0 + 2, bw, bh, rad); x.fill();      // keycap side
+      x.fillStyle = on || fl > 0.05 ? '#fff6c4' : '#ffffff'; rr(x, x0, y0, bw, bh - 1, rad); x.fill();
+      x.strokeStyle = on || fl > 0.05 ? '#d08a00' : 'rgba(90,60,110,.45)'; x.lineWidth = 1.3; x.stroke();
+      txt(label, b.cx, cy, fs, '#4a3a5a', 'center', 900, null, 4, x);
+    } else {
+      x.fillStyle = on || fl > 0.05 ? '#ffd23f' : 'rgba(255,255,255,.88)'; rr(x, x0, y0, bw, bh, rad); x.fill();
+      txt(label, b.cx, cy + 0.5, fs, '#2b2641', 'center', 900, null, 4, x);
+    }
+  }
+}
 
 // ---------- static layer: background, piano body and the keys at rest ----------
 function paintBg(g) {
@@ -709,7 +755,12 @@ function ptrUp(e) { const cur = ptr.get(e.pointerId); if (cur == null) return; p
 cv.addEventListener('pointerup', ptrUp);
 cv.addEventListener('pointercancel', ptrUp);
 cv.addEventListener('lostpointercapture', ptrUp);
+// keycap letters drawn on the piano keys (computer keyboard → piano key)
+const CAP_TXT = c => c.startsWith('Key') ? c.slice(3) : c === 'Semicolon' ? ';' : c === 'Quote' ? "'" : c;
+let showKeyCaps = !!(window.matchMedia && matchMedia('(hover: hover) and (pointer: fine)').matches);
+const capFlash = new Map();
 const KEYMAP = { KeyA: 60, KeyW: 61, KeyS: 62, KeyE: 63, KeyD: 64, KeyF: 65, KeyT: 66, KeyG: 67, KeyY: 68, KeyH: 69, KeyU: 70, KeyJ: 71, KeyK: 72, KeyO: 73, KeyL: 74, KeyP: 75, Semicolon: 76, Quote: 77 };
+const CODE_OF = new Map(Object.entries(KEYMAP).map(([c, m]) => [m, c]));
 addEventListener('keydown', e => {
   const m = KEYMAP[e.code];
   if (m == null || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -718,6 +769,8 @@ addEventListener('keydown', e => {
   if (e.repeat || kbd.has(e.code)) return;
   unlockAudio();
   kbd.set(e.code, m); hold(m); noteOn(m);
+  if (!showKeyCaps) showKeyCaps = true;            // a keyboard is clearly attached: show the key letters from now on
+  capFlash.set(m, 1);
 });
 addEventListener('keyup', e => { const m = kbd.get(e.code); if (m == null) return; kbd.delete(e.code); release(m); });
 addEventListener('blur', releaseAll);
@@ -737,6 +790,7 @@ function drawKeys() {
   let any = false;
   for (const k of keys) if (k.white) { const s = keyState(k); if (s) { drawWhite(x, k, s); any = true; } }
   for (const k of keys) if (!k.white) { const s = keyState(k); if (s || any) drawBlack(x, k, s || REST); }
+  if (showKeyCaps) drawKeyCaps();
   // a little bouncing finger when the child has been waiting a while
   if (mode === 'learn' && state === 'play' && !demo && pace === 'wait' && idleT > 4 && nIdx < notes.length) {
     const k = keyBy.get(notes[nIdx].m);
@@ -909,6 +963,7 @@ function update(dt) {
   if (floats.length && floats[0].life <= 0) floats = floats.filter(f => f.life > 0);
   hopT += dt; pressT = Math.max(0, pressT - dt); moodT = Math.max(0, moodT - dt);
   if (say) { say.life -= dt; if (say.life <= 0) say = null; }
+  for (const [m, v] of capFlash) { const nv = v - dt * 4; if (nv <= 0) capFlash.delete(m); else capFlash.set(m, nv); }
   if (state === 'play' && mode === 'learn') updateLearn(dt);
   if (pb) updatePb();
   MG.fx.step(dt);
@@ -933,7 +988,7 @@ function menu() {
     modesTitle: '想怎麼玩？',
     modes: [{ id: 'free', label: '🎨 自由彈', sub: '換樂器、錄音、播放' }, { id: 'learn', label: '🎶 跟著彈', sub: '跟著發光的鍵學兒歌' }],
     levels: { count: SONGS.length, max: SONGS.length, label: n => SONGS[n - 1].nm + (starMap[SONGS[n - 1].id] ? ' ' + '⭐'.repeat(starMap[SONGS[n - 1].id]) : '') },
-    keys: '用手指按琴鍵，好幾根手指可以一起按，滑過去也會響　電腦：<kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><kbd>F</kbd><kbd>G</kbd><kbd>H</kbd><kbd>J</kbd><kbd>K</kbd> 白鍵、<kbd>W</kbd><kbd>E</kbd><kbd>T</kbd><kbd>Y</kbd><kbd>U</kbd> 黑鍵',
+    keys: '用手指按琴鍵，好幾根手指可以一起按，滑過去也會響　電腦：<kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><kbd>F</kbd><kbd>G</kbd><kbd>H</kbd><kbd>J</kbd><kbd>K</kbd> 白鍵、<kbd>W</kbd><kbd>E</kbd><kbd>T</kbd><kbd>Y</kbd><kbd>U</kbd> 黑鍵，高音 <kbd>K</kbd><kbd>L</kbd><kbd>;</kbd><kbd>\'</kbd>、<kbd>O</kbd><kbd>P</kbd>（琴鍵上會標出對應的字母）',
     playing: () => state === 'play',
     start: (m, lv, pk) => {
       pace = pk && pk.pace === 'beat' ? 'beat' : 'wait';
@@ -976,6 +1031,7 @@ window.PNT = {
   log: () => noteLog.map(e => ({ ...e })),
   recNotes: () => rec.notes.map(r => r[1]), recTimes: () => rec.notes.map(r => r[0]), pbLog: () => pbLog.slice(),
   stars: () => MG.store.get('piano.stars', {}),
+  get keyCaps() { return showKeyCaps; }, showKeyCaps: v => { showKeyCaps = !!v; }, capBoxes: () => { const bx = new Map(capBoxes().map(([k, b]) => [k.m, b])); return keys.filter(k => CODE_OF.has(k.m)).map(k => ({ m: k.m, white: k.white, label: CAP_TXT(CODE_OF.get(k.m)), box: bx.get(k.m) || null, key: { x: k.x, y: k.y, w: k.w, h: k.h } })); },
   floats: () => floats.length, floatTexts: () => floats.filter(f => f.kind === 'text').map(f => f.ch), get say() { return say && say.text; }, get streak() { return streak; },
 };
 
