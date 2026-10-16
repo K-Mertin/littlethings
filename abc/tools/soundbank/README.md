@@ -1,16 +1,12 @@
 # Sound bank: phonics letter sounds
 
-All letter sounds (⟦a⟧ … ⟦z⟧, ⟦sh⟧ ⟦ch⟧ ⟦th⟧, and the blends ⟦bl⟧ ⟦fl⟧ ⟦st⟧ ⟦sn⟧ ⟦fr⟧ ⟦tr⟧) come from one source:
-the IPA recordings on Wikimedia Commons (CC BY-SA 3.0). See `wikimedia/CREDITS.md`.
+The letter sounds (⟦a⟧ … ⟦z⟧, ⟦sh⟧ ⟦ch⟧ ⟦th⟧, and the blends ⟦bl⟧ ⟦fl⟧ ⟦st⟧ ⟦sn⟧ ⟦fr⟧ ⟦tr⟧) were recorded by the family
+with the recorder page (one take per sound). The original takes are in `recorded/*.webm`.
 
-1. The original recordings are in `wikimedia/*.ogg` (their metadata in `wikimedia/meta.json`).
-2. Convert them to 22050 Hz mono WAV: `for f in wikimedia/*.ogg; do ffmpeg -i $f -ac 1 -ar 22050 /tmp/snd/$(basename ${f%.ogg}).wav; done`
-3. Cut: `python3 cut-wikimedia.py /tmp/snd /tmp/snd/out` (needs numpy)
-4. Each `<key>.wav` becomes `audio/<id>.m4a`, where id = fnv1a32("pip|⟦key⟧").
+To rebuild the game clips:
+1. `mkdir -p /tmp/wav /tmp/out; for f in recorded/*.webm; do ffmpeg -i $f -ac 1 -ar 44100 -af highpass=f=70 /tmp/wav/$(basename ${f%.webm}).wav; done`
+2. `python3 trim-recorded.py /tmp/wav /tmp/out` (needs numpy)
+3. Each `/tmp/out/<key>.wav` becomes `audio/<id>.m4a`, where id = fnv1a32("pip|⟦key⟧"), e.g.
+   `ffmpeg -i /tmp/out/b.wav -ar 24000 -c:a aac -b:a 64k -ac 1 audio/<id>.m4a`
 
-How each sound is cut:
-- vowels: the steady middle of the held vowel
-- s, sh, z, h, n: the part before the vowel in [sa], held a little longer
-- f, v, th, m: the part between the vowels in [afa]; l: the quietest part of [ala]
-- r, w, y, ch, j: the onset plus a short glide into the vowel
-- b, d, g, k, p, t: the burst plus 70–80 ms, faded out fast, so there is no "a" after it
+To re-record one sound, record it again and repeat the steps for that key.
