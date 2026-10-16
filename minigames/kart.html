@@ -225,35 +225,64 @@ function setupRace() {
 }
 
 // =====================================================================
-// input: big ◀ ▶ buttons (or anywhere on that half), keys ← → / A D; multi-touch for two players
+// input. Default 🕹️「往哪推就往哪開」: a joystick (or a finger dragged on the road, or the arrow keys)
+// gives a direction ON THE SCREEN and the kart turns to drive that way. Option ◀▶ 左右轉: old turn-left / turn-right buttons.
+// Two players: every finger belongs to the half it lands in (the turned top half in portrait uses its own up/down).
 // =====================================================================
-const keys = [{ l: false, r: false }, { l: false, r: false }];
-const ptrs = new Map();
-// a finger belongs to the view it lands in; its half of that view (as that player sees it) picks ◀ or ▶
-function zoneAt(pt) { const v = viewAt(pt.x, pt.y), L = screenToLocal(v, pt.x, pt.y); return { p: v.hi, d: L.x < v.w / 2 ? -1 : 1 }; }
+let steerMode = 'stick';
+const keys = [{ l: false, r: false, u: false, dn: false }, { l: false, r: false, u: false, dn: false }];
+const ptrs = new Map(), lastAim = [null, null];
 const racing = () => state === 'count' || state === 'play' || state === 'done';
+function ptrInfo(pt, old) {
+  const v = viewAt(pt.x, pt.y), L = screenToLocal(v, pt.x, pt.y);
+  if (old) { const ov = views.find(q => q.hi === old.p) || v, OL = screenToLocal(ov, pt.x, pt.y); return { ...old, lx: OL.x, ly: OL.y, d: OL.x < ov.w / 2 ? -1 : 1 }; }
+  const st = v.stick, kind = steerMode === 'lr' ? 'lr' : Math.hypot(L.x - st.x, L.y - st.y) < st.r * 1.75 ? 'stick' : 'follow';
+  return { p: v.hi, kind, lx: L.x, ly: L.y, d: L.x < v.w / 2 ? -1 : 1, t0: performance.now() };
+}
 stageEl.addEventListener('pointerdown', e => {
   if (!racing() || MG.panelOpen()) return;
   e.preventDefault(); ea();
-  ptrs.set(e.pointerId, zoneAt(cv.logical(e)));
+  ptrs.set(e.pointerId, ptrInfo(cv.logical(e)));
   try { stageEl.setPointerCapture(e.pointerId); } catch {}
 });
-stageEl.addEventListener('pointermove', e => { if (ptrs.has(e.pointerId)) { e.preventDefault(); ptrs.set(e.pointerId, zoneAt(cv.logical(e))); } });
+stageEl.addEventListener('pointermove', e => { const o = ptrs.get(e.pointerId); if (o) { e.preventDefault(); ptrs.set(e.pointerId, ptrInfo(cv.logical(e), o)); } });
 const ptrEnd = e => ptrs.delete(e.pointerId);
 stageEl.addEventListener('pointerup', ptrEnd); stageEl.addEventListener('pointercancel', ptrEnd); stageEl.addEventListener('lostpointercapture', ptrEnd);
 document.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('touchmove', e => { if (racing() && !e.target.closest('.mg-over')) e.preventDefault(); }, { passive: false });
-const KEYMAP = { a: [0, 'l'], A: [0, 'l'], d: [0, 'r'], D: [0, 'r'], ArrowLeft: [1, 'l'], ArrowRight: [1, 'r'] };
+const KEYMAP = { a: [0, 'l'], A: [0, 'l'], d: [0, 'r'], D: [0, 'r'], w: [0, 'u'], W: [0, 'u'], s: [0, 'dn'], S: [0, 'dn'], ArrowLeft: [1, 'l'], ArrowRight: [1, 'r'], ArrowUp: [1, 'u'], ArrowDown: [1, 'dn'] };
 function keyOf(e) { const m = KEYMAP[e.key]; if (!m) return null; return mode === 'pvp' ? m : [0, m[1]]; }
 addEventListener('keydown', e => { const m = keyOf(e); if (!m || MG.panelOpen()) return; e.preventDefault(); ea(); keys[m[0]][m[1]] = true; });
-addEventListener('keyup', e => { const m = keyOf(e); if (!m) { if (KEYMAP[e.key]) { keys[0][KEYMAP[e.key][1]] = false; keys[1][KEYMAP[e.key][1]] = false; } return; } keys[m[0]][m[1]] = false; });
-addEventListener('blur', () => { for (const k of keys) k.l = k.r = false; ptrs.clear(); });
+addEventListener('keyup', e => { const m = KEYMAP[e.key]; if (!m) return; keys[0][m[1]] = false; keys[1][m[1]] = false; });
+addEventListener('blur', () => { for (const k of keys) k.l = k.r = k.u = k.dn = false; ptrs.clear(); });
+// ◀▶ mode: which buttons are held
 function held(p) {
   let l = keys[p].l, r = keys[p].r;
-  for (const z of ptrs.values()) if (z.p === p) { if (z.d < 0) l = true; else r = true; }
+  for (const z of ptrs.values()) if (z.p === p && z.kind === 'lr') { if (z.d < 0) l = true; else r = true; }
   return { l, r };
 }
 const userSteer = p => { const h = held(p); return (h.r ? 1 : 0) - (h.l ? 1 : 0); };
+// 🕹️ mode: the wanted direction in the player's own view (radians, 0 = right, -π/2 = up), or null for "no input"
+function aimOf(p) {
+  const v = views.find(q => q.hi === p); if (!v) return null;
+  let stick = null, follow = null;
+  for (const z of ptrs.values()) if (z.p === p) { if (z.kind === 'stick') stick = z; else if (z.kind === 'follow' && (!follow || z.t0 > follow.t0)) follow = z; }
+  if (stick) {
+    const dx = stick.lx - v.stick.x, dy = stick.ly - v.stick.y;
+    if (Math.hypot(dx, dy) < v.stick.r * 0.18) return lastAim[p];
+    return (lastAim[p] = Math.atan2(dy, dx));
+  }
+  if (follow && humans[p]) {
+    const c = humans[p], L = toLocal(v, c.x, c.y), dx = follow.lx - L.x, dy = follow.ly - L.y;
+    if (Math.hypot(dx, dy) < 30) return lastAim[p];
+    return (lastAim[p] = Math.atan2(dy, dx));
+  }
+  const k = keys[p], kx = (k.r ? 1 : 0) - (k.l ? 1 : 0), ky = (k.dn ? 1 : 0) - (k.u ? 1 : 0);
+  if (kx || ky) return (lastAim[p] = Math.atan2(ky, kx));
+  lastAim[p] = null; return null;
+}
+// screen direction in a view → world heading (the cameras never turn; the 2P half in portrait is just upside down)
+const aimToWorld = (v, a) => a + (v.flip ? Math.PI : 0);
 
 // =====================================================================
 // sound: soft engine hum (its own little synth) + countdown beeps; everything else uses MG.sfx
@@ -307,7 +336,33 @@ const leadHuman = () => humans.reduce((a, b) => (b.dist > a.dist ? b : a), human
 function think(c, dt) {
   const T = trk;
   if (c.human) {
-    c.user = c.finished || autopilot ? 0 : userSteer(c.kind === 'p2' ? 1 : 0);
+    const pi = c.kind === 'p2' ? 1 : 0;
+    if (steerMode === 'stick') {
+      const aim = c.finished || autopilot ? null : aimOf(pi);
+      c.aim = aim == null ? null : aimToWorld(views.find(q => q.hi === pi), aim);
+      if (autopilot || c.finished || (mode === 'slow' && state === 'done')) { c.want = aimSteer(c, 0); c.spd = c.finished ? 0.8 : 1; c.user = 0; }
+      else {
+        let phi = c.aim;
+        if (phi == null) c.want = assist ? aimSteer(c, clamp(c.d, -HW * 0.45, HW * 0.45) * 0.8) * 0.85 : 0;
+        else {
+          if (assist) {   // don't let the wanted direction carry the kart off the road: bend it toward the road as it nears an edge
+            const i = c.seg, tau = Math.atan2(T.TY[i], T.TX[i]), near = Math.cos(phi - tau) >= 0 ? tau : tau + Math.PI, dev = wrapA(phi - near);
+            const lat = c.vx * T.NX[i] + c.vy * T.NY[i], dp = c.d + lat * 0.45, side = Math.sin(phi - tau);
+            if (side * dp > 0) phi = near + dev * clamp(1 - (Math.abs(dp) / HW - 0.3) / 0.5, 0, 1);
+          }
+          const delta = wrapA(phi - c.a);
+          // a big turn-around: swing toward the middle of the road (not into the fence) and slow down a bit
+          if (Math.abs(delta) > 2 && Math.abs(c.d) > 12) c.want = -Math.sign(c.d);
+          else c.want = clamp(delta * 3, -1, 1);
+          c.turnSlow = 1 - 0.4 * clamp((Math.abs(delta) - 0.7) / 1.4, 0, 1);
+        }
+        c.user = c.aim != null && Math.abs(c.want) > 0.5 ? Math.sign(c.want) : 0;
+      }
+      if (c.aim == null) c.turnSlow = 1;
+      if (!c.finished) c.spd = (1 + Math.min(c.stars, 8) * 0.01) * (c.turnSlow || 1);
+      return;
+    }
+    c.user = c.finished || autopilot ? 0 : userSteer(pi); c.aim = null;
     if (autopilot || c.finished || (mode === 'slow' && state === 'done')) { c.want = aimSteer(c, 0); c.spd = c.finished ? 0.8 : 1; }
     else if (assist) {
       const as = aimSteer(c, clamp(c.d, -HW * 0.45, HW * 0.45) * 0.8), u = c.user;
@@ -346,7 +401,7 @@ function physics(c, dt) {
   const air = c.hopT > 0;
   c.a = wrapA(c.a + c.steer * TURN * clamp(vf / 140, -1, 1) * dt * (air ? 0.45 : 1));
   let vt = VMAX * c.spd;
-  c.off = Math.abs(c.d) > HW + 3 && !air;
+  c.off = Math.abs(c.d) > HW + 3 && !air && !noWalls;
   if (c.off) vt *= th.off || 0.5;
   if (c.boostT > 0) { vt = Math.max(vt, VMAX * 1.5); c.boostT -= dt; }
   if (state !== 'play' && state !== 'done') vt = 0;
@@ -359,7 +414,9 @@ function physics(c, dt) {
   c.x += c.vx * dt; c.y += c.vy * dt;
   if (c.hopT > 0) { c.hopT -= dt; if (c.hopT <= 0 && c.human) { MG.fx.burst(c.x, c.y + 8, { n: 8, colors: ['#fff', T.th.tex], speed: 90, up: 0, grav: 0, size: 4, life: 0.4 }); snd('place'); } }
 }
+let noWalls = false;   // test hook only: open field
 function walls(c) {
+  if (noWalls) return;
   const T = trk, lim = LIM - CAR_R;
   if (Math.abs(c.d) <= lim) return;
   const i = c.seg, sg = Math.sign(c.d), push = c.d - sg * lim;
@@ -892,10 +949,11 @@ function queueWarm() {
 }
 function clearTiles() { for (const v of tiles.values()) v.c.width = v.c.height = 0; tiles.clear(); tilePix = 0; }
 // =====================================================================
-// views & rotating cameras: the player's kart always points UP, so ◀ is always screen-left.
+// views & cameras: the world never turns (north up); the camera only slides along with the kart, a little ahead of it.
 // one view in single-player; two in 👫 (landscape: left | right, portrait: bottom 1P | top 2P turned 180° for face-to-face play)
+// (cam.a stays -π/2, i.e. no rotation — the transforms below keep the general form)
 // =====================================================================
-const ANCHOR = 0.68;   // the kart sits about 2/3 down its view, so more road is visible ahead
+const ANCHOR = 0.5, CAM_A = -Math.PI / 2;
 function viewBase(v) {
   const px = cv._mgScale || 1;
   if (v.flip) x.setTransform(-px, 0, 0, -px, px * (v.x + v.w), px * (v.y + v.h));
@@ -918,10 +976,12 @@ function camera(dt, snap = false) {
   alpha = clamp(acc / STEP, 0, 1);
   for (const v of views) {
     const c = humans[v.hi]; if (!c) continue;
-    const tx = c.px + (c.x - c.px) * alpha, ty = c.py + (c.y - c.py) * alpha, ta = lerpA(c.pa, c.a, alpha), cm = v.cam;
-    if (snap || !cm.init || dt > 0.25 || state === 'menu' || state === 'count') { cm.x = tx; cm.y = ty; cm.a = ta; cm.init = true; continue; }
-    const k = 1 - Math.exp(-14 * dt), ka = 1 - Math.exp(-5 * dt);
-    cm.x += (tx - cm.x) * k; cm.y += (ty - cm.y) * k; cm.a = wrapA(cm.a + wrapA(ta - cm.a) * ka);
+    const cx = c.px + (c.x - c.px) * alpha, cy = c.py + (c.y - c.py) * alpha, cm = v.cam;
+    const look = 0.32, tx = cx + clamp(c.vx * look, -130, 130), ty = cy + clamp(c.vy * look, -130, 130);
+    cm.a = CAM_A;
+    if (snap || !cm.init || dt > 0.25 || state === 'menu') { cm.x = tx; cm.y = ty; cm.init = true; continue; }
+    const k = 1 - Math.exp(-5 * dt);
+    cm.x += (tx - cm.x) * k; cm.y += (ty - cm.y) * k;
   }
 }
 
@@ -1042,7 +1102,6 @@ const GHOST_CAR = { hopT: 0, boostT: 0, steer: 0, mood: 'happy' };
 let alpha = 0;
 function lerpA(a, b, k) { return a + wrapA(b - a) * k; }
 function drawTiles(v) {
-  x.imageSmoothingEnabled = !fastTiles;   // slow (software-drawn) screens: sharp-pixel sampling of the turned road is much cheaper
   const q = tileQ(v.z), cs = [toWorld(v, 0, 0), toWorld(v, v.w, 0), toWorld(v, 0, v.h), toWorld(v, v.w, v.h)];
   const x0 = Math.min(...cs.map(p => p.x)), x1 = Math.max(...cs.map(p => p.x)), y0 = Math.min(...cs.map(p => p.y)), y1 = Math.max(...cs.map(p => p.y));
   const m = TS * 0.7072 * v.z;
@@ -1132,15 +1191,56 @@ function drawMini(v, me) {
   x.save(); x.translate(qx, qy); x.rotate(wrapA(me.a - v.cam.a)); x.fillStyle = DRIVERS[me.who].dot; x.strokeStyle = '#fff'; x.lineWidth = 2.5; x.lineJoin = 'round';
   x.beginPath(); x.moveTo(0, -8); x.lineTo(6.5, 6); x.lineTo(0, 3); x.lineTo(-6.5, 6); x.closePath(); x.stroke(); x.fill(); x.restore();
 }
+// the joystick: translucent base with four little arrows, a glossy knob that follows the thumb
+function drawStick(v, col) {
+  const st = v.stick, r = st.r;
+  let kx = 0, ky = 0, on = false;
+  for (const z of ptrs.values()) if (z.p === v.hi && z.kind === 'stick') { kx = z.lx - st.x; ky = z.ly - st.y; on = true; }
+  if (!on) { const k = keys[v.hi], ax = (k.r ? 1 : 0) - (k.l ? 1 : 0), ay = (k.dn ? 1 : 0) - (k.u ? 1 : 0); if (ax || ay) { const l = Math.hypot(ax, ay); kx = ax / l * r; ky = ay / l * r; on = true; } }
+  const L = Math.hypot(kx, ky), m = r * 0.6; if (L > m) { kx *= m / L; ky *= m / L; }
+  x.save();
+  x.globalAlpha = on ? 0.9 : 0.7;
+  x.fillStyle = 'rgba(0,0,0,.16)'; dot(x, st.x + 3, st.y + 6, r);
+  const gb = x.createRadialGradient(st.x, st.y - r * 0.3, r * 0.2, st.x, st.y, r); gb.addColorStop(0, 'rgba(255,255,255,.75)'); gb.addColorStop(1, 'rgba(255,255,255,.45)');
+  x.fillStyle = gb; x.strokeStyle = col[1]; x.lineWidth = 4; dot(x, st.x, st.y, r); x.stroke();
+  x.fillStyle = col[1]; x.globalAlpha *= 0.55;
+  for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2; x.save(); x.translate(st.x + Math.cos(a) * r * 0.8, st.y + Math.sin(a) * r * 0.8); x.rotate(a); x.beginPath(); x.moveTo(r * 0.1, 0); x.lineTo(-r * 0.07, -r * 0.1); x.lineTo(-r * 0.07, r * 0.1); x.closePath(); x.fill(); x.restore(); }
+  x.globalAlpha = on ? 1 : 0.85;
+  const kr = r * 0.46, cx = st.x + kx, cy = st.y + ky, gk = x.createRadialGradient(cx - kr * 0.35, cy - kr * 0.4, kr * 0.1, cx, cy, kr);
+  gk.addColorStop(0, '#ffffff'); gk.addColorStop(0.35, col[0]); gk.addColorStop(1, col[1]);
+  x.fillStyle = 'rgba(0,0,0,.2)'; dot(x, cx + 2, cy + 5, kr);
+  x.fillStyle = gk; x.strokeStyle = '#fff'; x.lineWidth = 3; dot(x, cx, cy, kr); x.stroke();
+  x.fillStyle = 'rgba(255,255,255,.7)'; ell(x, cx - kr * 0.35, cy - kr * 0.42, kr * 0.28, kr * 0.16, -0.6); x.fill();
+  x.restore();
+}
+// where the kart is heading for: a few soft chevrons in front of it (and a ring under a dragging finger)
+function drawAim(v, p, col) {
+  const a = lastAim[v.hi]; if (a == null || state !== 'play' || p.finished) return;
+  const q = toLocal(v, p.x, p.y), z = v.z;
+  for (const f of ptrs.values()) if (f.p === v.hi && f.kind === 'follow') { x.strokeStyle = 'rgba(255,255,255,.85)'; x.lineWidth = 4; x.beginPath(); x.arc(f.lx, f.ly, 22, 0, 7); x.stroke(); x.strokeStyle = col[1]; x.lineWidth = 2; x.stroke(); }
+  x.save(); x.translate(q.x, q.y); x.rotate(a);
+  for (let k = 0; k < 3; k++) {
+    const d = (44 + k * 20) * Math.max(0.8, z), ph = (t * 2 + k / 3) % 1;
+    x.globalAlpha = 0.35 + 0.45 * Math.sin(ph * Math.PI); x.fillStyle = '#fff'; x.strokeStyle = col[1]; x.lineWidth = 2; x.lineJoin = 'round';
+    x.beginPath(); x.moveTo(d + 9, 0); x.lineTo(d - 5, -11); x.lineTo(d - 1, 0); x.lineTo(d - 5, 11); x.closePath(); x.fill(); x.stroke();
+  }
+  x.restore(); x.globalAlpha = 1;
+}
 function drawHud(v, vi) {
   const p = humans[v.hi];
   if (!p || state === 'menu') return;
   const W0 = v.w, H0 = v.h, sv = clamp(Math.min(W0, H0) / 480, 0.62, 1);
-  // buttons in this view's bottom corners
+  // controls in this view's bottom corner(s)
   if (racing() && !MG.panelOpen()) {
-    const h0 = held(v.hi), col = p.kind === 'p2' ? ['#c3a2ff', '#7a52d0'] : ['#6fdc83', '#2a9447'];
-    drawButton(v.btn[0], -1, col, h0.l); drawButton(v.btn[1], 1, col, h0.r);
-    if (mode === 'pvp') txt(p.kind === 'p1' ? '1P' : '2P', W0 / 2, v.btn[0].y + v.btn[0].h / 2, 22, col[1], 'center', 900, '#fff', 6);
+    const col = p.kind === 'p2' ? ['#c3a2ff', '#7a52d0'] : ['#6fdc83', '#2a9447'];
+    if (steerMode === 'lr') {
+      const h0 = held(v.hi);
+      drawButton(v.btn[0], -1, col, h0.l); drawButton(v.btn[1], 1, col, h0.r);
+      if (mode === 'pvp') txt(p.kind === 'p1' ? '1P' : '2P', W0 / 2, v.btn[0].y + v.btn[0].h / 2, 22, col[1], 'center', 900, '#fff', 6);
+    } else {
+      drawAim(v, p, col); drawStick(v, col);
+      if (mode === 'pvp') txt(p.kind === 'p1' ? '1P' : '2P', v.stick.x, v.stick.y - v.stick.r - 16, 20, col[1], 'center', 900, '#fff', 6);
+    }
   }
   drawMini(v, p);
   // status card (top-left)
@@ -1157,16 +1257,15 @@ function drawHud(v, vi) {
     txt(`⏱ ${mmss(p.finished ? p.finishT : state === 'count' ? 0 : raceT)}`, 20, 77, 16, '#3a3f55', 'left', 900);
     if (ghost) txt(`👻 ${mmss(ghost.t)}`, wCard - 2, 77, 13, '#7a8296', 'right', 700);
   }
-  // wrong way: a big friendly U-turn arrow
+  // wrong way: a big friendly arrow pointing the way the road goes (as this player sees it)
   if (p.wrongT > 0.7 && !p.finished && state === 'play') {
-    const cx = W0 / 2, cy = H0 * 0.3, pul = 1 + Math.sin(t * 8) * 0.06;
+    const cx = W0 / 2, cy = H0 * 0.27, pul = 1 + Math.sin(t * 8) * 0.06, ang = Math.atan2(trk.TY[p.seg], trk.TX[p.seg]) + (v.flip ? Math.PI : 0);
     x.save(); x.translate(cx, cy); x.scale(sv, sv);
     x.fillStyle = 'rgba(255,255,255,.92)'; x.strokeStyle = '#ff8a1c'; x.lineWidth = 4; x.beginPath(); x.roundRect(-120, -70, 240, 172, 26); x.fill(); x.stroke();
-    x.save(); x.translate(-40, 0); x.scale(pul, pul); x.lineCap = 'round'; x.lineJoin = 'round';
-    for (const [col, w] of [['#fff', 22], ['#ff8a1c', 14]]) { x.strokeStyle = col; x.lineWidth = w; x.beginPath(); x.moveTo(26, 30); x.lineTo(26, -4); x.arc(0, -4, 26, 0, Math.PI, true); x.lineTo(-26, 14); x.stroke(); }
-    x.fillStyle = '#ff8a1c'; x.strokeStyle = '#fff'; x.lineWidth = 3; x.beginPath(); x.moveTo(-44, 10); x.lineTo(-8, 10); x.lineTo(-26, 38); x.closePath(); x.stroke(); x.fill(); x.restore();
+    x.save(); x.translate(-40, 4); x.rotate(ang); x.scale(pul, pul); x.fillStyle = '#ff8a1c'; x.strokeStyle = '#fff'; x.lineWidth = 4; x.lineJoin = 'round';
+    x.beginPath(); x.moveTo(40, 0); x.lineTo(4, -32); x.lineTo(4, -13); x.lineTo(-36, -13); x.lineTo(-36, 13); x.lineTo(4, 13); x.lineTo(4, 32); x.closePath(); x.fill(); x.stroke(); x.restore();
     MG.puPu(x, 58, 10, 26, 'wow', Math.sin(t * 10) * 0.05, { arms: 'up' });
-    txt('Turn around! ↩️', 0, 74, 19, '#ff6a1c', 'center', 900, '#fff', 5);
+    txt('This way! ↩️', 0, 74, 19, '#ff6a1c', 'center', 900, '#fff', 5);
     x.restore();
   }
   // countdown
@@ -1178,7 +1277,7 @@ function drawHud(v, vi) {
     const th = trk.th, label = `${th.ic} ${th.nm}`; x.font = `900 ${Math.round(22 * sv)}px ${FONT}`; const lw = x.measureText(label).width + 40;
     x.fillStyle = 'rgba(255,255,255,.9)'; x.beginPath(); x.roundRect(W0 / 2 - lw / 2, H0 * 0.36 + 84 * sv, lw, 42 * sv, 21 * sv); x.fill();
     txt(label, W0 / 2, H0 * 0.36 + 105 * sv, Math.round(22 * sv), '#3a3f55', 'center', 900);
-    if (isTouch || mode === 'pvp') { x.globalAlpha = 0.6 + Math.sin(t * 6) * 0.3; for (const b of v.btn) txt('👆', b.x + b.w / 2, b.y - 24, 26, '#fff', 'center', 700); x.globalAlpha = 1; }
+    if (isTouch || mode === 'pvp') { x.globalAlpha = 0.6 + Math.sin(t * 6) * 0.3; for (const b of (steerMode === 'lr' ? v.btn : [{ x: v.stick.x - 20, y: v.stick.y - v.stick.r - 10, w: 40 }])) txt('👆', b.x + b.w / 2, b.y - 24, 26, '#fff', 'center', 700); x.globalAlpha = 1; }
   }
   // feedback: small words above my kart, big banner in the middle
   for (const f of floats) {
@@ -1206,9 +1305,10 @@ function layout() {
   const mk = (hi, vx, vy, vw, vh, flip) => {
     const pv = mode === 'pvp';
     const B = pv ? Math.round(clamp(Math.min(vw * 0.2, vh * 0.26), 70, 104)) : (land ? 124 : 112), g = pv ? 10 : 14;
-    const z = clamp(Math.min(vh / 700, vw / 440), pv ? 0.56 : 0.66, 1);
+    const z = clamp(Math.min(vw, vh) / 560, pv ? 0.6 : 0.8, 1.05);
+    const css = Math.max(0.2, cv.getBoundingClientRect().width / Math.max(1, W)), sr = Math.round(clamp(70 / css, 50, 95));
     return { hi, x: vx, y: vy, w: vw, h: vh, flip, z, mini: pv ? (Math.min(vw, vh) < 420 ? 96 : 116) : (land ? 150 : 128),
-      btn: [{ x: g, y: vh - B - g, w: B, h: B }, { x: vw - g - B, y: vh - B - g, w: B, h: B }], cam: (old[hi] && old[hi].cam) || { x: 0, y: 0, a: 0, init: false } };
+      btn: [{ x: g, y: vh - B - g, w: B, h: B }, { x: vw - g - B, y: vh - B - g, w: B, h: B }], stick: { x: sr + 22, y: vh - sr - 22, r: sr }, cam: (old[hi] && old[hi].cam) || { x: 0, y: 0, a: CAM_A, init: false } };
   };
   if (mode !== 'pvp') views = [mk(0, 0, 0, W, H, false)];
   else if (land) views = [mk(0, 0, 0, W / 2, H, false), mk(1, W / 2, 0, W / 2, H, false)];
@@ -1232,7 +1332,7 @@ function trackLabel(n) {
 }
 function start(m, lv, pk) {
   mode = m; trackI = clamp(lv - 1, 0, THEMES.length - 1);
-  if (pk) { diff = DIFF[pk.diff] ? pk.diff : 'easy'; assist = pk.assist !== 'off'; }
+  if (pk) { diff = DIFF[pk.diff] ? pk.diff : 'easy'; assist = pk.assist !== 'off'; steerMode = pk.steer === 'lr' ? 'lr' : 'stick'; }
   const prevTi = trk.ti; trk = getTrack(trackI); if (prevTi !== trk.ti) clearTiles();
   layout(); setupRace();
   ptrs.clear(); for (const k of keys) k.l = k.r = false;
@@ -1282,15 +1382,16 @@ function showResults() {
 }
 const MENU = {
   id: 'kart', title: '噗噗開車車', menuLabel: '☰ 選賽道', levelsTitle: '選一條賽道',
-  html: '<p>車子會自己往前開，按 <b>◀ ▶</b> 轉彎就好！撿 ⭐ 星星會跑更快，開過 ⚡ 會衝刺，跳台會飛起來，跑 3 圈回到 🏁 終點。</p>',
+  html: '<p>車子會自己往前開！推一推 <b>🕹️ 搖桿</b>（或手指按在想去的地方），車子就往那邊開。撿 ⭐ 星星會跑更快，開過 ⚡ 會衝刺，跳台會飛起來，跑 3 圈回到 🏁 終點。</p>',
   picks: [
     { key: 'diff', title: '電腦有多快？（比賽用）', def: 'easy', options: [{ id: 'easy', label: '🐣 簡單', sub: '會等你' }, { id: 'normal', label: '⭐ 普通', sub: '' }, { id: 'hard', label: '🔥 困難', sub: '很快喔' }] },
+    { key: 'steer', title: '🕹️ 怎麼開？', def: 'stick', options: [{ id: 'stick', label: '🕹️ 往哪推就往哪開', sub: '推搖桿、手指指路' }, { id: 'lr', label: '◀▶ 左右轉', sub: '按左右轉彎' }] },
     { key: 'assist', title: '🛞 幫我轉彎', def: 'on', options: [{ id: 'on', label: '🛞 要', sub: '車子不太會跑出去' }, { id: 'off', label: '✋ 不要', sub: '自己轉，比較難' }] },
   ],
   modesTitle: '想怎麼玩？',
   modes: [{ id: 'race', label: '🏁 比賽', sub: '和 3 個好朋友比' }, { id: 'slow', label: '🐢 慢慢開', sub: '沒有對手、不計時' }, { id: 'time', label: '⏱️ 計時', sub: '追上自己的 👻 影子' }, { id: 'pvp', label: '👫 兩人比賽', sub: '同一台，一人一邊' }],
   levels: { count: THEMES.length, max: THEMES.length, label: trackLabel },
-  keys: '按住 ◀ ▶（或畫面左半邊／右半邊）轉彎　電腦：<kbd>←</kbd><kbd>→</kbd> 或 <kbd>A</kbd><kbd>D</kbd>　兩人：1P 用 <kbd>A</kbd><kbd>D</kbd>、2P 用 <kbd>←</kbd><kbd>→</kbd>',
+  keys: '搖桿往哪推，車子就往哪開　電腦：方向鍵或 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>（可以斜斜按）　兩人：1P 用 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>、2P 用方向鍵　「◀▶ 左右轉」：<kbd>←</kbd><kbd>→</kbd>／<kbd>A</kbd><kbd>D</kbd>',
   playing: () => state === 'count' || state === 'play' || (state === 'done' && !resultsShown),
   onPause: () => { engineSet(0, false); ptrs.clear(); },
   restore: () => { ptrs.clear(); for (const k of keys) k.l = k.r = false; },
@@ -1321,7 +1422,7 @@ window.KART = {
     finished: c.finished, place: c.place, finishT: c.finishT, rank: c.rank, stars: c.stars, respawns: c.respawns, off: c.off, boostT: c.boostT, wrongT: c.wrongT, steer: c.steer, want: c.want, user: c.user, lapTimes: c.lapTimes.slice(), hopT: c.hopT })),
   trackInfo: i => { const T = getTrack(i); return { N: T.N, L: T.L, S: T.S, box: T.box, boosts: T.boosts.map(b => ({ ...b })), ramps: T.ramps.map(r => ({ ...r })), stars: T.stars.length }; },
   trackCheck,
-  start: (m, i, o = {}) => { MG.store.set('kart.pickLevel', i + 1); start(m, i + 1, { diff: o.diff || diff, assist: o.assist === false ? 'off' : 'on' }); },
+  start: (m, i, o = {}) => { MG.store.set('kart.pickLevel', i + 1); start(m, i + 1, { diff: o.diff || diff, assist: o.assist === false ? 'off' : 'on', steer: o.steer || 'stick' }); },
   menu: () => menu(),
   setAuto: v => { autopilot = !!v; },
   // run the game loop for `sec` seconds in chunks of `dt` without drawing
@@ -1340,6 +1441,10 @@ window.KART = {
     return { dist: c.dist, cp: c.cp, lap: Math.floor(c.cp / CPN) };
   },
   input: () => [held(0), held(1), userSteer(0), userSteer(1)],
+  aim: () => [aimOf(0), aimOf(1)].map(a => a == null ? null : a * 180 / Math.PI),
+  get steerMode() { return steerMode; },
+  stick: p => { const v = views.find(q => q.hi === p); if (!v) return null; const c = localToScreen(v, v.stick.x, v.stick.y), a = toClient(c.x, c.y), b = toClient(c.x + v.stick.r, c.y); return { x: a.x, y: a.y, r: Math.abs(b.x - a.x), flip: v.flip }; },
+  noWalls: on => { noWalls = !!on; },
   ptrs: () => [...ptrs.values()].map(z => ({ ...z })),
   buttons: () => views.slice().sort((a, b) => a.hi - b.hi).flatMap(v => v.btn.map(b => { const p1 = localToScreen(v, b.x, b.y), p2 = localToScreen(v, b.x + b.w, b.y + b.h), a = toClient(Math.min(p1.x, p2.x), Math.min(p1.y, p2.y)), c = toClient(Math.max(p1.x, p2.x), Math.max(p1.y, p2.y)); return { x: a.x, y: a.y, w: c.x - a.x, h: c.y - a.y }; })),
   // camera: heading of the car relative to its camera (0 = pointing straight up on screen), and the car's velocity in screen terms
@@ -1351,21 +1456,12 @@ window.KART = {
   toClient, lapLog: () => lapLog.slice(), floats: () => floatLog.slice(), banner: () => (banners.find(Boolean) || {}).text,
   tileCost: (n = 12) => { const t0 = performance.now(); for (let i = 0; i < n; i++) getTile(100 + i, 3, 0.95); return (performance.now() - t0) / n; },
   tileCostAt: (tx, ty) => { const t0 = performance.now(); getTile(tx, ty, 0.951); return performance.now() - t0; },
-  get fastTiles() { return fastTiles; }, setFastTiles: v => { fastTiles = !!v; },
   jam: (k, sec) => { cars[k].jamT = sec; },
   starsLeft: () => trk.stars.filter(s => s.t <= 0).length,
   perf: (n = 60, flush = true) => { const t0 = performance.now(); for (let i = 0; i < n; i++) { update(1 / 60); draw(); if (flush) x.getImageData(0, 0, 1, 1); } return (performance.now() - t0) / n; },
 };
 
-// adaptive quality: if frames are slow while racing (no GPU), switch to the cheaper road sampling
-let fastTiles = false, frameEma = 16, lastFrame = 0, slowFor = 0;
-MG.loop(dt => {
-  frameN++;
-  const now = performance.now();
-  if (lastFrame && racing() && !MG.panelOpen()) { frameEma += (Math.min(100, now - lastFrame) - frameEma) * 0.05; slowFor = frameEma > 24 ? slowFor + dt : 0; if (slowFor > 1.5) fastTiles = true; }
-  lastFrame = now;
-  update(dt); draw();
-});
+MG.loop(dt => { frameN++; update(dt); draw(); });
 </script>
 </body>
 </html>
