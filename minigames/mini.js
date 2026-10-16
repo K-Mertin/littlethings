@@ -69,11 +69,36 @@ const MG = (() => {
 
   // ---------- start / result panel ----------
   let over;
+  // ---------- menu size: bigger on tablets, plus the kid/parent's A− A＋ choice ----------
+  const ZS = [0.85, 1, 1.15, 1.3, 1.5];
+  let zi = Math.max(0, Math.min(ZS.length - 1, store.get('uiZoom', 1) | 0));
+  // 👓 大字模式 (for grandparents / weaker eyes): bigger words and buttons everywhere, stronger contrast, calmer motion
+  let big = !!store.get('bigMode', false);
+  function applyUI() {
+    const m = Math.min(innerWidth, innerHeight), auto = Math.max(1, Math.min(1.3, m / 680));
+    document.documentElement.style.setProperty('--ui', (auto * ZS[zi] * (big ? 1.3 : 1)).toFixed(3));
+    document.documentElement.classList.toggle('mg-big', big);
+  }
+  function setBig(v) { big = !!v; store.set('bigMode', big); applyUI(); dispatchEvent(new Event('mg-big')); dispatchEvent(new Event('resize')); }
+  applyUI(); addEventListener('resize', applyUI);
+  function zoomRow() {
+    const row = document.createElement('div'); row.className = 'mg-zoom';
+    row.innerHTML = '<span>字的大小</span><button type="button" data-z="-1" aria-label="字變小">A−</button><button type="button" data-z="1" aria-label="字變大">A＋</button><button type="button" class="mg-bigbtn" data-big aria-pressed="false">👓 大字模式</button>';
+    const sync = () => { row.querySelector('[data-z="-1"]').disabled = zi === 0; row.querySelector('[data-z="1"]').disabled = zi === ZS.length - 1; row.querySelector('[data-big]').setAttribute('aria-pressed', big); };
+    row.onclick = e => {
+      const b = e.target.closest('button'); if (!b || b.disabled) return;
+      if (b.hasAttribute('data-big')) setBig(!big);
+      else { zi = Math.max(0, Math.min(ZS.length - 1, zi + +b.dataset.z)); store.set('uiZoom', zi); applyUI(); }
+      sync(); sfx('click');
+    };
+    sync(); return row;
+  }
   function panel({ title, html = '', buttons = [], keys = '' }) {
     if (!over) { over = document.createElement('div'); over.className = 'mg-over'; document.body.append(over); }
     over.innerHTML = `<div class="mg-card" role="dialog" aria-modal="true"><h2></h2><div class="mg-body">${html}</div><div class="mg-btns"></div>` +
       (keys ? `<div class="mg-keys">${keys}</div>` : '') + `</div>`;
     over.querySelector('h2').textContent = title;
+    over.querySelector('.mg-card').append(zoomRow());
     const box = over.querySelector('.mg-btns');
     buttons.forEach((b, i) => {
       const el = document.createElement('button');
@@ -421,5 +446,5 @@ const MG = (() => {
     return { show(v) { b.hidden = !v; }, el: b };
   }
 
-  return { praise, WORDS, choose, pauseMenu, resume, barButton, init, stat, fit, panel, hide, panelOpen, best, record, sfx, toast, loop, rand, randi, pick, shuffle, store, puPu, fx, unlock, JELLY };
+  return { get big() { return big; }, setBig, get textScale() { return big ? 1.3 : 1; }, praise, WORDS, choose, pauseMenu, resume, barButton, init, stat, fit, panel, hide, panelOpen, best, record, sfx, toast, loop, rand, randi, pick, shuffle, store, puPu, fx, unlock, JELLY };
 })();
