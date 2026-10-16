@@ -443,6 +443,8 @@ const BOARDS = {
 };
 const LV = ['簡單', '普通', '困難'];
 const CN = { 1: '綠色', 2: '粉色' };
+// in-play feedback is English + emoji (small kids can't read Chinese yet); names on the cards stay Chinese
+const EN = { 1: 'Green', 2: 'Pink' }, DOT = { 1: '🟢', 2: '🩷' };
 const isTouch = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || navigator.maxTouchPoints > 0;
 // stone colours: green = darker jelly, pink = light jelly (strong light/dark contrast, not only hue)
 const PAL = {
@@ -693,7 +695,9 @@ function doMove(i) {
   last = i; moveNo++; lastFlipN = flips.length;
   MG.sfx('place');
   busyUntil = clock + (kind === 'rv' ? 0.22 + flips.length * 0.085 + 0.36 : 0.3);
-  if (kind === 'rv' && flips.length >= 4) say(vsCpu && p === cpuColor() ? `哎呀，被翻了 ${flips.length} 顆！` : `哇！翻了 ${flips.length} 顆！`, 1.8, vsCpu && p === cpuColor() ? human : p);
+  if (kind === 'rv' && flips.length >= 4) say(vsCpu && p === cpuColor() ? `Oh no! −${flips.length} 😵` : `Wow! +${flips.length} ✨`, 1.8, vsCpu && p === cpuColor() ? human : p);
+  // a juicy chime once the last stone has flipped (only for the player's own good moves)
+  if (kind === 'rv' && flips.length >= 2 && !(vsCpu && p === cpuColor())) anims.get(flips[flips.length - 1]).big = flips.length;
   if (kind === 'gk') {
     if (LG.gkWinAt(board, N, i, p)) { winLine = LG.gkWinLine(board, N, i); return finish(p); }
     if (!board.includes(0)) return finish(0);
@@ -713,11 +717,11 @@ function finish(w) {
 function celebrate() {
   result.cel = true;
   const w = result.w;
-  if (vsCpu && w && w !== human) MG.sfx('over'); else MG.sfx('win');
+  if (vsCpu && w && w !== human) MG.sfx('over'); else { MG.sfx('win'); MG.sfx('yay'); }
   const cols = ['#ff8ac2', '#ffd23f', '#8fd0ff', '#b8f5a0', '#fff'];
   if (winLine) for (const j of winLine) { const c = cellXY(j); MG.fx.burst(c.x, c.y, { n: 10, colors: cols, speed: 200, up: 80, size: 5, shape: 'star', life: 0.9 }); }
   else for (let k = 0; k < 5; k++) MG.fx.burst(BRD.x + BRD.s * (0.15 + k * 0.175), BRD.y + BRD.s * 0.35, { n: 18, colors: cols, speed: 240, up: 140, size: 5, shape: 'sq', life: 1.1 });
-  banner = { text: w ? (vsCpu ? (w === human ? '你贏了！' : '電腦贏了') : `${CN[w]}贏了！`) : '平手！', t0: clock, life: 1.8, col: w ? PAL[w].ui : '#3a6fd8' };
+  banner = { text: w ? (vsCpu ? (w === human ? 'You win! 🏆' : '🤖 wins') : `${EN[w]} wins! 🏆`) : 'Draw! 🤝', t0: clock, life: 1.8, col: w ? PAL[w].ui : '#3a6fd8' };
 }
 function undo() {
   if (!canUndo()) return;
@@ -725,7 +729,7 @@ function undo() {
   let s = hist.pop();
   if (vsCpu) while (s.turn !== human && hist.length) s = hist.pop();
   board = s.b; turn = s.turn; last = s.last; moveNo = s.moveNo; winLine = null;
-  MG.sfx('flip'); say('悔棋！再想一次 ^_^', 1.6, turn); hud();
+  MG.sfx('flip'); MG.sfx('whoosh'); say('Undo ↩️', 1.6, turn); hud();
 }
 const canUndo = () => state === 'play' && !result && hist.length > 0 && (!vsCpu || hist.some(s => s.turn === human));
 function giveHint() {
@@ -733,11 +737,11 @@ function giveHint() {
   const m = LG.aiMove(kind, board, N, turn, 3, { time: 160 });
   if (m < 0) return;
   hint = { cell: m, t0: clock };
-  MG.sfx('good'); say('試試看發光的地方！', 2.2, turn);
+  MG.sfx('good'); MG.sfx('sparkle'); say('Try here 💡', 2.2, turn);
 }
 function toggleDots() {
   showDots = !showDots; MG.store.set('chess.dots', showDots);
-  MG.toast(showDots ? '顯示可以下的地方：開' : '顯示可以下的地方：關', 1100);
+  MG.toast(showDots ? '👀 • On' : '👀 Off', 1100);
 }
 
 // ---------- input ----------
@@ -753,7 +757,7 @@ function btnEnabled(b) {
   return true;
 }
 function pressBtn(b) {
-  if (!btnEnabled(b)) { if (b.id === 'hint' && state === 'play' && !result) MG.toast('等一下，還沒輪到你喔', 900); return; }
+  if (!btnEnabled(b)) { if (b.id === 'hint' && state === 'play' && !result) MG.toast(MG.WORDS.wait, 900); return; }
   pressedBtn = b.id; pressT = 0.15; MG.sfx('click');
   if (b.id === 'undo') undo(); else if (b.id === 'hint') giveHint(); else if (b.id === 'dots') toggleDots();
 }
@@ -764,7 +768,7 @@ cv.addEventListener('pointerdown', e => {
   if (state !== 'play') return;
   const b = btnAt(p);
   if (b) { pressBtn(b); return; }
-  if (!humanTurn()) { if (think && cellAt(p) >= 0) say('等一下，電腦在想…', 1.2, cpuColor()); return; }
+  if (!humanTurn()) { if (think && cellAt(p) >= 0) say('Thinking… 🤔', 1.2, cpuColor()); return; }
   const i = cellAt(p);
   if (i < 0) return;
   press = { id: e.pointerId, cell: i };
@@ -785,7 +789,7 @@ cv.addEventListener('pointerup', e => {
   if (e.pointerType !== 'mouse') hover = -1;
   if (!humanTurn() || i < 0) return;
   if (!legal(i)) {
-    if (!board[i] && kind === 'rv') { MG.sfx('tick'); say(showDots ? '這裡不能下喔，下在點點上' : '這裡夾不到喔', 1.4, turn); }
+    if (!board[i] && kind === 'rv') { MG.sfx('miss'); say(showDots ? 'Not here ❌ 👉 •' : 'Not here ❌', 1.4, turn); }
     return;
   }
   if (needConfirm(e.pointerType) && ghost !== i) { ghost = i; MG.sfx('tick'); return; }
@@ -807,15 +811,15 @@ function update(dt) {
   MG.fx.step(dt);
   pressT = Math.max(0, pressT - dt);
   for (const [j, a] of anims) {
-    if (a.type === 'flip' && !a.snd && clock >= a.t0) { a.snd = true; MG.sfx('flip'); }
+    if (a.type === 'flip' && !a.snd && clock >= a.t0) { a.snd = true; MG.sfx('flip'); if (a.big) { MG.sfx('match', a.big - 1); if (a.big >= 6) MG.sfx('combo', a.big); } }
     if (clock > a.t0 + 0.6) anims.delete(j);
   }
   if (state !== 'play') return;
   if (passNote && clock >= passNote.at) {
     const w = passNote.who; passNote = null;
-    const msg = vsCpu ? (w === human ? '你沒有地方可以下，跳過一次！' : '電腦沒有地方可以下，換你再下！') : `${CN[w]}沒有地方可以下，跳過一次！`;
-    say(msg, 2.2, w); MG.toast(msg, 1800); MG.sfx('bad');
-    banner = { text: '跳過！', t0: clock, life: 1.2, col: PAL[w].ui };
+    const msg = vsCpu ? (w === human ? 'Pass ⏭️' : '🤖 Pass ⏭️') : `${DOT[w]} Pass ⏭️`;
+    say(msg, 2.2, w); MG.toast(msg, 1800); MG.sfx('whoosh');
+    banner = { text: 'Pass ⏭️', t0: clock, life: 1.2, col: PAL[w].ui };
   }
   if (result) {
     if (!result.cel && clock >= busyUntil) celebrate();
@@ -903,7 +907,7 @@ function drawBoard() {
       txt(lab, bx + tw / 2, by + (fs + 8) / 2 + 1, fs, PAL[turn].line);
     }
     if (ghost === pv) {
-      const fs = Math.max(15, Math.min(22, cs * 0.6)), lab = '再點一下確定';
+      const fs = Math.max(15, Math.min(22, cs * 0.6)), lab = 'Tap again ✅';
       x.font = `900 ${fs}px ${FONT}`; const tw = x.measureText(lab).width + 18;
       let bx = clamp(c.x - tw / 2, BRD.x + 4, BRD.x + BRD.s - tw - 4), by = c.y - r - fs - 18;
       if (by < BRD.y + 4) by = c.y + r + 8;
@@ -926,7 +930,7 @@ function drawCards() {
     const lx = cd.x + cd.h * 0.95, rw = kind === 'rv' ? cd.h * 0.95 : 0;
     const nm = nameOf(p) + (vsCpu && p === cpuColor() ? `・${LV[level - 1]}` : '');
     fitTxt(nm, lx, cd.y + cd.h * 0.36, cd.x + cd.w - rw - lx - 6, 22 * U, '#3a2f22', 900, 'left');
-    const sub = won ? '贏了！' : active ? (vsCpu && p === cpuColor() ? '想一想…' : '輪到你了！'.replace('你', vsCpu ? '你' : CN[p])) : (state === 'play' && !result ? '等一下' : '');
+    const sub = won ? 'Win! 🏆' : active ? (vsCpu && p === cpuColor() ? 'Thinking… 🤔' : 'Your turn 👆') : (state === 'play' && !result ? MG.WORDS.wait : '');
     if (sub) fitTxt(sub, lx, cd.y + cd.h * 0.7, cd.x + cd.w - rw - lx - 6, 16 * U, active || won ? pl.ui : '#9a8f80', 800, 'left');
     if (kind === 'rv') txt(String(p === 1 ? a : c), cd.x + cd.w - rw / 2 - 6, cd.y + cd.h / 2 + 1, Math.min(cd.h * 0.5, 40 * U), pl.line, 'center', 900);
   }
@@ -935,19 +939,19 @@ function curMsg() {
   if (state !== 'play' && !result) return { text: '選一個棋來下吧！', who: 1 };
   if (result) {
     const w = result.w;
-    if (!w) return { text: '平手！你們一樣厲害！', who: 1 };
-    if (vsCpu) return w === human ? { text: '你贏了！好厲害！', who: w } : { text: '電腦贏了，再來一盤！', who: w };
-    return { text: `${CN[w]}噗噗贏了！`, who: w };
+    if (!w) return { text: 'Draw! 🤝', who: 1 };
+    if (vsCpu) return w === human ? { text: 'You win! 🏆', who: w } : { text: '🤖 wins! Again? 🔁', who: w };
+    return { text: `${DOT[w]} ${EN[w]} wins! 🏆`, who: w };
   }
   if (sayMsg && clock < sayMsg.until) return { text: sayMsg.text, who: sayMsg.who || turn };
-  if (think) return { text: '嗯…讓我想一想' + '.'.repeat(1 + Math.floor(t * 3) % 3), who: turn, think: true };
-  if (ghost >= 0 && humanTurn()) return { text: '再點一下影子就下在那裡', who: turn };
+  if (think) return { text: 'Thinking… 🤔', who: turn, think: true };
+  if (ghost >= 0 && humanTurn()) return { text: 'Tap again 👆', who: turn };
   if (passNote) return { text: '…', who: turn };
   if (vsCpu) {
-    if (turn === human) return { text: kind === 'rv' ? (showDots ? '換你下！下在點點上' : '換你下！把對方夾起來') : '換你下！連成五個就贏', who: turn };
-    return { text: '換電腦下', who: turn };
+    if (turn === human) return { text: 'Your turn 👆', who: turn };
+    return { text: '🤖 turn', who: turn };
   }
-  return { text: `換${CN[turn]}下！`, who: turn };
+  return { text: `${DOT[turn]} ${EN[turn]}'s turn 👆`, who: turn };
 }
 function drawMid() {
   const M = mid; if (!M || M.h < 40) return;
@@ -1023,7 +1027,8 @@ function drawBanner() {
   if (k >= 1) { banner = null; return; }
   const a = k < 0.15 ? k / 0.15 : k > 0.75 ? (1 - k) / 0.25 : 1, sc = k < 0.15 ? 0.6 + k / 0.15 * 0.4 : 1;
   x.save(); x.globalAlpha = a; x.translate(BRD.x + BRD.s / 2, BRD.y + BRD.s * 0.45); x.scale(sc, sc);
-  txt(banner.text, 0, 0, Math.min(72, BRD.s * 0.12), banner.col, 'center', 900, '#fff', 12);
+  let bfs = Math.min(72, BRD.s * 0.12); x.font = `900 ${bfs}px ${FONT}`; const bw = x.measureText(banner.text).width; if (bw > BRD.s * 0.9) bfs *= BRD.s * 0.9 / bw;
+  txt(banner.text, 0, 0, bfs, banner.col, 'center', 900, '#fff', 12);
   x.restore();
 }
 function draw() {
@@ -1052,8 +1057,8 @@ function newGame() {
   busyUntil = clock + 0.35;
   state = 'play';
   layout(); MG.hide(); hud();
-  if (vsCpu) say(human === 1 ? '你是綠色噗噗，你先下！' : '你是粉紅噗噗，電腦先下', 2.2, human);
-  else say(`${CN[turn]}先下！`, 2, turn);
+  if (vsCpu) say(human === 1 ? `You ${DOT[1]} go first! 👆` : `You ${DOT[2]} · 🤖 first`, 2.2, human);
+  else say(`${DOT[turn]} ${EN[turn]} first! 🚀`, 2, turn);
 }
 function showOver() {
   state = 'over';
@@ -1128,7 +1133,7 @@ window.CHT = {
   get human() { return human; }, get vsCpu() { return vsCpu; }, get level() { return level; }, get moveNo() { return moveNo; }, get last() { return last; },
   get busy() { return isBusy() || !!think; }, get thinking() { return !!think; }, get myTurn() { return humanTurn(); }, get result() { return result ? { w: result.w, shown: result.shown } : null; },
   get ghost() { return ghost; }, get hint() { return hint ? hint.cell : -1; }, get showDots() { return showDots; }, get hist() { return hist.length; },
-  get frames() { return frames; }, get worker() { return !!worker; }, get winLine() { return winLine ? winLine.slice() : null; },
+  get frames() { return frames; }, get msg() { return curMsg().text; }, get banner() { return banner && banner.text; }, get worker() { return !!worker; }, get winLine() { return winLine ? winLine.slice() : null; },
   board: () => Array.from(board), legal: () => kind === 'rv' ? LG.rvMoves(board, N, turn) : Array.from(board).map((v, i) => v ? -1 : i).filter(i => i >= 0),
   confirm: () => needConfirm('touch'), cellCss: () => cs * cssScale(),
   dims: () => ({ W, H, land, U, cs, BRD: { ...BRD }, P: { ...P }, mid: { ...mid } }),

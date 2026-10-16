@@ -80,6 +80,9 @@ function resetDay(d) {
   tray = null; seats = [null, null, null];
   hud();
 }
+// extra shared sounds, throttled so several pots finishing at once don't pile up (≥60 ms per name)
+const juiceT = {};
+function juice(name, n) { const q = performance.now(); if (q - (juiceT[name] || 0) < 60) return; juiceT[name] = q; MG.sfx(name, n); }
 function hud() { MG.stat('day', `第 ${day + 1} 天`); MG.stat('coins', `🪙 ${coins}`); }
 let kmode = MG.store.get('kitchen.mode', 'relax');   // 'relax': customers wait forever, food burns slower
 const unlocked = () => true;
@@ -94,7 +97,7 @@ function spawnGuest() {
   const free = seats.map((s, i) => s ? -1 : i).filter(i => i >= 0); if (!free.length) return false;
   const i = MG.pick(free);
   seats[i] = { face: MG.pick(GUESTS), shirt: MG.pick(SHIRTS), order: makeOrder(), pat: cfg.patience, max: cfg.patience, st: 'arrive', a: 0, shake: 0, say: '' };
-  spawned++; MG.sfx('flip');
+  spawned++; MG.sfx('boing');
   return true;
 }
 function matches(o, d) { return d && o.type === d.type && o.tops.length === d.tops.length && o.tops.every(tp => d.tops.includes(tp)); }
@@ -103,8 +106,8 @@ function matches(o, d) { return d && o.type === d.type && o.tops.length === d.to
 function stepCook(st, kind, dt) {
   if (st.s === 'cook' || st.s === 'ready') {
     st.t += dt;
-    if (st.s === 'cook' && st.t >= DISH[kind].cook) { st.s = 'ready'; MG.sfx('good'); }
-    if (st.t >= DISH[kind].burn * (kmode === 'relax' ? 2 : 1)) { st.s = 'burnt'; MG.sfx('bad'); }
+    if (st.s === 'cook' && st.t >= DISH[kind].cook) { st.s = 'ready'; MG.sfx('good'); juice('sparkle'); }   // ding! + a little shimmer
+    if (st.t >= DISH[kind].burn * (kmode === 'relax' ? 2 : 1)) { st.s = 'burnt'; MG.sfx('miss'); juice('whoosh'); }   // soft puff of smoke
   }
 }
 function update(dt) {
@@ -121,7 +124,7 @@ function update(dt) {
     if (c.st === 'arrive') { c.a = Math.min(1, c.a + dt * 3); if (c.a >= 1) c.st = 'wait'; }
     else if (c.st === 'wait') {
       if (kmode === 'timed') c.pat -= dt;
-      if (c.pat <= 0) { c.st = 'sad'; c.a = 1; c.say = '等太久了…'; missed++; MG.sfx('bad'); }
+      if (c.pat <= 0) { c.st = 'sad'; c.a = 1; c.say = 'Bye… 😢'; missed++; MG.sfx('miss'); }
     } else { c.a -= dt * 1.4; if (c.a <= 0) seats[i] = null; }
   }
   shakeTray = Math.max(0, shakeTray - dt);
@@ -136,12 +139,13 @@ function update(dt) {
 const inR = (p, r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
 function topRect(i) { const T = Lo.tops; return { x: T.x + i * (T.w + T.gap), y: T.y, w: T.w, h: T.h }; }
 function take(kind, st) {
-  if (st.s === 'empty') { st.s = 'cook'; st.t = 0; MG.sfx('place'); return; }
-  if (st.s === 'cook') { MG.toast('還沒好喔，再等一下'); return; }
-  if (st.s === 'burnt') { st.s = 'empty'; st.t = 0; MG.sfx('step'); MG.toast('燒焦了，倒掉重做'); return; }
+  if (st.s === 'empty') { st.s = 'cook'; st.t = 0; MG.sfx('place'); juice('whoosh'); return; }   // plop + the fire whooshes on
+  if (st.s === 'cook') { MG.sfx('tick'); MG.toast(MG.WORDS.wait); return; }
+  if (st.s === 'burnt') { st.s = 'empty'; st.t = 0; MG.sfx('step'); juice('whoosh'); MG.toast('Burnt! 🗑️'); return; }
   if (st.s === 'ready') {
-    if (tray) { shakeTray = 0.4; MG.sfx('bad'); MG.toast('盤子上已經有東西了'); return; }
-    tray = { type: kind, tops: [] }; st.s = 'empty'; st.t = 0; MG.sfx('pop');
+    if (tray) { shakeTray = 0.4; MG.sfx('miss'); MG.toast(MG.WORDS.full); return; }
+    tray = { type: kind, tops: [] }; st.s = 'empty'; st.t = 0; MG.sfx('pop'); juice('boing');
+    const tr = Lo.tray; MG.fx.burst(tr.x + tr.w / 2, tr.y + tr.h / 2, { n: 8, colors: ['#fff', '#ffe36b', '#ffb07a'], speed: 90, up: 40, size: 4, shape: 'star', life: 0.5 });
   }
 }
 cv.addEventListener('pointerdown', e => {
@@ -149,27 +153,29 @@ cv.addEventListener('pointerdown', e => {
   const p = cv.logical(e);
   for (let i = 0; i < 2; i++) { const q = Lo.pots[i]; if (Math.hypot(p.x - q.x, p.y - q.y) < q.r + 10) return take('noodle', pots[i]); }
   if (inR(p, Lo.grill)) { let bi = 0, bd = 1e9; Lo.grillSlots.forEach((gx, i) => { const d = Math.abs(gx - p.x); if (d < bd) { bd = d; bi = i; } }); return take('skewer', grill[bi]); }
-  if (inR(p, Lo.oven)) { if (cfg.dishes.includes('cookie')) take('cookie', oven); else MG.toast('第 3 天才會用到烤箱'); return; }
+  if (inR(p, Lo.oven)) { if (cfg.dishes.includes('cookie')) take('cookie', oven); else { MG.sfx('miss'); MG.toast('🔒 Day 3'); } return; }
   for (let i = 0; i < TOPS.length; i++) if (inR(p, topRect(i))) return addTop(TOPS[i]);
   if (inR(p, Lo.trash)) { if (tray) { tray = null; MG.sfx('step'); } return; }
   for (let i = 0; i < 3; i++) { const s = Lo.seats[i]; if (seats[i] && Math.abs(p.x - s.x) < (land ? 70 : 54) && p.y < Lo.counterY + 20) return serve(i); }
 });
 function addTop(tp) {
-  if (!cfg.tops.includes(tp.id)) { MG.toast(`「${tp.name}」之後才會用到`); return; }
-  if (!tray) { MG.toast('先把煮好的東西放到盤子上'); return; }
-  if (tp.dish !== tray.type) { shakeTray = 0.4; MG.sfx('bad'); MG.toast(`${DISH[tray.type].name}不能加${tp.name}喔`); return; }
-  if (tray.tops.includes(tp.id)) { MG.toast(`已經加過${tp.name}了`); return; }
-  tray.tops.push(tp.id); MG.sfx('flip');
+  if (!cfg.tops.includes(tp.id)) { MG.sfx('miss'); MG.toast('🔒 Later'); return; }
+  if (!tray) { MG.sfx('miss'); MG.toast('🍽️ Empty'); shakeTray = 0.3; return; }
+  if (tp.dish !== tray.type) { shakeTray = 0.4; MG.sfx('miss'); MG.toast(MG.WORDS.no); return; }
+  if (tray.tops.includes(tp.id)) { MG.sfx('tick'); MG.toast('Done ✅'); return; }
+  tray.tops.push(tp.id); MG.sfx('pop'); juice('match', tray.tops.length);   // each topping rings a little higher
   const tr = Lo.tray; MG.fx.burst(tr.x + tr.w / 2, tr.y + tr.h / 2, { n: 6, colors: ['#fff', '#ffe36b'], speed: 70, size: 3, shape: 'star', life: 0.5 });
 }
 function serve(i) {
   const c = seats[i]; if (!c || c.st !== 'wait') return;
-  if (!tray) { c.shake = 0.3; c.say = '我要點餐～'; MG.sfx('step'); return; }
-  if (!matches(c.order, tray)) { c.shake = 0.4; c.say = '不是這個耶'; MG.sfx('bad'); return; }
+  if (!tray) { c.shake = 0.3; c.say = 'Food? 🍽️'; MG.sfx('step'); return; }
+  if (!matches(c.order, tray)) { c.shake = 0.4; c.say = 'Not this! 😣'; MG.sfx('miss'); return; }
   const tip = Math.round(10 * c.pat / c.max), gain = 10 + c.order.tops.length * 5 + tip;
-  coins += gain; served++; tray = null; c.st = 'happy'; c.a = 1; c.say = MG.pick(['謝謝！', '好好吃！', '讚喔！', '下次再來！']);
+  coins += gain; served++; tray = null; c.st = 'happy'; c.a = 1; const fast = kmode === 'timed' && tip >= 8;   // in 慢慢來 patience never drops, so only a quick serve in 挑戰 counts as fast
+  c.say = fast ? MG.pick(['Yummy! 😋', 'Wow! 🤩']) : MG.pick(['Yum! 😋', 'Thanks! 💖', 'Yay! 🎉', 'Yummy! 😋']);
   chefMood = 'wow'; chefT = 0.8;
-  MG.sfx('win'); const s = Lo.seats[i];
+  // served: coin clink + a chime that grows with the toppings; a quick happy cheer on fast service
+  MG.sfx('coin'); MG.sfx('match', 1 + c.order.tops.length); if (fast || c.order.tops.length >= 2) MG.sfx('yay'); const s = Lo.seats[i];
   pops.push({ x: s.x, y: s.y - 50, t: `+${gain} 🪙`, life: 1 });
   MG.fx.burst(s.x, s.y - 20, { n: 14, colors: ['#ffd23f', '#ff8ac2', '#8fd0ff', '#fff'], speed: 160, up: 120, size: 5, shape: 'star', life: 0.8 });
 }
@@ -228,8 +234,10 @@ function statusBadge(st, kind, cx, cy) {
   else if (st.s === 'ready') {
     const warn = (st.t - DISH[kind].cook) / (DISH[kind].burn * (kmode === 'relax' ? 2 : 1) - DISH[kind].cook);
     const bob = Math.sin(t * 8) * 2;
-    rr(cx - 20, cy - 10 + bob, 40, 20, 10, warn > 0.6 ? '#ff7a4e' : '#4cc96a', '#fff', 2);
-    x.fillStyle = '#fff'; x.font = '900 12px "Noto Sans TC",system-ui,sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(warn > 0.6 ? '快焦了' : '好了！', cx, cy + bob + 0.5);
+    const lab = warn > 0.6 ? 'Hot! 🔥' : 'OK! ✅';
+    x.font = '900 12px "Noto Sans TC",system-ui,sans-serif'; const bw = Math.max(40, x.measureText(lab).width + 12);
+    rr(cx - bw / 2, cy - 10 + bob, bw, 20, 10, warn > 0.6 ? '#ff7a4e' : '#4cc96a', '#fff', 2);
+    x.fillStyle = '#fff'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(lab, cx, cy + bob + 0.5);
   } else if (st.s === 'burnt') { x.font = `18px ${EMOJI}`; x.fillStyle = '#000'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('💨', cx, cy); }
 }
 
@@ -421,6 +429,8 @@ function menu() {
 }
 MG.pauseMenu({ label: '☰ 選天', playing: () => state === 'play', open: was => { menu(); if (was) return () => { state = 'play'; }; } });
 resetDay(0); menu();
+// small read-only hook for automated tests
+window.KT = { get state() { return state; }, get tray() { return tray && { ...tray }; }, seats: () => seats.map(c => c && { say: c.say, st: c.st, order: c.order }), pots: () => pots.map(p => ({ ...p })), get pops() { return pops.map(p => p.t); }, get coins() { return coins; }, Lo: () => Lo, dims: () => ({ W, H, land }) };
 MG.loop(dt => { if (state === 'play') update(dt); else { t += dt; MG.fx.step(dt); } draw(); });
 </script>
 </body>
