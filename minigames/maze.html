@@ -69,6 +69,7 @@ let pos = 0, nxt = -1, tt = 0, queue = [], steps = 0, elapsed = 0, hints = 3, hi
 let visited = new Uint8Array(25), edges = new Set(), log = [], bad = 0, frames = 0;
 let landT = 0, bumpT = 0, bumpD = 0, faceX = 0, winT = 0, t = 0, mood = 'happy', moodT = 0, stepSnd = 0, freshT = 0;
 let W = 480, H = 800, land = false, cs = 40, ox = 0, oy = 0, C = 5, R = 5, headerH = 0, showPad = false;
+const SND = {}; const snd = (n, a, gap = 60) => { const now = performance.now(); if (now - (SND[n] || 0) < gap) return; SND[n] = now; MG.sfx(n, a); };
 let floats = [], pressed = null, pressT = 0, lastTap = 0;
 let layer = null, layerKey = '', fogMem = null, fogF = null, fogDirty = true, routeCache = { id: -1, par: null };
 const A = { maze: { x: 0, y: 0, w: 1, h: 1 } };
@@ -166,14 +167,15 @@ function startLevel(n, how = 'new') {
   buildMaze(); placeMaze(); resetRun();
   state = 'play'; MG.hide();
   const th = TH();
-  MG.toast(`第 ${n} 關：${th.ic} 幫噗噗走到${th.goal}！`, 2200);
+  MG.toast(`第 ${n} 關　Go! 🚀 ${th.ic}`, 2200);
   hud(true);
 }
 function newMaze() { MG.sfx('flip'); startLevel(level, 'new'); }
 function win() {
   state = 'won'; queue = []; winT = 0; mood = 'love'; moodT = 99;
-  MG.sfx('win');
+  MG.sfx('win'); MG.sfx('yay');
   const g = center(goalI);
+  floats.push({ x: g.x, y: g.y - cs * 0.6, text: MG.WORDS.clear, life: 1.6 });
   for (let i = 0; i < 5; i++) setTimeout(() => { if (state === 'won') MG.fx.burst(g.x + MG.rand(-cs, cs), g.y - cs * 0.3, { n: 16, colors: ['#ff8fbf', '#ffd23f', '#4cc96a', '#4c9cf0', '#a07cf2', '#fff'], shape: MG.pick(['star', 'sq']), speed: 260, up: 180, size: Math.max(4, cs * 0.12), life: 1.2 }); }, i * 160);
   const rec = MG.record('maze', level);
   let bestT = null, newT = false;
@@ -252,10 +254,11 @@ function arrive(i) {
   }
   const st = stars.find(s => s.i === i && !s.got);
   if (st) {
-    st.got = true; got++; MG.sfx('good'); mood = 'wow'; moodT = 0.9;
+    st.got = true; got++; MG.sfx('coin'); snd('match', got); mood = 'wow'; moodT = 0.9;
     const c = center(i);
     MG.fx.burst(c.x, c.y, { n: 14, colors: ['#ffd23f', '#fff3a0', '#fff'], shape: 'star', speed: 170, up: 90, size: Math.max(3, cs * 0.1), life: 0.8 });
     floats.push({ x: c.x, y: c.y - cs * 0.3, text: '+1 ⭐', life: 1 });
+    if (got === stars.length && got > 1) { snd('sparkle'); floats.push({ x: c.x, y: c.y - cs * 0.3 - Math.max(16, cs * 0.45), text: `All ⭐ ${MG.praise(4)}`, life: 1.4 }); }
     hud();
   }
   if (i === goalI && state === 'play') { nxt = -1; tt = 0; win(); }
@@ -289,13 +292,13 @@ function update(dt) {
 }
 function useHint() {
   if (state !== 'play') return;
-  if (mode === 'timed') { if (hints <= 0) { MG.toast('提示用完了，加油！'); MG.sfx('bad'); return; } hints--; }
-  hintT = 2.4; hintGentle = false; idleT = 0; MG.sfx('pop');
+  if (mode === 'timed') { if (hints <= 0) { MG.toast('💡 ×0'); MG.sfx('miss'); return; } hints--; }
+  hintT = 2.4; hintGentle = false; idleT = 0; MG.sfx('pop'); snd('sparkle');
 }
 function pressFresh() {
   if (state !== 'play') return;
   if (freshT > 0 || steps === 0) { freshT = 0; newMaze(); return; }
-  freshT = 2.5; MG.toast('再按一次，就換一個新的迷宮', 2200);
+  freshT = 2.5; MG.toast('🔄 Tap again → new 🧩', 2200);
 }
 
 // ---------- input ----------
@@ -375,7 +378,7 @@ function ptrEnd(e, ok) {
   if (c < 0) return;
   if (tapOn) { walkTo(c); MG.sfx('click'); }
   else if (canPass(headCell(), c)) stepTo(c);
-  else if (performance.now() - lastTap > 2500) { lastTap = performance.now(); MG.toast('按住噗噗，沿著路拖過去喔'); }
+  else if (performance.now() - lastTap > 2500) { lastTap = performance.now(); MG.toast('👆 Drag ➡️'); }
 }
 stageEl.addEventListener('pointerup', e => ptrEnd(e, true));
 stageEl.addEventListener('pointercancel', e => ptrEnd(e, false));
@@ -682,7 +685,7 @@ function drawUI(th) {
     if (!showPad && P.h > 470) {   // a cheering 噗噗 fills the empty part of the side card
       const r = Math.min(46, (P.y + P.h - 350) * 0.3), py = P.y + P.h - r * 1.6 - 14, hop = Math.abs(Math.sin(t * 3)) * 6;
       MG.puPu(x, cx, py - hop, r, state === 'won' ? 'love' : mood === 'wow' ? 'wow' : 'happy', hop ? -0.03 : 0.05, { arms: 'up', look: Math.sin(t * 0.8) * 0.6 });
-      txt(state === 'won' ? '好棒！' : got && got === stars.length ? '星星全拿到了！' : '加油！', cx, py - r * 1.55 - 14, 18, th.ink, 'center', 900);
+      txt(state === 'won' ? 'Yay! 🎉' : got && got === stars.length ? 'All ⭐!' : 'Go! 💪', cx, py - r * 1.55 - 14, 18, th.ink, 'center', 900);
     }
   } else {
     const S0 = A.strip;
@@ -712,7 +715,7 @@ function draw() {
   drawTrail(th); drawStars(); drawHint(); drawActors(th);
   if (fogOn && state !== 'won') drawFog();
   MG.fx.draw(x);
-  for (const f of floats) { x.globalAlpha = clamp(f.life * 2, 0, 1); txt(f.text, f.x, f.y, Math.max(14, cs * 0.4), '#fff3a0', 'center', 900, 'rgba(90,60,0,.85)', 4); }
+  for (const f of floats) { x.globalAlpha = clamp(f.life * 2, 0, 1); const fs = Math.min(Math.max(14, cs * 0.4), 34); x.font = `900 ${fs}px ${FONT}`; const hw = x.measureText(f.text).width / 2 + 6; txt(f.text, clamp(f.x, hw, Math.max(hw, W - hw)), f.y, fs, '#fff3a0', 'center', 900, 'rgba(90,60,0,.85)', 4); }
   x.globalAlpha = 1;
   drawUI(th);
 }

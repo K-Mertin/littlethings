@@ -31,7 +31,9 @@ const LEVELS = [
   { name: '普通', speed: 0.8, react: 0.16, err: 18, jump: 0.65, spike: 0.35, blunder: 0.24 },
   { name: '困難', speed: 1.0, react: 0.06, err: 6, jump: 0.95, spike: 0.75, blunder: 0.05 },
 ];
-let hits = 0;
+let hits = 0, rally = 0;
+const SND = {}; const snd = (n, a, gap = 60) => { const now = performance.now(); if (now - (SND[n] || 0) < gap) return; SND[n] = now; MG.sfx(n, a); };
+function rallyUp() { rally++; if (rally >= 6 && rally % 3 === 0) { snd('combo', Math.min(10, rally / 2)); if (rally % 6 === 0) snd('sparkle'); banner = { t: `Rally ×${rally} 🔥`, life: 0.8, x: W / 2, y: 86 }; } }
 let mode = 'cpu', level = 1, players, ball, score, server, state = 'menu', pauseT = 0, banner = null, t = 0, shake = 0, trail = [];
 const input = [{ l: false, r: false, j: false, jp: false }, { l: false, r: false, j: false, jp: false }];
 
@@ -43,9 +45,9 @@ function resetRally(srv) {
   server = srv;
   players = [makePlayer(0), makePlayer(1)];
   ball = { x: srv ? 480 : 160, y: 90, vx: 0, vy: 0, rot: 0, hold: 0.9, last: -1, spiked: 0 };
-  trail = [];
+  trail = []; rally = 0;
 }
-function newMatch() { score = [0, 0]; resetRally(Math.random() < 0.5 ? 0 : 1); state = 'play'; banner = { t: '開始！', life: 1 }; hud(); }
+function newMatch() { score = [0, 0]; resetRally(Math.random() < 0.5 ? 0 : 1); state = 'play'; banner = { t: 'Go! 🚀', life: 1 }; MG.sfx('whoosh'); hud(); }
 function hud() { MG.stat('score', `${score[0]} : ${score[1]}`); }
 
 // ---------- input ----------
@@ -176,10 +178,10 @@ function spike(p) {
   clearNet(toward);
   const d = Math.hypot(ball.x - p.x, ball.y - p.y) || 1;
   if (d < R + BR) { ball.x = p.x + (ball.x - p.x) / d * (R + BR + 1); ball.y = p.y + (ball.y - p.y) / d * (R + BR + 1); }
-  ball.spiked = 0.6; p.spikeT = 0; p.hitCd = 0.25; shake = 0.25; MG.sfx('hit');
-  banner = { t: '殺球！', life: 0.7, x: ball.x, y: ball.y - 30 };
+  ball.spiked = 0.6; p.spikeT = 0; p.hitCd = 0.25; shake = 0.25; MG.sfx('hit'); snd('whoosh');
+  banner = { t: 'Spike! ⚡', life: 0.7, x: Math.max(90, Math.min(W - 90, ball.x)), y: Math.max(40, ball.y - 30) };
   MG.fx.burst(ball.x, ball.y, { n: 18, colors: ['#ffd23f', '#ff7a1c', '#fff'], speed: 260, up: 0, size: 5, shape: 'star', life: 0.5, grav: 0 });
-  ball.last = p.side; p.mood = 'wow'; p.moodT = 0.4; hits++;
+  ball.last = p.side; p.mood = 'wow'; p.moodT = 0.4; hits++; rallyUp();
 }
 function hitBall(p) {
   if (p.hitCd > 0) return;
@@ -199,17 +201,17 @@ function hitBall(p) {
   if (ball.vx * toward < 90) ball.vx = toward * 90;
   clearNet(toward);
   p.hitCd = 0.18;
-  MG.sfx('pop'); MG.fx.burst(ball.x, ball.y, { n: 6, colors: ['#fff', '#ffe36b'], speed: 120, up: 20, size: 3, life: 0.35 });
-  ball.last = p.side; p.mood = 'wow'; p.moodT = 0.4; hits++;
+  snd('pop'); snd('boing', null, 150); MG.fx.burst(ball.x, ball.y, { n: 6, colors: ['#fff', '#ffe36b'], speed: 120, up: 20, size: 3, life: 0.35 });
+  ball.last = p.side; p.mood = 'wow'; p.moodT = 0.4; hits++; rallyUp();
 }
 function netCollide() {
   const left = NETX - NETW / 2, right = NETX + NETW / 2;
   // top cap
   const dx = ball.x - NETX, dy = ball.y - NETTOP, d = Math.hypot(dx, dy);
-  if (d < BR + 4 && ball.y < NETTOP) { const nx = dx / d, ny = dy / d, dot = ball.vx * nx + ball.vy * ny; if (dot < 0) { ball.vx -= 1.6 * dot * nx; ball.vy -= 1.6 * dot * ny; } ball.x = NETX + nx * (BR + 4); ball.y = NETTOP + ny * (BR + 4); MG.sfx('step'); return; }
+  if (d < BR + 4 && ball.y < NETTOP) { const nx = dx / d, ny = dy / d, dot = ball.vx * nx + ball.vy * ny; if (dot < 0) { ball.vx -= 1.6 * dot * nx; ball.vy -= 1.6 * dot * ny; } ball.x = NETX + nx * (BR + 4); ball.y = NETTOP + ny * (BR + 4); snd('boing', null, 150); return; }
   if (ball.y + BR > NETTOP && ball.x + BR > left && ball.x - BR < right) {
     if (ball.x < NETX) { ball.x = left - BR; ball.vx = -Math.abs(ball.vx) * 0.7; } else { ball.x = right + BR; ball.vx = Math.abs(ball.vx) * 0.7; }
-    MG.sfx('step');
+    snd('step', null, 120);
   }
 }
 function update(dt) {
@@ -278,10 +280,10 @@ function lean(p) {
 function point(winner) {
   score[winner]++; server = winner; state = 'point'; pauseT = 1.4; hud();
   const loser = 1 - winner; players[winner].mood = 'love'; players[winner].moodT = 1.4; players[loser].mood = 'ouch'; players[loser].moodT = 1.4;
-  MG.sfx(mode === 'cpu' && winner === 1 ? 'bad' : 'good'); shake = 0.2;
+  if (mode === 'cpu' && winner === 1) MG.sfx('miss'); else { MG.sfx('coin'); MG.sfx('match', Math.min(8, 1 + score[winner])); if (score[winner] >= WIN) MG.sfx('yay'); else snd('sparkle'); } shake = 0.2;
   MG.fx.burst(ball.x, GROUND, { n: 20, colors: ['#f2d69a', '#e8c27a', '#fff'], speed: 200, up: 160, size: 4, life: 0.7 });
   MG.fx.burst(winner ? 480 : 160, 120, { n: 24, colors: ['#ff8ac2', '#ffd23f', '#8fd0ff', '#b8f5a0'], speed: 220, up: 120, size: 5, shape: 'sq', life: 1 });
-  banner = { t: `${names()[winner]} 得分！`, life: 1.3 };
+  banner = { t: mode === 'cpu' ? (winner ? '🤖 Point!' : 'Point! 🎉') : (winner ? '🩷 Point!' : '💚 Point!'), life: 1.3 };
 }
 const names = () => mode === 'cpu' ? ['噗噗', '電腦'] : ['綠噗噗', '粉噗噗'];
 
@@ -389,11 +391,11 @@ function draw() {
   drawBall();
   if (touchHintT > 0 && state === 'play') {
     x.globalAlpha = Math.min(1, touchHintT); x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = '700 15px "Noto Sans TC",system-ui';
-    const tips = mode === 'pvp' ? [[160, '👆 按住這半邊左右拖'], [480, '👆 按住這半邊左右拖']] : [[320, '👆 按住沙灘左右拖＝移動　點一下＝跳']];
+    const tips = mode === 'pvp' ? [[160, '👆 ↔️ Move'], [480, '👆 ↔️ Move']] : [[320, '👆 ↔️ Move   👆 Jump']];
     for (const [tx, tt] of tips) { x.lineWidth = 4; x.strokeStyle = 'rgba(255,255,255,.95)'; x.strokeText(tt, tx, 150); x.fillStyle = '#2a3a5a'; x.fillText(tt, tx, 150); }
     x.globalAlpha = 1;
   }
-  if (ball.hold > 0 && state === 'play') { x.fillStyle = 'rgba(255,255,255,.9)'; x.font = '900 16px "Noto Sans TC",system-ui'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('發球', ball.x, ball.y - 30); }
+  if (ball.hold > 0 && state === 'play') { x.fillStyle = '#fff'; x.font = '900 16px "Noto Sans TC",system-ui'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('Serve 🏐', ball.x, ball.y - 30); }
   MG.fx.draw(x);
   x.restore();
   // scoreboard
@@ -421,7 +423,7 @@ function endMatch() {
     if (w === 0) { MG.record('volley', level + 1); extra = `<p class="new">打贏${LEVELS[level].name}的電腦！^_^</p>` + (level < 2 ? `<p>要不要挑戰「${LEVELS[level + 1].name}」？</p>` : '<p>你是海灘排球冠軍！</p>'); }
     else extra = '<p>差一點點！再來一局吧</p>';
   }
-  MG.sfx(mode === 'cpu' && w === 1 ? 'over' : 'win');
+  MG.sfx(mode === 'cpu' && w === 1 ? 'over' : 'win'); if (!(mode === 'cpu' && w === 1)) MG.sfx('yay');
   MG.panel({
     title: mode === 'cpu' ? (w === 0 ? '你贏了！' : '電腦贏了…') : `${nm[w]} 贏了！`,
     html: `<div class="big">${score[0]} : ${score[1]}</div>${extra}`,

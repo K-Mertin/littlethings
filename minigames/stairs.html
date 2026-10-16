@@ -18,11 +18,14 @@ MG.fit(cv, W, H);
 const R = 14, HPMAX = 10, CEIL = 22, PW = 86, PH = 12, GAP = 72;
 const TYPES = ['normal', 'normal', 'normal', 'spike', 'spring', 'left', 'right', 'fragile'];
 let wallOff = 0, deco = [];
+let floats = [];
+const SND = {}; const snd = (n, a, gap = 60) => { const now = performance.now(); if (now - (SND[n] || 0) < gap) return; SND[n] = now; MG.sfx(n, a); };
+function say(t, c = '#fff', px = P.x, py = P.y - 30) { floats.push({ x: Math.max(50, Math.min(W - 50, px)), y: Math.max(40, py), t, c, life: 0.9 }); }
 let P, plats, rise, spawnY, nextIdx, floor, state = 'ready', shake = 0, flash = 0, parts = [], t = 0;
 
 function reset() {
   P = { x: W / 2, y: 280 - R, vy: 0, on: null, hp: HPMAX, inv: 0, ignore: null, ignoreT: 0, face: 'happy', squash: 0 };
-  plats = []; nextIdx = 0; floor = 0; rise = 70; t = 0; parts = []; wallOff = 0; MG.fx.clear();
+  plats = []; nextIdx = 0; floor = 0; rise = 70; t = 0; parts = []; floats = []; wallOff = 0; MG.fx.clear();
   addPlat(W / 2 - PW / 2, 280, 'normal');
   spawnY = 280;
   while (spawnY < H + GAP) { spawnY += GAP; addPlat(MG.rand(4, W - PW - 4), spawnY, pickType()); }
@@ -61,7 +64,7 @@ addEventListener('blur', () => { keys.l = keys.r = false; touches.clear(); touch
 // ---------- update ----------
 function hurt(n) {
   if (P.inv > 0) return;
-  P.hp = Math.max(0, P.hp - n); P.inv = 0.7; shake = 0.25; flash = 0.2; P.face = 'ouch'; MG.sfx('hit');
+  P.hp = Math.max(0, P.hp - n); P.inv = 0.7; shake = 0.25; flash = 0.2; P.face = 'ouch'; MG.sfx('hit'); say('Ouch! 💥', '#ff8a7a');
 }
 function update(dt) {
   t += dt;
@@ -89,7 +92,7 @@ function update(dt) {
     if (p.gone || P.x < p.x - R * 0.6 || P.x > p.x + PW + R * 0.6) { P.on = null; P.vy = 0; }
     else {
       P.y = p.y - R; P.vy = 0;
-      if (p.type === 'fragile' && p.crumble >= 0) { p.crumble += dt; if (p.crumble > 0.38) { p.gone = true; P.on = null; MG.fx.burst(p.x + PW / 2, p.y + 4, { n: 18, colors: ['#b9a58a', '#8f7d64', '#d8c6a8'], speed: 120, up: 20, size: 5, shape: 'sq', life: 0.8 }); MG.sfx('step'); } }
+      if (p.type === 'fragile' && p.crumble >= 0) { p.crumble += dt; if (p.crumble > 0.38) { p.gone = true; P.on = null; MG.fx.burst(p.x + PW / 2, p.y + 4, { n: 18, colors: ['#b9a58a', '#8f7d64', '#d8c6a8'], speed: 120, up: 20, size: 5, shape: 'sq', life: 0.8 }); MG.sfx('step'); snd('whoosh'); } }
     }
   }
   if (!P.on) {
@@ -110,6 +113,7 @@ function update(dt) {
     P.vy = 120;
   }
   MG.fx.step(dt);
+  for (const f of floats) { f.y -= 34 * dt; f.life -= dt; } floats = floats.filter(f => f.life > 0);
   shake = Math.max(0, shake - dt); flash = Math.max(0, flash - dt);
   if (P.hp <= 0 || P.y - R > H) gameOver();
   showHud();
@@ -117,10 +121,13 @@ function update(dt) {
 function land(p) {
   P.on = p; P.y = p.y - R; P.squash = 0.22;
   MG.fx.burst(P.x, p.y, { n: 6, colors: ['rgba(255,255,255,.7)', 'rgba(220,210,190,.7)'], speed: 70, up: 30, size: 3, grav: 120, life: 0.45 });
-  if (p.idx > floor) floor = p.idx;
+  if (p.idx > floor) {
+    floor = p.idx;
+    if (floor % 10 === 0) { MG.sfx('coin'); snd('sparkle'); if (floor % 50 === 0) MG.sfx('yay'); say(`B${floor}! ${floor % 50 === 0 ? '🏆' : '🎉'}`, '#ffd34a', P.x, p.y - 44); MG.fx.burst(P.x, p.y - 10, { n: 14, colors: ['#ffd34a', '#fff6a0', '#fff'], speed: 170, up: 120, size: 5, shape: 'star', life: 0.8 }); }
+  }
   if (p.type === 'spike') { if (!p.used) hurt(4); }
   else if (!p.used && P.hp < HPMAX) P.hp++;
-  if (p.type === 'spring') { P.on = null; P.vy = -560; P.squash = -0.2; p.boing = 0.35; MG.sfx('jump'); }
+  if (p.type === 'spring') { P.on = null; P.vy = -560; P.squash = -0.2; p.boing = 0.35; MG.sfx('boing'); snd('jump'); say('Boing! 🚀', '#9ff0ff', P.x, p.y - 40); }
   if (p.type === 'spike' && !p.used) MG.fx.burst(P.x, p.y - 4, { n: 10, colors: ['#ff5a4e', '#ffd23f', '#fff'], speed: 160, shape: 'star', size: 5 });
   else if (p.type !== 'spike') MG.sfx('step');
   if (p.type === 'fragile' && p.crumble < 0) p.crumble = 0;
@@ -202,6 +209,9 @@ function draw() {
   MG.fx.draw(x);
   // player
   if (!(P.inv > 0 && Math.floor(P.inv * 14) % 2)) MG.puPu(x, P.x, P.y, R, P.face, P.squash, { look: P.look || 0, arms: P.on ? false : 'up' });
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  for (const f of floats) { x.globalAlpha = Math.min(1, f.life * 2); x.font = '900 18px system-ui,sans-serif'; x.lineWidth = 4; x.strokeStyle = '#1a1d33'; x.strokeText(f.t, f.x, f.y); x.fillStyle = f.c; x.fillText(f.t, f.x, f.y); }
+  x.globalAlpha = 1;
   // ceiling: dark shadow, metal bar with bolts, shiny spikes
   const cg = x.createLinearGradient(0, 0, 0, 70); cg.addColorStop(0, 'rgba(0,0,0,.45)'); cg.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = cg; x.fillRect(0, 0, W, 70);
   const bar = x.createLinearGradient(0, 0, 0, 11); bar.addColorStop(0, '#9aa0b8'); bar.addColorStop(1, '#5d6378'); x.fillStyle = bar; x.fillRect(0, 0, W, 11);
