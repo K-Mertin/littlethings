@@ -38,6 +38,11 @@ body.game::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:
 @keyframes shake{20%,60%{translate:-4px 0}40%,80%{translate:4px 0}}
 @keyframes spark{from{opacity:1;transform:translate(0,0) scale(.6)}to{opacity:0;transform:translate(var(--dx),var(--dy)) scale(1.2) rotate(90deg)}}
 @media (prefers-reduced-motion:reduce){.card .in{transition:none}.card.done,.card.bad .in,.spark{animation:none}}
+.word{position:absolute;z-index:6;pointer-events:none;transform:translate(-50%,-50%);white-space:nowrap;font:900 clamp(20px,calc(var(--cs) * .32),34px) system-ui,"Noto Sans TC",sans-serif;color:#ffe066;
+  -webkit-text-stroke:1.5px #7a4a00;paint-order:stroke fill;text-shadow:0 3px 0 #7a4a00,0 0 10px rgba(255,255,255,.7);animation:word .9s ease-out forwards}
+.word.miss{color:#fff;-webkit-text-stroke:1.5px #3a6a9a;text-shadow:0 3px 0 #3a6a9a;font-size:clamp(16px,calc(var(--cs) * .24),26px)}
+@keyframes word{0%{opacity:0;transform:translate(-50%,-30%) scale(.5)}20%{opacity:1;transform:translate(-50%,-50%) scale(1.15)}35%{transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-130%) scale(1)}}
+@media (prefers-reduced-motion:reduce){.word{animation:none;opacity:1}}
 .sizes{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:12px}
 .sizes .mg-btn{min-width:96px;font-size:16px}
 .sizes small{display:block;font-weight:400;font-size:12px;opacity:.85}
@@ -52,7 +57,7 @@ MG.init({ id: 'memory', title: '翻翻記憶', stats: ['moves', 'time'] });
 const SETS = ['🐶', '🐱', '🐰', '🦊', '🐼', '🐸', '🐵', '🐧', '🐙', '🦁', '🐷', '🐨', '🦄', '🐢', '🐝', '🐳', '🦉', '🐞'];
 const SIZES = { easy: { pairs: 6, label: '簡單', note: '12 張' }, normal: { pairs: 10, label: '普通', note: '20 張' }, hard: { pairs: 15, label: '困難', note: '30 張' } };
 const board = document.getElementById('board'), stage = board.parentElement;
-let size = 'easy', cards = [], open = [], moves = 0, matched = 0, time = 0, state = 'ready', lock = false;
+let size = 'easy', cards = [], open = [], moves = 0, matched = 0, time = 0, state = 'ready', lock = false, streak = 0, lastWord = '';
 
 function layout() {
   const n = SIZES[size].pairs * 2;
@@ -83,7 +88,7 @@ function deal() {
     board.append(b);
     return { el: b, face: f, up: false, done: false };
   });
-  open = []; moves = 0; matched = 0; time = 0; lock = false;
+  open = []; moves = 0; matched = 0; time = 0; lock = false; streak = 0;
   layout(); hud();
 }
 function hud() { MG.stat('moves', `${moves} 步`); MG.stat('time', `⏱ ${fmt(time)}`); }
@@ -98,13 +103,19 @@ function flip(i) {
   moves++; hud();
   const [a, b] = open;
   if (a.face === b.face) {
-    a.done = b.done = true; open = [];
-    setTimeout(() => { a.el.classList.add('done'); b.el.classList.add('done'); MG.sfx('good'); sparks(a.el); sparks(b.el); }, 180);
+    a.done = b.done = true; open = []; streak++;
+    const st = streak, last = matched + 1 === SIZES[size].pairs;
+    setTimeout(() => {
+      a.el.classList.add('done'); b.el.classList.add('done'); sparks(a.el); sparks(b.el);
+      // layered match sound: rises with the streak of pairs found in a row
+      MG.sfx('match', st); if (st >= 2) MG.sfx('combo', st); else MG.sfx('sparkle');
+      word(a.el, b.el, last ? MG.WORDS.clear : st >= 2 ? MG.WORDS.combo(st) : MG.praise(1 + (matched % 3)));
+    }, 180);
     matched++;
     if (matched === SIZES[size].pairs) win();
   } else {
-    lock = true;
-    setTimeout(() => { a.el.classList.add('bad'); b.el.classList.add('bad'); }, 260);
+    lock = true; streak = 0;
+    setTimeout(() => { a.el.classList.add('bad'); b.el.classList.add('bad'); MG.sfx('miss'); word(a.el, b.el, MG.WORDS.oops, true); }, 260);
     setTimeout(() => {
       for (const q of [a, b]) { q.up = false; q.el.classList.remove('up', 'bad'); q.el.setAttribute('aria-label', '蓋著的牌'); }
       open = []; lock = false;
@@ -121,12 +132,23 @@ function sparks(el) {
     board.append(sp); setTimeout(() => sp.remove(), 750);
   }
 }
+// a short English + emoji word that pops up between the two cards
+function word(e1, e2, text, miss = false) {
+  const r1 = e1.getBoundingClientRect(), r2 = e2.getBoundingClientRect(), br = board.getBoundingClientRect();
+  const w = document.createElement('span'); w.className = 'word' + (miss ? ' miss' : ''); w.textContent = text; lastWord = text;
+  board.append(w);
+  // keep it inside the board horizontally
+  const cx = (r1.left + r1.right + r2.left + r2.right) / 4 - br.left, half = w.offsetWidth / 2 + 4;
+  w.style.left = Math.max(half, Math.min(br.width - half, cx)) + 'px';
+  w.style.top = ((r1.top + r1.bottom + r2.top + r2.bottom) / 4 - br.top) + 'px';
+  setTimeout(() => w.remove(), 950);
+}
 function win() {
   state = 'over';
   const key = 'memory.' + size, rec = MG.record(key, Math.round(time * 10) / 10, true);
   const mv = MG.record('memory.moves.' + size, moves, true);
   setTimeout(() => {
-    MG.sfx('win');
+    MG.sfx('win'); setTimeout(() => MG.sfx('yay'), 250);
     MG.panel({
       title: '全部配對完成！',
       html: `<div class="big">${fmt(time)}</div><p>${SIZES[size].label}　${moves} 步</p>` +
@@ -151,6 +173,7 @@ function menu() {
 }
 MG.pauseMenu({ label: '☰ 換大小', playing: () => state === 'play', open: () => menu() });
 deal(); menu();
+window.MMT = { get state() { return state; }, get word() { return lastWord; }, faces: () => cards.map(c => c.face), get lock() { return lock; } };
 MG.loop(dt => { if (state === 'play' && moves + open.length > 0) { time += dt; hud(); } });
 </script>
 </body>

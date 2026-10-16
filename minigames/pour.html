@@ -30,7 +30,7 @@ const BW = 52, UH = 30, NECK = 16;
 
 let bottles = [], hid = [], gone = [], cap = 4, level = 1, mode = 'shape', state = 'menu';
 let sel = -1, moves = 0, hist = [], anim = null, puzzle = null, extraUsed = false, downOn = -1;
-let fade = [], shake = [], hint = null, t = 0, pos = [], scale = 1, btns = [];
+let fade = [], shake = [], hint = null, t = 0, pos = [], scale = 1, btns = [], floats = [], doneN = 0;
 
 // ---------- rules ----------
 const topOf = b => b[b.length - 1];
@@ -119,14 +119,15 @@ function startLevel(lv, fresh = true) {
   bottles = puzzle.map(b => b.slice()); gone = bottles.map(() => false);
   hid = bottles.map(b => b.map((_, k) => L.m && k < b.length - 1));
   fade = bottles.map(() => 0); shake = bottles.map(() => 0);
-  sel = -1; moves = 0; hist = []; anim = null; extraUsed = false; hint = null; downOn = -1;
+  sel = -1; moves = 0; hist = []; anim = null; extraUsed = false; hint = null; downOn = -1; floats = []; doneN = 0;
   layout(); hud(); state = 'play'; MG.hide();
 }
 function hud() { MG.stat('level', `第 ${level} 關`); MG.stat('moves', `🫗 ${moves} 步`); }
 function tryPour(i, j) {
   if (!canPour(bottles, i, j)) {
-    shake[j] = 0.35; MG.sfx('bad');
-    MG.toast(bottles[j].length >= cap ? '這個瓶子滿了喔' : '要倒在一樣的顏色上面，或空瓶子裡');
+    shake[j] = 0.35; MG.sfx('miss');
+    // no rule sentence during play: a tiny visual instead (full bottle, or colours that don't match)
+    say(j, bottles[j].length >= cap ? MG.WORDS.full : '❌ 🎨≠🎨', '#d0404e');
     sel = -1; return;
   }
   hist.push(snapshot()); hint = null;
@@ -140,9 +141,12 @@ function finishPour() {
   hid[i].splice(hid[i].length - k, k); for (let n = 0; n < k; n++) hid[j].push(false);
   const wasHidden = hid.some(h => h.length && h[h.length - 1]);
   reveal();
-  MG.sfx('pop'); if (wasHidden) MG.sfx('tick');
+  MG.sfx('pop'); if (wasHidden) MG.sfx('sparkle');
   if (full1(bottles[j])) {               // a bottle full of one colour: it gets a cork and pops away
-    fade[j] = 0.001; MG.sfx('good');
+    fade[j] = 0.001; doneN++;
+    // layered: a rising match chime + sparkle, then a whoosh as the bottle flies away
+    MG.sfx('match', doneN + 1); MG.sfx('sparkle'); setTimeout(() => MG.sfx('whoosh'), 380);
+    say(j, MG.praise(Math.min(5, doneN)), '#ff6a00');
     const p = pos[j]; MG.fx.burst(p.cx, p.by - (bh() + NECK) * scale, { n: 22, colors: [COLORS[bottles[j][0]], '#fff', '#ffd23f'], shape: 'star', speed: 220, up: 140, size: 6 });
   }
   checkStuck();
@@ -151,10 +155,10 @@ function checkStuck() {
   const live = bottles.map((b, i) => !gone[i] && fade[i] === 0);
   if (bottles.every((b, i) => !live[i] || b.length === 0)) return;          // finishing
   for (let i = 0; i < bottles.length; i++) for (let j = 0; j < bottles.length; j++) if (live[i] && live[j] && canPour(bottles, i, j)) return;
-  MG.toast('沒有地方可以倒了，按「↶ 復原」或「➕ 空瓶」試試看', 2600);
+  MG.toast(`${MG.WORDS.stuck}  ↶ ➕`, 2600);
 }
 function win() {
-  state = 'over'; MG.sfx('win');
+  state = 'over'; MG.sfx('win'); setTimeout(() => MG.sfx('yay'), 250);
   const rec = MG.record('pour', level);
   MG.fx.burst(cv.lw / 2, cv.lh * 0.4, { n: 50, colors: COLORS, shape: 'star', speed: 320, up: 180, size: 7 });
   setTimeout(() => MG.panel({
@@ -169,25 +173,25 @@ function win() {
 }
 function undo() {
   if (anim) return;
-  const s = hist.pop(); if (!s) { MG.toast('已經回到最開始了'); return; }
+  const s = hist.pop(); if (!s) { MG.toast('⏮️ Start'); MG.sfx('miss'); return; }
   bottles = s.b; hid = s.h; gone = s.gone; moves = s.moves; fade = bottles.map(() => 0); bottles.forEach((b, i) => { if (full1(b)) gone[i] = true; }); sel = -1; hint = null; hud(); MG.sfx('place');
 }
 function addBottle() {
   if (anim) return;
-  if (extraUsed) { MG.toast('每關只能加一個空瓶喔'); return; }
+  if (extraUsed) { MG.toast('No more ➕'); MG.sfx('miss'); return; }
   extraUsed = true; bottles.push([]); hid.push([]); gone.push(false); fade.push(0); shake.push(0);
   for (const s of hist) { s.b.push([]); s.h.push([]); s.gone.push(false); }
-  layout(); MG.sfx('pop'); MG.toast('多了一個空瓶子！');
+  layout(); MG.sfx('pop'); MG.sfx('whoosh'); MG.toast('+1 🫙');
 }
 function showHint() {
   if (anim) return;
   const live = bottles.map((b, i) => (gone[i] || fade[i] > 0) ? [] : b);
   const path = solve(live, cap);
-  if (!path) { MG.toast('這樣走不完了，按「↶ 復原」退回去試試', 2400); MG.sfx('bad'); return; }
+  if (!path) { MG.toast(`${MG.WORDS.oops} ↶`, 2400); MG.sfx('miss'); return; }
   if (!path.length) return;
-  const [i, j] = path[0]; hint = { i, j, t: 0 }; sel = -1; MG.sfx('flip');
+  const [i, j] = path[0]; hint = { i, j, t: 0 }; sel = -1; MG.sfx('flip'); MG.sfx('sparkle');
 }
-function reset() { if (anim) return; startLevel(level, false); MG.toast('重新開始這一題'); }
+function reset() { if (anim) return; startLevel(level, false); MG.sfx('whoosh'); MG.toast('Again! 🔄'); }
 
 // ---------- input ----------
 function hitBottle(p) {
@@ -207,7 +211,7 @@ cv.addEventListener('pointerdown', e => {
   const i = hitBottle(p); downOn = -1;
   if (i < 0) { sel = -1; return; }
   if (sel < 0) {
-    if (!bottles[i].length) { MG.toast('這是空瓶子，先點有水的瓶子'); return; }
+    if (!bottles[i].length) { shake[i] = 0.25; MG.sfx('miss'); say(i, 'Empty 🫙', '#5a6f90'); return; }
     sel = i; downOn = i; MG.sfx('tick');
     try { cv.setPointerCapture(e.pointerId); } catch {}
   } else if (sel === i) sel = -1;
@@ -368,6 +372,7 @@ function draw() {
     x.fillStyle = '#ff9f1c'; x.beginPath(); x.moveTo(b.cx, yB + 12 + bob); x.lineTo(b.cx - 10, yB - 4 + bob); x.lineTo(b.cx + 10, yB - 4 + bob); x.fill();
   }
   MG.fx.draw(x);
+  drawFloats();
   // toolbar
   for (const b of btns) {
     const off = (b.id === 'add' && extraUsed) || (b.id === 'undo' && !hist.length);
@@ -377,6 +382,24 @@ function draw() {
     x.fillStyle = off ? '#b5a585' : '#4a3520'; x.font = `700 ${b.w < 100 ? 15 : 18}px "Noto Sans TC",system-ui,sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
     x.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2 + 1);
   }
+}
+
+// short English + emoji words above a bottle
+function say(i, text, col) { const q = pos[i]; if (!q) return; floats = floats.filter(f => f.i !== i); floats.push({ i, text, col, x: q.cx, y: q.by - (bh() + NECK + 40) * scale, life: 1.2 }); }
+function drawFloats() {
+  const W = cv.lw;
+  x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineJoin = 'round';
+  for (const f of floats) {
+    let sz = Math.round(Math.max(18, Math.min(30, 24 * scale)));
+    x.font = `900 ${sz}px system-ui,"Noto Sans TC",sans-serif`;
+    let tw = x.measureText(f.text).width;
+    if (tw > W - 16) { sz = Math.floor(sz * (W - 16) / tw); x.font = `900 ${sz}px system-ui,"Noto Sans TC",sans-serif`; tw = x.measureText(f.text).width; }
+    const fx = Math.max(tw / 2 + 8, Math.min(W - tw / 2 - 8, f.x)), fy = Math.max(sz, f.y - (1.2 - f.life) * 30);
+    x.globalAlpha = Math.min(1, f.life * 2.5);
+    x.lineWidth = Math.max(3, sz * 0.2); x.strokeStyle = '#fff'; x.strokeText(f.text, fx, fy);
+    x.fillStyle = f.col; x.fillText(f.text, fx, fy);
+  }
+  x.globalAlpha = 1;
 }
 
 // ---------- menu ----------
@@ -395,9 +418,12 @@ function menu() {
 // sample puzzle behind the start panel
 cap = 4; bottles = makePuzzle(4, 4); hid = bottles.map(b => b.map(() => false)); gone = bottles.map(() => false); fade = bottles.map(() => 0); shake = bottles.map(() => 0); layout();
 menu();
+window.PRT = { get state() { return state; }, floats: () => floats.map(f => f.text), bottles: () => bottles.map(b => b.slice()), get cap() { return cap; }, get anim() { return !!anim; }, gone: () => gone.slice(),
+  at(i) { const q = pos[i], rc = cv.getBoundingClientRect(), B = 3, lx = q.cx, ly = q.by - bh() / 2 * scale; return { x: rc.left + B + lx * (rc.width - 2 * B) / cv.lw, y: rc.top + B + ly * (rc.height - 2 * B) / cv.lh }; } };
 
 MG.loop(dt => {
   t += dt; MG.fx.step(dt);
+  for (const f of floats) f.life -= dt; floats = floats.filter(f => f.life > 0);
   for (let i = 0; i < shake.length; i++) shake[i] = Math.max(0, shake[i] - dt);
   if (hint) { hint.t += dt; if (hint.t > 6) hint = null; }
   if (anim) { anim.t += dt; if (anim.t >= 0.86) finishPour(); }

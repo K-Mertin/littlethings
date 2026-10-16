@@ -654,7 +654,7 @@ const SHM = 8;                       // room for the soft shadow baked around ea
 let land = false, state = 'menu', mode = 'ghost', level = 1, pic = PICS[0], picSel = MG.store.get('jigsaw.pic', 'meadow');
 let gc = 2, gr = 2, N = 4, edgesH = [], edgesV = [], pieces = [], loose = [], placedN = 0;
 let lay = null, picCv = null, bgLayer = null, bgDirty = true;
-let t = 0, elapsed = 0, moves = 0, hintsUsed = 0, winT = 0, peekA = 0, peekUntil = 0, glows = [];
+let t = 0, elapsed = 0, moves = 0, hintsUsed = 0, winT = 0, peekA = 0, peekUntil = 0, glows = [], words = [], streak = 0;
 const drags = new Map(), peekers = new Set();
 const hitG = document.createElement('canvas').getContext('2d');
 if (picSel !== 'random' && !PICS.some(p => p.id === picSel)) picSel = 'meadow';
@@ -784,7 +784,7 @@ function setup(pc, lv) {
   edgesH = Array.from({ length: gr }, () => Array.from({ length: gc }, edgeParams));
   edgesV = Array.from({ length: gr }, () => Array.from({ length: gc }, edgeParams));
   pieces = []; for (let r = 0; r < gr; r++) for (let c = 0; c < gc; c++) pieces.push({ i: pieces.length, c, r, x: 0, y: 0, placed: true, fly: null, lift: 0, drag: false });
-  loose = []; placedN = N; drags.clear(); peekers.clear(); glows = []; MG.fx.clear();
+  loose = []; placedN = N; drags.clear(); peekers.clear(); glows = []; words = []; streak = 0; MG.fx.clear();
   lay = makeLayout(); buildImages();
   for (const p of pieces) { p.x = tx(p); p.y = ty(p); }
 }
@@ -808,12 +808,17 @@ function start(pc, lv) {
   loose.forEach((p, i) => { p.fly = { x0: p.x, y0: p.y, x1: spots[i].x, y1: spots[i].y, t: -0.25 - i * Math.min(0.03, 0.4 / N), dur: 0.5, arc: 30, lock: false }; });
   elapsed = 0; moves = 0; hintsUsed = 0; winT = 0; peekA = 0; peekUntil = 0;
   state = 'play'; bgDirty = true; MG.hide(); hud();
+  setTimeout(() => MG.sfx('whoosh'), 200);   // the pieces fly out of the box
 }
-function lock(p) {
+function lock(p, byHint = false) {
   p.placed = true; p.fly = null; p.drag = false; p.lift = 0; p.x = tx(p); p.y = ty(p);
   loose = loose.filter(q => q !== p); placedN++; bgDirty = true;
   glows.push({ p, t: 0 });
-  MG.sfx(placedN === N ? 'clear' : 'good');
+  // layered snap: a click, then a chime that rises with the streak of pieces placed in a row
+  if (!byHint) streak++;
+  MG.sfx('place'); MG.sfx('match', Math.max(1, streak)); if (streak >= 3 && streak % 3 === 0) MG.sfx('sparkle');
+  if (placedN === N) MG.sfx('clear');
+  else if (!byHint) words.push({ text: streak >= 3 ? MG.WORDS.combo(streak) : MG.praise(Math.min(5, 1 + Math.floor(placedN / Math.max(1, N / 5)))), x: p.x + lay.pw / 2, y: p.y + lay.ph / 2, life: 1 });
   MG.fx.burst(p.x + lay.pw / 2, p.y + lay.ph / 2, { n: 14, colors: ['#ffd23f', '#fff', '#ff9cc2', '#8fe0ff'], shape: 'star', speed: 150, up: 60, size: 5, life: 0.6 });
   hud();
   if (placedN === N) win();
@@ -821,7 +826,8 @@ function lock(p) {
 function win() {
   state = 'won'; winT = 0; bgDirty = true;
   const rec = MG.record('jigsaw', N);
-  MG.sfx('win');
+  MG.sfx('win'); setTimeout(() => MG.sfx('yay'), 300);
+  words = [{ text: MG.WORDS.clear, x: lay.board.x + lay.board.w / 2, y: lay.board.y + lay.board.h / 2, life: 1.6, big: true }];
   const { board } = lay;
   for (let i = 0; i < 3; i++) setTimeout(() => MG.fx.burst(board.x + board.w * (0.2 + i * 0.3), board.y + board.h * 0.3, { n: 30, colors: ['#ff5a4e', '#ffd23f', '#4cc96a', '#3d9bff', '#ff6fb5', '#8a63ff'], shape: 'sq', speed: 300, up: 220, size: 7, life: 1.4, grav: 380 }), i * 280);
   setTimeout(() => {
@@ -841,11 +847,11 @@ function win() {
 function useHint() {
   if (state !== 'play') return;
   const cand = loose.filter(p => !p.drag && !p.fly);
-  if (!cand.length) { if (loose.length) MG.toast('拼圖正在移動中'); return; }
+  if (!cand.length) { if (loose.length) MG.toast(MG.WORDS.wait); return; }
   const p = MG.pick(cand);
   loose = loose.filter(q => q !== p); loose.push(p);
-  p.fly = { x0: p.x, y0: p.y, x1: tx(p), y1: ty(p), t: 0, dur: 0.75, arc: 60, lock: true, lift: true };
-  hintsUsed++; MG.sfx('flip');
+  p.fly = { x0: p.x, y0: p.y, x1: tx(p), y1: ty(p), t: 0, dur: 0.75, arc: 60, lock: true, lift: true, hint: true };
+  hintsUsed++; MG.sfx('flip'); MG.sfx('whoosh');
 }
 function peekStart() { if (state !== 'play') return; peekUntil = t + 1.3; MG.sfx('tick'); }
 
@@ -898,6 +904,7 @@ function drop(p, moved) {
   if (moved) { moves++; hud(); }
   const snapD = Math.max(26, lay.S * 0.42);
   if (Math.hypot(p.x - tx(p), p.y - ty(p)) < snapD) { p.fly = { x0: p.x, y0: p.y, x1: tx(p), y1: ty(p), t: 0, dur: 0.09, arc: 0, lock: true }; return; }
+  if (moved) streak = 0;                // dropped somewhere else: the streak starts again
   // never leave a piece under the buttons
   const o = outerOf(p);
   for (const b of lay.btns) if (hit(o, { x: b.x - 6, y: b.y - 6, w: b.w + 12, h: b.h + 12 })) { p.fly = { x0: p.x, y0: p.y, x1: p.x, y1: b.y - 8 - lay.pad - lay.ph, t: 0, dur: 0.18, arc: 0, lock: false }; break; }
@@ -986,6 +993,7 @@ function draw() {
     for (const p of flying) drawPiece(p);
   }
   MG.fx.draw(ctx);
+  drawWords();
   if (peekA > 0.01 && state === 'play') {
     ctx.save(); ctx.globalAlpha = peekA;
     ctx.fillStyle = '#fff'; rr(ctx, b.x - 8, b.y - 8, b.w + 16, b.h + 16, 14); ctx.fill(); ctx.strokeStyle = '#5a9bd0'; ctx.lineWidth = 3; ctx.stroke();
@@ -993,6 +1001,23 @@ function draw() {
     ctx.restore();
   }
   if (state === 'play') drawButtons();
+}
+
+// short English + emoji words that float up from a piece that just clicked in
+function drawWords() {
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+  for (const w of words) {
+    let sz = w.big ? Math.max(30, Math.min(56, lay.board.h * 0.16)) : Math.max(20, Math.min(30, lay.S * 0.32));
+    ctx.font = `900 ${sz}px ${FONT}`;
+    let tw = ctx.measureText(w.text).width;
+    if (tw > lay.W - 16) { sz = Math.floor(sz * (lay.W - 16) / tw); ctx.font = `900 ${sz}px ${FONT}`; tw = ctx.measureText(w.text).width; }
+    const age = (w.big ? 1.6 : 1) - w.life, wx = Math.max(tw / 2 + 8, Math.min(lay.W - tw / 2 - 8, w.x)), wy = Math.max(sz, w.y - (w.big ? 0 : age * 40));
+    const pop = age < 0.12 ? 0.6 + age / 0.12 * 0.5 : age < 0.22 ? 1.1 - (age - 0.12) : 1;
+    ctx.save(); ctx.globalAlpha = Math.min(1, w.life * 2.5); ctx.translate(wx, wy); ctx.scale(pop, pop);
+    ctx.lineWidth = Math.max(3, sz * 0.2); ctx.strokeStyle = '#fff'; ctx.strokeText(w.text, 0, 0);
+    ctx.fillStyle = w.big ? '#ff4f8a' : '#ff7a00'; ctx.fillText(w.text, 0, 0);
+    ctx.restore();
+  }
 }
 
 // ---------- menu ----------
@@ -1025,7 +1050,7 @@ menu();
 // small hook for automated tests (read-only)
 window.JGT = {
   get state() { return state; }, get level() { return level; }, get n() { return N; }, get pic() { return pic.id; }, get mode() { return mode; },
-  get moves() { return moves; }, get placed() { return placedN; }, get peek() { return peekA; },
+  get moves() { return moves; }, get placed() { return placedN; }, get peek() { return peekA; }, words: () => words.map(w => w.text),
   lay: () => ({ W: lay.W, H: lay.H, pw: lay.pw, ph: lay.ph, pad: lay.pad, board: lay.board, btns: lay.btns.map(b => ({ id: b.id, x: b.x, y: b.y, w: b.w, h: b.h })) }),
   pieces: () => pieces.map(p => ({ i: p.i, c: p.c, r: p.r, x: p.x, y: p.y, tx: tx(p), ty: ty(p), placed: p.placed, fly: !!p.fly, drag: p.drag, z: loose.indexOf(p) })),
   toClient(lx, ly) { const rc = cv.getBoundingClientRect(), B = 3; return { x: rc.left + B + lx * (rc.width - 2 * B) / cv.lw, y: rc.top + B + ly * (rc.height - 2 * B) / cv.lh }; },
@@ -1039,6 +1064,7 @@ MG.loop(dt => {
   }
   if (state === 'won') winT += dt;
   for (const gl of glows) gl.t += dt; glows = glows.filter(g => g.t < 0.6);
+  for (const w of words) w.life -= dt; words = words.filter(w => w.life > 0);
   const showPeek = state === 'play' && (peekers.size > 0 || t < peekUntil);
   peekA += ((showPeek ? 1 : 0) - peekA) * Math.min(1, dt * 12);
   for (const p of loose.slice()) {
@@ -1047,7 +1073,7 @@ MG.loop(dt => {
       if (f.t >= 0) {
         const u = Math.min(1, f.t / f.dur), e = u * u * (3 - 2 * u);
         p.x = f.x0 + (f.x1 - f.x0) * e; p.y = f.y0 + (f.y1 - f.y0) * e - Math.sin(Math.PI * u) * f.arc;
-        if (u >= 1) { p.fly = null; p.x = f.x1; p.y = f.y1; if (f.lock) lock(p); }
+        if (u >= 1) { p.fly = null; p.x = f.x1; p.y = f.y1; if (f.lock) lock(p, !!f.hint); }
       }
     }
     const want = p.drag || (p.fly && p.fly.lift && p.fly.t >= 0) ? 1 : 0;

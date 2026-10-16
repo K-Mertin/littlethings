@@ -33,6 +33,7 @@ let mode = 'relax', diff = 'normal';
 const D_ = () => DIFF[diff];
 let grid, ceilY, level, score, nColors, shot, cur, nxt, aim = -Math.PI / 2, misses, dropEvery, state = 'ready', falling = [], pops = [], t = 0, shakeT = 0, combo = 0;
 
+const snd = (() => { const last = {}; return (n, a, gap = 60) => { const now = performance.now(); if (now - (last[n] || 0) < gap) return; last[n] = now; MG.sfx(n, a); }; })();
 const cols = r => (r % 2 ? COLS - 1 : COLS);
 const cx = (r, c) => X0 + R + c * D + (r % 2 ? R : 0);
 const cy = r => ceilY + R + r * RH;
@@ -126,8 +127,8 @@ function update(dt) {
     for (let s = 0; s < steps && shot; s++) {
       shot.x += shot.vx * dt / steps; shot.y += shot.vy * dt / steps;
       const L = X0 + R, Rr = X0 + COLS * D;
-      if (shot.x < L) { shot.x = L; shot.vx = Math.abs(shot.vx); MG.sfx('step'); }
-      if (shot.x > Rr) { shot.x = Rr; shot.vx = -Math.abs(shot.vx); MG.sfx('step'); }
+      if (shot.x < L) { shot.x = L; shot.vx = Math.abs(shot.vx); snd('boing', 0, 90); }
+      if (shot.x > Rr) { shot.x = Rr; shot.vx = -Math.abs(shot.vx); snd('boing', 0, 90); }
       if (shot.y <= ceilY + R || hits(shot.x, shot.y)) settle();
     }
   }
@@ -163,12 +164,17 @@ function settle() {
       falling.push({ x: cx(a, b), y: cy(a), vx: MG.rand(-60, 60), vy: MG.rand(-120, 0), col: grid[a][b], rot: 0, vr: MG.rand(-6, 6) }); grid[a][b] = -1; dropped++;
     }
     pts += dropped * 20; if (combo > 1) pts *= combo;
-    score += pts; MG.sfx(dropped ? 'clear' : 'pop');
-    pops.push({ x: cx(r, c), y: cy(r), t: `+${pts}${dropped ? `　掉落 ${dropped}` : ''}`, life: 1 });
+    score += pts;
+    // layered pop sound: rises with group size and combo; falling bubbles add a whoosh + coin
+    snd('match', combo + Math.max(0, group.length - 3)); if (combo >= 2) snd('combo', combo);
+    if (dropped) { snd('whoosh'); setTimeout(() => MG.sfx('coin'), 180); } else if (group.length >= 5) snd('sparkle');
+    pops.push({ x: cx(r, c), y: cy(r), t: `+${pts}`, life: 1 });
+    const word = combo >= 2 ? MG.WORDS.combo(combo) : dropped >= 3 ? 'Drop! ⬇️' : group.length >= 5 ? MG.praise(Math.min(5, group.length - 3)) : '';
+    if (word) pops.push({ x: cx(r, c), y: cy(r) - 24, t: word, life: 1.2, big: true });
     if (grid.every(row => row.every(v => v < 0))) return levelClear();
   } else {
     combo = 0; misses++;
-    if (mode === 'timed' && misses >= dropEvery) { misses = 0; ceilY += RH; shakeT = 0.4; MG.sfx('hit'); MG.toast('天花板往下降了！'); }
+    if (mode === 'timed' && misses >= dropEvery) { misses = 0; ceilY += RH; shakeT = 0.4; MG.sfx('hit'); MG.toast('⚠️ Down! ⬇️'); }
   }
   // lost?
   for (let a = 0; a < ROWS; a++) for (let b = 0; b < cols(a); b++) if (grid[a][b] >= 0 && cy(a) + R >= DANGER) return gameOver();
@@ -241,14 +247,18 @@ function draw() {
   bubble(SHOOT.x + 62, SHOOT.y + 18, nxt, 15);
   x.fillStyle = '#5a7a9a'; x.font = '700 11px "Noto Sans TC",system-ui'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('點我換', SHOOT.x + 62, SHOOT.y + 50);
   MG.fx.draw(x);
-  for (const p of pops) { x.globalAlpha = Math.min(1, p.life * 2); x.font = '900 18px system-ui,"Noto Sans TC",sans-serif'; x.lineWidth = 4; x.strokeStyle = '#fff'; x.strokeText(p.t, p.x, p.y); x.fillStyle = '#ff7a00'; x.fillText(p.t, p.x, p.y); }
+  for (const p of pops) {
+    x.globalAlpha = Math.min(1, p.life * 2); x.font = `900 ${p.big ? 20 : 18}px system-ui,"Noto Sans TC",sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
+    const hw = x.measureText(p.t).width / 2 + 4, px = Math.max(hw, Math.min(W - hw, p.x));   // stay on screen
+    x.lineWidth = 4; x.strokeStyle = '#fff'; x.strokeText(p.t, px, p.y); x.fillStyle = p.big ? '#ff4f8a' : '#ff7a00'; x.fillText(p.t, px, p.y);
+  }
   x.globalAlpha = 1;
   x.restore();
 }
 
 // ---------- flow ----------
 function levelClear() {
-  state = 'between'; const bonus = 100 + level * 50; score += bonus; hud(); MG.sfx('win');
+  state = 'between'; const bonus = 100 + level * 50; score += bonus; hud(); MG.sfx('win'); setTimeout(() => MG.sfx('yay'), 250);
   MG.record('bubble', score); MG.store.set('bubble.level', Math.max(MG.store.get('bubble.level', 1), level + 1));
   MG.fx.burst(W / 2, 260, { n: 40, colors: COLORS.map(c => c.c), speed: 260, up: 120, size: 6, shape: 'star', life: 1.2 });
   setTimeout(() => MG.panel({
@@ -283,6 +293,8 @@ function menu() {
   });
 }
 score = 0; newLevel(1); menu();
+window.BBT = { get state() { return state; }, pops: () => pops.map(p => p.t), grid: () => grid.map(r => r.slice()), cell: (r, c) => ({ x: cx(r, c), y: cy(r) }), get cur() { return cur; }, get shot() { return !!shot; }, SHOOT,
+  aimAt(px, py) { aim = Math.max(-Math.PI + 0.16, Math.min(-0.16, Math.atan2(py - SHOOT.y, px - SHOOT.x))); }, fire: () => fire(), setCur(c) { cur = c; } };
 MG.loop(dt => { if (state === 'play') update(dt); else { t += dt; MG.fx.step(dt); for (const f of falling) { f.vy += 1400 * dt; f.y += f.vy * dt; } } draw(); });
 </script>
 </body>
