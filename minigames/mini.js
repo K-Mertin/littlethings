@@ -25,6 +25,8 @@ const MG = (() => {
     showMute();
     // remember the game was played (the hub shows a "玩過" mark)
     const seen = store.get('seen', {}); seen[id] = Date.now(); store.set('seen', seen);
+    // how many times each game was opened (the hub dresses 噗噗 from this)
+    const plays = store.get('plays', {}); plays[id] = (plays[id] || 0) + 1; store.set('plays', plays);
     document.title = title + ' · 噗噗的遊戲小屋';
   }
   function stat(name, text) { if (stats[name]) stats[name].textContent = text; }
