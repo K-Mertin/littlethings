@@ -496,9 +496,49 @@ function buildLayer() {
 }
 
 // ---------- playing a note ----------
+// long notes: while a key is held it keeps sounding.
+// 鋼琴 / 音樂盒: a soft sustained tone under the strike, fading out when you let go
+// 木琴 / 泡泡 / 動物: they can't really sustain, so holding repeats the note (a marimba-style roll)
+const sustains = new Map();
+const SUS_MAX = 20;
+function startSustain(m, vel) {
+  stopSustain(m);
+  const a = audio(); if (!a) return;
+  const f = 440 * Math.pow(2, (m - 69) / 12), id = ins;
+  if (id === 'piano' || id === 'box') {
+    const t = a.currentTime + 0.004, g = a.createGain(), lp = a.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = id === 'piano' ? Math.min(6000, f * 4) : 7000; lp.Q.value = 0.4;
+    const lvl = vel * (id === 'piano' ? 0.55 : 0.4);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.setTargetAtTime(lvl, t + 0.18, 0.25);                 // swells in as the strike fades…
+    g.gain.setTargetAtTime(lvl * 0.45, t + 1.6, 4);              // …then very slowly relaxes while held
+    const parts = id === 'piano' ? [[1, 0.8, 'sine'], [2.002, 0.22, 'sine'], [3.005, 0.06, 'triangle']] : [[2, 0.8, 'sine'], [4, 0.08, 'sine']];
+    const oscs = parts.map(([mul, v, type]) => {
+      const o = a.createOscillator(), og = a.createGain(); o.type = type; o.frequency.value = f * mul; og.gain.value = v;
+      o.connect(og); og.connect(g); o.start(t); return o;
+    });
+    const lfo = a.createOscillator(), lg = a.createGain(); lfo.frequency.value = 5.2; lg.gain.value = f * 0.0025;   // gentle vibrato
+    lfo.connect(lg); oscs.forEach(o => lg.connect(o.frequency)); lfo.start(t);
+    g.connect(lp); lp.connect(master);
+    if (id === 'box') { const s2 = a.createGain(); s2.gain.value = 0.5; g.connect(s2); s2.connect(wetIn); }
+    const stop = () => {
+      const now = a.currentTime;
+      try { g.gain.cancelScheduledValues(now); g.gain.setValueAtTime(Math.max(0.0001, g.gain.value), now); g.gain.setTargetAtTime(0.0001, now, 0.12); } catch {}
+      [...oscs, lfo].forEach(o => { try { o.stop(now + 0.8); } catch {} });
+    };
+    sustains.set(m, { stop, timer: setTimeout(() => stopSustain(m), SUS_MAX * 1000) });
+  } else {
+    const every = id === 'xylo' ? 140 : id === 'bubble' ? 230 : 620;
+    const iv = setInterval(() => { if (!held.has(m)) return stopSustain(m); synth(m, vel * 0.75, id); lit.set(m, 0.12); }, every);
+    sustains.set(m, { stop: () => clearInterval(iv), timer: setTimeout(() => stopSustain(m), SUS_MAX * 1000) });
+  }
+}
+function stopSustain(m) { const s = sustains.get(m); if (!s) return; sustains.delete(m); clearTimeout(s.timer); s.stop(); }
+function stopAllSustains() { for (const m of [...sustains.keys()]) stopSustain(m); }
 function hold(m) { held.set(m, (held.get(m) || 0) + 1); }
-function release(m) { const c = (held.get(m) || 0) - 1; if (c > 0) held.set(m, c); else held.delete(m); }
-function releaseAll() { held.clear(); ptr.clear(); kbd.clear(); }
+function release(m) { const c = (held.get(m) || 0) - 1; if (c > 0) held.set(m, c); else { held.delete(m); stopSustain(m); } }
+function releaseAll() { held.clear(); ptr.clear(); kbd.clear(); stopAllSustains(); }
+document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); });
 function noteOn(m, src = 'user') {
   if (m < LO || m > HI) return;
   let vel = 0.34, verdict = 'free';
@@ -508,6 +548,7 @@ function noteOn(m, src = 'user') {
     if (verdict === 'bad') vel = 0.13;
   }
   synth(m, vel);
+  if (src === 'user' && verdict !== 'bad' && held.has(m)) startSustain(m, vel);
   noteLog.push({ m, src, v: verdict }); if (noteLog.length > 600) noteLog.splice(0, 100);
   if (src === 'user' && rec.on) {
     if (rec.first < 0) rec.first = clock;
@@ -756,10 +797,10 @@ cv.addEventListener('pointerup', ptrUp);
 cv.addEventListener('pointercancel', ptrUp);
 cv.addEventListener('lostpointercapture', ptrUp);
 // keycap letters drawn on the piano keys (computer keyboard → piano key)
-const CAP_TXT = c => c.startsWith('Key') ? c.slice(3) : c === 'Semicolon' ? ';' : c === 'Quote' ? "'" : c;
+const CAP_TXT = c => c.startsWith('Key') ? c.slice(3) : c === 'Semicolon' ? ';' : c === 'Quote' ? "'" : c === 'BracketRight' ? ']' : c === 'Enter' ? '↵' : c;
 let showKeyCaps = !!(window.matchMedia && matchMedia('(hover: hover) and (pointer: fine)').matches);
 const capFlash = new Map();
-const KEYMAP = { KeyA: 60, KeyW: 61, KeyS: 62, KeyE: 63, KeyD: 64, KeyF: 65, KeyT: 66, KeyG: 67, KeyY: 68, KeyH: 69, KeyU: 70, KeyJ: 71, KeyK: 72, KeyO: 73, KeyL: 74, KeyP: 75, Semicolon: 76, Quote: 77 };
+const KEYMAP = { KeyA: 60, KeyW: 61, KeyS: 62, KeyE: 63, KeyD: 64, KeyF: 65, KeyT: 66, KeyG: 67, KeyY: 68, KeyH: 69, KeyU: 70, KeyJ: 71, KeyK: 72, KeyO: 73, KeyL: 74, KeyP: 75, Semicolon: 76, Quote: 77, BracketRight: 78, Enter: 79 };   // ] and Enter reach the last two keys (F♯5, G5)
 const CODE_OF = new Map(Object.entries(KEYMAP).map(([c, m]) => [m, c]));
 addEventListener('keydown', e => {
   const m = KEYMAP[e.code];
@@ -978,6 +1019,7 @@ function menu() {
   relayout();
   const starMap = MG.store.get('piano.stars', {}) || {};
   MG.choose({
+    onPause: () => releaseAll(),
     levelsTitle: '跟著彈哪一首歌？', menuLabel: '☰ 選歌',
     id: 'piano', title: '噗噗小鋼琴',
     html: '<p>噗噗的玩具鋼琴！自由彈可以換樂器、錄音；跟著彈就按<b>發光的琴鍵</b>學兒歌，按錯也沒關係 ^_^</p>',
@@ -988,7 +1030,7 @@ function menu() {
     modesTitle: '想怎麼玩？',
     modes: [{ id: 'free', label: '🎨 自由彈', sub: '換樂器、錄音、播放' }, { id: 'learn', label: '🎶 跟著彈', sub: '跟著發光的鍵學兒歌' }],
     levels: { count: SONGS.length, max: SONGS.length, label: n => SONGS[n - 1].nm + (starMap[SONGS[n - 1].id] ? ' ' + '⭐'.repeat(starMap[SONGS[n - 1].id]) : '') },
-    keys: '用手指按琴鍵，好幾根手指可以一起按，滑過去也會響　電腦：<kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><kbd>F</kbd><kbd>G</kbd><kbd>H</kbd><kbd>J</kbd><kbd>K</kbd> 白鍵、<kbd>W</kbd><kbd>E</kbd><kbd>T</kbd><kbd>Y</kbd><kbd>U</kbd> 黑鍵，高音 <kbd>K</kbd><kbd>L</kbd><kbd>;</kbd><kbd>\'</kbd>、<kbd>O</kbd><kbd>P</kbd>（琴鍵上會標出對應的字母）',
+    keys: '用手指按琴鍵，好幾根手指可以一起按，滑過去也會響　電腦：<kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><kbd>F</kbd><kbd>G</kbd><kbd>H</kbd><kbd>J</kbd><kbd>K</kbd> 白鍵、<kbd>W</kbd><kbd>E</kbd><kbd>T</kbd><kbd>Y</kbd><kbd>U</kbd> 黑鍵，高音 <kbd>K</kbd><kbd>L</kbd><kbd>;</kbd><kbd>\'</kbd><kbd>Enter</kbd>、<kbd>O</kbd><kbd>P</kbd><kbd>]</kbd>（按住會一直響，琴鍵上會標出對應的字母）',
     playing: () => state === 'play',
     start: (m, lv, pk) => {
       pace = pk && pk.pace === 'beat' ? 'beat' : 'wait';
@@ -1013,6 +1055,7 @@ menu();
 // small hook for automated tests: read-only snapshots
 function toClient(lx, ly) { const rc = cv.getBoundingClientRect(), B = 3; return { x: rc.left + B + lx * (rc.width - 2 * B) / W, y: rc.top + B + ly * (rc.height - 2 * B) / H }; }
 window.PNT = {
+  get sustains() { return [...sustains.keys()]; },
   get state() { return state; }, get mode() { return mode; }, get pace() { return pace; }, get song() { return song; }, get ins() { return ins; }, get lab() { return lab; },
   get nIdx() { return nIdx; }, get n() { return notes.length; }, get sPos() { return sPos; }, get wrong() { return wrong; }, get perfect() { return perfect; }, get good() { return good; }, get missed() { return missed; },
   get tiers() { return tiers; }, get land() { return land; }, get demo() { return !!demo; }, get recOn() { return rec.on; }, get playing() { return !!pb; }, get frames() { return frameN; },
