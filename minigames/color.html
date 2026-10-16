@@ -117,18 +117,26 @@ cv.addEventListener('pointerdown', e => {
       if (fills[i] === to) { MG.sfx('step'); return; }
       undo.push([i, fills[i]]); if (undo.length > 60) undo.shift();
       anims.push({ i, from: fills[i], to, x: p.x, y: p.y, t: 0 });
-      fills[i] = to; saveFills(); hud(); MG.sfx(to === '#ffffff' ? 'step' : 'pop');
+      fills[i] = to; saveFills(); hud();
+      if (to === '#ffffff') { MG.sfx('step'); juice('whoosh'); }
+      else {   // pop + a chime that climbs as the picture fills up (sparkles near the end)
+        const prog = fills.filter(f => f !== '#ffffff').length / fills.length;
+        MG.sfx('pop'); juice('match', prog >= 0.75 ? 3 : prog >= 0.4 ? 2 : 1);
+      }
       if (!celebrated && isDone()) { celebrated = true; setTimeout(celebrate, 500); }
       return;
     }
   }
 });
+// extra shared sounds, throttled (≥60 ms per name) so quick taps don't pile up
+const juiceT = {};
+function juice(name, n) { const q = performance.now(); if (q - (juiceT[name] || 0) < 60) return; juiceT[name] = q; MG.sfx(name, n); }
 // isPointInPath uses the current transform; this fallback checks in picture space
 const hit = document.createElement('canvas').getContext('2d');
 function isIn(path, p) { return hit.isPointInPath(path, p.x, p.y); }
 function celebrate() {
-  MG.sfx('win'); MG.fx.burst(S / 2, S / 2, { n: 40, colors: ['#ff4f5e', '#ffe14a', '#4cc96a', '#3d7bff', '#c77dff', '#fff'], speed: 240, up: 100, size: 6, shape: 'star', life: 1.2 });
-  MG.toast('全部塗好了！好漂亮 ^_^', 2200);
+  MG.sfx('win'); MG.sfx('yay'); MG.fx.burst(S / 2, S / 2, { n: 40, colors: ['#ff4f5e', '#ffe14a', '#4cc96a', '#3d7bff', '#c77dff', '#fff'], speed: 240, up: 100, size: 6, shape: 'star', life: 1.2 });
+  MG.toast('Beautiful! 🎨🎉', 2200);
 }
 
 // ---------- draw ----------
@@ -158,7 +166,7 @@ PALETTE.forEach(col => {
   b.onclick = () => { color = col; MG.store.set('color.col', col); palEl.querySelectorAll('button').forEach(q => q.setAttribute('aria-pressed', q === b)); MG.sfx('click'); };
   palEl.append(b);
 });
-document.getElementById('undo').onclick = () => { const u = undo.pop(); if (!u) { MG.toast('沒有可以復原的了'); return; } fills[u[0]] = u[1]; saveFills(); hud(); MG.sfx('flip'); };
+document.getElementById('undo').onclick = () => { const u = undo.pop(); if (!u) { MG.sfx('miss'); MG.toast('No more ↩️'); return; } fills[u[0]] = u[1]; saveFills(); hud(); MG.sfx('flip'); juice('whoosh'); };
 document.getElementById('clear').onclick = () => {
   MG.panel({ title: '要全部擦掉嗎？', html: '<p>這張圖的顏色會全部清空</p>', buttons: [
     { label: '清空', on: () => { undo = []; fills = regions.map(() => '#ffffff'); celebrated = false; saveFills(); hud(); MG.hide(); MG.sfx('step'); } },
@@ -191,7 +199,7 @@ document.getElementById('save').onclick = () => {
   g.fillStyle = '#8a7a62'; g.font = '700 14px "Noto Sans TC","PingFang TC",system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle';
   const d = new Date(); g.fillText(`小小著色本・${PICS[picIdx].name}・${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`, S / 2, S + 20);
   const a = document.createElement('a'); a.href = c.toDataURL('image/png'); a.download = `著色本-${PICS[picIdx].name}.png`; document.body.append(a); a.click(); a.remove();
-  MG.sfx('clear'); MG.toast('存好了！');
+  MG.sfx('clear'); juice('sparkle'); MG.toast('Saved! 💾');
 };
 load(picIdx);
 if (!MG.store.get('color.seenHelp', false)) {

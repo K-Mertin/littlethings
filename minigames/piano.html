@@ -196,7 +196,10 @@ let layer = null, layerKey = '';
 let t = 0, clock = 0, frameN = 0, runId = 0;
 const held = new Map(), ptr = new Map(), kbd = new Map(), lit = new Map(), flash = new Map();
 let floats = [], hopT = 9, hopAmp = 1, leanDir = 1, lookX = 0, mood = 'happy', moodT = 0, say = null, pressedBtn = null, pressT = 0;
-let notes = [], nIdx = 0, sPos = 0, wrong = 0, perfect = 0, good = 0, missed = 0, finT = -1, idleT = 0;
+let notes = [], nIdx = 0, sPos = 0, wrong = 0, perfect = 0, good = 0, missed = 0, finT = -1, idleT = 0, streak = 0, oopsT = -9;
+// extra shared MG sounds layered on top of the piano voice, throttled (≥60 ms apart per name)
+const juiceT = {};
+function juice(name, n) { const q = performance.now(); if (q - (juiceT[name] || 0) < 60) return; juiceT[name] = q; MG.sfx(name, n); }
 let demo = null, pb = null, pbLog = [], noteLog = [];
 const rec = { on: false, first: -1, notes: (MG.store.get('piano.rec', []) || []).filter(r => Array.isArray(r) && r[1] >= LO && r[1] <= HI) };
 const PERF = 0.13, GOOD = 0.32;          // seconds, 跟節拍 judging windows
@@ -463,7 +466,7 @@ function noteOn(m, src = 'user') {
   if (src === 'user' && rec.on) {
     if (rec.first < 0) rec.first = clock;
     rec.notes.push([Math.round((clock - rec.first) * 1000) / 1000, m]);
-    if (rec.notes.length >= 400 || clock - rec.first > 120) { stopRec(); MG.toast('錄音錄滿了！按 ▶ 播放聽聽看', 2000); }
+    if (rec.notes.length >= 400 || clock - rec.first > 120) { stopRec(); MG.toast(`${MG.WORDS.full} ▶ 🎧`, 2000); }
   }
   if (src !== 'user') lit.set(m, 0.26);
   if (verdict === 'bad') flash.set(m, 0.35);
@@ -482,18 +485,18 @@ function spawnFloat(k, bad) {
   floats.push(f);
   if (floats.length > 46) floats.shift();
 }
-function floatText(text, px, py, col) { floats.push({ kind: 'text', ch: text, x: px, y: py, vx: 0, vy: -50, life: 1, max: 1, ph: 0, col, s: 22 * U }); }
+function floatText(text, px, py, col) { const hw = text.length * 6.5 * U + 10; floats.push({ kind: 'text', ch: text, x: clamp(px, hw, W - hw), y: py, vx: 0, vy: -50, life: 1, max: 1, ph: 0, col, s: 22 * U }); }
 
 // ---------- 跟著彈 ----------
 function resetProgress() {
-  notes = parseSong(SONG().n); nIdx = 0; wrong = 0; perfect = 0; good = 0; missed = 0; finT = -1; idleT = 0;
+  notes = parseSong(SONG().n); nIdx = 0; wrong = 0; perfect = 0; good = 0; missed = 0; finT = -1; idleT = 0; streak = 0;
   sPos = pace === 'beat' ? -4 : -2;
 }
 function learnPress(m) {
   if (nIdx >= notes.length || finT >= 0) return 'free';
   if (pace === 'wait') {
     if (m === notes[nIdx].m) { hitNote(nIdx, 1); nIdx++; idleT = 0; return 'ok'; }
-    wrong++; return 'bad';
+    wrong++; learnOops(m); return 'bad';
   }
   if (sPos < -0.6) return 'free';                       // still counting in
   const b = bps();
@@ -502,14 +505,21 @@ function learnPress(m) {
     if (n.st || n.m !== m) continue;
     const off = Math.abs(n.t - sPos) / b;
     if (off <= GOOD) {
-      for (let q = nIdx; q < j; q++) if (!notes[q].st) { notes[q].st = 3; missed++; }
+      for (let q = nIdx; q < j; q++) if (!notes[q].st) { notes[q].st = 3; missed++; streak = 0; }
       const st = off <= PERF ? 1 : 2;
       if (st === 1) perfect++; else good++;
       hitNote(j, st); nIdx = j + 1;
       return 'ok';
     }
   }
-  wrong++; return 'bad';
+  wrong++; learnOops(m); return 'bad';
+}
+// wrong key while learning: a soft boop + a tiny “Oops” over the key (throttled so mashing stays quiet)
+function learnOops(m) {
+  streak = 0;
+  if (clock - oopsT < 0.45) return;
+  oopsT = clock; MG.sfx('miss');
+  const k = keyBy.get(m); if (k) floatText(MG.WORDS.oops, k.x + k.w / 2, (tiers ? bodyR.y : k.y) - 30, '#9a8fa8');
 }
 function noteXY(j) {
   const n = notes[j], k = keyBy.get(n.m);
@@ -520,7 +530,12 @@ function hitNote(j, st) {
   const n = notes[j]; n.st = st;
   const p = noteXY(j), c = colOf(n.m);
   MG.fx.burst(p.x, p.y, { n: 10, colors: [c[1], '#fff', '#ffd23f'], shape: 'star', speed: 150, up: 70, size: 5, life: 0.6 });
-  if (pace === 'beat') floatText(st === 1 ? '完美！' : '很好！', p.x, p.y - 24, st === 1 ? '#ff5aa0' : '#3a9be0');
+  streak++;
+  if (pace === 'beat') { floatText(st === 1 ? MG.WORDS.perfect : MG.WORDS.good, p.x, p.y - 24, st === 1 ? '#ff5aa0' : '#3a9be0'); if (st === 1) juice('sparkle'); }
+  if (streak > 0 && streak % 8 === 0) {                 // every 8 right notes in a row: a little cheer
+    juice('combo', Math.min(10, 2 + streak / 8)); if (pace === 'wait') juice('sparkle');
+    floatText(streak >= 24 ? MG.praise(4) : streak >= 16 ? MG.praise(3) : MG.praise(2), W / 2, (lane ? lane.y + lane.h * 0.3 : H * 0.3), '#ff7a2a');
+  }
 }
 function updateLearn(dt) {
   if (demo) { updateDemo(); return; }
@@ -535,7 +550,7 @@ function updateLearn(dt) {
     const prev = sPos; sPos += dt * b;
     if (sPos < 0 && Math.floor(prev) !== Math.floor(sPos)) MG.sfx('tick');
     while (nIdx < notes.length && (notes[nIdx].st || (sPos - notes[nIdx].t) / b > GOOD)) {
-      if (!notes[nIdx].st) { notes[nIdx].st = 3; missed++; }
+      if (!notes[nIdx].st) { notes[nIdx].st = 3; missed++; streak = 0; const q = noteXY(nIdx); floatText(MG.WORDS.miss, q.x, q.y - 24, '#9a8fa8'); }
       nIdx++;
     }
     if (nIdx >= notes.length && sPos >= lastEnd() && finT < 0) finT = 0;
@@ -546,7 +561,7 @@ function toggleDemo() {
   if (demo) { endDemo(true); return; }
   if (state !== 'play' || mode !== 'learn') return;
   resetProgress(); demo = { i: 0, t0: clock + 0.5 }; sPos = -0.5 * bps();
-  say = { text: '先聽噗噗彈一次 ♪', life: 2 }; if (pupu.small) MG.toast('先聽噗噗彈一次 ♪', 1500);
+  say = { text: 'Listen 👂🎵', life: 2 }; if (pupu.small) MG.toast('Listen 👂🎵', 1500);
   hud(true);
 }
 function updateDemo() {
@@ -560,11 +575,12 @@ function updateDemo() {
 }
 function endDemo(cheer) {
   demo = null; resetProgress();
-  if (cheer) { say = { text: '換你彈囉！', life: 2.2 }; if (pupu && pupu.small) MG.toast('換你彈囉！', 1500); }
+  if (cheer) { say = { text: 'Your turn 👆', life: 2.2 }; if (pupu && pupu.small) MG.toast('Your turn 👆', 1500); }
   hud(true);
 }
 function finishSong() {
   state = 'won'; mood = 'love'; moodT = 99; finT = -1;
+  MG.sfx('yay');
   const total = notes.length, sc = (perfect + good * 0.6) / Math.max(1, total);
   const stars = pace === 'wait' ? (wrong <= 2 ? 3 : wrong <= 8 ? 2 : 1) : (sc >= 0.8 ? 3 : sc >= 0.5 ? 2 : 1);
   const map = MG.store.get('piano.stars', {}) || {}, old = map[SONG().id] || 0, isNew = stars > old;
@@ -600,16 +616,16 @@ function finishSong() {
 
 // ---------- 自由彈: record and play back ----------
 function toggleRec() {
-  if (rec.on) { stopRec(); MG.toast(rec.notes.length ? '錄好了！按 ▶ 播放聽聽看' : '沒有錄到聲音喔', 1800); return; }
+  if (rec.on) { stopRec(); MG.toast(rec.notes.length ? 'Saved! ▶ 🎧' : 'Empty 🔇', 1800); return; }
   if (pb) stopPb();
   rec.on = true; rec.first = -1; rec.notes = [];
-  MG.sfx('pop'); MG.toast('開始錄音，彈彈看！', 1500); hud(true);
+  MG.sfx('pop'); MG.toast('⏺ Rec… 🎹', 1500); hud(true);
 }
 function stopRec() { rec.on = false; MG.store.set('piano.rec', rec.notes); hud(true); }
 function togglePlay() {
   if (pb) { stopPb(); return; }
   if (rec.on) stopRec();
-  if (!rec.notes.length) { MG.toast('還沒有錄音喔，先按 ⏺ 錄音', 1800); return; }
+  if (!rec.notes.length) { MG.sfx('miss'); MG.toast('⏺ first 👆', 1800); return; }
   pb = { i: 0, t0: clock + 0.25 }; pbLog = []; hud(true);
 }
 function stopPb() { pb = null; hud(true); }
@@ -627,15 +643,15 @@ function stopEverything() {
 function startFree() {
   stopEverything(); runId++;
   mode = 'free'; state = 'play'; mood = 'happy'; moodT = 0; relayout(); MG.hide();
-  say = { text: '點點琴鍵，一起唱歌！', life: 3 };
+  say = { text: "Let's play! 🎹", life: 3 };
   hud(true);
 }
 function startSong(i) {
   stopEverything(); runId++;
   mode = 'learn'; song = clamp(i, 0, SONGS.length - 1); state = 'play'; mood = 'happy'; moodT = 0;
   relayout(); resetProgress(); MG.hide();
-  MG.toast(`🎶 ${SONG().nm}：${pace === 'beat' ? '跟著拍子彈！' : '按發光的琴鍵！'}`, 2000);
-  say = { text: '按發光的琴鍵喔！', life: 2.5 };
+  MG.toast(`🎶 ${SONG().nm}　${pace === 'beat' ? '🥁 Go! 🚀' : '👆 ✨'}`, 2000);
+  say = { text: 'Tap the ✨ key!', life: 2.5 };
   hud(true);
 }
 function setIns(id) {
@@ -662,7 +678,7 @@ function keyHit(p) {
 function pressBtn(b) {
   pressedBtn = b; pressT = 0.15;
   if (b.id === 'ins') setIns(INS[b.v].id);
-  else if (b.id === 'insc') { const i = INS.findIndex(q => q.id === ins); setIns(INS[(i + 1) % INS.length].id); MG.toast(`換成${INS[(i + 1) % INS.length].nm}`, 900); }
+  else if (b.id === 'insc') { const i = INS.findIndex(q => q.id === ins); setIns(INS[(i + 1) % INS.length].id); MG.toast(`🎶 ${INS[(i + 1) % INS.length].nm}`, 900); }
   else if (b.id === 'rec') toggleRec();
   else if (b.id === 'play') togglePlay();
   else if (b.id === 'demo') toggleDemo();
@@ -960,7 +976,7 @@ window.PNT = {
   log: () => noteLog.map(e => ({ ...e })),
   recNotes: () => rec.notes.map(r => r[1]), recTimes: () => rec.notes.map(r => r[0]), pbLog: () => pbLog.slice(),
   stars: () => MG.store.get('piano.stars', {}),
-  floats: () => floats.length,
+  floats: () => floats.length, floatTexts: () => floats.filter(f => f.kind === 'text').map(f => f.ch), get say() { return say && say.text; }, get streak() { return streak; },
 };
 
 MG.loop(dt => { update(dt); draw(); });
