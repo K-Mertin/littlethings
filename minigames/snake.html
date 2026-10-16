@@ -1,0 +1,1078 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>噗噗毛毛蟲</title>
+<link rel="stylesheet" href="mini.css">
+<style>
+.mg-stage{padding:6px}
+.sn-stars{font-size:38px;letter-spacing:.12em;margin:2px 0 4px}
+.sn-res{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 0}
+.sn-res div{background:#fff;border:2px solid #e2cf9c;border-radius:10px;padding:4px 2px;font-size:13px;color:var(--mute)}
+.sn-res b{display:block;font-size:22px;color:var(--ink)}
+.mg-bar .stat:empty{display:none}
+.mg-over{align-items:flex-start}.mg-card{margin:auto}
+.mg-pick:has(> [data-mode]){grid-template-columns:repeat(3,1fr)}
+.mg-pick:has(> [data-mode]) .mg-opt{padding:8px 3px}
+.mg-levels .mg-lv{min-width:calc(20% - 6px);min-height:44px;padding:0 2px;line-height:1.05}
+.mg-lv small{display:block;font-size:10px;color:#e8a400;letter-spacing:-.05em}
+@media (max-width:400px){.mg-levels .mg-lv{min-width:calc(25% - 6px)}}
+</style>
+</head>
+<body>
+<main class="mg-stage" id="stage"><canvas id="cv" aria-label="遊戲畫面"></canvas></main>
+<script src="mini.js"></script>
+<script>
+'use strict';
+MG.init({ id: 'snake', title: '噗噗毛毛蟲', stats: ['len', 'info'] });
+const cv = document.getElementById('cv'), x = cv.getContext('2d'), stageEl = document.getElementById('stage');
+const FONT = '"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif';
+const EMOJI = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let q = Math.imul(a ^ a >>> 15, 1 | a); q = q + Math.imul(q ^ q >>> 7, 61 | q) ^ q; return ((q ^ q >>> 14) >>> 0) / 4294967296; }; }
+
+// ---------- 15 levels: 14 × 10 (long side × short side). '.' grass, B bush, P pond, R rock, S = head start (facing →, body to its left) ----------
+const LV = [
+  ['大草原', '🌼', 5, ['..............', '..............', '..............', '..............', '...S..........', '..............', '..............', '..............', '..............', '..............']],
+  ['小石頭', '🪨', 6, ['..............', '..............', '...R......R...', '...S..........', '......RR......', '......RR......', '..............', '...R......R...', '..............', '..............']],
+  ['樹叢', '🌳', 6, ['..............', '..............', '..BBBB........', '..............', '...S..........', '..............', '........BBBB..', '..............', '..............', '..............']],
+  ['小池塘', '🦆', 7, ['..............', '...S..........', '..............', '.....PPPP.....', '.....PPPP.....', '.....PPPP.....', '..............', '..............', '..............', '..............']],
+  ['四個角落', '🍄', 8, ['..............', '.RR........RR.', '.R..........R.', '...S..........', '......BB......', '......BB......', '..............', '.R..........R.', '.RR........RR.', '..............']],
+  ['兩道籬笆', '🌿', 8, ['..............', '...S..........', 'BBBBBB..BBBBBB', '..............', '..............', '..............', '..............', 'BBB..BBBBBBBBB', '..............', '..............']],
+  ['小河', '🐟', 9, ['......PP......', '......PP......', '......PP......', '...S..........', '......PP......', '......PP......', '..............', '......PP......', '......PP......', '......PP......']],
+  ['石頭柱子', '🗿', 9, ['..............', '..R...R...R...', '..R...R...R...', '..R...R...R...', '...S..........', '..............', '...R...R...R..', '...R...R...R..', '...R...R...R..', '..............']],
+  ['花園小屋', '🏡', 10, ['..............', '...S..........', '...BBB..BBB...', '...B......B...', '..............', '..............', '...B......B...', '...BBB..BBB...', '..............', '..............']],
+  ['池塘和石頭', '🐸', 10, ['..............', '.PP.....R.....', '.PP.......PP..', '.....R....PP..', '...S..........', '..R.....PP....', '........PP..R.', '.PP...........', '.PP....R......', '..............']],
+  ['繞圈圈', '🌀', 11, ['...S..........', '.BBBBBBBBBBBB.', '.B............', '.B.BBBB.BBBB..', '.B.B.......B..', '.B.B.......B..', '.B.BBBBB.BBB..', '.B............', '.BBBBBBBBBBBB.', '..............']],
+  ['跳格子', '🎲', 11, ['..............', '.R..R..R..R...', '..............', '...R..R..R..R.', '...S..........', '.R..R..R..R...', '..............', '...R..R..R..R.', '..............', '..............']],
+  ['湖邊樹林', '🦢', 12, ['..............', '..PPP....BBB..', '..PPP.........', '..PPP....BBB..', '...S..........', '..............', '..BBB....PPP..', '.........PPP..', '..BBB....PPP..', '..............']],
+  ['十字路口', '🚦', 12, ['......BB......', '......BB......', '...S..........', '......BB......', 'BBB.BBBBBB.BBB', '......BB......', '..............', '......BB......', '......BB......', '......BB......']],
+  ['大花園', '🌈', 13, ['..............', '.B.R.P..P.R.B.', '..............', '.P.B.R..R.B.P.', '...S..........', '..............', '.P.B.R..R.B.P.', '..............', '.B.R.P..P.R.B.', '..............']],
+];
+const LEVELS = LV.length, MIN_CSS = 34;
+const OB = { B: 1, P: 2, R: 3 };   // obstacle kinds
+
+// ---------- the movement core (pure: also used by the unit tests through window.SNK.core) ----------
+// S = { C, R, body: [[c, r], …] head first, dir, queue, grow, wrap, selfPass, walls: Uint8Array(C*R) }
+// directions: 0 → (+c), 1 ↓ (+r), 2 ←, 3 ↑
+const DX = [1, 0, -1, 0], DY = [0, 1, 0, -1];
+const core = {
+  make(o) { return { C: o.C, R: o.R, body: o.body.map(p => p.slice()), dir: o.dir ?? 0, queue: [], grow: o.grow || 0, wrap: !!o.wrap, selfPass: !!o.selfPass, walls: o.walls || new Uint8Array(o.C * o.R) }; },
+  // buffer up to 2 turns; never the same way or straight back (compared with the last planned direction)
+  turn(S, d) {
+    const last = S.queue.length ? S.queue[S.queue.length - 1] : S.dir;
+    if (d === last || (d === (last + 2) % 4 && S.body.length > 1) || S.queue.length >= 2) return false;
+    S.queue.push(d); return true;
+  },
+  // where would the head go with direction d (null = outside a walled board)
+  ahead(S, d, from) {
+    const h = from || S.body[0]; let c = h[0] + DX[d], r = h[1] + DY[d];
+    if (c < 0 || r < 0 || c >= S.C || r >= S.R) { if (!S.wrap) return null; c = (c + S.C) % S.C; r = (r + S.R) % S.R; }
+    return [c, r];
+  },
+  // one step. ev: 'move' | 'pass' (went through itself) | 'wall' | 'block' (obstacle) | 'self' (bumped itself)
+  step(S) {
+    if (S.queue.length) { const q = S.queue.shift(); if (q !== (S.dir + 2) % 4 || S.body.length === 1) S.dir = q; }
+    const nx = core.ahead(S, S.dir);
+    if (!nx) return { ev: 'wall' };
+    const [c, r] = nx;
+    if (S.walls[r * S.C + c]) return { ev: 'block', c, r };
+    const n = S.body.length, upto = S.grow > 0 ? n : n - 1;   // the tail moves away this step unless we are growing
+    let hit = false;
+    for (let i = 1; i < upto; i++) if (S.body[i][0] === c && S.body[i][1] === r) { hit = true; break; }
+    if (hit && !S.selfPass) return { ev: 'self', c, r };
+    S.body.unshift([c, r]);
+    if (S.grow > 0) S.grow--; else S.body.pop();
+    return { ev: hit ? 'pass' : 'move', c, r };
+  },
+};
+// grid helpers on a sim
+const freeN = (S, c, r) => { let n = 0; for (let d = 0; d < 4; d++) { const a = core.ahead(S, d, [c, r]); if (a && !S.walls[a[1] * S.C + a[0]]) n++; } return n; };
+function reachFrom(S, c0, r0) {     // BFS over non-obstacle cells
+  const seen = new Uint8Array(S.C * S.R), q = [[c0, r0]]; seen[r0 * S.C + c0] = 1;
+  for (let h = 0; h < q.length; h++) for (let d = 0; d < 4; d++) { const a = core.ahead(S, d, q[h]); if (!a) continue; const i = a[1] * S.C + a[0]; if (!seen[i] && !S.walls[i]) { seen[i] = 1; q.push(a); } }
+  return seen;
+}
+
+// ---------- state ----------
+let state = 'menu', mode = 'slow', rule = 'pass', level = 1, demo = false;
+let sim = null, L = 14, SS = 10, okCell = null, boardId = 0, walls = null, obKind = null;
+let from = [], segs = [], acc = 0, stepT = 0.3, frac = 0, blockT = 0, bumpAnim = 0, bumpDir = 0, lastEv = '';
+let lastEatTick = 0, fruits = [], item = null, eaten = 0, goal = 0, score = 0, combo = 0, lastEatT = -9, bumps = 0, best0 = 0;
+let starT = 0, slowT = 0, rainbowT = 0, munchT = 0, wave = 9, oopsT = 0, winT = 0, giggleT = 0, moodT = 0, mood = 'happy';
+let headAng = 0, t = 0, frames = 0, floats = [], growCols = [], spawnLog = [], botOn = false, timeScale = 1, ticks = 0, passes = 0, roundId = 0;
+let padOn = MG.store.get('snake.pad', (window.matchMedia && matchMedia('(pointer: coarse)').matches) || navigator.maxTouchPoints > 0);
+let W = 480, H = 800, land = false, cs = 40, ox = 0, oy = 0, Cd = 14, Rd = 10, headerH = 0;
+const A = { board: { x: 0, y: 0, w: 1, h: 1 } };
+let btns = [], padBtns = [], pressed = null, pressT = 0;
+const sprites = new Map(); let layer = null, layerKey = '';
+const SND = {}; const snd = (n, a, gap = 60) => { if (demo) return; const now = performance.now(); if (now - (SND[n] || 0) < gap) return; SND[n] = now; MG.sfx(n, a); };
+const FRUITS = ['apple', 'banana', 'grape', 'berry'];
+const FCOL = { apple: 'red', banana: 'yellow', grape: 'purple', berry: 'pink', gold: 'gold', rainbow: 'rainbow' };
+const RAINBOW = ['red', 'orange', 'yellow', 'green', 'mint', 'blue', 'purple'];
+const PAL = { ...MG.JELLY, gold: ['#fffbe0', '#ffe680', '#ffcc2e', '#e0a000', '#9a6c00'] };
+const SPEC = { star: { life: 10 }, potion: { life: 10 }, rainbow: { life: 10 }, gold: { life: 5 } };
+const MODE_NM = { slow: '🐢 慢慢玩', classic: '⭐ 經典', level: '🎯 關卡' };
+
+// ---------- own tiny synth for the munch (pitch rises with the length) and the giggle; follows the 🔊 button ----------
+let ac2 = null;
+function au() {
+  if (demo || MG.store.get('muted', false)) return null;
+  try { ac2 = ac2 || new (window.AudioContext || window.webkitAudioContext)(); } catch { return null; }
+  if (ac2.state === 'suspended') ac2.resume();
+  return ac2;
+}
+function blip(f0, f1, dur, type, vol, delay = 0) {
+  const a = au(); if (!a) return;
+  const tt = a.currentTime + delay, o = a.createOscillator(), g = a.createGain();
+  o.type = type; o.frequency.setValueAtTime(f0, tt); o.frequency.exponentialRampToValueAtTime(f1, tt + dur);
+  g.gain.setValueAtTime(0.0001, tt); g.gain.exponentialRampToValueAtTime(vol, tt + 0.012); g.gain.exponentialRampToValueAtTime(0.0006, tt + dur);
+  o.connect(g).connect(a.destination); o.start(tt); o.stop(tt + dur + 0.02);
+}
+function munch(n) {
+  const f = 300 * Math.pow(2, Math.min(n, 36) / 24);
+  blip(f, f * 1.5, 0.07, 'triangle', 0.16); blip(f * 1.26, f * 1.9, 0.08, 'triangle', 0.13, 0.08);
+}
+function giggle() { for (let i = 0; i < 4; i++) blip(780 + i * 60, 980 + i * 60, 0.06, 'sine', 0.09, i * 0.075); }
+addEventListener('pointerdown', () => au(), { once: true });
+
+// ---------- layout ----------
+function cssScale() { const r = cv.getBoundingClientRect(); return Math.max(0.1, (r.width - 6) / W); }
+function mkPad(cx, cy, s) { const g = 6; for (const [dx, dy, d] of [[1, 0, 0], [0, 1, 1], [-1, 0, 2], [0, -1, 3]]) padBtns.push({ id: 'pad', d, x: cx + dx * (s + g) - s / 2, y: cy + dy * (s + g) - s / 2, w: s, h: s }); }
+let PL = {};
+function layoutAreas() {
+  W = cv.lw; H = cv.lh; land = W > H; btns = []; padBtns = [];
+  const slow = mode === 'slow';
+  if (land) {
+    const PW = 236, px0 = W - PW, compact = H < 520;
+    A.panel = { x: px0 + 2, y: 10, w: PW - 12, h: H - 20 }; A.strip = null;
+    A.board = { x: 12, y: 12, w: px0 - 22, h: H - 24 };
+    const bx = px0 + 16, bw = PW - 44, s = 66, bh = compact ? 64 : 58;
+    PL = compact ? { title: 36, sub: 0, a: 72, b: 104, compact } : { title: 42, sub: 76, a: 112, b: 148, compact };
+    let y = compact ? 124 : padOn ? 176 : 214;
+    if (compact && padOn && slow) {
+      const hw = (bw - 8) / 2;
+      btns.push({ id: 'pad', x: bx, y, w: hw, h: bh, short: 1 }, { id: 'rest', x: bx + hw + 8, y, w: hw, h: bh, short: 1 });
+      y += bh;
+    } else {
+      btns.push({ id: 'pad', x: bx, y, w: bw, h: bh }); y += bh;
+      if (slow) { y += 8; btns.push({ id: 'rest', x: bx, y, w: bw, h: bh }); y += bh; }
+    }
+    PL.btnEnd = y;
+    if (padOn) { const cy = H - 14 - 10 - 1.5 * s - 6; mkPad(px0 + PW / 2 - 4, cy, s); PL.padTop = cy - 1.5 * s - 6; }
+  } else {
+    const B = padOn ? 244 : 100, bh = 64;
+    A.strip = { x: 8, y: H - B, w: W - 16, h: B - 8 }; A.panel = null;
+    A.board = { x: 10, y: 10, w: W - 20, h: H - B - 18 };
+    if (padOn) {
+      btns.push({ id: 'pad', x: 16, y: H - B + 14, w: 112, h: bh, short: 1 });
+      if (slow) btns.push({ id: 'rest', x: W - 128, y: H - B + 14, w: 112, h: bh, short: 1 });
+      mkPad(W / 2, H - B / 2 - 4, 66);
+    } else {
+      btns.push({ id: 'pad', x: 16, y: H - B + 10, w: 140, h: bh });
+      if (slow) btns.push({ id: 'rest', x: W - 156, y: H - B + 10, w: 140, h: bh });
+    }
+  }
+}
+function placeBoard() {
+  Cd = land ? L : SS; Rd = land ? SS : L;
+  const m = A.board;
+  cs = Math.min(m.w / Cd, m.h / Rd);
+  if (!land && m.h - Rd * cs < 46) cs = Math.min(cs, (m.h - 46) / Rd);   // keep room for the little title in portrait
+  ox = m.x + (m.w - Cd * cs) / 2;
+  const gap = m.h - Rd * cs;
+  headerH = !land && gap >= 44 ? Math.min(58, gap) : 0;
+  oy = m.y + headerH + (m.h - headerH - Rd * cs) / 2;
+  sprites.clear();
+}
+function freeDims() {
+  const k = cssScale(), a = A.board, lc = Math.max(a.w, a.h - (land ? 0 : 50)) * k, sc = Math.min(a.w, a.h - (land ? 0 : 50)) * k;
+  return [clamp(Math.floor(lc / MIN_CSS), 10, 20), clamp(Math.floor(sc / MIN_CSS), 8, 14)];
+}
+function relayout() { layoutAreas(); placeBoard(); layerKey = ''; }
+cv.onfit = () => relayout();
+MG.fit(cv, (sw, sh) => {
+  const l = sw > sh * 1.05;
+  if (l) { H = sh < 470 ? 440 : 600; W = Math.round(Math.min(H * 2.2, Math.max(H * 1.33, H * sw / sh))); }
+  else { W = 480; H = Math.round(Math.min(1000, Math.max(640, W * sh / sw))); }
+  return [W, H];
+});
+// canonical cell (float ok) → screen centre (portrait shows the board turned over: column ↔ row)
+function cellXY(c, r) { return land ? { x: ox + (c + 0.5) * cs, y: oy + (r + 0.5) * cs } : { x: ox + (r + 0.5) * cs, y: oy + (c + 0.5) * cs }; }
+const scr2can = d => land ? d : [1, 0, 3, 2][d];   // screen direction ↔ canonical direction (the same swap both ways)
+
+// ---------- rounds ----------
+function buildBoard() {
+  walls = new Uint8Array(L * SS); obKind = new Uint8Array(L * SS);
+  let start = [Math.floor(L / 3), Math.floor(SS / 2)];
+  if (mode === 'level') {
+    const map = LV[level - 1][3];
+    for (let r = 0; r < SS; r++) for (let c = 0; c < L; c++) { const ch = map[r][c]; if (OB[ch]) { walls[r * L + c] = 1; obKind[r * L + c] = OB[ch]; } if (ch === 'S') start = [c, r]; }
+  }
+  const wrap = mode === 'slow', selfPass = mode === 'slow' || (mode === 'level' && rule === 'pass');
+  sim = core.make({ C: L, R: SS, body: [start, [start[0] - 1, start[1]], [start[0] - 2, start[1]]], dir: 0, wrap, selfPass, walls });
+  const seen = reachFrom(sim, start[0], start[1]);
+  okCell = new Uint8Array(L * SS);
+  for (let i = 0; i < L * SS; i++) okCell[i] = seen[i] && !walls[i] && freeN(sim, i % L, (i / L) | 0) >= 2 ? 1 : 0;
+  boardId++;
+}
+function speedFor() {
+  if (mode === 'slow') return 0.34;
+  if (mode === 'classic') return Math.max(0.14, 0.26 - eaten * 0.005);
+  return 0.31 - (level - 1) * 0.006;
+}
+function resetRun() {
+  from = sim.body.map(p => p.slice()); segs = sim.body.map((_, i) => ({ col: i === 0 ? 'green' : i % 2 ? 'mint' : 'green', born: -9 }));
+  acc = 0; frac = 0; blockT = 0; bumpAnim = 0; lastEv = ''; fruits = []; item = null; eaten = 0; score = 0; combo = 0; lastEatT = -9;
+  starT = slowT = rainbowT = munchT = 0; wave = 9; oopsT = 0; winT = 0; giggleT = 0; moodT = 0; mood = 'happy'; growCols = []; floats = []; spawnLog = []; passes = 0;
+  headAng = 0; ticks = 0; lastEatTick = 0; MG.fx.clear();
+  stepT = speedFor();
+  const nf = mode === 'slow' ? 2 : 1;
+  for (let i = 0; i < nf; i++) spawnFruit();
+}
+function startRound(m, lv, how = 'new') {
+  mode = m; level = lv || level; demo = false;
+  layoutAreas();
+  if (mode === 'level') { L = 14; SS = 10; } else [L, SS] = freeDims();
+  if (how !== 'retry') bumps = 0;
+  buildBoard(); placeBoard(); resetRun(); roundId++;
+  best0 = MG.store.get('snake.best.' + mode, 0);
+  goal = mode === 'level' ? LV[level - 1][2] : 0;
+  state = 'play'; MG.hide(); layerKey = '';
+  if (how !== 'retry') MG.toast(mode === 'level' ? `第 ${level} 關 ${LV[level - 1][1]}　Go! 🚀` : `${MODE_NM[mode]}　Go! 🚀`, 1800);
+  hud(true);
+}
+function startDemo() {
+  demo = true; mode = 'slow'; layoutAreas();
+  [L, SS] = freeDims(); buildBoard(); placeBoard(); resetRun(); state = 'menu'; layerKey = '';
+}
+
+// ---------- fruit ----------
+function onSnake(i) { for (const p of sim.body) if (p[1] * L + p[0] === i) return true; return false; }
+function spawnCell(minD = 3) {
+  const h = sim.body[0], cand = [], far = [];
+  for (let i = 0; i < L * SS; i++) {
+    if (!okCell[i] || onSnake(i) || fruits.some(f => f.r * L + f.c === i) || (item && item.r * L + item.c === i)) continue;
+    cand.push(i);
+    const c = i % L, r = (i / L) | 0;
+    if (Math.abs(c - h[0]) + Math.abs(r - h[1]) >= minD) far.push(i);
+  }
+  const pool = far.length ? far : cand;
+  if (!pool.length) return -1;
+  return pool[(Math.random() * pool.length) | 0];
+}
+function spawnFruit() {
+  const i = spawnCell(); if (i < 0) return false;
+  fruits.push({ c: i % L, r: (i / L) | 0, kind: FRUITS[(Math.random() * FRUITS.length) | 0], born: t });
+  spawnLog.push(i); return true;
+}
+function maybeSpecial() {
+  if (item || eaten < 2 || Math.random() > (demo ? 0.4 : 0.3)) return;
+  const bag = ['star', 'star', 'rainbow', 'rainbow', 'gold', 'gold', 'potion', 'potion'];
+  const kind = bag[(Math.random() * bag.length) | 0];
+  const i = spawnCell(2); if (i < 0) return;
+  item = { c: i % L, r: (i / L) | 0, kind, life: SPEC[kind].life, max: SPEC[kind].life, born: t };
+  spawnLog.push(i);
+  if (!demo) { snd('sparkle'); if (kind === 'gold') addFloat(item.c, item.r, '✨', 0.8); }
+}
+
+// ---------- feedback ----------
+function addFloat(c, r, text, life = 1, col = '#fff3a0') {
+  const p = cellXY(c, r), fs = Math.min(Math.max(16, cs * 0.5), 34);
+  let y = p.y - cs * 0.5;
+  for (let k = 0; k < 6 && floats.some(f => Math.abs(f.x - p.x) < cs * 3 && Math.abs(f.y - y) < fs * 1.05); k++) y -= fs * 1.1;   // stack instead of overlapping
+  floats.push({ x: p.x, y, text, life, max: life, col });
+}
+function burstAt(c, r, o) { const p = cellXY(c, r); MG.fx.burst(p.x, p.y, o); }
+function eat(c, r) {
+  // regular fruit
+  const fi = fruits.findIndex(f => f.c === c && f.r === r);
+  if (fi >= 0) {
+    const f = fruits[fi]; fruits.splice(fi, 1);
+    gotFruit(f.kind, c, r, 1);
+    if (!(mode === 'level' && eaten >= goal)) spawnFruit();
+    maybeSpecial();
+  }
+  if (item && item.c === c && item.r === r) {
+    const k = item.kind; item = null;
+    if (k === 'star') {
+      score += 3; starT = 5; mood = 'wow'; moodT = 1;
+      addFloat(c, r, '+3 🌟', 1.1); snd('sparkle'); snd('perfect');
+      burstAt(c, r, { n: 18, colors: ['#ffd23f', '#fff3a0', '#fff'], shape: 'star', speed: 200, up: 80, size: Math.max(3, cs * 0.12), life: 0.9 });
+    } else if (k === 'potion') {
+      slowT = 6; mood = 'wow'; moodT = 1;
+      addFloat(c, r, 'Slow… 🐢', 1.2, '#c8f2ff'); snd('whoosh'); snd('match', 2);
+      burstAt(c, r, { n: 14, colors: ['#8ff0d6', '#c8f2ff', '#fff'], speed: 140, up: 60, size: Math.max(3, cs * 0.1), life: 0.8 });
+    } else if (k === 'rainbow') {
+      rainbowT = 8; gotFruit('rainbow', c, r, 2);
+      addFloat(c, r - 0.6, 'Rainbow! 🌈', 1.3, '#ffd6f0'); snd('yay');
+    } else if (k === 'gold') {
+      gotFruit('gold', c, r, 5);
+      addFloat(c, r - 0.6, '+5 ✨', 1.2); snd('coin'); snd('match', 4);
+    }
+  }
+}
+function gotFruit(kind, c, r, pts) {
+  eaten++; score += pts; sim.grow++; lastEatTick = ticks; growCols.push(FCOL[kind] || 'green');
+  combo = t - lastEatT < Math.max(3, stepT * 14) ? combo + 1 : 1; lastEatT = t;
+  if (combo >= 2) score += combo - 1;
+  munchT = 0.35; wave = 0; mood = 'love'; moodT = 0.8;
+  const len = sim.body.length + sim.grow;
+  if (!demo) {
+    munch(len); snd('pop');
+    if (combo >= 2) { addFloat(c, r - 0.7, MG.WORDS.combo(combo), 1.1, '#ffd0a0'); snd('combo', combo); }
+    if (len % 5 === 0) { addFloat(c, r + 0.2, `${MG.praise(Math.min(5, len / 5))}`, 1.2, '#d6ffd0'); snd('match', Math.min(8, len / 5)); }
+    if (kind !== 'gold' && kind !== 'rainbow') addFloat(c, r, 'Yum! 😋', 0.9);
+  }
+  const col = PAL[FCOL[kind]] || PAL.red;
+  burstAt(c, r, { n: 12, colors: [col[1], col[2], '#fff'], speed: 150, up: 70, size: Math.max(3, cs * 0.1), life: 0.7 });
+  if (mode === 'classic') stepT = speedFor();
+  hud();
+  if (mode === 'level' && eaten >= goal && state === 'play' && !demo) levelClear();
+}
+
+// ---------- the bot (menu demo and automated tests): BFS to the nearest fruit, never into a space smaller than itself ----------
+function botDir() {
+  const S = sim, n = S.body.length, N = S.C * S.R, occ = new Uint8Array(N);
+  for (let i = 0; i < N; i++) occ[i] = S.walls[i];
+  for (let i = 0; i < n - (S.grow > 0 ? 0 : 1); i++) occ[S.body[i][1] * S.C + S.body[i][0]] = 1;
+  const tg = new Uint8Array(N); for (const f of fruits) tg[f.r * S.C + f.c] = 1; if (item) tg[item.r * S.C + item.c] = 1;
+  const rev = (S.dir + 2) % 4; let bestD = -1, bestS = -1e9;
+  for (let d = 0; d < 4; d++) {
+    if (d === rev && n > 1) continue;
+    const a = core.ahead(S, d); if (!a) continue;
+    const ai = a[1] * S.C + a[0]; if (occ[ai]) continue;
+    // BFS from a
+    const dist = new Int16Array(N).fill(-1), q = [ai]; dist[ai] = 0; let dT = -1, area = 0, tail = false;
+    const tl = S.body[n - 1], ti = tl[1] * S.C + tl[0];
+    occ[S.body[0][1] * S.C + S.body[0][0]] = 1;
+    for (let h = 0; h < q.length; h++) {
+      const i = q[h]; area++;
+      if (dT < 0 && tg[i]) dT = dist[i];
+      for (let k = 0; k < 4; k++) { const b = core.ahead(S, k, [i % S.C, (i / S.C) | 0]); if (!b) continue; const j = b[1] * S.C + b[0]; if (j === ti && dist[i] >= 1) tail = true; if (dist[j] < 0 && !occ[j]) { dist[j] = dist[i] + 1; q.push(j); } }
+    }
+    const sc = (area >= n * 2 + 4 ? 0 : tail ? -50 : area >= n + 2 ? -3000 + area : -10000 + area * 10) + (dT >= 0 ? -dT * 2 : -400) + (d === S.dir ? 0.5 : 0) + (ticks - lastEatTick > 50 ? Math.random() * 6 : 0);   // wander a little if it keeps missing
+    if (sc > bestS) { bestS = sc; bestD = d; }
+  }
+  return bestD;
+}
+
+// ---------- input ----------
+function turnCan(d) {          // canonical direction
+  if (state !== 'play' || !sim) return false;
+  const ok = core.turn(sim, d);
+  if (ok) { blockT = Math.min(blockT, 0.2); snd('tick', null, 90); }
+  return ok;
+}
+const turnScreen = d => turnCan(scr2can(d));
+function headXY() { return segXY(0); }
+function tapTurn(p) {          // tap somewhere: turn toward it (sideways from where the caterpillar is going)
+  const h = headXY(), dx = p.x - h.x, dy = p.y - h.y;
+  if (Math.hypot(dx, dy) < cs * 0.45) return;
+  const last = sim.queue.length ? sim.queue[sim.queue.length - 1] : sim.dir, ls = scr2can(last);   // screen direction
+  const horiz = ls === 0 || ls === 2;
+  let d;
+  if (horiz) d = Math.abs(dy) >= cs * 0.4 ? (dy > 0 ? 1 : 3) : null;
+  else d = Math.abs(dx) >= cs * 0.4 ? (dx > 0 ? 0 : 2) : null;
+  if (d == null) return;
+  turnScreen(d);
+}
+const inRect = (p, b) => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
+function hitButton(p) {
+  for (const b of padBtns) if (inRect(p, { x: b.x - 4, y: b.y - 4, w: b.w + 8, h: b.h + 8 })) return b;
+  for (const b of btns) if (inRect(p, { x: b.x - 4, y: b.y - 4, w: b.w + 8, h: b.h + 8 })) return b;
+  return null;
+}
+function pressButton(b) {
+  pressed = b; pressT = 0.15;
+  if (b.id === 'pad' && b.d != null) { turnScreen(b.d); return; }
+  if (b.id === 'pad') { padOn = !padOn; MG.store.set('snake.pad', padOn); MG.sfx('click'); relayout(); MG.toast(padOn ? '🎮 ON' : '👆 Swipe!', 1000); }
+  else if (b.id === 'rest') { MG.sfx('click'); restPanel(); }
+}
+const ptrs = new Map();
+stageEl.addEventListener('pointerdown', e => {
+  if (MG.panelOpen()) return;
+  const p = cv.logical(e);
+  e.preventDefault();
+  if (state === 'play' || state === 'oops') { const b = hitButton(p); if (b) { if (state === 'play' || b.d == null) pressButton(b); return; } }
+  if (state !== 'play') return;
+  ptrs.set(e.pointerId, { sx: e.clientX, sy: e.clientY, ox: e.clientX, oy: e.clientY, moved: 0, swiped: false });
+  try { stageEl.setPointerCapture(e.pointerId); } catch {}
+});
+stageEl.addEventListener('pointermove', e => {
+  const s = ptrs.get(e.pointerId); if (!s) return;
+  const dx = e.clientX - s.sx, dy = e.clientY - s.sy, dist = Math.hypot(dx, dy);
+  s.moved = Math.max(s.moved, Math.hypot(e.clientX - s.ox, e.clientY - s.oy));
+  if (dist >= 22) {             // a swipe turns right away; keep swiping to turn again
+    turnScreen(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3));
+    s.sx = e.clientX; s.sy = e.clientY; s.swiped = true;
+  }
+});
+function ptrEnd(e, ok) {
+  const s = ptrs.get(e.pointerId); if (!s) return; ptrs.delete(e.pointerId);
+  if (!ok || state !== 'play') return;
+  if (!s.swiped && s.moved < 14) tapTurn(cv.logical(e));
+}
+stageEl.addEventListener('pointerup', e => ptrEnd(e, true));
+stageEl.addEventListener('pointercancel', e => ptrEnd(e, false));
+addEventListener('keydown', e => {
+  if (MG.panelOpen()) return;
+  const d = { ArrowRight: 0, d: 0, D: 0, ArrowDown: 1, s: 1, S: 1, ArrowLeft: 2, a: 2, A: 2, ArrowUp: 3, w: 3, W: 3 }[e.key];
+  if (d != null && state === 'play') { e.preventDefault(); turnScreen(d); }
+});
+
+// ---------- update ----------
+function update(dt) {
+  if (state === 'play' || state === 'menu') {
+    const k = slowT > 0 ? 0.6 : 1;
+    acc += dt * k;
+    let guard = 0;
+    while (acc >= stepT && guard++ < 20 && (state === 'play' || state === 'menu')) { acc -= stepT; tick(); }
+    frac = lastEv === 'block' || lastEv === 'wall' ? 0 : clamp(acc / stepT, 0, 1);
+    if (lastEv === 'block' || lastEv === 'wall') { blockT += dt; if (blockT > 0.9 && state === 'play') autoTurn(); }
+    if (item) { item.life -= dt; if (item.life <= 0) item = null; }
+    starT = Math.max(0, starT - dt); slowT = Math.max(0, slowT - dt); rainbowT = Math.max(0, rainbowT - dt);
+  }
+  if (state === 'oops') oopsT += dt;
+  if (state === 'won') winT += dt;
+  munchT = Math.max(0, munchT - dt); wave += dt; giggleT = Math.max(0, giggleT - dt); bumpAnim = Math.max(0, bumpAnim - dt);
+  moodT = Math.max(0, moodT - dt); if (!moodT && state === 'play') mood = 'happy';
+  pressT = Math.max(0, pressT - dt);
+  // head turns smoothly toward where it is going
+  const target = [0, Math.PI / 2, Math.PI, -Math.PI / 2][scr2can(sim.dir)];
+  let da = target - headAng; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
+  headAng += da * Math.min(1, dt * 16);
+  // sparkle trail from the star
+  if (starT > 0 && (frames % 3 === 0)) { const p = segXY(sim.body.length - 1); MG.fx.burst(p.x, p.y, { n: 2, colors: ['#ffd23f', '#fff3a0', '#fff', '#ff9cc2'], shape: 'star', speed: 40, up: 20, grav: 0, size: Math.max(2.5, cs * 0.09), life: 0.7 }); }
+  for (const f of floats) { f.life -= dt; f.y -= 34 * dt; } floats = floats.filter(f => f.life > 0);
+  MG.fx.step(dt);
+}
+function tick() {
+  if ((botOn || demo) && sim) { const d = botDir(); if (d >= 0 && d !== sim.dir) { sim.queue = []; core.turn(sim, d); } }
+  const old = sim.body, n = old.length;
+  const r = core.step(sim);
+  ticks++;
+  if (r.ev === 'move' || r.ev === 'pass') {
+    from = sim.body.map((_, i) => old[Math.min(i, n - 1)].slice());
+    if (sim.body.length > n) { segs.push({ col: growCols.shift() || 'green', born: t }); if (rainbowT > 0) segs[segs.length - 1].col = 'rainbow'; }
+    lastEv = r.ev; blockT = 0;
+    if (r.ev === 'pass') { passes++; if (giggleT <= 0 && !demo) { giggleT = 2.2; giggle(); addFloat(r.c, r.r, 'Hee hee! 😆', 1, '#ffe0f0'); mood = 'tongue'; moodT = 0.8; } }
+    eat(r.c, r.r);
+    return;
+  }
+  // bumped into something
+  from = sim.body.map(p => p.slice());
+  if (sim.selfPass && (r.ev === 'wall' || r.ev === 'block')) {          // can't-lose rules: stop, giggle, wait for a turn
+    if (lastEv !== 'block' && lastEv !== 'wall') {
+      bumps++; bumpAnim = 0.3; bumpDir = sim.dir;
+      if (!demo) { snd('boing'); addFloat(sim.body[0][0], sim.body[0][1], 'Oops! 💫', 1, '#ffe0a0'); mood = 'ouch'; moodT = 0.7; hud(); }
+    }
+    lastEv = r.ev === 'wall' ? 'wall' : 'block';
+    acc = 0;
+    return;
+  }
+  crash(r);
+}
+function autoTurn() {          // waiting in front of a bush for a while: turn by itself toward the fruit
+  const d = botDir();
+  if (d >= 0) { sim.queue = [d]; blockT = 0; return; }
+  // nowhere to go but back: turn the whole caterpillar around
+  sim.body.reverse(); segs = [segs[0]].concat(segs.slice(1).reverse());
+  const a = sim.body[0], b = sim.body[1];
+  if (b) for (let k = 0; k < 4; k++) { const q = core.ahead(sim, k, b); if (q && q[0] === a[0] && q[1] === a[1]) sim.dir = k; }
+  from = sim.body.map(p => p.slice()); sim.queue = []; blockT = 0; lastEv = '';
+}
+function crash(r) {
+  bumps++; bumpAnim = 0.35; bumpDir = sim.dir; lastEv = 'crash'; frac = 0;
+  if (demo) { startDemo(); return; }
+  state = 'oops'; oopsT = 0; mood = 'ouch'; moodT = 99;
+  snd('boing'); snd('miss');
+  const h = sim.body[0];
+  addFloat(h[0], h[1], 'Oops! 💫', 1.4, '#ffe0a0');
+  burstAt(h[0], h[1], { n: 12, colors: ['#ffe14a', '#fff', '#8fcaff'], shape: 'star', speed: 120, up: 60, size: Math.max(3, cs * 0.1), life: 0.8 });
+  hud(true);
+  const at = roundId;
+  if (mode === 'level') {          // 重來: start the level again (the bumps are remembered for the stars)
+    setTimeout(() => { if (state !== 'oops' || roundId !== at || MG.panelOpen()) return; MG.toast(MG.WORDS.tryAgain, 1300); startRound('level', level, 'retry'); }, 1400);
+    return;
+  }
+  setTimeout(() => { if (state !== 'oops' || roundId !== at || MG.panelOpen()) return; resultPanel('哎呀，撞到了！'); }, 1300);
+}
+
+// ---------- end of a round ----------
+function saveBest() {
+  const len = sim.body.length + sim.grow;
+  const k = 'snake.best.' + mode, old = MG.store.get(k, 0), isNew = len > old && mode !== 'level';
+  if (isNew) MG.store.set(k, len);
+  MG.record('snake', len);
+  return { len, best: Math.max(len, old), isNew: isNew && old > 0 };
+}
+function resBlock(r) {
+  return `<div class="sn-res"><div>長度<b>${r.len} 節</b></div><div>水果<b>${eaten}</b></div><div>最長<b>${r.best}</b></div></div>`;
+}
+function resultPanel(title) {
+  const r = saveBest();
+  MG.panel({
+    title,
+    html: `<div class="big">🐛 ${r.len} 節</div>${resBlock(r)}<p>得到 ${score} 分</p>` +
+      (r.isNew ? '<p class="new">新紀錄！毛毛蟲從來沒有這麼長過 ^_^</p>' : '') +
+      (mode === 'classic' ? '<p>想要不會撞到的玩法，可以選「🐢 慢慢玩」喔</p>' : ''),
+    buttons: [
+      { label: '再玩一次', on: () => startRound(mode, level) },
+      { label: '換模式', alt: true, on: menu },
+    ],
+  });
+}
+function restPanel() {
+  if (state !== 'play') return;
+  state = 'rest';
+  const r = saveBest();
+  MG.panel({
+    title: '休息一下',
+    html: `<div class="big">🐛 ${r.len} 節</div>${resBlock(r)}<p>得到 ${score} 分</p>` + (r.isNew ? '<p class="new">新紀錄！^_^</p>' : '<p>毛毛蟲吃得好飽 ^_^</p>'),
+    buttons: [
+      { label: '▶ 繼續玩', on: () => { MG.hide(); state = 'play'; } },
+      { label: '重新開始', alt: true, on: () => startRound(mode, level) },
+      { label: '換模式', alt: true, on: menu },
+    ],
+  });
+}
+function starsFor(b) { return b === 0 ? 3 : b <= 2 ? 2 : 1; }
+function levelClear() {
+  state = 'won'; winT = 0; mood = 'love'; moodT = 99;
+  MG.sfx('win'); snd('yay');
+  const h = sim.body[0], hp = cellXY(h[0], h[1]);
+  floats.push({ x: hp.x, y: hp.y - cs * 0.9, text: 'Level clear! 🎉', life: 1.8, max: 1.8, col: '#fff3a0' });
+  for (let i = 0; i < 5; i++) setTimeout(() => { if (state === 'won') MG.fx.burst(ox + Math.random() * Cd * cs, oy + Math.random() * Rd * cs * 0.6, { n: 16, colors: ['#ff8fbf', '#ffd23f', '#4cc96a', '#4c9cf0', '#a07cf2', '#fff'], shape: Math.random() < 0.5 ? 'star' : 'sq', speed: 260, up: 180, size: Math.max(4, cs * 0.12), life: 1.2 }); }, i * 160);
+  const st = starsFor(bumps), all = MG.store.get('snake.stars', []), old = all[level - 1] || 0;
+  if (st > old) { all[level - 1] = st; MG.store.set('snake.stars', all); }
+  const r = saveBest();
+  const at = roundId;
+  setTimeout(() => {
+    if (state !== 'won' || roundId !== at || MG.panelOpen()) return;
+    const nx = level < LEVELS;
+    MG.panel({
+      title: `第 ${level} 關完成！`,
+      html: `<div class="sn-stars">${'⭐'.repeat(st)}${'☆'.repeat(3 - st)}</div>` +
+        `<p>吃了 ${eaten} 個水果，毛毛蟲長到 <b>${r.len} 節</b>！</p>` +
+        (bumps === 0 ? '<p>一次都沒有撞到，太厲害了！</p>' : `<p>撞到 ${bumps} 次${st < 3 ? '，下次少撞幾次就能拿更多星星喔' : ''}</p>`) +
+        (st > old && old ? '<p class="new">這關星星變多了！</p>' : '') +
+        (nx ? `<p>下一關：${LV[level][1]} ${LV[level][0]}</p>` : '<p>十五關全部過關了，你是毛毛蟲大師！</p>'),
+      buttons: [
+        { label: nx ? '下一關' : '回到第 1 關', on: () => { const n = nx ? level + 1 : 1; MG.store.set('snake.pickLevel', n); startRound('level', n); } },
+        { label: '這關再玩', alt: true, on: () => startRound('level', level) },
+        { label: '選關卡', alt: true, on: menu },
+      ],
+    });
+  }, 1700);
+  hud(true);
+}
+let lastHud = '';
+function hud(force) {
+  if (!sim) return;
+  const len = sim.body.length + sim.grow;
+  const s = `${len}|${eaten}|${goal}|${score}|${mode}|${demo}`;
+  if (s === lastHud && !force) return; lastHud = s;
+  if (demo) { const b = MG.best('snake'); MG.stat('len', b ? `🏆 ${b} 節` : ''); MG.stat('info', ''); return; }
+  MG.stat('len', `🐛 ${len} 節`);
+  MG.stat('info', mode === 'level' ? `🍎 ${Math.min(eaten, goal)}/${goal}` : `⭐ ${score}`);
+}
+
+// ---------- painting helpers ----------
+function rr(g, x0, y0, w, h, r) { g.beginPath(); g.roundRect(x0, y0, w, h, r); }
+function dot(g, cx, cy, r) { g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill(); }
+function star5(g, cx, cy, R0, r0, rot = 0) { g.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + rot + i * Math.PI / 5, q = i % 2 ? r0 : R0; g.lineTo(cx + Math.cos(a) * q, cy + Math.sin(a) * q); } g.closePath(); }
+function txt(s, px, py, size, col = '#fff', align = 'center', weight = 900, stroke = null, sw = 4, g = x) {
+  g.font = `${weight} ${size}px ${FONT}`; g.textAlign = align; g.textBaseline = 'middle';
+  if (stroke) { g.lineJoin = 'round'; g.lineWidth = sw; g.strokeStyle = stroke; g.strokeText(s, px, py); }
+  g.fillStyle = col; g.fillText(s, px, py);
+}
+function emo(s, px, py, size, g = x) { g.font = `${size}px ${EMOJI}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#000'; g.fillText(s, px, py); }
+
+// ---------- sprites: small cached canvases at the real pixel scale ----------
+function sprite(key, size, paint) {
+  let s = sprites.get(key); if (s) return s;
+  const px = cv._mgScale || 1, c = document.createElement('canvas');
+  c.width = Math.max(2, Math.ceil(size * px)); c.height = c.width;
+  const g = c.getContext('2d'); g.setTransform(px, 0, 0, px, 0, 0); g.lineJoin = 'round'; g.lineCap = 'round';
+  paint(g, size / 2, size / 2, size);
+  s = { c, size }; sprites.set(key, s); return s;
+}
+function blit(s, cx, cy, k = 1) { const d = s.size * k; x.drawImage(s.c, cx - d / 2, cy - d / 2, d, d); }
+// a glossy jelly ball (one body segment); the soft shadow is part of the sprite
+function segSprite(col) {
+  return sprite('seg:' + col, cs * 1.3, (g, cx, cy) => {
+    const r = cs * 0.46, p = PAL[col] || PAL.green;
+    g.fillStyle = 'rgba(30,60,20,.18)'; g.beginPath(); g.ellipse(cx, cy + r * 0.42, r * 0.95, r * 0.62, 0, 0, 7); g.fill();
+    const gr = g.createRadialGradient(cx - r * 0.35, cy - r * 0.4, r * 0.08, cx, cy + r * 0.1, r * 1.1);
+    gr.addColorStop(0, p[0]); gr.addColorStop(0.35, p[1]); gr.addColorStop(0.8, p[2]); gr.addColorStop(1, p[3]);
+    g.fillStyle = gr; dot(g, cx, cy, r);
+    g.strokeStyle = p[4]; g.lineWidth = Math.max(1, r * 0.09); g.beginPath(); g.arc(cx, cy, r, 0, 7); g.stroke();
+    g.fillStyle = 'rgba(255,255,255,.4)'; dot(g, cx + r * 0.3, cy + r * 0.38, r * 0.1);
+    g.fillStyle = 'rgba(255,255,255,.75)'; g.beginPath(); g.ellipse(cx - r * 0.4, cy - r * 0.42, r * 0.24, r * 0.13, -0.7, 0, 7); g.fill();
+  });
+}
+function paintFruit(g, kind, cx, cy, s) {
+  const r = s * 0.4, lw = Math.max(1.2, s * 0.045);
+  g.lineWidth = lw;
+  g.fillStyle = 'rgba(30,60,20,.18)'; g.beginPath(); g.ellipse(cx, cy + r * 0.95, r * 0.85, r * 0.25, 0, 0, 7); g.fill();
+  const leaf = (lx, ly, rot, sc = 1) => { g.save(); g.translate(lx, ly); g.rotate(rot); g.fillStyle = '#5cc65a'; g.strokeStyle = '#2f7f34'; g.beginPath(); g.ellipse(0, 0, r * 0.42 * sc, r * 0.2 * sc, 0, 0, 7); g.fill(); g.stroke(); g.restore(); };
+  const shine = (sx, sy, k = 1) => { g.fillStyle = 'rgba(255,255,255,.75)'; g.beginPath(); g.ellipse(sx, sy, r * 0.2 * k, r * 0.12 * k, -0.7, 0, 7); g.fill(); };
+  if (kind === 'apple' || kind === 'gold') {
+    const gd = kind === 'gold', gr = g.createRadialGradient(cx - r * 0.3, cy - r * 0.3, r * 0.1, cx, cy, r * 1.2);
+    gr.addColorStop(0, gd ? '#fffbe0' : '#ffb0a8'); gr.addColorStop(0.5, gd ? '#ffd23f' : '#f2463c'); gr.addColorStop(1, gd ? '#d69a00' : '#b8221c');
+    g.fillStyle = gr; g.strokeStyle = gd ? '#9a6c00' : '#8e1a14';
+    g.beginPath(); g.moveTo(cx, cy - r * 0.62);
+    g.bezierCurveTo(cx + r * 0.5, cy - r * 1.05, cx + r * 1.15, cy - r * 0.55, cx + r * 0.95, cy + r * 0.25);
+    g.bezierCurveTo(cx + r * 0.8, cy + r * 0.95, cx + r * 0.25, cy + r * 1.05, cx, cy + r * 0.85);
+    g.bezierCurveTo(cx - r * 0.25, cy + r * 1.05, cx - r * 0.8, cy + r * 0.95, cx - r * 0.95, cy + r * 0.25);
+    g.bezierCurveTo(cx - r * 1.15, cy - r * 0.55, cx - r * 0.5, cy - r * 1.05, cx, cy - r * 0.62);
+    g.fill(); g.stroke();
+    g.strokeStyle = '#7a5520'; g.lineWidth = lw * 1.2; g.beginPath(); g.moveTo(cx, cy - r * 0.55); g.quadraticCurveTo(cx + r * 0.05, cy - r * 0.95, cx + r * 0.2, cy - r * 1.1); g.stroke();
+    g.lineWidth = lw; leaf(cx + r * 0.42, cy - r * 0.92, -0.5);
+    shine(cx - r * 0.45, cy - r * 0.2, 1.2);
+    if (gd) { g.fillStyle = '#fff'; for (const [sx, sy, sr] of [[cx + r * 0.95, cy - r * 0.9, r * 0.28], [cx - r * 1.0, cy + r * 0.6, r * 0.2]]) { g.beginPath(); g.moveTo(sx, sy - sr); g.quadraticCurveTo(sx, sy, sx + sr, sy); g.quadraticCurveTo(sx, sy, sx, sy + sr); g.quadraticCurveTo(sx, sy, sx - sr, sy); g.quadraticCurveTo(sx, sy, sx, sy - sr); g.fill(); } }
+  } else if (kind === 'banana') {
+    g.save(); g.translate(cx, cy + r * 0.1); g.rotate(-0.35);
+    g.fillStyle = '#ffd93a'; g.strokeStyle = '#a87400';
+    g.beginPath(); g.moveTo(-r * 1.0, -r * 0.35);
+    g.quadraticCurveTo(-r * 0.2, r * 1.05, r * 1.0, -r * 0.45);
+    g.quadraticCurveTo(r * 0.95, -r * 0.05, r * 0.75, r * 0.05);
+    g.quadraticCurveTo(-r * 0.15, r * 0.7, -r * 0.8, -r * 0.2);
+    g.closePath(); g.fill(); g.stroke();
+    g.strokeStyle = 'rgba(200,140,0,.6)'; g.beginPath(); g.moveTo(-r * 0.7, -r * 0.1); g.quadraticCurveTo(-r * 0.05, r * 0.6, r * 0.75, -r * 0.2); g.stroke();
+    g.fillStyle = '#6a4a1a'; dot(g, -r * 0.95, -r * 0.33, r * 0.1); dot(g, r * 0.97, -r * 0.42, r * 0.09);
+    g.fillStyle = 'rgba(255,255,255,.6)'; g.beginPath(); g.ellipse(-r * 0.35, r * 0.25, r * 0.2, r * 0.07, 0.6, 0, 7); g.fill();
+    g.restore();
+  } else if (kind === 'grape') {
+    const pts = [[-0.45, -0.35], [0.05, -0.4], [0.5, -0.32], [-0.22, 0.08], [0.28, 0.08], [0.03, 0.5]];
+    g.strokeStyle = '#7a5520'; g.lineWidth = lw * 1.2; g.beginPath(); g.moveTo(cx + r * 0.05, cy - r * 0.7); g.lineTo(cx + r * 0.1, cy - r * 1.05); g.stroke();
+    g.lineWidth = lw; leaf(cx + r * 0.45, cy - r * 0.92, -0.3, 0.9);
+    for (const [px, py] of pts) {
+      const bx = cx + px * r, by = cy + py * r, br = r * 0.33, gr = g.createRadialGradient(bx - br * 0.4, by - br * 0.4, br * 0.1, bx, by, br * 1.1);
+      gr.addColorStop(0, '#e6d0ff'); gr.addColorStop(0.5, '#9a62e8'); gr.addColorStop(1, '#5a2fa8');
+      g.fillStyle = gr; g.strokeStyle = '#3f1f80'; g.beginPath(); g.arc(bx, by, br, 0, 7); g.fill(); g.stroke();
+      g.fillStyle = 'rgba(255,255,255,.7)'; dot(g, bx - br * 0.35, by - br * 0.35, br * 0.2);
+    }
+  } else if (kind === 'berry') {
+    const gr = g.createRadialGradient(cx - r * 0.3, cy - r * 0.2, r * 0.1, cx, cy, r * 1.2);
+    gr.addColorStop(0, '#ffb4c4'); gr.addColorStop(0.5, '#ff3f6a'); gr.addColorStop(1, '#c41e48');
+    g.fillStyle = gr; g.strokeStyle = '#8a1030';
+    g.beginPath(); g.moveTo(cx, cy + r * 1.0);
+    g.bezierCurveTo(cx - r * 0.75, cy + r * 0.6, cx - r * 1.05, cy - r * 0.2, cx - r * 0.7, cy - r * 0.55);
+    g.quadraticCurveTo(cx, cy - r * 0.8, cx + r * 0.7, cy - r * 0.55);
+    g.bezierCurveTo(cx + r * 1.05, cy - r * 0.2, cx + r * 0.75, cy + r * 0.6, cx, cy + r * 1.0);
+    g.fill(); g.stroke();
+    g.fillStyle = '#ffe680';
+    for (const [px, py] of [[-0.45, -0.2], [0, -0.25], [0.45, -0.2], [-0.25, 0.15], [0.25, 0.15], [0, 0.5], [-0.5, 0.2], [0.5, 0.2]]) { g.beginPath(); g.ellipse(cx + px * r, cy + py * r, r * 0.06, r * 0.09, 0, 0, 7); g.fill(); }
+    g.fillStyle = '#4cbf4a'; g.strokeStyle = '#2a7f2e';
+    g.beginPath(); for (let i = 0; i < 5; i++) { const a = Math.PI + i * Math.PI / 4, q = i % 2 ? r * 0.3 : r * 0.62; g.lineTo(cx + Math.cos(a) * q, cy - r * 0.62 + Math.sin(a) * q * 0.55); } g.closePath(); g.fill(); g.stroke();
+    shine(cx - r * 0.4, cy - r * 0.15);
+  } else if (kind === 'rainbow') {
+    g.save(); g.beginPath(); g.arc(cx, cy, r, 0, 7); g.clip();
+    const cols = ['#ff5a5a', '#ff9a3a', '#ffe14a', '#5ccf63', '#4cb2f5', '#8f7cf7'];
+    cols.forEach((c, i) => { g.fillStyle = c; g.fillRect(cx - r, cy - r + i * (r * 2 / cols.length), r * 2, r * 2 / cols.length + 0.5); });
+    const gl = g.createRadialGradient(cx - r * 0.3, cy - r * 0.3, r * 0.1, cx, cy, r * 1.1); gl.addColorStop(0, 'rgba(255,255,255,.55)'); gl.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gl; g.fillRect(cx - r, cy - r, r * 2, r * 2); g.restore();
+    g.strokeStyle = '#6a4aa8'; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.stroke();
+    g.strokeStyle = '#7a5520'; g.lineWidth = lw * 1.2; g.beginPath(); g.moveTo(cx, cy - r * 0.95); g.lineTo(cx + r * 0.12, cy - r * 1.2); g.stroke();
+    g.lineWidth = lw; leaf(cx + r * 0.45, cy - r * 1.05, -0.4, 0.9); shine(cx - r * 0.4, cy - r * 0.4);
+  } else if (kind === 'star') {
+    g.fillStyle = 'rgba(255,240,140,.5)'; dot(g, cx, cy, r * 1.2);
+    g.fillStyle = '#ffcf2e'; g.strokeStyle = '#c98a00'; star5(g, cx, cy + r * 0.05, r * 1.05, r * 0.5); g.fill(); g.stroke();
+    g.fillStyle = '#5a3a00'; dot(g, cx - r * 0.2, cy, r * 0.09); dot(g, cx + r * 0.2, cy, r * 0.09);
+    g.strokeStyle = '#5a3a00'; g.lineWidth = lw * 0.9; g.beginPath(); g.arc(cx, cy + r * 0.12, r * 0.15, 0.3, Math.PI - 0.3); g.stroke();
+    g.fillStyle = 'rgba(255,255,255,.7)'; dot(g, cx - r * 0.3, cy - r * 0.35, r * 0.1);
+  } else if (kind === 'potion') {
+    g.fillStyle = '#b07a3a'; g.strokeStyle = '#6a4418'; rr(g, cx - r * 0.24, cy - r * 1.08, r * 0.48, r * 0.32, r * 0.08); g.fill(); g.stroke();
+    g.fillStyle = 'rgba(230,248,255,.9)'; g.strokeStyle = '#2f78cf'; rr(g, cx - r * 0.2, cy - r * 0.8, r * 0.4, r * 0.4, r * 0.05); g.fill(); g.stroke();
+    const gr = g.createLinearGradient(0, cy - r * 0.2, 0, cy + r); gr.addColorStop(0, '#8ff0d6'); gr.addColorStop(1, '#22ad8e');
+    g.fillStyle = 'rgba(230,248,255,.9)'; g.beginPath(); g.arc(cx, cy + r * 0.2, r * 0.8, 0, 7); g.fill();
+    g.save(); g.beginPath(); g.arc(cx, cy + r * 0.2, r * 0.8, 0, 7); g.clip(); g.fillStyle = gr; g.fillRect(cx - r, cy - r * 0.05, r * 2, r * 1.2);
+    // little turtle-shell pattern in the potion
+    g.fillStyle = '#147a62'; g.beginPath(); for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; g.lineTo(cx + Math.cos(a) * r * 0.26, cy + r * 0.38 + Math.sin(a) * r * 0.26); } g.closePath(); g.fill();
+    g.fillStyle = 'rgba(255,255,255,.6)'; dot(g, cx - r * 0.35, cy + r * 0.1, r * 0.07); dot(g, cx + r * 0.3, cy + r * 0.05, r * 0.05);
+    g.restore();
+    g.strokeStyle = '#2f78cf'; g.beginPath(); g.arc(cx, cy + r * 0.2, r * 0.8, 0, 7); g.stroke();
+    g.fillStyle = 'rgba(255,255,255,.8)'; g.beginPath(); g.ellipse(cx - r * 0.38, cy - r * 0.05, r * 0.16, r * 0.1, -0.7, 0, 7); g.fill();
+  }
+}
+const fruitSprite = kind => sprite('f:' + kind, cs * 1.4, (g, cx, cy) => paintFruit(g, kind, cx, cy, cs));
+
+// ---------- background layer ----------
+function buildLayer() {
+  const px = cv._mgScale || 1;
+  if (!layer) layer = document.createElement('canvas');
+  if (layer.width !== cv.width || layer.height !== cv.height) { layer.width = cv.width; layer.height = cv.height; }
+  const g = layer.getContext('2d'); g.setTransform(px, 0, 0, px, 0, 0); g.lineJoin = 'round'; g.lineCap = 'round';
+  const rnd = mulberry(boardId * 977 + 13);
+  // sky-to-meadow backdrop
+  const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#c9f0a4'); gr.addColorStop(1, '#8fd36a');
+  g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  for (let i = 0, n = Math.round(W * H / 4200); i < n; i++) {
+    const px2 = rnd() * W, py = rnd() * H, s = 0.6 + rnd() * 0.8;
+    if (rnd() < 0.55) { g.strokeStyle = 'rgba(50,120,40,.3)'; g.lineWidth = 1.4; for (const a of [-0.5, 0, 0.5]) { g.beginPath(); g.moveTo(px2, py); g.lineTo(px2 + Math.sin(a) * 6 * s, py - 8 * s); g.stroke(); } }
+    else { g.fillStyle = ['#ffffff', '#ff9cc2', '#ffe14a', '#c3a2ff'][(rnd() * 4) | 0]; for (let k = 0; k < 5; k++) dot(g, px2 + Math.cos(k * 1.257) * 3.2 * s, py + Math.sin(k * 1.257) * 3.2 * s, 2.4 * s); g.fillStyle = '#ffb21f'; dot(g, px2, py, 1.7 * s); }
+  }
+  // side card / bottom strip
+  for (const b of [A.panel, A.strip]) if (b) {
+    g.fillStyle = 'rgba(0,0,0,.12)'; rr(g, b.x, b.y + 4, b.w, b.h, 18); g.fill();
+    g.fillStyle = 'rgba(255,255,255,.86)'; rr(g, b.x, b.y, b.w, b.h, 18); g.fill(); g.strokeStyle = '#6cbf55'; g.lineWidth = 3; g.stroke();
+  }
+  // the board
+  const bw = Cd * cs, bh = Rd * cs;
+  g.fillStyle = 'rgba(40,80,20,.22)'; rr(g, ox - cs * 0.16, oy - cs * 0.06, bw + cs * 0.32, bh + cs * 0.3, cs * 0.3); g.fill();
+  g.fillStyle = '#b4e886'; g.fillRect(ox, oy, bw, bh);
+  g.fillStyle = '#a3dc74'; for (let r = 0; r < Rd; r++) for (let c = (r & 1); c < Cd; c += 2) g.fillRect(ox + c * cs, oy + r * cs, cs, cs);
+  for (let i = 0, n = Cd * Rd; i < n; i++) {   // tiny grass tufts and dots on the board
+    if (rnd() < 0.55) continue;
+    const px2 = ox + rnd() * bw, py = oy + rnd() * bh;
+    g.strokeStyle = 'rgba(60,140,50,.35)'; g.lineWidth = Math.max(1, cs * 0.03);
+    for (const a of [-0.45, 0, 0.45]) { g.beginPath(); g.moveTo(px2, py); g.lineTo(px2 + Math.sin(a) * cs * 0.1, py - cs * 0.13); g.stroke(); }
+  }
+  if (mode !== 'slow') {   // wooden fence all around
+    const fw = Math.max(4, cs * 0.16);
+    g.strokeStyle = '#8a5a2b'; g.lineWidth = fw + 3; g.strokeRect(ox - fw / 2, oy - fw / 2, bw + fw, bh + fw);
+    g.strokeStyle = '#d9a35e'; g.lineWidth = fw; g.strokeRect(ox - fw / 2, oy - fw / 2, bw + fw, bh + fw);
+    g.strokeStyle = 'rgba(255,240,200,.6)'; g.lineWidth = Math.max(1, fw * 0.25); g.strokeRect(ox - fw / 2, oy - fw / 2 - fw * 0.15, bw + fw, bh + fw);
+    const post = (px2, py) => { g.fillStyle = '#b77b3e'; g.strokeStyle = '#6a4418'; g.lineWidth = 1.5; rr(g, px2 - fw * 0.7, py - fw * 0.9, fw * 1.4, fw * 1.8, fw * 0.35); g.fill(); g.stroke(); };
+    for (let c = 0; c <= Cd; c += 2) { post(ox + c * cs, oy - fw / 2); post(ox + c * cs, oy + bh + fw / 2); }
+    for (let r = 2; r < Rd; r += 2) { post(ox - fw / 2, oy + r * cs); post(ox + bw + fw / 2, oy + r * cs); }
+  } else {                 // open edges: a soft dashed rainbow line says "you can go through"
+    g.save(); g.setLineDash([cs * 0.25, cs * 0.2]); g.lineWidth = Math.max(2, cs * 0.07);
+    const gl = g.createLinearGradient(ox, oy, ox + bw, oy + bh); ['#ff8f84', '#ffe36b', '#8ff0d6', '#8fcaff', '#c3a2ff'].forEach((c, i, a) => gl.addColorStop(i / (a.length - 1), c));
+    g.strokeStyle = gl; g.strokeRect(ox + 1, oy + 1, bw - 2, bh - 2); g.restore();
+  }
+  // obstacles
+  for (let i = 0; i < L * SS; i++) {
+    if (!walls[i]) continue;
+    const c = i % L, r = (i / L) | 0, p = cellXY(c, r), k = obKind[i];
+    if (k === 2) paintPond(g, c, r, p);
+  }
+  for (let i = 0; i < L * SS; i++) {
+    if (!walls[i]) continue;
+    const c = i % L, r = (i / L) | 0, p = cellXY(c, r), k = obKind[i];
+    if (k === 1) paintBush(g, p, rnd); else if (k === 3) paintRock(g, p, rnd);
+  }
+  for (let i = 0; i < L * SS; i++) if (walls[i] && obKind[i] === 2 && rnd() < 0.35) paintLily(g, cellXY(i % L, (i / L) | 0), rnd);
+  layerKey = lkey();
+}
+const isPond = (c, r) => c >= 0 && r >= 0 && c < L && r < SS && obKind[r * L + c] === 2;
+function paintPond(g, c, r, p) {
+  const h = cs / 2, rad = cs * 0.38;
+  g.fillStyle = '#4aa8e0';
+  rr(g, p.x - h + 1, p.y - h + 1, cs - 2, cs - 2, rad); g.fill();
+  // join with pond neighbours (screen-space right / down)
+  const right = land ? isPond(c + 1, r) : isPond(c, r + 1), down = land ? isPond(c, r + 1) : isPond(c + 1, r);
+  if (right) g.fillRect(p.x, p.y - h + 1, cs, cs - 2);
+  if (down) g.fillRect(p.x - h + 1, p.y, cs - 2, cs);
+  if (right && down && (land ? isPond(c + 1, r + 1) : isPond(c + 1, r + 1))) g.fillRect(p.x, p.y, cs, cs);
+  g.fillStyle = '#7fcaf2'; g.beginPath(); g.ellipse(p.x - cs * 0.1, p.y - cs * 0.12, cs * 0.28, cs * 0.16, 0, 0, 7); g.fill();
+  g.strokeStyle = 'rgba(255,255,255,.75)'; g.lineWidth = Math.max(1.2, cs * 0.04); g.beginPath(); g.arc(p.x + cs * 0.12, p.y + cs * 0.12, cs * 0.12, Math.PI * 1.1, Math.PI * 1.8); g.stroke();
+}
+function paintLily(g, p, rnd) {
+  const a = rnd() * 6, s = cs * 0.2;
+  g.fillStyle = '#5cc65a'; g.strokeStyle = '#2f7f34'; g.lineWidth = Math.max(1, cs * 0.03);
+  g.beginPath(); g.moveTo(p.x + cs * 0.15, p.y + cs * 0.1); g.arc(p.x + cs * 0.15, p.y + cs * 0.1, s, a, a + Math.PI * 1.75); g.closePath(); g.fill(); g.stroke();
+  if (rnd() < 0.5) { g.fillStyle = '#ff9cc2'; dot(g, p.x + cs * 0.15, p.y + cs * 0.1, s * 0.35); }
+}
+function paintBush(g, p, rnd) {
+  const r = cs * 0.5;
+  g.fillStyle = 'rgba(20,60,10,.25)'; g.beginPath(); g.ellipse(p.x, p.y + r * 0.6, r * 0.95, r * 0.35, 0, 0, 7); g.fill();
+  const blobs = [[-0.4, 0.15, 0.48], [0.4, 0.15, 0.48], [0, -0.2, 0.55], [-0.15, 0.3, 0.45], [0.2, 0.3, 0.45]];
+  g.fillStyle = '#2c7f34'; for (const [bx, by, br] of blobs) dot(g, p.x + bx * r, p.y + by * r, br * r + 2);
+  g.fillStyle = '#49a844'; for (const [bx, by, br] of blobs) dot(g, p.x + bx * r, p.y + by * r - 1, br * r);
+  g.fillStyle = '#71d062'; for (const [bx, by, br] of blobs) dot(g, p.x + bx * r - br * r * 0.25, p.y + by * r - br * r * 0.35, br * r * 0.45);
+  if (rnd() < 0.6) { g.fillStyle = rnd() < 0.5 ? '#ff5a6e' : '#ffffff'; for (const [bx, by] of [[-0.3, -0.05], [0.25, 0.2], [0.05, -0.4]]) if (rnd() < 0.7) dot(g, p.x + bx * r, p.y + by * r, r * 0.09); }
+}
+function paintRock(g, p, rnd) {
+  const r = cs * 0.42, w = 0.9 + rnd() * 0.15;
+  g.fillStyle = 'rgba(20,40,10,.25)'; g.beginPath(); g.ellipse(p.x, p.y + r * 0.7, r * 1.0, r * 0.32, 0, 0, 7); g.fill();
+  const gr = g.createRadialGradient(p.x - r * 0.3, p.y - r * 0.4, r * 0.1, p.x, p.y, r * 1.2); gr.addColorStop(0, '#f2f0ea'); gr.addColorStop(0.6, '#b8b2a6'); gr.addColorStop(1, '#8a8478');
+  g.fillStyle = gr; g.strokeStyle = '#5f5a50'; g.lineWidth = Math.max(1.2, cs * 0.045);
+  g.beginPath(); g.moveTo(p.x - r * w, p.y + r * 0.55);
+  g.bezierCurveTo(p.x - r * 1.1 * w, p.y - r * 0.3, p.x - r * 0.4, p.y - r * 0.95, p.x + r * 0.1, p.y - r * 0.85);
+  g.bezierCurveTo(p.x + r * 0.8, p.y - r * 0.75, p.x + r * 1.1 * w, p.y - r * 0.05, p.x + r * w, p.y + r * 0.55);
+  g.closePath(); g.fill(); g.stroke();
+  g.fillStyle = 'rgba(255,255,255,.55)'; g.beginPath(); g.ellipse(p.x - r * 0.35, p.y - r * 0.45, r * 0.22, r * 0.11, -0.5, 0, 7); g.fill();
+  g.fillStyle = 'rgba(95,130,60,.6)'; g.beginPath(); g.ellipse(p.x + r * 0.35, p.y + r * 0.35, r * 0.25, r * 0.1, 0, 0, 7); g.fill();
+}
+const lkey = () => `${W}x${H}:${cv._mgScale}:${boardId}:${land}:${Cd}:${cs.toFixed(2)}:${padOn}:${mode}`;
+
+// ---------- live drawing ----------
+// interpolated canonical position of segment i (wrap-aware)
+function segPos(i) {
+  const b = sim.body[i], f = from[i] || b;
+  let dx = b[0] - f[0], dy = b[1] - f[1];
+  if (dx > 1) dx -= L; else if (dx < -1) dx += L;
+  if (dy > 1) dy -= SS; else if (dy < -1) dy += SS;
+  return [f[0] + dx * frac, f[1] + dy * frac, dx, dy];
+}
+function segXY(i) { const p = segPos(i); return cellXY(p[0], p[1]); }
+function drawCopies(c, r, fn) {     // draws again on the other side when a segment is crossing an open edge
+  fn(cellXY(c, r));
+  if (mode !== 'slow') return;
+  const cc = c < 0 ? c + L : c > L - 1 ? c - L : null, rr2 = r < 0 ? r + SS : r > SS - 1 ? r - SS : null;
+  if (cc != null) fn(cellXY(cc, r));
+  if (rr2 != null) fn(cellXY(c, rr2));
+  if (cc != null && rr2 != null) fn(cellXY(cc, rr2));
+}
+function nearestFruit() {
+  const h = sim.body[0]; let best = null, bd = 1e9;
+  for (const f of fruits.concat(item ? [item] : [])) { const d = Math.abs(f.c - h[0]) + Math.abs(f.r - h[1]); if (d < bd) { bd = d; best = f; } }
+  return best ? { f: best, d: bd } : null;
+}
+function drawItems() {
+  for (const f of fruits) {
+    const p = cellXY(f.c, f.r), age = t - f.born, pop = age < 0.3 ? 0.5 + 0.5 * Math.sin(age / 0.3 * Math.PI / 2) * 1.1 : 1, bob = Math.sin(t * 3 + f.c + f.r) * cs * 0.04;
+    blit(fruitSprite(f.kind), p.x, p.y + bob, pop * (1 + Math.sin(t * 4 + f.c) * 0.03));
+  }
+  if (item) {
+    const p = cellXY(item.c, item.r), blink = item.life < 2.2 && Math.floor(item.life * 6) % 2 === 0;
+    if (!blink) {
+      const glow = 0.5 + 0.5 * Math.sin(t * 5);
+      x.fillStyle = `rgba(255,250,170,${0.25 + glow * 0.25})`; dot(x, p.x, p.y, cs * 0.55);
+      blit(fruitSprite(item.kind), p.x, p.y + Math.sin(t * 4) * cs * 0.05, 1.05 + glow * 0.06);
+    }
+  }
+}
+function drawSnake() {
+  const n = sim.body.length, bodyR = cs * 0.46;
+  const clip = mode === 'slow';
+  if (clip) { x.save(); x.beginPath(); x.rect(ox, oy, Cd * cs, Rd * cs); x.clip(); }
+  // feet first (under the jelly balls), wiggling while it walks
+  const moving = state === 'play' || state === 'menu';
+  for (let i = n - 1; i >= 1; i--) {
+    const p = segPos(i), a = sim.body[i - 1], b = sim.body[i];
+    let dx = a[0] - b[0], dy = a[1] - b[1]; if (Math.abs(dx) > 1) dx = -Math.sign(dx); if (Math.abs(dy) > 1) dy = -Math.sign(dy);
+    if (!dx && !dy) { dx = 1; }
+    const sx = land ? dx : dy, sy = land ? dy : dx, k = tailK(i, n);
+    const wig = moving ? Math.sin(t * 16 + i * 1.4) * bodyR * 0.25 : 0, col = (PAL[segCol(i)] || PAL.green)[4];
+    drawCopies(p[0], p[1], q => {
+      x.fillStyle = col;
+      for (const sd of [-1, 1]) {
+        const w = wig * sd, fx = q.x - sy * sd * bodyR * 0.86 * k + sx * w, fy = q.y + sx * sd * bodyR * 0.86 * k + sy * w;
+        x.beginPath(); x.ellipse(fx, fy + bodyR * 0.25, bodyR * 0.27 * k, bodyR * 0.2 * k, 0, 0, 7); x.fill();
+      }
+    });
+  }
+  // body, tail first so the head is on top; a bulge runs down the body after eating
+  for (let i = n - 1; i >= 1; i--) {
+    const p = segPos(i), sg = segs[i], age = t - sg.born;
+    let k = tailK(i, n);
+    if (age < 0.5) k *= age < 0.18 ? age / 0.18 * 1.2 : 1 + Math.sin((age - 0.18) * 20) * 0.12 * (1 - (age - 0.18) / 0.32);
+    const wv = wave * 14 - i; if (wv > -1.5 && wv < 1.5) k *= 1 + 0.22 * Math.cos(wv / 1.5 * Math.PI / 2);
+    k *= 1 + Math.sin(t * 6 - i * 0.7) * 0.025;   // gentle breathing
+    const spr = segSprite(segCol(i));
+    drawCopies(p[0], p[1], q => blit(spr, q.x, q.y, k));
+  }
+  const hp = segPos(0);
+  drawCopies(hp[0], hp[1], q => drawHead(q.x, q.y));
+  if (clip) x.restore();
+}
+function tailK(i, n) { const fromEnd = n - 1 - i; return fromEnd >= 3 ? 1 : 0.76 + fromEnd * 0.08; }
+function segCol(i) { const c = segs[i] ? segs[i].col : 'green'; if (c === 'rainbow' || rainbowT > 0) return RAINBOW[(i + Math.floor(t * 8)) % RAINBOW.length]; return c; }
+function drawHead(hx, hy) {
+  const r = cs * 0.56, a = headAng, fx = Math.cos(a), fy = Math.sin(a), px = -fy, py = fx;
+  let bx = 0, by = 0;
+  if (bumpAnim > 0) { const s = scr2can(bumpDir), k = Math.sin((0.35 - bumpAnim) * 26) * bumpAnim * cs * 0.35; bx = [k, 0, -k, 0][s]; by = [0, k, 0, -k][s]; }
+  const cx = hx + bx, cy = hy + by - (munchT > 0 ? Math.sin(munchT * 18) * cs * 0.03 : 0);
+  const pal = PAL.green;
+  x.fillStyle = 'rgba(30,60,20,.2)'; x.beginPath(); x.ellipse(cx, cy + r * 0.45, r, r * 0.6, 0, 0, 7); x.fill();
+  // 噗噗's leaf sits on the back of the head
+  const lx = cx - fx * r * 0.62, ly = cy - fy * r * 0.62 - r * 0.45;
+  x.strokeStyle = '#7a5520'; x.lineWidth = Math.max(1.2, r * 0.08); x.beginPath(); x.moveTo(cx - fx * r * 0.45, cy - fy * r * 0.45 - r * 0.2); x.lineTo(lx, ly); x.stroke();
+  x.save(); x.translate(lx + r * 0.16, ly - r * 0.04); x.rotate(-0.45 + Math.sin(t * 3) * 0.12);
+  x.fillStyle = '#ffc93a'; x.strokeStyle = '#b86d00'; x.lineWidth = Math.max(1, r * 0.06);
+  x.beginPath(); x.moveTo(-r * 0.22, 0); x.quadraticCurveTo(0, -r * 0.24, r * 0.26, 0); x.quadraticCurveTo(0, r * 0.24, -r * 0.22, 0); x.fill(); x.stroke(); x.restore();
+  // jelly head
+  const gr = x.createRadialGradient(cx - r * 0.35, cy - r * 0.42, r * 0.08, cx, cy + r * 0.1, r * 1.15);
+  gr.addColorStop(0, pal[0]); gr.addColorStop(0.35, pal[1]); gr.addColorStop(0.8, pal[2]); gr.addColorStop(1, pal[3]);
+  x.fillStyle = gr; dot(x, cx, cy, r);
+  x.strokeStyle = pal[4]; x.lineWidth = Math.max(1.2, r * 0.08); x.beginPath(); x.arc(cx, cy, r, 0, 7); x.stroke();
+  x.fillStyle = 'rgba(255,255,255,.75)'; x.beginPath(); x.ellipse(cx - r * 0.42, cy - r * 0.45, r * 0.2, r * 0.11, -0.75, 0, 7); x.fill();
+  // face looks the way it is going; the pupils look at the nearest fruit
+  const ink = '#18261a', nf = nearestFruit();
+  let lkx = fx, lky = fy;
+  if (nf) { const fp = cellXY(nf.f.c, nf.f.r), dx = fp.x - cx, dy = fp.y - cy, d = Math.hypot(dx, dy) || 1; lkx = dx / d; lky = dy / d; }
+  const ez = 0.3, es = 0.34, ouch = state === 'oops' || (mood === 'ouch' && moodT > 0);
+  const blink = ((t + 1.3) % 3.4) < 0.12;
+  for (const sd of [-1, 1]) {
+    const ex = cx + fx * r * ez + px * r * es * sd, ey = cy + fy * r * ez + py * r * es * sd - r * 0.08;
+    if (ouch) {
+      x.strokeStyle = ink; x.lineWidth = Math.max(1.2, r * 0.09); const q = r * 0.12;
+      x.beginPath(); x.moveTo(ex - q, ey - q); x.lineTo(ex + q, ey + q); x.moveTo(ex + q, ey - q); x.lineTo(ex - q, ey + q); x.stroke();
+    } else if (blink || mood === 'love' && moodT > 0) {
+      x.strokeStyle = ink; x.lineWidth = Math.max(1.2, r * 0.08); x.beginPath(); x.arc(ex, ey + r * 0.04, r * 0.12, Math.PI + 0.35, -0.35); x.stroke();
+    } else {
+      x.fillStyle = '#fff'; x.beginPath(); x.ellipse(ex, ey, r * 0.2, r * 0.23, 0, 0, 7); x.fill();
+      x.strokeStyle = 'rgba(24,38,26,.5)'; x.lineWidth = Math.max(0.8, r * 0.04); x.stroke();
+      const qx = ex + lkx * r * 0.08, qy = ey + lky * r * 0.09;
+      x.fillStyle = ink; dot(x, qx, qy, r * 0.12);
+      x.fillStyle = '#fff'; dot(x, qx - r * 0.04, qy - r * 0.05, r * 0.045);
+    }
+  }
+  // cheeks
+  x.fillStyle = 'rgba(255,110,140,.45)';
+  for (const sd of [-1, 1]) { x.beginPath(); x.ellipse(cx + fx * r * 0.42 + px * r * 0.62 * sd, cy + fy * r * 0.42 + py * r * 0.62 * sd + r * 0.06, r * 0.13, r * 0.08, 0, 0, 7); x.fill(); }
+  // mouth: opens wide when a fruit is right in front, chews after eating
+  const mx = cx + fx * r * 0.62, my = cy + fy * r * 0.62 + r * 0.08;
+  const near = nf && nf.d <= 1 && state === 'play';
+  if (munchT > 0 || near || state === 'oops' || mood === 'tongue' && moodT > 0) {
+    const open = munchT > 0 ? 0.5 + 0.5 * Math.abs(Math.sin(munchT * 28)) : 1;
+    x.fillStyle = '#7a2a33'; x.beginPath(); x.ellipse(mx, my, r * 0.17, r * 0.15 * open + 0.5, 0, 0, 7); x.fill();
+    x.fillStyle = '#ff8aa0'; x.beginPath(); x.ellipse(mx, my + r * 0.06 * open, r * 0.09, r * 0.05 * open + 0.3, 0, 0, 7); x.fill();
+  } else {
+    x.strokeStyle = ink; x.lineWidth = Math.max(1.2, r * 0.08); x.beginPath(); x.arc(mx - fx * r * 0.08, my - fy * r * 0.08, r * 0.15, a - Math.PI / 2 + 0.6, a + Math.PI / 2 - 0.6); x.stroke();
+  }
+  // dizzy stars after a crash
+  if (state === 'oops') for (let k = 0; k < 3; k++) { const an = t * 4 + k * 2.09; x.fillStyle = '#ffd23f'; star5(x, cx + Math.cos(an) * r * 0.9, cy - r * 1.05 + Math.sin(an) * r * 0.3, r * 0.2, r * 0.09); x.fill(); }
+}
+function drawButton(b, label, colA, colB, edge) {
+  const press = pressed === b && pressT > 0;
+  x.fillStyle = edge; rr(x, b.x, b.y + 5, b.w, b.h, 18); x.fill();
+  const gr = x.createLinearGradient(0, b.y, 0, b.y + b.h); gr.addColorStop(0, colA); gr.addColorStop(1, colB);
+  x.fillStyle = gr; x.strokeStyle = edge; x.lineWidth = 3; rr(x, b.x, b.y + (press ? 4 : 0), b.w, b.h, 18); x.fill(); x.stroke();
+  x.fillStyle = 'rgba(255,255,255,.5)'; rr(x, b.x + 10, b.y + (press ? 4 : 0) + 5, b.w - 20, 6, 3); x.fill();
+  const [ic, ...rest] = label.split(' '), word = rest.join(' '), sz = b.w < 130 ? 18 : 20;
+  x.font = `900 ${sz}px ${FONT}`;
+  const tw = x.measureText(word).width, tot = sz * 1.15 + 6 + tw, sx = b.x + b.w / 2 - tot / 2, cy = b.y + b.h / 2 + (press ? 4 : 0) + 1;
+  emo(ic, sx + sz * 0.58, cy, sz);
+  txt(word, sx + sz * 1.15 + 6, cy + 1, sz, '#4a3200', 'left', 900);
+}
+function drawPad() {
+  for (const b of padBtns) {
+    const press = pressed === b && pressT > 0, cx = b.x + b.w / 2, cy = b.y + b.h / 2 + (press ? 3 : 0);
+    x.fillStyle = 'rgba(0,0,0,.18)'; rr(x, b.x, b.y + 4, b.w, b.h, 16); x.fill();
+    x.fillStyle = press ? '#d6f5d0' : '#ffffff'; x.strokeStyle = '#6cbf55'; x.lineWidth = 3; rr(x, b.x, b.y + (press ? 3 : 0), b.w, b.h, 16); x.fill(); x.stroke();
+    x.save(); x.translate(cx, cy); x.rotate(b.d * Math.PI / 2); x.fillStyle = '#3cb85a'; x.strokeStyle = '#1f6e35'; x.lineWidth = 2.5; x.lineJoin = 'round';
+    const s = b.w * 0.27; x.beginPath(); x.moveTo(s, 0); x.lineTo(-s * 0.6, -s * 0.9); x.lineTo(-s * 0.6, s * 0.9); x.closePath(); x.fill(); x.stroke(); x.restore();
+  }
+  if (padBtns.length) {   // a little caterpillar face in the middle of the pad
+    const b0 = padBtns[0], b2 = padBtns[2], cx = (b0.x + b2.x + b0.w) / 2, cy = b0.y + b0.h / 2;
+    x.fillStyle = '#c8ffc9'; dot(x, cx, cy, b0.w * 0.3); x.strokeStyle = '#2a9447'; x.lineWidth = 2; x.beginPath(); x.arc(cx, cy, b0.w * 0.3, 0, 7); x.stroke();
+    x.fillStyle = '#18261a'; dot(x, cx - b0.w * 0.1, cy - b0.w * 0.03, b0.w * 0.045); dot(x, cx + b0.w * 0.1, cy - b0.w * 0.03, b0.w * 0.045);
+    x.strokeStyle = '#18261a'; x.beginPath(); x.arc(cx, cy + b0.w * 0.03, b0.w * 0.08, 0.4, Math.PI - 0.4); x.stroke();
+  }
+}
+function infoLines() {
+  const len = sim.body.length + sim.grow;
+  if (mode === 'level') return { title: `第 ${level} 關`, sub: `${LV[level - 1][1]} ${LV[level - 1][0]}`, a: ['🍎', `${Math.min(eaten, goal)} / ${goal}`], b: ['💫', `撞到 ${bumps} 次`] };
+  return { title: MODE_NM[mode], sub: mode === 'slow' ? '撞到也沒關係' : '小心別撞到', a: ['🐛', `${len} 節`], b: ['🏆', `最長 ${Math.max(best0, len)}`] };
+}
+function drawStatus(cx, y0) {     // little icons for running power-ups
+  const on = [];
+  if (slowT > 0) on.push(['🐢', slowT]); if (rainbowT > 0) on.push(['🌈', rainbowT]); if (starT > 0) on.push(['🌟', starT]);
+  on.forEach(([ic, tl], i) => { const xx = cx + (i - (on.length - 1) / 2) * 44; x.globalAlpha = tl < 1.5 && Math.floor(tl * 6) % 2 ? 0.4 : 1; emo(ic, xx, y0, 26); x.globalAlpha = 1; });
+  return on.length;
+}
+function drawUI() {
+  if (state === 'menu') return;
+  const inf = infoLines();
+  for (const b of btns) {
+    if (b.id === 'pad') drawButton(b, padOn ? (b.short ? '👆 收起' : '👆 收起方向鍵') : '🎮 方向鍵', '#d9f3ff', '#7fcbff', '#2f78cf');
+    else if (b.id === 'rest') drawButton(b, b.short ? '🏁 休息' : '🏁 休息一下', '#fff3a8', '#ffcf3a', '#c98a00');
+  }
+  drawPad();
+  if (land) {
+    const P = A.panel, cx = P.x + P.w / 2;
+    txt(inf.title, cx, PL.title, PL.compact ? 24 : 28, '#2f6b2a', 'center', 900);
+    if (PL.sub) txt(inf.sub, cx, PL.sub, 17, '#6a5a42', 'center', 800);
+    emo(inf.a[0], cx - 58, PL.a, 24); txt(inf.a[1], cx + 14, PL.a + 1, 24, '#c0392b', 'center', 900);
+    emo(inf.b[0], cx - 58, PL.b, 18); txt(inf.b[1], cx + 14, PL.b + 1, 17, '#4a3b2a', 'center', 800);
+    if (!padOn) {
+      const n = drawStatus(cx, PL.btnEnd + 30);
+      const top0 = PL.btnEnd + (n ? 50 : 16), room = P.y + P.h - top0;
+      if (room > 100) {
+        const r = Math.min(44, room * 0.24), py = P.y + P.h - r * 1.25 - 14, hop = Math.abs(Math.sin(t * 3)) * 6;
+        const m = state === 'won' ? 'love' : state === 'oops' ? 'ouch' : mood === 'love' || mood === 'wow' ? 'wow' : mood === 'tongue' ? 'tongue' : 'happy';
+        MG.puPu(x, cx, py - hop, r, m, hop ? -0.03 : 0.05, { arms: 'up', look: Math.sin(t * 0.8) * 0.6 });
+        const word = state === 'won' ? 'Yay! 🎉' : state === 'oops' ? 'Oops! 💫' : combo >= 2 && t - lastEatT < 1.5 ? MG.WORDS.combo(combo) : munchT > 0 ? 'Yum! 😋' : 'Go! 💪';
+        txt(word, cx, py - r * 1.55 - 12, 18, '#2f6b2a', 'center', 900);
+      }
+    } else if (PL.padTop - PL.btnEnd > 40) drawStatus(cx, (PL.padTop + PL.btnEnd) / 2);
+  } else {
+    const S0 = A.strip;
+    if (!padOn) {
+      const cx = W / 2, cy = btns[0].y + btns[0].h / 2;
+      if (!drawStatus(cx, cy)) { emo(inf.a[0], cx - 26, cy, 22); txt(inf.a[1].replace(' / ', '/'), cx + 16, cy + 1, 19, '#c0392b', 'center', 900); }
+    } else {
+      txt(inf.a[1], 72, S0.y + S0.h - 50, 20, '#c0392b', 'center', 900); emo(inf.a[0], 72, S0.y + S0.h - 80, 20);
+      drawStatus(W - 72, S0.y + S0.h - 50);
+      txt(inf.b[1], 72, S0.y + S0.h - 20, 14, '#8a7a62', 'center', 800);
+    }
+    if (headerH) {
+      const hy = oy - headerH / 2 - 2, label = mode === 'level' ? `第 ${level} 關・吃 ${goal} 個水果！` : `${MODE_NM[mode].split(' ')[1]}・${inf.sub}`;
+      x.font = `900 19px ${FONT}`; const w = Math.min(W - 20, x.measureText(label).width + 56);
+      x.fillStyle = 'rgba(255,255,255,.88)'; rr(x, W / 2 - w / 2, hy - 19, w, 38, 19); x.fill(); x.strokeStyle = '#6cbf55'; x.lineWidth = 2.5; x.stroke();
+      emo(mode === 'level' ? LV[level - 1][1] : MODE_NM[mode].split(' ')[0], W / 2 - w / 2 + 22, hy, 19); txt(label, W / 2 + 12, hy + 1, 19, '#2f6b2a', 'center', 900);
+    }
+  }
+}
+function draw() {
+  if (lkey() !== layerKey) buildLayer();
+  x.drawImage(layer, 0, 0, W, H);
+  drawItems();
+  drawSnake();
+  MG.fx.draw(x);
+  for (const f of floats) {
+    x.globalAlpha = clamp(f.life / f.max * 2.5, 0, 1);
+    const fs = Math.min(Math.max(16, cs * 0.5), 34); x.font = `900 ${fs}px ${FONT}`;
+    const hw = x.measureText(f.text).width / 2 + 6;
+    txt(f.text, clamp(f.x, hw, Math.max(hw, W - hw)), Math.max(fs, f.y), fs, f.col, 'center', 900, 'rgba(90,60,0,.85)', 4);
+  }
+  x.globalAlpha = 1;
+  drawUI();
+}
+
+// ---------- menu ----------
+function levelLabel(n) { const s = (MG.store.get('snake.stars', [])[n - 1]) || 0; return `${n} ${LV[n - 1][1]}<small>${s ? '★'.repeat(s) + '☆'.repeat(3 - s) : '&nbsp;'}</small>`; }
+function menu() {
+  startDemo(); hud(true);
+  MG.choose({
+    id: 'snake', title: '噗噗毛毛蟲',
+    html: `<p>噗噗變成一條果凍毛毛蟲！帶牠去吃 🍎🍌🍇🍓，吃一個就變長一節。<b>往想去的方向滑一下</b>就會轉彎，也可以<b>點毛毛蟲旁邊</b>、用 🎮 方向鍵或鍵盤。</p>` +
+      `<p>⭐ 星星加分、🐢 藥水變慢、🌈 彩虹果讓身體變彩色，還有一下就不見的金蘋果！</p>`,
+    picks: [{ key: 'rule', title: '🎯 關卡模式：碰到東西會…', def: 'pass', options: [{ id: 'pass', label: '🫧 穿過去', sub: '停一下、自己轉彎，不會輸' }, { id: 'retry', label: '🔁 重來', sub: '撞到就從頭開始這關' }] }],
+    modesTitle: '玩法',
+    modes: [{ id: 'slow', label: '🐢 慢慢玩', sub: '牆可以穿過去，不會輸' }, { id: 'classic', label: '⭐ 經典', sub: '撞到就結束，越來越快' }, { id: 'level', label: '🎯 關卡', sub: '15 關，吃夠水果過關' }],
+    levelsTitle: '🎯 關卡模式從哪一關開始？',
+    levels: { count: LEVELS, max: LEVELS, label: levelLabel },
+    keys: '滑一下轉彎、點毛毛蟲旁邊、🎮 方向鍵　電腦：<kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd> 或 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>',
+    playing: () => state === 'play',
+    start: (m, lv, pk) => { rule = pk && pk.rule === 'retry' ? 'retry' : 'pass'; startRound(m, m === 'level' ? lv : 1); },
+  });
+}
+menu();
+
+// ---------- hook for automated tests ----------
+window.SNK = {
+  get state() { return state; }, get mode() { return mode; }, get level() { return level; }, get rule() { return rule; }, get demo() { return demo; },
+  get eaten() { return eaten; }, get goal() { return goal; }, get score() { return score; }, get bumps() { return bumps; }, get combo() { return combo; },
+  get length() { return sim.body.length + sim.grow; }, get dir() { return sim.dir; }, get queue() { return sim.queue.slice(); }, get ticks() { return ticks; },
+  get passes() { return passes; }, get padOn() { return padOn; }, get frames() { return frames; }, get stepT() { return stepT; }, get lastEv() { return lastEv; },
+  body: () => sim.body.map(p => p.slice()), fruits: () => fruits.map(f => ({ c: f.c, r: f.r, kind: f.kind })), item: () => item && { ...item },
+  dims: () => ({ L, S: SS, Cd, Rd, cs, ox, oy, W, H, land, headerH, cssCell: cs * cssScale() }),
+  board: () => ({ walls: Array.from(walls), ok: Array.from(okCell), C: L, R: SS }),
+  spawnLog: () => spawnLog.slice(), levels: LV,
+  btns: () => btns.map(b => ({ id: b.id, x: b.x, y: b.y, w: b.w, h: b.h })), padBtns: () => padBtns.map(b => ({ d: b.d, x: b.x, y: b.y, w: b.w, h: b.h })),
+  head: () => headXY(),
+  toClient(lx, ly) { const rc = cv.getBoundingClientRect(), B = 3; return { x: rc.left + B + lx * (rc.width - 2 * B) / W, y: rc.top + B + ly * (rc.height - 2 * B) / H }; },
+  core, reachFrom: (S, c, r) => Array.from(reachFrom(S, c, r)),
+  autoplay(on) { botOn = !!on; }, speed(k) { timeScale = k; },
+  fast(sec) { const n = Math.round(sec / 0.02); for (let i = 0; i < n; i++) { update(0.02); t += 0.02; } },
+  turnScreen: d => turnScreen(d), placeFruit(c, r, kind = 'apple') { fruits = [{ c, r, kind, born: t }]; },
+  placeItem(c, r, kind) { item = { c, r, kind, life: 10, max: 10, born: t }; },
+};
+
+MG.loop(dt => {
+  dt *= timeScale;
+  t += dt; frames++;
+  update(dt);
+  draw();
+  hud();
+});
+</script>
+</body>
+</html>
