@@ -58,6 +58,7 @@ const THEMES = [
   { id: 'rainbow', nm: '彩虹橋', ic: '🌈', pts: [[0, 0], [600, -500], [1200, -100], [1800, -500], [2450, 0], [2150, 600], [2750, 1100], [2100, 1700], [1300, 1350], [700, 1750], [100, 1250], [400, 650]],
     ground: '#8ecfff', tex: '#b4e0ff', verge: '#ffffff', road: 'rainbow', road2: '#ffffff', kerb: ['#ffffff', '#ffe36b'], line: 'rgba(255,255,255,.55)', bar: 'cloud', deco: [['cloud', 4], ['twinkle', 4], ['planet', 0.6], ['balloon', 0.8]] },
 ];
+const BILL = new Set(['cactus', 'snowman']);   // upright scenery, drawn standing up on the screen
 const DECO_R = { tree: 34, house: 46, flowers: 22, pond: 62, palm: 40, umbrella: 30, castle: 34, shell: 14, lolly: 30, donut: 28, cupcake: 26, sweet: 18, pine: 36, snowman: 26, ice: 52, gift: 20,
   building: 72, lamp: 16, bigtree: 54, mushroom: 16, bush: 22, logpile: 30, cactus: 28, rock: 24, pyramid: 86, oasis: 66, cloud: 48, twinkle: 12, planet: 30, balloon: 30 };
 
@@ -150,7 +151,7 @@ function buildTrack(ti) {
     if (ok) decos.push({ k: kind, x: px, y: py, r, sd: h(6) });
   }
   decos.sort((a, b) => a.y - b.y);
-  T.decos = decos;
+  T.decos = decos.filter(d => !BILL.has(d.k)); T.bills = decos.filter(d => BILL.has(d.k));
   return T;
 }
 // nearest centreline sample: local search around a hint, or a full scan
@@ -190,9 +191,8 @@ const DIFF = {
 let state = 'menu', mode = 'race', diff = 'easy', assist = true, trackI = 0, trk = getTrack(0);
 let cars = [], humans = [], raceT = 0, countT = 0, lastBeep = 0, acc = 0, t = 0, frameN = 0, stepN = 0, doneT = 0, resultsShown = false, slowMore = false;
 let finishN = 0, firstHumanT = -1, autopilot = false, rng = mulberry(1), results = null, lapLog = [], floatLog = [], catchCd = 0;
-let floats = [], banner = null, ghost = null, ghostRec = [], ghostRecT = 0, lapStartT = 0;
-const cam = { x: 0, y: 0, z: 1 };
-let W = 800, H = 540, land = true, Z0 = 1, BTN = [], MINI = { x: 0, y: 0, w: 160, h: 110 };
+let floats = [], banners = [null, null], ghost = null, ghostRec = [], ghostRecT = 0, lapStartT = 0;
+let W = 800, H = 540, land = true;
 
 function makeCar(who, kind) {
   return { who, kind, human: kind !== 'cpu', x: 0, y: 0, a: 0, px: 0, py: 0, pa: 0, vx: 0, vy: 0, steer: 0, want: 0, spd: 1, seg: 0, s: 0, d: 0, dist: 0, cp: 0, lap: 0,
@@ -208,7 +208,7 @@ function putCar(c, dist, d, back = false) {
 }
 function setupRace() {
   trk = getTrack(trackI); rng = mulberry(trackI * 131 + 7 + (mode === 'race' ? { easy: 1, normal: 2, hard: 3 }[diff] : 0));
-  cars = []; floats = []; banner = null; MG.fx.clear(); finishN = 0; firstHumanT = -1; raceT = 0; doneT = 0; resultsShown = false; slowMore = false; results = null; lapLog = []; catchCd = 0;
+  cars = []; floats = []; banners = [null, null]; MG.fx.clear(); finishN = 0; firstHumanT = -1; raceT = 0; doneT = 0; resultsShown = false; slowMore = false; results = null; lapLog = []; catchCd = 0;
   for (const s of trk.stars) s.t = 0;
   if (mode === 'race') {
     const order = [1, 2, 3], skills = [1, 0.975, 0.95];
@@ -221,8 +221,7 @@ function setupRace() {
   humans = cars.filter(c => c.human);
   ghost = mode === 'time' ? MG.store.get('kart.ghost.' + trackI, null) : null;
   ghostRec = []; ghostRecT = 0; lapStartT = 0;
-  const p0 = humans[0]; cam.x = p0.x; cam.y = p0.y; cam.z = Z0;
-  if (mode === 'pvp') { cam.x = (humans[0].x + humans[1].x) / 2; cam.y = (humans[0].y + humans[1].y) / 2; }
+  for (const v of views) v.cam.init = false;
 }
 
 // =====================================================================
@@ -230,19 +229,16 @@ function setupRace() {
 // =====================================================================
 const keys = [{ l: false, r: false }, { l: false, r: false }];
 const ptrs = new Map();
-function zoneAt(lx) {
-  if (mode !== 'pvp') return { p: 0, d: lx < W / 2 ? -1 : 1 };
-  if (lx < W / 2) { const mid = (BTN[0].x + BTN[0].w + BTN[1].x) / 2; return { p: 0, d: lx < mid ? -1 : 1 }; }
-  const mid = (BTN[2].x + BTN[2].w + BTN[3].x) / 2; return { p: 1, d: lx < mid ? -1 : 1 };
-}
+// a finger belongs to the view it lands in; its half of that view (as that player sees it) picks ◀ or ▶
+function zoneAt(pt) { const v = viewAt(pt.x, pt.y), L = screenToLocal(v, pt.x, pt.y); return { p: v.hi, d: L.x < v.w / 2 ? -1 : 1 }; }
 const racing = () => state === 'count' || state === 'play' || state === 'done';
 stageEl.addEventListener('pointerdown', e => {
   if (!racing() || MG.panelOpen()) return;
   e.preventDefault(); ea();
-  ptrs.set(e.pointerId, zoneAt(cv.logical(e).x));
+  ptrs.set(e.pointerId, zoneAt(cv.logical(e)));
   try { stageEl.setPointerCapture(e.pointerId); } catch {}
 });
-stageEl.addEventListener('pointermove', e => { if (ptrs.has(e.pointerId)) { e.preventDefault(); ptrs.set(e.pointerId, zoneAt(cv.logical(e).x)); } });
+stageEl.addEventListener('pointermove', e => { if (ptrs.has(e.pointerId)) { e.preventDefault(); ptrs.set(e.pointerId, zoneAt(cv.logical(e))); } });
 const ptrEnd = e => ptrs.delete(e.pointerId);
 stageEl.addEventListener('pointerup', ptrEnd); stageEl.addEventListener('pointercancel', ptrEnd); stageEl.addEventListener('lostpointercapture', ptrEnd);
 document.addEventListener('contextmenu', e => e.preventDefault());
@@ -451,11 +447,11 @@ function lapDone(c) {
   if (lap >= LAPS && !(mode === 'slow')) return finish(c);
   if (!c.human) return;
   if (mode === 'slow') {
-    if (lap === LAPS && !slowMore && state === 'play') { state = 'done'; doneT = 0; MG.sfx('win'); MG.sfx('yay'); bigBanner('Yay! 🎉', '#ff5a8a'); return; }
-    bigBanner(`Lap ${lap + 1} 🔁`, '#3a6fd8'); MG.sfx('good'); return;
+    if (lap === LAPS && !slowMore && state === 'play') { state = 'done'; doneT = 0; MG.sfx('win'); MG.sfx('yay'); bigBanner('Yay! 🎉', '#ff5a8a', c); return; }
+    bigBanner(`Lap ${lap + 1} 🔁`, '#3a6fd8', c); MG.sfx('good'); return;
   }
-  if (lap === LAPS - 1) { bigBanner('Final lap! 🔥', '#ff6a1c'); MG.sfx('combo', 4); }
-  else { bigBanner(`Lap ${lap + 1}/${LAPS} 🔁`, '#3a6fd8'); MG.sfx('good'); }
+  if (lap === LAPS - 1) { bigBanner('Final lap! 🔥', '#ff6a1c', c); MG.sfx('combo', 4); }
+  else { bigBanner(`Lap ${lap + 1}/${LAPS} 🔁`, '#3a6fd8', c); MG.sfx('good'); }
 }
 const ORD = ['1st! 🥇', '2nd! 🥈', '3rd! 🥉', '4th! 🎉'];
 function finish(c) {
@@ -466,7 +462,7 @@ function finish(c) {
   MG.fx.burst(c.x, c.y, { n: 30, colors: ['#ff8fbf', '#ffd23f', '#4cc96a', '#4c9cf0', '#a07cf2', '#fff'], speed: 260, up: 0, grav: 0, size: 6, life: 1.1, shape: 'sq' });
   if (mode === 'pvp') {
     const nmP = c.kind === 'p1' ? '💚' : '💜';
-    bigBanner(c.place === 1 ? `${nmP} 1st! 🥇` : `${nmP} 2nd! 🥈`, c.place === 1 ? '#e8a400' : '#6a7bd8');
+    bigBanner(c.place === 1 ? `${nmP} 1st! 🥇` : `${nmP} 2nd! 🥈`, c.place === 1 ? '#e8a400' : '#6a7bd8', c);
     MG.sfx('win'); if (c.place === 1) MG.sfx('yay');
     if (firstHumanT < 0) firstHumanT = raceT;
     if (humans.every(h => h.finished)) { state = 'done'; doneT = 0; }
@@ -501,23 +497,8 @@ function fixedStep(dt) {
     ghostRecT += dt;
     if (ghostRecT >= 0.05 || !ghostRec.length) { ghostRecT = ghostRec.length ? ghostRecT - 0.05 : 0; const p = humans[0]; ghostRec.push(Math.round(p.x), Math.round(p.y), Math.round(p.a * 100)); }
   }
-  // two players: the camera can only zoom out so far — the one behind gets carried up
-  if (mode === 'pvp' && state === 'play') {
-    catchCd = Math.max(0, catchCd - dt);
-    const [a, b] = humans;
-    if (catchCd <= 0 && !a.finished && !b.finished && !fits(a, b, ZMIN)) {
-      const back = a.dist < b.dist ? a : b, lead = back === a ? b : a;
-      const d = clamp(lead.d, -HW * 0.4, HW * 0.4) * -1;
-      putCar(back, lead.dist - 230, d); back.vx = Math.cos(back.a) * 160; back.vy = Math.sin(back.a) * 160; back.blinkT = 1.3; back.lapT0 = back.lapT0;
-      while (back.dist >= (back.cp + 1) * trk.L / CPN) { back.cp++; if (back.cp % CPN === 0) lapDone(back); }
-      back.cp = Math.floor(Math.max(0, back.dist) / (trk.L / CPN));
-      addFloat(back, 'Catch up! 💨'); MG.sfx('whoosh'); catchCd = 2;
-    }
-  }
   if (mode === 'pvp' && state === 'play' && firstHumanT >= 0 && raceT - firstHumanT > 10) { state = 'done'; doneT = 0; }
 }
-const ZMIN = 0.42;
-function fits(a, b, z) { return Math.abs(a.x - b.x) + 220 <= (W - 120) / z && Math.abs(a.y - b.y) + 220 <= (H - (land ? 150 : 230)) / z; }
 
 // =====================================================================
 // main update
@@ -536,34 +517,18 @@ function update(dt) {
     while (acc >= STEP && n < 16) { fixedStep(STEP); acc -= STEP; n++; }
     if (n >= 16) acc = 0;
   }
+  if (warmQ.length && (state === 'count' || state === 'menu')) { tileFrame++; for (let i = 0; i < 2 && warmQ.length; i++) { const [a, b, q] = warmQ.pop(); getTile(a, b, q); } }
   if (state === 'done' && !resultsShown) { doneT += dt; if (doneT > 1.8) showResults(); }
   for (const f of floats) f.life -= dt; floats = floats.filter(f => f.life > 0);
-  if (banner) { banner.life -= dt; if (banner.life <= 0) banner = null; }
+  banners = banners.map(b => b && b.life - dt > 0 ? { ...b, life: b.life - dt } : null);
   MG.fx.step(dt);
   camera(dt);
   const p = humans[0];
   if (p && racing() && !MG.panelOpen()) engineSet(clamp(Math.hypot(p.vx, p.vy) / (VMAX * 1.5), 0, 1), true); else engineSet(0, false);
   hud();
 }
-function camera(dt) {
-  if (!humans.length) return;
-  let tx, ty, tz = Z0;
-  const yOff = land ? 0 : 40;
-  if (humans.length === 1) {
-    const c = humans[0], lk = 0.3;
-    tx = c.x + clamp(c.vx * lk, -150, 150); ty = c.y + clamp(c.vy * lk, -120, 120) + yOff / Z0;
-  } else {
-    const [a, b] = humans;
-    tx = (a.x + b.x) / 2; ty = (a.y + b.y) / 2;
-    tz = Math.min(Z0, (W - 120) / (Math.abs(a.x - b.x) + 220), (H - (land ? 150 : 230)) / (Math.abs(a.y - b.y) + 220));
-    tz = Math.max(ZMIN, tz); ty += yOff / tz;
-  }
-  const k = 1 - Math.exp(-6 * dt), kz = 1 - Math.exp(-3 * dt);
-  if (dt > 0.2 || state === 'menu') { cam.x = tx; cam.y = ty; cam.z = tz; return; }
-  cam.x += (tx - cam.x) * k; cam.y += (ty - cam.y) * k; cam.z += (tz - cam.z) * kz;
-}
 function addFloat(c, text) { floats.push({ c, text, life: 1.1, max: 1.1 }); floatLog.push(text); if (floatLog.length > 200) floatLog.shift(); }
-function bigBanner(text, col) { banner = { text, col, life: 1.6, max: 1.6 }; floatLog.push(text); }
+function bigBanner(text, col, c = null) { const b = { text, col, life: 1.6, max: 1.6 }, k = c && mode === 'pvp' ? humans.indexOf(c) : -1; banners = banners.map((o, i) => k < 0 || i === k ? b : o); floatLog.push(text); }
 let lastHud = '';
 function hud() {
   const p = humans[0]; if (!p) return;
@@ -903,7 +868,7 @@ function paintRegion(g, x0, y0, x1, y1) {
 // ---------- tile cache (world split into 512-unit tiles, drawn once per zoom level) ----------
 const TS = 384, TM = 3, tiles = new Map(); let tilePix = 0, tileFrame = 0;
 // tile resolution: single player uses the exact zoom (sharp, no rescale); two players zoom in and out, so coarse steps
-function tileQ(z) { if (mode !== 'pvp') return Math.min(1.1, Math.ceil(z * 20 - 0.05) / 20); let q = 1; for (const s of [1, 0.72, 0.5, 0.36]) if (s >= z * 0.98) q = s; return q; }
+function tileQ(z) { return Math.min(1.1, Math.ceil(z * 20 - 0.05) / 20); }
 function getTile(tx, ty, q) {
   const px = cv._mgScale || 1, key = `${trk.ti}:${q}:${px}:${tx}:${ty}`;
   let e = tiles.get(key);
@@ -913,23 +878,51 @@ function getTile(tx, ty, q) {
   paintRegion(g, tx * TS - TM, ty * TS - TM, (tx + 1) * TS + TM, (ty + 1) * TS + TM);
   e = { c, pix: cw * cw, f: tileFrame }; tiles.set(key, e); tilePix += e.pix;
   // forget the oldest tiles, but never the ones on screen right now
-  for (const [k2, v] of tiles) { if (tilePix < 12e6) break; if (v.f >= tileFrame - 1) continue; tiles.delete(k2); tilePix -= v.pix; v.c.width = v.c.height = 0; }
+  for (const [k2, v] of tiles) { if (tilePix < 16e6) break; if (v.f >= tileFrame - 1) continue; tiles.delete(k2); tilePix -= v.pix; v.c.width = v.c.height = 0; }
   return c;
 }
+// while the countdown runs, paint the tiles around the start a couple per frame (no hitch once racing)
+let warmQ = [];
+function queueWarm() {
+  warmQ = [];
+  for (const v of views) {
+    const R = Math.hypot(v.w, v.h) / v.z, q = tileQ(v.z);
+    for (let ty = Math.floor((v.cam.y - R) / TS); ty <= Math.floor((v.cam.y + R) / TS); ty++) for (let tx = Math.floor((v.cam.x - R) / TS); tx <= Math.floor((v.cam.x + R) / TS); tx++) warmQ.push([tx, ty, q]);
+  }
+}
 function clearTiles() { for (const v of tiles.values()) v.c.width = v.c.height = 0; tiles.clear(); tilePix = 0; }
-// minimap
-let mini = null, miniKey = '';
-function buildMini() {
-  const T = trk, [x0, y0, x1, y1] = T.box, pad = 10, mw = land ? 176 : 132, mh0 = land ? 120 : 96;
-  const sc = Math.min((mw - pad * 2) / (x1 - x0), (mh0 - pad * 2) / (y1 - y0)), mh = Math.round((y1 - y0) * sc + pad * 2);
-  MINI = { x: W - mw - 10, y: 10, w: mw, h: mh, sc, ox: pad - x0 * sc + (mw - pad * 2 - (x1 - x0) * sc) / 2, oy: pad - y0 * sc };
-  const px = cv._mgScale || 1, c = document.createElement('canvas'); c.width = Math.ceil(mw * px); c.height = Math.ceil(mh * px);
-  const g = c.getContext('2d'); g.scale(px, px);
-  g.fillStyle = 'rgba(255,255,255,.82)'; g.strokeStyle = 'rgba(60,70,110,.35)'; g.lineWidth = 2; g.beginPath(); g.roundRect(1, 1, mw - 2, mh - 2, 12); g.fill(); g.stroke();
-  g.beginPath(); for (let i = 0; i <= T.N; i += 3) { const j = i % T.N, px2 = MINI.ox + T.X[j] * sc, py2 = MINI.oy + T.Y[j] * sc; if (i) g.lineTo(px2, py2); else g.moveTo(px2, py2); } g.closePath();
-  g.strokeStyle = '#5a6278'; g.lineWidth = 7; g.lineJoin = 'round'; g.stroke(); g.strokeStyle = T.th.road === 'rainbow' ? '#ffd0f0' : '#c9d0e0'; g.lineWidth = 4; g.stroke();
-  const sx = MINI.ox + T.X[0] * sc, sy = MINI.oy + T.Y[0] * sc; g.fillStyle = '#222'; g.fillRect(sx - 4, sy - 4, 8, 8); g.fillStyle = '#fff'; g.fillRect(sx - 4, sy - 4, 4, 4); g.fillRect(sx, sy, 4, 4);
-  mini = c; miniKey = `${T.ti}:${W}x${H}:${px}`;
+// =====================================================================
+// views & rotating cameras: the player's kart always points UP, so ◀ is always screen-left.
+// one view in single-player; two in 👫 (landscape: left | right, portrait: bottom 1P | top 2P turned 180° for face-to-face play)
+// =====================================================================
+const ANCHOR = 0.68;   // the kart sits about 2/3 down its view, so more road is visible ahead
+function viewBase(v) {
+  const px = cv._mgScale || 1;
+  if (v.flip) x.setTransform(-px, 0, 0, -px, px * (v.x + v.w), px * (v.y + v.h));
+  else x.setTransform(px, 0, 0, px, px * v.x, px * v.y);
+}
+function viewWorld(v) { viewBase(v); x.translate(v.w / 2, v.h * ANCHOR); x.scale(v.z, v.z); x.rotate(-Math.PI / 2 - v.cam.a); x.translate(-v.cam.x, -v.cam.y); }
+function toLocal(v, wx, wy) {
+  const th = -Math.PI / 2 - v.cam.a, c = Math.cos(th), s = Math.sin(th), dx = wx - v.cam.x, dy = wy - v.cam.y;
+  return { x: v.w / 2 + (dx * c - dy * s) * v.z, y: v.h * ANCHOR + (dx * s + dy * c) * v.z };
+}
+function toWorld(v, lx, ly) {
+  const th = Math.PI / 2 + v.cam.a, c = Math.cos(th), s = Math.sin(th), rx = (lx - v.w / 2) / v.z, ry = (ly - v.h * ANCHOR) / v.z;
+  return { x: v.cam.x + rx * c - ry * s, y: v.cam.y + rx * s + ry * c };
+}
+const localToScreen = (v, lx, ly) => v.flip ? { x: v.x + v.w - lx, y: v.y + v.h - ly } : { x: v.x + lx, y: v.y + ly };
+const screenToLocal = (v, sx, sy) => v.flip ? { x: v.x + v.w - sx, y: v.y + v.h - sy } : { x: sx - v.x, y: sy - v.y };
+const inView = (v, L, m) => L.x > -m && L.x < v.w + m && L.y > -m && L.y < v.h + m;
+function viewAt(sx, sy) { return views.find(v => sx >= v.x && sx < v.x + v.w && sy >= v.y && sy < v.y + v.h) || views[0]; }
+function camera(dt, snap = false) {
+  alpha = clamp(acc / STEP, 0, 1);
+  for (const v of views) {
+    const c = humans[v.hi]; if (!c) continue;
+    const tx = c.px + (c.x - c.px) * alpha, ty = c.py + (c.y - c.py) * alpha, ta = lerpA(c.pa, c.a, alpha), cm = v.cam;
+    if (snap || !cm.init || dt > 0.25 || state === 'menu' || state === 'count') { cm.x = tx; cm.y = ty; cm.a = ta; cm.init = true; continue; }
+    const k = 1 - Math.exp(-14 * dt), ka = 1 - Math.exp(-5 * dt);
+    cm.x += (tx - cm.x) * k; cm.y += (ty - cm.y) * k; cm.a = wrapA(cm.a + wrapA(ta - cm.a) * ka);
+  }
 }
 
 // ---------- karts & drivers ----------
@@ -953,7 +946,7 @@ function animalHead(g, dv, cx, cy, r, mood) {
   g.fillStyle = 'rgba(255,110,140,.45)'; for (const sd of [-1, 1]) { ell(g, sd * r * 0.62, r * 0.18, r * 0.15, r * 0.09); g.fill(); }
   g.restore();
 }
-// karts and heads are drawn once into small sprites (heads stay upright, so a sprite per mood is enough)
+// karts, heads and upright scenery are drawn once into small sprites
 const SPR = new Map();
 function sprite(key, w0, h0, ox, oy, paint) {
   const px = Math.round((cv._mgScale || 1) * 1.4 * 100) / 100, k = key + ':' + px;
@@ -977,40 +970,57 @@ function paintHead(g, dv, mood) {
   if (dv.head === 'pupu') MG.puPu(g, 0, 0, 12.5, mood, 0, { pal: MG.JELLY[dv.pal], arms: mood === 'love' || mood === 'wow' ? 'up' : false });
   else animalHead(g, dv, 0, 0, 12.5, mood);
 }
-function drawKart(c, X0, Y0, A, alpha = 1, who = c.who) {
-  const dv = DRIVERS[who], h = c.hopT > 0 ? Math.sin(Math.PI * (1 - c.hopT / 0.62)) * 26 : 0, s = 1 + h / 110;
+const hopH = c => c.hopT > 0 ? Math.sin(Math.PI * (1 - c.hopT / 0.62)) * 26 : 0;
+// kart body: drawn in world space (rotates with the road); the hop and the shadow are offsets in SCREEN directions
+function drawKart(v, c, X0, Y0, A, alpha = 1, who = c.who) {
+  const dv = DRIVERS[who], h = hopH(c), s = 1 + h / 110, ua = v.cam.a, ux = Math.cos(ua), uy = Math.sin(ua), rx = -uy, ry = ux;
   x.save(); x.globalAlpha = alpha;
-  x.save(); x.translate(X0 + h * 0.35, Y0 + 5 + h * 0.55); x.rotate(A); x.fillStyle = 'rgba(20,30,20,.25)'; x.beginPath(); x.roundRect(-26, -17, 52, 34, 15); x.fill(); x.restore();
-  x.translate(X0, Y0 - h); x.rotate(A); x.scale(s, s);
+  const sdx = h * 0.35 + 3, sdy = 4 + h * 0.55;
+  x.save(); x.translate(X0 + rx * sdx - ux * sdy, Y0 + ry * sdx - uy * sdy); x.rotate(A); x.fillStyle = 'rgba(20,30,20,.25)'; x.beginPath(); x.roundRect(-26, -17, 52, 34, 15); x.fill(); x.restore();
+  x.translate(X0 + ux * h, Y0 + uy * h); x.rotate(A); x.scale(s, s);
   if (c.boostT > 0) { const f = 1 + Math.sin(t * 40) * 0.2; x.fillStyle = '#ffd23f'; ell(x, -30 - 8 * f, 0, 12 * f, 7); x.fill(); x.fillStyle = '#ff7a1c'; ell(x, -28 - 4 * f, 0, 7 * f, 4.5); x.fill(); }
   x.fillStyle = '#2b2f3a';
   for (const ty2 of [-15, 15]) { x.save(); x.translate(14, ty2); x.rotate(c.steer * 0.45); x.beginPath(); x.roundRect(-7.5, -4.8, 15, 9.6, 3.5); x.fill(); x.restore(); }
   x.drawImage(sprite('b' + who, 60, 36, 30, 18, g => paintBody(g, dv)), -30, -18, 60, 36);
   x.restore();
-  // driver: head stays upright so the face always looks at you
-  const mood = ['happy', 'wow', 'ouch', 'love'].includes(c.mood) ? c.mood : 'happy';
-  const sx = X0 - Math.cos(A) * 5, sy = Y0 - h - Math.sin(A) * 5 - 7 * s;
-  x.save(); x.globalAlpha = alpha;
-  x.drawImage(sprite('h' + who + mood, 52, 52, 26, 32, g => paintHead(g, dv, mood)), sx - 26 * s, sy - 32 * s, 52 * s, 52 * s);
-  x.restore();
 }
-function drawStars() {
-  const T = trk;
-  for (const st of T.stars) {
+// driver head: always upright on the screen so the face looks at you (view-local coordinates)
+function drawHead(v, c, X0, Y0, A, alpha = 1, who = c.who) {
+  const dv = DRIVERS[who], h = hopH(c), s = 1 + h / 110, z = v.z;
+  const L = toLocal(v, X0 - Math.cos(A) * 5, Y0 - Math.sin(A) * 5), hx = L.x, hy = L.y - (h + 7 * s) * z;
+  const mood = ['happy', 'wow', 'ouch', 'love'].includes(c.mood) ? c.mood : 'happy', k = s * z;
+  x.save(); x.globalAlpha = alpha;
+  x.drawImage(sprite('h' + who + mood, 52, 52, 26, 32, g => paintHead(g, dv, mood)), hx - 26 * k, hy - 32 * k, 52 * k, 52 * k);
+  x.restore();
+  return { x: hx, y: hy };
+}
+// upright scenery (cactus, snowman) stands up on the screen whichever way the road turns
+function drawBills(v) {
+  const z = v.z;
+  for (const d of trk.bills) {
+    const L = toLocal(v, d.x, d.y); if (!inView(v, L, d.r * 2 * z)) continue;
+    const rq = Math.round(d.r / 3) * 3, key = `d${d.k}${rq}${d.sd > 0.6 ? 1 : 0}`;
+    const sp = sprite(key, rq * 3, rq * 3, rq * 1.5, rq * 1.6, g => DECO[d.k](g, { x: 0, y: 0, r: rq, sd: d.sd }, trk.th));
+    x.drawImage(sp, L.x - rq * 1.5 * z, L.y - rq * 1.6 * z, rq * 3 * z, rq * 3 * z);
+  }
+}
+function drawStars(v) {
+  const z = v.z, r = 15 * z;
+  for (const st of trk.stars) {
     if (st.t > 0) continue;
-    if (Math.abs(st.x - cam.x) > W / cam.z / 2 + 40 || Math.abs(st.y - cam.y) > H / cam.z / 2 + 40) continue;
-    const k = Math.cos(t * 3 + st.i), r = 15;
-    x.fillStyle = 'rgba(255,240,140,.45)'; dot(x, st.x, st.y, r * 1.4);
-    x.save(); x.translate(st.x, st.y); x.scale(0.35 + 0.65 * Math.abs(k), 1);
-    x.fillStyle = '#ffc93a'; x.strokeStyle = '#c98a00'; x.lineWidth = 2.2; x.lineJoin = 'round'; star5(x, 0, 1, r, r * 0.5); x.fill(); x.stroke();
+    const L = toLocal(v, st.x, st.y); if (!inView(v, L, 30)) continue;
+    const k = Math.cos(t * 3 + st.i);
+    x.fillStyle = 'rgba(255,240,140,.45)'; dot(x, L.x, L.y, r * 1.4);
+    x.save(); x.translate(L.x, L.y); x.scale(0.35 + 0.65 * Math.abs(k), 1);
+    x.fillStyle = '#ffc93a'; x.strokeStyle = '#c98a00'; x.lineWidth = 2.2 * z; x.lineJoin = 'round'; star5(x, 0, z, r, r * 0.5); x.fill(); x.stroke();
     x.fillStyle = 'rgba(255,255,255,.75)'; dot(x, -r * 0.25, -r * 0.2, r * 0.15); x.restore();
   }
 }
-function drawPads() {
-  const T = trk;
+function drawPads(v) {
+  const T = trk, R = (Math.hypot(v.w, v.h) / v.z) + 80;
   for (const b of T.boosts) {
     const i = b.i, px = T.X[i] + T.NX[i] * b.d, py = T.Y[i] + T.NY[i] * b.d;
-    if (Math.abs(px - cam.x) > W / cam.z / 2 + 80 || Math.abs(py - cam.y) > H / cam.z / 2 + 80) continue;
+    if (Math.abs(px - v.cam.x) > R || Math.abs(py - v.cam.y) > R) continue;
     x.save(); x.translate(px, py); x.rotate(Math.atan2(T.TY[i], T.TX[i]));
     x.beginPath(); x.roundRect(-30, -26, 60, 52, 8); x.clip();
     for (let k = 0; k < 3; k++) {
@@ -1021,32 +1031,58 @@ function drawPads() {
     x.restore(); x.globalAlpha = 1;
   }
 }
-function drawGhost(alpha) {
-  if (mode !== 'time' || !ghost || !humans[0] || state === 'menu') return;
+function ghostPose() {
+  if (mode !== 'time' || !ghost || !humans[0] || state === 'menu' || state === 'count') return null;
   const gt = raceT - lapStartT, n = ghost.d.length / 3, f = gt / 0.05, i = Math.floor(f);
-  if (state === 'count' || i >= n - 1 || i < 0) return;
-  const k = f - i, a = ghost.d, ax = a[i * 3] + (a[i * 3 + 3] - a[i * 3]) * k, ay = a[i * 3 + 1] + (a[i * 3 + 4] - a[i * 3 + 1]) * k;
-  const aa = a[i * 3 + 2] / 100 + wrapA(a[i * 3 + 5] / 100 - a[i * 3 + 2] / 100) * k;
-  drawKart({ hopT: 0, boostT: 0, steer: 0, mood: 'happy' }, ax, ay, aa, 0.4 * alpha, 0);
-  txt('👻', ax, ay - 42, 18, '#fff', 'center', 700);
+  if (i >= n - 1 || i < 0) return null;
+  const k = f - i, a = ghost.d;
+  return { x: a[i * 3] + (a[i * 3 + 3] - a[i * 3]) * k, y: a[i * 3 + 1] + (a[i * 3 + 4] - a[i * 3 + 1]) * k, a: a[i * 3 + 2] / 100 + wrapA(a[i * 3 + 5] / 100 - a[i * 3 + 2] / 100) * k };
 }
+const GHOST_CAR = { hopT: 0, boostT: 0, steer: 0, mood: 'happy' };
 let alpha = 0;
 function lerpA(a, b, k) { return a + wrapA(b - a) * k; }
+function drawTiles(v) {
+  x.imageSmoothingEnabled = !fastTiles;   // slow (software-drawn) screens: sharp-pixel sampling of the turned road is much cheaper
+  const q = tileQ(v.z), cs = [toWorld(v, 0, 0), toWorld(v, v.w, 0), toWorld(v, 0, v.h), toWorld(v, v.w, v.h)];
+  const x0 = Math.min(...cs.map(p => p.x)), x1 = Math.max(...cs.map(p => p.x)), y0 = Math.min(...cs.map(p => p.y)), y1 = Math.max(...cs.map(p => p.y));
+  const m = TS * 0.7072 * v.z;
+  for (let ty = Math.floor(y0 / TS); ty <= Math.floor(y1 / TS); ty++) for (let tx = Math.floor(x0 / TS); tx <= Math.floor(x1 / TS); tx++) {
+    if (!inView(v, toLocal(v, (tx + 0.5) * TS, (ty + 0.5) * TS), m)) continue;   // tile is outside the turned view
+    x.drawImage(getTile(tx, ty, q), tx * TS - TM, ty * TS - TM, TS + TM * 2, TS + TM * 2);
+  }
+}
 function draw() {
   const px = cv._mgScale || 1;
-  alpha = clamp(acc / STEP, 0, 1);
-  const z = cam.z, q = tileQ(z); tileFrame++;
-  x.setTransform(px * z, 0, 0, px * z, px * (W / 2 - cam.x * z), px * (H / 2 - cam.y * z));
-  const vx0 = cam.x - W / 2 / z, vx1 = cam.x + W / 2 / z, vy0 = cam.y - H / 2 / z, vy1 = cam.y + H / 2 / z;
-  for (let ty = Math.floor(vy0 / TS); ty <= Math.floor(vy1 / TS); ty++) for (let tx = Math.floor(vx0 / TS); tx <= Math.floor(vx1 / TS); tx++) x.drawImage(getTile(tx, ty, q), tx * TS - TM, ty * TS - TM, TS + TM * 2, TS + TM * 2);
-  drawPads(); drawStars(); drawGhost(1);
-  const list = cars.map(c => ({ c, X0: c.px + (c.x - c.px) * alpha, Y0: c.py + (c.y - c.py) * alpha, A: lerpA(c.pa, c.a, alpha) })).sort((a, b) => a.Y0 - b.Y0);
-  for (const it of list) { const bl = it.c.blinkT > 0 && Math.floor(t * 12) % 2 === 0; drawKart(it.c, it.X0, it.Y0, it.A, bl ? 0.35 : 1); it.sx = W / 2 + (it.X0 - cam.x) * z; it.sy = H / 2 + (it.Y0 - cam.y) * z; it.c._sx = it.sx; it.c._sy = it.sy; }
+  alpha = clamp(acc / STEP, 0, 1); tileFrame++;
+  views.forEach((v, vi) => drawView(v, vi));
+  if (views.length > 1) {   // a friendly divider between the two halves
+    x.setTransform(px, 0, 0, px, 0, 0); x.fillStyle = '#fff8dc'; x.strokeStyle = '#c9a95a'; x.lineWidth = 2;
+    if (land) { x.fillRect(W / 2 - 3, 0, 6, H); x.strokeRect(W / 2 - 3, -2, 6, H + 4); } else { x.fillRect(0, H / 2 - 3, W, 6); x.strokeRect(-2, H / 2 - 3, W + 4, 6); }
+  }
+}
+function drawView(v, vi) {
+  const px = cv._mgScale || 1;
+  x.setTransform(px, 0, 0, px, 0, 0); x.save(); x.beginPath(); x.rect(v.x, v.y, v.w, v.h); x.clip();
+  // 1) road + scenery (world, turned)
+  viewWorld(v); drawTiles(v); drawPads(v);
+  // 2) things that stand upright on the screen
+  viewBase(v); drawBills(v); drawStars(v);
+  // 3) karts (world)
+  viewWorld(v);
+  const gp = ghostPose(); if (gp) drawKart(v, GHOST_CAR, gp.x, gp.y, gp.a, 0.4, 0);
+  const list = cars.map(c => ({ c, X0: c.px + (c.x - c.px) * alpha, Y0: c.py + (c.y - c.py) * alpha, A: lerpA(c.pa, c.a, alpha) }));
+  for (const it of list) it.L = toLocal(v, it.X0, it.Y0);
+  list.sort((a, b) => a.L.y - b.L.y);
+  for (const it of list) { if (!inView(v, it.L, 60)) continue; it.bl = it.c.blinkT > 0 && Math.floor(t * 12) % 2 === 0; drawKart(v, it.c, it.X0, it.Y0, it.A, it.bl ? 0.35 : 1); }
   MG.fx.draw(x);
-  x.setTransform(px, 0, 0, px, 0, 0);
-  // player marker arrows in 2-player mode / when the kart is near the minimap
-  if (mode === 'pvp' && racing()) for (const c of humans) { const col = c.kind === 'p1' ? '#2e9a4c' : '#7a52d0'; txt(c.kind === 'p1' ? '1P' : '2P', c._sx, c._sy - 52 * z, 15, col, 'center', 900, '#fff', 4); }
-  drawHud();
+  // 4) heads, labels, words, HUD (view-local, upright)
+  viewBase(v);
+  if (gp) { drawHead(v, GHOST_CAR, gp.x, gp.y, gp.a, 0.4, 0); const L = toLocal(v, gp.x, gp.y); txt('👻', L.x, L.y - 46 * v.z, 18, '#fff', 'center', 700); }
+  v.pos = new Map();
+  for (const it of list) { if (!inView(v, it.L, 60)) continue; v.pos.set(it.c, drawHead(v, it.c, it.X0, it.Y0, it.A, it.bl ? 0.35 : 1)); }
+  if (mode === 'pvp' && racing()) for (const c of humans) { const p = v.pos.get(c); if (p) txt(c.kind === 'p1' ? '1P' : '2P', p.x, p.y - 30 * v.z, 14, c.kind === 'p1' ? '#2e9a4c' : '#7a52d0', 'center', 900, '#fff', 4); }
+  drawHud(v, vi);
+  x.restore();
 }
 function medal(cx, cy, r, place) {
   place = clamp(place || cars.length, 1, 4);
@@ -1058,111 +1094,125 @@ function medal(cx, cy, r, place) {
   txt(String(place), cx, cy + 1, r * 1.15, cols[2], 'center', 900);
 }
 function drawButton(b, dir, col, on) {
-  const press = on, y0 = b.y + (press ? 4 : 0);
-  x.fillStyle = 'rgba(0,0,0,.2)'; x.beginPath(); x.roundRect(b.x, b.y + 6, b.w, b.h, 22); x.fill();
+  const press = on, y0 = b.y + (press ? 4 : 0), rr = Math.min(22, b.w * 0.2);
+  x.fillStyle = 'rgba(0,0,0,.2)'; x.beginPath(); x.roundRect(b.x, b.y + 6, b.w, b.h, rr); x.fill();
   x.globalAlpha = press ? 0.95 : 0.78;
-  x.fillStyle = press ? col[0] : '#ffffff'; x.strokeStyle = col[1]; x.lineWidth = 4; x.beginPath(); x.roundRect(b.x, y0, b.w, b.h, 22); x.fill(); x.stroke();
+  x.fillStyle = press ? col[0] : '#ffffff'; x.strokeStyle = col[1]; x.lineWidth = 4; x.beginPath(); x.roundRect(b.x, y0, b.w, b.h, rr); x.fill(); x.stroke();
   x.globalAlpha = 1;
   const cx = b.x + b.w / 2, cy = y0 + b.h / 2, s = b.w * 0.24;
   x.fillStyle = press ? '#fff' : col[1]; x.strokeStyle = press ? col[1] : '#fff'; x.lineWidth = 3; x.lineJoin = 'round';
   x.beginPath(); x.moveTo(cx + dir * s, cy); x.lineTo(cx - dir * s * 0.7, cy - s); x.lineTo(cx - dir * s * 0.7, cy + s); x.closePath(); x.fill(); x.stroke();
 }
-function drawHud() {
-  const p = humans[0];
+// mini-map: a round badge that turns with the kart, so "up" means "forward" everywhere
+const MINIS = new Map();
+function miniLayer(D) {
+  const T = trk, px = cv._mgScale || 1, key = `${T.ti}:${D}:${px}`;
+  let m = MINIS.get(key); if (m) return m;
+  const [x0, y0, x1, y1] = T.box, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  let rad = 1; for (let i = 0; i < T.N; i += 4) rad = Math.max(rad, Math.hypot(T.X[i] - cx, T.Y[i] - cy));
+  const sc = (D / 2 - 9) / rad, c = document.createElement('canvas'); c.width = c.height = Math.ceil(D * px);
+  const g = c.getContext('2d'); g.setTransform(px, 0, 0, px, D / 2 * px, D / 2 * px);
+  g.beginPath(); for (let i = 0; i <= T.N; i += 3) { const j = i % T.N, a = (T.X[j] - cx) * sc, b = (T.Y[j] - cy) * sc; if (i) g.lineTo(a, b); else g.moveTo(a, b); } g.closePath();
+  g.strokeStyle = '#5a6278'; g.lineWidth = 7; g.lineJoin = 'round'; g.stroke(); g.strokeStyle = T.th.road === 'rainbow' ? '#ffd0f0' : '#c9d0e0'; g.lineWidth = 4; g.stroke();
+  const sx = (T.X[0] - cx) * sc, sy = (T.Y[0] - cy) * sc; g.fillStyle = '#222'; g.fillRect(sx - 4, sy - 4, 8, 8); g.fillStyle = '#fff'; g.fillRect(sx - 4, sy - 4, 4, 4); g.fillRect(sx, sy, 4, 4);
+  m = { c, sc, cx, cy }; MINIS.set(key, m); return m;
+}
+function drawMini(v, me) {
+  const D = v.mini, mx0 = v.w - D / 2 - 10, my0 = D / 2 + 10, m = miniLayer(D), th = -Math.PI / 2 - v.cam.a, co = Math.cos(th), si = Math.sin(th);
+  x.fillStyle = 'rgba(255,255,255,.85)'; x.strokeStyle = 'rgba(60,70,110,.35)'; x.lineWidth = 2; dot(x, mx0, my0, D / 2); x.stroke();
+  x.save(); x.translate(mx0, my0); x.rotate(th); x.drawImage(m.c, -D / 2, -D / 2, D, D); x.restore();
+  const at = (wx, wy) => { const a = (wx - m.cx) * m.sc, b = (wy - m.cy) * m.sc; return [mx0 + a * co - b * si, my0 + a * si + b * co]; };
+  const gp = ghostPose(); if (gp) { const [gx, gy] = at(gp.x, gp.y); x.fillStyle = 'rgba(255,255,255,.9)'; dot(x, gx, gy, 4); }
+  for (const c of cars) {
+    if (c === me) continue;
+    const [px2, py2] = at(c.x, c.y); x.fillStyle = c.human ? '#fff' : 'rgba(0,0,0,.35)'; dot(x, px2, py2, 5.5); x.fillStyle = DRIVERS[c.who].dot; dot(x, px2, py2, 3.8);
+  }
+  // me: an arrow pointing the way I'm driving (≈ up)
+  const [qx, qy] = at(me.x, me.y);
+  x.save(); x.translate(qx, qy); x.rotate(wrapA(me.a - v.cam.a)); x.fillStyle = DRIVERS[me.who].dot; x.strokeStyle = '#fff'; x.lineWidth = 2.5; x.lineJoin = 'round';
+  x.beginPath(); x.moveTo(0, -8); x.lineTo(6.5, 6); x.lineTo(0, 3); x.lineTo(-6.5, 6); x.closePath(); x.stroke(); x.fill(); x.restore();
+}
+function drawHud(v, vi) {
+  const p = humans[v.hi];
   if (!p || state === 'menu') return;
-  // buttons
+  const W0 = v.w, H0 = v.h, sv = clamp(Math.min(W0, H0) / 480, 0.62, 1);
+  // buttons in this view's bottom corners
   if (racing() && !MG.panelOpen()) {
-    if (mode === 'pvp') {
-      const h0 = held(0), h1 = held(1), g = ['#6fdc83', '#2a9447'], v = ['#c3a2ff', '#7a52d0'];
-      drawButton(BTN[0], -1, g, h0.l); drawButton(BTN[1], 1, g, h0.r); drawButton(BTN[2], -1, v, h1.l); drawButton(BTN[3], 1, v, h1.r);
-      txt('1P', (BTN[0].x + BTN[1].x + BTN[1].w) / 2, BTN[0].y - 14, 16, '#2a9447', 'center', 900, '#fff', 4);
-      txt('2P', (BTN[2].x + BTN[3].x + BTN[3].w) / 2, BTN[2].y - 14, 16, '#7a52d0', 'center', 900, '#fff', 4);
-    } else { const h0 = held(0), g = ['#6fdc83', '#2a9447']; drawButton(BTN[0], -1, g, h0.l); drawButton(BTN[1], 1, g, h0.r); }
+    const h0 = held(v.hi), col = p.kind === 'p2' ? ['#c3a2ff', '#7a52d0'] : ['#6fdc83', '#2a9447'];
+    drawButton(v.btn[0], -1, col, h0.l); drawButton(v.btn[1], 1, col, h0.r);
+    if (mode === 'pvp') txt(p.kind === 'p1' ? '1P' : '2P', W0 / 2, v.btn[0].y + v.btn[0].h / 2, 22, col[1], 'center', 900, '#fff', 6);
   }
-  // minimap
-  if (!mini || miniKey !== `${trk.ti}:${W}x${H}:${cv._mgScale || 1}`) buildMini();
-  x.drawImage(mini, MINI.x, MINI.y, MINI.w, MINI.h);
-  for (const c of cars.slice().sort((a, b) => (a.human ? 1 : 0) - (b.human ? 1 : 0))) {
-    const mx = MINI.x + MINI.ox + c.x * MINI.sc, my = MINI.y + MINI.oy + c.y * MINI.sc;
-    x.fillStyle = c.human ? '#fff' : 'rgba(0,0,0,.35)'; dot(x, mx, my, c.human ? 6.5 : 5);
-    x.fillStyle = DRIVERS[c.who].dot; dot(x, mx, my, c.human ? 4.5 : 3.8);
-  }
-  if (mode === 'time' && ghost && state === 'play') { const gt = raceT - lapStartT, i = Math.floor(gt / 0.05) * 3; if (i + 1 < ghost.d.length) { x.fillStyle = 'rgba(255,255,255,.85)'; dot(x, MINI.x + MINI.ox + ghost.d[i] * MINI.sc, MINI.y + MINI.oy + ghost.d[i + 1] * MINI.sc, 4); } }
+  drawMini(v, p);
   // status card (top-left)
   const lapNow = c => Math.min(LAPS, Math.floor(c.cp / CPN) + 1);
-  x.save();
-  if (mode === 'pvp') {
-    humans.forEach((c, k) => {
-      const y0 = 10 + k * 50, col = c.kind === 'p1' ? '#2e9a4c' : '#7a52d0';
-      x.fillStyle = 'rgba(255,255,255,.86)'; x.strokeStyle = col; x.lineWidth = 2.5; x.beginPath(); x.roundRect(10, y0, 150, 42, 14); x.fill(); x.stroke();
-      medal(34, y0 + 23, 13, c.finished ? c.place : c.rank);
-      txt(c.kind === 'p1' ? '1P' : '2P', 64, y0 + 21, 15, col, 'left', 900);
-      txt(`Lap ${lapNow(c)}/${LAPS}`, 92, y0 + 21, 15, '#3a3f55', 'left', 800);
-    });
-  } else {
-    const wCard = mode === 'slow' ? 150 : 176;
-    x.fillStyle = 'rgba(255,255,255,.86)'; x.strokeStyle = 'rgba(60,70,110,.35)'; x.lineWidth = 2; x.beginPath(); x.roundRect(10, 10, wCard, mode === 'race' ? 58 : 44, 14); x.fill(); x.stroke();
-    if (mode === 'race') { medal(40, 41, 19, p.finished ? p.place : p.rank); txt(`Lap ${lapNow(p)}/${LAPS}`, 70, 30, 17, '#3a3f55', 'left', 900); txt(mmss(p.finished ? p.finishT : state === 'count' ? 0 : raceT), 70, 52, 15, '#7a8296', 'left', 700); }
-    else if (mode === 'time') { txt(`Lap ${lapNow(p)}/${LAPS}`, 22, 32, 17, '#3a3f55', 'left', 900); }
-    else { txt(`🔁 Lap ${Math.floor(p.cp / CPN) + 1}`, 22, 32, 17, '#3a3f55', 'left', 900); }
-    if (mode === 'time') {
-      const lt = state === 'count' ? 0 : raceT - lapStartT;
-      x.fillStyle = 'rgba(255,255,255,.86)'; x.beginPath(); x.roundRect(10, 60, wCard, 34, 12); x.fill();
-      txt(`⏱ ${mmss(p.finished ? p.finishT : state === 'count' ? 0 : raceT)}`, 20, 77, 16, '#3a3f55', 'left', 900);
-      if (ghost) txt(`👻 ${mmss(ghost.t)}`, wCard - 2, 77, 13, '#7a8296', 'right', 700);
-      void lt;
-    }
+  const tag = mode === 'pvp' ? (p.kind === 'p1' ? '1P ' : '2P ') : '';
+  const wCard = mode === 'slow' ? 150 : 176;
+  x.fillStyle = 'rgba(255,255,255,.86)'; x.strokeStyle = mode === 'pvp' ? (p.kind === 'p1' ? '#2e9a4c' : '#7a52d0') : 'rgba(60,70,110,.35)'; x.lineWidth = 2;
+  x.beginPath(); x.roundRect(10, 10, wCard, mode === 'race' || mode === 'pvp' ? 58 : 44, 14); x.fill(); x.stroke();
+  if (mode === 'race' || mode === 'pvp') { medal(40, 41, 19, p.finished ? p.place : p.rank); txt(`${tag}Lap ${lapNow(p)}/${LAPS}`, 70, 30, 17, '#3a3f55', 'left', 900); txt(mmss(p.finished ? p.finishT : state === 'count' ? 0 : raceT), 70, 52, 15, '#7a8296', 'left', 700); }
+  else if (mode === 'time') { txt(`Lap ${lapNow(p)}/${LAPS}`, 22, 32, 17, '#3a3f55', 'left', 900); }
+  else { txt(`🔁 Lap ${Math.floor(p.cp / CPN) + 1}`, 22, 32, 17, '#3a3f55', 'left', 900); }
+  if (mode === 'time') {
+    x.fillStyle = 'rgba(255,255,255,.86)'; x.beginPath(); x.roundRect(10, 60, wCard, 34, 12); x.fill();
+    txt(`⏱ ${mmss(p.finished ? p.finishT : state === 'count' ? 0 : raceT)}`, 20, 77, 16, '#3a3f55', 'left', 900);
+    if (ghost) txt(`👻 ${mmss(ghost.t)}`, wCard - 2, 77, 13, '#7a8296', 'right', 700);
   }
-  x.restore();
-  // wrong way: a big friendly arrow pointing the right way
-  const wr = humans.find(c => c.wrongT > 0.7 && !c.finished);
-  if (wr && state === 'play') {
-    const T = trk, ang = Math.atan2(T.TY[wr.seg], T.TX[wr.seg]), cx = W / 2, cy = H * 0.32, pul = 1 + Math.sin(t * 8) * 0.06;
-    x.save(); x.fillStyle = 'rgba(255,255,255,.9)'; x.strokeStyle = '#ff8a1c'; x.lineWidth = 4; x.beginPath(); x.roundRect(cx - 110, cy - 62, 220, 124, 26); x.fill(); x.stroke();
-    x.translate(cx - 40, cy); x.rotate(ang); x.scale(pul, pul); x.fillStyle = '#ff8a1c'; x.strokeStyle = '#fff'; x.lineWidth = 4; x.lineJoin = 'round';
-    x.beginPath(); x.moveTo(36, 0); x.lineTo(4, -28); x.lineTo(4, -12); x.lineTo(-32, -12); x.lineTo(-32, 12); x.lineTo(4, 12); x.lineTo(4, 28); x.closePath(); x.fill(); x.stroke(); x.restore();
-    MG.puPu(x, cx + 52, cy + 14, 26, 'wow', Math.sin(t * 10) * 0.05, { arms: 'up' });
-    txt('This way! 👉', cx, cy + 78, 18, '#ff6a1c', 'center', 900, '#fff', 5);
+  // wrong way: a big friendly U-turn arrow
+  if (p.wrongT > 0.7 && !p.finished && state === 'play') {
+    const cx = W0 / 2, cy = H0 * 0.3, pul = 1 + Math.sin(t * 8) * 0.06;
+    x.save(); x.translate(cx, cy); x.scale(sv, sv);
+    x.fillStyle = 'rgba(255,255,255,.92)'; x.strokeStyle = '#ff8a1c'; x.lineWidth = 4; x.beginPath(); x.roundRect(-120, -70, 240, 172, 26); x.fill(); x.stroke();
+    x.save(); x.translate(-40, 0); x.scale(pul, pul); x.lineCap = 'round'; x.lineJoin = 'round';
+    for (const [col, w] of [['#fff', 22], ['#ff8a1c', 14]]) { x.strokeStyle = col; x.lineWidth = w; x.beginPath(); x.moveTo(26, 30); x.lineTo(26, -4); x.arc(0, -4, 26, 0, Math.PI, true); x.lineTo(-26, 14); x.stroke(); }
+    x.fillStyle = '#ff8a1c'; x.strokeStyle = '#fff'; x.lineWidth = 3; x.beginPath(); x.moveTo(-44, 10); x.lineTo(-8, 10); x.lineTo(-26, 38); x.closePath(); x.stroke(); x.fill(); x.restore();
+    MG.puPu(x, 58, 10, 26, 'wow', Math.sin(t * 10) * 0.05, { arms: 'up' });
+    txt('Turn around! ↩️', 0, 74, 19, '#ff6a1c', 'center', 900, '#fff', 5);
+    x.restore();
   }
   // countdown
   if (state === 'count') {
-    const n = Math.ceil(countT), f = countT - Math.floor(countT), sc = 0.8 + f * 0.5;
-    x.save(); x.translate(W / 2, H * 0.38); x.scale(sc, sc);
+    const n = Math.ceil(countT), f = countT - Math.floor(countT), sc = (0.8 + f * 0.5) * sv;
+    x.save(); x.translate(W0 / 2, H0 * 0.36); x.scale(sc, sc);
     x.fillStyle = 'rgba(255,255,255,.9)'; x.strokeStyle = ['#2e9a4c', '#ffb33a', '#ff5a4e'][clamp(n - 1, 0, 2)]; x.lineWidth = 8; dot(x, 0, 0, 62); x.stroke();
     txt(String(clamp(n, 1, 3)), 0, 4, 76, x.strokeStyle, 'center', 900); x.restore();
-    const th = trk.th, label = `${th.ic} ${th.nm}`; x.font = `900 22px ${FONT}`; const lw = x.measureText(label).width + 40;
-    x.fillStyle = 'rgba(255,255,255,.9)'; x.beginPath(); x.roundRect(W / 2 - lw / 2, H * 0.38 + 84, lw, 42, 21); x.fill();
-    txt(label, W / 2, H * 0.38 + 106, 22, '#3a3f55', 'center', 900);
-    if (isTouch || mode === 'pvp') { x.globalAlpha = 0.6 + Math.sin(t * 6) * 0.3; for (const b of BTN.slice(0, mode === 'pvp' ? 4 : 2)) txt('👆', b.x + b.w / 2, b.y - 26, 26, '#fff', 'center', 700); x.globalAlpha = 1; }
+    const th = trk.th, label = `${th.ic} ${th.nm}`; x.font = `900 ${Math.round(22 * sv)}px ${FONT}`; const lw = x.measureText(label).width + 40;
+    x.fillStyle = 'rgba(255,255,255,.9)'; x.beginPath(); x.roundRect(W0 / 2 - lw / 2, H0 * 0.36 + 84 * sv, lw, 42 * sv, 21 * sv); x.fill();
+    txt(label, W0 / 2, H0 * 0.36 + 105 * sv, Math.round(22 * sv), '#3a3f55', 'center', 900);
+    if (isTouch || mode === 'pvp') { x.globalAlpha = 0.6 + Math.sin(t * 6) * 0.3; for (const b of v.btn) txt('👆', b.x + b.w / 2, b.y - 24, 26, '#fff', 'center', 700); x.globalAlpha = 1; }
   }
-  // feedback: small words above the kart, big banner in the middle
+  // feedback: small words above my kart, big banner in the middle
   for (const f of floats) {
-    const c = f.c; if (c._sx == null) continue;
+    if (mode === 'pvp' && f.c !== p) continue;
+    const q = v.pos && v.pos.get(f.c); if (!q) continue;
     const k = 1 - f.life / f.max; x.globalAlpha = clamp(f.life * 3, 0, 1);
-    txt(f.text, clamp(c._sx, 80, W - 80), c._sy - 50 - k * 36, 19, '#fff8c0', 'center', 900, 'rgba(70,40,0,.85)', 5);
+    txt(f.text, clamp(q.x, 80, W0 - 80), q.y - 34 - k * 36, 19, '#fff8c0', 'center', 900, 'rgba(70,40,0,.85)', 5);
   }
   x.globalAlpha = 1;
-  if (banner) {
-    const k = clamp(banner.life * 2.5, 0, 1), sc = 1 + Math.max(0, banner.life - banner.max + 0.25) * 2;
-    x.save(); x.globalAlpha = k; x.translate(W / 2, H * (land ? 0.3 : 0.28)); x.scale(sc, sc);
-    txt(banner.text, 0, 0, land ? 46 : 38, banner.col, 'center', 900, '#fff', 9); x.restore();
+  const bn = banners[vi];
+  if (bn) {
+    const k = clamp(bn.life * 2.5, 0, 1), sc = (1 + Math.max(0, bn.life - bn.max + 0.25) * 2) * sv;
+    x.save(); x.globalAlpha = k; x.translate(W0 / 2, H0 * 0.3); x.scale(sc, sc);
+    txt(bn.text, 0, 0, 44, bn.col, 'center', 900, '#fff', 9); x.restore();
   }
 }
 
 // =====================================================================
 // layout
 // =====================================================================
+let views = [];
 function layout() {
   W = cv.lw; H = cv.lh; land = W > H;
-  Z0 = clamp(Math.min(W, H) / 560, 0.8, 1.05);
-  if (mode === 'pvp') {
-    const B = land ? 106 : 98, g = 8, y0 = H - B - 12;
-    BTN = [{ x: 12, y: y0, w: B, h: B }, { x: 12 + B + g, y: y0, w: B, h: B }, { x: W - 12 - B * 2 - g, y: y0, w: B, h: B }, { x: W - 12 - B, y: y0, w: B, h: B }];
-  } else {
-    const B = land ? 124 : 112, y0 = H - B - 14;
-    BTN = [{ x: 14, y: y0, w: B, h: B }, { x: W - 14 - B, y: y0, w: B, h: B }];
-  }
-  mini = null;
+  const old = views;
+  const mk = (hi, vx, vy, vw, vh, flip) => {
+    const pv = mode === 'pvp';
+    const B = pv ? Math.round(clamp(Math.min(vw * 0.2, vh * 0.26), 70, 104)) : (land ? 124 : 112), g = pv ? 10 : 14;
+    const z = clamp(Math.min(vh / 700, vw / 440), pv ? 0.56 : 0.66, 1);
+    return { hi, x: vx, y: vy, w: vw, h: vh, flip, z, mini: pv ? (Math.min(vw, vh) < 420 ? 96 : 116) : (land ? 150 : 128),
+      btn: [{ x: g, y: vh - B - g, w: B, h: B }, { x: vw - g - B, y: vh - B - g, w: B, h: B }], cam: (old[hi] && old[hi].cam) || { x: 0, y: 0, a: 0, init: false } };
+  };
+  if (mode !== 'pvp') views = [mk(0, 0, 0, W, H, false)];
+  else if (land) views = [mk(0, 0, 0, W / 2, H, false), mk(1, W / 2, 0, W / 2, H, false)];
+  else views = [mk(0, 0, H / 2, W, H / 2, false), mk(1, 0, 0, W, H / 2, true)];
 }
 cv.onfit = () => layout();
 MG.fit(cv, (sw, sh) => {
@@ -1187,6 +1237,7 @@ function start(m, lv, pk) {
   layout(); setupRace();
   ptrs.clear(); for (const k of keys) k.l = k.r = false;
   state = 'count'; countT = 3; lastBeep = 0; acc = 0; MG.hide(); ea();
+  camera(0, true); queueWarm();
   hud(); lastHud = '';
 }
 function showResults() {
@@ -1290,15 +1341,31 @@ window.KART = {
   },
   input: () => [held(0), held(1), userSteer(0), userSteer(1)],
   ptrs: () => [...ptrs.values()].map(z => ({ ...z })),
-  buttons: () => BTN.map(b => { const a = toClient(b.x, b.y), c = toClient(b.x + b.w, b.y + b.h); return { x: a.x, y: a.y, w: c.x - a.x, h: c.y - a.y }; }),
-  dims: () => ({ W, H, land, Z0, cam: { ...cam } }),
-  toClient, lapLog: () => lapLog.slice(), floats: () => floatLog.slice(), banner: () => banner && banner.text,
+  buttons: () => views.slice().sort((a, b) => a.hi - b.hi).flatMap(v => v.btn.map(b => { const p1 = localToScreen(v, b.x, b.y), p2 = localToScreen(v, b.x + b.w, b.y + b.h), a = toClient(Math.min(p1.x, p2.x), Math.min(p1.y, p2.y)), c = toClient(Math.max(p1.x, p2.x), Math.max(p1.y, p2.y)); return { x: a.x, y: a.y, w: c.x - a.x, h: c.y - a.y }; })),
+  // camera: heading of the car relative to its camera (0 = pointing straight up on screen), and the car's velocity in screen terms
+  camInfo: k => { const v = views.find(q => q.hi === k), c = humans[k]; return { carA: c.a, camA: v.cam.a, rel: wrapA(c.a - v.cam.a) * 180 / Math.PI }; },
+  screenVel: k => { const v = views.find(q => q.hi === k), c = humans[k], th = -Math.PI / 2 - v.cam.a; return { x: c.vx * Math.cos(th) - c.vy * Math.sin(th), y: c.vx * Math.sin(th) + c.vy * Math.cos(th) }; },
+  // where the kart is drawn inside its view (local px)
+  carLocal: k => { const v = views.find(q => q.hi === k), c = humans[k]; return toLocal(v, c.x, c.y); },
+  dims: () => ({ W, H, land, views: views.map(v => ({ hi: v.hi, x: v.x, y: v.y, w: v.w, h: v.h, flip: v.flip, z: v.z, cam: { ...v.cam } })) }),
+  toClient, lapLog: () => lapLog.slice(), floats: () => floatLog.slice(), banner: () => (banners.find(Boolean) || {}).text,
+  tileCost: (n = 12) => { const t0 = performance.now(); for (let i = 0; i < n; i++) getTile(100 + i, 3, 0.95); return (performance.now() - t0) / n; },
+  tileCostAt: (tx, ty) => { const t0 = performance.now(); getTile(tx, ty, 0.951); return performance.now() - t0; },
+  get fastTiles() { return fastTiles; }, setFastTiles: v => { fastTiles = !!v; },
   jam: (k, sec) => { cars[k].jamT = sec; },
   starsLeft: () => trk.stars.filter(s => s.t <= 0).length,
   perf: (n = 60, flush = true) => { const t0 = performance.now(); for (let i = 0; i < n; i++) { update(1 / 60); draw(); if (flush) x.getImageData(0, 0, 1, 1); } return (performance.now() - t0) / n; },
 };
 
-MG.loop(dt => { frameN++; update(dt); draw(); });
+// adaptive quality: if frames are slow while racing (no GPU), switch to the cheaper road sampling
+let fastTiles = false, frameEma = 16, lastFrame = 0, slowFor = 0;
+MG.loop(dt => {
+  frameN++;
+  const now = performance.now();
+  if (lastFrame && racing() && !MG.panelOpen()) { frameEma += (Math.min(100, now - lastFrame) - frameEma) * 0.05; slowFor = frameEma > 24 ? slowFor + dt : 0; if (slowFor > 1.5) fastTiles = true; }
+  lastFrame = now;
+  update(dt); draw();
+});
 </script>
 </body>
 </html>
