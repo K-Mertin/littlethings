@@ -25,6 +25,7 @@ let mode = 'timed';
 const prog = () => mode === 'timed' ? 1 - left / ROUND : Math.min(0.6, t / 150);
 const mmss = v => `${Math.floor(v / 60)}:${String(Math.floor(v % 60)).padStart(2, '0')}`;
 const rest = MG.barButton('休息一下', () => end('休息一下！'));
+const SND = {}; const snd = (n, a, gap = 60) => { const now = performance.now(); if (now - (SND[n] || 0) < gap) return; SND[n] = now; MG.sfx(n, a); };
 let B, items, score, combo, hearts, left, spawnT, state = 'ready', pops = [], t = 0, slow = 0;
 
 function reset() {
@@ -76,7 +77,7 @@ function update(dt) {
     if (it.vx) { it.x += it.vx * dt * k; if (it.x < 20 || it.x > W - 20) it.vx *= -1; }
     // catch zone: the top of the basket
     if (!it.done && it.y > GROUND - 34 && it.y < GROUND - 6 && Math.abs(it.x - B.x) < BW / 2 + 6) caught(it);
-    if (!it.done && it.y > H + 30) { it.done = true; if (it.kind === 'fruit') combo = 0; }
+    if (!it.done && it.y > H + 30) { it.done = true; if (it.kind === 'fruit') { if (combo >= 3) { snd('miss'); pops.push({ x: Math.max(40, Math.min(W - 40, it.x)), y: GROUND - 20, t: MG.WORDS.miss, c: '#7b8095', life: 0.8 }); } combo = 0; } }
   }
   items = items.filter(it => !it.done);
   for (const p of pops) { p.y -= 40 * dt; p.life -= dt; } pops = pops.filter(p => p.life > 0);
@@ -87,20 +88,21 @@ function caught(it) {
   it.done = true; B.wob = 1;
   if (it.kind === 'bomb' && mode === 'relax') {
     combo = 0; score = Math.max(0, score - 20); B.face = 'ouch'; B.faceT = 0.8; MG.sfx('bad'); shake = 0.3;
-    MG.fx.burst(it.x, GROUND - 30, { n: 16, colors: ['#555', '#888', '#ff7a1c', '#ffd23f'], speed: 220, up: 80, size: 6, life: 0.6 }); pops.push({ x: it.x, y: GROUND - 50, t: '砰！−20', c: '#ff5a4e', life: 0.9 });
+    MG.fx.burst(it.x, GROUND - 30, { n: 16, colors: ['#555', '#888', '#ff7a1c', '#ffd23f'], speed: 220, up: 80, size: 6, life: 0.6 }); pops.push({ x: it.x, y: GROUND - 50, t: 'Boom! 💥 −20', c: '#ff5a4e', life: 0.9 });
     return;
   }
   if (it.kind === 'bomb') {
     hearts--; combo = 0; B.face = 'ouch'; B.faceT = 0.8; MG.sfx('bad'); shake = 0.3; inBasket = [];
-    MG.fx.burst(it.x, GROUND - 30, { n: 16, colors: ['#555', '#888', '#ff7a1c', '#ffd23f'], speed: 220, up: 80, size: 6, life: 0.6 }); pops.push({ x: it.x, y: GROUND - 50, t: '砰！', c: '#ff5a4e', life: 0.9 });
+    MG.fx.burst(it.x, GROUND - 30, { n: 16, colors: ['#555', '#888', '#ff7a1c', '#ffd23f'], speed: 220, up: 80, size: 6, life: 0.6 }); pops.push({ x: it.x, y: GROUND - 50, t: 'Boom! 💥', c: '#ff5a4e', life: 0.9 });
     if (hearts <= 0) end('炸彈太多了…');
     return;
   }
-  if (it.kind === 'snail') { slow = 4; MG.sfx('good'); MG.fx.burst(it.x, GROUND - 30, { n: 10, colors: ['#8fd0ff', '#fff'], speed: 120, size: 4 }); pops.push({ x: it.x, y: GROUND - 50, t: '慢動作！', c: '#3a7bd5', life: 1 }); return; }
+  if (it.kind === 'snail') { slow = 4; MG.sfx('boing'); snd('whoosh'); MG.fx.burst(it.x, GROUND - 30, { n: 10, colors: ['#8fd0ff', '#fff'], speed: 120, size: 4 }); pops.push({ x: it.x, y: GROUND - 50, t: 'Slow 🐌', c: '#3a7bd5', life: 1 }); return; }
   combo++;
   const mult = combo >= 15 ? 3 : combo >= 6 ? 2 : 1;
   const pts = it.pts * mult; score += pts;
-  MG.sfx(it.kind === 'star' ? 'good' : 'pop');
+  if (it.kind === 'star') { MG.sfx('coin'); snd('sparkle'); } else { snd('pop'); if (combo >= 3) snd('match', Math.min(8, Math.floor(combo / 3) + 1)); }
+  if (combo === 6 || combo === 15 || (combo > 15 && combo % 10 === 0)) { snd('combo', Math.min(10, combo / 2)); snd('sparkle'); pops.push({ x: W / 2, y: GROUND - 120, t: MG.praise(combo >= 15 ? 4 : 2), c: '#ff7a00', life: 1.1 }); }
   MG.fx.burst(it.x, GROUND - 32, { n: it.kind === 'star' ? 14 : 9, colors: [JUICE[it.ch] || '#fff', '#fff'], speed: 150, up: 120, size: it.kind === 'star' ? 5 : 3.5, shape: it.kind === 'star' ? 'star' : 'dot', life: 0.55 });
   if (it.kind === 'fruit') { inBasket.push(it.ch); if (inBasket.length > 5) inBasket.shift(); }
   pops.push({ x: it.x, y: GROUND - 50, t: `+${pts}`, c: mult > 1 ? '#ff7a00' : '#2e9a4c', life: 0.7 });
@@ -224,7 +226,7 @@ function draw() {
   if (slow) { x.textAlign = 'center'; x.fillStyle = '#000'; x.font = `16px ${EMOJI}`; x.fillText('🐌', tx + tw + 18, 21); }
   if (combo >= 3) {
     x.textAlign = 'right'; x.font = '900 17px system-ui,"Noto Sans TC",sans-serif'; x.lineWidth = 4; x.strokeStyle = '#fff';
-    const txt = `${combo} 連接${combo >= 15 ? ' ×3' : combo >= 6 ? ' ×2' : ''}`; x.strokeText(txt, W - 10, 23); x.fillStyle = '#ff7a00'; x.fillText(txt, W - 10, 23);
+    const txt = `Combo ${combo} 🔥${combo >= 15 ? ' ×3' : combo >= 6 ? ' ×2' : ''}`; x.strokeText(txt, W - 10, 23); x.fillStyle = '#ff7a00'; x.fillText(txt, W - 10, 23);
   }
   x.restore();
 }
@@ -233,7 +235,7 @@ function draw() {
 function start(m) { if (m) mode = m; reset(); state = 'play'; MG.hide(); rest.show(mode === 'relax'); }
 function end(msg) {
   if (state !== 'play') return;
-  state = 'over'; rest.show(false); MG.sfx(hearts > 0 ? 'win' : 'over');
+  state = 'over'; rest.show(false); MG.sfx(hearts > 0 ? 'win' : 'over'); if (hearts > 0 && score > 0) MG.sfx('yay');
   const rec = mode === 'timed' ? MG.record('catch', score) : null;
   MG.panel({
     title: msg,

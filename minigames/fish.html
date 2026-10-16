@@ -43,6 +43,7 @@ let mode = 'timed';
 const mmss = v => `${Math.floor(v / 60)}:${String(Math.floor(v % 60)).padStart(2, '0')}`;
 const rest = MG.barButton('收竿', () => { if (state === 'play') { if (hook.st === 'idle') end(); else { quitting = true; if (hook.st === 'wait' || hook.st === 'drop') hook.st = 'reel'; } } });
 let quitting = false;
+const SND = {}; const snd = (n, a, gap = 60) => { const now = performance.now(); if (now - (SND[n] || 0) < gap) return; SND[n] = now; MG.sfx(n, a); };
 let fishes, junk, boat, hook, score, left, state = 'ready', t = 0, pops = [], caughtNow = [], dex = MG.store.get('fish.dex', {}), newFound = [];
 
 const WATER = () => land ? 112 : 170, BOTTOM = () => H - 18;
@@ -121,27 +122,27 @@ function bite() {
   for (const f of fishes) {
     if (f.hooked) continue;
     const mouthX = f.x + f.dir * f.sp.s * 0.35;
-    if (Math.hypot(mouthX - hook.x, f.y - hook.y) < 20 + f.sp.s * 0.2) { f.hooked = true; hook.catch = f; hook.st = 'reel'; MG.sfx('good'); MG.fx.burst(hook.x, hook.y, { n: 8, colors: ['#fff', '#bfe8ff'], speed: 70, up: 30, size: 3, life: 0.5 }); return; }
+    if (Math.hypot(mouthX - hook.x, f.y - hook.y) < 20 + f.sp.s * 0.2) { f.hooked = true; hook.catch = f; hook.st = 'reel'; MG.sfx('good'); snd('whoosh'); pops.push({ x: hook.x, y: hook.y - 26, t: 'Got it! 🎣', c: '#ffe36b', life: 0.8 }); MG.fx.burst(hook.x, hook.y, { n: 8, colors: ['#fff', '#bfe8ff'], speed: 70, up: 30, size: 3, life: 0.5 }); return; }
   }
   for (const j of junk) {
-    if (Math.hypot(j.x - hook.x, j.y - hook.y) < 22) { hook.catch = { junk: j, x: j.x, y: j.y }; junk.splice(junk.indexOf(j), 1); hook.st = 'reel'; MG.sfx(j.treasure ? 'good' : 'step'); return; }
+    if (Math.hypot(j.x - hook.x, j.y - hook.y) < 22) { hook.catch = { junk: j, x: j.x, y: j.y }; junk.splice(junk.indexOf(j), 1); hook.st = 'reel'; MG.sfx(j.treasure ? 'good' : 'step'); if (j.treasure) snd('sparkle'); return; }
   }
 }
 function landCatch() {
-  const c = hook.catch; hook.catch = null; if (!c) return;
+  const c = hook.catch; hook.catch = null; if (!c) { if (!quitting) { snd('miss'); pops.push({ x: rodTip()[0], y: rodTip()[1] - 20, t: MG.WORDS.miss, c: '#7d8792', life: 0.9 }); } return; }
   const [rx, ry] = rodTip();
   if (c.junk) {
     const j = c.junk;
-    if (j.treasure) { score += TREASURE.pts; record(TREASURE); pops.push({ x: rx, y: ry - 20, t: `+${TREASURE.pts} 寶物！`, c: '#e08a00', life: 1.4 }); MG.sfx('win'); MG.fx.burst(rx, ry, { n: 30, colors: ['#ffd23f', '#fff3a0', '#ffb300'], speed: 220, up: 120, size: 6, shape: 'star', life: 1 }); }
-    else { pops.push({ x: rx, y: ry - 20, t: `${j.k.name}…`, c: '#7d8792', life: 1.2 }); MG.sfx('bad'); setTimeout(() => junk.push({ k: MG.pick(JUNK), x: MG.rand(40, W - 40), y: BOTTOM() - 10, rot: MG.rand(-0.6, 0.6) }), 3000); }
+    if (j.treasure) { score += TREASURE.pts; record(TREASURE); pops.push({ x: rx, y: ry - 20, t: `+${TREASURE.pts} 👑 Wow!`, c: '#e08a00', life: 1.4 }); MG.sfx('win'); MG.sfx('yay'); snd('coin'); MG.fx.burst(rx, ry, { n: 30, colors: ['#ffd23f', '#fff3a0', '#ffb300'], speed: 220, up: 120, size: 6, shape: 'star', life: 1 }); }
+    else { pops.push({ x: rx, y: ry - 20, t: `Oops! ${j.k.e}`, c: '#7d8792', life: 1.2 }); MG.sfx('miss'); setTimeout(() => junk.push({ k: MG.pick(JUNK), x: MG.rand(40, W - 40), y: BOTTOM() - 10, rot: MG.rand(-0.6, 0.6) }), 3000); }
     caughtNow.push({ e: j.k.e, t: 0 });
     return;
   }
   fishes.splice(fishes.indexOf(c), 1);
   score += c.sp.pts; const isNew = record(c.sp);
-  pops.push({ x: rx, y: ry - 20, t: `${c.sp.name} +${c.sp.pts}${isNew ? '　新發現！' : ''}`, c: isNew ? '#ff4f8a' : '#2e9a4c', life: 1.3 });
+  pops.push({ x: rx, y: ry - 20, t: `${c.sp.e} +${c.sp.pts}${isNew ? ' New! ✨' : ''}`, c: isNew ? '#ff4f8a' : '#2e9a4c', life: 1.3 });
   caughtNow.push({ e: c.sp.e, t: 0 });
-  MG.sfx(isNew ? 'win' : 'pop'); MG.fx.burst(rx, WATER(), { n: 14, colors: ['#fff', '#bfe8ff', '#8fd0ff'], speed: 160, up: 140, size: 4, life: 0.7 });
+  MG.sfx('coin'); snd('match', c.sp.pts >= 100 ? 6 : c.sp.pts >= 50 ? 4 : c.sp.pts >= 25 ? 2 : 1); if (isNew) { MG.sfx('yay'); } else if (c.sp.pts >= 50) snd('sparkle'); MG.fx.burst(rx, WATER(), { n: 14, colors: ['#fff', '#bfe8ff', '#8fd0ff'], speed: 160, up: 140, size: 4, life: 0.7 });
 }
 function record(sp) { const isNew = !dex[sp.id]; dex[sp.id] = (dex[sp.id] || 0) + 1; MG.store.set('fish.dex', dex); if (isNew) newFound.push(sp); return isNew; }
 
@@ -198,7 +199,7 @@ function draw() {
     const c = hook.catch, e = c.junk ? c.junk.k.e : c.sp.e, s = c.junk ? 26 : c.sp.s;
     x.save(); x.translate(hook.x, hook.y + 14); x.rotate(Math.sin(t * 18) * 0.35 - Math.PI / 2); x.fillStyle = '#000'; x.font = `${s}px ${EMOJI}`; x.fillText(e, 0, 0); x.restore();
   }
-  if (hook.st === 'wait') { x.fillStyle = 'rgba(255,255,255,.85)'; x.font = '700 12px "Noto Sans TC",system-ui'; x.fillText('…等魚上鉤', hook.x, hook.y + 24); }
+  if (hook.st === 'wait') { x.fillStyle = '#fff'; x.font = '700 12px "Noto Sans TC",system-ui'; x.fillText(MG.WORDS.wait, hook.x, hook.y + 24); }
   // boat with 噗噗
   const bx = boat.x, by = WY - 6 + Math.sin(t * 2) * 2;
   x.save(); x.translate(bx, by); x.rotate(Math.sin(t * 1.5) * 0.03);
@@ -216,7 +217,7 @@ function draw() {
   x.globalAlpha = 1;
   for (const p of pops) { x.globalAlpha = Math.min(1, p.life * 2); x.font = '900 16px "Noto Sans TC",system-ui,sans-serif'; x.lineWidth = 4; x.strokeStyle = '#fff'; x.strokeText(p.t, Math.max(80, Math.min(W - 80, p.x)), p.y); x.fillStyle = p.c; x.fillText(p.t, Math.max(80, Math.min(W - 80, p.x)), p.y); }
   x.globalAlpha = 1;
-  if (state === 'play' && hook.st === 'idle' && t < 8) { x.fillStyle = 'rgba(255,255,255,.9)'; x.font = '700 14px "Noto Sans TC",system-ui'; x.fillText('👆 點水裡想釣的地方', W / 2, WY + 40); }
+  if (state === 'play' && hook.st === 'idle' && t < 8) { x.fillStyle = '#fff'; x.font = '700 14px "Noto Sans TC",system-ui'; x.fillText('👆 Tap 🌊', W / 2, WY + 40); }
 }
 
 // ---------- flow ----------
@@ -227,7 +228,7 @@ function dexHtml() {
 const dexCount = () => [...SPECIES, TREASURE].filter(s => dex[s.id]).length;
 function showDex(back) { MG.panel({ title: `魚類圖鑑 ${dexCount()}/${SPECIES.length + 1}`, html: dexHtml(), buttons: [{ label: '回去', on: back }] }); }
 let endRec = null;
-function end() { if (state !== 'play') return; state = 'over'; quitting = false; rest.show(false); MG.sfx('win'); endRec = mode === 'timed' ? MG.record('fish', score) : null; endPanel(); }
+function end() { if (state !== 'play') return; state = 'over'; quitting = false; rest.show(false); MG.sfx('win'); if (score > 0) MG.sfx('yay'); endRec = mode === 'timed' ? MG.record('fish', score) : null; endPanel(); }
 function endPanel() {
   const rec = endRec;
   MG.panel({
