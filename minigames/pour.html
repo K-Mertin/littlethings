@@ -84,13 +84,30 @@ function makePuzzle(nc, c, empties = 2) {
 
 // ---------- layout ----------
 const bh = () => cap * UH + 10;                       // body height (local units)
+let U = 1;
 function layout() {
-  const W = cv.lw, H = cv.lh, topY = 18, botY = H - 92, n = bottles.length;
+  const W = cv.lw, H = cv.lh, n = bottles.length, g = 10;
+  U = Math.max(1, Math.min(1.5, Math.min(W, H) / 420)) * MG.textScale;
+  // toolbar: a row along the bottom, or a column on the right when the screen is wide and short
+  const labels = [['undo', '↶ 復原'], ['hint', '💡 提示'], ['add', '➕ 空瓶'], ['reset', '🔄 重來']];
+  const bh2 = Math.round(Math.max(52, 50 * U));
+  const side = W > H * 1.3;
+  let ax0 = 0, aw = W, topY = 18, botY;
+  if (side) {
+    const bw = Math.round(Math.min(W * 0.24, Math.max(120, 116 * U))), bx = W - bw - g, gap = Math.min(16, (H - g * 2 - bh2 * 4) / 3);
+    const y0 = (H - (bh2 * 4 + gap * 3)) / 2;
+    btns = labels.map(([id, label], k) => ({ id, label, x: bx, y: y0 + k * (bh2 + gap), w: bw, h: bh2 }));
+    aw = bx - g; botY = H - 8;
+  } else {
+    const gap = 8, bw = Math.min(170, (W - 20 - gap * 3) / 4), tot = labels.length * bw + (labels.length - 1) * gap;
+    btns = labels.map(([id, label], k) => ({ id, label, x: (W - tot) / 2 + k * (bw + gap), y: H - bh2 - 12, w: bw, h: bh2 }));
+    botY = H - bh2 - 28;
+  }
   const cellW = BW + 26, cellH = bh() + NECK + 46;
   let best = null;
   for (let per = 1; per <= n; per++) {
     const rows = Math.ceil(n / per);
-    const s = Math.min((W - 20) / (per * cellW), (botY - topY) / (rows * cellH), 1.6);
+    const s = Math.min((aw - 20) / (per * cellW), (botY - topY) / (rows * cellH), 3);
     if (!best || s > best.s + 1e-6) best = { per, rows, s };
   }
   scale = best.s; pos = [];
@@ -98,16 +115,21 @@ function layout() {
   const usedH = rows * cellH * scale, y0 = topY + (botY - topY - usedH) / 2;
   let i = 0;
   for (let r = 0; r < rows; r++) {
-    const cnt = base + (r < extra ? 1 : 0), rowW = cnt * cellW * scale, x0 = (W - rowW) / 2;
+    const cnt = base + (r < extra ? 1 : 0), rowW = cnt * cellW * scale, x0 = ax0 + (aw - rowW) / 2;
     for (let k = 0; k < cnt; k++, i++) pos.push({ cx: x0 + (k + 0.5) * cellW * scale, by: y0 + (r + 1) * cellH * scale - 18 * scale });
   }
-  // toolbar
-  const labels = [['undo', '↶ 復原'], ['hint', '💡 提示'], ['add', '➕ 空瓶'], ['reset', '🔄 重來']];
-  const bw = Math.min(150, (W - 30) / 4 - 8), gap = 8, tot = labels.length * bw + (labels.length - 1) * gap;
-  btns = labels.map(([id, label], k) => ({ id, label, x: (W - tot) / 2 + k * (bw + gap), y: H - 70, w: bw, h: 54 }));
+  shelfW = [ax0 + 10, aw - 20];
 }
-MG.fit(cv, (sw, sh) => { land = sw > sh * 1.05; return land ? [Math.round(Math.min(1100, Math.max(760, 500 * sw / sh))), 500] : [480, Math.round(Math.min(900, Math.max(640, 480 * sh / sw)))]; });
+let shelfW = [10, 300];
+// the canvas takes the whole stage (1 logical px ≈ 1 CSS px), the bottles are scaled up to fill it
+MG.fit(cv, (sw, sh) => {
+  const cs = getComputedStyle(cv.parentElement);
+  const W = Math.max(300, Math.round(sw - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 6));
+  const H = Math.max(260, Math.round(sh - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 6));
+  land = W > H * 1.05; return [W, H];
+});
 cv.onfit = () => { if (bottles.length) layout(); };
+addEventListener('mg-big', () => { if (bottles.length) layout(); });
 
 // ---------- game flow ----------
 function snapshot() { return { b: bottles.map(b => b.slice()), h: hid.map(b => b.slice()), gone: gone.slice(), moves }; }
@@ -309,7 +331,7 @@ function backdrop(W, H) {
   for (let i = 0; i < 9; i++) { const bx = (i * 97 + 30) % W, by = 30 + ((i * 131) % (H - 140)); x.beginPath(); x.arc(bx, by + Math.sin(t * 0.6 + i) * 6, 6 + (i % 3) * 4, 0, 7); x.fill(); }
   // shelf lines under each row
   const rows = [...new Set(pos.map(p => Math.round(p.by)))];
-  for (const ry of rows) { x.fillStyle = '#d9a86a'; x.fillRect(10, ry + 4 * scale, W - 20, 9 * scale); x.fillStyle = 'rgba(120,70,20,.25)'; x.fillRect(10, ry + 13 * scale, W - 20, 4 * scale); }
+  for (const ry of rows) { x.fillStyle = '#d9a86a'; x.fillRect(shelfW[0], ry + 4 * scale, shelfW[1], 9 * scale); x.fillStyle = 'rgba(120,70,20,.25)'; x.fillRect(shelfW[0], ry + 13 * scale, shelfW[1], 4 * scale); }
 }
 function draw() {
   const W = cv.lw, H = cv.lh;
@@ -377,9 +399,11 @@ function draw() {
   for (const b of btns) {
     const off = (b.id === 'add' && extraUsed) || (b.id === 'undo' && !hist.length);
     x.fillStyle = off ? '#efe4cc' : b.id === 'hint' ? '#ffd23f' : '#fff7e6';
-    x.strokeStyle = off ? '#d8c9a6' : '#c99a5a'; x.lineWidth = 2.5;
+    x.strokeStyle = off ? '#d8c9a6' : MG.big ? '#8a5a20' : '#c99a5a'; x.lineWidth = MG.big ? 3.5 : 2.5;
     x.beginPath(); x.roundRect(b.x, b.y, b.w, b.h, 14); x.fill(); x.stroke();
-    x.fillStyle = off ? '#b5a585' : '#4a3520'; x.font = `700 ${b.w < 100 ? 15 : 18}px "Noto Sans TC",system-ui,sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
+    let fs = Math.round(Math.min(b.h * 0.42, 17 * U)); const wt = MG.big ? 800 : 700;
+    x.font = `${wt} ${fs}px "Noto Sans TC",system-ui,sans-serif`; while (fs > 11 && x.measureText(b.label).width > b.w - 10) { fs--; x.font = `${wt} ${fs}px "Noto Sans TC",system-ui,sans-serif`; }
+    x.fillStyle = off ? '#b5a585' : MG.big ? '#2a1a0a' : '#4a3520'; x.textAlign = 'center'; x.textBaseline = 'middle';
     x.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2 + 1);
   }
 }
@@ -390,7 +414,7 @@ function drawFloats() {
   const W = cv.lw;
   x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineJoin = 'round';
   for (const f of floats) {
-    let sz = Math.round(Math.max(18, Math.min(30, 24 * scale)));
+    let sz = Math.round(Math.max(18 * U, Math.min(30 * U, 24 * scale)));
     x.font = `900 ${sz}px system-ui,"Noto Sans TC",sans-serif`;
     let tw = x.measureText(f.text).width;
     if (tw > W - 16) { sz = Math.floor(sz * (W - 16) / tw); x.font = `900 ${sz}px system-ui,"Noto Sans TC",sans-serif`; tw = x.measureText(f.text).width; }

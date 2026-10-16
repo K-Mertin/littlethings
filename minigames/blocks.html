@@ -12,11 +12,45 @@
 <script>
 'use strict';
 MG.init({ id: 'blocks', title: '十乘十方塊', stats: ['score', 'best'] });
-const N = 10, CELL = 32, cv = document.getElementById('cv'), x = cv.getContext('2d');
-let land = false;
-MG.fit(cv, (sw, sh) => { land = sw > sh * 1.1; return land ? [640, 370] : [360, 560]; });
-const BX = () => 20, BY = () => land ? 25 : 58;
-const slotRect = (i) => land ? { x: 372, y: 14 + i * 116, w: 250, h: 108 } : { x: 10 + i * 116, y: 420, w: 108, h: 126 };
+const N = 10, cv = document.getElementById('cv'), x = cv.getContext('2d');
+let land = false, CELL = 32, U = 1, L = { bx: 20, by: 58, slots: [], tip: null };
+// the canvas takes the whole stage (1 logical px ≈ 1 CSS px); the board and the tray are sized from it
+MG.fit(cv, (sw, sh) => {
+  const cs = getComputedStyle(cv.parentElement);
+  const W = Math.max(300, Math.round(sw - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 6));
+  const H = Math.max(260, Math.round(sh - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 6));
+  land = W > H * 1.1; return [W, H];
+});
+function layout() {
+  const W = cv.lw, H = cv.lh, g = 10, fr = 12;            // fr: room for the wooden frame around the board
+  U = Math.max(1, Math.min(1.6, Math.min(W, H) / 420)) * MG.textScale;
+  const slots = [];
+  if (land) {
+    CELL = Math.floor(Math.min((H - fr * 2 - g * 2) / N, (W * 0.66 - fr * 2 - g) / N));
+    const bw = N * CELL, trayW = Math.min(Math.max(150, W - bw - fr * 2 - g * 4), Math.round(bw * 0.62));
+    const used = bw + fr * 2 + g * 2 + trayW, x0 = Math.round((W - used) / 2);
+    L.bx = x0 + fr; L.by = Math.round((H - bw) / 2);
+    const tx = L.bx + bw + fr + g * 2, sh = Math.floor((bw + fr * 2 - g * 2) / 3);
+    for (let i = 0; i < 3; i++) slots.push({ x: tx, y: L.by - fr + i * (sh + g), w: trayW, h: sh });
+    L.tip = null;
+  } else {
+    const tipH = Math.round(18 * U + 14), sw = Math.floor((W - g * 4) / 3);
+    let trayH = Math.round(Math.max(100, Math.min(sw * 1.1, H * 0.22)));
+    CELL = Math.floor(Math.min((W - fr * 2 - g * 2) / N, (H - tipH - trayH - fr * 2 - g * 3) / N));
+    const bw = N * CELL;
+    trayH = Math.round(Math.max(trayH, Math.min(sw * 1.3, H - tipH - bw - fr * 2 - g * 3)));
+    const used = tipH + bw + fr * 2 + g + trayH, y0 = Math.max(0, Math.round((H - used) / 2));
+    L.tip = { y: y0 + tipH / 2 };
+    L.bx = Math.round((W - bw) / 2); L.by = y0 + tipH + fr;
+    const ty = L.by + bw + fr + g;
+    for (let i = 0; i < 3; i++) slots.push({ x: g + i * (sw + g), y: ty, w: sw, h: trayH });
+  }
+  L.slots = slots;
+}
+cv.onfit = layout; layout();
+addEventListener('mg-big', layout);
+const BX = () => L.bx, BY = () => L.by;
+const slotRect = (i) => L.slots[i];
 
 const SHAPES = [
   ['#ffb72b', [[0, 0]]],
@@ -198,8 +232,13 @@ function socket(px, py, s) {
 function draw() {
   const W = cv.lw, H = cv.lh, bx = BX(), by = BY();
   table(W, H);
-  if (!land) { x.fillStyle = '#7a5a2c'; x.font = '700 14px "Noto Sans TC",system-ui,sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('把方塊拖進格子，排滿一整行或一整列就會消掉', W / 2, 26); }
-  frame(bx - 9, by - 9, N * CELL + 18, N * CELL + 18);
+  if (L.tip) {
+    const tip = '把方塊拖進格子，排滿一整行或一整列就會消掉';
+    let fs = Math.round(14 * U); x.font = `${MG.big ? 800 : 700} ${fs}px "Noto Sans TC",system-ui,sans-serif`;
+    while (fs > 10 && x.measureText(tip).width > W - 16) { fs--; x.font = `${MG.big ? 800 : 700} ${fs}px "Noto Sans TC",system-ui,sans-serif`; }
+    x.fillStyle = MG.big ? '#3e2a10' : '#7a5a2c'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(tip, W / 2, L.tip.y);
+  }
+  frame(bx - 10, by - 10, N * CELL + 20, N * CELL + 20);
   for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
     if (!grid[r][c]) { socket(bx + c * CELL, by + r * CELL, CELL); continue; }
     const age = t - (placedAt[r][c] ?? -9), sq = age < 0.18 ? 1 + 0.16 * Math.sin(age / 0.18 * Math.PI) : 1, s2 = CELL * sq;
@@ -229,11 +268,11 @@ function draw() {
     const s = slotRect(i), p = tray[i], on = sel === i && kbMode;
     x.fillStyle = 'rgba(80,50,20,.18)'; x.beginPath(); x.roundRect(s.x + 2, s.y + 4, s.w, s.h, 14); x.fill();
     const g = x.createLinearGradient(0, s.y, 0, s.y + s.h); g.addColorStop(0, on ? '#fff3c4' : '#fffaf0'); g.addColorStop(1, on ? '#ffe08a' : '#f4e6c6');
-    x.fillStyle = g; x.strokeStyle = on ? '#ffb72b' : '#d8bf8a'; x.lineWidth = on ? 3 : 2;
+    x.fillStyle = g; x.strokeStyle = on ? '#ffb72b' : MG.big ? '#a8824a' : '#d8bf8a'; x.lineWidth = on ? 3 : MG.big ? 3 : 2;
     x.beginPath(); x.roundRect(s.x, s.y, s.w, s.h, 14); x.fill(); x.stroke();
     x.strokeStyle = 'rgba(200,170,110,.35)'; x.lineWidth = 1; x.setLineDash([4, 4]); x.beginPath(); x.roundRect(s.x + 6, s.y + 6, s.w - 12, s.h - 12, 10); x.stroke(); x.setLineDash([]);
     if (!p || (drag && drag.i === i)) continue;
-    const sc = Math.min(land ? 26 : 22, (s.w - 20) / p.w, (s.h - 20) / p.h);
+    const sc = Math.min(CELL * 0.8, (s.w - 20) / p.w, (s.h - 20) / p.h);
     const usable = canPlaceAnywhere(p), bob = usable ? Math.sin(t * 3 + i) * 1.2 : 0;
     drawPiece(p, s.x + (s.w - p.w * sc) / 2, s.y + (s.h - p.h * sc) / 2 + bob, sc, usable ? 1 : 0.3);
   }
@@ -253,12 +292,13 @@ function draw() {
   for (const p of pops) {
     const k = Math.min(1, p.life * 2), sc = 1 + Math.max(0, p.life - 0.9) * 2;
     // keep the words inside the board area so they never run off the canvas
-    x.font = '900 20px system-ui,"Noto Sans TC",sans-serif'; const subW = p.sub ? x.measureText(p.sub).width : 0;
-    x.font = '900 24px system-ui,sans-serif'; const hw = Math.max(subW, x.measureText(p.t).width) / 2 * 1.2 + 6;
-    const px = Math.max(hw, Math.min(cv.lw - hw, p.x)), py = Math.max(22, p.y);
+    const f1 = Math.round(24 * U), f2 = Math.round(20 * U);
+    x.font = `900 ${f2}px system-ui,"Noto Sans TC",sans-serif`; const subW = p.sub ? x.measureText(p.sub).width : 0;
+    x.font = `900 ${f1}px system-ui,sans-serif`; const hw = Math.max(subW, x.measureText(p.t).width) / 2 * 1.2 + 6;
+    const px = Math.max(hw, Math.min(cv.lw - hw, p.x)), py = Math.max(f1, p.y);
     x.globalAlpha = k; x.save(); x.translate(px, py); x.scale(sc, sc);
-    x.font = '900 24px system-ui,sans-serif'; x.lineWidth = 5; x.strokeStyle = '#fff'; x.strokeText(p.t, 0, 0); x.fillStyle = '#ff7a00'; x.fillText(p.t, 0, 0);
-    if (p.sub) { x.font = '900 20px "Noto Sans TC",system-ui,sans-serif'; x.strokeText(p.sub, 0, 26); x.fillStyle = '#e0445a'; x.fillText(p.sub, 0, 26); }
+    x.font = `900 ${f1}px system-ui,sans-serif`; x.lineWidth = 5; x.strokeStyle = '#fff'; x.strokeText(p.t, 0, 0); x.fillStyle = '#ff7a00'; x.fillText(p.t, 0, 0);
+    if (p.sub) { x.font = `900 ${f2}px "Noto Sans TC",system-ui,sans-serif`; x.strokeText(p.sub, 0, f1 * 1.1); x.fillStyle = '#e0445a'; x.fillText(p.sub, 0, f1 * 1.1); }
     x.restore();
   }
   x.globalAlpha = 1;
