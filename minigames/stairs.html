@@ -12,23 +12,44 @@
 <script>
 'use strict';
 MG.init({ id: 'stairs', title: '噗噗下樓梯', stats: ['floor', 'best'] });
-const W = 360, H = 560, cv = document.getElementById('cv'), x = cv.getContext('2d');
-MG.fit(cv, W, H);
+const cv = document.getElementById('cv'), x = cv.getContext('2d');
+// canvas = the stage's shape. The shaft (FW × FH) keeps its 360×560 feel; it gets wider (up to 1.5×, platforms + speeds scale with it)
+// or taller, and spare room becomes HUD bands: left/right in landscape ('side'), below in portrait ('bottom').
+let W = 360, H = 560, FW = 360, FH = 560, FX = 0, BW = 0, LAY = 'none', kx = 1, PW = 86;
+const BASEW = 360, BASEH = 560;
+function layout(sw, sh) {
+  const a = Math.max(0.3, (sw - 22) / Math.max(1, sh - 22)), oldFW = FW;   // 22 = stage padding + canvas border
+  if (a >= BASEW / BASEH) {
+    H = BASEH; W = Math.round(H * a); FH = H;
+    const SB = 150;
+    if (W >= BASEW + 2 * SB) { FW = Math.min(BASEW * 1.5, W - 2 * SB); LAY = 'side'; }
+    else { FW = Math.min(W, BASEW * 1.5); LAY = 'none'; }
+  } else {
+    W = BASEW; H = Math.round(W / a); FW = W;
+    if (H - BASEH >= 100) { const bh = Math.min(H - BASEH, 175); FH = H - bh; LAY = 'bottom'; } else { FH = H; LAY = 'none'; }
+  }
+  FW = Math.round(FW); FX = Math.round((W - FW) / 2); BW = FX; kx = FW / BASEW; PW = 86 * kx;
+  // a rotation mid-game: keep everything at the same relative spot
+  if (oldFW !== FW && plats) { const k = FW / oldFW; for (const p of plats) p.x *= k; if (P) P.x *= k; }
+  return [W, H];
+}
+cv.onfit = () => { wallKey = ''; };
+addEventListener('mg-big', () => { wallKey = ''; });
 
-const R = 14, HPMAX = 10, CEIL = 22, PW = 86, PH = 12, GAP = 72;
+const R = 14, HPMAX = 10, CEIL = 22, PH = 12, GAP = 72;
 const TYPES = ['normal', 'normal', 'normal', 'spike', 'spring', 'left', 'right', 'fragile'];
 let wallOff = 0, deco = [];
 let floats = [];
 const SND = {}; const snd = (n, a, gap = 60) => { const now = performance.now(); if (now - (SND[n] || 0) < gap) return; SND[n] = now; MG.sfx(n, a); };
-function say(t, c = '#fff', px = P.x, py = P.y - 30) { floats.push({ x: Math.max(50, Math.min(W - 50, px)), y: Math.max(40, py), t, c, life: 0.9 }); }
+function say(t, c = '#fff', px = P.x, py = P.y - 30) { floats.push({ x: Math.max(50, Math.min(FW - 50, px)), y: Math.max(40, py), t, c, life: 0.9 }); }
 let P, plats, rise, spawnY, nextIdx, floor, state = 'ready', shake = 0, flash = 0, parts = [], t = 0;
 
 function reset() {
-  P = { x: W / 2, y: 280 - R, vy: 0, on: null, hp: HPMAX, inv: 0, ignore: null, ignoreT: 0, face: 'happy', squash: 0 };
+  P = { x: FW / 2, y: 280 - R, vy: 0, on: null, hp: HPMAX, inv: 0, ignore: null, ignoreT: 0, face: 'happy', squash: 0 };
   plats = []; nextIdx = 0; floor = 0; rise = 70; t = 0; parts = []; floats = []; wallOff = 0; MG.fx.clear();
-  addPlat(W / 2 - PW / 2, 280, 'normal');
+  addPlat(FW / 2 - PW / 2, 280, 'normal');
   spawnY = 280;
-  while (spawnY < H + GAP) { spawnY += GAP; addPlat(MG.rand(4, W - PW - 4), spawnY, pickType()); }
+  while (spawnY < FH + GAP) { spawnY += GAP; addPlat(MG.rand(4, FW - PW - 4), spawnY, pickType()); }
   P.on = plats[0];
   showHud();
 }
@@ -72,17 +93,17 @@ function update(dt) {
   const dy = rise * dt;
   for (const p of plats) p.y -= dy;
   spawnY -= dy;
-  while (spawnY < H + GAP) { spawnY += GAP; addPlat(MG.rand(4, W - PW - 4), spawnY, pickType()); }
+  while (spawnY < FH + GAP) { spawnY += GAP; addPlat(MG.rand(4, FW - PW - 4), spawnY, pickType()); }
   plats = plats.filter(p => p.y > -PH && !p.gone);
 
   // horizontal
   let dir = (keys.r ? 1 : 0) - (keys.l ? 1 : 0); if (touchDir) dir = touchDir;
-  P.x += dir * 210 * dt; P.look = dir || (P.look || 0) * 0.9;
+  P.x += dir * 210 * kx * dt; P.look = dir || (P.look || 0) * 0.9;
   wallOff += dy * 0.55;
   for (const p of plats) p.boing = Math.max(0, p.boing - dt);
-  if (P.on && P.on.type === 'left') P.x -= 95 * dt;
-  if (P.on && P.on.type === 'right') P.x += 95 * dt;
-  P.x = Math.max(R, Math.min(W - R, P.x));
+  if (P.on && P.on.type === 'left') P.x -= 95 * kx * dt;
+  if (P.on && P.on.type === 'right') P.x += 95 * kx * dt;
+  P.x = Math.max(R, Math.min(FW - R, P.x));
   P.inv = Math.max(0, P.inv - dt); P.ignoreT = Math.max(0, P.ignoreT - dt); if (!P.ignoreT) P.ignore = null;
   if (P.inv === 0 && P.face === 'ouch') P.face = 'happy';
   P.squash *= Math.pow(0.002, dt);
@@ -115,7 +136,7 @@ function update(dt) {
   MG.fx.step(dt);
   for (const f of floats) { f.y -= 34 * dt; f.life -= dt; } floats = floats.filter(f => f.life > 0);
   shake = Math.max(0, shake - dt); flash = Math.max(0, flash - dt);
-  if (P.hp <= 0 || P.y - R > H) gameOver();
+  if (P.hp <= 0 || P.y - R > FH) gameOver();
   showHud();
 }
 function land(p) {
@@ -136,16 +157,16 @@ function land(p) {
 function burst(px, py, col, n) { for (let i = 0; i < n; i++) parts.push({ x: px + MG.rand(-30, 30), y: py, vx: MG.rand(-80, 80), vy: MG.rand(-160, -20), life: MG.rand(0.4, 0.8), col }); }
 
 // ---------- draw ----------
-// Stone wall tile (W x 240, tiles vertically), cached per pixel ratio
+// Stone wall tile (FW x 240, tiles vertically), cached per pixel ratio
 let wallTile = null, wallKey = '';
 function makeWall() {
-  const k = cv._mgScale || 1, key = '' + k; if (key === wallKey) return; wallKey = key;
-  const c = document.createElement('canvas'); c.width = W * k; c.height = 240 * k; const w = c.getContext('2d'); w.scale(k, k);
-  w.fillStyle = '#20284a'; w.fillRect(0, 0, W, 240);
+  const k = cv._mgScale || 1, key = k + '|' + FW; if (key === wallKey) return; wallKey = key;
+  const c = document.createElement('canvas'); c.width = FW * k; c.height = 240 * k; const w = c.getContext('2d'); w.scale(k, k);
+  w.fillStyle = '#20284a'; w.fillRect(0, 0, FW, 240);
   let sd = 11; const rnd = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
   for (let row = 0; row < 8; row++) {
     const y = row * 30, off = row % 2 ? 0 : -30;
-    for (let xx = off; xx < W; xx += 60) {
+    for (let xx = off; xx < FW; xx += 60) {
       const l = 30 + rnd() * 14, hue = 228 + rnd() * 14;
       w.fillStyle = `hsl(${hue} 28% ${l}%)`; w.beginPath(); w.roundRect(xx + 1.5, y + 1.5, 57, 27, 4); w.fill();
       w.fillStyle = 'rgba(255,255,255,.07)'; w.fillRect(xx + 3, y + 3, 53, 4);
@@ -163,11 +184,11 @@ function decoAt(i) { // deterministic wall decoration for slot i (every 180px of
 function drawWall() {
   makeWall();
   const off = wallOff % 240;
-  for (let y = -off; y < H; y += 240) x.drawImage(wallTile, 0, y, W, 240);
+  for (let y = -off; y < FH; y += 240) x.drawImage(wallTile, 0, y, FW, 240);
   // decorations scroll with the wall
   const SL = 180, first = Math.floor(wallOff / SL);
-  for (let i = first; i < first + Math.ceil(H / SL) + 2; i++) {
-    const kind = decoAt(i), y = i * SL - wallOff + 60, side = i % 2 ? 60 : W - 60;
+  for (let i = first; i < first + Math.ceil(FH / SL) + 2; i++) {
+    const kind = decoAt(i), y = i * SL - wallOff + 60, side = i % 2 ? 60 : FW - 60;
     if (kind === 'torch') {
       const fl = 0.85 + Math.sin(t * 13 + i) * 0.08 + Math.sin(t * 7.3 + i * 2) * 0.07;
       const g = x.createRadialGradient(side, y - 14, 4, side, y - 14, 90 * fl); g.addColorStop(0, 'rgba(255,190,90,.38)'); g.addColorStop(1, 'rgba(255,150,60,0)');
@@ -192,10 +213,16 @@ function drawWall() {
     }
   }
   // depth fog
-  const fog = x.createLinearGradient(0, 0, 0, H); fog.addColorStop(0, 'rgba(10,12,30,.15)'); fog.addColorStop(1, 'rgba(10,12,30,.45)'); x.fillStyle = fog; x.fillRect(0, 0, W, H);
+  const fog = x.createLinearGradient(0, 0, 0, FH); fog.addColorStop(0, 'rgba(10,12,30,.15)'); fog.addColorStop(1, 'rgba(10,12,30,.45)'); x.fillStyle = fog; x.fillRect(0, 0, FW, FH);
 }
+// css px per logical unit (so HUD words can be sized in real screen pixels)
+const cssK = () => (parseFloat(cv.style.width) || W) / W;
+const TXT = px => Math.min(px * 2.2, px * MG.textScale / Math.min(1.25, cssK()));   // a px-sized word, in logical units
 function draw() {
+  if (LAY !== 'none') drawBands();
   x.save();
+  x.translate(FX, 0);
+  x.beginPath(); x.rect(0, 0, FW, FH); x.clip();
   if (shake) x.translate(MG.rand(-4, 4) * shake * 4, MG.rand(-4, 4) * shake * 4);
   drawWall();
   // floor signs every 10 floors
@@ -210,29 +237,97 @@ function draw() {
   // player
   if (!(P.inv > 0 && Math.floor(P.inv * 14) % 2)) MG.puPu(x, P.x, P.y, R, P.face, P.squash, { look: P.look || 0, arms: P.on ? false : 'up' });
   x.textAlign = 'center'; x.textBaseline = 'middle';
-  for (const f of floats) { x.globalAlpha = Math.min(1, f.life * 2); x.font = '900 18px system-ui,sans-serif'; x.lineWidth = 4; x.strokeStyle = '#1a1d33'; x.strokeText(f.t, f.x, f.y); x.fillStyle = f.c; x.fillText(f.t, f.x, f.y); }
+  const ff = Math.max(18, TXT(15)); for (const f of floats) { x.globalAlpha = Math.min(1, f.life * 2); x.font = `900 ${ff}px system-ui,sans-serif`; x.lineWidth = 4 * ff / 18; x.strokeStyle = '#1a1d33'; x.strokeText(f.t, f.x, f.y); x.fillStyle = f.c; x.fillText(f.t, f.x, f.y); }
   x.globalAlpha = 1;
   // ceiling: dark shadow, metal bar with bolts, shiny spikes
-  const cg = x.createLinearGradient(0, 0, 0, 70); cg.addColorStop(0, 'rgba(0,0,0,.45)'); cg.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = cg; x.fillRect(0, 0, W, 70);
-  const bar = x.createLinearGradient(0, 0, 0, 11); bar.addColorStop(0, '#9aa0b8'); bar.addColorStop(1, '#5d6378'); x.fillStyle = bar; x.fillRect(0, 0, W, 11);
-  for (let i = 9; i < W; i += 36) { x.fillStyle = '#c9cede'; x.beginPath(); x.arc(i, 5.5, 2.2, 0, 7); x.fill(); x.fillStyle = '#4a4f62'; x.fillRect(i - 1.2, 4.8, 2.4, 1.2); }
-  for (let i = 0; i < W; i += 18) {
+  const cg = x.createLinearGradient(0, 0, 0, 70); cg.addColorStop(0, 'rgba(0,0,0,.45)'); cg.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = cg; x.fillRect(0, 0, FW, 70);
+  const bar = x.createLinearGradient(0, 0, 0, 11); bar.addColorStop(0, '#9aa0b8'); bar.addColorStop(1, '#5d6378'); x.fillStyle = bar; x.fillRect(0, 0, FW, 11);
+  for (let i = 9; i < FW; i += 36) { x.fillStyle = '#c9cede'; x.beginPath(); x.arc(i, 5.5, 2.2, 0, 7); x.fill(); x.fillStyle = '#4a4f62'; x.fillRect(i - 1.2, 4.8, 2.4, 1.2); }
+  for (let i = 0; i < FW; i += 18) {
     const sg = x.createLinearGradient(i, 0, i + 18, 0); sg.addColorStop(0, '#f4f6fc'); sg.addColorStop(0.5, '#c4c9d8'); sg.addColorStop(1, '#878da2');
     x.fillStyle = sg; x.strokeStyle = '#5d6378'; x.lineWidth = 1; x.beginPath(); x.moveTo(i + 1, 10); x.lineTo(i + 9, CEIL + 3); x.lineTo(i + 17, 10); x.closePath(); x.fill(); x.stroke();
     x.fillStyle = 'rgba(255,255,255,.8)'; x.fillRect(i + 5, 11, 1.4, 5);
   }
-  // HP: little heart-gem segments in a panel
-  x.fillStyle = 'rgba(15,18,40,.65)'; x.strokeStyle = 'rgba(255,255,255,.25)'; x.lineWidth = 1.5; x.beginPath(); x.roundRect(8, H - 32, 182, 24, 12); x.fill(); x.stroke();
-  x.fillStyle = '#ff7a8a'; x.font = '15px system-ui,sans-serif'; x.textBaseline = 'middle'; x.textAlign = 'left'; x.fillText('❤', 16, H - 19.5);
+  // HP: little heart-gem segments in a panel (inside the shaft only when there is no HUD band)
   const low = P.hp <= 3;
-  for (let i = 0; i < HPMAX; i++) {
-    const on = i < P.hp, px = 36 + i * 15, py = H - 26;
-    x.fillStyle = on ? (low ? '#ff5a4e' : '#5fe07a') : 'rgba(255,255,255,.15)'; x.beginPath(); x.roundRect(px, py, 12, 13, 3); x.fill();
-    if (on) { x.fillStyle = 'rgba(255,255,255,.5)'; x.fillRect(px + 2, py + 2, 8, 3); }
+  if (LAY === 'none') {
+    const k = Math.min(1.6, Math.max(1, TXT(11) / 13)), pw = 182 * k, ph = 24 * k;
+    x.fillStyle = MG.big ? 'rgba(8,10,24,.85)' : 'rgba(15,18,40,.65)'; x.strokeStyle = MG.big ? '#fff' : 'rgba(255,255,255,.25)'; x.lineWidth = MG.big ? 2.5 : 1.5;
+    x.beginPath(); x.roundRect(8, FH - 8 - ph, pw, ph, ph / 2); x.fill(); x.stroke();
+    hpGems(8 + 8 * k, FH - 8 - ph / 2, 15 * k, 12 * k, 13 * k, true);
   }
-  if (low && state === 'play') { const v = x.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.75); v.addColorStop(0, 'rgba(255,0,0,0)'); v.addColorStop(1, `rgba(255,30,30,${0.18 + Math.sin(t * 6) * 0.08})`); x.fillStyle = v; x.fillRect(0, 0, W, H); }
-  if (flash) { x.fillStyle = `rgba(255,60,60,${flash * 1.6})`; x.fillRect(0, 0, W, H); }
+  if (low && state === 'play') { const v = x.createRadialGradient(FW / 2, FH / 2, FH * 0.3, FW / 2, FH / 2, FH * 0.75); v.addColorStop(0, 'rgba(255,0,0,0)'); v.addColorStop(1, `rgba(255,30,30,${0.18 + Math.sin(t * 6) * 0.08})`); x.fillStyle = v; x.fillRect(0, 0, FW, FH); }
+  if (flash) { x.fillStyle = `rgba(255,60,60,${flash * 1.6})`; x.fillRect(0, 0, FW, FH); }
   x.restore();
+  // shaft frame
+  if (LAY !== 'none') { x.strokeStyle = '#05070f'; x.lineWidth = 4; x.strokeRect(FX - 2, -2, FW + 4, FH + 4); x.strokeStyle = 'rgba(160,170,210,.35)'; x.lineWidth = 1.5; x.strokeRect(FX - 4.5, -4, FW + 9, FH + 8); }
+}
+// heart + 10 gem segments, left-aligned at (x0, cy); seg = step between gems
+function hpGems(x0, cy, seg, gw, gh, heart) {
+  const low = P.hp <= 3;
+  if (heart) { x.fillStyle = '#ff7a8a'; x.font = `${gh * 1.15}px system-ui,sans-serif`; x.textBaseline = 'middle'; x.textAlign = 'left'; x.fillText('❤', x0, cy + gh * 0.05); x0 += gh * 1.55; }
+  for (let i = 0; i < HPMAX; i++) {
+    const on = i < P.hp, px = x0 + i * seg, py = cy - gh / 2;
+    x.fillStyle = on ? (low ? '#ff5a4e' : '#5fe07a') : 'rgba(255,255,255,.15)'; x.beginPath(); x.roundRect(px, py, gw, gh, gh * 0.23); x.fill();
+    if (MG.big) { x.strokeStyle = on ? '#fff' : 'rgba(255,255,255,.45)'; x.lineWidth = 1.5; x.stroke(); }
+    if (on) { x.fillStyle = 'rgba(255,255,255,.5)'; x.fillRect(px + gw * 0.17, py + gh * 0.15, gw * 0.66, gh * 0.23); }
+  }
+}
+// ---------- HUD bands (the room beside / under the shaft) ----------
+function bandBg(x0, y0, w, h) {
+  const g = x.createLinearGradient(0, y0, 0, y0 + h); g.addColorStop(0, '#1a2042'); g.addColorStop(1, '#0d1024'); x.fillStyle = g; x.fillRect(x0, y0, w, h);
+  x.strokeStyle = 'rgba(255,255,255,.05)'; x.lineWidth = 2;
+  for (let yy = y0 + 30, r = 0; yy < y0 + h; yy += 30, r++) { x.beginPath(); x.moveTo(x0, yy); x.lineTo(x0 + w, yy); x.stroke(); for (let xx = x0 + (r % 2 ? 0 : 30); xx < x0 + w; xx += 60) { x.beginPath(); x.moveTo(xx, yy - 30); x.lineTo(xx, yy); x.stroke(); } }
+}
+function arrowBtn(bx, by, bw, bh, dir, on) {
+  const r = Math.min(22, bh * 0.25);
+  x.fillStyle = 'rgba(0,0,0,.35)'; x.beginPath(); x.roundRect(bx, by + 5, bw, bh, r); x.fill();
+  const g = x.createLinearGradient(0, by, 0, by + bh); g.addColorStop(0, on ? '#ffe36b' : '#5b6aa8'); g.addColorStop(1, on ? '#e8a400' : '#323d75');
+  x.fillStyle = g; x.beginPath(); x.roundRect(bx, by + (on ? 4 : 0), bw, bh, r); x.fill();
+  x.strokeStyle = MG.big ? '#fff' : 'rgba(255,255,255,.45)'; x.lineWidth = MG.big ? 4 : 2.5; x.stroke();
+  const cx = bx + bw / 2, cy = by + bh / 2 + (on ? 4 : 0), s = Math.min(bw, bh) * 0.28;
+  x.fillStyle = on ? '#5a3a00' : '#fff'; x.beginPath(); x.moveTo(cx + dir * s, cy); x.lineTo(cx - dir * s * 0.7, cy - s); x.lineTo(cx - dir * s * 0.7, cy + s); x.closePath(); x.fill();
+}
+function txt(s, px, py, size, col, align = 'center', weight = 900) { x.font = `${weight} ${size}px "Noto Sans TC",system-ui,sans-serif`; x.textAlign = align; x.textBaseline = 'middle'; x.fillStyle = col; x.fillText(s, px, py); }
+function curDir() { let d = (keys.r ? 1 : 0) - (keys.l ? 1 : 0); if (touchDir) d = touchDir; return state === 'play' ? d : 0; }
+function drawBands() {
+  const dir = curDir(), best = MG.best('stairs') ?? 0, sub = MG.big ? '#fff' : '#b9c2ea';
+  if (LAY === 'side') {
+    bandBg(0, 0, BW, H); bandBg(FX + FW, 0, W - FX - FW, H);
+    const pad = Math.max(12, BW * 0.08), cw = BW - pad * 2;
+    // left: floor counter + best + ◀
+    const L = pad, f1 = Math.min(cw * 0.18, TXT(18)), f2 = Math.min(cw * 0.42, TXT(56));
+    let y = pad + f1;
+    txt('地下', L + cw / 2, y, f1, sub, 'center', 700); y += f1 * 0.7 + f2 * 0.62;
+    txt(floor, L + cw / 2, y, f2, '#ffd34a'); y += f2 * 0.62 + f1 * 0.7;
+    txt('層', L + cw / 2, y, f1, sub, 'center', 700); y += f1 * 1.5;
+    txt(`🏆 最高 ${best}`, L + cw / 2, y, Math.min(cw * 0.14, TXT(16)), sub, 'center', 700);
+    const bh = Math.min(170, H * 0.3, Math.max(110, cw * 0.55));
+    arrowBtn(L, H - pad - bh - 5, cw, bh, -1, dir < 0);
+    // right: 噗噗 + HP + ▶
+    const R0 = FX + FW + pad, pr = Math.min(cw * 0.2, 52, H * 0.09);
+    MG.puPu(x, R0 + cw / 2, pad + pr * 1.6, pr, P.face === 'ouch' ? 'ouch' : P.hp <= 3 ? 'wow' : 'happy', 0, { look: dir, arms: P.on ? false : 'up' });
+    const gy = pad + pr * 3.2 + Math.min(cw * 0.1, TXT(12)), seg = Math.min(cw / 11.2, 26), gh = seg * 0.95;
+    hpGems(R0 + (cw - seg * 11.2) / 2, gy, seg, seg * 0.8, gh, true);
+    txt(P.hp <= 3 ? '快找黃色樓梯補血！' : '黃色樓梯會補血', R0 + cw / 2, gy + gh + Math.min(cw * 0.08, TXT(12)), Math.min(cw * 0.085, TXT(12)), P.hp <= 3 ? '#ff9a8a' : sub, 'center', 700);
+    arrowBtn(R0, H - pad - bh - 5, cw, bh, 1, dir > 0);
+  } else if (LAY === 'bottom') {
+    const by = FH, bh = H - FH; bandBg(0, by, W, bh);
+    const pad = 8, btw = 112, bth = bh - pad * 2 - 5;
+    arrowBtn(pad, by + pad, btw, bth, -1, dir < 0);
+    arrowBtn(W - pad - btw, by + pad, btw, bth, 1, dir > 0);
+    const mx = W / 2, mw = W - 2 * (btw + pad * 2), f1 = Math.min(mw * 0.16, TXT(12)), f2 = Math.min(mw * 0.36, TXT(30), bh * 0.36);
+    txt('地下層數', mx, by + pad + f1 * 0.8, f1, sub, 'center', 700);
+    txt(floor, mx, by + pad + f1 * 1.6 + f2 * 0.55, f2, '#ffd34a');
+    const seg = mw / 5.4, gh = Math.min(seg * 0.8, (bh - (pad + f1 * 1.6 + f2 * 1.15)) / 2.6);
+    // two rows of five gems
+    const gy = by + pad + f1 * 1.6 + f2 * 1.15 + gh * 0.4, low = P.hp <= 3;
+    for (let i = 0; i < HPMAX; i++) {
+      const on = i < P.hp, px = mx - seg * 2.5 + (i % 5) * seg + seg * 0.1, py = gy + Math.floor(i / 5) * gh * 1.25;
+      x.fillStyle = on ? (low ? '#ff5a4e' : '#5fe07a') : 'rgba(255,255,255,.15)'; x.beginPath(); x.roundRect(px, py, seg * 0.8, gh, gh * 0.25); x.fill();
+      if (MG.big) { x.strokeStyle = on ? '#fff' : 'rgba(255,255,255,.45)'; x.lineWidth = 1.5; x.stroke(); }
+    }
+  }
 }
 function drawPlat(p) {
   let px = p.x, py = p.y;
@@ -299,7 +394,7 @@ function drawPlat(p) {
 // ---------- flow ----------
 function start() { reset(); state = 'play'; MG.hide(); }
 function gameOver() {
-  state = 'over'; MG.sfx('over'); MG.fx.burst(P.x, Math.min(P.y, H - 10), { n: 22, colors: ['#4cc96a', '#9ff0a8', '#2e9a4c'], speed: 220, up: 160, size: 5 });
+  state = 'over'; MG.sfx('over'); MG.fx.burst(P.x, Math.min(P.y, FH - 10), { n: 22, colors: ['#4cc96a', '#9ff0a8', '#2e9a4c'], speed: 220, up: 160, size: 5 });
   const rec = MG.record('stairs', floor);
   showHud();
   MG.panel({
@@ -308,6 +403,7 @@ function gameOver() {
     buttons: [{ label: '再玩一次', on: start }, { label: '回遊戲區', alt: true, on: () => location.href = 'index.html' }],
   });
 }
+MG.fit(cv, layout);
 reset();
 MG.panel({
   title: '噗噗下樓梯',

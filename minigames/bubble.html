@@ -12,8 +12,25 @@
 <script>
 'use strict';
 MG.init({ id: 'bubble', title: '噗噗泡泡龍', stats: ['level', 'score'] });
-const W = 360, H = 580, cv = document.getElementById('cv'), x = cv.getContext('2d');
-MG.fit(cv, W, H);
+const W = 360, H = 580, cv = document.getElementById('cv'), x = cv.getContext('2d');   // W×H = the playfield (rules live here)
+// the canvas takes the stage's shape (CW×CH); the playfield is drawn as big as fits (scale FS at FX,FY) and the spare room
+// becomes a HUD band: beside it in landscape ('side'), under it in portrait ('bottom'), or none (next bubble stays in the field)
+const VX0 = 12.5, VY0 = 12, VW = 335, VH = 552;   // the part of the playfield that is shown (walls trimmed a little)
+let CW = 360, CH = 580, FS = 1, FX = 0, FY = 0, LAY = 'none', SWAPB = null;
+const cssK = () => (parseFloat(cv.style.width) || CW) / CW;
+const TXT = px => Math.min(px * 2.2, px * MG.textScale / Math.min(1.25, cssK()));
+function layout(sw, sh) {
+  const a = Math.max(0.3, (sw - 22) / Math.max(1, sh - 22));   // 22 = stage padding + canvas border
+  if (a >= 1) { CH = 600; CW = Math.round(CH * a); } else { CW = 360; CH = Math.round(CW / a); }
+  const SB = 125 * (MG.big ? 1.2 : 1), BB = 104 * (MG.big ? 1.2 : 1);
+  const f0 = Math.min(CW / VW, CH / VH), fS = Math.min((CW - 2 * SB) / VW, CH / VH), fB = Math.min(CW / VW, (CH - BB) / VH);
+  if (Math.max(fS, fB) >= f0 * 0.97) { LAY = fS >= fB ? 'side' : 'bottom'; FS = Math.max(fS, fB); } else { LAY = 'none'; FS = f0; }
+  FX = (CW - VW * FS) / 2;
+  FY = LAY === 'bottom' ? 0 : (CH - VH * FS) / 2;
+  return [CW, CH];
+}
+// canvas point -> playfield point
+const toField = p => ({ x: (p.x - FX) / FS + VX0, y: (p.y - FY) / FS + VY0 });
 
 const COLS = 8, R = 19, D = R * 2, RH = D * 0.866, X0 = (W - (COLS * D + R)) / 2, TOP0 = 34, DANGER = 470, SHOOT = { x: W / 2, y: 512 }, SPEED = 950;
 const COLORS = [
@@ -31,6 +48,7 @@ const DIFF = {
 const NLEVELS = 20;
 let mode = 'relax', diff = 'normal';
 const D_ = () => DIFF[diff];
+MG.fit(cv, layout);
 let grid, ceilY, level, score, nColors, shot, cur, nxt, aim = -Math.PI / 2, misses, dropEvery, state = 'ready', falling = [], pops = [], t = 0, shakeT = 0, combo = 0;
 
 const snd = (() => { const last = {}; return (n, a, gap = 60) => { const now = performance.now(); if (now - (last[n] || 0) < gap) return; last[n] = now; MG.sfx(n, a); }; })();
@@ -77,12 +95,12 @@ function setAimTo(p) { if (p.y < SHOOT.y - 8) aim = clampAim(Math.atan2(p.y - SH
 let aiming = false;
 cv.addEventListener('pointerdown', e => {
   if (state !== 'play') return;
-  const p = cv.logical(e);
-  if (Math.hypot(p.x - (SHOOT.x + 62), p.y - (SHOOT.y + 18)) < 26) { swap(); return; }
+  const c = cv.logical(e), p = toField(c);
+  if (SWAPB ? (c.x >= SWAPB.x && c.x <= SWAPB.x + SWAPB.w && c.y >= SWAPB.y && c.y <= SWAPB.y + SWAPB.h) : Math.hypot(p.x - (SHOOT.x + 62), p.y - (SHOOT.y + 18)) < 26) { swap(); return; }
   aiming = true; try { cv.setPointerCapture(e.pointerId); } catch {} setAimTo(p);
 });
-cv.addEventListener('pointermove', e => { if (state !== 'play') return; if (aiming || e.pointerType === 'mouse') setAimTo(cv.logical(e)); });
-cv.addEventListener('pointerup', e => { if (!aiming) return; aiming = false; const p = cv.logical(e); if (p.y < SHOOT.y - 8) { setAimTo(p); fire(); } });
+cv.addEventListener('pointermove', e => { if (state !== 'play') return; if (aiming || e.pointerType === 'mouse') setAimTo(toField(cv.logical(e))); });
+cv.addEventListener('pointerup', e => { if (!aiming) return; aiming = false; const p = toField(cv.logical(e)); if (p.y < SHOOT.y - 8) { setAimTo(p); fire(); } });
 cv.addEventListener('pointercancel', () => aiming = false);
 const held = { l: false, r: false };
 addEventListener('keydown', e => {
@@ -208,7 +226,12 @@ function bubble(px, py, col, r = R, face = true) {
   }
 }
 function draw() {
+  const bg = x.createLinearGradient(0, 0, 0, CH); bg.addColorStop(0, '#bfe3fa'); bg.addColorStop(1, '#ffe6f3'); x.fillStyle = bg; x.fillRect(0, 0, CW, CH);
+  SWAPB = null;
+  if (LAY !== 'none') drawBand();
   x.save();
+  x.translate(FX, FY); x.scale(FS, FS); x.translate(-VX0, -VY0);
+  x.beginPath(); x.rect(VX0, VY0, VW, VH); x.clip();
   if (shakeT) x.translate(MG.rand(-1, 1) * shakeT * 8, 0);
   const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#d7f0ff'); g.addColorStop(1, '#fff2fa'); x.fillStyle = g; x.fillRect(-10, -10, W + 20, H + 20);
   // floating background bubbles
@@ -218,7 +241,7 @@ function draw() {
   // ceiling plank (comes down with "ceilY") and chains
   x.fillStyle = '#a8702e'; x.fillRect(0, ceilY - 14, W, 14); x.fillStyle = '#d99a5a'; x.fillRect(0, ceilY - 14, W, 4);
   if (ceilY > TOP0) { x.strokeStyle = '#7d8792'; x.lineWidth = 3; for (const sx of [40, W - 40]) { x.setLineDash([5, 4]); x.beginPath(); x.moveTo(sx, 0); x.lineTo(sx, ceilY - 14); x.stroke(); x.setLineDash([]); } }
-  if (mode === 'timed') for (let i = 0; i < dropEvery; i++) { x.fillStyle = i < dropEvery - misses ? '#ffd23f' : 'rgba(255,255,255,.35)'; x.beginPath(); x.arc(W - 16 - i * 12, ceilY - 7, 4, 0, 7); x.fill(); }
+  if (mode === 'timed' && LAY === 'none') for (let i = 0; i < dropEvery; i++) { x.fillStyle = i < dropEvery - misses ? '#ffd23f' : 'rgba(255,255,255,.35)'; x.beginPath(); x.arc(W - 16 - i * 12, ceilY - 7, 4, 0, 7); x.fill(); }
   // danger line
   x.strokeStyle = 'rgba(255,90,78,.7)'; x.lineWidth = 2; x.setLineDash([8, 6]); x.beginPath(); x.moveTo(X0, DANGER); x.lineTo(W - X0, DANGER); x.stroke(); x.setLineDash([]);
   // grid
@@ -242,18 +265,71 @@ function draw() {
   x.restore();
   MG.puPu(x, SHOOT.x, SHOOT.y + 18, 20, combo > 1 ? 'wow' : 'happy', 0, { look: Math.cos(aim) * 1.5, arms: 'up' });
   if (state === 'play' && !shot) bubble(SHOOT.x + Math.cos(aim) * 40, SHOOT.y + 18 + Math.sin(aim) * 40 - 18, cur, R * 0.9);
-  // next bubble (tap to swap)
-  x.fillStyle = 'rgba(255,255,255,.8)'; x.beginPath(); x.arc(SHOOT.x + 62, SHOOT.y + 18, 22, 0, 7); x.fill();
-  bubble(SHOOT.x + 62, SHOOT.y + 18, nxt, 15);
-  x.fillStyle = '#5a7a9a'; x.font = '700 11px "Noto Sans TC",system-ui'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('點我換', SHOOT.x + 62, SHOOT.y + 50);
+  // next bubble (tap to swap) — in the HUD band when there is one
+  if (LAY === 'none') {
+    const k = Math.min(1.35, Math.max(1, TXT(10) / FS / 11));
+    x.fillStyle = 'rgba(255,255,255,.8)'; x.beginPath(); x.arc(SHOOT.x + 62, SHOOT.y + 18, 22, 0, 7); x.fill();
+    if (MG.big) { x.strokeStyle = '#2a5cab'; x.lineWidth = 2.5; x.stroke(); }
+    bubble(SHOOT.x + 62, SHOOT.y + 18, nxt, 15);
+    x.fillStyle = MG.big ? '#1d2f4a' : '#5a7a9a'; x.font = `700 ${11 * k}px "Noto Sans TC",system-ui`; x.textAlign = 'left'; x.textBaseline = 'middle'; x.fillText('← 點我換', SHOOT.x + 88, SHOOT.y + 18);
+  }
   MG.fx.draw(x);
+  const pk = Math.max(1, TXT(13) / FS / 18);
   for (const p of pops) {
-    x.globalAlpha = Math.min(1, p.life * 2); x.font = `900 ${p.big ? 20 : 18}px system-ui,"Noto Sans TC",sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
-    const hw = x.measureText(p.t).width / 2 + 4, px = Math.max(hw, Math.min(W - hw, p.x));   // stay on screen
-    x.lineWidth = 4; x.strokeStyle = '#fff'; x.strokeText(p.t, px, p.y); x.fillStyle = p.big ? '#ff4f8a' : '#ff7a00'; x.fillText(p.t, px, p.y);
+    x.globalAlpha = Math.min(1, p.life * 2); x.font = `900 ${(p.big ? 20 : 18) * pk}px system-ui,"Noto Sans TC",sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
+    const hw = x.measureText(p.t).width / 2 + 4, px = Math.max(VX0 + hw, Math.min(VX0 + VW - hw, p.x));   // stay on screen
+    x.lineWidth = 4 * pk; x.strokeStyle = '#fff'; x.strokeText(p.t, px, p.y); x.fillStyle = p.big ? '#ff4f8a' : '#ff7a00'; x.fillText(p.t, px, p.y);
   }
   x.globalAlpha = 1;
   x.restore();
+  // field frame
+  if (LAY !== 'none') { x.strokeStyle = MG.big ? '#1d4f9e' : '#8fbfe0'; x.lineWidth = MG.big ? 4 : 3; x.beginPath(); x.roundRect(FX - 1.5, FY - 1.5, VW * FS + 3, VH * FS + 3, 6); x.stroke(); }
+}
+// ---------- HUD band ----------
+function card(bx, by, bw, bh) {
+  x.fillStyle = MG.big ? '#fff' : 'rgba(255,255,255,.85)'; x.strokeStyle = MG.big ? '#1d4f9e' : '#9fcbe6'; x.lineWidth = MG.big ? 4 : 2.5;
+  x.beginPath(); x.roundRect(bx, by, bw, bh, Math.min(18, bh * 0.2)); x.fill(); x.stroke();
+}
+function t1(str, px, py, size, col, w = 900) { x.font = `${w} ${size}px "Noto Sans TC",system-ui,sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = col; x.fillText(str, px, py); }
+function infoCard(bx, by, bw, bh) {   // level + score (+ ceiling counter in 天花板會降)
+  card(bx, by, bw, bh);
+  const ink = MG.big ? '#10233a' : '#2a4a6a', sub = MG.big ? '#1d2f4a' : '#5a7a9a', cx = bx + bw / 2, timed = mode === 'timed';
+  const f1 = Math.min(bw * 0.16, bh * (timed ? 0.15 : 0.2), TXT(24)), f2 = Math.min(bw * 0.3, bh * (timed ? 0.24 : 0.32), TXT(60));
+  const rows = timed ? 4 : 3, gap = (bh - f1 * 2 - f2 - (timed ? f1 * 1.3 : 0)) / (rows + 1);
+  let y = by + gap + f1 / 2;
+  t1(`第 ${level} 關`, cx, y, f1, ink); y += f1 / 2 + gap + f2 / 2;
+  t1(score, cx, y, f2, '#ff7a00'); y += f2 / 2 + gap + f1 / 2;
+  t1('分', cx, y, f1 * 0.9, sub, 700);
+  if (timed) {
+    y += f1 / 2 + gap + f1 * 0.65; const r = Math.min(f1 * 0.42, bw / (dropEvery * 3)), step = r * 2.8;
+    for (let i = 0; i < dropEvery; i++) { x.fillStyle = i < dropEvery - misses ? '#ffc93a' : 'rgba(90,122,154,.25)'; x.beginPath(); x.arc(cx - (dropEvery - 1) * step / 2 + i * step, y, r, 0, 7); x.fill(); if (MG.big) { x.strokeStyle = '#7a5a00'; x.lineWidth = 1.5; x.stroke(); } }
+  }
+}
+function nextCard(bx, by, bw, bh) {   // the next bubble; the whole card is the 換 button
+  card(bx, by, bw, bh); SWAPB = { x: bx, y: by, w: bw, h: bh };
+  const cx = bx + bw / 2, f1 = Math.min(bw * 0.15, bh * 0.16, TXT(18));
+  t1('下一顆', cx, by + f1 * 1.1, f1, MG.big ? '#10233a' : '#2a4a6a');
+  const bw2 = Math.min(bw - 16, Math.max(f1 * 6, 90)), bh2 = Math.min(f1 * 2.2, bh * 0.24), by2 = by + bh - bh2 - 8;
+  const top = by + f1 * 2, r = Math.max(8, Math.min(bw * 0.24, (by2 - top) / 2.7, 46)), ky = (top + by2) / 2;
+  x.fillStyle = '#eaf6ff'; x.beginPath(); x.arc(cx, ky, r * 1.25, 0, 7); x.fill();
+  bubble(cx, ky, nxt, r);
+  x.fillStyle = '#4cc96a'; x.strokeStyle = '#2e9a4c'; x.lineWidth = MG.big ? 3 : 2; x.beginPath(); x.roundRect(cx - bw2 / 2, by2, bw2, bh2, bh2 / 2); x.fill(); x.stroke();
+  t1('🔄 換一顆', cx, by2 + bh2 / 2, Math.min(f1, bh2 * 0.55), '#fff');
+}
+function drawBand() {
+  if (LAY === 'side') {
+    const bw = FX, pad = Math.max(10, bw * 0.08), cw = bw - pad * 2, fr = FX + VW * FS;
+    infoCard(pad, pad, cw, Math.min(CH * 0.5, cw * 1.1));
+    const nh = Math.min(CH * 0.5, cw * 1.25); nextCard(fr + pad, CH - pad - nh, cw, nh);
+    // 噗噗's tip above the next bubble
+    const hf = Math.min(cw * 0.1, TXT(16)), hy = pad + hf * 1.2;
+    t1('👆 拖曳瞄準', fr + bw / 2, hy, hf, MG.big ? '#10233a' : '#3a5a7a', 800);
+    t1('放開就發射', fr + bw / 2, hy + hf * 1.5, hf, MG.big ? '#10233a' : '#3a5a7a', 800);
+  } else {
+    const by = FY + VH * FS, bh = CH - by, pad = 8, w2 = (CW - pad * 3) / 2;
+    infoCard(pad, by + pad, w2, bh - pad * 2);
+    nextCard(pad * 2 + w2, by + pad, w2, bh - pad * 2);
+  }
 }
 
 // ---------- flow ----------
@@ -293,7 +369,7 @@ function menu() {
   });
 }
 score = 0; newLevel(1); menu();
-window.BBT = { get state() { return state; }, pops: () => pops.map(p => p.t), grid: () => grid.map(r => r.slice()), cell: (r, c) => ({ x: cx(r, c), y: cy(r) }), get cur() { return cur; }, get shot() { return !!shot; }, SHOOT,
+window.BBT = { toClient(px, py) { const r = cv.getBoundingClientRect(), k = (r.width - 6) / CW; return { x: r.left + 3 + (FX + (px - VX0) * FS) * k, y: r.top + 3 + (FY + (py - VY0) * FS) * k }; }, get swapBtn() { return SWAPB; }, get nxt() { return nxt; }, get state() { return state; }, pops: () => pops.map(p => p.t), grid: () => grid.map(r => r.slice()), cell: (r, c) => ({ x: cx(r, c), y: cy(r) }), get cur() { return cur; }, get shot() { return !!shot; }, SHOOT,
   aimAt(px, py) { aim = Math.max(-Math.PI + 0.16, Math.min(-0.16, Math.atan2(py - SHOOT.y, px - SHOOT.x))); }, fire: () => fire(), setCur(c) { cur = c; } };
 MG.loop(dt => { if (state === 'play') update(dt); else { t += dt; MG.fx.step(dt); for (const f of falling) { f.vy += 1400 * dt; f.y += f.vy * dt; } } draw(); });
 </script>

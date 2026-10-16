@@ -19,10 +19,22 @@ html,body{overscroll-behavior:none;-webkit-touch-callout:none;-webkit-user-selec
 <script>
 'use strict';
 MG.init({ id: 'volley', title: '噗噗排球', stats: ['score'] });
-const W = 640, H = 360, cv = document.getElementById('cv'), x = cv.getContext('2d');
+const W = 640, H = 360, cv = document.getElementById('cv'), x = cv.getContext('2d');   // W×H = the court (the rules live here)
 const isTouch = matchMedia('(pointer:coarse)').matches || 'ontouchstart' in window;
 if (isTouch) document.body.classList.add('touch');
-MG.fit(cv, W, H);
+// the canvas takes the stage's shape (CW×CH) and the court sits in it 1:1 at (OX, OY):
+// wide screens get more beach at the sides (scores there), tall screens more sky above and a big sand "touch pad" below
+let CW = W, CH = H, OX = 0, OY = 0;
+function layout(sw, sh) {
+  const a = Math.max(0.3, (sw - 22) / Math.max(1, sh - 22));   // 22 = stage padding + canvas border
+  if (a >= W / H) { CH = H; CW = Math.round(H * a); OX = Math.round((CW - W) / 2); OY = 0; }
+  else { CW = W; CH = Math.round(W / a); OX = 0; const ex = CH - H; OY = Math.round(ex <= 130 ? ex : 130 + (ex - 130) * 0.22); }
+  bgK = '';
+  return [CW, CH];
+}
+const cssK = () => (parseFloat(cv.style.width) || CW) / CW;
+const TXT = px => Math.min(px * 2.4, px * MG.textScale / Math.min(1.25, cssK()));
+const courtX = e => cv.logical(e).x - OX;
 
 const GROUND = 318, NETX = 320, NETW = 8, NETTOP = 196, R = 30, BR = 15, WIN = 7;
 const GRAV_P = 1500, GRAV_B = 820, SPEED = 270, JUMP = 620;
@@ -34,6 +46,7 @@ const LEVELS = [
 let hits = 0, rally = 0;
 const SND = {}; const snd = (n, a, gap = 60) => { const now = performance.now(); if (now - (SND[n] || 0) < gap) return; SND[n] = now; MG.sfx(n, a); };
 function rallyUp() { rally++; if (rally >= 6 && rally % 3 === 0) { snd('combo', Math.min(10, rally / 2)); if (rally % 6 === 0) snd('sparkle'); banner = { t: `Rally ×${rally} 🔥`, life: 0.8, x: W / 2, y: 86 }; } }
+let bgC = null, bgK = '';
 let mode = 'cpu', level = 1, players, ball, score, server, state = 'menu', pauseT = 0, banner = null, t = 0, shake = 0, trail = [];
 const input = [{ l: false, r: false, j: false, jp: false }, { l: false, r: false, j: false, jp: false }];
 
@@ -82,7 +95,7 @@ function jumpNow(p) { if (state === 'play') input[p].jp = true; }
 addEventListener('pointerdown', e => {
   if (e.pointerType !== 'touch' || !inPlay() || e.target.closest('.mg-bar,.mg-over')) return;
   e.preventDefault();
-  const lx = cv.logical(e).x, p = ownerOf(lx), pl = players[p];
+  const lx = courtX(e), p = ownerOf(lx), pl = players[p];
   const mine = fingersOf(p);
   if (mine.length >= 2) return;                     // a third finger (or a palm) on the same side does nothing
   const rec = { p, id: e.pointerId, seq: ++touchSeq, x0: e.clientX, y0: e.clientY, t0: performance.now(), lx: sideClamp(p, lx), moved: false, jumped: false, steer: mine.length === 0 };
@@ -97,7 +110,7 @@ addEventListener('pointermove', e => {
   e.preventDefault();
   const dx = e.clientX - rec.x0, dy = e.clientY - rec.y0;
   if (Math.hypot(dx, dy) > 14) rec.moved = true;
-  rec.lx = sideClamp(rec.p, cv.logical(e).x);
+  rec.lx = sideClamp(rec.p, courtX(e));
   // a second finger that is held and dragged takes over the steering (the child switched fingers)
   if (!rec.steer && rec.moved && performance.now() - rec.t0 > 250) rec.steer = true;
   if (steerFinger(rec.p) === rec) { tTarget[rec.p] = rec.lx; tHold[rec.p] = true; }
@@ -288,10 +301,20 @@ function point(winner) {
 const names = () => mode === 'cpu' ? ['噗噗', '電腦'] : ['綠噗噗', '粉噗噗'];
 
 // ---------- draw ----------
-let bgC = null, bgK = '';
 function beach() {
-  const k = cv._mgScale || 1; if (bgK === '' + k) return; bgK = '' + k;
-  const c = document.createElement('canvas'); c.width = W * k; c.height = H * k; const g = c.getContext('2d'); g.scale(k, k);
+  const k = cv._mgScale || 1; if (bgK === k + '|' + CW + '|' + CH) return; bgK = k + '|' + CW + '|' + CH;
+  const c = document.createElement('canvas'); c.width = Math.round(CW * k); c.height = Math.round(CH * k); const g = c.getContext('2d'); g.scale(k, k);
+  // the room around the court: sky above, sea + sand to the sides, sand below
+  const sky0 = g.createLinearGradient(0, 0, 0, OY + 200); sky0.addColorStop(0, OY > 60 ? '#3f9cf0' : '#5fb8ff'); sky0.addColorStop(Math.min(0.99, OY / (OY + 200) + 0.001), '#5fb8ff'); sky0.addColorStop(1, '#d6f0ff');
+  g.fillStyle = sky0; g.fillRect(0, 0, CW, OY + 210);
+  const sea0 = g.createLinearGradient(0, OY + 168, 0, OY + 262); sea0.addColorStop(0, '#2b8fd0'); sea0.addColorStop(1, '#6fd0ee'); g.fillStyle = sea0; g.fillRect(0, OY + 168, CW, 96);
+  const sand0 = g.createLinearGradient(0, OY + 250, 0, CH); sand0.addColorStop(0, '#fbe7b5'); sand0.addColorStop(Math.min(1, (H - 250) / Math.max(1, CH - OY - 250)), '#efcf8a'); sand0.addColorStop(1, '#e8c47a');
+  g.fillStyle = sand0; g.fillRect(0, OY + 258, CW, CH - OY - 258);
+  g.fillStyle = 'rgba(255,255,255,.7)'; g.fillRect(0, OY + 256, CW, 6);
+  { let sd = 5; const rnd = () => (sd = (sd * 16807) % 2147483647) / 2147483647; const n = Math.round(CW * (CH - OY - 262) / 400);
+    for (let i = 0; i < n; i++) { g.fillStyle = `rgba(180,130,60,${0.1 + rnd() * 0.15})`; g.fillRect(rnd() * CW, OY + 262 + rnd() * (CH - OY - 262), 1.5, 1.5); }
+    g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 1.5; for (let i = 0; i < CW / 16; i++) { const wx = rnd() * CW, wy = OY + 178 + rnd() * 76; g.beginPath(); g.moveTo(wx, wy); g.quadraticCurveTo(wx + 7, wy - 3, wx + 14, wy); g.stroke(); } }
+  g.translate(OX, OY);
   const sky = g.createLinearGradient(0, 0, 0, 200); sky.addColorStop(0, '#5fb8ff'); sky.addColorStop(1, '#d6f0ff'); g.fillStyle = sky; g.fillRect(0, 0, W, 210);
   const sun = g.createRadialGradient(560, 56, 5, 560, 56, 70); sun.addColorStop(0, 'rgba(255,250,200,1)'); sun.addColorStop(0.35, 'rgba(255,230,120,.9)'); sun.addColorStop(1, 'rgba(255,230,120,0)');
   g.fillStyle = sun; g.fillRect(480, 0, 160, 140);
@@ -319,6 +342,10 @@ function beach() {
     g.restore();
   };
   palm(26, 0.95, false); palm(W - 26, 1, true);
+  // extra palms out on the wide-screen beach, and posts that show where the court ends (the ball bounces there)
+  for (let px = -110, i = 0; px > -OX - 40; px -= 150, i++) palm(px, 0.9 + (i % 2) * 0.08, i % 2 === 1);
+  for (let px = W + 110, i = 0; px < W + OX + 40; px += 150, i++) palm(px, 0.95 - (i % 2) * 0.06, i % 2 === 0);
+  if (OX > 0) for (const px of [0, W]) { g.fillStyle = '#c0c6d0'; g.fillRect(px - 3, -OY, 6, GROUND + OY + 6); g.fillStyle = '#ff5a4e'; for (let yy = 4; yy < GROUND; yy += 40) g.fillRect(px - 3, yy, 6, 14); }
   // beach umbrella + towel
   g.fillStyle = '#ffffff'; g.fillRect(96, 268, 3, 40);
   for (let i = 0; i < 4; i++) { g.fillStyle = i % 2 ? '#fff' : '#ff6b5e'; g.beginPath(); g.moveTo(97, 262); g.arc(97, 276, 40, Math.PI + i * Math.PI / 4, Math.PI + (i + 1) * Math.PI / 4); g.closePath(); g.fill(); }
@@ -371,8 +398,8 @@ function drawPlayer(p) {
 }
 function draw() {
   beach();
-  x.save(); if (shake) x.translate(MG.rand(-1, 1) * shake * 16, MG.rand(-1, 1) * shake * 16);
-  x.drawImage(bgC, 0, 0, W, H);
+  x.save(); x.translate(OX, OY); if (shake) x.translate(MG.rand(-1, 1) * shake * 16, MG.rand(-1, 1) * shake * 16);
+  x.drawImage(bgC, -OX, -OY, CW, CH);
   // drifting clouds + seagull
   for (const [cx0, cy, sp, s] of [[80, 50, 6, 1], [330, 80, 4, 0.8], [520, 34, 8, 0.7]]) { const ox = ((cx0 + t * sp) % (W + 120)) - 60; x.fillStyle = '#fff'; for (const [a, b, r] of [[0, 0, 16], [18, -8, 20], [38, 0, 15]]) { x.beginPath(); x.arc(ox + a * s, cy + b * s, r * s, 0, 7); x.fill(); } }
   const gx = (t * 30) % (W + 80) - 40, gy = 100 + Math.sin(t) * 8, fl = Math.sin(t * 8) * 4;
@@ -390,7 +417,7 @@ function draw() {
   for (const p of players) drawPlayer(p);
   drawBall();
   if (touchHintT > 0 && state === 'play') {
-    x.globalAlpha = Math.min(1, touchHintT); x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = '700 15px "Noto Sans TC",system-ui';
+    x.globalAlpha = Math.min(1, touchHintT); x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = `700 ${Math.max(15, TXT(14))}px "Noto Sans TC",system-ui`;
     const tips = mode === 'pvp' ? [[160, '👆 ↔️ Move'], [480, '👆 ↔️ Move']] : [[320, '👆 ↔️ Move   👆 Jump']];
     for (const [tx, tt] of tips) { x.lineWidth = 4; x.strokeStyle = 'rgba(255,255,255,.95)'; x.strokeText(tt, tx, 150); x.fillStyle = '#2a3a5a'; x.fillText(tt, tx, 150); }
     x.globalAlpha = 1;
@@ -398,20 +425,67 @@ function draw() {
   if (ball.hold > 0 && state === 'play') { x.fillStyle = '#fff'; x.font = '900 16px "Noto Sans TC",system-ui'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('Serve 🏐', ball.x, ball.y - 30); }
   MG.fx.draw(x);
   x.restore();
-  // scoreboard
-  const nm = names();
-  x.save(); if (ball.y < 70 && Math.abs(ball.x - W / 2) < 130) x.globalAlpha = 0.3;
-  x.fillStyle = 'rgba(255,255,255,.88)'; x.strokeStyle = '#7fb8e6'; x.lineWidth = 2; x.beginPath(); x.roundRect(W / 2 - 110, 8, 220, 44, 14); x.fill(); x.stroke();
-  x.textBaseline = 'middle'; x.textAlign = 'center';
-  x.font = '700 12px "Noto Sans TC",system-ui'; x.fillStyle = '#2e9a4c'; x.fillText(nm[0], W / 2 - 66, 20); x.fillStyle = '#cf4a80'; x.fillText(nm[1], W / 2 + 66, 20);
-  x.font = '900 24px system-ui,sans-serif'; x.fillStyle = '#2a3a5a'; x.fillText(score ? score[0] : 0, W / 2 - 66, 39); x.fillText(score ? score[1] : 0, W / 2 + 66, 39);
-  x.font = '700 12px "Noto Sans TC",system-ui'; x.fillStyle = '#7a8aa8'; x.fillText(`先拿 ${WIN} 分`, W / 2, 22); x.font = '900 18px system-ui'; x.fillText(':', W / 2, 39); x.restore();
+  drawPad();
+  drawScore();
   if (banner) {
     const k = Math.min(1, banner.life * 2.5), sc = 1 + Math.max(0, banner.life - 1) * 1.5;
-    x.save(); x.globalAlpha = k; x.translate(banner.x ?? W / 2, banner.y ?? 120); x.scale(sc, sc);
+    x.save(); x.globalAlpha = k; x.translate(OX + (banner.x ?? W / 2), OY + (banner.y ?? 120)); x.scale(sc, sc);
     x.font = '900 34px "Noto Sans TC",system-ui,sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineWidth = 7; x.strokeStyle = '#fff'; x.strokeText(banner.t, 0, 0);
     x.fillStyle = banner.x ? '#ff7a1c' : '#3a6fd8'; x.fillText(banner.t, 0, 0); x.restore();
   }
+}
+
+// scoreboard: in the sky above the court (tall screens), on the beach beside it (wide screens), or on the court's top edge
+function drawScore() {
+  const nm = names(), sc = score || [0, 0], big = MG.big, ink = big ? '#10233a' : '#2a3a5a';
+  const card = (bx, by, bw, bh) => { x.fillStyle = big ? '#fff' : 'rgba(255,255,255,.88)'; x.strokeStyle = big ? '#1d4f9e' : '#7fb8e6'; x.lineWidth = big ? 3.5 : 2; x.beginPath(); x.roundRect(bx, by, bw, bh, Math.min(16, bh * 0.3)); x.fill(); x.stroke(); };
+  const T = (t, px, py, f, c, w = 900) => { x.font = `${w} ${f}px "Noto Sans TC",system-ui,sans-serif`; x.fillStyle = c; x.fillText(t, px, py); };
+  x.save(); x.textBaseline = 'middle'; x.textAlign = 'center';
+  if (OX >= 100) {            // wide: one card per side
+    const bw = Math.min(OX - 24, 200), f1 = Math.min(bw * 0.15, TXT(15)), f2 = Math.min(bw * 0.4, TXT(40)), bh = f1 * 2.6 + f2 * 1.2;
+    for (const p of [0, 1]) {
+      const cx = p ? OX + W + OX / 2 : OX / 2, by = 14;
+      card(cx - bw / 2, by, bw, bh);
+      T(nm[p], cx, by + f1 * 1.1, f1, p ? '#cf4a80' : '#2e9a4c'); T(sc[p], cx, by + f1 * 2.1 + f2 * 0.6, f2, ink);
+    }
+    x.lineWidth = 4; x.strokeStyle = 'rgba(255,255,255,.9)'; x.font = `700 ${f1 * 0.9}px "Noto Sans TC",system-ui`; x.strokeText(`先拿 ${WIN} 分`, OX / 2, 14 + bh + f1 * 1.1);
+    T(`先拿 ${WIN} 分`, OX / 2, 14 + bh + f1 * 1.1, f1 * 0.9, big ? '#10233a' : '#3a5a7a', 700);
+  } else {
+    const roomy = OY >= 80;
+    const f1 = roomy ? Math.min(30, TXT(15)) : 12 * Math.max(1, Math.min(1.5, TXT(11) / 12)), f2 = roomy ? Math.min(64, TXT(34)) : 24 * Math.max(1, Math.min(1.4, TXT(18) / 24));
+    const bw = Math.max(220, f1 * 15), bh = f1 * 1.5 + f2 * 1.3, by = roomy ? Math.max(8, (OY - 105 - bh) / 2) : 8, cx = CW / 2;
+    if (ball && ball.y + OY < by + bh + 20 && Math.abs(ball.x - W / 2) < bw / 2 + 20) x.globalAlpha = 0.3;
+    card(cx - bw / 2, by, bw, bh);
+    const dx = bw * 0.3;
+    T(nm[0], cx - dx, by + f1 * 0.95, f1, '#2e9a4c', 700); T(nm[1], cx + dx, by + f1 * 0.95, f1, '#cf4a80', 700);
+    T(sc[0], cx - dx, by + f1 * 1.5 + f2 * 0.62, f2, ink); T(sc[1], cx + dx, by + f1 * 1.5 + f2 * 0.62, f2, ink);
+    T(`先拿 ${WIN} 分`, cx, by + f1 * 0.95, f1 * 0.85, big ? '#10233a' : '#7a8aa8', 700); T(':', cx, by + f1 * 1.5 + f2 * 0.62, f2 * 0.7, ink);
+  }
+  x.restore();
+}
+// tall screens: the sand under the court is the touch pad — show it (a track with the jelly's spot + what a tap does)
+function drawPad() {
+  const top = OY + H + 6, h = CH - top - 10;
+  if (h < 110) return;
+  const big = MG.big, two = mode === 'pvp';
+  x.save(); x.textAlign = 'center'; x.textBaseline = 'middle';
+  for (const p of two ? [0, 1] : [0]) {
+    const x0 = two ? (p ? W / 2 + 8 : 12) : 12, w = two ? W / 2 - 20 : W - 24, col = p ? '207,74,128' : '46,154,76';
+    const f = Math.min(h * 0.1, TXT(19), w / (two ? 9.5 : 16));
+    x.fillStyle = `rgba(255,255,255,${big ? 0.6 : 0.35})`; x.strokeStyle = `rgba(${col},${big ? 0.9 : 0.55})`; x.lineWidth = big ? 4 : 3; x.setLineDash([10, 8]);
+    x.beginPath(); x.roundRect(x0, top, w, h, 24); x.fill(); x.stroke(); x.setLineDash([]);
+    // track: where the jelly is (its half of the court lines up with the pad)
+    const ty = top + h * 0.46, pl = players && players[p], rr = Math.min(42, h * 0.13);
+    x.strokeStyle = `rgba(${col},.3)`; x.lineWidth = 12; x.lineCap = 'round'; x.beginPath(); x.moveTo(p ? NETX + 34 : 34, ty + rr * 0.7); x.lineTo(p ? W - 34 : NETX - 34, ty + rr * 0.7); x.stroke();
+    if (tTarget[p] != null) { x.strokeStyle = `rgba(${col},.85)`; x.lineWidth = 3; x.beginPath(); x.ellipse(tTarget[p], ty + rr * 0.7, 14, 6, 0, 0, 7); x.stroke(); }
+    if (pl) MG.puPu(x, pl.x, ty, rr, pl.mood, 0, { pal: p ? MG.JELLY.pink : MG.JELLY.green, noLeaf: true, look: Math.max(-1, Math.min(1, pl.vx / 200)) });
+    const ink = big ? '#10233a' : '#5a4320';
+    x.font = `800 ${f}px "Noto Sans TC",system-ui`; x.fillStyle = ink;
+    x.fillText(two ? '👆 按住左右拖＝移動' : '👆 按住這裡左右拖＝噗噗跟著跑', x0 + w / 2, top + h * 0.15);
+    x.fillText(two ? '點一下＝跳' : '點一下＝跳　跳起來再點一下＝殺球！', x0 + w / 2, top + h * 0.8);
+    if (two) x.fillText('空中再點＝殺球', x0 + w / 2, top + h * 0.8 + f * 1.4);
+  }
+  x.restore();
 }
 
 // ---------- flow ----------
@@ -452,6 +526,7 @@ function menu(keep) {
   showPads();
 }
 // ☰ 換模式 in the middle of a match: pause, pick again or keep playing
+MG.fit(cv, layout);
 MG.pauseMenu({ label: '☰ 換模式', playing: () => state === 'play' || state === 'point', open: was => { const s = state; menu(was); showPads(); return () => { state = s; }; } });
 menu();
 MG.loop(dt => { update(dt); draw(); });
