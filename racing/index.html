@@ -38,6 +38,17 @@
   #coach span{font-size:13px;font-weight:700;color:var(--ink-2);line-height:1.35}
   #coach .pips{display:flex;gap:5px;margin-top:4px} #coach .pips i{width:18px;height:18px;border-radius:50%;background:rgba(34,48,90,.12)} #coach .pips i.on{background:#ff8a2a}
   #coach .tally{font-weight:800;font-size:13px}
+  #keypad{position:fixed;left:calc(14px + env(safe-area-inset-left,0px));bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:2;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:5px}
+  #keypad .row{display:flex;gap:5px}
+  #keypad span{width:52px;height:46px;border-radius:9px;background:rgba(255,255,255,.82);border:2px solid rgba(34,48,90,.25);border-bottom-width:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:800;font-size:20px;color:var(--ink);transition:transform .05s,background .05s}
+  #keypad span small{font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2)}
+  #keypad span.wide{width:166px;font-size:16px}
+  #keypad span.on{background:#ffcf4a;border-color:#c99500;transform:translateY(2px);border-bottom-width:2px}
+  #keypad span[data-k="drift"].on{background:#ff8a2a;color:#fff} #keypad span[data-k="drift"].on small{color:#fff}
+  #keypad.touchy{bottom:auto;top:calc(330px + env(safe-area-inset-top,0px));transform:scale(.8);transform-origin:left top}
+  #keypad.touchy span[data-k="drift"]{font-size:0} #keypad.touchy span[data-k="drift"] small{font-size:12px}
+  #keypad.touchy span[data-k="up"]{display:none}
+  #demoCap{position:fixed;left:50%;top:calc(150px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:2;pointer-events:none;background:rgba(34,48,90,.88);color:#fff;font-family:var(--round);font-weight:700;font-size:clamp(16px,2.4vw,24px);padding:8px 18px;border-radius:14px;white-space:nowrap;max-width:92vw;overflow:hidden;text-overflow:ellipsis}
   #gauge{position:fixed;left:50%;bottom:calc(120px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);width:min(440px,80vw);z-index:2;pointer-events:none;text-align:center}
   #gauge .lbl2{font-family:var(--round);font-weight:700;font-size:22px;color:#fff;text-shadow:0 2px 6px rgba(0,0,0,.45);margin-bottom:6px}
   #gauge.ready .lbl2{color:#ffd36a;animation:gpulse .4s infinite alternate}
@@ -212,6 +223,12 @@
   <div class="chip" id="speedo"><div class="tags"><span id="hDraft" hidden>SLIPSTREAM</span><span id="hDmg" hidden></span><span id="hTyre"></span><span id="hWx" hidden></span></div><b id="hSpd">0</b><small>km/h</small><div class="meter"><i id="hMeter"></i></div></div>
 </div>
 <div id="coach" class="chip" hidden></div>
+<div id="demoCap" hidden></div>
+<div id="keypad" hidden>
+  <div class="row"><span data-k="up">↑<small>gas</small></span></div>
+  <div class="row"><span data-k="left">←</span><span data-k="down">↓<small>brake</small></span><span data-k="right">→</span></div>
+  <div class="row"><span data-k="drift" class="wide">Space<small>DRIFT</small></span></div>
+</div>
 <div id="gauge" hidden><div class="lbl2"></div><div class="bar"><div class="fill"></div></div></div>
 <div id="big" hidden></div>
 <div id="toast" hidden></div>
@@ -268,6 +285,7 @@
     <button class="go" id="resumeBtn" style="margin-top:4px">Resume</button>
     <button class="alt" id="trackBtn">Back on track</button>
     <button class="alt" id="restartBtn">Restart race</button>
+    <button class="alt" id="demoPause" hidden>Watch the demo</button>
     <button class="alt" id="soundBtn">Sound: on</button>
     <button class="alt" id="quitBtn">Quit to menu</button>
   </div>
@@ -2118,6 +2136,7 @@ addEventListener('keydown', e => {
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(k)) e.preventDefault();
   if (e.repeat) { keys.add(k); return; }
   keys.add(k);
+  if (demo.on && state === 'race' && !['KeyP', 'Escape', 'KeyM'].includes(k)) stopDemo('Your turn! Same keys: steer + hold Space in the corner.');
   if ((k === 'KeyP' || k === 'Escape') && (state === 'race' || state === 'countdown')) pauseGame();
   else if ((k === 'KeyP' || k === 'Escape') && state === 'paused') resumeGame();
   else if (k === 'KeyM') toggleSound();
@@ -2129,7 +2148,7 @@ addEventListener('blur', () => keys.clear());
 document.addEventListener('visibilitychange', () => { if (document.hidden && (state === 'race' || state === 'countdown')) pauseGame(); });
 
 document.querySelectorAll('.tb').forEach(b => {
-  const k = b.dataset.k, on = e => { e.preventDefault(); touchKeys.add(k); b.classList.add('on'); try { b.setPointerCapture(e.pointerId); } catch {} audioInit(); };
+  const k = b.dataset.k, on = e => { e.preventDefault(); if (demo.on && state === 'race') stopDemo('Your turn!'); touchKeys.add(k); b.classList.add('on'); try { b.setPointerCapture(e.pointerId); } catch {} audioInit(); };
   const off = e => { e.preventDefault(); touchKeys.delete(k); b.classList.remove('on'); };
   b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('lostpointercapture', off);
   b.addEventListener('contextmenu', e => e.preventDefault());
@@ -2216,6 +2235,67 @@ function aiInput(c, dt) {
 }
 
 const DRIFT_BLUE = 0.85, DRIFT_ORANGE = 1.8;
+/* demo: the game drives your car with the same keys you have, and shows them */
+const demo = { on: false, phase: '', cap: '' };
+function demoInput(c, dt) {
+  const { K, N, seg, X, Z, NX, NZ } = TR;
+  c.turbo = 0;
+  const base = aiInput(c, dt);                   // the rivals' line and corner speed
+  const at = d => K[(c.idx + Math.round(d / seg)) % N];
+  let kmax = 0, kdir = 0;
+  for (let d = 8; d <= 40; d += 4) { const k = at(d); if (Math.abs(k) > kmax) { kmax = Math.abs(k); kdir = Math.sign(k); } }   // kdir: +1 right turn (K > 0), -1 left
+  const q = v => v > 0.33 ? 1 : v < -0.33 ? -1 : 0;   // a keyboard only has on and off
+  let steer = q(base.steer), throttle = base.throttle > 0 ? 1 : base.throttle < -0.3 ? -1 : 0, drift = false;
+  let kv = 0; for (let d = 4; d <= 10 + c.vf * 1.2; d += 3) kv = Math.max(kv, Math.abs(at(d)));
+  const vD = Math.sqrt(DEMO_G * c.stats.grip * gripF(c) / Math.max(kv, 1e-4));       // safe speed for a slide
+  const speedKey = () => c.vf < vD - 1 ? 1 : c.vf > vD + 1.5 ? -1 : 0;
+  if (!c.drift) {
+    if (kmax > 1 / 75 && c.vf > 17 && Math.abs(at(4)) > 1 / 110 && !c.offroad) { drift = true; steer = kdir; throttle = speedKey(); demo.phase = 'enter'; }
+    else if (kmax > 1 / 75) throttle = Math.min(throttle, speedKey());
+    else demo.phase = kmax > 1 / 75 ? 'approach' : 'straight';
+  } else {
+    // keep the slide on the road: aim at a point ahead on the line and steer the drift toward it
+    const j = (c.idx + Math.round((8 + c.vf * 0.45) / seg)) % N, tx = X[j] + NX[j] * c.lane * 0.6, tz = Z[j] + NZ[j] * c.lane * 0.6;
+    const fx = Math.sin(c.h), fz = Math.cos(c.h), dx = tx - c.x, dz = tz - c.z;
+    const want = clamp(-Math.atan2(dx * fz - dz * fx, dx * fx + dz * fz) * 2.8, -1, 1);   // steering the car needs
+    const d = c.drift, sNeed = d * (want * d - 0.5) / 0.5;                                // key that gives it while drifting
+    steer = q(sNeed); throttle = speedKey();
+    const straight = Math.max(Math.abs(at(6)), Math.abs(at(14))) < 1 / 140;
+    const nearWall = Math.abs(c.lat) > W + KERB - 0.3 && Math.sign(c.lat) === -d;     // sliding out toward the wall
+    drift = !((straight && c.driftT >= DRIFT_BLUE) || c.driftT >= 2.6 || nearWall);
+    demo.phase = drift ? (c.driftT >= DRIFT_ORANGE ? 'orange' : c.driftT >= DRIFT_BLUE ? 'blue' : 'hold') : 'release';
+  }
+  return { throttle, steer, drift };
+}
+let DEMO_G = 20;
+const DEMO_CAP = {
+  straight: 'Straight: hold ↑ only',
+  approach: 'Corner coming: stay on ↑, line up on the outside',
+  enter: 'Turn in: steer AND press DRIFT together',
+  hold: 'Drifting: keep DRIFT held, tap ← → to stay on the road',
+  blue: 'Blue sparks: keep holding for orange…',
+  orange: 'Orange! Hold until the road straightens…',
+  release: 'Let go of DRIFT: boost!',
+};
+/* on-screen keys: which buttons are down right now */
+function keyPad(inp) {
+  const kp = $('keypad'); if (kp.hidden) return;
+  const on = { up: inp.throttle > 0, down: inp.throttle < 0, left: inp.steer < 0, right: inp.steer > 0, drift: !!inp.drift };
+  for (const k in on) kp.querySelector('[data-k="' + k + '"]').classList.toggle('on', on[k]);
+  if (demo.on) {
+    const cap = DEMO_CAP[demo.phase] || '';
+    if (cap !== demo.cap) { demo.cap = cap; $('demoCap').textContent = cap; }
+  }
+}
+function startDemo() {
+  settings.mode = 'drill'; store.set('mode', 'drill');
+  demo.on = true; demo.cap = ''; startRace();
+}
+function stopDemo(msg) {
+  if (!demo.on) return;
+  demo.on = false; $('demoCap').hidden = true; timeScale = 1;
+  drillPanel(); if (msg) toast(msg, false, 2.5);
+}
 function endDrift(c, why) {
   const lvl = why === 'wall' ? 0 : c.driftT >= DRIFT_ORANGE ? 2 : c.driftT >= DRIFT_BLUE ? 1 : 0;
   if (lvl === 2) { c.boostT = Math.max(c.boostT, 1.1); if (c.isPlayer) sfxBoost(); }
@@ -2233,10 +2313,13 @@ function physics(c, inp, dt) {
   if (c.isPlayer && !c.drift && inp.drift) c.driftFail = c.vf <= 14 ? 'slow' : c.offroad ? 'grass' : Math.abs(c.steer) <= 0.3 ? 'steer' : null;
   else if (c.isPlayer) c.driftFail = null;
   let steerEff = c.steer;
-  if (c.drift) { steerEff = c.drift * (0.55 + 0.5 * c.steer * c.drift); c.driftT += dt * (0.75 + 0.45 * Math.abs(c.steer)) * c.stats.drift; }
+  // a drift eases in over ~0.4 s, so pressing DRIFT no longer snaps the nose round
+  c.driftIn = c.drift ? Math.min(1, (c.driftIn || 0) + dt / 0.4) : 0;
+  const din = c.driftIn;
+  if (c.drift) { steerEff = lerp(c.steer, c.drift * (0.5 + 0.5 * c.steer * c.drift), din); c.driftT += dt * (0.75 + 0.45 * Math.abs(c.steer)) * c.stats.drift; }
 
   const sp = Math.abs(c.vf);
-  const rate = PHY.steer * Math.min(1, sp / 9) * (1 - 0.32 * Math.min(1, sp / PHY.maxv)) * (c.drift ? 1.3 : 1);
+  const rate = PHY.steer * Math.min(1, sp / 9) * (1 - 0.32 * Math.min(1, sp / PHY.maxv)) * (1 + 0.15 * din);
   c.h -= steerEff * rate * dt * (c.vf < -0.5 ? -1 : 1);
   c.h += c.yawV * dt; c.yawV *= Math.exp(-dt * 3.2);           // spin from impacts, damped by the tyres
 
@@ -2254,10 +2337,10 @@ function physics(c, inp, dt) {
   if (vf > maxv) vf += (maxv - vf) * Math.min(1, dt * (c.offroad ? 2.2 : 1.1));
   if (c.drift && c.driftT > 0) vf -= 1.2 * dt;
   // tyres can only pull the car round so hard: past the limit it slides wide and scrubs speed
-  let dv = vl * (1 - Math.exp(-(c.drift ? PHY.driftGrip : c.offroad ? 5 : PHY.grip) * dt));
+  let dv = vl * (1 - Math.exp(-(c.drift ? lerp(PHY.grip, PHY.driftGrip, din) : c.offroad ? 5 : PHY.grip) * dt));
   const hit = c.hitT > 0 ? 0.3 + 0.7 * (1 - c.hitT / 0.35) : 1;   // tyres skate briefly after a hit, so the push moves the car
   if (c.hitT > 0) c.hitT -= dt;
-  const cap = (c.drift ? PHY.driftG : c.offroad ? 14 : PHY.latG) * st.grip * gripF(c) * hit * dt;
+  const cap = (c.drift ? lerp(PHY.latG, PHY.driftG, din) : c.offroad ? 14 : PHY.latG) * st.grip * gripF(c) * hit * dt;
   if (Math.abs(dv) > cap) dv = Math.sign(dv) * cap;
   vl -= dv;
   const slip = Math.abs(vl);
@@ -2450,17 +2533,23 @@ const LESSONS = [
 ];
 const DRILL_PAY = 500;
 const drill = { i: 0, n: 0, tally: [0, 0, 0], tipT: 0, done: false };
+let timeScale = 1;
 function drillReset() {
   Object.assign(drill, { i: 0, n: 0, tally: [0, 0, 0], tipT: 0, done: false, last: '' });
   $('coach').hidden = settings.mode !== 'drill'; $('gauge').hidden = true;
+  $('keypad').hidden = settings.mode !== 'drill' && !settings.showKeys;
+  $('keypad').classList.toggle('touchy', TOUCH);
+  $('demoCap').hidden = !demo.on; timeScale = demo.on ? 0.6 : 1;
   if (settings.mode === 'drill') drillPanel();
 }
 function drillPanel() {
   const L = LESSONS[drill.i], el = $('coach');
+  if (demo.on) { el.innerHTML = `<small>Demo · 0.6× speed</small><b>Watch the keys</b><span>The game is driving your car with the same keys you have. The keys light up bottom left as they are pressed. Press any key ${TOUCH ? 'or tap' : ''} to take over and try it yourself.</span>`; return; }
   if (drill.done) { el.innerHTML = `<b>Drift school complete!</b><span>Free practice: keep drifting as long as you like. Pause → Quit to menu when done.</span><div class="tally">Blue ${drill.tally[1]} · Orange ${drill.tally[2]}</div>`; return; }
   el.innerHTML = `<small>Lesson ${drill.i + 1} of ${LESSONS.length}</small><b>${L.title}</b><span>${L.how}</span><div class="pips">${Array.from({ length: L.need }, (_, k) => `<i class="${k < drill.n ? 'on' : ''}"></i>`).join('')}</div>`;
 }
 function drillDrift(lvl, t, why) {
+  if (demo.on) return;
   if (t >= 0.4 || why) drill.tally[lvl]++;
   const msg = why === 'wall' ? ['Hit the wall: the drift and its boost are lost. Start the drift a little earlier and wider.', true]
     : why === 'slow' && !lvl ? ['Too slow: the drift ended below about 30 km/h. Keep some gas on while drifting.', true]
@@ -2496,7 +2585,7 @@ function drillStep(dt) {
   } else g.hidden = true;
   // hints: why a drift will not start, and corners coming up
   drill.tipT -= dt;
-  if (drill.tipT > 0 || c.drift) return;
+  if (drill.tipT > 0 || c.drift || demo.on) return;
   let tip = '';
   if (c.driftFail === 'slow') tip = 'Too slow to drift: get above 50 km/h first.';
   else if (c.driftFail === 'steer') tip = 'Holding DRIFT: now steer into the corner to start sliding.';
@@ -2624,7 +2713,8 @@ function step(dt) {
         c.skill = c.base * (1 + clamp(gap * 0.6, -0.06, DIFFS[settings.diff].band));
       } else c.skill = c.base;
       inp = aiInput(c, dt);
-    } else inp = playerInput();
+    } else inp = c.isPlayer && demo.on ? demoInput(c, dt) : playerInput();
+    if (c.isPlayer) keyPad(inp);
     physics(c, inp, dt);
   }
   if (!TT()) collideCars();
@@ -2886,8 +2976,10 @@ function buildMenu() {
   } else if (settings.mode === 'drill') {
     box.innerHTML = `<b>Drift school</b><span>Learn the drift boost step by step, alone on the track. A coach tells you when a corner is coming, a big gauge shows the charge while you drift, and every drift gets feedback.</span>`
       + `<div class="cups">${LESSONS.map((L, k) => `<span>${k + 1}. ${L.title}</span>`).join('')}</div>`
-      + `<span>${store.get('drill.done', false) ? '✓ Completed. Practise any time.' : 'Finish all four lessons: +' + fmtCr(DRILL_PAY)}</span>`;
+      + `<span>${store.get('drill.done', false) ? '✓ Completed. Practise any time.' : 'Finish all four lessons: +' + fmtCr(DRILL_PAY)}</span>`
+      + `<button class="alt" id="demoBtn">▶ Watch a demo first: see which keys make a drift</button>`;
     box.hidden = false;
+    $('demoBtn').onclick = startDemo;
   } else if (settings.mode === 'tt') {
     const def = curTrack(), m = medalTimes(def), bl = store.get('lap' + (def.v || 2) + '.' + def.id, null), got = store.get('medal.' + def.id, 0);
     box.innerHTML = `<b>Time trial · ${def.name}</b><span>Just you and the ghost of your best lap. Beat the target lap times for medals and credits.</span>`
@@ -3069,13 +3161,15 @@ function showUI(mode) {
   $('results').hidden = mode !== 'results';
   const racing = mode === 'race' || mode === 'pause';
   $('hud').hidden = !racing;
-  if (!racing) { $('coach').hidden = true; $('gauge').hidden = true; } else if (mode === 'race') $('coach').hidden = settings.mode !== 'drill';
+  if (!racing) { $('coach').hidden = true; $('gauge').hidden = true; $('keypad').hidden = true; $('demoCap').hidden = true; } else if (mode === 'race') $('coach').hidden = settings.mode !== 'drill';
   $('touch').hidden = !(TOUCH && mode === 'race');
   $('hallLink').hidden = racing || mode === 'results' || mode === 'garage';
   if (mode !== 'race') { $('big').hidden = true; $('toast').hidden = true; toastT = 0; }
 }
 
 function toMenu() {
+  if (demo.on) { demo.on = false; $('demoCap').hidden = true; }
+  timeScale = 1;
   state = 'menu'; finishCount = 0;
   if (ghost.mesh) ghost.mesh.visible = false; $('posBox').hidden = false;
   if (WX.wet) applyWeather(false);
@@ -3200,7 +3294,9 @@ function showResults() {
   showUI('results');
 }
 
-function pauseGame() { if (state !== 'race' && state !== 'countdown') return; pauseGame.prev = state; state = 'paused'; touchKeys.clear(); document.querySelectorAll('.tb.on').forEach(b => b.classList.remove('on')); showUI('pause'); }
+function pauseGame() { $('demoPause').hidden = settings.mode !== 'drill' || demo.on; pauseGameInner(); }
+$('demoPause').onclick = () => { demo.on = true; startRace(); };
+function pauseGameInner() { if (state !== 'race' && state !== 'countdown') return; pauseGame.prev = state; state = 'paused'; touchKeys.clear(); document.querySelectorAll('.tb.on').forEach(b => b.classList.remove('on')); showUI('pause'); }
 function resumeGame() { if (state !== 'paused') return; state = pauseGame.prev; showUI('race'); }
 $('pauseBtn').onclick = pauseGame;
 $('resumeBtn').onclick = resumeGame;
@@ -3208,7 +3304,7 @@ $('restartBtn').onclick = startRace;
 $('trackBtn').onclick = () => { if (pauseGame.prev === 'race' && !player.finished) resetCar(player); resumeGame(); };
 $('quitBtn').onclick = toMenu;
 $('soundBtn').onclick = toggleSound;
-$('startBtn').onclick = startRace;
+$('startBtn').onclick = () => { demo.on = false; startRace(); };
 $('menuBtn').onclick = toMenu;
 
 /* =====================================================================
@@ -3284,7 +3380,7 @@ function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   if (state !== 'paused') {
-    acc += dt;
+    acc += dt * timeScale;
     let n = 0;
     while (acc >= STEP && n < 8) { step(STEP); acc -= STEP; n++; }
     if (n === 8) acc = 0;
@@ -3323,7 +3419,7 @@ buildMinimap();
 assignCars();
 toMenu();
 camera.position.set(cars[0].x - 12, 6, cars[0].z - 12);
-window.__game = { snapCam() { for (let i = 0; i < 80; i++) updateCamera(0.05); }, get state() { return state; }, cars, camera, scene, renderer, MODELS, get TR() { return TR; }, settings, startRace, toMenu, step, keys, get raceTime() { return raceTime; }, drill, get player() { return player; } };
+window.__game = { snapCam() { for (let i = 0; i < 80; i++) updateCamera(0.05); }, get state() { return state; }, cars, camera, scene, renderer, MODELS, get TR() { return TR; }, settings, startRace, toMenu, step, keys, get raceTime() { return raceTime; }, drill, demo, setDemoG(v) { DEMO_G = v; }, get player() { return player; } };
 requestAnimationFrame(frame);
 </script>
 </body>
