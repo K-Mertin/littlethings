@@ -98,8 +98,8 @@ function reachFrom(S, c0, r0) {     // BFS over non-obstacle cells
 // ---------- state ----------
 let state = 'menu', mode = 'slow', rule = 'pass', level = 1, demo = false;
 let sim = null, L = 14, SS = 10, okCell = null, boardId = 0, walls = null, obKind = null;
-let from = [], segs = [], acc = 0, stepT = 0.3, frac = 0, blockT = 0, bumpAnim = 0, bumpDir = 0, lastEv = '';
-let lastEatTick = 0, fruits = [], item = null, eaten = 0, goal = 0, score = 0, combo = 0, lastEatT = -9, bumps = 0, best0 = 0;
+let segs = [], stepT = 0.3, blockT = 0, pendingEat = null, bumpAnim = 0, bumpDir = 0, lastEv = '';
+let frameMs = 0, lastEatTick = 0, fruits = [], item = null, eaten = 0, goal = 0, score = 0, combo = 0, lastEatT = -9, bumps = 0, best0 = 0;
 let starT = 0, slowT = 0, rainbowT = 0, munchT = 0, wave = 9, oopsT = 0, winT = 0, giggleT = 0, moodT = 0, mood = 'happy';
 let headAng = 0, t = 0, frames = 0, floats = [], growCols = [], spawnLog = [], botOn = false, timeScale = 1, ticks = 0, passes = 0, roundId = 0;
 let padOn = MG.store.get('snake.pad', (window.matchMedia && matchMedia('(pointer: coarse)').matches) || navigator.maxTouchPoints > 0);
@@ -223,11 +223,12 @@ function speedFor() {
   return 0.31 - (level - 1) * 0.006;
 }
 function resetRun() {
-  from = sim.body.map(p => p.slice()); segs = sim.body.map((_, i) => ({ col: i === 0 ? 'green' : i % 2 ? 'mint' : 'green', born: -9 }));
-  acc = 0; frac = 0; blockT = 0; bumpAnim = 0; lastEv = ''; fruits = []; item = null; eaten = 0; score = 0; combo = 0; lastEatT = -9;
+  segs = sim.body.map((_, i) => ({ col: i === 0 ? 'green' : i % 2 ? 'mint' : 'green', born: -9 }));
+  blockT = 0; pendingEat = null; bumpAnim = 0; lastEv = ''; fruits = []; item = null; eaten = 0; score = 0; combo = 0; lastEatT = -9;
   starT = slowT = rainbowT = munchT = 0; wave = 9; oopsT = 0; winT = 0; giggleT = 0; moodT = 0; mood = 'happy'; growCols = []; floats = []; spawnLog = []; passes = 0;
   headAng = 0; ticks = 0; lastEatTick = 0; MG.fx.clear();
   stepT = speedFor();
+  resetGlide();
   const nf = mode === 'slow' ? 2 : 1;
   for (let i = 0; i < nf; i++) spawnFruit();
 }
@@ -424,12 +425,8 @@ addEventListener('keydown', e => {
 
 // ---------- update ----------
 function update(dt) {
+  if (state === 'play' || state === 'menu' || (unit && unit.stop && !atCentre)) glide(dt);
   if (state === 'play' || state === 'menu') {
-    const k = slowT > 0 ? 0.6 : 1;
-    acc += dt * k;
-    let guard = 0;
-    while (acc >= stepT && guard++ < 20 && (state === 'play' || state === 'menu')) { acc -= stepT; tick(); }
-    frac = lastEv === 'block' || lastEv === 'wall' ? 0 : clamp(acc / stepT, 0, 1);
     if (lastEv === 'block' || lastEv === 'wall') { blockT += dt; if (blockT > 0.9 && state === 'play') autoTurn(); }
     if (item) { item.life -= dt; if (item.life <= 0) item = null; }
     starT = Math.max(0, starT - dt); slowT = Math.max(0, slowT - dt); rainbowT = Math.max(0, rainbowT - dt);
@@ -440,36 +437,42 @@ function update(dt) {
   moodT = Math.max(0, moodT - dt); if (!moodT && state === 'play') mood = 'happy';
   pressT = Math.max(0, pressT - dt);
   // head turns smoothly toward where it is going
-  const target = [0, Math.PI / 2, Math.PI, -Math.PI / 2][scr2can(sim.dir)];
+  // the head follows the path tangent (on a rounded corner it turns with the curve); standing still it faces where it will go
+  const target = atCentre ? [0, Math.PI / 2, Math.PI, -Math.PI / 2][scr2can(sim.queue.length ? sim.queue[0] : sim.dir)] : Math.atan2(land ? headTan[1] : headTan[0], land ? headTan[0] : headTan[1]);
   let da = target - headAng; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
-  headAng += da * Math.min(1, dt * 16);
+  headAng += da * Math.min(1, dt * 22);
   // sparkle trail from the star
-  if (starT > 0 && (frames % 3 === 0)) { const p = segXY(sim.body.length - 1); MG.fx.burst(p.x, p.y, { n: 2, colors: ['#ffd23f', '#fff3a0', '#fff', '#ff9cc2'], shape: 'star', speed: 40, up: 20, grav: 0, size: Math.max(2.5, cs * 0.09), life: 0.7 }); }
+  if (starT > 0 && (frames % 3 === 0)) { const p = tailXY(); MG.fx.burst(p.x, p.y, { n: 2, colors: ['#ffd23f', '#fff3a0', '#fff', '#ff9cc2'], shape: 'star', speed: 40, up: 20, grav: 0, size: Math.max(2.5, cs * 0.09), life: 0.7 }); }
   for (const f of floats) { f.life -= dt; f.y -= 34 * dt; } floats = floats.filter(f => f.life > 0);
   MG.fx.step(dt);
 }
 function tick() {
+  if (pendingEat) {          // the fruit is eaten when the head really reaches it (one glide after the logic entered the cell)
+    const e = pendingEat; pendingEat = null; eat(e[0], e[1]);
+    if (state !== 'play' && state !== 'menu') { if (!atCentre) { unit = mkLine(mid(pU, hU), hU, true); uprog = 0; } return; }
+  }
   if ((botOn || demo) && sim) { const d = botDir(); if (d >= 0 && d !== sim.dir) { sim.queue = []; core.turn(sim, d); } }
   const old = sim.body, n = old.length;
   const r = core.step(sim);
   ticks++;
   if (r.ev === 'move' || r.ev === 'pass') {
-    from = sim.body.map((_, i) => old[Math.min(i, n - 1)].slice());
+    const nU = [hU[0] + DX[sim.dir], hU[1] + DY[sim.dir]];
+    unit = atCentre ? mkLine(hU, mid(hU, nU)) : mkTurn(mid(pU, hU), hU, mid(hU, nU));
+    pU = hU; hU = nU; atCentre = false; uprog = 0;
     if (sim.body.length > n) { segs.push({ col: growCols.shift() || 'green', born: t }); if (rainbowT > 0) segs[segs.length - 1].col = 'rainbow'; }
     lastEv = r.ev; blockT = 0;
     if (r.ev === 'pass') { passes++; if (giggleT <= 0 && !demo) { giggleT = 2.2; giggle(); addFloat(r.c, r.r, 'Hee hee! 😆', 1, '#ffe0f0'); mood = 'tongue'; moodT = 0.8; } }
-    eat(r.c, r.r);
+    pendingEat = [r.c, r.r];
     return;
   }
-  // bumped into something
-  from = sim.body.map(p => p.slice());
+  // bumped into something: glide on to the middle of the cell and stop there
+  if (!atCentre) { unit = mkLine(mid(pU, hU), hU, true); uprog = 0; }
   if (sim.selfPass && (r.ev === 'wall' || r.ev === 'block')) {          // can't-lose rules: stop, giggle, wait for a turn
     if (lastEv !== 'block' && lastEv !== 'wall') {
       bumps++; bumpAnim = 0.3; bumpDir = sim.dir;
       if (!demo) { snd('boing'); addFloat(sim.body[0][0], sim.body[0][1], 'Oops! 💫', 1, '#ffe0a0'); mood = 'ouch'; moodT = 0.7; hud(); }
     }
     lastEv = r.ev === 'wall' ? 'wall' : 'block';
-    acc = 0;
     return;
   }
   crash(r);
@@ -481,10 +484,11 @@ function autoTurn() {          // waiting in front of a bush for a while: turn b
   sim.body.reverse(); segs = [segs[0]].concat(segs.slice(1).reverse());
   const a = sim.body[0], b = sim.body[1];
   if (b) for (let k = 0; k < 4; k++) { const q = core.ahead(sim, k, b); if (q && q[0] === a[0] && q[1] === a[1]) sim.dir = k; }
-  from = sim.body.map(p => p.slice()); sim.queue = []; blockT = 0; lastEv = '';
+  sim.queue = []; blockT = 0; lastEv = '';
+  resetGlide();
 }
 function crash(r) {
-  bumps++; bumpAnim = 0.35; bumpDir = sim.dir; lastEv = 'crash'; frac = 0;
+  bumps++; bumpDir = sim.dir; lastEv = 'crash'; if (atCentre) bumpAnim = 0.35;
   if (demo) { startDemo(); return; }
   state = 'oops'; oopsT = 0; mood = 'ouch'; moodT = 99;
   snd('boing'); snd('miss');
@@ -602,8 +606,8 @@ function sprite(key, size, paint) {
 function blit(s, cx, cy, k = 1) { const d = s.size * k; x.drawImage(s.c, cx - d / 2, cy - d / 2, d, d); }
 // a glossy jelly ball (one body segment); the soft shadow is part of the sprite
 function segSprite(col) {
-  return sprite('seg:' + col, cs * 1.3, (g, cx, cy) => {
-    const r = cs * 0.46, p = PAL[col] || PAL.green;
+  return sprite('seg:' + col, cs * 1.4, (g, cx, cy) => {
+    const r = cs * 0.52, p = PAL[col] || PAL.green;
     g.fillStyle = 'rgba(30,60,20,.18)'; g.beginPath(); g.ellipse(cx, cy + r * 0.42, r * 0.95, r * 0.62, 0, 0, 7); g.fill();
     const gr = g.createRadialGradient(cx - r * 0.35, cy - r * 0.4, r * 0.08, cx, cy + r * 0.1, r * 1.1);
     gr.addColorStop(0, p[0]); gr.addColorStop(0.35, p[1]); gr.addColorStop(0.8, p[2]); gr.addColorStop(1, p[3]);
@@ -801,19 +805,104 @@ function paintRock(g, p, rnd) {
 const lkey = () => `${W}x${H}:${cv._mgScale}:${boardId}:${land}:${Cd}:${cs.toFixed(2)}:${padOn}:${mode}`;
 
 // ---------- live drawing ----------
-// interpolated canonical position of segment i (wrap-aware)
-function segPos(i) {
-  const b = sim.body[i], f = from[i] || b;
-  let dx = b[0] - f[0], dy = b[1] - f[1];
-  if (dx > 1) dx -= L; else if (dx < -1) dx += L;
-  if (dy > 1) dy -= SS; else if (dy < -1) dy += SS;
-  return [f[0] + dx * frac, f[1] + dy * frac, dx, dy];
+// ---------- continuous movement ----------
+// The rules stay on the grid (core.step once per cell), but what you see is a point gliding at a constant speed along
+// the path of cell centres with rounded corners (radius ½ cell). hU / pU = the logical head cell and the one before,
+// "unwrapped": they keep counting past an open edge, so the path never jumps. unit = the piece of path being glided now:
+// from the middle of one cell edge, around the cell centre, to the middle of the next edge (½ cell before/after a centre).
+// The body is drawn along the trail the head left behind, one ball every SP cells of path length.
+let hU = [0, 0], pU = [0, 0], unit = null, uprog = 0, atCentre = true, waitAcc = 0, spd = 3;
+let trail = [], trailLen = [], headP = [0, 0], headTan = [1, 0], segPts = [];
+const SP = 1;
+const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+function mkLine(a, b, stop) { return { kind: 'line', a, b, len: Math.hypot(b[0] - a[0], b[1] - a[1]) || 1e-6, stop: !!stop }; }
+function mkTurn(a, v, b) {
+  if (Math.abs((a[0] - v[0]) * (b[1] - v[1]) - (a[1] - v[1]) * (b[0] - v[0])) < 1e-9) return mkLine(a, b);
+  const c = [a[0] + b[0] - v[0], a[1] + b[1] - v[1]], a0 = Math.atan2(a[1] - c[1], a[0] - c[0]);
+  let da = Math.atan2(b[1] - c[1], b[0] - c[0]) - a0; while (da > Math.PI) da -= Math.PI * 2; while (da < -Math.PI) da += Math.PI * 2;
+  return { kind: 'arc', c, a0, da, len: Math.abs(da) * 0.5 };
 }
-function segXY(i) { const p = segPos(i); return cellXY(p[0], p[1]); }
-function drawCopies(c, r, fn) {     // draws again on the other side when a segment is crossing an open edge
+function unitAt(u, k) {            // → [point, unit tangent]
+  if (u.kind === 'line') { const dx = u.b[0] - u.a[0], dy = u.b[1] - u.a[1]; return [[u.a[0] + dx * k, u.a[1] + dy * k], [dx / u.len, dy / u.len]]; }
+  const an = u.a0 + u.da * k, sg = Math.sign(u.da);
+  return [[u.c[0] + Math.cos(an) * 0.5, u.c[1] + Math.sin(an) * 0.5], [-Math.sin(an) * sg, Math.cos(an) * sg]];
+}
+function resetGlide() {
+  const b = sim.body, n = b.length;
+  hU = b[0].slice(); pU = n > 1 ? b[1].slice() : [hU[0] - 1, hU[1]];
+  unit = null; uprog = 0; atCentre = true; waitAcc = stepT * 0.25; spd = 1 / stepT;
+  // the trail: the body cells (tail → head) plus a little more behind the tail
+  trail = []; trailLen = [];
+  const t0 = b[n - 1], t1 = n > 1 ? b[n - 2] : [t0[0] + 1, t0[1]], ex = [t0[0] - t1[0], t0[1] - t1[1]];
+  for (let k = 3; k >= 1; k--) pushTrail([t0[0] + ex[0] * k, t0[1] + ex[1] * k]);
+  for (let i = n - 1; i >= 0; i--) pushTrail(b[i].slice());
+  headP = hU.slice(); headTan = [hU[0] - pU[0], hU[1] - pU[1]];
+  if (Math.abs(headTan[0]) + Math.abs(headTan[1]) !== 1) headTan = [DX[sim.dir], DY[sim.dir]];
+  layoutSegs();
+}
+function pushTrail(p) {
+  const l = trail.length;
+  if (l) { const q = trail[l - 1], d = Math.hypot(p[0] - q[0], p[1] - q[1]); if (d < 0.04) return; trailLen.push(trailLen[l - 1] + d); }
+  else trailLen.push(0);
+  trail.push(p);
+  if (trail.length > 4000) {             // forget the far past (keep enough for the whole body)
+    const need = (sim.body.length + 4) * SP, total = trailLen[trailLen.length - 1];
+    let cut = 0; while (cut < trail.length - 2 && total - trailLen[cut + 1] > need) cut++;
+    if (cut > 0) { trail.splice(0, cut); trailLen.splice(0, cut); }
+  }
+}
+function glide(dt) {
+  // speed in cells per second; follows changes (potion, faster 經典) smoothly instead of jumping
+  const want = (slowT > 0 ? 0.6 : 1) / stepT;
+  spd += (want - spd) * Math.min(1, dt * 5);
+  let dist = dt * spd;
+  for (let guard = 0; dist > 1e-9 && guard < 40; guard++) {
+    if (atCentre) {
+      if (state !== 'play' && state !== 'menu') break;
+      waitAcc += dist / spd; dist = 0;
+      if (waitAcc >= stepT * 0.5) { waitAcc = 0; tick(); if (!atCentre) uprog = 0; }
+      break;
+    }
+    const left = (1 - uprog) * unit.len;
+    if (dist < left) { uprog += dist / unit.len; dist = 0; break; }
+    dist -= left; uprog = 1;
+    if (unit.stop) { atCentre = true; waitAcc = 0; if (state === 'oops') bumpAnim = 0.35; break; }
+    if (state !== 'play' && state !== 'menu') break;
+    tick();
+    if (atCentre) break;
+  }
+  if (unit && !atCentre) { const [p, tg] = unitAt(unit, uprog); headP = p; headTan = tg; }
+  else headP = hU.slice();
+  pushTrail(headP.slice());
+  layoutSegs();
+}
+// body balls along the trail: ball i sits i·SP of path length behind the head
+function layoutSegs() {
+  const n = sim.body.length, last = trail.length - 1;
+  const total = trailLen[last] + Math.hypot(headP[0] - trail[last][0], headP[1] - trail[last][1]);
+  segPts = [[headP[0], headP[1], headTan[0], headTan[1]]];
+  let j = last;
+  for (let i = 1; i < n; i++) {
+    const T = total - i * SP;
+    let p, q;
+    if (T >= trailLen[last]) { p = trail[last]; q = headP; const span = total - trailLen[last] || 1; const k = (T - trailLen[last]) / span; segPts.push(lerpSeg(p, q, k)); continue; }
+    while (j > 0 && trailLen[j] > T) j--;
+    p = trail[j]; q = trail[Math.min(j + 1, last)];
+    const span = (trailLen[Math.min(j + 1, last)] - trailLen[j]) || 1, k = clamp((T - trailLen[j]) / span, 0, 1);
+    segPts.push(lerpSeg(p, q, k));
+  }
+}
+function lerpSeg(p, q, k) { const dx = q[0] - p[0], dy = q[1] - p[1], l = Math.hypot(dx, dy) || 1; return [p[0] + dx * k, p[1] + dy * k, dx / l, dy / l]; }
+// unwrapped canonical → a position inside the board (open edges in 慢慢玩)
+function wrapC(c, r) { if (mode !== 'slow') return [c, r]; return [((c + 0.5) % L + L) % L - 0.5, ((r + 0.5) % SS + SS) % SS - 0.5]; }
+function ptXY(p) { const w = wrapC(p[0], p[1]); return cellXY(w[0], w[1]); }
+function headXY() { return ptXY(headP); }
+function tailXY() { return ptXY(segPts[segPts.length - 1] || headP); }
+function drawCopies(c0, r0, fn) {     // draws again on the other side while a ball is crossing an open edge
+  const [c, r] = wrapC(c0, r0);
   fn(cellXY(c, r));
   if (mode !== 'slow') return;
-  const cc = c < 0 ? c + L : c > L - 1 ? c - L : null, rr2 = r < 0 ? r + SS : r > SS - 1 ? r - SS : null;
+  const m = 0.68, cc = c < m - 0.5 ? c + L : c > L - 0.5 - m ? c - L : null, rr2 = r < m - 0.5 ? r + SS : r > SS - 0.5 - m ? r - SS : null;
   if (cc != null) fn(cellXY(cc, r));
   if (rr2 != null) fn(cellXY(c, rr2));
   if (cc != null && rr2 != null) fn(cellXY(cc, rr2));
@@ -841,34 +930,34 @@ function drawSnake() {
   const n = sim.body.length, bodyR = cs * 0.46;
   const clip = mode === 'slow';
   if (clip) { x.save(); x.beginPath(); x.rect(ox, oy, Cd * cs, Rd * cs); x.clip(); }
-  // feet first (under the jelly balls), wiggling while it walks
-  const moving = state === 'play' || state === 'menu';
+  const moving = (state === 'play' || state === 'menu') && !atCentre;
+  // a gentle side-to-side wave runs backward along the body (phase by path length and time)
+  const wv = i => moving ? Math.sin(i * SP * 2.3 - t * 9) * 0.07 : 0;
+  // feet first (under the jelly balls), stepping while it walks
   for (let i = n - 1; i >= 1; i--) {
-    const p = segPos(i), a = sim.body[i - 1], b = sim.body[i];
-    let dx = a[0] - b[0], dy = a[1] - b[1]; if (Math.abs(dx) > 1) dx = -Math.sign(dx); if (Math.abs(dy) > 1) dy = -Math.sign(dy);
-    if (!dx && !dy) { dx = 1; }
-    const sx = land ? dx : dy, sy = land ? dy : dx, k = tailK(i, n);
+    const P = segPts[i]; if (!P) continue;
+    const tx = land ? P[2] : P[3], ty = land ? P[3] : P[2], k = tailK(i, n), w0 = wv(i);
     const wig = moving ? Math.sin(t * 16 + i * 1.4) * bodyR * 0.25 : 0, col = (PAL[segCol(i)] || PAL.green)[4];
-    drawCopies(p[0], p[1], q => {
+    drawCopies(P[0] - P[3] * w0, P[1] + P[2] * w0, q => {
       x.fillStyle = col;
       for (const sd of [-1, 1]) {
-        const w = wig * sd, fx = q.x - sy * sd * bodyR * 0.86 * k + sx * w, fy = q.y + sx * sd * bodyR * 0.86 * k + sy * w;
+        const w = wig * sd, fx = q.x - ty * sd * bodyR * 0.86 * k + tx * w, fy = q.y + tx * sd * bodyR * 0.86 * k + ty * w;
         x.beginPath(); x.ellipse(fx, fy + bodyR * 0.25, bodyR * 0.27 * k, bodyR * 0.2 * k, 0, 0, 7); x.fill();
       }
     });
   }
-  // body, tail first so the head is on top; a bulge runs down the body after eating
+  // body, tail first so the head is on top; a bulge runs down the body after eating; new balls ease in at the tail
   for (let i = n - 1; i >= 1; i--) {
-    const p = segPos(i), sg = segs[i], age = t - sg.born;
+    const P = segPts[i]; if (!P) continue;
+    const sg = segs[i], age = t - sg.born;
     let k = tailK(i, n);
-    if (age < 0.5) k *= age < 0.18 ? age / 0.18 * 1.2 : 1 + Math.sin((age - 0.18) * 20) * 0.12 * (1 - (age - 0.18) / 0.32);
-    const wv = wave * 14 - i; if (wv > -1.5 && wv < 1.5) k *= 1 + 0.22 * Math.cos(wv / 1.5 * Math.PI / 2);
+    if (age < 0.6) k *= age < 0.25 ? 0.25 + 0.75 * Math.sin(age / 0.25 * Math.PI / 2) * 1.12 : 1 + Math.sin((age - 0.25) * 18) * 0.1 * (1 - (age - 0.25) / 0.35);
+    const ww = wave * 14 - i; if (ww > -1.5 && ww < 1.5) k *= 1 + 0.22 * Math.cos(ww / 1.5 * Math.PI / 2);
     k *= 1 + Math.sin(t * 6 - i * 0.7) * 0.025;   // gentle breathing
-    const spr = segSprite(segCol(i));
-    drawCopies(p[0], p[1], q => blit(spr, q.x, q.y, k));
+    const spr = segSprite(segCol(i)), w0 = wv(i);
+    drawCopies(P[0] - P[3] * w0, P[1] + P[2] * w0, q => blit(spr, q.x, q.y, k));
   }
-  const hp = segPos(0);
-  drawCopies(hp[0], hp[1], q => drawHead(q.x, q.y));
+  drawCopies(headP[0], headP[1], q => drawHead(q.x, q.y));
   if (clip) x.restore();
 }
 function tailK(i, n) { const fromEnd = n - 1 - i; return fromEnd >= 3 ? 1 : 0.76 + fromEnd * 0.08; }
@@ -1051,7 +1140,7 @@ window.SNK = {
   get state() { return state; }, get mode() { return mode; }, get level() { return level; }, get rule() { return rule; }, get demo() { return demo; },
   get eaten() { return eaten; }, get goal() { return goal; }, get score() { return score; }, get bumps() { return bumps; }, get combo() { return combo; },
   get length() { return sim.body.length + sim.grow; }, get dir() { return sim.dir; }, get queue() { return sim.queue.slice(); }, get ticks() { return ticks; },
-  get passes() { return passes; }, get padOn() { return padOn; }, get frames() { return frames; }, get stepT() { return stepT; }, get lastEv() { return lastEv; },
+  get passes() { return passes; }, get padOn() { return padOn; }, get frames() { return frames; }, get stepT() { return stepT; }, get frameMs() { return frameMs; }, get lastEv() { return lastEv; },
   body: () => sim.body.map(p => p.slice()), fruits: () => fruits.map(f => ({ c: f.c, r: f.r, kind: f.kind })), item: () => item && { ...item },
   dims: () => ({ L, S: SS, Cd, Rd, cs, ox, oy, W, H, land, headerH, cssCell: cs * cssScale() }),
   board: () => ({ walls: Array.from(walls), ok: Array.from(okCell), C: L, R: SS }),
@@ -1061,16 +1150,20 @@ window.SNK = {
   toClient(lx, ly) { const rc = cv.getBoundingClientRect(), B = 3; return { x: rc.left + B + lx * (rc.width - 2 * B) / W, y: rc.top + B + ly * (rc.height - 2 * B) / H }; },
   core, reachFrom: (S, c, r) => Array.from(reachFrom(S, c, r)),
   autoplay(on) { botOn = !!on; }, speed(k) { timeScale = k; },
-  fast(sec) { const n = Math.round(sec / 0.02); for (let i = 0; i < n; i++) { update(0.02); t += 0.02; } },
+  fast(sec, step = 1 / 60) { const n = Math.round(sec / step); for (let i = 0; i < n; i++) { t += step; update(step); } },
+  headU: () => headP.slice(), segPts: () => segPts.map(p => [p[0], p[1]]), get atCentre() { return atCentre; },
+  screenPts: () => segPts.map(p => { const q = ptXY(p); return [q.x, q.y]; }),
   turnScreen: d => turnScreen(d), placeFruit(c, r, kind = 'apple') { fruits = [{ c, r, kind, born: t }]; },
   placeItem(c, r, kind) { item = { c, r, kind, life: 10, max: 10, born: t }; },
 };
 
 MG.loop(dt => {
   dt *= timeScale;
+  const t0 = performance.now();
   t += dt; frames++;
   update(dt);
   draw();
+  frameMs = frameMs * 0.9 + (performance.now() - t0) * 0.1;
   hud();
 });
 </script>
