@@ -123,8 +123,44 @@ const MG = (() => {
     clear: () => { [523, 659, 784, 1046].forEach((f, i) => tone(f, f, 0.09, 'square', 0.07, i * 0.06)); },
     over: () => { [392, 330, 262, 196].forEach((f, i) => tone(f, f * 0.98, 0.16, 'triangle', 0.13, i * 0.14)); },
     win: () => { [523, 659, 784, 659, 784, 1046].forEach((f, i) => tone(f, f, 0.12, 'square', 0.07, i * 0.1)); },
+    // --- softer, "juicier" sounds for matches and rewards (n = combo / chain size, bigger = higher & richer) ---
+    match: (n = 1) => { const k = Math.min(n, 8), base = 660 * Math.pow(2, (k - 1) / 12 * 2); [0, 4, 7, 12].forEach((st, i) => bell(base * Math.pow(2, st / 12), 0.35, 0.09, i * 0.045)); if (k >= 3) sparkle(0.16); },
+    combo: (n = 2) => { const k = Math.min(n, 10); for (let i = 0; i < Math.min(k, 6); i++) bell(523 * Math.pow(2, (i * 2 + k) / 12), 0.22, 0.07, i * 0.05); },
+    sparkle: () => sparkle(0),
+    coin: () => { tone(988, 988, 0.07, 'square', 0.05); tone(1319, 1319, 0.22, 'square', 0.05, 0.07); },
+    boing: () => { if (!ac || muted) return; const t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(180, t); o.frequency.exponentialRampToValueAtTime(520, t + 0.08); o.frequency.exponentialRampToValueAtTime(260, t + 0.22); g.gain.setValueAtTime(0.18, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.28); o.connect(g).connect(ac.destination); o.start(t); o.stop(t + 0.3); },
+    whoosh: () => noise(0.25, 400, 3000, 0.08),
+    yay: () => { [523, 659, 784, 1046, 1319].forEach((f, i) => bell(f, 0.5, 0.08, i * 0.07)); noise(0.35, 2000, 6000, 0.03, 0.3); },
+    perfect: () => { bell(1046, 0.3, 0.08); bell(1568, 0.3, 0.06, 0.03); },
+    miss: () => tone(200, 150, 0.12, 'sine', 0.08),
   };
-  function sfx(name) { if (SFX[name]) SFX[name](); }
+  // a soft bell: sine + quiet octave partial with a fast attack and long-ish decay
+  function bell(f, dur = 0.3, vol = 0.08, delay = 0) {
+    if (!ac || muted) return;
+    const t = ac.currentTime + delay;
+    for (const [mul, v] of [[1, 1], [2, 0.35], [3.01, 0.12]]) {
+      const o = ac.createOscillator(), g = ac.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(f * mul, t);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol * v, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
+      o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur + 0.02);
+    }
+  }
+  let noiseBuf = null;
+  function noise(dur, f0, f1, vol = 0.06, delay = 0) {
+    if (!ac || muted) return;
+    if (!noiseBuf) { noiseBuf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+    const t = ac.currentTime + delay, src = ac.createBufferSource(), bp = ac.createBiquadFilter(), g = ac.createGain();
+    src.buffer = noiseBuf; bp.type = 'bandpass'; bp.Q.value = 1.2; bp.frequency.setValueAtTime(f0, t); bp.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + dur * 0.3); g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
+    src.connect(bp).connect(g).connect(ac.destination); src.start(t); src.stop(t + dur + 0.02);
+  }
+  function sparkle(delay = 0) { for (let i = 0; i < 5; i++) bell(1800 + Math.random() * 1600, 0.18, 0.025, delay + i * 0.035); }
+  function sfx(name, arg) { if (SFX[name]) SFX[name](arg); }
+
+  // ---------- short feedback words: English + emoji so kids who can't read Chinese yet still get them ----------
+  // praise(level): 1 Good → 5 Fantastic ; JUDGE: rhythm-style hit words
+  const PRAISE = ['Good! 👍', 'Great! ✨', 'Super! ⭐', 'Amazing! 🌟', 'Fantastic! 🎉'];
+  function praise(level = 1) { return PRAISE[Math.max(0, Math.min(PRAISE.length - 1, level - 1))]; }
+  const WORDS = { perfect: 'Perfect! 🌟', great: 'Great! ✨', good: 'Good! 👍', miss: 'Miss 💨', oops: 'Oops! 🙈', tryAgain: 'Try again! 🔁', yes: 'Yes! ✅', no: 'No ❌', combo: n => `Combo ×${n} 🔥`, chain: n => `Chain ×${n} ⚡`, bonus: n => `+${n} ⭐`, levelUp: 'Level up! 🚀', clear: 'Clear! 🎉', wait: 'Wait… ⏳', full: 'Full! 🈵', hint: '💡', stuck: 'No moves 🔄' };
 
   // ---------- toast ----------
   let toastEl, toastT;
@@ -383,5 +419,5 @@ const MG = (() => {
     return { show(v) { b.hidden = !v; }, el: b };
   }
 
-  return { choose, pauseMenu, resume, barButton, init, stat, fit, panel, hide, panelOpen, best, record, sfx, toast, loop, rand, randi, pick, shuffle, store, puPu, fx, unlock, JELLY };
+  return { praise, WORDS, choose, pauseMenu, resume, barButton, init, stat, fit, panel, hide, panelOpen, best, record, sfx, toast, loop, rand, randi, pick, shuffle, store, puPu, fx, unlock, JELLY };
 })();
