@@ -1,18 +1,12 @@
-# Letter sounds (phonics)
+# Sound bank: phonics letter sounds
 
-Kokoro always puts a vowel next to a lone consonant (/s/ comes out as "ess"), so the 35 pure sounds
-(`⟦s⟧` lines in `audio/phrases.tsv`) are cut out of syllables instead:
+The letter sounds (⟦a⟧ … ⟦z⟧, ⟦sh⟧ ⟦ch⟧ ⟦th⟧, and the blends ⟦bl⟧ ⟦fl⟧ ⟦st⟧ ⟦sn⟧ ⟦fr⟧ ⟦tr⟧) were recorded by the family
+with the recorder page (one take per sound). The original takes are in `recorded/*.webm`.
 
-1. `node carriers.mjs` (run inside a folder where `kokoro-js` is installed) writes `bank/<sound>.wav`,
-   one syllable per sound, e.g. "sːˈɑː" for /s/.
-2. `cd bank && python3 ../extract.py` cuts each sound out:
-   - s f sh th: only the hiss before the vowel, stretched to 0.5 s
-   - m n l r v z: the hum before the vowel, stretched to 0.5 s
-   - b d g p t c k j h q w y ch: the stop with a very short schwa (0.22 s)
-   - bl fl st sn fr tr: the blend with a short schwa (0.36 s)
-   - a e i o u: the short vowel; x: the /ks/ at the end of "box"
-3. Encode `cut_<sound>.raw` (16-bit, 24 kHz, mono) to `audio/<id>.m4a`, where id = fnv1a32("pip|⟦sound⟧").
+To rebuild the game clips:
+1. `mkdir -p /tmp/wav /tmp/out; for f in recorded/*.webm; do ffmpeg -i $f -ac 1 -ar 44100 -af highpass=f=70 /tmp/wav/$(basename ${f%.webm}).wav; done`
+2. `python3 trim-recorded.py /tmp/wav /tmp/out` (needs numpy)
+3. Each `/tmp/out/<key>.wav` becomes `audio/<id>.m4a`, where id = fnv1a32("pip|⟦key⟧"), e.g.
+   `ffmpeg -i /tmp/out/b.wav -ar 24000 -c:a aac -b:a 64k -ac 1 audio/<id>.m4a`
 
-**Exceptions:** a e i o u f v l z and sh ch th come from human recordings on Wikimedia Commons (CC BY-SA 3.0), see `wikimedia/CREDITS.md`.
-
-**Blends** (bl fl st sn fr tr) are cut from whole Kokoro words (blˈɑːk, flˈæɡ, stˈɑːɹ, snˈeɪk, fɹˈɑːɡ, tɹˈiː): from the start of the consonants up to the vowel, so there is no added "uh", then slowed 1.7×.
+To re-record one sound, record it again and repeat the steps for that key.

@@ -278,6 +278,13 @@ div.ltile{display:flex;align-items:center;justify-content:center}
 .parent h3{font-size:17px;margin:18px 0 6px;color:var(--purple)}
 .parent p,.parent li,.parent label{font-size:15px;line-height:1.6}
 .parent .note{color:var(--mute);font-size:13px}
+.cred{text-align:left;max-height:90vh;overflow-y:auto}
+.cred p,.cred li{font-size:14px;line-height:1.45}
+.cred ul{columns:2;column-gap:20px;padding-left:18px;margin:8px 0}
+@media (max-width:600px){.cred ul{columns:1}}
+.credit{position:fixed;right:max(12px,env(safe-area-inset-right));bottom:max(10px,env(safe-area-inset-bottom));z-index:5;border:none;background:rgba(255,255,255,.8);
+  color:var(--mute);border-radius:14px;padding:6px 10px;font-size:12px;font-family:var(--ui)}
+.credit[hidden]{display:none}
 .parent .set{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line)}
 .parent select,.parent input[type=range]{font-size:15px;min-height:40px;max-width:55%}
 .parent input[type=checkbox]{width:26px;height:26px}
@@ -380,6 +387,14 @@ div.ltile{display:flex;align-items:center;justify-content:center}
     <div class="row"><button class="pbtn" id="voiceRetry">再試一次</button><button class="btn" id="voiceOk" style="font-family:var(--zh)">知道了</button></div>
   </div>
 </div>
+<div class="overlay" id="credOv">
+  <div class="panel parent cred">
+    <h2>Sounds</h2>
+    <p>The letter sounds (phonics) were recorded by our family for ABC Island.</p>
+    <p class="note">Pip's voice: <a href="https://huggingface.co/hexgrad/Kokoro-82M" target="_blank" rel="noopener">Kokoro-82M</a> (Apache-2.0), voice af_heart.</p>
+    <div class="row"><button class="btn" id="credOk">OK</button></div>
+  </div>
+</div>
 <div class="overlay" id="gateOv">
   <div class="panel parent" style="text-align:center">
     <h2>家長區</h2>
@@ -389,6 +404,7 @@ div.ltile{display:flex;align-items:center;justify-content:center}
     <div class="row"><button class="pbtn" id="gateX">取消</button></div>
   </div>
 </div>
+<button class="credit" id="credBtn" hidden>ⓘ Sounds</button>
 <div class="overlay" id="parentOv"><div class="panel parent" id="parentP"></div></div>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><path id="mpath"/></svg>
 
@@ -716,6 +732,10 @@ function voiceMissing() {
   $('#voiceOv').dataset.shown = '1'; $('#voiceOv').classList.add('on');
 }
 $('#voiceOk').onclick = () => $('#voiceOv').classList.remove('on');
+// where the sounds come from (shown on the phonics and blends screens)
+$('#credBtn').onclick = () => $('#credOv').classList.add('on');
+$('#credOk').onclick = () => $('#credOv').classList.remove('on');
+const CRED_SCREENS = new Set(['phonics', 'phonicsQuiz', 'blendPick', 'blendWords', 'pairLesson', 'pairQuiz']);
 $('#voiceRetry').onclick = () => { $('#voiceOv').classList.remove('on'); TTS.broken = false; TTS.heard = false; TTS.load(); delete $('#voiceOv').dataset.shown; say('Hello! I am Pip.'); };
 
 /* ---------------- confetti ---------------- */
@@ -743,6 +763,7 @@ function go(id, arg) {
   $('#bar').hidden = id === 'start';
   $('#pipbar').hidden = id === 'start';
   $('#backBtn').hidden = id === 'home';
+  $('#credBtn').hidden = !CRED_SCREENS.has(id);
   $('#title').textContent = sc.title || '';
   $('#prog').innerHTML = '';
   $('#stkN').textContent = S.stickers.length;
@@ -819,15 +840,16 @@ Screens.tracePick = {
 
 /* ---------------- write: tracing ---------------- */
 const TR = { cv: null, cx: null, dpr: 1, W: 0, H: 0, s: 1, ox: 0, oy: 0, l: 'a', stage: 0, strokes: [], cur: 0, ink: [],
-  down: false, active: false, last: null, demo: null, miss: 0, done: false, raf: 0 };
-const TOL = [12, 14, 16];
+  down: false, active: false, last: null, demo: null, miss: 0, done: false, raf: 0, trails: [], pend: [] };
+// how far (in letter units; the letter box is 100 wide) the finger may stray from the stroke, per stage
+const TOL = [9, 10, 11];
 const mpath = $('#mpath');
 function buildStrokes(l) {
   return STROKES[l].map(d => {
     mpath.setAttribute('d', d);
     const len = mpath.getTotalLength(), n = Math.max(1, Math.ceil(len / 5)), pts = [];
     for (let i = 0; i <= n; i++) { const p = mpath.getPointAtLength(len * i / n); pts.push({ x: p.x, y: p.y }); }
-    return { d, p2: new Path2D(d), pts, prog: 0 };
+    return { d, p2: new Path2D(d), pts, prog: 0, reach: -1 };
   });
 }
 function trResize() {
@@ -858,18 +880,19 @@ function trDraw() {
   } else if (TR.stage === 1 && S.settings.ghost) {
     for (const st of TR.strokes) { c.strokeStyle = '#f0f4f9'; c.lineWidth = 14; c.stroke(st.p2); }
   }
-  // finished strokes and progress
-  c.lineWidth = 10;
+  // finished strokes and progress, light underneath the child's own lines
+  c.lineWidth = 10; c.globalAlpha = 0.35;
   TR.strokes.forEach((st, i) => {
     c.strokeStyle = TR.done ? LCOL[(ABC.indexOf(TR.l) + i * 2) % LCOL.length] : col;
     if (i < TR.cur || TR.done) c.stroke(st.p2);
     else if (i === TR.cur && st.prog > 1) polyline(c, st.pts, 0, Math.min(st.prog, st.pts.length) - 1);
   });
-  // what the child drew
-  if (TR.ink.length > 1 && !TR.done) {
-    c.strokeStyle = 'rgba(138,99,255,.55)'; c.lineWidth = 3.4; c.beginPath(); c.moveTo(TR.ink[0].x, TR.ink[0].y);
-    for (const p of TR.ink) c.lineTo(p.x, p.y); c.stroke();
-  }
+  c.globalAlpha = 1;
+  // what the child drew: finished strokes stay on the paper
+  const ink = (pts, colr, w) => { if (pts.length < 2) return; c.strokeStyle = colr; c.lineWidth = w; c.beginPath(); c.moveTo(pts[0].x, pts[0].y); for (const p of pts) c.lineTo(p.x, p.y); c.stroke(); };
+  TR.trails.forEach(t => ink(t.pts, TR.done ? LCOL[(ABC.indexOf(TR.l) + t.k * 2) % LCOL.length] : col, 6));
+  TR.pend.forEach(t => ink(t, col, 6));
+  if (!TR.done) ink(TR.ink, 'rgba(138,99,255,.6)', 4);
   // demo finger
   if (TR.demo && TR.demo.k != null && TR.strokes[TR.demo.k]) {
     c.strokeStyle = 'rgba(255,92,154,.55)'; c.lineWidth = 9;
@@ -921,10 +944,18 @@ function advance(q) {
     moved = false;
     for (let j = st.prog; j < Math.min(st.pts.length, st.prog + 3); j++) if (dist(q, st.pts[j]) <= tol) { st.prog = j + 1; moved = true; break; }
   }
-  if (st.prog >= st.pts.length - 1) { st.prog = st.pts.length; strokeDone(); }
+  // how far the finger itself has got (the drawn progress may run a little ahead of it)
+  for (let j = Math.max(0, st.reach - 2); j < st.prog; j++) if (dist(q, st.pts[j]) <= tol * 0.6) st.reach = Math.max(st.reach, j);
+  // the stroke is done when the finger gets to its end
+  if (st.prog >= st.pts.length - 1 && st.reach >= st.pts.length - 2) { st.prog = st.pts.length; strokeDone(); }
 }
 function strokeDone() {
   const st = TR.strokes[TR.cur]; if (st) st.prog = st.pts.length;
+  // keep the child's lines for this stroke
+  for (const pts of TR.pend) if (pts.length > 1) TR.trails.push({ k: TR.cur, pts: [...pts] });
+  // the line being drawn now keeps growing until the finger lifts
+  if (TR.ink.length > 1) { TR.tail = { k: TR.cur, pts: TR.ink }; TR.trails.push(TR.tail); }
+  TR.pend = [];
   SFX.pop(); TR.cur++; TR.ink = []; TR.active = false; TR.miss = 0;
   if (TR.cur >= TR.strokes.length) letterDone();
 }
@@ -932,12 +963,12 @@ function trDown(e) {
   if (TR.done || !TR.strokes.length) return;
   e.preventDefault(); stopDemo();
   try { TR.cv.setPointerCapture(e.pointerId); } catch (_) {}
-  const p = toL(e); TR.down = true; TR.ink = [p]; TR.last = p;
+  const p = toL(e); TR.down = true; TR.ink = [p]; TR.last = p; TR.tail = null;
   const st = TR.strokes[TR.cur];
   if (!st) { TR.down = false; return; }
   // a finger may come back anywhere on the part already traced (or a little ahead of it) and carry on;
   // starting again from the beginning of the stroke is fine too
-  const tol = TOL[TR.stage] * 1.7, upto = Math.min(st.pts.length - 1, st.prog + 2);
+  const tol = TOL[TR.stage] * 1.4, upto = Math.min(st.pts.length - 1, st.prog + 2);
   TR.active = false;
   for (let j = 0; j <= upto; j++) if (dist(p, st.pts[j]) <= tol) { TR.active = true; break; }
   TR.gain = st.prog;
@@ -952,7 +983,7 @@ function trMove(e) {
     const p = toL(ev), a = TR.last, n = Math.max(1, Math.ceil(dist(a, p) / 2));
     for (let i = 1; i <= n; i++) {
       const q = { x: a.x + (p.x - a.x) * i / n, y: a.y + (p.y - a.y) * i / n };
-      if (i === n) TR.ink.push(q);
+      if (i === n) { if (TR.tail && !TR.active) TR.tail.pts.push(q); else TR.ink.push(q); }
       if (TR.active && !TR.done) advance(q);
     }
     TR.last = p;
@@ -961,12 +992,14 @@ function trMove(e) {
 }
 function trUp() {
   if (!TR.down) return;
-  TR.down = false;
+  TR.down = false; TR.tail = null;
   const st = TR.strokes[TR.cur];
   if (TR.done || !st) { reqDraw(); return; }
-  // nearly there counts: a stroke traced 80% of the way is finished for the child
-  if (TR.active && st.prog >= st.pts.length * 0.8) { strokeDone(); reqDraw(); return; }
+  // nearly there counts: lifting just before the end (92% traced) finishes the stroke
+  if (TR.active && st.reach >= (st.pts.length - 1) * 0.92) { strokeDone(); reqDraw(); return; }
   const stuck = TR.ink.length > 6 && (!TR.active || st.prog === TR.gain);
+  // a part that moved the stroke on stays on the paper; a wrong line goes away
+  if (!stuck && TR.active && st.prog > TR.gain && TR.ink.length > 1) TR.pend.push([...TR.ink]);
   if (stuck) {
     TR.miss++; SFX.soft();
     if (TR.miss >= 3) demo();                       // show the way again
@@ -981,7 +1014,7 @@ const STAGE_INTRO = [
   l => [`Now write ${nameOf(l)} all by yourself!`, zh('tr2', '現在自己寫寫看！')]
 ];
 function startStage() {
-  TR.strokes = buildStrokes(TR.l); TR.cur = 0; TR.ink = []; TR.done = false; TR.miss = 0; TR.active = false;
+  TR.strokes = buildStrokes(TR.l); TR.cur = 0; TR.ink = []; TR.trails = []; TR.pend = []; TR.done = false; TR.miss = 0; TR.active = false;
   $('#tStages').innerHTML = [0, 1, 2].map(i => `<span class="${i < TR.stage || (S.trace[TR.l] || 0) > i ? 'on' : ''}">★</span>`).join('');
   trDraw();
   const f = flow, l = TR.l;
@@ -1000,7 +1033,7 @@ async function letterDone() {
   if (TR.stage < 2) {
     await say([praise, forWord(lo, w) + '.'], `${praise} ${forShow(lo, w)}.`);
     if (!live(f)) return;
-    await sleep(300); if (!live(f)) return;
+    await sleep(900); if (!live(f)) return;
     TR.stage++; startStage();
   } else {
     await say([`You did it! You can write ${nameOf(l)}!`, zh('trdone', '你會寫了！')], `You did it! You can write ${l}!`);
@@ -1240,7 +1273,8 @@ const SOUND_ALT = { meow: ['meow', 'mew', 'miaow', 'meo'], woof: ['woof', 'wolf'
 const COLOR_THING = { red: 'An apple is red.', blue: 'The sky is blue.', green: 'A frog is green.', yellow: 'A banana is yellow.', purple: 'Grapes are purple.', pink: 'A pig is pink.' };
 const FOODS = [['banana', '🍌'], ['apple', '🍎'], ['cake', '🍰'], ['pizza', '🍕'], ['cookie', '🍪'], ['carrot', '🥕'], ['ice cream', '🍦'], ['egg', '🥚']];
 const WEATHER = { sunny: ['☀️', 'sun', "Let's wear a hat!"], rainy: ['🌧️', 'rain', "Let's take an umbrella!"], snowy: ['❄️', 'snow', "Let's make a snowman!"], cloudy: ['☁️', 'cloud', 'Where is the sun?'] };
-const aN = w => (/^[aeiou]/.test(w) ? 'an ' : 'a ') + w;
+// "an apple", but "a unicorn" (u said "you")
+const aN = w => (/^[aeio]|^u(?!ni|se|su)/.test(w) ? 'an ' : 'a ') + w;
 const counting = n => NUMW.slice(1, n + 1).join(', ');
 function colorQ(target, thing, e) {
   const opts = shuffle([target, ...shuffle(['red', 'blue', 'green', 'yellow', 'pink', 'purple'].filter(c => c !== target)).slice(0, 2)]);
@@ -1605,9 +1639,10 @@ Screens.blendPick = {
 const BW = { list: [], i: 0, total: 5, busy: false };
 async function bwPlay(w, f) {
   const tiles = $$('#bwTiles .ltile');
-  for (const pass of [700, 250]) {
+  // slowly, one sound at a time; then "Faster!" and the sounds almost run together
+  for (const pass of [650, 60]) {
     if (!live(f)) return false;
-    if (pass === 120) { if (!await say('Faster!')) return false; }
+    if (pass === 60) { tiles.forEach(t => t.classList.remove('lit')); if (!await say('Faster!')) return false; await sleep(300); }
     for (let i = 0; i < w.length; i++) {
       if (!live(f)) return false;
       tiles.forEach((t, j) => t.classList.toggle('lit', j === i));
