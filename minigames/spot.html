@@ -15,10 +15,32 @@
 MG.init({ id: 'spot', title: '大家來找碴', stats: ['level', 'time'] });
 const SW = 320, SH = 240, NDIFF = 5, HINTS = 3;
 const cv = document.getElementById('cv'), x = cv.getContext('2d');
-let land = false;
-MG.fit(cv, (sw, sh) => { land = sw > sh * 1.15; return land ? [670, 300] : [340, 548]; });
-// panel origins (scene is drawn 1:1 at these offsets)
-const panels = () => land ? [[10, 50], [340, 50]] : [[10, 44], [10, 298]];
+let land = false, U = 1, HH = 48, TWO = false, PL = [[10, 50, 1], [340, 50, 1]];
+// the canvas takes the whole stage (1 logical px ≈ 1 CSS px); the two pictures are scaled up as far as they fit
+MG.fit(cv, (sw, sh) => {
+  const cs = getComputedStyle(cv.parentElement);
+  const W = Math.max(300, Math.round(sw - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 6));
+  const H = Math.max(260, Math.round(sh - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 6));
+  return [W, H];
+});
+function layout() {
+  const W = cv.lw, H = cv.lh, g = 8;
+  U = Math.max(1, Math.min(1.5, Math.min(W, H) / 420)) * MG.textScale;
+  // header strip: words, found dots, 💡 button — on a tall phone the words get their own line above the dots and the button
+  TWO = H > W * 1.3 && W < 600;
+  HH = Math.round(Math.max(56, 46 * U) + (TWO ? 22 * U + 6 : 0));
+  const ah = H - HH - g, aw = W - g * 2;
+  // side by side or one above the other — whichever makes the pictures bigger
+  const sSide = Math.min((aw - g * 2) / (SW * 2), (ah - g) / SH), sStack = Math.min(aw / SW, (ah - g * 3) / (SH * 2));
+  land = sSide > sStack;
+  const ps = Math.max(0.5, land ? sSide : sStack), pw = SW * ps, ph = SH * ps;
+  if (land) { const x0 = (W - pw * 2 - g * 2) / 2, y0 = HH + (ah - ph) / 2; PL = [[x0, y0, ps], [x0 + pw + g * 2, y0, ps]]; }
+  else { const x0 = (W - pw) / 2, gap = Math.max(g * 2, (ah - ph * 2) / 3), y0 = HH + (ah - ph * 2 - gap) / 2; PL = [[x0, y0, ps], [x0, y0 + ph + gap, ps]]; }
+}
+cv.onfit = layout; layout();
+addEventListener('mg-big', layout);
+// panel origins + scale (each scene is drawn in its own 320×240 space)
+const panels = () => PL;
 
 const PAL = ['#ff5a4e', '#ff9f1c', '#ffd23f', '#4cc96a', '#3d9bff', '#8a63ff', '#ff6fb5', '#ffffff', '#6b4a22'];
 let sceneSeed = 1, sceneBg = null, sceneBgKey = '', foundAt = [];
@@ -271,7 +293,7 @@ function makeLevel() {
 // ---------- drawing ----------
 // Fixed scenery shared by both pictures (seeded per level, so left and right are identical)
 function backdrop() {
-  const k = cv._mgScale || 1, key = sceneSeed + ':' + k + ':' + theme;
+  const k = Math.min(4, (cv._mgScale || 1) * PL[0][2]), key = sceneSeed + ':' + k + ':' + theme;
   if (sceneBg && key === sceneBgKey) return sceneBg;
   const c = document.createElement('canvas'); c.width = SW * k; c.height = SH * k; const g = c.getContext('2d'); g.scale(k, k);
   let sd = sceneSeed; const rnd = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
@@ -375,8 +397,8 @@ const BACKS = {
     }
   },
 };
-function drawScene(els, ox, oy) {
-  x.save(); x.translate(ox, oy);
+function drawScene(els, ox, oy, ps) {
+  x.save(); x.translate(ox, oy); x.scale(ps, ps);
   x.beginPath(); x.roundRect(0, 0, SW, SH, 8); x.clip();
   x.drawImage(backdrop(), 0, 0, SW, SH);
   const order = ['sun', 'cloud', 'flake', 'heart', 'balloon', 'bird', 'star', 'jelly', 'bubbles', 'fish', 'boat', 'house', 'pine', 'tree', 'coral', 'weed', 'chest', 'umbrella', 'castle', 'snowman', 'cupcake', 'lolly', 'icecream', 'crab', 'ball', 'gift', 'shell', 'starfish', 'donut', 'flower', 'pupu'];
@@ -695,19 +717,24 @@ function draw() {
   const [w, h] = [cv.lw, cv.lh];
   x.fillStyle = '#fff8dc'; x.fillRect(0, 0, w, h);
   // header: found dots + hint button
-  const hy = land ? 24 : 22;
-  x.textBaseline = 'middle'; x.textAlign = 'left'; x.font = '700 15px "Noto Sans TC",system-ui,sans-serif'; x.fillStyle = '#3a2f22';
-  x.fillText('找出 5 個不一樣', 12, hy);
-  for (let i = 0; i < NDIFF; i++) { x.fillStyle = found[i] ? '#ff5a4e' : '#e2cf9c'; x.beginPath(); x.arc(150 + i * 18, hy, 6, 0, 7); x.fill(); }
-  hintBtn = { x: w - 92, y: hy - 15, w: 82, h: 30 };
-  x.fillStyle = (mode === 'relax' || hints > 0) && state === 'play' ? '#ffd23f' : '#eee2c0'; x.strokeStyle = '#c99a00'; x.lineWidth = 2;
-  x.beginPath(); x.roundRect(hintBtn.x, hintBtn.y, hintBtn.w, hintBtn.h, 8); x.fill(); x.stroke();
-  x.fillStyle = '#3a2f22'; x.textAlign = 'center'; x.font = '700 14px "Noto Sans TC",system-ui,sans-serif'; x.fillText(mode === 'relax' ? '💡 提示' : `💡 提示 ${hints}`, hintBtn.x + hintBtn.w / 2, hy + 1);
+  const r1 = TWO ? 22 * U + 6 : 0, hy = r1 + (HH - r1) / 2 + 2, big = MG.big, wt = big ? 800 : 700, ink = big ? '#1e160c' : '#3a2f22';
+  const bh = HH - r1 - 6, bw = Math.round(Math.max(96, Math.min(w * 0.3, 92 * U)));
+  hintBtn = { x: w - bw - 8, y: hy - bh / 2, w: bw, h: bh };
+  const dr = Math.round(Math.max(6, 7 * U)), dg = dr * 2 + Math.round(5 * U), dx1 = TWO ? 12 + dr : hintBtn.x - 12 - dr - (NDIFF - 1) * dg;
+  for (let i = 0; i < NDIFF; i++) { x.fillStyle = found[i] ? '#ff5a4e' : big ? '#c9b07a' : '#e2cf9c'; x.beginPath(); x.arc(dx1 + i * dg, hy, dr, 0, 7); x.fill(); if (big && !found[i]) { x.strokeStyle = '#8a6a2a'; x.lineWidth = 1.5; x.stroke(); } }
+  const fitFont = (txt, maxW, px) => { let fs = px; x.font = `${wt} ${fs}px "Noto Sans TC",system-ui,sans-serif`; while (fs > 10 && x.measureText(txt).width > maxW) { fs--; x.font = `${wt} ${fs}px "Noto Sans TC",system-ui,sans-serif`; } };
+  x.textBaseline = 'middle'; x.textAlign = 'left'; x.fillStyle = ink;
+  if (TWO) { fitFont('找出 5 個不一樣', w - 24, Math.round(17 * U)); x.fillText('找出 5 個不一樣', 12, r1 / 2 + 6); }
+  else { fitFont('找出 5 個不一樣', dx1 - dr - 22, Math.round(16 * U)); x.fillText('找出 5 個不一樣', 12, hy); }
+  x.fillStyle = (mode === 'relax' || hints > 0) && state === 'play' ? '#ffd23f' : '#eee2c0'; x.strokeStyle = big ? '#8a6400' : '#c99a00'; x.lineWidth = big ? 3 : 2;
+  x.beginPath(); x.roundRect(hintBtn.x, hintBtn.y, hintBtn.w, hintBtn.h, 10); x.fill(); x.stroke();
+  const ht = mode === 'relax' ? '💡 提示' : `💡 提示 ${hints}`;
+  x.fillStyle = ink; x.textAlign = 'center'; fitFont(ht, bw - 10, Math.round(Math.min(bh * 0.42, 16 * U))); x.fillText(ht, hintBtn.x + hintBtn.w / 2, hy + 1);
   const ps = panels();
-  ps.forEach(([ox, oy], i) => {
-    x.fillStyle = '#c9a95a'; x.beginPath(); x.roundRect(ox - 3, oy - 3, SW + 6, SH + 6, 10); x.fill();
-    drawScene(scene[i], ox, oy);
-    x.save(); x.translate(ox, oy);
+  ps.forEach(([ox, oy, sc], i) => {
+    x.fillStyle = '#c9a95a'; x.beginPath(); x.roundRect(ox - 4, oy - 4, SW * sc + 8, SH * sc + 8, 12); x.fill();
+    drawScene(scene[i], ox, oy, sc);
+    x.save(); x.translate(ox, oy); x.scale(sc, sc);
     diffs.forEach((d, k) => { if (!found[k]) return;
       const age = state === 'over' ? 1 : Math.min(1, (t - foundAt[k]) / 0.3), r0 = d.r + 3;
       x.strokeStyle = '#ff2d2d'; x.lineWidth = 3; x.lineCap = 'round';
@@ -737,7 +764,7 @@ function drawFloats() {
     x.restore();
   }
 }
-function addFloat(text, fx, fy, col = '#ff5a2e', size = 22, life = 1) { floats.push({ text, x: fx, y: fy, col, size, life, max: life }); }
+function addFloat(text, fx, fy, col = '#ff5a2e', size = 22, life = 1) { floats.push({ text, x: fx, y: fy, col, size: Math.round(size * U), life, max: life }); }
 let hintBtn = { x: 0, y: 0, w: 0, h: 0 };
 
 // ---------- input ----------
@@ -745,8 +772,8 @@ cv.addEventListener('pointerdown', e => {
   if (state !== 'play') return;
   const p = cv.logical(e);
   if (p.x >= hintBtn.x && p.x <= hintBtn.x + hintBtn.w && p.y >= hintBtn.y && p.y <= hintBtn.y + hintBtn.h) { useHint(); return; }
-  for (const [ox, oy] of panels()) {
-    const sx = p.x - ox, sy = p.y - oy;
+  for (const [ox, oy, sc] of panels()) {
+    const sx = (p.x - ox) / sc, sy = (p.y - oy) / sc;
     if (sx < 0 || sy < 0 || sx > SW || sy > SH) continue;
     let hit = -1, bd = 1e9;
     diffs.forEach((d, k) => { const dd = Math.hypot(d.x - sx, d.y - sy); if (!found[k] && dd < d.r + 8 && dd < bd) { bd = dd; hit = k; } });

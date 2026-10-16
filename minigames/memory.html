@@ -11,7 +11,7 @@ body.game::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:
   background-image:radial-gradient(rgba(255,255,255,.35) 1px,transparent 1.2px),radial-gradient(rgba(0,0,0,.35) 1px,transparent 1.2px);
   background-size:7px 7px,11px 11px;background-position:0 0,3px 5px}
 #board{display:grid;gap:var(--gap);touch-action:manipulation;position:relative}
-.card{position:relative;width:var(--cs);height:var(--cs);perspective:700px;cursor:pointer;border:0;padding:0;background:none;transition:transform .15s}
+.card{position:relative;width:var(--cw,var(--cs));height:var(--ch,var(--cs));perspective:700px;cursor:pointer;border:0;padding:0;background:none;transition:transform .15s}
 @media (hover:hover){.card:not(.up):not(.done):hover{transform:translateY(-3px)}}
 .card .in{position:absolute;inset:0;transition:transform .36s cubic-bezier(.3,1.4,.5,1);transform-style:preserve-3d}
 .card.up .in,.card.done .in{transform:rotateY(180deg)}
@@ -46,6 +46,14 @@ body.game::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:
 .sizes{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:12px}
 .sizes .mg-btn{min-width:96px;font-size:16px}
 .sizes small{display:block;font-weight:400;font-size:12px;opacity:.85}
+/* 👓 大字模式: bigger words, thicker card edges, stronger contrast */
+html.mg-big .card .f{font-size:calc(var(--cs) * .62);border-width:4px}
+html.mg-big .card .b{border-width:4px}
+html.mg-big .card .f::before,html.mg-big .card .f::after{color:#c9a95a}
+html.mg-big .word{font-size:clamp(26px,calc(var(--cs) * .38),44px);-webkit-text-stroke:2px #5a3500}
+html.mg-big .word.miss{font-size:clamp(22px,calc(var(--cs) * .3),34px);-webkit-text-stroke:2px #1f4a7a}
+html.mg-big .sizes .mg-btn{font-size:20px;min-width:110px}
+html.mg-big .sizes small{font-size:15px;opacity:1}
 </style>
 </head>
 <body>
@@ -60,19 +68,26 @@ const board = document.getElementById('board'), stage = board.parentElement;
 let size = 'easy', cards = [], open = [], moves = 0, matched = 0, time = 0, state = 'ready', lock = false, streak = 0, lastWord = '';
 
 function layout() {
-  const n = SIZES[size].pairs * 2;
-  const aw = stage.clientWidth - 16, ah = stage.clientHeight - 16;
-  // try every column count and keep the one that gives the biggest card
-  let best = { cs: 0 };
+  const n = SIZES[size].pairs * 2, st = getComputedStyle(stage);
+  // the card size comes from the screen: the grid fills the stage, cards may be a little taller or wider than square
+  const aw = stage.clientWidth - parseFloat(st.paddingLeft) - parseFloat(st.paddingRight);
+  const ah = stage.clientHeight - parseFloat(st.paddingTop) - parseFloat(st.paddingBottom) - 5;   // room for the card shadow
+  const gap = Math.round(Math.max(6, Math.min(16, Math.min(aw, ah) * 0.018)));
+  // try every column count and keep the one that gives the biggest picture (and then the most covered area)
+  let best = null;
   for (let c = 2; c <= n; c++) {
     const r = Math.ceil(n / c); if (r * c - n >= c) continue;
-    const gap = 8, cs = Math.min((aw - gap * (c - 1)) / c, (ah - gap * (r - 1)) / r);
-    if (cs > best.cs * 0.96) best = { cs, c, gap }; // lean towards more columns when sizes are close
+    let cw = (aw - gap * (c - 1)) / c, ch = (ah - gap * (r - 1)) / r;
+    ch = Math.min(ch, cw * 1.5); cw = Math.min(cw, ch * 1.5);
+    const score = Math.min(cw, ch) * Math.sqrt(c * cw * r * ch / (aw * ah));   // picture size, nudged towards covering more of the stage
+    if (!best || score > best.score) best = { score, c, cw: Math.floor(cw), ch: Math.floor(ch) };
   }
-  const cs = Math.floor(Math.min(130, best.cs));
+  const cs = Math.min(best.cw, best.ch);
   board.style.setProperty('--cs', cs + 'px');
-  board.style.setProperty('--gap', best.gap + 'px');
-  board.style.gridTemplateColumns = `repeat(${best.c}, ${cs}px)`;
+  board.style.setProperty('--cw', best.cw + 'px');
+  board.style.setProperty('--ch', best.ch + 'px');
+  board.style.setProperty('--gap', gap + 'px');
+  board.style.gridTemplateColumns = `repeat(${best.c}, ${best.cw}px)`;
 }
 addEventListener('resize', layout);
 

@@ -14,7 +14,14 @@
 MG.init({ id: 'link', title: '動物連連看', stats: ['level', 'score'] });
 const cv = document.getElementById('cv'), x = cv.getContext('2d');
 let W = 360, H = 580, land = false;
-MG.fit(cv, (sw, sh) => { land = sw > sh * 1.1; [W, H] = land ? [660, 400] : [360, 580]; return [W, H]; });
+// the canvas takes the whole stage (1 logical px ≈ 1 CSS px), so the board can be as big as the screen allows
+MG.fit(cv, (sw, sh) => {
+  const cs = getComputedStyle(cv.parentElement);
+  const aw = sw - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 6, ah = sh - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 6;
+  W = Math.max(300, Math.round(aw)); H = Math.max(260, Math.round(ah)); land = W > H * 1.1;
+  return [W, H];
+});
+addEventListener('mg-big', () => { if (grid) layout(); });
 const EMOJI = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
 const ANIMALS = ['🐶', '🐱', '🐰', '🦊', '🐼', '🐸', '🐵', '🐧', '🐙', '🦁', '🐷', '🐨', '🦄', '🐢', '🐝', '🐳', '🦉', '🐞', '🐤', '🦋', '🐯', '🐮'];
 // g = which way the animals slide after a pair disappears (only in the 會掉落 style)
@@ -30,7 +37,7 @@ let slides = new Map();                      // "r,c" -> { fr, fc, t } for the s
 const relax = () => mode === 'relax';
 const snd = (() => { const last = {}; return (n, a) => { const now = performance.now(); if (now - (last[n] || 0) < 60) return; last[n] = now; MG.sfx(n, a); }; })();
 const mmss = v => `${Math.floor(v / 60)}:${String(Math.floor(v % 60)).padStart(2, '0')}`;
-let level, score, grid, R_, C_, tile, ox, oy, sel = null, links = [], left, maxT, hints, shuffles, state = 'ready', t = 0, combo = 0, lastMatch = -9, hintPair = null, shakeCell = null, pops = [], gone = [];
+let level, score, grid, R_, C_, tile, ring, bx, by, U = 1, hudBox, bHint, bShuf, sel = null, links = [], left, maxT, hints, shuffles, state = 'ready', t = 0, combo = 0, lastMatch = -9, hintPair = null, shakeCell = null, pops = [], gone = [];
 
 function setupLevel(n) {
   level = n; const L = LEVELS[Math.min(n, LEVELS.length) - 1];
@@ -45,14 +52,42 @@ function setupLevel(n) {
   maxT = L.time; left = relax() ? 0 : maxT; slides = new Map(); hints = 3; shuffles = 2; sel = null; links = []; combo = 0; hintPair = null; gone = [];
   layout(); ensureMoves(); hud();
 }
+// HUD (time bar + 💡 / 🔀 buttons): a strip on top in portrait, a column on the right in landscape; the board gets the rest
 function layout() {
-  const topH = 40;
-  tile = Math.floor(Math.min((W - 12) / (C_ + 2), (H - topH - 8) / (R_ + 2)));
-  ox = Math.round((W - tile * (C_ + 2)) / 2); oy = Math.round(topH + (H - topH - tile * (R_ + 2)) / 2);
+  U = Math.max(1, Math.min(1.6, Math.min(W, H) / 420)) * MG.textScale;
+  const bh = Math.round(Math.max(48, 46 * U)), g = 8;
+  let ax, ay, aw, ah;
+  if (land) {
+    const pw = Math.round(Math.min(W * 0.24, Math.max(110, 118 * U)));
+    const px = W - pw - g;
+    hudBox = { x: px, y: g, w: pw, h: Math.round(Math.max(40, 36 * U)) };
+    bHint = { x: px, y: hudBox.y + hudBox.h + g, w: pw, h: bh };
+    bShuf = { x: px, y: bHint.y + bh + g, w: pw, h: bh };
+    ax = g; ay = g; aw = px - g * 2; ah = H - g * 2;
+  } else if (H > W * 1.3) {
+    // tall phone: the time bar gets its own row, the two buttons share the row under it
+    const th = Math.round(Math.max(32, 30 * U)), bw = Math.round((W - g * 3) / 2);
+    hudBox = { x: g, y: g, w: W - g * 2, h: th };
+    bHint = { x: g, y: g * 2 + th, w: bw, h: bh };
+    bShuf = { x: g * 2 + bw, y: g * 2 + th, w: bw, h: bh };
+    ax = g; ay = bHint.y + bh + g; aw = W - g * 2; ah = H - ay - g;
+  } else {
+    const bw = Math.round(Math.min((W - g * 4) * 0.3, Math.max(84, 92 * U)));
+    bShuf = { x: W - g - bw, y: g, w: bw, h: bh };
+    bHint = { x: bShuf.x - g - bw, y: g, w: bw, h: bh };
+    hudBox = { x: g, y: g + (bh - Math.max(30, 28 * U)) / 2, w: bHint.x - g * 2, h: Math.max(30, 28 * U) };
+    ax = g; ay = g * 2 + bh; aw = W - g * 2; ah = H - ay - g;
+  }
+  // a thin ring around the animals: classic links can run around the outside there
+  tile = Math.floor(Math.min(aw / (C_ + 0.8), ah / (R_ + 0.8)));
+  ring = tile * 0.4;
+  bx = Math.round(ax + (aw - tile * C_) / 2); by = Math.round(ay + (ah - tile * R_) / 2);
 }
+const inBox = (p, b) => b && p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
 cv.onfit = () => { if (grid) layout(); };
 function hud() { MG.stat('level', `第 ${level} 關`); MG.stat('score', `${score} 分`); }
-const cellXY = (r, c) => [ox + c * tile + tile / 2, oy + r * tile + tile / 2];
+const axis = (i, n, o) => i < 1 ? o - ring / 2 : i > n ? o + n * tile + ring / 2 : o + (i - 1) * tile + tile / 2;
+const cellXY = (r, c) => [axis(c, C_, bx), axis(r, R_, by)];
 
 // ---------- path finding: at most two turns ----------
 function findPath(a, b) {
@@ -98,8 +133,9 @@ cv.addEventListener('pointerdown', e => {
   if (state !== 'play') return;
   const p = cv.logical(e);
   // hint / shuffle buttons in the top strip
-  if (p.y < 40) { if (p.x > W - 96) doShuffle(); else if (p.x > W - 186) doHint(); return; }
-  const c = Math.floor((p.x - ox) / tile), r = Math.floor((p.y - oy) / tile);
+  if (inBox(p, bShuf)) return doShuffle();
+  if (inBox(p, bHint)) return doHint();
+  const c = Math.floor((p.x - bx) / tile) + 1, r = Math.floor((p.y - by) / tile) + 1;
   if (r < 1 || c < 1 || r > R_ || c > C_ || !grid[r][c]) return;
   if (!sel) { sel = [r, c]; MG.sfx('flip'); return; }
   if (sel[0] === r && sel[1] === c) { sel = null; return; }
@@ -169,9 +205,9 @@ const easeOut = v => 1 - (1 - v) * (1 - v) * (1 - v);
 function draw() {
   const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#c9f0d8'); g.addColorStop(1, '#fff5d6'); x.fillStyle = g; x.fillRect(0, 0, W, H);
   // leafy corners
-  for (const [lx, ly, a] of [[0, H, -0.6], [W, H, -2.5], [0, 40, 0.5], [W, 40, 2.6]]) { x.save(); x.translate(lx, ly); x.rotate(a); for (let i = 0; i < 3; i++) { x.fillStyle = ['#7fcf6a', '#5fb84f', '#94dc7a'][i]; x.beginPath(); x.ellipse(30 + i * 14, -i * 8, 34, 12, -0.3 + i * 0.3, 0, 7); x.fill(); } x.restore(); }
+  for (const [lx, ly, a] of [[0, H, -0.6], [W, H, -2.5], [0, 0, 0.5], [W, 0, 2.6]]) { x.save(); x.translate(lx, ly); x.rotate(a); x.scale(U, U); for (let i = 0; i < 3; i++) { x.fillStyle = ['#7fcf6a', '#5fb84f', '#94dc7a'][i]; x.beginPath(); x.ellipse(30 + i * 14, -i * 8, 34, 12, -0.3 + i * 0.3, 0, 7); x.fill(); } x.restore(); }
   // board backing
-  x.fillStyle = 'rgba(255,255,255,.55)'; x.beginPath(); x.roundRect(ox + tile * 0.6, oy + tile * 0.6, tile * (C_ + 0.8), tile * (R_ + 0.8), 14); x.fill();
+  x.fillStyle = 'rgba(255,255,255,.55)'; x.beginPath(); x.roundRect(bx - tile * 0.1, by - tile * 0.1, tile * (C_ + 0.2), tile * (R_ + 0.2), 14); x.fill();
   if (falling()) gravityArrows(LEVELS[Math.min(level, LEVELS.length) - 1].g);
   for (let r = 1; r <= R_; r++) for (let c = 1; c <= C_; c++) {
     const v = grid[r][c]; if (!v) continue;
@@ -185,32 +221,36 @@ function draw() {
   for (const gq of gone) { const k = gq.life / 0.35; x.globalAlpha = k; x.fillStyle = '#000'; x.font = `${Math.floor(tile * 0.68 * (1 + (1 - k) * 0.6))}px ${EMOJI}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(gq.ch, gq.x, gq.y - (1 - k) * 14); }
   x.globalAlpha = 1;
   for (const l of links) {
-    x.globalAlpha = Math.min(1, l.life * 4); x.strokeStyle = '#ff5a8a'; x.lineWidth = 5; x.lineCap = 'round'; x.lineJoin = 'round';
+    x.globalAlpha = Math.min(1, l.life * 4); x.strokeStyle = '#ff5a8a'; x.lineWidth = Math.max(5, tile * 0.1); x.lineCap = 'round'; x.lineJoin = 'round';
     x.shadowColor = '#fff'; x.shadowBlur = 8; x.beginPath(); l.pts.forEach(([a, b], i) => i ? x.lineTo(a, b) : x.moveTo(a, b)); x.stroke(); x.shadowBlur = 0;
   }
   x.globalAlpha = 1;
   MG.fx.draw(x);
   for (const p of pops) {
-    x.globalAlpha = Math.min(1, p.life * 2); x.font = `900 ${p.big ? 18 : 16}px system-ui,"Noto Sans TC",sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
-    const hw = x.measureText(p.t).width / 2 + 4, px = Math.max(hw, Math.min(W - hw, p.x)), py = Math.max(52, p.y);   // keep it on screen, below the top strip
+    x.globalAlpha = Math.min(1, p.life * 2); x.font = `900 ${Math.round((p.big ? 18 : 16) * U)}px system-ui,"Noto Sans TC",sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
+    const hw = x.measureText(p.t).width / 2 + 4, px = Math.max(hw, Math.min(W - hw, p.x)), py = Math.max(land ? 24 * U : bHint.y + bHint.h + 14 * U, p.y);   // keep it on screen, below the top strip
     x.lineWidth = 4; x.strokeStyle = '#fff'; x.strokeText(p.t, px, py); x.fillStyle = p.big ? '#ff4f8a' : '#ff7a00'; x.fillText(p.t, px, py);
   }
   x.globalAlpha = 1;
   // top strip: time bar, hint, shuffle
-  const tw = W - 200, f = relax() ? 1 : Math.max(0, left / maxT);
-  x.fillStyle = 'rgba(255,255,255,.8)'; x.beginPath(); x.roundRect(8, 10, tw, 20, 10); x.fill();
-  x.fillStyle = relax() ? '#8fd0ff' : f < 0.2 ? '#ff5a4e' : f < 0.5 ? '#ffb21f' : '#4cc96a'; x.beginPath(); x.roundRect(11, 13, Math.max(8, (tw - 6) * f), 14, 7); x.fill();
-  x.fillStyle = '#3a2f22'; x.font = '700 12px "Noto Sans TC",system-ui'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(relax() ? `🐢 慢慢玩　${mmss(left)}` : `⏱ ${Math.ceil(left)}`, 8 + tw / 2, 20.5);
-  const btn = (bx, label, n) => { const ok = relax() || n > 0; x.fillStyle = ok ? '#fff' : '#eee'; x.strokeStyle = ok ? '#ffb72b' : '#ccc'; x.lineWidth = 2; x.beginPath(); x.roundRect(bx, 6, 84, 28, 10); x.fill(); x.stroke(); x.fillStyle = ok ? '#6b4a22' : '#aaa'; x.font = '700 13px "Noto Sans TC",system-ui'; x.fillText(relax() ? label : `${label} ${n}`, bx + 42, 20.5); };
-  btn(W - 180, '💡 提示', hints); btn(W - 90, '🔀 洗牌', shuffles);
+  const hb = hudBox, f = relax() ? 1 : Math.max(0, left / maxT), big = MG.big, rr = hb.h / 2;
+  x.fillStyle = 'rgba(255,255,255,.88)'; x.beginPath(); x.roundRect(hb.x, hb.y, hb.w, hb.h, rr); x.fill();
+  if (big) { x.strokeStyle = '#8a6a2a'; x.lineWidth = 2; x.stroke(); }
+  x.fillStyle = relax() ? '#8fd0ff' : f < 0.2 ? '#ff5a4e' : f < 0.5 ? '#ffb21f' : '#4cc96a'; x.beginPath(); x.roundRect(hb.x + 3, hb.y + 3, Math.max(hb.h - 6, (hb.w - 6) * f), hb.h - 6, rr - 3); x.fill();
+  const fit = (txt, maxW, px, wt = 700) => { let fs = px; x.font = `${wt} ${fs}px "Noto Sans TC",system-ui`; while (fs > 10 && x.measureText(txt).width > maxW) { fs--; x.font = `${wt} ${fs}px "Noto Sans TC",system-ui`; } };
+  const tt = relax() ? `🐢 慢慢玩　${mmss(left)}` : `⏱ ${Math.ceil(left)}`;
+  x.fillStyle = big ? '#1e160c' : '#3a2f22'; fit(tt, hb.w - 12, Math.round(hb.h * 0.5), big ? 800 : 700); x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(tt, hb.x + hb.w / 2, hb.y + hb.h / 2 + 1);
+  const btn = (b, label, n) => { const ok = relax() || n > 0; x.fillStyle = ok ? '#fff' : '#eee'; x.strokeStyle = ok ? (big ? '#c07800' : '#ffb72b') : '#ccc'; x.lineWidth = big ? 3.5 : 2.5; x.beginPath(); x.roundRect(b.x, b.y, b.w, b.h, Math.min(14, b.h * 0.3)); x.fill(); x.stroke();
+    const tx = relax() ? label : `${label} ${n}`; x.fillStyle = ok ? (big ? '#3a2410' : '#6b4a22') : '#999'; fit(tx, b.w - 10, Math.round(Math.min(b.h * 0.4, 15 * U)), big ? 800 : 700); x.fillText(tx, b.x + b.w / 2, b.y + b.h / 2 + 1); };
+  btn(bHint, '💡 提示', hints); btn(bShuf, '🔀 洗牌', shuffles);
 }
 
 // faint arrows around the board that show where the animals slide
 function gravityArrows(g) {
-  const L = ox + tile * 0.6, T = oy + tile * 0.6, Wb = tile * (C_ + 0.8), Hb = tile * (R_ + 0.8), cx = L + Wb / 2, cy = T + Hb / 2;
-  const arrow = (ax, ay, ang) => { x.save(); x.translate(ax, ay); x.rotate(ang); x.fillStyle = 'rgba(255,122,0,.75)'; x.beginPath(); x.moveTo(9, 0); x.lineTo(-5, -8); x.lineTo(-2, 0); x.lineTo(-5, 8); x.closePath(); x.fill(); x.restore(); };
+  const L = bx - tile * 0.1, T = by - tile * 0.1, Wb = tile * (C_ + 0.2), Hb = tile * (R_ + 0.2), cx = L + Wb / 2, cy = T + Hb / 2;
+  const arrow = (ax, ay, ang) => { x.save(); x.translate(ax, ay); x.rotate(ang); x.scale(tile / 48, tile / 48); x.fillStyle = 'rgba(255,122,0,.75)'; x.beginPath(); x.moveTo(9, 0); x.lineTo(-5, -8); x.lineTo(-2, 0); x.lineTo(-5, 8); x.closePath(); x.fill(); x.restore(); };
   const bob = Math.sin(t * 4) * 2, D = Math.PI / 2;
-  const out = tile * 0.32;
+  const out = tile * 0.22;
   const at = { down: [[cx - Wb / 4, T + Hb + out, D], [cx + Wb / 4, T + Hb + out, D]], up: [[cx - Wb / 4, T - out, -D], [cx + Wb / 4, T - out, -D]],
     left: [[L - out, cy - Hb / 4, Math.PI], [L - out, cy + Hb / 4, Math.PI]], right: [[L + Wb + out, cy - Hb / 4, 0], [L + Wb + out, cy + Hb / 4, 0]],
     midH: [[L - out, cy, 0], [L + Wb + out, cy, Math.PI]], outH: [[L - out, cy, Math.PI], [L + Wb + out, cy, 0]],

@@ -417,31 +417,44 @@ function showHint() {
 function talk(text, s) { say = { text, life: s }; }
 
 // ---------- layout ----------
+// the canvas follows the stage's shape exactly (no letterbox): the short side stays 480 / 520 logical px, the long side stretches
 MG.fit(cv, (sw, sh) => {
-  land = sw > sh * 1.05;
-  return land ? [Math.round(Math.min(1100, Math.max(800, 520 * sw / sh))), 520] : [480, Math.round(Math.min(790, Math.max(720, 480 * sh / sw)))];
+  const cs = getComputedStyle(cv.parentElement);
+  const aw = sw - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 6, ah = sh - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 6;
+  const a = Math.max(0.3, aw / Math.max(1, ah));
+  land = a > 1.15;
+  return land ? [Math.round(520 * a), 520] : [480, Math.round(480 / a)];
 });
+addEventListener('mg-big', () => { if (grid.length) { layout(); bgDirty = true; } });
+const TS = () => MG.textScale;
+// text / HUD boost: 👓 大字模式, and on small phones in landscape where one logical px is well under one CSS px
+const RK = () => Math.min(1.6, Math.max(1, 0.8 / cssK()) * TS());
+const cssK = () => Math.max(0.2, (parseFloat(cv.style.width) || cv.lw) / cv.lw);   // CSS px per logical px
 function layout() {
   const W = cv.lw, H = cv.lh, M = 10;
   const o = {};
   if (land) {
-    const F = H - 2 * M, SW = Math.min(330, W - F - 3 * M), ox = (W - SW - M - F) / 2;
-    o.frame = { x: ox + SW + M, y: M, w: F, h: F };
+    const F = Math.min(H - 2 * M, W - 240 - 3 * M), SW = Math.max(240, Math.min(420, W - F - 3 * M)), ox = (W - SW - M - F) / 2;
+    o.frame = { x: ox + SW + M, y: (H - F) / 2, w: F, h: F };
     o.goal = { x: ox, y: M, w: SW, h: L.c ? 50 + L.c.length * 50 : 128 };
-    o.info = { x: ox, y: o.goal.y + o.goal.h + M, w: SW, h: 64 };
-    o.hint = { x: ox + 14, y: H - M - 78, w: SW - 28, h: 78 };
+    o.info = { x: ox, y: o.goal.y + o.goal.h + M, w: SW, h: Math.round(64 * RK()) };
+    const hh = Math.max(78, 52 / cssK());   // ≥ 52 CSS px tall
+    o.hint = { x: ox + 14, y: H - M - hh, w: SW - 28, h: hh };
     const top = o.info.y + o.info.h, room = o.hint.y - top;
     o.pu = { x: ox + SW * 0.32, y: top + room * 0.58, r: Math.min(52, room * 0.3) };
     o.bubble = { x: ox + SW * 0.32 + o.pu.r + 8, y: top + room * 0.3, w: SW * 0.68 - o.pu.r - 10 };
   } else {
-    const hudH = 96, botMin = 116;
+    const hudH = Math.round(96 * RK()), botMin = 84;
     const F = Math.min(W - 2 * M, H - hudH - botMin - 4 * M);
-    o.goal = { x: M, y: M, w: W - 3 * M - 132, h: hudH };
-    o.info = { x: W - M - 132, y: M, w: 132, h: hudH };
-    o.frame = { x: (W - F) / 2, y: M * 2 + hudH, w: F, h: F };
-    const y0 = o.frame.y + F + M, bh = H - M - y0;
-    o.hint = { w: 168, h: Math.min(88, bh - 20) }; o.hint.x = W - M - o.hint.w - 4; o.hint.y = y0 + (bh - o.hint.h) / 2;
-    o.pu = { x: M + 66, y: y0 + bh * 0.55, r: Math.min(58, bh * 0.34) };
+    // a tall phone: the bottom strip (噗噗 + 提示) may grow to 190, the rest of the spare height goes into the gaps
+    const bot = Math.min(190, H - hudH - F - 4 * M), gap = M + Math.max(0, H - hudH - F - bot - 4 * M) / 4;
+    const iw = Math.round(132 * RK());
+    o.goal = { x: M, y: gap, w: W - 3 * M - iw, h: hudH };
+    o.info = { x: W - M - iw, y: gap, w: iw, h: hudH };
+    o.frame = { x: (W - F) / 2, y: gap * 2 + hudH, w: F, h: F };
+    const y0 = o.frame.y + F + gap, bh = bot;
+    o.hint = { w: 168, h: Math.max(Math.min(96, bh - 16), 52 / cssK()) }; o.hint.x = W - M - o.hint.w - 4; o.hint.y = y0 + (bh - o.hint.h) / 2;
+    o.pu = { x: M + 66, y: y0 + bh * 0.55, r: Math.min(64, bh * 0.34) };
     o.bubble = { x: o.pu.x + o.pu.r + 10, y: o.pu.y - o.pu.r * 0.9, w: o.hint.x - (o.pu.x + o.pu.r + 10) - 10 };
   }
   const pad = 8;
@@ -608,15 +621,16 @@ function jellySprite() {
 // ---------- drawing the screen ----------
 function box(b, fill = 'rgba(255,255,255,.88)', stroke = '#f3b6d0') {
   x.fillStyle = 'rgba(160,80,120,.12)'; x.beginPath(); x.roundRect(b.x, b.y + 4, b.w, b.h, 16); x.fill();
-  x.fillStyle = fill; x.strokeStyle = stroke; x.lineWidth = 2.5; x.beginPath(); x.roundRect(b.x, b.y, b.w, b.h, 16); x.fill(); x.stroke();
+  if (MG.big) { fill = 'rgba(255,255,255,.96)'; stroke = '#d0709c'; }
+  x.fillStyle = fill; x.strokeStyle = stroke; x.lineWidth = MG.big ? 3.5 : 2.5; x.beginPath(); x.roundRect(b.x, b.y, b.w, b.h, 16); x.fill(); x.stroke();
 }
 function txt(s, px, py, size, col = '#4a2b3a', align = 'center', weight = 800) {
   x.font = `${weight} ${size}px ${FONT}`; x.textAlign = align; x.textBaseline = 'middle'; x.fillStyle = col; x.fillText(s, px, py);
 }
 function drawGoal() {
   const b = lay.goal; box(b);
-  const sm = Math.min(16, b.h * 0.18);
-  txt('目標', b.x + 14, b.y + sm * 0.5 + 10, sm, '#c0507e', 'left');
+  const sm = Math.min(16 * RK(), b.h * 0.2);
+  txt('目標', b.x + 14, b.y + sm * 0.5 + 10, sm, MG.big ? '#8a1f4f' : '#c0507e', 'left');
   const items = [];
   if (L.s) items.push({ icon: 'star', a: Math.min(score, L.s), n: L.s, label: `${Math.min(score, L.s)} / ${L.s}`, done: score >= L.s, bar: true });
   else if (L.c) L.c.forEach(([k, n], i) => items.push({ icon: k, label: got[i] >= n ? '' : `${got[i]}/${n}`, done: got[i] >= n }));
@@ -635,7 +649,7 @@ function drawGoal() {
     else { const s = sprite(it.icon, ''); const d = ic * 1.3; x.drawImage(s.c, ix - d / 2, iy - d / 2, d, d); }
     const tx = ix + ic * 0.62;
     if (it.done) { txt('✔', tx + 14, iy, ic * 0.66, '#2e9a4c', 'center', 900); }
-    else txt(it.label, tx, iy, Math.min(26, ic * 0.58), '#4a2b3a', 'left');
+    else txt(it.label, tx, iy, Math.min(26 * RK(), ic * 0.62 * RK()), MG.big ? '#2a1520' : '#4a2b3a', 'left');
     if (it.bar) {
       const bw = b.w - 28, by = cy + ic * 0.45;
       x.fillStyle = '#f6e1ea'; x.beginPath(); x.roundRect(b.x + 14, by, bw, 12, 6); x.fill();
@@ -646,14 +660,17 @@ function drawGoal() {
 }
 function drawInfo() {
   const b = lay.info; box(b);
+  const k = RK(), lab = MG.big ? '#8a1f4f' : '#c0507e', ink = MG.big ? '#2a1520' : '#4a2b3a';
   if (land) {
-    txt(mode === 'moves' ? '剩下' : '走了', b.x + 16, b.y + b.h / 2, 15, '#c0507e', 'left');
-    txt(`${mode === 'moves' ? Math.max(0, L.mv - moves) : moves} 步`, b.x + 58, b.y + b.h / 2, 26, mode === 'moves' && L.mv - moves <= 3 ? '#e0344a' : '#4a2b3a', 'left', 900);
-    txt(`${score} 分`, b.x + b.w - 16, b.y + b.h / 2, 22, '#ff7a00', 'right', 900);
+    const l1 = mode === 'moves' ? '剩下' : '走了';
+    txt(l1, b.x + 16, b.y + b.h / 2, 15 * k, lab, 'left');
+    const lw = x.measureText(l1).width;
+    txt(`${mode === 'moves' ? Math.max(0, L.mv - moves) : moves} 步`, b.x + 24 + lw, b.y + b.h / 2, 26 * k, mode === 'moves' && L.mv - moves <= 3 ? '#e0344a' : ink, 'left', 900);
+    txt(`${score} 分`, b.x + b.w - 16, b.y + b.h / 2, 22 * k, MG.big ? '#c25400' : '#ff7a00', 'right', 900);
   } else {
-    txt(mode === 'moves' ? '剩下步數' : '走了', b.x + b.w / 2, b.y + 18, 14, '#c0507e');
-    txt(`${mode === 'moves' ? Math.max(0, L.mv - moves) : moves}`, b.x + b.w / 2, b.y + 46, 30, mode === 'moves' && L.mv - moves <= 3 ? '#e0344a' : '#4a2b3a', 'center', 900);
-    txt(`${score} 分`, b.x + b.w / 2, b.y + b.h - 16, 17, '#ff7a00', 'center', 900);
+    txt(mode === 'moves' ? '剩下步數' : '走了', b.x + b.w / 2, b.y + 18 * k, 14 * k, lab);
+    txt(`${mode === 'moves' ? Math.max(0, L.mv - moves) : moves}`, b.x + b.w / 2, b.y + b.h / 2 + 2, 30 * k, mode === 'moves' && L.mv - moves <= 3 ? '#e0344a' : ink, 'center', 900);
+    txt(`${score} 分`, b.x + b.w / 2, b.y + b.h - 16 * k, 17 * k, MG.big ? '#c25400' : '#ff7a00', 'center', 900);
   }
 }
 function drawBoard(x) {
@@ -759,7 +776,7 @@ function drawPuPu() {
   const look = sel ? (cellX(sel.c) - p.x) / 300 : Math.sin(t * 0.7) * 0.4;
   MG.puPu(x, p.x, p.y, p.r, idleT > 14 && state === 'play' ? 'sleep' : mood, sq, { look: Math.max(-1, Math.min(1, look)), arms: mood === 'wow' || mood === 'love' ? 'up' : true });
   if (say && lay.bubble.w > 50) {
-    const b = lay.bubble; let sz = Math.min(22, Math.max(15, lay.pu.r * 0.42));
+    const b = lay.bubble; let sz = Math.min(22, Math.max(15, lay.pu.r * 0.42)) * RK();
     x.font = `800 ${sz}px ${FONT}`;
     while (sz > 11 && x.measureText(say.text).width + 26 > b.w) { sz--; x.font = `800 ${sz}px ${FONT}`; }   // long lines shrink to fit the bubble
     const w = Math.min(b.w, x.measureText(say.text).width + 26), h = sz + 18, bx = b.x, by = b.y;
@@ -779,7 +796,7 @@ function drawHintBtn() {
   const g = x.createLinearGradient(0, b.y, 0, b.y + b.h); g.addColorStop(0, busy ? '#fff3cc' : '#fff1a8'); g.addColorStop(1, busy ? '#f2e0b0' : '#ffcf3a');
   x.fillStyle = g; x.strokeStyle = busy ? '#d9c08a' : '#c98a00'; x.lineWidth = 3;
   x.beginPath(); x.roundRect(b.x, b.y + (press ? 3 : 0), b.w, b.h, 20); x.fill(); x.stroke();
-  const sz = Math.min(30, b.h * 0.38);
+  const sz = Math.min(30 * RK(), b.h * 0.42, b.w / 4.2);
   x.fillStyle = '#000'; x.font = `${sz}px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle';
   x.fillText('💡', b.x + b.w / 2 - sz * 1.15, b.y + b.h / 2 + (press ? 3 : 0));
   txt('提示', b.x + b.w / 2 + sz * 0.55, b.y + b.h / 2 + (press ? 3 : 0) + 1, sz, busy ? '#a89770' : '#6a4300', 'center', 900);
