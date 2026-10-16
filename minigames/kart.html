@@ -60,7 +60,8 @@ const mmss = s => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}
 // =====================================================================
 // tracks — closed loops: control polygons smoothed by a closed cubic B-spline
 // =====================================================================
-const HW = 80, WALL = 48, LIM = HW + WALL, CAR_R = 17, CPN = 8, LAPS = 3, STEP = 1 / 120;
+const KS = 0.5;   // kart model size (MK: half size looks better on the road)
+const HW = 80, WALL = 48, LIM = HW + WALL, CAR_R = 11, CPN = 8, LAPS = 3, STEP = 1 / 120;
 const VMAX = 340, ACC = 1.25, DEC = 2.6, TURN = 2.7, GRIP = 9;
 const THEMES = [
   { id: 'town', nm: '草地小鎮', ic: '🏡', pts: [[0, 0], [800, -100], [1600, 0], [2100, 400], [2100, 1000], [1600, 1400], [800, 1300], [0, 1400], [-500, 1000], [-500, 400]],
@@ -891,6 +892,7 @@ function buildKart(who, ghostKart = false) {
   shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.9; shadow.renderOrder = 1;
   const flames = new THREE.Mesh(merge([part(G.cone(3.6, 12, 7), '#ffb33a', -31, 10, 6, 0, 0, Math.PI / 2), part(G.cone(3.6, 12, 7), '#ffb33a', -31, 10, -6, 0, 0, Math.PI / 2)]), new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9 }));
   flames.visible = false; body.add(flames);
+  root.scale.setScalar(KS);
   scene.add(root); scene.add(shadow);
   return { root, body, driver, face, wheels, steerers, shadow, flames, dv, mood: 'happy', spin: 0, land: 0, wasAir: false };
 }
@@ -906,7 +908,7 @@ const hopH = c => c.hopT > 0 ? Math.sin(Math.PI * (1 - c.hopT / 0.62)) * 26 : 0;
 function poseKart(k, c, X, Y, A, dt) {
   const h = hopH(c), air = c.hopT > 0;
   k.root.position.set(X, h, Y); k.root.rotation.y = -A;
-  k.shadow.position.set(X, 0.9, Y); k.shadow.rotation.z = -A; const ss = 1 - h / 60; k.shadow.scale.set(ss, ss, 1);
+  k.shadow.position.set(X, 0.9, Y); k.shadow.rotation.z = -A; const ss = (1 - h / 60) * KS; k.shadow.scale.set(ss, ss, 1);
   const st = c.steer || 0, slide = c.drifting ? c.drifting * 0.35 : 0;
   k.body.rotation.x = -st * 0.06; k.body.rotation.y = -slide;
   k.driver.rotation.x = st * 0.22 + Math.sin(t * 9 + c.who) * 0.02;
@@ -1073,7 +1075,7 @@ function draw() {
     x.setTransform(px, 0, 0, px, 0, 0); x.save(); x.beginPath(); x.rect(v.x, v.y, v.w, v.h); x.clip();
     viewBase(v);
     v.pos = new Map();
-    cars.forEach(c => { const p = project(v, c.px + (c.x - c.px) * alpha, hopH(c) + 52, c.py + (c.y - c.py) * alpha); if (p) v.pos.set(c, p); });
+    cars.forEach(c => { const p = project(v, c.px + (c.x - c.px) * alpha, hopH(c) + 52 * KS + 6, c.py + (c.y - c.py) * alpha); if (p) v.pos.set(c, p); });
     if (mode === 'pvp' && racing()) for (const c of humans) { if (c === humans[v.hi]) continue; const p = v.pos.get(c); if (p && p.x > 0 && p.x < v.w) txt(c.kind === 'p1' ? '1P' : '2P', p.x, p.y - 6, 15, c.kind === 'p1' ? '#2e9a4c' : '#7a52d0', 'center', 900, '#fff', 4); }
     drawHud(v, vi);
     if (v.cam.flash > 0) { x.fillStyle = `rgba(255,255,255,${v.cam.flash / 0.35 * 0.8})`; x.fillRect(0, 0, v.w, v.h); }
@@ -1349,7 +1351,7 @@ window.KART = {
   // where kart index i is drawn in player k's view (view-local px), and its size there (px per 20 units)
   screenOf: (i, k = 0) => { const v = views.find(q => q.hi === k), c = cars[i]; const a = project(v, c.x, 10, c.y), b = project(v, c.x, 30, c.y); return a && b ? { x: a.x, y: a.y, size: Math.abs(a.y - b.y) } : null; },
   // how wide player k's own kart is drawn, as a fraction of its view's width
-  kartWidth: (k = 0) => { const v = views.find(q => q.hi === k), c = humans[k], nx = -Math.sin(c.a), nz = Math.cos(c.a), a = project(v, c.x - nx * 18, 10, c.y - nz * 18), b = project(v, c.x + nx * 18, 10, c.y + nz * 18); return a && b ? Math.abs(a.x - b.x) / v.w : null; },
+  kartWidth: (k = 0) => { const v = views.find(q => q.hi === k), c = humans[k], nx = -Math.sin(c.a), nz = Math.cos(c.a), a = project(v, c.x - nx * 18 * KS, 10 * KS, c.y - nz * 18 * KS), b = project(v, c.x + nx * 18 * KS, 10 * KS, c.y + nz * 18 * KS); return a && b ? Math.abs(a.x - b.x) / v.w : null; },
   // the horizon line in view k (local y of a far point straight ahead)
   horizon: (k = 0) => { const v = views.find(q => q.hi === k), cam = v.cam3, f = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion); f.y = 0; f.normalize(); const p = project(v, cam.position.x + f.x * 8000, 0, cam.position.z + f.z * 8000); return p ? p.y : null; },
   dims: () => ({ W, H, land, gl: { w: glW, h: glH, pr: glPR }, views: views.map(v => ({ hi: v.hi, x: v.x, y: v.y, w: v.w, h: v.h, flip: v.flip })) }),
