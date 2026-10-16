@@ -25,10 +25,14 @@ const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let q = Math.imul(a ^ a >>> 15, 1 | a); q = q + Math.imul(q ^ q >>> 7, 61 | q) ^ q; return ((q ^ q >>> 14) >>> 0) / 4294967296; }; }
 
 // ---------- notes, colours, labels ----------
-const LO = 60, HI = 79;                                   // C4 … G5
-const WHITES = [60, 62, 64, 65, 67, 69, 71, 72, 74, 76, 77, 79];
-const BLACKS = [61, 63, 66, 68, 70, 73, 75, 78];
 const isBlack = m => [1, 3, 6, 8, 10].includes(((m % 12) + 12) % 12);
+// the piano runs C4 … G5; the 🎹 真鋼琴 keyboard layout adds the octave below (C3 … G5)
+let LO = 60, HI = 79, WHITES = [], BLACKS = [];
+function setRange(lo) {
+  LO = lo; WHITES = []; BLACKS = [];
+  for (let m = LO; m <= HI; m++) (isBlack(m) ? BLACKS : WHITES).push(m);
+}
+setRange(60);
 const SOLFA = { 0: 'Do', 2: 'Re', 4: 'Mi', 5: 'Fa', 7: 'Sol', 9: 'La', 11: 'Si' };
 const NUM = { 0: '1', 2: '2', 4: '3', 5: '4', 7: '5', 9: '6', 11: '7' };
 const ABC = { 0: 'C', 2: 'D', 4: 'E', 5: 'F', 7: 'G', 9: 'A', 11: 'B' };
@@ -201,7 +205,7 @@ let notes = [], nIdx = 0, sPos = 0, wrong = 0, perfect = 0, good = 0, missed = 0
 const juiceT = {};
 function juice(name, n) { const q = performance.now(); if (q - (juiceT[name] || 0) < 60) return; juiceT[name] = q; MG.sfx(name, n); }
 let demo = null, pb = null, pbLog = [], noteLog = [];
-const rec = { on: false, first: -1, notes: (MG.store.get('piano.rec', []) || []).filter(r => Array.isArray(r) && r[1] >= LO && r[1] <= HI) };
+const rec = { on: false, first: -1, notes: (MG.store.get('piano.rec', []) || []).filter(r => Array.isArray(r) && r[1] >= 48 && r[1] <= 79) };
 const PERF = 0.13, GOOD = 0.32;          // seconds, 跟節拍 judging windows
 const SONG = () => SONGS[song];
 const bps = () => SONG().bpm / 60;
@@ -233,10 +237,11 @@ function layout() {
     tierCut = 0;
   } else {
     // narrow phones in portrait: two rows of big keys (the high notes sit on the upper row, Do above Do)
-    const kw = (W - M * 2) / 7, kh = Math.round(Math.min(230, (H * 0.5 - 44) / 2)), gap = LIP + 8;
+    const kw = (W - M * 2) / (WHITES.length > 12 ? 10 : 7), kh = Math.round(Math.min(230, (H * 0.5 - 44) / 2)), gap = LIP + 8;
     const yA = H - 14 - kh, yB = yA - gap - kh;
-    addRow(WHITES.slice(0, 7), M, yA, kw, kh, 0);
-    addRow(WHITES.slice(7), M, yB, kw, kh, 1);
+    const cut = WHITES.length > 12 ? 10 : 7;
+    addRow(WHITES.slice(0, cut), M, yA, kw, kh, 0);
+    addRow(WHITES.slice(cut), M, yB, kw, kh, 1);
     bodyR = { x: M - 10, y: yB - LIP, w: W - (M - 10) * 2, h: H - 6 - (yB - LIP) };
     tierCut = yA - gap / 2;
   }
@@ -347,6 +352,11 @@ function drawWhite(g, k, s) {
     if (main === NUM[k.m % 12]) dot(g, cx, cy - cr * 0.62, Math.max(2, cr * 0.1));
     else dot(g, cx, sy - ss * 0.7, Math.max(2, ss * 0.13));
   }
+  if (k.m < 60) {    // low-octave dot (簡譜 low dot) under the number
+    g.fillStyle = main === NUM[k.m % 12] ? (s.down ? c[2] : '#fff') : c[2];
+    if (main === NUM[k.m % 12]) dot(g, cx, cy + cr * 0.66, Math.max(2, cr * 0.1));
+    else dot(g, cx, sy + ss * 0.62, Math.max(2, ss * 0.13));
+  }
   if (s.glow) {
     g.save(); g.globalAlpha = s.glow;
     g.fillStyle = c[1]; g.globalAlpha = s.glow * 0.3; rr(g, x0, y0, w, h - dn, [0, 0, r, r]); g.fill();
@@ -371,8 +381,14 @@ const REST = { down: false, glow: 0, flash: 0 };
 // small keycap-style letter on each piano key that has a computer-keyboard key.
 // White keys: in the strip between the bottom of the black keys and the second name above the do-re-mi circle.
 // Black keys: a small light label near the bottom of the key.
-function capBox(k) {
+function capBox(k, below) {
   const hw = k.white;
+  if (hw && below) {   // too narrow between the black keys (32-key piano): sit just under them instead
+    let bb = k.y; for (const b of keys) if (!b.white && b.x < k.x + k.w && b.x + b.w > k.x) bb = Math.max(bb, b.y + b.h);
+    if (bb === k.y) bb = k.y + k.h * 0.6;
+    const sz = Math.min(24, k.w * 0.62);
+    return sz < 9 ? null : { cx: k.x + k.w / 2, cy: bb + 8 + sz / 2, sz };
+  }
   if (hw) {
     // widest column of the white key that the black keys don't cover, near the top of the key
     let segs = [[k.x + 3, k.x + k.w - 3]], blackBottom = k.y;
@@ -390,7 +406,9 @@ function capBox(k) {
   return { cx: k.x + k.w / 2, cy: k.y + k.h - 8 - sz / 2, sz };
 }
 function capBoxes() {   // one size for all white caps (and one for black) so the row looks even
-  const out = keys.map(k => CODE_OF.has(k.m) ? [k, capBox(k)] : null).filter(q => q && q[1]);
+  const mine = keys.filter(k => CODE_OF.has(k.m));
+  const below = mine.some(k => k.white && !capBox(k));
+  const out = mine.map(k => [k, capBox(k, below)]).filter(q => q[1]);
   for (const wh of [true, false]) { const g = out.filter(q => q[0].white === wh); const m = Math.min(...g.map(q => q[1].sz)); for (const q of g) q[1].sz = m; }
   return out;
 }
@@ -800,27 +818,37 @@ cv.addEventListener('pointercancel', ptrUp);
 cv.addEventListener('lostpointercapture', ptrUp);
 addEventListener('pointerup', ptrUp); addEventListener('pointercancel', ptrUp);   // backup when the finger is lifted off the canvas
 // keycap letters drawn on the piano keys (computer keyboard → piano key)
-const CAP_TXT = c => c.startsWith('Key') ? c.slice(3) : c.startsWith('Digit') ? c.slice(5) : ({ Semicolon: ';', Quote: "'", BracketRight: ']', Enter: '↵', Comma: ',', Period: '.', Slash: '/' })[c] || c;
+const CAP_TXT = c => c.startsWith('Key') ? c.slice(3) : c.startsWith('Digit') ? c.slice(5) : ({ Semicolon: ';', Quote: "'", BracketRight: ']', Enter: '↵', BracketLeft: '[', Backslash: '\\', Comma: ',', Period: '.', Slash: '/' })[c] || c;
 let showKeyCaps = !!(window.matchMedia && matchMedia('(hover: hover) and (pointer: fine)').matches);
 const capFlash = new Map();
-// two ways to map the computer keyboard (chosen on the start screen):
+// three ways to map the computer keyboard (chosen on the start screen):
 //  單排 one: the home row A S D F … is the white keys, the row above the black keys (one hand runs over everything)
-//  兩手 two: like music software — left hand Z X C V B N M (black S D G H J) for Do⁴–Si⁴,
-//            right hand Q W E R T (black 2 3 5) for Do⁵–Sol⁵; , . / and L ; overlap the right hand's Do Re Mi
+//  真鋼琴 piano: hands side by side on the home row like at a real piano — left little finger Do³ on A, left index Fa³ on F (bump),
+//      right thumb on middle Do⁴ (H), right index Re⁴ on J (bump); La³ Si³ under the left thumb (V B), Si⁴ on Enter, Do⁵ on \
+//      (the piano grows an octave downwards in this layout)
+//  兩隻手 two: the same hand shape an octave higher, so the whole C4 … G5 piano fits — left A…G = Do⁴…Sol⁴, right H…; = Do⁵…Sol⁵,
+//      La⁴ Si⁴ under the thumbs (B N)
 const KEYMAPS = {
   one: { KeyA: 60, KeyW: 61, KeyS: 62, KeyE: 63, KeyD: 64, KeyF: 65, KeyT: 66, KeyG: 67, KeyY: 68, KeyH: 69, KeyU: 70, KeyJ: 71, KeyK: 72, KeyO: 73, KeyL: 74, KeyP: 75, Semicolon: 76, Quote: 77, BracketRight: 78, Enter: 79 },
-  two: { KeyZ: 60, KeyS: 61, KeyX: 62, KeyD: 63, KeyC: 64, KeyV: 65, KeyG: 66, KeyB: 67, KeyH: 68, KeyN: 69, KeyJ: 70, KeyM: 71, Comma: 72, KeyL: 73, Period: 74, Semicolon: 75, Slash: 76,
-         KeyQ: 72, Digit2: 73, KeyW: 74, Digit3: 75, KeyE: 76, KeyR: 77, Digit5: 78, KeyT: 79 },
+  piano: { KeyA: 48, KeyW: 49, KeyS: 50, KeyE: 51, KeyD: 52, KeyF: 53, KeyT: 54, KeyG: 55, KeyY: 56, KeyV: 57, KeyB: 59,
+           KeyH: 60, KeyU: 61, KeyJ: 62, KeyI: 63, KeyK: 64, KeyL: 65, KeyP: 66, Semicolon: 67, BracketLeft: 68, Quote: 69, BracketRight: 70, Enter: 71, Backslash: 72 },
+  two: { KeyA: 60, KeyW: 61, KeyS: 62, KeyE: 63, KeyD: 64, KeyF: 65, KeyT: 66, KeyG: 67, KeyY: 68, KeyB: 69, KeyN: 71,
+         KeyH: 72, KeyU: 73, KeyJ: 74, KeyI: 75, KeyK: 76, KeyL: 77, KeyP: 78, Semicolon: 79 },
 };
-let kbMode = MG.store.get('piano.pick.kb', 'one') === 'two' ? 'two' : 'one';
+const kbOk = v => KEYMAPS[v] ? v : 'one';
+let kbMode = kbOk(MG.store.get('piano.pick.kb', 'one'));
 let KEYMAP = KEYMAPS[kbMode];
 let CODE_OF = new Map();
 function setKbMode(v) {
-  kbMode = v === 'two' ? 'two' : 'one'; KEYMAP = KEYMAPS[kbMode];
-  CODE_OF = new Map(Object.entries(KEYMAP).map(([c, m]) => [m, c]));   // later entries win: in 兩手, Do⁵ Re⁵ Mi⁵ show the right hand's Q W E
-  if (started) { releaseAll(); layerKey = ''; }
+  kbMode = kbOk(v); KEYMAP = KEYMAPS[kbMode];
+  CODE_OF = new Map(Object.entries(KEYMAP).map(([c, m]) => [m, c]));
+  const lo = kbMode === 'piano' ? 48 : 60;
+  if (started) releaseAll();
+  if (lo !== LO) { setRange(lo); if (started) relayout(); }
+  if (started) layerKey = '';
 }
 let started = false;
+setRange(kbMode === 'piano' ? 48 : 60);
 CODE_OF = new Map(Object.entries(KEYMAP).map(([c, m]) => [m, c]));
 // --- keys that "stick": a lost keyup (focus change, ⌘/Ctrl shortcuts, input methods) must never leave a note ringing ---
 const kbdSeen = new Map();     // code → last time we saw a keydown (incl. auto-repeat) for it
@@ -1059,13 +1087,13 @@ function menu() {
     html: '<p>噗噗的玩具鋼琴！自由彈可以換樂器、錄音；跟著彈就按<b>發光的琴鍵</b>學兒歌，按錯也沒關係 ^_^</p>',
     picks: [
       { key: 'pace', title: '跟著彈的時候', def: 'wait', options: [{ id: 'wait', label: '🐢 等我', sub: '按對了才往下' }, { id: 'beat', label: '🥁 跟節拍', sub: '照拍子，比完美' }] },
-      { key: 'kb', title: '電腦鍵盤怎麼彈？', def: 'one', options: [{ id: 'one', label: '⌨️ 單排', sub: 'A S D F… 一排彈全部' }, { id: 'two', label: '🙌 兩隻手', sub: '左手 Z X C V…　右手 Q W E R…' }] },
+      { key: 'kb', title: '電腦鍵盤怎麼彈？', def: 'one', options: [{ id: 'one', label: '⌨️ 單排', sub: 'A S D F… 一排彈全部' }, { id: 'piano', label: '🎹 真鋼琴', sub: '兩手並排，右手拇指在中央 Do（多一組低音）' }, { id: 'two', label: '🙌 兩隻手', sub: '兩手並排，整台鋼琴都彈得到' }] },
       { key: 'lab', title: '琴鍵上寫什麼？', def: 'do', options: [{ id: 'do', label: 'Do Re Mi', sub: '唱名' }, { id: 'num', label: '1 2 3', sub: '簡譜數字' }, { id: 'abc', label: 'C D E', sub: '音名' }] },
     ],
     modesTitle: '想怎麼玩？',
     modes: [{ id: 'free', label: '🎨 自由彈', sub: '換樂器、錄音、播放' }, { id: 'learn', label: '🎶 跟著彈', sub: '跟著發光的鍵學兒歌' }],
     levels: { count: SONGS.length, max: SONGS.length, label: n => SONGS[n - 1].nm + (starMap[SONGS[n - 1].id] ? ' ' + '⭐'.repeat(starMap[SONGS[n - 1].id]) : '') },
-    keys: '用手指按琴鍵，好幾根手指可以一起按，滑過去也會響，按住會一直響　電腦鍵盤：⌨️ 單排 <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><kbd>F</kbd>…<kbd>\'</kbd><kbd>Enter</kbd> 白鍵、<kbd>W</kbd><kbd>E</kbd><kbd>T</kbd>…<kbd>]</kbd> 黑鍵；🙌 兩隻手 左手 <kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd><kbd>V</kbd><kbd>B</kbd><kbd>N</kbd><kbd>M</kbd>（黑鍵 <kbd>S</kbd><kbd>D</kbd><kbd>G</kbd><kbd>H</kbd><kbd>J</kbd>）、右手 <kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd><kbd>R</kbd><kbd>T</kbd>（黑鍵 <kbd>2</kbd><kbd>3</kbd><kbd>5</kbd>）。琴鍵上會標出對應的字母',
+    keys: '用手指按琴鍵，好幾根手指可以一起按，滑過去也會響，按住會一直響　電腦鍵盤：⌨️ 單排 <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><kbd>F</kbd>…<kbd>\'</kbd><kbd>Enter</kbd> 白鍵、<kbd>W</kbd><kbd>E</kbd><kbd>T</kbd>…<kbd>]</kbd> 黑鍵；🎹 真鋼琴、🙌 兩隻手 都是兩手並排：左手 <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><kbd>F</kbd><kbd>G</kbd>、右手 <kbd>H</kbd><kbd>J</kbd><kbd>K</kbd><kbd>L</kbd><kbd>;</kbd>，食指放在 <kbd>F</kbd> <kbd>J</kbd> 的凸點上，拇指往下按 <kbd>V</kbd><kbd>B</kbd> 或 <kbd>B</kbd><kbd>N</kbd>，黑鍵在上一排。🎹 真鋼琴右手拇指在中央 Do，<kbd>Enter</kbd> 是 Si、<kbd>\\</kbd> 是高音 Do。琴鍵上會標出對應的字母',
     playing: () => state === 'play',
     start: (m, lv, pk) => {
       pace = pk && pk.pace === 'beat' ? 'beat' : 'wait';
@@ -1096,7 +1124,7 @@ window.PNT = {
   get state() { return state; }, get mode() { return mode; }, get pace() { return pace; }, get song() { return song; }, get ins() { return ins; }, get lab() { return lab; },
   get nIdx() { return nIdx; }, get n() { return notes.length; }, get sPos() { return sPos; }, get wrong() { return wrong; }, get perfect() { return perfect; }, get good() { return good; }, get missed() { return missed; },
   get tiers() { return tiers; }, get land() { return land; }, get demo() { return !!demo; }, get recOn() { return rec.on; }, get playing() { return !!pb; }, get frames() { return frameN; },
-  range: [LO, HI], whites: WHITES.slice(), blacks: BLACKS.slice(),
+  get range() { return [LO, HI]; }, get whites() { return WHITES.slice(); }, get blacks() { return BLACKS.slice(); },
   songs: () => SONGS.map(s => ({ id: s.id, nm: s.nm, notes: parseSong(s.n).map(n => n.m), beats: parseSong(s.n).map(n => n.d) })),
   next: () => nIdx < notes.length ? notes[nIdx].m : null,
   nextT: () => nIdx < notes.length ? notes[nIdx].t : null, bpm: () => SONG().bpm,
