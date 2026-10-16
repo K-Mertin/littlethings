@@ -306,7 +306,8 @@ const MG = (() => {
   // paused = the function that puts the game back exactly as it was (null when not paused)
   let paused = null;
   function resume() { const r = paused; if (!r) return; paused = null; hide(); r(); }
-  // o = { label, playing() → true while a round is running, open(isPause) → shows the menu panel, returns an optional restore fn }
+  // o = { label, playing() → true while a round is running, open(isPause) → shows the menu panel, returns an optional restore fn,
+  //       onPause() → optional, called right when a running game gets paused (e.g. to suspend its music) }
   function addResume() {
     const card = over && !over.hidden && over.querySelector('.mg-card');
     if (!card || card.querySelector('.mg-resume')) return;
@@ -323,6 +324,7 @@ const MG = (() => {
       if (paused) return resume();                 // second tap = keep playing
       const was = !!o.playing();
       if (was) paused = () => {};                  // freeze first, so the menu can see we're paused
+      if (was && o.onPause) o.onPause();
       const restore = o.open(was);
       if (!was) return;
       if (typeof restore === 'function') paused = restore;
@@ -345,11 +347,11 @@ const MG = (() => {
 
   // ---------- start screen with a mode choice and (optionally) a level choice ----------
   // o = { id, title, html, keys, modes: [{ id, label, sub }], picks: [{ key, title, options: [{ id, label, sub }] }],
-  //       levels: { count, max, label? }, start(mode, level, picks) }
+  //       levels: { count, max, label? }, start(mode, level, picks), playing?, restore?, onPause? }
   let chooseMenu = null;
   function choose(o) {
     const isPause = !!paused;
-    if (o.playing && !chooseMenu) chooseMenu = pauseMenu({ label: o.menuLabel || (o.levels ? '☰ 選關' : '☰ 換模式'), playing: o.playing, open: () => { choose(o); return o.restore; } });
+    if (o.playing && !chooseMenu) chooseMenu = pauseMenu({ label: o.menuLabel || (o.levels ? '☰ 選關' : '☰ 換模式'), playing: o.playing, onPause: o.onPause, open: () => { choose(o); return o.restore; } });
     let mode = store.get(o.id + '.pickMode', o.modes ? o.modes[0].id : null);
     if (o.modes && !o.modes.some(m => m.id === mode)) mode = o.modes[0].id;
     let lvl = Math.min(store.get(o.id + '.pickLevel', 1), o.levels ? Math.max(1, o.levels.max) : 1);

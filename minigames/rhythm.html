@@ -1,0 +1,1176 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>噗噗節奏樂園</title>
+<link rel="stylesheet" href="mini.css">
+<style>
+.mg-stage{padding:6px}.rh-stars{font-size:38px;letter-spacing:.12em;margin:2px 0 4px}
+.rh-res{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 0}
+.rh-res div{background:#fff;border:2px solid #e2cf9c;border-radius:10px;padding:4px 2px;font-size:13px;color:var(--mute)}
+.rh-res b{display:block;font-size:22px;color:var(--ink)}
+.rh-res .p b{color:#e8508a}.rh-res .g b{color:#2f7fd8}.rh-res .m b{color:#9a8fa8}
+/* a tall start panel must stay scrollable to its top on small phones */
+.mg-over{align-items:flex-start}.mg-card{margin:auto}
+.mg-pick:has(> [data-pk="diff"]){grid-template-columns:repeat(3,1fr)}
+.mg-levels .mg-lv{min-width:calc(50% - 6px);min-height:44px;font-size:15px}
+</style>
+</head>
+<body>
+<main class="mg-stage" id="stage"><canvas id="cv" aria-label="遊戲畫面"></canvas></main>
+<script src="mini.js"></script>
+<script>
+'use strict';
+MG.init({ id: 'rhythm', title: '噗噗節奏樂園', stats: ['a'] });
+const cv = document.getElementById('cv'), x = cv.getContext('2d');
+const FONT = '"Noto Sans TC","PingFang TC","Microsoft JhengHei","Noto Sans CJK TC",system-ui,sans-serif';
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let q = Math.imul(a ^ a >>> 15, 1 | a); q = q + Math.imul(q ^ q >>> 7, 61 | q) ^ q; return ((q ^ q >>> 14) >>> 0) / 4294967296; }; }
+
+// =====================================================================
+// songs — all melodies are original, written for this game.
+// melody token = scale degree (1–7, 0 = rest), ' = octave up, , = octave down, :n = length in eighth notes (default 2)
+// chords: one scale degree per bar, or 'a-b' for two chords in one bar
+// =====================================================================
+const SCALES = { major: [0, 2, 4, 5, 7, 9, 11], minor: [0, 2, 3, 5, 7, 8, 10] };
+// drum grids are 16th notes (4/4: 16 steps, 3/4: 12 steps): x = hit, o = soft hit
+// bass grid is eighths: R root, 5 fifth, 8 octave, - rest, = keep ringing
+const STYLES = {
+  march: { k: 'x...x...x...x...', s: '....x.......x...', h: '..x...x...x...x.', bass: 'R=5=R=5=', pad: 'stab', fill: '....x.....x.xxxx' },
+  bounce: { k: 'x...x...x...x...', c: '....x.......x...', h: '..x...x...x...x.', bass: 'R-8-R-8-', pad: 'stab' },
+  soft: { k: 'x.........x.....', s: '....o.......o...', h: 'o.o.o.o.o.o.o.o.', bass: 'R===5===', pad: 'sus', extra: 'drops', echo: 1 },
+  pop: { k: 'x.....x.x.......', s: '....x.......x...', h: 'x.x.x.x.x.x.x.x.', bass: 'R==R==5=', pad: 'sus' },
+  bubble: { k: 'x.......x.......', c: '............x...', h: '.o.o.o.o.o.o.o.o', bass: 'R===R=5=', pad: 'sus', extra: 'blips', echo: 1 },
+  space: { k: 'x.........x.....', s: '........x.......', h: 'o.o.o.o.o.o.o.o.', bass: 'R=======', pad: 'sus', echo: 1 },
+  machine: { k: 'x...x...x...x...', c: '....x.......x...', h: 'xoxoxoxoxoxoxoxo', bass: 'R-R-8-R-', pad: 'stab' },
+  waltz: { k: 'x...........', s: '....o...o...', h: '..o...o...o.', bass: 'R=====', pad: 'waltz', echo: 1 },
+  taiko: { k: 'x.......x.......', s: '....x.......x...', h: 'x.x.x.x.x.x.x.x.', t: 'x..x..x...x.x...', bass: 'R--R--R-', pad: 'stab', fill: '....x...xxxxxxxx' },
+  party: { k: 'x...x...x...x...', c: '....x.......x...', s: '....x.......x...', h: '..x...x...x...x.', bass: 'R-R-5-8-', pad: 'stab' },
+};
+const SONGS = [
+  { id: 'march', nm: '噗噗進行曲', bpm: 116, meter: 4, key: 60, scale: 'major', lead: 'square', style: 'march', theme: 'flags',
+    A: '1:2 3:2 5:2 5:2 | 6:1 5:1 4:2 3:2 1:2 | 2:2 2:2 3:1 2:1 1:2 | 5,:2 7,:2 1:4', cA: [1, 4, 5, 1],
+    B: '4:2 4:2 6:2 4:2 | 3:2 3:2 5:2 3:2 | 2:2 3:2 4:2 7,:2 | 1:6 0:2', cB: [4, 1, 5, 1] },
+  { id: 'jelly', nm: '果凍跳跳', bpm: 128, meter: 4, key: 65, scale: 'major', lead: 'square', style: 'bounce', theme: 'jelly',
+    A: '1:1 0:1 1:1 3:1 5:2 3:2 | 4:1 0:1 4:1 6:1 5:4 | 3:1 0:1 3:1 5:1 4:2 2:2 | 1:2 5,:2 1:4', cA: [1, 4, 2, 1],
+    B: "6:2 5:1 6:1 1':2 6:2 | 5:2 4:1 5:1 3:4 | 2:1 3:1 4:1 5:1 6:2 7:2 | 1':4 5:2 0:2", cB: [4, 1, 5, 1] },
+  { id: 'rain', nm: '下雨天滴答', bpm: 92, meter: 4, key: 69, scale: 'minor', lead: 'bell', style: 'soft', theme: 'rain',
+    A: '5:2 5:1 4:1 3:2 1:2 | 2:2 3:1 2:1 7,:2 5,:2 | 6,:2 1:1 3:1 6:2 5:2 | 4:1 3:1 2:2 1:4', cA: [1, 5, 6, 1],
+    B: "3:2 5:2 1':3 7:1 | 6:2 5:2 3:4 | 4:2 6:2 5:1 4:1 3:2 | 2:2 7,:2 1:4", cB: [6, 3, 4, '5-1'] },
+  { id: 'forest', nm: '森林派對', bpm: 120, meter: 4, key: 67, scale: 'major', lead: 'flute', style: 'pop', theme: 'forest',
+    A: '5,:2 1:1 2:1 3:2 1:2 | 4:2 3:1 2:1 3:4 | 2:2 1:1 7,:1 1:2 6,:2 | 5,:2 6,:1 7,:1 1:4', cA: [1, 6, 4, '5-1'],
+    B: '3:1 3:1 3:1 4:1 5:2 5:2 | 6:1 6:1 6:1 5:1 4:4 | 2:1 2:1 2:1 3:1 4:2 7,:2 | 1:2 3:2 1:4', cB: [1, 4, 5, 1] },
+  { id: 'sea', nm: '海底泡泡', bpm: 100, meter: 4, key: 62, scale: 'major', lead: 'bell', style: 'bubble', theme: 'sea',
+    A: "1:3 3:1 5:2 1':2 | 7:2 6:1 5:1 6:4 | 4:3 6:1 5:2 4:2 | 3:2 2:2 1:4", cA: [1, 2, 4, '5-1'],
+    B: "6:2 7:2 1':2 6:2 | 5:2 3:2 5:4 | 4:2 5:2 6:2 4:2 | 5:6 0:2", cB: [6, 3, 4, 5] },
+  { id: 'space', nm: '太空漫步', bpm: 84, meter: 4, key: 63, scale: 'major', lead: 'tri', style: 'space', theme: 'space',
+    A: '1:4 5:4 | 4:2 3:2 2:4 | 6,:4 3:4 | 2:2 1:2 7,:2 5,:2', cA: [1, '4-5', 6, 5],
+    B: "3:1 5:1 1':2 7:2 5:2 | 6:1 1':1 3':2 2':2 1':2 | 4:1 6:1 1':2 7:2 6:2 | 5:8", cB: [1, 6, 4, 5] },
+  { id: 'candy', nm: '糖果工廠', bpm: 136, meter: 4, key: 64, scale: 'major', lead: 'square', style: 'machine', theme: 'candy',
+    A: "1:1 1:1 3:1 5:1 1':2 5:2 | 6:1 6:1 5:1 4:1 5:2 3:2 | 2:1 2:1 4:1 6:1 5:2 4:2 | 3:2 2:2 1:4", cA: [1, '4-1', '2-5', '5-1'],
+    B: "5:1 4:1 3:1 4:1 5:2 1':2 | 7:1 6:1 5:1 6:1 7:2 2':2 | 1':1 7:1 6:1 7:1 1':2 6:2 | 5:2 7:2 1':4", cB: [1, 5, 4, '5-1'] },
+  { id: 'snow', nm: '雪人華爾滋', bpm: 144, meter: 3, key: 65, scale: 'major', lead: 'box', style: 'waltz', theme: 'snow',
+    A: '1:4 3:2 | 5:4 3:2 | 4:4 6:2 | 5:6 | 6:2 5:2 4:2 | 3:2 2:2 1:2 | 2:4 5,:2 | 1:6', cA: [1, 1, 4, 1, 4, 1, 5, 1],
+    B: "3:4 5:2 | 1':4 7:2 | 6:4 4:2 | 5:6 | 4:2 6:2 5:2 | 3:2 5:2 4:2 | 3:4 2:2 | 1:6", cB: [1, 6, 4, 5, 2, 1, 5, 1] },
+  { id: 'night', nm: '夜市小鼓', bpm: 108, meter: 4, key: 62, scale: 'minor', lead: 'square', style: 'taiko', theme: 'night',
+    A: '1:2 1:1 3:1 4:2 5:2 | 7:2 5:1 4:1 5:4 | 4:2 3:1 1:1 3:2 4:2 | 1:2 7,:2 1:4', cA: [1, 3, 4, '7-1'],
+    B: "5:1 5:1 7:1 5:1 1':4 | 7:1 7:1 5:1 4:1 5:4 | 4:1 4:1 5:1 4:1 3:2 1:2 | 4:2 5:2 1:4", cB: [1, 3, 6, '7-1'] },
+  { id: 'party', nm: '生日派對', bpm: 124, meter: 4, key: 67, scale: 'major', lead: 'square', style: 'party', theme: 'party',
+    A: '5,:1 1:1 3:2 5:2 3:2 | 4:1 4:1 6:2 5:4 | 6:1 5:1 4:2 3:1 2:1 3:2 | 2:2 5,:2 1:4', cA: [1, '4-1', 2, '5-1'],
+    B: "1':2 1':1 7:1 6:2 5:2 | 3:2 5:1 3:1 1:4 | 2:1 3:1 4:2 6:1 5:1 4:2 | 5:2 7,:2 1:2 0:2", cB: [4, 1, 2, '5-1'] },
+];
+const THEMES = {
+  flags: { bg: ['#ffe9c2', '#ffd0dc'], acc: '#ff7a8a' }, jelly: { bg: ['#ffe8f6', '#e2f0ff'], acc: '#ff8fc8' },
+  rain: { bg: ['#cfe2f5', '#eaf2fb'], acc: '#6aa6e0' }, forest: { bg: ['#d8f5c8', '#fff3cf'], acc: '#5cbf62' },
+  sea: { bg: ['#9fe0ff', '#3f9fe0'], acc: '#ffffff' }, space: { bg: ['#1d1b4a', '#4b3b8f'], acc: '#ffe27a' },
+  candy: { bg: ['#ffe0f0', '#fff2c2'], acc: '#ff6fb0' }, snow: { bg: ['#dff0ff', '#ffffff'], acc: '#8fc4ff' },
+  night: { bg: ['#2e1f4f', '#a2456e'], acc: '#ffb347' }, party: { bg: ['#fff1b8', '#ffd6f0'], acc: '#ff9a3a' },
+};
+const DIFFS = { easy: { n: 2, app: 2.1, gap: 0.4, nm: '簡單' }, normal: { n: 3, app: 1.65, gap: 0.2, nm: '普通' }, hard: { n: 4, app: 1.3, gap: 0.15, nm: '困難' } };
+const PERF = 0.07, GOOD = 0.14;              // judging windows (seconds, on the audio clock)
+
+// ---------- parse + build a song into scheduled events ----------
+function parseMelody(str, barE) {
+  const bars = str.split('|').map(b => b.trim()).filter(Boolean);
+  return bars.map(b => {
+    const out = []; let pos = 0;
+    for (const tok of b.split(/\s+/)) {
+      const mt = /^([0-7])([',]*)(?::(\d+))?$/.exec(tok);
+      if (!mt) throw new Error('bad token ' + tok);
+      const d = mt[3] ? +mt[3] : 2, oct = [...mt[2]].reduce((s, c) => s + (c === "'" ? 1 : -1), 0);
+      if (+mt[1] > 0) out.push({ deg: +mt[1], oct, pos, d });
+      pos += d;
+    }
+    if (pos !== barE) throw new Error(`bar length ${pos} != ${barE} in "${b}"`);
+    return out;
+  });
+}
+const degMidi = (s, deg, oct = 0) => { const sc = SCALES[s.scale], i = deg - 1; return s.key + sc[((i % 7) + 7) % 7] + 12 * (Math.floor(i / 7) + oct); };
+function chordAt(list, bar, pos, barE) { const c = String(list[bar % list.length]).split('-').map(Number); return c.length > 1 && pos >= barE / 2 ? c[1] : c[0]; }
+const SD_CACHE = new Map();
+function buildSong(i) {
+  if (SD_CACHE.has(i)) return SD_CACHE.get(i);
+  const s = SONGS[i], st = STYLES[s.style], barE = s.meter === 3 ? 6 : 8, steps = barE * 2;
+  const eighth = 30 / s.bpm, barSec = barE * eighth;
+  const A = parseMelody(s.A, barE), B = parseMelody(s.B, barE);
+  const form = s.meter === 3 ? ['I', 'A', 'A2', 'B', 'A', 'O'] : ['I', 'A', 'A2', 'B', 'A', 'B2', 'A2', 'O'];
+  const ev = [], mel = [], drums = [], sections = [];
+  let bar0 = 0;
+  const rnd = mulberry(i * 101 + 7);
+  for (const sec of form) {
+    const kind = sec[0], nb = kind === 'I' ? 2 : kind === 'O' ? 1 : (kind === 'A' ? A : B).length;
+    sections.push({ kind: sec, bar: bar0, bars: nb, t: bar0 * barSec });
+    for (let b = 0; b < nb; b++) {
+      const bar = bar0 + b, tb = bar * barSec, last = b === nb - 1;
+      const chords = kind === 'B' ? s.cB : s.cA, cb = kind === 'I' || kind === 'O' ? 0 : b;
+      const chordOf = pos => kind === 'I' ? (b === 0 ? 1 : 5) : kind === 'O' ? 1 : chordAt(chords, cb, pos, barE);
+      // ---- drums ----
+      const lane = (name, pat, vol) => { if (!pat) return; for (let k = 0; k < steps; k++) { const ch = pat[k]; if (ch === 'x' || ch === 'o') { const t = tb + k * eighth / 2; ev.push({ t, ty: name, v: (ch === 'x' ? 1 : 0.5) * vol }); drums.push({ t, ty: name, bar, p16: k }); } } };
+      if (kind === 'O') { ev.push({ t: tb, ty: 'kick', v: 1 }, { t: tb, ty: 'crash', v: 1 }); drums.push({ t: tb, ty: 'kick', bar, p16: 0 }); }
+      else {
+        const full = kind !== 'I' || b > 0;
+        lane('kick', st.k, 1);
+        lane('hat', kind[1] === '2' ? st.h.replace(/\./g, (m, k) => k % 2 === 0 ? 'o' : '.') : st.h, 1);
+        if (full) {
+          let sn = st.s;
+          if (last && kind !== 'I') sn = st.fill || ((st.s || '.'.repeat(steps)).slice(0, steps - 4) + 'x.xx');
+          if (last && kind === 'I') sn = (st.s || '.'.repeat(steps)).slice(0, steps - 4) + 'xxxx';
+          lane('snare', sn, kind === 'I' ? 0.7 : 1);
+          lane('clap', st.c, 1); lane('tom', st.t, 1);
+        }
+        if (b === 0 && (kind === 'A' || kind === 'B')) ev.push({ t: tb, ty: 'crash', v: 0.6 });
+        if (st.extra === 'drops' && kind !== 'I') for (const k of [6, 14]) { if (k < steps) ev.push({ t: tb + k * eighth / 2, ty: 'drop', m: degMidi(s, [1, 3, 5, 6][Math.floor(rnd() * 4)], 2), v: 0.5 }); }
+        if (st.extra === 'blips' && kind !== 'I') ev.push({ t: tb + 10 * eighth / 2, ty: 'blip', m: degMidi(s, [1, 3, 5][Math.floor(rnd() * 3)], 1), v: 0.6 });
+      }
+      // ---- bass ----
+      if (kind === 'O') ev.push({ t: tb, ty: 'bass', m: degMidi(s, 1, -2), d: barSec * 0.9, v: 1 });
+      else {
+        let k = 0;
+        while (k < barE) {
+          const ch = st.bass[k];
+          if (ch === '-' || ch === '=') { k++; continue; }
+          let len = 1; while (k + len < barE && st.bass[k + len] === '=') len++;
+          const root = chordOf(k);
+          const m = degMidi(s, root, -2) + (ch === '5' ? 7 : ch === '8' ? 12 : 0);
+          ev.push({ t: tb + k * eighth, ty: 'bass', m, d: len * eighth * 0.92, v: kind === 'I' && b === 0 ? 0.8 : 1 });
+          k += len;
+        }
+      }
+      // ---- chord pad ----
+      const triad = r => [0, 2, 4].map(o => degMidi(s, r + o, -1));
+      if (kind === 'O') ev.push({ t: tb, ty: 'pad', ms: triad(1), d: barSec, v: 1.2 });
+      else if (st.pad === 'sus') {
+        const halves = chordOf(0) !== chordOf(barE / 2) ? 2 : 1;
+        for (let hf = 0; hf < halves; hf++) ev.push({ t: tb + hf * barSec / halves, ty: 'pad', ms: triad(chordOf(hf * barE / 2)), d: barSec / halves, v: 1 });
+      } else if (st.pad === 'waltz') { for (const p of [2, 4]) ev.push({ t: tb + p * eighth, ty: 'pad', ms: triad(chordOf(p)), d: eighth * 1.4, v: 1.3 }); }
+      else { for (const p of [2, 6]) if (p < barE) ev.push({ t: tb + p * eighth, ty: 'pad', ms: triad(chordOf(p)), d: eighth * 1.1, v: 1.3 }); }
+      // ---- melody ----
+      if (kind === 'A' || kind === 'B') {
+        for (const n of (kind === 'A' ? A : B)[b]) {
+          const t = tb + n.pos * eighth, m = degMidi(s, n.deg, n.oct);
+          ev.push({ t, ty: 'lead', m, d: n.d * eighth, v: 1 });
+          if (sec[1] === '2') ev.push({ t, ty: 'harm', m: degMidi(s, n.deg + 2, n.oct + 1), d: n.d * eighth, v: 1 });
+          mel.push({ t, m, d: n.d, dur: n.d * eighth, bar, pos: n.pos, sec: sec, secBar: b });
+        }
+      } else if (kind === 'O') {
+        const m = degMidi(s, 1, 0);
+        ev.push({ t: tb, ty: 'lead', m, d: barSec * 0.8, v: 1 }, { t: tb, ty: 'harm', m: degMidi(s, 3, 1), d: barSec * 0.8, v: 1 });
+        mel.push({ t: tb, m, d: barE - 2, dur: (barE - 2) * eighth, bar, pos: 0, sec: 'O', secBar: 0 });
+      }
+    }
+    bar0 += nb;
+  }
+  ev.sort((a, b) => a.t - b.t);
+  const outT = sections[sections.length - 1].t;
+  const SDx = { i, s, st, barE, eighth, barSec, bars: bar0, ev, mel, drums, sections, len: outT + barSec + 0.4, beat: 60 / s.bpm };
+  SD_CACHE.set(i, SDx);
+  return SDx;
+}
+
+// ---------- charts: generated from the melody and the drums, the same every time ----------
+const CHART_CACHE = new Map();
+function makeChart(i, diff) {
+  const key = i + ':' + diff;
+  if (CHART_CACHE.has(key)) return CHART_CACHE.get(key);
+  const SD = buildSong(i), s = SD.s, D = DIFFS[diff], n = D.n, E = SD.eighth, barE = SD.barE;
+  const pitches = [...new Set(SD.mel.map(q => q.m))].sort((a, b) => a - b);
+  const laneOf = m => Math.min(n - 1, Math.floor(pitches.indexOf(m) * n / pitches.length));
+  const cands = [];   // { t, lane, end, dbl }
+  // warm-up notes in the second intro bar
+  const introBar = SD.sections[0].bar + 1, tIntro = introBar * SD.barSec;
+  const warm = diff === 'easy' ? (s.meter === 3 ? [0] : [0, 4]) : (s.meter === 3 ? [0, 2, 4] : [0, 2, 4, 6]);
+  warm.forEach((p, k) => cands.push({ t: tIntro + p * E, lane: k % 2 ? n - 1 : 0, end: 0 }));
+  const melAt = new Map(); for (const q of SD.mel) melAt.set(q.bar * 100 + q.pos, q);
+  const sounding = (bar, pos) => SD.mel.some(q => q.bar === bar && q.pos <= pos && q.pos + q.d > pos);
+  for (const sec of SD.sections) {
+    if (sec.kind === 'I') continue;
+    for (let b = 0; b < sec.bars; b++) {
+      const bar = sec.bar + b, tb = bar * SD.barSec;
+      for (let pos = 0; pos < barE; pos++) {
+        const q = melAt.get(bar * 100 + pos), t = tb + pos * E, quarter = pos % 2 === 0;
+        const strong = s.meter === 3 ? pos === 0 : (pos === 0 || pos === 4);
+        let want = null;
+        if (sec.kind === 'O') { if (pos === 0 && q) want = { t, m: q.m, lane: laneOf(q.m), end: 0, dbl: diff === 'hard' }; }
+        else if (diff === 'easy') {
+          const ok = s.meter === 3 ? pos === 0 : strong;
+          if (ok) want = q ? { t, m: q.m, lane: laneOf(q.m), end: 0 } : (pos === 0 ? { t, lane: 0, end: 0, drum: 1 } : null);
+        } else if (diff === 'normal') {
+          if (quarter && q) want = { t, m: q.m, lane: laneOf(q.m), end: 0 };
+          else if (quarter && strong && !sounding(bar, pos)) want = { t, lane: pos === 0 ? 0 : n - 1, end: 0, drum: 1 };
+        } else {
+          if (q) {
+            want = { t, m: q.m, lane: laneOf(q.m), end: 0 };
+            if (q.d >= 4 && q.dur >= 0.5) want.end = t + (q.d - 1) * E;
+            if (b === 0 && pos === 0) { want.dbl = true; want.end = 0; }
+          } else if (quarter && !sounding(bar, pos)) want = { t, lane: pos % 4 === 0 ? 0 : n - 1, end: 0, drum: 1 };
+        }
+        if (want) cands.push(want);
+      }
+    }
+  }
+  cands.sort((a, b) => a.t - b.t);
+  // follow the melody's direction: a different pitch never stays in the same lane (up → right, down → left)
+  let pm = null, pl = -1;
+  for (const c of cands) {
+    if (c.drum || c.m == null) continue;
+    if (pm != null && c.m !== pm && c.lane === pl) { const dir = c.m > pm ? 1 : -1; c.lane = pl + dir >= 0 && pl + dir < n ? pl + dir : pl - dir; }
+    pm = c.m; pl = c.lane;
+  }
+  // lane assignment: keep the pitch lane when it's free, otherwise the nearest free lane
+  const free = new Array(n).fill(-9), notes = [];
+  const pickLane = (want, t, avoid = -1) => {
+    const order = [...Array(n).keys()].sort((a, b) => Math.abs(a - want) - Math.abs(b - want) || (b - a));
+    for (const l of order) if (l !== avoid && free[l] <= t + 1e-6) return l;
+    return -1;
+  };
+  for (const c of cands) {
+    const l = pickLane(c.lane, c.t);
+    if (l < 0) continue;
+    const end = c.end && c.end - c.t >= 0.4 ? c.end : 0;
+    notes.push({ t: c.t, lane: l, end });
+    free[l] = (end || c.t) + D.gap;
+    if (c.dbl) {
+      const l2 = pickLane(n - 1 - l === l ? (l + 1) % n : n - 1 - l, c.t, l);
+      if (l2 >= 0) { notes.push({ t: c.t, lane: l2, end: 0, dbl: true }); notes[notes.length - 2].dbl = true; free[l2] = c.t + D.gap; }
+    }
+  }
+  notes.sort((a, b) => a.t - b.t || a.lane - b.lane);
+  notes.forEach((q, k) => q.id = k);
+  CHART_CACHE.set(key, notes);
+  return notes;
+}
+
+// =====================================================================
+// audio — one AudioContext is the clock for everything (music, notes, judging)
+// =====================================================================
+let ac = null, master = null, sfxBus = null, musicBus = null, noiseBuf = null, outLat = 0;
+let SPEED = 1;                                  // test-only playback speed factor
+const isMuted = () => !!MG.store.get('muted', false);
+function ensureAudio() {
+  if (!ac) {
+    try { ac = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' }); } catch { ac = null; return null; }
+    const comp = ac.createDynamicsCompressor();
+    comp.threshold.value = -14; comp.knee.value = 10; comp.ratio.value = 4; comp.attack.value = 0.003; comp.release.value = 0.2;
+    master = ac.createGain(); master.connect(comp); comp.connect(ac.destination);
+    sfxBus = ac.createGain(); sfxBus.gain.value = 0.9; sfxBus.connect(master);
+    noiseBuf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
+    const d = noiseBuf.getChannelData(0), r = mulberry(5); for (let k = 0; k < d.length; k++) d[k] = r() * 2 - 1;
+    applyMute();
+  }
+  if (ac.state === 'suspended' && !paused) ac.resume();
+  return ac;
+}
+function applyMute() { if (master) master.gain.value = isMuted() ? 0 : 0.8; }
+document.querySelector('.mg-bar .mute').addEventListener('click', () => setTimeout(applyMute, 0));
+function refreshLat() { if (ac) { const l = ac.outputLatency || ac.baseLatency || 0; outLat = clamp(isFinite(l) ? l : 0, 0, 0.3); } }
+// a per-song bus: cutting it silences everything already scheduled (used for pause / restart)
+function newMusicBus(echo) {
+  killMusicBus();
+  musicBus = ac.createGain(); musicBus.gain.value = 0.85; musicBus.connect(master);
+  musicBus._send = null;
+  if (echo) {
+    const dl = ac.createDelay(1), fb = ac.createGain(), lp = ac.createBiquadFilter(), send = ac.createGain();
+    dl.delayTime.value = 0.28; fb.gain.value = 0.3; lp.type = 'lowpass'; lp.frequency.value = 2400; send.gain.value = 0.25;
+    send.connect(dl); dl.connect(lp); lp.connect(fb); fb.connect(dl); lp.connect(musicBus);
+    musicBus._send = send;
+  }
+  return musicBus;
+}
+function killMusicBus() { if (musicBus) { try { musicBus.gain.cancelScheduledValues(0); musicBus.gain.value = 0; musicBus.disconnect(); } catch {} musicBus = null; } }
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+function envGain(t, peak, att, hold, rel) {
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), t + att);
+  if (hold > 0) g.gain.setValueAtTime(Math.max(0.0002, peak), t + att + hold);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + att + Math.max(0, hold) + rel);
+  return g;
+}
+function osc(type, f, t, end, dest) { const o = ac.createOscillator(); o.type = type; o.frequency.setValueAtTime(f, t); o.connect(dest); o.start(t); o.stop(end); return o; }
+function noise(t, dur, dest, off = 0) { const s = ac.createBufferSource(); s.buffer = noiseBuf; s.connect(dest); s.start(t, off % 0.8, dur); return s; }
+let nOff = 0;
+const INS = {
+  kick(t, v, bus) { const g = envGain(t, 0.95 * v, 0.002, 0, 0.3); g.connect(bus); const o = osc('sine', 150, t, t + 0.34, g); o.frequency.exponentialRampToValueAtTime(42, t + 0.13); },
+  snare(t, v, bus) {
+    const g = envGain(t, 0.42 * v, 0.002, 0, 0.16), hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1100; hp.connect(g); g.connect(bus); noise(t, 0.2, hp, nOff += 0.137);
+    const g2 = envGain(t, 0.28 * v, 0.002, 0, 0.08); g2.connect(bus); osc('triangle', 190, t, t + 0.1, g2);
+  },
+  hat(t, v, bus) { const g = envGain(t, 0.13 * v, 0.001, 0, 0.045), hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 7200; hp.connect(g); g.connect(bus); noise(t, 0.06, hp, nOff += 0.211); },
+  clap(t, v, bus) {
+    const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1500; bp.Q.value = 1.1;
+    const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t);
+    for (const k of [0, 0.011, 0.022]) { g.gain.setValueAtTime(0.5 * v, t + k); g.gain.exponentialRampToValueAtTime(0.05, t + k + 0.009); }
+    g.gain.setValueAtTime(0.4 * v, t + 0.033); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.17);
+    bp.connect(g); g.connect(bus); noise(t, 0.2, bp, nOff += 0.311);
+  },
+  tom(t, v, bus) { const g = envGain(t, 0.7 * v, 0.003, 0, 0.32); g.connect(bus); const o = osc('sine', 150, t, t + 0.36, g); o.frequency.exponentialRampToValueAtTime(75, t + 0.25); const g2 = envGain(t, 0.12 * v, 0.001, 0, 0.05); g2.connect(bus); noise(t, 0.06, g2, nOff += 0.17); },
+  crash(t, v, bus) { const g = envGain(t, 0.16 * v, 0.003, 0, 1.1), hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 4200; hp.connect(g); g.connect(bus); noise(t, 1.2, hp, nOff += 0.29); },
+  bass(t, e, bus) {
+    const d = e.d, g = envGain(t, 0.34 * e.v, 0.008, Math.max(0, d - 0.1), 0.09), lp = ac.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 700; lp.connect(g); g.connect(bus);
+    const f = mtof(e.m); osc('triangle', f, t, t + d + 0.15, lp); const g2 = ac.createGain(); g2.gain.value = 0.25; g2.connect(lp); osc('square', f, t, t + d + 0.15, g2);
+  },
+  pad(t, e, bus) {
+    const g = envGain(t, 0.05 * e.v, 0.03, Math.max(0, e.d - 0.15), 0.18); g.connect(bus);
+    for (const m of e.ms) osc('triangle', mtof(m), t, t + e.d + 0.25, g);
+  },
+  lead(t, e, bus, timbre, harm) {
+    const d = e.d, f = mtof(e.m), vol = harm ? 0.45 : 1;
+    let g;
+    if (timbre === 'square') {
+      g = envGain(t, 0.1 * vol, 0.006, Math.max(0, d * 0.75 - 0.05), 0.07);
+      const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2600; lp.connect(g); osc('square', f, t, t + d + 0.1, lp);
+    } else if (timbre === 'bell' || timbre === 'box') {
+      const k = timbre === 'box' ? 2 : 1;
+      g = envGain(t, 0.24 * vol, 0.003, 0, Math.max(0.35, d * 1.1));
+      osc('sine', f * k, t, t + d * 1.2 + 0.5, g); const g2 = envGain(t, 0.08 * vol, 0.002, 0, 0.18); g2.connect(g); osc('sine', f * k * 3.01, t, t + 0.3, g2);
+    } else if (timbre === 'flute') {
+      g = envGain(t, 0.2 * vol, 0.025, Math.max(0, d * 0.8 - 0.06), 0.08);
+      osc('triangle', f, t, t + d + 0.12, g); const g2 = ac.createGain(); g2.gain.value = 0.3; g2.connect(g); osc('sine', f * 2, t, t + d + 0.12, g2);
+    } else {
+      g = envGain(t, 0.2 * vol, 0.02, Math.max(0, d * 0.85 - 0.05), 0.12);
+      osc('triangle', f, t, t + d + 0.15, g);
+    }
+    g.connect(bus);
+    if (bus._send) g.connect(bus._send);
+  },
+  drop(t, e, bus) { const g = envGain(t, 0.09 * e.v, 0.002, 0, 0.25); g.connect(bus); if (bus._send) g.connect(bus._send); osc('sine', mtof(e.m), t, t + 0.3, g); },
+  blip(t, e, bus) { const g = envGain(t, 0.12 * e.v, 0.004, 0, 0.16); g.connect(bus); const o = osc('sine', mtof(e.m) * 0.6, t, t + 0.2, g); o.frequency.exponentialRampToValueAtTime(mtof(e.m) * 1.2, t + 0.12); },
+};
+function playEv(e, at, bus) {
+  switch (e.ty) {
+    case 'kick': case 'snare': case 'hat': case 'clap': case 'tom': case 'crash': INS[e.ty](at, e.v, bus); break;
+    case 'bass': case 'pad': case 'drop': case 'blip': INS[e.ty](at, scaled(e), bus); break;
+    case 'lead': INS.lead(at, scaled(e), bus, SD.s.lead, false); break;
+    case 'harm': INS.lead(at, scaled(e), bus, 'bell', true); break;
+  }
+}
+const scaled = e => SPEED === 1 ? e : { ...e, d: (e.d || 0) / SPEED };
+// immediate little sounds (hits, misses, ticks) — not part of the song bus
+function sfxTone(type, f0, f1, dur, vol, delay = 0) {
+  if (!ac) return;
+  const t = ac.currentTime + 0.005 + delay, g = envGain(t, vol, 0.004, 0, dur); g.connect(sfxBus);
+  const o = osc(type, f0, t, t + dur + 0.05, g); if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(30, f1), t + dur);
+}
+const laneFreq = l => mtof((SD ? SD.s.key : 60) + 24 + [0, 4, 7, 12][l % 4]);
+const SND = {
+  perfect: l => { sfxTone('sine', laneFreq(l), laneFreq(l), 0.16, 0.13); sfxTone('sine', laneFreq(l) * 2, laneFreq(l) * 2, 0.08, 0.05); },
+  good: l => sfxTone('triangle', laneFreq(l) * 0.5, laneFreq(l) * 0.5, 0.12, 0.12),
+  boop: () => sfxTone('sine', 300, 170, 0.2, 0.1),
+  tap: () => sfxTone('sine', 520, 480, 0.05, 0.035),
+  hold: l => { sfxTone('sine', laneFreq(l), laneFreq(l), 0.1, 0.08); sfxTone('sine', laneFreq(l) * 1.5, laneFreq(l) * 1.5, 0.16, 0.08, 0.08); },
+  cheer: () => [0, 4, 7, 12].forEach((s, k) => sfxTone('square', mtof(72 + s), mtof(72 + s), 0.1, 0.05, k * 0.07)),
+  tick: hi => sfxTone('sine', hi ? 1600 : 1100, hi ? 1600 : 1100, 0.05, hi ? 0.16 : 0.11),
+};
+function tickAt(at, hi, bus) { const g = envGain(at, hi ? 0.2 : 0.14, 0.002, 0, 0.06); g.connect(bus); osc('sine', hi ? 1600 : 1100, at, at + 0.1, g); if (hi) INS.kick(at, 0.5, bus); }
+
+// =====================================================================
+// state
+// =====================================================================
+let state = 'menu', mode = 'relax', diff = 'easy', song = 0, SD = null, demo = false, runId = 0;
+let notes = [], scanFrom = 0, schedIdx = 0, songStart = 0, freezeUntil = 0, frozenPos = 0, pendingResume = false, paused = false;
+let P = 0, G = 0, M = 0, combo = 0, maxCombo = 0, score = 0, tailSum = 0, holdsN = 0, energy = 100, failed = false;
+let OFFSET = clamp((+MG.store.get('rhythm.offset', 0) || 0) / 1000, -0.25, 0.3);
+const holding = new Map();       // src → note
+const ptr = new Map(), kbd = new Map();
+let floats = [], banner = null, padAnim = [9, 9, 9, 9], laneFlash = [0, 0, 0, 0], moodT = 0, mood = 'happy', armsT = 9, frameN = 0, t = 0;
+let calib = null, judgeLog = [], songNowCache = 0;
+const SONG = () => SONGS[song];
+const nLanes = () => DIFFS[diff].n;
+const isTouch = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || navigator.maxTouchPoints > 0;
+function songAtHear(hear) { if (pendingResume || hear < freezeUntil) return frozenPos; return (hear - songStart) * SPEED; }
+function songPos() { return ac ? songAtHear(ac.currentTime - outLat) : 0; }
+const inCount = () => state === 'play' && ac && (pendingResume || ac.currentTime - outLat < freezeUntil);
+
+// =====================================================================
+// layout
+// =====================================================================
+let W = 480, H = 800, land = false, U = 1;
+let lanes = [], laneW = 100, lanesX = 0, fieldTop = 100, hitY = 700, padRx = 40, padBottom = 790, noteR = 30, dist = 600;
+let hud = null, demoB = null, pupuS = null, sideL = null, sideR = null;
+const LANE_PAL = { heart: MG.JELLY.pink, star: MG.JELLY.yellow, diamond: MG.JELLY.purple, drop: MG.JELLY.blue };
+const LANE_SETS = { 2: ['heart', 'drop'], 3: ['heart', 'star', 'drop'], 4: ['heart', 'star', 'diamond', 'drop'] };
+const KEY_LABELS = { 2: ['F', 'J'], 3: ['D', 'F', 'J'], 4: ['D', 'F', 'J', 'K'] };
+function layout() {
+  W = cv.lw; H = cv.lh; land = W > H;
+  const cssK = Math.max(0.1, (parseFloat(cv.style.width) || W) / W); U = clamp(0.75 / cssK, 1, 1.45);
+  const n = nLanes();
+  if (!land) {
+    hud = { x: 8, y: 6, w: W - 16, h: 102 };
+    demoB = { x: W - 8 - 8 - 104, y: hud.y + 10, w: 104, h: 54 };
+    pupuS = { x: hud.x + 40, y: hud.y + 58, r: 25 };
+    fieldTop = hud.y + hud.h + 6;
+    laneW = Math.min((W - 16) / n, n === 2 ? 200 : 150);
+    const padSpace = clamp(H * 0.17, 110, 160);
+    hitY = H - padSpace * 0.8;
+    sideL = sideR = null;
+  } else {
+    laneW = Math.min(n === 2 ? 180 : 160, (W - 2 * 175) / n);
+    const side = (W - n * laneW) / 2;
+    sideL = { x: 0, w: side }; sideR = { x: W - side, w: side };
+    hud = null;
+    const bw = Math.min(side - 28, 190 * Math.min(U, 1.25)), bh = 60 * Math.min(U, 1.3);
+    demoB = { x: sideR.x + (side - bw) / 2, y: 16, w: bw, h: bh };
+    pupuS = { x: side / 2, y: H * 0.66, r: clamp(side * 0.24, 34, 74) };
+    fieldTop = 0;
+    const padSpace = clamp(H * 0.21, 100, 140);
+    hitY = H - padSpace * 0.8;
+  }
+  lanesX = (W - n * laneW) / 2;
+  padRx = Math.min(laneW * 0.42, 74);
+  padBottom = Math.min(H - 10, hitY + Math.max(40, (H - hitY) * 0.72));
+  noteR = clamp(laneW * 0.32, 22, 44);
+  dist = hitY - (fieldTop - noteR);
+  lanes = LANE_SETS[n].map((kind, i) => ({ i, kind, pal: LANE_PAL[kind], cx: lanesX + laneW * (i + 0.5), x0: lanesX + laneW * i }));
+  layerKey = ''; sprites.clear();
+}
+
+// =====================================================================
+// painting helpers + cached layers
+// =====================================================================
+function rr(g, x0, y0, w, h, r) { g.beginPath(); g.roundRect(x0, y0, w, h, r); }
+function dot(g, cx, cy, r) { g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill(); }
+function star5(g, cx, cy, R0, r0, rot = 0) { g.beginPath(); for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + rot + k * Math.PI / 5, q = k % 2 ? r0 : R0; g.lineTo(cx + Math.cos(a) * q, cy + Math.sin(a) * q); } g.closePath(); }
+function txt(s, px, py, size, col = '#fff', align = 'center', stroke = null, sw = 4, g = x, weight = 900) {
+  g.font = `${weight} ${size}px ${FONT}`; g.textAlign = align; g.textBaseline = 'middle';
+  if (stroke) { g.lineJoin = 'round'; g.lineWidth = sw; g.strokeStyle = stroke; g.strokeText(s, px, py); }
+  g.fillStyle = col; g.fillText(s, px, py);
+}
+function fitTxt(s, px, py, maxW, size, col, align = 'center', stroke = null, sw = 4, g = x) {
+  g.font = `900 ${size}px ${FONT}`;
+  const w0 = g.measureText(s).width, sz = w0 > maxW ? Math.max(10, size * maxW / w0) : size;
+  txt(s, px, py, sz, col, align, stroke, sw, g);
+}
+function shapePath(g, kind, cx, cy, r) {
+  g.beginPath();
+  if (kind === 'heart') {
+    g.moveTo(cx, cy + r * 0.85);
+    g.bezierCurveTo(cx - r * 1.25, cy + r * 0.05, cx - r * 0.85, cy - r * 1.05, cx, cy - r * 0.42);
+    g.bezierCurveTo(cx + r * 0.85, cy - r * 1.05, cx + r * 1.25, cy + r * 0.05, cx, cy + r * 0.85);
+  } else if (kind === 'star') { star5(g, cx, cy + r * 0.06, r * 1.08, r * 0.52); return; }
+  else if (kind === 'diamond') { g.moveTo(cx, cy - r); g.quadraticCurveTo(cx + r * 0.2, cy - r * 0.2, cx + r * 0.95, cy); g.quadraticCurveTo(cx + r * 0.2, cy + r * 0.2, cx, cy + r); g.quadraticCurveTo(cx - r * 0.2, cy + r * 0.2, cx - r * 0.95, cy); g.quadraticCurveTo(cx - r * 0.2, cy - r * 0.2, cx, cy - r); }
+  else { g.moveTo(cx, cy - r * 1.05); g.bezierCurveTo(cx + r * 0.25, cy - r * 0.6, cx + r * 0.9, cy - r * 0.05, cx + r * 0.9, cy + r * 0.3); g.arc(cx, cy + r * 0.3, r * 0.9, 0, Math.PI); g.bezierCurveTo(cx - r * 0.9, cy - r * 0.05, cx - r * 0.25, cy - r * 0.6, cx, cy - r * 1.05); }
+  g.closePath();
+}
+// a falling candy: shape + glossy gradient + tiny face, with a soft glow (one cached canvas per lane)
+const sprites = new Map();
+function noteSprite(kind, pal, grey) {
+  const sc = cv._mgScale || 1, k = `${kind}|${grey ? 1 : 0}|${noteR}|${sc}`;
+  let c = sprites.get(k);
+  if (c) return c;
+  const S = noteR * 3.2; c = document.createElement('canvas'); c.width = Math.ceil(S * sc); c.height = Math.ceil(S * sc);
+  const g = c.getContext('2d'); g.scale(sc, sc);
+  const cx = S / 2, cy = S / 2, r = noteR;
+  const p = grey ? ['#f2eef6', '#d8d2de', '#bdb5c7', '#a59cb2', '#8a8098'] : pal;
+  if (!grey) { const gl = g.createRadialGradient(cx, cy, r * 0.4, cx, cy, r * 1.55); gl.addColorStop(0, p[1] + 'cc'); gl.addColorStop(1, p[1] + '00'); g.fillStyle = gl; g.fillRect(0, 0, S, S); }
+  g.fillStyle = 'rgba(40,20,60,.18)'; shapePath(g, kind, cx + 2, cy + 4, r); g.fill();
+  const gr = g.createLinearGradient(0, cy - r, 0, cy + r); gr.addColorStop(0, p[0]); gr.addColorStop(0.45, p[1]); gr.addColorStop(1, p[2]);
+  g.fillStyle = gr; shapePath(g, kind, cx, cy, r); g.fill();
+  g.lineWidth = Math.max(2, r * 0.12); g.strokeStyle = p[4]; g.lineJoin = 'round'; g.stroke();
+  g.fillStyle = 'rgba(255,255,255,.75)'; g.beginPath(); g.ellipse(cx - r * 0.35, cy - r * 0.3, r * 0.2, r * 0.11, -0.7, 0, 7); g.fill();
+  // face
+  g.fillStyle = grey ? '#7d7488' : '#3a1f2a';
+  dot(g, cx - r * 0.22, cy + r * 0.08, r * 0.085); dot(g, cx + r * 0.22, cy + r * 0.08, r * 0.085);
+  g.strokeStyle = grey ? '#7d7488' : '#3a1f2a'; g.lineWidth = Math.max(1.2, r * 0.06); g.lineCap = 'round';
+  g.beginPath(); if (grey) { g.moveTo(cx - r * 0.1, cy + r * 0.32); g.lineTo(cx + r * 0.1, cy + r * 0.32); } else g.arc(cx, cy + r * 0.22, r * 0.1, 0.2, Math.PI - 0.2); g.stroke();
+  if (!grey) { g.fillStyle = 'rgba(255,90,130,.4)'; g.beginPath(); g.ellipse(cx - r * 0.42, cy + r * 0.25, r * 0.1, r * 0.06, 0, 0, 7); g.ellipse(cx + r * 0.42, cy + r * 0.25, r * 0.1, r * 0.06, 0, 0, 7); g.fill(); }
+  c._S = S; sprites.set(k, c);
+  return c;
+}
+let layer = null, layerKey = '';
+function theme() { return THEMES[SONG().theme]; }
+function paintDeco(g, th) {
+  const rnd = mulberry(song * 31 + 3), kind = SONG().theme;
+  const fy = land ? H : fieldTop;
+  const spots = (k) => Array.from({ length: k }, () => [rnd() * W, rnd() * H]);
+  g.save();
+  if (kind === 'flags') {
+    for (let row = 0; row < (land ? 2 : 1); row++) {
+      const y0 = 8 + row * 90; g.strokeStyle = 'rgba(150,90,60,.5)'; g.lineWidth = 2; g.beginPath(); g.moveTo(0, y0); g.quadraticCurveTo(W / 2, y0 + 30, W, y0); g.stroke();
+      const cols = ['#ff7a8a', '#ffd24a', '#5cc8ff', '#7ad66a', '#c39bff'];
+      for (let k = 0; k < 16; k++) { const fx = (k + 0.5) * W / 16, yy = y0 + 30 * 4 * (fx / W) * (1 - fx / W) * 0.95 + 1; g.fillStyle = cols[k % 5]; g.globalAlpha = 0.8; g.beginPath(); g.moveTo(fx - 12, yy); g.lineTo(fx + 12, yy); g.lineTo(fx, yy + 22); g.closePath(); g.fill(); }
+      g.globalAlpha = 1;
+    }
+  } else if (kind === 'jelly') {
+    for (const [px, py] of spots(26)) { g.fillStyle = ['#ffb3d9', '#b3dcff', '#fff0a3', '#c8f5c0'][Math.floor(rnd() * 4)]; g.globalAlpha = 0.55; dot(g, px, py, 6 + rnd() * 14); }
+  } else if (kind === 'rain') {
+    g.strokeStyle = 'rgba(90,140,200,.35)'; g.lineWidth = 2.5; g.lineCap = 'round';
+    for (const [px, py] of spots(60)) { g.beginPath(); g.moveTo(px, py); g.lineTo(px - 4, py + 14); g.stroke(); }
+    g.fillStyle = 'rgba(255,255,255,.85)';
+    for (const [cx0, cy0] of [[W * 0.15, 40], [W * 0.8, 70], [W * 0.5, 24]]) { dot(g, cx0, cy0, 22); dot(g, cx0 + 24, cy0 + 4, 18); dot(g, cx0 - 22, cy0 + 6, 16); }
+  } else if (kind === 'forest') {
+    for (let k = 0; k < 9; k++) { const px = (k / 8) * W, py = H * (0.55 + 0.1 * rnd()), s = 40 + rnd() * 40; g.fillStyle = 'rgba(80,170,90,.35)'; g.beginPath(); g.moveTo(px, py - s * 2); g.lineTo(px + s, py); g.lineTo(px - s, py); g.closePath(); g.fill(); g.fillStyle = 'rgba(140,90,50,.3)'; g.fillRect(px - 6, py, 12, 30); }
+    for (const [px, py] of spots(18)) { g.fillStyle = 'rgba(255,200,80,.5)'; g.beginPath(); g.ellipse(px, py, 7, 4, rnd() * 3, 0, 7); g.fill(); }
+  } else if (kind === 'sea') {
+    for (const [px, py] of spots(36)) { const r = 4 + rnd() * 12; g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 2; g.beginPath(); g.arc(px, py, r, 0, 7); g.stroke(); g.fillStyle = 'rgba(255,255,255,.6)'; dot(g, px - r * 0.35, py - r * 0.35, r * 0.2); }
+    g.strokeStyle = 'rgba(40,160,90,.45)'; g.lineWidth = 6; g.lineCap = 'round';
+    for (let k = 0; k < 8; k++) { const px = (k + 0.3) * W / 8; g.beginPath(); g.moveTo(px, H); for (let yy = H; yy > H - 120 - rnd() * 80; yy -= 12) g.lineTo(px + Math.sin(yy * 0.08 + k) * 8, yy); g.stroke(); }
+  } else if (kind === 'space') {
+    for (const [px, py] of spots(90)) { g.fillStyle = `rgba(255,255,255,${0.3 + rnd() * 0.6})`; dot(g, px, py, 0.8 + rnd() * 1.8); }
+    const [plx, ply, plr] = land ? [W * 0.5 - (W - 2 * lanesX) / 2 - (lanesX) * 0.28, H * 0.42, 18] : [W * 0.86, H * 0.16, 28];
+    g.fillStyle = '#ff9fcf'; dot(g, plx, ply, plr); g.strokeStyle = 'rgba(255,230,140,.8)'; g.lineWidth = 4; g.beginPath(); g.ellipse(plx, ply, plr * 1.65, plr * 0.43, -0.3, 0, 7); g.stroke();
+    g.fillStyle = '#8fe0ff'; dot(g, W * 0.1, H * 0.35, 14);
+  } else if (kind === 'candy') {
+    for (const [px, py] of spots(14)) { const r = 10 + rnd() * 12; g.globalAlpha = 0.5; g.strokeStyle = '#d9a35a'; g.lineWidth = 3; g.beginPath(); g.moveTo(px, py + r); g.lineTo(px, py + r + 26); g.stroke(); g.fillStyle = ['#ff8fc8', '#8fd0ff', '#ffd24a'][Math.floor(rnd() * 3)]; dot(g, px, py, r); g.strokeStyle = '#fff'; g.lineWidth = 2.5; g.beginPath(); g.arc(px, py, r * 0.55, 0, 5); g.stroke(); }
+    g.globalAlpha = 1;
+  } else if (kind === 'snow') {
+    g.strokeStyle = 'rgba(140,190,240,.6)'; g.lineWidth = 2;
+    for (const [px, py] of spots(40)) { const r = 3 + rnd() * 7; for (let a = 0; a < 3; a++) { g.beginPath(); g.moveTo(px + Math.cos(a * 1.05) * r, py + Math.sin(a * 1.05) * r); g.lineTo(px - Math.cos(a * 1.05) * r, py - Math.sin(a * 1.05) * r); g.stroke(); } }
+    g.fillStyle = 'rgba(255,255,255,.9)'; g.beginPath(); g.moveTo(0, H); g.quadraticCurveTo(W * 0.25, H - 90, W * 0.5, H - 30); g.quadraticCurveTo(W * 0.75, H - 100, W, H - 40); g.lineTo(W, H); g.fill();
+  } else if (kind === 'night') {
+    for (const [px, py] of spots(40)) { g.fillStyle = `rgba(255,240,200,${0.3 + rnd() * 0.5})`; dot(g, px, py * 0.6, 1 + rnd() * 1.5); }
+    for (let row = 0; row < (land ? 2 : 1); row++) {
+      const y0 = 14 + row * 70; g.strokeStyle = 'rgba(255,220,160,.5)'; g.lineWidth = 2; g.beginPath(); g.moveTo(0, y0); g.quadraticCurveTo(W / 2, y0 + 24, W, y0); g.stroke();
+      for (let k = 0; k < 10; k++) { const fx = (k + 0.5) * W / 10, yy = y0 + 24 * 4 * (fx / W) * (1 - fx / W) * 0.95 + 10; const gl = g.createRadialGradient(fx, yy, 2, fx, yy, 26); gl.addColorStop(0, 'rgba(255,190,90,.6)'); gl.addColorStop(1, 'rgba(255,190,90,0)'); g.fillStyle = gl; dot(g, fx, yy, 26); g.fillStyle = k % 2 ? '#ff5a4e' : '#ffb347'; g.beginPath(); g.ellipse(fx, yy, 9, 11, 0, 0, 7); g.fill(); }
+    }
+  } else if (kind === 'party') {
+    for (const [px, py] of spots(10)) { const r = 14 + rnd() * 10; g.globalAlpha = 0.55; g.strokeStyle = '#b89a6a'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(px, py + r * 1.2); g.quadraticCurveTo(px + 8, py + r * 2, px, py + r * 3); g.stroke(); g.fillStyle = ['#ff7a8a', '#5cc8ff', '#ffd24a', '#7ad66a', '#c39bff'][Math.floor(rnd() * 5)]; g.beginPath(); g.ellipse(px, py, r * 0.85, r, 0, 0, 7); g.fill(); }
+    for (const [px, py] of spots(40)) { g.globalAlpha = 0.6; g.fillStyle = ['#ff7a8a', '#5cc8ff', '#ffd24a', '#7ad66a'][Math.floor(rnd() * 4)]; g.fillRect(px, py, 6, 3); }
+    g.globalAlpha = 1;
+  }
+  g.restore();
+  void fy; void th;
+}
+function buildLayer() {
+  const px = cv._mgScale || 1;
+  if (!layer) layer = document.createElement('canvas');
+  if (layer.width !== cv.width || layer.height !== cv.height) { layer.width = cv.width; layer.height = cv.height; }
+  const g = layer.getContext('2d'); g.setTransform(px, 0, 0, px, 0, 0);
+  const th = theme(), dark = SONG().theme === 'space' || SONG().theme === 'night';
+  const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, th.bg[0]); gr.addColorStop(1, th.bg[1]);
+  g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  paintDeco(g, th);
+  // lane tracks
+  const n = nLanes();
+  g.fillStyle = dark ? 'rgba(255,255,255,.1)' : 'rgba(255,255,255,.5)';
+  rr(g, lanesX - 6, fieldTop - 2, n * laneW + 12, H - fieldTop + 10, [18, 18, 0, 0]); g.fill();
+  for (const L of lanes) {
+    const lg = g.createLinearGradient(0, fieldTop, 0, hitY);
+    lg.addColorStop(0, L.pal[0] + '00'); lg.addColorStop(1, L.pal[1] + (dark ? '55' : '66'));
+    g.fillStyle = lg; rr(g, L.x0 + 4, fieldTop + 4, laneW - 8, hitY - fieldTop, 14); g.fill();
+    if (L.i > 0) { g.strokeStyle = dark ? 'rgba(255,255,255,.18)' : 'rgba(150,120,170,.18)'; g.lineWidth = 2; g.setLineDash([6, 8]); g.beginPath(); g.moveTo(L.x0, fieldTop + 10); g.lineTo(L.x0, hitY - 10); g.stroke(); g.setLineDash([]); }
+  }
+  // hud / side panels
+  const panelCol = dark ? 'rgba(20,10,50,.45)' : 'rgba(255,255,255,.78)', edge = dark ? 'rgba(255,255,255,.25)' : 'rgba(220,170,200,.9)';
+  if (hud) { g.fillStyle = panelCol; rr(g, hud.x, hud.y, hud.w, hud.h, 18); g.fill(); g.strokeStyle = edge; g.lineWidth = 2.5; g.stroke(); }
+  if (sideL) {
+    // soft cards behind the side texts so decorations never fight with words
+    const s = Math.min(U, 1.3), card = (cx0, cy0, w, h) => { g.fillStyle = panelCol; rr(g, cx0, cy0, w, h, 18); g.fill(); g.strokeStyle = edge; g.lineWidth = 2.5; g.stroke(); };
+    card(10, 10, sideL.w - 20, 112 * s);
+    card(sideR.x + 10, demoB.y + demoB.h + 18, sideR.w - 20, 166 * s);
+    if (mode === 'challenge' && !demo) card(sideR.x + 10, H - 88 * s, sideR.w - 20, 76 * s);
+    // a little round stage under 噗噗
+    const P = pupuS;
+    g.fillStyle = dark ? 'rgba(255,255,255,.12)' : 'rgba(255,255,255,.6)'; g.beginPath(); g.ellipse(P.x, P.y + P.r * 1.02, P.r * 1.7, P.r * 0.42, 0, 0, 7); g.fill();
+    g.strokeStyle = th.acc; g.lineWidth = 3; g.setLineDash([7, 6]); g.beginPath(); g.ellipse(P.x, P.y + P.r * 1.02, P.r * 1.5, P.r * 0.34, 0, 0, 7); g.stroke(); g.setLineDash([]);
+  }
+  layerKey = `${W}x${H}:${px}:${song}:${diff}:${mode}:${demo}`;
+}
+
+// =====================================================================
+// game flow
+// =====================================================================
+function resetCounters() { P = G = M = combo = maxCombo = score = 0; tailSum = 0; energy = 100; failed = false; judgeLog = []; holding.clear(); ptr.clear(); kbd.clear(); floats = []; banner = null; MG.fx.clear(); padAnim = [9, 9, 9, 9]; laneFlash = [0, 0, 0, 0]; }
+function startSong(i, opt = {}) {
+  if (!ensureAudio()) { MG.toast('這台裝置不能播放聲音 >_<', 2000); return; }
+  if (ac.state === 'suspended') ac.resume();
+  refreshLat(); applyMute();
+  MG.hide(); runId++; calib = null;
+  song = clamp(i, 0, SONGS.length - 1); demo = !!opt.demo;
+  SD = buildSong(song);
+  notes = makeChart(song, diff).map(q => ({ ...q, st: 0, hs: 0, frac: 0 }));
+  holdsN = notes.filter(q => q.end).length;
+  resetCounters(); scanFrom = 0; schedIdx = 0;
+  newMusicBus(!!SD.st.echo);
+  pendingResume = false; freezeUntil = 0; frozenPos = 0; paused = false;
+  songStart = ac.currentTime - outLat + 0.3;
+  state = 'play'; mood = 'happy'; moodT = 0;
+  layout();
+  MG.toast(demo ? '🎵 看噗噗示範一次！' : `🎶 ${SONG().nm}`, 1600);
+  hud2(true);
+}
+function stopMusic() { killMusicBus(); holding.clear(); }
+function finishSong() {
+  state = 'end'; const at = runId;
+  const total = notes.length + holdsN, acc = (P + 0.7 * G + tailSum) / Math.max(1, total);
+  const stars = acc >= 0.9 ? 3 : acc >= 0.7 ? 2 : 1;
+  mood = failed ? 'ouch' : 'love'; moodT = 99;
+  setTimeout(() => { if (state === 'end' && at === runId) [0, 4, 7, 12, 16].forEach((s, k) => sfxTone('square', mtof(SD.s.key + 12 + s), mtof(SD.s.key + 12 + s), 0.14, 0.06, k * 0.09)); }, 250);
+  for (let k = 0; k < 5 && !failed; k++) setTimeout(() => { if (state !== 'end' || at !== runId) return; MG.fx.burst(W * (0.2 + Math.random() * 0.6), H * 0.35, { n: 18, colors: ['#ff8fbf', '#ffd23f', '#4cc96a', '#4c9cf0', '#a07cf2', '#fff'], shape: MG.pick(['star', 'sq']), speed: 260, up: 170, size: 6, life: 1.2 }); }, k * 170);
+  let isNew = false, totalStars = 0, old = 0;
+  if (!demo && !failed) {
+    const map = MG.store.get('rhythm.stars', {}) || {}, k = SONG().id + '.' + diff;
+    old = map[k] || 0; isNew = stars > old; if (isNew) map[k] = stars;
+    MG.store.set('rhythm.stars', map);
+    totalStars = Object.values(map).reduce((a, b) => a + (+b || 0), 0);
+    MG.record('rhythm', totalStars);
+  }
+  hud2(true);
+  setTimeout(() => {
+    if (state !== 'end' || at !== runId || MG.panelOpen()) return;
+    const counts = `<div class="rh-res"><div class="p"><b>${P}</b>好棒</div><div class="g"><b>${G}</b>不錯</div><div class="m"><b>${M}</b>錯過</div></div>` +
+      `<p>最多連擊 <b>${maxCombo}</b>　正確率 <b>${Math.round(acc * 100)}%</b>　${score} 分</p>`;
+    const nextBtn = { label: '下一首', alt: true, on: () => { const nx = (song + 1) % SONGS.length; MG.store.set('rhythm.pickLevel', nx + 1); startSong(nx); } };
+    if (demo) {
+      MG.panel({ title: '示範結束！', html: `<p>「${SONG().nm}」噗噗全部都打到了！糖果掉到鼓上的時候敲一下就對了，換你試試看 ^_^</p>`,
+        buttons: [{ label: '換我玩！', on: () => startSong(song) }, { label: '再看一次', alt: true, on: () => startSong(song, { demo: true }) }, { label: '選歌', alt: true, on: menu }] });
+    } else if (failed) {
+      MG.panel({ title: '差一點點！', html: `<p>噗噗的能量用完了，可是歌還是唱完了！再試一次一定可以 ^_^</p>${counts}`,
+        buttons: [{ label: '🐢 改成慢慢玩', on: () => { mode = 'relax'; MG.store.set('rhythm.pickMode', 'relax'); startSong(song); } }, { label: '再玩一次', alt: true, on: () => startSong(song) }, { label: '選歌', alt: true, on: menu }] });
+    } else {
+      MG.panel({ title: '歌曲完成！', html: `<div class="rh-stars">${'⭐'.repeat(stars)}${'☆'.repeat(3 - stars)}</div><p>「${SONG().nm}」${DIFFS[diff].nm}，噗噗跳得好開心！</p>${counts}` +
+        (isNew && old ? '<p class="new">這首歌的新紀錄！</p>' : '') + `<p>一共拿到 ${totalStars} 顆星</p>`,
+        buttons: [{ label: '再玩一次', on: () => startSong(song) }, nextBtn, { label: '選歌', alt: true, on: menu }] });
+    }
+  }, 1500);
+}
+// ---------- ☰ pause: suspend the audio clock, freeze the notes, count in again on resume ----------
+function pauseGame() {
+  if (state !== 'play' || paused) return;
+  paused = true;
+  frozenPos = songPos(); pendingResume = true;
+  for (const [, n] of holding) if (n.hs === 1) completeHold(n, true);     // a hold in progress counts as finished
+  holding.clear(); ptr.clear(); kbd.clear();
+  killMusicBus();
+  if (ac && ac.state === 'running') ac.suspend();
+}
+function resumeGame() {
+  if (!paused) return;
+  paused = false;
+  const id = runId;
+  const go = () => {
+    if (id !== runId || paused || state !== 'play') return;
+    refreshLat();
+    const ci = clamp(SD.beat, 0.45, 0.75) / Math.sqrt(SPEED), hear = ac.currentTime - outLat;
+    freezeUntil = hear + 0.15 + 3 * ci;
+    songStart = freezeUntil - frozenPos / SPEED;
+    pendingResume = false;
+    newMusicBus(!!SD.st.echo);
+    schedIdx = SD.ev.findIndex(e => e.t >= frozenPos - 1e-6); if (schedIdx < 0) schedIdx = SD.ev.length;
+    for (let k = 0; k < 3; k++) tickAt(hear + outLat + 0.15 + k * ci, k === 0, musicBus);
+  };
+  if (ac.state !== 'running') ac.resume().then(go, go); else go();
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && state === 'play' && !paused) { const b = document.querySelector('.mg-menu'); if (b) b.click(); }
+});
+
+// ---------- scheduler: everything ~120 ms ahead on the audio clock ----------
+function schedule() {
+  if (state !== 'play' && state !== 'end') return;
+  if (!ac || !musicBus || pendingResume) return;
+  const now = ac.currentTime, horizon = (now + 0.12 - outLat - songStart) * SPEED;
+  const evs = SD.ev;
+  while (schedIdx < evs.length && evs[schedIdx].t <= horizon) {
+    const e = evs[schedIdx++], at = songStart + e.t / SPEED;
+    if (at >= now - 0.03) playEv(e, Math.max(at, now), musicBus);
+  }
+}
+setInterval(() => { if (!paused && !document.hidden) schedule(); }, 25);
+
+// =====================================================================
+// judging
+// =====================================================================
+function laneHeld(i) { for (const v of ptr.values()) if (v === i) return true; for (const v of kbd.values()) if (v === i) return true; return false; }
+function press(lane, tj, src) {
+  if (state !== 'play' || paused) return;
+  padAnim[lane] = 0; laneFlash[lane] = 1;
+  if (inCount()) return;
+  if (demo && !String(src).startsWith('demo')) return;
+  let best = null, bd = 9;
+  for (let k = scanFrom; k < notes.length; k++) {
+    const n = notes[k];
+    if (n.t > tj + GOOD) break;
+    if (n.lane !== lane || n.st) continue;
+    const d = Math.abs(n.t - tj);
+    if (d <= GOOD && d < bd) { best = n; bd = d; }
+  }
+  if (!best) { SND.tap(); return; }
+  hit(best, bd <= PERF ? 1 : 2, tj - best.t);
+  if (best.end) { best.hs = 1; holding.set(src, best); }
+}
+function release(src, tj) {
+  const n = holding.get(src); if (!n) return;
+  holding.delete(src);
+  if (n.hs !== 1) return;
+  if (tj >= n.end - 0.1) completeHold(n); else { n.hs = 3; n.frac = clamp((tj - n.t) / (n.end - n.t), 0, 1); tailSum += n.frac; score += Math.round(100 * n.frac); floatAt(n.lane, '放太早囉', '#9a7fc0'); judgeLog.push({ id: n.id, r: 'partial', frac: n.frac }); }
+}
+function completeHold(n, quiet) {
+  n.hs = 2; n.frac = 1; tailSum += 1; score += 100;
+  judgeLog.push({ id: n.id, r: 'hold' });
+  if (!quiet) { SND.hold(n.lane); const L = lanes[n.lane]; MG.fx.burst(L.cx, hitY, { n: 14, colors: [L.pal[1], '#fff', '#ffd23f'], shape: 'star', speed: 200, up: 120, size: 6, life: 0.7 }); floatAt(n.lane, '長長的！', L.pal[3]); }
+}
+function hit(n, r, d) {
+  n.st = r;
+  if (r === 1) P++; else G++;
+  combo++; maxCombo = Math.max(maxCombo, combo);
+  score += (r === 1 ? 100 : 50) + Math.min(combo, 50) * 2;
+  if (mode === 'challenge') energy = Math.min(100, energy + (r === 1 ? 2 : 1));
+  judgeLog.push({ id: n.id, r: r === 1 ? 'perfect' : 'good', d: Math.round(d * 1000) });
+  const L = lanes[n.lane];
+  (r === 1 ? SND.perfect : SND.good)(n.lane);
+  MG.fx.burst(L.cx, hitY - 4, { n: r === 1 ? 14 : 8, colors: [L.pal[1], L.pal[0], '#fff', '#ffd23f'], shape: 'star', speed: 190, up: 90, size: r === 1 ? 6 : 4.5, life: 0.6 });
+  floatAt(n.lane, r === 1 ? '好棒！' : '不錯', r === 1 ? '#ff4f93' : '#2f86e0');
+  armsT = 0; if (moodT <= 0 || mood === 'ouch') { mood = 'happy'; moodT = 0; }
+  if ([10, 25, 50, 100, 150, 200].includes(combo)) {
+    banner = { text: `${combo} 連擊！`, sub: combo >= 50 ? '太厲害了！' : combo >= 25 ? '好棒棒！' : '繼續加油！', life: 1.3 };
+    SND.cheer(); mood = 'love'; moodT = 1.2;
+    MG.fx.burst(W / 2, fieldTop + 90, { n: 24, colors: ['#ff8fbf', '#ffd23f', '#4cc96a', '#4c9cf0', '#fff'], shape: 'star', speed: 260, up: 120, size: 6, life: 1 });
+  }
+}
+function miss(n) {
+  n.st = 3; M++; combo = 0;
+  if (n.end) n.hs = 4;
+  judgeLog.push({ id: n.id, r: 'miss' });
+  floatAt(n.lane, '錯過', '#9a8fa8');
+  SND.boop();
+  mood = 'ouch'; moodT = 0.5;
+  if (mode === 'challenge' && !demo) {
+    energy = Math.max(0, energy - 8);
+    if (energy <= 0 && !failed) { failed = true; MG.toast('噗噗沒力了…歌會繼續唱完喔！', 2200); }
+  }
+}
+function floatAt(lane, text, col) {
+  const L = lanes[lane]; if (!L) return;
+  floats = floats.filter(f => f.lane !== lane);
+  floats.push({ lane, x: L.cx, y: hitY - noteR * 1.9, text, col, life: 0.6 });
+}
+function judgeStep() {
+  const tNow = songNowCache - OFFSET;
+  // 示範: hit every note exactly on time through the same press() path
+  if (demo && !inCount()) {
+    for (let k = scanFrom; k < notes.length && notes[k].t <= tNow; k++) if (!notes[k].st) press(notes[k].lane, notes[k].t, 'demo' + notes[k].lane);
+  }
+  for (const [src, n] of holding) if (n.hs === 1 && tNow >= n.end) { holding.delete(src); completeHold(n); }
+  if (!inCount()) for (let k = scanFrom; k < notes.length && notes[k].t < tNow - GOOD; k++) if (!notes[k].st) miss(notes[k]);
+  while (scanFrom < notes.length && notes[scanFrom].st && !(notes[scanFrom].hs === 1)) scanFrom++;
+  const lastEnd = notes.length ? Math.max(...notes.slice(-6).map(q => q.end || q.t)) : 0;
+  if (tNow > Math.max(lastEnd + 0.3, SD.len) && !holding.size && notes.every(q => q.st)) finishSong();
+}
+
+// =====================================================================
+// input: every finger is its own drum stick
+// =====================================================================
+const inRect = (p, b) => b && p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
+function laneAt(p) { return clamp(Math.floor((p.x - lanesX) / laneW), 0, nLanes() - 1); }
+function evTime(e) {
+  let age = 0;
+  if (e && e.timeStamp) { age = (performance.now() - e.timeStamp) / 1000; if (!(age >= 0 && age < 0.2)) age = 0; }
+  return songAtHear(ac.currentTime - outLat - age) - OFFSET;
+}
+function evHear(e) { let age = 0; if (e && e.timeStamp) { age = (performance.now() - e.timeStamp) / 1000; if (!(age >= 0 && age < 0.2)) age = 0; } return ac.currentTime - outLat - age; }
+cv.addEventListener('pointerdown', e => {
+  if (MG.panelOpen()) return;
+  e.preventDefault();
+  const p = cv.logical(e);
+  if (state === 'calib') { calibTap(evHear(e)); return; }
+  if (state !== 'play' || !ac) return;
+  if (inRect(p, { x: demoB.x - 6, y: demoB.y - 6, w: demoB.w + 12, h: demoB.h + 12 })) { MG.sfx('click'); toggleDemo(); return; }
+  if (!land && p.y < fieldTop) return;
+  const lane = laneAt(p);
+  try { cv.setPointerCapture(e.pointerId); } catch {}
+  ptr.set(e.pointerId, lane);
+  press(lane, evTime(e), 'p' + e.pointerId);
+});
+function ptrUp(e) {
+  if (!ptr.has(e.pointerId)) return;
+  ptr.delete(e.pointerId);
+  if (ac && state === 'play') release('p' + e.pointerId, evTime(e));
+}
+cv.addEventListener('pointerup', ptrUp);
+cv.addEventListener('pointercancel', ptrUp);
+cv.addEventListener('lostpointercapture', ptrUp);
+const KEYMAP = {
+  2: { KeyD: 0, KeyF: 0, KeyJ: 1, KeyK: 1, ArrowLeft: 0, ArrowRight: 1 },
+  3: { KeyD: 0, KeyF: 1, KeyJ: 2, KeyK: 2, ArrowLeft: 0, ArrowDown: 1, ArrowUp: 1, ArrowRight: 2 },
+  4: { KeyD: 0, KeyF: 1, KeyJ: 2, KeyK: 3 },
+};
+function smartLane(tj) {
+  let best = 0, bd = 9;
+  for (let k = scanFrom; k < notes.length && notes[k].t < tj + 0.5; k++) { const n = notes[k]; if (!n.st && Math.abs(n.t - tj) < bd) { bd = Math.abs(n.t - tj); best = n.lane; } }
+  return best;
+}
+addEventListener('keydown', e => {
+  if (e.ctrlKey || e.metaKey || e.altKey || MG.panelOpen()) return;
+  if (state === 'calib') { if (e.code === 'Space' || KEYMAP[4][e.code] != null || KEYMAP[3][e.code] != null) { e.preventDefault(); if (!e.repeat) calibTap(evHear(e)); } return; }
+  if (state !== 'play' || !ac) return;
+  let lane = KEYMAP[nLanes()][e.code];
+  if (lane == null && e.code === 'Space' && nLanes() === 2) lane = smartLane(evTime(e));
+  if (lane == null) return;
+  e.preventDefault();
+  if (e.repeat || kbd.has(e.code)) return;
+  kbd.set(e.code, lane);
+  press(lane, evTime(e), 'k' + e.code);
+});
+addEventListener('keyup', e => { if (!kbd.has(e.code)) return; kbd.delete(e.code); if (ac && state === 'play') release('k' + e.code, evTime(e)); });
+addEventListener('blur', () => { for (const c of [...kbd.keys()]) { kbd.delete(c); if (ac && state === 'play') release('k' + c, songPos() - OFFSET); } });
+function toggleDemo() { if (state !== 'play') return; startSong(song, { demo: !demo }); }
+
+// =====================================================================
+// 調整節拍: tap along with a metronome, the average lateness becomes the offset
+// =====================================================================
+const CAL_N = 8;
+function startCalib() {
+  if (!ensureAudio()) return;
+  if (ac.state === 'suspended') ac.resume();
+  refreshLat(); applyMute();
+  MG.hide(); runId++; stopMusic(); demo = false; paused = false; pendingResume = false;
+  state = 'calib';
+  const ci = 0.6, bus = newMusicBus(false), t0 = ac.currentTime + 0.9;
+  calib = { t0: t0 - outLat, ci, total: 20, taps: [], hits: new Set(), flash: 0 };
+  for (let k = 0; k < calib.total; k++) tickAt(t0 + k * ci, k % 4 === 0, bus);
+  if (isMuted()) MG.toast('聲音關著喔，看著鼓一閃一閃也可以敲 ^_^', 2200);
+  layout();
+}
+function calibTap(hear) {
+  const c = calib; if (!c) return;
+  padAnim[0] = 0; c.flash = 1;
+  const k = Math.round((hear - c.t0) / c.ci);
+  if (k < 0 || k >= c.total || c.hits.has(k)) return;
+  const d = hear - (c.t0 + k * c.ci);
+  if (Math.abs(d) > 0.3) return;
+  c.hits.add(k); c.taps.push(d);
+  if (c.taps.length >= CAL_N) finishCalib();
+}
+function finishCalib() {
+  const c = calib; calib = null; stopMusic(); state = 'menu';
+  if (!c || c.taps.length < 3) {
+    MG.panel({ title: '調整節拍', html: '<p>好像沒有聽到敲鼓耶～聽到「咚」的時候敲一下畫面就可以了 ^_^</p>', buttons: [{ label: '再試一次', on: startCalib }, { label: '回去選歌', alt: true, on: menu }] });
+    return;
+  }
+  const arr = c.taps.slice().sort((a, b) => a - b), trim = arr.length >= 6 ? arr.slice(1, -1) : arr;
+  const avg = trim.reduce((a, b) => a + b, 0) / trim.length;
+  const ms = Math.round(clamp(avg, -0.25, 0.3) * 1000);
+  OFFSET = ms / 1000; MG.store.set('rhythm.offset', ms);
+  const say = Math.abs(ms) < 15 ? '剛剛好，不用調整！' : ms > 0 ? `你的鼓聲慢了 ${ms} 毫秒，噗噗幫你調好了。` : `你的鼓聲快了 ${-ms} 毫秒，噗噗幫你調好了。`;
+  MG.panel({ title: '調整好了！', html: `<p>${say}</p><p>之後判定會跟著這個節拍 ^_^</p>`,
+    buttons: [{ label: '好了', on: menu }, { label: '再試一次', alt: true, on: startCalib }, { label: '歸零', alt: true, on: () => { OFFSET = 0; MG.store.set('rhythm.offset', 0); menu(); MG.toast('節拍調整歸零了', 1400); } }] });
+}
+
+// =====================================================================
+// drawing
+// =====================================================================
+function beatNow() { return state === 'play' || state === 'end' ? songNowCache / SD.beat : performance.now() / 1000 / 0.6; }
+function drawPads(tNow) {
+  const n = nLanes();
+  for (const L of lanes) {
+    const i = L.i, pal = L.pal, cx = L.cx, rx = padRx, ry = rx * 0.34;
+    const a = padAnim[i], sq = a < 0.22 ? Math.sin(a / 0.22 * Math.PI) * 0.16 : 0, held = laneHeld(i);
+    const dn = (held ? 3 : 0) + sq * 10, fy = hitY + dn, bot = padBottom;
+    // next note in this lane coming close → the drum face glows
+    let near = 0;
+    if (state === 'play') for (let k = scanFrom; k < notes.length && notes[k].t < tNow + 0.6; k++) { const q = notes[k]; if (q.lane === i && !q.st) { near = Math.max(near, 1 - Math.abs(q.t - tNow) / 0.6); break; } }
+    x.fillStyle = 'rgba(40,20,60,.2)'; x.beginPath(); x.ellipse(cx, bot + 5, rx * 1.05, ry * 0.9, 0, 0, 7); x.fill();
+    const bg = x.createLinearGradient(cx - rx, 0, cx + rx, 0);
+    bg.addColorStop(0, pal[3]); bg.addColorStop(0.3, pal[1]); bg.addColorStop(0.62, pal[2]); bg.addColorStop(1, pal[3]);
+    x.fillStyle = bg; x.beginPath(); x.moveTo(cx - rx, fy); x.lineTo(cx - rx, bot); x.ellipse(cx, bot, rx, ry, 0, Math.PI, 0, true); x.lineTo(cx + rx, fy); x.closePath(); x.fill();
+    x.strokeStyle = pal[4]; x.lineWidth = 2.5; x.stroke();
+    // hoops
+    x.strokeStyle = 'rgba(255,255,255,.55)'; x.lineWidth = 3;
+    for (const yy of [fy + (bot - fy) * 0.25, bot - 6]) { x.beginPath(); x.ellipse(cx, yy, rx - 1, ry, 0, 0.15, Math.PI - 0.15); x.stroke(); }
+    // face
+    const fg = x.createRadialGradient(cx - rx * 0.3, fy - ry * 0.4, 2, cx, fy, rx);
+    fg.addColorStop(0, '#ffffff'); fg.addColorStop(0.55, held ? '#fffbe8' : pal[0]); fg.addColorStop(1, held ? pal[0] : pal[1]);
+    x.fillStyle = fg; x.beginPath(); x.ellipse(cx, fy, rx, ry * (1 - sq * 0.6), 0, 0, 7); x.fill();
+    x.strokeStyle = pal[4]; x.lineWidth = 2.5; x.stroke();
+    if (near > 0 || held) { x.strokeStyle = `rgba(255,214,60,${Math.max(near, held ? 0.9 : 0)})`; x.lineWidth = 5; x.beginPath(); x.ellipse(cx, fy, rx + 3, ry + 3, 0, 0, 7); x.stroke(); }
+    // target outline of this lane's candy
+    x.save(); x.translate(cx, fy); x.scale(1, 0.5); x.globalAlpha = 0.55; x.strokeStyle = pal[3]; x.lineWidth = 3; shapePath(x, L.kind, 0, 0, noteR * 0.82); x.stroke(); x.restore();
+    if (!isTouch || n < 0) txt(KEY_LABELS[n][i], cx, fy + (bot - fy) * 0.62, clamp((bot - fy) * 0.38, 14, 26), '#fff', 'center', pal[4], 4);
+  }
+}
+function drawNotes(tNow) {
+  const n = nLanes(), app = DIFFS[diff].app, pxs = dist / app;
+  x.save(); x.beginPath(); x.rect(lanesX - 8, fieldTop, n * laneW + 16, hitY + noteR * 1.4 - fieldTop); x.clip();
+  for (let k = Math.max(0, scanFrom - 8); k < notes.length; k++) {
+    const q = notes[k], dt = q.t - tNow;
+    if (dt > app + 0.4) break;
+    const L = lanes[q.lane];
+    let y = hitY - dt * pxs;
+    // hold ribbon
+    if (q.end && q.hs !== 2 && q.hs !== 3 && q.hs !== 4 || (q.end && q.hs === 4)) {
+      const yTail = hitY - (q.end - tNow) * pxs, yHead = q.hs === 1 ? hitY : y, w = noteR * 0.95;
+      if (yTail < yHead) {
+        const grey = q.hs === 4, gr = x.createLinearGradient(0, yTail, 0, yHead);
+        gr.addColorStop(0, grey ? 'rgba(190,180,200,.4)' : L.pal[0] + 'cc'); gr.addColorStop(1, grey ? 'rgba(170,160,180,.55)' : L.pal[1] + 'ee');
+        x.fillStyle = gr; rr(x, L.cx - w / 2, yTail, w, yHead - yTail, w / 2); x.fill();
+        x.strokeStyle = grey ? '#a59cb2' : L.pal[3]; x.lineWidth = 2.5; x.stroke();
+        if (!grey) { x.strokeStyle = 'rgba(255,255,255,.7)'; x.lineWidth = 3; x.setLineDash([8, 9]); x.beginPath(); x.moveTo(L.cx, yTail + 8); x.lineTo(L.cx, yHead - 8); x.stroke(); x.setLineDash([]); }
+        x.fillStyle = grey ? '#cfc8d6' : '#fff'; star5(x, L.cx, yTail, noteR * 0.42, noteR * 0.2); x.fill(); x.strokeStyle = grey ? '#a59cb2' : L.pal[3]; x.lineWidth = 2; x.stroke();
+        if (q.hs === 1) { const gl = x.createRadialGradient(L.cx, hitY, 4, L.cx, hitY, noteR * 1.6); gl.addColorStop(0, 'rgba(255,255,255,.9)'); gl.addColorStop(1, 'rgba(255,230,120,0)'); x.fillStyle = gl; dot(x, L.cx, hitY, noteR * 1.6); }
+      }
+    }
+    if (q.st === 1 || q.st === 2) continue;
+    if (y < fieldTop - noteR * 1.6) continue;
+    if (y > hitY + noteR * 3) continue;
+    const grey = q.st === 3, spr = noteSprite(L.kind, L.pal, grey), S = spr._S;
+    if (grey) x.globalAlpha = clamp(1 - (y - hitY) / (noteR * 3), 0, 0.8);
+    // a gentle wobble so the candies feel alive
+    const wob = Math.sin(t * 6 + q.id) * 0.06;
+    if (q.dbl && !grey) { x.strokeStyle = 'rgba(255,255,255,.9)'; x.lineWidth = 4; x.beginPath(); x.ellipse(L.cx, y, noteR * 1.25, noteR * 1.25, 0, 0, 7); x.stroke(); }
+    x.save(); x.translate(L.cx, y); x.rotate(wob); x.drawImage(spr, -S / 2, -S / 2, S, S); x.restore();
+    x.globalAlpha = 1;
+  }
+  // doubles: a little bar joining the two candies
+  x.restore();
+}
+function drawHitLine() {
+  const n = nLanes(), b = beatNow(), pulse = Math.exp(-((b % 1 + 1) % 1) * 5);
+  const dark = SONG().theme === 'space' || SONG().theme === 'night';
+  x.fillStyle = dark ? `rgba(255,240,170,${0.18 + pulse * 0.25})` : `rgba(255,200,90,${0.2 + pulse * 0.3})`;
+  rr(x, lanesX - 4, hitY - 4, n * laneW + 8, 8, 4); x.fill();
+  // lane flashes on press
+  for (const L of lanes) {
+    const f = laneFlash[L.i]; if (f <= 0) continue;
+    const gr = x.createLinearGradient(0, hitY - laneW * 2.2, 0, hitY);
+    gr.addColorStop(0, L.pal[0] + '00'); gr.addColorStop(1, L.pal[1]);
+    x.globalAlpha = f * 0.55; x.fillStyle = gr; x.fillRect(L.x0 + 6, hitY - laneW * 2.2, laneW - 12, laneW * 2.2); x.globalAlpha = 1;
+  }
+}
+function drawPupu() {
+  const Pp = pupuS; if (!Pp) return;
+  const b = beatNow(), f = ((b % 1) + 1) % 1, playing = state === 'play' && !paused && !inCount();
+  const hop = playing || state === 'menu' || state === 'calib' ? Math.sin(f * Math.PI) : 0;
+  let sq = f < 0.12 ? 0.14 * (1 - f / 0.12) : -0.06 * hop;
+  if (!playing && state !== 'menu' && state !== 'calib') sq = Math.sin(t * 2.2) * 0.02;
+  const won = state === 'end' && !failed;
+  const yOff = -hop * Pp.r * (state === 'menu' ? 0.12 : 0.3) - (won ? Math.abs(Math.sin(t * 6)) * Pp.r * 0.25 : 0);
+  const lean = playing ? Math.sin(b * Math.PI) * 0.12 : 0;
+  const m = won ? 'love' : moodT > 0 ? mood : 'happy';
+  x.save(); x.translate(Pp.x, Pp.y + Pp.r * 0.9); x.rotate(lean);
+  MG.puPu(x, 0, -Pp.r * 0.9 + yOff, Pp.r, m, sq, { arms: armsT < 0.18 || won || (playing && f < 0.3) ? 'up' : false });
+  x.restore();
+}
+function drawBtn(b, label, on) {
+  const press = false, dy = press ? 3 : 0;
+  const [a1, a2, edge] = on ? ['#fff6c4', '#ffd23f', '#d08a00'] : ['#ffffff', '#f1e7d4', '#c9a95a'];
+  x.fillStyle = edge; rr(x, b.x, b.y + 5, b.w, b.h, 16); x.fill();
+  const gr = x.createLinearGradient(0, b.y, 0, b.y + b.h); gr.addColorStop(0, a1); gr.addColorStop(1, a2);
+  x.fillStyle = gr; x.strokeStyle = edge; x.lineWidth = 3; rr(x, b.x, b.y + dy, b.w, b.h, 16); x.fill(); x.stroke();
+  x.fillStyle = 'rgba(255,255,255,.5)'; rr(x, b.x + 10, b.y + dy + 5, b.w - 20, 5, 3); x.fill();
+  fitTxt(label, b.x + b.w / 2, b.y + b.h / 2 + 1, b.w - 14, Math.min(22 * U, b.h * 0.42), '#4a3200');
+}
+function progressBar(bx, by, bw, bh, f) {
+  x.fillStyle = 'rgba(160,120,150,.22)'; rr(x, bx, by, bw, bh, bh / 2); x.fill();
+  if (f > 0) { const gr = x.createLinearGradient(bx, 0, bx + bw, 0); gr.addColorStop(0, '#ff9cc2'); gr.addColorStop(0.5, '#ffd23f'); gr.addColorStop(1, '#4cc96a'); x.fillStyle = gr; rr(x, bx, by, Math.max(bh, bw * f), bh, bh / 2); x.fill(); }
+  x.fillStyle = '#fff'; x.strokeStyle = '#ff7aa8'; x.lineWidth = 2; const hx = bx + Math.max(bh / 2, bw * f); x.beginPath(); x.arc(hx, by + bh / 2, bh * 0.85, 0, 7); x.fill(); x.stroke();
+}
+function energyBar(bx, by, bw, bh) {
+  x.fillStyle = 'rgba(160,120,150,.22)'; rr(x, bx, by, bw, bh, bh / 2); x.fill();
+  const f = energy / 100, col = failed ? '#b9b0c4' : f > 0.5 ? '#4cc96a' : f > 0.25 ? '#ffc21a' : '#ff6b6b';
+  if (f > 0) { x.fillStyle = col; rr(x, bx, by, Math.max(bh, bw * f), bh, bh / 2); x.fill(); }
+  x.strokeStyle = 'rgba(90,60,90,.35)'; x.lineWidth = 1.5; rr(x, bx, by, bw, bh, bh / 2); x.stroke();
+}
+function accNow() { const done = P + G + M + notes.filter(q => q.end && (q.hs >= 2)).length; return done ? (P + 0.7 * G + tailSum) / done : 1; }
+function drawHud() {
+  const dark = SONG().theme === 'space' || SONG().theme === 'night', ink = dark ? '#fff' : '#6a3456', sub = dark ? '#e6dcff' : '#8a6a80';
+  const prog = SD && (state === 'play' || state === 'end') ? clamp(songNowCache / SD.len, 0, 1) : 0;
+  const title = (demo ? '示範：' : '') + SONG().nm;
+  const accTxt = `正確率 ${Math.round(accNow() * 100)}%`;
+  if (hud) {
+    const lx = hud.x + 78, rx = demoB.x - 10, tw = rx - lx;
+    fitTxt(title, lx, hud.y + 22, tw, 21, ink, 'left');
+    progressBar(lx, hud.y + 40, tw, 9, prog);
+    const yy = hud.y + (mode === 'challenge' ? 66 : 74);
+    txt(`連擊 ${combo}`, lx, yy, 17, combo >= 10 ? '#ff4f93' : ink, 'left');
+    txt(accTxt, rx, yy, 15, sub, 'right');
+    if (mode === 'challenge' && !demo) { energyBar(lx, hud.y + 84, tw, 10); }
+    txt(DIFFS[diff].nm, demoB.x + demoB.w / 2, hud.y + 84, 14, sub);
+  } else {
+    const L = sideL, R = sideR, s = Math.min(U, 1.3);
+    fitTxt(title, L.w / 2, 40 * s, L.w - 24, 24 * s, ink, 'center', dark ? null : '#fff', 5);
+    txt(`${DIFFS[diff].nm}・${mode === 'challenge' ? '挑戰' : '慢慢玩'}`, L.w / 2, 72 * s, 16 * s, sub);
+    progressBar(30, 94 * s, L.w - 60, 10 * s, prog);
+    const cx = R.x + R.w / 2;
+    txt('連擊', cx, demoB.y + demoB.h + 46 * s, 18 * s, sub);
+    txt(String(combo), cx, demoB.y + demoB.h + 92 * s, Math.min(64 * s, R.w * 0.4), combo >= 10 ? '#ff4f93' : ink, 'center', dark ? null : '#fff', 6);
+    txt(accTxt, cx, demoB.y + demoB.h + 140 * s, 17 * s, sub);
+    txt(`${score} 分`, cx, demoB.y + demoB.h + 168 * s, 17 * s, sub);
+    if (mode === 'challenge' && !demo) { txt('噗噗能量', cx, H - 66 * s, 15 * s, sub); energyBar(R.x + 18, H - 50 * s, R.w - 36, 14 * s); }
+  }
+  if (state === 'play') drawBtn(demoB, demo ? '■ 停止示範' : '♪ 示範', demo);
+}
+function drawOverlays(tNow) {
+  const cx = lanesX + nLanes() * laneW / 2, cy = fieldTop + (hitY - fieldTop) * 0.36;
+  const dark = SONG().theme === 'space' || SONG().theme === 'night';
+  if (state === 'play' && inCount() && !pendingResume) {
+    const ci = clamp(SD.beat, 0.45, 0.75) / Math.sqrt(SPEED), left = freezeUntil - (ac.currentTime - outLat), k = Math.ceil(left / ci);
+    if (k >= 1 && k <= 3) { const fr = 1 - (left / ci - (k - 1)); txt(String(k), cx, cy, 96 * (1 + 0.25 * (1 - fr)), '#ff6fa8', 'center', '#fff', 10); }
+  } else if (state === 'play' && notes.length && tNow < notes[0].t - 0.25 && !demo) {
+    txt('準備好囉～', cx, cy - 20, 34 * Math.min(U, 1.2), dark ? '#fff' : '#ff6fa8', 'center', dark ? 'rgba(0,0,0,.3)' : '#fff', 7);
+    txt('糖果掉到鼓上就敲一下！', cx, cy + 22, 20 * Math.min(U, 1.2), dark ? '#ffe9a8' : '#7a4a6a', 'center', dark ? 'rgba(0,0,0,.3)' : '#fff', 5);
+  }
+  if (banner && banner.life > 0) {
+    const a = clamp(banner.life * 3, 0, 1), sc = 1 + Math.max(0, banner.life - 1.1) * 2;
+    x.globalAlpha = a;
+    txt(banner.text, cx, fieldTop + 70, 44 * sc * Math.min(U, 1.2), '#ff4f93', 'center', '#fff', 8);
+    txt(banner.sub, cx, fieldTop + 112, 22 * Math.min(U, 1.2), '#ff9a1a', 'center', '#fff', 5);
+    x.globalAlpha = 1;
+  }
+  for (const f of floats) {
+    x.globalAlpha = clamp(f.life * 3, 0, 1);
+    txt(f.text, f.x, f.y - (0.6 - f.life) * 40, Math.min(26 * Math.min(U, 1.2), laneW * 0.26), f.col, 'center', '#fff', 5);
+  }
+  x.globalAlpha = 1;
+}
+function drawCalib() {
+  const c = calib, cx = W / 2, cy = H * 0.5;
+  const dark = SONG().theme === 'space' || SONG().theme === 'night', ink = dark ? '#fff' : '#6a3456';
+  x.fillStyle = dark ? 'rgba(25,15,60,.72)' : 'rgba(255,250,245,.78)'; x.fillRect(0, 0, W, H);
+  txt('調整節拍', cx, (land ? 50 : fieldTop + 30), 34 * Math.min(U, 1.2), ink, 'center', dark ? null : '#fff', 6);
+  fitTxt('聽到「咚」就敲一下畫面（或按空白鍵）', cx, (land ? 92 : fieldTop + 72), W - 40, 20 * Math.min(U, 1.2), dark ? '#ffe9a8' : '#7a4a6a');
+  if (!c) return;
+  const hear = ac.currentTime - outLat, ph = (hear - c.t0) / c.ci, f = ((ph % 1) + 1) % 1, live = ph > -0.5 && ph < c.total;
+  const pulse = live && ph >= -0.05 ? Math.exp(-f * 6) : 0;
+  const r = Math.min(W, H) * 0.17 * (1 + pulse * 0.12);
+  const pal = MG.JELLY.pink;
+  x.fillStyle = 'rgba(40,20,60,.18)'; x.beginPath(); x.ellipse(cx, cy + r * 1.05, r * 1.1, r * 0.3, 0, 0, 7); x.fill();
+  const gr = x.createRadialGradient(cx - r * 0.3, cy - r * 0.3, 4, cx, cy, r);
+  gr.addColorStop(0, '#fff'); gr.addColorStop(0.5, pulse > 0.3 ? '#fff3a0' : pal[0]); gr.addColorStop(1, pal[2]);
+  x.fillStyle = gr; dot(x, cx, cy, r); x.strokeStyle = pal[4]; x.lineWidth = 4; x.beginPath(); x.arc(cx, cy, r, 0, 7); x.stroke();
+  x.globalAlpha = 0.6; x.fillStyle = pal[2]; shapePath(x, 'heart', cx, cy, r * 0.45); x.fill(); x.globalAlpha = 1;
+  if (c.flash > 0) { x.strokeStyle = `rgba(255,200,60,${c.flash})`; x.lineWidth = 8; x.beginPath(); x.arc(cx, cy, r + 10 + (1 - c.flash) * 20, 0, 7); x.stroke(); }
+  if (ph < 0) txt('先聽一下…', cx, cy + r + 50, 22 * Math.min(U, 1.2), ink);
+  const dw = 30, sx = cx - (CAL_N - 1) * dw / 2;
+  for (let k = 0; k < CAL_N; k++) { x.fillStyle = k < c.taps.length ? '#ff6fa8' : dark ? 'rgba(255,255,255,.3)' : 'rgba(160,120,150,.3)'; dot(x, sx + k * dw, cy + r + 90, 9); }
+}
+function draw() {
+  const px = cv._mgScale || 1, key = `${W}x${H}:${px}:${song}:${diff}:${mode}:${demo}`;
+  if (key !== layerKey) buildLayer();
+  x.drawImage(layer, 0, 0, W, H);
+  const tNow = songNowCache - OFFSET;
+  // the whole stage breathes with the beat
+  const b = beatNow(), pulse = state === 'play' && !paused ? Math.exp(-((b % 1 + 1) % 1) * 5) : 0;
+  if (pulse > 0.02) { x.fillStyle = `rgba(255,255,255,${pulse * 0.1})`; x.fillRect(0, 0, W, H); }
+  if (state === 'calib') { drawPupu(); drawCalib(); MG.fx.draw(x); return; }
+  drawHitLine();
+  drawPads(tNow);
+  if (state === 'play' || state === 'end') drawNotes(tNow);
+  MG.fx.draw(x);
+  drawHud();
+  drawPupu();
+  drawOverlays(tNow);
+}
+
+// =====================================================================
+// main loop
+// =====================================================================
+let lastStat = '';
+function hud2(force) {
+  const s = state === 'play' || state === 'end' ? `${score} 分` : `⭐ ${Object.values(MG.store.get('rhythm.stars', {}) || {}).reduce((a, b) => a + (+b || 0), 0)}`;
+  if (s === lastStat && !force) return; lastStat = s; MG.stat('a', s);
+}
+function update(dt) {
+  t += dt; frameN++;
+  if (frameN % 30 === 0) refreshLat();
+  for (let k = 0; k < 4; k++) { padAnim[k] += dt; laneFlash[k] = Math.max(0, laneFlash[k] - dt * 4); }
+  armsT += dt; moodT = Math.max(0, moodT - dt);
+  if (banner) { banner.life -= dt; if (banner.life <= 0) banner = null; }
+  for (const f of floats) f.life -= dt; if (floats.length && floats.some(f => f.life <= 0)) floats = floats.filter(f => f.life > 0);
+  if (state === 'play' || state === 'end') { songNowCache = songPos(); schedule(); }
+  if (state === 'play') judgeStep();
+  if (state === 'calib') {
+    if (MG.panelOpen()) { calib = null; stopMusic(); state = 'menu'; }
+    else if (calib) { calib.flash = Math.max(0, calib.flash - dt * 3); if (ac.currentTime - outLat > calib.t0 + calib.total * calib.ci + 0.4) finishCalib(); }
+  }
+  MG.fx.step(dt);
+  hud2();
+}
+
+// =====================================================================
+// menu
+// =====================================================================
+function starLabel(n) {
+  const map = MG.store.get('rhythm.stars', {}) || {}, id = SONGS[n - 1].id;
+  const best = Math.max(0, ...['easy', 'normal', 'hard'].map(d => +map[id + '.' + d] || 0));
+  return SONGS[n - 1].nm + (best ? ' ' + '⭐'.repeat(best) : '');
+}
+const MENU = {
+  id: 'rhythm', title: '噗噗節奏樂園', menuLabel: '☰ 選歌', levelsTitle: '選一首歌',
+  html: '<p>跟著音樂敲果凍鼓！糖果掉到鼓上的時候<b>敲一下</b>，長長的糖果要<b>按住</b>。慢慢玩不會失敗，先看 ♪ 示範也可以 ^_^</p>',
+  picks: [{ key: 'diff', title: '難度', def: 'easy', options: [{ id: 'easy', label: '🐣 簡單', sub: '2 個鼓' }, { id: 'normal', label: '⭐ 普通', sub: '3 個鼓' }, { id: 'hard', label: '🔥 困難', sub: '4 個鼓、長按' }] }],
+  modesTitle: '想怎麼玩？',
+  modes: [{ id: 'relax', label: '🐢 慢慢玩', sub: '不會失敗' }, { id: 'challenge', label: '⭐ 挑戰', sub: '噗噗能量條' }],
+  levels: { count: SONGS.length, max: SONGS.length, label: starLabel },
+  extra: [{ label: '🎧 調整節拍', alt: true, on: () => startCalib() }],
+  keys: '手指敲鼓（好幾根手指可以一起敲），整條都可以敲　電腦：<kbd>D</kbd><kbd>F</kbd><kbd>J</kbd><kbd>K</kbd>（簡單用 <kbd>F</kbd><kbd>J</kbd> 或空白鍵）',
+  playing: () => state === 'play',
+  onPause: () => pauseGame(),
+  restore: () => resumeGame(),
+  start: (m, lv, pk) => {
+    mode = m === 'challenge' ? 'challenge' : 'relax';
+    diff = pk && DIFFS[pk.diff] ? pk.diff : 'easy';
+    startSong(lv - 1);
+  },
+};
+function menu() {
+  stopMusic(); runId++; calib = null; demo = false;
+  if (paused) { paused = false; pendingResume = false; }
+  state = 'menu';
+  song = clamp(MG.store.get('rhythm.pickLevel', 1) - 1, 0, SONGS.length - 1);
+  const d = MG.store.get('rhythm.pick.diff', 'easy'); diff = DIFFS[d] ? d : 'easy';
+  SD = buildSong(song);
+  layout();
+  MG.choose(MENU);
+  hud2(true);
+}
+
+cv.onfit = () => layout();
+MG.fit(cv, (sw, sh) => {
+  const l = sw > sh * 1.05;
+  if (l) { const h = 560; return [Math.round(clamp(h * (sw - 12) / Math.max(1, sh - 12), 800, 1400)), h]; }
+  const w = 480; return [w, Math.round(clamp(w * (sh - 12) / Math.max(1, sw - 12), 640, 1000))];
+});
+menu();
+
+// ---------- hook for automated tests ----------
+function toClient(lx, ly) { const rc = cv.getBoundingClientRect(), B = 3; return { x: rc.left + B + lx * (rc.width - 2 * B) / W, y: rc.top + B + ly * (rc.height - 2 * B) / H }; }
+window.RH = {
+  get state() { return state; }, get mode() { return mode; }, get diff() { return diff; }, get song() { return song; }, get demo() { return demo; }, get paused() { return paused; },
+  get counts() { return { perfect: P, good: G, miss: M, combo, maxCombo, score, tailSum, holds: holdsN, energy, failed, acc: accNow() }; },
+  get offset() { return OFFSET; }, get frames() { return frameN; }, get land() { return land; }, get calib() { return calib ? { taps: calib.taps.slice(), t0: calib.t0, ci: calib.ci } : null; },
+  acState: () => ac ? ac.state : 'none', audioTime: () => ac ? ac.currentTime : 0, outLat: () => outLat,
+  songPos: () => songPos(), inCount: () => !!inCount(),
+  songs: () => SONGS.map((s, i) => { const d = buildSong(i); return { id: s.id, nm: s.nm, bpm: s.bpm, meter: s.meter, len: d.len, bars: d.bars, events: d.ev.length, melody: d.mel.length }; }),
+  chart: (i, d) => makeChart(i, d).map(q => ({ ...q })),
+  notes: () => notes.map(q => ({ t: q.t, lane: q.lane, end: q.end, st: q.st, hs: q.hs, frac: q.frac, dbl: !!q.dbl })),
+  judgeLog: () => judgeLog.slice(),
+  // the audio-clock time (ac.currentTime) at which a song-time t is heard on the hit line
+  rawTimeOf: tt => songStart + (tt + OFFSET) / SPEED + outLat,
+  setSpeed: k => { SPEED = k; }, setOffset: ms => { OFFSET = ms / 1000; MG.store.set('rhythm.offset', ms); },
+  start: (i, o = {}) => { if (o.diff) diff = o.diff; if (o.mode) mode = o.mode; startSong(i, { demo: !!o.demo }); },
+  menu: () => menu(), calibrate: () => startCalib(),
+  dims: () => ({ W, H, land, laneW, lanesX, hitY, fieldTop, scale: cv.getBoundingClientRect().width / W, n: nLanes() }),
+  lanePoint: (i, fy = 0.5) => toClient(lanesX + laneW * (i + 0.5), fieldTop + (hitY - fieldTop) * fy),
+  padRect: i => { const a = toClient(lanesX + laneW * i, hitY - padRx * 0.4), b = toClient(lanesX + laneW * (i + 1), padBottom); return { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y }; },
+  demoPoint: () => toClient(demoB.x + demoB.w / 2, demoB.y + demoB.h / 2),
+  demoRect: () => { const a = toClient(demoB.x, demoB.y), b = toClient(demoB.x + demoB.w, demoB.y + demoB.h); return { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y }; },
+  // direct judge calls (song time, already offset-adjusted) for deterministic tests
+  pressAt: (lane, tj, src = 'test') => press(lane, tj, src), releaseAt: (src, tj) => release(src, tj),
+  stars: () => MG.store.get('rhythm.stars', {}),
+};
+
+MG.loop(dt => { update(dt); draw(); });
+</script>
+</body>
+</html>
