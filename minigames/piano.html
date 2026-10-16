@@ -492,7 +492,7 @@ function buildLayer() {
   if (layer.width !== cv.width || layer.height !== cv.height) { layer.width = cv.width; layer.height = cv.height; }
   const g = layer.getContext('2d'); g.setTransform(px, 0, 0, px, 0, 0);
   paintBg(g); paintLaneBg(g); paintStatic(g); paintBody(g);
-  layerKey = `${W}x${H}:${px}:${mode}:${tiers}:${lab}`;
+  layerKey = `${W}x${H}:${px}:${mode}:${tiers}:${lab}:${kbMode}`;
 }
 
 // ---------- playing a note ----------
@@ -779,6 +779,8 @@ cv.addEventListener('pointerdown', e => {
   const b = hitBtn(p);
   if (b) { MG.sfx('click'); pressBtn(b); return; }
   const k = keyHit(p);
+  // a new "first finger" means no other finger is down any more: clear anything left over from a lost pointerup
+  if (e.isPrimary) for (const id of [...ptr.keys()]) if (id !== e.pointerId) ptrUp({ pointerId: id });
   try { cv.setPointerCapture(e.pointerId); } catch {}
   ptr.set(e.pointerId, k ? k.m : -1);
   if (k) { hold(k.m); noteOn(k.m); }
@@ -796,25 +798,57 @@ function ptrUp(e) { const cur = ptr.get(e.pointerId); if (cur == null) return; p
 cv.addEventListener('pointerup', ptrUp);
 cv.addEventListener('pointercancel', ptrUp);
 cv.addEventListener('lostpointercapture', ptrUp);
+addEventListener('pointerup', ptrUp); addEventListener('pointercancel', ptrUp);   // backup when the finger is lifted off the canvas
 // keycap letters drawn on the piano keys (computer keyboard → piano key)
-const CAP_TXT = c => c.startsWith('Key') ? c.slice(3) : c === 'Semicolon' ? ';' : c === 'Quote' ? "'" : c === 'BracketRight' ? ']' : c === 'Enter' ? '↵' : c;
+const CAP_TXT = c => c.startsWith('Key') ? c.slice(3) : c.startsWith('Digit') ? c.slice(5) : ({ Semicolon: ';', Quote: "'", BracketRight: ']', Enter: '↵', Comma: ',', Period: '.', Slash: '/' })[c] || c;
 let showKeyCaps = !!(window.matchMedia && matchMedia('(hover: hover) and (pointer: fine)').matches);
 const capFlash = new Map();
-const KEYMAP = { KeyA: 60, KeyW: 61, KeyS: 62, KeyE: 63, KeyD: 64, KeyF: 65, KeyT: 66, KeyG: 67, KeyY: 68, KeyH: 69, KeyU: 70, KeyJ: 71, KeyK: 72, KeyO: 73, KeyL: 74, KeyP: 75, Semicolon: 76, Quote: 77, BracketRight: 78, Enter: 79 };   // ] and Enter reach the last two keys (F♯5, G5)
-const CODE_OF = new Map(Object.entries(KEYMAP).map(([c, m]) => [m, c]));
+// two ways to map the computer keyboard (chosen on the start screen):
+//  單排 one: the home row A S D F … is the white keys, the row above the black keys (one hand runs over everything)
+//  兩手 two: like music software — left hand Z X C V B N M (black S D G H J) for Do⁴–Si⁴,
+//            right hand Q W E R T (black 2 3 5) for Do⁵–Sol⁵; , . / and L ; overlap the right hand's Do Re Mi
+const KEYMAPS = {
+  one: { KeyA: 60, KeyW: 61, KeyS: 62, KeyE: 63, KeyD: 64, KeyF: 65, KeyT: 66, KeyG: 67, KeyY: 68, KeyH: 69, KeyU: 70, KeyJ: 71, KeyK: 72, KeyO: 73, KeyL: 74, KeyP: 75, Semicolon: 76, Quote: 77, BracketRight: 78, Enter: 79 },
+  two: { KeyZ: 60, KeyS: 61, KeyX: 62, KeyD: 63, KeyC: 64, KeyV: 65, KeyG: 66, KeyB: 67, KeyH: 68, KeyN: 69, KeyJ: 70, KeyM: 71, Comma: 72, KeyL: 73, Period: 74, Semicolon: 75, Slash: 76,
+         KeyQ: 72, Digit2: 73, KeyW: 74, Digit3: 75, KeyE: 76, KeyR: 77, Digit5: 78, KeyT: 79 },
+};
+let kbMode = MG.store.get('piano.pick.kb', 'one') === 'two' ? 'two' : 'one';
+let KEYMAP = KEYMAPS[kbMode];
+let CODE_OF = new Map();
+function setKbMode(v) {
+  kbMode = v === 'two' ? 'two' : 'one'; KEYMAP = KEYMAPS[kbMode];
+  CODE_OF = new Map(Object.entries(KEYMAP).map(([c, m]) => [m, c]));   // later entries win: in 兩手, Do⁵ Re⁵ Mi⁵ show the right hand's Q W E
+  if (started) { releaseAll(); layerKey = ''; }
+}
+let started = false;
+CODE_OF = new Map(Object.entries(KEYMAP).map(([c, m]) => [m, c]));
+// --- keys that "stick": a lost keyup (focus change, ⌘/Ctrl shortcuts, input methods) must never leave a note ringing ---
+const kbdSeen = new Map();     // code → last time we saw a keydown (incl. auto-repeat) for it
+let repeatWorks = false;       // once we've seen auto-repeat, a held key keeps sending keydowns, so silence means it was let go
+function dropKey(code) { const m = kbd.get(code); if (m == null) return; kbd.delete(code); kbdSeen.delete(code); release(m); }
+function dropAllKeys() { for (const c of [...kbd.keys()]) dropKey(c); }
 addEventListener('keydown', e => {
+  if (e.isComposing || e.keyCode === 229) return;                     // an input method is busy — ignore
+  if (e.key === 'Meta' || e.key === 'Control' || e.key === 'Alt' || e.ctrlKey || e.metaKey || e.altKey) { dropAllKeys(); return; }   // on a Mac, keyups go missing while ⌘ is down
   const m = KEYMAP[e.code];
-  if (m == null || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (m == null) return;
   if (state !== 'play' || MG.panelOpen()) return;
   e.preventDefault();
-  if (e.repeat || kbd.has(e.code)) return;
+  kbdSeen.set(e.code, performance.now());
+  if (e.repeat) { repeatWorks = true; return; }
+  if (kbd.has(e.code)) dropKey(e.code);                                // a fresh press without a keyup in between: the keyup was lost
   unlockAudio();
-  kbd.set(e.code, m); hold(m); noteOn(m);
+  kbd.set(e.code, m); kbdSeen.set(e.code, performance.now()); hold(m); noteOn(m);
   if (!showKeyCaps) showKeyCaps = true;            // a keyboard is clearly attached: show the key letters from now on
   capFlash.set(m, 1);
 });
-addEventListener('keyup', e => { const m = kbd.get(e.code); if (m == null) return; kbd.delete(e.code); release(m); });
-addEventListener('blur', releaseAll);
+setInterval(() => {                                // watchdog for held keys
+  if (!repeatWorks || !kbd.size) return;
+  const now = performance.now();
+  for (const [code] of kbd) if (now - (kbdSeen.get(code) || 0) > 1200) dropKey(code);
+}, 300);
+addEventListener('keyup', e => { if (e.key === 'Meta') dropAllKeys(); dropKey(e.code); });
+addEventListener('blur', () => { dropAllKeys(); releaseAll(); });
 
 // ---------- drawing ----------
 function keyState(k) {
@@ -1025,16 +1059,18 @@ function menu() {
     html: '<p>噗噗的玩具鋼琴！自由彈可以換樂器、錄音；跟著彈就按<b>發光的琴鍵</b>學兒歌，按錯也沒關係 ^_^</p>',
     picks: [
       { key: 'pace', title: '跟著彈的時候', def: 'wait', options: [{ id: 'wait', label: '🐢 等我', sub: '按對了才往下' }, { id: 'beat', label: '🥁 跟節拍', sub: '照拍子，比完美' }] },
+      { key: 'kb', title: '電腦鍵盤怎麼彈？', def: 'one', options: [{ id: 'one', label: '⌨️ 單排', sub: 'A S D F… 一排彈全部' }, { id: 'two', label: '🙌 兩隻手', sub: '左手 Z X C V…　右手 Q W E R…' }] },
       { key: 'lab', title: '琴鍵上寫什麼？', def: 'do', options: [{ id: 'do', label: 'Do Re Mi', sub: '唱名' }, { id: 'num', label: '1 2 3', sub: '簡譜數字' }, { id: 'abc', label: 'C D E', sub: '音名' }] },
     ],
     modesTitle: '想怎麼玩？',
     modes: [{ id: 'free', label: '🎨 自由彈', sub: '換樂器、錄音、播放' }, { id: 'learn', label: '🎶 跟著彈', sub: '跟著發光的鍵學兒歌' }],
     levels: { count: SONGS.length, max: SONGS.length, label: n => SONGS[n - 1].nm + (starMap[SONGS[n - 1].id] ? ' ' + '⭐'.repeat(starMap[SONGS[n - 1].id]) : '') },
-    keys: '用手指按琴鍵，好幾根手指可以一起按，滑過去也會響　電腦：<kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><kbd>F</kbd><kbd>G</kbd><kbd>H</kbd><kbd>J</kbd><kbd>K</kbd> 白鍵、<kbd>W</kbd><kbd>E</kbd><kbd>T</kbd><kbd>Y</kbd><kbd>U</kbd> 黑鍵，高音 <kbd>K</kbd><kbd>L</kbd><kbd>;</kbd><kbd>\'</kbd><kbd>Enter</kbd>、<kbd>O</kbd><kbd>P</kbd><kbd>]</kbd>（按住會一直響，琴鍵上會標出對應的字母）',
+    keys: '用手指按琴鍵，好幾根手指可以一起按，滑過去也會響，按住會一直響　電腦鍵盤：⌨️ 單排 <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><kbd>F</kbd>…<kbd>\'</kbd><kbd>Enter</kbd> 白鍵、<kbd>W</kbd><kbd>E</kbd><kbd>T</kbd>…<kbd>]</kbd> 黑鍵；🙌 兩隻手 左手 <kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd><kbd>V</kbd><kbd>B</kbd><kbd>N</kbd><kbd>M</kbd>（黑鍵 <kbd>S</kbd><kbd>D</kbd><kbd>G</kbd><kbd>H</kbd><kbd>J</kbd>）、右手 <kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd><kbd>R</kbd><kbd>T</kbd>（黑鍵 <kbd>2</kbd><kbd>3</kbd><kbd>5</kbd>）。琴鍵上會標出對應的字母',
     playing: () => state === 'play',
     start: (m, lv, pk) => {
       pace = pk && pk.pace === 'beat' ? 'beat' : 'wait';
       lab = pk && ['do', 'num', 'abc'].includes(pk.lab) ? pk.lab : 'do';
+      started = true; setKbMode(pk && pk.kb);
       if (m === 'learn') startSong(lv - 1); else startFree();
     },
   });
@@ -1055,6 +1091,7 @@ menu();
 // small hook for automated tests: read-only snapshots
 function toClient(lx, ly) { const rc = cv.getBoundingClientRect(), B = 3; return { x: rc.left + B + lx * (rc.width - 2 * B) / W, y: rc.top + B + ly * (rc.height - 2 * B) / H }; }
 window.PNT = {
+  get kbMode() { return kbMode; }, get heldNotes() { return [...held.keys()]; },
   get sustains() { return [...sustains.keys()]; },
   get state() { return state; }, get mode() { return mode; }, get pace() { return pace; }, get song() { return song; }, get ins() { return ins; }, get lab() { return lab; },
   get nIdx() { return nIdx; }, get n() { return notes.length; }, get sPos() { return sPos; }, get wrong() { return wrong; }, get perfect() { return perfect; }, get good() { return good; }, get missed() { return missed; },
