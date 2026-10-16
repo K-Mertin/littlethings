@@ -17,7 +17,7 @@ Open `index.html` in a browser, pick a mode (**Quick race**, **Grand Prix** or *
 
 **Grip:** the tyres have a limit. Take a corner too fast and the car slides wide and loses speed, so brake before the tight ones.
 
-**Drift boost:** hold drift while turning. The bar under the speedometer fills: blue sparks give a short boost when you let go, orange sparks a longer one. Hitting a wall cancels the drift.
+**Drift boost:** hold drift while turning. The slide builds up over about half a second rather than snapping round, so you have time to correct it with ← →. The bar under the speedometer fills: blue sparks give a short boost when you let go, orange sparks a longer one. Hitting a wall cancels the drift.
 
 **Boost pads:** the blue pads with yellow arrows give a burst of speed.
 
@@ -103,6 +103,8 @@ Choose **Drift school** to learn the drift boost alone on any track, in four les
 2. **Blue boost**: hold until blue sparks appear, then let go (3 times).
 3. **Orange boost**: keep holding until the sparks turn orange, then let go (3 times).
 4. **Drift lap**: 4 orange boosts in a single lap.
+
+**Watch a demo first** (in the Drift school menu, or in the pause menu) lets the game drive your car at 0.6× speed using exactly the keys you have. On-screen keys bottom left light up as they are pressed, and a caption names each step: hold ↑ on the straight, steer and press DRIFT together to turn in, keep DRIFT held and tap ← → to stay on the road, then let go as the road straightens. Press any key (or tap) to take over. The on-screen keys stay visible in Drift school, so you can also watch your own inputs.
 
 A coach panel shows the current lesson and progress. Before each corner a hint says which way it turns, a large gauge in the middle of the screen fills while you drift and tells you when to let go, and every drift gets feedback (too short, blue, orange, lost to a wall, too slow). If drift will not start, the hint says why: too slow, not steering, or on the grass. Finishing all four lessons the first time pays 500 credits; after that you can keep practising freely.
 
