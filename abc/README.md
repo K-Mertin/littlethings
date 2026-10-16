@@ -35,6 +35,8 @@
 ## 語音
 - Pip 的聲音是預先錄好的音檔（`audio/`），用開源模型 Kokoro-82M（Apache-2.0）的 af_heart 聲音錄製（語速 0.8），小朋友角色用 af_sky（0.9）。字母的純音（自然發音）是從音節剪出來的；a e i o u f v l z 用 Wikimedia Commons 的真人錄音（CC BY-SA 3.0，出處見 `tools/soundbank/wikimedia/CREDITS.md`）。遊戲用 Web Audio 播放，所以不依賴瀏覽器的語音功能（Mac 上的 Chrome 就叫不出系統語音）。
 - 沒有音檔的句子才改用瀏覽器內建語音（`speechSynthesis`）。中文提示已關閉（`zh()` 一律回傳 null）。
+- 自然發音的字母音（⟦s⟧）全部來自 Wikimedia Commons 的國際音標錄音（CC BY-SA 3.0），用 `tools/soundbank/cut-wikimedia.py` 剪出純音；來源列表在 `tools/soundbank/wikimedia/CREDITS.md`，遊戲裡 Phonics／Blends 畫面右下角的 ⓘ 也會顯示。
+- 只有一個字的台詞（例如 "frog."）用 `tools/kokoro-short.mjs` 錄：唸三次取最後一次，避免 Kokoro 在很短的輸入前面多出一個 a 音。
 - 單獨唸一個字母（例如拼字時的 ‹b›）是用 Kokoro 連唸三次「b. b. b.」再切出最後一次，因為只給一個音節時 Kokoro 會唸得很怪。
 - 台詞清單在 `audio/phrases.tsv`：`id`、聲音（pip／kid／zh）、文字。字母寫成 `‹a›`，錄音時會照字母名稱唸（a 唸「ay」）。`id` 是「聲音|文字」的 FNV-1a 32-bit 雜湊。
 - 錄音工具在 `tools/`：

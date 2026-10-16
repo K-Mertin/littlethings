@@ -1,18 +1,16 @@
-# Letter sounds (phonics)
+# Sound bank: phonics letter sounds
 
-Kokoro always puts a vowel next to a lone consonant (/s/ comes out as "ess"), so the 35 pure sounds
-(`⟦s⟧` lines in `audio/phrases.tsv`) are cut out of syllables instead:
+All letter sounds (⟦a⟧ … ⟦z⟧, ⟦sh⟧ ⟦ch⟧ ⟦th⟧, and the blends ⟦bl⟧ ⟦fl⟧ ⟦st⟧ ⟦sn⟧ ⟦fr⟧ ⟦tr⟧) come from one source:
+the IPA recordings on Wikimedia Commons (CC BY-SA 3.0). See `wikimedia/CREDITS.md`.
 
-1. `node carriers.mjs` (run inside a folder where `kokoro-js` is installed) writes `bank/<sound>.wav`,
-   one syllable per sound, e.g. "sːˈɑː" for /s/.
-2. `cd bank && python3 ../extract.py` cuts each sound out:
-   - s f sh th: only the hiss before the vowel, stretched to 0.5 s
-   - m n l r v z: the hum before the vowel, stretched to 0.5 s
-   - b d g p t c k j h q w y ch: the stop with a very short schwa (0.22 s)
-   - bl fl st sn fr tr: the blend with a short schwa (0.36 s)
-   - a e i o u: the short vowel; x: the /ks/ at the end of "box"
-3. Encode `cut_<sound>.raw` (16-bit, 24 kHz, mono) to `audio/<id>.m4a`, where id = fnv1a32("pip|⟦sound⟧").
+1. The original recordings are in `wikimedia/*.ogg` (their metadata in `wikimedia/meta.json`).
+2. Convert them to 22050 Hz mono WAV: `for f in wikimedia/*.ogg; do ffmpeg -i $f -ac 1 -ar 22050 /tmp/snd/$(basename ${f%.ogg}).wav; done`
+3. Cut: `python3 cut-wikimedia.py /tmp/snd /tmp/snd/out` (needs numpy)
+4. Each `<key>.wav` becomes `audio/<id>.m4a`, where id = fnv1a32("pip|⟦key⟧").
 
-**Exceptions:** a e i o u f v l z and sh ch th come from human recordings on Wikimedia Commons (CC BY-SA 3.0), see `wikimedia/CREDITS.md`.
-
-**Blends** (bl fl st sn fr tr) are cut from whole Kokoro words (blˈɑːk, flˈæɡ, stˈɑːɹ, snˈeɪk, fɹˈɑːɡ, tɹˈiː): from the start of the consonants up to the vowel, so there is no added "uh", then slowed 1.7×.
+How each sound is cut:
+- vowels: the steady middle of the held vowel
+- s, sh, z, h, n: the part before the vowel in [sa], held a little longer
+- f, v, th, m: the part between the vowels in [afa]; l: the quietest part of [ala]
+- r, w, y, ch, j: the onset plus a short glide into the vowel
+- b, d, g, k, p, t: the burst plus 70–80 ms, faded out fast, so there is no "a" after it
