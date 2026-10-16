@@ -1,6 +1,8 @@
 // 噗噗的遊戲小屋 — tiny shared helpers for every mini game (no libraries)
 'use strict';
 const MG = (() => {
+  // 版號：每次合併更新時一起改（修正 → 第三碼 +1；新遊戲／新功能 → 第二碼 +1）
+  const VERSION = '1.0.0', BUILT = '2026/10/16';
   const LS = 'puputown.';
   const store = {
     get(k, d) { try { const v = localStorage.getItem(LS + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -91,7 +93,7 @@ const MG = (() => {
       else { zi = Math.max(0, Math.min(ZS.length - 1, zi + +b.dataset.z)); store.set('uiZoom', zi); applyUI(); }
       sync(); sfx('click');
     };
-    sync(); return row;
+    sync(); row.insertAdjacentHTML('beforeend', `<span class="mg-ver">v${VERSION}</span>`); return row;
   }
   function panel({ title, html = '', buttons = [], keys = '' }) {
     if (!over) { over = document.createElement('div'); over.className = 'mg-over'; document.body.append(over); }
@@ -446,5 +448,5 @@ const MG = (() => {
     return { show(v) { b.hidden = !v; }, el: b };
   }
 
-  return { get big() { return big; }, setBig, get textScale() { return big ? 1.3 : 1; }, praise, WORDS, choose, pauseMenu, resume, barButton, init, stat, fit, panel, hide, panelOpen, best, record, sfx, toast, loop, rand, randi, pick, shuffle, store, puPu, fx, unlock, JELLY };
+  return { VERSION, BUILT, get big() { return big; }, setBig, get textScale() { return big ? 1.3 : 1; }, praise, WORDS, choose, pauseMenu, resume, barButton, init, stat, fit, panel, hide, panelOpen, best, record, sfx, toast, loop, rand, randi, pick, shuffle, store, puPu, fx, unlock, JELLY };
 })();
