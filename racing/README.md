@@ -96,6 +96,16 @@ Choose **Grand Prix** in the menu to race all five tracks in order with the same
 - Progress is saved, so you can leave between races and continue later. **Abandon** in the menu starts over.
 - Finishing the championship in the top three wins a gold, silver or bronze cup for that difficulty, plus credits. The best cup for each level is shown in the menu.
 
+## Drift school
+Choose **Drift school** to learn the drift boost alone on any track, in four lessons:
+
+1. **Start a drift**: steer into a corner and hold drift until the car slides (3 times).
+2. **Blue boost**: hold until blue sparks appear, then let go (3 times).
+3. **Orange boost**: keep holding until the sparks turn orange, then let go (3 times).
+4. **Drift lap**: 4 orange boosts in a single lap.
+
+A coach panel shows the current lesson and progress. Before each corner a hint says which way it turns, a large gauge in the middle of the screen fills while you drift and tells you when to let go, and every drift gets feedback (too short, blue, orange, lost to a wall, too slow). If drift will not start, the hint says why: too slow, not steering, or on the grass. Finishing all four lessons the first time pays 500 credits; after that you can keep practising freely.
+
 ## Time trial
 Choose **Time trial** to drive alone. Each lap is timed, and your best lap on each layout is saved as a **ghost**: a see-through car that drives it again next time. Under the lap timer, the green or red number is how far ahead (−) or behind (+) the ghost you are at that point of the lap.
 
