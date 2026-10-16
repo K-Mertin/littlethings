@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>動物連連看</title>
 <link rel="stylesheet" href="mini.css">
+<style>
+/* the board needs every pixel of width: almost no side padding around the canvas */
+.mg-stage{padding:4px max(2px,env(safe-area-inset-right)) max(4px,env(safe-area-inset-bottom)) max(2px,env(safe-area-inset-left))}
+</style>
 </head>
 <body>
 <main class="mg-stage"><canvas id="cv" aria-label="遊戲畫面"></canvas></main>
@@ -37,7 +41,7 @@ let slides = new Map();                      // "r,c" -> { fr, fc, t } for the s
 const relax = () => mode === 'relax';
 const snd = (() => { const last = {}; return (n, a) => { const now = performance.now(); if (now - (last[n] || 0) < 60) return; last[n] = now; MG.sfx(n, a); }; })();
 const mmss = v => `${Math.floor(v / 60)}:${String(Math.floor(v % 60)).padStart(2, '0')}`;
-let level, score, grid, R_, C_, tile, ring, bx, by, U = 1, hudBox, bHint, bShuf, sel = null, links = [], left, maxT, hints, shuffles, state = 'ready', t = 0, combo = 0, lastMatch = -9, hintPair = null, shakeCell = null, pops = [], gone = [];
+let level, score, grid, R_, C_, tile, ring, bx, by, U = 1, hudBox, bHint, bShuf, bZin, bZout, bZfit, VP, sel = null, links = [], left, maxT, hints, shuffles, state = 'ready', t = 0, combo = 0, lastMatch = -9, hintPair = null, shakeCell = null, pops = [], gone = [];
 
 function setupLevel(n) {
   level = n; const L = LEVELS[Math.min(n, LEVELS.length) - 1];
@@ -50,43 +54,100 @@ function setupLevel(n) {
   grid = Array.from({ length: R_ + 2 }, () => Array(C_ + 2).fill(null));
   for (let r = 0; r < R_; r++) for (let c = 0; c < C_; c++) grid[r + 1][c + 1] = pool[r * C_ + c];
   maxT = L.time; left = relax() ? 0 : maxT; slides = new Map(); hints = 3; shuffles = 2; sel = null; links = []; combo = 0; hintPair = null; gone = [];
-  layout(); ensureMoves(); hud();
+  layout(); zoom = +MG.store.get(zKey(), 1) || 1; panX = panY = 0; clampView(); ensureMoves(); hud();
 }
-// HUD (time bar + 💡 / 🔀 buttons): a strip on top in portrait, a column on the right in landscape; the board gets the rest
+// HUD (time bar + 💡 / 🔀 + 🔍 zoom buttons): rows above the board in portrait, a column on the right in landscape.
+// VP = the part of the canvas the board may use (and is clipped to when zoomed in)
 function layout() {
   U = Math.max(1, Math.min(1.6, Math.min(W, H) / 420)) * MG.textScale;
-  const bh = Math.round(Math.max(48, 46 * U)), g = 8;
-  let ax, ay, aw, ah;
+  const bh = Math.round(Math.max(48, 46 * U)), g = 8, gs = 2, RING = 0.3;
+  const fitTile = (aw, ah) => Math.floor(Math.min(aw / (C_ + RING * 2), ah / (R_ + RING * 2)));
   if (land) {
-    const pw = Math.round(Math.min(W * 0.24, Math.max(110, 118 * U)));
-    const px = W - pw - g;
+    const pw = Math.round(Math.min(W * 0.3, Math.max(166, 130 * U)));
+    const px = W - pw - g, zb = Math.floor((pw - g * 2) / 3);
     hudBox = { x: px, y: g, w: pw, h: Math.round(Math.max(40, 36 * U)) };
     bHint = { x: px, y: hudBox.y + hudBox.h + g, w: pw, h: bh };
     bShuf = { x: px, y: bHint.y + bh + g, w: pw, h: bh };
-    ax = g; ay = g; aw = px - g * 2; ah = H - g * 2;
-  } else if (H > W * 1.3) {
-    // tall phone: the time bar gets its own row, the two buttons share the row under it
-    const th = Math.round(Math.max(32, 30 * U)), bw = Math.round((W - g * 3) / 2);
-    hudBox = { x: g, y: g, w: W - g * 2, h: th };
-    bHint = { x: g, y: g * 2 + th, w: bw, h: bh };
-    bShuf = { x: g * 2 + bw, y: g * 2 + th, w: bw, h: bh };
-    ax = g; ay = bHint.y + bh + g; aw = W - g * 2; ah = H - ay - g;
+    const zy = bShuf.y + bh + g;
+    bZout = { x: px, y: zy, w: zb, h: bh }; bZin = { x: px + zb + g, y: zy, w: zb, h: bh }; bZfit = { x: px + (zb + g) * 2, y: zy, w: pw - (zb + g) * 2, h: bh };
+    VP = { x: 0, y: 0, w: px - g / 2, h: H };
+    tile = fitTile(VP.w - gs * 2, H - g * 2);
+    bx = Math.round((VP.w - tile * C_) / 2); by = Math.round((H - tile * R_) / 2);
   } else {
-    const bw = Math.round(Math.min((W - g * 4) * 0.3, Math.max(84, 92 * U)));
-    bShuf = { x: W - g - bw, y: g, w: bw, h: bh };
-    bHint = { x: bShuf.x - g - bw, y: g, w: bw, h: bh };
-    hudBox = { x: g, y: g + (bh - Math.max(30, 28 * U)) / 2, w: bHint.x - g * 2, h: Math.max(30, 28 * U) };
-    ax = g; ay = g * 2 + bh; aw = W - g * 2; ah = H - ay - g;
+    const tall = H > W * 1.3, zb = bh, th = tall ? Math.round(Math.max(32, 30 * U)) : 0;
+    const hudH = tall ? th + g + bh : bh;
+    tile = fitTile(W - gs * 2, H - hudH - g * 3);
+    const boardH = tile * (R_ + RING * 2), top = Math.max(g, Math.round((H - hudH - g - boardH) / 2));   // HUD sits right above the board, the pair centred
+    const ry = tall ? top + th + g : top;                      // the button row
+    bZfit = { x: W - g - zb, y: ry, w: zb, h: bh }; bZin = { x: bZfit.x - g / 2 - zb, y: ry, w: zb, h: bh }; bZout = { x: bZin.x - g / 2 - zb, y: ry, w: zb, h: bh };
+    if (tall) {
+      hudBox = { x: g, y: top, w: W - g * 2, h: th };
+      const bw = Math.floor((bZout.x - g * 3) / 2);
+      bHint = { x: g, y: ry, w: bw, h: bh }; bShuf = { x: g * 2 + bw, y: ry, w: bw, h: bh };
+    } else {
+      const bw = Math.round(Math.min((bZout.x - g * 4) * 0.32, Math.max(84, 92 * U)));
+      bShuf = { x: bZout.x - g - bw, y: ry, w: bw, h: bh }; bHint = { x: bShuf.x - g - bw, y: ry, w: bw, h: bh };
+      const hh = Math.max(30, 28 * U); hudBox = { x: g, y: ry + (bh - hh) / 2, w: bHint.x - g * 2, h: hh };
+    }
+    const vy = top + hudH + g / 2;
+    VP = { x: 0, y: vy, w: W, h: H - vy };
+    bx = Math.round((W - tile * C_) / 2); by = Math.round(vy + g / 2 + tile * RING);
   }
-  // a thin ring around the animals: classic links can run around the outside there
-  tile = Math.floor(Math.min(aw / (C_ + 0.8), ah / (R_ + 0.8)));
-  ring = tile * 0.4;
-  bx = Math.round(ax + (aw - tile * C_) / 2); by = Math.round(ay + (ah - tile * R_) / 2);
+  ring = tile * RING * 2;
+  // the HUD block; when zoomed in (portrait) the board may scroll under / above it, so it gets a backing panel
+  const hs = [hudBox, bHint, bShuf, bZin, bZout, bZfit], hx0 = Math.min(...hs.map(b => b.x)) - g / 2, hy0 = Math.min(...hs.map(b => b.y)) - g / 2;
+  hudPanel = { x: hx0, y: hy0, w: Math.max(...hs.map(b => b.x + b.w)) + g / 2 - hx0, h: Math.max(...hs.map(b => b.y + b.h)) + g / 2 - hy0 };
+  CLIP = land ? VP : { x: 0, y: 0, w: W, h: H };
+  clampView();
+}
+let hudPanel = null, CLIP = null;
+// ---------- zoom & pan: screen = (p - O) * zoom + O + pan, O = the board centre at 1× ----------
+const ZMAX = 2.5;
+let zoom = 1, panX = 0, panY = 0;
+const zKey = () => `link.zoom.${R_}x${C_}`;
+const bO = () => [bx + C_ * tile / 2, by + R_ * tile / 2];
+const toScr = (px, py) => { const [ox, oy] = bO(); return [(px - ox) * zoom + ox + panX, (py - oy) * zoom + oy + panY]; };
+const toBoard = (sx, sy) => { const [ox, oy] = bO(); return [(sx - ox - panX) / zoom + ox, (sy - oy - panY) / zoom + oy]; };
+function clampView() {
+  if (!VP) return;
+  zoom = Math.max(1, Math.min(ZMAX, zoom));
+  if (zoom <= 1.0001) { zoom = 1; panX = panY = 0; return; }
+  const [ox, oy] = bO(), m = ring * 0.6;
+  const L = bx - m, T = by - m, Rr = bx + C_ * tile + m, B = by + R_ * tile + m;
+  for (const [lo, hi, v0, v1, k] of [[L, Rr, VP.x, VP.x + VP.w, 'x'], [T, B, VP.y, VP.y + VP.h, 'y']]) {
+    const o = k === 'x' ? ox : oy, a = (lo - o) * zoom + o, b = (hi - o) * zoom + o;   // board edges with no pan
+    let pn = k === 'x' ? panX : panY;
+    // a board bigger than the view must cover it; a smaller one must stay inside it
+    if (b - a > v1 - v0) pn = Math.min(v0 - a, Math.max(v1 - b, pn)); else pn = Math.max(v0 - a, Math.min(v1 - b, pn));
+    if (k === 'x') panX = pn; else panY = pn;
+  }
+}
+// zoom to z keeping the screen point (sx, sy) still
+function zoomAt(z, sx, sy) {
+  const [bpx, bpy] = toBoard(sx, sy), [ox, oy] = bO();
+  zoom = Math.max(1, Math.min(ZMAX, z));
+  panX = sx - ox - (bpx - ox) * zoom; panY = sy - oy - (bpy - oy) * zoom;
+  clampView();
+}
+let zSaveT = 0;
+function saveZoom() { clearTimeout(zSaveT); zSaveT = setTimeout(() => MG.store.set(zKey(), Math.round(zoom * 100) / 100), 300); }
+const vpMid = () => [VP.x + VP.w / 2, VP.y + VP.h / 2];
+function zoomBtn(f) { const [mx, my] = vpMid(); zoomAt(f ? zoom * f : 1, mx, my); saveZoom(); MG.sfx('click'); }
+// scroll so these board cells are on screen (zooming out a little if they can't all fit)
+function showCells(cells) {
+  if (zoom <= 1) return;
+  const pts = cells.map(([r, c]) => cellXY(r, c)), m = tile * 0.7;
+  const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]);
+  const w = Math.max(...xs) - Math.min(...xs) + m * 2, h = Math.max(...ys) - Math.min(...ys) + m * 2;
+  zoom = Math.max(1, Math.min(zoom, VP.w / w, VP.h / h));
+  const cx = (Math.max(...xs) + Math.min(...xs)) / 2, cy = (Math.max(...ys) + Math.min(...ys)) / 2, [ox, oy] = bO(), [mx, my] = vpMid();
+  panX = mx - ox - (cx - ox) * zoom; panY = my - oy - (cy - oy) * zoom;
+  clampView();
 }
 const inBox = (p, b) => b && p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
 cv.onfit = () => { if (grid) layout(); };
 function hud() { MG.stat('level', `第 ${level} 關`); MG.stat('score', `${score} 分`); }
-const axis = (i, n, o) => i < 1 ? o - ring / 2 : i > n ? o + n * tile + ring / 2 : o + (i - 1) * tile + tile / 2;
+const axis = (i, n, o) => i < 1 ? o - ring / 4 : i > n ? o + n * tile + ring / 4 : o + (i - 1) * tile + tile / 2;
 const cellXY = (r, c) => [axis(c, C_, bx), axis(r, R_, by)];
 
 // ---------- path finding: at most two turns ----------
@@ -129,13 +190,67 @@ function ensureMoves() { let tries = 0; while (remaining() && !anyMove() && trie
 const remaining = () => grid.some(row => row.some(v => v));
 
 // ---------- input ----------
+// one finger: tap a tile (on release, if it hardly moved) or, when zoomed in, drag to pan. Two fingers: pinch-zoom + pan.
+const ptrs = new Map();
+let gest = null;     // { kind: 'tap' | 'pan' | 'pinch', ... }
+const pdist = () => { const [a, b] = [...ptrs.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+const pmid = () => { const [a, b] = [...ptrs.values()]; return [(a.x + b.x) / 2, (a.y + b.y) / 2]; };
+const cssPerLogical = () => Math.max(0.2, cv.getBoundingClientRect().width / W);
 cv.addEventListener('pointerdown', e => {
   if (state !== 'play') return;
   const p = cv.logical(e);
-  // hint / shuffle buttons in the top strip
-  if (inBox(p, bShuf)) return doShuffle();
-  if (inBox(p, bHint)) return doHint();
-  const c = Math.floor((p.x - bx) / tile) + 1, r = Math.floor((p.y - by) / tile) + 1;
+  if (!ptrs.size) {
+    // buttons react at once
+    if (inBox(p, bShuf)) return doShuffle();
+    if (inBox(p, bHint)) return doHint();
+    if (inBox(p, bZin)) return zoomBtn(1.25);
+    if (inBox(p, bZout)) return zoomBtn(1 / 1.25);
+    if (inBox(p, bZfit)) return zoomBtn(0);
+  }
+  try { cv.setPointerCapture(e.pointerId); } catch {}
+  ptrs.set(e.pointerId, p);
+  if (ptrs.size === 1) gest = { kind: 'tap', sx: p.x, sy: p.y, px: panX, py: panY };
+  else if (ptrs.size === 2) { const [mx, my] = pmid(); gest = { kind: 'pinch', d0: Math.max(10, pdist()), z0: zoom, bp: toBoard(mx, my) }; }
+});
+cv.addEventListener('pointermove', e => {
+  if (!ptrs.has(e.pointerId) || !gest) return;
+  const p = cv.logical(e); ptrs.set(e.pointerId, p);
+  if (gest.kind === 'pinch' && ptrs.size >= 2) {
+    const [mx, my] = pmid(), [ox, oy] = bO();
+    zoom = Math.max(1, Math.min(ZMAX, gest.z0 * pdist() / gest.d0));
+    panX = mx - ox - (gest.bp[0] - ox) * zoom; panY = my - oy - (gest.bp[1] - oy) * zoom;   // the pinched spot stays under the fingers
+    clampView();
+  } else if (gest.kind === 'tap' || gest.kind === 'pan') {
+    const dx = p.x - gest.sx, dy = p.y - gest.sy;
+    if (gest.kind === 'tap' && Math.hypot(dx, dy) * cssPerLogical() > 10) gest.kind = 'pan';   // a drag never selects
+    if (gest.kind === 'pan' && zoom > 1) { panX = gest.px + dx; panY = gest.py + dy; clampView(); }
+  }
+});
+function endPtr(e) {
+  if (!ptrs.has(e.pointerId)) return;
+  ptrs.delete(e.pointerId);
+  if (!gest) return;
+  if (gest.kind === 'pinch') {
+    if (ptrs.size === 1) { const q = [...ptrs.values()][0]; gest = { kind: 'after', sx: q.x, sy: q.y, px: panX, py: panY }; }   // the last finger may keep panning, but never taps
+    saveZoom();
+  }
+  if (gest.kind === 'after' && ptrs.size === 1) { gest.kind = 'pan'; return; }
+  if (!ptrs.size) {
+    const g0 = gest; gest = null;
+    if (g0.kind === 'tap' && e.type === 'pointerup') tapBoard(cv.logical(e));
+  }
+}
+cv.addEventListener('pointerup', endPtr);
+cv.addEventListener('pointercancel', endPtr);
+cv.addEventListener('wheel', e => {
+  if (state !== 'play') return;
+  e.preventDefault();
+  const p = cv.logical(e); zoomAt(zoom * Math.exp(-e.deltaY * 0.0015), p.x, p.y); saveZoom();
+}, { passive: false });
+function tapBoard(p) {
+  if (p.x < CLIP.x || p.y < CLIP.y || p.x > CLIP.x + CLIP.w || p.y > CLIP.y + CLIP.h || inBox(p, hudPanel)) return;
+  const [qx, qy] = toBoard(p.x, p.y);
+  const c = Math.floor((qx - bx) / tile) + 1, r = Math.floor((qy - by) / tile) + 1;
   if (r < 1 || c < 1 || r > R_ || c > C_ || !grid[r][c]) return;
   if (!sel) { sel = [r, c]; MG.sfx('flip'); return; }
   if (sel[0] === r && sel[1] === c) { sel = null; return; }
@@ -143,8 +258,12 @@ cv.addEventListener('pointerdown', e => {
   const path = findPath(sel, [r, c]);
   if (!path) { shakeCell = { r, c, t: 0.3 }; MG.sfx('miss'); MG.toast('Blocked 🚧'); sel = [r, c]; return; }
   match(sel, [r, c], path); sel = null;
+}
+addEventListener('keydown', e => {
+  if (state !== 'play') return;
+  if (e.key === 'h' || e.key === 'H') doHint(); if (e.key === 'r' || e.key === 'R') doShuffle();
+  if (e.key === '+' || e.key === '=') zoomBtn(1.25); if (e.key === '-') zoomBtn(1 / 1.25); if (e.key === '0') zoomBtn(0);
 });
-addEventListener('keydown', e => { if (state !== 'play') return; if (e.key === 'h' || e.key === 'H') doHint(); if (e.key === 'r' || e.key === 'R') doShuffle(); });
 function match(a, b, path) {
   const ch = grid[a[0]][a[1]];
   links.push({ pts: path.map(([r, c]) => cellXY(r, c)), life: 0.35 });
@@ -188,7 +307,7 @@ function slideAll(g) {
   if (sel) { for (const [k, v] of slides) if (v.t === 0 && v.fr === sel[0] && v.fc === sel[1]) { const [r, c] = k.split(',').map(Number); sel = [r, c]; break; } }
   hintPair = null;
 }
-function doHint() { if (!relax() && hints <= 0) { MG.toast('No more 💡'); MG.sfx('miss'); return; } const m = anyMove(); if (!m) return; if (!relax()) hints--; hintPair = m; MG.sfx('sparkle'); }
+function doHint() { if (!relax() && hints <= 0) { MG.toast('No more 💡'); MG.sfx('miss'); return; } const m = anyMove(); if (!m) return; if (!relax()) hints--; hintPair = m; showCells(m); MG.sfx('sparkle'); }
 function doShuffle() { if (!relax() && shuffles <= 0) { MG.toast('No more 🔀'); MG.sfx('miss'); return; } if (!relax()) shuffles--; reshuffle(); ensureMoves(); MG.sfx('whoosh'); MG.sfx('flip'); }
 
 // ---------- draw ----------
@@ -206,6 +325,11 @@ function draw() {
   const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#c9f0d8'); g.addColorStop(1, '#fff5d6'); x.fillStyle = g; x.fillRect(0, 0, W, H);
   // leafy corners
   for (const [lx, ly, a] of [[0, H, -0.6], [W, H, -2.5], [0, 0, 0.5], [W, 0, 2.6]]) { x.save(); x.translate(lx, ly); x.rotate(a); x.scale(U, U); for (let i = 0; i < 3; i++) { x.fillStyle = ['#7fcf6a', '#5fb84f', '#94dc7a'][i]; x.beginPath(); x.ellipse(30 + i * 14, -i * 8, 34, 12, -0.3 + i * 0.3, 0, 7); x.fill(); } x.restore(); }
+  // the board (zoomed / panned, clipped to its view)
+  const [zox, zoy] = bO();
+  x.save();
+  if (zoom > 1) { x.beginPath(); x.rect(CLIP.x, CLIP.y, CLIP.w, CLIP.h); x.clip(); }
+  x.translate(zox + panX, zoy + panY); x.scale(zoom, zoom); x.translate(-zox, -zoy);
   // board backing
   x.fillStyle = 'rgba(255,255,255,.55)'; x.beginPath(); x.roundRect(bx - tile * 0.1, by - tile * 0.1, tile * (C_ + 0.2), tile * (R_ + 0.2), 14); x.fill();
   if (falling()) gravityArrows(LEVELS[Math.min(level, LEVELS.length) - 1].g);
@@ -226,13 +350,16 @@ function draw() {
   }
   x.globalAlpha = 1;
   MG.fx.draw(x);
-  for (const p of pops) {
+  x.restore();
+  for (const p0 of pops) {
+    const [ppx, ppy] = toScr(p0.x, p0.y), p = { ...p0, x: ppx, y: ppy };
     x.globalAlpha = Math.min(1, p.life * 2); x.font = `900 ${Math.round((p.big ? 18 : 16) * U)}px system-ui,"Noto Sans TC",sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
-    const hw = x.measureText(p.t).width / 2 + 4, px = Math.max(hw, Math.min(W - hw, p.x)), py = Math.max(land ? 24 * U : bHint.y + bHint.h + 14 * U, p.y);   // keep it on screen, below the top strip
+    const hw = x.measureText(p.t).width / 2 + 4, px = Math.max(hw, Math.min(W - hw, p.x)), py = Math.max(VP.y + 14 * U, Math.min(VP.y + VP.h - 10 * U, p.y));   // keep it on screen, below the top strip
     x.lineWidth = 4; x.strokeStyle = '#fff'; x.strokeText(p.t, px, py); x.fillStyle = p.big ? '#ff4f8a' : '#ff7a00'; x.fillText(p.t, px, py);
   }
   x.globalAlpha = 1;
   // top strip: time bar, hint, shuffle
+  if (zoom > 1 && !land) { const hp = hudPanel; x.fillStyle = 'rgba(232,248,236,.92)'; x.strokeStyle = 'rgba(120,170,130,.6)'; x.lineWidth = 1.5; x.beginPath(); x.roundRect(hp.x, hp.y, hp.w, hp.h, 14); x.fill(); x.stroke(); }
   const hb = hudBox, f = relax() ? 1 : Math.max(0, left / maxT), big = MG.big, rr = hb.h / 2;
   x.fillStyle = 'rgba(255,255,255,.88)'; x.beginPath(); x.roundRect(hb.x, hb.y, hb.w, hb.h, rr); x.fill();
   if (big) { x.strokeStyle = '#8a6a2a'; x.lineWidth = 2; x.stroke(); }
@@ -243,14 +370,22 @@ function draw() {
   const btn = (b, label, n) => { const ok = relax() || n > 0; x.fillStyle = ok ? '#fff' : '#eee'; x.strokeStyle = ok ? (big ? '#c07800' : '#ffb72b') : '#ccc'; x.lineWidth = big ? 3.5 : 2.5; x.beginPath(); x.roundRect(b.x, b.y, b.w, b.h, Math.min(14, b.h * 0.3)); x.fill(); x.stroke();
     const tx = relax() ? label : `${label} ${n}`; x.fillStyle = ok ? (big ? '#3a2410' : '#6b4a22') : '#999'; fit(tx, b.w - 10, Math.round(Math.min(b.h * 0.4, 15 * U)), big ? 800 : 700); x.fillText(tx, b.x + b.w / 2, b.y + b.h / 2 + 1); };
   btn(bHint, '💡 提示', hints); btn(bShuf, '🔀 洗牌', shuffles);
+  // zoom buttons
+  for (const [b, label, on] of [[bZout, '➖', zoom > 1], [bZin, '➕', zoom < ZMAX - 0.001], [bZfit, '⤢', zoom > 1]]) {
+    x.fillStyle = on ? '#fff' : '#f1ece0'; x.strokeStyle = on ? (big ? '#2f6fb0' : '#7fb6ea') : '#ccc'; x.lineWidth = big ? 3.5 : 2.5;
+    x.beginPath(); x.roundRect(b.x, b.y, b.w, b.h, Math.min(14, b.h * 0.3)); x.fill(); x.stroke();
+    x.fillStyle = on ? (big ? '#123a66' : '#2f5f90') : '#aaa'; x.font = `800 ${Math.round(Math.min(b.h, b.w) * 0.46)}px ${label === '⤢' ? 'system-ui,sans-serif' : EMOJI}`;
+    if (!on) x.globalAlpha = 0.45; x.fillText(label, b.x + b.w / 2, b.y + b.h / 2 + 1); x.globalAlpha = 1;
+  }
+  if (zoom > 1) { x.font = `800 ${Math.round(12 * U)}px system-ui,sans-serif`; x.fillStyle = 'rgba(47,95,144,.85)'; x.textAlign = 'right'; x.fillText(`${zoom.toFixed(1)}×`, VP.x + VP.w - 8, VP.y + VP.h - 10 * U); x.textAlign = 'center'; }
 }
 
 // faint arrows around the board that show where the animals slide
 function gravityArrows(g) {
   const L = bx - tile * 0.1, T = by - tile * 0.1, Wb = tile * (C_ + 0.2), Hb = tile * (R_ + 0.2), cx = L + Wb / 2, cy = T + Hb / 2;
-  const arrow = (ax, ay, ang) => { x.save(); x.translate(ax, ay); x.rotate(ang); x.scale(tile / 48, tile / 48); x.fillStyle = 'rgba(255,122,0,.75)'; x.beginPath(); x.moveTo(9, 0); x.lineTo(-5, -8); x.lineTo(-2, 0); x.lineTo(-5, 8); x.closePath(); x.fill(); x.restore(); };
+  const arrow = (ax, ay, ang) => { x.save(); x.translate(ax, ay); x.rotate(ang); x.scale(tile / 64, tile / 64); x.fillStyle = 'rgba(255,122,0,.75)'; x.beginPath(); x.moveTo(9, 0); x.lineTo(-5, -8); x.lineTo(-2, 0); x.lineTo(-5, 8); x.closePath(); x.fill(); x.restore(); };
   const bob = Math.sin(t * 4) * 2, D = Math.PI / 2;
-  const out = tile * 0.22;
+  const out = tile * 0.12;
   const at = { down: [[cx - Wb / 4, T + Hb + out, D], [cx + Wb / 4, T + Hb + out, D]], up: [[cx - Wb / 4, T - out, -D], [cx + Wb / 4, T - out, -D]],
     left: [[L - out, cy - Hb / 4, Math.PI], [L - out, cy + Hb / 4, Math.PI]], right: [[L + Wb + out, cy - Hb / 4, 0], [L + Wb + out, cy + Hb / 4, 0]],
     midH: [[L - out, cy, 0], [L + Wb + out, cy, Math.PI]], outH: [[L - out, cy, Math.PI], [L + Wb + out, cy, 0]],
