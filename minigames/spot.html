@@ -23,7 +23,7 @@ const panels = () => land ? [[10, 50], [340, 50]] : [[10, 44], [10, 298]];
 const PAL = ['#ff5a4e', '#ff9f1c', '#ffd23f', '#4cc96a', '#3d9bff', '#8a63ff', '#ff6fb5', '#ffffff', '#6b4a22'];
 let sceneSeed = 1, sceneBg = null, sceneBgKey = '', foundAt = [];
 let mode = MG.store.get('spot.mode', 'relax');   // 'timed' | 'relax'
-let level, left, scene, diffs, found, wrongs = [], state = 'ready', hints, hintT = 0, hintD = null, t = 0, total = 0;
+let level, left, scene, diffs, found, wrongs = [], state = 'ready', hints, hintT = 0, hintD = null, t = 0, total = 0, floats = [];
 
 
 // ---------- picture themes ----------
@@ -264,7 +264,7 @@ function makeLevel() {
     const [ax, ay, ar] = side.includes(e) ? bound(e) : [cx, cy, cr];
     diffs.push({ x: (cx + ax) / 2, y: (cy + ay) / 2, r: Math.max(cr, ar, 14) });
   }
-  scene = [a, b]; found = diffs.map(() => false); foundAt = diffs.map(() => 0); wrongs = []; hintD = null;
+  scene = [a, b]; floats = []; found = diffs.map(() => false); foundAt = diffs.map(() => 0); wrongs = []; hintD = null;
   sceneSeed = MG.randi(1, 1e6); sceneBg = null;
 }
 
@@ -718,7 +718,26 @@ function draw() {
     x.globalAlpha = 1;
     x.restore();
   });
+  drawFloats();
 }
+// short English + emoji words that float up where you tapped
+function drawFloats() {
+  const [w, h] = [cv.lw, cv.lh];
+  x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineJoin = 'round';
+  for (const f of floats) {
+    const k = f.life / f.max, pop = k > 0.85 ? 1 + (k - 0.85) * 3 : 1;
+    let sz = f.size;
+    x.font = `900 ${sz}px system-ui,"Noto Sans TC",sans-serif`;
+    let tw = x.measureText(f.text).width;
+    if (tw > w - 16) { sz = Math.floor(sz * (w - 16) / tw); x.font = `900 ${sz}px system-ui,"Noto Sans TC",sans-serif`; tw = x.measureText(f.text).width; }
+    const fx = Math.max(tw / 2 + 6, Math.min(w - tw / 2 - 6, f.x)), fy = Math.max(sz, Math.min(h - sz, f.y - (1 - k) * 26));
+    x.save(); x.globalAlpha = Math.min(1, k * 2.5); x.translate(fx, fy); x.scale(pop, pop);
+    x.lineWidth = Math.max(3, sz * 0.2); x.strokeStyle = '#fff'; x.strokeText(f.text, 0, 0);
+    x.fillStyle = f.col; x.fillText(f.text, 0, 0);
+    x.restore();
+  }
+}
+function addFloat(text, fx, fy, col = '#ff5a2e', size = 22, life = 1) { floats.push({ text, x: fx, y: fy, col, size, life, max: life }); }
 let hintBtn = { x: 0, y: 0, w: 0, h: 0 };
 
 // ---------- input ----------
@@ -732,19 +751,23 @@ cv.addEventListener('pointerdown', e => {
     let hit = -1, bd = 1e9;
     diffs.forEach((d, k) => { const dd = Math.hypot(d.x - sx, d.y - sy); if (!found[k] && dd < d.r + 8 && dd < bd) { bd = dd; hit = k; } });
     if (hit >= 0) {
-      found[hit] = true; foundAt[hit] = t; MG.sfx('good'); if (hintD === diffs[hit]) hintD = null;
+      found[hit] = true; foundAt[hit] = t; if (hintD === diffs[hit]) hintD = null;
+      const nf = found.filter(Boolean).length;
+      // layered find sound: rises with how many you've found; a sparkle on top
+      MG.sfx('match', nf); MG.sfx('sparkle');
+      addFloat(nf === NDIFF ? MG.WORDS.clear : MG.praise(nf), p.x, p.y - 20, nf === NDIFF ? '#ff4f8a' : '#ff5a2e', 22 + nf);
       if (found.every(Boolean)) levelDone();
     } else if (!diffs.some((d, k) => found[k] && Math.hypot(d.x - sx, d.y - sy) < d.r + 8)) {
-      wrongs.push({ x: sx, y: sy, life: 0.8 }); MG.sfx('bad');
-      if (mode === 'timed') { left = Math.max(0, left - 2); MG.toast('不是這裡喔　−2 秒'); } else MG.toast('不是這裡喔，再找找看');
+      wrongs.push({ x: sx, y: sy, life: 0.8 }); MG.sfx('miss');
+      if (mode === 'timed') { left = Math.max(0, left - 2); addFloat(`${MG.WORDS.oops} −2s`, p.x, p.y - 18, '#3a7bd5', 18, 0.9); } else addFloat(MG.WORDS.oops, p.x, p.y - 18, '#3a7bd5', 18, 0.9);
     }
   }
 });
 addEventListener('keydown', e => { if ((e.key === 'h' || e.key === 'H') && state === 'play') useHint(); });
 function useHint() {
-  if (mode === 'timed' && hints <= 0) { MG.toast('提示用完了'); return; }
+  if (mode === 'timed' && hints <= 0) { MG.toast('No more 💡'); MG.sfx('miss'); return; }
   const k = found.findIndex(f => !f); if (k < 0) return;
-  if (mode === 'timed') hints--; hintD = diffs[k]; hintT = 2.2; MG.sfx('flip');
+  if (mode === 'timed') hints--; hintD = diffs[k]; hintT = 2.2; MG.sfx('flip'); MG.sfx('sparkle');
 }
 
 // ---------- flow ----------
@@ -755,7 +778,7 @@ function newGame(m) { if (m) { mode = m; MG.store.set('spot.mode', m); } level =
 function startLevel() { makeLevel(); left = mode === 'timed' ? levelTime() : 0; state = 'play'; MG.hide(); hud(); }
 function hud() { MG.stat('level', `第 ${level} 關`); MG.stat('time', mode === 'timed' ? `⏱ ${Math.ceil(left)}` : `🐢 ${mmss(left)}`); }
 function levelDone() {
-  state = 'between'; MG.sfx('win'); total = level;
+  state = 'between'; MG.sfx('win'); setTimeout(() => MG.sfx('yay'), 250); total = level;
   let html;
   if (mode === 'timed') {
     const quick = left > levelTime() * 0.5;
@@ -781,7 +804,7 @@ function overPanel(rec) {
   MG.panel({
     title: '時間到！',
     html: `<p>紅圈是剛剛沒找到的地方。這次過了</p><div class="big">${total} 關</div>` + (rec.isNew && total > 0 ? `<p class="new">新紀錄！^_^</p>` : `<p>最高紀錄：${rec.best ?? 0} 關</p>`) + `<p>覺得太趕的話，可以玩不限時的「慢慢找」</p>`,
-    buttons: [{ label: '再玩一次', on: () => newGame('timed') }, { label: '🐢 慢慢找', alt: true, on: () => newGame('relax') }, { label: '看一下答案', alt: true, on: () => { MG.hide(); MG.toast('看完點一下畫面就能繼續', 2000); } }],
+    buttons: [{ label: '再玩一次', on: () => newGame('timed') }, { label: '🐢 慢慢找', alt: true, on: () => newGame('relax') }, { label: '看一下答案', alt: true, on: () => { MG.hide(); MG.toast('Look 👀 then tap 👆', 2000); } }],
   });
 }
 cv.addEventListener('pointerdown', () => { if (state === 'over' && !MG.panelOpen()) overPanel({ isNew: false, best: MG.best('spot') }); });
@@ -808,9 +831,12 @@ function menu() {
 level = 1; hints = HINTS; makeLevel(); left = 0; hud();
 MG.pauseMenu({ label: '☰ 換模式', playing: () => state === 'play', open: was => { menu(); if (was) return () => { state = 'play'; }; } });
 menu();
+window.SPT = { get state() { return state; }, get found() { return found.slice(); }, floats: () => floats.map(f => f.text), diffs: () => diffs.map(d => ({ x: d.x, y: d.y, r: d.r })), panels: () => panels(),
+  toClient(lx, ly) { const rc = cv.getBoundingClientRect(), B = 3; return { x: rc.left + B + lx * (rc.width - 2 * B) / cv.lw, y: rc.top + B + ly * (rc.height - 2 * B) / cv.lh }; } };
 MG.loop(dt => {
   t += dt; hintT = Math.max(0, hintT - dt);
   for (const w of wrongs) w.life -= dt; wrongs = wrongs.filter(w => w.life > 0);
+  for (const f of floats) f.life -= dt; floats = floats.filter(f => f.life > 0);
   if (state === 'play') { if (mode === 'timed') { left -= dt; if (left <= 0) { left = 0; timeUp(); } } else left += dt; hud(); }
   draw();
 });

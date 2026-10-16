@@ -19,12 +19,12 @@ let land = false;
 
 // ---------- pieces: every colour also has its own shape ----------
 const KINDS = [
-  { pal: MG.JELLY.red, shape: 'heart', nm: '紅愛心' },
-  { pal: MG.JELLY.yellow, shape: 'star', nm: '黃星星' },
-  { pal: MG.JELLY.green, shape: 'square', nm: '綠方糖' },
-  { pal: MG.JELLY.blue, shape: 'drop', nm: '藍水滴' },
-  { pal: MG.JELLY.purple, shape: 'tri', nm: '紫三角' },
-  { pal: MG.JELLY.orange, shape: 'ball', nm: '橘糖球' },
+  { pal: MG.JELLY.red, shape: 'heart', nm: '紅愛心', em: '❤️' },
+  { pal: MG.JELLY.yellow, shape: 'star', nm: '黃星星', em: '⭐' },
+  { pal: MG.JELLY.green, shape: 'square', nm: '綠方糖', em: '🟩' },
+  { pal: MG.JELLY.blue, shape: 'drop', nm: '藍水滴', em: '💧' },
+  { pal: MG.JELLY.purple, shape: 'tri', nm: '紫三角', em: '🔺' },
+  { pal: MG.JELLY.orange, shape: 'ball', nm: '橘糖球', em: '🟠' },
 ];
 // ---------- levels ----------
 // n = board size, k = how many kinds, mv = moves in 🎯 步數挑戰
@@ -47,6 +47,8 @@ const LEVELS = [
   { n: 8, k: 6, mv: 58, j: ['........', '.######.', '.######.', '.######.', '.######.', '.######.', '.######.', '........'] },
 ];
 const goalIcon = L => L.s ? '⭐' : L.c ? '🍬' : '💗';
+// the goal as numbers + emoji only (for the quick toast when a level starts)
+const goalEmoji = L => L.s ? `🎯 ${L.s} ⭐` : L.c ? '🎯 ' + L.c.map(([k, n]) => `${KINDS[k].em}×${n}`).join('  ') : '🎯 💗 → 0';
 const goalText = L => L.s ? `拿到 ${L.s} 分` : L.c ? '消掉 ' + L.c.map(([k, n]) => `${n} 個${KINDS[k].nm}`).join('、') : '把粉紅果凍格子全部消掉';
 
 let L = LEVELS[0], N = 7, grid = [], jel = [], level = 1, mode = 'relax', state = 'menu', phase = 'idle';
@@ -55,6 +57,8 @@ let sel = null, drag = null, kc = null, hint = null, idleT = 0, t = 0;
 let tween = null, popT = 0, popping = [], lastMoved = [], effects = [], floats = [];
 let mood = 'happy', moodT = 0, squashT = 0, say = null, lay = null, uid = 0;
 const POP = 0.26, SWAP = 0.17;
+// sounds: the same one at most once per 60 ms, so big chains don't turn into noise
+const snd = (() => { const last = {}; return (n, a) => { const now = performance.now(); if (now - (last[n] || 0) < 60) return; last[n] = now; MG.sfx(n, a); }; })();
 
 // ---------- board rules ----------
 const inB = (r, c) => r >= 0 && r < N && c >= 0 && c < N;
@@ -169,9 +173,9 @@ function setupLevel(n) {
 }
 function startLevel(n) {
   setupLevel(n); state = 'play'; MG.hide(); hud();
-  talk('加油！', 2);
+  talk('Go! 🚀', 2);
   // landscape shows the goal big in the left column; a toast there would cover the top of the board
-  if (land) talk('看上面的目標喔！', 2.6); else MG.toast(`${goalIcon(L)} 目標：${goalText(L)}`, 2600);
+  if (land) talk('🎯 Goal 👈', 2.6); else MG.toast(goalEmoji(L), 2600);
 }
 function hud() {
   MG.stat('level', `第 ${level} 關`);
@@ -184,8 +188,8 @@ function goalDone() {
 }
 function starsNow() { const f = moves / L.mv; return f <= 0.7 ? 3 : f <= 1 ? 2 : 1; }
 function win() {
-  state = 'over'; sel = null; hint = null; MG.sfx('win');
-  mood = 'love'; moodT = 3; squashT = 0.5; talk('過關了！', 3);
+  state = 'over'; sel = null; hint = null; MG.sfx('win'); setTimeout(() => MG.sfx('yay'), 250);
+  mood = 'love'; moodT = 3; squashT = 0.5; talk(MG.WORDS.clear, 3);
   const rec = MG.record('match3', level), st = starsNow();
   MG.fx.burst(lay.bx + lay.B / 2, lay.by + lay.B / 2, { n: 60, colors: KINDS.map(k => k.pal[1]).concat('#fff'), shape: 'star', speed: 340, up: 180, size: 7, life: 1.2 });
   setTimeout(() => MG.panel({
@@ -202,7 +206,7 @@ function win() {
   }), 1100);
 }
 function outOfMoves() {
-  state = 'over'; sel = null; hint = null; MG.sfx('over'); mood = 'ouch'; moodT = 3; talk('差一點點！', 3);
+  state = 'over'; sel = null; hint = null; MG.sfx('over'); mood = 'ouch'; moodT = 3; talk('So close! 🤏', 3);
   setTimeout(() => MG.panel({
     title: '步數用完了！',
     html: `<p>還差一點點就過關了，再試一次吧 ^_^</p><div class="big">${score} 分</div><p>${goalIcon(L)} ${progressText()}</p><p>想慢慢玩的話，可以改成「🐢 慢慢玩」，步數不限喔</p>`,
@@ -245,7 +249,7 @@ function afterSwap(a, b) {
     }
   } else if (pa.sp && pb.sp) forced = [ka, kb];
   if (!forced.length && !groupsNow().length) {        // nothing happens: slide back
-    swapGrid(a, b); MG.sfx('step');
+    swapGrid(a, b); MG.sfx('miss'); talk(MG.WORDS.oops, 1);
     startTween([[grid[a.r][a.c], a], [grid[b.r][b.c], b]], SWAP, () => { phase = 'idle'; });
     mood = 'ouch'; moodT = 0.6;
     return;
@@ -267,9 +271,9 @@ function mostKind() {
 function blast(r, c, p, out) {
   if (p.spent) return; p.spent = true;
   const col = p.sp === 'star' ? '#fff' : KINDS[p.k].pal[1];
-  if (p.sp === 'h') { for (let i = 0; i < N; i++) out.push(r * N + i); effects.push({ type: 'beam', h: true, i: r, col, t: 0 }); MG.sfx('jump'); }
-  else if (p.sp === 'v') { for (let i = 0; i < N; i++) out.push(i * N + c); effects.push({ type: 'beam', h: false, i: c, col, t: 0 }); MG.sfx('jump'); }
-  else if (p.sp === 'bomb') { for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) if (inB(r + dr, c + dc)) out.push((r + dr) * N + c + dc); effects.push({ type: 'ring', x: cellX(c), y: cellY(r), t: 0, col }); MG.sfx('hit'); }
+  if (p.sp === 'h') { for (let i = 0; i < N; i++) out.push(r * N + i); effects.push({ type: 'beam', h: true, i: r, col, t: 0 }); snd('whoosh'); }
+  else if (p.sp === 'v') { for (let i = 0; i < N; i++) out.push(i * N + c); effects.push({ type: 'beam', h: false, i: c, col, t: 0 }); snd('whoosh'); }
+  else if (p.sp === 'bomb') { for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) if (inB(r + dr, c + dc)) out.push((r + dr) * N + c + dc); effects.push({ type: 'ring', x: cellX(c), y: cellY(r), t: 0, col }); snd('hit'); snd('boing'); }
   else if (p.sp === 'star') zapKind(mostKind(), r * N + c, out);
 }
 function hitCell(r, c, p) {
@@ -316,11 +320,14 @@ function runClear(forced, moved) {
   const mid = [...clear].reduce((a, key) => [a[0] + key % N, a[1] + Math.floor(key / N)], [0, 0]).map(v => v / Math.max(1, clear.size));
   floats.push({ x: cellX(mid[0]), y: cellY(mid[1]), text: `+${pts}`, life: 1, col: '#ff7a00', size: 0.42 });
   if (combo >= 2) {
-    floats.push({ x: lay.bx + lay.B / 2, y: lay.by + lay.B * 0.42, text: `連鎖 x${combo}`, life: 1.3, col: '#ff4f8a', size: 0.75, big: true });
-    mood = 'wow'; moodT = 1.4; squashT = 0.4; talk(combo >= 4 ? '太厲害了！' : combo >= 3 ? '好棒棒！' : `連鎖 x${combo}！`, 1.5);
+    floats.push({ x: lay.bx + lay.B / 2, y: lay.by + lay.B * 0.42, text: MG.WORDS.chain(combo), life: 1.3, col: '#ff4f8a', size: 0.75, big: true });
+    mood = 'wow'; moodT = 1.4; squashT = 0.4; talk(MG.praise(Math.min(5, combo)), 1.5);
   } else { mood = 'happy'; }
-  if (prot.size) { const m = [...prot.values()][0]; talk({ h: '條紋糖！', v: '條紋糖！', bomb: '包裝糖炸彈！', star: '彩虹星星！' }[m.sp], 1.6); mood = 'wow'; moodT = 1.2; MG.sfx('good'); }
-  ping(combo);
+  if (prot.size) { const m = [...prot.values()][0]; talk({ h: 'Stripes! 🍭', v: 'Stripes! 🍭', bomb: 'Bomb! 💣', star: 'Rainbow! 🌈' }[m.sp], 1.6); mood = 'wow'; moodT = 1.2; snd('sparkle'); }
+  // layered match sound: rises with the chain; a sparkle on big clears, the combo bells from chain 2 on
+  snd('match', combo + (n >= 5 ? 1 : 0));
+  if (combo >= 2) snd('combo', combo);
+  if (n >= 6 && !prot.size) snd('sparkle');
   popT = 0; phase = 'pop';
   if (!popping.length) afterPop();
 }
@@ -343,7 +350,7 @@ function endTurn() {
   phase = 'idle'; combo = 0; hud();
   if (goalDone()) { win(); return; }
   if (mode === 'moves' && moves >= L.mv) { outOfMoves(); return; }
-  if (!findMoves().length) { MG.toast('沒有可以換的了，幫你重新洗牌', 1900); shuffleBoard(); }
+  if (!findMoves().length) { MG.toast(`${MG.WORDS.stuck} Shuffle!`, 1900); shuffleBoard(); }
 }
 function shuffleBoard() {
   const cells = [], ps = [];
@@ -359,7 +366,7 @@ function shuffleBoard() {
       ok = !groupsNow().length && findMoves().length > 0;
     }
   }
-  phase = 'tween'; MG.sfx('flip');
+  phase = 'tween'; MG.sfx('flip'); snd('whoosh');
   startTween(cells.map(({ r, c }) => [grid[r][c], { r, c }]), 0.5, () => { phase = 'idle'; if (groupsNow().length) runClear([], []); });
 }
 function startTween(items, dur, done) {
@@ -402,27 +409,12 @@ function pickHint() {
 }
 function showHint() {
   if (state !== 'play') return;
-  if (phase !== 'idle') { MG.toast('等一下，糖果還在掉喔'); return; }
+  if (phase !== 'idle') { MG.toast(MG.WORDS.wait); return; }
   const h = pickHint(); if (!h) return;
-  hint = { ...h, gentle: false, t: 0 }; sel = null; idleT = 0; MG.sfx('flip');
-  talk('換這兩個！', 2);
+  hint = { ...h, gentle: false, t: 0 }; sel = null; idleT = 0; MG.sfx('flip'); snd('sparkle');
+  talk('💡 Swap! 👆', 2);
 }
 function talk(text, s) { say = { text, life: s }; }
-
-// ---------- rising pitch for combos (own tiny synth, follows the 🔊 button) ----------
-let ac2 = null;
-function ping(n) {
-  if (MG.store.get('muted', false)) return;
-  try { ac2 = ac2 || new (window.AudioContext || window.webkitAudioContext)(); } catch { return; }
-  if (ac2.state === 'suspended') ac2.resume();
-  const f = 520 * Math.pow(2, Math.min(n - 1, 9) * 2 / 12), tt = ac2.currentTime;
-  for (const [mul, d] of [[1, 0], [1.5, 0.06]]) {
-    const o = ac2.createOscillator(), g = ac2.createGain();
-    o.type = 'triangle'; o.frequency.setValueAtTime(f * mul, tt + d); o.frequency.exponentialRampToValueAtTime(f * mul * 1.5, tt + d + 0.1);
-    g.gain.setValueAtTime(0.13, tt + d); g.gain.exponentialRampToValueAtTime(0.0008, tt + d + 0.16);
-    o.connect(g).connect(ac2.destination); o.start(tt + d); o.stop(tt + d + 0.18);
-  }
-}
 
 // ---------- layout ----------
 MG.fit(cv, (sw, sh) => {
@@ -752,11 +744,13 @@ function drawEffects() {
 }
 function drawFloats() {
   for (const f of floats) {
-    const sz = Math.round(lay.cs * f.size * (f.big ? Math.min(1.25, 0.8 + (1.3 - f.life) * 2) : 1));
+    let sz = Math.round(lay.cs * f.size * (f.big ? Math.min(1.25, 0.8 + (1.3 - f.life) * 2) : 1));
     x.globalAlpha = Math.min(1, f.life * 2.5);
     x.font = `900 ${sz}px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle';
-    x.lineWidth = Math.max(3, sz * 0.18); x.lineJoin = 'round'; x.strokeStyle = '#fff'; x.strokeText(f.text, f.x, f.y);
-    x.fillStyle = f.col; x.fillText(f.text, f.x, f.y);
+    const fw = x.measureText(f.text).width; if (fw > lay.B * 0.95) { sz = Math.floor(sz * lay.B * 0.95 / fw); x.font = `900 ${sz}px ${FONT}`; }
+    const fx2 = Math.max(lay.bx + x.measureText(f.text).width / 2, Math.min(lay.bx + lay.B - x.measureText(f.text).width / 2, f.x));
+    x.lineWidth = Math.max(3, sz * 0.18); x.lineJoin = 'round'; x.strokeStyle = '#fff'; x.strokeText(f.text, fx2, f.y);
+    x.fillStyle = f.col; x.fillText(f.text, fx2, f.y);
   }
   x.globalAlpha = 1;
 }
@@ -835,7 +829,7 @@ window.M3T = {
   get moves() { return moves; }, get score() { return score; }, get combo() { return combo; }, get busy() { return phase !== 'idle' || !!tween; },
   board: () => grid.map(row => row.map(p => p ? [p.k, p.sp] : null)),
   jelly: () => jel.map(row => row.slice()), hint: () => hint && { a: hint.a, b: hint.b, gentle: hint.gentle }, sel: () => sel,
-  goalDone, findMoves: () => findMoves().length,
+  goalDone, findMoves: () => findMoves().length, get say() { return say && say.text; }, floats: () => floats.map(f => f.text),
   // client (CSS px) coords of a cell centre / the hint button
   at(r, c) { return toClient(cellX(c), cellY(r)); }, hintBtn() { return toClient(lay.hint.x + lay.hint.w / 2, lay.hint.y + lay.hint.h / 2); },
 };

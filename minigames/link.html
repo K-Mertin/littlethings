@@ -28,6 +28,7 @@ let mode = 'relax', style = 'classic';      // style: 'classic' (lines may go ar
 const falling = () => style === 'fall';
 let slides = new Map();                      // "r,c" -> { fr, fc, t } for the slide animation
 const relax = () => mode === 'relax';
+const snd = (() => { const last = {}; return (n, a) => { const now = performance.now(); if (now - (last[n] || 0) < 60) return; last[n] = now; MG.sfx(n, a); }; })();
 const mmss = v => `${Math.floor(v / 60)}:${String(Math.floor(v % 60)).padStart(2, '0')}`;
 let level, score, grid, R_, C_, tile, ox, oy, sel = null, links = [], left, maxT, hints, shuffles, state = 'ready', t = 0, combo = 0, lastMatch = -9, hintPair = null, shakeCell = null, pops = [], gone = [];
 
@@ -104,7 +105,7 @@ cv.addEventListener('pointerdown', e => {
   if (sel[0] === r && sel[1] === c) { sel = null; return; }
   if (grid[sel[0]][sel[1]] !== grid[r][c]) { sel = [r, c]; MG.sfx('flip'); return; }
   const path = findPath(sel, [r, c]);
-  if (!path) { shakeCell = { r, c, t: 0.3 }; MG.sfx('bad'); MG.toast(falling() ? '連不起來喔：最多轉兩個彎，線也不能跑到外面' : '中間被擋住了，轉彎最多兩次喔'); sel = [r, c]; return; }
+  if (!path) { shakeCell = { r, c, t: 0.3 }; MG.sfx('miss'); MG.toast('Blocked 🚧'); sel = [r, c]; return; }
   match(sel, [r, c], path); sel = null;
 });
 addEventListener('keydown', e => { if (state !== 'play') return; if (e.key === 'h' || e.key === 'H') doHint(); if (e.key === 'r' || e.key === 'R') doShuffle(); });
@@ -113,13 +114,15 @@ function match(a, b, path) {
   links.push({ pts: path.map(([r, c]) => cellXY(r, c)), life: 0.35 });
   for (const [r, c] of [a, b]) { const [px, py] = cellXY(r, c); gone.push({ x: px, y: py, ch, life: 0.35 }); MG.fx.burst(px, py, { n: 8, colors: ['#ffd23f', '#ff8ac2', '#fff'], speed: 120, size: 4, shape: 'star', life: 0.5 }); grid[r][c] = null; }
   combo = t - lastMatch < 3 ? combo + 1 : 1; lastMatch = t;
-  const pts = 10 + (combo > 1 ? Math.min(combo, 8) * 5 : 0); score += pts; MG.sfx(combo > 2 ? 'good' : 'pop');
-  const [mx, my] = cellXY(b[0], b[1]); pops.push({ x: mx, y: my - 10, t: `+${pts}${combo > 1 ? ` ${combo} 連` : ''}`, life: 0.8 });
+  const pts = 10 + (combo > 1 ? Math.min(combo, 8) * 5 : 0); score += pts;
+  snd('match', combo); snd('whoosh'); if (combo >= 2) snd('combo', combo);
+  const [mx, my] = cellXY(b[0], b[1]); pops.push({ x: mx, y: my - 10, t: `+${pts}`, life: 0.8 });
+  if (combo > 1) pops.push({ x: mx, y: my - 30, t: combo >= 5 ? `${MG.praise(Math.min(5, combo - 2))}` : MG.WORDS.combo(combo), life: 1.1, big: true });
   if (hintPair && hintPair.some(([r, c]) => (r === a[0] && c === a[1]) || (r === b[0] && c === b[1]))) hintPair = null;
   hud();
   if (falling()) slideAll(LEVELS[Math.min(level, LEVELS.length) - 1].g);
   if (!remaining()) return setTimeout(levelClear, 450);
-  if (!anyMove()) { reshuffle(); ensureMoves(); MG.toast('沒有可以連的了，幫你重新洗牌'); }
+  if (!anyMove()) { reshuffle(); ensureMoves(); snd('whoosh'); MG.toast(`${MG.WORDS.stuck} Shuffle!`); }
 }
 // ---------- 會掉落: animals slide toward the level's direction ----------
 function slideLine(cells, toStart) {        // cells: list of [r,c] in order; pack the animals toward the start (or the end)
@@ -149,8 +152,8 @@ function slideAll(g) {
   if (sel) { for (const [k, v] of slides) if (v.t === 0 && v.fr === sel[0] && v.fc === sel[1]) { const [r, c] = k.split(',').map(Number); sel = [r, c]; break; } }
   hintPair = null;
 }
-function doHint() { if (!relax() && hints <= 0) { MG.toast('提示用完了'); return; } const m = anyMove(); if (!m) return; if (!relax()) hints--; hintPair = m; MG.sfx('good'); }
-function doShuffle() { if (!relax() && shuffles <= 0) { MG.toast('洗牌用完了'); return; } if (!relax()) shuffles--; reshuffle(); ensureMoves(); MG.sfx('clear'); }
+function doHint() { if (!relax() && hints <= 0) { MG.toast('No more 💡'); MG.sfx('miss'); return; } const m = anyMove(); if (!m) return; if (!relax()) hints--; hintPair = m; MG.sfx('sparkle'); }
+function doShuffle() { if (!relax() && shuffles <= 0) { MG.toast('No more 🔀'); MG.sfx('miss'); return; } if (!relax()) shuffles--; reshuffle(); ensureMoves(); MG.sfx('whoosh'); MG.sfx('flip'); }
 
 // ---------- draw ----------
 function drawTile(px, py, ch, s, hl) {
@@ -187,7 +190,11 @@ function draw() {
   }
   x.globalAlpha = 1;
   MG.fx.draw(x);
-  for (const p of pops) { x.globalAlpha = Math.min(1, p.life * 2); x.font = '900 16px system-ui,"Noto Sans TC",sans-serif'; x.textAlign = 'center'; x.lineWidth = 4; x.strokeStyle = '#fff'; x.strokeText(p.t, p.x, p.y); x.fillStyle = '#ff7a00'; x.fillText(p.t, p.x, p.y); }
+  for (const p of pops) {
+    x.globalAlpha = Math.min(1, p.life * 2); x.font = `900 ${p.big ? 18 : 16}px system-ui,"Noto Sans TC",sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
+    const hw = x.measureText(p.t).width / 2 + 4, px = Math.max(hw, Math.min(W - hw, p.x)), py = Math.max(52, p.y);   // keep it on screen, below the top strip
+    x.lineWidth = 4; x.strokeStyle = '#fff'; x.strokeText(p.t, px, py); x.fillStyle = p.big ? '#ff4f8a' : '#ff7a00'; x.fillText(p.t, px, py);
+  }
   x.globalAlpha = 1;
   // top strip: time bar, hint, shuffle
   const tw = W - 200, f = relax() ? 1 : Math.max(0, left / maxT);
@@ -225,7 +232,7 @@ function update(dt) {
 function levelClear() {
   if (state !== 'play') return;
   state = 'between';
-  const bonus = relax() ? 0 : Math.ceil(left) * 2; score += bonus; hud(); MG.sfx('win');
+  const bonus = relax() ? 0 : Math.ceil(left) * 2; score += bonus; hud(); MG.sfx('win'); setTimeout(() => MG.sfx('yay'), 250);
   if (!relax()) MG.record('link', score);
   MG.store.set('link.level', Math.max(MG.store.get('link.level', 1), level + 1));
   MG.panel({ title: `第 ${level} 關完成！`, html: (relax() ? `<p>花了 ${mmss(left)}，慢慢來最棒 ^_^</p>` : `<p>剩下 ${Math.ceil(left)} 秒，時間獎勵 +${bonus}</p>`) + `<div class="big">${score} 分</div>`,
@@ -237,7 +244,7 @@ function timeUp() {
     buttons: [{ label: '再試這關', on: () => { setupLevel(level); state = 'play'; MG.hide(); } }, { label: '🐢 改成慢慢玩', alt: true, on: () => { mode = 'relax'; MG.store.set('link.pickMode', 'relax'); setupLevel(level); state = 'play'; MG.hide(); } }, { label: '選關卡', alt: true, on: menu }] });
 }
 function start(m, lv, pk) { mode = m; if (pk && pk.style) style = pk.style; score = 0; setupLevel(lv || 1); state = 'play'; MG.hide(); levelToast(); }
-function levelToast() { if (falling()) MG.toast(`這一關：${GNAME[LEVELS[Math.min(level, LEVELS.length) - 1].g]}`, 2200); }
+function levelToast() { if (falling()) MG.toast(`🌀 ${GNAME[LEVELS[Math.min(level, LEVELS.length) - 1].g].split(' ')[0]}`, 2200); }
 function menu() {
   state = 'ready';
   MG.choose({
