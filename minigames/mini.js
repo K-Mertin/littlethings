@@ -2,7 +2,7 @@
 'use strict';
 const MG = (() => {
   // 版號：每次合併更新時一起改（修正 → 第三碼 +1；新遊戲／新功能 → 第二碼 +1）
-  const VERSION = '1.0.3', BUILT = '2026/10/16';
+  const VERSION = '1.0.4', BUILT = '2026/10/17';
   const LS = 'puputown.';
   const store = {
     get(k, d) { try { const v = localStorage.getItem(LS + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -15,9 +15,9 @@ const MG = (() => {
     document.body.classList.add('game');
     const bar = document.createElement('header');
     bar.className = 'mg-bar';
-    bar.innerHTML = `<a class="back" href="index.html">← 遊戲區</a><h1></h1>` +
+    bar.innerHTML = `<a class="back" href="index.html" aria-label="回遊戲小屋" title="回遊戲小屋"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M3.5 11.2 12 4l8.5 7.2" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 10v9.2c0 .5.4.8.8.8H10v-5.2h4V20h3.2c.4 0 .8-.3.8-.8V10" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/></svg></a><h1></h1>` +
       list.map(s => `<span class="stat" data-s="${s}"></span>`).join('') +
-      `<button type="button" class="mute" aria-label="音效開關"></button>`;
+      `<button type="button" class="bigb" aria-label="大字模式" title="👓 大字模式">👓</button><button type="button" class="mute" aria-label="音效開關"></button>`;
     bar.querySelector('h1').textContent = title;
     document.body.prepend(bar);
     list.forEach(s => stats[s] = bar.querySelector(`[data-s="${s}"]`));
@@ -25,13 +25,22 @@ const MG = (() => {
     const showMute = () => mb.textContent = muted ? '🔇' : '🔊';
     mb.onclick = () => { muted = !muted; store.set('muted', muted); showMute(); };
     showMute();
+    const bb = bar.querySelector('.bigb'), showBig = () => bb.setAttribute('aria-pressed', big);
+    bb.onclick = () => { setBig(!big); showBig(); sfx('click'); toast(big ? '👓 大字模式' : '大字模式關閉'); };
+    addEventListener('mg-big', showBig); showBig();
     // remember the game was played (the hub shows a "玩過" mark)
     const seen = store.get('seen', {}); seen[id] = Date.now(); store.set('seen', seen);
     // how many times each game was opened (the hub dresses 噗噗 from this)
     const plays = store.get('plays', {}); plays[id] = (plays[id] || 0) + 1; store.set('plays', plays);
     document.title = title + ' · 噗噗的遊戲小屋';
   }
-  function stat(name, text) { if (stats[name]) stats[name].textContent = text; }
+  // 第 8 關 → 🚩 8 (a big number reads better than words, esp. in 大字模式)
+  function stat(name, text) {
+    if (!stats[name]) return;
+    const m = /^第\s*(\d+)\s*(關|天)$/.exec(String(text).trim());
+    stats[name].textContent = m ? `${m[2] === '天' ? '☀️' : '🚩'} ${m[1]}` : text;
+    if (m) stats[name].setAttribute('aria-label', text);
+  }
 
   // ---------- canvas fit ----------
   const BORDER = 3, MAX_PIX = 2.1e6;   // about 1800×1170 real pixels
@@ -85,12 +94,11 @@ const MG = (() => {
   applyUI(); addEventListener('resize', applyUI);
   function zoomRow() {
     const row = document.createElement('div'); row.className = 'mg-zoom';
-    row.innerHTML = '<span>字的大小</span><button type="button" data-z="-1" aria-label="字變小">A−</button><button type="button" data-z="1" aria-label="字變大">A＋</button><button type="button" class="mg-bigbtn" data-big aria-pressed="false">👓 大字模式</button>';
-    const sync = () => { row.querySelector('[data-z="-1"]').disabled = zi === 0; row.querySelector('[data-z="1"]').disabled = zi === ZS.length - 1; row.querySelector('[data-big]').setAttribute('aria-pressed', big); };
+    row.innerHTML = '<span>字的大小</span><button type="button" data-z="-1" aria-label="字變小">A−</button><button type="button" data-z="1" aria-label="字變大">A＋</button>';
+    const sync = () => { row.querySelector('[data-z="-1"]').disabled = zi === 0; row.querySelector('[data-z="1"]').disabled = zi === ZS.length - 1; };
     row.onclick = e => {
       const b = e.target.closest('button'); if (!b || b.disabled) return;
-      if (b.hasAttribute('data-big')) setBig(!big);
-      else { zi = Math.max(0, Math.min(ZS.length - 1, zi + +b.dataset.z)); store.set('uiZoom', zi); applyUI(); }
+      { zi = Math.max(0, Math.min(ZS.length - 1, zi + +b.dataset.z)); store.set('uiZoom', zi); applyUI(); }
       sync(); sfx('click');
     };
     sync(); row.insertAdjacentHTML('beforeend', `<span class="mg-ver">v${VERSION}</span>`); return row;
