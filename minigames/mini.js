@@ -2,7 +2,7 @@
 'use strict';
 const MG = (() => {
   // 版號：每次合併更新時一起改（修正 → 第三碼 +1；新遊戲／新功能 → 第二碼 +1）
-  const VERSION = '1.4.0', BUILT = '2026/10/17';
+  const VERSION = '1.4.1', BUILT = '2026/10/17';
   const LS = 'puputown.';
   const store = {
     get(k, d) { try { const v = localStorage.getItem(LS + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -539,17 +539,28 @@ const MG = (() => {
     if (o.modes && !o.modes.some(m => m.id === mode)) mode = o.modes[0].id;
     let lvl = Math.min(store.get(o.id + '.pickLevel', 1), o.levels ? Math.max(1, o.levels.max) : 1);
     const lvLabel = (o.levels && o.levels.label) || (n => `第 ${n} 關`);
+    // many levels: a compact grid of small buttons (number or a short name) and one line underneath that spells out the chosen level
+    const plain = h => String(h).replace(/<[^>]*>/g, '').trim();
+    const many = o.levels && o.levels.count > 12;
+    const lvShort = n => o.levels.short ? o.levels.short(n) : o.levels.label && plain(lvLabel(n)).length <= 6 ? lvLabel(n) : String(n);
+    const lvGrid = () => {
+      const N = Array.from({ length: o.levels.count }, (_, i) => i + 1);
+      if (!many) return `<div class="mg-levels">${N.map(n => `<button type="button" class="mg-lv" data-lv="${n}" ${n > o.levels.max ? 'disabled' : ''}>${n > o.levels.max ? '🔒' : lvLabel(n)}</button>`).join('')}</div>`;
+      const w = Math.max(...N.map(n => [...plain(lvShort(n))].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? 1 : 0.6), 0)));
+      return `<div class="mg-levels mg-lvgrid" style="--lvw:${Math.max(3, w + 1.4).toFixed(1)}em">${N.map(n => `<button type="button" class="mg-lv" data-lv="${n}" ${n > o.levels.max ? 'disabled' : ''}>${n > o.levels.max ? '🔒' : lvShort(n)}</button>`).join('')}</div><p class="mg-lvsel" aria-live="polite"></p>`;
+    };
     const picks = {};
     for (const pk of o.picks || []) { let v = store.get(o.id + '.pick.' + pk.key, pk.def || pk.options[0].id); if (!pk.options.some(q => q.id === v)) v = pk.options[0].id; picks[pk.key] = v; }
     const html = (o.html || '') +
       (o.picks || []).map(pk => `<p class="mg-pick-h">${pk.title}</p><div class="mg-pick">${pk.options.map(q => `<button type="button" class="mg-opt" data-pk="${pk.key}" data-pv="${q.id}">${q.label}<small>${q.sub || ''}</small></button>`).join('')}</div>`).join('') +
       (o.modes ? `${o.picks ? `<p class="mg-pick-h">${o.modesTitle || '要不要計時？'}</p>` : ''}<div class="mg-pick">${o.modes.map(m => `<button type="button" class="mg-opt" data-mode="${m.id}">${m.label}<small>${m.sub || ''}</small></button>`).join('')}</div>` : '') +
-      (o.levels ? `<p class="mg-pick-h">${o.levelsTitle || '從哪一關開始？'}</p><div class="mg-levels">${Array.from({ length: o.levels.count }, (_, i) => i + 1).map(n => `<button type="button" class="mg-lv" data-lv="${n}" ${n > o.levels.max ? 'disabled' : ''}>${n > o.levels.max ? '🔒' : lvLabel(n)}</button>`).join('')}</div>` : '');
+      (o.levels ? `<p class="mg-pick-h">${o.levelsTitle || '從哪一關開始？'}</p>` + lvGrid() : '');
     panel({ title: o.title, html, keys: o.keys, buttons: [{ label: isPause ? '重新開始' : '開始', alt: !!isPause, on: () => { store.set(o.id + '.pickMode', mode); store.set(o.id + '.pickLevel', lvl); for (const k in picks) store.set(o.id + '.pick.' + k, picks[k]); o.start(mode, lvl, picks); } }, ...(o.extra || [])] });
     const sync = () => {
       over.querySelectorAll('.mg-opt[data-mode]').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === mode));
       over.querySelectorAll('.mg-opt[data-pk]').forEach(b => b.setAttribute('aria-pressed', picks[b.dataset.pk] === b.dataset.pv));
       over.querySelectorAll('.mg-lv').forEach(b => b.setAttribute('aria-pressed', +b.dataset.lv === lvl));
+      const sel = over.querySelector('.mg-lvsel'); if (sel) { const full = lvLabel(lvl), shown = plain(lvShort(lvl)); sel.innerHTML = !o.levels.label || plain(full) === String(lvl) ? `第 ${lvl} 關` : plain(full).startsWith(String(lvl)) ? `第 ${lvl} 關 ${String(full).replace(String(lvl), '').trim()}` : `${lvl}. ${full}`; void shown; }
     };
     over.querySelectorAll('.mg-opt[data-mode]').forEach(b => b.onclick = () => { mode = b.dataset.mode; sfx('click'); unlock(); sync(); });
     over.querySelectorAll('.mg-opt[data-pk]').forEach(b => b.onclick = () => { picks[b.dataset.pk] = b.dataset.pv; sfx('click'); unlock(); sync(); });
