@@ -248,6 +248,16 @@ const MG = (() => {
   const heroName = () => HERO === 'niu' ? '牛牛' : '噗噗';
   // 噗噗 → 牛牛 in names and menus (the pink friend stays 粉紅噗噗; 「綠色噗噗」 is just 牛牛 now)
   const heroText = t => HERO === 'niu' && typeof t === 'string' ? t.replace(/綠色噗噗/g, '牛牛').replace(/(粉紅|粉紅色|電腦)?噗噗/g, (m, pre) => pre ? m : '牛牛') : t;
+  // 牛牛 mode: words drawn on canvases and written into the page follow the hero too
+  if (HERO === 'niu') {
+    for (const k of ['fillText', 'strokeText', 'measureText']) {
+      const orig = CanvasRenderingContext2D.prototype[k];
+      CanvasRenderingContext2D.prototype[k] = function (t, ...a) { return orig.call(this, typeof t === 'string' && t.includes('噗噗') ? heroText(t) : t, ...a); };
+    }
+    const fix = n => { if (n.nodeType === 3) { if (n.data.includes('噗噗')) n.data = heroText(n.data); } else if (n.nodeType === 1 && n.tagName !== 'SCRIPT' && n.tagName !== 'STYLE' && !n.hasAttribute('data-keep') && !(n.parentElement && n.parentElement.closest('[data-keep]'))) { for (const c of n.childNodes) fix(c); for (const at of ['aria-label', 'title', 'alt']) { const v = n.getAttribute(at); if (v && v.includes('噗噗')) n.setAttribute(at, heroText(v)); } } };
+    const start = () => { fix(document.body); new MutationObserver(ms => { for (const m of ms) { if (m.type === 'characterData') fix(m.target); else m.addedNodes.forEach(fix); } }).observe(document.body, { childList: true, subtree: true, characterData: true }); };
+    if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+  }
   function setHero(v) { HERO = v === 'niu' ? 'niu' : 'pupu'; store.set('hero', HERO); applyUI(); }
   // 牛牛, drawn from one shape list (SVG coords 0..200 × 0..220, ground at y≈194) so the hub's SVGs and the games' canvas match
   const NIU_C = { body: '#fffbf3', spot: '#dba06c', line: '#6b4a35', pink: '#ffc2cf', horn: '#fff0c4', hornL: '#c9a058', ink: '#2a1f1a', snout: '#ffe1dc', snoutL: '#e7a9a4', nos: '#c97f86', ribbon: '#ff5d7a', bell: '#ffc83d', bellL: '#b07a00' };
@@ -556,5 +566,6 @@ const MG = (() => {
     return { show(v) { b.hidden = !v; }, el: b };
   }
 
-  return { get hero() { return HERO; }, get heroName() { return heroName(); }, heroText, setHero, niuSVG, niuDraw, VERSION, BUILT, get big() { return big; }, setBig, get textScale() { return big ? 1.3 : 1; }, praise, WORDS, choose, pauseMenu, resume, barButton, init, stat, fit, panel, hide, panelOpen, best, record, sfx, toast, loop, rand, randi, pick, shuffle, store, puPu, fx, unlock, JELLY };
+  // how far (× r) a hat drawn for 噗噗's taller head has to come down to sit on 牛牛
+  return { get hatDrop() { return HERO === 'niu' ? 0.34 : 0; }, get hero() { return HERO; }, get heroName() { return heroName(); }, heroText, setHero, niuSVG, niuDraw, VERSION, BUILT, get big() { return big; }, setBig, get textScale() { return big ? 1.3 : 1; }, praise, WORDS, choose, pauseMenu, resume, barButton, init, stat, fit, panel, hide, panelOpen, best, record, sfx, toast, loop, rand, randi, pick, shuffle, store, puPu, fx, unlock, JELLY };
 })();
