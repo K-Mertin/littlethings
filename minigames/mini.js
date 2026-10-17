@@ -2,7 +2,7 @@
 'use strict';
 const MG = (() => {
   // 版號：每次合併更新時一起改（修正 → 第三碼 +1；新遊戲／新功能 → 第二碼 +1）
-  const VERSION = '1.4.1', BUILT = '2026/10/17';
+  const VERSION = '1.4.2', BUILT = '2026/10/17';
   const LS = 'puputown.';
   const store = {
     get(k, d) { try { const v = localStorage.getItem(LS + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -45,6 +45,16 @@ const MG = (() => {
   // ---------- canvas fit ----------
   const BORDER = 3, MAX_PIX = 2.1e6;   // about 1800×1170 real pixels
   // w,h can be numbers, or w can be a function(stageW, stageH) returning [w, h] so the game can pick a layout
+  const FITTED = new Set();
+  // …and every frame, before the game draws, put the base scale back if anything changed it
+  function guardCanvases() {
+    for (const c of FITTED) {
+      const g = c.getContext('2d'), px = c._mgScale; if (!g || !px || !g.getTransform) continue;
+      const m = g.getTransform();
+      if (Math.abs(m.a - px) > 1e-3 || Math.abs(m.d - px) > 1e-3 || m.b || m.c || Math.abs(m.e) > 1e-3 || Math.abs(m.f) > 1e-3) g.setTransform(px, 0, 0, px, 0, 0);
+      if (c.width !== Math.round(c.lw * px)) { const r = c._mgRefit; if (r) r(); }
+    }
+  }
   function fit(canvas, w0, h0) {
     const stage = canvas.parentElement;
     let w = w0, h = h0;
@@ -70,7 +80,14 @@ const MG = (() => {
     };
     addEventListener('resize', doFit);
     addEventListener('orientationchange', () => setTimeout(doFit, 120));
+    // iPad Safari can throw away a canvas's drawing state (memory pressure, coming back from another app):
+    // the scale is lost and the whole game shrinks into the top-left corner. Re-fit when that happens…
+    canvas.addEventListener('contextrestored', doFit);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(doFit, 60); });
+    addEventListener('pageshow', () => setTimeout(doFit, 60));
+    FITTED.add(canvas);
     doFit();
+    canvas._mgRefit = doFit;
     canvas.logical = (e) => {
       const r = canvas.getBoundingClientRect();
       return { x: (e.clientX - r.left - BORDER) * w / (r.width - BORDER * 2), y: (e.clientY - r.top - BORDER) * h / (r.height - BORDER * 2) };
@@ -216,8 +233,10 @@ const MG = (() => {
     const tick = (now) => {
       if (!running) return;
       const dt = Math.min(0.05, (now - last) / 1000); last = now;
-      if (!paused) fn(dt, now / 1000);   // frozen while the pause menu is open
-      requestAnimationFrame(tick);
+      requestAnimationFrame(tick);         // keep going even if one frame throws
+      if (paused) return;                  // frozen while the pause menu is open
+      try { guardCanvases(); } catch {}
+      try { fn(dt, now / 1000); } catch (err) { if (!loop.warned) { loop.warned = true; console.error(err); } }
     };
     document.addEventListener('visibilitychange', () => { last = performance.now(); });
     requestAnimationFrame(tick);
