@@ -2,7 +2,7 @@
 'use strict';
 const MG = (() => {
   // 版號：每次合併更新時一起改（修正 → 第三碼 +1；新遊戲／新功能 → 第二碼 +1）
-  const VERSION = '1.0.4', BUILT = '2026/10/17';
+  const VERSION = '1.1.0', BUILT = '2026/10/17';
   const LS = 'puputown.';
   const store = {
     get(k, d) { try { const v = localStorage.getItem(LS + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -18,7 +18,7 @@ const MG = (() => {
     bar.innerHTML = `<a class="back" href="index.html" aria-label="回遊戲小屋" title="回遊戲小屋"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M3.5 11.2 12 4l8.5 7.2" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 10v9.2c0 .5.4.8.8.8H10v-5.2h4V20h3.2c.4 0 .8-.3.8-.8V10" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/></svg></a><h1></h1>` +
       list.map(s => `<span class="stat" data-s="${s}"></span>`).join('') +
       `<button type="button" class="bigb" aria-label="大字模式" title="👓 大字模式">👓</button><button type="button" class="mute" aria-label="音效開關"></button>`;
-    bar.querySelector('h1').textContent = title;
+    bar.querySelector('h1').textContent = heroText(title);
     document.body.prepend(bar);
     list.forEach(s => stats[s] = bar.querySelector(`[data-s="${s}"]`));
     const mb = bar.querySelector('.mute');
@@ -32,7 +32,7 @@ const MG = (() => {
     const seen = store.get('seen', {}); seen[id] = Date.now(); store.set('seen', seen);
     // how many times each game was opened (the hub dresses 噗噗 from this)
     const plays = store.get('plays', {}); plays[id] = (plays[id] || 0) + 1; store.set('plays', plays);
-    document.title = title + ' · 噗噗的遊戲小屋';
+    document.title = heroText(title + ' · 噗噗的遊戲小屋');
   }
   // 第 8 關 → 🚩 8 (a big number reads better than words, esp. in 大字模式)
   function stat(name, text) {
@@ -84,11 +84,13 @@ const MG = (() => {
   const ZS = [0.85, 1, 1.15, 1.3, 1.5];
   let zi = Math.max(0, Math.min(ZS.length - 1, store.get('uiZoom', 1) | 0));
   // 👓 大字模式 (for grandparents / weaker eyes): bigger words and buttons everywhere, stronger contrast, calmer motion
+  let HERO = store.get('hero', 'pupu') === 'niu' ? 'niu' : 'pupu';
   let big = !!store.get('bigMode', false);
   function applyUI() {
     const m = Math.min(innerWidth, innerHeight), auto = Math.max(1, Math.min(1.3, m / 680));
     document.documentElement.style.setProperty('--ui', (auto * ZS[zi] * (big ? 1.3 : 1)).toFixed(3));
     document.documentElement.classList.toggle('mg-big', big);
+    document.documentElement.classList.toggle('hero-niu', HERO === 'niu');
   }
   function setBig(v) { big = !!v; store.set('bigMode', big); applyUI(); dispatchEvent(new Event('mg-big')); dispatchEvent(new Event('resize')); }
   applyUI(); addEventListener('resize', applyUI);
@@ -105,9 +107,9 @@ const MG = (() => {
   }
   function panel({ title, html = '', buttons = [], keys = '' }) {
     if (!over) { over = document.createElement('div'); over.className = 'mg-over'; document.body.append(over); }
-    over.innerHTML = `<div class="mg-card" role="dialog" aria-modal="true"><h2></h2><div class="mg-body">${html}</div><div class="mg-btns"></div>` +
+    over.innerHTML = `<div class="mg-card" role="dialog" aria-modal="true"><h2></h2><div class="mg-body">${heroText(html)}</div><div class="mg-btns"></div>` +
       (keys ? `<div class="mg-keys">${keys}</div>` : '') + `</div>`;
-    over.querySelector('h2').textContent = title;
+    over.querySelector('h2').textContent = heroText(title);
     over.querySelector('.mg-card').append(zoomRow());
     const box = over.querySelector('.mg-btns');
     buttons.forEach((b, i) => {
@@ -191,19 +193,20 @@ const MG = (() => {
     src.connect(bp).connect(g).connect(ac.destination); src.start(t); src.stop(t + dur + 0.02);
   }
   function sparkle(delay = 0) { for (let i = 0; i < 5; i++) bell(1800 + Math.random() * 1600, 0.18, 0.025, delay + i * 0.035); }
-  function sfx(name, arg) { if (SFX[name]) SFX[name](arg); }
+  // 牛牛's bell: a soft 叮噹 on top of every jump
+  function sfx(name, arg) { if (SFX[name]) SFX[name](arg); if (HERO === 'niu' && name === 'jump') { tone(1568, 1568, 0.18, 'sine', 0.05, 0.02); tone(1175, 1175, 0.22, 'sine', 0.045, 0.12); } }
 
   // ---------- short feedback words: English + emoji so kids who can't read Chinese yet still get them ----------
   // praise(level): 1 Good → 5 Fantastic ; JUDGE: rhythm-style hit words
   const PRAISE = ['Good! 👍', 'Great! ✨', 'Super! ⭐', 'Amazing! 🌟', 'Fantastic! 🎉'];
-  function praise(level = 1) { return PRAISE[Math.max(0, Math.min(PRAISE.length - 1, level - 1))]; }
+  function praise(level = 1) { if (HERO === 'niu' && level >= 3 && Math.random() < 0.3) return 'Moo! 🐮'; return PRAISE[Math.max(0, Math.min(PRAISE.length - 1, level - 1))]; }
   const WORDS = { perfect: 'Perfect! 🌟', great: 'Great! ✨', good: 'Good! 👍', miss: 'Miss 💨', oops: 'Oops! 🙈', tryAgain: 'Try again! 🔁', yes: 'Yes! ✅', no: 'No ❌', combo: n => `Combo ×${n} 🔥`, chain: n => `Chain ×${n} ⚡`, bonus: n => `+${n} ⭐`, levelUp: 'Level up! 🚀', clear: 'Clear! 🎉', wait: 'Wait… ⏳', full: 'Full! 🈵', hint: '💡', stuck: 'No moves 🔄' };
 
   // ---------- toast ----------
   let toastEl, toastT;
   function toast(text, ms = 1200) {
     if (!toastEl) { toastEl = document.createElement('div'); toastEl.className = 'mg-toast'; document.body.append(toastEl); }
-    toastEl.textContent = text; toastEl.classList.add('on');
+    toastEl.textContent = heroText(text); toastEl.classList.add('on');
     clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove('on'), ms);
   }
 
@@ -240,7 +243,103 @@ const MG = (() => {
 
   // Draw the mascot 噗噗 — a glossy green jelly with a leaf on top.
   // mood: 'happy' | 'ouch' | 'wow' | 'sleep'; squash: >0 flattens, <0 stretches; opts.look: -1..1 eye direction, opts.arms
+
+  // ---------- 主角：噗噗 or 牛牛 (picked on the 遊戲小屋 hub; every game follows) ----------
+  const heroName = () => HERO === 'niu' ? '牛牛' : '噗噗';
+  // 噗噗 → 牛牛 in names and menus (the pink friend stays 粉紅噗噗; 「綠色噗噗」 is just 牛牛 now)
+  const heroText = t => HERO === 'niu' && typeof t === 'string' ? t.replace(/綠色噗噗/g, '牛牛').replace(/(粉紅|粉紅色|電腦)?噗噗/g, (m, pre) => pre ? m : '牛牛') : t;
+  function setHero(v) { HERO = v === 'niu' ? 'niu' : 'pupu'; store.set('hero', HERO); applyUI(); }
+  // 牛牛, drawn from one shape list (SVG coords 0..200 × 0..220, ground at y≈194) so the hub's SVGs and the games' canvas match
+  const NIU_C = { body: '#fffbf3', spot: '#dba06c', line: '#6b4a35', pink: '#ffc2cf', horn: '#fff0c4', hornL: '#c9a058', ink: '#2a1f1a', snout: '#ffe1dc', snoutL: '#e7a9a4', nos: '#c97f86', ribbon: '#ff5d7a', bell: '#ffc83d', bellL: '#b07a00' };
+  const NIU_BODY = 'M22 168 C12 140 16 92 46 74 C64 63 82 60 100 60 C118 60 136 63 154 74 C184 92 188 140 178 168 C170 188 130 194 100 194 C70 194 30 188 22 168Z';
+  const ell = (cx, cy, rx, ry) => `M${cx - rx} ${cy}a${rx} ${ry} 0 1 0 ${2 * rx} 0a${rx} ${ry} 0 1 0 ${-2 * rx} 0Z`;
+  const C = NIU_C;
+  const NIU_BACK = [
+    { d: 'M178 156 Q196 150 192 128', s: C.line, w: 4 },
+    { d: 'M192 128 q-8 -4 -6 -12 q6 2 8 -2 q4 8 -2 14z', f: C.spot, s: C.line, w: 2.5 },
+    { d: 'M48 82 C38 72 16 70 6 82 C10 98 32 102 48 94 Z', f: C.body, s: C.line, w: 4 },
+    { d: 'M42 85 C34 79 20 78 14 85 C18 93 32 95 42 91 Z', f: C.pink },
+    { d: 'M152 82 C162 72 184 70 194 82 C190 98 168 102 152 94 Z', f: C.body, s: C.line, w: 4 },
+    { d: 'M158 85 C166 79 180 78 186 85 C182 93 168 95 158 91 Z', f: C.pink },
+    { d: 'M64 70 C61 58 63 46 72 44 C81 43 84 55 82 66 Z', f: C.horn, s: C.hornL, w: 3.5, horn: 1 },
+    { d: ell(70, 52, 3, 4), f: 'rgba(255,255,255,.85)', horn: 1 },
+    { d: 'M136 70 C139 58 137 46 128 44 C119 43 116 55 118 66 Z', f: C.horn, s: C.hornL, w: 3.5, horn: 1 },
+    { d: ell(126, 52, 3, 4), f: 'rgba(255,255,255,.85)', horn: 1 },
+  ];
+  const NIU_SPOTS = [ell(152, 90, 22, 22), 'M48 160 C39 154 36 147 41 143.5 C44.5 141.5 47.5 143.5 48 146 C48.5 143.5 51.5 141.5 55 143.5 C60 147 57 154 48 160Z', ell(160, 150, 6, 6)];
+  const NIU_FRONT = [
+    { d: NIU_BODY, s: C.line, w: 4 },
+    { d: 'M92 62 C90 50 104 46 106 54 C108 60 100 62 100 57', s: C.line, w: 3.5 },
+    { d: ell(54, 132, 10, 6), f: 'rgba(255,120,150,.4)' }, { d: ell(146, 132, 10, 6), f: 'rgba(255,120,150,.4)' },
+  ];
+  const NIU_MUZZLE = [
+    { d: 'M62 138 C62 128 80 125 100 125 C120 125 138 128 138 138 C138 146 120 149 100 149 C80 149 62 146 62 138Z', f: C.snout, s: C.snoutL, w: 3 },
+    { d: 'M78.6 134.2 q2.6 -1 3.2 2.6 q0.4 3.4 -2.2 3.8 q-2.4 0 -2.4 -3 q0 -2.6 1.4 -3.4z', f: C.nos },
+    { d: 'M121.4 134.2 q-2.6 -1 -3.2 2.6 q-0.4 3.4 2.2 3.8 q2.4 0 2.4 -3 q0 -2.6 -1.4 -3.4z', f: C.nos },
+  ];
+  const NIU_RIBBON = [
+    { d: 'M34 170 Q100 192 166 170', s: C.ribbon, w: 8 },
+    { d: ell(100, 184, 9, 9), f: C.bell, s: C.bellL, w: 3 },
+    { d: 'M95 186 h10', s: '#8a5a00', w: 2.5 }, { d: ell(100, 189.5, 1.8, 1.8), f: '#8a5a00' },
+  ];
+  function niuFace(mood, ex = 0, blink = false) {
+    const I = C.ink, out = [];
+    const openEyes = () => { for (const x0 of [77, 123]) { out.push({ d: ell(x0 + ex, 108, 9, 12), f: I }, { d: ell(x0 + 3 + ex, 103, 3.6, 3.6), f: '#fff' }, { d: ell(x0 - 2.5 + ex, 113, 1.7, 1.7), f: '#fff' }); } };
+    const arcs = up => out.push({ d: up ? `M${68 + ex} 108 Q${78 + ex} 96 ${88 + ex} 108 M${112 + ex} 108 Q${122 + ex} 96 ${132 + ex} 108` : `M${68 + ex} 106 Q${78 + ex} 114 ${88 + ex} 106 M${112 + ex} 106 Q${122 + ex} 114 ${132 + ex} 106`, s: I, w: 4 });
+    let mouth = 'smile';
+    if (mood === 'wow') { for (const x0 of [78, 122]) out.push({ d: ell(x0 + ex, 104, 11, 11), f: '#fff', s: I, w: 3 }, { d: ell(x0 + ex + (x0 < 100 ? 1 : -1), 105, 6, 6), f: I }); mouth = 'open'; }
+    else if (mood === 'ouch') { out.push({ d: 'M70 98 L84 106 L70 114 M130 98 L116 106 L130 114', s: I, w: 4 }); mouth = 'wavy'; }
+    else if (mood === 'love') { out.push({ d: 'M78 116 C64 106 66 94 74 94 C77 94 78 97 78 99 C78 97 79 94 82 94 C90 94 92 106 78 116Z', f: '#ff4d7a' }, { d: 'M122 116 C108 106 110 94 118 94 C121 94 122 97 122 99 C122 97 123 94 126 94 C134 94 136 106 122 116Z', f: '#ff4d7a' }); }
+    else if (mood === 'sleep') arcs(false);
+    else if (mood === 'proud' || mood === 'yay') { arcs(true); mouth = 'grin'; }
+    else if (mood === 'wink') { out.push({ d: ell(77 + ex, 108, 9, 12), f: I }, { d: ell(80 + ex, 103, 3.6, 3.6), f: '#fff' }, { d: `M${112 + ex} 108 Q${122 + ex} 96 ${132 + ex} 108`, s: I, w: 4 }); mouth = 'grin'; }
+    else if (blink) arcs(true);
+    else { openEyes(); if (mood === 'grin') mouth = 'grin'; else if (mood === 'open') mouth = 'open'; }
+    if (mood === 'tongue') mouth = 'tongue';
+    const M = { smile: [{ d: 'M92 158 Q100 165 108 158', s: C.line, w: 3 }], open: [{ d: ell(100, 161, 5, 4.5), f: '#8a2f45' }], wavy: [{ d: 'M90 160 q3 -3 6 0 q3 3 6 0 q3 -3 6 0', s: C.line, w: 3 }],
+      grin: [{ d: 'M89 156 Q100 169 111 156 Z', f: '#8a2f45', s: C.line, w: 2.5 }], tongue: [{ d: 'M92 158 Q100 165 108 158', s: C.line, w: 3 }, { d: 'M97 161 q3 8 6 0z', f: '#ff6f8a' }] };
+    return { eyes: out, mouth: M[mouth] };
+  }
+  // SVG markup of 牛牛 in its 200×220 box (the hub's banner, 我的牛牛 and thumbnails use this)
+  function niuSVG(mood = 'happy', o = {}) {
+    const sh = x => `<path d="${x.d}"${x.f ? ` fill="${x.f}"` : ' fill="none"'}${x.s ? ` stroke="${x.s}" stroke-width="${x.w}" stroke-linecap="round" stroke-linejoin="round"` : ''}/>`;
+    const id = 'nb' + Math.random().toString(36).slice(2, 7), face = niuFace(mood, o.ex || 0, false);
+    return (o.noShadow ? '' : `<ellipse cx="100" cy="200" rx="74" ry="9" fill="rgba(60,40,30,.15)"/>`) + NIU_BACK.filter(x => !(o.noHorns && x.horn)).map(sh).join('') +
+      `<defs><clipPath id="${id}"><path d="${NIU_BODY}"/></clipPath><radialGradient id="${id}g" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="${C.body}"/></radialGradient></defs>` +
+      `<path d="${NIU_BODY}" fill="url(#${id}g)"/><g clip-path="url(#${id})">${NIU_SPOTS.map(d => `<path d="${d}" fill="${C.spot}"/>`).join('')}</g>` +
+      NIU_FRONT.map(sh).join('') + `<ellipse cx="62" cy="86" rx="13" ry="6" fill="rgba(255,255,255,.85)" transform="rotate(-28 62 86)"/>` +
+      face.eyes.map(sh).join('') + NIU_MUZZLE.map(sh).join('') + face.mouth.map(sh).join('') + (o.noRibbon ? '' : NIU_RIBBON.map(sh).join(''));
+  }
+  const P2D = new Map(); const p2 = d => { let q = P2D.get(d); if (!q) { q = new Path2D(d); P2D.set(d, q); } return q; };
+  // canvas 牛牛 with MG.puPu's signature: (cx, cy) centre, r ≈ half width, squash, opts.look / arms / noLeaf (= hat on: hide the horns)
+  function niuDraw(ctx, cx, cy, r, mood = 'happy', squash = 0, opts = {}) {
+    const now = performance.now() / 1000, seed = (cx * 7.3 + cy * 3.1) % 5;
+    const blink = (mood === 'happy' || !mood) && ((now + seed) % 3.6) < 0.12;
+    const k = r / 84, ex = (opts.look ?? 0) * 6;
+    ctx.save(); ctx.translate(cx, cy);
+    ctx.fillStyle = 'rgba(60,40,30,.16)'; ctx.beginPath(); ctx.ellipse(0, r * 0.98, r * (0.95 + squash * 0.4), r * 0.2, 0, 0, 7); ctx.fill();
+    ctx.translate(0, r * 0.9); ctx.scale(1 + squash, 1 - squash); ctx.translate(0, -r * 0.9);
+    ctx.translate(0, r * 0.97); ctx.scale(k, k); ctx.translate(-100, -194);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    const draw = x => { const q = p2(x.d); if (x.f) { ctx.fillStyle = x.f; ctx.fill(q); } if (x.s) { ctx.strokeStyle = x.s; ctx.lineWidth = x.w; ctx.stroke(q); } };
+    if (opts.arms) for (const sd of [-1, 1]) { const up = opts.arms === 'up'; ctx.save(); ctx.translate(100 + sd * 82, up ? 112 : 150); ctx.rotate(sd * (up ? -0.9 : 0.4)); ctx.beginPath(); ctx.ellipse(0, 0, 16, 12, 0, 0, 7); ctx.fillStyle = C.body; ctx.fill(); ctx.strokeStyle = C.line; ctx.lineWidth = 4; ctx.stroke(); ctx.restore(); }
+    for (const x of NIU_BACK) if (!(opts.noLeaf && x.horn && opts.hideHorns)) draw(x);
+    const g = ctx.createRadialGradient(70, 90, 4, 100, 130, 110); g.addColorStop(0, '#ffffff'); g.addColorStop(1, C.body);
+    ctx.fillStyle = g; ctx.fill(p2(NIU_BODY));
+    ctx.save(); ctx.clip(p2(NIU_BODY)); ctx.fillStyle = C.spot; for (const d of NIU_SPOTS) ctx.fill(p2(d)); ctx.restore();
+    for (const x of NIU_FRONT) draw(x);
+    ctx.save(); ctx.translate(62, 86); ctx.rotate(-0.49); ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.beginPath(); ctx.ellipse(0, 0, 13, 6, 0, 0, 7); ctx.fill(); ctx.restore();
+    const face = niuFace(mood, ex, blink);
+    for (const x of face.eyes) draw(x);
+    for (const x of NIU_MUZZLE) draw(x);
+    for (const x of face.mouth) draw(x);
+    if (!opts.noRibbon) for (const x of NIU_RIBBON) draw(x);
+    if (mood === 'ouch') { ctx.fillStyle = 'rgba(120,200,255,.9)'; ctx.beginPath(); ctx.moveTo(156, 92); ctx.quadraticCurveTo(166, 110, 156, 116); ctx.quadraticCurveTo(146, 110, 156, 92); ctx.fill(); }
+    if (mood === 'sleep') { ctx.fillStyle = '#7a8ce0'; ctx.font = '900 20px sans-serif'; ctx.fillText('z', 150, 58); ctx.font = '900 15px sans-serif'; ctx.fillText('z', 164, 42); }
+    ctx.restore();
+  }
   function puPu(ctx, cx, cy, r, mood = 'happy', squash = 0, opts = {}) {
+    if (HERO === 'niu' && !opts.jelly && (!opts.pal || opts.pal === JELLY.green)) return niuDraw(ctx, cx, cy, r, mood, squash, opts);
     const now = performance.now() / 1000, seed = (cx * 7.3 + cy * 3.1) % 5;
     const blink = mood === 'happy' && ((now + seed) % 3.6) < 0.12;
     const look = opts.look ?? 0, pal = opts.pal || JELLY.green;
@@ -456,5 +555,5 @@ const MG = (() => {
     return { show(v) { b.hidden = !v; }, el: b };
   }
 
-  return { VERSION, BUILT, get big() { return big; }, setBig, get textScale() { return big ? 1.3 : 1; }, praise, WORDS, choose, pauseMenu, resume, barButton, init, stat, fit, panel, hide, panelOpen, best, record, sfx, toast, loop, rand, randi, pick, shuffle, store, puPu, fx, unlock, JELLY };
+  return { get hero() { return HERO; }, get heroName() { return heroName(); }, heroText, setHero, niuSVG, niuDraw, VERSION, BUILT, get big() { return big; }, setBig, get textScale() { return big ? 1.3 : 1; }, praise, WORDS, choose, pauseMenu, resume, barButton, init, stat, fit, panel, hide, panelOpen, best, record, sfx, toast, loop, rand, randi, pick, shuffle, store, puPu, fx, unlock, JELLY };
 })();
