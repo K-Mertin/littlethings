@@ -22,68 +22,90 @@ const HIDDEN = '#c9d1de';           // colour of a ❓ layer that hasn't been se
 const SHAPES = ['dot', 'star', 'tri', 'heart', 'square', 'diamond', 'moon', 'plus', 'ring', 'drop', 'cross', 'hex', 'bolt', 'flower'];
 // [colours, units per bottle, empty bottles = 2, mystery = false]
 // mystery: only the top layer of each bottle can be seen; the ❓ layers show up when they reach the top
+// from 21 on, "same difficulty, different way to play" twists (an object adds them):
+//   small: the empty bottles only hold that many 🥛 · one: thin-neck bottles pour one layer at a time 💧
+//   tag: every bottle has a colour label and only finishes with that colour 🏷️ · lock: one bottle is chained 🔒 until the first bottle is finished
 const LEVELS = [[3, 3], [3, 4], [4, 4], [5, 4], [6, 4], [7, 4], [5, 5], [8, 4], [7, 5], [9, 4], [8, 5], [10, 5],
-  [5, 4, 1], [6, 4, 2, true], [11, 5], [8, 6], [8, 5, 2, true], [13, 5], [10, 6, 2, true], [14, 6]];
-const LV = n => { const [c, k, e = 2, m = false] = LEVELS[n - 1]; return { c, k, e, m }; };
-const lvName = n => { const L = LV(n); return `${L.c}色×${L.k}格${L.e < 2 ? '・1空瓶' : ''}${L.m ? '・❓' : ''}`; };
+  [5, 4, 1], [6, 4, 2, true], [11, 5], [8, 6], [8, 5, 2, true], [13, 5], [10, 6, 2, true], [14, 6],
+  [5, 4, 2, false, { small: 2 }], [5, 4, 2, false, { one: true }], [4, 4, 2, false, { tag: true }], [6, 4, 2, false, { lock: true }],
+  [7, 4, 3, false, { small: 2 }], [7, 4, 2, false, { one: true }], [5, 4, 2, false, { tag: true }], [8, 4, 2, false, { lock: true }],
+  [6, 5, 2, true, { small: 3 }], [7, 4, 2, false, { one: true, lock: true }], [6, 4, 2, false, { tag: true }], [8, 5, 2, true, { lock: true }],
+  [12, 6], [8, 4, 1], [12, 6, 2, true], [14, 7]];
+const LV = n => { const [c, k, e = 2, m = false, o = {}] = LEVELS[n - 1]; return { c, k, e, m, small: o.small || 0, one: !!o.one, tag: !!o.tag, lock: !!o.lock }; };
+const lvName = n => { const L = LV(n); return `${L.c}色×${L.k}格${L.e < 2 ? '・1空瓶' : ''}${L.m ? '・❓' : ''}${L.small ? '・🥛小瓶' : ''}${L.one ? '・💧細口' : ''}${L.tag ? '・🏷️標籤' : ''}${L.lock ? '・🔒鎖' : ''}`; };
 const BW = 52, UH = 30, NECK = 16;
 
 let bottles = [], hid = [], gone = [], cap = 4, level = 1, mode = 'shape', state = 'menu';
-let sel = -1, moves = 0, hist = [], anim = null, puzzle = null, extraUsed = false, downOn = -1;
+let hintPlan = null, sel = -1, moves = 0, hist = [], anim = null, puzzle = null, extraUsed = false, downOn = -1;
 let fade = [], shake = [], hint = null, t = 0, pos = [], scale = 1, btns = [], floats = [], doneN = 0;
 
 // ---------- rules ----------
 const topOf = b => b[b.length - 1];
-const full1 = b => b.length === cap && b.every(v => v === b[0]);
-function canPour(bs, i, j, c = cap) {
+// R: the rules of the current puzzle — k layers per colour, caps per bottle, one-layer pours, colour labels (-1 = none), the locked bottle
+let R = { k: 4, caps: [], one: false, tags: null, lock: -1 }, lockOpen = true;
+const capOf = (rs, j) => rs.caps[j] ?? rs.k;
+const done1 = (b, i, rs = R) => b.length === rs.k && b.every(v => v === b[0]) && (!rs.tags || rs.tags[i] === b[0]);
+const full1 = (b, i) => done1(b, i);
+function canPour(bs, i, j, rs = R, open = lockOpen) {
   const a = bs[i], b = bs[j];
-  return i !== j && a.length > 0 && b.length < c && (b.length === 0 || topOf(b) === topOf(a));
+  if (i === j || !a.length || b.length >= capOf(rs, j) || (b.length && topOf(b) !== topOf(a))) return false;
+  if (rs.lock >= 0 && !open && (i === rs.lock || j === rs.lock)) return false;
+  return true;
 }
 function runLen(b) { let k = 1; while (k < b.length && b[b.length - 1 - k] === topOf(b)) k++; return k; }
-function pourInto(bs, i, j, c = cap) { const k = Math.min(runLen(bs[i]), c - bs[j].length); for (let n = 0; n < k; n++) bs[j].push(bs[i].pop()); return k; }
+const pourAmount = (bs, i, j, rs = R) => rs.one ? 1 : Math.min(runLen(bs[i]), capOf(rs, j) - bs[j].length);
+function pourInto(bs, i, j, rs = R) { const k = pourAmount(bs, i, j, rs); for (let n = 0; n < k; n++) bs[j].push(bs[i].pop()); return k; }
 
 // depth-first search with memo: used to make sure every puzzle can be solved, and for the 💡 hint
-function solve(start, c, limit = 80000) {
+function solve(start, rs = R, open0 = lockOpen, limit = 80000) {
   const seen = new Set(); let nodes = 0;
-  const key = bs => bs.map(b => b.join('')).sort().join('|');
-  const done = bs => bs.every(b => b.length === 0 || (b.length === c && b.every(v => v === b[0])));
+  // labels, a lock or different sizes make bottle positions matter; otherwise bottles are interchangeable
+  const positional = !!rs.tags || rs.lock >= 0 || rs.caps.some(c => c !== rs.k);
+  const key = (bs, open) => (positional ? bs.map(b => b.join(',')).join('|') : bs.map(b => b.join(',')).sort().join('|')) + (open ? '+' : '-');
+  const done = bs => bs.every((b, i) => b.length === 0 || done1(b, i, rs));
   const path = [];
-  const dfs = bs => {
+  const dfs = (bs, open) => {
     if (done(bs)) return true;
     if (++nodes > limit) return false;
-    const k = key(bs); if (seen.has(k)) return false; seen.add(k);
+    const k = key(bs, open); if (seen.has(k)) return false; seen.add(k);
     for (let i = 0; i < bs.length; i++) {
-      const a = bs[i]; if (!a.length || (a.length === c && a.every(v => v === a[0]))) continue;
-      const uniform = a.every(v => v === a[0]);
-      let triedEmpty = false;
+      const a = bs[i]; if (!a.length || done1(a, i, rs)) continue;
+      const uniform = a.every(v => v === a[0]), prune = !rs.tags && !rs.one;
+      const tried = new Set();
       for (let j = 0; j < bs.length; j++) {
-        if (!canPour(bs, i, j, c)) continue;
-        if (!bs[j].length) { if (uniform || triedEmpty) continue; triedEmpty = true; }
-        const nb = bs.map(b => b.slice()); pourInto(nb, i, j, c);
+        if (!canPour(bs, i, j, rs, open)) continue;
+        if (!bs[j].length) { const ck = capOf(rs, j) + (rs.tags ? ':' + j : ''); if ((prune && uniform) || tried.has(ck)) continue; tried.add(ck); }
+        const nb = bs.map(b => b.slice()); pourInto(nb, i, j, rs);
         path.push([i, j]);
-        if (dfs(nb)) return true;
+        if (dfs(nb, open || done1(nb[j], j, rs))) return true;
         path.pop();
       }
     }
     return false;
   };
-  return dfs(start.map(b => b.slice())) ? path : null;
+  return dfs(start.map(b => b.slice()), open0) ? path : null;
 }
-function makePuzzle(nc, c, empties = 2) {
+// returns { b: bottles, rs: rules } — only puzzles the solver could finish
+function makePuzzle(nc, c, empties = 2, L = {}) {
   let last = null;
-  for (let tries = 0; tries < (empties < 2 ? 400 : 80); tries++) {
+  const hard = empties < 2 || L.tag || L.lock || L.small || L.one;
+  for (let tries = 0; tries < (hard ? 400 : 80); tries++) {
     const units = MG.shuffle(Array.from({ length: nc * c }, (_, i) => i % nc));
     const bs = Array.from({ length: nc }, (_, i) => units.slice(i * c, (i + 1) * c));
     if (bs.some(b => b.every(v => v === b[0]))) continue;              // nothing already finished
     for (let k = 0; k < empties; k++) bs.push([]);
-    last = bs;
-    if (solve(bs, c, 40000)) return bs;
+    const rs = { k: c, caps: bs.map((b, i) => i >= nc && L.small ? L.small : c), one: !!L.one, tags: null, lock: -1 };
+    if (L.tag) rs.tags = MG.shuffle(Array.from({ length: nc }, (_, i) => i)).concat(Array(empties).fill(-1));
+    if (L.lock) rs.lock = MG.randi(0, nc - 1);
+    last = { b: bs, rs };
+    if (solve(bs, rs, !L.lock, hard ? 60000 : 40000)) return last;
   }
   return last;
 }
 
 // ---------- layout ----------
-const bh = () => cap * UH + 10;                       // body height (local units)
+const bh = (c = cap) => c * UH + 10;                  // body height (local units) of a bottle that holds c layers
+const BH = i => bh(capOf(R, i));
 let U = 1;
 function layout() {
   const W = cv.lw, H = cv.lh, n = bottles.length, g = 10;
@@ -132,28 +154,38 @@ cv.onfit = () => { if (bottles.length) layout(); };
 addEventListener('mg-big', () => { if (bottles.length) layout(); });
 
 // ---------- game flow ----------
-function snapshot() { return { b: bottles.map(b => b.slice()), h: hid.map(b => b.slice()), gone: gone.slice(), moves }; }
+function snapshot() { return { b: bottles.map(b => b.slice()), h: hid.map(b => b.slice()), gone: gone.slice(), moves, open: lockOpen }; }
 const vis = i => bottles[i].map((v, k) => hid[i][k] ? -1 : v);   // what the player can see (-1 = ❓)
 function reveal() { hid.forEach((h, i) => { if (h.length) h[h.length - 1] = false; }); }
 function startLevel(lv, fresh = true) {
   level = lv; const L = LV(lv); cap = L.k;
-  if (fresh || !puzzle) puzzle = makePuzzle(L.c, cap, L.e);
-  bottles = puzzle.map(b => b.slice()); gone = bottles.map(() => false);
+  if (fresh || !puzzle) puzzle = makePuzzle(L.c, cap, L.e, L);
+  R = { ...puzzle.rs, caps: puzzle.rs.caps.slice(), tags: puzzle.rs.tags && puzzle.rs.tags.slice() }; lockOpen = R.lock < 0;
+  bottles = puzzle.b.map(b => b.slice()); gone = bottles.map(() => false);
   hid = bottles.map(b => b.map((_, k) => L.m && k < b.length - 1));
   fade = bottles.map(() => 0); shake = bottles.map(() => 0);
   sel = -1; moves = 0; hist = []; anim = null; extraUsed = false; hint = null; downOn = -1; floats = []; doneN = 0;
   layout(); hud(); state = 'play'; MG.hide();
+  // the first time a new way to play shows up, explain it once (in the menu language)
+  const NEWS = { small: ['🥛 小瓶子', '空瓶子比較矮，裝不下一整瓶。只能拿來暫放，最後要清空喔！'], one: ['💧 細口瓶', '瓶口很細，每次只會倒過去一格。要多倒幾次才能把同顏色搬完。'],
+    tag: ['🏷️ 顏色標籤', '每個瓶子下面有顏色標籤，要倒滿<b>和標籤一樣的顏色</b>才會蓋上蓋子。倒錯顏色的話，標籤會搖一搖。'], lock: ['🔒 鎖住的瓶子', '有一個瓶子被鎖住了，不能倒進去也不能倒出來。先完成任何一瓶，鎖就會打開！'] };
+  const fresh1 = Object.keys(NEWS).filter(k => L[k] && !MG.store.get('pour.seen.' + k, false));
+  if (fresh1.length) {
+    fresh1.forEach(k => MG.store.set('pour.seen.' + k, true));
+    MG.panel({ title: fresh1.map(k => NEWS[k][0]).join('＋'), html: fresh1.map(k => `<p>${NEWS[k][1]}</p>`).join(''), buttons: [{ label: '開始', on: () => MG.hide() }] });
+  }
 }
 function hud() { MG.stat('level', `第 ${level} 關`); MG.stat('moves', `🫗 ${moves} 步`); }
 function tryPour(i, j) {
   if (!canPour(bottles, i, j)) {
     shake[j] = 0.35; MG.sfx('miss');
     // no rule sentence during play: a tiny visual instead (full bottle, or colours that don't match)
-    say(j, bottles[j].length >= cap ? MG.WORDS.full : '❌ 🎨≠🎨', '#d0404e');
+    if (R.lock >= 0 && !lockOpen && (i === R.lock || j === R.lock)) { shake[R.lock] = 0.35; say(R.lock, '🔒', '#6f7f99'); sel = -1; return; }
+    say(j, bottles[j].length >= capOf(R, j) ? MG.WORDS.full : '❌ 🎨≠🎨', '#d0404e');
     sel = -1; return;
   }
   hist.push(snapshot()); hint = null;
-  const k = Math.min(runLen(bottles[i]), cap - bottles[j].length);
+  const k = pourAmount(bottles, i, j);
   anim = { i, j, c: topOf(bottles[i]), k, t: 0 };
   sel = -1; moves++; hud(); MG.sfx('flip');
 }
@@ -164,12 +196,13 @@ function finishPour() {
   const wasHidden = hid.some(h => h.length && h[h.length - 1]);
   reveal();
   MG.sfx('pop'); if (wasHidden) MG.sfx('sparkle');
-  if (full1(bottles[j])) {               // a bottle full of one colour: it gets a cork and pops away
+  if (full1(bottles[j], j)) {               // a bottle full of one colour: it gets a cork and pops away
     fade[j] = 0.001; doneN++;
+    if (!lockOpen) { lockOpen = true; const L = R.lock; setTimeout(() => { if (L >= 0 && pos[L]) { say(L, '🔓 Open!', '#2f8a48'); shake[L] = 0.35; MG.sfx('good'); MG.sfx('sparkle'); } }, 450); }
     // layered: a rising match chime + sparkle, then a whoosh as the bottle flies away
     MG.sfx('match', doneN + 1); MG.sfx('sparkle'); setTimeout(() => MG.sfx('whoosh'), 380);
     say(j, MG.praise(Math.min(5, doneN)), '#ff6a00');
-    const p = pos[j]; MG.fx.burst(p.cx, p.by - (bh() + NECK) * scale, { n: 22, colors: [COLORS[bottles[j][0]], '#fff', '#ffd23f'], shape: 'star', speed: 220, up: 140, size: 6 });
+    const p = pos[j]; MG.fx.burst(p.cx, p.by - (BH(j) + NECK) * scale, { n: 22, colors: [COLORS[bottles[j][0]], '#fff', '#ffd23f'], shape: 'star', speed: 220, up: 140, size: 6 });
   }
   checkStuck();
 }
@@ -196,22 +229,25 @@ function win() {
 function undo() {
   if (anim) return;
   const s = hist.pop(); if (!s) { MG.toast('⏮️ Start'); MG.sfx('miss'); return; }
-  bottles = s.b; hid = s.h; gone = s.gone; moves = s.moves; fade = bottles.map(() => 0); bottles.forEach((b, i) => { if (full1(b)) gone[i] = true; }); sel = -1; hint = null; hud(); MG.sfx('place');
+  bottles = s.b; hid = s.h; gone = s.gone; moves = s.moves; lockOpen = s.open ?? lockOpen; fade = bottles.map(() => 0); bottles.forEach((b, i) => { if (full1(b, i)) gone[i] = true; }); sel = -1; hint = null; hud(); MG.sfx('place');
 }
 function addBottle() {
   if (anim) return;
   if (extraUsed) { MG.toast('No more ➕'); MG.sfx('miss'); return; }
-  extraUsed = true; bottles.push([]); hid.push([]); gone.push(false); fade.push(0); shake.push(0);
+  extraUsed = true; R.caps.push(R.k); if (R.tags) R.tags.push(-1); bottles.push([]); hid.push([]); gone.push(false); fade.push(0); shake.push(0);
   for (const s of hist) { s.b.push([]); s.h.push([]); s.gone.push(false); }
   layout(); MG.sfx('pop'); MG.sfx('whoosh'); MG.toast('+1 🫙');
 }
 function showHint() {
   if (anim) return;
-  const live = bottles.map((b, i) => (gone[i] || fade[i] > 0) ? [] : b);
-  const path = solve(live, cap);
-  if (!path) { MG.toast(`${MG.WORDS.oops} ↶`, 2400); MG.sfx('miss'); return; }
+  const live = bottles.map((b, i) => (gone[i] || fade[i] > 0) ? [] : b), key = JSON.stringify(live) + lockOpen;
+  // keep following one plan while the player follows the hints (re-solving every time could send them in circles)
+  const path = hintPlan && hintPlan.key === key && hintPlan.path.length ? hintPlan.path : solve(live);
+  if (!path) { hintPlan = null; MG.toast(`${MG.WORDS.oops} ↶`, 2400); MG.sfx('miss'); return; }
   if (!path.length) return;
-  const [i, j] = path[0]; hint = { i, j, t: 0 }; sel = -1; MG.sfx('flip'); MG.sfx('sparkle');
+  const [i, j] = path[0];
+  const nb = live.map(b => b.slice()); pourInto(nb, i, j); const opened = lockOpen || done1(nb[j], j); if (done1(nb[j], j)) nb[j] = [];
+  hintPlan = { path: path.slice(1), key: JSON.stringify(nb) + opened }; hint = { i, j, t: 0 }; sel = -1; MG.sfx('flip'); MG.sfx('sparkle');
 }
 function reset() { if (anim) return; startLevel(level, false); MG.sfx('whoosh'); MG.toast('Again! 🔄'); }
 
@@ -219,7 +255,7 @@ function reset() { if (anim) return; startLevel(level, false); MG.sfx('whoosh');
 function hitBottle(p) {
   for (let i = 0; i < bottles.length; i++) {
     if (gone[i] || fade[i] > 0) continue;
-    const q = pos[i], w = (BW / 2 + 12) * scale, h = (bh() + NECK + 30) * scale;
+    const q = pos[i], w = (BW / 2 + 12) * scale, h = (BH(i) + NECK + 30) * scale;
     if (p.x > q.cx - w && p.x < q.cx + w && p.y > q.by - h && p.y < q.by + 14 * scale) return i;
   }
   return -1;
@@ -274,8 +310,8 @@ function shapePath(id, r) {
 }
 // segs: [[colour, units], ...] from the bottom
 function segsOf(b) { const s = []; for (const v of b) { if (s.length && s[s.length - 1][0] === v) s[s.length - 1][1]++; else s.push([v, 1]); } return s; }
-function drawBottle(segs, done, happy, tilt = 0) {
-  const H = bh(), w2 = BW / 2;
+function drawBottle(segs, done, happy, tilt = 0, H = bh()) {
+  const w2 = BW / 2;
   // glass back
   x.fillStyle = 'rgba(255,255,255,.45)';
   x.beginPath(); x.roundRect(-w2, -H, BW, H, [6, 6, 18, 18]); x.fill();
@@ -353,10 +389,10 @@ function draw() {
     if (anim && i === anim.i) {
       const left = pos[anim.i].cx < pos[anim.j].cx ? 1 : -1, A = 1.15 * left;
       const e = animBits.mv * animBits.mv * (3 - 2 * animBits.mv);
-      const dq = pos[anim.j], L = (bh() / 2 + NECK) * scale;
-      const tx = dq.cx - Math.sin(A) * L, ty = dq.by - (bh() + NECK + 26) * scale + Math.cos(A) * L;   // pivot (centre) target
-      const hx = q.cx, hy = q.by - bh() / 2 * scale;
-      cx = hx + (tx - hx) * e; by = hy + (ty - hy) * e + bh() / 2 * scale; ang = A * e;
+      const dq = pos[anim.j], L = (BH(i) / 2 + NECK) * scale;
+      const tx = dq.cx - Math.sin(A) * L, ty = dq.by - (BH(anim.j) + NECK + 26) * scale + Math.cos(A) * L;   // pivot (centre) target
+      const hx = q.cx, hy = q.by - BH(i) / 2 * scale;
+      cx = hx + (tx - hx) * e; by = hy + (ty - hy) * e + BH(i) / 2 * scale; ang = A * e;
       const lost = anim.k * animBits.pr; let rem = lost;
       segs = segs.map(s => s.slice());
       while (rem > 0 && segs.length) { const s = segs[segs.length - 1], d = Math.min(s[1], rem); s[1] -= d; rem -= d; if (s[1] <= 0.0001) segs.pop(); }
@@ -368,18 +404,20 @@ function draw() {
     if (shake[i] > 0) cx += Math.sin(shake[i] * 60) * 5 * scale * (shake[i] / 0.35);
     if (fade[i] > 0) { const f = fade[i]; by -= f * 30 * scale; sc = scale * (1 + f * 0.25); a = Math.max(0, 1 - Math.max(0, f - 0.45) / 0.55); }
     x.save(); x.globalAlpha = a; x.translate(cx, by);
-    if (ang) { x.translate(0, -bh() / 2 * sc); x.rotate(ang); x.translate(0, bh() / 2 * sc); }
+    if (ang) { x.translate(0, -BH(i) / 2 * sc); x.rotate(ang); x.translate(0, BH(i) / 2 * sc); }
     x.scale(sc, sc);
-    if (hint && (i === hint.i || i === hint.j) && Math.floor(hint.t * 4) % 2 === 0) { x.fillStyle = 'rgba(255,210,63,.45)'; x.beginPath(); x.roundRect(-BW / 2 - 10, -bh() - NECK - 18, BW + 20, bh() + NECK + 28, 14); x.fill(); }
-    drawBottle(segs, fade[i] > 0, fade[i] > 0, ang);
+    if (hint && (i === hint.i || i === hint.j) && Math.floor(hint.t * 4) % 2 === 0) { x.fillStyle = 'rgba(255,210,63,.45)'; x.beginPath(); x.roundRect(-BW / 2 - 10, -BH(i) - NECK - 18, BW + 20, BH(i) + NECK + 28, 14); x.fill(); }
+    drawBottle(segs, fade[i] > 0, fade[i] > 0, ang, BH(i));
+    if (i === R.lock && !lockOpen) drawLock(BH(i));
     x.restore();
     // number label (for keyboard players)
-    if (fade[i] === 0 && !(anim && i === anim.i)) { x.fillStyle = 'rgba(90,60,30,.45)'; x.font = `700 ${Math.round(12 * scale + 2)}px system-ui,sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(i < 9 ? i + 1 : i === 9 ? 0 : '', q.cx, q.by + 22 * scale); }
+    if (R.tags && R.tags[i] >= 0 && fade[i] === 0) drawTag(q.cx, q.by + 24 * scale, R.tags[i], bottles[i].length === R.k && bottles[i].every(v => v === bottles[i][0]) && bottles[i][0] !== R.tags[i]);
+    else if (fade[i] === 0 && !(anim && i === anim.i)) { x.fillStyle = 'rgba(90,60,30,.45)'; x.font = `700 ${Math.round(12 * scale + 2)}px system-ui,sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(i < 9 ? i + 1 : i === 9 ? 0 : '', q.cx, q.by + 22 * scale); }
   }
   // the stream of water
   if (anim && animBits.pouring) {
     const left = pos[anim.i].cx < pos[anim.j].cx ? 1 : -1, dq = pos[anim.j];
-    const mx = dq.cx, my = dq.by - (bh() + NECK + 26) * scale;
+    const mx = dq.cx, my = dq.by - (BH(anim.j) + NECK + 26) * scale;
     const fill = bottles[anim.j].length + anim.k * animBits.pr;
     const ly = dq.by - (4 + fill * UH) * scale;
     x.strokeStyle = COLORS[anim.c]; x.lineCap = 'round'; x.lineWidth = 7 * scale;
@@ -388,7 +426,7 @@ function draw() {
   }
   // hint arrow
   if (hint) {
-    const a = pos[hint.i], b = pos[hint.j], yA = a.by - (bh() + NECK + 34) * scale, yB = b.by - (bh() + NECK + 34) * scale, bob = Math.sin(t * 8) * 4;
+    const a = pos[hint.i], b = pos[hint.j], yA = a.by - (BH(hint.i) + NECK + 34) * scale, yB = b.by - (BH(hint.j) + NECK + 34) * scale, bob = Math.sin(t * 8) * 4;
     x.strokeStyle = '#ff9f1c'; x.lineWidth = 5; x.lineCap = 'round'; x.setLineDash([2, 10]);
     x.beginPath(); x.moveTo(a.cx, yA + bob); x.quadraticCurveTo((a.cx + b.cx) / 2, Math.min(yA, yB) - 50 * scale, b.cx, yB + bob); x.stroke(); x.setLineDash([]);
     x.fillStyle = '#ff9f1c'; x.beginPath(); x.moveTo(b.cx, yB + 12 + bob); x.lineTo(b.cx - 10, yB - 4 + bob); x.lineTo(b.cx + 10, yB - 4 + bob); x.fill();
@@ -408,6 +446,27 @@ function draw() {
   }
 }
 
+// 🔒 the chained bottle: frosted glass, two chains and a padlock
+function drawLock(H) {
+  x.fillStyle = 'rgba(200,210,225,.55)'; x.beginPath(); x.roundRect(-BW / 2, -H, BW, H, [6, 6, 18, 18]); x.fill();
+  x.strokeStyle = '#8a96a8'; x.lineWidth = 4; x.setLineDash([7, 4]);
+  for (const sd of [-1, 1]) { x.beginPath(); x.moveTo(-BW / 2 - 4, -H * (0.5 + sd * 0.28)); x.lineTo(BW / 2 + 4, -H * (0.5 - sd * 0.28)); x.stroke(); }
+  x.setLineDash([]);
+  const y = -H / 2;
+  x.fillStyle = '#ffc93a'; x.strokeStyle = '#a87400'; x.lineWidth = 2.5;
+  x.beginPath(); x.arc(0, y - 8, 8, Math.PI, 0); x.stroke();
+  x.beginPath(); x.roundRect(-12, y - 8, 24, 20, 4); x.fill(); x.stroke();
+  x.fillStyle = '#7a5200'; x.beginPath(); x.arc(0, y + 1, 3, 0, 7); x.fill(); x.fillRect(-1.3, y + 1, 2.6, 6);
+}
+// 🏷️ the colour label under a bottle (wobbles red when the bottle is full of the wrong colour)
+function drawTag(cx, cy, c, wrong) {
+  const r = Math.max(10, 12 * scale), wob = wrong ? Math.sin(t * 12) * 3 : 0;
+  x.save(); x.translate(cx + wob, cy);
+  x.fillStyle = '#fff'; x.strokeStyle = wrong ? '#d0404e' : '#c99a5a'; x.lineWidth = 2.5; x.beginPath(); x.roundRect(-r * 1.25, -r, r * 2.5, r * 2, r * 0.6); x.fill(); x.stroke();
+  x.fillStyle = COLORS[c]; x.beginPath(); x.arc(0, 0, r * 0.72, 0, 7); x.fill();
+  if (mode === 'shape') { x.fillStyle = 'rgba(255,255,255,.85)'; shapePath(SHAPES[c], r * 0.48); x.fill(); }
+  x.restore();
+}
 // short English + emoji words above a bottle
 function say(i, text, col) { const q = pos[i]; if (!q) return; floats = floats.filter(f => f.i !== i); floats.push({ i, text, col, x: q.cx, y: q.by - (bh() + NECK + 40) * scale, life: 1.2 }); }
 function drawFloats() {
@@ -431,7 +490,7 @@ function menu() {
   state = 'menu';
   MG.choose({
     id: 'pour', title: '彩虹倒水瓶',
-    html: `<p>點一個瓶子，再點另一個瓶子，就會把上面的水倒過去。<b>只能倒在一樣的顏色上面，或倒進空瓶子</b>。</p><p>把每個瓶子都倒成同一個顏色，瓶子就會蓋上蓋子、開心地消失！不限時間，慢慢想 ^_^</p><p>第 13 關以後是挑戰關：只有一個空瓶、❓ 神秘瓶（下面的顏色要倒開才看得到）、最多 14 種顏色！</p>`,
+    html: `<p>點一個瓶子，再點另一個瓶子，就會把上面的水倒過去。<b>只能倒在一樣的顏色上面，或倒進空瓶子</b>。</p><p>把每個瓶子都倒成同一個顏色，瓶子就會蓋上蓋子、開心地消失！不限時間，慢慢想 ^_^</p><p>第 13 關以後是挑戰關：只有一個空瓶、❓ 神秘瓶（下面的顏色要倒開才看得到）、最多 14 種顏色！</p><p>第 21 關以後換玩法：🥛 小瓶子裝得比較少、💧 細口瓶一次只倒一格、🏷️ 每個瓶子有顏色標籤要倒對、🔒 鎖住的瓶子要先完成一瓶才打開；最後還有更難的大關卡！</p>`,
     modes: [{ id: 'shape', label: '🔷 有小圖案', sub: '每種顏色都有圖案，比較好認' }, { id: 'plain', label: '🎨 只看顏色', sub: '挑戰眼力' }],
     levels: { count: LEVELS.length, max: LEVELS.length, label: n => `${n}（${lvName(n)}）` },
     keys: '點瓶子或拖過去倒　<kbd>1</kbd>～<kbd>9</kbd> 選瓶子　<kbd>Z</kbd> 復原　<kbd>H</kbd> 提示',
@@ -440,10 +499,10 @@ function menu() {
   });
 }
 // sample puzzle behind the start panel
-cap = 4; bottles = makePuzzle(4, 4); hid = bottles.map(b => b.map(() => false)); gone = bottles.map(() => false); fade = bottles.map(() => 0); shake = bottles.map(() => 0); layout();
+cap = 4; R = { k: 4, caps: [], one: false, tags: null, lock: -1 }; bottles = makePuzzle(4, 4).b; hid = bottles.map(b => b.map(() => false)); gone = bottles.map(() => false); fade = bottles.map(() => 0); shake = bottles.map(() => 0); layout();
 menu();
-window.PRT = { get state() { return state; }, floats: () => floats.map(f => f.text), bottles: () => bottles.map(b => b.slice()), get cap() { return cap; }, get anim() { return !!anim; }, gone: () => gone.slice(),
-  at(i) { const q = pos[i], rc = cv.getBoundingClientRect(), B = 3, lx = q.cx, ly = q.by - bh() / 2 * scale; return { x: rc.left + B + lx * (rc.width - 2 * B) / cv.lw, y: rc.top + B + ly * (rc.height - 2 * B) / cv.lh }; } };
+window.PRT = { get state() { return state; }, floats: () => floats.map(f => f.text), bottles: () => bottles.map(b => b.slice()), get cap() { return cap; }, rules: () => JSON.parse(JSON.stringify(R)), get lockOpen() { return lockOpen; }, solveNow: () => solve(bottles.map((b, i) => gone[i] ? [] : b)), tryPour: (i, j) => tryPour(i, j), start: lv => startLevel(lv), hintNow: () => { showHint(); return hint ? [hint.i, hint.j] : null; }, get anim() { return !!anim; }, gone: () => gone.slice(),
+  at(i) { const q = pos[i], rc = cv.getBoundingClientRect(), B = 3, lx = q.cx, ly = q.by - BH(i) / 2 * scale; return { x: rc.left + B + lx * (rc.width - 2 * B) / cv.lw, y: rc.top + B + ly * (rc.height - 2 * B) / cv.lh }; } };
 
 MG.loop(dt => {
   t += dt; MG.fx.step(dt);
