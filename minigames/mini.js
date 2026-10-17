@@ -254,7 +254,7 @@ const MG = (() => {
       const orig = CanvasRenderingContext2D.prototype[k];
       CanvasRenderingContext2D.prototype[k] = function (t, ...a) { return orig.call(this, typeof t === 'string' && t.includes('噗噗') ? heroText(t) : t, ...a); };
     }
-    const fix = n => { if (n.nodeType === 3) { if (n.data.includes('噗噗')) n.data = heroText(n.data); } else if (n.nodeType === 1 && n.tagName !== 'SCRIPT' && n.tagName !== 'STYLE' && !n.hasAttribute('data-keep') && !(n.parentElement && n.parentElement.closest('[data-keep]'))) { for (const c of n.childNodes) fix(c); for (const at of ['aria-label', 'title', 'alt']) { const v = n.getAttribute(at); if (v && v.includes('噗噗')) n.setAttribute(at, heroText(v)); } } };
+    const fix = n => { const el = n.nodeType === 3 ? n.parentElement : n; if (el && el.closest && el.closest('[data-keep]')) return; if (n.nodeType === 3) { if (n.data.includes('噗噗')) { const v = heroText(n.data); if (v !== n.data) n.data = v; } } else if (n.nodeType === 1 && n.tagName !== 'SCRIPT' && n.tagName !== 'STYLE') { for (const c of n.childNodes) fix(c); for (const at of ['aria-label', 'title', 'alt']) { const v = n.getAttribute(at); if (v && v.includes('噗噗') && heroText(v) !== v) n.setAttribute(at, heroText(v)); } } };
     const start = () => { fix(document.body); new MutationObserver(ms => { for (const m of ms) { if (m.type === 'characterData') fix(m.target); else m.addedNodes.forEach(fix); } }).observe(document.body, { childList: true, subtree: true, characterData: true }); };
     if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
   }
