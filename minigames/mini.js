@@ -2,7 +2,7 @@
 'use strict';
 const MG = (() => {
   // 版號：每次合併更新時一起改（修正 → 第三碼 +1；新遊戲／新功能 → 第二碼 +1）
-  const VERSION = '1.1.0', BUILT = '2026/10/17';
+  const VERSION = '1.2.0', BUILT = '2026/10/17';
   const LS = 'puputown.';
   const store = {
     get(k, d) { try { const v = localStorage.getItem(LS + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -248,6 +248,16 @@ const MG = (() => {
   const heroName = () => HERO === 'niu' ? '牛牛' : '噗噗';
   // 噗噗 → 牛牛 in names and menus (the pink friend stays 粉紅噗噗; 「綠色噗噗」 is just 牛牛 now)
   const heroText = t => HERO === 'niu' && typeof t === 'string' ? t.replace(/綠色噗噗/g, '牛牛').replace(/(粉紅|粉紅色|電腦)?噗噗/g, (m, pre) => pre ? m : '牛牛') : t;
+  // 牛牛 mode: words drawn on canvases and written into the page follow the hero too
+  if (HERO === 'niu') {
+    for (const k of ['fillText', 'strokeText', 'measureText']) {
+      const orig = CanvasRenderingContext2D.prototype[k];
+      CanvasRenderingContext2D.prototype[k] = function (t, ...a) { return orig.call(this, typeof t === 'string' && t.includes('噗噗') ? heroText(t) : t, ...a); };
+    }
+    const fix = n => { const el = n.nodeType === 3 ? n.parentElement : n; if (el && el.closest && el.closest('[data-keep]')) return; if (n.nodeType === 3) { if (n.data.includes('噗噗')) { const v = heroText(n.data); if (v !== n.data) n.data = v; } } else if (n.nodeType === 1 && n.tagName !== 'SCRIPT' && n.tagName !== 'STYLE') { for (const c of n.childNodes) fix(c); for (const at of ['aria-label', 'title', 'alt']) { const v = n.getAttribute(at); if (v && v.includes('噗噗') && heroText(v) !== v) n.setAttribute(at, heroText(v)); } } };
+    const start = () => { fix(document.body); new MutationObserver(ms => { for (const m of ms) { if (m.type === 'characterData') fix(m.target); else m.addedNodes.forEach(fix); } }).observe(document.body, { childList: true, subtree: true, characterData: true }); };
+    if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+  }
   function setHero(v) { HERO = v === 'niu' ? 'niu' : 'pupu'; store.set('hero', HERO); applyUI(); }
   // 牛牛, drawn from one shape list (SVG coords 0..200 × 0..220, ground at y≈194) so the hub's SVGs and the games' canvas match
   const NIU_C = { body: '#fffbf3', spot: '#dba06c', line: '#6b4a35', pink: '#ffc2cf', horn: '#fff0c4', hornL: '#c9a058', ink: '#2a1f1a', snout: '#ffe1dc', snoutL: '#e7a9a4', nos: '#c97f86', ribbon: '#ff5d7a', bell: '#ffc83d', bellL: '#b07a00' };
@@ -321,12 +331,13 @@ const MG = (() => {
     ctx.translate(0, r * 0.9); ctx.scale(1 + squash, 1 - squash); ctx.translate(0, -r * 0.9);
     ctx.translate(0, r * 0.97); ctx.scale(k, k); ctx.translate(-100, -194);
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    const draw = x => { const q = p2(x.d); if (x.f) { ctx.fillStyle = x.f; ctx.fill(q); } if (x.s) { ctx.strokeStyle = x.s; ctx.lineWidth = x.w; ctx.stroke(q); } };
+    const SP = opts.spot || C.spot;
+    const draw = x => { const q = p2(x.d); if (x.f) { ctx.fillStyle = x.f === C.spot ? SP : x.f; ctx.fill(q); } if (x.s) { ctx.strokeStyle = x.s; ctx.lineWidth = x.w; ctx.stroke(q); } };
     if (opts.arms) for (const sd of [-1, 1]) { const up = opts.arms === 'up'; ctx.save(); ctx.translate(100 + sd * 82, up ? 112 : 150); ctx.rotate(sd * (up ? -0.9 : 0.4)); ctx.beginPath(); ctx.ellipse(0, 0, 16, 12, 0, 0, 7); ctx.fillStyle = C.body; ctx.fill(); ctx.strokeStyle = C.line; ctx.lineWidth = 4; ctx.stroke(); ctx.restore(); }
-    for (const x of NIU_BACK) if (!(opts.noLeaf && x.horn && opts.hideHorns)) draw(x);
+    for (const x of NIU_BACK) if (!(opts.hideHorns && x.horn)) draw(x);
     const g = ctx.createRadialGradient(70, 90, 4, 100, 130, 110); g.addColorStop(0, '#ffffff'); g.addColorStop(1, C.body);
     ctx.fillStyle = g; ctx.fill(p2(NIU_BODY));
-    ctx.save(); ctx.clip(p2(NIU_BODY)); ctx.fillStyle = C.spot; for (const d of NIU_SPOTS) ctx.fill(p2(d)); ctx.restore();
+    ctx.save(); ctx.clip(p2(NIU_BODY)); ctx.fillStyle = SP; for (const d of NIU_SPOTS) ctx.fill(p2(d)); ctx.restore();
     for (const x of NIU_FRONT) draw(x);
     ctx.save(); ctx.translate(62, 86); ctx.rotate(-0.49); ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.beginPath(); ctx.ellipse(0, 0, 13, 6, 0, 0, 7); ctx.fill(); ctx.restore();
     const face = niuFace(mood, ex, blink);
@@ -555,5 +566,6 @@ const MG = (() => {
     return { show(v) { b.hidden = !v; }, el: b };
   }
 
-  return { get hero() { return HERO; }, get heroName() { return heroName(); }, heroText, setHero, niuSVG, niuDraw, VERSION, BUILT, get big() { return big; }, setBig, get textScale() { return big ? 1.3 : 1; }, praise, WORDS, choose, pauseMenu, resume, barButton, init, stat, fit, panel, hide, panelOpen, best, record, sfx, toast, loop, rand, randi, pick, shuffle, store, puPu, fx, unlock, JELLY };
+  // how far (× r) a hat drawn for 噗噗's taller head has to come down to sit on 牛牛
+  return { get hatDrop() { return HERO === 'niu' ? 0.34 : 0; }, get hero() { return HERO; }, get heroName() { return heroName(); }, heroText, setHero, niuSVG, niuDraw, VERSION, BUILT, get big() { return big; }, setBig, get textScale() { return big ? 1.3 : 1; }, praise, WORDS, choose, pauseMenu, resume, barButton, init, stat, fit, panel, hide, panelOpen, best, record, sfx, toast, loop, rand, randi, pick, shuffle, store, puPu, fx, unlock, JELLY };
 })();
