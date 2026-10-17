@@ -106,7 +106,7 @@ button.rword{border:none;cursor:pointer}
 .stext .w.lit{background:var(--yellow)}
 .sbnav{display:flex;gap:clamp(14px,4vmin,40px)}
 .sqq{font-family:var(--abc);font-size:clamp(24px,5vmin,48px);text-align:center;background:#fff;border-radius:24px;padding:.3em .8em;box-shadow:0 6px 0 rgba(43,58,79,.1);max-width:96%}
-.card.word .spk{position:absolute;top:6px;right:6px;width:44px;height:44px;border-radius:50%;background:#eef2ff;display:flex;align-items:center;justify-content:center;
+.card.word .spk,#rhCards .card .spk{position:absolute;top:6px;right:6px;width:44px;height:44px;border-radius:50%;background:#eef2ff;display:flex;align-items:center;justify-content:center;
   font-family:var(--emoji);font-size:22px;line-height:1}
 .tile{font-size:clamp(20px,4vmin,40px)!important}
 /* ---------- challenge ---------- */
@@ -1989,7 +1989,7 @@ const RHYMES = [
   [['ship', '🚢'], ['lip', '👄'], ['zip', '🤐']], [['van', '🚐'], ['can', '🥫'], ['pan', '🍳']], [['bell', '🔔'], ['shell', '🐚']],
   [['moon', '🌙'], ['spoon', '🥄']], [['pear', '🍐'], ['bear', '🐻'], ['chair', '🪑']], [['sun', '☀️'], ['run', '🏃']]
 ];
-const RH = { q: [], i: 0, total: 6, wrong: 0, busy: false };
+const RH = { q: [], i: 0, total: 6, wrong: 0, busy: false, gen: 0 };
 function rhMake() {
   return shuffle(RHYMES).slice(0, RH.total).map(fam => {
     const [t, r] = shuffle(fam);
@@ -1998,11 +1998,12 @@ function rhMake() {
   });
 }
 async function rhRead(q, f) {
-  // say the word, the question, then each picture with its card lit
+  // say the word, the question, then each picture with its card lit; a newer read or a 🔊 tap (gen++) stops this one
+  const g = ++RH.gen;
   if (!await say([q.t[0] + '.', 300, `What rhymes with ${q.t[0]}?`])) return;
   const cs = $$('#rhCards .card');
   for (let i = 0; i < q.opts.length; i++) {
-    if (!live(f) || RH.busy) return;
+    if (!live(f) || RH.busy || g !== RH.gen) return;
     cs.forEach((c, j) => c.classList.toggle('reading', j === i));
     const ok = await say(q.opts[i][0] + '.');
     cs[i].classList.remove('reading');
@@ -2016,8 +2017,14 @@ function rhAsk() {
   $('#rhPic').innerHTML = `${q.t[1]}<small>${esc(q.t[0])}</small>`;
   const box = $('#rhCards'); box.innerHTML = '';
   for (const o of q.opts) {
-    const b = el('button', 'card', `<span class="e">${o[1]}</span><span class="lab">${esc(o[0])}</span>`);
+    const b = el('button', 'card', `<span class="e">${o[1]}</span><span class="lab">${esc(o[0])}</span><span class="spk" aria-label="Listen">🔊</span>`);
     b.onclick = () => rhTap(b, o, q, f);
+    // 🔊 replays this option's word without answering
+    b.querySelector('.spk').onclick = e => {
+      e.stopPropagation(); if (RH.busy) return; RH.gen++; SFX.pop();
+      $$('#rhCards .card').forEach(c => c.classList.toggle('reading', c === b));
+      say(o[0] + '.').then(() => b.classList.remove('reading'));
+    };
     box.appendChild(b);
   }
   Pip.again = () => rhRead(q, f);
@@ -2025,7 +2032,7 @@ function rhAsk() {
 }
 async function rhTap(b, o, q, f) {
   if (RH.busy || !live(f)) return;
-  $$('#rhCards .card').forEach(c => c.classList.remove('reading'));
+  RH.gen++; $$('#rhCards .card').forEach(c => c.classList.remove('reading'));
   if (o === q.r) {
     RH.busy = true; SFX.ding(); b.classList.add('right'); confetti(...centerOf(b), 8);
     await say(`${cap(q.t[0])}, ${q.r[0]}! They rhyme!`); if (!live(f)) return;
