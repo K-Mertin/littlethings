@@ -172,7 +172,10 @@ const HOLDS = [
   { id: 'sword', name: '玩具劍', draw: (c, r) => { c.save(); c.translate(r * 1.05, r * 0.35); c.rotate(0.35); const g = c.createLinearGradient(-r * 0.08, 0, r * 0.08, 0); g.addColorStop(0, '#e9eef5'); g.addColorStop(1, '#9aa4b0'); c.fillStyle = g; c.beginPath(); c.moveTo(-r * 0.07, -r * 0.2); c.lineTo(-r * 0.07, -r * 1.05); c.lineTo(0, -r * 1.18); c.lineTo(r * 0.07, -r * 1.05); c.lineTo(r * 0.07, -r * 0.2); c.fill(); c.fillStyle = '#ffd23f'; c.fillRect(-r * 0.22, -r * 0.22, r * 0.44, r * 0.08); c.fillStyle = '#8a5a2b'; c.fillRect(-r * 0.05, -r * 0.14, r * 0.1, r * 0.3); dot(c, 0, r * 0.18, r * 0.06, '#ffd23f'); c.restore(); } },
 ];
 const MOODS = [{ id: 'happy', name: '開心' }, { id: 'wink', name: '眨眼' }, { id: 'love', name: '愛心眼' }, { id: 'tongue', name: '吐舌頭' }, { id: 'wow', name: '驚訝' }, { id: 'sleep', name: '睡覺' }];
-const COLORS = Object.keys(MG.JELLY).map((k, i) => ({ id: k, name: ['綠色', '粉紅', '藍色', '黃色', '紫色', '橘色', '紅色', '薄荷'][i] || k }));
+// 牛牛 changes the colour of its spots instead of the whole jelly
+const NIU = MG.hero === 'niu';
+const NIU_COLORS = [['caramel', '焦糖', '#dba06c'], ['choco', '乳牛', '#4a3b36'], ['pink', '粉紅', '#f39ab4'], ['blue', '藍色', '#8ec5ff'], ['gold', '金色', '#f2c14e'], ['mint', '薄荷', '#8fdcbf'], ['purple', '紫色', '#c3a6ff'], ['gray', '灰色', '#b5aca3']].map(([id, name, spot]) => ({ id, name, spot }));
+const COLORS = NIU ? NIU_COLORS : Object.keys(MG.JELLY).map((k, i) => ({ id: k, name: ['綠色', '粉紅', '藍色', '黃色', '紫色', '橘色', '紅色', '薄荷'][i] || k }));
 const BGS = [
   { id: 'park', name: '公園' }, { id: 'beach', name: '海邊' }, { id: 'night', name: '星空' },
   { id: 'snow', name: '雪地' }, { id: 'stage', name: '舞台' }, { id: 'candy', name: '糖果屋' },
@@ -228,10 +231,11 @@ const CATS = [
   { id: 'color', name: '顏色', icon: '🎨', list: COLORS }, { id: 'mood', name: '表情', icon: '😊', list: MOODS }, { id: 'hat', name: '帽子', icon: '🎩', list: HATS },
   { id: 'face', name: '眼鏡', icon: '👓', list: FACES }, { id: 'cloth', name: '衣服', icon: '👗', list: CLOTHES }, { id: 'hold', name: '手上', icon: '🎈', list: HOLDS }, { id: 'bg', name: '背景', icon: '🏞️', list: BGS },
 ];
-const DEFAULT = { color: 'green', mood: 'happy', hat: 'none', face: 'none', cloth: 'none', hold: 'none', bg: 'park' };
-let outfit = Object.assign({}, DEFAULT, MG.store.get('dress.outfit', {}));
+const DEFAULT = { color: NIU ? 'caramel' : 'green', mood: 'happy', hat: 'none', face: 'none', cloth: 'none', hold: 'none', bg: 'park' };
+const OKEY = NIU ? 'dress.outfit.niu' : 'dress.outfit';
+let outfit = Object.assign({}, DEFAULT, MG.store.get(OKEY, {}));
 const find = (list, id) => list.find(i => i.id === id) || list[0];
-const save = () => MG.store.set('dress.outfit', outfit);
+const save = () => MG.store.set(OKEY, outfit);
 
 function drawPupu(c, cx, cy, r, o, tt = 0, squash = 0) {
   const cloth = find(CLOTHES, o.cloth), hat = find(HATS, o.hat), face = find(FACES, o.face), hold = find(HOLDS, o.hold);
@@ -239,11 +243,14 @@ function drawPupu(c, cx, cy, r, o, tt = 0, squash = 0) {
   if (cloth.back) cloth.draw(c, r);
   if (hold.id === 'umbrella') hold.draw(c, r);
   c.restore();
-  MG.puPu(c, cx, cy, r, o.mood, squash, { pal: MG.JELLY[o.color], arms: hold.id !== 'none' ? true : false, noLeaf: hat.id !== 'none' && hat.id !== 'bow' && hat.id !== 'flowers' });
+  if (NIU) MG.niuDraw(c, cx, cy, r, o.mood, squash, { spot: find(COLORS, o.color).spot, arms: hold.id !== 'none', hideHorns: hat.id !== 'none' && !['bow', 'flowers', 'crown'].includes(hat.id), noRibbon: !!cloth.draw && !cloth.back });
+  else MG.puPu(c, cx, cy, r, o.mood, squash, { pal: MG.JELLY[o.color], arms: hold.id !== 'none' ? true : false, noLeaf: hat.id !== 'none' && hat.id !== 'bow' && hat.id !== 'flowers' });
   c.save(); c.translate(cx, cy); c.translate(0, r * 0.9); c.scale(1 + squash, 1 - squash); c.translate(0, -r * 0.9);
-  if (cloth.draw && !cloth.back) cloth.draw(c, r);
-  if (face.draw) face.draw(c, r);
-  if (hat.draw) hat.draw(c, r);
+  // 牛牛's head is lower and flatter, its nose is the big muzzle: nudge hats down and mouth-area items onto the muzzle
+  const at = (dy, fn) => { if (!NIU || !dy) return fn(); c.save(); c.translate(0, dy * r); fn(); c.restore(); };
+  if (cloth.draw && !cloth.back) at(0.16, () => cloth.draw(c, r));
+  if (face.draw) at(face.id === 'nose' ? 0.21 : face.id === 'stache' ? 0.3 : 0, () => face.draw(c, r));
+  if (hat.draw) at(0.3, () => hat.draw(c, r));
   if (hold.draw && hold.id !== 'umbrella') hold.draw(c, r);
   c.restore();
 }
@@ -267,7 +274,7 @@ let cat = MG.store.get('dress.tab', 'hat');
 function thumb(catId, item) {
   const k = Math.min(2, devicePixelRatio || 1), c = document.createElement('canvas'); c.width = 64 * k; c.height = 64 * k; const g = c.getContext('2d'); g.scale(k, k);
   if (catId === 'bg') { g.save(); g.beginPath(); g.roundRect(2, 2, 60, 60, 10); g.clip(); drawBg(g, item.id, 64, 64, 0); g.restore(); return c; }
-  if (catId === 'color') { const p = MG.JELLY[item.id]; MG.puPu(g, 32, 34, 23, 'happy', 0, { pal: p }); return c; }
+  if (catId === 'color') { if (NIU) MG.niuDraw(g, 32, 36, 22, 'happy', 0, { spot: item.spot }); else MG.puPu(g, 32, 34, 23, 'happy', 0, { pal: MG.JELLY[item.id] }); return c; }
   const o = Object.assign({}, DEFAULT, { color: outfit.color });
   if (catId === 'mood') o.mood = item.id; else o[catId] = item.id;
   // zoom in on the part being changed (the rest of the jelly may be cropped)
@@ -275,7 +282,7 @@ function thumb(catId, item) {
   g.save(); g.beginPath(); g.roundRect(0, 0, 64, 64, 10); g.clip(); drawPupu(g, view[0], view[1], view[2], o); g.restore();
   return c;
 }
-const worn = id => { const v = outfit[id]; return id === 'color' ? v !== 'green' : id === 'mood' ? v !== 'happy' : id === 'bg' ? v !== 'park' : v !== 'none'; };
+const worn = id => { const v = outfit[id]; return id === 'color' ? v !== DEFAULT.color : id === 'mood' ? v !== 'happy' : id === 'bg' ? v !== 'park' : v !== 'none'; };
 function renderTabs() {
   tabsEl.innerHTML = '';
   for (const c of CATS) {
@@ -329,16 +336,16 @@ document.getElementById('snap').onclick = () => {
   g.fillStyle = 'rgba(0,0,0,.12)'; g.beginPath(); g.ellipse(150, 284, 70, 10, 0, 0, 7); g.fill();
   drawPupu(g, 150, 210, 74, outfit); g.restore();
   g.fillStyle = '#6b4a5a'; g.font = '700 22px "Noto Sans TC","PingFang TC",system-ui,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillText('噗噗換裝屋 ^_^', PW / 2, PH - 50);
+  g.fillText(MG.heroText('噗噗換裝屋 ^_^'), PW / 2, PH - 50);
   const d = new Date(); g.font = '14px ui-monospace,Menlo,monospace'; g.fillStyle = '#b08a9a'; g.fillText(`${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`, PW / 2, PH - 24);
   const url = c.toDataURL('image/png');
   const flash = document.createElement('div'); flash.style.cssText = 'position:fixed;inset:0;background:#fff;z-index:50;opacity:.9;transition:opacity .4s;pointer-events:none'; document.body.append(flash);
   requestAnimationFrame(() => { flash.style.opacity = '0'; setTimeout(() => flash.remove(), 450); });
   MG.panel({
     title: '拍好了！',
-    html: `<div class="photo"><img alt="噗噗的照片" src="${url}"></div><p>按「存到裝置」就能把照片留下來</p>`,
+    html: `<div class="photo"><img alt="${MG.heroName}的照片" src="${url}"></div><p>按「存到裝置」就能把照片留下來</p>`,
     buttons: [
-      { label: '存到裝置', on: () => { const a = document.createElement('a'); a.href = url; a.download = '噗噗造型.png'; document.body.append(a); a.click(); a.remove(); } },
+      { label: '存到裝置', on: () => { const a = document.createElement('a'); a.href = url; a.download = MG.heroName + '造型.png'; document.body.append(a); a.click(); a.remove(); } },
       { label: '繼續換裝', alt: true, on: () => MG.hide() },
     ],
   });

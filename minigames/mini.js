@@ -321,12 +321,13 @@ const MG = (() => {
     ctx.translate(0, r * 0.9); ctx.scale(1 + squash, 1 - squash); ctx.translate(0, -r * 0.9);
     ctx.translate(0, r * 0.97); ctx.scale(k, k); ctx.translate(-100, -194);
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    const draw = x => { const q = p2(x.d); if (x.f) { ctx.fillStyle = x.f; ctx.fill(q); } if (x.s) { ctx.strokeStyle = x.s; ctx.lineWidth = x.w; ctx.stroke(q); } };
+    const SP = opts.spot || C.spot;
+    const draw = x => { const q = p2(x.d); if (x.f) { ctx.fillStyle = x.f === C.spot ? SP : x.f; ctx.fill(q); } if (x.s) { ctx.strokeStyle = x.s; ctx.lineWidth = x.w; ctx.stroke(q); } };
     if (opts.arms) for (const sd of [-1, 1]) { const up = opts.arms === 'up'; ctx.save(); ctx.translate(100 + sd * 82, up ? 112 : 150); ctx.rotate(sd * (up ? -0.9 : 0.4)); ctx.beginPath(); ctx.ellipse(0, 0, 16, 12, 0, 0, 7); ctx.fillStyle = C.body; ctx.fill(); ctx.strokeStyle = C.line; ctx.lineWidth = 4; ctx.stroke(); ctx.restore(); }
-    for (const x of NIU_BACK) if (!(opts.noLeaf && x.horn && opts.hideHorns)) draw(x);
+    for (const x of NIU_BACK) if (!(opts.hideHorns && x.horn)) draw(x);
     const g = ctx.createRadialGradient(70, 90, 4, 100, 130, 110); g.addColorStop(0, '#ffffff'); g.addColorStop(1, C.body);
     ctx.fillStyle = g; ctx.fill(p2(NIU_BODY));
-    ctx.save(); ctx.clip(p2(NIU_BODY)); ctx.fillStyle = C.spot; for (const d of NIU_SPOTS) ctx.fill(p2(d)); ctx.restore();
+    ctx.save(); ctx.clip(p2(NIU_BODY)); ctx.fillStyle = SP; for (const d of NIU_SPOTS) ctx.fill(p2(d)); ctx.restore();
     for (const x of NIU_FRONT) draw(x);
     ctx.save(); ctx.translate(62, 86); ctx.rotate(-0.49); ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.beginPath(); ctx.ellipse(0, 0, 13, 6, 0, 0, 7); ctx.fill(); ctx.restore();
     const face = niuFace(mood, ex, blink);
