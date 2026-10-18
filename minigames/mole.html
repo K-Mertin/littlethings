@@ -26,20 +26,73 @@
 <script>
 'use strict';
 MG.init({ id: 'mole', title: '敲敲地鼠', stats: ['score', 'time'] });
-let W = 360, H = 520, land = false, HS = 1, RG = 128, LP = 160;   // HS: hole art scale, RG: row gap, LP: landscape side panel width
+let W = 360, H = 520, land = false, HS = 1, RG = 128, CG = 110, LP = 160, GR = 3, GC = 3;   // HS: hole art scale, RG/CG: row/column gap, LP: landscape side panel width
 const cv = document.getElementById('cv'), x = cv.getContext('2d');
 const ROUND = 45;
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+
+// ---------- levels ----------
+// n: holes · goal: moles to whack · k: who pops up (weights) · sp: speed 0..1 · time: seconds in ⏱ mode
+// pat: copy the pattern (first length, rounds) · color: how many hat colours · boss: the mole king's hearts · dbl: chance two pop at once
+const LEVELS = [
+  { name: '經典農場', classic: true, theme: 'farm', n: 9, mk: '🏆' },
+  { name: '小小菜園', theme: 'farm', n: 3, goal: 8, k: { mole: 1 }, sp: 0.05, time: 40, mk: '🌱' },
+  { name: '四個洞', theme: 'farm', n: 4, goal: 10, k: { mole: 1 }, sp: 0.15, time: 40 },
+  { name: '金色地鼠', theme: 'farm', n: 6, goal: 12, k: { mole: 3, gold: 1 }, sp: 0.2, time: 40, mk: '⭐' },
+  { name: '小白兔來玩', theme: 'farm', n: 6, goal: 12, k: { mole: 3, bunny: 1 }, sp: 0.25, time: 40, mk: '🐰' },
+  { name: '安全帽地鼠', theme: 'garden', n: 6, goal: 12, k: { mole: 2, helmet: 1 }, sp: 0.25, time: 45, mk: '🪖' },
+  { name: '跟著敲', theme: 'garden', n: 4, pat: { len: 2, rounds: 3 }, time: 60, mk: '🔁' },
+  { name: '花園大混戰', theme: 'garden', n: 9, goal: 15, k: { mole: 4, gold: 1, bunny: 1 }, sp: 0.3, time: 45 },
+  { name: '顏色帽子', theme: 'garden', n: 6, color: 2, goal: 10, sp: 0.25, time: 45, mk: '🎨' },
+  { name: '地鼠大王', theme: 'farm', n: 9, boss: 6, k: { mole: 1 }, sp: 0.3, time: 60, mk: '👑' },
+  { name: '再跟著敲', theme: 'garden', n: 9, pat: { len: 3, rounds: 4 }, time: 75, mk: '🔁' },
+  { name: '敲兩下', theme: 'farm', n: 9, goal: 18, k: { mole: 3, helmet: 2, bunny: 1 }, sp: 0.4, time: 45, mk: '🪖' },
+  { name: '月光帽子', theme: 'night', n: 9, color: 3, goal: 12, sp: 0.35, time: 50, mk: '🎨' },
+  { name: '月光農場', theme: 'night', n: 9, goal: 20, k: { mole: 4, gold: 1, helmet: 1, bunny: 1 }, sp: 0.45, time: 45, mk: '🌙' },
+  { name: '十二個洞', theme: 'night', n: 12, goal: 18, k: { mole: 4, gold: 1 }, sp: 0.4, time: 45 },
+  { name: '月光跟著敲', theme: 'night', n: 6, pat: { len: 4, rounds: 4 }, time: 80, mk: '🔁' },
+  { name: '帽子大集合', theme: 'garden', n: 12, color: 3, goal: 15, sp: 0.45, time: 50, mk: '🎨' },
+  { name: '大王又來了', theme: 'farm', n: 12, boss: 8, k: { mole: 2, bunny: 1 }, sp: 0.45, time: 60, mk: '👑' },
+  { name: '快快敲', theme: 'night', n: 12, goal: 24, k: { mole: 4, gold: 1, helmet: 1, bunny: 1 }, sp: 0.6, time: 45, dbl: 0.3, mk: '⚡' },
+  { name: '記憶高手', theme: 'garden', n: 9, pat: { len: 5, rounds: 4 }, time: 90, mk: '🔁' },
+  { name: '四種帽子', theme: 'night', n: 12, color: 4, goal: 16, sp: 0.5, time: 55, mk: '🎨' },
+  { name: '地鼠滿滿', theme: 'farm', n: 12, goal: 28, k: { mole: 5, gold: 1, helmet: 2, bunny: 2 }, sp: 0.65, time: 50, dbl: 0.45, mk: '⚡' },
+  { name: '超級大王', theme: 'night', n: 12, boss: 10, k: { mole: 2, helmet: 1, bunny: 1 }, sp: 0.6, time: 70, mk: '👑' },
+  { name: '地鼠冠軍', theme: 'night', n: 12, goal: 30, k: { mole: 5, gold: 2, helmet: 2, bunny: 2 }, sp: 0.75, time: 50, dbl: 0.5, mk: '🏆' },
+];
+const THEME_E = { farm: '🥕', garden: '🌷', night: '🌙' };
+// the first time a new kind of level shows up, a panel explains it once
+const NEWS = {
+  gold: ['⭐ 金色地鼠', '金色地鼠戴著小皇冠，跑得特別快，敲到可以拿很多分！'],
+  bunny: ['🐰 小白兔', '小白兔是好朋友，拿著紅蘿蔔跑出來玩。<b>不要敲牠喔！</b>'],
+  helmet: ['🪖 安全帽地鼠', '戴黃色安全帽的地鼠要<b>敲兩下</b>：第一下把帽子敲掉，第二下才算！'],
+  pat: ['🔁 跟著敲', '地鼠會一隻一隻輪流探出頭，頭上有 1、2、3 的號碼。<b>記住順序</b>，等牠們都躲起來、木牌出現 👆 以後，照一樣的順序敲洞口！敲錯沒關係，牠們會再表演一次。'],
+  color: ['🎨 顏色帽子', '地鼠戴著不同顏色的帽子。看看木牌上的帽子是什麼顏色，<b>只敲一樣顏色的</b>！木牌上的帽子有時候會換顏色喔。'],
+  boss: ['👑 地鼠大王', '地鼠大王又大又調皮，敲一下就會躲到別的洞。把木牌上的愛心全部敲掉就過關！'],
+};
+const newsOf = L => L.classic ? [] : [L.k && L.k.gold && 'gold', L.k && L.k.bunny && 'bunny', L.k && L.k.helmet && 'helmet', L.pat && 'pat', L.color && 'color', L.boss && 'boss'].filter(Boolean);
+const HATS = [{ c: '#ff4f5e', d: '#b8283a', s: 'heart' }, { c: '#3d8bff', d: '#1d4f9e', s: 'star' }, { c: '#ffd23f', d: '#b38400', s: 'dot' }, { c: '#3cc46a', d: '#1f7a3d', s: 'tri' }];
+
+let level = 1, LV = LEVELS[0], bgC = null, bgK = '';
 const holes = []; for (let i = 0; i < 9; i++) holes.push({ x: 0, y: 0, m: null });
-// the 3×3 field is spread over whatever shape the screen has; holes grow a little when there is room
+// the field is spread over whatever shape the screen has; the grid (rows × columns) is picked to fit, holes grow when there is room
 const SKY = () => land ? 46 : 92;
+function gridFor(n, fw, fh) {
+  const opts = { 3: [[3, 1], [1, 3]], 4: [[2, 2], [1, 4], [4, 1]], 6: [[3, 2], [2, 3]], 9: [[3, 3]], 12: [[4, 3], [3, 4]] }[n] || [[3, 3]];
+  let best = opts[0], bs = 1e9;
+  for (const [r, c] of opts) { const s = Math.abs(Math.log((fw / c) / (fh / r) / (land ? 1.25 : 0.86))); if (s < bs - 1e-6) { bs = s; best = [r, c]; } }
+  return best;
+}
 function placeHoles() {
-  const sky = SKY();
-  let cg;
-  if (land) { RG = (H - sky - 12) / 3; cg = (W - LP - 10) / 3; HS = Math.max(1, Math.min(1.5, RG / 92, cg / 118)); }
-  else { RG = (H - sky - 34) / 3; cg = (W - 20) / 3; HS = Math.max(1, Math.min(1.5, RG / 128, cg / 110)); }
-  holes.forEach((h, i) => { const r = Math.floor(i / 3), c = i % 3;
-    if (land) { h.x = LP + 5 + cg * (c + 0.5); h.y = sky + 6 + RG * (r + 0.5) + RG * 0.16; }
-    else { h.x = 10 + cg * (c + 0.5); h.y = sky + RG * (r + 0.5) + RG * 0.2; } });
+  const n = LV.n, sky = SKY();
+  while (holes.length < n) holes.push({ x: 0, y: 0, m: null });
+  holes.length = n;
+  const fx0 = land ? LP + 5 : 10, fw = land ? W - LP - 10 : W - 20, fy0 = land ? sky + 6 : sky, fh = land ? H - sky - 12 : H - sky - 34;
+  [GR, GC] = gridFor(n, fw, fh);
+  RG = fh / GR; CG = fw / GC;
+  HS = clamp(Math.min(RG / (land ? 92 : 128), CG / (land ? 118 : 110)), 0.6, 1.5);
+  holes.forEach((h, i) => { const r = Math.floor(i / GC), c = i % GC; h.r = r; h.c = c; h.x = fx0 + CG * (c + 0.5); h.y = fy0 + RG * (r + 0.5) + RG * (land ? 0.16 : 0.2); });
+  bgK = '';
 }
 cv.onfit = placeHoles;
 MG.fit(cv, (sw, sh) => {
@@ -50,7 +103,7 @@ MG.fit(cv, (sw, sh) => {
   return [W, H];
 });
 addEventListener('mg-big', () => { bgK = ''; });
-const TS = () => MG.textScale, F = (px, w = 900) => `${w} ${Math.round(px * TS())}px system-ui,"Noto Sans TC",sans-serif`;
+const TS = () => MG.textScale, F = (px, w = 900) => `${w} ${Math.round(px * TS())}px system-ui,"Noto Sans TC","Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
 let mode = 'timed';
 const progNow = () => mode === 'timed' ? 1 - left / ROUND : Math.min(0.5, t / 120);
 const mmss = v => `${Math.floor(v / 60)}:${String(Math.floor(v % 60)).padStart(2, '0')}`;
@@ -58,11 +111,25 @@ const rest = MG.barButton('休息一下', () => end());
 rest.el.innerHTML = '休息<span class="bx2">一下</span>';   // narrow phones in 大字模式 show just 休息
 const SND = {}; const snd = (n, a, gap = 60) => { const now = performance.now(); if (now - (SND[n] || 0) < gap) return; SND[n] = now; MG.sfx(n, a); };
 let score, left, spawnT, state = 'ready', pops = [], hits = [], t = 0, combo = 0, misses = 0;
+let prog = 0, winT = 0, tcol = 0, colN = 0, boss = null, pat = null, flash = 0, flies = [];
 
-function reset() { MG.fx.clear(); for (const h of holes) h.m = null; score = 0; left = ROUND; spawnT = 0.6; pops = []; hits = []; t = 0; combo = 0; misses = 0; hud(); }
+function reset() {
+  MG.fx.clear(); placeHoles(); for (const h of holes) { h.m = null; h.hint = 0; }
+  score = 0; left = LV.classic ? ROUND : (LV.time || 45); spawnT = 0.6; pops = []; hits = []; t = 0; combo = 0; misses = 0;
+  prog = 0; winT = 0; flash = 0; colN = 0; tcol = 0; boss = LV.boss ? { hp: LV.boss, max: LV.boss, t: 1.0 } : null; pat = null;
+  if (LV.pat) { pat = { round: 0, rounds: LV.pat.rounds, seq: [], i: 0, phase: 'wait', t: 1.0, replay: false }; }
+  flies = []; for (let i = 0; i < 9; i++) flies.push({ x: Math.random(), y: Math.random(), ph: Math.random() * 6 });
+  hud();
+}
+const goalOf = () => LV.pat ? LV.pat.rounds : LV.boss ? LV.boss : LV.goal || 0;
 function hud() { MG.stat('score', `${score} 分`); MG.stat('time', mode === 'timed' ? `⏱ ${Math.ceil(left)}` : `🐢 ${mmss(t)}`); }
 
-function spawn() {
+// ---------- critters ----------
+const STAY = { mole: 1.05, gold: 0.62, helmet: 1.35, bunny: 1.2, color: 1.25 };
+const stayK = () => (1.3 - (LV.sp || 0) * 0.65) * (mode === 'relax' ? 1.4 : 1);
+const gapK = () => (0.95 - (LV.sp || 0) * 0.45) * (mode === 'relax' ? 1.35 : 1);
+const maxUp = () => (LV.n <= 4 ? (LV.n <= 3 ? 1 : 2) : LV.n <= 6 ? 2 : LV.n <= 9 ? 3 : 4) - (LV.boss ? 1 : 0);
+function spawn() {   // 經典農場: the original endless mix that speeds up
   const free = holes.filter(h => !h.m); if (!free.length) return;
   const h = MG.pick(free), prog = progNow(), r = Math.random();
   let kind = 'mole';
@@ -72,38 +139,128 @@ function spawn() {
   const stay = { mole: 1.05, gold: 0.62, helmet: 1.35, bunny: 1.2 }[kind] * (1 - prog * 0.38);
   h.m = { kind, up: 0, state: 'rise', stay, hp: kind === 'helmet' ? 2 : 1, hitT: 0 };
 }
+function pickKind(k) { let tot = 0; for (const n in k) tot += k[n]; let r = Math.random() * tot; for (const n in k) { r -= k[n]; if (r <= 0) return n; } return 'mole'; }
+function spawnGoal() {
+  const free = holes.filter(h => !h.m); if (!free.length) return;
+  if (holes.filter(h => h.m && h.m.kind !== 'boss').length >= Math.max(1, maxUp())) return;
+  const h = MG.pick(free);
+  let kind, col = 0;
+  if (LV.color) { kind = 'color'; col = Math.random() < 0.45 ? tcol : MG.randi(0, LV.color - 1); }
+  else kind = pickKind(LV.k || { mole: 1 });
+  h.m = { kind, col, up: 0, state: 'rise', stay: STAY[kind] * stayK(), hp: kind === 'helmet' ? 2 : 1, hitT: 0 };
+}
+function spawnBoss() {
+  const free = holes.filter(h => !h.m); if (!free.length) return;
+  const h = MG.pick(free);
+  h.m = { kind: 'boss', up: 0, state: 'rise', stay: (1.75 - (LV.sp || 0) * 0.6) * (mode === 'relax' ? 1.4 : 1), hp: 1, hitT: 0 };
+  snd('boing');
+}
+// 🔁 copy the pattern
+const patLen = () => LV.pat.len + Math.floor(pat.round / 2);
+const showStay = () => (0.8 - Math.min(0.2, patLen() * 0.03)) * (mode === 'relax' ? 1.3 : 1);
+function patNew() {
+  const n = patLen(), seq = [];
+  for (let i = 0; i < n; i++) { let k; do k = MG.randi(0, holes.length - 1); while (seq.length && k === seq[seq.length - 1]); seq.push(k); }
+  pat.seq = seq; pat.replay = false; patShow();
+}
+function patShow() { pat.phase = 'show'; pat.i = 0; pat.t = 0.55; for (const h of holes) h.m = null; }
+function patStep(dt) {
+  pat.t -= dt;
+  if (pat.phase === 'show' && pat.t <= 0) {
+    if (pat.i < pat.seq.length) {
+      const h = holes[pat.seq[pat.i]], st = showStay();
+      h.m = { kind: 'pat', num: pat.i + 1, up: 0, state: 'rise', stay: st, hp: 1, hitT: 0 };
+      MG.sfx('match', pat.i + 1); pat.i++; pat.t = st + 0.42;
+    } else { pat.phase = 'input'; pat.i = 0; MG.sfx('pop'); }
+  } else if (pat.phase === 'wait' && pat.t <= 0) {
+    if (pat.replay) patShow(); else patNew();
+  }
+}
+function patTap(i) {
+  if (pat.phase !== 'input') { MG.sfx('step'); return; }
+  const h = holes[i];
+  if (i === pat.seq[pat.i]) {
+    h.m = { kind: 'pat', num: pat.i + 1, up: 0.5, state: 'rise', stay: 0.35, hp: 1, hitT: 0, ok: true };
+    pat.i++; score += 10; MG.sfx('match', pat.i); snd('pop');
+    MG.fx.burst(h.x, h.y - 30 * HS, { n: 10, colors: ['#ffd23f', '#fff3a0', '#8fe39a'], speed: 150, up: 90, size: 4, shape: 'star', life: 0.6 });
+    if (pat.i >= pat.seq.length) {
+      pat.round++; prog = pat.round; score += 20 * pat.seq.length;
+      pops.push({ x: W / 2 + (land ? LP / 2 : 0), y: SKY() + 40, t: MG.praise(Math.min(5, pat.round + 1)), c: '#ff7a00', life: 1.2 });
+      MG.sfx('yay'); snd('sparkle');
+      if (pat.round >= pat.rounds) { winT = 0.9; pat.phase = 'done'; } else { pat.phase = 'wait'; pat.t = 1.3; }
+    }
+    hud();
+  } else {
+    MG.sfx('miss'); pops.push({ x: h.x, y: h.y - 70 * HS, t: MG.WORDS.oops, c: '#ff5a4e', life: 1 });
+    holes[pat.seq[pat.i]].hint = 1.2;
+    pat.phase = 'wait'; pat.t = 1.5; pat.replay = true; combo = 0;
+  }
+}
+
 function update(dt) {
-  t += dt; left -= dt; MG.fx.step(dt);
-  const prog = progNow();
-  spawnT -= dt;
-  if (spawnT <= 0) { spawn(); if (prog > 0.5 && Math.random() < 0.35) spawn(); spawnT = (0.72 - prog * 0.36) * MG.rand(0.7, 1.25); }
+  t += dt; if (mode === 'timed') left -= dt; MG.fx.step(dt); flash = Math.max(0, flash - dt);
+  for (const h of holes) h.hint = Math.max(0, (h.hint || 0) - dt);
+  if (LV.classic) {
+    const prog = progNow();
+    spawnT -= dt;
+    if (spawnT <= 0) { spawn(); if (prog > 0.5 && Math.random() < 0.35) spawn(); spawnT = (0.72 - prog * 0.36) * MG.rand(0.7, 1.25); }
+  } else if (pat) { if (!winT) patStep(dt); }
+  else if (!winT) {
+    spawnT -= dt;
+    if (spawnT <= 0) { spawnGoal(); if (LV.dbl && Math.random() < LV.dbl) spawnGoal(); spawnT = gapK() * MG.rand(0.7, 1.25); }
+    if (boss && !holes.some(h => h.m && h.m.kind === 'boss')) { boss.t -= dt; if (boss.t <= 0) spawnBoss(); }
+  }
   for (const h of holes) {
     const m = h.m; if (!m) continue;
     if (m.state === 'rise') { m.up = Math.min(1, m.up + dt * 7); if (m.up >= 1) m.state = 'stay'; }
     else if (m.state === 'stay') { m.stay -= dt; if (m.stay <= 0) m.state = 'sink'; }
     else if (m.state === 'sink' || m.state === 'bonk') {
-      if (m.state === 'bonk') { m.hitT += dt; if (m.hitT < 0.25) continue; }
+      if (m.state === 'bonk') { m.hitT += dt; if (m.hitT < (m.kind === 'boss' ? 0.45 : 0.25)) continue; }
       m.up -= dt * 6;
-      if (m.up <= 0) { if (m.state === 'sink' && m.kind !== 'bunny') { if (combo >= 3) { snd('miss'); pops.push({ x: h.x, y: h.y - 40 * HS, t: MG.WORDS.miss, c: '#7b8095', life: 0.8 }); } combo = 0; } h.m = null; }
+      if (m.up <= 0) {
+        if (m.state === 'sink' && m.kind !== 'bunny' && m.kind !== 'pat' && !(m.kind === 'color' && m.col !== tcol)) { if (combo >= 3) { snd('miss'); pops.push({ x: h.x, y: h.y - 40 * HS, t: MG.WORDS.miss, c: '#7b8095', life: 0.8 }); } combo = 0; }
+        if (m.kind === 'boss' && boss) boss.t = m.state === 'bonk' ? 0.5 : 0.7;
+        h.m = null;
+      }
     }
   }
   for (const p of pops) { p.y -= 36 * dt; p.life -= dt; } pops = pops.filter(p => p.life > 0);
   for (const s of hits) s.life -= dt; hits = hits.filter(s => s.life > 0);
-  if (mode === 'timed' && left <= 0) { left = 0; end(); }
+  if (winT) { winT -= dt; if (winT <= 0) { winT = 0; win(); return; } }
+  else if (mode === 'timed' && left <= 0) { left = 0; if (LV.classic) end(); else fail(); }
   hud();
 }
+function goalHit(h) {
+  prog++;
+  if (prog >= goalOf()) { winT = 0.8; for (const o of holes) if (o !== h && o.m && o.m.state !== 'bonk') o.m.state = 'sink'; }
+}
 function whack(i, px, py) {
-  if (state !== 'play') return;
-  const h = holes[i]; hits.push({ x: px ?? h.x, y: py ?? h.y - 30, life: 0.22 });
+  if (state !== 'play' || winT || MG.panelOpen()) return;
+  const h = holes[i]; if (!h) return;
+  hits.push({ x: px ?? h.x, y: py ?? h.y - 30, life: 0.22 });
+  if (pat) { patTap(i); return; }
   const m = h.m;
   if (!m || m.state === 'bonk' || m.up < 0.35) { MG.sfx('step'); return; }
   if (m.kind === 'bunny') {
-    score = Math.max(0, score - 20); combo = 0; m.state = 'bonk'; m.hitT = 0; MG.sfx('miss'); MG.fx.burst(h.x, h.y - 40, { n: 8, colors: ['#ff8ac2', '#fff'], speed: 120, shape: 'star', size: 5 });
-    pops.push({ x: h.x, y: h.y - 70 * HS, t: 'No 🐰❌ −20', c: '#ff5a4e', life: 1 }); return;
+    const loss = LV.classic ? 20 : 10;
+    score = Math.max(0, score - loss); combo = 0; m.state = 'bonk'; m.hitT = 0; MG.sfx('miss'); MG.fx.burst(h.x, h.y - 40, { n: 8, colors: ['#ff8ac2', '#fff'], speed: 120, shape: 'star', size: 5 });
+    pops.push({ x: h.x, y: h.y - 70 * HS, t: `No 🐰❌ −${loss}`, c: '#ff5a4e', life: 1 }); hud(); return;
+  }
+  if (m.kind === 'color' && m.col !== tcol) {   // wrong colour: it just ducks
+    combo = 0; m.state = 'sink'; MG.sfx('boing'); MG.sfx('miss');
+    pops.push({ x: h.x, y: h.y - 70 * HS, t: MG.WORDS.no, c: '#ff5a4e', life: 0.8 }); return;
   }
   if (m.kind === 'helmet' && m.hp > 1) { m.hp--; m.stay += 0.25; MG.sfx('hit'); snd('boing'); MG.fx.burst(h.x, h.y - 50, { n: 10, colors: ['#fff6a0', '#ffd23f', '#fff'], speed: 200, up: 80, size: 2.2, life: 0.4 }); pops.push({ x: h.x, y: h.y - 70 * HS, t: 'Clang! 🪖', c: '#7b8095', life: 0.5 }); return; }
+  if (m.kind === 'boss') {
+    boss.hp--; m.state = 'bonk'; m.hitT = 0; score += 30; shakeT = 0.25;
+    MG.sfx('hit'); snd('boing'); MG.sfx('combo', boss.max - boss.hp);
+    MG.fx.burst(h.x, h.y - 50 * HS, { n: 16, colors: ['#ffd23f', '#ff8ac2', '#fff'], speed: 220, up: 120, size: 5, shape: 'star', life: 0.7 });
+    pops.push({ x: h.x, y: h.y - 90 * HS, t: boss.hp > 0 ? 'Bonk! 👑' : 'You win! 🎉', c: '#a050e0', life: 0.9 });
+    prog = boss.max - boss.hp; if (boss.hp <= 0) { winT = 1.0; MG.sfx('yay'); for (const o of holes) if (o !== h && o.m) o.m.state = 'sink'; }
+    hud(); return;
+  }
   combo++;
-  const base = { mole: 10, gold: 30, helmet: 20 }[m.kind];
+  const base = { mole: 10, gold: 30, helmet: 20, color: 15 }[m.kind];
   const pts = base + Math.min(10, Math.floor(combo / 5) * 2);
   score += pts; m.state = 'bonk'; m.hitT = 0;
   if (m.kind === 'gold') { MG.sfx('coin'); snd('sparkle'); } else { MG.sfx('hit'); snd('pop'); }
@@ -112,41 +269,78 @@ function whack(i, px, py) {
   MG.fx.burst(h.x, h.y - 6, { n: 10, colors: ['#a0703f', '#c79a64', '#7a5230'], speed: 130, up: 90, size: 3.5, shape: 'sq', life: 0.6 });
   if (m.kind === 'gold') MG.fx.burst(h.x, h.y - 40, { n: 12, colors: ['#ffd23f', '#fff3a0', '#ffb300'], speed: 180, up: 120, size: 5, shape: 'star', life: 0.8 });
   pops.push({ x: h.x, y: h.y - 70 * HS, t: `+${pts}`, c: m.kind === 'gold' ? '#e08a00' : '#2e9a4c', life: 0.7 });
+  if (!LV.classic) {
+    if (m.kind === 'color') { colN++; if (colN % 4 === 0 && LV.color > 1 && prog + 1 < goalOf()) { let n; do n = MG.randi(0, LV.color - 1); while (n === tcol); tcol = n; flash = 1.2; snd('whoosh'); pops.push({ x: signPos().x, y: signPos().y + 70, t: 'Change! 🎨', c: HATS[tcol].d, life: 1.2 }); } }
+    goalHit(h);
+  }
+  hud();
 }
+let shakeT = 0;
 // ---------- input ----------
 cv.addEventListener('pointerdown', e => {
   const p = cv.logical(e); let bi = -1, bd = 1e9;
   holes.forEach((h, i) => { const d = Math.hypot(p.x - h.x, (p.y - (h.y - 28 * HS)) * 0.8); if (d < bd) { bd = d; bi = i; } });
-  if (bd < 62 * HS) whack(bi, p.x, p.y); else hits.push({ x: p.x, y: p.y, life: 0.18 });
+  if (bd < 62 * HS) whack(bi, p.x, p.y); else if (state === 'play') hits.push({ x: p.x, y: p.y, life: 0.18 });
 });
-const KEYMAP = { q: 0, w: 1, e: 2, a: 3, s: 4, d: 5, z: 6, x: 7, c: 8, '7': 0, '8': 1, '9': 2, '4': 3, '5': 4, '6': 5, '1': 6, '2': 7, '3': 8 };
-addEventListener('keydown', e => { const k = KEYMAP[e.key.toLowerCase()]; if (k != null && !e.repeat) whack(k); });
+const ROWK = ['qwer', 'asdf', 'zxcv', 'uiop'];
+const keyOf = h => (ROWK[h.r] || '')[h.c] || '';
+const NUMPAD = { '7': 0, '8': 1, '9': 2, '4': 3, '5': 4, '6': 5, '1': 6, '2': 7, '3': 8 };
+addEventListener('keydown', e => {
+  if (e.repeat) return;
+  const k = e.key.toLowerCase();
+  let i = holes.findIndex(h => keyOf(h) === k);
+  if (i < 0 && GR === 3 && GC === 3 && NUMPAD[k] != null) i = NUMPAD[k];
+  if (i >= 0) whack(i);
+});
 
 // ---------- draw ----------
-let bgC = null, bgK = '';
 function farm() {
-  const k = cv._mgScale || 1, key = W + 'x' + H + ':' + k + land; if (key === bgK) return; bgK = key;
+  const k = cv._mgScale || 1, key = W + 'x' + H + ':' + k + land + LV.theme + LV.n + GR; if (key === bgK) return; bgK = key;
   const c = document.createElement('canvas'); c.width = W * k; c.height = H * k; const g = c.getContext('2d'); g.scale(k, k);
   let sd = 3; const rnd = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
-  const skyH = SKY();
-  // sky + distant barn & hills
-  const sk = g.createLinearGradient(0, 0, 0, skyH); sk.addColorStop(0, '#8fd0ff'); sk.addColorStop(1, '#dff3ff'); g.fillStyle = sk; g.fillRect(0, 0, W, skyH);
-  g.fillStyle = '#a7d98a'; g.beginPath(); g.moveTo(0, skyH); for (let xx = 0; xx <= W; xx += 12) g.lineTo(xx, skyH - 10 - Math.sin(xx * 0.02) * 8); g.lineTo(W, skyH); g.fill();
+  const skyH = SKY(), th = LV.theme, night = th === 'night', garden = th === 'garden';
+  // sky + distant hills
+  const sk = g.createLinearGradient(0, 0, 0, skyH);
+  if (night) { sk.addColorStop(0, '#1b2556'); sk.addColorStop(1, '#4a5aa0'); } else if (garden) { sk.addColorStop(0, '#9ad6ff'); sk.addColorStop(1, '#fff0fa'); } else { sk.addColorStop(0, '#8fd0ff'); sk.addColorStop(1, '#dff3ff'); }
+  g.fillStyle = sk; g.fillRect(0, 0, W, skyH);
+  if (night) {
+    for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(255,255,220,${0.4 + rnd() * 0.6})`; g.beginPath(); g.arc(rnd() * W, rnd() * (skyH - 14), 0.6 + rnd() * 1.2, 0, 7); g.fill(); }
+    const mx = land ? W * 0.5 : 40, my = land ? 22 : 30;
+    g.fillStyle = 'rgba(255,250,200,.25)'; g.beginPath(); g.arc(mx, my, 22, 0, 7); g.fill();
+    g.fillStyle = '#fff6c8'; g.beginPath(); g.arc(mx, my, 14, 0, 7); g.fill(); g.fillStyle = 'rgba(200,190,140,.5)'; g.beginPath(); g.arc(mx - 4, my - 3, 3, 0, 7); g.arc(mx + 5, my + 4, 2, 0, 7); g.fill();
+  }
+  g.fillStyle = night ? '#2f5a52' : garden ? '#b5e39a' : '#a7d98a'; g.beginPath(); g.moveTo(0, skyH); for (let xx = 0; xx <= W; xx += 12) g.lineTo(xx, skyH - 10 - Math.sin(xx * 0.02) * 8); g.lineTo(W, skyH); g.fill();
   const bxp = land ? W - 70 : W - 64, byp = skyH - 6;
-  g.fillStyle = '#c0392b'; g.fillRect(bxp - 22, byp - 26, 44, 26); g.fillStyle = '#8e2a20'; g.beginPath(); g.moveTo(bxp - 27, byp - 25); g.lineTo(bxp, byp - 44); g.lineTo(bxp + 27, byp - 25); g.fill();
-  g.fillStyle = '#fff'; g.fillRect(bxp - 8, byp - 18, 16, 18); g.strokeStyle = '#c0392b'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(bxp - 8, byp - 18); g.lineTo(bxp + 8, byp); g.moveTo(bxp + 8, byp - 18); g.lineTo(bxp - 8, byp); g.stroke();
-  g.fillStyle = '#d9d2c0'; g.beginPath(); g.roundRect(bxp + 26, byp - 34, 12, 34, [6, 6, 0, 0]); g.fill();   // silo
-  // field: tilled soil rows
-  const fg = g.createLinearGradient(0, skyH, 0, H); fg.addColorStop(0, '#8fcf62'); fg.addColorStop(1, '#79bd4f'); g.fillStyle = fg; g.fillRect(0, skyH, W, H - skyH);
-  for (let i = 0; i < 260; i++) { const gx = rnd() * W, gy = skyH + rnd() * (H - skyH); g.strokeStyle = `rgba(60,120,40,${0.2 + rnd() * 0.25})`; g.lineWidth = 1.2; g.beginPath(); g.moveTo(gx, gy); g.lineTo(gx - 1.5, gy - 5); g.moveTo(gx + 2, gy); g.lineTo(gx + 3.5, gy - 4); g.stroke(); }
-  // veggie rows between the hole rows
-  const rowsY = [0, 3, 6].map(i => holes[i].y - RG * 0.5).concat(holes[6].y + RG * 0.45);
+  if (garden) {   // a little greenhouse with a blue roof
+    g.fillStyle = 'rgba(220,245,255,.9)'; g.strokeStyle = '#7fb0d0'; g.lineWidth = 1.5; g.beginPath(); g.rect(bxp - 24, byp - 24, 48, 24); g.fill(); g.stroke();
+    g.fillStyle = '#5aa0e0'; g.beginPath(); g.moveTo(bxp - 28, byp - 23); g.lineTo(bxp, byp - 40); g.lineTo(bxp + 28, byp - 23); g.fill();
+    g.strokeStyle = '#7fb0d0'; for (const dx of [-12, 0, 12]) { g.beginPath(); g.moveTo(bxp + dx, byp - 24); g.lineTo(bxp + dx, byp); g.stroke(); }
+    g.fillStyle = '#ff7fb0'; for (const dx of [-18, -6, 6, 18]) { g.beginPath(); g.arc(bxp + dx, byp - 4, 3, 0, 7); g.fill(); }
+  } else {
+    g.fillStyle = night ? '#8e3a30' : '#c0392b'; g.fillRect(bxp - 22, byp - 26, 44, 26); g.fillStyle = night ? '#5e2620' : '#8e2a20'; g.beginPath(); g.moveTo(bxp - 27, byp - 25); g.lineTo(bxp, byp - 44); g.lineTo(bxp + 27, byp - 25); g.fill();
+    g.fillStyle = night ? '#ffe9a0' : '#fff'; g.fillRect(bxp - 8, byp - 18, 16, 18); g.strokeStyle = night ? '#8e3a30' : '#c0392b'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(bxp - 8, byp - 18); g.lineTo(bxp + 8, byp); g.moveTo(bxp + 8, byp - 18); g.lineTo(bxp - 8, byp); g.stroke();
+    g.fillStyle = night ? '#9a96a8' : '#d9d2c0'; g.beginPath(); g.roundRect(bxp + 26, byp - 34, 12, 34, [6, 6, 0, 0]); g.fill();   // silo
+  }
+  // field
+  const fg = g.createLinearGradient(0, skyH, 0, H);
+  if (night) { fg.addColorStop(0, '#4b8a58'); fg.addColorStop(1, '#3a7448'); } else if (garden) { fg.addColorStop(0, '#9ddc70'); fg.addColorStop(1, '#86c95c'); } else { fg.addColorStop(0, '#8fcf62'); fg.addColorStop(1, '#79bd4f'); }
+  g.fillStyle = fg; g.fillRect(0, skyH, W, H - skyH);
+  for (let i = 0; i < 260; i++) { const gx = rnd() * W, gy = skyH + rnd() * (H - skyH); g.strokeStyle = night ? `rgba(20,60,30,${0.2 + rnd() * 0.25})` : `rgba(60,120,40,${0.2 + rnd() * 0.25})`; g.lineWidth = 1.2; g.beginPath(); g.moveTo(gx, gy); g.lineTo(gx - 1.5, gy - 5); g.moveTo(gx + 2, gy); g.lineTo(gx + 3.5, gy - 4); g.stroke(); }
+  // veggie (or flower) rows between the hole rows
+  const rowsY = []; for (let r = 0; r < GR; r++) rowsY.push(holes[r * GC].y - RG * 0.5); rowsY.push(holes[(GR - 1) * GC].y + RG * 0.45);
+  const x0 = land ? LP + 10 : 8, x1 = land ? W - 10 : W - 8;
   for (const ry of rowsY) {
-    if (ry > H - 4) continue;
-    g.fillStyle = '#a0703f'; g.beginPath(); g.roundRect(land ? LP + 10 : 8, ry - 6, land ? W - LP - 20 : W - 16, 12, 6); g.fill();
-    g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(land ? LP + 12 : 10, ry + 2, land ? W - LP - 24 : W - 20, 3);
-    for (let xx = (land ? LP + 26 : 22); xx < W - 14; xx += 26) {
-      if ((xx + ry) % 52 < 26) {   // carrot tops
+    if (ry > H - 4 || ry < skyH - 4) continue;
+    g.fillStyle = garden ? '#9a6a44' : '#a0703f'; g.beginPath(); g.roundRect(x0, ry - 6, x1 - x0, 12, 6); g.fill();
+    g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(x0 + 2, ry + 2, x1 - x0 - 4, 3);
+    for (let xx = x0 + 14; xx < x1 - 6; xx += 26) {
+      if (garden) {   // tulips and daisies
+        const pc = ['#ff6fa8', '#ffd23f', '#b07aff', '#ff8a3d'][Math.floor(xx / 26 + ry) % 4];
+        g.strokeStyle = '#3aa845'; g.lineWidth = 2; g.beginPath(); g.moveTo(xx, ry); g.lineTo(xx, ry - 11); g.stroke();
+        g.fillStyle = '#4fbf55'; g.beginPath(); g.ellipse(xx + 4, ry - 5, 4, 2, -0.6, 0, 7); g.fill();
+        if ((xx + ry) % 52 < 26) { g.fillStyle = pc; g.beginPath(); g.moveTo(xx - 5, ry - 16); g.lineTo(xx - 5, ry - 10); g.quadraticCurveTo(xx, ry - 6, xx + 5, ry - 10); g.lineTo(xx + 5, ry - 16); g.lineTo(xx + 2.5, ry - 13); g.lineTo(xx, ry - 17); g.lineTo(xx - 2.5, ry - 13); g.closePath(); g.fill(); }
+        else { g.fillStyle = '#fff'; for (let a = 0; a < 6; a++) { g.beginPath(); g.arc(xx + Math.cos(a) * 4, ry - 13 + Math.sin(a) * 4, 2.6, 0, 7); g.fill(); } g.fillStyle = '#ffc93a'; g.beginPath(); g.arc(xx, ry - 13, 2.4, 0, 7); g.fill(); }
+      } else if ((xx + ry) % 52 < 26) {   // carrot tops
         g.fillStyle = '#ff8a1c'; g.beginPath(); g.ellipse(xx, ry, 4, 3, 0, 0, 7); g.fill();
         g.strokeStyle = '#3aa845'; g.lineWidth = 2; for (const a of [-0.5, 0, 0.5]) { g.beginPath(); g.moveTo(xx, ry - 2); g.lineTo(xx + Math.sin(a) * 9, ry - 11); g.stroke(); }
       } else {                      // cabbage
@@ -155,25 +349,74 @@ function farm() {
       }
     }
   }
-  // fence on the left in landscape / along the bottom in portrait
-  g.fillStyle = '#f0e0bc'; g.strokeStyle = '#a8865a'; g.lineWidth = 1;
+  if (night) { g.fillStyle = 'rgba(20,30,80,.28)'; g.fillRect(0, skyH, W, H - skyH); }
+  // fence on the left in landscape
+  g.fillStyle = garden ? '#ffffff' : night ? '#b8a88a' : '#f0e0bc'; g.strokeStyle = garden ? '#c8d0d8' : '#a8865a'; g.lineWidth = 1;
   if (land) { for (let yy = 70; yy < H; yy += 26) { g.fillRect(LP - 10, yy, 6, 22); g.strokeRect(LP - 10, yy, 6, 22); } g.fillRect(LP - 14, 70, 4, H - 70); }
   bgC = c;
 }
+function signPos() { return land ? { x: LP / 2, y: 110, w: 140 } : { x: W / 2, y: 22, w: 200 }; }
+function hatIcon(cx, cy, r, hi) {
+  const hh = HATS[hi];
+  x.fillStyle = hh.c; x.strokeStyle = hh.d; x.lineWidth = 2;
+  x.beginPath(); x.arc(cx, cy + r * 0.4, r, Math.PI, 0); x.closePath(); x.fill(); x.stroke();
+  x.fillStyle = '#fff'; x.beginPath(); x.roundRect(cx - r * 1.1, cy + r * 0.25, r * 2.2, r * 0.38, r * 0.18); x.fill(); x.stroke();
+  x.fillStyle = '#fff'; x.beginPath(); x.arc(cx, cy - r * 0.62, r * 0.26, 0, 7); x.fill();
+  sym(hh.s, cx, cy - r * 0.08, r * 0.36, '#fff');
+}
+function sym(s, cx, cy, r, col) {
+  x.fillStyle = col; x.beginPath();
+  if (s === 'heart') { x.moveTo(cx, cy + r * 0.9); x.bezierCurveTo(cx - r * 1.5, cy - r * 0.2, cx - r * 0.6, cy - r * 1.3, cx, cy - r * 0.4); x.bezierCurveTo(cx + r * 0.6, cy - r * 1.3, cx + r * 1.5, cy - r * 0.2, cx, cy + r * 0.9); }
+  else if (s === 'star') { for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.45 : r; x.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr); } x.closePath(); }
+  else if (s === 'tri') { x.moveTo(cx, cy - r); x.lineTo(cx + r, cy + r * 0.75); x.lineTo(cx - r, cy + r * 0.75); x.closePath(); }
+  else x.arc(cx, cy, r * 0.75, 0, 7);
+  x.fill();
+}
 function sign() {
-  const sx = land ? LP / 2 : W / 2, sy = land ? 110 : 22, sw = land ? 140 : 200;
+  const { x: sx, y: sy, w: sw } = signPos();
   x.fillStyle = '#8a5a2b'; x.fillRect(sx - 4, sy + 30, 8, 46); x.fillStyle = 'rgba(0,0,0,.2)'; x.fillRect(sx + 1, sy + 30, 3, 46);
   const g = x.createLinearGradient(0, sy, 0, sy + 46); g.addColorStop(0, '#f2d49c'); g.addColorStop(1, '#d9ac6a');
-  x.fillStyle = g; x.strokeStyle = '#8a5a2b'; x.lineWidth = 3; x.beginPath(); x.roundRect(sx - sw / 2, sy, sw, 46, 8); x.fill(); x.stroke();
+  const fl = flash > 0 ? 1 + Math.sin(flash * 20) * 0.04 : 1;
+  x.save(); x.translate(sx, sy + 23); x.scale(fl, fl); x.translate(-sx, -sy - 23);
+  x.fillStyle = g; x.strokeStyle = flash > 0 && LV.color ? HATS[tcol].d : '#8a5a2b'; x.lineWidth = flash > 0 ? 4 : 3; x.beginPath(); x.roundRect(sx - sw / 2, sy, sw, 46, 8); x.fill(); x.stroke();
   x.strokeStyle = 'rgba(138,90,43,.35)'; x.lineWidth = 1; x.beginPath(); x.moveTo(sx - sw / 2 + 6, sy + 16); x.lineTo(sx + sw / 2 - 6, sy + 16); x.moveTo(sx - sw / 2 + 6, sy + 31); x.lineTo(sx + sw / 2 - 6, sy + 31); x.stroke();
   x.fillStyle = '#6b4a22'; for (const nx of [sx - sw / 2 + 8, sx + sw / 2 - 8]) { x.beginPath(); x.arc(nx, sy + 8, 2, 0, 7); x.fill(); }
-  x.fillStyle = '#5a3a14'; x.font = `900 ${Math.round(Math.min(22 * TS(), (sw - 16) / 4))}px "Noto Sans TC",system-ui,sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('地鼠農場', sx, sy + 24);
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  const fit = (s, max, w = 900) => { let f = max; x.font = `${w} ${f}px "Noto Sans TC",system-ui,"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`; const mw = x.measureText(s).width; if (mw > sw - 18) { f = max * (sw - 18) / mw; x.font = `${w} ${f}px "Noto Sans TC",system-ui,"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`; } };
+  x.fillStyle = '#5a3a14';
+  const goal = goalOf();
+  if (LV.classic) { fit('地鼠農場', Math.min(22 * TS(), (sw - 16) / 4)); x.fillText('地鼠農場', sx, sy + 24); }
+  else if (LV.color) {
+    hatIcon(sx - sw * 0.26, sy + 22, 13, tcol);
+    const s = `${prog}/${goal}`; fit(s, 22 * TS()); x.fillText(s, sx + sw * 0.14, sy + 24);
+  } else if (LV.boss) {
+    const n = boss.max, hw = Math.min(16, (sw - 44) / n), x0 = sx - (n * hw) / 2 + hw / 2 + 12;
+    x.font = `${Math.round(Math.min(22, sw * 0.13))}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`; x.fillText('👑', sx - sw / 2 + 18, sy + 24);
+    for (let i = 0; i < n; i++) sym('heart', x0 + i * hw, sy + 24, hw * 0.42, i < boss.hp ? '#ff4f7a' : 'rgba(90,58,20,.25)');
+  } else if (pat) {
+    const turn = pat.phase === 'input';
+    const s = `🔁 ${Math.min(pat.round + (pat.phase === 'done' ? 0 : 1), pat.rounds)}/${pat.rounds}`; fit(s, 20 * TS()); x.fillText(s, sx - sw * 0.14, sy + 24);
+    x.font = `${Math.round(22 + (turn ? Math.sin(t * 8) * 2 : 0))}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`; x.fillText(turn ? '👆' : pat.phase === 'show' ? '👀' : '⭐', sx + sw * 0.32, sy + 24);
+  } else { const s = `🔨 ${prog}/${goal}`; fit(s, 22 * TS()); x.fillText(s, sx, sy + 24); }
+  x.restore();
+  // progress bar under the sign (goal levels)
+  if (!LV.classic && !LV.boss) {
+    const bw = sw - 20, by = sy + 50, k2 = Math.min(1, prog / goal);
+    x.fillStyle = 'rgba(90,58,20,.35)'; x.beginPath(); x.roundRect(sx - bw / 2, by, bw, 7, 4); x.fill();
+    x.fillStyle = LV.color ? HATS[tcol].c : '#ffb02e'; x.beginPath(); x.roundRect(sx - bw / 2, by, Math.max(7, bw * k2), 7, 4); x.fill();
+  }
   if (land) { // scarecrow-ish pip of the mascot next to the sign
-    MG.puPu(x, sx, sy + 140, 18, 'happy', Math.sin(t * 3) * 0.04, { arms: 'up' });
+    MG.puPu(x, sx, sy + 140, 18, winT ? 'love' : 'happy', Math.sin(t * 3) * 0.04, { arms: 'up' });
   }
 }
 function draw() {
-  farm(); x.drawImage(bgC, 0, 0, W, H);
+  farm();
+  x.save(); if (shakeT > 0) { shakeT -= 1 / 60; x.translate(MG.rand(-3, 3), MG.rand(-3, 3)); }
+  x.drawImage(bgC, 0, 0, W, H);
+  if (LV.theme === 'night') {   // fireflies
+    for (const f of flies) { const fx = (f.x * W + Math.sin(t * 0.7 + f.ph) * 30 + W) % W, fy = SKY() + 10 + f.y * (H - SKY() - 20) + Math.cos(t * 0.9 + f.ph) * 16, a = (Math.sin(t * 3 + f.ph * 2) + 1) / 2;
+      x.fillStyle = `rgba(255,250,150,${0.15 * a})`; x.beginPath(); x.arc(fx, fy, 8, 0, 7); x.fill(); x.fillStyle = `rgba(255,255,190,${0.5 + a * 0.5})`; x.beginPath(); x.arc(fx, fy, 2, 0, 7); x.fill(); }
+  }
   sign();
   holes.forEach((h, i) => drawHole(h, i));
   MG.fx.draw(x);
@@ -190,9 +433,10 @@ function draw() {
     if (k > 0.4 && k < 0.6) { x.strokeStyle = 'rgba(255,255,255,.8)'; x.lineWidth = 2; for (let j = 0; j < 6; j++) { const a2 = j * Math.PI / 3; x.beginPath(); x.moveTo(s.x + Math.cos(a2) * 12, s.y + Math.sin(a2) * 12); x.lineTo(s.x + Math.cos(a2) * 22, s.y + Math.sin(a2) * 22); x.stroke(); } }
   }
   x.textAlign = 'center'; x.textBaseline = 'middle';
-  for (const p of pops) { x.globalAlpha = Math.min(1, p.life * 2); x.font = F(19); x.lineWidth = MG.big ? 5 : 4; x.strokeStyle = '#fff'; x.strokeText(p.t, p.x, p.y); x.fillStyle = p.c; x.fillText(p.t, p.x, p.y); }
+  for (const p of pops) { x.globalAlpha = Math.min(1, p.life * 2); x.font = F(19); x.lineWidth = MG.big ? 5 : 4; x.strokeStyle = '#fff'; const px = clamp(p.x, 70, W - 70); x.strokeText(p.t, px, p.y); x.fillStyle = p.c; x.fillText(p.t, px, p.y); }
   x.globalAlpha = 1;
   if (combo >= 5) { const cxp = land ? LP / 2 : W / 2, cyp = land ? 60 : H - 16 * TS(); x.font = F(18); x.lineWidth = MG.big ? 5 : 4; x.strokeStyle = '#fff'; x.strokeText(MG.WORDS.combo(combo), cxp, cyp); x.fillStyle = '#ff7a00'; x.fillText(MG.WORDS.combo(combo), cxp, cyp); }
+  x.restore();
 }
 function drawHole(h, i) {
   const hx = h.x, hy = h.y;
@@ -204,21 +448,25 @@ function drawHole(h, i) {
   for (const [dx, dy, r] of [[-40, 4, 5], [38, 6, 4.5], [-18, 13, 4], [22, 13, 3.5], [44, -4, 3]]) { x.fillStyle = '#9a6a3a'; x.beginPath(); x.arc(hx + dx, hy + dy, r, 0, 7); x.fill(); x.fillStyle = 'rgba(255,230,190,.25)'; x.beginPath(); x.arc(hx + dx - 1, hy + dy - 1, r * 0.45, 0, 7); x.fill(); }
   const hg = x.createRadialGradient(hx, hy - 4, 4, hx, hy, 40); hg.addColorStop(0, '#120a04'); hg.addColorStop(1, '#3a2611');
   x.fillStyle = hg; x.beginPath(); x.ellipse(hx, hy, 39, 12.5, 0, 0, 7); x.fill();
+  // 🔁 your turn: every hole glows softly; a wrong tap shows where it should have been
+  if (pat && pat.phase === 'input') { x.strokeStyle = `rgba(255,240,120,${0.45 + Math.sin(t * 6) * 0.25})`; x.lineWidth = 4; x.beginPath(); x.ellipse(hx, hy, 46, 16, 0, 0, 7); x.stroke(); }
+  if (h.hint > 0) { x.strokeStyle = `rgba(255,120,60,${Math.min(1, h.hint * 2)})`; x.lineWidth = 5; x.beginPath(); x.ellipse(hx, hy, 50, 18, 0, 0, 7); x.stroke(); }
   const m = h.m;
   if (m) {
-    x.save(); x.beginPath(); x.rect(hx - 60, hy - 120, 120, 120); x.clip();
+    x.save(); x.beginPath(); x.rect(hx - 70, hy - 150, 140, 150); x.clip();
     const top = hy + 6 - 62 * Math.max(0, m.up);
     drawCritter(m, hx, top);
     x.restore();
     if (m.up > 0.6 && m.kind !== 'bunny') {   // paws gripping the rim
-      x.fillStyle = m.kind === 'gold' ? '#ffcf33' : '#8a5a34'; x.strokeStyle = m.kind === 'gold' ? '#b38400' : '#5a3a1e'; x.lineWidth = 1.5;
-      for (const sd of [-1, 1]) { x.beginPath(); x.ellipse(hx + sd * 22, hy - 2, 9, 6, 0, 0, 7); x.fill(); x.stroke(); x.strokeStyle = 'rgba(0,0,0,.35)'; x.beginPath(); x.moveTo(hx + sd * 22 - 3, hy - 4); x.lineTo(hx + sd * 22 - 3, hy + 1); x.moveTo(hx + sd * 22 + 2, hy - 4); x.lineTo(hx + sd * 22 + 2, hy + 1); x.stroke(); x.strokeStyle = m.kind === 'gold' ? '#b38400' : '#5a3a1e'; }
+      const gold = m.kind === 'gold', bs = m.kind === 'boss';
+      x.fillStyle = gold ? '#ffcf33' : bs ? '#7a4a2c' : '#8a5a34'; x.strokeStyle = gold ? '#b38400' : '#5a3a1e'; x.lineWidth = 1.5;
+      for (const sd of [-1, 1]) { const px = hx + sd * (bs ? 28 : 22); x.beginPath(); x.ellipse(px, hy - 2, 9, 6, 0, 0, 7); x.fill(); x.stroke(); x.strokeStyle = 'rgba(0,0,0,.35)'; x.beginPath(); x.moveTo(px - 3, hy - 4); x.lineTo(px - 3, hy + 1); x.moveTo(px + 2, hy - 4); x.lineTo(px + 2, hy + 1); x.stroke(); x.strokeStyle = gold ? '#b38400' : '#5a3a1e'; }
     }
   }
   // front lip of the mound
   x.fillStyle = '#8a5f34'; x.beginPath(); x.ellipse(hx, hy + 3, 49, 15, 0, 0.15, Math.PI - 0.15); x.lineTo(hx - 38, hy + 3); x.ellipse(hx, hy + 3, 38, 9, 0, Math.PI - 0.05, 0.05, true); x.fill();
   x.fillStyle = 'rgba(255,255,255,.75)'; x.font = '700 11px system-ui,sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
-  x.fillText('QWEASDZXC'[i], hx + 44, hy + 14);
+  x.fillText(keyOf(h).toUpperCase(), hx + 44, hy + 14);
   x.restore();
 }
 function drawCritter(m, cx, top) {
@@ -239,8 +487,13 @@ function drawCritter(m, cx, top) {
     x.fillStyle = '#ff8a1c'; x.beginPath(); x.moveTo(-4, 0); x.lineTo(4, 0); x.lineTo(0, 16); x.fill(); x.strokeStyle = '#3aa845'; x.lineWidth = 2; x.beginPath(); x.moveTo(0, 0); x.lineTo(-3, -6); x.moveTo(0, 0); x.lineTo(3, -6); x.stroke(); x.restore();
     return;
   }
+  const boss = m.kind === 'boss';
+  if (boss) { x.save(); x.translate(cx, top + 70); x.scale(1.28, 1.28); x.translate(-cx, -top - 70); top -= 6; }
   const gold = m.kind === 'gold';
-  const body = gold ? ['#fff0a0', '#ffcf33', '#c99a00'] : ['#c79a6a', '#a77447', '#6e4724'];
+  const body = gold ? ['#fff0a0', '#ffcf33', '#c99a00'] : boss ? ['#b88a62', '#8a5d3a', '#553419'] : ['#c79a6a', '#a77447', '#6e4724'];
+  if (boss) { // red cape behind the king
+    x.fillStyle = '#d63a4a'; x.strokeStyle = '#8e1f2c'; x.lineWidth = 2; x.beginPath(); x.moveTo(cx - 30, top + 30); x.quadraticCurveTo(cx - 44, top + 70, cx - 36, top + 80); x.lineTo(cx + 36, top + 80); x.quadraticCurveTo(cx + 44, top + 70, cx + 30, top + 30); x.closePath(); x.fill(); x.stroke();
+  }
   // ears
   x.fillStyle = body[1]; x.strokeStyle = body[2]; x.lineWidth = 2;
   for (const sd of [-1, 1]) { x.beginPath(); x.arc(cx + sd * 21, top + 6, 7, 0, 7); x.fill(); x.stroke(); x.fillStyle = '#e8a8a0'; x.beginPath(); x.arc(cx + sd * 21, top + 6, 3.5, 0, 7); x.fill(); x.fillStyle = body[1]; }
@@ -253,12 +506,30 @@ function drawCritter(m, cx, top) {
   x.strokeStyle = 'rgba(60,40,20,.55)'; x.lineWidth = 1;
   for (const sd of [-1, 1]) for (const dy of [-2, 2]) { x.beginPath(); x.moveTo(cx + sd * 10, top + 35 + dy); x.lineTo(cx + sd * 25, top + 33 + dy * 2.5); x.stroke(); }
   x.fillStyle = '#fff'; x.strokeStyle = 'rgba(0,0,0,.3)'; x.beginPath(); x.roundRect(cx - 4, top + 41, 3.6, 5, 1); x.roundRect(cx + 0.4, top + 41, 3.6, 5, 1); x.fill(); x.stroke();
+  if (boss) {   // curly moustache + big crown
+    x.strokeStyle = '#3a2410'; x.lineWidth = 3; x.lineCap = 'round';
+    for (const sd of [-1, 1]) { x.beginPath(); x.moveTo(cx, top + 39); x.quadraticCurveTo(cx + sd * 10, top + 34, cx + sd * 15, top + 39); x.quadraticCurveTo(cx + sd * 18, top + 43, cx + sd * 14, top + 44); x.stroke(); }
+    x.fillStyle = '#ffd23f'; x.strokeStyle = '#b38400'; x.lineWidth = 2; x.beginPath(); x.moveTo(cx - 18, top + 6); x.lineTo(cx - 20, top - 14); x.lineTo(cx - 9, top - 4); x.lineTo(cx, top - 18); x.lineTo(cx + 9, top - 4); x.lineTo(cx + 20, top - 14); x.lineTo(cx + 18, top + 6); x.closePath(); x.fill(); x.stroke();
+    for (const [gx, gc] of [[-11, '#ff4f5e'], [0, '#3d8bff'], [11, '#3cc46a']]) { x.fillStyle = gc; x.beginPath(); x.arc(cx + gx, top + 1, 2.6, 0, 7); x.fill(); }
+  }
   if (gold) {
     x.fillStyle = '#fff'; for (const [sx2, sy2, ph] of [[24, 0, 0], [-26, 18, 2], [18, 48, 4]]) { const k2 = (Math.sin(t * 6 + ph) + 1) / 2; x.globalAlpha = k2; x.font = `${8 + k2 * 6}px sans-serif`; x.fillText('✦', cx + sx2, top + sy2); }
     x.globalAlpha = 1;
     // tiny crown
     x.fillStyle = '#ffd23f'; x.strokeStyle = '#b38400'; x.lineWidth = 1.5; x.beginPath(); x.moveTo(cx - 10, top + 2); x.lineTo(cx - 10, top - 8); x.lineTo(cx - 5, top - 2); x.lineTo(cx, top - 10); x.lineTo(cx + 5, top - 2); x.lineTo(cx + 10, top - 8); x.lineTo(cx + 10, top + 2); x.closePath(); x.fill(); x.stroke();
     x.fillStyle = '#ff4f5e'; x.beginPath(); x.arc(cx, top - 3, 1.8, 0, 7); x.fill();
+  }
+  if (m.kind === 'color') {   // knitted hat in the colour (with a white sign on it)
+    const hh = HATS[m.col];
+    x.fillStyle = hh.c; x.strokeStyle = hh.d; x.lineWidth = 2;
+    x.beginPath(); x.arc(cx, top + 14, 27, Math.PI, 0); x.closePath(); x.fill(); x.stroke();
+    x.fillStyle = '#fff'; x.beginPath(); x.roundRect(cx - 30, top + 9, 60, 9, 4); x.fill(); x.stroke();
+    x.beginPath(); x.arc(cx, top - 14, 6, 0, 7); x.fill(); x.stroke();
+    sym(hh.s, cx, top - 1, 8, '#fff');
+  }
+  if (m.kind === 'pat') {   // number badge: 1, 2, 3 …
+    x.fillStyle = m.ok ? '#3cc46a' : '#ff7a00'; x.strokeStyle = '#fff'; x.lineWidth = 3; x.beginPath(); x.arc(cx, top - 10, 13, 0, 7); x.fill(); x.stroke();
+    x.fillStyle = '#fff'; x.font = '900 17px system-ui,sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(String(m.num), cx, top - 9);
   }
   if (m.kind === 'helmet' && m.hp > 1) {   // miner helmet with lamp
     const hg = x.createLinearGradient(0, top - 12, 0, top + 18); hg.addColorStop(0, '#ffe680'); hg.addColorStop(1, '#e8a800');
@@ -272,8 +543,10 @@ function drawCritter(m, cx, top) {
     x.fillStyle = '#fff2d6'; x.save(); x.translate(cx + 12, top + 10); x.rotate(0.5); x.fillRect(-9, -3, 18, 6); x.restore();
   }
   if (bonk) { // stars circling the head
+    x.textAlign = 'center'; x.textBaseline = 'middle';
     for (let j = 0; j < 3; j++) { const a = t * 6 + j * 2.1; x.fillStyle = '#ffd34d'; x.font = '15px sans-serif'; x.fillText('★', cx + Math.cos(a) * 24, top - 6 + Math.sin(a) * 6); }
   }
+  if (boss) x.restore();
 }
 function face(cx, cy, bonk, nose, bunny) {
   x.fillStyle = '#2a1c10'; x.strokeStyle = '#2a1c10'; x.lineWidth = 2.2; x.lineCap = 'round';
@@ -287,30 +560,76 @@ function face(cx, cy, bonk, nose, bunny) {
   x.fillStyle = 'rgba(255,255,255,.7)'; x.beginPath(); x.arc(cx - 1.5, cy + 7.5, 1.4, 0, 7); x.fill();
 }
 
-function start(m) { if (m) mode = m; reset(); state = 'play'; MG.hide(); rest.show(mode === 'relax'); }
-function end() {
+// ---------- flow ----------
+function setLevel(n) { level = clamp(n | 0, 1, LEVELS.length); LV = LEVELS[level - 1]; placeHoles(); }
+function start(m, lv) {
+  if (m) mode = m; if (lv) setLevel(lv);
+  reset(); state = 'play'; MG.hide(); rest.show(mode === 'relax');
+  const fresh = newsOf(LV).filter(k => !MG.store.get('mole.seen.' + k, false));
+  if (fresh.length) {
+    fresh.forEach(k => MG.store.set('mole.seen.' + k, true));
+    MG.panel({ title: fresh.map(k => NEWS[k][0]).join('＋'), html: fresh.map(k => `<p>${NEWS[k][1]}</p>`).join(''), buttons: [{ label: '開始', on: () => MG.hide() }] });
+  }
+}
+function end() {   // 經典農場 time up, or 休息一下
   if (state !== 'play') return;
   state = 'over'; rest.show(false); MG.sfx('win'); if (score > 0) MG.sfx('yay');
-  const rec = mode === 'timed' ? MG.record('mole', score) : null;
+  const rec = LV.classic && mode === 'timed' ? MG.record('mole', score) : null;
   MG.panel({
     title: mode === 'timed' ? '時間到！' : '休息一下！',
-    html: `<p>這次敲到</p><div class="big">${score} 分</div>` + (rec ? (rec.isNew && score > 0 ? `<p class="new">新紀錄！^_^</p>` : `<p>最高紀錄：${rec.best} 分</p>`) : `<p>玩了 ${mmss(t)}</p>`),
-    buttons: [{ label: '再玩一次', on: () => start() }, { label: '換模式', alt: true, on: menu }],
+    html: `<p>這次敲到</p><div class="big">${score} 分</div>` + (rec ? (rec.isNew && score > 0 ? `<p class="new">新紀錄！^_^</p>` : `<p>最高紀錄：${rec.best} 分</p>`) : `<p>玩了 ${mmss(t)}</p>`) + (!LV.classic ? `<p>${LV.name}：${prog} / ${goalOf()}</p>` : ''),
+    buttons: [{ label: '再玩一次', on: () => start() }, { label: '選關卡', alt: true, on: menu }],
+  });
+}
+function cleared() { const c = MG.store.get('mole.clear', []); return Array.isArray(c) ? c : []; }
+function win() {
+  if (state !== 'play') return;
+  state = 'over'; rest.show(false); MG.sfx('win'); setTimeout(() => MG.sfx('yay'), 250);
+  const c = cleared(); if (!c.includes(level)) { c.push(level); MG.store.set('mole.clear', c); }
+  MG.fx.burst(W / 2, H * 0.4, { n: 50, colors: ['#ffd23f', '#ff8ac2', '#8fd0ff', '#8fe39a'], shape: 'star', speed: 320, up: 180, size: 7 });
+  const next = level < LEVELS.length ? LEVELS[level] : null;
+  setTimeout(() => { if (state !== 'over') return; MG.panel({
+    title: `第 ${level} 關過關！`,
+    html: `<div class="big">${score} 分</div><p>${LV.name} 完成 ^_^</p>` + (next ? `<p>下一關：${THEME_E[next.theme]} ${next.name}</p>` : '<p>你是敲地鼠冠軍！</p>'),
+    buttons: [...(next ? [{ label: '下一關', on: () => { MG.store.set('mole.pickLevel', level + 1); start(null, level + 1); } }] : []), { label: '再玩一次', alt: !!next, on: () => start() }, { label: '選關卡', alt: true, on: menu }],
+  }); }, 700);
+}
+function fail() {
+  if (state !== 'play') return;
+  state = 'over'; rest.show(false); MG.sfx('over');
+  MG.panel({
+    title: '時間到！',
+    html: `<p>敲到</p><div class="big">${prog} / ${goalOf()}</div><p>差一點點！再試一次吧</p><p>🐢 慢慢玩沒有時間限制喔</p>`,
+    buttons: [{ label: '再試一次', on: () => start() }, { label: '🐢 慢慢玩這關', alt: true, on: () => { MG.store.set('mole.pickMode', 'relax'); start('relax'); } }, { label: '選關卡', alt: true, on: menu }],
   });
 }
 function menu() {
-  state = 'ready';
+  state = 'ready'; rest.show(false);
+  const done = cleared();
   MG.choose({
     id: 'mole', title: '敲敲地鼠',
-    html: `<p>地鼠跑出來偷吃菜了！金色地鼠分數多但跑得快，戴安全帽的要敲兩下，小白兔是好朋友<b>不要敲</b>！</p>`,
-    modes: [{ id: 'relax', label: '🐢 慢慢玩', sub: '不限時間・速度比較慢' }, { id: 'timed', label: '⏱ 45 秒挑戰', sub: '越後面越快' }],
-    keys: '點地鼠就能敲　鍵盤：<kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd> / <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd>　慢慢玩時按上面的「休息一下」結束',
+    html: `<p>地鼠跑出來偷吃菜了！金色地鼠分數多但跑得快，戴安全帽的要敲兩下，小白兔是好朋友<b>不要敲</b>！</p><p>第 1 關是經典玩法；後面每關敲到木牌上的數量就過關，還有 🔁 跟著敲、🎨 顏色帽子、👑 地鼠大王，洞也會越來越多！</p>`,
+    modes: [{ id: 'relax', label: '🐢 慢慢玩', sub: '不限時間・速度比較慢' }, { id: 'timed', label: '⏱ 計時挑戰', sub: '經典 45 秒・越後面越快' }],
+    levels: { count: LEVELS.length, max: LEVELS.length, label: n => `${n}（${THEME_E[LEVELS[n - 1].theme]} ${LEVELS[n - 1].name}${done.includes(n) ? ' ✓' : ''}）`, short: n => `${n}${LEVELS[n - 1].mk || ''}` },
+    keys: '點地鼠就能敲　鍵盤：<kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd> / <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd>（洞多的時候還有 <kbd>R</kbd><kbd>F</kbd><kbd>V</kbd>…）　慢慢玩時按上面的「休息一下」結束',
     playing: () => state === 'play',
-    start: m => start(m),
+    start: (m, lv) => start(m, lv),
   });
 }
+setLevel(Math.min(MG.store.get('mole.pickLevel', 1), LEVELS.length));
 reset(); menu();
-MG.loop(dt => { if (state === 'play') update(dt); else { t += dt; MG.fx.step(dt); } draw(); });
+MG.loop(dt => { if (state === 'play' && !MG.panelOpen()) update(dt); else { t += dt; MG.fx.step(dt); } draw(); });
+
+// ---------- hook for automated tests ----------
+window.MOLE = {
+  get state() { return state; }, get level() { return level; }, get mode() { return mode; }, get prog() { return prog; }, get goal() { return goalOf(); }, get score() { return score; },
+  get grid() { return [GR, GC, HS]; }, levels: LEVELS.length,
+  holes: () => holes.map(h => ({ x: h.x, y: h.y, m: h.m && { kind: h.m.kind, up: h.m.up, st: h.m.state, col: h.m.col, hp: h.m.hp } })),
+  get tcol() { return tcol; }, get boss() { return boss && { ...boss }; }, get pat() { return pat && { phase: pat.phase, seq: pat.seq.slice(), i: pat.i, round: pat.round }; },
+  start: (lv, m = 'relax') => start(m, lv), whack: i => whack(i), step(sec, dt = 1 / 60) { for (let i = 0, n = Math.round(sec / dt); i < n; i++) if (state === 'play') update(dt); },
+  toClient(i) { const h = holes[i], rc = cv.getBoundingClientRect(), B = 3, ly = h.y - 28 * HS; return { x: rc.left + B + h.x * (rc.width - 2 * B) / W, y: rc.top + B + ly * (rc.height - 2 * B) / H }; },
+  menu: () => menu(),
+};
 </script>
 </body>
 </html>
