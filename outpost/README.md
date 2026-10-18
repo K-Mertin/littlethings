@@ -1,12 +1,13 @@
 # Crystal Outpost
 
-A bright little real-time strategy game in the spirit of StarCraft. Mine crystals and gas, build a base, train an army and destroy every enemy building. Play as the **Blue Outpost** (machines), **the Bloom** (plants and bugs) or **the Shards** (living crystal), three factions that build, grow and fight in different ways, in a six-mission campaign or in skirmish matches, 1 vs 1 or 2 vs 2 with a computer ally. Everything is in one file (`index.html`): no build step, no image or sound files, no libraries.
+A bright little real-time strategy game in the spirit of StarCraft. Mine crystals and gas, build a base, train an army and destroy every enemy building. Play as the **Blue Outpost** (machines), **the Bloom** (plants and bugs) or **the Shards** (living crystal), three factions that build, grow and fight in different ways, in three campaigns (one per faction) or in skirmish matches, 1 vs 1 or 2 vs 2 with a computer ally. Everything is in one file (`index.html`): no build step, no image or sound files, no libraries.
 
 ## Play
 Open `index.html` in a browser. The title screen has three choices; a computer-vs-computer match plays behind it.
 
 - **Skirmish**: pick your options and press **Start battle** (or Enter).
-- **Missions**: six short missions that teach the game. Each one unlocks the next and earns up to three stars.
+- **Missions**: three campaigns, one per faction, that teach the game. Each mission unlocks the next one in its campaign and earns up to three stars.
+- **Units**: an encyclopedia of every unit in each faction, with cost, health, attack, and what it is good and bad against.
 - **Continue**: appears when there is an autosaved skirmish to pick up.
 
 ### Skirmish options
@@ -162,6 +163,10 @@ Living crystal. Few units, each one strong and expensive. A Spark starts a warp 
 | Barrier | Prism Forge | 125 + 125 gas | unlocks Barrier |
 
 ## Missions
+Three campaigns, one per faction. Pick the faction with the tabs at the top of the Missions screen.
+
+**Blue Outpost** (Commander Pip)
+
 | # | Mission | You learn | Stars for |
 |---|---|---|---|
 | 1 | First Base | mining, workers, Supply Depot, Barracks, Troopers | finishing, under 5:00, 8+ workers |
@@ -171,7 +176,23 @@ Living crystal. Few units, each one strong and expensive. A Spark starts a warp 
 | 5 | Sky Raid | Hornets and Gunships against three Refineries, with a 9-minute timer | finishing, under 6:00, losing 4 units or fewer |
 | 6 | Final Outpost | a full match on a large snowy map against the Bloom on Hard | winning, under 20:00, losing 40 units or fewer |
 
-Commander Pip explains each step in small message boxes on the left that close by themselves (tap to skip). The objective list above them can be folded away with **–**. Stars and unlocked missions are saved in this browser.
+**The Bloom** (Elder Moss)
+
+| # | Mission | You learn | Stars for |
+|---|---|---|---|
+| 1 | Seeds and Soil | seeds at the Heart Tree, living ground, the Nest, Spitter pairs | finishing, under 5:00, 8+ Sprouts |
+| 2 | Walking Thorns | Uproot a Thorn, walk it to the front and root it, then hold off Blue raiders for five minutes | surviving, a Thorn rooted at the front, Heart Tree never below half health |
+| 3 | Burrow Ambush | burrowed Burrowers ambush a Shard patrol; acid and poison against shields | winning, under 9:00, losing 15 creatures or fewer |
+
+**The Shards** (Oracle Lumen)
+
+| # | Mission | You learn | Stars for |
+|---|---|---|---|
+| 1 | Power and Light | warping buildings, power fields, a forward Obelisk and warping units in at the front | finishing, under 6:00, the Warp Gate never losing power |
+| 2 | Hit and Run | shields, pulling back to recharge, Blink and Barrier against three Blue camps | finishing, under 5:00, losing 2 units or fewer |
+| 3 | The Front Line | a full match against the Blue Outpost with a forward Obelisk | winning, under 18:00, warping 10 units in at the front |
+
+Each campaign's guide explains every step in small message boxes on the left that close by themselves (tap to skip). The objective list above them can be folded away with **–**. Stars and unlocked missions are saved in this browser.
 
 ## The computer
 The computer plays every faction the same way you do: workers, supply, production buildings, gas, towers, upgrades, flyers and an expansion. It attacks in waves that grow over time, defends its base, pulls back if a wave is mostly destroyed, uses Rush, Siege mode, Harden, Burrow, Blink and Barrier, keeps Menders and Wardens with its army, warps Shard reinforcements in at a forward Obelisk, and builds more anti-air when you send flyers. As your ally in 2 vs 2 it also guards your base.

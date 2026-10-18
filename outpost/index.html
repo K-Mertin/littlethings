@@ -150,6 +150,18 @@ details[open] summary::after{content:" ▴"}
 .mcard .mn{font-size:12px;color:var(--mute);font-weight:600;letter-spacing:.08em;text-transform:uppercase}
 .mcard b{font-size:18px}
 .mcard p{margin:0;font-size:13px;color:var(--mute);line-height:1.4}
+.ctabs{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin:4px 0 8px}
+.ctabs button{border:2px solid var(--line);background:#fff;border-radius:12px;padding:6px 14px;font:inherit;font-weight:600;font-size:15px;color:var(--mute);cursor:pointer}
+.ctabs button.on{border-color:var(--blue);background:#dff0ff;color:var(--ink)}
+.ctabs button .cs3{font-size:12px;color:#f2b200;margin-left:4px}
+.xlist{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr));gap:10px;text-align:left}
+.xcard{border:2px solid var(--line);border-radius:14px;background:#fff;padding:10px 12px;display:flex;gap:10px;align-items:flex-start}
+.xcard img{width:64px;height:64px;flex:none;border-radius:12px;background:#f4f8ef;border:1.5px solid var(--line)}
+.xcard b{font-size:16px}
+.xcard .xs{font-size:12px;color:var(--mute);margin:2px 0 4px}
+.xcard .xg,.xcard .xb{font-size:12.5px;line-height:1.35;margin:2px 0 0}
+.xcard .xg::before{content:'▲ ';color:var(--green)}
+.xcard .xb::before{content:'▼ ';color:var(--red)}
 .mstars{color:#f2b200;font-size:16px;letter-spacing:2px}
 .mstars i{color:#d8ccb2;font-style:normal}
 .stars{font-size:40px;letter-spacing:6px;color:#f2b200;margin:2px 0 4px}
@@ -302,6 +314,7 @@ body.small:not(.nosel) #qbar:empty{display:none}
     <div class="menu">
       <button class="big" id="bSkirmish">Skirmish</button>
       <button class="big alt" id="bMissions">Missions</button>
+      <button class="btn2" id="bCodex">Units</button>
       <button class="btn2 hidden" id="bContinue">Continue <span id="contInfo"></span></button>
     </div>
     <details id="howto"><summary>How to play</summary><div class="help" id="helpBox"></div></details>
@@ -323,9 +336,20 @@ body.small:not(.nosel) #qbar:empty{display:none}
 <div id="missions" class="screen hidden">
   <div class="card pnl wide">
     <div class="logo sm">Missions</div>
-    <p class="sub" style="margin-bottom:12px">Six short missions that teach the game, one idea at a time. Finish one to unlock the next.</p>
+    <div class="ctabs" id="ctabs"></div>
+    <p class="sub" style="margin-bottom:12px" id="campBlurb"></p>
     <div class="mlist" id="mlist"></div>
     <div class="row"><button class="btn2" id="bMissBack">← Back</button></div>
+  </div>
+</div>
+
+<div id="codex" class="screen hidden">
+  <div class="card pnl wide">
+    <div class="logo sm">Units</div>
+    <div class="ctabs" id="xtabs"></div>
+    <p class="sub" style="margin-bottom:12px" id="xBlurb"></p>
+    <div class="xlist" id="xlist"></div>
+    <div class="row"><button class="btn2" id="bCodexBack">← Back</button></div>
   </div>
 </div>
 
@@ -1598,7 +1622,7 @@ function spawnOne(b, k, best, target, i, warp) {
   if (warp) {
     u.busyT = u.warpT = 1.4;
     G.parts.push({ k: 'ring', x: u.x, y: u.y, life: .9, max: .9, s: 34, c: '#ffffff' });
-    if (b.team === 0 && !G.demo) { G.stats.trained++; G.stats.made[k] = (G.stats.made[k] || 0) + 1; sfxAt('warp', u.x, u.y); }
+    if (b.team === 0 && !G.demo) { G.stats.trained++; G.stats.warped = (G.stats.warped || 0) + 1; G.stats.made[k] = (G.stats.made[k] || 0) + 1; sfxAt('warp', u.x, u.y); }
     return;
   }
   if (b.team === 0 && !G.demo && !i) { G.stats.trained++; G.stats.made[k] = (G.stats.made[k] || 0) + 1; sfxAt('ready', u.x, u.y); }
@@ -3694,12 +3718,12 @@ const MISSIONS = [
 // ---------- mission state & UI
 function makeMission(def, idx) {
   return {
-    def, idx, objs: [], q: [], cur: null, marks: [], over: false, ui: 0,
+    def, idx, objs: [], q: [], cur: null, marks: [], over: false, ui: 0, who: (typeof CAMPS !== 'undefined' && CAMPS[def.camp || 'blue'] || {}).who || PIP,
     obj(id, text) { this.objs.push({ id, text, done: false }); this.dirty = true; },
     has(id) { return this.objs.some(o => o.id === id); },
     isDone(id) { const o = this.objs.find(o => o.id === id); return !!(o && o.done); },
     set(id, done, text) { const o = this.objs.find(o => o.id === id); if (!o) return; if (text && text !== o.text) { o.text = text; this.dirty = true; } if (done && !o.done) { o.done = true; this.dirty = true; sfx('done'); } },
-    say(text, who = PIP) { this.q.push({ text, who }); },
+    say(text, who) { this.q.push({ text, who: who || this.who }); },
     win() { if (this.over) return; this.over = true; G.over = true; onMissionEnd(true); },
     lose(why) { if (this.over) return; this.over = true; G.over = true; this.why = why; onMissionEnd(false); },
   };
@@ -3722,7 +3746,7 @@ function missionUI(dt) {
   }
   if ((M.ui -= dt) <= 0 || M.dirty) {
     M.ui = .25; M.dirty = false;
-    $('mTitle').textContent = (M.idx + 1) + '. ' + M.def.title;
+    $('mTitle').textContent = (M.def.n || M.idx + 1) + '. ' + M.def.title;
     $('objList').innerHTML = M.objs.map(o => `<li class="${o.done ? 'done' : ''}">${o.text}</li>`).join('');
   }
 }
@@ -3781,6 +3805,304 @@ function loadGame(d) {
   updCreep(); updPower(); computeSupply(); updFog(); bakeTerrain();
   if (d.cam) { cam.z = d.cam.z; cam.x = d.cam.x; cam.y = d.cam.y; clampCam(); }
 }
+
+// =====================================================================
+//  Bloom and Shards campaigns (three missions each)
+// =====================================================================
+const CAMPS = {
+  blue:  { name: 'Blue Outpost', who: 'Commander Pip', blurb: 'Six missions that teach the basics with the Blue Outpost.' },
+  bloom: { name: 'The Bloom', who: 'Elder Moss', blurb: 'Three missions about seeds, living ground and ambushes.' },
+  shard: { name: 'The Shards', who: 'Oracle Lumen', blurb: 'Three missions about power fields, shields and forward warp.' },
+};
+for (const m of MISSIONS) m.camp = m.camp || 'blue';
+const markAt = (tx, ty, r, label, foe) => ({ x: (tx + .5) * T, y: (ty + .5) * T, r: r * T, label, foe });
+const countNear = (team, kinds, x, y, r) => G.ents.filter(e => e.alive && e.team === team && kinds.includes(e.kind) && Math.hypot(e.x - x, e.y - y) < r).length;
+// find a free spot for a w×h building near tile (tx, ty) and reveal the area around it
+function freeSpot(tx, ty, w, h, maxR = 8) {
+  for (let r = 0; r <= maxR; r++) for (let a = 0; a < Math.max(1, r * 8); a++) {
+    const an = a / Math.max(1, r * 8) * 6.28, x = Math.round(tx + Math.cos(an) * r - w / 2), y = Math.round(ty + Math.sin(an) * r - h / 2);
+    let ok = x > 1 && y > 1 && x + w < MW - 1 && y + h < MH - 1;
+    for (let yy = y - 1; ok && yy <= y + h; yy++) for (let xx = x - 1; xx <= x + w; xx++) if (TER[yy * MW + xx] || BLK[yy * MW + xx]) { ok = false; break; }
+    if (ok) return { x: (x + w / 2) * T, y: (y + h / 2) * T };
+  }
+  return { x: (tx + .5) * T, y: (ty + .5) * T };
+}
+function reveal(x, y, r) { const cx = x / T, cy = y / T; for (let yy = Math.max(0, Math.floor(cy - r)); yy <= Math.min(MH - 1, Math.ceil(cy + r)); yy++) for (let xx = Math.max(0, Math.floor(cx - r)); xx <= Math.min(MW - 1, Math.ceil(cx + r)); xx++) if ((xx + .5 - cx) ** 2 + (yy + .5 - cy) ** 2 <= r * r) EXP[yy * MW + xx] = 1; }
+function attackWave(team, comp, from, to) {
+  const out = [];
+  for (const k in comp) out.push(...spawnGroup(team, k, comp[k], from.x, from.y));
+  cmdMove(out, to.x, to.y, true);
+  G.pings.push({ x: from.x, y: from.y, t: 3 });
+  return out;
+}
+
+MISSIONS.push(
+  // ------------------------------------------------------------ The Bloom
+  {
+    camp: 'bloom', fac: 'bloom', title: 'Seeds and Soil', brief: 'Hatch Sprouts from seeds, grow buildings on living ground and raise your first brood. No enemies.',
+    size: 'small', theme: 'meadow', seed: 711,
+    setup(G, map) { placeStart(0, mainOf(map, 0), 4); G.res[0] = { c: 300, g: 0 }; },
+    start(M) {
+      M.obj('sp', 'Hatch 3 Sprouts');
+      M.say('Welcome, little gardener. Everything the Bloom makes hatches at a Heart Tree, and every egg uses one seed.');
+      M.say('Select the Heart Tree and press S three times. Watch the Seeds counter: a tree holds three, and grows a new one about every ten seconds.');
+    },
+    tick(M) {
+      const S = G.stats, sp = S.made.sprout || 0;
+      M.set('sp', sp >= 3, `Hatch 3 Sprouts (${Math.min(3, sp)}/3)`);
+      if (M.isDone('sp') && !M.has('pod')) {
+        M.obj('pod', 'Grow a Seed Pod');
+        M.say('See the dark green ring around the tree? That is living ground. Bloom buildings can only grow there.');
+        M.say('Select a Sprout, press B, then O for a Seed Pod, and plant it on the living ground. The Sprout becomes the Pod.');
+      }
+      if (M.has('pod')) M.set('pod', (S.builtK.pod || 0) >= 1);
+      if (M.isDone('pod') && !M.has('nest')) {
+        M.obj('nest', 'Grow a Nest');
+        M.say('Every building spreads more living ground around itself, so your garden grows outward. Now grow a Nest (B, then N).');
+      }
+      if (M.has('nest')) M.set('nest', (S.builtK.nest || 0) >= 1);
+      if (M.isDone('nest') && !M.has('spit')) {
+        M.obj('spit', 'Hatch 3 pairs of Spitters');
+        M.say('The Nest doesn\'t hatch anything itself: it teaches your Heart Tree new creatures. Select the tree and press P. Spitters hatch two at a time!');
+        M.say('Several eggs grow side by side, so use all your seeds at once when you can.');
+      }
+      if (M.has('spit')) { const n = S.made.spitter || 0; M.set('spit', n >= 3, `Hatch 3 pairs of Spitters (${Math.min(3, n)}/3)`); if (M.isDone('spit')) M.win(); }
+    },
+    stars: () => [['Garden planted', true], ['Done in under 5:00', G.time <= 300], ['8 or more Sprouts', G.ents.filter(e => e.alive && e.team === 0 && e.kind === 'sprout').length >= 8]],
+  },
+  {
+    camp: 'bloom', fac: 'bloom', title: 'Walking Thorns', brief: 'Blue raiders are coming. Walk a Thorn to the front, then hold out for five minutes.',
+    size: 'small', theme: 'desert', seed: 722,
+    setup(G, map) {
+      const P = mainOf(map, 0), E = mainOf(map, 1);
+      const hq = mk('heart', 0, P.x - 1, P.y - 1);
+      const f = towardCenter(P, 6), f2 = towardCenter(P, 9);
+      placeNear('pod', 0, P.x + 1, P.y - 4); placeNear('nest', 0, f.x, f.y); const fp = placeNear('pod', 0, f2.x, f2.y);
+      const back = towardCenter(P, -3); placeNear('thorn', 0, back.x - 2, back.y); placeNear('thorn', 0, back.x + 2, back.y);
+      workersTo(0, hq, 7);
+      const c = tileCenter(towardCenter(P, 7)); spawnGroup(0, 'spitter', 6, c.x, c.y); spawnGroup(0, 'beetle', 2, c.x, c.y);
+      G.up[0].harden = 1;
+      G.res[0] = { c: 350, g: 0 };
+      const front = towardCenter(P, 11.5), fs = fp ? towardCenter({ x: fp.tx + 1, y: fp.ty + 1 }, 3) : front;
+      G.mdata = { hq: hq.id, spawn: tileCenter(E), front: freeSpot(Math.round(fs.x), Math.round(fs.y), 2, 2, 3), minHp: 1, moved: false, waves: [[70, { trooper: 4 }], [130, { trooper: 5, buggy: 2 }], [195, { trooper: 5, guardian: 2 }], [255, { trooper: 6, guardian: 2, buggy: 2 }]], next: 0 };
+      G.mission.marks = [{ x: G.mdata.front.x, y: G.mdata.front.y, r: 2.6 * T, label: 'Plant a Thorn here' }];
+    },
+    start(M) {
+      reveal(G.mdata.front.x, G.mdata.front.y, 4);
+      M.obj('mv', 'Walk a Thorn to the marked spot and root it');
+      M.obj('hold', 'Survive');
+      M.say('Blue machines are marching on our grove. Our Thorns grew in the wrong place: behind the Heart Tree.');
+      M.say('Select a Thorn and press E to uproot it. It walks slowly. Move it to the marked spot, then press E again to root it. It can only root on living ground.');
+    },
+    tick(M) {
+      const D = G.mdata, hq = byId(D.hq);
+      if (!hq) { M.lose('Your Heart Tree was destroyed.'); return; }
+      D.minHp = Math.min(D.minHp, hq.hp / hq.d.hp);
+      if (!D.moved && G.blds.some(b => b.alive && b.team === 0 && b.kind === 'thorn' && b.built >= .6 && Math.hypot(b.x - D.front.x, b.y - D.front.y) < 3 * T)) {
+        D.moved = true; M.set('mv', true); M.marks[0].done = true;
+        M.say('Rooted! It regrows in a few seconds. Try moving the second Thorn up too.');
+        M.say('Bloom creatures heal and run faster on living ground. Fight near your buildings, not out in the sand.');
+      }
+      const left = 300 - G.time;
+      M.set('hold', left <= 0, `Survive <span class="tm">${fmtT(left)}</span> · wave ${Math.min(D.next, 4)}/4`);
+      if (D.next < D.waves.length && G.time >= D.waves[D.next][0]) {
+        attackWave(1, D.waves[D.next][1], D.spawn, hq); D.next++;
+        M.say(D.next === 4 ? 'The last wave! Harden your Beetles (R) when they get hit.' : `Wave ${D.next} is coming!`);
+      }
+      if (left <= 0) M.win();
+    },
+    stars: () => [['Grove saved', true], ['A Thorn rooted at the front', G.mdata.moved], ['Heart Tree never below half health', G.mdata.minHp >= .5]],
+  },
+  {
+    camp: 'bloom', fac: 'bloom', title: 'Burrow Ambush', brief: 'The Shards hide behind shields. Ambush them with Burrowers and melt their shields with acid.',
+    size: 'medium', theme: 'snow', seed: 733,
+    setup(G, map) {
+      const P = mainOf(map, 0), E = mainOf(map, 1);
+      const hq = mk('heart', 0, P.x - 1, P.y - 1);
+      const f = towardCenter(P, 6);
+      placeNear('pod', 0, P.x + 1, P.y - 4); placeNear('pod', 0, P.x + 4, P.y - 2); placeNear('pod', 0, P.x - 3, P.y - 5);
+      placeNear('nest', 0, f.x - 3, f.y + 2); placeNear('hive', 0, f.x + 3, f.y - 3); placeNear('spire', 0, f.x, f.y);
+      const sw = refineryOn(0, hq); workersTo(0, hq, 10, sw);
+      const c = tileCenter(towardCenter(P, 9));
+      spawnGroup(0, 'burrower', 6, c.x, c.y); spawnGroup(0, 'spitter', 8, c.x, c.y); spawnGroup(0, 'wasp', 3, c.x, c.y); spawnGroup(0, 'bomber', 2, c.x, c.y); spawnGroup(0, 'mender', 1, c.x, c.y);
+      G.up[0].burrow = 1; G.up[0].harden = 1;
+      G.res[0] = { c: 500, g: 300 };
+      const ecore = mk('core', 1, E.x - 1, E.y - 1);
+      const ef = towardCenter(E, 5);
+      placeNear('obelisk', 1, E.x + 3, E.y + (E.y > MH / 2 ? -4 : 4)); placeNear('obelisk', 1, ef.x, ef.y);
+      updPower();
+      placeNear('gate', 1, ef.x + 2, ef.y - 2); placeNear('cannon', 1, E.x + 4, E.y); placeNear('cannon', 1, ef.x - 2, ef.y + 2);
+      const etap = refineryOn(1, ecore); workersTo(1, ecore, 8, etap);
+      const mid = tileCenter(towardCenter(E, 12));
+      spawnGroup(1, 'lancer', 5, mid.x, mid.y); spawnGroup(1, 'blade', 3, mid.x, mid.y); spawnGroup(1, 'warden', 1, mid.x, mid.y);
+      G.res[1] = { c: 300, g: 100 };
+      G.ais[1] = new AI(1, 'normal', { passive: true, noBuild: true, noExpand: true });
+      const path = towardCenter(P, 16);
+      G.mdata = { core: ecore.id, trap: tileCenter(path) };
+      G.mission.marks = [{ x: G.mdata.trap.x, y: G.mdata.trap.y, r: 3 * T, label: 'Ambush spot' }];
+      // the Shards send a patrol through the ambush spot after a while
+      G.mdata.patrolAt = 75;
+    },
+    start(M) {
+      M.obj('bur', 'Burrow 3 Burrowers at the ambush spot');
+      M.obj('core', 'Destroy the Shard Crystal Core');
+      M.say('The Shards are living crystal. Their shields soak up hits and grow back, but their health never heals.');
+      M.say('Move your Burrowers to the marked spot and press E to burrow. Hidden underground, they burst out when enemies walk past, and the first bite does double damage.');
+    },
+    tick(M) {
+      const D = G.mdata;
+      if (!M.isDone('bur')) {
+        const n = G.ents.filter(e => e.alive && e.team === 0 && e.kind === 'burrower' && e.burrow === 2 && Math.hypot(e.x - D.trap.x, e.y - D.trap.y) < 4 * T).length;
+        M.set('bur', n >= 3, `Burrow 3 Burrowers at the ambush spot (${Math.min(3, n)}/3)`);
+        if (n >= 3) { M.marks[0].done = true; D.patrolAt = Math.min(D.patrolAt, G.time + 6); M.say('Perfect. Now wait... a Shard patrol is coming this way.'); }
+      }
+      if (D.patrolAt && G.time >= D.patrolAt) {
+        D.patrolAt = 0;
+        const from = tileCenter(towardCenter(G.mains.find(s => s.side === 1), 6));
+        attackWave(1, { lancer: 4, blade: 2 }, from, D.trap);
+        M.say('Here they come! Spitter acid eats halfway through shields, and Wasp poison and Bomber acid pools ignore shields completely.');
+      }
+      if (!byId(D.core)) { M.set('core', true); M.win(); return; }
+      if (!G.blds.some(b => b.team === 0)) M.lose('Your garden was destroyed.');
+    },
+    stars: () => [['Victory', true], ['Done in under 9:00', G.time <= 540], ['Lost 15 creatures or fewer', G.stats.lost <= 15]],
+  },
+  // ------------------------------------------------------------ The Shards
+  {
+    camp: 'shard', fac: 'shard', title: 'Power and Light', brief: 'Warp in buildings, learn about power fields, and send new units straight to the front. No enemies.',
+    size: 'medium', theme: 'meadow', seed: 811,
+    setup(G, map) {
+      const P = mainOf(map, 0);
+      placeStart(0, P, 5); G.res[0] = { c: 600, g: 0 };
+      const fwd = towardCenter(P, 22);
+      G.mdata = { fwd: freeSpot(Math.round(fwd.x), Math.round(fwd.y), 2, 2) };
+    },
+    start(M) {
+      M.obj('ob', 'Warp in an Obelisk');
+      M.say('Welcome, Lumen\'s student. A Spark only starts a warp, then flies straight back to mining while the building forms by itself.');
+      M.say('Select a Spark, press B, then O for an Obelisk, and place it near the Crystal Core. Obelisks give supply and power.');
+    },
+    tick(M) {
+      const S = G.stats, D = G.mdata;
+      if (G.blds.some(b => b.team === 0 && b.kind === 'gate' && b.built >= 1 && b.unpow)) D.unpow = true;
+      M.set('ob', (S.builtK.obelisk || 0) >= 1);
+      if (M.isDone('ob') && !M.has('gate')) {
+        M.obj('gate', 'Warp in a Warp Gate');
+        M.say('Most Shard buildings need power. While placing one, the glowing circles show where power reaches. Warp in a Warp Gate (B, then G) inside a circle.');
+      }
+      if (M.has('gate')) M.set('gate', (S.builtK.gate || 0) >= 1);
+      if (M.isDone('gate') && !M.has('lan')) { M.obj('lan', 'Warp in 2 Lancers'); M.say('Select the Warp Gate and press L for Lancers.'); }
+      if (M.has('lan')) { const n = S.made.lancer || 0; M.set('lan', n >= 2, `Warp in 2 Lancers (${Math.min(2, n)}/2)`); }
+      if (M.isDone('lan') && !M.has('fwd')) {
+        M.obj('fwd', 'Warp in an Obelisk at the far marked spot');
+        M.marks.push({ x: D.fwd.x, y: D.fwd.y, r: 3 * T, label: 'Forward Obelisk' }); reveal(D.fwd.x, D.fwd.y, 5);
+        M.say('Here is the Shards\' great trick. Send a Spark far out to the marked spot and warp an Obelisk there.');
+      }
+      if (M.has('fwd') && !M.isDone('fwd')) {
+        const ok = G.blds.some(b => b.alive && b.team === 0 && b.kind === 'obelisk' && b.built >= 1 && Math.hypot(b.x - D.fwd.x, b.y - D.fwd.y) < 4 * T);
+        M.set('fwd', ok);
+        if (ok) {
+          M.marks[0].done = true;
+          M.obj('warp', 'Warp 2 units in at the forward Obelisk');
+          M.say('Now select the Warp Gate and set its rally point (Y, or right-click) right next to the forward Obelisk. New units will warp in there instead of walking!');
+        }
+      }
+      if (M.has('warp')) {
+        const n = S.warped || 0; M.set('warp', n >= 2, `Warp 2 units in at the forward Obelisk (${Math.min(2, n)}/2)`);
+        if (n >= 2) M.win();
+      }
+    },
+    stars: () => [['Lit up', true], ['Done in under 6:00', G.time <= 360], ['Gate never ran out of power', !G.mdata.unpow]],
+  },
+  {
+    camp: 'shard', fac: 'shard', title: 'Hit and Run', brief: 'A small squad against three Blue camps. Shields grow back, health doesn\'t: strike, step back, strike again.',
+    size: 'medium', theme: 'desert', seed: 822,
+    setup(G, map) {
+      const P = mainOf(map, 0);
+      const start = tileCenter(towardCenter(P, 2));
+      spawnGroup(0, 'blade', 4, start.x, start.y); spawnGroup(0, 'lancer', 4, start.x, start.y); spawnGroup(0, 'warden', 2, start.x, start.y);
+      G.up[0].blink = 1; G.up[0].barrier = 1;
+      const camps = G.sites.filter(s => Math.hypot(s.x - P.x, s.y - P.y) > 18).sort((a, b) => Math.hypot(a.x - P.x, a.y - P.y) - Math.hypot(b.x - P.x, b.y - P.y)).slice(0, 3);
+      const turrets = [];
+      camps.forEach((s, i) => {
+        const t = placeNear('turret', 1, s.x, s.y); if (t) turrets.push(t.id);
+        if (i === 2) placeNear('turret', 1, s.x + 3, s.y + 1);
+        const c = tileCenter(s); spawnGroup(1, 'trooper', 4 + i * 2, c.x, c.y, 'hold'); if (i) spawnGroup(1, 'guardian', i, c.x, c.y, 'hold');
+      });
+      G.mdata = { turrets };
+      G.mission.marks = turrets.map(id => { const t = byId(id); return { x: t.x, y: t.y, r: 2.5 * T, id, foe: 1 }; });
+    },
+    start(M) {
+      M.obj('t', 'Destroy 3 Blue Turrets');
+      M.say('Every Shard has a shield (the blue bar) on top of its health (the green bar). The shield takes hits first and grows back after three quiet seconds.');
+      M.say('So: hit, pull back when shields run low, and go again. Blades can Blink (E) to jump in or out. Wardens recharge shields, and Barrier (R) refills them all at once.');
+    },
+    tick(M) {
+      const D = G.mdata, down = D.turrets.filter(id => !byId(id)).length;
+      for (const m of M.marks) if (m.id && !byId(m.id)) m.done = true;
+      M.set('t', down >= 3, `Destroy 3 Blue Turrets (${down}/3)`);
+      if (down >= 3) { M.win(); return; }
+      if (!G.ents.some(e => e.alive && e.team === 0 && e.d.unit)) M.lose('Your squad was lost.');
+    },
+    stars: () => [['Camps cleared', true], ['Done in under 5:00', G.time <= 300], ['Lost 2 units or fewer', G.stats.lost <= 2]],
+  },
+  {
+    camp: 'shard', fac: 'shard', title: 'The Front Line', brief: 'A full battle against the Blue Outpost. Build a forward Obelisk and warp your army in at the front.',
+    size: 'medium', theme: 'snow', seed: 833, facE: 'blue',
+    setup(G, map) {
+      const P = mainOf(map, 0), E = mainOf(map, 1);
+      placeStart(0, P); placeStart(1, E);
+      G.res[0] = { c: 400, g: 150 }; G.res[1] = { c: 400, g: 150 };
+      G.ais[1] = new AI(1, 'normal');
+      const mid = { x: Math.round(P.x + (E.x - P.x) * .45), y: Math.round(P.y + (E.y - P.y) * .45) };
+      G.mdata = { fwd: freeSpot(mid.x, mid.y, 2, 2, 10) }; reveal(G.mdata.fwd.x, G.mdata.fwd.y, 5);
+      G.mission.marks = [{ x: G.mdata.fwd.x, y: G.mdata.fwd.y, r: 3.5 * T, label: 'The front' }];
+    },
+    start(M) {
+      M.obj('fwd', 'Warp in an Obelisk at the front');
+      M.obj('win', 'Destroy every Blue building');
+      M.say('The Blue Outpost has landed across the snowfield. Build up your base first: Obelisks, Warp Gates and a Prism Tap for gas.');
+      M.say('Then put an Obelisk at the front and rally your gates to it, so reinforcements appear right where the fighting is.');
+      M.say('Beware Blue Tanks in Siege mode: Blink your Blades right on top of them.');
+    },
+    tick(M) {
+      const D = G.mdata;
+      if (!M.isDone('fwd') && G.blds.some(b => b.alive && b.team === 0 && b.kind === 'obelisk' && b.built >= 1 && Math.hypot(b.x - D.fwd.x, b.y - D.fwd.y) < 5 * T)) { M.set('fwd', true); M.marks[0].done = true; M.say('The front is lit. Set your gates\' rally points next to it!'); }
+      if (!G.blds.some(b => b.team === 1)) { M.set('win', true); M.win(); return; }
+      if (!G.blds.some(b => b.team === 0)) M.lose('Your base was destroyed.');
+    },
+    stars: () => [['Victory', true], ['Won in under 18:00', G.time <= 1080], ['Warped 10 units in at the front', (G.stats.warped || 0) >= 10]],
+  },
+);
+MISSIONS.forEach(m => { m.n = MISSIONS.filter(x => x.camp === m.camp).indexOf(m) + 1; });
+const nextInCamp = i => { const m = MISSIONS[i]; const j = MISSIONS.findIndex((x, k) => k > i && x.camp === m.camp); return j; };
+
+// =====================================================================
+//  Unit encyclopedia: what each unit is good and bad against
+// =====================================================================
+const CODEX = {
+  worker:   ['Builds anywhere and repairs buildings and machines', 'Anything that fights'],
+  trooper:  ['Flyers, Spitter swarms, Lancers', 'Tank splash, Spore Bomber acid'],
+  guardian: ['Burrowers, Blades, holding a narrow path', 'Flyers (it can\'t hit them), Prism beams'],
+  buggy:    ['Workers, Sparks, Sprouts, chasing stragglers', 'Turrets, Guardians, Beetles'],
+  tank:     ['Groups on the ground, especially swarms (in Siege mode)', 'Blades that Blink in, Burrowers, flyers'],
+  hornet:   ['Other flyers, raiding workers', 'Turrets, Thorns, Shard Cannons'],
+  gunship:  ['Clumps of ground units, buildings', 'Hornets, Wasps, Gliders (it can\'t hit air)'],
+  sprout:   ['Becomes any building; hatches from seeds', 'Anything that fights'],
+  spitter:  ['Shards (acid eats through shields), flyers, cheap swarms', 'Tank and Gunship splash'],
+  beetle:   ['Troopers and Lancers up close; Harden soaks a hit', 'Prism beams, Tanks in Siege mode'],
+  burrower: ['Ambushes from underground; first bite deals double', 'Scanner Sweep, Guardians'],
+  mender:   ['Keeping a swarm alive between fights', 'Anything that catches it alone'],
+  wasp:     ['Poison skips shields: great against the Shards', 'Hornets, Turrets'],
+  bomber:   ['Acid pools that hurt anything standing in them', 'Hornets, Gliders, Lancers'],
+  spark:    ['Starts a warp and goes straight back to work', 'Anything that fights'],
+  lancer:   ['Flyers, Troopers; shields regrow between fights', 'Spitter acid, Wasp poison, swarms'],
+  blade:    ['Blink onto Tanks and other back-line units', 'Beetles, Guardians, acid pools'],
+  prism:    ['Lines of ground units: the beam hits them all', 'Flyers, Burrower ambushes'],
+  warden:   ['Recharging shields; Barrier refills a whole group', 'Anything that catches it alone'],
+  glider:   ['Other flyers, fast raids', 'Turrets, Thorns, Hornets'],
+  monolith: ['Long lines of ground units', 'Flyers (it can\'t hit air), Wasp poison'],
+};
 
 // =====================================================================
 //  Sound (tiny synth, no files)
@@ -4394,7 +4716,7 @@ addEventListener('keydown', e => {
   if (e.key === 'Shift') keys.Shift = true;
   if (!$('title').classList.contains('hidden')) { if (e.key === 'Enter') { renderSetup(); screen('setup'); } return; }
   if (!$('setup').classList.contains('hidden')) { if (e.key === 'Enter') startSkirmish(); if (e.key === 'Escape') screen('title'); return; }
-  if (!$('missions').classList.contains('hidden')) { if (e.key === 'Escape') screen('title'); return; }
+  if (!$('missions').classList.contains('hidden') || !$('codex').classList.contains('hidden')) { if (e.key === 'Escape') screen('title'); return; }
   if (!G || G.demo) return;
   const k = e.key;
   if (!$('end').classList.contains('hidden')) return;
@@ -4536,13 +4858,42 @@ $('opts').addEventListener('click', e => {
   renderSetup(); sfx('click');
 });
 // ---------- missions list
+let camp = 'blue';
+try { camp = localStorage.getItem('crystalOutpost.camp') || 'blue'; } catch (e) { }
+const FAC_TABS = () => FACS.map(f => [f, CAMPS[f].name]);
 function renderMissions() {
   const pr = loadProgress();
+  if (!CAMPS[camp]) camp = 'blue';
+  $('ctabs').innerHTML = FAC_TABS().map(([f, n]) => { const ids = MISSIONS.map((m, i) => m.camp === f ? i : -1).filter(i => i >= 0), st = ids.reduce((a, i) => a + (pr[i] || 0), 0); return `<button data-c="${f}" class="${f === camp ? 'on' : ''}">${n}<span class="cs3">${st ? '★' + st + '/' + ids.length * 3 : ''}</span></button>`; }).join('');
+  $('campBlurb').textContent = CAMPS[camp].blurb + ' Finish one to unlock the next.';
+  let prev = -1;
   $('mlist').innerHTML = MISSIONS.map((m, i) => {
-    const open = i === 0 || pr[i - 1] > 0, st = pr[i] || 0;
-    return `<button class="mcard${open ? '' : ' locked'}" data-m="${i}"${open ? '' : ' disabled'}><span class="mn">Mission ${i + 1}${open ? '' : ' · locked'}</span><b>${m.title}</b><p>${m.brief}</p><span class="mstars">${'★'.repeat(st)}<i>${'★'.repeat(3 - st)}</i></span></button>`;
+    if (m.camp !== camp) return '';
+    const open = prev < 0 || pr[prev] > 0, st = pr[i] || 0; prev = i;
+    return `<button class="mcard${open ? '' : ' locked'}" data-m="${i}"${open ? '' : ' disabled'}><span class="mn">Mission ${m.n}${open ? '' : ' · locked'}</span><b>${m.title}</b><p>${m.brief}</p><span class="mstars">${'★'.repeat(st)}<i>${'★'.repeat(3 - st)}</i></span></button>`;
   }).join('');
 }
+$('ctabs').addEventListener('click', e => { const b = e.target.closest('button[data-c]'); if (!b) return; camp = b.dataset.c; try { localStorage.setItem('crystalOutpost.camp', camp); } catch (er) { } sfx('click'); renderMissions(); });
+// ---------- unit encyclopedia
+let xfac = 'blue';
+function codexIcon(k, f) {
+  const t = G.teams[0], keep = { fac: t.fac, col: t.col };
+  t.fac = f; t.col = PAL_FOR[f][0];
+  try { return icon(k, 0); } finally { t.fac = keep.fac; t.col = keep.col; }
+}
+function renderCodex() {
+  $('xtabs').innerHTML = FAC_TABS().map(([f, n]) => `<button data-c="${f}" class="${f === xfac ? 'on' : ''}">${n}</button>`).join('');
+  $('xBlurb').innerHTML = FAC_NOTE[xfac];
+  const F = FAC[xfac], units = [F.roles.worker, ...F.units.rax, ...F.units.fac, ...F.units.air];
+  $('xlist').innerHTML = units.map(k => {
+    const d = DEF[k], w = d.wpn, cx = CODEX[k] || ['', ''];
+    const cost = d.cost[0] + ' crystals' + (d.cost[1] ? ' + ' + d.cost[1] + ' gas' : '') + (d.pair ? ' (for two)' : '');
+    const hp = (d.shield ? d.shield + ' shield + ' : '') + d.hp + ' health';
+    const atk = w ? `${w.dmg} damage${w.splash ? ' splash' : w.beam ? ' beam' : w.poison ? ' + poison' : ''}, range ${w.melee ? 'melee' : (w.range / T).toFixed(1)}, hits ${w.air ? 'air + ground' : 'ground'}` : d.heal ? (d.heal.shield ? 'recharges shields' : 'heals') + ' ' + d.heal.rate + '/s' : 'no attack';
+    return `<div class="xcard"><img src="${codexIcon(k, xfac)}" alt=""><div><b>${d.name}</b>${d.air ? ' <span class="xs">· flying</span>' : ''}<div class="xs">${cost} · ${d.sup * (d.pair || 1)} supply · ${hp}<br>${atk}${d.req ? ' · needs ' + DEF[d.req].name : ''}</div><p class="xg">${cx[0]}</p><p class="xb">${cx[1]}</p></div></div>`;
+  }).join('');
+}
+$('xtabs').addEventListener('click', e => { const b = e.target.closest('button[data-c]'); if (!b) return; xfac = b.dataset.c; sfx('click'); renderCodex(); });
 $('mlist').addEventListener('click', e => { const b = e.target.closest('.mcard'); if (!b || b.disabled) return; startMission(+b.dataset.m); });
 
 function loadWins() { try { return JSON.parse(localStorage.getItem('crystalOutpost.wins')) || {}; } catch (e) { return {}; } }
@@ -4552,7 +4903,7 @@ function showTitle() {
   $('bContinue').classList.toggle('hidden', !sv);
   if (sv) $('contInfo').textContent = `(${FAC[sv.teams[0].fac].short} vs ${FAC[sv.teams[sv.teams.length > 2 ? 2 : 1].fac].short}${sv.teams.length > 2 ? ', 2v2' : ''}, ${fmtT(sv.time)})`;
 }
-function screen(id) { for (const s of ['title', 'setup', 'missions', 'pause', 'end']) $(s).classList.toggle('hidden', s !== id); }
+function screen(id) { for (const s of ['title', 'setup', 'missions', 'codex', 'pause', 'end']) $(s).classList.toggle('hidden', s !== id); }
 function startDemo() {
   const R = Math.random;
   newGame({ demo: true, seed: (R() * 1e9) | 0, diff: 'normal', diffA: 'normal', fac: FACS[Math.floor(R() * 3)], facE: FACS[Math.floor(R() * 3)], size: 'medium', theme: 'random' });
@@ -4578,8 +4929,9 @@ function startSkirmish() {
 }
 function startMission(i) {
   const def = MISSIONS[i]; if (!def) return;
+  camp = def.camp || 'blue';
   lastStart = { kind: 'mission', i };
-  newGame({ mission: def, missionIdx: i, seed: def.seed, mode: '1v1', size: def.size, theme: def.theme, fac: 'blue', facE: def.facE || 'blue', diff: 'normal', startRes: 'standard', speed: 'normal', mapOpt: def.mapOpt });
+  newGame({ mission: def, missionIdx: i, seed: def.seed, mode: '1v1', size: def.size, theme: def.theme, fac: def.fac || 'blue', facE: def.facE || 'blue', diff: 'normal', startRes: 'standard', speed: 'normal', mapOpt: def.mapOpt });
   enterGame();
 }
 function continueGame() { const d = readSave(); if (!d) return; lastStart = { kind: 'skirmish' }; loadGame(d); enterGame(); if (d.cam) { cam.x = d.cam.x; cam.y = d.cam.y; cam.z = d.cam.z; clampCam(); } }
@@ -4627,11 +4979,11 @@ function onMissionEnd(win) {
     $('endStars').innerHTML = '★'.repeat(stars) + '<i>' + '★'.repeat(3 - stars) + '</i>';
     $('endStarList').classList.toggle('hidden', !win);
     $('endStarList').innerHTML = list.map(([l, ok]) => `<span class="${ok ? 'ok' : ''}">${ok ? '★' : '☆'} ${l}</span>`).join(' &nbsp; ');
-    $('bNext').classList.toggle('hidden', !win || i >= MISSIONS.length - 1);
+    $('bNext').classList.toggle('hidden', !win || nextInCamp(i) < 0);
     $('bEndMissions').classList.remove('hidden');
     $('bAgain').textContent = win ? 'Replay' : 'Try again';
     const st = G.stats;
-    endScreen(win, win ? 'Mission complete!' : 'Mission failed', `${i + 1}. ${M.def.title} · ${fmtT(G.time)}` + (win ? '' : ' · ' + (M.why || '')),
+    endScreen(win, win ? 'Mission complete!' : 'Mission failed', `${CAMPS[M.def.camp].name} ${M.def.n}. ${M.def.title} · ${fmtT(G.time)}` + (win ? '' : ' · ' + (M.why || '')),
       [[st.trained, 'Units trained'], [st.killed, 'Enemy units destroyed'], [st.razed, 'Enemy buildings destroyed'], [st.lost, 'Units lost']]);
   }, 1800);
 }
@@ -4641,11 +4993,13 @@ $('bContinue').addEventListener('click', continueGame);
 $('bGo').addEventListener('click', startSkirmish);
 $('bSetupBack').addEventListener('click', () => screen('title'));
 $('bMissBack').addEventListener('click', () => screen('title'));
+$('bCodex').addEventListener('click', () => { audio(); xfac = FAC[setup.fac] ? setup.fac : 'blue'; renderCodex(); screen('codex'); });
+$('bCodexBack').addEventListener('click', () => screen('title'));
 $('bResume').addEventListener('click', togglePause);
 $('bRestart').addEventListener('click', restart);
 $('bQuit').addEventListener('click', toTitle);
 $('bAgain').addEventListener('click', restart);
-$('bNext').addEventListener('click', () => startMission((lastStart && lastStart.i || 0) + 1));
+$('bNext').addEventListener('click', () => { const j = nextInCamp(lastStart && lastStart.i || 0); if (j >= 0) startMission(j); });
 $('bEndMissions').addEventListener('click', () => { toTitle(); renderMissions(); screen('missions'); });
 $('bEndTitle').addEventListener('click', toTitle);
 
