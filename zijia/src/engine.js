@@ -196,7 +196,7 @@ const GUESTS={
   hogan:{pilot:'霍岡將軍',mech:'赤環將機',ch:'將',cls:'general',spirits:['熱血','鐵壁'],sp:50,lines:['赤環的武人，豈會落後！','看好了，小子們！']},
 };
 const DIFF=[{name:'簡單',lv:-2,exp:1.25,desc:'敵人等級 −2，經驗值 ×1.25。適合想輕鬆看劇情的玩家。'},{name:'普通',lv:0,exp:1,desc:'標準難度。'},{name:'困難',lv:2,exp:1,desc:'敵人等級 +2（已滿級的敵人改為能力提升）。'}];
-const ROUTE_NAME={common:'共通路線',A:'守護之字',B:'赤環之誓',H:'無銘之甲',T:'始甲之名'};
+const ROUTE_NAME={common:'共通路線',A:'守護之字',B:'赤環之誓',H:'無銘之甲',T:'始甲之名',free:'自由戰場'};
 
 // =====================================================================
 // 狀態
@@ -213,7 +213,8 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const dist=(a,b)=>Math.abs(a.x-b.x)+Math.abs(a.y-b.y);
 const pick=a=>a[Math.floor(Math.random()*a.length)];
 const fmt=n=>Math.round(n).toLocaleString('en-US');
-const CH=()=>CHAPTERS[G.chapterId];
+const CH=()=>G.free||CHAPTERS[G.chapterId];
+for(const k in CHAPTERS) CHAPTERS[k].id=k; // 分歧點存檔等功能需要章節 id
 const IN_HALL=typeof location!=='undefined'&&/\/zijia\/(index\.html)?$/.test(location.pathname);   // 只有放在遊戲大廳（littlethings）裡時才顯示返回連結
 const HALL_URL='../index.html';
 // ---------------- 音效 ----------------
@@ -376,7 +377,7 @@ function mkGuest(id,lv,x,y){
   return baseUnit({side:'P',cid:id,guest:true,cls:g.cls,lv,name:g.mech,pilot:g.pilot,ch:g.ch,x,y,s,c,sp:g.sp,spirits:g.spirits,lines:g.lines,will:110});
 }
 function mkEnemy(d){
-  const c=CLS(d.c), df=DIFF[G.diff==null?1:G.diff], adj=(CH()&&CH().lvAdj)||0, raw=(d.lv||1)+df.lv+adj, lv=clamp(raw,1,MAX_LV), s=statsOf(d.c,lv);
+  const c=CLS(d.c), df=DIFF[G.diff==null?1:G.diff], adj=(CH()&&CH().lvAdj)||0, raw=(d.lv||1)+df.lv+adj+Math.min(6,(G.cycle||0)*2), lv=clamp(raw,1,MAX_LV), s=statsOf(d.c,lv);
   // 等級超出 1〜10 的部分改成能力倍率
   const k=raw>MAX_LV?1+0.06*(raw-MAX_LV):raw<1?Math.max(0.6,1-0.07*(1-raw)):1;
   if(k!==1){ s.hp=Math.round(s.hp*k); s.atk=Math.round(s.atk*k); s.def=Math.round(s.def*k); }
@@ -385,6 +386,7 @@ function mkEnemy(d){
   u.rankLv=clamp(d.lv||1,1,MAX_LV);
   Object.assign(u,{ai:c.obj?'hold':(d.ai||'aggr'),tag:d.tag||null,boss:!!d.boss,retreat:d.retreat||0,retreatLines:d.retreatLines||null,talk:d.talk||null,obj:!!c.obj,phase2:d.phase2||null});
   if(u.tag) G.seenTags.add(u.tag);
+  if(typeof dexAdd==='function'&&!c.obj){ dexAdd('E',d.c); if(u.tag&&d.pilot) dexAdd('T',u.tag); }
   return u;
 }
 function baseUnit(o){
@@ -1087,7 +1089,7 @@ const CHEST_POOL=[
 ];
 function makeChests(ch){
   if(ch.chests) return ch.chests.map(c=>({...c,taken:false}));
-  const r=rng([...(G.chapterId||'x')].reduce((a,c)=>(a*31+c.charCodeAt(0))|0,7)), n=ch.no<=2?1:2, out=[];
+  const r=rng([...(ch.id||G.chapterId||'x')].reduce((a,c)=>(a*31+c.charCodeAt(0))|0,7)), n=ch.no<=2?1:2, out=[];
   const pool=CHEST_POOL[ch.no<=4?0:ch.no<=9?1:2];
   const occ=(x,y)=>G.units.some(u=>u.x===x&&u.y===y)||ch.deploy.some(([a,b])=>a===x&&b===y);
   for(let tries=0;out.length<n&&tries<400;tries++){
@@ -1278,6 +1280,8 @@ function joinChar(cid){
   const prev=(G.alumni||{})[cid];
   const m=prev?JSON.parse(JSON.stringify(prev)):{cid,cls:c.cls,lv:c.lv,exp:0,pp:0,psk:{},parts:[null,null]};
   if(prev) delete G.alumni[cid];
+  const cr=!prev&&G.carry&&G.carry[cid]; if(cr){ m.cls=CLASSES[cr.cls]?cr.cls:m.cls; m.lv=cr.lv; m.pp=cr.pp||0; m.psk={...(cr.psk||{})}; }
+  if(typeof dexAdd==='function') dexAdd('P',cid);
   const others=G.roster; if(others.length){
     const avg=others.reduce((s,o)=>s+mRank(o),0)/others.length;
     let guard=0;
@@ -1302,8 +1306,8 @@ function restoreTurn(t){
   G.phase='P'; G.mode='idle'; G.sel=null; G.inspect=null; G.reach=null; G.targets=[]; G.over=false; G.busy=false;
   log(`── 重來第 ${G.turn} 回合。`,'sys'); render();
 }
-function snapshot(){return {v:4,diff:G.diff==null?1:G.diff,gold:G.gold||0,inv:{...(G.inv||{})},mercs:JSON.parse(JSON.stringify(G.mercs||{})),chapter:G.chapterId,route:G.route,flags:{...G.flags},roster:JSON.parse(JSON.stringify(G.roster)),alumni:JSON.parse(JSON.stringify(G.alumni||{})),t:Date.now()};}
-function restore(s){G.diff=s.diff==null?1:s.diff;G.gold=s.gold==null?1000:s.gold;G.inv={...(s.inv||{})};G.mercs=JSON.parse(JSON.stringify(s.mercs||{}));G.chapterId=s.chapter;G.route=s.route||'common';G.flags={...(s.flags||{})};G.roster=JSON.parse(JSON.stringify(s.roster));G.alumni=JSON.parse(JSON.stringify(s.alumni||{}));}
+function snapshot(){return {v:4,diff:G.diff==null?1:G.diff,gold:G.gold||0,inv:{...(G.inv||{})},mercs:JSON.parse(JSON.stringify(G.mercs||{})),chapter:G.chapterId,route:G.route,flags:{...G.flags},roster:JSON.parse(JSON.stringify(G.roster)),alumni:JSON.parse(JSON.stringify(G.alumni||{})),visited:[...(G.visited||[])],freeDone:{...(G.freeDone||{})},cycle:G.cycle||0,carry:G.carry||null,t:Date.now()};}
+function restore(s){G.diff=s.diff==null?1:s.diff;G.gold=s.gold==null?1000:s.gold;G.inv={...(s.inv||{})};G.mercs=JSON.parse(JSON.stringify(s.mercs||{}));G.chapterId=s.chapter;G.route=s.route||'common';G.flags={...(s.flags||{})};G.roster=JSON.parse(JSON.stringify(s.roster));G.alumni=JSON.parse(JSON.stringify(s.alumni||{}));G.visited=[...(s.visited||[s.chapter])];G.freeDone={...(s.freeDone||{})};G.cycle=s.cycle||0;G.carry=s.carry||null;G.free=null;}
 function store(k,v){try{localStorage.setItem(SAVE+k,JSON.stringify(v));return true;}catch(e){return false;}}
 function load(k){try{const s=localStorage.getItem(SAVE+k);return s?JSON.parse(s):null;}catch(e){return null;}}
 function saveDesc(s){ if(!s) return '（空）'; if(!CHAPTERS[s.chapter]) return '（舊版存檔，無法讀取）'; const c=CHAPTERS[s.chapter]; const d=new Date(s.t);
@@ -1322,7 +1326,7 @@ function setupMap(ch){
   fitMap();
 }
 async function gotoChapter(id){
-  G.chapterId=id; const ch=CH(); G.over=true;
+  G.free=null; G.chapterId=id; G.visited=G.visited||[]; if(G.visited[G.visited.length-1]!==id) G.visited.push(id); const ch=CH(); G.over=true;
   setupMap(ch); clearLog(); render();
   await playScene(ch.pre);
   (ch.leavePre||[]).forEach(leaveChar);
@@ -1336,6 +1340,7 @@ async function prep(){
   for(;;){
     const v=await ask(prepHtml(),'wide prep');
     if(v==='go'){ if(await deploy()) return startBattle(); continue; }
+    if(v==='world'){ const site=await worldMap(); if(site){ G.free=makeFree(site); if(await deploy()) return startBattle(); G.free=null; setupMap(CH()); render(); } continue; }
     if(v==='save'){ await saveMenu(); continue; }
     if(v==='help'){ await showHelp(); continue; }
     if(v==='diff'){ const dv=await ask(`<h2>更改難度</h2><div class="choices">${DIFF.map((d,i)=>`<button class="btn choice${i===(G.diff??1)?' pri':''}" data-v="${i}"><b>${d.name}${i===(G.diff??1)?'（目前）':''}</b><small>${d.desc}</small></button>`).join('')}</div>`,'wide'); G.diff=+dv; store('auto',snapshot()); G.prepSnap=snapshot(); continue; }
@@ -1361,11 +1366,11 @@ function prepHtml(){
       <div class="rc-x">${(m.parts||[]).map(p=>p?`<span class="chip pt">${PARTS[p].name}</span>`:'<span class="chip pt empty">空槽</span>').join('')}${Object.entries(m.psk||{}).filter(([,v])=>v).map(([k,v])=>`<span class="chip sk">${PSKILLS[k].name}${PSKILLS[k].max>1?v:''}</span>`).join('')}${(G.mercs[m.cid]||[]).map(t=>`<span class="chip mc">${MERCS[t].ch} ${MERCS[t].name}</span>`).join('')}</div>
       <div class="row"><button class="btn ${ok?'pri':''}" data-v="cc:${m.cid}" ${ok?'':'disabled'}>${ok?'轉職！':m.lv>=CC_LV?'最終職業':`Lv ${CC_LV} 轉職`}</button><button class="btn" data-v="tree:${m.cid}">轉職樹</button><button class="btn" data-v="eq:${m.cid}">改裝</button><button class="btn${(m.pp||0)>0?' hot':''}" data-v="ps:${m.cid}">技能 ${m.pp||0}PP</button><button class="btn" data-v="mc:${m.cid}">傭兵 ${(G.mercs[m.cid]||[]).length}/${mercCap(m)}</button></div>
     </div>`;}).join('');
-  return `<div class="prep-h"><div><small class="eyebrow">出擊準備</small><h2>第 ${ch.no} 章　${ch.title}</h2>
+  return `<div class="prep-h"><div><small class="eyebrow">出擊準備${G.cycle?`　·　第 ${G.cycle+1} 周目`:''}</small><h2>第 ${ch.no} 章　${ch.title}</h2>
     <p style="color:var(--mute);margin:0">${ROUTE_NAME[ch.route]}　·　${ch.brief||''}</p></div></div>
     <dl class="cond"><dt>勝利條件</dt><dd>${ch.winText}</dd><dt>敗北條件</dt><dd>${ch.loseText}</dd><dt>資金</dt><dd><b class="mono">${fmt(G.gold||0)} G</b>　道具：${Object.entries(ITEMS).map(([k,it])=>`${it.name}×${(G.inv||{})[k]||0}`).join('、')}</dd><dt>出擊數</dt><dd>最多 ${ch.deploy.length} 台${(ch.guests||[]).length?`＋友軍 ${ch.guests.map(g=>GUESTS[g.id].pilot).join('、')}`:''}</dd></dl>
     <div class="rgrid">${cards}</div>
-    <div class="foot"><button class="btn" data-v="title">標題畫面</button><button class="btn" data-v="help">說明</button><button class="btn" data-v="diff">難度：${DIFF[G.diff??1].name}</button><button class="btn" data-v="shop">商店</button><button class="btn" data-v="save">存檔</button><button class="btn pri" data-v="go">出擊</button></div>`;
+    <div class="foot"><button class="btn" data-v="title">標題畫面</button><button class="btn" data-v="help">說明</button><button class="btn" data-v="diff">難度：${DIFF[G.diff??1].name}</button><button class="btn" data-v="shop">商店</button><button class="btn" data-v="world">世界地圖</button><button class="btn" data-v="save">存檔</button><button class="btn pri" data-v="go">出擊</button></div>`;
 }
 async function shopMenu(){
   for(;;){
@@ -1453,6 +1458,7 @@ async function startBattle(){
 }
 async function win(){
   if(G.over) return; G.over=true; G.busy=false; render(); if(typeof bgm==='function'&&BGM.on) bgm('win'); else sfx('win');
+  if(G.free) return freeWin();
   const ch=CH();
   const alive=new Set(G.units.filter(u=>u.side==='P'&&u.member).map(u=>u.cid));
   const lv=[];
@@ -1488,16 +1494,19 @@ function allEndings(){ const m=new Map(); for(const c of Object.values(CHAPTERS)
 function endingList(seen){ return allEndings().map(([id,t])=>seen.has(id)?`<b style="color:var(--amber)">${t}</b>`:'<span style="color:var(--dim)">？？？</span>').join('　'); }
 async function showEnding(e,route){
   await playScene(e.lines);
-  const seen=new Set(endingsSeen()); seen.add(e.id||route); store('endings',[...seen]);
+  const seen=new Set(endingsSeen()); seen.add(e.id||route); store('endings',[...seen]); saveCarry();
   const total=allEndings().length;
   await ask(`<div class="title"><small class="eyebrow">ENDING ${[...allEndings().map(x=>x[0])].indexOf(e.id)+1} / ${total}</small><div class="t-logo" style="font-size:clamp(30px,8vw,48px)">${e.title}</div>
     <p style="color:var(--mute)">${ROUTE_NAME[route]||''}　完</p>
     <p>已見結局（${seen.size}/${total}）：${endingList(seen)}</p>
     ${seen.size<total?'<p style="color:var(--mute)">從讀取畫面選擇「分歧點存檔」，走上不同的道路，就能看到其他結局。</p>':'<p>全部結局達成，感謝遊玩！</p>'}
+    <p style="color:var(--amber)">已解鎖「二周目」：從標題畫面開始，可以繼承角色等級、職業、技能、一半資金與道具零件。</p>
     <div class="foot" style="justify-content:center"><button class="btn pri" data-v="ok">回到標題</button></div></div>`,'wide');
 }
 async function lose(msg){
   if(G.over) return; G.over=true; G.busy=false; render(); if(typeof bgm==='function'&&BGM.on) bgm('lose'); else sfx('lose');
+  if(G.free){ const fv=await ask(`<h2>自由戰場撤退</h2><p>${msg}</p><p style="color:var(--mute)">自由戰場失敗不會影響劇情，這場戰鬥獲得的經驗與資金不會保留。</p>
+    <div class="foot"><button class="btn pri" data-v="retry">回到出擊準備</button></div>`); restore(G.prepSnap); G.free=null; return prep(); }
   const v=await ask(`<h2>作戰失敗</h2><p>${msg}</p><p style="color:var(--mute)">提示：開啟「敵方威脅範圍」，避免主角機被圍攻；重擊前可以用「鐵壁」或選擇「防禦」。</p>
     <div class="foot"><button class="btn" data-v="title">標題畫面</button><button class="btn pri" data-v="retry">回到出擊準備</button></div>`);
   if(v==='retry'){ restore(G.prepSnap); return prep(); }
@@ -1577,7 +1586,7 @@ async function classInfo(m,c,can){
 // 標題與說明
 // =====================================================================
 async function titleScreen(){
-  G.over=true; G.phase='P'; G.sel=null; if(typeof bgm==='function') bgm('title');
+  G.over=true; G.phase='P'; G.sel=null; G.free=null; if(typeof bgm==='function') bgm('title');
   if(!G.chapterId){ G.chapterId=START; setupMap(CH()); }
   render();
   let auto=load('auto'); if(auto&&!CHAPTERS[auto.chapter]) auto=null; const seen=endingsSeen().filter(id=>allEndings().some(e=>e[0]===id));
@@ -1590,18 +1599,22 @@ async function titleScreen(){
     <div class="stlist">
       <button class="btn ${auto?'':'pri'}" data-v="new"><span>新遊戲</span><small>從第一章開始</small></button>
       <button class="btn ${auto?'pri':''}" data-v="cont" ${auto?'':'disabled'}><span>繼續</span><small>${auto?saveDesc(auto):'沒有自動存檔'}</small></button>
+      ${load('carry')?`<button class="btn" data-v="ng"><span>二周目</span><small>繼承等級、職業與一半資金・敵人更強</small></button>`:''}
       <button class="btn" data-v="load"><span>讀取存檔</span><small>存檔 1–3</small></button>
+      <button class="btn" data-v="dex"><span>圖鑑</span><small>角色・敵機・宿敵・結局</small></button>
       <button class="btn" data-v="help"><span>遊戲說明與設定</span><small>必讀</small></button>
       ${IN_HALL?`<a class="btn hallbtn" href="${HALL_URL}"><span>返回遊戲大廳</span><small>← 大廳</small></a>`:''}
     </div>
     <p class="t-end">已見結局（${seen.length}/${allEndings().length}）：${endingList(new Set(seen))}</p></div>`);
   if(typeof stopTitleBg==='function') stopTitleBg();
   if(v==='help'){await showHelp();return titleScreen();}
+  if(v==='dex'){ if(typeof stopTitleBg==='function') stopTitleBg(); await dexMenu(); return titleScreen(); }
   if(v==='load'){ if(!(await loadMenu())) return titleScreen(); return; }
   if(v==='cont'){ restore(auto); clearLog(); return prep(); }
   const dv=await ask(`<h2>選擇難度</h2><p style="color:var(--mute)">之後可以在「出擊準備」畫面隨時更改。</p><div class="choices">${DIFF.map((d,i)=>`<button class="btn choice${i===1?' pri':''}" data-v="${i}"><b>${d.name}</b><small>${d.desc}</small></button>`).join('')}</div>`,'wide');
   G.diff=+dv;
-  G.route='common'; G.flags={}; G.roster=[]; G.deployed=[]; G.alumni={}; G.gold=1000; G.inv={kit:2}; G.mercs={};
+  G.route='common'; G.flags={}; G.roster=[]; G.deployed=[]; G.alumni={}; G.gold=1000; G.inv={kit:2}; G.mercs={}; G.visited=[]; G.freeDone={}; G.cycle=0; G.carry=null;
+  if(v==='ng'){ const c=load('carry'); if(c){ G.cycle=c.cycle||1; G.carry=c.members||{}; G.gold=1000+Math.floor((c.gold||0)/2); G.inv={kit:2}; for(const [k,n] of Object.entries(c.inv||{})) G.inv[k]=(G.inv[k]||0)+n; } }
   ['gang','feng','lei','yu'].forEach(joinChar);
   gotoChapter(START);
 }
@@ -1663,6 +1676,8 @@ async function showHelp(){
    <li>「敵方威脅範圍」顯示全部敵機能攻擊到的格子。選取我方機體時，淡紅色格子是移動後能攻擊到的範圍。Esc：取消／返回。劇情中按 Enter 或點擊前進。</li>
    <li>「選單」裡的「重來本回合」可以回到這回合我方行動開始時的狀態。勾選「快速敵方回合」會略過敵方攻擊的戰鬥動畫。</li>
    <li><b>畫面</b>：地圖為像素地形與 Q 版機體，戰鬥有動畫（近戰、光束、飛彈、射擊、擊墜爆炸）。想看原本的文字地圖，可以勾選「經典文字地圖」。</li>
+   <li><b>世界地圖與自由戰場</b>：出擊準備畫面按「世界地圖」，可以看到銘甲隊走過的路線。⚔ 標記是自由戰場，敵人等級會配合隊伍，打贏可以拿到經驗、資金和寶箱。每個自由戰場在每一章各能攻略一次；失敗不影響劇情。</li>
+   <li><b>圖鑑與二周目</b>：標題畫面的「圖鑑」記錄遇過的角色、敵機、宿敵與結局。看過任一結局後可以開始「二周目」，繼承角色等級、職業、駕駛技能、一半資金和道具零件，敵人每周目等級 +2（最多 +6）。</li>
    <li><b>寶箱</b>：地圖上的寶箱裡有資金、道具或零件。讓我方機體停在寶箱上並結束行動就能拿到。</li>
    <li><b>地圖設施</b>：「防衛砲台」不會移動，但射程很遠；「破損城牆」擊破後會變成通道；「虛無核心」是破壞目標。部分關卡的勝利條件是佔領指定格子（綠色虛線框）或破壞設施。</li>
    <li><b>必殺技</b>：使用需要氣力的武器時，會有切入演出。最終頭目被擊破後可能會進入第二形態。</li>
