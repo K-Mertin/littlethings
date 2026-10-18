@@ -2,7 +2,7 @@
 'use strict';
 const MG = (() => {
   // 版號：每次合併更新時一起改（修正 → 第三碼 +1；新遊戲／新功能 → 第二碼 +1）
-  const VERSION = '1.4.2', BUILT = '2026/10/17';
+  const VERSION = '1.5.0', BUILT = '2026/10/18';
   const LS = 'puputown.';
   const store = {
     get(k, d) { try { const v = localStorage.getItem(LS + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -111,6 +111,9 @@ const MG = (() => {
   }
   function setBig(v) { big = !!v; store.set('bigMode', big); applyUI(); dispatchEvent(new Event('mg-big')); dispatchEvent(new Event('resize')); }
   applyUI(); addEventListener('resize', applyUI);
+  // offline: a service worker keeps a copy of every page so the games also work without internet (sw.js)
+  const swReady = ('serviceWorker' in navigator) && (location.protocol === 'https:' || location.hostname === 'localhost')
+    ? navigator.serviceWorker.register(new URL('sw.js', document.currentScript ? document.currentScript.src : location.href).href).catch(() => null) : Promise.resolve(null);
   function zoomRow() {
     const row = document.createElement('div'); row.className = 'mg-zoom';
     row.innerHTML = '<span>字的大小</span><button type="button" data-z="-1" aria-label="字變小">A−</button><button type="button" data-z="1" aria-label="字變大">A＋</button>';
@@ -597,5 +600,5 @@ const MG = (() => {
   }
 
   // how far (× r) a hat drawn for 噗噗's taller head has to come down to sit on 牛牛
-  return { get hatDrop() { return HERO === 'niu' ? 0.34 : 0; }, get hero() { return HERO; }, get heroName() { return heroName(); }, heroText, setHero, niuSVG, niuDraw, VERSION, BUILT, get big() { return big; }, setBig, get textScale() { return big ? 1.3 : 1; }, praise, WORDS, choose, pauseMenu, resume, barButton, init, stat, fit, panel, hide, panelOpen, best, record, sfx, toast, loop, rand, randi, pick, shuffle, store, puPu, fx, unlock, JELLY };
+  return { swReady, get hatDrop() { return HERO === 'niu' ? 0.34 : 0; }, get hero() { return HERO; }, get heroName() { return heroName(); }, heroText, setHero, niuSVG, niuDraw, VERSION, BUILT, get big() { return big; }, setBig, get textScale() { return big ? 1.3 : 1; }, praise, WORDS, choose, pauseMenu, resume, barButton, init, stat, fit, panel, hide, panelOpen, best, record, sfx, toast, loop, rand, randi, pick, shuffle, store, puPu, fx, unlock, JELLY };
 })();
