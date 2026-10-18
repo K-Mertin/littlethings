@@ -75,6 +75,20 @@ function drawKeyHint(c) {
     : [['WASD', '移動'], ['連按兩下', '跑'], ['J', '攻擊'], ['K', '跳'], ['L', '防禦'], ['Esc', '暫停'], ['H', '隱藏提示']];
   for (const [k, l] of basic) x += chip(c, x, y, k, l, '', true) + 6;
 }
+function drawTutorial(c, top) {
+  const T = W.tut, done = T.step >= TUT.length, L = done ? null : TUT[T.step];
+  const dev = isTouch ? 'touch' : lastDevice === 'pad' ? 'pad' : 'kb';
+  const w = Math.min(560, Wv - 40), x = (Wv - w) / 2, y = top + (W.players.length > 1 ? 76 : 80), h = 74;
+  c.fillStyle = 'rgba(28,26,46,.88)'; c.beginPath(); c.roundRect ? c.roundRect(x, y, w, h, 16) : c.rect(x, y, w, h); c.fill();
+  c.strokeStyle = '#ffcc33'; c.lineWidth = 3; c.stroke();
+  c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+  c.fillStyle = '#ffcc33'; c.font = '900 18px "Noto Sans TC",sans-serif';
+  c.fillText(done ? '練習完成！' : `練習 ${T.step + 1} / ${TUT.length}：${L.t}`, x + 16, y + 28);
+  c.fillStyle = '#fff6e6'; c.font = '700 15px "Noto Sans TC",sans-serif';
+  const msg = done ? '想練什麼就練什麼。按右上角的暫停可以回到選單。' : (L[dev] || L.kb);
+  c.fillText(msg, x + 16, y + 56, w - 32);
+  for (let i = 0; i < TUT.length; i++) { c.fillStyle = i < T.step ? '#38d39f' : i === T.step ? '#ffcc33' : 'rgba(255,255,255,.25)'; c.beginPath(); c.arc(x + w - 16 - (TUT.length - 1 - i) * 14, y + 22, 5, 0, TAU); c.fill(); }
+}
 function drawHUD(c) {
   const top = 8, two = W.players.length > 1, size = two ? 'mid' : 'big', pw = two ? 232 : 290;
   const btnW = 104 / scale;                       // room for the pause / sound buttons in the top-right corner
@@ -84,7 +98,8 @@ function drawHUD(c) {
   c.font = '700 13px "Noto Sans TC",sans-serif'; c.fillStyle = '#fff6e6'; c.textAlign = 'left'; c.lineWidth = 3; c.strokeStyle = INK; c.textBaseline = 'alphabetic';
   const sc = W.mode === 'stage' ? '分數 ' + W.score + '　擊倒 ' + W.kos : '';
   if (sc) { c.strokeText(sc, 14, top + 86); c.fillText(sc, 14, top + 86); }
-  if (W.mode === 'battle') {
+  if (W.mode === 'practice') drawTutorial(c, top);
+  else if (W.mode === 'battle') {
     let i = 0; const y0 = top + (two ? 74 : 54);
     for (const f of W.fighters) if (!f.human) { drawPanel(c, f, Wv - 200 - (two ? btnW : 0), y0 + i * 46, 'small'); i++; }
   } else {
@@ -261,6 +276,7 @@ function syncMenu() {
   }
   $('battleOpts').hidden = M.mode !== 'battle';
   $('stageOpts').hidden = M.mode !== 'stage' || STAGES.length < 2;
+  $('diffRow').hidden = M.mode === 'practice'; $('diffRow').previousElementSibling.hidden = M.mode === 'practice';
   $('playersNote').hidden = !two;
   $('playersNote').textContent = two ? (isTouch ? '平板橫放：1P 用左半邊，2P 用右半邊。' : '鍵盤：1P 用 WASD＋J K L（U I O 必殺），2P 用方向鍵＋數字鍵 1 2 3（4 5 6 必殺），沒有數字鍵可用 . / ,。插兩支手把也可以。') : '';
   const sel = M.heroes[two ? M.slotSel : 0], d = CHARS[sel], cmds = ['防 → 左右 → 攻', '防 → 上 → 攻', '防 → 下 → 攻'], keys = two ? (M.slotSel ? ['4', '5', '6'] : ['U', 'I', 'O']) : ['U', 'I', 'O'];
@@ -313,10 +329,12 @@ function showResult() {
     const bonus = W.win ? Math.round(W.players.reduce((s, p) => s + Math.max(0, p.hp), 0) * 2 / W.players.length + Math.max(0, 300 - tsec) * 5) : 0; W.score += bonus;
     const key = `best.${W.stageN}.${W.diffN}`; const best = store.get(key, null);
     let nb = false; if (W.win && (!best || tsec < best)) { store.set(key, tsec); nb = true; }
-    if (W.win) { const c = store.get('cleared', []); if (!c.includes(W.stageN)) { c.push(W.stageN); store.set('cleared', c); } }
+    let unlocked = [];
+    if (W.win) { const c = store.get('cleared', []); if (!c.includes(W.stageN)) { const before = HEROES.filter(heroUnlocked); c.push(W.stageN); store.set('cleared', c); unlocked = HEROES.filter(h => heroUnlocked(h) && !before.includes(h)); } }
     rows = [['時間', ts + (nb ? ' 新紀錄！' : '')], ['擊倒', W.kos], ['過關獎勵', bonus], ['分數', W.score]];
     if (best && !nb) rows.splice(1, 0, ['最快紀錄', `${(best / 60) | 0}:${String(best % 60).padStart(2, '0')}`]);
     if (two) W.players.forEach(p => rows.push([`${p.slot + 1}P ${p.def.name}`, `擊倒 ${p.kos}`]));
+    unlocked.forEach(h => rows.push(['新角色解鎖！', CHARS[h].name]));
   } else {
     rows = [['時間', ts]];
     for (const p of W.players) rows.push([two ? `${p.slot + 1}P ${p.def.name}` : '擊倒', two ? `擊倒 ${p.kos}・傷害 ${Math.round(p.dmgDone)}` : p.kos]);

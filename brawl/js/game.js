@@ -19,6 +19,22 @@ const CHARS = {
   kite: { name: '小飛', en: 'Kite', blurb: '忍者少年。跑得最快，飛鏢、瞬步、疾風斬，打了就跑。', hp: 440, spd: 1.16, pow: 0.9, stats: [2, 4, 1],
     look: mkLook({ style: 'hood', skin: '#f1c29b', hair: '#2a3266', acc: '#ff4d3d', shirt: '#323c78', sleeve: 'long', pants: '#323c78', shoe: '#1c1a2e', belt: '#ff4d3d' }),
     combo: ['jab', 'cross', 'kick'], skills: ['shuriken', 'shadowstep', 'gale'] },
+  /* unlockable heroes (clear the stage named in unlockStage) */
+  zap: { name: '小雷', en: 'Zap', blurb: '雷電少年。雷電球會麻痺敵人，閃電衝穿過一排，落雷從天而降。', hp: 470, spd: 1.08, pow: 0.95, stats: [3, 3, 2], unlockStage: 0, unlock: '打通第一關解鎖',
+    look: mkLook({ style: 'zap', hair: '#ffd23f', acc: '#2b2733', shirt: '#2b2733', trim: '#ffd23f', pants: '#ffd23f', shoe: '#2b2733', shorts: true }),
+    combo: ['jab', 'cross', 'kick'], skills: ['bolt', 'thunderdash', 'thunder'] },
+  feng: { name: '阿風', en: 'Feng', blurb: '風之少年。旋風彈把人捲起來，跳得最高，龍捲風把周圍的人全部吹飛。', hp: 450, spd: 1.12, pow: 0.9, stats: [2, 4, 2], unlockStage: 1, unlock: '打通第二關解鎖',
+    look: mkLook({ style: 'breeze', hair: '#3f9a6a', acc: '#ffffff', shirt: '#7fd6b8', trim: '#ffffff', pants: '#2f6f5a', shoe: '#ffffff', sleeve: 'long' }),
+    combo: ['jab', 'cross', 'kick'], skills: ['tornado', 'windjump', 'cyclone'] },
+  mimi: { name: '小咪', en: 'Mimi', blurb: '召喚少女。叫小狗豆豆來幫忙，丟會飛回來的骨頭，還能幫大家補血。', hp: 440, spd: 1.02, pow: 0.85, stats: [2, 3, 2], unlockStage: 2, unlock: '打通第三關解鎖',
+    look: mkLook({ style: 'buns', skin: '#f8d6bd', hair: '#ff8ab3', acc: '#ffcc33', shirt: '#ffb3cf', trim: '#ffffff', pants: '#b06ad9', shoe: '#ffffff', shorts: true }),
+    combo: ['jab', 'cross', 'kick'], skills: ['pet', 'bone', 'cheer'] },
+  dog: { name: '豆豆', hp: 160, spd: 1.25, pow: 0.7, enemy: false, draw: 'dog', pet: true,
+    look: mkLook({ style: 'dog', animal: true, shirt: '#e8b878', skin: '#fff6e6', pants: '#e8b878' }),
+    combo: ['bite'], skills: [] },
+  dummy: { name: '稻草人', hp: 260, spd: 0, pow: 0.4, enemy: true, draw: 'dummy', heavy: false,
+    look: mkLook({ style: 'dummy', animal: true, shirt: '#d9b45a', pants: '#d9b45a' }),
+    combo: ['pinch'], skills: ['toss'] },
   /* monsters: animal heads on the same skeleton; fur colours fill shirt/pants */
   boar: { name: '野豬仔', hp: 150, spd: 0.9, pow: 0.75, enemy: true,
     look: mkLook({ style: 'boar', animal: true, skin: '#a8714a', hair: '#5a3a22', shirt: '#a8714a', trim: null, pants: '#8c5c3a', shoe: '#4a3020', sleeve: 'none', glove: '#7a5034', angry: true, tail: 'curly', belly: '#d8b08a' }),
@@ -58,7 +74,7 @@ const CHARS = {
     look: mkLook({ style: 'octo', animal: true, shirt: '#e8432f', skin: '#ffb3a9', pants: '#e8432f', crown: true }),
     combo: ['sweep1'], skills: ['inkspray', 'sweep', 'summon'] }
 };
-const HEROES = ['rex', 'yuki', 'gan', 'kite'];
+const HEROES = ['rex', 'yuki', 'gan', 'kite', 'zap', 'feng', 'mimi'];
 
 /* frame data: on/off = active frames, rx = reach in front, hy = height band */
 const ATK = {
@@ -188,6 +204,55 @@ const SKILLS = {
   summon: { name: '叫螃蟹', cost: 160, dur: 50, tick(f, t) {
       if (t === 25 && W.fighters.filter(x => x.id === 'crab' && !x.dead).length < 3) { for (const side of [-1, 1]) { const c = new Fighter('crab', f.team, f.x + side * 120, clamp(f.z + rnd(-30, 30), 20, FLOOR_D - 20), new AICtl()); c.y = 200; c.set('jump'); W.fighters.push(c); } Sound.play('pop'); }
     } },
+  /* 小雷 */
+  bolt: { name: '雷電球', cost: 75, dur: 26, tick(f, t) { if (t === 9) { spawnProj(f, 'bolt', { dx: 30, y: 44, vx: 10, dmg: 34, stun: 44, fall: 0, shock: true, life: 80, r: 12 }); Sound.play('zap'); } }, pose(P, t) { castPose(P, t, 8, 15); } },
+  thunderdash: { name: '閃電衝', cost: 100, dur: 34, start(f) { f.invul = 26; f.hitSet.clear(); Sound.play('zap'); },
+    tick(f, t) { if (t >= 4 && t <= 20) { f.vx = f.face * 12; f.meleeHit({ rx: [-24, 30], hy: [0, 80], dz: 20, dmg: 30, kb: 2, stun: 40, fall: 0, shock: true }); if (t % 2 === 0) addPart('zap', f.x, rnd(20, 70), f.z, {}); } else f.vx *= 0.7; },
+    pose(P) { P.lean = 0.6; P.ar = [1.6, 0]; P.al = [1.4, 0.2]; P.ll = [-0.9, 0.3]; P.lr = [0.7, 0.8]; P.by = 3; } },
+  thunder: { name: '落雷', cost: 150, dur: 60, start(f) { f.superT = 30; f.strikes = W.fighters.filter(v => v.team !== f.team && !v.dead && Math.abs(v.x - f.x) < 420).sort((a, b) => Math.abs(a.x - f.x) - Math.abs(b.x - f.x)).slice(0, 3); },
+    tick(f, t) {
+      if (t === 10) Sound.play('power');
+      const k = [18, 28, 38].indexOf(t);
+      if (k >= 0) {
+        const v = f.strikes[k] || null, x = v ? v.x : f.x + f.face * (100 + k * 80), z = v ? v.z : f.z;
+        addPart('strike', x, 0, z, { life: 14 }); Sound.play('thunder'); W.shake = 8;
+        for (const u of W.fighters) if (u.team !== f.team && !u.dead && Math.abs(u.x - x) < 40 && Math.abs(u.z - z) < 24) applyHit(f, u, { dmg: 40, kb: 2, kbY: 7, launch: true, sfx: 'heavy', unblock: true }, sgn(u.x - f.x || 1), true);
+      }
+    },
+    pose(P, t) { P.ar = [3.0, 0.1]; P.al = [2.8, 0.1]; P.face = t > 15 ? 'happy' : 'n'; P.lean = -0.1; } },
+  /* 阿風 */
+  tornado: { name: '旋風彈', cost: 75, dur: 28, tick(f, t) { if (t === 10) { spawnProj(f, 'tornado', { dx: 30, y: 6, vx: 5, dmg: 9, kb: 0, kbY: 0, stun: 12, fall: 0, multi: 8, life: 90, r: 18, lift: true }); Sound.play('wind'); } }, pose(P, t) { castPose(P, t, 9, 16); } },
+  windjump: { name: '風之跳', cost: 90, dur: 80, start(f) { f.hitSet.clear(); f.dived = false; },
+    tick(f, t) {
+      if (t === 4) { f.vy = 13; f.vx = f.face * 3; Sound.play('wind'); for (let k = 0; k < 8; k++) addPart('wind', f.x + rnd(-20, 20), 4, f.z, { vy: rnd(1, 3) }); }
+      if (t > 14 && !f.dived && f.vy < 2) { f.dived = true; f.vy = -12; f.vx = f.face * 7; }
+      if (f.dived) { f.meleeHit({ rx: [-10, 36], hy: [-20, 50], dz: 18, dmg: 40, kb: 4, kbY: 6, launch: true, sfx: 'heavy' }); if (f.y <= 0) { W.shake = 6; addPart('ring', f.x, 0, f.z, { r: 8, grow: 6, life: 16 }); return 'end'; } }
+    },
+    pose(P, t, f) { if (!f.dived) { P.ll = [-0.2, 1.4]; P.lr = [0.9, 1.8]; P.ar = [2.8, 0.2]; P.al = [2.6, 0.2]; } else { P.lr = [1.2, 0]; P.ll = [0.4, 1.6]; P.lean = 0.3; P.ar = [1.2, 0.4]; } } },
+  cyclone: { name: '龍捲風', cost: 160, dur: 80, start(f) { f.superT = 80; Sound.play('wind'); },
+    tick(f, t) {
+      if (t % 5 === 0) f.face = -f.face;
+      for (let i = 0; i < 2; i++) { const a = rnd(TAU); addPart('wind', f.x + Math.cos(a) * rnd(20, 90), rnd(10, 100), f.z + Math.sin(a) * 30, { vx: -Math.sin(a) * 3, vy: rnd(0.5, 2) }); }
+      if (t >= 10 && t <= 60 && t % 8 === 0) { f.areaHit({ rx: 95, dz: 38, dmg: 8, kb: 0, stun: 14, fall: 0, stop: 2, pull: true }); Sound.play('wind', 0.4); }
+      if (t === 68) f.areaHit({ rx: 100, dz: 40, dmg: 26, kb: 4, kbY: 10, launch: true, sfx: 'heavy' });
+    },
+    pose(P, t) { P.ar = [2.4, 0.2]; P.al = [2.2, 0.2]; P.by = -4; P.lean = 0; } },
+  /* 小咪 */
+  pet: { name: '叫豆豆', cost: 120, dur: 30, tick(f, t) {
+      if (t === 14) {
+        if (f.pet && !f.pet.dead) { f.pet.lifeT = 900; f.pet.hp = f.pet.maxHp; smoke(f.pet); }
+        else { const d = new Fighter('dog', f.team, f.x + f.face * 40, f.z, new AICtl()); d.owner = f; d.lifeT = 900; d.ally = true; d.face = f.face; d.lives = 0; f.pet = d; W.fighters.push(d); smoke(d); }
+        Sound.play('woof');
+      }
+    }, pose(P, t) { P.ar = [lerp(0.6, 2.4, clamp(t / 10, 0, 1)), 0.6]; P.face = 'happy'; } },
+  bone: { name: '骨頭飛盤', cost: 60, dur: 24, tick(f, t) { if (t === 8) { spawnProj(f, 'bone', { dx: 24, y: 44, vx: 9, dmg: 22, kb: 2, stun: 20, fall: 50, life: 100, r: 12, boomer: true }); Sound.play('throw'); } },
+    pose(P, t) { const e = clamp((t - 1) / 6, 0, 1); P.ar = [lerp(-0.6, 1.7, e), lerp(1.8, 0.1, e)]; P.lean = lerp(-0.1, 0.25, e); } },
+  cheer: { name: '加油打氣', cost: 150, dur: 50, tick(f, t) {
+      if (t === 12) { Sound.play('drink'); for (const v of W.fighters) if (v.team === f.team && !v.dead && Math.abs(v.x - f.x) < 260 && Math.abs(v.z - f.z) < 80) { v.healT = 120; } }
+      if (t % 6 === 0) addPart('heart', f.x + rnd(-30, 30), rnd(40, 90), f.z, { vy: 1 });
+    }, pose(P, t) { const k = Math.sin(t * 0.4); P.ar = [2.6 + k * 0.3, 0.3]; P.al = [2.6 - k * 0.3, 0.3]; P.face = 'happy'; P.by = -Math.abs(k) * 4; } },
+  /* practice dummy: tosses a soft ball so you can practise blocking */
+  toss: { name: '丟球', cost: 0, dur: 30, tick(f, t) { if (t === 14) { spawnProj(f, 'ball', { dx: 20, y: 46, vx: 6, dmg: 4, kb: 1, stun: 10, fall: 0, life: 120, r: 9 }); Sound.play('throw', 0.6); } } },
   arrow: { name: '射箭', cost: 0, dur: 38, tick(f, t) { if (t === 20) { spawnProj(f, 'arrow', { dx: 28, y: 46, vx: 8.5, dmg: 24, kb: 2, stun: 20, fall: 60, life: 100, r: 10 }); Sound.play('arrow'); } },
     pose(P, t) { const e = clamp(t / 16, 0, 1); P.ar = [1.57, 0]; P.al = [1.45, lerp(0.2, 2.7, e)]; P.lean = -0.05; P.lr = [0.55, 0.3]; P.ll = [-0.45, 0.1]; } },
   rock: { name: '丟大石', cost: 60, dur: 40, tick(f, t) { if (t === 18) { spawnProj(f, 'rock', { dx: 20, y: 80, vx: 6.5, vy: 5, grav: true, dmg: 40, kb: 4, kbY: 5, launch: true, life: 160, r: 16 }); Sound.play('throw'); } },
@@ -307,6 +372,9 @@ class Fighter {
     this.hpLag = this.hpLag > this.hp ? Math.max(this.hp, this.hpLag - 2.5) : this.hp;
     this.st++;
     if (this.inkT > 0) this.inkT--;
+    if (this.healT > 0) { this.healT--; this.hp = Math.min(this.maxHp, this.hp + 1); this.cap = Math.max(this.cap, this.hp); if (this.healT % 10 === 0) addPart('heart', this.x + rnd(-12, 12), 80, this.z, { vy: 1 }); }
+    if (this.lifeT > 0 && --this.lifeT === 0 && !this.dead) { smoke(this); this.dead = true; this.invisible = true; this.lives = 0; this.set('dead'); this.st = 200; }
+    if (this.shockT > 0) { this.shockT--; if (this.shockT % 4 === 0) addPart('zap', this.x + rnd(-14, 14), rnd(20, 70), this.z, {}); }
     const spd = this.spd * (this.inkT > 0 ? 0.6 : 1);
     let air = this.y > 0 || this.vy > 0;
 
@@ -438,7 +506,7 @@ class Fighter {
   }
   die() {
     this.dead = true; this.dropItem(); this.deaths = (this.deaths || 0) + 1;
-    if (this.lives > 1) { this.lives--; this.respawnT = 130; } else this.lives = 0;
+    if (this.lives > 1) { this.lives--; this.respawnT = this.home ? 50 : 130; } else this.lives = 0;
     if (this.lastHitBy) { this.lastHitBy.kos++; if (this.lastHitBy.ctl && this.lastHitBy.ctl.human) W.kos++; }
     Sound.play('ko'); if (this.def.boss) Sound.play('gong');
   }
@@ -462,10 +530,13 @@ function applyHit(att, v, A, dir, area) {
     v.vx = dir * 2; Sound.play('block'); addPart('spark', v.x - dir * 14, v.y + 26, v.z, { col: '#ffd2b8' }); if (att) att.freeze = 3; return true;
   }
   if (A.ink && !(v.state === 'defend' && v.face === -dir)) { v.inkT = 160; }
+  if (A.shock) v.shockT = 40;
   if (v.state === 'defend' && v.face === -dir && v.hold && v.hold.kind === 'umbrella') {
+    v.blocks = (v.blocks || 0) + 1;
     v.vx = dir * 1.5; Sound.play('block'); addPart('spark', v.x - dir * 18, v.y + 50, v.z, { col: '#8fd0ff' }); return true;
   }
   if (v.state === 'defend' && v.face === -dir && !A.unblock && !A.freeze) {
+    v.blocks = (v.blocks || 0) + 1;
     v.hp -= dmg * 0.08; v.guard -= dmg * 1.5; v.vx = dir * 2.6; v.freeze = 3; if (att) att.freeze = 3;
     Sound.play('block'); addPart('spark', v.x - dir * 10, v.y + 44, v.z, { col: '#8fd0ff', n: 1 });
     if (v.guard <= 0) { v.guard = 30; v.set('dizzy'); Sound.play('hit'); }
@@ -538,6 +609,9 @@ function updateProjs() {
     if (p.kind === 'fire' && p.t % 2 === 0) addPart('fire', p.x - p.vx, p.y + rnd(-6, 6), p.z, { vx: -p.vx * 0.2, vy: rnd(0, 1) });
     if (p.kind === 'ice' && p.t % 3 === 0) addPart('snow', p.x - p.vx, p.y + rnd(-6, 6), p.z, { vx: -p.vx * 0.15 });
     if (p.kind === 'spikes' && p.t % 3 === 0) addPart('spike', p.x, 0, p.z + rnd(-6, 6), { h: rnd(26, 42) });
+    if (p.boomer) { if (p.t === 30) { p.vx = -p.vx; p.hit.clear(); } if (p.t > 30 && p.owner && Math.abs(p.x - p.owner.x) < 20) dead = true; }
+    if (p.kind === 'tornado' && p.t % 2 === 0) addPart('wind', p.x + rnd(-10, 10), rnd(5, 60), p.z, { vy: 1.5 });
+    if (p.kind === 'bolt' && p.t % 2 === 0) addPart('zap', p.x, p.y, p.z, {});
     if (p.kind === 'bun' && p.y <= 0) { dead = true; addPart('dust', p.x, 0, p.z, {}); Sound.play('land', 0.4); }
     if (p.kind === 'ink' && p.t % 3 === 0) addPart('smoke', p.x - p.vx, p.y, p.z, { col: 'ink', life: 14 });
     if (p.kind === 'rock' && p.y <= 0) { dead = true; W.shake = 4; Sound.play('fall', 0.6); for (let k = 0; k < 8; k++) addPart('rock', p.x, 4, p.z, { vx: rnd(-3, 3), vy: rnd(2, 5) }); }
@@ -549,11 +623,13 @@ function updateProjs() {
     }
     if (!dead) for (const v of W.fighters) {
       if (v.team === p.team || v.dead || p.hit.has(v)) continue;
+      if (p.cool && p.cool.has(v) && p.t - p.cool.get(v) < 10) continue;
       if (Math.abs(v.z - p.z) > 15 || Math.abs(v.x - p.x) > p.r + 12 * (v.def.size || 1)) continue;
       if (p.ground ? v.y > 24 : (p.y < v.y - 6 || p.y > v.y + 76 * (v.def.size || 1))) continue;
       if (v.state === 'lying' || v.invul > 0 || v.invisible) continue;
       const ok = applyHit(p.owner, v, p, sgn(p.vx), true); p.hit.add(v);
-      if (ok && p.kind !== 'spikes') { dead = true; if (p.kind === 'fire') for (let k = 0; k < 10; k++) addPart('fire', p.x, p.y, p.z, { vx: rnd(-3, 3), vy: rnd(-2, 3) }); break; }
+      if (p.multi) { p.hit.delete(v); (p.cool || (p.cool = new Map())).set(v, p.t); if (ok) { p.multi--; if (p.lift && v.y < 30 && v.state !== 'fall') { v.vy = 4; v.y = Math.max(v.y, 1); v.set('hurt'); v.stun = 18; } } if (p.multi > 0) continue; }
+      if (ok && p.kind !== 'spikes' && !p.multi && !p.boomer) { dead = true; if (p.kind === 'fire') for (let k = 0; k < 10; k++) addPart('fire', p.x, p.y, p.z, { vx: rnd(-3, 3), vy: rnd(-2, 3) }); break; }
     }
     if (dead || p.dead) W.projs.splice(i, 1);
   }

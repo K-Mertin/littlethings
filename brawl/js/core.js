@@ -65,6 +65,10 @@ const Sound = {
       case 'pop': this.noise(t, 0.06, 3000, 900, 0.7, 0.45 * vol); this.tone(t, 0.04, 900, 200, 0.2 * vol, 'square'); break;
       case 'drum': this.tone(t, 0.18, 110, 70, 0.7 * vol, 'sine'); this.noise(t, 0.05, 900, 300, 0.7, 0.2 * vol, 'lowpass'); break;
       case 'roar': this.noise(t, 0.9, 300, 120, 0.6, 0.6 * vol, 'lowpass'); this.tone(t, 0.8, 110, 70, 0.4 * vol, 'sawtooth'); this.tone(t, 0.8, 165, 100, 0.2 * vol, 'sawtooth'); break;
+      case 'zap': this.noise(t, 0.12, 6000, 2000, 2, 0.25 * vol, 'highpass'); this.tone(t, 0.1, 1800, 600, 0.08 * vol, 'square'); break;
+      case 'thunder': this.noise(t, 0.05, 8000, 4000, 1, 0.5 * vol, 'highpass'); this.noise(t + 0.03, 0.7, 500, 80, 0.5, 0.6 * vol, 'lowpass'); this.tone(t, 0.5, 90, 40, 0.5 * vol); break;
+      case 'wind': this.noise(t, 0.6, 400, 1800, 1.5, 0.3 * vol); this.noise(t + 0.2, 0.5, 1800, 600, 1.5, 0.2 * vol); break;
+      case 'woof': this.tone(t, 0.09, 520, 300, 0.25 * vol, 'sawtooth'); this.tone(t + 0.14, 0.11, 560, 320, 0.25 * vol, 'sawtooth'); break;
       case 'honk': this.tone(t, 0.18, 420, 410, 0.12 * vol, 'square'); this.tone(t + 0.22, 0.25, 420, 400, 0.12 * vol, 'square'); this.tone(t, 0.18, 530, 520, 0.08 * vol, 'square'); this.tone(t + 0.22, 0.25, 530, 520, 0.08 * vol, 'square'); break;
       case 'wave': this.noise(t, 1.2, 400, 1600, 0.4, 0.3 * vol, 'lowpass'); this.noise(t + 0.3, 1.0, 2500, 800, 0.6, 0.18 * vol); break;
       case 'train': this.noise(t, 2.5, 200, 120, 0.7, 0.25 * vol, 'lowpass'); [660, 830].forEach((f, i) => this.tone(t + i * 0.35, 0.3, f, f, 0.07 * vol, 'triangle')); break;

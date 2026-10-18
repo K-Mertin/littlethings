@@ -106,7 +106,7 @@ function updateHazards() {
     if (h.x < W.camX - 300 || h.x > W.camX + Wv + 300) W.hazEnts.splice(i, 1);
   }
 }
-function heroUnlocked(id) { return true; }
+function heroUnlocked(id) { const d = CHARS[id]; return d.unlockStage === undefined || store.get('cleared', []).includes(d.unlockStage) || store.get('unlockAll', false); }
 
 function newMatch(o) {
   const nH = o.players;
@@ -124,6 +124,7 @@ function newMatch(o) {
     W.players.push(f); W.fighters.push(f);
   }
   W.player = W.players[0];
+  if (o.mode === 'practice') return setupPractice(o);
   if (o.mode === 'stage') {
     W.stageN = o.stage || 0; W.stage = STAGES[W.stageN]; W.theme = W.stage.theme; W.maxX = W.stage.areas[0].to;
     for (const a of W.stage.areas) for (const [k, x, z] of a.items) spawnItem(k, x, z, false);
@@ -212,6 +213,7 @@ function finish(win, label, sub) {
 }
 function respawn(f) {
   f.dead = false; f.dying = false; f.invisible = false; f.hp = f.cap = f.hpLag = f.maxHp; f.mp = Math.max(f.mp, 200); f.fallMeter = 0; f.hold = null;
+  if (f.home) { f.x = f.home.x; f.z = f.home.z; f.y = 0; f.vx = f.vy = 0; f.set('idle'); f.invul = 30; smoke(f); return; }
   const others = aliveHumans().filter(p => p !== f);
   f.x = W.mode === 'stage' && others.length ? others[0].x : clamp(W.camX + Wv * rnd(0.3, 0.7), W.minX + 40, W.maxX - 40);
   f.z = rnd(30, FLOOR_D - 30); f.y = 320; f.vy = 0; f.vx = 0; f.set('jump'); f.didAirAtk = true; f.invul = 160;
@@ -234,7 +236,7 @@ function step() {
   // knocked-out fighters with lives left come back; the rest are cleared away after a while
   for (const f of fs) if (f.dead && f.respawnT > 0 && --f.respawnT === 0 && !W.over) respawn(f);
   for (let i = fs.length - 1; i >= 0; i--) if (fs[i].dead && !fs[i].human && !(fs[i].lives > 0) && fs[i].st > 110) fs.splice(i, 1);
-  if (W.mode === 'stage') stageLogic(); else battleLogic();
+  if (W.mode === 'stage') stageLogic(); else if (W.mode === 'practice') practiceLogic(); else battleLogic();
   if (!W.over && W.players.every(isOut)) {
     if (W.mode === 'stage') finish(false);
     else { const rest = W.fighters.find(f => !isOut(f)); endBattle(rest ? rest.team : null, false); }
@@ -245,6 +247,7 @@ function step() {
   }
   // camera follows the players (the middle of them when two play)
   const tgt = humanCenter() - Wv * (W.mode === 'stage' ? 0.42 : 0.5);
+  if (!W.arena) W.arena = 1400;
   if (W.mode === 'stage') {
     const A = W.stage.areas, camMin = W.areaIdx > 0 ? A[W.areaIdx - 1].to - Wv * 0.5 : 0;
     W.camX = Math.max(camMin, Math.min(lerp(W.camX, tgt, 0.1), W.maxX - Wv));
@@ -262,3 +265,58 @@ Fighter.prototype.update = function () {
   if (this.entering) return;
   if (W.mode === 'stage' || (this.human && W.players.length > 1)) this.x = clamp(this.x, W.camX + 14, Math.min(W.maxX, W.camX + Wv) - 14);
 };
+
+/* ------------------------------ practice ground ------------------------------ */
+/* A park with two scarecrows. Step-by-step lessons; when they're done you can keep practising. */
+const TUT = [
+  { t: '走路', kb: '按 A / D 左右走（W / S 往裡面、外面走）', touch: '用左邊的搖桿走來走去', pad: '用左搖桿走來走去', ok: P => P.tut.moved > 220 },
+  { t: '跳躍', kb: '按 K 跳起來', touch: '按「跳」', pad: '按 A 跳起來', ok: P => P.p.state === 'jump' },
+  { t: '跑步', kb: '快速連按兩下 D（或 A）就會跑起來', touch: '把搖桿推到最旁邊就會跑', pad: '把搖桿推到底就會跑', ok: P => P.tut.run > 25 },
+  { t: '翻滾', kb: '跑步的時候按 L，可以翻滾躲開攻擊', touch: '跑步的時候按「防」，可以翻滾', pad: '跑步的時候按 B，可以翻滾', ok: P => P.p.state === 'roll' },
+  { t: '攻擊', kb: '走到稻草人旁邊，連按 J 三下把它打倒', touch: '走到稻草人旁邊，連按「攻」三下把它打倒', pad: '走到稻草人旁邊，連按 X 三下把它打倒', ok: P => P.tut.knocked },
+  { t: '防禦', kb: '稻草人會丟球過來，面向它按住 L 擋住兩次', touch: '稻草人會丟球過來，面向它按住「防」擋住兩次', pad: '稻草人會丟球過來，按住 B 擋住兩次', ok: P => (P.p.blocks || 0) >= 2 },
+  { t: '必殺技', kb: '按 U 放出第一招必殺技（也可以按 L、D、J：防、方向、攻）', touch: '按黃色的必殺技按鈕', pad: '按 Y 放出必殺技', ok: P => P.p.state === 'skill' },
+  { t: '撿道具', kb: '走到木棍旁按 J 撿起來', touch: '走到木棍旁按「攻」撿起來', pad: '走到木棍旁按 X 撿起來', ok: P => !!P.p.hold }
+];
+class DummyCtl {
+  constructor() { this.inp = new Input(); this.t = rnd(40, 100) | 0; }
+  poll() {
+    const I = this.inp, f = this.f; I.mx = I.mz = 0; I.def = false;
+    const g = nearestFoe(f); if (!g) return;
+    const lesson = W.tut.step >= TUT.length || TUT[W.tut.step].t === '防禦';
+    if (sgn(g.x - f.x) !== f.face) I.mx = sgn(g.x - f.x) * 0.04;
+    if (lesson && --this.t <= 0 && Math.abs(g.z - f.z) < 22 && Math.abs(g.x - f.x) > 90 && f.canAct()) { I.skill = 1; this.t = 110; }
+  }
+}
+function setupPractice(o) {
+  W.theme = 'park'; W.arena = Math.max(1400, Wv + 100); W.maxX = W.arena; W.arenaDef = { items: ['stick', 'milk'] };
+  W.tut = { step: 0, moved: 0, run: 0, knocked: false, doneT: 0 };
+  W.players.forEach((p, i) => { p.x = W.arena / 2 - 260 + i * 60; p.z = 70 + i * 40; p.lives = 99; });
+  [[W.arena / 2 + 60, 60], [W.arena / 2 + 220, 110]].forEach(([x, z]) => {
+    const d = new Fighter('dummy', 2, x, z, new DummyCtl()); d.home = { x, z }; d.lives = 9999; d.face = -1; W.fighters.push(d);
+  });
+  spawnItem('stick', W.arena / 2 - 120, 130, false);
+  message('練習場', '跟著上面的提示一步一步來', 120);
+  Sound.startMusic('menu');
+  W.camX = clamp(humanCenter() - Wv / 2, 0, Math.max(0, W.maxX - Wv));
+}
+function practiceLogic() {
+  const T = W.tut;
+  for (const p of W.players) {
+    if (p.hp < p.maxHp * 0.3) p.hp = p.cap = p.maxHp;                 // nobody gets knocked out while practising
+    p.mp = Math.min(p.maxMp, p.mp + 1.5);
+    if (p.state === 'walk') T.moved += Math.abs(p.vx) + Math.abs(p.vz);
+    if (p.state === 'run') T.run++;
+  }
+  for (const d of W.fighters) if (d.id === 'dummy' && (d.state === 'fall' || d.state === 'lying') && d.lastHitBy && d.lastHitBy.human) T.knocked = true;
+  for (const d of W.fighters) if (d.home && d.state === 'idle') { d.x += (d.home.x - d.x) * 0.04; d.z += (d.home.z - d.z) * 0.04; }   // scarecrows hop back to their spot
+  if (!W.items.some(it => it.kind === 'stick') && !W.players.some(p => p.hold)) spawnItem('stick', W.camX + Wv * 0.3, 130, true);
+  if (T.step < TUT.length) {
+    const L = TUT[T.step];
+    if (W.players.some(p => L.ok({ p, tut: T }))) {
+      T.step++; Sound.play('go'); for (const p of W.players) p.blocks = 0;
+      if (T.step === TUT.length) { message('練習完成！', '可以繼續自由練習，按暫停回到選單', 200); Sound.jingle('win'); setTimeout(() => Sound.startMusic('menu'), 1500); }
+      else message('很好！', '', 40);
+    }
+  }
+}

@@ -187,6 +187,28 @@ function drawHair(c, L, back, f, P) {
       c.fillStyle = '#fffbea'; for (let i = 0; i < 3; i++) { c.beginPath(); c.moveTo(R * 0.55 + i * 5, 8.5); c.lineTo(R * 0.55 + i * 5 + 2, 12); c.lineTo(R * 0.55 + i * 5 + 4, 8.5); c.fill(); }
       [[-2, -R + 2, -12, -R - 8, -4, -R + 4], [4, -R + 1, -2, -R - 12, 8, -R + 3]].forEach(h => { c.beginPath(); c.moveTo(h[0], h[1]); c.quadraticCurveTo(h[2] + 4, h[3] + 2, h[2], h[3]); c.lineTo(h[4], h[5]); c.closePath(); c.fillStyle = L.acc; c.fill(); c.lineWidth = 2; c.strokeStyle = INK; c.stroke(); });
       break;
+    case 'zap':
+      if (back) return;
+      c.beginPath(); c.moveTo(R * 0.8, -5);
+      [[-0.5, R + 2], [-0.7, R + 12], [-0.95, R + 3], [-1.3, R + 14], [-1.55, R + 2], [-1.95, R + 13], [-2.2, R + 2], [-2.6, R + 11], [-2.85, R + 1], [-3.2, R + 6], [-3.4, R]].forEach(([a2, r]) => c.lineTo(Math.cos(a2) * r, Math.sin(a2) * r));
+      c.lineTo(-R * 0.6, 6); c.lineTo(-R * 0.1, -3); c.lineTo(R * 0.5, -6); c.closePath();
+      c.fillStyle = hc; c.fill(); c.lineWidth = 2.2; c.strokeStyle = INK; c.stroke();
+      c.fillStyle = '#2b2733'; c.beginPath(); c.moveTo(-2, -R - 4); c.lineTo(3, -R + 3); c.lineTo(-1, -R + 3); c.lineTo(3, -R + 10); c.lineTo(-5, -R + 1); c.lineTo(-1, -R + 1); c.closePath(); c.fill();
+      break;
+    case 'breeze':
+      if (back) { const w = Math.sin(t * 0.2) * 3; c.beginPath(); c.moveTo(-4, -R); c.quadraticCurveTo(-R - 14, -R - 4 + w, -R - 18, -2 + w); c.quadraticCurveTo(-R - 6, -2, -R + 2, 4); c.closePath(); c.fillStyle = hc; c.fill(); c.lineWidth = 2.2; c.strokeStyle = INK; c.stroke(); return; }
+      c.beginPath(); c.moveTo(R + 1, -3); c.quadraticCurveTo(R, -R - 6, -6, -R - 3); c.quadraticCurveTo(-R - 4, -R + 3, -R + 1, 5); c.lineTo(-5, 2); c.lineTo(1, -6); c.lineTo(6, -3); c.closePath();
+      c.fillStyle = hc; c.fill(); c.lineWidth = 2.2; c.strokeStyle = INK; c.stroke();
+      c.save(); c.beginPath(); c.arc(0, 0, R + 0.5, 0, TAU); c.clip(); c.fillStyle = '#2b2733'; c.fillRect(-R - 2, -9, R * 2 + 4, 3.5); c.restore();
+      blob(c, R * 0.35, -11, 5, 4, '#9ad8f0');
+      break;
+    case 'buns':
+      if (back) { blob(c, -R + 1, -R + 3, 6.5, 6.5, shade(hc, -0.1)); return; }
+      blob(c, 4, -R - 1, 6.5, 6.5, hc);
+      c.beginPath(); c.moveTo(R + 1, -1); c.quadraticCurveTo(R + 1, -R - 3, -2, -R - 1); c.quadraticCurveTo(-R - 2, -R + 3, -R + 1, 7); c.lineTo(-4, 4); c.lineTo(0, -5); c.lineTo(4, -2); c.lineTo(7, -6); c.lineTo(10, -2); c.closePath();
+      c.fillStyle = hc; c.fill(); c.lineWidth = 2.2; c.strokeStyle = INK; c.stroke();
+      blob(c, 8, -R + 2, 2.6, 2.6, L.acc);
+      break;
     case 'cat':
       if (back) { [[-8, -R + 4], [3, -R + 1]].forEach(([x, y], k) => { c.beginPath(); c.moveTo(x - 6, y + 3); c.lineTo(x - 1, y - 11); c.lineTo(x + 6, y + 2); c.closePath(); c.fillStyle = k ? L.fur : shade(L.fur, -0.15); c.fill(); c.lineWidth = 2; c.strokeStyle = INK; c.stroke(); }); return; }
       c.strokeStyle = '#fff6e6'; c.lineWidth = 2; c.beginPath(); c.moveTo(2, -R + 3); c.lineTo(5, -4); c.moveTo(7, -R + 4); c.lineTo(8, -4); c.stroke();
@@ -383,6 +405,37 @@ function drawMagpie(c, f) {
   c.restore();
 }
 const DRAWERS = { bat: drawBat, crab: drawCrab, octo: drawOcto, magpie: drawMagpie };
+
+function drawDog(c, f) {
+  const t = f.clock, L = f.look, down = f.state === 'lying' || f.state === 'dead' || f.state === 'fall', run = f.state === 'walk' || f.state === 'run' ? Math.sin(t * 0.5) : 0;
+  const atk = f.state === 'atk' ? ext(f.st, 1, f.atk.on, f.atk.off, f.atk.dur) : 0;
+  c.save(); if (down) { c.translate(0, -8); c.rotate(-Math.PI / 2); c.translate(10, 0); }
+  c.lineCap = 'round';
+  seg(c, [P2(-12, -14), P2(-22, -24 + Math.sin(t * 0.4) * 4)], 3.5, L.fur);
+  for (const [x, ph] of [[-8, 1], [8, -1]]) { seg(c, [P2(x, -10), P2(x + run * ph * 4, 0)], 4, shade(L.fur, -0.15)); }
+  blob(c, 0, -14, 15, 9, L.fur);
+  c.save(); c.translate(14 + atk * 6, -22); c.rotate(-0.1 + atk * 0.2);
+  blob(c, 0, 0, 9, 8, L.fur); blob(c, 7, 3, 5, 4, L.skin); c.fillStyle = INK; c.beginPath(); c.arc(11, 1, 2, 0, TAU); c.fill(); c.beginPath(); c.arc(3, -2, 1.6, 0, TAU); c.fill();
+  c.beginPath(); c.ellipse(-5, -3, 3.5, 6, 0.4, 0, TAU); c.fillStyle = shade(L.fur, -0.3); c.fill();
+  if (atk > 0.3) { c.fillStyle = '#e8432f'; c.beginPath(); c.ellipse(8, 7, 3, 2, 0, 0, TAU); c.fill(); }
+  c.restore();
+  c.fillStyle = '#e8432f'; c.fillRect(6, -20, 4, 8);
+  c.restore();
+}
+function drawDummy(c, f) {
+  const hit = f.flash > 0 || f.state === 'hurt', sw = hit ? Math.sin(f.clock * 0.8) * 0.15 : 0;
+  c.save(); c.rotate(sw);
+  if (f.state === 'lying' || f.state === 'dead' || f.state === 'fall') { c.translate(0, -10); c.rotate(-Math.PI / 2); c.translate(20, 0); }
+  seg(c, [P2(0, 0), P2(0, -60)], 5, '#8a5a34');
+  seg(c, [P2(-26, -42), P2(26, -42)], 5, '#8a5a34');
+  blob(c, 0, -36, 14, 18, '#d9b45a'); c.strokeStyle = 'rgba(120,80,30,.6)'; c.lineWidth = 1.5; for (let k = -2; k <= 2; k++) { c.beginPath(); c.moveTo(k * 4, -52); c.lineTo(k * 5, -20); c.stroke(); }
+  blob(c, 0, -64, 12, 12, '#f2dca0');
+  c.fillStyle = INK; c.beginPath(); c.arc(4, -66, 1.8, 0, TAU); c.arc(10, -66, 1.8, 0, TAU); c.fill();
+  c.strokeStyle = INK; c.lineWidth = 1.6; c.beginPath(); c.arc(7, -61, 3, 0.2, Math.PI - 0.2); c.stroke();
+  c.beginPath(); c.moveTo(-14, -70); c.lineTo(0, -84); c.lineTo(14, -70); c.closePath(); c.fillStyle = '#e8432f'; c.fill(); c.lineWidth = 2; c.stroke();
+  c.restore();
+}
+DRAWERS.dog = drawDog; DRAWERS.dummy = drawDummy;
 function drawCracker(c, x, y, s, lit) {
   c.save(); c.translate(x, y); c.scale(s, s);
   for (let i = -1; i <= 1; i++) { c.beginPath(); c.roundRect ? c.roundRect(i * 6 - 3, -10, 6, 18, 2) : c.rect(i * 6 - 3, -10, 6, 18); c.fillStyle = '#e8432f'; c.fill(); c.lineWidth = 1.6; c.strokeStyle = INK; c.stroke(); c.fillStyle = '#ffcc33'; c.fillRect(i * 6 - 3, -2, 6, 3); }
