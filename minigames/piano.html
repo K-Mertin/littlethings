@@ -878,6 +878,31 @@ const KEYMAPS = {
   two: { KeyA: 60, KeyW: 61, KeyS: 62, KeyE: 63, KeyD: 64, KeyF: 65, KeyT: 66, KeyG: 67, KeyY: 68, KeyB: 69, KeyN: 71,
          KeyH: 72, KeyU: 73, KeyJ: 74, KeyI: 75, KeyK: 76, KeyL: 77, KeyP: 78, Semicolon: 79 },
 };
+// 🎹 真鋼琴 / 🙌 兩隻手: which hand and finger plays each key from the home position (1 = thumb … 5 = little finger)
+const FINGERS = {
+  piano: { KeyA: 'L5', KeyW: 'L4', KeyS: 'L4', KeyE: 'L3', KeyD: 'L3', KeyF: 'L2', KeyT: 'L2', KeyG: 'L2', KeyY: 'L1', KeyV: 'L1', KeyB: 'L1',
+           KeyH: 'R1', KeyU: 'R2', KeyJ: 'R2', KeyI: 'R3', KeyK: 'R3', KeyL: 'R4', KeyP: 'R4', Semicolon: 'R5', BracketLeft: 'R5', Quote: 'R5', BracketRight: 'R5', Enter: 'R5', Backslash: 'R5' },
+  two: { KeyA: 'L5', KeyW: 'L4', KeyS: 'L4', KeyE: 'L3', KeyD: 'L3', KeyF: 'L2', KeyT: 'L2', KeyG: 'L2', KeyY: 'L1', KeyB: 'L1',
+         KeyN: 'R1', KeyH: 'R1', KeyU: 'R2', KeyJ: 'R2', KeyI: 'R3', KeyK: 'R3', KeyL: 'R4', KeyP: 'R4', Semicolon: 'R5' },
+};
+const fingerOf = m => { const f = FINGERS[kbMode]; return f ? f[CODE_OF.get(m)] || null : null; };
+const HANDC = { L: ['#3d7bff', '#1f4fb8'], R: ['#ff5a7a', '#c22c52'] };
+function fingerBadge(f, cx, cy, s) {
+  const [c1, c2] = HANDC[f[0]], word = (f[0] === 'L' ? '左' : '右') + f[1];
+  x.font = `900 ${s * 0.62}px ${FONT}`;
+  const w = Math.max(s * 1.5, x.measureText(word).width + s * 0.5);
+  x.fillStyle = 'rgba(0,0,0,.15)'; rr(x, cx - w / 2, cy - s / 2 + 2, w, s, s / 2); x.fill();
+  x.fillStyle = c1; rr(x, cx - w / 2, cy - s / 2, w, s, s / 2); x.fill();
+  x.strokeStyle = c2; x.lineWidth = 1.2; x.stroke();
+  txt(word, cx, cy + 0.5, s * 0.62, '#fff', 'center', 900, null, 4, x);
+}
+function drawFingers() {
+  for (const [k, b] of capBoxes()) {
+    const f = fingerOf(k.m); if (!f) continue;
+    const dn = (held.get(k.m) || 0) > 0 || (lit.get(k.m) || 0) > 0 ? (k.white ? 4 : 3) : 0, s = Math.max(14, b.sz * 0.95);
+    fingerBadge(f, b.cx, b.cy - b.sz * 0.6 - s * (k.white ? 0.75 : 0.85) + dn, k.white ? s : s * 0.9);   // white keys: above the letter; black keys: higher up on the black key, clear of the white row
+  }
+}
 const kbOk = v => KEYMAPS[v] ? v : 'one';
 let kbMode = kbOk(MG.store.get('piano.pick.kb', 'one'));
 let KEYMAP = KEYMAPS[kbMode];
@@ -937,6 +962,7 @@ function drawKeys() {
   for (const k of keys) if (k.white) { const s = keyState(k); if (s) { drawWhite(x, k, s); any = true; } }
   for (const k of keys) if (!k.white) { const s = keyState(k); if (s || any) drawBlack(x, k, s || REST); }
   if (showKeyCaps) drawKeyCaps();
+  if (FINGERS[kbMode]) drawFingers();
   // a little bouncing finger when the child has been waiting a while
   if (mode === 'learn' && state === 'play' && !demo && pace === 'wait' && idleT > 4 && nIdx < notes.length) {
     const k = keyBy.get(notes[nIdx].m);
@@ -1033,6 +1059,7 @@ function notePill(n, cx, yb, w, h, next) {
     const [main] = labels(n.m), fs = Math.min(20, w * 0.36, h * 0.62);
     txt(main, cx, yb - Math.min(h, 34) / 2 + (n.m >= 72 ? 2 : 0), fs, '#fff', 'center', 900, c[2], 3);
     if (n.m >= 72) { x.fillStyle = '#fff'; dot(x, cx, yb - Math.min(h, 34) / 2 - fs * 0.78, 2.6); }
+    const f = fingerOf(n.m); if (f && next) fingerBadge(f, cx, yb - Math.min(h, 34) - 12, 18);   // which finger plays the next note
   }
 }
 function drawLane() {
@@ -1130,7 +1157,7 @@ function menu() {
     html: '<p>噗噗的玩具鋼琴！自由彈可以換樂器、錄音；跟著彈就按<b>發光的琴鍵</b>學兒歌，按錯也沒關係 ^_^</p>',
     picks: [
       { key: 'pace', title: '跟著彈的時候', def: 'wait', options: [{ id: 'wait', label: '🐢 等我', sub: '按對了才往下' }, { id: 'beat', label: '🥁 跟節拍', sub: '照拍子，比完美' }] },
-      { key: 'kb', title: '電腦鍵盤怎麼彈？', def: 'one', options: [{ id: 'one', label: '⌨️ 單排', sub: 'A S D F… 一排彈全部' }, { id: 'piano', label: '🎹 真鋼琴', sub: '兩手並排，右手拇指在中央 Do（多一組低音）' }, { id: 'two', label: '🙌 兩隻手', sub: '兩手並排，整台鋼琴都彈得到' }] },
+      { key: 'kb', title: '電腦鍵盤怎麼彈？', def: 'one', options: [{ id: 'one', label: '⌨️ 單排', sub: 'A S D F… 一排彈全部' }, { id: 'piano', label: '🎹 真鋼琴', sub: '兩手並排，右手拇指在中央 Do，鍵上標出左右手第幾指' }, { id: 'two', label: '🙌 兩隻手', sub: '兩手並排，整台鋼琴都彈得到，也標出手指' }] },
       { key: 'lab', title: '琴鍵上寫什麼？', def: 'do', options: [{ id: 'do', label: 'Do Re Mi', sub: '唱名' }, { id: 'num', label: '1 2 3', sub: '簡譜數字' }, { id: 'abc', label: 'C D E', sub: '音名' }] },
     ],
     modesTitle: '想怎麼玩？',
