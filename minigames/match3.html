@@ -45,14 +45,59 @@ const LEVELS = [
   { n: 8, k: 6, mv: 60, j: ['........', '.##..##.', '.######.', '.######.', '.######.', '..####..', '...##...', '........'] },
   { n: 8, k: 6, mv: 58, s: 3200 },
   { n: 8, k: 6, mv: 58, j: ['........', '.######.', '.######.', '.######.', '.######.', '.######.', '.######.', '........'] },
+  // ---- 16–30: new ways to play (each one is explained once by a panel the first time it shows up) ----
+  // m = board map: '.' candy  '#' jelly  '@' ice (jelly under ice, 2 hits)  ' ' hole  'S' stone  'B' box (2 hits)  'C' cage with an animal  'X' chocolate
+  // g = goals: 'j' jelly/ice  'f' bring f fruits down  'b' boxes  'a' animals  'x' chocolate  'c' colours  's' points;  belt = [[row, dir], ...] moves one step after every move
+  { n: 7, k: 4, mv: 16, g: ['f'], f: 2 },
+  { n: 7, k: 4, mv: 20, g: ['j'], m: ['.......', '.@@.@@.', '.@###@.', '.@###@.', '.@@#@@.', '...@...', '.......'] },
+  { n: 8, k: 4, mv: 32, g: ['j'], m: [' ##  ## ', '########', '########', '########', '########', ' ###### ', '  ####  ', '   ##   '] },
+  { n: 7, k: 5, mv: 18, g: ['b'], m: ['.......', '.......', '..BBB..', '..B.B..', '..BBB..', '.......', '.......'] },
+  { n: 7, k: 5, mv: 12, g: ['a'], m: ['.......', '.C...C.', '.......', '...C...', '.......', '.C...C.', '.......'] },
+  { n: 7, k: 5, mv: 30, g: ['x'], m: ['.......', '.......', '.......', '.......', '.......', 'XX...XX', 'XX...XX'] },
+  { n: 7, k: 5, mv: 15, g: ['c'], c: [[0, 15], [3, 15]], belt: [[2, 1], [4, -1]] },
+  { n: 8, k: 4, mv: 55, g: ['f'], f: 3, m: ['........', '........', '..S..S..', '...  ...', '...  ...', '..S..S..', '........', '........'] },
+  { n: 8, k: 5, mv: 50, g: ['j'], m: ['@@@..@@@', '@B@..@B@', '@@@..@@@', '........', '........', '###..###', '#B#..#B#', '###..###'] },
+  { n: 8, k: 5, mv: 32, g: ['a', 'x'], m: ['.C....C.', '........', '........', '...CC...', '........', '........', 'XX....XX', 'XXX..XXX'] },
+  { n: 8, k: 5, mv: 22, g: ['j'], belt: [[1, 1], [6, -1]], m: ['........', '########', '........', '..####..', '..####..', '........', '########', '........'] },
+  { n: 8, k: 5, mv: 34, g: ['c'], c: [[1, 22], [4, 22]], m: ['S......S', '........', '..S..S..', '........', '........', '..S..S..', '........', 'S......S'] },
+  { n: 8, k: 5, mv: 66, g: ['f', 'j'], f: 3, fmax: 2, m: ['........', '........', '........', '........', '@@@@@@@@', '@@@@@@@@', '........', '........'] },
+  { n: 8, k: 6, mv: 60, g: ['x', 'a'], m: ['..C..C..', '........', '.B....B.', '........', '........', '........', '.XX..XX.', 'XXXXXXXX'] },
+  { n: 8, k: 5, mv: 66, g: ['j', 'b', 'f'], f: 2, belt: [[3, 1]], m: ['@@@@@@@@', '@B@@@@B@', '@@@@@@@@', '........', '########', '#B####B#', '########', '########'] },
 ];
-const goalIcon = L => L.s ? '⭐' : L.c ? '🍬' : '💗';
+const ANIMALS = ['🐥', '🐰', '🐱', '🐶', '🐼', '🐹'];
+const goalsOf = L => L.g || (L.s ? ['s'] : L.c ? ['c'] : ['j']);
+// the new ways to play a level uses (for the menu marker and the one-time intro panel)
+function mechOf(L) {
+  const m = (L.m || []).join(''), out = [];
+  if (L.f) out.push('fruit');
+  if (m.includes('@')) out.push('ice');
+  if (m.includes(' ') || m.includes('S')) out.push('shape');
+  if (m.includes('B')) out.push('box');
+  if (m.includes('C')) out.push('cage');
+  if (m.includes('X')) out.push('choc');
+  if (L.belt) out.push('belt');
+  return out;
+}
+const MECH = {
+  fruit: ['🍓', '草莓送到底', '🍓 草莓送到底', '草莓不能消掉，要把它<b>下面的糖果消掉</b>，讓草莓一路掉到最下面一排，就會收進籃子裡！'],
+  ice: ['🧊', '冰塊果凍', '🧊 冰塊果凍', '藍色冰塊下面藏著粉紅果凍。在冰塊上消糖果，<b>第一次敲破冰塊、第二次消掉果凍</b>。'],
+  shape: ['🧩', '特別形狀', '🧩 特別形狀', '棋盤有洞洞和🪨石頭，那裡不會有糖果。糖果會<b>直接掉過洞洞和石頭</b>，繼續往下掉喔！'],
+  box: ['📦', '木箱子', '📦 木箱子', '木箱子不能移動。在它<b>旁邊</b>消掉糖果就能敲它，要敲<b>兩次</b>才會壞掉。條紋糖和炸彈也打得到喔！'],
+  cage: ['🐥', '救出小動物', '🐥 救出小動物', '小動物被關在籠子裡了！在籠子<b>旁邊</b>消掉糖果，籠子就會打開，小動物就自由了。'],
+  choc: ['🍫', '會長大的巧克力', '🍫 會長大的巧克力', '在巧克力<b>旁邊</b>消糖果可以吃掉它。如果好幾步都沒吃到，巧克力會<b>慢慢長大</b>，要快點吃光喔！'],
+  belt: ['🛝', '輸送帶', '🛝 輸送帶', '有箭頭的那一排是輸送帶，<b>每走一步，整排糖果就往箭頭方向移一格</b>。移完也可能剛好連成一排喔！'],
+};
+const GOALI = { s: '⭐', c: '🍬', j: '💗', f: '🍓', b: '📦', a: '🐥', x: '🍫' };
+const goalIcon = L => { const me = mechOf(L); return me.length ? MECH[me[me.length - 1]][0] : GOALI[goalsOf(L)[0]]; };
+const lvName = L => { const me = mechOf(L); return me.length ? me.map(k => MECH[k][1]).join('＋') : { s: '拿分數', c: '收集糖果', j: '粉紅果凍' }[goalsOf(L)[0]]; };
 // the goal as numbers + emoji only (for the quick toast when a level starts)
-const goalEmoji = L => L.s ? `🎯 ${L.s} ⭐` : L.c ? '🎯 ' + L.c.map(([k, n]) => `${KINDS[k].em}×${n}`).join('  ') : '🎯 💗 → 0';
-const goalText = L => L.s ? `拿到 ${L.s} 分` : L.c ? '消掉 ' + L.c.map(([k, n]) => `${n} 個${KINDS[k].nm}`).join('、') : '把粉紅果凍格子全部消掉';
+const goalEmoji = L => '🎯 ' + goalsOf(L).map(g => g === 's' ? `${L.s} ⭐` : g === 'c' ? L.c.map(([k, n]) => `${KINDS[k].em}×${n}`).join('  ') : g === 'f' ? `🍓×${L.f}⬇️` : `${GOALI[g]}→0`).join('  ');
+const goalText = L => goalsOf(L).map(g => g === 's' ? `拿到 ${L.s} 分` : g === 'c' ? '消掉 ' + L.c.map(([k, n]) => `${n} 個${KINDS[k].nm}`).join('、') : { j: '把粉紅果凍格子全部消掉', f: `把 ${L.f} 顆草莓送到最下面`, b: '把木箱子全部敲破', a: '把小動物全部救出來', x: '把巧克力全部吃光' }[g]).join('，');
 
 let L = LEVELS[0], N = 7, grid = [], jel = [], level = 1, mode = 'relax', state = 'menu', phase = 'idle';
 let score = 0, moves = 0, combo = 0, bestCombo = 0, got = [], jellyLeft = 0;
+// blk[r][c]: null = open cell, or { t: 'hole' | 'stone' | 'box' | 'cage' | 'choc', hp, an, hit }
+let blk = [], fruitGot = 0, turnFx = true, chocFx = true, chocCalm = 0, chocCap = 0, chocAte = false, collected = [];
 let sel = null, drag = null, kc = null, hint = null, idleT = 0, t = 0;
 let tween = null, popT = 0, popping = [], lastMoved = [], effects = [], floats = [];
 let mood = 'happy', moodT = 0, squashT = 0, say = null, lay = null, uid = 0;
@@ -62,7 +107,13 @@ const snd = (() => { const last = {}; return (n, a) => { const now = performance
 
 // ---------- board rules ----------
 const inB = (r, c) => r >= 0 && r < N && c >= 0 && c < N;
-const kd = (r, c) => { const p = grid[r] && grid[r][c]; return p && p.sp !== 'star' ? p.k : -1; };
+const kd = (r, c) => { const p = grid[r] && grid[r][c]; return p && p.sp !== 'star' && p.k >= 0 ? p.k : -1; };
+const isOpen = (r, c) => inB(r, c) && !blk[r][c];
+const countBlk = t => blk.reduce((a, row) => a + row.filter(b => b && b.t === t).length, 0);
+const fruitsOn = () => grid.reduce((a, row) => a + row.filter(p => p && p.fruit).length, 0);
+// the lowest open cell of a column: a fruit that reaches it is collected
+const bottomOf = c => { for (let r = N - 1; r >= 0; r--) if (!blk[r][c]) return r; return -1; };
+const newFruit = (r, c) => { const p = newPiece(-1, r, c); p.fruit = true; return p; };
 const newPiece = (k, r, c) => ({ k, sp: '', x: c, y: r, vy: 0, land: 0, flash: 0, popping: false, spent: false, id: ++uid });
 const randKind = () => MG.randi(0, L.k - 1);
 
@@ -125,7 +176,8 @@ function findMoves(rich = false) {
     const r2 = r + dr, c2 = c + dc; if (!inB(r2, c2)) continue;
     const pa = grid[r][c], pb = grid[r2][c2]; if (!pa || !pb) continue;
     const a = { r, c }, b = { r: r2, c: c2 };
-    if (pa.sp === 'star' || pb.sp === 'star') { out.push({ a, b, v: 12 }); continue; }
+    if (pa.fruit && pb.fruit) continue;
+    if ((pa.sp === 'star' || pb.sp === 'star') && !pa.fruit && !pb.fruit) { out.push({ a, b, v: 12 }); continue; }
     if (pa.sp && pb.sp) { out.push({ a, b, v: 10 }); continue; }
     swapGrid(a, b);
     let v = lineLen(r, c) + lineLen(r2, c2);
@@ -144,6 +196,14 @@ function worth(groups) {
       if (jel[Math.floor(key / N)][key % N] > 0) v += 4;
       if (L.c && L.c.some(([k, n], i) => k === g.k && got[i] < n)) v += 1.5;
     }
+    const near = new Set();
+    for (const key of g.cells) {
+      const r = Math.floor(key / N), c = key % N;
+      for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const b = inB(r + dr, c + dc) && blk[r + dr][c + dc]; if (b && b.t !== 'hole' && b.t !== 'stone') near.add((r + dr) * N + c + dc); }
+      // cells under a fruit: clearing them brings it down
+      if (L.f) for (let rr = r - 1; rr >= 0; rr--) { const q = grid[rr][c]; if (q && q.fruit) { v += r === bottomOf(c) ? 14 : 7; break; } }
+    }
+    v += near.size * 3.5;
   }
   return v;
 }
@@ -151,11 +211,16 @@ function genBoard() {
   for (let tries = 0; tries < 200; tries++) {
     grid = Array.from({ length: N }, () => Array(N).fill(null));
     for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+      if (blk[r][c]) continue;
       const bad = new Set();
       if (c >= 2 && kd(r, c - 1) === kd(r, c - 2)) bad.add(kd(r, c - 1));
       if (r >= 2 && kd(r - 1, c) === kd(r - 2, c)) bad.add(kd(r - 1, c));
       const ok = [...Array(L.k).keys()].filter(k => !bad.has(k));
       grid[r][c] = newPiece(MG.pick(ok), r, c);
+    }
+    if (L.f) {
+      const cols = MG.shuffle([...Array(N).keys()].filter(c => c > 0 && c < N - 1).filter(c => { const top = blk.findIndex(row => !row[c]); return top >= 0 && top < bottomOf(c); }));
+      cols.slice(0, Math.min(L.fmax || 1, L.f)).forEach(c => { const r = blk.findIndex(row => !row[c]); grid[r][c] = newFruit(r, c); });
     }
     if (findMoves().length >= 3) return;
   }
@@ -164,7 +229,12 @@ function genBoard() {
 // ---------- level flow ----------
 function setupLevel(n) {
   level = n; L = LEVELS[n - 1]; N = L.n;
-  jel = Array.from({ length: N }, (_, r) => Array.from({ length: N }, (_, c) => L.j && L.j[r][c] === '#' ? 1 : 0));
+  const map = L.m || L.j || [];
+  const ch = (r, c) => (map[r] && map[r][c]) || '.';
+  jel = Array.from({ length: N }, (_, r) => Array.from({ length: N }, (_, c) => ch(r, c) === '#' ? 1 : ch(r, c) === '@' ? 2 : 0));
+  const BT = { ' ': 'hole', S: 'stone', B: 'box', C: 'cage', X: 'choc' };
+  blk = Array.from({ length: N }, (_, r) => Array.from({ length: N }, (_, c) => { const t = BT[ch(r, c)]; return t ? { t, hp: t === 'box' ? 2 : 1, an: t === 'cage' ? MG.pick(ANIMALS) : '', hit: 0 } : null; }));
+  fruitGot = 0; turnFx = chocFx = true; chocCalm = 0; chocCap = countBlk('choc') + 3; chocAte = false; collected = [];
   jellyLeft = jel.flat().reduce((a, b) => a + b, 0);
   got = L.c ? L.c.map(() => 0) : [];
   score = 0; moves = 0; combo = 0; bestCombo = 0; sel = null; drag = null; kc = null; hint = null; idleT = 0;
@@ -176,15 +246,24 @@ function startLevel(n) {
   talk('Go! 🚀', 2);
   // landscape shows the goal big in the left column; a toast there would cover the top of the board
   if (land) talk('🎯 Goal 👈', 2.6); else MG.toast(goalEmoji(L), 2600);
+  // the first time a new way to play shows up, explain it once
+  const fresh = mechOf(L).filter(k => !MG.store.get('match3.seen.' + k, false));
+  if (fresh.length) {
+    fresh.forEach(k => MG.store.set('match3.seen.' + k, true));
+    MG.panel({ title: fresh.map(k => MECH[k][2]).join('＋'), html: fresh.map(k => `<p>${MECH[k][3]}</p>`).join('') + `<p>🎯 ${goalText(L)}</p>`, buttons: [{ label: '開始', on: () => MG.hide() }] });
+  }
 }
 function hud() {
   MG.stat('level', `第 ${level} 關`);
   MG.stat('moves', mode === 'moves' ? `剩 ${Math.max(0, L.mv - moves)} 步` : `${moves} 步`);
 }
-function goalDone() {
-  if (L.s) return score >= L.s;
-  if (L.c) return L.c.every(([, n], i) => got[i] >= n);
-  return jellyLeft <= 0;
+function goalDone() { return goalsOf(L).every(goalOk); }
+function goalOk(g) {
+  if (g === 's') return score >= L.s;
+  if (g === 'c') return L.c.every(([, n], i) => got[i] >= n);
+  if (g === 'j') return jellyLeft <= 0;
+  if (g === 'f') return fruitGot >= L.f;
+  return countBlk({ b: 'box', a: 'cage', x: 'choc' }[g]) === 0;
 }
 function starsNow() { const f = moves / L.mv; return f <= 0.7 ? 3 : f <= 1 ? 2 : 1; }
 function win() {
@@ -197,7 +276,7 @@ function win() {
     html: `<div class="m3-stars">${'⭐'.repeat(st)}${'☆'.repeat(3 - st)}</div><div class="big">${score} 分</div><p>走了 ${moves} 步${bestCombo >= 2 ? `，最多連鎖 ${bestCombo} 次` : ''} ^_^</p>` +
       (st < 3 ? `<p>${L.mv * 0.7 | 0} 步以內完成可以拿到三顆星喔</p>` : '<p>太厲害了，三顆星！</p>') +
       (rec.isNew ? '<p class="new">新紀錄！^_^</p>' : '') +
-      (level < LEVELS.length ? `<p>下一關：${goalIcon(LEVELS[level])} ${goalText(LEVELS[level])}</p>` : '<p>十五關全部過關，你是消消樂大師！</p>'),
+      (level < LEVELS.length ? `<p>下一關：${goalIcon(LEVELS[level])} ${goalText(LEVELS[level])}</p>` : `<p>${LEVELS.length} 關全部過關，你是消消樂大師！</p>`),
     buttons: [
       { label: level < LEVELS.length ? '下一關' : '回到第 1 關', on: () => { const nx = level < LEVELS.length ? level + 1 : 1; MG.store.set('match3.pickLevel', nx); startLevel(nx); } },
       { label: '這關再玩', alt: true, on: () => startLevel(level) },
@@ -218,15 +297,20 @@ function outOfMoves() {
   }), 700);
 }
 function progressText() {
-  if (L.s) return `${score} / ${L.s} 分`;
-  if (L.c) return L.c.map(([k, n], i) => `${KINDS[k].nm} ${Math.min(n, got[i])}/${n}`).join('　');
-  return `粉紅果凍還剩 ${jellyLeft} 格`;
+  return goalsOf(L).map(g => {
+    if (g === 's') return `${score} / ${L.s} 分`;
+    if (g === 'c') return L.c.map(([k, n], i) => `${KINDS[k].nm} ${Math.min(n, got[i])}/${n}`).join('　');
+    if (g === 'j') return `粉紅果凍還剩 ${jellyLeft} 格`;
+    if (g === 'f') return `草莓 ${fruitGot}/${L.f}`;
+    return { b: '木箱子', a: '籠子', x: '巧克力' }[g] + `還剩 ${countBlk({ b: 'box', a: 'cage', x: 'choc' }[g])} 個`;
+  }).join('　');
 }
 
 // ---------- turn engine ----------
 function trySwap(a, b) {
   if (state !== 'play' || phase !== 'idle') return false;
   if (!inB(b.r, b.c) || Math.abs(a.r - b.r) + Math.abs(a.c - b.c) !== 1) return false;
+  if (!grid[a.r][a.c] || !grid[b.r][b.c]) return false;
   sel = null; hint = null; idleT = 0;
   swapGrid(a, b);
   phase = 'tween';
@@ -237,7 +321,7 @@ function trySwap(a, b) {
 function afterSwap(a, b) {
   const pa = grid[a.r][a.c], pb = grid[b.r][b.c], ka = a.r * N + a.c, kb = b.r * N + b.c;
   let forced = [];
-  if (pa.sp === 'star' || pb.sp === 'star') {
+  if ((pa.sp === 'star' || pb.sp === 'star') && !pa.fruit && !pb.fruit) {
     if (pa.sp === 'star' && pb.sp === 'star') {
       pa.spent = pb.spent = true;
       for (let i = 0; i < N * N; i++) forced.push(i);
@@ -254,7 +338,7 @@ function afterSwap(a, b) {
     mood = 'ouch'; moodT = 0.6;
     return;
   }
-  moves++; combo = 0; hud();
+  moves++; combo = 0; hud(); turnFx = chocFx = false; chocAte = false;
   runClear(forced, [ka, kb]);
 }
 function zapKind(k, from, out) {
@@ -276,6 +360,17 @@ function blast(r, c, p, out) {
   else if (p.sp === 'bomb') { for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) if (inB(r + dr, c + dc)) out.push((r + dr) * N + c + dc); effects.push({ type: 'ring', x: cellX(c), y: cellY(r), t: 0, col }); snd('hit'); snd('boing'); }
   else if (p.sp === 'star') zapKind(mostKind(), r * N + c, out);
 }
+// a box / cage / chocolate next to a clear (or inside a blast) takes one hit
+function hitBlock(r, c) {
+  const b = blk[r][c]; if (!b || b.t === 'hole' || b.t === 'stone') return;
+  b.hp--; b.hit = 0.35; const px = cellX(c), py = cellY(r);
+  if (b.t === 'choc') chocAte = true;
+  if (b.hp > 0) { MG.fx.burst(px, py, { n: 6, colors: ['#c98a4a', '#e8b878', '#fff'], speed: 120, up: 30, size: 3.5, life: 0.5 }); snd('hit'); return; }
+  blk[r][c] = null; bgDirty = true;
+  if (b.t === 'box') { MG.fx.burst(px, py, { n: 12, colors: ['#b8742e', '#e8b878', '#fff3d6'], speed: 200, up: 60, size: 5, life: 0.7 }); snd('pop'); }
+  else if (b.t === 'choc') { MG.fx.burst(px, py, { n: 10, colors: ['#6b3a1e', '#a0603a', '#ffd9b0'], speed: 170, up: 50, size: 4.5, life: 0.6 }); snd('pop'); score += 20; }
+  else { MG.fx.burst(px, py, { n: 14, colors: ['#ffd23f', '#ff8ac2', '#fff'], speed: 200, up: 90, size: 5, life: 0.8, shape: 'star' }); snd('yay'); floats.push({ x: px, y: py, text: b.an + ' Free!', life: 1.3, col: '#2e9a4c', size: 0.5 }); score += 50; }
+}
 function hitCell(r, c, p) {
   if (p.sp !== 'star' && L.c) L.c.forEach(([k], i) => { if (k === p.k) got[i]++; });
   if (jel[r][c] > 0) {
@@ -285,7 +380,7 @@ function hitCell(r, c, p) {
 }
 function runClear(forced, moved) {
   const groups = groupsNow();
-  if (!groups.length && !forced.length) { endTurn(); return; }
+  if (!groups.length && !forced.length) { if (!collectFruit()) endTurn(); return; }
   combo++; bestCombo = Math.max(bestCombo, combo);
   const clear = new Set(forced), prot = new Map();
   for (const g of groups) {
@@ -301,10 +396,19 @@ function runClear(forced, moved) {
     const out = []; blast(r, c, p, out);
     for (const k2 of out) if (!prot.has(k2) && !clear.has(k2)) { clear.add(k2); queue.push(k2); }
   }
+  // blockers: hit once if a blast covers them or a cleared candy sits next to them
+  const dmg = new Set();
+  for (const key of clear) {
+    const r = Math.floor(key / N), c = key % N, p = grid[r][c];
+    if (!p) { if (blk[r][c]) dmg.add(key); continue; }
+    if (p.fruit) continue;
+    for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (inB(r + dr, c + dc) && blk[r + dr][c + dc]) dmg.add((r + dr) * N + c + dc);
+  }
+  for (const key of dmg) hitBlock(Math.floor(key / N), key % N);
   let n = 0;
   for (const key of clear) {
     const r = Math.floor(key / N), c = key % N, p = grid[r][c];
-    if (!p || p.popping) continue;
+    if (!p || p.popping || p.fruit) continue;
     hitCell(r, c, p);
     if (prot.has(key)) {           // this piece turns into a special one
       const m = prot.get(key); p.sp = m.sp; p.k = m.k; p.spent = false; p.flash = 0.5; n++;
@@ -334,19 +438,80 @@ function runClear(forced, moved) {
 function afterPop() {
   for (const [r, c] of popping) grid[r][c] = null;
   popping = []; lastMoved = [];
+  const slots = [];
   for (let c = 0; c < N; c++) {
-    let w = N - 1;
-    for (let r = N - 1; r >= 0; r--) {
-      const p = grid[r][c]; if (!p) continue;
-      if (r !== w) { grid[w][c] = p; grid[r][c] = null; p.vy = 0; lastMoved.push(w * N + c); }
-      w--;
+    // candies fall through holes, stones and blockers to the next open cell below
+    const cells = []; for (let r = 0; r < N; r++) if (!blk[r][c]) cells.push(r);
+    if (!cells.length) continue;
+    const ps = [], was = new Map();
+    for (const r of cells) { const p = grid[r][c]; if (p) { ps.push(p); was.set(p, r); } grid[r][c] = null; }
+    const need = cells.length - ps.length;
+    ps.forEach((p, j) => { const r = cells[need + j]; grid[r][c] = p; if (was.get(p) !== r) { p.vy = 0; lastMoved.push(r * N + c); } });
+    for (let i = 0; i < need; i++) { const r = cells[i], p = newPiece(randKind(), r, c); p.y = cells[0] - need + i - 0.25; grid[r][c] = p; lastMoved.push(r * N + c); slots.push([r, c, i]); }
+  }
+  // fruit levels: drop in a new fruit when there are not enough on the board
+  if (L.f && slots.length) {
+    const on = fruitsOn();
+    if (on < (L.fmax || 1) && on + fruitGot < L.f) {
+      let tops = slots.filter(([r, c, i]) => i === 0 && r < bottomOf(c));
+      if (tops.some(([, c]) => c > 0 && c < N - 1)) tops = tops.filter(([, c]) => c > 0 && c < N - 1);   // edge columns are harder
+      const s0 = tops.length ? MG.pick(tops) : null;
+      if (s0) { const [r, c] = s0, old = grid[r][c], f = newFruit(r, c); f.y = old.y; grid[r][c] = f; }
     }
-    const need = w + 1;
-    for (let i = 0; i <= w; i++) { const p = newPiece(randKind(), i, c); p.y = i - need - 0.25; grid[i][c] = p; lastMoved.push(i * N + c); }
   }
   phase = 'fall';
 }
+// a fruit sitting on the lowest open cell of its column goes into the basket
+function collectFruit() {
+  if (!L.f) return false;
+  let n = 0;
+  for (let c = 0; c < N; c++) {
+    const r = bottomOf(c); if (r < 0) continue;
+    const p = grid[r][c]; if (!p || !p.fruit || p.popping) continue;
+    p.popping = true; popping.push([r, c]); fruitGot++; n++;
+    MG.fx.burst(cellX(c), cellY(r), { n: 16, colors: ['#ff4f6a', '#7ad04a', '#fff'], speed: 200, up: 120, size: 5, life: 0.8, shape: 'star' });
+    floats.push({ x: cellX(c), y: cellY(r), text: '🍓 +1', life: 1.2, col: '#ff4f6a', size: 0.5 });
+    score += 100;
+  }
+  if (!n) return false;
+  snd('coin'); MG.sfx('yay'); talk('Yummy! 🍓', 1.6); mood = 'love'; moodT = 1.4; squashT = 0.4;
+  popT = 0; phase = 'pop';
+  return true;
+}
+// 🛝 belts: after every move the marked rows shift one cell (wrapping round)
+function moveBelts() {
+  const items = [], moved = [];
+  for (const [r, d] of L.belt) {
+    const cols = []; for (let c = 0; c < N; c++) if (!blk[r][c] && grid[r][c]) cols.push(c);
+    if (cols.length < 2) continue;
+    const ps = cols.map(c => grid[r][c]), m = cols.length;
+    cols.forEach((c, i) => {
+      const p = ps[(i - d + m) % m]; grid[r][c] = p; moved.push(r * N + c);
+      if (d > 0 && i === 0) p.x = c - 1; else if (d < 0 && i === m - 1) p.x = c + 1;   // the one that wraps slides in from the edge
+      items.push([p, { r, c }]);
+    });
+  }
+  if (!items.length) return false;
+  phase = 'tween'; snd('whoosh');
+  startTween(items, 0.28, () => runClear([], moved));
+  return true;
+}
+// 🍫 chocolate grows by one cell when none was eaten for two moves in a row
+function spreadChoc() {
+  if (chocAte) { chocCalm = 0; return; }
+  if (!countBlk('choc') || ++chocCalm < 2 || countBlk('choc') >= chocCap) return;
+  const opts = [];
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (blk[r][c] && blk[r][c].t === 'choc')
+    for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const p = isOpen(r + dr, c + dc) && grid[r + dr][c + dc]; if (p && !p.sp && !p.fruit) opts.push([r + dr, c + dc]); }
+  if (!opts.length) return;
+  const [r, c] = MG.pick(opts); chocCalm = 0;
+  grid[r][c] = null; blk[r][c] = { t: 'choc', hp: 1, an: '', hit: 0.35 }; bgDirty = true;
+  MG.fx.burst(cellX(c), cellY(r), { n: 8, colors: ['#6b3a1e', '#a0603a'], speed: 90, up: 20, size: 4, life: 0.5 });
+  snd('pop'); talk('🍫 Grow!', 1.4);
+}
 function endTurn() {
+  if (!turnFx) { turnFx = true; if (L.belt && moveBelts()) return; }
+  if (!chocFx) { chocFx = true; spreadChoc(); }
   phase = 'idle'; combo = 0; hud();
   if (goalDone()) { win(); return; }
   if (mode === 'moves' && moves >= L.mv) { outOfMoves(); return; }
@@ -354,7 +519,7 @@ function endTurn() {
 }
 function shuffleBoard() {
   const cells = [], ps = [];
-  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) { cells.push({ r, c }); ps.push(grid[r][c]); }
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (grid[r][c] && !grid[r][c].fruit) { cells.push({ r, c }); ps.push(grid[r][c]); }
   let ok = false;
   for (let tries = 0; tries < 300 && !ok; tries++) {
     MG.shuffle(ps); cells.forEach(({ r, c }, i) => grid[r][c] = ps[i]);
@@ -380,6 +545,7 @@ function update(dt) {
   for (const e of effects) e.t += dt; effects = effects.filter(e => e.t < 0.55);
   for (const f of floats) { f.life -= dt; f.y -= dt * lay.cs * 0.9; } floats = floats.filter(f => f.life > 0);
   for (const row of grid) for (const p of row) if (p) { p.land = Math.max(0, p.land - dt); p.flash = Math.max(0, p.flash - dt); }
+  for (const row of blk) for (const b of row) if (b && b.hit) b.hit = Math.max(0, b.hit - dt);
   if (tween) {
     tween.t += dt; const k = Math.min(1, tween.t / tween.dur), e = k * k * (3 - 2 * k);
     for (const it of tween.items) { it.p.x = it.sx + (it.tx - it.sx) * e; it.p.y = it.sy + (it.ty - it.sy) * e; }
@@ -389,7 +555,7 @@ function update(dt) {
   } else if (phase === 'fall') {
     let busy = false;
     for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
-      const p = grid[r][c]; p.x = c;
+      const p = grid[r][c]; if (!p) continue; p.x = c;
       if (p.y < r) {
         p.vy = Math.min(17, p.vy + 60 * dt); p.y += p.vy * dt;
         if (p.y >= r) { p.y = r; p.land = 0.2; p.vy = 0; } else busy = true;
@@ -436,7 +602,7 @@ function layout() {
   if (land) {
     const F = Math.min(H - 2 * M, W - 240 - 3 * M), SW = Math.max(240, Math.min(420, W - F - 3 * M)), ox = (W - SW - M - F) / 2;
     o.frame = { x: ox + SW + M, y: (H - F) / 2, w: F, h: F };
-    o.goal = { x: ox, y: M, w: SW, h: L.c ? 50 + L.c.length * 50 : 128 };
+    const gn = goalItems().length; o.goal = { x: ox, y: M, w: SW, h: gn > 1 ? 50 + gn * 50 : 128 };
     o.info = { x: ox, y: o.goal.y + o.goal.h + M, w: SW, h: Math.round(64 * RK()) };
     const hh = Math.max(78, 52 / cssK());   // ≥ 52 CSS px tall
     o.hint = { x: ox + 14, y: H - M - hh, w: SW - 28, h: hh };
@@ -472,6 +638,7 @@ const inRect = (p, b) => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= 
 
 // ---------- input: tap one then a neighbour, or swipe ----------
 function tapCell(cell) {
+  if (!grid[cell.r][cell.c]) return;
   if (sel && Math.abs(sel.r - cell.r) + Math.abs(sel.c - cell.c) === 1) { const s = sel; sel = null; trySwap(s, cell); return; }
   if (sel && sel.r === cell.r && sel.c === cell.c) { sel = null; return; }
   sel = cell; MG.sfx('tick');
@@ -481,7 +648,7 @@ cv.addEventListener('pointerdown', e => {
   const p = cv.logical(e); idleT = 0; if (hint && hint.gentle) hint = null;
   if (inRect(p, lay.hint)) { showHint(); return; }
   const cell = cellAt(p);
-  if (!cell) { sel = null; return; }
+  if (!cell || !grid[cell.r][cell.c]) { sel = null; return; }
   kc = null;
   if (sel && Math.abs(sel.r - cell.r) + Math.abs(sel.c - cell.c) === 1) { const s = sel; sel = null; trySwap(s, cell); return; }
   const was = !!(sel && sel.r === cell.r && sel.c === cell.c);
@@ -618,6 +785,59 @@ function jellySprite() {
   s = { c }; sprites.set('jelly', s); return s;
 }
 
+// blockers and the fruit, cached like the candies
+function blkSprite(key) {
+  let s = sprites.get(key); if (s) return s;
+  const px = cv._mgScale || 1, cs = lay.cs, c = document.createElement('canvas');
+  c.width = c.height = Math.ceil(cs * px);
+  const g = c.getContext('2d'); g.scale(px, px);
+  const m = cs * 0.06, w = cs - m * 2;
+  if (key === 'stone') {
+    const gr = g.createRadialGradient(cs * 0.38, cs * 0.32, cs * 0.05, cs / 2, cs / 2, cs * 0.6); gr.addColorStop(0, '#d9d4cf'); gr.addColorStop(1, '#8c847c');
+    g.fillStyle = gr; g.strokeStyle = '#6b635c'; g.lineWidth = Math.max(1, cs * 0.04);
+    g.beginPath(); g.moveTo(cs * 0.2, cs * 0.88); g.lineTo(cs * 0.08, cs * 0.5); g.lineTo(cs * 0.25, cs * 0.16); g.lineTo(cs * 0.62, cs * 0.08); g.lineTo(cs * 0.9, cs * 0.34); g.lineTo(cs * 0.92, cs * 0.75); g.lineTo(cs * 0.7, cs * 0.92); g.closePath(); g.fill(); g.stroke();
+    g.fillStyle = 'rgba(255,255,255,.45)'; g.beginPath(); g.ellipse(cs * 0.36, cs * 0.3, cs * 0.12, cs * 0.06, -0.5, 0, 7); g.fill();
+    g.strokeStyle = 'rgba(80,70,60,.5)'; g.beginPath(); g.moveTo(cs * 0.55, cs * 0.5); g.lineTo(cs * 0.7, cs * 0.62); g.lineTo(cs * 0.66, cs * 0.78); g.stroke();
+  } else if (key.startsWith('box')) {
+    g.fillStyle = '#d08a3c'; g.strokeStyle = '#7a4a1a'; g.lineWidth = Math.max(1.5, cs * 0.05);
+    g.beginPath(); g.roundRect(m, m, w, w, cs * 0.1); g.fill(); g.stroke();
+    g.fillStyle = '#e8a75a'; for (let i = 0; i < 3; i++) { g.fillRect(m + w * 0.08, m + w * (0.08 + i * 0.31), w * 0.84, w * 0.24); }
+    g.strokeStyle = '#8a541e'; g.lineWidth = Math.max(1.5, cs * 0.06); g.beginPath(); g.moveTo(m + w * 0.1, m + w * 0.1); g.lineTo(m + w * 0.9, m + w * 0.9); g.stroke();
+    g.fillStyle = '#5a3412'; for (const [a, b] of [[0.14, 0.14], [0.86, 0.14], [0.14, 0.86], [0.86, 0.86]]) { g.beginPath(); g.arc(m + w * a, m + w * b, cs * 0.035, 0, 7); g.fill(); }
+    if (key === 'box1') { g.strokeStyle = '#3a2008'; g.lineWidth = Math.max(1.5, cs * 0.045); g.lineJoin = 'round'; g.beginPath(); g.moveTo(cs * 0.3, cs * 0.12); g.lineTo(cs * 0.42, cs * 0.38); g.lineTo(cs * 0.32, cs * 0.55); g.lineTo(cs * 0.5, cs * 0.86); g.moveTo(cs * 0.42, cs * 0.38); g.lineTo(cs * 0.7, cs * 0.44); g.stroke(); }
+  } else if (key.startsWith('cage')) {
+    g.fillStyle = 'rgba(255,248,225,.95)'; g.beginPath(); g.roundRect(m, m, w, w, cs * 0.16); g.fill();
+    g.font = `${Math.floor(cs * 0.56)}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#000';
+    g.fillText(key.slice(4), cs / 2, cs * 0.54);
+    g.strokeStyle = '#7d8aa0'; g.lineWidth = Math.max(2, cs * 0.06); g.lineCap = 'round';
+    for (let i = 1; i < 5; i++) { g.beginPath(); g.moveTo(m + w * i / 5, m + cs * 0.04); g.lineTo(m + w * i / 5, m + w - cs * 0.04); g.stroke(); }
+    g.strokeStyle = '#5a667c'; g.lineWidth = Math.max(2, cs * 0.08); g.beginPath(); g.roundRect(m, m, w, w, cs * 0.16); g.stroke();
+    g.fillStyle = '#ffc93a'; g.strokeStyle = '#a07000'; g.lineWidth = Math.max(1, cs * 0.03); g.beginPath(); g.roundRect(cs * 0.4, cs * 0.74, cs * 0.2, cs * 0.16, cs * 0.04); g.fill(); g.stroke();
+  } else if (key === 'choc') {
+    g.fillStyle = '#5a2e14'; g.beginPath(); g.roundRect(m, m + cs * 0.03, w, w, cs * 0.12); g.fill();
+    g.fillStyle = '#8a4b26'; g.beginPath(); g.roundRect(m, m, w, w, cs * 0.12); g.fill();
+    g.fillStyle = '#a3613a'; const q = w / 2;
+    for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) { g.beginPath(); g.roundRect(m + i * q + cs * 0.04, m + j * q + cs * 0.04, q - cs * 0.08, q - cs * 0.08, cs * 0.05); g.fill(); }
+    g.fillStyle = 'rgba(255,255,255,.3)'; g.beginPath(); g.roundRect(m + cs * 0.07, m + cs * 0.07, q * 0.6, cs * 0.06, cs * 0.03); g.fill();
+  } else if (key === 'fruit') {
+    const r = cs * 0.42;
+    const gr = g.createRadialGradient(cs / 2, cs / 2, 0, cs / 2, cs / 2, r); gr.addColorStop(0, 'rgba(255,255,255,.95)'); gr.addColorStop(0.7, 'rgba(255,240,200,.75)'); gr.addColorStop(1, 'rgba(255,200,120,0)');
+    g.fillStyle = gr; g.beginPath(); g.arc(cs / 2, cs / 2, r, 0, 7); g.fill();
+    g.font = `${Math.floor(cs * 0.66)}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#000';
+    g.fillText('🍓', cs / 2, cs * 0.54);
+  }
+  s = { c, size: cs }; sprites.set(key, s); return s;
+}
+function drawBlocks() {
+  const cs = lay.cs;
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    const b = blk[r][c]; if (!b || b.t === 'hole' || b.t === 'stone') continue;
+    const s = blkSprite(b.t === 'box' ? 'box' + b.hp : b.t === 'cage' ? 'cage' + b.an : 'choc');
+    const k = b.hit > 0 ? 1 + Math.sin(b.hit / 0.35 * Math.PI) * 0.12 : 1, wob = b.t === 'cage' ? Math.sin(t * 3 + r + c) * 0.04 : 0;
+    x.save(); x.translate(cellX(c), cellY(r)); if (wob) x.rotate(wob); x.scale(k, k); x.drawImage(s.c, -cs / 2, -cs / 2, cs, cs); x.restore();
+  }
+}
+
 // ---------- drawing the screen ----------
 function box(b, fill = 'rgba(255,255,255,.88)', stroke = '#f3b6d0') {
   x.fillStyle = 'rgba(160,80,120,.12)'; x.beginPath(); x.roundRect(b.x, b.y + 4, b.w, b.h, 16); x.fill();
@@ -627,14 +847,22 @@ function box(b, fill = 'rgba(255,255,255,.88)', stroke = '#f3b6d0') {
 function txt(s, px, py, size, col = '#4a2b3a', align = 'center', weight = 800) {
   x.font = `${weight} ${size}px ${FONT}`; x.textAlign = align; x.textBaseline = 'middle'; x.fillStyle = col; x.fillText(s, px, py);
 }
+function goalItems() {
+  const items = [], short = !land && goalsOf(L).length > 1;   // several goals side by side in portrait: numbers only
+  for (const g of goalsOf(L)) {
+    if (g === 's') items.push({ icon: 'star', a: Math.min(score, L.s), n: L.s, label: `${Math.min(score, L.s)} / ${L.s}`, done: score >= L.s, bar: true });
+    else if (g === 'c') L.c.forEach(([k, n], i) => items.push({ icon: k, label: got[i] >= n ? '' : `${got[i]}/${n}`, done: got[i] >= n }));
+    else if (g === 'j') items.push({ icon: 'jelly', label: jellyLeft > 0 ? `${short ? '' : '還剩 '}${jellyLeft}` : '', done: jellyLeft <= 0 });
+    else if (g === 'f') items.push({ icon: 'fruit', label: `${fruitGot}/${L.f}`, done: fruitGot >= L.f });
+    else { const t2 = { b: 'box', a: 'cage', x: 'choc' }[g], n = countBlk(t2); items.push({ icon: t2 === 'box' ? 'box2' : t2 === 'cage' ? 'cage🐥' : 'choc', label: `${short ? '' : '還剩 '}${n}`, done: n === 0 }); }
+  }
+  return items;
+}
 function drawGoal() {
   const b = lay.goal; box(b);
   const sm = Math.min(16 * RK(), b.h * 0.2);
   txt('目標', b.x + 14, b.y + sm * 0.5 + 10, sm, MG.big ? '#8a1f4f' : '#c0507e', 'left');
-  const items = [];
-  if (L.s) items.push({ icon: 'star', a: Math.min(score, L.s), n: L.s, label: `${Math.min(score, L.s)} / ${L.s}`, done: score >= L.s, bar: true });
-  else if (L.c) L.c.forEach(([k, n], i) => items.push({ icon: k, label: got[i] >= n ? '' : `${got[i]}/${n}`, done: got[i] >= n }));
-  else items.push({ icon: 'jelly', label: jellyLeft > 0 ? `還剩 ${jellyLeft}` : '', done: jellyLeft <= 0 });
+  const items = goalItems();
   const top = b.y + sm + 14, h = b.h - sm - 20;
   const col = land && items.length > 1;
   items.forEach((it, i) => {
@@ -646,6 +874,7 @@ function drawGoal() {
     const iy = it.bar ? cy - ic * 0.25 : cy;
     if (it.icon === 'star') { x.fillStyle = '#000'; txt('⭐', ix, iy, ic * 0.8); }
     else if (it.icon === 'jelly') { x.drawImage(jellySprite().c, ix - ic / 2, iy - ic / 2, ic, ic); }
+    else if (typeof it.icon === 'string') { x.drawImage(blkSprite(it.icon).c, ix - ic / 2, iy - ic / 2, ic, ic); }
     else { const s = sprite(it.icon, ''); const d = ic * 1.3; x.drawImage(s.c, ix - d / 2, iy - d / 2, d, d); }
     const tx = ix + ic * 0.62;
     if (it.done) { txt('✔', tx + 14, iy, ic * 0.66, '#2e9a4c', 'center', 900); }
@@ -678,12 +907,39 @@ function drawBoard(x) {
   x.fillStyle = 'rgba(150,70,120,.18)'; x.beginPath(); x.roundRect(f.x, f.y + 6, f.w, f.h, 20); x.fill();
   const g = x.createLinearGradient(0, f.y, 0, f.y + f.h); g.addColorStop(0, '#fff3f8'); g.addColorStop(1, '#f3e6ff');
   x.fillStyle = g; x.strokeStyle = '#e59ac0'; x.lineWidth = 3; x.beginPath(); x.roundRect(f.x, f.y, f.w, f.h, 20); x.fill(); x.stroke();
+  const belt = new Map((L.belt || []).map(([r, d]) => [r, d]));
   for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
-    const px = lay.bx + c * cs, py = lay.by + r * cs;
-    x.fillStyle = (r + c) % 2 ? 'rgba(255,255,255,.75)' : 'rgba(236,214,245,.6)';
-    x.beginPath(); x.roundRect(px + 1, py + 1, cs - 2, cs - 2, cs * 0.16); x.fill();
+    const px = lay.bx + c * cs, py = lay.by + r * cs, b = blk[r][c];
+    if (b && b.t === 'hole') { x.fillStyle = 'rgba(170,120,170,.16)'; x.beginPath(); x.roundRect(px + cs * 0.3, py + cs * 0.3, cs * 0.4, cs * 0.4, cs * 0.2); x.fill(); continue; }
+    x.fillStyle = belt.has(r) ? ((r + c) % 2 ? '#d9dde6' : '#cdd2de') : (r + c) % 2 ? 'rgba(255,255,255,.75)' : 'rgba(236,214,245,.6)';
+    x.beginPath(); x.roundRect(px + 1, py + 1, cs - 2, cs - 2, belt.has(r) ? 2 : cs * 0.16); x.fill();
     if (jel[r][c] > 0) x.drawImage(jellySprite().c, px, py, cs, cs);
+    if (jel[r][c] > 1) x.drawImage(iceSprite().c, px, py, cs, cs);
+    if (b && b.t === 'stone') x.drawImage(blkSprite('stone').c, px, py, cs, cs);
+    if (belt.has(r)) {   // chevrons on the belt, pointing the way it moves
+      const d = belt.get(r); x.fillStyle = 'rgba(90,100,130,.55)';
+      for (const yy of [0.12, 0.88]) { x.beginPath(); const cx0 = px + cs / 2, cy0 = py + cs * yy, s2 = cs * 0.1; x.moveTo(cx0 + d * s2, cy0); x.lineTo(cx0 - d * s2, cy0 - s2 * 0.9); x.lineTo(cx0 - d * s2 * 0.4, cy0); x.lineTo(cx0 - d * s2, cy0 + s2 * 0.9); x.closePath(); x.fill(); }
+    }
+    if (L.f && r === bottomOf(c)) {   // the fruit basket line at the bottom
+      x.fillStyle = 'rgba(120,200,90,.55)'; x.beginPath(); x.roundRect(px + cs * 0.12, py + cs * 0.86, cs * 0.76, cs * 0.1, cs * 0.05); x.fill();
+      x.fillStyle = 'rgba(60,150,60,.7)'; x.beginPath(); x.moveTo(px + cs * 0.4, py + cs * 0.76); x.lineTo(px + cs * 0.6, py + cs * 0.76); x.lineTo(px + cs * 0.5, py + cs * 0.85); x.closePath(); x.fill();
+    }
   }
+  for (const [r, d] of belt) {   // big arrows in the frame at both ends of a belt row
+    for (const ex of [lay.bx - 1, lay.bx + lay.B + 1]) { const cy0 = lay.by + (r + 0.5) * cs, s2 = 7; x.fillStyle = '#6a7fb0'; x.beginPath(); x.moveTo(ex + d * s2 * 0.6, cy0); x.lineTo(ex - d * s2 * 0.6, cy0 - s2); x.lineTo(ex - d * s2 * 0.6, cy0 + s2); x.closePath(); x.fill(); }
+  }
+}
+function iceSprite() {
+  let s = sprites.get('ice'); if (s) return s;
+  const px = cv._mgScale || 1, cs = lay.cs, c = document.createElement('canvas');
+  c.width = c.height = Math.ceil(cs * px);
+  const g = c.getContext('2d'); g.scale(px, px);
+  const gr = g.createLinearGradient(0, 0, cs, cs); gr.addColorStop(0, 'rgba(225,245,255,.92)'); gr.addColorStop(1, 'rgba(140,200,245,.85)');
+  g.fillStyle = gr; g.strokeStyle = '#5aa8e0'; g.lineWidth = Math.max(1.5, cs * 0.05);
+  g.beginPath(); g.roundRect(cs * 0.05, cs * 0.05, cs * 0.9, cs * 0.9, cs * 0.14); g.fill(); g.stroke();
+  g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = Math.max(1.5, cs * 0.05); g.lineCap = 'round';
+  g.beginPath(); g.moveTo(cs * 0.18, cs * 0.4); g.lineTo(cs * 0.4, cs * 0.18); g.moveTo(cs * 0.2, cs * 0.6); g.lineTo(cs * 0.6, cs * 0.2); g.stroke();
+  s = { c }; sprites.set('ice', s); return s;
 }
 function drawPieces() {
   const cs = lay.cs;
@@ -704,6 +960,7 @@ function drawPieces() {
     drawOne(p, r, c);
   }
   for (const [p, r, c] of late) drawOne(p, r, c);
+  drawBlocks();
   x.restore();
   if (kc) { x.strokeStyle = '#3d7bff'; x.lineWidth = 3; x.setLineDash([6, 5]); x.beginPath(); x.roundRect(lay.bx + kc.c * cs + 3, lay.by + kc.r * cs + 3, cs - 6, cs - 6, cs * 0.2); x.stroke(); x.setLineDash([]); }
   if (hint && !hint.gentle) {    // arrow between the two hint pieces
@@ -717,7 +974,7 @@ function drawPieces() {
   }
 }
 function drawOne(p, r, c) {
-  const cs = lay.cs, s = sprite(p.k, p.sp);
+  const cs = lay.cs, s = p.fruit ? fruitSp() : sprite(p.k, p.sp);
   let px = lay.bx + (p.x + 0.5) * cs, py = lay.by + (p.y + 0.5) * cs, sx = 1, sy = 1, rot = 0, a = 1;
   if (p.popping) { const k = popT / POP; const sc = k < 0.3 ? 1 + k / 0.3 * 0.22 : 1.22 * (1 - (k - 0.3) / 0.7); sx = sy = Math.max(0.01, sc); a = Math.min(1, 1.6 - k * 1.4); }
   if (p.land > 0) { const q = p.land / 0.2; sx *= 1 + 0.16 * Math.sin(q * Math.PI); sy *= 1 - 0.16 * Math.sin(q * Math.PI); py += cs * 0.06 * Math.sin(q * Math.PI); }
@@ -733,6 +990,7 @@ function drawOne(p, r, c) {
     x.strokeStyle = `rgba(255,255,255,${1 - k})`; x.lineWidth = 4; x.beginPath(); x.arc(px, py, cs * (0.35 + k * 0.5), 0, 7); x.stroke();
   }
 }
+function fruitSp() { const b = blkSprite('fruit'); return { c: b.c, size: b.size * 1.0 }; }
 function drawEffects() {
   const cs = lay.cs;
   for (const e of effects) {
@@ -832,7 +1090,7 @@ function menu() {
     html: `<p>把<b>相鄰的兩顆糖果</b>交換，三個以上一樣的連成一排就會消掉！可以點一顆再點旁邊那顆，也可以用手指直接往旁邊滑。</p>` +
       `<p>一次消 4 個變<b>條紋糖</b>（消掉一整排），排成 L 或 T 變<b>包裝糖炸彈</b>，一次消 5 個變<b>🌈 彩虹星星</b>（跟誰換就消掉那個顏色全部）！</p>`,
     modes: [{ id: 'relax', label: '🐢 慢慢玩', sub: '步數不限，達成目標就過關' }, { id: 'moves', label: '🎯 步數挑戰', sub: '步數有限，用完可以再試' }],
-    levels: { count: LEVELS.length, max: LEVELS.length, label: n => `${n} ${goalIcon(LEVELS[n - 1])}` },
+    levels: { count: LEVELS.length, max: LEVELS.length, label: n => `${n} ${goalIcon(LEVELS[n - 1])} ${lvName(LEVELS[n - 1])}`, short: n => `${n}${goalIcon(LEVELS[n - 1])}` },
     keys: '點一下再點旁邊，或用手指滑　<kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd> 移動、<kbd>Enter</kbd> 選取、<kbd>H</kbd> 提示',
     playing: () => state === 'play',
     start: (m, lv) => { mode = m; startLevel(lv); },
@@ -849,6 +1107,18 @@ window.M3T = {
   goalDone, findMoves: () => findMoves().length, get say() { return say && say.text; }, floats: () => floats.map(f => f.text),
   // client (CSS px) coords of a cell centre / the hint button
   at(r, c) { return toClient(cellX(c), cellY(r)); }, hintBtn() { return toClient(lay.hint.x + lay.hint.w / 2, lay.hint.y + lay.hint.h / 2); },
+  get count() { return LEVELS.length; }, get fruitGot() { return fruitGot; }, get jellyLeft() { return jellyLeft; },
+  blocks: () => blk.map(row => row.map(b => b ? b.t + (b.t === 'box' ? b.hp : '') : '')), progress: () => progressText(), mech: n => mechOf(LEVELS[n - 1]),
+  start(n, m = 'relax') { mode = m; startLevel(n); MG.hide(); },
+  swap(a, b) { return trySwap(a, b); },
+  // test only: play by always taking the 💡 hint move, stepping the game synchronously; returns the moves it needed (or -1)
+  sim(max = 400) {
+    for (let i = 0; i < 400000 && state === 'play'; i++) {
+      if (phase === 'idle' && !tween) { if (moves >= max) return -1; const h = pickHint(); if (h) trySwap(h.a, h.b); }
+      update(1 / 30);
+    }
+    return state === 'over' && goalDone() ? moves : -1;
+  },
 };
 function toClient(lx, ly) {
   const rc = cv.getBoundingClientRect(), B = 3;
