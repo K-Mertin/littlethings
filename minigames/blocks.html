@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>十乘十方塊</title>
 <link rel="stylesheet" href="mini.css">
+<style>.mg-over{align-items:flex-start}.mg-card{margin:auto}</style>
 </head>
 <body>
 <main class="mg-stage"><canvas id="cv" aria-label="遊戲畫面"></canvas></main>
@@ -13,7 +14,44 @@
 'use strict';
 MG.init({ id: 'blocks', title: '十乘十方塊', stats: ['score', 'best'] });
 const N = 10, cv = document.getElementById('cv'), x = cv.getContext('2d');
-let land = false, CELL = 32, U = 1, L = { bx: 20, by: 58, slots: [], tip: null };
+const FONT = '"Noto Sans TC",system-ui,sans-serif';
+let land = false, CELL = 32, U = 1, L = { bx: 20, by: 58, slots: [], tip: null, goal: null };
+
+// ================= levels =================
+// goal: lines = clear n lines · gems = clear every 💎 block · stones = clear every 🪨 block · paint = cover every ⭐ cell once
+// map (10 rows): . empty  # wooden block  s stone  g gem block  * star cell to cover
+// shapes: only these piece kinds (indexes into SHAPES) — the 🧩 levels
+const BARS = [0, 1, 2, 3, 4, 5, 6, 7, 8], SQUARES = [0, 9, 10], CORNERS = [0, 11, 12, 13, 14, 15, 16, 17, 18], BIG = [7, 8, 9, 10, 15, 16, 17, 18];
+const E10 = '..........';
+const LEVELS = [
+  { goal: 'lines', n: 3 },
+  { goal: 'paint', map: [E10, E10, E10, '..**..**..', '.********.', '.********.', '..******..', '...****...', '....**....', E10] },
+  { goal: 'gems', map: [E10, E10, E10, E10, E10, E10, E10, '##.g##....', E10, '#g###...#g'] },
+  { goal: 'stones', map: [E10, E10, E10, E10, E10, E10, E10, E10, 'ss.sss.sss', 'sss.ssss.s'] },
+  { goal: 'lines', n: 4, shapes: BARS },
+  { goal: 'lines', n: 6, map: [E10, E10, E10, E10, E10, '#.........', '##........', '###.......', '####......', '#####.....'] },
+  { goal: 'paint', map: ['....**....', '....**....', '...****...', '**********', '.********.', '..******..', '..******..', '.***..***.', '.**....**.', E10] },
+  { goal: 'gems', map: [E10, E10, '....g.....', E10, E10, '##.g####.#', E10, 'g.........', '####.g####', '#.###.#g##'] },
+  { goal: 'stones', map: [E10, '..ss..ss..', '..ss..ss..', E10, E10, '.s......s.', '..s....s..', '...ssss...', E10, E10] },
+  { goal: 'lines', n: 5, shapes: SQUARES },
+  { goal: 'paint', map: [E10, '...****...', '..******..', '.***..***.', '.**....**.', '.**....**.', '.***..***.', '..******..', '...****...', E10] },
+  { goal: 'gems', map: [E10, E10, E10, 's...g....s', E10, 's.g....g.s', E10, 'ssss..ssss', 'g.ss..ss.g', 'ssss..ssss'] },
+  { goal: 'stones', shapes: CORNERS, map: [E10, E10, E10, E10, E10, E10, 's.s.s.s.s.', 'ss.ss.ss.s', E10, 's.ss.ss.ss'] },
+  { goal: 'lines', n: 10 },
+  { goal: 'stones', shapes: BARS, map: [E10, E10, E10, E10, 's.s.s.s.s.', 's.s.s.s.s.', 's.s.s.s.s.', 's.s.s.s.s.', 's.s.s.s.s.', 's.s.s.s.s.'] },
+  { goal: 'paint', map: ['....**....', '...****...', '..******..', '.********.', '**********', '.********.', '.**.**.**.', '.**.**.**.', '.**.**.**.', '.********.'] },
+  { goal: 'gems', map: ['g........g', E10, '...g..g...', E10, '.g......g.', E10, '...g..g...', E10, E10, '#########.'] },
+  { goal: 'lines', n: 6, shapes: BIG },
+  { goal: 'stones', map: [E10, E10, E10, E10, E10, '....ss....', '...ssss...', '..ssssss..', '.ssssssss.', 'ssss..ssss'] },
+  { goal: 'lines', n: 15, map: [E10, E10, E10, E10, E10, E10, '#.#.#.#.#.', '.#.#.#.#.#', '#.#.#.#.#.', '.#.#.#.#.#'] },
+];
+const GOAL_IC = { lines: '🧹', gems: '💎', stones: '🪨', paint: '⭐' };
+const GOAL_NM = { lines: '消行', gems: '收集寶石', stones: '清除石頭', paint: '鋪滿星星' };
+const lvShape = n => LEVELS[n - 1].shapes;
+const lvTotal = lv => lv.goal === 'lines' ? lv.n : lv.map.join('').split('').filter(ch => ch === { gems: 'g', stones: 's', paint: '*' }[lv.goal]).length;
+const lvName = n => { const lv = LEVELS[n - 1]; return `${GOAL_IC[lv.goal]} ${GOAL_NM[lv.goal]} ${lvTotal(lv)}${lv.goal === 'lines' ? ' 行' : ' 個'}${lv.shapes ? '・🧩 特定方塊' : ''}${lv.map && lv.goal !== 'stones' && /[#s]/.test(lv.map.join('')) ? '・有障礙' : ''}`; };
+const lvShort = n => { const lv = LEVELS[n - 1]; return `${n}${lv.shapes ? '🧩' : GOAL_IC[lv.goal]}`; };
+
 // the canvas takes the whole stage (1 logical px ≈ 1 CSS px); the board and the tray are sized from it
 MG.fit(cv, (sw, sh) => {
   const cs = getComputedStyle(cv.parentElement);
@@ -21,26 +59,29 @@ MG.fit(cv, (sw, sh) => {
   const H = Math.max(260, Math.round(sh - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 6));
   land = W > H * 1.1; return [W, H];
 });
+let mode = 'endless', level = 1, LV = null;
 function layout() {
   const W = cv.lw, H = cv.lh, g = 10, fr = 12;            // fr: room for the wooden frame around the board
   U = Math.max(1, Math.min(1.6, Math.min(W, H) / 420)) * MG.textScale;
-  const slots = [];
+  const slots = [], lvl = mode === 'levels';
   if (land) {
     CELL = Math.floor(Math.min((H - fr * 2 - g * 2) / N, (W * 0.66 - fr * 2 - g) / N));
     const bw = N * CELL, trayW = Math.min(Math.max(150, W - bw - fr * 2 - g * 4), Math.round(bw * 0.62));
     const used = bw + fr * 2 + g * 2 + trayW, x0 = Math.round((W - used) / 2);
     L.bx = x0 + fr; L.by = Math.round((H - bw) / 2);
-    const tx = L.bx + bw + fr + g * 2, sh = Math.floor((bw + fr * 2 - g * 2) / 3);
-    for (let i = 0; i < 3; i++) slots.push({ x: tx, y: L.by - fr + i * (sh + g), w: trayW, h: sh });
-    L.tip = null;
+    const tx = L.bx + bw + fr + g * 2, gh = lvl ? Math.round(Math.min(64, 44 * U)) : 0, top = L.by - fr + (gh ? gh + g : 0);
+    const sh = Math.floor((bw + fr * 2 - g * 2 - (gh ? gh + g : 0)) / 3);
+    for (let i = 0; i < 3; i++) slots.push({ x: tx, y: top + i * (sh + g), w: trayW, h: sh });
+    L.tip = null; L.goal = gh ? { x: tx, y: L.by - fr, w: trayW, h: gh } : null;
   } else {
-    const tipH = Math.round(18 * U + 14), sw = Math.floor((W - g * 4) / 3);
+    const tipH = Math.round((lvl ? 30 : 18) * U + 14), sw = Math.floor((W - g * 4) / 3);
     let trayH = Math.round(Math.max(100, Math.min(sw * 1.1, H * 0.22)));
     CELL = Math.floor(Math.min((W - fr * 2 - g * 2) / N, (H - tipH - trayH - fr * 2 - g * 3) / N));
     const bw = N * CELL;
     trayH = Math.round(Math.max(trayH, Math.min(sw * 1.3, H - tipH - bw - fr * 2 - g * 3)));
     const used = tipH + bw + fr * 2 + g + trayH, y0 = Math.max(0, Math.round((H - used) / 2));
-    L.tip = { y: y0 + tipH / 2 };
+    L.tip = { y: y0 + tipH / 2, h: tipH };
+    L.goal = lvl ? { x: g, y: y0 + 2, w: W - g * 2, h: tipH - 6 } : null;
     L.bx = Math.round((W - bw) / 2); L.by = y0 + tipH + fr;
     const ty = L.by + bw + fr + g;
     for (let i = 0; i < 3; i++) slots.push({ x: g + i * (sw + g), y: ty, w: sw, h: trayH });
@@ -66,32 +107,63 @@ const SHAPES = [
 ];
 // weights: small pieces a bit more common, 3x3 rare
 const WEIGHT = [3, 3, 3, 3, 3, 2, 2, 1.2, 1.2, 3, 0.9, 2, 2, 2, 2, 1.2, 1.2, 1.2, 1.2];
-function randPiece() {
-  let r = Math.random() * WEIGHT.reduce((a, b) => a + b, 0), i = 0;
-  while ((r -= WEIGHT[i]) > 0) i++;
-  const [col, cells] = SHAPES[i];
-  return { col, cells, w: Math.max(...cells.map(c => c[0])) + 1, h: Math.max(...cells.map(c => c[1])) + 1 };
+const STONE = '#a3abb6', GEM = '#bfe3ff', WOOD = '#d9a35f';
+const mkPiece = i => { const [col, cells] = SHAPES[i]; return { k: i, col, cells, w: Math.max(...cells.map(c => c[0])) + 1, h: Math.max(...cells.map(c => c[1])) + 1 }; };
+function randPiece(allow) {
+  const ids = allow || SHAPES.map((_, i) => i);
+  let r = Math.random() * ids.reduce((a, i) => a + WEIGHT[i], 0), j = 0;
+  while ((r -= WEIGHT[ids[j]]) > 0 && j < ids.length - 1) j++;
+  return mkPiece(ids[j]);
 }
 
-let placedAt, bits = [];
+let placedAt, bits = [], spec, paint;
 let grid, tray, score, combo, state = 'ready', drag = null, ghost = null, fx = [], pops = [], t = 0, sel = 0, cur = { x: 3, y: 3 }, kbMode = false;
+let got = 0, need = 0, pieces = 0, flyers = [], goalPulse = 0, stuckT = 0;
 function reset() {
   grid = Array.from({ length: N }, () => Array(N).fill(null));
   placedAt = Array.from({ length: N }, () => Array(N).fill(null)); bits = [];
-  score = 0; combo = 0; fx = []; pops = []; drag = null; ghost = null; sel = 0; cur = { x: 3, y: 3 };
+  spec = Array.from({ length: N }, () => Array(N).fill(null));
+  paint = Array.from({ length: N }, () => Array(N).fill(0));
+  score = 0; combo = 0; fx = []; pops = []; drag = null; ghost = null; sel = 0; cur = { x: 3, y: 3 }; flyers = []; stuckT = 0;
+  got = 0; pieces = 0; need = 0;
+  if (mode === 'levels') {
+    LV = LEVELS[level - 1]; need = lvTotal(LV);
+    if (LV.map) LV.map.forEach((row, r) => [...row].forEach((ch, c) => {
+      if (ch === '#') grid[r][c] = WOOD;
+      else if (ch === 's') { grid[r][c] = STONE; spec[r][c] = 's'; }
+      else if (ch === 'g') { grid[r][c] = GEM; spec[r][c] = 'g'; }
+      else if (ch === '*') paint[r][c] = 1;
+    }));
+  } else LV = null;
   refill(); hud();
 }
-function refill() { tray = [randPiece(), randPiece(), randPiece()]; }
-function hud() { MG.stat('score', `${score} 分`); MG.stat('best', `最高 ${Math.max(score, MG.best('blocks') ?? 0)}`); }
-function fits(p, gx, gy) { return p.cells.every(([a, b]) => { const cx = gx + a, cy = gy + b; return cx >= 0 && cy >= 0 && cx < N && cy < N && !grid[cy][cx]; }); }
-function canPlaceAnywhere(p) { for (let y = 0; y < N; y++) for (let x2 = 0; x2 < N; x2++) if (fits(p, x2, y)) return true; return false; }
+const allowed = () => LV && LV.shapes;
+function refill() { tray = [randPiece(allowed()), randPiece(allowed()), randPiece(allowed())]; }
+function hud() {
+  if (mode === 'levels') { MG.stat('score', `${GOAL_IC[LV.goal]} ${Math.min(got, need)}/${need}`); MG.stat('best', `第 ${level} 關`); }
+  else { MG.stat('score', `${score} 分`); MG.stat('best', `最高 ${Math.max(score, MG.best('blocks') ?? 0)}`); }
+}
+function fits(p, gx, gy, G = grid) { return p.cells.every(([a, b]) => { const cx = gx + a, cy = gy + b; return cx >= 0 && cy >= 0 && cx < N && cy < N && !G[cy][cx]; }); }
+function canPlaceAnywhere(p, G = grid) { for (let y = 0; y < N; y++) for (let x2 = 0; x2 < N; x2++) if (fits(p, x2, y, G)) return true; return false; }
+const cellCenter = (c, r) => ({ x: BX() + c * CELL + CELL / 2, y: BY() + r * CELL + CELL / 2 });
+function goalTarget() { const gR = L.goal; return gR ? { x: gR.x + gR.w / 2, y: gR.y + gR.h / 2 } : { x: cv.lw / 2, y: 20 }; }
+function collect(c, r, ic) {
+  const p = cellCenter(c, r), tg = goalTarget();
+  flyers.push({ x0: p.x, y0: p.y, x1: tg.x, y1: tg.y, t: -Math.random() * 0.12, ic });
+}
 
 function place(i, gx, gy) {
   const p = tray[i];
-  if (!p || !fits(p, gx, gy)) return false;
+  if (!p || !fits(p, gx, gy) || state !== 'play') return false;
   for (const [a, b] of p.cells) { grid[gy + b][gx + a] = p.col; placedAt[gy + b][gx + a] = t; }
-  score += p.cells.length; MG.sfx('place');
+  score += p.cells.length; pieces++; MG.sfx('place');
   tray[i] = null;
+  // ⭐ cells: covered once = done (they stay golden even after the line clears)
+  if (mode === 'levels' && LV.goal === 'paint') {
+    let n = 0;
+    for (const [a, b] of p.cells) if (paint[gy + b][gx + a] === 1) { paint[gy + b][gx + a] = 2; n++; got++; collect(gx + a, gy + b, '⭐'); }
+    if (n) { MG.sfx('coin'); if (n >= 3) MG.sfx('sparkle'); goalPulse = 0.4; }
+  }
   // clear full rows and columns
   const rows = [], cols = [];
   for (let k = 0; k < N; k++) { if (grid[k].every(Boolean)) rows.push(k); if (grid.every(r => r[k])) cols.push(k); }
@@ -103,20 +175,43 @@ function place(i, gx, gy) {
     for (const c of cols) for (let r = 0; r < N; r++) if (!rows.includes(r)) burst(c, r);
     for (const r of rows) for (let c = 0; c < N; c++) fx.push({ c, r, col: grid[r][c], life: 0.35 });
     for (const c of cols) for (let r = 0; r < N; r++) fx.push({ c, r, col: grid[r][c], life: 0.35 });
-    for (const r of rows) for (let c = 0; c < N; c++) grid[r][c] = null;
-    for (const c of cols) for (let r = 0; r < N; r++) grid[r][c] = null;
+    const gone = new Set();
+    for (const r of rows) for (let c = 0; c < N; c++) gone.add(r * N + c);
+    for (const c of cols) for (let r = 0; r < N; r++) gone.add(r * N + c);
+    let found = 0;
+    for (const k of gone) {
+      const r = (k / N) | 0, c = k % N;
+      if (mode === 'levels' && spec[r][c] && spec[r][c] === { gems: 'g', stones: 's' }[LV.goal]) { got++; found++; collect(c, r, spec[r][c] === 'g' ? '💎' : '🪨'); }
+      grid[r][c] = null; spec[r][c] = null;
+    }
+    if (mode === 'levels' && LV.goal === 'lines') { got += lines; goalPulse = 0.4; }
+    if (found) { MG.sfx('coin'); MG.sfx('sparkle'); goalPulse = 0.4; }
     const pts = [0, 10, 30, 60, 100, 150, 210][Math.min(6, lines)] * (combo > 1 ? combo : 1);
     score += pts;
     // layered clear sound: a chime that rises with lines + streak, combo bells on a streak, a whoosh as the row flies off
     MG.sfx('match', lines + combo - 1); MG.sfx('whoosh'); if (combo >= 2) MG.sfx('combo', combo); if (lines >= 2) MG.sfx('sparkle');
     const msg = combo > 1 ? MG.WORDS.combo(combo) : lines >= 3 ? MG.praise(4) : lines === 2 ? 'Double! ✌️' : MG.praise(1);
-    pops.push({ x: BX() + gx * CELL + p.w * CELL / 2, y: BY() + gy * CELL, t: `+${pts}`, sub: msg, life: 1.1 });
+    pops.push({ x: BX() + gx * CELL + p.w * CELL / 2, y: BY() + gy * CELL, t: mode === 'levels' ? (found ? `${found > 1 ? found + '×' : ''}${LV.goal === 'gems' ? '💎' : '🪨'}` : LV.goal === 'lines' ? `🧹 ${Math.min(got, need)}/${need}` : '✨') : `+${pts}`, sub: msg, life: 1.1 });
   } else combo = 0;
   if (tray.every(q => !q)) refill();
   sel = tray.findIndex(Boolean);
   hud();
-  if (!tray.some(q => q && canPlaceAnywhere(q))) setTimeout(gameOver, 600);
+  if (mode === 'levels' && got >= need) { setTimeout(levelWon, 700); state = 'won'; return true; }
+  if (!tray.some(q => q && canPlaceAnywhere(q))) {
+    if (mode === 'levels') stuckT = 0.7;           // levels never end: new pieces that fit arrive instead
+    else setTimeout(gameOver, 600);
+  }
   return true;
+}
+// 闖關: when nothing fits, swap the tray for pieces that do (a 1×1 always fits somewhere)
+function rescue() {
+  if (state !== 'play' || tray.some(q => q && canPlaceAnywhere(q))) return;
+  for (let i = 0; i < 3; i++) {
+    let p = null;
+    for (let k = 0; k < 40 && !p; k++) { const q = randPiece(allowed()); if (canPlaceAnywhere(q)) p = q; }
+    tray[i] = p || mkPiece(0);
+  }
+  sel = 0; MG.sfx('whoosh'); MG.toast(MG.WORDS.stuck + ' ✨', 1300);
 }
 
 // ---------- input ----------
@@ -189,6 +284,35 @@ function block(px, py, s, col, alpha = 1) {
   x.fillStyle = 'rgba(255,255,255,.8)'; x.beginPath(); x.arc(px + s * 0.7, py + s * 0.62, s * 0.035, 0, 7); x.fill();
   x.globalAlpha = 1;
 }
+// a grey pebble block with a few cracks
+function stone(px, py, s) {
+  block(px, py, s, STONE);
+  x.strokeStyle = 'rgba(70,80,95,.55)'; x.lineWidth = Math.max(1, s * 0.05); x.lineCap = 'round';
+  x.beginPath(); x.moveTo(px + s * 0.3, py + s * 0.22); x.lineTo(px + s * 0.42, py + s * 0.45); x.lineTo(px + s * 0.34, py + s * 0.62);
+  x.moveTo(px + s * 0.42, py + s * 0.45); x.lineTo(px + s * 0.64, py + s * 0.52); x.stroke();
+  x.fillStyle = 'rgba(70,80,95,.35)'; x.beginPath(); x.arc(px + s * 0.7, py + s * 0.28, s * 0.06, 0, 7); x.arc(px + s * 0.24, py + s * 0.74, s * 0.05, 0, 7); x.fill();
+}
+// a light-blue block holding a shiny gem
+function gemPath(cx, cy, s) {
+  x.beginPath(); x.moveTo(cx - s * 0.5, cy - s * 0.15); x.lineTo(cx - s * 0.25, cy - s * 0.45); x.lineTo(cx + s * 0.25, cy - s * 0.45); x.lineTo(cx + s * 0.5, cy - s * 0.15); x.lineTo(cx, cy + s * 0.5); x.closePath();
+}
+function gem(px, py, s, alpha = 1) {
+  block(px, py, s, GEM, alpha);
+  x.globalAlpha = alpha;
+  const cx = px + s / 2, cy = py + s * 0.48, z = s * 0.62, tw = 1 + Math.sin(t * 4 + px * 0.1) * 0.06;
+  x.save(); x.translate(cx, cy); x.scale(tw, tw); x.translate(-cx, -cy);
+  const g = x.createLinearGradient(cx - z / 2, cy - z / 2, cx + z / 2, cy + z / 2); g.addColorStop(0, '#ffd1f0'); g.addColorStop(0.5, '#ff5fa8'); g.addColorStop(1, '#b02d78');
+  x.fillStyle = g; gemPath(cx, cy, z); x.fill(); x.strokeStyle = '#8a1f5c'; x.lineWidth = Math.max(1, s * 0.04); x.stroke();
+  x.strokeStyle = 'rgba(255,255,255,.7)'; x.lineWidth = Math.max(0.8, s * 0.03);
+  x.beginPath(); x.moveTo(cx - z * 0.5, cy - z * 0.15); x.lineTo(cx + z * 0.5, cy - z * 0.15); x.moveTo(cx - z * 0.12, cy - z * 0.45); x.lineTo(cx - z * 0.2, cy - z * 0.15); x.lineTo(cx, cy + z * 0.5); x.stroke();
+  x.fillStyle = 'rgba(255,255,255,.9)'; x.beginPath(); x.arc(cx - z * 0.2, cy - z * 0.28, z * 0.07, 0, 7); x.fill();
+  x.restore(); x.globalAlpha = 1;
+}
+function star5(cx, cy, R0, r0) { x.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, q = i % 2 ? r0 : R0; x.lineTo(cx + Math.cos(a) * q, cy + Math.sin(a) * q); } x.closePath(); }
+function drawCell(r, c, px, py, s, alpha = 1) {
+  const sp = spec[r] && spec[r][c];
+  if (sp === 's') stone(px, py, s); else if (sp === 'g') gem(px, py, s, alpha); else block(px, py, s, grid[r][c], alpha);
+}
 function drawPiece(p, px, py, s, alpha) { for (const [a, b] of p.cells) block(px + a * s, py + b * s, s, p.col, alpha); }
 
 // wood table, drawn once into an offscreen canvas per layout
@@ -223,26 +347,55 @@ function frame(X, Y, w, h) {
     x.fillStyle = '#e9c35c'; x.beginPath(); x.arc(cx, cy, 3.2, 0, 7); x.fill(); x.fillStyle = '#fff3b8'; x.beginPath(); x.arc(cx - 1, cy - 1, 1.2, 0, 7); x.fill();
   }
 }
-function socket(px, py, s) {
+function socket(px, py, s, pt = 0) {
   x.fillStyle = '#6e4420'; x.beginPath(); x.roundRect(px + 1.5, py + 1.5, s - 3, s - 3, 6); x.fill();
-  const g = x.createLinearGradient(0, py, 0, py + s); g.addColorStop(0, '#5a3618'); g.addColorStop(1, '#7c4f27');
+  const g = x.createLinearGradient(0, py, 0, py + s);
+  if (pt === 2) { g.addColorStop(0, '#d69a1c'); g.addColorStop(1, '#f2c34a'); } else { g.addColorStop(0, '#5a3618'); g.addColorStop(1, '#7c4f27'); }
   x.fillStyle = g; x.beginPath(); x.roundRect(px + 2.5, py + 3, s - 5, s - 5, 5); x.fill();
   x.fillStyle = 'rgba(255,220,170,.10)'; x.fillRect(px + 4, py + s - 5, s - 8, 1.5);
+  if (pt === 1) {   // a star to cover
+    const k = 0.75 + 0.25 * Math.sin(t * 3 + px * 0.05 + py * 0.03);
+    x.fillStyle = `rgba(255,214,70,${0.55 * k + 0.2})`; star5(px + s / 2, py + s / 2 + 0.5, s * 0.36, s * 0.16); x.fill();
+    x.strokeStyle = 'rgba(255,240,170,.85)'; x.lineWidth = Math.max(1, s * 0.04); x.stroke();
+  } else if (pt === 2) { x.fillStyle = 'rgba(255,255,255,.55)'; star5(px + s / 2, py + s / 2 + 0.5, s * 0.3, s * 0.13); x.fill(); }
+}
+function drawGoal() {
+  const gR = L.goal; if (!gR || !LV) return;
+  const pul = goalPulse > 0 ? 1 + Math.sin(goalPulse / 0.4 * Math.PI) * 0.08 : 1;
+  x.save(); x.translate(gR.x + gR.w / 2, gR.y + gR.h / 2); x.scale(pul, pul); x.translate(-(gR.x + gR.w / 2), -(gR.y + gR.h / 2));
+  x.fillStyle = 'rgba(80,50,20,.18)'; x.beginPath(); x.roundRect(gR.x + 2, gR.y + 3, gR.w, gR.h, gR.h / 2); x.fill();
+  x.fillStyle = got >= need ? '#e6ffd8' : '#fffaf0'; x.strokeStyle = got >= need ? '#4cc96a' : '#d8bf8a'; x.lineWidth = 2.5;
+  x.beginPath(); x.roundRect(gR.x, gR.y, gR.w, gR.h, gR.h / 2); x.fill(); x.stroke();
+  const fs = Math.min(gR.h * 0.6, 30 * U), cx = gR.x + gR.w / 2, cy = gR.y + gR.h / 2 + 1;
+  const left = need - Math.min(got, need);
+  const txt = LV.goal === 'stones' ? `${GOAL_IC.stones} ×${left}` : `${GOAL_IC[LV.goal]} ${Math.min(got, need)} / ${need}`;
+  x.font = `900 ${fs}px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle';
+  const tw = x.measureText(txt).width;
+  // progress bar behind the numbers (portrait has room for it)
+  if (gR.w > tw + 60) {
+    const bw = Math.min(gR.w - 24, Math.max(tw + 40, gR.w * 0.7)), bx = cx - bw / 2, bh = Math.max(6, gR.h * 0.16), by = gR.y + gR.h - bh - 3;
+    x.fillStyle = 'rgba(160,120,60,.2)'; x.beginPath(); x.roundRect(bx, by, bw, bh, bh / 2); x.fill();
+    x.fillStyle = '#ffb72b'; x.beginPath(); x.roundRect(bx, by, Math.max(bh, bw * Math.min(1, got / need)), bh, bh / 2); x.fill();
+  }
+  x.fillStyle = '#5a3a10'; x.fillText(txt, cx, cy - (gR.w > tw + 60 ? gR.h * 0.07 : 0));
+  if (allowed()) { x.font = `${fs * 0.75}px ${FONT}`; x.fillText('🧩', gR.x + fs * 0.7, cy); }
+  x.restore();
 }
 function draw() {
   const W = cv.lw, H = cv.lh, bx = BX(), by = BY();
   table(W, H);
-  if (L.tip) {
+  if (L.tip && mode !== 'levels') {
     const tip = '把方塊拖進格子，排滿一整行或一整列就會消掉';
-    let fs = Math.round(14 * U); x.font = `${MG.big ? 800 : 700} ${fs}px "Noto Sans TC",system-ui,sans-serif`;
-    while (fs > 10 && x.measureText(tip).width > W - 16) { fs--; x.font = `${MG.big ? 800 : 700} ${fs}px "Noto Sans TC",system-ui,sans-serif`; }
+    let fs = Math.round(14 * U); x.font = `${MG.big ? 800 : 700} ${fs}px ${FONT}`;
+    while (fs > 10 && x.measureText(tip).width > W - 16) { fs--; x.font = `${MG.big ? 800 : 700} ${fs}px ${FONT}`; }
     x.fillStyle = MG.big ? '#3e2a10' : '#7a5a2c'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(tip, W / 2, L.tip.y);
   }
+  drawGoal();
   frame(bx - 10, by - 10, N * CELL + 20, N * CELL + 20);
   for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
-    if (!grid[r][c]) { socket(bx + c * CELL, by + r * CELL, CELL); continue; }
+    if (!grid[r][c]) { socket(bx + c * CELL, by + r * CELL, CELL, paint[r][c]); continue; }
     const age = t - (placedAt[r][c] ?? -9), sq = age < 0.18 ? 1 + 0.16 * Math.sin(age / 0.18 * Math.PI) : 1, s2 = CELL * sq;
-    block(bx + c * CELL + (CELL - s2) / 2, by + r * CELL + (CELL - s2) / 2, s2, grid[r][c]);
+    drawCell(r, c, bx + c * CELL + (CELL - s2) / 2, by + r * CELL + (CELL - s2) / 2, s2);
   }
   // ghost / drag
   const dp = drag ? tray[drag.i] : null;
@@ -288,6 +441,15 @@ function draw() {
     x.strokeStyle = 'rgba(255,255,255,.85)'; x.lineWidth = 2; x.setLineDash([3, 5]); x.beginPath(); x.moveTo(drag.x, drag.y - 14); x.lineTo(drag.x, Math.min(drag.y - 14, topY + 4)); x.stroke(); x.setLineDash([]);
     x.fillStyle = 'rgba(255,255,255,.85)'; x.beginPath(); x.arc(drag.x, drag.y - 10, 4, 0, 7); x.fill();
   }
+  // collected gems / stones / stars fly to the goal badge
+  for (const f of flyers) {
+    if (f.t < 0) continue;
+    const k = Math.min(1, f.t / 0.6), e = k * k * (3 - 2 * k), fs = CELL * (0.9 - 0.4 * k);
+    x.globalAlpha = 1 - Math.max(0, k - 0.85) / 0.15;
+    x.font = `${fs}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillText(f.ic, f.x0 + (f.x1 - f.x0) * e, f.y0 + (f.y1 - f.y0) * e - Math.sin(k * Math.PI) * 40);
+  }
+  x.globalAlpha = 1;
   x.textAlign = 'center'; x.textBaseline = 'middle';
   for (const p of pops) {
     const k = Math.min(1, p.life * 2), sc = 1 + Math.max(0, p.life - 0.9) * 2;
@@ -304,7 +466,46 @@ function draw() {
   x.globalAlpha = 1;
 }
 
-function start() { reset(); state = 'play'; MG.hide(); }
+// ---------- flow ----------
+const NEWS = {
+  levels: ['🎯 闖關模式', '每一關都有一個小任務，畫面上面會顯示要完成什麼。方塊放不下也不會輸，會送來新的方塊 ^_^'],
+  gems: ['💎 收集寶石', '有些格子裡藏著寶石！把寶石所在的那一行或那一列排滿消掉，就能收集到寶石。'],
+  stones: ['🪨 清除石頭', '格子裡有灰色的石頭。把石頭那一行或那一列排滿，石頭就會一起被消掉。全部清光就過關！'],
+  paint: ['⭐ 鋪滿星星', '格子上有閃閃發亮的星星，把方塊放在星星上面，星星就會變成金色。所有星星都變金色就過關！'],
+  shapes: ['🧩 特定方塊', '這一關只會出現某幾種形狀的方塊，想想看怎麼排最好！'],
+};
+function introFor(lv) {
+  const keys = ['levels', lv.goal, lv.shapes ? 'shapes' : null].filter(k => k && NEWS[k] && !MG.store.get('blocks.seen.' + k, false));
+  if (!keys.length) return false;
+  keys.forEach(k => MG.store.set('blocks.seen.' + k, true));
+  MG.panel({ title: keys.map(k => NEWS[k][0]).join('＋'), html: keys.map(k => `<p>${NEWS[k][1]}</p>`).join(''), buttons: [{ label: '開始', on: () => MG.hide() }] });
+  return true;
+}
+function start(m = mode, lv = level) {
+  mode = m === 'levels' ? 'levels' : 'endless'; level = Math.max(1, Math.min(LEVELS.length, lv | 0 || 1));
+  layout(); reset(); state = 'play'; MG.hide();
+  if (mode === 'levels') { if (!introFor(LV)) MG.toast(`${GOAL_IC[LV.goal]} ${lvTotal(LV)}${LV.shapes ? ' 🧩' : ''}`, 1400); }
+}
+function levelWon() {
+  if (state !== 'won') return;
+  MG.sfx('win'); setTimeout(() => MG.sfx('yay'), 260);
+  const done = MG.store.get('blocks.done', {}) || {}, best = done[level];
+  const isBest = best == null || pieces < best; if (isBest) { done[level] = pieces; MG.store.set('blocks.done', done); }
+  for (let i = 0; i < 3; i++) setTimeout(() => { for (const f of [0.25, 0.75]) MG.fx.burst(BX() + N * CELL * f, BY() + N * CELL * 0.4, { n: 20, colors: ['#ff5a4e', '#ffd23f', '#4cc96a', '#3d9bff', '#ff6fb5'], shape: 'sq', speed: 260, up: 180, size: 6, life: 1.2 }); }, i * 250);
+  const nx = level < LEVELS.length;
+  setTimeout(() => {
+    if (state !== 'won') return;
+    MG.panel({
+      title: `第 ${level} 關完成！`,
+      html: `<div class="big">${GOAL_IC[LV.goal]} ${need}${LV.goal === 'lines' ? ' 行' : ''}</div><p>用了 ${pieces} 塊方塊${isBest && best != null ? '，新紀錄！' : ''} ^_^</p>` + (nx ? '' : '<p>全部的關卡都過了，你是方塊大師！</p>'),
+      buttons: [
+        { label: nx ? '下一關' : '回到第 1 關', on: () => { const n = nx ? level + 1 : 1; MG.store.set('blocks.pickLevel', n); start('levels', n); } },
+        { label: '再玩一次', alt: true, on: () => start('levels', level) },
+        { label: '選關', alt: true, on: menu },
+      ],
+    });
+  }, 1300);
+}
 function gameOver() {
   if (state !== 'play') return;
   state = 'over'; MG.sfx('over');
@@ -312,23 +513,68 @@ function gameOver() {
   MG.panel({
     title: '放不下了！',
     html: `<p>這次得到</p><div class="big">${score} 分</div>` + (rec.isNew && score > 0 ? `<p class="new">新紀錄！^_^</p>` : `<p>最高紀錄：${rec.best} 分</p>`),
-    buttons: [{ label: '再玩一次', on: start }, { label: '回遊戲區', alt: true, on: () => location.href = 'index.html' }],
+    buttons: [{ label: '再玩一次', on: () => start('endless') }, { label: '🎯 去闖關', alt: true, on: menu }, { label: '回遊戲區', alt: true, on: () => location.href = 'index.html' }],
+  });
+}
+function menu() {
+  if (state !== 'play') state = 'ready';
+  const done = MG.store.get('blocks.done', {}) || {};
+  MG.choose({
+    id: 'blocks', title: '十乘十方塊',
+    html: `<p>把下面的方塊拖進 10×10 的格子。排滿一整行或一整列就會消掉！方塊不能旋轉，先想好再放 ^_^</p><p><b>🎯 闖關</b>：每關一個小任務——🧹 消掉幾行、💎 收集寶石、🪨 清除石頭、⭐ 鋪滿星星、🧩 只有特定方塊。放不下也不會輸！<br><b>♾️ 無限模式</b>：一直玩到放不下，挑戰最高分。</p>`,
+    keys: '拖曳方塊　鍵盤：<kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 選方塊、方向鍵移動、<kbd>Enter</kbd> 放下',
+    modesTitle: '怎麼玩？',
+    modes: [{ id: 'levels', label: '🎯 闖關', sub: `${LEVELS.length} 關小任務・不會輸` }, { id: 'endless', label: '♾️ 無限模式', sub: `最高 ${MG.best('blocks') ?? 0} 分` }],
+    levelsTitle: '闖關從哪一關開始？',
+    levels: { count: LEVELS.length, max: LEVELS.length, label: n => `${n}（${lvName(n)}${done[n] != null ? '・✓' : ''}）`, short: lvShort },
+    playing: () => state === 'play',
+    start: (m, lv) => start(m, lv),
   });
 }
 reset();
-window.BKT = { get state() { return state; }, pops: () => pops.map(p => [p.t, p.sub]), place: (i, gx, gy) => place(i, gx, gy), tray: () => tray.map(p => p && p.cells), setGrid(fn) { for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) grid[r][c] = fn(r, c); }, setTray(cells) { tray = cells.map(cs => cs && { col: '#4cc96a', cells: cs, w: Math.max(...cs.map(c => c[0])) + 1, h: Math.max(...cs.map(c => c[1])) + 1 }); } };
-MG.panel({
-  title: '十乘十方塊',
-  html: `<p>把下面的方塊拖進 10×10 的格子。排滿一整行或一整列就會消掉加分，連續消除分數加倍！</p><p>三塊都放不下就結束。方塊不能旋轉，先想好再放 ^_^</p>`,
-  keys: '拖曳方塊　鍵盤：<kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 選方塊、方向鍵移動、<kbd>Enter</kbd> 放下',
-  buttons: [{ label: '開始', on: start }],
-});
+// greedy helper used by the tests: picks a placement that clears lines / reaches the goal
+function bestMove() {
+  let best = null;
+  for (let i = 0; i < 3; i++) {
+    const p = tray[i]; if (!p) continue;
+    for (let gy = 0; gy <= N - p.h; gy++) for (let gx = 0; gx <= N - p.w; gx++) {
+      if (!fits(p, gx, gy)) continue;
+      const tmp = grid.map(r => r.slice()); for (const [a, b] of p.cells) tmp[gy + b][gx + a] = 1;
+      let s = Math.random() * 0.5, lines = 0;
+      for (let k = 0; k < N; k++) {
+        const rowN = tmp[k].filter(Boolean).length, colN = tmp.filter(r => r[k]).length;
+        if (rowN === N) { lines++; for (let c = 0; c < N; c++) if (spec[k][c]) s += 30; } else s += rowN * rowN * 0.05 * (spec[k].some(Boolean) ? 3 : 1);
+        if (colN === N) { lines++; for (let r = 0; r < N; r++) if (spec[r][k]) s += 30; } else s += colN * colN * 0.05 * (spec.some(r => r[k]) ? 3 : 1);
+      }
+      s += lines * 20;
+      for (const [a, b] of p.cells) if (paint[gy + b][gx + a] === 1) s += 12;
+      s += p.cells.length * 0.3;
+      if (!best || s > best.s) best = { i, gx, gy, s };
+    }
+  }
+  return best;
+}
+window.BKT = {
+  get state() { return state; }, get mode() { return mode; }, get level() { return level; }, get got() { return got; }, get need() { return need; }, get pieces() { return pieces; },
+  count: LEVELS.length, levels: () => LEVELS.map((l, i) => ({ n: i + 1, goal: l.goal, need: lvTotal(l), shapes: !!l.shapes, name: lvName(i + 1) })),
+  pops: () => pops.map(p => [p.t, p.sub]), place: (i, gx, gy) => place(i, gx, gy), tray: () => tray.map(p => p && p.cells), trayKinds: () => tray.map(p => p && p.k),
+  start: (m, lv) => start(m, lv), bestMove, rescue: () => rescue(),
+  // play the current level with the greedy helper until it is won (or maxN pieces); returns pieces used
+  autoplay(maxN = 800) { let n = 0; while (state === 'play' && n < maxN) { const m = bestMove(); if (!m) { stuckT = 0; rescue(); if (!bestMove()) return -1; continue; } place(m.i, m.gx, m.gy); n++; if (stuckT > 0) { stuckT = 0; rescue(); } } return state === 'won' ? pieces : -n; },
+  setGrid(fn) { for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) grid[r][c] = fn(r, c); }, setTray(cells) { tray = cells.map(cs => cs && { col: '#4cc96a', cells: cs, w: Math.max(...cs.map(c => c[0])) + 1, h: Math.max(...cs.map(c => c[1])) + 1 }); },
+};
+menu();
 MG.loop(dt => {
   t += dt;
   for (const f of fx) f.life -= dt; fx = fx.filter(f => f.life > 0);
   for (const q of bits) { q.x += q.vx * dt; q.y += q.vy * dt; q.vy += 900 * dt; q.a += q.va * dt; q.life -= dt; } bits = bits.filter(q => q.life > 0);
   for (const p of pops) { p.y -= 30 * dt; p.life -= dt; } pops = pops.filter(p => p.life > 0);
+  for (const f of flyers) f.t += dt; flyers = flyers.filter(f => f.t < 0.6);
+  goalPulse = Math.max(0, goalPulse - dt);
+  if (stuckT > 0 && !MG.panelOpen()) { stuckT -= dt; if (stuckT <= 0) rescue(); }
+  MG.fx.step(dt);
   draw();
+  MG.fx.draw(x);
 });
 </script>
 </body>
