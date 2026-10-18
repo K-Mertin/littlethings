@@ -13,13 +13,16 @@ Open `index.html` in a browser. The title screen has three choices; a computer-v
 ### Skirmish options
 | Option | Choices |
 |---|---|
-| Mode | 1 vs 1, or 2 vs 2 with a computer ally (needs a medium or large map) |
+| Mode | 1 vs 1, 2 vs 2 with a computer ally (needs a medium or large map), or Survival |
 | You play / Enemy | Blue Outpost, the Bloom, the Shards, or a random enemy faction |
 | Difficulty | Easy, Normal, Hard |
+| Enemy style | Random, Balanced, Rush, Turtle, Air power, Fast expand (see below) |
 | Map size | Small (64×64), Medium (80×80), Large (104×104) |
 | Map | Meadow, Desert, Snow or Random. Every map is randomly generated and mirrored so both sides are fair |
 | Start with | Standard (50 crystals), More (400 + 150 gas), Lots (1500 + 600 gas) |
 | Speed | Slow, Normal, Fast |
+
+**Survival**: there is no enemy base. Waves of the enemy faction come from the far side of the map, the first one at 2:30 and then every 30–55 seconds, each bigger than the last; from wave 4 they bring heavier units, from wave 7 flyers, and every fifth wave has something big. Your score is the number of waves you clear. The best score is kept per faction and difficulty.
 
 Your choices are remembered. Skirmish games autosave every 30 seconds and when you leave the page; **Continue** on the title screen picks the game back up. Missions don't autosave.
 
@@ -197,13 +200,25 @@ Each campaign's guide explains every step in small message boxes on the left tha
 ## The computer
 The computer plays every faction the same way you do: workers, supply, production buildings, gas, towers, upgrades, flyers and an expansion. It attacks in waves that grow over time, defends its base, pulls back if a wave is mostly destroyed, uses Rush, Siege mode, Harden, Burrow, Blink and Barrier, keeps Menders and Wardens with its army, warps Shard reinforcements in at a forward Obelisk, and builds more anti-air when you send flyers. As your ally in 2 vs 2 it also guards your base.
 
+Each enemy also has a style, picked at random unless you choose one:
+
+| Style | Plays like |
+|---|---|
+| Balanced | the standard build, first attack around 5:00 |
+| Rush | fewer workers, early extra Barracks, first attack around 3:00 with small waves |
+| Turtle | three extra towers and early upgrades, attacks late (around 8:00) with big waves |
+| Air power | gets flyers early and builds up to three air buildings |
+| Fast expand | takes a second base early, more workers, a third base later, attacks a bit later |
+
+The end screen tells you which style you faced.
+
 | Level | Income | First attack | Waves |
 |---|---|---|---|
 | Easy | 75% | about 6:20 | small, grow slowly |
 | Normal | 100% | about 5:00 | medium |
 | Hard | 125% | about 4:00 | large, grow quickly |
 
-In test matches between two Normal computers, games last about 10–11 minutes on a medium map. Across all three matchups each faction wins about as often as it loses, with the small edges shown in the matchup table above. Your skirmish wins per level are saved in this browser.
+In test matches between two Normal computers, games last about 10–11 minutes on a medium map. Across all three matchups each faction wins about as often as it loses, with the small edges shown in the matchup table above. Your skirmish wins per level and per faction, and your best survival scores, are saved in this browser and shown on the title screen.
 
 ## How it is built
 - Maps are random blobs of rock, trees and water, mirrored through the centre so both sides are fair; a flood fill carves a path if any base gets cut off. Meadow, desert and snow maps use their own colors, trees (round trees, cacti and palms, snowy pines) and water.

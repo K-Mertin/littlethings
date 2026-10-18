@@ -1763,9 +1763,19 @@ function updFog() {
 // =====================================================================
 //  Computer players (enemies, and your ally in 2v2)
 // =====================================================================
+// computer personalities: each one tweaks the build-order timings
+const AI_STYLES = {
+  balanced: { name: 'Balanced', cfg: c => c },
+  rush:     { name: 'Rush', cfg: c => Object.assign(c, { first: c.first * .6, wave: Math.max(4, c.wave - 3), grow: c.grow + 1, rax2: c.rax2 * .5, fac: c.fac * 1.6, tech: c.tech * 1.5, air: c.air * 1.8, expand: c.expand * 2, workers: c.workers - 4 }) },
+  turtle:   { name: 'Turtle', cfg: c => Object.assign(c, { first: c.first * 1.6, wave: c.wave + 6, grow: c.grow + 2, turrets: c.turrets + 3, tech: c.tech * .6, expand: c.expand * 1.3 }) },
+  air:      { name: 'Air power', cfg: c => Object.assign(c, { air: c.air * .55, fac: c.fac * .8, tech: c.tech * .8 }) },
+  expand:   { name: 'Fast expand', cfg: c => Object.assign(c, { expand: c.expand * .45, workers: c.workers + 4, first: c.first * 1.3, wave: c.wave + 3 }) },
+};
+const STYLE_KEYS = Object.keys(AI_STYLES);
 class AI {
   constructor(team, diff, flags = {}) {
-    this.team = team; this.diff = diff; this.cfg = AI_CFG[diff];
+    this.team = team; this.diff = diff; this.style = AI_STYLES[flags.style] ? flags.style : 'balanced';
+    this.cfg = AI_STYLES[this.style].cfg({ ...AI_CFG[diff] });
     this.acc = Math.random() * .3; this.wave = this.cfg.wave; this.attacking = false; this.nextAttack = this.cfg.first; this.lastBuild = {}; this.lastFail = {};
     this.passive = !!flags.passive; this.noBuild = !!flags.noBuild; this.noExpand = !!flags.noExpand; this.ally = sideOf(team) === 0;
     this.lastPush = 0;
@@ -1823,11 +1833,11 @@ class AI {
     if (nb < 2 && t > cfg.rax2) want.push(['rax', hq]);
     if (nf < 1 && hasBuilt(me, K('rax')) && t > cfg.fac) want.push(['fac', hq]);
     if (this.count(K('tower')) < cfg.turrets && hasBuilt(me, K('rax')) && t > 220) want.push(['tower', hq]);
-    if (t > cfg.expand && this.count(K('hq')) < 2 && !this.noExpand) want.push(['hq', hq]);
+    if (t > cfg.expand && this.count(K('hq')) < (this.style === 'expand' && t > cfg.expand + 200 ? 3 : 2) && !this.noExpand) want.push(['hq', hq]);
     if (t > cfg.expand + 120 && nr < 2) want.push(['refinery', hqs[1] || hq]);
     if (this.count(K('tech')) < 1 && hasBuilt(me, K('fac')) && t > cfg.tech) want.push(['tech', hq]);
     if (this.count(K('air')) < 1 && hasBuilt(me, K('fac')) && t > cfg.air) want.push(['air', hq]);
-    if (this.count(K('air')) < 2 && hasBuilt(me, K('air')) && t > cfg.air + 240 && R.g > 250) want.push(['air', hq]);
+    if (this.count(K('air')) < (this.style === 'air' ? 3 : 2) && hasBuilt(me, K('air')) && t > cfg.air + (this.style === 'air' ? 60 : 240) && R.g > (this.style === 'air' ? 150 : 250)) want.push(['air', hq]);
     if (t > 520 && nb < 3) want.push(['rax', hq]);
     if (t > 640 && nf < 2) want.push(['fac', hq]);
     if (t > 300 && R.c > 550 && nb < 4) want.push(['rax', hq]);
@@ -1870,7 +1880,7 @@ class AI {
       const opts = [];
       if (hasBuilt(me, 'nest')) opts.push(['spitter', enemyAir >= 2 ? 5 : 3.5], ['beetle', enemyAir >= 2 ? 1 : 2.5]);
       if (hasBuilt(me, 'hive')) opts.push(['burrower', 1.6], ['mender', menders * 6 < fighters ? 2.5 : 0]);
-      if (hasBuilt(me, 'spire')) opts.push(['wasp', enemyAir >= 2 ? 3.5 : 1.6], ['bomber', 1.3]);
+      if (hasBuilt(me, 'spire')) opts.push(['wasp', (enemyAir >= 2 ? 3.5 : 1.6) * (this.style === 'air' ? 2.5 : 1)], ['bomber', 1.3 * (this.style === 'air' ? 2.5 : 1)]);
       for (const h of this.mine('heart')) {
         if (h.built < 1) continue;
         let guard = 0;
@@ -1887,7 +1897,8 @@ class AI {
       const k = enemyAir >= 2 || this.rng() < .5 || !this.can(this.U('air', 1)) ? this.U('air', 0) : this.U('air', 1);
       if (this.can(k) && spare(k)) cmdTrain(sp, k);
     }
-    for (const b of this.mine(K('rax'))) if (b.built >= 1 && b.queue.length < qmax) {
+    const airFirst = this.style === 'air' && hasBuilt(me, K('air'));
+    for (const b of this.mine(K('rax'))) if (b.built >= 1 && b.queue.length < (airFirst ? 1 : qmax) && !(airFirst && R.c < 300)) {
       const k = this.rng() < (enemyAir >= 2 ? .1 : this.diff === 'easy' ? .2 : .35) && this.can(this.U('rax', 1)) ? this.U('rax', 1) : this.U('rax', 0);
       if (this.can(k) && spare(k)) cmdTrain(b, k);
     }
@@ -2108,7 +2119,12 @@ function newGame(opt) {
       const s = map.sites.find(s => s.main && s.side === tm.side && s.slot === slot);
       placeStart(ti, s);
     });
-    teams.forEach((tm, ti) => { if (ti !== 0 || opt.demo) G.ais[ti] = new AI(ti, ti === 0 || tm.side === 0 ? (opt.diffA || 'normal') : (opt.diff || 'normal')); });
+    teams.forEach((tm, ti) => {
+      if (ti !== 0 || opt.demo) {
+        const foe = tm.side === 1, st = foe ? (opt.style && opt.style !== 'random' ? opt.style : STYLE_KEYS[Math.floor(R() * STYLE_KEYS.length)]) : 'balanced';
+        tm.style = st; G.ais[ti] = new AI(ti, ti === 0 || tm.side === 0 ? (opt.diffA || 'normal') : (opt.diff || 'normal'), { style: st });
+      }
+    });
   }
   G.nextSave = 30;
   updCreep(); updPower(); computeSupply(); updFog();
@@ -3746,7 +3762,7 @@ function missionUI(dt) {
   }
   if ((M.ui -= dt) <= 0 || M.dirty) {
     M.ui = .25; M.dirty = false;
-    $('mTitle').textContent = (M.def.n || M.idx + 1) + '. ' + M.def.title;
+    $('mTitle').textContent = M.def.survival ? M.def.title : (M.def.n || M.idx + 1) + '. ' + M.def.title;
     $('objList').innerHTML = M.objs.map(o => `<li class="${o.done ? 'done' : ''}">${o.text}</li>`).join('');
   }
 }
@@ -3776,7 +3792,7 @@ function saveGame() {
     const data = {
       v: 3, opt: G.opt, teams: G.teams, w: MW, h: MH, ter: Array.from(TER).join(''), exp: Array.from(EXP).join(''), ents, proj: G.proj,
       nextId: G.nextId, res: G.res, up: G.up, stats: G.stats, time: G.time, sites: G.sites, mains: G.mains, theme: G.theme, groups: G.groups, seed: G.seed, diff: G.diff,
-      ais: G.ais.map(a => a && { team: a.team, diff: a.diff, wave: a.wave, attacking: a.attacking, nextAttack: a.nextAttack, lastBuild: a.lastBuild, lastFail: a.lastFail, passive: a.passive, noBuild: a.noBuild, noExpand: a.noExpand, sent: a.sent, lastPush: a.lastPush, fwd: a.fwd }),
+      ais: G.ais.map(a => a && { team: a.team, diff: a.diff, wave: a.wave, attacking: a.attacking, nextAttack: a.nextAttack, lastBuild: a.lastBuild, lastFail: a.lastFail, passive: a.passive, noBuild: a.noBuild, noExpand: a.noExpand, sent: a.sent, lastPush: a.lastPush, fwd: a.fwd, style: a.style }),
       cam: { x: cam.x, y: cam.y, z: cam.z }, when: Date.now(),
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
@@ -4103,6 +4119,60 @@ const CODEX = {
   glider:   ['Other flyers, fast raids', 'Turrets, Thorns, Hornets'],
   monolith: ['Long lines of ground units', 'Flyers (it can\'t hit air), Wasp poison'],
 };
+
+// =====================================================================
+//  Survival: endless, growing waves of one enemy faction
+// =====================================================================
+const SURV_KEY = 'crystalOutpost.survival';
+function loadSurvival() { try { return JSON.parse(localStorage.getItem(SURV_KEY)) || {}; } catch (e) { return {}; } }
+function survivalDef(o) {
+  const diffK = { easy: .7, normal: 1, hard: 1.3 }[o.diff] || 1;
+  return {
+    survival: true, camp: o.fac, fac: o.fac, facE: o.facE, title: 'Survival', n: '', size: o.size === 'large' ? 'large' : 'medium', theme: o.theme, seed: o.seed,
+    setup(G, map) {
+      placeStart(0, mainOf(map, 0));
+      const spawns = [mainOf(map, 1), ...G.sites.filter(s => s.side === 1)].map(tileCenter);
+      G.ais[1] = new AI(1, o.diff || 'normal', { passive: true, noBuild: true, noExpand: true });   // only uses abilities
+      G.mdata = { wave: 0, next: 150, spawns, waves: [], cleared: 0, diffK };
+    },
+    start(M) {
+      M.obj('w', 'Survive the waves');
+      M.say(`Survival! Waves of ${FAC[facOf(1)].name} will come from the far side of the map, each one bigger than the last.`);
+      M.say('The first wave arrives in two and a half minutes. Build up your economy and defences fast. Every fifth wave brings something big.');
+    },
+    tick(M) {
+      const D = G.mdata, F = FAC[facOf(1)];
+      if (G.time >= D.next) {
+        D.wave++; const n = D.wave;
+        D.next = G.time + Math.max(32, 55 - n);
+        let budget = (90 + n * 80 + n * n * 8) * D.diffK;
+        const pool = [...F.units.rax, ...(n >= 4 ? F.units.fac : []), ...(n >= 7 ? F.units.air : [])].filter(k => !DEF[k].heal || n >= 5);
+        const comp = {};
+        if (n % 5 === 0) { const boss = F.units[n >= 10 ? 'air' : 'fac'][1]; comp[boss] = Math.ceil(n / 10); budget *= .7; }
+        let guard = 0;
+        while (budget > 40 && guard++ < 80) {
+          const k = pool[Math.floor(Math.random() * pool.length)], c = DEF[k].cost[0] + DEF[k].cost[1] * 1.5;
+          if (c > budget && guard > 20) break; comp[k] = (comp[k] || 0) + (DEF[k].pair || 1); budget -= c;
+        }
+        const up = G.up[1]; up.weapons = Math.min(2, Math.floor(n / 4)); up.armor = Math.min(2, Math.floor(n / 5));
+        if (n >= 5) for (const a of F.abil) up[a] = 1;
+        const from = D.spawns[(n - 1) % D.spawns.length], tgt = G.blds.find(b => b.team === 0) || { x: from.x, y: from.y };
+        D.waves.push(attackWave(1, comp, from, tgt).map(u => u.id));
+        M.say(n % 5 === 0 ? `Wave ${n}: a big one is coming!` : `Wave ${n} is coming!`);
+      }
+      // waves keep marching on your nearest building; count cleared waves
+      if ((D.rt = (D.rt || 0) + 1) % 90 === 0) {
+        for (const u of G.ents) if (u.alive && u.team === 1 && u.d.unit && u.order.t === 'idle' && !u.tgt) {
+          const b = G.blds.filter(b => b.team === 0).sort((a, c) => dist(a, u) - dist(c, u))[0]; if (b) cmdMove([u], b.x, b.y, true);
+        }
+        D.cleared = D.waves.filter(w => !w.some(id => byId(id))).length;
+      }
+      M.set('w', false, `Wave <b>${D.wave}</b> · next in <span class="tm">${fmtT(D.next - G.time)}</span> · cleared ${D.cleared}`);
+      if (!G.blds.some(b => b.team === 0)) M.lose('Your base has fallen.');
+    },
+    stars: () => [],
+  };
+}
 
 // =====================================================================
 //  Sound (tiny synth, no files)
@@ -4830,16 +4900,17 @@ $('helpBox').innerHTML = HELP; $('helpBox2').innerHTML = HELP;
 
 // ---------- skirmish setup
 const SETUP_OPTS = [
-  ['mode', 'Mode', [['1v1', '1 vs 1'], ['2v2', '2 vs 2 with an ally']]],
+  ['mode', 'Mode', [['1v1', '1 vs 1'], ['2v2', '2 vs 2 with an ally'], ['survival', 'Survival']]],
   ['fac', 'You play', [['blue', 'Blue Outpost'], ['bloom', 'The Bloom'], ['shard', 'The Shards']]],
   ['facE', 'Enemy', [['blue', 'Blue Outpost'], ['bloom', 'The Bloom'], ['shard', 'The Shards'], ['random', 'Random']]],
   ['diff', 'Difficulty', [['easy', 'Easy'], ['normal', 'Normal'], ['hard', 'Hard']]],
+  ['style', 'Enemy style', [['random', 'Random'], ...STYLE_KEYS.map(k => [k, AI_STYLES[k].name])]],
   ['size', 'Map size', [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']]],
   ['theme', 'Map', [['meadow', 'Meadow'], ['desert', 'Desert'], ['snow', 'Snow'], ['random', 'Random']]],
   ['startRes', 'Start with', [['standard', 'Standard'], ['more', 'More'], ['lots', 'Lots']]],
   ['speed', 'Speed', [['slow', 'Slow'], ['normal', 'Normal'], ['fast', 'Fast']]],
 ];
-let setup = { mode: '1v1', fac: 'blue', facE: 'blue', diff: 'normal', size: 'medium', theme: 'random', startRes: 'standard', speed: 'normal' };
+let setup = { mode: '1v1', fac: 'blue', facE: 'blue', diff: 'normal', style: 'random', size: 'medium', theme: 'random', startRes: 'standard', speed: 'normal' };
 try { Object.assign(setup, JSON.parse(localStorage.getItem('crystalOutpost.setup')) || {}); } catch (e) { }
 const FAC_NOTE = {
   shard: '<b>The Shards</b>: living crystal. Few but strong units with shields that grow back fast, but health never heals. Sparks warp buildings in and go back to work; most buildings need power from an Obelisk. Set a gate\'s rally point near any Obelisk and new units warp in right there. Blades Blink, Prisms fire piercing beams, Wardens recharge shields.',
@@ -4848,7 +4919,7 @@ const FAC_NOTE = {
 };
 function renderSetup() {
   $('opts').innerHTML = SETUP_OPTS.map(([k, label, vals]) => `<label>${label}</label><div class="seg" data-k="${k}">${vals.map(([v, t]) => `<button data-v="${v}" class="${setup[k] === v ? 'on' : ''}"${k === 'size' && v === 'small' && setup.mode === '2v2' ? ' disabled style="opacity:.4"' : ''}>${t}</button>`).join('')}</div>`).join('');
-  $('facNote').innerHTML = FAC_NOTE[setup.fac] + (setup.mode === '2v2' ? ' <br>In 2 vs 2 your ally joins when you attack with three or more units.' : '');
+  $('facNote').innerHTML = FAC_NOTE[setup.fac] + (setup.mode === '2v2' ? ' <br>In 2 vs 2 your ally joins when you attack with three or more units.' : setup.mode === 'survival' ? ' <br><b>Survival</b>: no enemy base. Waves of the enemy faction come every 30–50 seconds and keep growing; every fifth wave brings something big. How many can you clear? (Enemy style doesn\'t apply.)' : '');
 }
 $('opts').addEventListener('click', e => {
   const b = e.target.closest('button[data-v]'); if (!b || b.disabled) return;
@@ -4898,7 +4969,10 @@ $('mlist').addEventListener('click', e => { const b = e.target.closest('.mcard')
 
 function loadWins() { try { return JSON.parse(localStorage.getItem('crystalOutpost.wins')) || {}; } catch (e) { return {}; } }
 function showTitle() {
-  const w = loadWins(); $('wins').textContent = 'Skirmish wins: Easy ' + (w.easy || 0) + ' · Normal ' + (w.normal || 0) + ' · Hard ' + (w.hard || 0);
+  const w = loadWins(), bf = w.byFac || {}, sv2 = loadSurvival();
+  const facWins = FACS.map(f => { const x = bf[f] || {}; const n = (x.easy || 0) + (x.normal || 0) + (x.hard || 0); return n ? FAC[f].short + ' ' + n : ''; }).filter(Boolean).join(' · ');
+  const surv = FACS.map(f => { const b = Math.max(...['easy', 'normal', 'hard'].map(d => sv2[f + ':' + d] || 0)); return b ? FAC[f].short + ' ' + b : ''; }).filter(Boolean).join(' · ');
+  $('wins').innerHTML = 'Skirmish wins: Easy ' + (w.easy || 0) + ' · Normal ' + (w.normal || 0) + ' · Hard ' + (w.hard || 0) + (facWins ? '<br>By faction: ' + facWins : '') + (surv ? '<br>Best survival (waves): ' + surv : '');
   const sv = readSave();
   $('bContinue').classList.toggle('hidden', !sv);
   if (sv) $('contInfo').textContent = `(${FAC[sv.teams[0].fac].short} vs ${FAC[sv.teams[sv.teams.length > 2 ? 2 : 1].fac].short}${sv.teams.length > 2 ? ', 2v2' : ''}, ${fmtT(sv.time)})`;
@@ -4924,7 +4998,11 @@ function enterGame() {
 let lastStart = null;
 function startSkirmish() {
   lastStart = { kind: 'skirmish' };
-  newGame({ ...setup, seed: (Math.random() * 1e9) | 0, diffA: setup.diff });
+  const seed = (Math.random() * 1e9) | 0;
+  if (setup.mode === 'survival') {
+    const facE = setup.facE === 'random' ? FACS[Math.floor(Math.random() * 3)] : setup.facE;
+    newGame({ ...setup, mode: '1v1', facE, seed, mission: survivalDef({ ...setup, facE, seed }), missionIdx: -1 });
+  } else newGame({ ...setup, seed, diffA: setup.diff });
   enterGame();
 }
 function startMission(i) {
@@ -4952,8 +5030,21 @@ function endScreen(win, title, sub, stats) {
   $('endStats').innerHTML = stats.map(([v, l]) => `<div><b>${v}</b><span>${l}</span></div>`).join('');
   screen('end');
 }
+function survivalEnd(M) {
+  const D = G.mdata, key = G.teams[0].fac + ':' + G.diff, best = loadSurvival(), prev = best[key] || 0, score = D.cleared;
+  if (score > prev) { best[key] = score; try { localStorage.setItem(SURV_KEY, JSON.stringify(best)); } catch (e) { } }
+  setTimeout(() => {
+    if (!G || G.demo || G.mission !== M) return;
+    sfx(score > prev && score > 0 ? 'win' : 'lose');
+    $('endStars').classList.add('hidden'); $('endStarList').classList.add('hidden');
+    $('bNext').classList.add('hidden'); $('bEndMissions').classList.add('hidden'); $('bAgain').textContent = 'Play again';
+    endScreen(score > prev && score > 0, score > prev && score > 0 ? 'New best!' : 'Survival over',
+      `${FAC[G.teams[0].fac].short} vs ${FAC[facOf(1)].short} · ${G.diff[0].toUpperCase() + G.diff.slice(1)} · ${fmtT(G.time)} · best ${Math.max(prev, score)} waves`,
+      [[score, 'Waves cleared'], [D.wave, 'Waves reached'], [G.stats.killed, 'Enemy units destroyed'], [G.stats.trained, 'Units trained'], [G.stats.lost, 'Units lost']]);
+  }, 1800);
+}
 function onGameOver(win) {
-  if (win) { try { const w = loadWins(); w[G.diff] = (w[G.diff] || 0) + 1; localStorage.setItem('crystalOutpost.wins', JSON.stringify(w)); } catch (e) { } }
+  if (win) { try { const w = loadWins(); w[G.diff] = (w[G.diff] || 0) + 1; const f = G.teams[0].fac; w.byFac = w.byFac || {}; w.byFac[f] = w.byFac[f] || {}; w.byFac[f][G.diff] = (w.byFac[f][G.diff] || 0) + 1; localStorage.setItem('crystalOutpost.wins', JSON.stringify(w)); } catch (e) { } }
   clearSave();
   setTimeout(() => {
     if (!G || G.demo) return;
@@ -4961,12 +5052,14 @@ function onGameOver(win) {
     const st = G.stats, foes = FAC[facOf(G.teams.length > 2 ? 2 : 1)].name;
     $('endStars').classList.add('hidden'); $('endStarList').classList.add('hidden');
     $('bNext').classList.add('hidden'); $('bEndMissions').classList.add('hidden'); $('bAgain').textContent = 'Play again';
-    endScreen(win, win ? 'Victory!' : 'Defeat', (win ? foes + ' is wiped out.' : 'Your base has fallen.') + ' ' + G.diff[0].toUpperCase() + G.diff.slice(1) + ' · ' + fmtT(G.time),
+    const styles = G.teams.filter(t => t.side === 1 && t.style).map(t => AI_STYLES[t.style].name), sty = styles.length ? ' · enemy style: ' + [...new Set(styles)].join(' / ') : '';
+    endScreen(win, win ? 'Victory!' : 'Defeat', (win ? foes + ' is wiped out.' : 'Your base has fallen.') + ' ' + G.diff[0].toUpperCase() + G.diff.slice(1) + ' · ' + fmtT(G.time) + sty,
       [[st.mined, 'Crystals mined'], [st.gas, 'Gas collected'], [st.trained, 'Units trained'], [st.killed, 'Enemy units destroyed'], [st.razed, 'Enemy buildings destroyed'], [st.lost, 'Units lost']]);
   }, 2000);
 }
 function onMissionEnd(win) {
   const M = G.mission, i = M.idx;
+  if (M.def.survival) { survivalEnd(M); return; }
   let stars = 0, list = [];
   if (win) {
     list = M.def.stars(M); stars = list.filter(s => s[1]).length;
