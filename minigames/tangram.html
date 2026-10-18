@@ -1,0 +1,837 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon.ico" sizes="any"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>七巧板</title>
+<link rel="stylesheet" href="mini.css">
+<style>.mg-stage{padding:6px}
+@media (max-width:400px){.mg-bar h1{min-width:3em}}</style>
+</head>
+<body>
+<main class="mg-stage"><canvas id="cv" aria-label="遊戲畫面"></canvas></main>
+<script src="mini.js"></script>
+<script>
+'use strict';
+MG.init({ id: 'tangram', title: '七巧板', stats: ['level', 'prog'] });
+const cv = document.getElementById('cv'), x = cv.getContext('2d');
+const FONT = '"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif';
+const TAU = Math.PI * 2;
+
+// <GEO> shared geometry + level designs (copied into tangram.html)
+const R2 = Math.SQRT2, S3 = Math.sqrt(3);
+// piece kinds: canonical polygon (units: tangram square side = 4, block side = 2), rotation step, colours
+const KINDS = {
+  LT: { v: [[-2, 0], [2, 0], [0, -2]], set: 'tan' },
+  MT: { v: [[0, 0], [2, 0], [0, 2]], set: 'tan' },
+  ST: { v: [[-1, 0], [1, 0], [0, -1]], set: 'tan' },
+  SQ: { v: [[0, -1], [1, 0], [0, 1], [-1, 0]], set: 'tan' },
+  PG: { v: [[0, 0], [2, 0], [3, 1], [1, 1]], set: 'tan', flip: true },
+  HX: { v: [[2, 0], [1, -S3], [-1, -S3], [-2, 0], [-1, S3], [1, S3]], set: 'blk' },
+  TZ: { v: [[-2, 0], [2, 0], [1, -S3], [-1, -S3]], set: 'blk' },
+  RB: { v: [[0, 0], [2, 0], [3, -S3], [1, -S3]], set: 'blk' },
+  TR: { v: [[0, 0], [2, 0], [1, -S3]], set: 'blk' },
+  BS: { v: [[0, 0], [2, 0], [2, 2], [0, 2]], set: 'blk' },
+};
+const STEPS = { tan: 8, blk: 6 };             // rotations per full turn
+function centroid(p) {
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0; i < p.length; i++) { const [x0, y0] = p[i], [x1, y1] = p[(i + 1) % p.length], c = x0 * y1 - x1 * y0; a += c; cx += (x0 + x1) * c; cy += (y0 + y1) * c; }
+  a /= 2; return [cx / (6 * a), cy / (6 * a), Math.abs(a)];
+}
+const areaOf = p => centroid(p)[2];
+for (const k in KINDS) { const K = KINDS[k], [cx, cy, a] = centroid(K.v); K.local = K.v.map(([x, y]) => [x - cx, y - cy]); K.area = a; K.n = STEPS[K.set]; }
+// the piece's polygon (centred on 0,0) at rotation r (steps) and flip f
+function shapeOf(kind, r, f) {
+  const K = KINDS[kind], a = r * Math.PI * 2 / K.n, c = Math.cos(a), s = Math.sin(a);
+  return K.local.map(([x, y]) => { if (f) x = -x; return [x * c - y * s, x * s + y * c]; });
+}
+function sameSet(p, q, eps = 0.02) {
+  if (p.length !== q.length) return false;
+  return p.every(([x, y]) => q.some(([u, v]) => Math.abs(x - u) < eps && Math.abs(y - v) < eps));
+}
+// which (rotation, flip) of which kind gives exactly this polygon
+function classify(poly, set) {
+  const [cx, cy, a] = centroid(poly), loc = poly.map(([x, y]) => [x - cx, y - cy]);
+  for (const k in KINDS) {
+    const K = KINDS[k]; if (K.set !== set || K.v.length !== poly.length || Math.abs(K.area - a) > 0.03) continue;
+    const m = [];
+    for (let f = 0; f < 2; f++) for (let r = 0; r < K.n; r++) if (sameSet(shapeOf(k, r, !!f), loc)) m.push([r, !!f]);
+    if (m.length) return { kind: k, c: [cx, cy], m };
+  }
+  return null;
+}
+// block lattice point
+const P = (i, j) => [2 * i + j, -S3 * j];
+const rotPts = (pts, a) => pts.map(([x, y]) => [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)]);
+const HEX0 = [P(1, 0), P(0, 1), P(-1, 1), P(-1, 0), P(0, -1), P(1, -1)];
+const ringTris = () => HEX0.map((p, i) => { const q = HEX0[(i + 1) % 6]; return [p, q, [p[0] + q[0], p[1] + q[1]]]; });
+const B = pts => pts.map(([x, y]) => [x * R2, y * R2]);           // frame B (square grid) → tangram units
+// figures: s = polygons, eyes/mouth in the same units, alive = how the finished picture moves
+const FIG = {
+  house: { name: '房子', emo: '🏠', set: 'tan', s: [[[-1, 2], [3, 2], [1, 0]], [[0, 2], [2, 2], [0, 4]], [[2, 2], [2, 4], [0, 4]]], eyes: [[0.55, 2.8], [1.45, 2.8]], mouth: [1, 3.35], alive: { t: 'hop', smoke: [2.1, 0.6] } },
+  boat: { name: '帆船', emo: '⛵', set: 'tan', s: [[[0, 4], [4, 4], [2, 6]], [[2, 0], [4, 2], [2, 4]], [[2, 2], [2, 4], [0, 4]]], eyes: [[1.45, 4.5], [2.55, 4.5]], mouth: [2, 5.0], alive: { t: 'sail' } },
+  fish: { name: '小魚', emo: '🐟', set: 'tan', s: [[[2, 0], [0, 2], [2, 4]], [[2, 0], [4, 2], [2, 4]], [[4, 2], [6, 0], [6, 2]], [[4, 2], [6, 2], [6, 4]]], eyes: [[1.15, 1.65]], mouth: [0.55, 2.35], alive: { t: 'swim' } },
+  cat: { name: '小貓', emo: '🐱', set: 'tan', s: [[[2, 2], [4, 4], [0, 4]], [[2, 2], [3, 1], [4, 2], [3, 3]], [[3, 1], [2, 2], [2, 0]], [[3, 1], [4, 2], [4, 0]]], eyes: [[2.62, 1.95], [3.38, 1.95]], mouth: [3, 2.45], alive: { t: 'hop' } },
+  bird: { name: '小鳥', emo: '🐦', set: 'tan', s: [[[1, 2], [5, 2], [3, 4]], [[3, 2], [5, 2], [5, 0]], [[5, 0], [5, 2], [6, 1]], [[-1, 1], [1, 1], [2, 2], [0, 2]]], eyes: [[4.4, 1.3]], alive: { t: 'wag', part: 3, pivot: [1.6, 2], amp: 0.35 } },
+  duck: { name: '小鴨', emo: '🦆', set: 'tan', s: [B([[0, 0], [1, 0], [1, 1], [0, 1]]), B([[0, 0], [0, 1], [-1, 0]]), B([[0, 1], [2, 1], [0, 3]]), B([[2, 1], [2, 3], [0, 3]]), B([[2, 1], [3, 1], [2, 2]])], eyes: B([[0.55, 0.42]]), alive: { t: 'swim', water: 1 } },
+  star: { name: '星星', emo: '⭐', set: 'blk', s: [HEX0, ...ringTris()], eyes: [[-0.7, -0.25], [0.7, -0.25]], mouth: [0, 0.6], alive: { t: 'spin' } },
+  turtle: { mir: 1, name: '烏龜', emo: '🐢', set: 'tan', s: [B([[0, 2], [2, 2], [2, 0]]), B([[2, 0], [2, 2], [4, 2]]), B([[3, 1], [4, 1], [4, 2]]), B([[4, 1], [5, 1], [5, 2], [4, 2]]), B([[0, 2], [2, 2], [1, 3]]), B([[0, 2], [1, 3], [0, 3], [-1, 2]]), B([[3, 2], [4, 2], [4, 3]])], eyes: B([[4.62, 1.38]]), alive: { t: 'walk' } },
+  miniboat: { name: '小船', emo: '⛵', set: 'tan', s: [[[-1, 2], [3, 2], [1, 4]], [[1, 0], [1, 2], [-1, 2]]], eyes: [[0.45, 2.5], [1.55, 2.5]], alive: { t: 'sail' } },
+  swan: { name: '天鵝', emo: '🦢', set: 'tan', s: [[[0, 4], [4, 4], [2, 2]], [[2, 2], [4, 4], [4, 0]], [[0, 4], [0, 2], [1, 1], [1, 3]], [[0, 2], [1, 1], [0, 0], [-1, 1]], [[-1, 1], [0, 0], [-2, 0]], [[4, 4], [4, 2], [6, 4]], [[4, 0], [4, 2], [5, 1]]], eyes: [[0.2, 0.85]], alive: { t: 'swim', water: 1 } },
+  tree: { name: '松樹', emo: '🌲', set: 'blk', s: [[[-2, 0], [2, 0], [1, -S3], [-1, -S3]], [[-2, -S3], [2, -S3], [1, -2 * S3], [-1, -2 * S3]], [[-1, -2 * S3], [1, -2 * S3], [0, -3 * S3]], [[-1, 0], [1, 0], [1, 2], [-1, 2]]], eyes: [[-0.6, -1.0], [0.6, -1.0]], mouth: [0, -0.45], alive: { t: 'sway' } },
+  rabbit: { mir: 1, name: '兔子', emo: '🐰', set: 'tan', s: [[[0, 6], [4, 6], [2, 4]], [[2, 4], [4, 6], [4, 2]], [[3, 3], [4, 2], [3, 1], [2, 2]], [[2, 2], [3, 1], [3, -1], [2, 0]], [[3, 1], [4, 2], [4, 0]], [[0, 6], [1, 5], [-1, 5]], [[4, 6], [4, 4], [6, 6]]], eyes: [[3.3, 1.95]], mouth: [3.6, 2.5], alive: { t: 'hop', big: 1 } },
+  rocket: { mir: 1, name: '火箭', emo: '🚀', set: 'tan', s: [B([[0, 1], [2, 1], [1, 0]]), B([[0, 1], [2, 1], [0, 3]]), B([[2, 1], [2, 3], [0, 3]]), B([[0, 2], [0, 3], [-1, 4], [-1, 3]]), B([[2, 2], [2, 3], [3, 3]]), B([[2, 3], [3, 4], [3, 3]]), B([[0.5, 3], [1.5, 3], [1.5, 4], [0.5, 4]])], eyes: B([[0.68, 1.75], [1.32, 1.75]]), mouth: B([[1, 2.25]])[0], alive: { t: 'launch', base: B([[1, 4]])[0] } },
+  butterfly: { name: '蝴蝶', emo: '🦋', set: 'blk', s: [[[0, 0], [1, -S3], [0, -2 * S3], [-1, -S3]], [[-1, -S3], [0, -2 * S3], [-4, -2 * S3], [-3, -S3]], [[1, -S3], [0, -2 * S3], [4, -2 * S3], [3, -S3]], [[0, 0], [-1, -S3], [-3, -S3], [-2, 0]], [[0, 0], [1, -S3], [3, -S3], [2, 0]], [[0, 0], [-2, 0], [-1, S3]], [[0, 0], [2, 0], [1, S3]]], eyes: [[-0.38, -1.25], [0.38, -1.25]], mouth: [0, -0.75], alive: { t: 'flap', parts: [[1, 3, 5], [2, 4, 6]] } },
+  dog: { name: '小狗', emo: '🐶', set: 'tan', s: [B([[1, 1], [2, 1], [3, 2], [2, 2]]), B([[1, 1], [2, 2], [1, 2]]), B([[2, 1], [3, 1], [3, 2]]), B([[3, 0.5], [4, 0.5], [4, 1.5], [3, 1.5]]), B([[3, 0.5], [4, 0.5], [3, -0.5]]), B([[1, 2], [3, 2], [2, 3]]), B([[1, 1], [1, 2], [0, 1]])], eyes: B([[3.62, 0.95]]), mouth: B([[3.8, 1.3]])[0], alive: { t: 'wag', part: 6, pivot: B([[1, 1.5]])[0], amp: 0.45 } },
+  snail: { mir: 1, name: '蝸牛', emo: '🐌', set: 'tan', s: [B([[0, 0], [2, 0], [0, 2]]), B([[2, 0], [2, 2], [0, 2]]), B([[0, 2], [1, 2], [2, 3], [1, 3]]), B([[0, 2], [1, 3], [0, 3]]), B([[1, 2], [2, 2], [2, 3]]), B([[2, 2], [3, 2], [3, 3], [2, 3]]), B([[2, 2], [4, 2], [3, 1]])], eyes: B([[2.75, 1.62], [3.25, 1.62]]), alive: { t: 'walk', shell: B([[1, 1]])[0] } },
+  minifish: { name: '小小魚', emo: '🐟', set: 'tan', s: [[[0, 1], [1, 0], [2, 1], [1, 2]], [[2, 1], [3, 0], [3, 2]]], eyes: [[0.72, 0.85]], alive: { t: 'swim' } },
+  catface: { name: '貓咪臉', emo: '😺', set: 'tan', s: [[[2, 2], [3, 1], [4, 2], [3, 3]], [[3, 1], [2, 2], [2, 0]], [[3, 1], [4, 2], [4, 0]]], eyes: [[2.62, 1.95], [3.38, 1.95]], mouth: [3, 2.45], alive: { t: 'hop' } },
+  castle: { name: '城堡', emo: '🏰', set: 'blk', s: [[[-3, 0], [-1, 0], [-1, 2], [-3, 2]], [[-1, 0], [1, 0], [1, 2], [-1, 2]], [[1, 0], [3, 0], [3, 2], [1, 2]], [[-1, -2], [1, -2], [1, 0], [-1, 0]], [[-3, 0], [-1, 0], [-2, -S3]], [[1, 0], [3, 0], [2, -S3]], [[-1, -2], [1, -2], [0, -2 - S3]]], eyes: [[-0.45, -1.1], [0.45, -1.1]], mouth: [0, -0.55], alive: { t: 'hop', flags: 1 } },
+  fish7: { mir: 1, name: '大魚', emo: '🐠', set: 'tan', s: [[[2, 0], [0, 2], [2, 4]], [[2, 0], [4, 2], [2, 4]], [[4, 2], [6, 0], [6, 2]], [[4, 2], [6, 2], [5, 3]], [[6, 2], [6, 4], [5, 3]], [[2, 0], [3, -1], [4, 0], [3, 1]], [[3, 3], [4, 2], [4, 4], [3, 5]]], eyes: [[1.15, 1.65]], mouth: [0.55, 2.35], alive: { t: 'swim' } },
+  flower: { name: '風車花', emo: '🌸', set: 'blk', s: [HEX0, ...[0, 1, 2, 3, 4, 5].map(k => rotPts([P(1, 0), P(1, 1), P(0, 2), P(0, 1)], -k * Math.PI / 3))], eyes: [[-0.7, -0.25], [0.7, -0.25]], mouth: [0, 0.6], alive: { t: 'spin' } },
+  elephant: { name: '大象', emo: '🐘', set: 'tan', s: [B([[0, 0], [2, 0], [0, 2]]), B([[2, 0], [2, 2], [0, 2]]), B([[2, 0], [3, 0], [3, 1], [2, 1]]), B([[2, 1], [3, 1], [4, 2], [3, 2]]), B([[0, 2], [1, 2], [0, 3]]), B([[1, 2], [2, 2], [2, 3]])], eyes: B([[2.6, 0.42]]), alive: { t: 'walk' } },
+  square: { mir: 1, name: '大正方形', emo: '🟥', set: 'tan', s: [[[0, 0], [4, 0], [2, 2]], [[0, 0], [2, 2], [0, 4]], [[4, 4], [2, 4], [4, 2]], [[4, 0], [4, 2], [3, 1]], [[2, 2], [3, 1], [4, 2], [3, 3]], [[2, 2], [3, 3], [1, 3]], [[0, 4], [1, 3], [3, 3], [2, 4]]], eyes: [[1.4, 1.5], [2.6, 1.5]], mouth: [2, 2.4], alive: { t: 'spin', slow: 1 } },
+  triangle: { mir: 1, name: '大三角形', emo: '🔺', set: 'tan', s: [[[0, 0], [4, 0], [2, 2]], [[0, 0], [2, 2], [0, 4]], [[0, 0], [0, 2], [-2, 0]], [[-4, 0], [-2, 0], [-3, 1]], [[-2, 2], [-3, 1], [-2, 0], [-1, 1]], [[-2, 2], [-1, 1], [-1, 3]], [[0, 4], [-1, 3], [-1, 1], [0, 2]]].map(p => p.map(([x, y]) => [-x, -y])), eyes: [[-0.6, -1.3], [0.6, -1.3]], mouth: [0, -0.7], alive: { t: 'hop' } },
+};
+// mir: mirror the drawing left↔right (decides whether the 🪞 parallelogram has to be flipped)
+const mx = p => [-p[0], p[1]];
+for (const F of Object.values(FIG)) if (F.mir) {
+  F.s = F.s.map(p => p.map(mx).reverse()); if (F.eyes) F.eyes = F.eyes.map(mx); if (F.mouth) F.mouth = mx(F.mouth);
+  for (const k of ['pivot', 'base', 'shell', 'smoke']) if (F.alive[k]) F.alive[k] = mx(F.alive[k]);
+}
+// 24 levels (append only). t: outline (frames drawn inside) · shadow · classic (7 pieces) · blocks · flip (🪞) · twin (two pictures)
+// spin: auto = any turn snaps, near = 45°/60° off still snaps, exact
+const LEVELS = [
+  { f: ['house'], t: 'outline', spin: 'auto' },
+  { f: ['boat'], t: 'outline', spin: 'auto' },
+  { f: ['fish'], t: 'outline', spin: 'auto' },
+  { f: ['cat'], t: 'outline', spin: 'auto' },
+  { f: ['bird'], t: 'shadow', spin: 'near' },
+  { f: ['duck'], t: 'shadow', spin: 'near' },
+  { f: ['star'], t: 'blocks', spin: 'auto', outline: 1 },
+  { f: ['turtle'], t: 'classic', spin: 'near' },
+  { f: ['house', 'miniboat'], t: 'twin', spin: 'near', outline: 1 },
+  { f: ['swan'], t: 'classic', spin: 'near' },
+  { f: ['tree'], t: 'blocks', spin: 'near' },
+  { f: ['rabbit'], t: 'flip', spin: 'near' },
+  { f: ['rocket'], t: 'classic', spin: 'exact' },
+  { f: ['minifish', 'catface'], t: 'twin', spin: 'near' },
+  { f: ['butterfly'], t: 'blocks', spin: 'near' },
+  { f: ['dog'], t: 'flip', spin: 'near' },
+  { f: ['snail'], t: 'classic', spin: 'exact' },
+  { f: ['cat', 'bird'], t: 'twin', spin: 'near' },
+  { f: ['castle'], t: 'blocks', spin: 'near' },
+  { f: ['fish7'], t: 'flip', spin: 'near' },
+  { f: ['square'], t: 'classic', spin: 'exact' },
+  { f: ['flower'], t: 'blocks', spin: 'near' },
+  { f: ['elephant'], t: 'flip', spin: 'near' },
+  { f: ['triangle'], t: 'classic', spin: 'exact' },
+];
+// </GEO>
+
+// ---------- colours ----------
+// [light, mid, outline]
+const PAL = {
+  red: ['#ff9b8f', '#f2564a', '#b0342b'], blue: ['#9dd0ff', '#3f8ae8', '#22579e'], orange: ['#ffd27a', '#ff9f1c', '#b06400'],
+  green: ['#9ff0a8', '#3cb85a', '#21803b'], purple: ['#d6bdff', '#9a72f0', '#5f3fae'], yellow: ['#fff3a0', '#ffcc2a', '#ad8000'],
+  teal: ['#9af3ea', '#1fc0b2', '#0f7a71'], pink: ['#ffc0dc', '#f06a9e', '#a43a68'],
+};
+const KCOL = { LT: ['red', 'blue', 'pink'], MT: ['orange', 'pink', 'yellow'], ST: ['green', 'purple', 'teal', 'orange', 'blue', 'red'], SQ: ['yellow', 'pink'], PG: ['teal', 'orange'],
+  HX: ['yellow'], TZ: ['red'], RB: ['blue'], TR: ['green'], BS: ['orange'] };
+const TYPE = {
+  outline: { name: '有框框', mark: '' }, shadow: { name: '影子', mark: '' }, classic: { name: '七巧板', mark: '🧩' },
+  blocks: { name: '積木', mark: '🔶' }, flip: { name: '翻面', mark: '🪞' }, twin: { name: '兩個圖', mark: '👯' },
+};
+const NEWS = {
+  outline: ['🧩 七巧板', '把下面彩色的板子<b>拖到影子上</b>，放進一樣形狀的框框裡，就會「喀」一聲黏住！<br>全部放好，圖案就會活起來喔 ^_^'],
+  shadow: ['🌑 影子拼圖', '這次影子裡<b>沒有框框</b>了！看看影子的形狀，想一想每一塊要放哪裡。<br><b>點一下板子</b>可以轉方向，不會的話按 💡。'],
+  classic: ['🧩 真正的七巧板', '七塊板子：兩個大三角形、一個中三角形、兩個小三角形、一個正方形、一個平行四邊形，<b>七塊全部用上</b>拼出整個影子！<br>點一下可以轉，💡 按兩下會幫你放好一塊。'],
+  blocks: ['🔶 積木板', '換成<b>六角形、梯形、菱形、三角形</b>的積木！<br>點一下積木會轉 60 度，拼出影子的樣子。'],
+  flip: ['🪞 翻面板', '這個圖的<b>平行四邊形要翻過來</b>才放得進去！<br>按它上面的 <b>🪞 圓圓按鈕</b>就可以翻面。'],
+  twin: ['👯 兩個圖', '一次要拼<b>兩個圖案</b>！板子都混在一起，想一想哪一塊是哪一個圖的。'],
+  free: ['🎨 自由拼', '沒有影子，<b>想拼什麼就拼什麼</b>！<br>拖、點一下轉、🪞 翻面，拼好按 ✨ 讓你的圖活起來！🔶 可以換成積木。'],
+};
+
+// ---------- state ----------
+let mode = 'levels', level = 1, L = LEVELS[0], state = 'menu', freeSet = 'tan';
+let figs = [], pieces = [], slots = [], drag = null, hint = null, hintsUsed = 0, t = 0, floats = [], winT = -1, combo = 0, heroMood = { m: 'happy', t: 0 };
+let W = 400, H = 600, land = false, u = 40, board = { x: 0, y: 0, w: 1, h: 1 }, tray = { x: 0, y: 0, w: 1, h: 1 }, ox = 0, oy = 0, btns = [], heroPos = null, bgCache = null;
+let trayK = 1, arr = 'h', compW = 1, compH = 1, freeAlive = -1;
+const stars = MG.store.get('tangram.stars', {});
+
+// ---------- level setup ----------
+function figList(lv) { return LEVELS[lv - 1].f.map(k => FIG[k]); }
+let rnd = Math.random;
+function seeded(seed) { let s = seed % 2147483647 || 7; return () => (s = s * 16807 % 2147483647) / 2147483647; }
+function startLevel(lv, sample) {
+  mode = 'levels'; level = lv; L = LEVELS[lv - 1]; MG.store.set('tangram.pickLevel', lv);
+  figs = L.f.map(k => ({ F: FIG[k], off: [0, 0] }));
+  slots = [];
+  figs.forEach((g, gi) => g.F.s.forEach((poly, i) => { const c = classify(poly, g.F.set); slots.push({ g: gi, i, kind: c.kind, poly, lc: c.c, m: c.m, c: [0, 0], filled: -1 }); }));
+  // the pieces: one for every slot, coloured by kind
+  const cnt = {};
+  rnd = seeded(lv * 7919 + Math.floor(Math.random() * 1000));
+  pieces = slots.map((s, i) => {
+    const n = cnt[s.kind] = (cnt[s.kind] || 0) + 1, cols = KCOL[s.kind], K = KINDS[s.kind];
+    let r = Math.floor(rnd() * K.n), f = false;
+    if (L.spin === 'auto') { r = s.m.find(m => !m[1])?.[0] ?? s.m[0][0]; }
+    else if (s.m.some(m => !m[1] && m[0] % K.n === r)) r = (r + 1 + Math.floor(rnd() * (K.n - 1))) % K.n;   // never start already turned right
+    return { id: i, kind: s.kind, col: PAL[cols[(n - 1) % cols.length]], r, f, ang: r * TAU / K.n, fs: 1, st: 'tray', slot: -1, px: 0, py: 0, hx: 0, hy: 0, ux: 0, uy: 0, pop: 0, wig: 0, z: i };
+  });
+  // shuffle the tray order a little
+  const ord = pieces.map((p, i) => i); for (let i = ord.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [ord[i], ord[j]] = [ord[j], ord[i]]; }
+  pieces.forEach((p, i) => p.order = ord[i]);
+  hint = null; hintsUsed = 0; drag = null; floats = []; winT = -1; combo = 0; MG.fx.clear();
+  state = 'play'; layout(true); hud(); MG.hide();
+  const tk = L.t;
+  if (!sample && !MG.store.get('tangram.seen.' + tk, false)) { MG.store.set('tangram.seen.' + tk, true); showNews(tk); }
+}
+function startFree(set = freeSet) {
+  mode = 'free'; freeSet = set; L = { f: [], t: 'free', spin: 'free' }; figs = []; slots = [];
+  const kinds = set === 'tan' ? ['LT', 'LT', 'MT', 'ST', 'ST', 'SQ', 'PG'] : ['HX', 'TZ', 'TZ', 'RB', 'RB', 'RB', 'TR', 'TR', 'TR', 'BS'];
+  const cnt = {};
+  pieces = kinds.map((k, i) => { const n = cnt[k] = (cnt[k] || 0) + 1, cols = KCOL[k]; return { id: i, kind: k, col: PAL[cols[(n - 1) % cols.length]], r: 0, f: false, ang: 0, fs: 1, st: 'tray', slot: -1, px: 0, py: 0, hx: 0, hy: 0, ux: 0, uy: 0, pop: 0, wig: 0, z: i, order: i }; });
+  hint = null; drag = null; floats = []; winT = -1; freeAlive = -1; MG.fx.clear();
+  state = 'play'; layout(true); hud(); MG.hide();
+  if (!MG.store.get('tangram.seen.free', false)) { MG.store.set('tangram.seen.free', true); showNews('free'); }
+}
+function showNews(k) { MG.panel({ title: NEWS[k][0], html: `<p>${NEWS[k][1]}</p>`, buttons: [{ label: '好！', on: () => MG.hide() }] }); }
+function hud() {
+  if (mode === 'free') { MG.stat('level', '🎨 自由拼'); MG.stat('prog', ''); return; }
+  MG.stat('level', `第 ${level} 關`);
+  MG.stat('prog', `🧩 ${slots.filter(s => s.filled >= 0).length}/${slots.length}`);
+}
+
+// ---------- layout ----------
+const bboxOf = pts => { let a = 1e9, b = 1e9, c = -1e9, d = -1e9; for (const [px, py] of pts) { a = Math.min(a, px); b = Math.min(b, py); c = Math.max(c, px); d = Math.max(d, py); } return { x0: a, y0: b, x1: c, y1: d, w: c - a, h: d - b }; };
+function arrange(a) {
+  const GAP = 1.6, bbs = figs.map(g => bboxOf(g.F.s.flat()));
+  if (!figs.length) return [8, 6];
+  if (figs.length === 1) { figs[0].off = [-bbs[0].x0, -bbs[0].y0]; return [bbs[0].w, bbs[0].h]; }
+  if (a === 'h') {
+    const hh = Math.max(...bbs.map(b => b.h)); let cx = 0;
+    figs.forEach((g, i) => { g.off = [cx - bbs[i].x0, hh - bbs[i].h - bbs[i].y0]; cx += bbs[i].w + GAP; });
+    return [cx - GAP, hh];
+  }
+  const ww = Math.max(...bbs.map(b => b.w)); let cy = 0;
+  figs.forEach((g, i) => { g.off = [(ww - bbs[i].w) / 2 - bbs[i].x0, cy - bbs[i].y0]; cy += bbs[i].h + GAP; });
+  return [ww, cy - GAP];
+}
+const BTN = () => Math.round(Math.max(46, Math.min(60, Math.min(W, H) * 0.075)) * (MG.big ? 1.12 : 1));
+function pieceBox(p, r = p.r, f = p.f) { return bboxOf(shapeOf(p.kind, r, f)); }
+// pack the tray at scale uu; returns home positions or null
+function packTray(uu, R, apply) {
+  const g = 0.5, maxW = R.w / uu - g;
+  const items = pieces.filter(p => p.st !== 'placed' || !apply).slice().sort((a, b) => a.order - b.order);
+  const rows = []; let row = { w: 0, h: 0, it: [] };
+  for (const p of items) {
+    const b = pieceBox(p), w = b.w + g;
+    if (b.w > maxW) return null;
+    if (row.it.length && row.w + w > maxW) { rows.push(row); row = { w: 0, h: 0, it: [] }; }
+    row.it.push([p, b]); row.w += w; row.h = Math.max(row.h, b.h);
+  }
+  if (row.it.length) rows.push(row);
+  const tot = rows.reduce((s, r) => s + r.h + g, g);
+  if (tot * uu > R.h) return null;
+  if (apply) {
+    const exY = (R.h / uu - tot) / (rows.length + 1);
+    let cy = R.y / uu + g + exY;
+    for (const r of rows) {
+      const exX = (R.w / uu - r.w) / (r.it.length + 1);
+      let cx = R.x / uu + g / 2 + exX;
+      for (const [p, b] of r.it) {
+        // home = where the centroid sits so the shape's box is centred in its cell
+        p.hx = (cx + (-b.x0)) * uu; p.hy = (cy + (r.h - b.h) / 2 - b.y0) * uu;
+        cx += b.w + g + exX;
+      }
+      cy += r.h + g + exY;
+    }
+  }
+  return true;
+}
+function layout(fresh) {
+  W = cv.lw; H = cv.lh; land = W > H * 1.08;
+  const bd = BTN(), pad = 16, uMax = Math.min(W, H) / (mode === 'free' ? 9 : 5.2);
+  const arrs = figs.length > 1 ? ['h', 'v'] : ['h'];
+  const cands = [], hr = Math.round(Math.max(20, Math.min(40, Math.min(W, H) * 0.055)));
+  for (const a of arrs) {
+    const [bw, bh] = arrange(a);
+    for (let f = 0.4; f <= 0.78; f += 0.02) {
+      if (mode === 'free' && f < 0.6) continue;
+      const B = land ? { x: 0, y: 0, w: W * f, h: H } : { x: 0, y: 0, w: W, h: H * f };
+      const T = land ? { x: W * f, y: 0, w: W * (1 - f), h: H } : { x: 0, y: H * f, w: W, h: H * (1 - f) };
+      const uB = mode === 'free' ? uMax : Math.min((B.w - pad * 2) / (bw + 0.5), (B.h - pad * 2 - bd - 6) / (bh + 0.4));
+      // largest scale at which the tray still holds every piece (tray pieces may be drawn smaller: they grow when picked up)
+      let lo = 4, hi = uMax;
+      const TI = { x: T.x + 14, y: T.y + 14, w: T.w - 28 - (land ? 0 : hr * 2 + 8), h: T.h - 28 - (land ? hr * 2.3 + 8 : 0) };
+      if (!packTray(lo, TI, false)) continue;
+      for (let k = 0; k < 18; k++) { const m = (lo + hi) / 2; if (packTray(m, TI, false)) lo = m; else hi = m; }
+      const uu = Math.min(uB, uMax, lo / 0.62), ut = Math.min(lo, uu);
+      cands.push({ a, f, uu, ut, B, T, TI, score: uu * (1 + 0.25 * ut / uu) });
+    }
+  }
+  let best = cands.sort((p, q) => q.score - p.score)[0];
+  if (!best) { const B = { x: 0, y: 0, w: W, h: H * 0.6 }, T = { x: 0, y: H * 0.6, w: W, h: H * 0.4 }; best = { a: 'h', f: 0.6, uu: 10, B, T, TI: T }; }
+  const oldU = u, oldOx = ox, oldOy = oy;
+  arr = best.a; [compW, compH] = arrange(arr); u = best.uu; trayK = (best.ut || u) / u; board = best.B; tray = best.T;
+  ox = board.x + (board.w - compW * u) / 2; oy = board.y + bd + 6 + (board.h - bd - 6 - compH * u) / 2;
+  if (mode === 'free') { ox = board.x + board.w / 2; oy = board.y + board.h / 2 + bd / 2; }
+  for (const s of slots) { const g = figs[s.g]; s.c = [s.lc[0] + g.off[0], s.lc[1] + g.off[1]]; }
+  packTray(u * trayK, best.TI, true);
+  for (const p of pieces) {
+    if (fresh) p.st = 'tray';
+    if (p.st === 'tray') { p.px = p.hx; p.py = p.hy; p.anim = null; if (fresh) p.sc = trayK; }
+    else if (p.st === 'placed') { const s = slots[p.slot]; [p.px, p.py] = toPx(s.c); p.anim = null; }
+    else if (p.st === 'loose') { [p.px, p.py] = toPx([p.ux, p.uy]); }
+  }
+  void oldU; void oldOx; void oldOy;
+  // buttons: top corners of the board
+  const y = board.y + 8 + bd / 2;
+  btns = mode === 'free'
+    ? [{ id: 'reset', icon: '🔄', x: board.x + 8 + bd / 2, y, r: bd / 2 }, { id: 'alive', icon: '✨', x: board.x + board.w - 8 - bd / 2, y, r: bd / 2 }, { id: 'set', icon: freeSet === 'tan' ? '🔶' : '🧩', x: board.x + board.w - 16 - bd * 1.5, y, r: bd / 2 }]
+    : [{ id: 'reset', icon: '🔄', x: board.x + 8 + bd / 2, y, r: bd / 2 }, { id: 'hint', icon: '💡', x: board.x + board.w - 8 - bd / 2, y, r: bd / 2 }];
+  // 噗噗 keeps you company in its own corner of the tray
+  heroPos = land ? [tray.x + tray.w - hr - 26, tray.y + tray.h - hr * 1.15 - 20, hr] : [tray.x + tray.w - hr - 18, tray.y + tray.h - hr * 1.15 - 20, hr];
+  bgCache = null;
+}
+const toPx = ([a, b]) => [ox + a * u, oy + b * u];
+const toU = (px, py) => [(px - ox) / u, (py - oy) / u];
+MG.fit(cv, (sw, sh) => {
+  const cs = getComputedStyle(cv.parentElement);
+  return [Math.max(300, Math.round(sw - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 6)), Math.max(300, Math.round(sh - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 6))];
+});
+cv.onfit = () => { if (pieces.length) layout(false); };
+addEventListener('mg-big', () => { if (pieces.length) layout(false); });
+
+// ---------- geometry helpers ----------
+function screenPts(p, px = p.px, py = p.py, ang = p.ang, fs = p.fs, sc = p.sc ?? 1) {
+  const K = KINDS[p.kind], c = Math.cos(ang), s = Math.sin(ang);
+  return K.local.map(([a, b]) => { a *= fs; return [px + (a * c - b * s) * u * sc, py + (a * s + b * c) * u * sc]; });
+}
+function inPoly(pts, X, Y) { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if ((yi > Y) !== (yj > Y) && X < (xj - xi) * (Y - yi) / (yj - yi) + xi) c = !c; } return c; }
+function distPoly(pts, X, Y) { let m = 1e9; for (let i = 0; i < pts.length; i++) { const [ax, ay] = pts[i], [bx, by] = pts[(i + 1) % pts.length], dx = bx - ax, dy = by - ay, q = Math.max(0, Math.min(1, ((X - ax) * dx + (Y - ay) * dy) / (dx * dx + dy * dy))); m = Math.min(m, Math.hypot(X - ax - q * dx, Y - ay - q * dy)); } return m; }
+const angDiff = (a, b, n) => { const d = ((a - b) % n + n) % n; return Math.min(d, n - d); };
+const flippable = p => KINDS[p.kind].flip && (mode === 'free' || L.t === 'flip');
+
+// ---------- snapping ----------
+function rotOK(p, s) {
+  const n = KINDS[p.kind].n;
+  if (L.spin === 'auto') return s.m[0];
+  const same = s.m.filter(m => m[1] === p.f);
+  let best = null, bd = 9;
+  for (const m of same) { const d = angDiff(p.r, m[0], n); if (d < bd) { bd = d; best = m; } }
+  const tol = L.spin === 'near' ? 1 : 0;
+  return best && bd <= tol ? best : null;
+}
+const snapTol = p => (L.spin === 'auto' ? 1.5 : 1.05) * Math.max(1, Math.sqrt(KINDS[p.kind].area) / 1.6);
+function trySnap(p, quiet) {
+  if (mode === 'free') return freeSnap(p);
+  const [ux, uy] = toU(p.px, p.py);
+  let best = null, bd = 1e9, nearWrong = null;
+  for (const s of slots) {
+    if (s.filled >= 0 || s.kind !== p.kind) continue;
+    const d = Math.hypot(ux - s.c[0], uy - s.c[1]);
+    if (d > snapTol(p)) continue;
+    const m = rotOK(p, s);
+    if (!m) { if (!nearWrong || d < nearWrong.d) nearWrong = { s, d }; continue; }
+    if (d < bd) { bd = d; best = { s, m }; }
+  }
+  if (best) { place(p, best.s, best.m, quiet); return true; }
+  if (nearWrong && !quiet) {
+    p.wig = 0.5; MG.sfx('boing');
+    const needFlip = nearWrong.s.m.every(m => m[1] !== p.f);
+    say(p.px, p.py - u, needFlip ? '🪞 ?' : '🔄 ?', '#5a6fb0');
+  }
+  return false;
+}
+function place(p, s, m, quiet) {
+  const n = KINDS[p.kind].n;
+  // turn the short way round to the matching angle
+  let target = m[0], cur = p.r, d = ((target - cur) % n + n) % n; if (d > n / 2) d -= n;
+  p.r = target; p.f = m[1]; p.angT = (p.angT ?? p.ang) + d * TAU / n; p.fsT = m[1] ? -1 : 1;
+  p.st = 'placed'; p.slot = slots.indexOf(s); s.filled = p.id; p.z = -100 + p.slot;
+  const [tx, ty] = toPx(s.c); p.anim = { fx: p.px, fy: p.py, tx, ty, t: 0 };
+  if (hint && hint.s === s) hint = null;
+  hud();
+  if (quiet) return;
+  combo++;
+  const done = slots.filter(q => q.filled >= 0).length, all = slots.length;
+  MG.sfx('match', Math.min(8, done)); if (done === all) MG.sfx('sparkle');
+  heroMood = { m: 'wow', t: 0.8 };
+  setTimeout(() => {
+    MG.fx.burst(tx, ty, { n: 14, colors: [p.col[0], p.col[1], '#fff', '#ffe066'], shape: 'star', speed: 170, up: 90, size: Math.max(4, u * 0.12) });
+    p.pop = 1;
+  }, 140);
+  say(tx, ty - u * 0.6, done === all ? MG.praise(5) : MG.praise(Math.min(4, 1 + Math.floor(done * 4 / all))), '#ff7a00');
+  if (done === all) setTimeout(win, 380);
+}
+// free play: a dropped piece lines up with the nearest corner of another piece
+function freeSnap(p) {
+  const mine = screenPts(p), lim = u * 0.4;
+  let best = null, bd = lim;
+  for (const q of pieces) {
+    if (q === p || q.st !== 'loose') continue;
+    for (const a of mine) for (const b of screenPts(q)) { const d = Math.hypot(a[0] - b[0], a[1] - b[1]); if (d < bd) { bd = d; best = [b[0] - a[0], b[1] - a[1]]; } }
+  }
+  if (best) { p.px += best[0]; p.py += best[1]; MG.sfx('place'); MG.sfx('perfect'); }
+  return false;
+}
+function win() {
+  if (state !== 'play' || mode !== 'levels' || slots.some(q => q.filled < 0)) return;
+  state = 'win'; winT = 0; MG.sfx('win'); setTimeout(() => MG.sfx('yay'), 300);
+  heroMood = { m: 'proud', t: 99 };
+  const st = hintsUsed === 0 ? 3 : hintsUsed <= 2 ? 2 : 1;
+  const old = stars[level] || 0; if (st > old) { stars[level] = st; MG.store.set('tangram.stars', stars); }
+  MG.record('tangram', level);
+  const cxp = ox + compW * u / 2, cyp = oy + compH * u / 2;
+  MG.fx.burst(cxp, cyp, { n: 46, colors: ['#ff5d5d', '#ffd23f', '#4cc96a', '#4c9cf0', '#a77cf2', '#fff'], shape: 'star', speed: 330, up: 200, size: 7 });
+  const names = figs.map(g => g.F.emo + ' ' + g.F.name).join(' 和 ');
+  setTimeout(() => {
+    if (state !== 'win' || MG.panelOpen()) return;
+    MG.panel({
+      title: `${names}完成了！`,
+      html: `<p class="big">${'⭐'.repeat(st)}${'<span style="opacity:.25">⭐</span>'.repeat(3 - st)}</p><p>${figs.length > 1 ? '它們' : '它'}活起來了 ^_^${hintsUsed ? '' : ' 都沒用提示，好厲害！'}</p>` +
+        (level < LEVELS.length ? `<p>下一關：${lvName(level + 1)}</p>` : '<p>全部 24 關都拼完了！去「🎨 自由拼」拼你自己的圖吧！</p>'),
+      buttons: [
+        ...(level < LEVELS.length ? [{ label: '下一關 ▶', on: () => startLevel(level + 1) }] : [{ label: '🎨 自由拼', on: () => startFree() }]),
+        { label: '再拼一次', alt: true, on: () => startLevel(level) },
+        { label: '選關卡', alt: true, on: menu },
+      ],
+    });
+  }, 3200);
+}
+
+// ---------- hint: 1st tap shows where, 2nd tap puts it there ----------
+function useHint() {
+  if (state !== 'play' || mode === 'free') return;
+  if (hint && hint.p.st !== 'placed' && hint.s.filled < 0) {             // second tap: do it for me
+    const p = hint.p, s = hint.s, m = s.m.find(q => q[1] === p.f) || s.m[0];
+    if (drag && drag.p === p) drag = null;
+    hint = null; hintsUsed++; place(p, s, m); MG.sfx('whoosh'); return;
+  }
+  const s = slots.find(q => q.filled < 0); if (!s) return;
+  // the free piece of that kind closest to being right
+  const cand = pieces.filter(p => p.kind === s.kind && p.st !== 'placed');
+  const p = cand.sort((a, b) => (rotOK(b, s) ? 1 : 0) - (rotOK(a, s) ? 1 : 0))[0];
+  hint = { s, p, t: 0 }; hintsUsed++; p.wig = 0.8; MG.sfx('sparkle'); MG.sfx('pop');
+}
+function reset() {
+  if (mode === 'free') { for (const p of pieces) { p.st = 'tray'; p.r = 0; p.f = false; p.ang = 0; p.fs = 1; p.angT = p.fsT = undefined; } freeAlive = -1; layout(false); MG.sfx('whoosh'); return; }
+  startLevel(level); MG.sfx('whoosh'); MG.toast('Again! 🔄');
+}
+function makeAlive() {
+  if (!pieces.some(p => p.st === 'loose')) { MG.toast('👆 ➡️ 🧩'); MG.sfx('miss'); return; }
+  freeAlive = 0; MG.sfx('yay'); heroMood = { m: 'proud', t: 3 };
+  const ls = pieces.filter(p => p.st === 'loose'), b = bboxOf(ls.flatMap(p => screenPts(p)));
+  MG.fx.burst((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, { n: 36, colors: ['#ff5d5d', '#ffd23f', '#4cc96a', '#4c9cf0', '#fff'], shape: 'star', speed: 260, up: 160, size: 6 });
+}
+
+// ---------- input ----------
+function badgePos(p) {
+  const pts = screenPts(p), b = bboxOf(pts), r = Math.max(19, Math.min(28, u * 0.42));
+  let bx = p.px, by = b.y0 - r - 4;
+  if (by - r < 4) by = b.y1 + r + 4;
+  bx = Math.max(r + 4, Math.min(W - r - 4, bx)); by = Math.max(r + 4, Math.min(H - r - 4, by));
+  return [bx, by, r];
+}
+function pieceAt(X, Y) {
+  const list = pieces.filter(p => p.st !== 'placed').sort((a, b) => b.z - a.z);
+  for (const p of list) if (inPoly(screenPts(p), X, Y)) return p;
+  let best = null, bd = Math.max(12, u * 0.25);
+  for (const p of list) { const d = distPoly(screenPts(p), X, Y); if (d < bd) { bd = d; best = p; } }
+  return best;
+}
+let zTop = 100;
+cv.addEventListener('pointerdown', e => {
+  if (state !== 'play' || drag) return;
+  const { x: X, y: Y } = cv.logical(e);
+  for (const b of btns) if (Math.hypot(X - b.x, Y - b.y) < b.r + 6) {
+    MG.sfx('click');
+    if (b.id === 'hint') useHint(); else if (b.id === 'reset') reset(); else if (b.id === 'alive') makeAlive();
+    else if (b.id === 'set') startFree(freeSet === 'tan' ? 'blk' : 'tan');
+    return;
+  }
+  for (const p of pieces.filter(q => q.st !== 'placed' && flippable(q)).sort((a, b) => b.z - a.z)) {
+    const [bx, by, r] = badgePos(p);
+    if (Math.hypot(X - bx, Y - by) < r + 6) { flipPiece(p); return; }
+  }
+  const p = pieceAt(X, Y); if (!p) return;
+  drag = { p, id: e.pointerId, sx: X, sy: Y, dx: p.px - X, dy: p.py - Y, t0: performance.now(), moved: false, prev: p.st };
+  p.st = 'drag'; p.z = ++zTop; p.anim = null; MG.sfx('tick');
+  try { cv.setPointerCapture(e.pointerId); } catch {}
+});
+cv.addEventListener('pointermove', e => {
+  if (!drag || e.pointerId !== drag.id) return;
+  const { x: X, y: Y } = cv.logical(e);
+  if (!drag.moved && Math.hypot(X - drag.sx, Y - drag.sy) > 9) { drag.moved = true; MG.sfx('pop'); }
+  if (drag.moved) { drag.p.px = Math.max(4, Math.min(W - 4, X + drag.dx)); drag.p.py = Math.max(4, Math.min(H - 4, Y + drag.dy - (e.pointerType === 'touch' ? 0 : 0))); }
+});
+function endDrag(e, cancel) {
+  if (!drag || (e && e.pointerId !== drag.id)) return;
+  const d = drag, p = d.p; drag = null;
+  if (!d.moved && !cancel && performance.now() - d.t0 < 600) {        // a tap: turn it
+    p.st = d.prev; rotatePiece(p); return;
+  }
+  dropPiece(p);
+}
+function dropPiece(p) {
+  p.st = 'loose';
+  if (trySnap(p)) return;
+  const inTray = p.px > tray.x && p.px < tray.x + tray.w && p.py > tray.y && p.py < tray.y + tray.h;
+  if (inTray || p.px < 0 || p.py < 0) { p.st = 'tray'; p.anim = { fx: p.px, fy: p.py, tx: p.hx, ty: p.hy, t: 0 }; MG.sfx('place'); }
+  else { p.st = 'loose'; [p.ux, p.uy] = toU(p.px, p.py); MG.sfx('place'); }
+}
+cv.addEventListener('pointerup', e => endDrag(e));
+cv.addEventListener('pointercancel', e => endDrag(e, true));
+function rotatePiece(p) {
+  const n = KINDS[p.kind].n;
+  p.r = (p.r + 1) % n; p.angT = (p.angT ?? p.ang) + TAU / n; MG.sfx('flip');
+  if (p.st === 'tray') { /* keep home */ }
+  if (p.st === 'loose') setTimeout(() => { if (p.st === 'loose') trySnap(p, false); }, 160);
+}
+function flipPiece(p) {
+  p.f = !p.f; p.fsT = p.f ? -1 : 1; MG.sfx('whoosh'); MG.sfx('flip');
+  if (p.st === 'loose') setTimeout(() => { if (p.st === 'loose') trySnap(p, false); }, 220);
+}
+addEventListener('keydown', e => {
+  if (state !== 'play') return;
+  if (e.key === 'h' || e.key === 'H') useHint();
+  if (e.key === 'r' || e.key === 'R') { const p = pieces.filter(q => q.st !== 'placed').sort((a, b) => b.z - a.z)[0]; if (p) rotatePiece(p); }
+});
+
+// ---------- drawing ----------
+const rr = (a, b, w, h, r) => { x.beginPath(); x.roundRect(a, b, w, h, r); };
+function path(pts) { x.beginPath(); pts.forEach(([a, b], i) => i ? x.lineTo(a, b) : x.moveTo(a, b)); x.closePath(); }
+function cloud(c, cx, cy, s) { c.beginPath(); for (const [dx, dy, r] of [[0, 0, 1], [0.9, 0.15, 0.75], [-0.9, 0.2, 0.7], [0.35, -0.45, 0.7], [-0.4, -0.35, 0.6]]) { c.moveTo(cx + dx * s + r * s, cy + dy * s); c.arc(cx + dx * s, cy + dy * s, r * s, 0, TAU); } c.fill(); }
+function buildBg() {
+  const c = document.createElement('canvas'), px = Math.min(2, cv._mgScale || 1);
+  c.width = Math.ceil(W * px); c.height = Math.ceil(H * px);
+  const g = c.getContext('2d'); g.scale(px, px);
+  // sky
+  let gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#d9f1ff'); gr.addColorStop(0.6, '#f3fbff'); gr.addColorStop(1, '#fff3df');
+  g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  g.fillStyle = 'rgba(255,255,255,.85)';
+  const cs = Math.min(W, H) / 14;
+  cloud(g, W * 0.18, H * 0.07, cs * 0.8); cloud(g, W * 0.82, H * 0.12, cs); cloud(g, W * 0.55, H * 0.04, cs * 0.6);
+  // confetti dots
+  const R = seeded(31);
+  for (let i = 0; i < 26; i++) { g.fillStyle = ['rgba(255,140,120,.25)', 'rgba(120,180,255,.25)', 'rgba(255,210,80,.3)', 'rgba(130,220,150,.25)'][i % 4]; g.beginPath(); g.arc(R() * W, R() * H, 2 + R() * 4, 0, TAU); g.fill(); }
+  // board card
+  const B = board, m = 5;
+  g.save(); g.shadowColor = 'rgba(60,80,120,.18)'; g.shadowBlur = 14; g.shadowOffsetY = 4;
+  g.fillStyle = '#fffdf7'; g.beginPath(); g.roundRect(B.x + m, B.y + m, B.w - m * 2, B.h - m * 2, 22); g.fill(); g.restore();
+  g.save(); g.beginPath(); g.roundRect(B.x + m, B.y + m, B.w - m * 2, B.h - m * 2, 22); g.clip();
+  g.fillStyle = 'rgba(150,170,210,.22)';
+  const step = Math.max(16, u * 0.5);
+  for (let yy = B.y + step / 2; yy < B.y + B.h; yy += step) for (let xx = B.x + step / 2; xx < B.x + B.w; xx += step) { g.beginPath(); g.arc(xx, yy, 1.4, 0, TAU); g.fill(); }
+  gr = g.createLinearGradient(0, B.y, 0, B.y + B.h); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(1, 'rgba(255,236,200,.35)'); g.fillStyle = gr; g.fillRect(B.x, B.y, B.w, B.h);
+  g.restore();
+  g.strokeStyle = '#e8dcc0'; g.lineWidth = 2; g.beginPath(); g.roundRect(B.x + m, B.y + m, B.w - m * 2, B.h - m * 2, 22); g.stroke();
+  // tray: a wooden box
+  const T = tray;
+  g.save(); g.shadowColor = 'rgba(110,70,30,.25)'; g.shadowBlur = 10; g.shadowOffsetY = 3;
+  gr = g.createLinearGradient(0, T.y, 0, T.y + T.h); gr.addColorStop(0, '#f2d3a2'); gr.addColorStop(1, '#e2b57a');
+  g.fillStyle = gr; g.beginPath(); g.roundRect(T.x + m, T.y + m, T.w - m * 2, T.h - m * 2, 22); g.fill(); g.restore();
+  const inset = Math.max(8, Math.min(14, Math.min(T.w, T.h) * 0.03));
+  g.save(); g.beginPath(); g.roundRect(T.x + m + inset, T.y + m + inset, T.w - (m + inset) * 2, T.h - (m + inset) * 2, 16); g.clip();
+  gr = g.createLinearGradient(0, T.y, 0, T.y + T.h); gr.addColorStop(0, '#fbebcf'); gr.addColorStop(1, '#f5dcb2'); g.fillStyle = gr; g.fillRect(T.x, T.y, T.w, T.h);
+  g.strokeStyle = 'rgba(190,140,80,.14)'; g.lineWidth = 2;   // wood grain
+  for (let k = 0; k < 9; k++) { const yy = T.y + (k + 0.5) * T.h / 9; g.beginPath(); g.moveTo(T.x, yy); g.bezierCurveTo(T.x + T.w * 0.3, yy - 6, T.x + T.w * 0.6, yy + 6, T.x + T.w, yy - 2); g.stroke(); }
+  g.fillStyle = 'rgba(120,70,20,.12)'; g.fillRect(T.x, T.y + m + inset, T.w, 5);
+  g.restore();
+  g.strokeStyle = '#c48d4e'; g.lineWidth = 2.5; g.beginPath(); g.roundRect(T.x + m, T.y + m, T.w - m * 2, T.h - m * 2, 22); g.stroke();
+  g.strokeStyle = 'rgba(160,105,45,.5)'; g.lineWidth = 1.5; g.beginPath(); g.roundRect(T.x + m + inset, T.y + m + inset, T.w - (m + inset) * 2, T.h - (m + inset) * 2, 16); g.stroke();
+  // nail heads
+  g.fillStyle = '#b07a3a'; for (const [a, b] of [[T.x + m + inset / 2 + 2, T.y + m + inset / 2 + 2], [T.x + T.w - m - inset / 2 - 2, T.y + m + inset / 2 + 2], [T.x + m + inset / 2 + 2, T.y + T.h - m - inset / 2 - 2], [T.x + T.w - m - inset / 2 - 2, T.y + T.h - m - inset / 2 - 2]]) { g.beginPath(); g.arc(a, b, 2.4, 0, TAU); g.fill(); }
+  return c;
+}
+// the dark shadow picture (with optional frames inside)
+function drawSilhouette() {
+  if (!figs.length) return;
+  const lw = Math.max(5, u * 0.16);
+  const polys = slots.map(s => s.poly.map(([a, b]) => toPx([a + figs[s.g].off[0], b + figs[s.g].off[1]])));
+  x.lineJoin = 'round'; x.lineCap = 'round';
+  // soft glow ring, then a light rim, then the dark fill (stroked too, so pieces join without seams)
+  x.strokeStyle = 'rgba(120,140,210,.18)'; x.lineWidth = lw * 2.2; for (const q of polys) { path(q); x.stroke(); }
+  x.strokeStyle = '#fff'; x.lineWidth = lw; for (const q of polys) { path(q); x.stroke(); }
+  const b = { y0: oy, y1: oy + compH * u };
+  const gr = x.createLinearGradient(0, b.y0, 0, b.y1); gr.addColorStop(0, '#4a5888'); gr.addColorStop(1, '#2f3a63');
+  x.fillStyle = gr; x.strokeStyle = gr; x.lineWidth = 1.6;
+  for (const q of polys) { path(q); x.fill(); x.stroke(); }
+  // frames (easy levels): dashed light lines around every empty spot
+  if (L.t === 'outline' || L.outline) {
+    x.setLineDash([Math.max(5, u * 0.14), Math.max(4, u * 0.1)]); x.lineWidth = Math.max(2, u * 0.05); x.strokeStyle = 'rgba(255,255,255,.62)';
+    slots.forEach((s, i) => { if (s.filled < 0) { path(shrink(polys[i], Math.max(2, u * 0.05))); x.stroke(); } });
+    x.setLineDash([]);
+  }
+  // 💡 the hinted spot glows and blinks
+  if (hint) {
+    const i = slots.indexOf(hint.s), on = 0.55 + 0.45 * Math.sin(hint.t * 8);
+    x.fillStyle = `rgba(255,214,70,${0.35 + on * 0.35})`; x.strokeStyle = '#ffd23f'; x.lineWidth = Math.max(3, u * 0.08);
+    path(shrink(polys[i], 2)); x.fill(); x.stroke();
+  }
+}
+function shrink(pts, d) { const [cx, cy] = centroid(pts); return pts.map(([a, b]) => { const dx = a - cx, dy = b - cy, l = Math.hypot(dx, dy) || 1, k = Math.max(0, (l - d * 1.6) / l); return [cx + dx * k, cy + dy * k]; }); }
+function drawPiece(p, opt = {}) {
+  const lift = opt.lift || 0, sc = (1 + lift * 0.06) * (1 + Math.sin(Math.min(1, p.pop) * Math.PI) * 0.12);
+  let px = p.px, py = p.py;
+  if (p.wig > 0) px += Math.sin(p.wig * 40) * 5 * Math.min(1, p.wig * 2);
+  if (hint && hint.p === p && p.st !== 'placed') py += -Math.abs(Math.sin(hint.t * 6)) * 8;
+  const pts = screenPts(p, px, py, p.ang, p.fs, sc * (p.sc ?? 1)), [l, m, d] = p.col;
+  x.lineJoin = 'round';
+  if (p.st !== 'placed' || opt.alive) {                    // soft shadow under a loose piece
+    const off = 3 + lift * 9;
+    x.fillStyle = `rgba(50,40,70,${0.16 + lift * 0.06})`; path(pts.map(([a, b]) => [a + off * 0.6, b + off])); x.fill();
+  }
+  const b = bboxOf(pts), gr = x.createLinearGradient(b.x0, b.y0, b.x1, b.y1);
+  gr.addColorStop(0, l); gr.addColorStop(0.55, m); gr.addColorStop(1, shade(m, 0.86));
+  path(pts); x.fillStyle = gr; x.fill();
+  // light band on the top-left edges, shade on the bottom-right
+  const lw = Math.max(2, u * 0.055);
+  x.save(); path(pts); x.clip();
+  x.translate(lw * 1.2, lw * 1.2); x.strokeStyle = 'rgba(255,255,255,.55)'; x.lineWidth = lw * 1.6; path(pts); x.stroke();
+  x.translate(-lw * 2.4, -lw * 2.4); x.strokeStyle = 'rgba(0,0,0,.12)'; x.lineWidth = lw * 1.6; path(pts); x.stroke();
+  x.restore();
+  path(pts); x.strokeStyle = d; x.lineWidth = lw; x.stroke();
+}
+function shade(hex, f) { const n = parseInt(hex.slice(1), 16), c = [n >> 16, (n >> 8) & 255, n & 255].map(v => Math.round(f < 1 ? v * f : v + (255 - v) * (f - 1))); return `rgb(${c.join(',')})`; }
+function drawBadge(p) {
+  const [bx, by, r] = badgePos(p), pulse = hint && hint.p === p && hint.s.m.every(m => m[1] !== p.f) ? 1 + Math.sin(t * 9) * 0.12 : 1;
+  x.save(); x.translate(bx, by); x.scale(pulse, pulse);
+  x.fillStyle = 'rgba(40,60,80,.18)'; x.beginPath(); x.arc(1.5, 3, r, 0, TAU); x.fill();
+  const g = x.createRadialGradient(-r * 0.3, -r * 0.4, 1, 0, 0, r); g.addColorStop(0, '#ffffff'); g.addColorStop(1, '#dff7f4');
+  x.fillStyle = g; x.beginPath(); x.arc(0, 0, r, 0, TAU); x.fill();
+  x.strokeStyle = p.col[2]; x.lineWidth = 2.5; x.stroke();
+  // mirror icon: a solid shape, a dashed line, its outline reflected
+  const k = r * 0.55;
+  x.fillStyle = p.col[1]; x.beginPath(); x.moveTo(-k * 0.15, -k * 0.7); x.lineTo(-k * 0.15, k * 0.7); x.lineTo(-k * 1.05, k * 0.7); x.closePath(); x.fill();
+  x.strokeStyle = p.col[1]; x.lineWidth = 2; x.beginPath(); x.moveTo(k * 0.15, -k * 0.7); x.lineTo(k * 0.15, k * 0.7); x.lineTo(k * 1.05, k * 0.7); x.closePath(); x.stroke();
+  x.strokeStyle = '#7a8aa0'; x.setLineDash([2.5, 2.5]); x.lineWidth = 1.5; x.beginPath(); x.moveTo(0, -k * 1.05); x.lineTo(0, k * 1.05); x.stroke(); x.setLineDash([]);
+  x.restore();
+}
+function drawBtn(b) {
+  x.save(); x.translate(b.x, b.y);
+  const glow = b.id === 'hint' && hint ? 1 : 0;
+  x.fillStyle = 'rgba(40,60,90,.16)'; x.beginPath(); x.arc(0, 3, b.r, 0, TAU); x.fill();
+  const g = x.createLinearGradient(0, -b.r, 0, b.r);
+  g.addColorStop(0, b.id === 'hint' || b.id === 'alive' ? '#fff3b0' : '#ffffff'); g.addColorStop(1, b.id === 'hint' || b.id === 'alive' ? '#ffd23f' : '#e7f0f8');
+  x.fillStyle = g; x.beginPath(); x.arc(0, 0, b.r, 0, TAU); x.fill();
+  x.strokeStyle = glow ? '#ff9f1c' : b.id === 'hint' || b.id === 'alive' ? '#d9a400' : '#b9c8da'; x.lineWidth = glow ? 4 : 2.5; x.stroke();
+  x.font = `${Math.round(b.r * 1.05)}px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(b.icon, 0, 2);
+  x.restore();
+}
+// ----- the finished picture comes alive -----
+function figTf(gi, T) {
+  const g = figs[gi], A = g.F.alive, bb = bboxOf(g.F.s.flat()), cx = (bb.x0 + bb.x1) / 2 + g.off[0], by = bb.y1 + g.off[1], cy = (bb.y0 + bb.y1) / 2 + g.off[1];
+  const ph = T + gi * 0.4, tf = { dx: 0, dy: 0, rot: 0, sx: 1, sy: 1, ax: cx, ay: by };
+  const e = Math.min(1, T / 0.4);
+  switch (A.t) {
+    case 'hop': { const p = (ph * (A.big ? 1.3 : 1.6)) % 1, h = 4 * p * (1 - p) * (A.big ? 1.1 : 0.7); tf.dy = -h; const s = p < 0.12 ? (0.12 - p) / 0.12 : 0; tf.sx = 1 + s * 0.12; tf.sy = 1 - s * 0.12; break; }
+    case 'walk': tf.dx = Math.sin(ph * 1.6) * 0.5; tf.dy = -Math.abs(Math.sin(ph * 6)) * 0.12; tf.rot = Math.sin(ph * 6) * 0.035; break;
+    case 'swim': tf.dx = Math.sin(ph * 1.4) * 0.55; tf.dy = Math.sin(ph * 2.8) * 0.18; tf.rot = Math.cos(ph * 2.8) * 0.07; tf.ay = cy; break;
+    case 'sail': tf.rot = Math.sin(ph * 2) * 0.09; tf.dy = Math.sin(ph * 2.6) * 0.12; break;
+    case 'launch': { const k = Math.min(1, T / 1.2); tf.dy = -(k * k * 0.8) + Math.sin(ph * 3) * 0.1; tf.dx = Math.sin(ph * 31) * 0.03 * (1 - k * 0.5); break; }
+    case 'spin': if (A.slow) tf.rot = Math.sin(ph * 2) * 0.16; else tf.rot = ph * 1.2; tf.dy = Math.sin(ph * 3) * 0.12; tf.ay = cy; break;
+    case 'sway': tf.rot = Math.sin(ph * 2.2) * 0.07; tf.dy = -Math.abs(Math.sin(ph * 2.2)) * 0.1; break;
+    default: { const p = (ph * 1.4) % 1; tf.dy = -4 * p * (1 - p) * 0.5; }
+  }
+  tf.dx *= e; tf.dy *= e; tf.rot *= e;
+  return tf;
+}
+function withFig(gi, T, fn) {
+  const tf = figTf(gi, T), [ax, ay] = toPx([tf.ax, tf.ay]);
+  x.save(); x.translate(ax + tf.dx * u, ay + tf.dy * u); x.rotate(tf.rot); x.scale(tf.sx, tf.sy); x.translate(-ax, -ay);
+  fn(); x.restore();
+}
+function partTf(gi, si, T) {      // a tail that wags, wings that flap
+  const g = figs[gi], A = g.F.alive;
+  if (A.t === 'wag' && si === A.part) { const [px, py] = toPx([A.pivot[0] + g.off[0], A.pivot[1] + g.off[1]]); x.translate(px, py); x.rotate(Math.sin(T * 11) * A.amp * Math.min(1, T * 2)); x.translate(-px, -py); }
+  if (A.t === 'flap') {
+    const side = A.parts.findIndex(ps => ps.includes(si));
+    if (side >= 0) { const bb = bboxOf(g.F.s.flat()), [px] = toPx([(bb.x0 + bb.x1) / 2 + g.off[0], 0]), k = 0.55 + 0.45 * Math.abs(Math.cos(T * 6)); x.translate(px, 0); x.scale(k, 1); x.translate(-px, 0); }
+  }
+}
+function drawEyes(gi, T) {
+  const g = figs[gi], F = g.F, re = Math.max(6, u * (F.set === 'blk' ? 0.3 : 0.24));
+  const blink = ((T + gi * 1.3) % 3.2) < 0.13, look = Math.sin(T * 0.9 + gi) * 0.35;
+  for (const e of F.eyes || []) {
+    const [ex, ey] = toPx([e[0] + g.off[0], e[1] + g.off[1]]);
+    if (blink) { x.strokeStyle = '#2a2236'; x.lineWidth = Math.max(2, re * 0.28); x.lineCap = 'round'; x.beginPath(); x.arc(ex, ey - re * 0.2, re * 0.8, 0.25, Math.PI - 0.25); x.stroke(); continue; }
+    x.fillStyle = '#fff'; x.strokeStyle = '#2a2236'; x.lineWidth = Math.max(1.5, re * 0.16);
+    x.beginPath(); x.ellipse(ex, ey, re, re * 1.12, 0, 0, TAU); x.fill(); x.stroke();
+    x.fillStyle = '#2a2236'; x.beginPath(); x.arc(ex + look * re * 0.6, ey + re * 0.12, re * 0.58, 0, TAU); x.fill();
+    x.fillStyle = '#fff'; x.beginPath(); x.arc(ex + look * re * 0.6 - re * 0.22, ey - re * 0.12, re * 0.2, 0, TAU); x.fill();
+  }
+  if (F.mouth) {
+    const [mx2, my] = toPx([F.mouth[0] + g.off[0], F.mouth[1] + g.off[1]]);
+    x.strokeStyle = '#2a2236'; x.lineWidth = Math.max(2, re * 0.26); x.lineCap = 'round'; x.beginPath(); x.arc(mx2, my - re * 0.5, re * 0.62, 0.35, Math.PI - 0.35); x.stroke();
+    x.fillStyle = 'rgba(255,110,140,.45)'; if ((F.eyes || []).length > 1) { const [a] = F.eyes, [b] = [F.eyes[1]], [ax, ay] = toPx([a[0] + g.off[0], a[1] + g.off[1]]), [bx] = toPx([b[0] + g.off[0], b[1] + g.off[1]]), dx = (bx - ax) * 0.45; x.beginPath(); x.ellipse(ax - dx * 0.5, ay + re * 1.5, re * 0.55, re * 0.32, 0, 0, TAU); x.fill(); x.beginPath(); x.ellipse(bx + dx * 0.5, ay + re * 1.5, re * 0.55, re * 0.32, 0, 0, TAU); x.fill(); }
+  }
+}
+function drawExtras(gi, T, under) {     // water, smoke, flames, a snail's spiral
+  const g = figs[gi], A = g.F.alive, bb = bboxOf(g.F.s.flat());
+  const [x0, y1] = toPx([bb.x0 + g.off[0], bb.y1 + g.off[1]]), [x1] = toPx([bb.x1 + g.off[0], 0]);
+  if (under && (A.t === 'sail' || A.water)) {
+    const wy = y1 - u * (A.t === 'sail' ? 0.75 : 0.35), wl = u * 1.1;
+    x.fillStyle = 'rgba(90,170,240,.55)'; x.beginPath(); x.moveTo(x0 - u, wy + u * 2);
+    for (let xx = x0 - u; xx <= x1 + u; xx += 6) x.lineTo(xx, wy + Math.sin((xx - x0) / wl * TAU + T * 3) * u * 0.12);
+    x.lineTo(x1 + u, wy + u * 2); x.closePath(); x.fill();
+  }
+  if (!under && (A.t === 'sail' || A.water)) {
+    const wy = y1 - u * (A.t === 'sail' ? 0.45 : 0.1), wl = u * 0.9;
+    x.fillStyle = 'rgba(70,150,230,.75)'; x.beginPath(); x.moveTo(x0 - u, wy + u * 1.2);
+    for (let xx = x0 - u; xx <= x1 + u; xx += 6) x.lineTo(xx, wy + Math.sin((xx - x0) / wl * TAU - T * 3.4) * u * 0.1);
+    x.lineTo(x1 + u, wy + u * 1.2); x.closePath(); x.fill();
+    x.strokeStyle = 'rgba(255,255,255,.8)'; x.lineWidth = 2; x.beginPath();
+    for (let xx = x0 - u; xx <= x1 + u; xx += 6) { const yy = wy + Math.sin((xx - x0) / wl * TAU - T * 3.4) * u * 0.1; xx === x0 - u ? x.moveTo(xx, yy) : x.lineTo(xx, yy); } x.stroke();
+  }
+  if (under && A.t === 'launch') withFig(gi, T, () => {
+    const [bx, byy] = toPx([A.base[0] + g.off[0], A.base[1] + g.off[1]]), fl = u * (0.9 + Math.sin(T * 30) * 0.18 + Math.min(1, T) * 0.4);
+    for (const [c, k] of [['#ff7a2e', 1], ['#ffd23f', 0.65], ['#fff6c0', 0.32]]) { x.fillStyle = c; x.beginPath(); x.moveTo(bx - u * 0.42 * k, byy - 2); x.quadraticCurveTo(bx - u * 0.3 * k, byy + fl * 0.5 * k, bx, byy + fl * k); x.quadraticCurveTo(bx + u * 0.3 * k, byy + fl * 0.5 * k, bx + u * 0.42 * k, byy - 2); x.fill(); }
+  });
+  if (!under && A.smoke) {
+    for (let k = 0; k < 3; k++) { const ph = (T * 0.6 + k / 3) % 1, [sx, sy] = toPx([A.smoke[0] + g.off[0] + Math.sin(ph * 6) * 0.2, A.smoke[1] + g.off[1] - ph * 2.2]); x.fillStyle = `rgba(255,255,255,${0.8 * (1 - ph)})`; x.strokeStyle = `rgba(150,160,190,${0.5 * (1 - ph)})`; x.lineWidth = 1.5; x.beginPath(); x.arc(sx, sy, u * (0.18 + ph * 0.3), 0, TAU); x.fill(); x.stroke(); }
+  }
+  if (!under && A.t === 'swim' && !A.water) {
+    for (let k = 0; k < 4; k++) { const ph = (T * 0.5 + k / 4) % 1, [sx, sy] = toPx([bb.x0 + g.off[0] - 0.3 + Math.sin(ph * 9 + k) * 0.2, bb.y0 + g.off[1] + (bb.y1 - bb.y0) * 0.5 - ph * 2.5]); x.strokeStyle = `rgba(90,160,230,${0.8 * (1 - ph)})`; x.lineWidth = 2; x.beginPath(); x.arc(sx, sy, u * (0.1 + k * 0.03), 0, TAU); x.stroke(); }
+  }
+  if (!under && A.shell) withFig(gi, T, () => {
+    const [sx, sy] = toPx([A.shell[0] + g.off[0], A.shell[1] + g.off[1]]);
+    x.strokeStyle = 'rgba(255,255,255,.75)'; x.lineWidth = Math.max(2.5, u * 0.09); x.lineCap = 'round'; x.beginPath();
+    for (let a = 0; a < TAU * 2.2; a += 0.15) { const r = u * 0.12 * a; x.lineTo(sx + Math.cos(a + T * 2) * r, sy + Math.sin(a + T * 2) * r); } x.stroke();
+  });
+}
+function drawHero() {
+  if (!heroPos) return;
+  let [hx, hy, hr] = heroPos;
+  let mood = heroMood.m, sq = 0, dy = 0;
+  if (state === 'win' && mode === 'levels') {      // celebrate in the middle of the (now empty) tray
+    const k = Math.min(1, winT / 0.5), R = Math.min(tray.w, tray.h) * 0.2, tx = tray.x + tray.w / 2, ty = tray.y + tray.h / 2 + R * 0.1;
+    hx += (tx - hx) * k; hy += (ty - hy) * k; hr += (R - hr) * k;
+  }
+  if (state === 'win' || freeAlive >= 0) { const p = (t * 1.8) % 1; dy = -4 * p * (1 - p) * hr * 0.5; sq = p < 0.1 ? 0.12 : 0; mood = 'proud'; }
+  else if (heroMood.t <= 0) mood = 'happy';
+  const look = drag ? Math.max(-1, Math.min(1, (drag.p.px - hx) / 200)) : Math.sin(t * 0.7) * 0.5;
+  MG.puPu(x, hx, hy + dy, hr, mood, sq + Math.sin(t * 3) * 0.02, { look, arms: state === 'win' || freeAlive >= 0 ? 'up' : undefined });
+}
+function draw() {
+  if (!bgCache) bgCache = buildBg();
+  x.drawImage(bgCache, 0, 0, W, H);
+  if (!pieces.length) return;
+  const alive = state === 'win' && winT >= 0;
+  if (alive) { x.save(); rr(board.x + 5, board.y + 5, board.w - 10, board.h - 10, 22); x.clip(); }
+  if (!alive) drawSilhouette();
+  else {   // a faint shadow stays where the picture was
+    x.globalAlpha = Math.max(0.12, 1 - winT * 2); drawSilhouette(); x.globalAlpha = 1;
+    figs.forEach((g, gi) => drawExtras(gi, winT, true));
+  }
+  if (!alive) drawHero();
+  // placed pieces (moving together when alive)
+  const placed = pieces.filter(p => p.st === 'placed');
+  if (alive) {
+    figs.forEach((g, gi) => withFig(gi, winT, () => {
+      for (const p of placed) { const s = slots[p.slot]; if (s.g !== gi) continue; x.save(); partTf(gi, s.i, winT); drawPiece(p, { alive: true }); x.restore(); }
+      drawEyes(gi, winT);
+    }));
+    figs.forEach((g, gi) => drawExtras(gi, winT, false));
+    x.restore(); drawHero();
+  } else for (const p of placed) drawPiece(p);
+  // free-play creature
+  const loose = pieces.filter(p => p.st === 'loose' || p.st === 'tray').sort((a, b) => a.z - b.z);
+  if (freeAlive >= 0) {
+    const ls = pieces.filter(p => p.st === 'loose'), b = bboxOf(ls.flatMap(p => screenPts(p)));
+    const ph = (freeAlive * 1.5) % 1, dy = -4 * ph * (1 - ph) * u * 0.6;
+    x.save(); x.translate(0, dy);
+    for (const p of loose.filter(p => p.st === 'loose')) drawPiece(p, { alive: true });
+    // eyes on the top piece
+    const top = ls.slice().sort((a, b2) => bboxOf(screenPts(a)).y0 - bboxOf(screenPts(b2)).y0)[0];
+    const re = Math.max(7, u * 0.26), [cx, cy] = [top.px, top.py], blink = (freeAlive % 3) < 0.12;
+    for (const sd of [-1, 1]) { const ex = cx + sd * re * 1.25; if (blink) { x.strokeStyle = '#2a2236'; x.lineWidth = 3; x.beginPath(); x.arc(ex, cy, re * 0.8, 0.3, Math.PI - 0.3); x.stroke(); continue; } x.fillStyle = '#fff'; x.strokeStyle = '#2a2236'; x.lineWidth = 2; x.beginPath(); x.ellipse(ex, cy, re, re * 1.1, 0, 0, TAU); x.fill(); x.stroke(); x.fillStyle = '#2a2236'; x.beginPath(); x.arc(ex + Math.sin(freeAlive) * re * 0.3, cy + re * 0.1, re * 0.55, 0, TAU); x.fill(); x.fillStyle = '#fff'; x.beginPath(); x.arc(ex - re * 0.2, cy - re * 0.15, re * 0.18, 0, TAU); x.fill(); }
+    x.restore(); void b;
+    for (const p of loose.filter(p => p.st === 'tray')) drawPiece(p);
+  } else for (const p of loose) drawPiece(p);
+  if (drag) drawPiece(drag.p, { lift: drag.moved ? 1 : 0.4 });
+  if (state === 'play') for (const p of pieces) if (p.st !== 'placed' && flippable(p) && !(drag && drag.p === p && drag.moved)) drawBadge(p);
+  if (state === 'play') for (const b of btns) drawBtn(b);
+  MG.fx.draw(x);
+  drawFloats();
+}
+function say(px, py, text, col) { floats.push({ text, col, x: px, y: py, life: 1.2 }); if (floats.length > 4) floats.shift(); }
+function drawFloats() {
+  x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineJoin = 'round';
+  for (const f of floats) {
+    let sz = Math.round(Math.max(20, Math.min(34, u * 0.55)) * MG.textScale);
+    x.font = `900 ${sz}px system-ui,${FONT}`;
+    const tw = x.measureText(f.text).width, fx = Math.max(tw / 2 + 8, Math.min(W - tw / 2 - 8, f.x)), fy = Math.max(sz, f.y - (1.2 - f.life) * 34);
+    x.globalAlpha = Math.min(1, f.life * 2.5);
+    x.lineWidth = Math.max(4, sz * 0.22); x.strokeStyle = '#fff'; x.strokeText(f.text, fx, fy);
+    x.fillStyle = f.col; x.fillText(f.text, fx, fy);
+  }
+  x.globalAlpha = 1;
+}
+
+// ---------- menu ----------
+const lvName = n => { const Lv = LEVELS[n - 1]; return `${Lv.f.map(k => FIG[k].emo + ' ' + FIG[k].name).join('＋')}・${TYPE[Lv.t].name}`; };
+function menu() {
+  state = 'menu';
+  MG.choose({
+    id: 'tangram', title: '七巧板',
+    html: `<p>把彩色的板子<b>拖到影子上</b>，放對地方就會「喀」一聲黏住，<b>點一下</b>可以轉方向。拼好了，圖案就會<b>活起來</b>！</p><p>不限時間，慢慢拼；有 💡 提示，按兩下還會幫你放好一塊 ^_^</p><p>有框框的簡單關、影子關、🧩 真正的七巧板、🔶 積木板、🪞 翻面板、👯 一次拼兩個圖！</p>`,
+    modes: [{ id: 'levels', label: '🧩 拼圖關卡', sub: '把影子拼出來' }, { id: 'free', label: '🎨 自由拼', sub: '拼你自己的圖' }],
+    levels: { count: LEVELS.length, max: LEVELS.length, label: n => `${n}（${lvName(n)}${stars[n] ? ' ' + '⭐'.repeat(stars[n]) : ''}）`, short: n => `${n}${TYPE[LEVELS[n - 1].t].mark}${stars[n] ? '✓' : ''}` },
+    levelsTitle: '選一關（自由拼不用選）',
+    keys: '拖動板子　點一下轉　<kbd>R</kbd> 轉最上面的板子　<kbd>H</kbd> 提示',
+    playing: () => state === 'play' || state === 'win',
+    start: (m, lv) => { if (m === 'free') startFree(); else startLevel(lv); },
+  });
+}
+// a sample behind the start panel
+startLevel(Math.min(LEVELS.length, MG.store.get('tangram.pickLevel', 1) || 1), true); state = 'menu';
+menu();
+
+window.TGT = {
+  get state() { return state; }, get level() { return level; }, get mode() { return mode; }, get u() { return u; },
+  start: lv => startLevel(lv), free: s => startFree(s), win: () => { for (const p of pieces) if (p.st !== 'placed') TGT.placePiece(p.id); },
+  slots: () => slots.map(s => ({ kind: s.kind, filled: s.filled, c: s.c, m: s.m })),
+  pieces: () => pieces.map(p => ({ id: p.id, kind: p.kind, st: p.st, r: p.r, f: p.f, px: p.px, py: p.py })),
+  // put piece id exactly on a free slot of its kind in the matching turn and let the game snap it (returns true when it snapped)
+  placePiece(id) {
+    const p = pieces[id]; if (p.st === 'placed') return true;
+    const s = slots.find(q => q.filled < 0 && q.kind === p.kind); if (!s) return false;
+    const m = s.m.find(q => q[1] === p.f) || s.m[0];
+    if (L.t !== 'flip' && m[1]) return false;               // a flipped spot outside 🪞 levels: not solvable
+    p.r = m[0]; p.f = m[1]; p.ang = p.r * TAU / KINDS[p.kind].n; p.fs = p.f ? -1 : 1; p.angT = p.fsT = undefined;
+    [p.px, p.py] = toPx(s.c); p.px += u * 0.3; p.py -= u * 0.25; p.st = 'loose';
+    return trySnap(p, false);
+  },
+  // screen (client) coordinates of a logical canvas point
+  client(px, py) { const rc = cv.getBoundingClientRect(), B = 3; return { x: rc.left + B + px * (rc.width - 2 * B) / cv.lw, y: rc.top + B + py * (rc.height - 2 * B) / cv.lh }; },
+  pieceClient(id) { const p = pieces[id]; return TGT.client(p.px, p.py); },
+  slotClient(i) { const [a, b] = toPx(slots[i].c); return TGT.client(a, b); },
+  badgeClient(id) { const [a, b] = badgePos(pieces[id]); return TGT.client(a, b); },
+  btnClient(id) { const b = btns.find(q => q.id === id); return TGT.client(b.x, b.y); },
+  layoutInfo: () => ({ W, H, u, board, tray, land, arr, overlap: pieces.filter(p => p.st === 'tray').some(p => p.px < tray.x || p.px > tray.x + tray.w || p.py < tray.y || p.py > tray.y + tray.h) }),
+  get hintsUsed() { return hintsUsed; },
+};
+
+MG.loop(dt => {
+  t += dt; MG.fx.step(dt);
+  for (const f of floats) f.life -= dt; floats = floats.filter(f => f.life > 0);
+  if (hint) hint.t += dt;
+  if (heroMood.t > 0) heroMood.t -= dt;
+  if (winT >= 0) winT += dt;
+  if (freeAlive >= 0) { freeAlive += dt; if (freeAlive > 4) freeAlive = -1; }
+  for (const p of pieces) {
+    if (p.angT !== undefined) { p.ang += (p.angT - p.ang) * Math.min(1, dt * 16); if (Math.abs(p.angT - p.ang) < 0.002) { p.ang = p.angT; } }
+    if (p.fsT !== undefined) { p.fs += (p.fsT - p.fs) * Math.min(1, dt * 14); if (Math.abs(p.fsT - p.fs) < 0.01) { p.fs = p.fsT; p.fsT = undefined; } }
+    const scT = p.st === 'tray' ? trayK : 1; p.sc = p.sc === undefined ? scT : p.sc + (scT - p.sc) * Math.min(1, dt * 12);
+    if (p.wig > 0) p.wig = Math.max(0, p.wig - dt);
+    if (p.pop > 0) p.pop = Math.max(0, p.pop - dt * 3);
+    if (p.anim) { const a = p.anim; a.t += dt / 0.2; const e = Math.min(1, a.t), k = e * e * (3 - 2 * e); p.px = a.fx + (a.tx - a.fx) * k; p.py = a.fy + (a.ty - a.fy) * k; if (e >= 1) p.anim = null; }
+  }
+  draw();
+});
+</script>
+</body>
+</html>
