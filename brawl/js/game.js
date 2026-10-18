@@ -171,7 +171,7 @@ function spawnProj(f, kind, o) {
 class Fighter {
   constructor(id, team, x, z, ctl) {
     const d = CHARS[id]; this.id = id; this.def = d; this.look = d.look; this.team = team; this.ctl = ctl; if (ctl) ctl.f = this;
-    const hpMul = d.enemy && W && W.mode === 'stage' ? W.D.eHp : 1;
+    const hpMul = d.enemy && W && W.mode === 'stage' ? W.D.eHp * (W.hpScale || 1) : 1;
     this.maxHp = this.hp = this.cap = Math.round(d.hp * hpMul); this.regenT = 0; this.hpLag = this.hp; this.maxMp = 500; this.mp = d.enemy ? 500 : 200;
     this.pow = d.pow; this.spd = d.spd; this.x = x; this.y = 0; this.z = z; this.vx = this.vy = this.vz = 0; this.face = 1;
     this.state = 'idle'; this.st = 0; this.clock = (Math.random() * 100) | 0; this.freeze = 0; this.invul = 0; this.flash = 0; this.armorT = 0; this.superT = 0;
@@ -195,7 +195,7 @@ class Fighter {
   }
   trySkill(n) {
     const id = this.def.skills[n - 1]; if (!id) return false; const S = SKILLS[id];
-    if (this.mp < S.cost) { if (this.ctl && this.ctl.human) W.flashMp = 20; return false; }
+    if (this.mp < S.cost) { if (this.ctl && this.ctl.human) this.flashMp = 20; return false; }
     this.mp -= S.cost; this.skill = id; this.set('skill'); this.hitSet.clear(); this.vx = 0;
     if (this.inp.mx) this.face = sgn(this.inp.mx);
     if (S.start) S.start(this);
@@ -387,7 +387,8 @@ class Fighter {
     if (this.state === 'throw') this.set('idle');
   }
   die() {
-    this.dead = true; this.dropItem();
+    this.dead = true; this.dropItem(); this.deaths = (this.deaths || 0) + 1;
+    if (this.lives > 1) { this.lives--; this.respawnT = 130; } else this.lives = 0;
     if (this.lastHitBy) { this.lastHitBy.kos++; if (this.lastHitBy.ctl && this.lastHitBy.ctl.human) W.kos++; }
     Sound.play('ko'); if (this.def.boss) Sound.play('gong');
   }

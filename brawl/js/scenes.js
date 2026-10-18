@@ -339,3 +339,4 @@ function drawPart(c, p) {
   }
 }
 
+const THEMES = { street: drawStreet, roof: drawRoof };

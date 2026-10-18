@@ -189,25 +189,23 @@ class Input {
 }
 
 let lastDevice = 'keyboard';
-const KEYMAP = {
-  KeyA: 'L', ArrowLeft: 'L', KeyD: 'R', ArrowRight: 'R', KeyW: 'U', ArrowUp: 'U', KeyS: 'Dn', ArrowDown: 'Dn',
-  KeyJ: 'A', KeyZ: 'A', KeyK: 'J', KeyX: 'J', Space: 'J', KeyL: 'F', KeyC: 'F', KeyU: 'S1', KeyI: 'S2', KeyO: 'S3',
-  ShiftLeft: 'RUN', ShiftRight: 'RUN'
+/* Keyboard sets. In one-player games everything goes to 1P (WASD or arrows).
+   With two players on one keyboard, 1P has the left side and 2P the right side. */
+const KEYSETS = {
+  solo: { KeyA: 'L', ArrowLeft: 'L', KeyD: 'R', ArrowRight: 'R', KeyW: 'U', ArrowUp: 'U', KeyS: 'Dn', ArrowDown: 'Dn',
+    KeyJ: 'A', KeyZ: 'A', KeyK: 'J', KeyX: 'J', Space: 'J', KeyL: 'F', KeyC: 'F', KeyU: 'S1', KeyI: 'S2', KeyO: 'S3', ShiftLeft: 'RUN', ShiftRight: 'RUN' },
+  p1: { KeyA: 'L', KeyD: 'R', KeyW: 'U', KeyS: 'Dn', KeyJ: 'A', KeyK: 'J', Space: 'J', KeyL: 'F', KeyU: 'S1', KeyI: 'S2', KeyO: 'S3', ShiftLeft: 'RUN' },
+  p2: { ArrowLeft: 'L', ArrowRight: 'R', ArrowUp: 'U', ArrowDown: 'Dn', Numpad1: 'A', Period: 'A', Numpad2: 'J', Slash: 'J', Numpad3: 'F', Comma: 'F',
+    Numpad4: 'S1', Numpad5: 'S2', Numpad6: 'S3', ShiftRight: 'RUN', Numpad0: 'RUN' }
 };
-const Keyboard = {
-  held: new Set(), edges: [], lastTap: { L: -99, R: -99 }, runDir: 0, frame: 0, seq: [],
-  init() {
-    addEventListener('keydown', e => {
-      const k = KEYMAP[e.code]; if (!k) return;
-      if (!running || paused) return;
-      e.preventDefault(); lastDevice = 'keyboard';
-      if (e.repeat) return;
-      this.held.add(k); this.edges.push(k);
-    });
-    addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) this.held.delete(k); });
-    addEventListener('blur', () => this.held.clear());
-  },
-  /* writes into inp; returns true if any key involved */
+class KeyboardSet {
+  constructor(map) { this.map = map; this.held = new Set(); this.edges = []; this.lastTap = { L: -99, R: -99 }; this.runDir = 0; this.frame = 0; this.seq = []; }
+  key(code, down, repeat) {
+    const k = this.map[code]; if (!k) return false;
+    if (!down) { this.held.delete(k); return true; }
+    if (!repeat) { this.held.add(k); this.edges.push(k); }
+    return true;
+  }
   fill(inp) {
     this.frame++;
     const h = this.held, f = this.frame;
@@ -226,7 +224,7 @@ const Keyboard = {
         for (let i = 0; i < s.length - 1; i++) if (s[i].k === 'F') {
           const d = s[i + 1].k; sk = (d === 'L' || d === 'R') ? 1 : d === 'U' ? 2 : 3;
         }
-        if (sk) { inp.skill = sk; if (s.length) { const last = s.filter(e => e.k === 'L' || e.k === 'R').pop(); if (last) inp.mx = last.k === 'R' ? 1 : -1; } this.seq = []; }
+        if (sk) { inp.skill = sk; const last = s.filter(e => e.k === 'L' || e.k === 'R').pop(); if (last) inp.mx = last.k === 'R' ? 1 : -1; this.seq = []; }
         else inp.atk = true;
       }
       if (k === 'J') inp.jmp = true;
@@ -241,19 +239,46 @@ const Keyboard = {
     inp.run = inp.run || run;
     inp.def = inp.def || h.has('F');
   }
+  clear() { this.held.clear(); this.edges.length = 0; }
+}
+const KB = { solo: new KeyboardSet(KEYSETS.solo), p1: new KeyboardSet(KEYSETS.p1), p2: new KeyboardSet(KEYSETS.p2) };
+const Keyboard = {
+  init() {
+    const all = Object.values(KB);
+    addEventListener('keydown', e => {
+      if (!running || paused) return;
+      let used = false; for (const s of all) used = s.key(e.code, true, e.repeat) || used;
+      if (used) { e.preventDefault(); lastDevice = 'keyboard'; }
+    });
+    addEventListener('keyup', e => { for (const s of all) s.key(e.code, false); });
+    addEventListener('blur', () => all.forEach(s => s.clear()));
+  }
 };
 
-const Touch = {
-  on: false, sx: 0, sz: 0, run: false, pid: null, ox: 0, oy: 0, held: {}, edges: [],
-  init() {
-    const zone = document.getElementById('stickZone'), base = document.getElementById('stickBase'), knob = document.getElementById('stickKnob');
-    const R = 52;
-    const home = () => { base.style.left = ''; base.style.top = ''; };
+/* On-screen controls. One pad fills the screen in one-player games; with two
+   players each gets a compact pad on their own side of the tablet. */
+const PAD_LAYOUT = {
+  full: { atk: [10, 14, 84], jmp: [100, 4, 64], def: [24, 106, 64], s1: [176, 76, 58], s2: [108, 120, 58], s3: [96, 186, 58] },
+  half: { atk: [8, 10, 70], jmp: [84, 2, 54], def: [18, 88, 54], s1: [146, 60, 48], s2: [90, 104, 48], s3: [80, 160, 48] }
+};
+class TouchPad {
+  constructor(slot, side, compact) {
+    this.slot = slot; this.side = side; this.compact = compact; this.sx = 0; this.sz = 0; this.run = false; this.pid = null; this.held = {}; this.edges = [];
+    const root = this.root = document.createElement('div'); root.className = `tpad ${side}${compact ? ' compact' : ''}`;
+    root.innerHTML = `<div class="stickZone"><div class="stickBase"><div class="stickKnob"></div></div></div><div class="pad">${compact ? `<span class="ptag p${slot + 1}">${slot + 1}P</span>` : ''}
+      <button class="tb sk" data-b="s3"></button><button class="tb sk" data-b="s2"></button><button class="tb sk" data-b="s1"></button>
+      <button class="tb" data-b="def">防</button><button class="tb" data-b="jmp">跳</button><button class="tb" data-b="atk">攻</button></div>`;
+    document.getElementById('touch').appendChild(root);
+    const L = PAD_LAYOUT[compact ? 'half' : 'full'], horiz = side === 'L' ? 'left' : 'right';
+    root.querySelectorAll('.tb').forEach(b => { const [h, v, size] = L[b.dataset.b]; b.style[horiz] = h + 'px'; b.style.bottom = v + 'px'; b.style.width = b.style.height = size + 'px'; });
+    const zone = root.querySelector('.stickZone'), base = root.querySelector('.stickBase'), knob = root.querySelector('.stickKnob');
+    const R = compact ? 46 : 52;
+    let ox = 0, oy = 0;
     const move = e => {
-      let dx = e.clientX - this.ox, dy = e.clientY - this.oy; const m = Math.hypot(dx, dy);
+      let dx = e.clientX - ox, dy = e.clientY - oy; const m = Math.hypot(dx, dy);
       if (m > R) { dx *= R / m; dy *= R / m; }
       knob.style.transform = `translate(${dx}px,${dy}px)`;
-      let x = dx / R, y = dy / R;
+      const x = dx / R, y = dy / R;
       this.sx = Math.abs(x) < 0.22 ? 0 : x; this.sz = Math.abs(y) < 0.3 ? 0 : y;
       this.run = Math.abs(x) > 0.9 && m >= R * 0.95;
       base.classList.toggle('run', this.run);
@@ -263,19 +288,19 @@ const Touch = {
       this.pid = e.pointerId; zone.setPointerCapture(e.pointerId);
       const r = zone.getBoundingClientRect();
       base.style.left = (e.clientX - r.left) + 'px'; base.style.top = (e.clientY - r.top) + 'px';
-      this.ox = e.clientX; this.oy = e.clientY; move(e);
+      ox = e.clientX; oy = e.clientY; move(e);
     });
     zone.addEventListener('pointermove', e => { if (e.pointerId === this.pid) move(e); });
-    const end = e => { if (e.pointerId !== this.pid) return; this.pid = null; this.sx = this.sz = 0; this.run = false; knob.style.transform = ''; base.classList.remove('run'); home(); };
+    const end = e => { if (e.pointerId !== this.pid) return; this.pid = null; this.sx = this.sz = 0; this.run = false; knob.style.transform = ''; base.classList.remove('run'); base.style.left = ''; base.style.top = ''; };
     zone.addEventListener('pointerup', end); zone.addEventListener('pointercancel', end);
-    document.querySelectorAll('.tb').forEach(b => {
+    root.querySelectorAll('.tb').forEach(b => {
       const k = b.dataset.b;
       b.addEventListener('pointerdown', e => { e.preventDefault(); lastDevice = 'touch'; b.setPointerCapture(e.pointerId); this.held[k] = true; this.edges.push(k); b.classList.add('on'); Sound.init(); });
       const up = () => { this.held[k] = false; b.classList.remove('on'); };
       b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('lostpointercapture', up);
       b.addEventListener('contextmenu', e => e.preventDefault());
     });
-  },
+  }
   fill(inp) {
     if (this.sx || this.sz) { inp.mx = inp.mx || this.sx; inp.mz = inp.mz || this.sz; }
     inp.run = inp.run || this.run; inp.def = inp.def || !!this.held.def;
@@ -285,9 +310,18 @@ const Touch = {
     }
     this.edges.length = 0;
   }
-};
+  setSkills(f) {
+    f.def.skills.forEach((id, i) => {
+      const b = this.root.querySelector(`.tb[data-b="s${i + 1}"]`); if (!b) return;
+      if (!id) { b.hidden = true; return; } b.hidden = false;
+      b.innerHTML = `${SKILLS[id].name}<small>${SKILLS[id].cost}</small>`; b.classList.toggle('off', f.mp < SKILLS[id].cost);
+    });
+  }
+  remove() { this.root.remove(); }
+}
+const Touch = { pads: [], setup(n) { this.pads.forEach(p => p.remove()); this.pads = n === 1 ? [new TouchPad(0, 'R', false)] : [new TouchPad(0, 'L', true), new TouchPad(1, 'R', true)]; } };
 
-/* Standard-mapping gamepads. index = which pad (for future players). */
+/* Standard-mapping gamepads. index = which pad. */
 class PadCtl {
   constructor(index) { this.index = index; this.prev = []; }
   fill(inp) {
@@ -312,13 +346,18 @@ class PadCtl {
 }
 const pads = [new PadCtl(0), new PadCtl(1), new PadCtl(2), new PadCtl(3)];
 
-/* Player 1 in single player listens to every device at once. */
-class LocalCtl {
-  constructor() { this.inp = new Input(); }
+/* A human player: listens to every input source assigned to that player. */
+class HumanCtl {
+  constructor(slot, sources) { this.inp = new Input(); this.slot = slot; this.sources = sources; this.human = true; }
   poll() {
     const i = this.inp; i.mx = i.mz = 0; i.run = i.def = false;
-    Keyboard.fill(i); Touch.fill(i); for (const p of pads) p.fill(i);
+    for (const s of this.sources) s.fill(i);
     i.mx = clamp(i.mx, -1, 1); i.mz = clamp(i.mz, -1, 1);
   }
+}
+/* the input sources for each local player, depending on how many share the device */
+function localSources(slot, n) {
+  if (n === 1) return [KB.solo, Touch.pads[0], ...pads];
+  return [slot === 0 ? KB.p1 : KB.p2, Touch.pads[slot], pads[slot]].filter(Boolean);
 }
 
