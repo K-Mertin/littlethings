@@ -11,7 +11,7 @@ function makeWorld(seed){
     window:{addEventListener(){}},localStorage:{_:{},getItem(k){return this._[k]??null},setItem(k,v){this._[k]=String(v)}}};
   ctx.Math.random=rnd;
   vm.createContext(ctx);
-  const src=['story.js','icons.js','gfx.js','quotes.js','bgm.js','engine.js'].map(f=>fs.readFileSync(path.join(dir,f),'utf8')).join('\n')
+  const src=['story.js','icons.js','gfx.js','quotes.js','bgm.js','world.js','engine.js'].map(f=>fs.readFileSync(path.join(dir,f),'utf8')).join('\n')
     +'\n;globalThis.__E={G,CHAPTERS,START,CHARS,GUESTS,CLS,TERRAIN,SPIRITS,EXP,DIFF,MAX_LV,CC_LV,PARTS:(typeof PARTS!=="undefined"?PARTS:null)};globalThis.__F={terrAt,unitAt,inMap,dist,sk,moveCost,terrBonus,addWill,effMove,wMax,key};';
   vm.runInContext(src,ctx); Object.assign(ctx,ctx.__F);
   return ctx;
@@ -197,7 +197,7 @@ if(require.main===module){
   const paths=process.argv.slice(4).length?process.argv.slice(4).map(s=>s.split(',').map(Number)):[[0,1],[1,1],[2,0,1]];
   for(const p of paths){
     const agg={};
-    for(let r=0;r<runs;r++){ const rep=runRoute(p,{seed:1000+r*7919,diff});
+    for(let r=0;r<runs;r++){ const rep=runRoute(p,{seed:1000+r*7919,diff,useP4:!!process.env.P4});
       for(const x of rep){ if(x.ending){ (agg._end=agg._end||[]).push(x.ending); continue; }
         const a=agg[x.id]=agg[x.id]||{no:x.no,title:x.title,n:0,wins:0,tries:0,turns:0,lost:0,lv:x.lv,why:{}};
         a.n++; a.wins+=x.win?1:0; a.tries+=x.tries; a.turns+=x.turns; a.lost+=x.lost; a.lv=x.lv; if(!x.win) a.why[x.why]=(a.why[x.why]||0)+1; } }
