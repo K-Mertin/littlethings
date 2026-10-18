@@ -242,12 +242,19 @@ function showHint() {
   if (anim) return;
   const live = bottles.map((b, i) => (gone[i] || fade[i] > 0) ? [] : b), key = JSON.stringify(live) + lockOpen;
   // keep following one plan while the player follows the hints (re-solving every time could send them in circles)
-  const path = hintPlan && hintPlan.key === key && hintPlan.path.length ? hintPlan.path : solve(live);
+  const path = hintPlan && hintPlan.key === key && hintPlan.path.length ? hintPlan.path : solveAlive();
   if (!path) { hintPlan = null; MG.toast(`${MG.WORDS.oops} ↶`, 2400); MG.sfx('miss'); return; }
   if (!path.length) return;
   const [i, j] = path[0];
   const nb = live.map(b => b.slice()); pourInto(nb, i, j); const opened = lockOpen || done1(nb[j], j); if (done1(nb[j], j)) nb[j] = [];
   hintPlan = { path: path.slice(1), key: JSON.stringify(nb) + opened }; hint = { i, j, t: 0 }; sel = -1; MG.sfx('flip'); MG.sfx('sparkle');
+}
+// solve only with the bottles still on the shelf: a finished bottle has flown away, so the hint must never point at its empty spot
+function solveAlive() {
+  const ids = bottles.map((b, i) => i).filter(i => !gone[i] && !(fade[i] > 0));
+  const rs = { ...R, caps: ids.map(i => capOf(R, i)), tags: R.tags ? ids.map(i => R.tags[i]) : null, lock: ids.indexOf(R.lock) };
+  const p = solve(ids.map(i => bottles[i]), rs, lockOpen);
+  return p && p.map(([a, b]) => [ids[a], ids[b]]);
 }
 function reset() { if (anim) return; startLevel(level, false); MG.sfx('whoosh'); MG.toast('Again! 🔄'); }
 
@@ -501,7 +508,7 @@ function menu() {
 // sample puzzle behind the start panel
 cap = 4; R = { k: 4, caps: [], one: false, tags: null, lock: -1 }; bottles = makePuzzle(4, 4).b; hid = bottles.map(b => b.map(() => false)); gone = bottles.map(() => false); fade = bottles.map(() => 0); shake = bottles.map(() => 0); layout();
 menu();
-window.PRT = { get state() { return state; }, floats: () => floats.map(f => f.text), bottles: () => bottles.map(b => b.slice()), get cap() { return cap; }, rules: () => JSON.parse(JSON.stringify(R)), get lockOpen() { return lockOpen; }, solveNow: () => solve(bottles.map((b, i) => gone[i] ? [] : b)), tryPour: (i, j) => tryPour(i, j), start: lv => startLevel(lv), hintNow: () => { showHint(); return hint ? [hint.i, hint.j] : null; }, get anim() { return !!anim; }, gone: () => gone.slice(),
+window.PRT = { get state() { return state; }, floats: () => floats.map(f => f.text), bottles: () => bottles.map(b => b.slice()), get cap() { return cap; }, rules: () => JSON.parse(JSON.stringify(R)), get lockOpen() { return lockOpen; }, solveNow: () => solveAlive(), tryPour: (i, j) => tryPour(i, j), start: lv => startLevel(lv), hintNow: () => { showHint(); return hint ? [hint.i, hint.j] : null; }, get anim() { return !!anim; }, gone: () => gone.slice(),
   at(i) { const q = pos[i], rc = cv.getBoundingClientRect(), B = 3, lx = q.cx, ly = q.by - BH(i) / 2 * scale; return { x: rc.left + B + lx * (rc.width - 2 * B) / cv.lw, y: rc.top + B + ly * (rc.height - 2 * B) / cv.lh }; } };
 
 MG.loop(dt => {
