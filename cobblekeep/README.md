@@ -1,6 +1,15 @@
 # Cobble Keep
 
-A bright 3D first-person shooter that plays like DOOM: keys, doors, secrets, a status bar and a face that reacts. Ten stages in five worlds, each world ending with a boss. Everything runs from one file (`index.html`) with no build step and no image or sound files. The only download is Three.js, loaded from a CDN, so it needs an internet connection the first time it loads.
+A 3D fantasy first-person shooter that plays like DOOM: keys, doors, secrets, a status bar and a hero portrait that reacts. The Dark Wizard Morvane has stolen the Crown Crystal; you play a young squire, Rowan or Lyra, crossing five lands to bring it home. Ten stages in five worlds, each world ending with a boss. Everything runs from one file (`index.html`) with no build step and no image or sound files. The only download is Three.js, loaded from a CDN, so it needs an internet connection the first time it loads.
+
+## Story
+- **Hero:** pick Rowan (squire knight) or Lyra (spellblade squire) on the title screen. The choice changes the HUD portrait and the name used in the story.
+- **Language:** English or 繁體中文, switched on the title screen. It starts in Chinese when the browser language is Chinese. Every menu, message, stage name and story line is translated.
+- **Prologue:** four illustrated panels play the first time you start stage 1. The Prologue button on the title replays them.
+- **Chapters:** the first stage of each world opens with a chapter panel. After each boss stage, the results card tells what happens next.
+- **Bosses:** each boss arrives with a cinematic banner (name, title and a line) and says something when defeated: Grukk the Goblin Chief, Nocturna the Bat Queen, Sethep the Mummy King, Hrimgar the Frost Giant and Morvane the Dark Wizard.
+- **Ending:** clearing stage 10 plays a four-panel epilogue before the final results.
+- Story panels advance with a tap, click, Space or Enter, and can be skipped.
 
 ## Play
 Open `index.html` in a browser, or play it at https://k-mertin.github.io/littlethings/cobblekeep/.
