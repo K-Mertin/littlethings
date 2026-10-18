@@ -284,7 +284,7 @@ function syncMenu() {
   $('diffRow').hidden = M.mode === 'practice'; $('diffRow').previousElementSibling.hidden = M.mode === 'practice';
   ['heroes', 'skillInfo', 'heroTitle'].forEach(id => $(id).hidden = phone);
   $('playersNote').hidden = !two && !phone;
-  $('playersNote').textContent = phone ? '按「出發！」後，大家用自己的手機掃畫面上的 QR code，手機就變成手把，最多 4 個人。角色在手機上選。電視、電腦或平板當大螢幕。' : two ? (isTouch ? '平板橫放：1P 用左半邊，2P 用右半邊。' : '鍵盤：1P 用 WASD＋J K L（U I O 必殺），2P 用方向鍵＋數字鍵 1 2 3（4 5 6 必殺），沒有數字鍵可用 . / ,。插兩支手把也可以。') : '';
+  $('playersNote').textContent = phone ? '按「出發！」後，用手機掃畫面上的 QR code，手機就變成手把。一個人用一支手機也可以，最多 4 個人。角色在手機上選。電視、電腦或平板當大螢幕。' : two ? (isTouch ? '平板橫放：1P 用左半邊，2P 用右半邊。' : '鍵盤：1P 用 WASD＋J K L（U I O 必殺），2P 用方向鍵＋數字鍵 1 2 3（4 5 6 必殺），沒有數字鍵可用 . / ,。插兩支手把也可以。') : '';
   const sel = M.heroes[two ? M.slotSel : 0], d = CHARS[sel], cmds = ['防 → 左右 → 攻', '防 → 上 → 攻', '防 → 下 → 攻'], keys = two ? (M.slotSel ? ['4', '5', '6'] : ['U', 'I', 'O']) : ['U', 'I', 'O'];
   $('skillInfo').innerHTML = `<b>${two ? (M.slotSel + 1) + 'P・' : ''}${d.name}的必殺技</b>（用藍色的氣）<br>` + d.skills.map((id, i) => id ? `<b>${SKILLS[id].name}</b>　氣 ${SKILLS[id].cost}　<kbd>${cmds[i]}</kbd> 或 <kbd>${keys[i]}</kbd>` : '').filter(Boolean).join('<br>');
 }
