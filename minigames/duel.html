@@ -35,11 +35,15 @@ const COL = [
   { nm: '綠色噗噗', ic: '💚', pal: MG.JELLY.green, main: '#3cb85a', dark: '#1f6e35', soft: '#dcf7d2', bg: ['#effde6', '#d3f3c4'], bub: ['#e3ffe0', '#7fe08e', '#2fa64a'] },
   { nm: '粉紅噗噗', ic: '💗', pal: MG.JELLY.pink, main: '#f06a9e', dark: '#9a2f5d', soft: '#ffe0ec', bg: ['#fff1f6', '#ffd7e6'], bub: ['#ffe8f1', '#ff9cc2', '#d84b85'] },
 ];
-const IDS = ['mole', 'fruit', 'bubble', 'quick', 'balloon', 'find'];
+const IDS = ['mole', 'fruit', 'bubble', 'quick', 'balloon', 'find'];          // levels 1–6 (7 = 🎲 random)
+const NEW_IDS = ['color', 'animal', 'tug', 'memory', 'dots', 'run'];         // levels 8–13 (14 = 🏆 tournament)
+const ALL_IDS = IDS.concat(NEW_IDS);
+const LV_RANDOM = 7, LV_CUP = 14, LV_COUNT = 14;
+const cidOf = n => n <= 6 ? IDS[n - 1] : n >= 8 && n <= 13 ? NEW_IDS[n - 8] : null;
 const AI = {
-  easy: { react: [0.5, 0.88], speed: 580, miss: 0.26, decoy: 0.18, wrong: 0.22, rate: 3.9, qd: [0.52, 0.85], early: 0.1, find: [1.9, 3.2], err: 55 },
-  normal: { react: [0.32, 0.58], speed: 820, miss: 0.15, decoy: 0.08, wrong: 0.12, rate: 5.2, qd: [0.38, 0.58], early: 0.06, find: [1.4, 2.4], err: 30 },
-  hard: { react: [0.18, 0.32], speed: 1250, miss: 0.05, decoy: 0.02, wrong: 0.04, rate: 7.4, qd: [0.24, 0.36], early: 0.03, find: [0.8, 1.4], err: 10 },
+  easy: { react: [0.5, 0.88], speed: 580, miss: 0.26, decoy: 0.18, wrong: 0.22, rate: 3.9, qd: [0.52, 0.85], early: 0.1, find: [1.9, 3.2], err: 55, memo: 0.35 },
+  normal: { react: [0.32, 0.58], speed: 820, miss: 0.15, decoy: 0.08, wrong: 0.12, rate: 5.2, qd: [0.38, 0.58], early: 0.06, find: [1.4, 2.4], err: 30, memo: 0.6 },
+  hard: { react: [0.18, 0.32], speed: 1250, miss: 0.05, decoy: 0.02, wrong: 0.04, rate: 7.4, qd: [0.24, 0.36], early: 0.03, find: [0.8, 1.4], err: 10, memo: 0.85 },
 };
 const LVN = { easy: '🐣 簡單', normal: '⭐ 普通', hard: '🔥 厲害' };
 
@@ -741,6 +745,452 @@ CON.find = {
   targets(p) { return R.g.cells.map((c, i) => ({ x: c.x + c.w / 2, y: c.y + c.h / 2, ans: i === R.q.ans })); },
 };
 
+// =====================================================================
+// six newer contests (levels 8–13) — same rules as above: local coordinates, one shared seeded schedule
+// =====================================================================
+// the biggest square cells for n items inside rect r (last row centred)
+function fitGrid(r, n, max = 1e9) {
+  let best = null;
+  for (let c = 1; c <= n; c++) { const rows = Math.ceil(n / c), s = Math.min(r.w / c, r.h / rows, max); if (!best || s > best.s + 0.01) best = { c, rows, s }; }
+  const { c, rows, s } = best, oy = r.y + (r.h - s * rows) / 2, cells = [];
+  for (let i = 0; i < n; i++) { const row = Math.floor(i / c), inRow = row === rows - 1 ? n - row * c : c, ox = r.x + (r.w - s * inRow) / 2; cells.push({ x: ox + (i % c) * s, y: oy + row * s, w: s, h: s }); }
+  return { cells, s, c, rows };
+}
+const inCell = (c, lx, ly, pad = 0) => lx >= c.x + pad && lx <= c.x + c.w - pad && ly >= c.y + pad && ly <= c.y + c.h - pad;
+function rshuffle(a, rnd) { for (let i = a.length - 1; i > 0; i--) { const j = (rnd() * (i + 1)) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function shapePath(g, kind, cx, cy, r) {
+  g.beginPath();
+  if (kind === 'circle') g.arc(cx, cy, r, 0, 7);
+  else if (kind === 'star') { for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, q = i % 2 ? r * 0.45 : r * 1.05; g.lineTo(cx + Math.cos(a) * q, cy + Math.sin(a) * q); } g.closePath(); }
+  else if (kind === 'heart') { g.moveTo(cx, cy + r * 0.95); g.bezierCurveTo(cx - r * 1.5, cy - r * 0.05, cx - r * 0.65, cy - r * 1.2, cx, cy - r * 0.42); g.bezierCurveTo(cx + r * 0.65, cy - r * 1.2, cx + r * 1.5, cy - r * 0.05, cx, cy + r * 0.95); g.closePath(); }
+  else if (kind === 'square') g.roundRect(cx - r * 0.85, cy - r * 0.85, r * 1.7, r * 1.7, r * 0.25);
+  else { g.moveTo(cx, cy - r); g.lineTo(cx + r * 0.98, cy + r * 0.72); g.lineTo(cx - r * 0.98, cy + r * 0.72); g.closePath(); }
+}
+
+// ---- 8. 顏色快閃 ----
+const PAINT = [['#ff5a4e', '#b02a20'], ['#ffd23f', '#b38a00'], ['#4c9cf0', '#1d4f9e'], ['#4cc96a', '#1f6e35'], ['#a07cf2', '#4f2f9a'], ['#ff8c3a', '#a04510'], ['#ff8fbf', '#b03a70'], ['#8a5a34', '#4a2a10']];
+const SHAPES = ['circle', 'star', 'heart', 'square', 'tri'];
+CON.color = {
+  icon: '🎨', nm: '顏色快閃', cue: 'Same colour? Tap it! 🎨', dur: 40, need: 5,
+  geo() {
+    const A = AR(), a = A.w / A.h; let tg, area;
+    if (a > 1.6) { const tw = Math.min(A.h * 0.86, A.w * 0.3); tg = { x: 18 + tw / 2, y: A.y + A.h / 2, r: tw * 0.36 }; area = { x: tw + 36, y: A.y + 8, w: A.w - tw - 48, h: A.h - 16 }; }
+    else { const th = Math.min(A.h * 0.42, A.w * 0.5); tg = { x: HW / 2, y: A.y + 8 + th / 2, r: th * 0.36 }; area = { x: 12, y: A.y + th + 18, w: A.w - 24, h: A.h - th - 26 }; }
+    return { tg, area, key: `${HW}x${HH}` };
+  },
+  setup() { R.g = this.geo(); R.qn = 0; this.newQ(); },
+  relayout() { R.g = this.geo(); R.q.grid = fitGrid(R.g.area, R.q.opts.length, 170); },
+  newQ() {
+    const n = mode === 'slow' ? (R.qn < 3 ? 3 : 4) : (R.qn < 2 ? 3 : R.qn < 5 ? 4 : 5);
+    const opts = rshuffle(PAINT.map((_, i) => i), R.rnd).slice(0, n), ans = (R.rnd() * n) | 0, shape = SHAPES[(R.rnd() * SHAPES.length) | 0];
+    R.q = { opts, ans, shape, t: 0, show: 0.55, solved: null, id: ++R.seq, grid: fitGrid(R.g.area, n, 170) }; R.qn++;
+    for (const p of [0, 1]) { Object.assign(R.S[p], { wrong: new Set(), fz: 0, shake: -1, shT: 0 }); R.log.push({ p, id: R.q.id, t: +R.t.toFixed(4), opts: opts.join(','), ans, shape }); }
+  },
+  update(dt) {
+    const q = R.q; const was = q.t < q.show; q.t += dt; if (was && q.t >= q.show) gs('flash');
+    for (const p of [0, 1]) { const S = R.S[p]; S.fz = Math.max(0, S.fz - dt); S.shT += dt; }
+    if (q.solved) { q.solved.t += dt; if (q.solved.t > 1.0 && !this.over()) this.newQ(); }
+  },
+  tap(p, lx, ly) {
+    const S = R.S[p], q = R.q; if (q.solved || S.fz > 0 || q.t < q.show) return;
+    const i = q.grid.cells.findIndex(c => inCell(c, lx, ly, BIG[p] ? 0 : c.w * 0.05)); if (i < 0 || S.wrong.has(i)) return;
+    const c = q.grid.cells[i];
+    if (i === q.ans) { q.solved = { p, t: 0 }; addScore(p, 1, c.x + c.w / 2, c.y - 4, MG.pick(['Yes! 🎨', 'Right! ✅', 'Fast! ⚡'])); if (!SIM.on) mood(1 - p, 'wow', 0.8); }
+    else { S.wrong.add(i); S.fz = 0.7; S.shake = i; S.shT = 0; oops(p, c.x + c.w / 2, c.y - 4); }
+  },
+  over() { return R.S[0].score >= this.need || R.S[1].score >= this.need || (mode === 'race' && R.t >= this.dur); },
+  ai(p, b) {
+    const q = R.q, L = b.lv;
+    if (b.qid !== q.id) { b.qid = q.id; b.at = q.show + MG.rand(...L.qd) * 1.5 + 0.15; b.wAt = Math.random() < L.wrong ? b.at * 0.8 : null; }
+    if (q.solved || b.f.act || R.S[p].fz > 0) { if (q.solved) b.f.act = null; return; }
+    const cc = i => { const c = q.grid.cells[i]; return [c.x + c.w / 2, c.y + c.h / 2]; };
+    if (b.wAt != null && q.t >= b.wAt) { b.wAt = null; let w = (Math.random() * q.opts.length) | 0; if (w === q.ans) w = (w + 1) % q.opts.length; const [cx, cy] = cc(w); aim(b, cx, cy, (fx, fy) => CON.color.tap(p, fx, fy)); }
+    else if (q.t >= b.at) { const [cx, cy] = cc(q.ans); aim(b, cx, cy, (fx, fy) => CON.color.tap(p, fx, fy)); b.at = 1e9; }
+  },
+  bg(g, p) {
+    const A = AR(); g.fillStyle = p ? '#fff4f8' : '#f4fff0'; g.fillRect(0, A.y, HW, A.h);
+    let sd = 21 + p; const rnd = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+    for (let i = 0; i < HW * A.h / 6000; i++) { g.fillStyle = PAINT[(rnd() * PAINT.length) | 0][0]; g.globalAlpha = 0.13; dot(g, rnd() * HW, A.y + rnd() * A.h, 6 + rnd() * 16); }
+    g.globalAlpha = 1;
+  },
+  draw(p) {
+    const S = R.S[p], q = R.q, tg = R.g.tg, shown = q.t >= q.show;
+    // the colour card (an easel)
+    const cr = tg.r * 1.25;
+    x.fillStyle = 'rgba(0,0,0,.12)'; rr(x, tg.x - cr, tg.y - cr + 6, cr * 2, cr * 2, 24); x.fill();
+    x.fillStyle = '#fffdf3'; x.strokeStyle = COL[p].main; x.lineWidth = 4; rr(x, tg.x - cr, tg.y - cr, cr * 2, cr * 2, 24); x.fill(); x.stroke();
+    if (shown) {
+      const k = Math.min(1, (q.t - q.show) * 6), [c1, c2] = PAINT[q.opts[q.ans]], r = tg.r * (0.6 + 0.4 * k) * (1 + Math.sin(t * 4) * 0.03);
+      x.fillStyle = c1; x.strokeStyle = c2; x.lineWidth = 4; shapePath(x, q.shape, tg.x, tg.y, r); x.fill(); x.stroke();
+      x.fillStyle = 'rgba(255,255,255,.45)'; x.beginPath(); x.ellipse(tg.x - r * 0.35, tg.y - r * 0.4, r * 0.2, r * 0.11, -0.6, 0, 7); x.fill();
+    } else { const k = 1 + Math.sin(t * 14) * 0.08; txt('?', tg.x, tg.y + 4, tg.r * 1.2 * k, '#c8b88a', 'center', 900); }
+    q.grid.cells.forEach((c, i) => {
+      const [c1, c2] = PAINT[q.opts[i]], ok = i === q.ans, wrong = S.wrong.has(i), win = q.solved && ok;
+      let dx = 0; if (S.shake === i && S.shT < 0.4) dx = Math.sin(S.shT * 50) * 6 * (1 - S.shT / 0.4);
+      const pad = c.w * 0.08, bx = c.x + pad + dx, by = c.y + pad, bw = c.w - pad * 2;
+      x.globalAlpha = wrong || (q.solved && !ok) ? 0.3 : shown ? 1 : 0.55;
+      x.fillStyle = 'rgba(0,0,0,.14)'; rr(x, bx, by + 5, bw, bw, 18); x.fill();
+      x.fillStyle = win ? '#fff6c0' : '#ffffff'; x.strokeStyle = win ? '#e0a800' : '#e2cf9c'; x.lineWidth = win ? 5 : 3; rr(x, bx, by, bw, bw, 18); x.fill(); x.stroke();
+      x.fillStyle = c1; x.strokeStyle = c2; x.lineWidth = 3; shapePath(x, q.shape, bx + bw / 2, by + bw / 2, bw * 0.32); x.fill(); x.stroke();
+      x.globalAlpha = 1;
+      if (win && q.solved.p !== p) emo('👀', bx + bw - 6, by + 8, 22);
+    });
+    if (S.fz > 0) { x.fillStyle = 'rgba(255,255,255,.25)'; x.fillRect(0, HUD, HW, HH - HUD); }
+  },
+  targets(p) { const q = R.q; return q.grid.cells.map((c, i) => ({ x: c.x + c.w / 2, y: c.y + c.h / 2, ans: i === q.ans, ready: q.t >= q.show && !q.solved })); },
+};
+
+// ---- 9. 抓動物 ----
+const ZOO = ['🐶', '🐱', '🐰', '🐻', '🐼', '🐸', '🐷', '🐨', '🦊', '🐯', '🐮', '🐔', '🐧', '🐢', '🦁', '🐵'];
+CON.animal = {
+  icon: '🐾', nm: '抓動物', cue: 'Catch only this one! 🐾', dur: 30, goal: 10,
+  geo() {
+    const A = AR(), side = A.w / A.h > 1.9, ph = side ? 0 : clamp(A.h * 0.24, 60, 112), pw = side ? clamp(A.h * 0.62, 90, 170) : 0;
+    const top = A.y + ph + 6, n = (A.h - ph) > 250 ? 3 : 2, lh = (HH - 10 - top) / n;
+    return { A, ph, pw, lanes: Array.from({ length: n }, (_, k) => top + lh * (k + 0.5)), lh, fs: clamp(lh * 0.66, 34, 86), x0: pw ? pw + 20 : 0, key: `${HW}x${HH}` };
+  },
+  setup() {
+    R.g = this.geo(); R.pool = rshuffle(ZOO.slice(), R.rnd).slice(0, 5); R.tg = R.pool[0]; R.tgN = 0; R.tgT = 0; R.tgNext = 9; R.next = 0.4;
+    for (const p of [0, 1]) R.S[p].items = [];
+  },
+  relayout() { R.g = this.geo(); },
+  pos(p, it) { const g = R.g, w = HW - g.x0 + 2 * g.fs, u = it.u; return { x: it.dir > 0 ? g.x0 - g.fs + u * w : HW + g.fs - u * w, y: g.lanes[it.ln % g.lanes.length] + Math.abs(Math.sin(it.u * 30 + it.id)) * -8 }; },
+  gen() {
+    if (R.t >= R.tgNext) { R.tgNext += 9; R.tgN++; let n = R.pool[(R.rnd() * R.pool.length) | 0]; if (n === R.tg) n = R.pool[(R.pool.indexOf(n) + 1) % R.pool.length]; R.tg = n; R.tgT = 0; gs('flash'); for (const p of [0, 1]) mood(p, 'wow', 0.5); }
+    while (R.t >= R.next) {
+      const right = R.rnd() < 0.44, others = R.pool.filter(a => a !== R.tg), ch = right ? R.tg : others[(R.rnd() * others.length) | 0];
+      const crown = right && R.rnd() < 0.12, ln = (R.rnd() * 6) | 0, dir = R.rnd() < 0.5 ? 1 : -1, v = (mode === 'slow' ? 0.12 : 0.17 + prog() * 0.08) * (0.85 + R.rnd() * 0.3), id = ++R.seq;
+      for (const p of [0, 1]) { R.S[p].items.push({ id, ch, crown, ln, dir, v: v * (BIG[p] ? 0.75 : 1), u: 0, done: 0, bad: false }); R.log.push({ p, id, t: +R.t.toFixed(4), ch, ln, dir }); }
+      R.next += (mode === 'slow' ? 1.1 : 0.82 - prog() * 0.22) * (0.8 + R.rnd() * 0.4);
+    }
+  },
+  update(dt) {
+    R.tgT += dt;
+    for (const p of [0, 1]) {
+      const S = R.S[p];
+      for (const it of S.items) { if (it.done) { it.done += dt; if (it.bad) it.u += it.v * dt * 3; } else it.u += it.v * dt; }
+      S.items = S.items.filter(it => it.done ? it.done < 0.5 : it.u < 1.02);
+    }
+  },
+  tap(p, lx, ly) {
+    const S = R.S[p], rad = R.g.fs * (BIG[p] ? 0.85 : 0.65); let best = null, bd = 1e9;
+    for (const it of S.items) { if (it.done) continue; const q = this.pos(p, it), d = Math.hypot(lx - q.x, ly - q.y); if (d < rad && d < bd) { bd = d; best = it; } }
+    if (!best) { ps(p, 'whiff'); return; }
+    const q = this.pos(p, best); best.done = 0.0001;
+    if (best.ch === R.tg) { addScore(p, best.crown ? 2 : 1, q.x, q.y - R.g.fs * 0.6, best.crown ? 'Super! 👑' : MG.pick(['Got it! 🐾', 'Yes! ✅', 'Nice! 👍']), best.crown); ps(p, 'catch'); PX[p].burst(q.x, q.y, { n: 12, colors: ['#ffe14a', COL[p].main, '#fff'], shape: 'star', speed: 170, up: 60, size: 5, life: 0.6 }); }
+    else { best.bad = true; oops(p, q.x, q.y - R.g.fs * 0.6); }
+  },
+  ai(p, b, dt) {
+    if (b.f.act) return;
+    if (b.cool > 0) { b.cool -= dt; return; }
+    const S = R.S[p], L = b.lv; let best = null, bs = -1;
+    for (const it of S.items) {
+      if (it.done) continue;
+      if (it.react == null) { it.react = MG.rand(...L.react) + 0.2; it.wrong = Math.random() < L.wrong * 0.7; it.skip = Math.random() < L.miss * 1.6; }
+      if (it.skip) continue;
+      if (it.ch !== R.tg && !it.wrong) continue;
+      if (it.u > 0.9 || it.u / it.v < it.react) continue;
+      const sc = it.u + (it.crown ? 0.3 : 0); if (sc > bs) { bs = sc; best = it; }
+    }
+    if (!best) return;
+    const now = this.pos(p, best), travel = Math.hypot(now.x - b.f.x, now.y - b.f.y) / L.speed, w = HW - R.g.x0 + 2 * R.g.fs;
+    let tx = now.x + best.dir * best.v * w * travel; if (Math.random() < L.miss) tx += MG.pick([-1, 1]) * R.g.fs * 1.4;
+    aim(b, tx, R.g.lanes[best.ln % R.g.lanes.length], (fx, fy) => CON.animal.tap(p, fx, fy)); b.cool = MG.rand(0.08, 0.2);
+  },
+  bg(g, p) {
+    const A = AR(), gr = g.createLinearGradient(0, A.y, 0, HH); gr.addColorStop(0, '#c8f0a0'); gr.addColorStop(1, '#94d46a'); g.fillStyle = gr; g.fillRect(0, A.y, HW, A.h);
+    const G = R.g;
+    for (const ly of G.lanes) { g.fillStyle = 'rgba(214,180,120,.55)'; rr(g, -10, ly - G.lh * 0.18 + G.fs * 0.3, HW + 20, G.lh * 0.36, G.lh * 0.18); g.fill(); }
+    let sd = 31 + p; const rnd = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+    for (let i = 0; i < HW * A.h / 2600; i++) { const gx = rnd() * HW, gy = A.y + rnd() * A.h; g.strokeStyle = 'rgba(60,120,40,.3)'; g.lineWidth = 1.3; g.beginPath(); g.moveTo(gx, gy); g.lineTo(gx - 2, gy - 6); g.moveTo(gx + 3, gy); g.lineTo(gx + 4, gy - 5); g.stroke(); }
+  },
+  draw(p) {
+    const S = R.S[p], G = R.g;
+    for (const it of S.items) {
+      const q = this.pos(p, it); x.globalAlpha = it.done ? clamp(1 - it.done / 0.5, 0, 1) : 1;
+      x.save(); x.translate(q.x, q.y); if (it.dir < 0) x.scale(-1, 1); if (it.done && !it.bad) x.scale(1 + it.done, 1 + it.done);
+      x.fillStyle = 'rgba(0,0,0,.14)'; x.beginPath(); x.ellipse(0, G.fs * 0.42 - (q.y - G.lanes[it.ln % G.lanes.length]), G.fs * 0.36, G.fs * 0.1, 0, 0, 7); x.fill();
+      emo(it.ch, 0, 0, G.fs * (BIG[p] ? 1.12 : 1)); if (it.crown) emo('👑', 0, -G.fs * 0.55, G.fs * 0.42);
+      x.restore(); x.globalAlpha = 1;
+      if (it.bad && it.done) emo('💨', q.x - it.dir * G.fs * 0.6, q.y, G.fs * 0.5);
+    }
+    // the "catch this one" sign
+    const pul = R.tgT < 1.2 ? 1 + Math.sin(R.tgT * 18) * 0.08 * (1.2 - R.tgT) : 1;
+    let cx, cy, w, h;
+    if (G.pw) { w = G.pw; h = Math.min(G.A.h - 20, G.pw * 1.15); cx = 10 + w / 2; cy = G.A.y + G.A.h / 2; } else { h = G.ph - 8; w = Math.min(HW - 40, h * 2.4); cx = HW / 2; cy = G.A.y + 4 + h / 2; }
+    x.save(); x.translate(cx, cy); x.scale(pul, pul);
+    x.fillStyle = 'rgba(0,0,0,.14)'; rr(x, -w / 2, -h / 2 + 5, w, h, 18); x.fill();
+    x.fillStyle = '#fffdf3'; x.strokeStyle = COL[p].main; x.lineWidth = 4; rr(x, -w / 2, -h / 2, w, h, 18); x.fill(); x.stroke();
+    if (G.pw) { emo('🔍', 0, -h * 0.3, h * 0.2); emo(R.tg, 0, h * 0.08, h * 0.42); emo('👆', 0, h * 0.36, h * 0.16); }
+    else { emo('🔍', -w * 0.3, 2, h * 0.42); emo(R.tg, 0, 2, h * 0.72); emo('👆', w * 0.3, 2, h * 0.42); }
+    x.restore();
+  },
+  targets(p) { return R.S[p].items.filter(i => !i.done).map(i => ({ ...this.pos(p, i), ok: i.ch === R.tg, id: i.id })); },
+};
+
+// ---- 10. 拔河 ----
+CON.tug = {
+  icon: '🪢', nm: '拔河', cue: 'Tap tap tap! Pull! 🪢', dur: 30, win: 1,
+  setup() { R.pos = 0; R.vis = 0; R.end = false; for (const p of [0, 1]) Object.assign(R.S[p], { pull: 0, taps: 0 }); },
+  update(dt) { R.vis += (R.pos - R.vis) * Math.min(1, dt * 10); for (const p of [0, 1]) R.S[p].pull = Math.max(0, R.S[p].pull - dt * 4); },
+  tap(p) {
+    if (R.end) return;
+    const S = R.S[p], st = 0.042 * (BIG[p] ? 1.35 : 1);
+    R.pos = clamp(R.pos + (p ? -st : st), -1, 1); S.pull = 1; S.taps++; ps(p, 'puff', S.taps % 8); mood(p, 'wow', 0.15);
+    if (Math.abs(R.pos) >= 1) this.done(R.pos > 0 ? 0 : 1);
+  },
+  done(w) { R.end = true; if (w < 2) { const A = AR(); R.S[w].score = 1; addScore(w, 0, HW / 2, A.y + A.h * 0.4, 'Pulled! 💪', true); } },
+  val(p) { return R.S[p].score + (p ? -R.pos : R.pos) * 0.5; },
+  over() { if (!R.end && mode === 'race' && R.t >= this.dur) this.done(R.pos > 0.001 ? 0 : R.pos < -0.001 ? 1 : 2); return R.end; },
+  ai(p, b, dt) {
+    const A = AR();
+    if (!b.f.act) { b.f.tx = HW / 2 + 70; b.f.ty = A.y + A.h * 0.78; }
+    b.cool -= dt;
+    if (b.cool <= 0) { b.cool = 1 / b.lv.rate * MG.rand(0.7, 1.3); b.f.press = 0.1; b.f.y -= 6; if (!SIM.on) RIP[p].push({ x: b.f.x, y: b.f.y, life: 0.3 }); this.tap(p); }
+  },
+  bg(g, p) {
+    const A = AR(), gr = g.createLinearGradient(0, A.y, 0, HH); gr.addColorStop(0, '#bfeaff'); gr.addColorStop(0.28, '#e9f8ff'); gr.addColorStop(0.3, '#9ed873'); gr.addColorStop(1, '#78c052'); g.fillStyle = gr; g.fillRect(0, A.y, HW, A.h);
+    const mid = A.y + A.h * 0.5;
+    g.fillStyle = '#a9794a'; g.beginPath(); g.ellipse(HW / 2, mid, Math.min(HW * 0.36, 200), A.h * 0.06, 0, 0, 7); g.fill();
+    g.fillStyle = '#8d6036'; for (let i = 0; i < 6; i++) dot(g, HW / 2 + (i - 2.5) * 34, mid + Math.sin(i * 2) * 5, 5);
+    let sd = 41 + p; const rnd = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+    for (let i = 0; i < HW * A.h / 9000; i++) { const fx = rnd() * HW, fy = A.y + A.h * 0.32 + rnd() * A.h * 0.66, col = ['#fff', '#ff9cc2', '#ffe14a'][(rnd() * 3) | 0]; g.fillStyle = col; for (let k = 0; k < 5; k++) dot(g, fx + Math.cos(k * 1.257) * 3, fy + Math.sin(k * 1.257) * 3, 2.3); }
+  },
+  draw(p) {
+    const A = AR(), mid = A.y + A.h * 0.5, span = A.h * 0.3, me = p ? -R.vis : R.vis, rx = HW / 2, S = R.S[p], O = R.S[1 - p];
+    // my flag (near me) and theirs (far)
+    for (const [fy, c] of [[mid + span, COL[p]], [mid - span, COL[1 - p]]]) {
+      for (const sd of [-1, 1]) { const fx = rx + sd * Math.min(HW * 0.3, 170); x.strokeStyle = '#7a5a3a'; x.lineWidth = 3; x.beginPath(); x.moveTo(fx, fy + 12); x.lineTo(fx, fy - 26); x.stroke(); x.fillStyle = c.main; x.beginPath(); x.moveTo(fx, fy - 26); x.lineTo(fx + sd * 22, fy - 19); x.lineTo(fx, fy - 12); x.fill(); }
+      x.strokeStyle = c.main; x.setLineDash([10, 8]); x.lineWidth = 3; x.beginPath(); x.moveTo(rx - Math.min(HW * 0.3, 170), fy); x.lineTo(rx + Math.min(HW * 0.3, 170), fy); x.stroke(); x.setLineDash([]);
+    }
+    const shift = me * span, topY = A.y + A.h * 0.12 + shift, botY = HH - A.h * 0.12 + shift;
+    // rope
+    x.strokeStyle = '#c9944a'; x.lineWidth = 9; x.lineCap = 'round'; x.beginPath(); x.moveTo(rx, topY); x.lineTo(rx, botY); x.stroke();
+    x.strokeStyle = '#8a5a22'; x.lineWidth = 2; for (let y0 = topY; y0 < botY; y0 += 14) { x.beginPath(); x.moveTo(rx - 4, y0); x.lineTo(rx + 4, y0 + 7); x.stroke(); }
+    // ribbon in the middle of the rope
+    const ry = mid + shift; x.fillStyle = '#ff4f6e'; x.strokeStyle = '#a8203a'; x.lineWidth = 2;
+    for (const sd of [-1, 1]) { x.beginPath(); x.moveTo(rx, ry); x.lineTo(rx + sd * 26, ry - 14); x.lineTo(rx + sd * 26, ry + 14); x.closePath(); x.fill(); x.stroke(); }
+    dot(x, rx, ry, 7); x.stroke();
+    // the two pullers
+    const rMe = clamp(A.h * 0.12, 24, 54), rOp = rMe * 0.72, lean = S.pull * 0.12;
+    drawChar(1 - p, rx, topY - rOp * 0.2, rOp, O.pull > 0.3 ? 'wow' : MOOD[1 - p].m, -O.pull * 0.1, { arms: 'up' });
+    drawChar(p, rx, botY - rMe * 0.05, rMe, S.pull > 0.3 ? 'wow' : MOOD[p].m, lean, { arms: 'up' });
+    if (R.t < 3 && !BOT[p]) { const kk = Math.abs(Math.sin(t * 6)); emo('👆', rx + rMe * 1.8, botY - kk * 12, 36); }
+  },
+  targets() { const A = AR(); return [{ x: HW / 2, y: A.y + A.h * 0.75 }]; },
+};
+
+// ---- 11. 翻牌配對 ----
+const MEMP = ['🐶', '🐱', '🐰', '🐻', '🐼', '🐸', '🐷', '🦊', '🐯', '🐮', '🐧', '🐢', '🦋', '🐞', '🍎', '🍓', '🍌', '🍇', '⭐', '🌈', '🚗', '🎈', '🍩', '🌻'];
+CON.memory = {
+  icon: '🃏', nm: '翻牌配對', cue: 'Find the pairs! 🃏', dur: 60, need: 5,
+  geo() { const A = AR(); return { grid: fitGrid({ x: 10, y: A.y + 8, w: A.w - 20, h: A.h - 16 }, 10, 150), key: `${HW}x${HH}` }; },
+  setup() {
+    R.g = this.geo(); const pics = rshuffle(MEMP.slice(), R.rnd).slice(0, 5); R.deck = rshuffle(pics.concat(pics), R.rnd);
+    for (const p of [0, 1]) Object.assign(R.S[p], { st: R.deck.map(() => 0), fa: R.deck.map(() => 1), open: [], back: 0, peek: (BIG[p] ? 2.8 : 1.6) + 0.4 });
+    R.log.push({ p: 0, t: 0, deck: R.deck.join('') });
+  },
+  relayout() { R.g = this.geo(); },
+  update(dt) {
+    for (const p of [0, 1]) {
+      const S = R.S[p]; if (S.peek > 0) S.peek -= dt;
+      if (S.back > 0) { S.back -= dt; if (S.back <= 0) { for (const i of S.open) if (S.st[i] === 1) S.st[i] = 0; S.open = []; } }
+      for (let i = 0; i < S.st.length; i++) { const tg = S.st[i] || S.peek > 0 ? 1 : 0; S.fa[i] += clamp(tg - S.fa[i], -dt * 6, dt * 6); }
+    }
+  },
+  tap(p, lx, ly) {
+    const S = R.S[p]; if (S.peek > 0 || S.back > 0 || S.open.length >= 2) return;
+    const i = R.g.grid.cells.findIndex(c => inCell(c, lx, ly, BIG[p] ? 0 : c.w * 0.05)); if (i < 0 || S.st[i]) return;
+    S.st[i] = 1; S.open.push(i); ps(p, 'tap');
+    if (BOT[p] && BOT[p].saw) BOT[p].saw(i);
+    if (S.open.length === 2) {
+      const [a, b] = S.open, ca = R.g.grid.cells[a], cb = R.g.grid.cells[b];
+      if (R.deck[a] === R.deck[b]) { S.st[a] = S.st[b] = 2; S.open = []; addScore(p, 1, (ca.x + cb.x + ca.w) / 2, Math.min(ca.y, cb.y), MG.pick(['Match! 🎉', 'Pair! ✨', 'Yes! ✅'])); }
+      else { S.back = 0.85; if (!SIM.on) mood(p, 'ouch', 0.5); }
+    }
+  },
+  over() { return R.S[0].score >= this.need || R.S[1].score >= this.need || (mode === 'race' && R.t >= this.dur); },
+  ai(p, b, dt) {
+    const S = R.S[p], L = b.lv, memo = L.memo;
+    if (!b.mem || b.memR !== R) { b.memR = R; b.peeked = false; b.mem = new Map(); b.saw = i => { if (Math.random() < memo) b.mem.set(i, R.deck[i]); }; b.cool = 0.3; }
+    if (S.peek > 0) { if (!b.peeked && S.peek < 0.5) { b.peeked = true; R.deck.forEach((_, i) => { if (Math.random() < memo * 0.4) b.mem.set(i, R.deck[i]); }); } return; }
+    b.peeked = false;
+    if (b.f.act || S.back > 0 || S.open.length >= 2) return;
+    if (b.cool > 0) { b.cool -= dt; return; }
+    const free = i => !S.st[i], cand = R.deck.map((_, i) => i).filter(free);
+    let pick = -1;
+    if (S.open.length === 1) { const o = S.open[0]; for (const [i, v] of b.mem) if (i !== o && free(i) && v === R.deck[o]) pick = i; }
+    else { const seen = {}; for (const [i, v] of b.mem) { if (!free(i)) continue; if (seen[v] != null) { pick = seen[v]; break; } seen[v] = i; } }
+    if (pick < 0) { const unk = cand.filter(i => !b.mem.has(i) && !S.open.includes(i)); const pool = unk.length ? unk : cand.filter(i => !S.open.includes(i)); pick = pool[(Math.random() * pool.length) | 0]; }
+    if (pick == null || pick < 0) return;
+    const c = R.g.grid.cells[pick]; aim(b, c.x + c.w / 2, c.y + c.h / 2, (fx, fy) => CON.memory.tap(p, fx, fy)); b.cool = MG.rand(...L.react) * 1.1;
+  },
+  bg(g, p) {
+    const A = AR(); g.fillStyle = p ? '#fff1e8' : '#eefbe6'; g.fillRect(0, A.y, HW, A.h);
+    const s = 34; g.fillStyle = p ? 'rgba(255,150,180,.13)' : 'rgba(120,200,110,.13)';
+    for (let yy = A.y, r = 0; yy < HH; yy += s, r++) for (let xx = (r % 2) * s; xx < HW; xx += s * 2) g.fillRect(xx, yy, s, s);
+  },
+  draw(p) {
+    const S = R.S[p], G = R.g.grid;
+    G.cells.forEach((c, i) => {
+      const pad = c.w * 0.07, w = c.w - pad * 2, f = S.fa[i], sx = Math.abs(Math.cos(f * Math.PI)), face = f > 0.5, done = S.st[i] === 2;
+      x.save(); x.translate(c.x + c.w / 2, c.y + c.h / 2); x.scale(Math.max(0.04, sx), 1);
+      x.fillStyle = 'rgba(0,0,0,.14)'; rr(x, -w / 2, -w / 2 + 5, w, w, 16); x.fill();
+      if (face) {
+        x.fillStyle = done ? '#fff6c0' : '#ffffff'; x.strokeStyle = done ? '#e0a800' : COL[p].main; x.lineWidth = done ? 5 : 3; rr(x, -w / 2, -w / 2, w, w, 16); x.fill(); x.stroke();
+        emo(R.deck[i], 0, 2, w * 0.58);
+      } else {
+        const gr = x.createLinearGradient(0, -w / 2, 0, w / 2); gr.addColorStop(0, COL[p].bub[1]); gr.addColorStop(1, COL[p].main);
+        x.fillStyle = gr; x.strokeStyle = COL[p].dark; x.lineWidth = 3; rr(x, -w / 2, -w / 2, w, w, 16); x.fill(); x.stroke();
+        x.fillStyle = 'rgba(255,255,255,.55)'; star5(x, 0, 0, w * 0.2, w * 0.09); x.fill();
+      }
+      x.restore();
+    });
+    if (S.peek > 0) { const k = clamp(S.peek / 0.4, 0, 1); x.globalAlpha = 0.6 + 0.4 * Math.sin(t * 8); emo('👀', HW - 34, HUD + 30, 30); x.globalAlpha = 1; void k; }
+  },
+  targets(p) { const S = R.S[p]; return R.g.grid.cells.map((c, i) => ({ x: c.x + c.w / 2, y: c.y + c.h / 2, pic: R.deck[i], st: S.st[i] })); },
+};
+
+// ---- 12. 連連看 ----
+const DOTSH = [
+  { e: '🔺', c: '#ff8a5a', pts: [[0, -0.95], [0.9, 0.75], [-0.9, 0.75]] },
+  { e: '🟦', c: '#4c9cf0', pts: [[-0.8, -0.8], [0.8, -0.8], [0.8, 0.8], [-0.8, 0.8]] },
+  { e: '💎', c: '#5ad0f0', pts: [[0, -1], [0.75, -0.25], [0, 1], [-0.75, -0.25]] },
+  { e: '⭐', c: '#ffd23f', pts: [0, 2, 4, 1, 3].map(k => [Math.sin(k * 1.2566) * 0.95, -Math.cos(k * 1.2566) * 0.95 + 0.08]) },
+  { e: '🏠', c: '#ff6b5e', pts: [[-0.75, 0.9], [-0.75, -0.05], [0, -0.9], [0.75, -0.05], [0.75, 0.9]] },
+  { e: '❤️', c: '#ff4f7a', pts: [[0, 0.95], [-0.9, 0.0], [-0.72, -0.68], [-0.25, -0.78], [0, -0.38], [0.25, -0.78], [0.72, -0.68], [0.9, 0.0]] },
+  { e: '🐟', c: '#ff9f3a', pts: [[-0.95, 0], [-0.35, -0.55], [0.3, -0.42], [0.95, -0.8], [0.95, 0.8], [0.3, 0.42], [-0.35, 0.55]] },
+  { e: '⛵', c: '#8fd0ff', pts: [[-0.95, 0.35], [0.95, 0.35], [0.6, 0.85], [-0.6, 0.85]] },
+];
+CON.dots = {
+  icon: '✏️', nm: '連連看', cue: 'Connect 1 → 2 → 3! ✏️', dur: 45, need: 3,
+  geo() { const A = AR(), s = Math.min(A.w - 30, A.h - 24); return { cx: HW / 2, cy: A.y + A.h / 2, r: s * 0.42, dr: clamp(s * 0.06, 17, 30), key: `${HW}x${HH}` }; },
+  setup() {
+    R.g = this.geo(); const easy = rshuffle([0, 1, 2, 7], R.rnd), mid = rshuffle([3, 4], R.rnd), hard = rshuffle([5, 6], R.rnd);
+    R.order = [easy[0], mid[0], hard[0], easy[1], mid[1], hard[1], easy[2], easy[3]];
+    for (const p of [0, 1]) Object.assign(R.S[p], { k: 0, n: 0, doneT: 0, wig: -1, wigT: 0, idle: 0 });
+    R.log.push({ p: 0, t: 0, order: R.order.join(',') });
+  },
+  relayout() { R.g = this.geo(); },
+  shape(p) { return DOTSH[R.order[R.S[p].k % R.order.length]]; },
+  dot(p, i) { const g = R.g, sh = this.shape(p), q = sh.pts[i]; return { x: g.cx + q[0] * g.r, y: g.cy + q[1] * g.r }; },
+  update(dt) {
+    for (const p of [0, 1]) {
+      const S = R.S[p]; S.wigT += dt; S.idle += dt;
+      if (S.doneT > 0) { S.doneT -= dt; if (S.doneT <= 0 && !this.over()) { S.k++; S.n = 0; } }
+    }
+  },
+  hit(p, lx, ly, tapped) {
+    const S = R.S[p]; if (S.doneT > 0) return;
+    const sh = this.shape(p), rad = R.g.dr * (BIG[p] ? 2.3 : 1.8), nx = this.dot(p, S.n);
+    if (Math.hypot(lx - nx.x, ly - nx.y) < rad) {
+      S.n++; S.idle = 0; ps(p, 'tap'); if (!SIM.on) PX[p].burst(nx.x, nx.y, { n: 6, colors: [sh.c, '#fff'], speed: 120, up: 20, size: 4, life: 0.4, shape: 'star', grav: 100 });
+      if (S.n >= sh.pts.length) { S.doneT = 1.1; addScore(p, 1, R.g.cx, R.g.cy - R.g.r - 4, `Yay! ${sh.e}`); }
+      return;
+    }
+    if (tapped) { const j = sh.pts.findIndex((_, i) => i >= S.n && (() => { const d = this.dot(p, i); return Math.hypot(lx - d.x, ly - d.y) < rad; })()); if (j >= 0) { S.wig = j; S.wigT = 0; ps(p, 'whiff'); } }
+  },
+  tap(p, lx, ly) { this.hit(p, lx, ly, true); },
+  move(p, lx, ly) { this.hit(p, lx, ly, false); },
+  over() { return R.S[0].score >= this.need || R.S[1].score >= this.need || (mode === 'race' && R.t >= this.dur); },
+  ai(p, b, dt) {
+    const S = R.S[p], L = b.lv;
+    if (b.f.act || S.doneT > 0) return;
+    if (b.cool > 0) { b.cool -= dt; return; }
+    const d = this.dot(p, S.n); let tx = d.x, ty = d.y;
+    if (Math.random() < L.miss * 0.8) { const a = MG.rand(0, 6.28); tx += Math.cos(a) * R.g.dr * 2.6; ty += Math.sin(a) * R.g.dr * 2.6; }
+    aim(b, tx, ty, (fx, fy) => CON.dots.tap(p, fx, fy)); b.cool = MG.rand(...L.qd) * 0.55;
+  },
+  bg(g, p) {
+    const A = AR(); g.fillStyle = '#fffdf6'; g.fillRect(0, A.y, HW, A.h);
+    g.strokeStyle = p ? 'rgba(240,106,158,.12)' : 'rgba(60,184,90,.12)'; g.lineWidth = 1.5;
+    for (let yy = A.y + 20; yy < HH; yy += 28) { g.beginPath(); g.moveTo(0, yy); g.lineTo(HW, yy); g.stroke(); }
+  },
+  draw(p) {
+    const S = R.S[p], sh = this.shape(p), n = sh.pts.length, P = sh.pts.map((_, i) => this.dot(p, i)), dr = R.g.dr * (BIG[p] ? 1.25 : 1), fin = S.doneT > 0;
+    // faint guide
+    x.strokeStyle = 'rgba(150,140,110,.35)'; x.lineWidth = 3; x.setLineDash([6, 10]); x.beginPath(); P.forEach((q, i) => i ? x.lineTo(q.x, q.y) : x.moveTo(q.x, q.y)); x.closePath(); x.stroke(); x.setLineDash([]);
+    if (fin) { const k = clamp((1.1 - S.doneT) * 4, 0, 1); x.globalAlpha = 0.85 * k; x.fillStyle = sh.c; x.beginPath(); P.forEach((q, i) => i ? x.lineTo(q.x, q.y) : x.moveTo(q.x, q.y)); x.closePath(); x.fill(); x.globalAlpha = 1; emo(sh.e, R.g.cx, R.g.cy, R.g.r * 0.7 * (0.6 + 0.4 * k)); }
+    // lines done so far
+    x.strokeStyle = COL[p].main; x.lineWidth = Math.max(6, dr * 0.42); x.lineCap = 'round'; x.lineJoin = 'round';
+    if (S.n > 1 || fin) { x.beginPath(); for (let i = 0; i < Math.min(S.n, n); i++) i ? x.lineTo(P[i].x, P[i].y) : x.moveTo(P[i].x, P[i].y); if (fin) x.closePath(); x.stroke(); }
+    // dots
+    P.forEach((q, i) => {
+      const done = i < S.n, next = i === S.n && !fin; let dx = 0;
+      if (S.wig === i && S.wigT < 0.35) dx = Math.sin(S.wigT * 50) * 5;
+      if (next) { const k = (t * 1.6) % 1; x.strokeStyle = `rgba(255,200,40,${0.9 - k * 0.9})`; x.lineWidth = 5; x.beginPath(); x.arc(q.x, q.y, dr * (1.2 + k * 0.9), 0, 7); x.stroke(); }
+      x.fillStyle = done ? COL[p].main : next ? '#fff6c0' : '#ffffff'; x.strokeStyle = done ? COL[p].dark : next ? '#e0a800' : '#b8a888'; x.lineWidth = 3;
+      x.beginPath(); x.arc(q.x + dx, q.y, dr, 0, 7); x.fill(); x.stroke();
+      txt(String(i + 1), q.x + dx, q.y + 1, dr * 1.05, done ? '#fff' : '#5a4a2a', 'center', 900);
+    });
+    if (S.n === 0 && !fin && S.idle > 1.2 && !BOT[p]) { const q = P[0], kk = Math.abs(Math.sin(t * 6)); emo('👆', q.x + dr * 0.6, q.y + dr * 1.6 + kk * 8, 32); }
+  },
+  targets(p) { const S = R.S[p]; return this.shape(p).pts.map((_, i) => ({ ...this.dot(p, i), next: i === S.n, done: i < S.n })); },
+};
+
+// ---- 13. 賽跑 ----
+CON.run = {
+  icon: '👣', nm: '賽跑', cue: 'Left, right, left, right! 👣', dur: 30, win: 1,
+  geo() {
+    const A = AR(), bh = clamp(A.h * 0.34, 70, 150) * 1, bw = Math.min(A.w * 0.4, bh * 1.35);
+    const feet = [{ x: HW / 2 - bw - 12, y: HH - bh - 10, w: bw, h: bh }, { x: HW / 2 + 12, y: HH - bh - 10, w: bw, h: bh }];
+    const avail = A.h - bh - 30, th = Math.min(avail, 230);
+    return { feet, tr: { x: 14, y: A.y + 8 + (avail - th) * 0.5, w: A.w - 28, h: th }, key: `${HW}x${HH}` };
+  },
+  setup() { R.g = this.geo(); R.end = false; for (const p of [0, 1]) Object.assign(R.S[p], { d: 0, vis: 0, next: 0, hop: 0, wig: -1, wigT: 9 }); },
+  relayout() { R.g = this.geo(); },
+  update(dt) { for (const p of [0, 1]) { const S = R.S[p]; S.vis += (S.d - S.vis) * Math.min(1, dt * 9); S.hop = Math.max(0, S.hop - dt * 5); S.wigT += dt; } },
+  step(p, foot) {
+    const S = R.S[p]; if (R.end) return;
+    if (foot === S.next || BIG[p]) { S.d = Math.min(1, S.d + (1 / 38) * (BIG[p] ? 1.2 : 1)); S.next = 1 - foot; S.hop = 1; ps(p, 'puff', Math.floor(S.d * 8)); mood(p, 'wow', 0.15); }
+    else { S.d = Math.min(1, S.d + 1 / 120); S.wig = foot; S.wigT = 0; ps(p, 'whiff'); }
+    if (S.d >= 1) { R.end = true; R.S[p].score = 1; const tr = R.g.tr; addScore(p, 0, tr.x + tr.w * 0.7, tr.y + tr.h * 0.5, 'Finish! 🏁', true); }
+  },
+  tap(p, lx) { this.step(p, lx < HW / 2 ? 0 : 1); },
+  val(p) { return R.S[p].score + R.S[p].d * 0.5; },
+  over() {
+    if (!R.end && mode === 'race' && R.t >= this.dur) { R.end = true; const a = R.S[0].d, b = R.S[1].d; if (a > b) R.S[0].score = 1; else if (b > a) R.S[1].score = 1; }
+    return R.end;
+  },
+  ai(p, b, dt) {
+    const S = R.S[p], f = R.g.feet;
+    b.cool -= dt;
+    const foot = S.next, tgt = f[foot];
+    if (!b.f.act) { b.f.tx = tgt.x + tgt.w / 2; b.f.ty = tgt.y + tgt.h / 2; }
+    if (b.cool <= 0) { b.cool = 1 / (b.lv.rate * 1.05) * MG.rand(0.75, 1.25); const wrong = Math.random() < b.lv.miss * 0.6; const ft = wrong ? 1 - foot : foot; b.f.press = 0.1; b.f.x = f[ft].x + f[ft].w / 2; if (!SIM.on) RIP[p].push({ x: b.f.x, y: b.f.y, life: 0.3 }); this.step(p, ft); }
+  },
+  bg(g, p) {
+    const A = AR(), G = R.g, tr = G.tr; g.fillStyle = '#9ed873'; g.fillRect(0, A.y, HW, A.h);
+    let sd = 51 + p; const rnd = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+    for (let i = 0; i < HW * A.h / 5000; i++) { const fx = rnd() * HW, fy = A.y + rnd() * A.h; if (fy > tr.y - 8 && fy < tr.y + tr.h + 8) continue; const col = ['#fff', '#ff9cc2', '#ffe14a'][(rnd() * 3) | 0]; g.fillStyle = col; for (let k = 0; k < 5; k++) dot(g, fx + Math.cos(k * 1.257) * 3, fy + Math.sin(k * 1.257) * 3, 2.3); g.fillStyle = '#f39a12'; dot(g, fx, fy, 1.6); }
+    g.fillStyle = '#e8875a'; rr(g, tr.x, tr.y, tr.w, tr.h, 14); g.fill();
+    g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = 3; g.beginPath(); g.moveTo(tr.x + 8, tr.y + tr.h / 2); g.lineTo(tr.x + tr.w - 8, tr.y + tr.h / 2); g.stroke();
+    const fx = tr.x + tr.w - 34; for (let k = 0; k < Math.ceil(tr.h / 10); k++) for (let j = 0; j < 2; j++) { g.fillStyle = (k + j) % 2 ? '#222' : '#fff'; g.fillRect(fx + j * 10, tr.y + k * 10, 10, Math.min(10, tr.h - k * 10)); }
+    g.fillStyle = 'rgba(255,255,255,.9)'; g.fillRect(tr.x + 40, tr.y, 4, tr.h);
+  },
+  draw(p) {
+    const G = R.g, tr = G.tr, S = R.S[p], O = R.S[1 - p], lane = tr.h / 2, r = clamp(lane * 0.34, 14, 40);
+    const px = d => tr.x + 42 + d * (tr.w - 42 - 52);
+    emo('🏁', tr.x + tr.w - 24, tr.y - 2, 26);
+    drawChar(1 - p, px(O.vis), tr.y + lane * 0.62 - O.hop * 8, r * 0.85, O.hop > 0.3 ? 'wow' : 'happy', -O.hop * 0.08, { arms: 'up' });
+    drawChar(p, px(S.vis), tr.y + lane * 1.62 - S.hop * 10, r, S.hop > 0.3 ? 'wow' : MOOD[p].m, -S.hop * 0.08, { arms: 'up' });
+    // the two foot buttons
+    G.feet.forEach((f, i) => {
+      const on = S.next === i && !R.end; let dx = 0; if (S.wig === i && S.wigT < 0.3) dx = Math.sin(S.wigT * 50) * 5;
+      x.fillStyle = 'rgba(0,0,0,.16)'; rr(x, f.x + dx, f.y + 6, f.w, f.h, 22); x.fill();
+      x.fillStyle = on ? '#fff6c0' : '#ffffff'; x.strokeStyle = on ? '#e0a800' : COL[p].main; x.lineWidth = on ? 6 : 3; rr(x, f.x + dx, f.y, f.w, f.h, 22); x.fill(); x.stroke();
+      const cx = f.x + f.w / 2 + dx, cy = f.y + f.h / 2 + 6, s = Math.min(f.w, f.h) * 0.34;
+      x.save(); x.translate(cx, cy); if (i === 0) x.scale(-1, 1);
+      x.fillStyle = on ? COL[p].main : '#d8cdb0';
+      x.beginPath(); x.ellipse(s * 0.1, s * 0.25, s * 0.42, s * 0.62, 0.15, 0, 7); x.fill();
+      [[-0.32, -0.62, 0.16], [-0.05, -0.75, 0.14], [0.2, -0.7, 0.12], [0.4, -0.55, 0.1], [0.55, -0.35, 0.09]].forEach(([a, b2, rr2]) => dot(x, a * s, b2 * s, rr2 * s));
+      x.restore();
+      if (on) { const k = (t * 2) % 1; x.strokeStyle = `rgba(255,200,40,${0.8 - k * 0.8})`; x.lineWidth = 5; rr(x, f.x - k * 8, f.y - k * 8, f.w + k * 16, f.h + k * 16, 26); x.stroke(); }
+    });
+  },
+  targets(p) { const S = R.S[p]; return R.g.feet.map((f, i) => ({ x: f.x + f.w / 2, y: f.y + f.h / 2, next: i === S.next })); },
+};
+
 // ---------- the pink friend wears a bow instead of the leaf ----------
 function drawChar(p, cx, cy, r, md = 'happy', sq = 0, o = {}) {
   MG.puPu(x, cx, cy, r, md, sq, { pal: COL[p].pal, noLeaf: p === 1, ...o });
@@ -764,7 +1214,24 @@ function beginRound() {
   newRound(match.list[match.idx]);
   for (const p of [0, 1]) { FL[p] = []; PX[p].clear(); RIP[p] = []; READY[p] = false; mood(p, 'happy', 0); if (BOT[p]) { BOT[p].lv = withForm(BOT[p].base); BOT[p].f.act = null; BOT[p].tgt = null; BOT[p].cool = 0.4; BOT[p].qid = -1; } }
   state = 'intro'; phT = 0; bgKey[0] = bgKey[1] = ''; gs('whoosh'); hud(true);
+  // the first time a new contest (or the tournament) shows up, explain it once — the round waits behind the panel
+  const news = [];
+  if (lvl === LV_CUP && match.idx === 0 && !MG.store.get('duel.seen.cup', false)) news.push('cup');
+  if (NEWS[R.cid] && !MG.store.get('duel.seen.' + R.cid, false)) news.push(R.cid);
+  if (news.length) {
+    news.forEach(k => MG.store.set('duel.seen.' + k, true));
+    MG.panel({ title: news.map(k => NEWS[k][0]).join('＋'), html: news.map(k => `<p>${NEWS[k][1]}</p>`).join(''), buttons: [{ label: '知道了，開始！', on: () => MG.hide() }] });
+  }
 }
+const NEWS = {
+  cup: ['🏆 大賽', '大賽一共 <b>7 回合</b>，新的和舊的比賽混在一起。贏最多回合的人拿到大獎盃！'],
+  color: ['🎨 顏色快閃', '上面會變出一個有顏色的圖形，趕快在下面找到<b>一樣顏色</b>的那一個點下去！先點對的人得分，點錯會停一下下。'],
+  animal: ['🐾 抓動物', '牌子上畫的是要抓的動物。動物會從旁邊跑過去，<b>只點牌子上的那一種</b>！牌子有時候會換別的動物喔。'],
+  tug: ['🪢 拔河', '一直點、一直點，把繩子拉到你這邊！紅色蝴蝶結過了你那邊的旗子就贏了。'],
+  memory: ['🃏 翻牌配對', '一開始卡片會先翻開給你看一下下，<b>記住它們</b>！然後一次翻兩張，一樣的就配成一對。先配完的人贏。'],
+  dots: ['✏️ 連連看', '照 1、2、3 的順序點圓點（也可以用手指一路畫過去），連完就會變出一個圖形！發亮的圓點就是下一個。'],
+  run: ['👣 賽跑', '下面有兩隻腳，<b>左、右、左、右</b>輪流點，噗噗就會往前跑！發亮的那隻腳是下一步。先跑到終點的人贏。'],
+};
 function playStep(dt) {
   R.t += dt;
   const C = R.C;
@@ -800,24 +1267,31 @@ function finalPanel() {
   state = 'over';
   const nm = names(), multi = match.list.length > 1, w = matchWinner(), cpu = BOT[1] && !BOT[0];
   const a = multi ? match.wins[0] : R.S[0].score, b = multi ? match.wins[1] : R.S[1].score;
-  const title = w === 2 ? '平手！兩個都好棒 🤝' : cpu ? (w === 0 ? '你贏了！🏆' : '電腦噗噗贏了！') : `${nm[w]}贏了！🏆`;
+  const title = (lvl === LV_CUP && w < 2 ? '大賽冠軍：' : '') + (w === 2 ? '平手！兩個都好棒 🤝' : cpu ? (w === 0 ? '你贏了！🏆' : '電腦噗噗贏了！') : `${nm[w]}贏了！🏆`);
   const rows = multi ? `<div class="du-sum">${match.res.map((r, i) => `<span>${i + 1}. ${CON[r.cid].icon} ${CON[r.cid].nm}</span><span>${r.w === 2 ? '🤝 平手' : `${COL[r.w].ic} ${nm[r.w]}`}（${r.s[0]}:${r.s[1]}）</span>`).join('')}</div>` : '';
   const cheer = w === 2 ? '<p>一樣厲害！大家都拿到星星 ⭐</p>' : cpu ? (w === 0 ? `<p class="new">打贏 ${LVN[who]} 的電腦噗噗！^_^</p>` : '<p>差一點點！再試一次一定可以 💪</p>') : `<p>${nm[1 - w]}也好棒，再來一局吧 💪</p>`;
   const nextLv = cpu && w === 0 && who !== 'hard' ? (who === 'easy' ? 'normal' : 'hard') : null;
   MG.panel({
     title,
-    html: `<div class="du-big">${COL[0].ic} ${a} <small>:</small> ${b} ${COL[1].ic}</div>${multi ? '<p>5 回合比賽，贏的回合數</p>' : `<p>${CON[R.cid].icon} ${CON[R.cid].nm}</p>`}${rows}${cheer}` +
+    html: `<div class="du-big">${COL[0].ic} ${a} <small>:</small> ${b} ${COL[1].ic}</div>${multi ? `<p>${lvl === LV_CUP ? '🏆 大賽 ' : ''}${match.list.length} 回合比賽，贏的回合數</p>` : `<p>${CON[R.cid].icon} ${CON[R.cid].nm}</p>`}${rows}${cheer}` +
       `<p>拿到的星星：${COL[0].ic} ⭐×${match.stars[0]}　${COL[1].ic} ⭐×${match.stars[1]}</p><p class="du-rec">一起玩了 ${ST.rounds} 回合</p>`,
     buttons: [
       ...(nextLv ? [{ label: `挑戰${LVN[nextLv]}`, on: () => { who = nextLv; MG.store.set('duel.pick.who', nextLv); startMatch(); } }] : []),
-      { label: multi ? '再來 5 回合' : '再玩一次', alt: !!nextLv, on: () => startMatch() },
+      { label: multi ? (lvl === LV_CUP ? '再比一次大賽' : `再來 ${match.list.length} 回合`) : '再玩一次', alt: !!nextLv, on: () => startMatch() },
       { label: '換比賽', alt: true, on: menu },
     ],
   });
 }
+// 🏆 tournament: 7 rounds — 4 of the newer contests and 3 of the first ones, mixed (never the same kind twice in a row)
+function cupList() {
+  const a = MG.shuffle(NEW_IDS.slice()).slice(0, 4), b = MG.shuffle(IDS.slice()).slice(0, 3), out = [];
+  const pool = MG.shuffle(a.concat(b));
+  while (pool.length) { const i = pool.findIndex(c => !out.length || (NEW_IDS.includes(c) !== NEW_IDS.includes(out[out.length - 1])) ); out.push(pool.splice(i < 0 ? 0 : i, 1)[0]); }
+  return out;
+}
 function startMatch() {
   BOT = [null, who !== 'p2' ? mkBot(AI[who]) : null];
-  const list = lvl === 7 ? MG.shuffle(IDS.slice()).slice(0, 5) : [IDS[lvl - 1]];
+  const list = lvl === LV_RANDOM ? MG.shuffle(ALL_IDS.slice()).slice(0, 5) : lvl === LV_CUP ? cupList() : [cidOf(lvl) || IDS[0]];
   match = { list, idx: 0, wins: [0, 0], draws: 0, res: [], stars: [0, 0] };
   MG.hide(); beginRound();
   if (LAY === 'side' && isTouch && innerHeight > innerWidth) MG.toast('📱 把手機橫著拿，左右各一半 ↔️', 2600);
@@ -836,7 +1310,7 @@ function hud(force) {
 }
 function menu() {
   state = 'menu'; R = null; match = null;
-  if (MG.store.get('duel.pickLevel', null) == null) MG.store.set('duel.pickLevel', 7);
+  if (MG.store.get('duel.pickLevel', null) == null) MG.store.set('duel.pickLevel', LV_RANDOM);
   const l0 = MG.store.get('duel.pick.lay', 'face'); if ((l0 === 'side' ? 'side' : 'face') !== LAY) { LAY = l0 === 'side' ? 'side' : 'face'; refit(); }
   const cpuW = ['easy', 'normal', 'hard'].reduce((s, k) => s + ST.cpu[k][0], 0);
   MG.choose({
@@ -851,9 +1325,10 @@ function menu() {
     ],
     modes: [{ id: 'race', label: '⏱ 比賽', sub: '每關大約 30 秒' }, { id: 'slow', label: '🐢 慢慢玩', sub: '不計時、慢慢來' }],
     modesTitle: '要不要計時？',
-    levels: { count: 7, max: 7, label: n => n === 7 ? '🎲 隨機 5 回合' : `${CON[IDS[n - 1]].icon} ${CON[IDS[n - 1]].nm}` },
+    levels: { count: LV_COUNT, max: LV_COUNT, label: n => n === LV_RANDOM ? '🎲 隨機 5 回合（12 種比賽隨便抽）' : n === LV_CUP ? '🏆 大賽（7 回合，新舊比賽混在一起）' : `${CON[cidOf(n)].icon} ${CON[cidOf(n)].nm}${n >= 8 ? '（新）' : ''}`,
+      short: n => `${n}${n === LV_RANDOM ? '🎲' : n === LV_CUP ? '🏆' : CON[cidOf(n)].icon}` },
     levelsTitle: '比什麼？',
-    keys: '每個人點自己那一半就好　鍵盤：綠色 <kbd>A</kbd><kbd>D</kbd> 移動、<kbd>Space</kbd> 點；粉紅 <kbd>←</kbd><kbd>→</kbd> 移動、<kbd>Enter</kbd> 點（接水果、比快手、吹氣球）',
+    keys: '每個人點自己那一半就好　鍵盤：綠色 <kbd>A</kbd><kbd>D</kbd> 移動、<kbd>Space</kbd> 點；粉紅 <kbd>←</kbd><kbd>→</kbd> 移動、<kbd>Enter</kbd> 點（接水果、比快手、吹氣球、拔河、賽跑）',
     playing: () => ['intro', 'count', 'play', 'result', 'trophy'].includes(state),
     start: (m, lv, pk) => { applySettings(m, lv, pk); startMatch(); },
   });
@@ -905,7 +1380,8 @@ addEventListener('keydown', e => {
   if (state === 'intro') { input(p, 'down', HW / 2, HH / 2); return; }
   if (state !== 'play' || BOT[p]) return;
   if (R.cid === 'fruit') { if (a === 'l') R.S[p].kl = 1; if (a === 'r') R.S[p].kr = 1; }
-  else if (a === 't' && !e.repeat && (R.cid === 'quick' || R.cid === 'balloon')) input(p, 'down', HW / 2, HUD + (HH - HUD) * 0.6);
+  else if (a === 't' && !e.repeat && (R.cid === 'quick' || R.cid === 'balloon' || R.cid === 'tug')) input(p, 'down', HW / 2, HUD + (HH - HUD) * 0.6);
+  else if (R.cid === 'run' && !e.repeat) { const foot = a === 'l' ? 0 : a === 'r' ? 1 : R.S[p].next; input(p, 'down', foot ? HW * 0.75 : HW * 0.25, HH - 40); }
 });
 addEventListener('keyup', e => { const k = keyOf(e); if (!k || !R || R.cid !== 'fruit') return; const [p, a] = k; if (a === 'l') R.S[p].kl = 0; if (a === 'r') R.S[p].kr = 0; });
 
@@ -980,7 +1456,10 @@ function overlay(p) {
     const C = R.C, w = Math.min(HW - 40, 420), h = Math.min(A.h - 24, 250);
     card(cx, cy, w, h, COL[p].main);
     const top = cy - h / 2;
-    if (match.list.length > 1) txt(`Round ${match.idx + 1}/${match.list.length}`, cx, top + h * 0.12, sz * 0.6, '#8a7a62', 'center', 900);
+    if (match.list.length > 1) {
+      const n = match.list.length, gap = Math.min(sz * 1.05, (w - 30) / n), x0 = cx - (n - 1) * gap / 2;
+      match.list.forEach((cid, i) => { const cur = i === match.idx, r0 = match.res[i]; if (cur) { x.fillStyle = COL[p].soft; dot(x, x0 + i * gap, top + h * 0.12, gap * 0.48); } x.globalAlpha = cur ? 1 : i < match.idx ? 0.85 : 0.45; emo(cid && CON[cid].icon, x0 + i * gap, top + h * 0.12, gap * (cur ? 0.62 : 0.48)); x.globalAlpha = 1; if (r0) { x.fillStyle = r0.w === 2 ? '#ffb72b' : COL[r0.w].main; dot(x, x0 + i * gap + gap * 0.28, top + h * 0.12 + gap * 0.26, 5); } });
+    }
     const ib = Math.abs(Math.sin(t * 5)) * 6;
     emo(C.icon, cx, top + h * 0.36 - ib, sz * 1.6);
     txt(C.nm, cx, top + h * 0.6, sz * 0.8, COL[p].dark, 'center', 900);
@@ -1076,7 +1555,7 @@ function update(dt) {
     PX[p].step(dt);
   }
   if (state === 'intro') {
-    phT += dt;
+    if (MG.panelOpen()) phT = Math.min(phT, 0.3); else phT += dt;
     for (const p of [0, 1]) if (BOT[p] && !READY[p] && phT > 0.7) { READY[p] = true; ps(p, 'ready'); }
     if (phT >= 3.2 || (READY[0] && READY[1] && phT > 1.0)) { state = 'count'; phT = 0; gs('tick'); }
   } else if (state === 'count') {
@@ -1124,11 +1603,14 @@ window.DU = {
   stats: () => JSON.parse(JSON.stringify(ST)),
   bots: () => BOT.map(b => b && { x: b.f.x, y: b.f.y, vis: b.f.vis, press: b.f.press }),
   floats: p => FL[p].map(f => f.text),
+  start(lv, o = {}) { applySettings(o.mode || 'race', lv, { who: o.who || 'p2', lay: o.lay || LAY, big: o.big || 'none' }); startMatch(); },
   skip() { if (state === 'intro') { state = 'count'; phT = 0; } if (state === 'count') { state = 'play'; phT = 0; } },
   finish() { if (state === 'play') endRound(); },
   setT(v) { if (R) R.t = v; },
   drawMs(n = 30) { const t0 = performance.now(); for (let i = 0; i < n; i++) { update(1 / 60); draw(); } return (performance.now() - t0) / n; },
-  ai: AI, ids: IDS,
+  ai: AI, ids: IDS, newIds: NEW_IDS, allIds: ALL_IDS, lv: { random: LV_RANDOM, cup: LV_CUP, count: LV_COUNT }, cidOf,
+  extra: () => R && ({ pos: R.pos, end: R.end, q: R.q && R.cid === 'color' ? { ans: R.q.ans, show: R.q.show, t: R.q.t, n: R.q.opts.length } : null, tg: R.tg, deck: R.deck && R.deck.slice(), order: R.order && R.order.slice(),
+    S: R.S.map(S => ({ d: S.d, next: S.next, k: S.k, n: S.n, st: S.st && S.st.slice(), peek: S.peek, back: S.back, fz: S.fz })) }),
   simulate,
 };
 </script>
