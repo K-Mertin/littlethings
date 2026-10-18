@@ -39,17 +39,41 @@ const COLORS = [
   { c: '#3fd6d0', d: '#178a85', name: '青' }, { c: '#ff7ac8', d: '#c0398a', name: '粉' },
 ];
 const ROCK = 99;                 // grey stone: never pops, only falls when what holds it is gone
+const RAINBOW = 98, BOMB = 97, BOLT = 96;   // 🌈 shot that matches any colour, 💣 / ⚡ grid bubbles set off by a bubble landing next to them
+const isCol = v => v >= 0 && v < 8;
+const PETS = ['🐣', '🐰', '🐱', '🐶', '🐼', '🐸', '🐹', '🐨'];
+// levels 21+: same kind of difficulty (b = which old level it feels like) but a new way to play
+// pet = animals to free (goal), color = clear one colour (goal), hang = big bunch hanging from two bubbles,
+// bomb / bolt / ice = special bubbles in the grid, rainbow = every 4th shot is a 🌈
+const LT = {
+  21: { k: 'pet', pet: 3, b: 6 }, 22: { k: 'pet', pet: 4, b: 8 }, 23: { k: 'bomb', bomb: 2, b: 8 }, 24: { k: 'bomb', bomb: 2, pet: 3, b: 9 },
+  25: { k: 'color', color: 1, b: 9 }, 26: { k: 'color', color: 1, bomb: 1, b: 10 }, 27: { k: 'rainbow', rainbow: 1, b: 10 }, 28: { k: 'rainbow', rainbow: 1, pet: 4, b: 11 },
+  29: { k: 'hang', hang: 1, b: 10 }, 30: { k: 'hang', hang: 1, bomb: 2, b: 11 }, 31: { k: 'ice', ice: 5, b: 11 }, 32: { k: 'ice', ice: 6, rainbow: 1, b: 12 },
+  33: { k: 'bolt', bolt: 2, b: 12 }, 34: { k: 'bolt', bolt: 2, pet: 4, b: 13 }, 35: { k: 'hang', hang: 1, ice: 4, b: 13 }, 36: { k: 'color', color: 1, bolt: 2, b: 14 },
+  37: { k: 'pet', pet: 4, bomb: 2, ice: 4, b: 15 }, 38: { k: 'big', b: 20 }, 39: { k: 'hang', hang: 1, bolt: 2, ice: 5, b: 20 }, 40: { k: 'pet', pet: 5, bomb: 2, ice: 5, bolt: 1, rainbow: 1, b: 20 },
+};
+const NEWS = {
+  pet: ['🐣', '救小動物', '小動物被關在泡泡裡了！把裝著小動物的泡泡打破或弄掉，救出<b>全部的小動物</b>就過關，其他泡泡不用全部清完喔。'],
+  bomb: ['💣', '炸彈泡泡', '把泡泡黏在<b>炸彈泡泡</b>旁邊，砰！附近的泡泡全部炸掉，連石頭也炸得掉喔。'],
+  color: ['🎨', '指定顏色', '這一關只要把<b>指定顏色</b>的泡泡全部清掉就過關！左下角會告訴你是哪個顏色、還剩幾顆。'],
+  rainbow: ['🌈', '彩虹泡泡', '每隔幾顆會出現<b>彩虹泡泡</b>，它可以變成任何顏色，黏到哪裡就跟旁邊的泡泡一起破掉！'],
+  hang: ['✂️', '吊吊泡泡', '一大串泡泡只靠<b>最上面發亮的幾顆</b>吊著。把它們打掉，下面的泡泡就會全部掉下來！'],
+  ice: ['🧊', '冰凍泡泡', '被冰住的泡泡不會跟同顏色一起破。在它<b>旁邊消除泡泡</b>，冰就會裂開，變回普通泡泡。'],
+  bolt: ['⚡', '閃電泡泡', '把泡泡黏在<b>閃電泡泡</b>旁邊，<b>整排</b>泡泡會被閃電一起消掉！'],
+  big: ['🔥', '超級大挑戰', ''],
+};
 // difficulty: cl = how clumped the colours start, guide = how much aiming line is shown
 const DIFF = {
   easy: { cl: 0.55, guide: Infinity, colors: n => Math.min(6, 3 + Math.floor((n - 1) / 2)), rows: n => Math.min(8, 4 + n), rocks: () => 0, drop: n => Math.max(4, 8 - Math.floor(n / 2)) },
   normal: { cl: 0.3, guide: 'bounce', colors: n => Math.min(8, 4 + Math.floor((n - 1) / 3)), rows: n => Math.min(9, 5 + Math.ceil(n / 3)), rocks: n => n >= 5 ? Math.min(9, Math.floor((n - 3) / 2)) : 0, drop: n => Math.max(3, 7 - Math.floor(n / 4)) },
   hard: { cl: 0.12, guide: 150, colors: n => Math.min(8, 5 + Math.floor((n - 1) / 4)), rows: n => Math.min(9, 6 + Math.ceil(n / 4)), rocks: n => n >= 3 ? Math.min(14, n) : 0, drop: n => Math.max(3, 6 - Math.floor(n / 4)) },
 };
-const NLEVELS = 20;
+const NLEVELS = 40;
 let mode = 'relax', diff = 'normal';
 const D_ = () => DIFF[diff];
 MG.fit(cv, layout);
 let grid, ceilY, level, score, nColors, shot, cur, nxt, aim = -Math.PI / 2, misses, dropEvery, state = 'ready', falling = [], pops = [], t = 0, shakeT = 0, combo = 0;
+let boomKind = 0, LV = {}, ice = [], pet = [], target = -1, shotN = 0, freed = [], bolts = [];
 
 const snd = (() => { const last = {}; return (n, a, gap = 60) => { const now = performance.now(); if (now - (last[n] || 0) < gap) return; last[n] = now; MG.sfx(n, a); }; })();
 const cols = r => (r % 2 ? COLS - 1 : COLS);
@@ -62,10 +86,12 @@ function neighbors(r, c) {
   return out.filter(([a, b]) => a >= 0 && a < ROWS && b >= 0 && b < cols(a));
 }
 function newLevel(n) {
-  level = n; nColors = D_().colors(n);
-  const rows = D_().rows(n), cl = D_().cl;
-  dropEvery = D_().drop(n);
+  level = n; LV = LT[n] || {}; const b = n <= 20 ? n : (LV.b || 20);
+  nColors = D_().colors(b);
+  const rows = D_().rows(b) + (LV.hang ? 1 : 0), cl = D_().cl;
+  dropEvery = D_().drop(b);
   grid = Array.from({ length: ROWS }, (_, r) => Array(cols(r)).fill(-1));
+  ice = grid.map(row => row.map(() => false)); pet = grid.map(row => row.map(() => null));
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols(r); c++) {
     // small clusters so there are matches to find
     const left = c > 0 ? grid[r][c - 1] : -1, up = r > 0 ? grid[r - 1][Math.min(c, cols(r - 1) - 1)] : -1;
@@ -73,17 +99,47 @@ function newLevel(n) {
     grid[r][c] = rnd < cl * 0.64 && left >= 0 ? left : rnd < cl && up >= 0 ? up : MG.randi(0, nColors - 1);
   }
   // stones (never in the top two rows, never touching each other, so they can always be knocked down)
-  for (let k = 0, tries = 0; k < D_().rocks(n) && tries < 200; tries++) {
-    const r = MG.randi(2, rows - 1), c = MG.randi(0, cols(r) - 1);
+  if (LV.hang) {   // ✂️ the whole bunch hangs from two pairs of bubbles at the top
+    const A = [2, 5];
+    for (let c = 0; c < cols(0); c++) grid[0][c] = -1;
+    for (const a of A) { grid[0][a] = grid[1][Math.min(a, cols(1) - 1)]; }
+  }
+  for (let k = 0, tries = 0; k < D_().rocks(b) && tries < 200; tries++) {
+    const r = MG.randi(LV.hang ? 3 : 2, rows - 1), c = MG.randi(0, cols(r) - 1);
     if (grid[r][c] === ROCK || neighbors(r, c).some(([a, b]) => grid[a][b] === ROCK)) continue;
     grid[r][c] = ROCK; k++;
   }
-  ceilY = TOP0; misses = 0; shot = null; falling = []; combo = 0;
+  // special bubbles / overlays on random colour cells (never on top of each other)
+  const spot = (r0, r1) => { for (let k = 0; k < 300; k++) { const r = MG.randi(r0, Math.max(r0, r1)), c = MG.randi(0, cols(r) - 1); if (isCol(grid[r][c]) && !ice[r][c] && !pet[r][c] && !(LV.hang && r <= 1)) return [r, c]; } return null; };
+  for (let k = 0; k < (LV.bomb || 0); k++) { const q = spot(1, rows - 2); if (q) grid[q[0]][q[1]] = BOMB; }
+  for (let k = 0; k < (LV.bolt || 0); k++) { const q = spot(2, rows - 1); if (q) grid[q[0]][q[1]] = BOLT; }
+  const pk = MG.shuffle(PETS.slice());
+  for (let k = 0; k < (LV.pet || 0); k++) { const q = spot(LV.hang ? 2 : 0, Math.max(1, Math.floor(rows / 2))); if (q) pet[q[0]][q[1]] = pk[k % pk.length]; }
+  for (let k = 0; k < (LV.ice || 0); k++) { const q = spot(1, rows - 1); if (q) ice[q[0]][q[1]] = true; }
+  target = -1;
+  if (LV.color) { const cnt = Array(8).fill(0); for (const row of grid) for (const v of row) if (isCol(v)) cnt[v]++; target = cnt.indexOf(Math.max(...cnt)); }
+  ceilY = TOP0; misses = 0; shot = null; falling = []; combo = 0; shotN = 0; freed = []; bolts = [];
   cur = pickColor(); nxt = pickColor();
   hud();
 }
+// the first time a new way to play shows up, explain it once
+function intro() {
+  const ks = Object.keys(NEWS).filter(k => k !== 'big' && LV[k] && !MG.store.get('bubble.seen.' + k, false));
+  if (!ks.length) return;
+  ks.forEach(k => MG.store.set('bubble.seen.' + k, true));
+  MG.panel({ title: ks.map(k => NEWS[k][0] + ' ' + NEWS[k][1]).join('＋'), html: ks.map(k => `<p>${NEWS[k][2]}</p>`).join(''), buttons: [{ label: '開始', on: () => MG.hide() }] });
+}
+function go(n) { newLevel(n); state = 'play'; MG.hide(); intro(); }
+const petsLeft = () => { let n = 0; for (const row of pet) for (const p of row) if (p) n++; return n; };
+const targetLeft = () => { let n = 0; for (const row of grid) for (const v of row) if (v === target) n++; return n; };
+function goalDone() {
+  if (grid.every(row => row.every(v => v < 0))) return true;
+  if (LV.pet) return petsLeft() === 0;
+  if (LV.color) return targetLeft() === 0;
+  return false;
+}
 function pickColor() {
-  const present = new Set(); for (const row of grid) for (const v of row) if (v >= 0 && v !== ROCK) present.add(v);
+  const present = new Set(); for (const row of grid) for (const v of row) if (isCol(v)) present.add(v);
   const arr = present.size ? [...present] : [...Array(nColors).keys()];
   return MG.pick(arr);
 }
@@ -104,7 +160,7 @@ cv.addEventListener('pointerup', e => { if (!aiming) return; aiming = false; con
 cv.addEventListener('pointercancel', () => aiming = false);
 const held = { l: false, r: false };
 addEventListener('keydown', e => {
-  if (state !== 'play') return;
+  if (state !== 'play' || MG.panelOpen()) return;
   if (e.key === 'ArrowLeft') held.l = true; else if (e.key === 'ArrowRight') held.r = true;
   else if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'Enter') { e.preventDefault(); fire(); }
   else if (e.key === 's' || e.key === 'S' || e.key === 'Shift') swap();
@@ -114,7 +170,7 @@ function swap() { if (shot) return; [cur, nxt] = [nxt, cur]; MG.sfx('flip'); }
 function fire() {
   if (shot || state !== 'play') return;
   shot = { x: SHOOT.x, y: SHOOT.y, vx: Math.cos(aim) * SPEED, vy: Math.sin(aim) * SPEED, col: cur };
-  cur = nxt; nxt = pickColor(); MG.sfx('jump');
+  cur = nxt; nxt = LV.rainbow && ++shotN % 4 === 0 ? RAINBOW : pickColor(); MG.sfx('jump');
 }
 // guide: full trajectory with wall bounces, stops at the first bubble / ceiling
 function guide() {
@@ -153,25 +209,74 @@ function update(dt) {
   for (const f of falling) { f.vy += 1400 * dt; f.x += f.vx * dt; f.y += f.vy * dt; f.rot += f.vr * dt; }
   falling = falling.filter(f => f.y < H + 40);
   for (const p of pops) { p.y -= 40 * dt; p.life -= dt; } pops = pops.filter(p => p.life > 0);
+  stepFx(dt);
+}
+function stepFx(dt) {
+  for (const f of freed) { f.y += f.vy * dt; f.x += Math.sin(f.life * 6) * 20 * dt; f.life -= dt; } freed = freed.filter(f => f.life > 0);
+  for (const b of bolts) b.life -= dt; bolts = bolts.filter(b => b.life > 0);
   MG.fx.step(dt);
 }
-function settle() {
-  // nearest empty cell to where the shot stopped
+// nearest empty cell (that touches the ceiling or a bubble) to a point
+function landingCell(px, py) {
   let best = null, bd = 1e9;
   for (let r = 0; r < ROWS; r++) for (let c = 0; c < cols(r); c++) {
     if (grid[r][c] >= 0) continue;
-    const d = Math.hypot(cx(r, c) - shot.x, cy(r) - shot.y);
+    const d = Math.hypot(cx(r, c) - px, cy(r) - py);
     if (d < bd && (r === 0 || neighbors(r, c).some(([a, b]) => grid[a][b] >= 0))) { bd = d; best = [r, c]; }
   }
-  const col = shot.col; shot = null;
+  return best;
+}
+// same-colour group from (r,c), as if (r,c) had colour col; frozen bubbles don't join
+function flood(r, c, col) {
+  const group = [], seen = new Set([r + ',' + c]), stack = [[r, c]];
+  while (stack.length) { const [a, b] = stack.pop(); group.push([a, b]); for (const [na, nb] of neighbors(a, b)) { const k = na + ',' + nb; if (!seen.has(k) && grid[na][nb] === col && !ice[na][nb]) { seen.add(k); stack.push([na, nb]); } } }
+  return group;
+}
+function freePet(px, py, em) {
+  freed.push({ x: px, y: py, em, vy: -150, life: 1.6 }); MG.sfx('yay'); setTimeout(() => MG.sfx('coin'), 120);
+  MG.fx.burst(px, py, { n: 14, colors: ['#ff8fbf', '#ffd23f', '#fff'], shape: 'star', speed: 160, up: 80, size: 5, life: 0.9 });
+}
+function clearCell(a, b) { const v = grid[a][b], p = pet[a][b]; grid[a][b] = -1; ice[a][b] = false; pet[a][b] = null; if (p) freePet(cx(a, b), cy(a), p); return v; }
+// 💣 / ⚡ set off: add what they clear to `kill` (they can set each other off)
+function trigger(a, b, kill, fired) {
+  const k0 = a + ',' + b; if (fired.has(k0)) return; fired.add(k0); kill.add(k0);
+  const v = grid[a][b], out = []; boomKind = v;
+  if (v === BOMB) {
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < cols(r); c++) if (grid[r][c] >= 0 && Math.hypot(cx(r, c) - cx(a, b), cy(r) - cy(a)) < D * 1.8) out.push([r, c]);
+    MG.fx.burst(cx(a, b), cy(a), { n: 30, colors: ['#ffd23f', '#ff7a2a', '#ff4f4f', '#fff'], speed: 300, up: 60, size: 6, life: 0.7, shape: 'star' }); shakeT = 0.45; MG.sfx('hit'); snd('whoosh');
+  } else {
+    for (let c = 0; c < cols(a); c++) if (grid[a][c] >= 0) out.push([a, c]);
+    bolts.push({ y: cy(a), life: 0.5 }); shakeT = 0.3; snd('whoosh'); MG.sfx('sparkle');
+  }
+  for (const [r, c] of out) { kill.add(r + ',' + c); if ((grid[r][c] === BOMB || grid[r][c] === BOLT)) trigger(r, c, kill, fired); }
+}
+function settle() {
+  const best = landingCell(shot.x, shot.y);
+  let col = shot.col; shot = null;
   if (!best) return;
   const [r, c] = best; grid[r][c] = col; MG.sfx('place');
-  // same-colour group
-  const group = [], seen = new Set([r + ',' + c]), stack = [[r, c]];
-  while (stack.length) { const [a, b] = stack.pop(); group.push([a, b]); for (const [na, nb] of neighbors(a, b)) { const k = na + ',' + nb; if (!seen.has(k) && grid[na][nb] === col) { seen.add(k); stack.push([na, nb]); } } }
-  if (group.length >= 3) {
+  const kill = new Set(), fired = new Set();
+  let group = [];
+  if (col === RAINBOW) {     // 🌈 joins every neighbouring colour that makes a group of 3
+    const tried = new Set(), cnt = {};
+    for (const [a, b] of neighbors(r, c)) {
+      const v = grid[a][b]; if (!isCol(v) || ice[a][b]) continue; cnt[v] = (cnt[v] || 0) + 1;
+      if (tried.has(v)) continue; tried.add(v);
+      const g = flood(r, c, v); if (g.length >= 3) for (const [x1, y1] of g) kill.add(x1 + ',' + y1);
+    }
+    const keys = Object.keys(cnt);
+    grid[r][c] = col = keys.length ? +keys.sort((p, q) => cnt[q] - cnt[p])[0] : pickColor();
+    MG.fx.burst(cx(r, c), cy(r), { n: 16, colors: COLORS.map(q => q.c), speed: 180, up: 40, size: 4, life: 0.6, shape: 'star' });
+  } else {
+    group = flood(r, c, col); if (group.length >= 3) for (const [a, b] of group) kill.add(a + ',' + b);
+  }
+  for (const [a, b] of neighbors(r, c)) if (grid[a][b] === BOMB || grid[a][b] === BOLT) trigger(a, b, kill, fired);
+  group = [...kill].map(k => k.split(',').map(Number));
+  if (group.length >= 3 || fired.size) {
     combo++;
-    for (const [a, b] of group) { MG.fx.burst(cx(a, b), cy(a), { n: 7, colors: [(COLORS[grid[a][b]] || { c: '#999' }).c, '#fff'], speed: 160, up: 40, size: 4, life: 0.5 }); grid[a][b] = -1; }
+    // frozen bubbles next to what pops crack open
+    for (const [a, b] of group) for (const [na, nb] of neighbors(a, b)) if (ice[na][nb] && !kill.has(na + ',' + nb)) { ice[na][nb] = false; MG.fx.burst(cx(na, nb), cy(na), { n: 8, colors: ['#ffffff', '#d4f3ff', '#9fdcf7'], speed: 120, up: 20, size: 3, life: 0.6, shape: 'star' }); snd('pop', 0, 40); }
+    for (const [a, b] of group) { const v = grid[a][b]; MG.fx.burst(cx(a, b), cy(a), { n: 7, colors: [(COLORS[v] || { c: '#999' }).c, '#fff'], speed: 160, up: 40, size: 4, life: 0.5 }); clearCell(a, b); }
     let pts = group.length * 10;
     // anything no longer connected to the ceiling falls
     const att = new Set(), st2 = [];
@@ -179,7 +284,7 @@ function settle() {
     while (st2.length) { const [a, b] = st2.pop(); for (const [na, nb] of neighbors(a, b)) { const k = na + ',' + nb; if (!att.has(k) && grid[na][nb] >= 0) { att.add(k); st2.push([na, nb]); } } }
     let dropped = 0;
     for (let a = 0; a < ROWS; a++) for (let b = 0; b < cols(a); b++) if (grid[a][b] >= 0 && !att.has(a + ',' + b)) {
-      falling.push({ x: cx(a, b), y: cy(a), vx: MG.rand(-60, 60), vy: MG.rand(-120, 0), col: grid[a][b], rot: 0, vr: MG.rand(-6, 6) }); grid[a][b] = -1; dropped++;
+      falling.push({ x: cx(a, b), y: cy(a), vx: MG.rand(-60, 60), vy: MG.rand(-120, 0), col: grid[a][b], rot: 0, vr: MG.rand(-6, 6) }); clearCell(a, b); dropped++;
     }
     pts += dropped * 20; if (combo > 1) pts *= combo;
     score += pts;
@@ -187,9 +292,9 @@ function settle() {
     snd('match', combo + Math.max(0, group.length - 3)); if (combo >= 2) snd('combo', combo);
     if (dropped) { snd('whoosh'); setTimeout(() => MG.sfx('coin'), 180); } else if (group.length >= 5) snd('sparkle');
     pops.push({ x: cx(r, c), y: cy(r), t: `+${pts}`, life: 1 });
-    const word = combo >= 2 ? MG.WORDS.combo(combo) : dropped >= 3 ? 'Drop! ⬇️' : group.length >= 5 ? MG.praise(Math.min(5, group.length - 3)) : '';
+    const word = fired.size ? (boomKind === BOLT ? 'Zap! ⚡' : 'Boom! 💥') : combo >= 2 ? MG.WORDS.combo(combo) : dropped >= 3 ? 'Drop! ⬇️' : group.length >= 5 ? MG.praise(Math.min(5, group.length - 3)) : '';
     if (word) pops.push({ x: cx(r, c), y: cy(r) - 24, t: word, life: 1.2, big: true });
-    if (grid.every(row => row.every(v => v < 0))) return levelClear();
+    if (goalDone()) return levelClear();
   } else {
     combo = 0; misses++;
     if (mode === 'timed' && misses >= dropEvery) { misses = 0; ceilY += RH; shakeT = 0.4; MG.sfx('hit'); MG.toast('⚠️ Down! ⬇️'); }
@@ -197,13 +302,42 @@ function settle() {
   // lost?
   for (let a = 0; a < ROWS; a++) for (let b = 0; b < cols(a); b++) if (grid[a][b] >= 0 && cy(a) + R >= DANGER) return gameOver();
   // keep the queued colours valid
-  const present = new Set(); for (const row of grid) for (const v of row) if (v >= 0 && v !== ROCK) present.add(v);
-  if (!present.has(cur)) cur = pickColor(); if (!present.has(nxt)) nxt = pickColor();
+  const present = new Set(); for (const row of grid) for (const v of row) if (isCol(v)) present.add(v);
+  if (cur !== RAINBOW && !present.has(cur)) cur = pickColor(); if (nxt !== RAINBOW && !present.has(nxt)) nxt = pickColor();
+  if (goalDone()) return levelClear();   // e.g. the only bubbles left were stones that just fell
   hud();
 }
 
 // ---------- draw ----------
+const EMO = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
 function bubble(px, py, col, r = R, face = true) {
+  if (col === RAINBOW) {     // 🌈 spinning rainbow with a star
+    for (let i = 0; i < 6; i++) { const a = t * 2 + i * Math.PI / 3; x.fillStyle = COLORS[[0, 5, 1, 2, 3, 4][i]].c; x.beginPath(); x.moveTo(px, py); x.arc(px, py, r - 0.5, a, a + Math.PI / 3 + 0.02); x.closePath(); x.fill(); }
+    const g = x.createRadialGradient(px - r * 0.3, py - r * 0.35, r * 0.1, px, py, r); g.addColorStop(0, 'rgba(255,255,255,.95)'); g.addColorStop(0.45, 'rgba(255,255,255,.25)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = g; x.beginPath(); x.arc(px, py, r - 0.5, 0, 7); x.fill();
+    x.strokeStyle = '#fff'; x.lineWidth = 2; x.stroke();
+    x.fillStyle = '#fff'; x.strokeStyle = '#c98a00'; x.lineWidth = 1.2; x.beginPath();
+    for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + k * Math.PI / 5, rr = k % 2 ? r * 0.2 : r * 0.45; x.lineTo(px + Math.cos(a) * rr, py + Math.sin(a) * rr); }
+    x.closePath(); x.fill(); x.stroke();
+    return;
+  }
+  if (col === BOMB) {        // 💣 round bomb with a sparkling fuse
+    x.strokeStyle = '#8a5a2a'; x.lineWidth = r * 0.14; x.lineCap = 'round'; x.beginPath(); x.moveTo(px + r * 0.45, py - r * 0.6); x.quadraticCurveTo(px + r * 0.8, py - r * 1.05, px + r * 0.55, py - r * 1.15); x.stroke();
+    const g = x.createRadialGradient(px - r * 0.35, py - r * 0.4, r * 0.1, px, py, r); g.addColorStop(0, '#8a94b8'); g.addColorStop(0.35, '#3a4060'); g.addColorStop(1, '#141828');
+    x.fillStyle = g; x.beginPath(); x.arc(px, py + r * 0.05, r * 0.9, 0, 7); x.fill();
+    x.fillStyle = '#5a6080'; x.fillRect(px + r * 0.25, py - r * 0.78, r * 0.38, r * 0.3);
+    x.fillStyle = 'rgba(255,255,255,.55)'; x.beginPath(); x.ellipse(px - r * 0.35, py - r * 0.35, r * 0.22, r * 0.12, -0.6, 0, 7); x.fill();
+    const fl = 0.7 + Math.sin(t * 18 + px) * 0.3; x.fillStyle = '#ffd23f'; x.beginPath(); x.arc(px + r * 0.55, py - r * 1.15, r * 0.22 * fl, 0, 7); x.fill(); x.fillStyle = '#fff'; x.beginPath(); x.arc(px + r * 0.55, py - r * 1.15, r * 0.09, 0, 7); x.fill();
+    return;
+  }
+  if (col === BOLT) {        // ⚡ yellow bubble with a lightning bolt
+    const g = x.createRadialGradient(px - r * 0.35, py - r * 0.4, r * 0.1, px, py, r); g.addColorStop(0, '#ffffff'); g.addColorStop(0.3, '#fff27a'); g.addColorStop(1, '#e8a400');
+    x.fillStyle = g; x.beginPath(); x.arc(px, py, r - 0.5, 0, 7); x.fill(); x.strokeStyle = '#b07a00'; x.lineWidth = 1.4; x.stroke();
+    x.fillStyle = '#fff'; x.strokeStyle = '#ff7a00'; x.lineWidth = 1.6; x.lineJoin = 'round'; x.beginPath();
+    x.moveTo(px + r * 0.12, py - r * 0.7); x.lineTo(px - r * 0.38, py + r * 0.08); x.lineTo(px - r * 0.02, py + r * 0.08); x.lineTo(px - r * 0.14, py + r * 0.72); x.lineTo(px + r * 0.4, py - r * 0.12); x.lineTo(px + r * 0.04, py - r * 0.12); x.closePath(); x.fill(); x.stroke();
+    if ((t * 3 + px * 0.05) % 2 < 0.15) { x.fillStyle = 'rgba(255,255,255,.7)'; x.beginPath(); x.arc(px, py, r, 0, 7); x.fill(); }
+    return;
+  }
   if (col === ROCK) {
     const g = x.createRadialGradient(px - r * 0.35, py - r * 0.4, r * 0.1, px, py, r); g.addColorStop(0, '#d9dde4'); g.addColorStop(1, '#7d8592');
     x.fillStyle = g; x.beginPath();
@@ -225,6 +359,15 @@ function bubble(px, py, col, r = R, face = true) {
     x.strokeStyle = C.d; x.lineWidth = Math.max(1, r * 0.08); x.lineCap = 'round'; x.beginPath(); x.arc(px, py + r * 0.12, r * 0.18, 0.3, Math.PI - 0.3); x.stroke();
   }
 }
+function goalChip() {   // bottom-left: what this level asks for, and how many are left
+  const bx = 20, by = 494, bw = 104, bh = 42, n = LV.pet ? petsLeft() : targetLeft();
+  x.fillStyle = 'rgba(255,255,255,.88)'; x.strokeStyle = LV.pet ? '#ff8fbf' : COLORS[target].c; x.lineWidth = 3; x.beginPath(); x.roundRect(bx, by, bw, bh, 14); x.fill(); x.stroke();
+  if (LV.pet) {
+    let em = '🐣'; for (const row of pet) for (const p of row) if (p) em = p;
+    x.font = `26px ${EMO}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = '#000'; x.fillText(n ? em : '💗', bx + 24, by + bh / 2 + 1);
+  } else bubble(bx + 24, by + bh / 2, target, 15);
+  x.font = '900 24px system-ui,"Noto Sans TC",sans-serif'; x.textAlign = 'left'; x.textBaseline = 'middle'; x.fillStyle = n ? '#2a4a6a' : '#2e9a4c'; x.fillText(n ? `×${n}` : '✓', bx + 46, by + bh / 2 + 1);
+}
 function draw() {
   const bg = x.createLinearGradient(0, 0, 0, CH); bg.addColorStop(0, '#bfe3fa'); bg.addColorStop(1, '#ffe6f3'); x.fillStyle = bg; x.fillRect(0, 0, CW, CH);
   SWAPB = null;
@@ -245,10 +388,28 @@ function draw() {
   // danger line
   x.strokeStyle = 'rgba(255,90,78,.7)'; x.lineWidth = 2; x.setLineDash([8, 6]); x.beginPath(); x.moveTo(X0, DANGER); x.lineTo(W - X0, DANGER); x.stroke(); x.setLineDash([]);
   // grid
-  for (let r = 0; r < ROWS; r++) for (let c = 0; c < cols(r); c++) if (grid[r][c] >= 0) bubble(cx(r, c), cy(r), grid[r][c]);
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < cols(r); c++) {
+    const v = grid[r][c]; if (v < 0) continue;
+    const px = cx(r, c), py = cy(r);
+    bubble(px, py, v, R, !pet[r][c] && !ice[r][c]);
+    if (pet[r][c]) {          // a little animal waiting inside
+      const bob = Math.sin(t * 3 + c) * 1.2; x.font = `${R * 1.05}px ${EMO}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = '#000'; x.fillText(pet[r][c], px, py + 1.5 + bob);
+      x.strokeStyle = 'rgba(255,255,255,.85)'; x.lineWidth = 2; x.beginPath(); x.arc(px, py, R - 1.5, 0, 7); x.stroke();
+    }
+    if (ice[r][c]) {          // frozen: frosty block over the bubble
+      x.fillStyle = 'rgba(225,246,255,.4)'; x.strokeStyle = '#5ab4e0'; x.lineWidth = 2.5; x.beginPath(); x.roundRect(px - R + 1, py - R + 1, D - 2, D - 2, 7); x.fill(); x.stroke();
+      x.strokeStyle = 'rgba(255,255,255,.95)'; x.lineWidth = 2.2; x.beginPath(); x.moveTo(px - R * 0.6, py + R * 0.2); x.lineTo(px - R * 0.1, py - R * 0.55); x.moveTo(px - R * 0.25, py + R * 0.55); x.lineTo(px + R * 0.45, py - R * 0.4); x.stroke();
+    }
+    if (LV.hang && r === 0 && state === 'play') {   // ✂️ the bubbles everything hangs from glow
+      x.strokeStyle = `rgba(255,210,63,${0.6 + Math.sin(t * 5) * 0.35})`; x.lineWidth = 3; x.setLineDash([5, 4]); x.beginPath(); x.arc(px, py, R + 3 + Math.sin(t * 5) * 1.5, 0, 7); x.stroke(); x.setLineDash([]);
+    }
+  }
+  for (const b of bolts) { x.globalAlpha = Math.min(1, b.life * 2.5); x.fillStyle = '#fff6a0'; x.fillRect(X0, b.y - R * b.life * 2, W - 2 * X0, R * b.life * 4); x.globalAlpha = 1; }
+  for (const f of freed) { x.globalAlpha = Math.min(1, f.life * 1.5); x.font = `${R * 1.5}px ${EMO}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = '#000'; x.fillText(f.em, f.x, f.y); x.fillText('💗', f.x + R * 0.9, f.y - R * 0.8 - (1.6 - f.life) * 10); x.globalAlpha = 1; }
+  if (LV.pet || LV.color) goalChip();
   // guide
   if (state === 'play' && !shot) {
-    const pts = guide(); x.fillStyle = COLORS[cur].c;
+    const pts = guide(); x.fillStyle = cur === RAINBOW ? COLORS[Math.floor(t * 6) % 8].c : COLORS[cur].c;
     let acc = 0; for (let i = 1; i < pts.length; i++) {
       const [ax, ay] = pts[i - 1], [bx, by] = pts[i], len = Math.hypot(bx - ax, by - ay);
       for (let d = (16 - acc % 16); d < len; d += 16) { const k = d / len; x.globalAlpha = 0.85; x.beginPath(); x.arc(ax + (bx - ax) * k, ay + (by - ay) * k, 3.2, 0, 7); x.fill(); }
@@ -338,31 +499,33 @@ function levelClear() {
   MG.record('bubble', score); MG.store.set('bubble.level', Math.max(MG.store.get('bubble.level', 1), level + 1));
   MG.fx.burst(W / 2, 260, { n: 40, colors: COLORS.map(c => c.c), speed: 260, up: 120, size: 6, shape: 'star', life: 1.2 });
   setTimeout(() => MG.panel({
-    title: `第 ${level} 關過關！`, html: `<p>過關獎勵 +${bonus}</p><div class="big">${score} 分</div><p>下一關會再難一點點喔</p>`,
-    buttons: [{ label: '下一關', on: () => { newLevel(level + 1); state = 'play'; MG.hide(); } }, { label: '選關卡', alt: true, on: menu }],
+    title: `第 ${level} 關過關！`, html: `<p>${LV.pet ? '小動物全部救出來了！' : LV.color ? '指定的顏色全部清光了！' : ''}過關獎勵 +${bonus}</p><div class="big">${score} 分</div>` +
+      (level < NLEVELS ? `<p>${nextNote(level + 1)}</p>` : `<p>全部 ${NLEVELS} 關都過了，你是泡泡龍大師！</p>`),
+    buttons: [{ label: level < NLEVELS ? '下一關' : '回到第 1 關', on: () => { const n = level < NLEVELS ? level + 1 : 1; MG.store.set('bubble.pickLevel', n); go(n); } }, { label: '選關卡', alt: true, on: menu }],
   }), 700);
 }
+function nextNote(n) { const L = LT[n]; return L && NEWS[L.k] && L.k !== 'big' ? `下一關：${NEWS[L.k][0]} ${NEWS[L.k][1]}` : n === 38 ? '下一關是超級大挑戰 🔥' : '下一關會再難一點點喔'; }
 function gameOver() {
   state = 'over'; MG.sfx('over'); shakeT = 0.4;
   const rec = MG.record('bubble', score);
   MG.panel({
     title: '泡泡碰到紅線了！',
     html: `<p>到了第 ${level} 關</p><div class="big">${score} 分</div>` + (rec.isNew && score > 0 ? `<p class="new">新紀錄！^_^</p>` : `<p>最高紀錄：${rec.best} 分</p>`) + (mode === 'timed' ? '<p>覺得太難的話，可以玩天花板不會下降的「慢慢玩」</p>' : ''),
-    buttons: [{ label: '從這關再來', on: () => { newLevel(level); state = 'play'; MG.hide(); } },
-      ...(mode === 'timed' ? [{ label: '🐢 改成慢慢玩', alt: true, on: () => { mode = 'relax'; MG.store.set('bubble.pickMode', 'relax'); newLevel(level); state = 'play'; MG.hide(); } }] : []),
+    buttons: [{ label: '從這關再來', on: () => go(level) },
+      ...(mode === 'timed' ? [{ label: '🐢 改成慢慢玩', alt: true, on: () => { mode = 'relax'; MG.store.set('bubble.pickMode', 'relax'); go(level); } }] : []),
       { label: '選關卡', alt: true, on: menu }],
   });
 }
-function start(m, lv, pk) { mode = m; if (pk && pk.diff) diff = pk.diff; score = 0; newLevel(lv || 1); state = 'play'; MG.hide(); }
+function start(m, lv, pk) { mode = m; if (pk && pk.diff) diff = pk.diff; score = 0; go(lv || 1); }
 function menu() {
   state = 'ready';
   MG.choose({
     id: 'bubble', title: '噗噗泡泡龍',
-    html: `<p>瞄準後發射泡泡，碰到<b>三個以上一樣顏色</b>就會破掉，沒黏住的泡泡會一起掉下來！右下角是下一顆，點它可以交換。</p>${('ontouchstart' in window) && innerWidth > innerHeight ? '<p class="new">📱 把手機直放，泡泡會更大！</p>' : ''}`,
+    html: `<p>瞄準後發射泡泡，碰到<b>三個以上一樣顏色</b>就會破掉，沒黏住的泡泡會一起掉下來！右下角是下一顆，點它可以交換。</p><p>第 21 關起有新玩法：🐣 救小動物、💣 炸彈、🎨 指定顏色、🌈 彩虹、✂️ 吊吊泡泡、🧊 冰凍、⚡ 閃電！</p>${('ontouchstart' in window) && innerWidth > innerHeight ? '<p class="new">📱 把手機直放，泡泡會更大！</p>' : ''}`,
     modesTitle: '天花板',
     picks: [{ key: 'diff', title: '難度', def: 'normal', options: [{ id: 'easy', label: '🐣 簡單', sub: '顏色少、瞄準線完整' }, { id: 'normal', label: '⭐ 普通', sub: '瞄準線只到第一次反彈' }, { id: 'hard', label: '🔥 困難', sub: '顏色多、石頭多、瞄準線很短' }] }],
     modes: [{ id: 'relax', label: '🐢 慢慢玩', sub: '天花板不會往下降' }, { id: 'timed', label: '⏬ 天花板會降', sub: '一直沒消除天花板會下降' }],
-    levels: { count: NLEVELS, max: NLEVELS },
+    levels: { count: NLEVELS, max: NLEVELS, label: n => { const L = LT[n]; return L && NEWS[L.k] ? `${n}（${NEWS[L.k][0]} ${NEWS[L.k][1]}）` : String(n); }, short: n => { const L = LT[n]; return `${n}${L && NEWS[L.k] ? NEWS[L.k][0] : ''}`; } },
     keys: '手指按住拖曳瞄準、放開發射　電腦：滑鼠瞄準點擊，或 <kbd>←</kbd><kbd>→</kbd> 瞄準、<kbd>空白鍵</kbd> 發射、<kbd>S</kbd> 交換',
     playing: () => state === 'play',
     start: (m, lv, pk) => start(m, lv, pk),
@@ -370,8 +533,43 @@ function menu() {
 }
 score = 0; newLevel(1); menu();
 window.BBT = { toClient(px, py) { const r = cv.getBoundingClientRect(), k = (r.width - 6) / CW; return { x: r.left + 3 + (FX + (px - VX0) * FS) * k, y: r.top + 3 + (FY + (py - VY0) * FS) * k }; }, get swapBtn() { return SWAPB; }, get nxt() { return nxt; }, get state() { return state; }, pops: () => pops.map(p => p.t), grid: () => grid.map(r => r.slice()), cell: (r, c) => ({ x: cx(r, c), y: cy(r) }), get cur() { return cur; }, get shot() { return !!shot; }, SHOOT,
-  aimAt(px, py) { aim = Math.max(-Math.PI + 0.16, Math.min(-0.16, Math.atan2(py - SHOOT.y, px - SHOOT.x))); }, fire: () => fire(), setCur(c) { cur = c; } };
-MG.loop(dt => { if (state === 'play') update(dt); else { t += dt; MG.fx.step(dt); for (const f of falling) { f.vy += 1400 * dt; f.y += f.vy * dt; } } draw(); });
+  aimAt(px, py) { aim = Math.max(-Math.PI + 0.16, Math.min(-0.16, Math.atan2(py - SHOOT.y, px - SHOOT.x))); }, fire: () => fire(), setCur(c) { cur = c; },
+  // levels 21+ and a simple greedy player for the tests
+  get info() { return { level, diff, mode, type: LV.k || '', pets: petsLeft(), target, targetLeft: target >= 0 ? targetLeft() : 0, left: grid.flat().filter(v => v >= 0).length, ice: ice.flat().filter(Boolean).length, bombs: grid.flat().filter(v => v === BOMB).length, bolts: grid.flat().filter(v => v === BOLT).length, rainbow: cur === RAINBOW || nxt === RAINBOW }; },
+  go: n => go(n), setDiff(d) { diff = d; }, setMode(m) { mode = m; }, swap: () => swap(),
+  sim(a) {
+    let px = SHOOT.x, py = SHOOT.y, vx = Math.cos(a) * SPEED, vy = Math.sin(a) * SPEED; const dt = 1 / 240, L = X0 + R, Rr = X0 + COLS * D;
+    for (let i = 0; i < 4000; i++) { px += vx * dt; py += vy * dt; if (px < L) { px = L; vx = Math.abs(vx); } if (px > Rr) { px = Rr; vx = -Math.abs(vx); } if (py <= ceilY + R || hits(px, py)) return landingCell(px, py); }
+    return null;
+  },
+  score(a, col) {
+    const cell = this.sim(a); if (!cell) return -1e9; const [r, c] = cell;
+    let best = 0;
+    const cs = col === RAINBOW ? [...new Set(neighbors(r, c).map(([p, q]) => grid[p][q]).filter(isCol))] : [col];
+    for (const cc of cs) {
+      const g = flood(r, c, cc); let v = g.length;
+      if (g.length >= 3) { v = 10 + g.length; for (const [p, q] of g) { if (pet[p][q]) v += 8; if (cc === target) v += 3; for (const [p2, q2] of neighbors(p, q)) if (ice[p2][q2]) v += 2; } }
+      best = Math.max(best, v);
+    }
+    if (neighbors(r, c).some(([p, q]) => grid[p][q] === BOMB || grid[p][q] === BOLT)) best += 9;
+    if (cy(r) + R >= DANGER - 2) best -= 100;
+    return best - r * 0.25;
+  },
+  autoStep() {
+    if (state !== 'play' || shot) return false;
+    let best = -1e9, ba = -Math.PI / 2, sw = false;
+    for (const [col, isSw] of [[cur, false], [nxt, true]]) for (let i = 0; i <= 160; i++) {
+      const a = -Math.PI + 0.16 + (Math.PI - 0.32) * i / 160, v = this.score(a, col) - (isSw ? 0.5 : 0);
+      if (v > best) { best = v; ba = a; sw = isSw; }
+    }
+    if (sw) swap(); aim = ba; fire(); return true;
+  },
+  autoPlay(max = 400) {   // plays the level synchronously (no waiting for animations)
+    let n = 0;
+    while (state === 'play' && n < max) { if (!this.autoStep()) break; n++; for (let k = 0; k < 600 && shot; k++) update(1 / 60); }
+    return { state, shots: n, info: this.info };
+  } };
+MG.loop(dt => { if (state === 'play') update(dt); else { t += dt; stepFx(dt); for (const f of falling) { f.vy += 1400 * dt; f.y += f.vy * dt; } } draw(); });
 </script>
 </body>
 </html>
