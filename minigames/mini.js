@@ -2,7 +2,7 @@
 'use strict';
 const MG = (() => {
   // 版號：每次合併更新時一起改（修正 → 第三碼 +1；新遊戲／新功能 → 第二碼 +1）
-  const VERSION = '1.16.5', BUILT = '2026/10/18';
+  const VERSION = '1.16.6', BUILT = '2026/10/18';
   const LS = 'puputown.';
   const store = {
     get(k, d) { try { const v = localStorage.getItem(LS + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -143,6 +143,28 @@ const MG = (() => {
   }
   function hide() { if (over) over.hidden = true; paused = null; }
   const panelOpen = () => over && !over.hidden;
+
+  // ---------- taps on menu buttons while another finger rests on the screen ----------
+  // touch screens make no 'click' when a second finger is down (a kid's other hand on the piano, the board…),
+  // so the menu looked frozen. A short touch on a menu / top-bar button clicks it right away; the late native click is dropped.
+  let tapDown = null, synth = null;
+  const tapTarget = el => el && el.closest && el.closest('.mg-over button, .mg-bar button, .mg-bar a');
+  addEventListener('pointerdown', e => { if (e.pointerType !== 'touch') return; const b = tapTarget(e.target); if (b) tapDown = { b, id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now() }; }, true);
+  addEventListener('pointercancel', e => { if (tapDown && tapDown.id === e.pointerId) tapDown = null; }, true);
+  addEventListener('pointerup', e => {
+    if (!tapDown || tapDown.id !== e.pointerId) return;
+    const d = tapDown; tapDown = null;
+    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 14 || performance.now() - d.t > 900) return;   // a scroll or a long press, not a tap
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    if (!d.b.isConnected || d.b.disabled || tapTarget(under) !== d.b) return;
+    synth = { b: d.b, t: performance.now() };
+    d.b.click();
+  }, true);
+  addEventListener('click', e => {
+    if (!synth || !e.isTrusted) return;
+    if (performance.now() - synth.t < 800 && (e.target === synth.b || synth.b.contains(e.target) || tapTarget(e.target) === synth.b || !synth.b.isConnected)) { e.preventDefault(); e.stopImmediatePropagation(); }
+    synth = null;
+  }, true);
 
   // ---------- best scores ----------
   function best(id) { return store.get('best.' + id, null); }
