@@ -404,9 +404,110 @@ function LOGIC() {
     return s;
   }
 
+  // ---------------- K in a row on an NC × NR board (四子棋 and 井字遊戲) ----------------
+  function lnWinAt(b, NC, NR, i, p, K) {
+    const r0 = (i / NC) | 0, c0 = i % NC;
+    for (const [dr, dc] of D4) {
+      let k = 1;
+      for (let s = -1; s <= 1; s += 2) { let r = r0 + dr * s, c = c0 + dc * s; while (r >= 0 && r < NR && c >= 0 && c < NC && b[r * NC + c] === p) { k++; r += dr * s; c += dc * s; } }
+      if (k >= K) return true;
+    }
+    return false;
+  }
+  function lnWinLine(b, NC, NR, i, K) {
+    const p = b[i], r0 = (i / NC) | 0, c0 = i % NC;
+    for (const [dr, dc] of D4) {
+      const cells = [i];
+      for (let s = -1; s <= 1; s += 2) { let r = r0 + dr * s, c = c0 + dc * s; while (r >= 0 && r < NR && c >= 0 && c < NC && b[r * NC + c] === p) { if (s < 0) cells.unshift(r * NC + c); else cells.push(r * NC + c); r += dr * s; c += dc * s; } }
+      if (cells.length >= K) return cells;
+    }
+    return null;
+  }
+  // every K-window on the board (cached per size)
+  const WIN = {};
+  function windows(NC, NR, K) {
+    const key = NC + 'x' + NR + 'k' + K; if (WIN[key]) return WIN[key];
+    const out = [];
+    for (let r = 0; r < NR; r++) for (let c = 0; c < NC; c++) for (const [dr, dc] of D4) {
+      const er = r + dr * (K - 1), ec = c + dc * (K - 1);
+      if (er < 0 || er >= NR || ec < 0 || ec >= NC) continue;
+      const w = []; for (let k = 0; k < K; k++) w.push((r + dr * k) * NC + c + dc * k); out.push(w);
+    }
+    return (WIN[key] = out);
+  }
+  function lnEval(b, NC, NR, K, p) {
+    const q = 3 - p, ws = windows(NC, NR, K), V = K === 4 ? [0, 1, 5, 40] : [0, 1, 8]; let s = 0;
+    for (const w of ws) { let a = 0, c = 0; for (const i of w) { if (b[i] === p) a++; else if (b[i] === q) c++; } if (a && !c) s += V[a] || 0; else if (c && !a) s -= (V[c] || 0) * 1.1; }
+    return s;
+  }
+  // 四子棋: the stone drops to the lowest empty cell of the column
+  function c4Row(b, NC, NR, c) { for (let r = NR - 1; r >= 0; r--) if (!b[r * NC + c]) return r * NC + c; return -1; }
+  function lnMoves(kind, b, NC, NR) {
+    const out = [];
+    if (kind === 'c4') { const mid = (NC - 1) / 2, cols = [...Array(NC).keys()].sort((u, v) => Math.abs(u - mid) - Math.abs(v - mid)); for (const c of cols) { const i = c4Row(b, NC, NR, c); if (i >= 0) out.push(i); } }
+    else { const mr = (NR - 1) / 2, mc = (NC - 1) / 2; for (let i = 0; i < NC * NR; i++) if (!b[i]) out.push(i); out.sort((u, v) => (Math.abs(((u / NC) | 0) - mr) + Math.abs(u % NC - mc)) - (Math.abs(((v / NC) | 0) - mr) + Math.abs(v % NC - mc))); }
+    return out;
+  }
+  // negamax with alpha-beta; iterative deepening until the time is up
+  function lnSearch(kind, b0, NC, NR, K, p, maxD, timeMs) {
+    const b = Int8Array.from(b0), t0 = now(); let stop = false, nodes = 0;
+    const center = kind === 'c4' ? (i => 3 - Math.abs(i % NC - (NC - 1) / 2)) : (() => 0);
+    function nm(pl, d, al, be) {
+      if ((++nodes & 255) === 0 && now() - t0 > timeMs) stop = true;
+      if (stop) return 0;
+      const ms = lnMoves(kind, b, NC, NR);
+      if (!ms.length) return 0;
+      for (const m of ms) { b[m] = pl; const w = lnWinAt(b, NC, NR, m, pl, K); b[m] = 0; if (w) return 10000 + d; }
+      if (d <= 0) { let s = lnEval(b, NC, NR, K, pl); for (let i = 0; i < b.length; i++) if (b[i] === pl) s += center(i) * 0.6; else if (b[i]) s -= center(i) * 0.6; return s; }
+      let best = -Infinity;
+      for (const m of ms) {
+        b[m] = pl; const v = -nm(3 - pl, d - 1, -be, -al); b[m] = 0;
+        if (stop) return 0;
+        if (v > best) best = v; if (v > al) al = v; if (al >= be) break;
+      }
+      return best;
+    }
+    let order = lnMoves(kind, b, NC, NR);
+    if (!order.length) return -1;
+    for (const m of order) { b[m] = p; const w = lnWinAt(b, NC, NR, m, p, K); b[m] = 0; if (w) return m; }
+    let bestMove = order[0];
+    const empt = order.length;
+    for (let d = 1; d <= maxD; d++) {
+      let al = -Infinity, bm = -1; const sc = new Map();
+      for (const m of order) {
+        b[m] = p; const v = -nm(3 - p, d - 1, -Infinity, -al); b[m] = 0;
+        if (stop) break;
+        sc.set(m, v + rnd() * 0.01); if (v > al) { al = v; bm = m; }
+      }
+      if (stop) break;
+      bestMove = bm;
+      order = order.slice().sort((u, v) => sc.get(v) - sc.get(u));
+      if (Math.abs(al) >= 10000 || d >= empt) break;
+    }
+    return bestMove;
+  }
+  function lnAI(kind, b, NC, NR, K, p, lv, o) {
+    const q = 3 - p, ms = lnMoves(kind, b, NC, NR);
+    if (!ms.length) return -1;
+    const winFor = pl => ms.filter(m => { b[m] = pl; const w = lnWinAt(b, NC, NR, m, pl, K); b[m] = 0; return w; });
+    if (lv === 1) {
+      const mw = winFor(p); if (mw.length && rnd() < 0.6) return mw[0];
+      const ow = winFor(q); if (ow.length && rnd() < 0.45) return ow[0];
+      return rnd() < 0.4 ? ms[0] : ms[(rnd() * ms.length) | 0];
+    }
+    if (lv === 2) {
+      const mw = winFor(p); if (mw.length) return mw[0];
+      const ow = winFor(q); if (ow.length) return ow[0];
+      if (rnd() < 0.25) return ms[(rnd() * Math.min(ms.length, 4)) | 0];
+      return lnSearch(kind, b, NC, NR, K, p, kind === 'c4' ? 3 : 2, 120);
+    }
+    return lnSearch(kind, b, NC, NR, K, p, kind === 'c4' ? 10 : NC * NR, o.time || 320);
+  }
+
   // ---------------- the computer's move (level 1 簡單, 2 普通, 3 困難) ----------------
   function aiMove(kind, b0, N, p, lv, o = {}) {
     const b = Int8Array.from(b0);
+    if (kind === 'c4' || kind === 'tt') return lnAI(kind, b, N, o.R || (kind === 'c4' ? 6 : N), o.K || (kind === 'c4' ? 4 : 3), p, lv, o);
     if (kind === 'rv') {
       const ms = rvMoves(b, N, p);
       if (!ms.length) return -1;
@@ -425,7 +526,8 @@ function LOGIC() {
     return gkHard(b, N, p);
   }
   return { rvInit, rvFlips, rvCan, rvMoves, rvHas, rvPlay, rvCount, rvNext, rvWeights, rvEval, rvSearch, rvNormal,
-    gkWinAt, gkWinLine, gkMakes, gkCands, gkScore, gkVCF, gkVCT, gkEasy, gkNormal, gkHard, aiMove };
+    gkWinAt, gkWinLine, gkMakes, gkCands, gkScore, gkVCF, gkVCT, gkEasy, gkNormal, gkHard, aiMove,
+    lnWinAt, lnWinLine, lnEval, lnMoves, lnSearch, c4Row };
 }
 
 // ======================================================================
@@ -438,8 +540,10 @@ const EMOJI = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-seri
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const LG = LOGIC();
 const BOARDS = {
-  r8: { kind: 'rv', N: 8, nm: '黑白棋' }, r6: { kind: 'rv', N: 6, nm: '小黑白棋' },
-  g13: { kind: 'gk', N: 13, nm: '五子棋' }, g15: { kind: 'gk', N: 15, nm: '大五子棋' },
+  r8: { kind: 'rv', N: 8, nm: '黑白棋' }, r6: { kind: 'rv', N: 6, nm: '小黑白棋' }, r4: { kind: 'rv', N: 4, nm: '迷你黑白棋' },
+  g13: { kind: 'gk', N: 13, nm: '五子棋' }, g15: { kind: 'gk', N: 15, nm: '大五子棋' }, g9: { kind: 'gk', N: 9, nm: '小五子棋' },
+  c4: { kind: 'c4', N: 7, R: 6, K: 4, nm: '四子棋' },
+  t3: { kind: 'tt', N: 3, K: 3, nm: '井字遊戲' }, t4: { kind: 'tt', N: 4, K: 3, nm: '大井字遊戲' },
 };
 const LV = ['簡單', '普通', '困難'];
 const CN = { 1: '綠色', 2: '粉色' };
@@ -453,7 +557,7 @@ const PAL = {
 };
 
 // ---------- state ----------
-let state = 'menu', gid = 'r8', kind = 'rv', N = 8, mode = 'cpu1', level = 1, vsCpu = true, human = 1, firstColor = 1;
+let state = 'menu', gid = 'r8', kind = 'rv', N = 8, NR = 8, KW = 5, mode = 'cpu1', level = 1, vsCpu = true, human = 1, firstColor = 1;
 let board = LG.rvInit(8), turn = 1, last = -1, hist = [], moveNo = 0, winLine = null, result = null;
 let anims = new Map(), busyUntil = 0, clock = 0, t = 0, frames = 0, token = 0, think = null, passNote = null;
 let hover = -1, press = null, ghost = -1, hint = null, sayMsg = null, banner = null, lastFlipN = 0, pressedBtn = null, pressT = 0;
@@ -463,7 +567,9 @@ let layer = null, layerKey = '';
 const sprites = new Map();
 const thinkTimes = [];
 
-function setBoardType(id) { gid = BOARDS[id] ? id : 'r8'; kind = BOARDS[gid].kind; N = BOARDS[gid].N; }
+function setBoardType(id) { gid = BOARDS[id] ? id : 'r8'; kind = BOARDS[gid].kind; N = BOARDS[gid].N; NR = BOARDS[gid].R || N; KW = BOARDS[gid].K || 5; }
+const lnKind = () => kind === 'c4' || kind === 'tt';
+const aiOpts = (o = {}) => ({ ...o, R: NR, K: KW });
 const nameOf = p => vsCpu ? (p === human ? '你' : '電腦') : CN[p] + '噗噗';
 const cpuColor = () => 3 - human;
 const isBusy = () => clock < busyUntil;
@@ -478,8 +584,8 @@ function layout() {
   const m = 6;
   if (land) { BRD = { x: m, y: m, s: H - 2 * m }; P = { x: H + 2, y: m, w: W - H - 2 - m, h: H - 2 * m }; }
   else { BRD = { x: m, y: m, s: W - 2 * m }; P = { x: m, y: W + 2, w: W - 2 * m, h: H - W - 2 - m }; }
-  const pad = kind === 'rv' ? BRD.s * 0.035 : BRD.s * 0.012;
-  cs = (BRD.s - 2 * pad) / N; gx = BRD.x + pad; gy = BRD.y + pad;
+  const pad = kind === 'rv' ? BRD.s * 0.035 : kind === 'c4' ? BRD.s * 0.03 : kind === 'tt' ? BRD.s * 0.05 : BRD.s * 0.012;
+  cs = (BRD.s - 2 * pad) / N; gx = BRD.x + pad; gy = BRD.y + pad + (N - NR) * cs / 2;
   const g = 10, ch = Math.round(76 * U), bh = Math.round(64 * U), ids = kind === 'rv' ? ['undo', 'hint', 'dots'] : ['undo', 'hint'];
   cards = []; btns = [];
   let y0 = P.y + 8;
@@ -534,7 +640,7 @@ function emo(s, px, py, size, g = x) {
   g.drawImage(c, px - size * 0.7, py - size * 0.7, size * 1.4, size * 1.4);
 }
 const cellXY = i => ({ x: gx + (i % N + 0.5) * cs, y: gy + (((i / N) | 0) + 0.5) * cs });
-const stoneR = () => cs * (kind === 'rv' ? 0.4 : 0.45);
+const stoneR = () => cs * (kind === 'rv' ? 0.4 : kind === 'tt' ? 0.34 : kind === 'c4' ? 0.42 : 0.45);
 
 // a cute jelly stone with a tiny face, drawn once per colour/size into a little canvas
 function stoneSprite(col, rL) {
@@ -621,6 +727,32 @@ function buildLayer() {
     // tiny sparkles on the frame
     g.fillStyle = 'rgba(255,255,255,.55)';
     for (const [a, b2] of [[0.1, 0.012], [0.5, 0.012], [0.9, 0.012], [0.012, 0.3], [0.988, 0.7]]) dot(g, B.x + a * B.s, B.y + b2 * B.s, 2.4);
+  } else if (kind === 'c4') {
+    // a blue frame with round holes, standing on little feet
+    const fy0 = gy - cs * 0.1, fh = NR * cs + cs * 0.2;
+    g.fillStyle = 'rgba(30,60,140,.28)'; rr(g, gx - cs * 0.15 + 2, fy0 + 6, N * cs + cs * 0.3, fh, 20); g.fill();
+    g.fillStyle = '#3c6fd6'; for (const fx2 of [gx + cs * 0.2, gx + N * cs - cs * 0.6]) { rr(g, fx2, fy0 + fh - 8, cs * 0.4, Math.min(cs * 0.5, B.y + B.s - fy0 - fh + 6), 6); g.fill(); }
+    const fr = g.createLinearGradient(0, fy0, 0, fy0 + fh); fr.addColorStop(0, '#5d93f0'); fr.addColorStop(1, '#3466cc');
+    g.fillStyle = fr; rr(g, gx - cs * 0.15, fy0, N * cs + cs * 0.3, fh, 20); g.fill();
+    g.strokeStyle = '#21489a'; g.lineWidth = 3; g.stroke();
+    for (let r = 0; r < NR; r++) for (let c = 0; c < N; c++) {
+      const hx = gx + (c + 0.5) * cs, hy = gy + (r + 0.5) * cs;
+      g.fillStyle = '#21489a'; dot(g, hx, hy + 2, cs * 0.43);
+      g.fillStyle = '#e8f3ff'; dot(g, hx, hy, cs * 0.42);
+      g.fillStyle = 'rgba(60,100,170,.18)'; g.beginPath(); g.arc(hx, hy, cs * 0.42, Math.PI * 1.1, Math.PI * 1.9); g.arc(hx, hy + cs * 0.06, cs * 0.38, Math.PI * 1.9, Math.PI * 1.1, true); g.fill();
+    }
+    g.fillStyle = 'rgba(255,255,255,.5)'; for (let c = 0; c < N; c++) { g.beginPath(); g.moveTo(gx + (c + 0.5) * cs - 6, fy0 - 4); g.lineTo(gx + (c + 0.5) * cs + 6, fy0 - 4); g.lineTo(gx + (c + 0.5) * cs, fy0 + 4); g.fill(); }
+  } else if (kind === 'tt') {
+    // a sheet of paper with chunky crayon lines
+    g.fillStyle = 'rgba(120,90,40,.22)'; rr(g, B.x + 2, B.y + 5, B.s, B.s, 18); g.fill();
+    g.fillStyle = '#fffdf4'; rr(g, B.x, B.y, B.s, B.s, 18); g.fill(); g.strokeStyle = '#e8d6a8'; g.lineWidth = 3; g.stroke();
+    g.strokeStyle = 'rgba(120,170,230,.2)'; g.lineWidth = 1.5; for (let yy = B.y + 24; yy < B.y + B.s - 10; yy += 24) { g.beginPath(); g.moveTo(B.x + 12, yy); g.lineTo(B.x + B.s - 12, yy); g.stroke(); }
+    const cols = ['#ff7aa8', '#ffb72b', '#4cb2f5', '#5ccf63', '#9b7cf7'];
+    g.lineCap = 'round'; g.lineWidth = Math.max(6, cs * 0.07);
+    for (let k = 1; k < N; k++) {
+      g.strokeStyle = cols[(k - 1) % cols.length]; g.beginPath(); g.moveTo(gx + k * cs, gy + cs * 0.08); g.quadraticCurveTo(gx + k * cs + 4, gy + N * cs / 2, gx + k * cs - 2, gy + N * cs - cs * 0.08); g.stroke();
+      g.strokeStyle = cols[(k + 1) % cols.length]; g.beginPath(); g.moveTo(gx + cs * 0.08, gy + k * cs); g.quadraticCurveTo(gx + N * cs / 2, gy + k * cs - 4, gx + N * cs - cs * 0.08, gy + k * cs + 2); g.stroke();
+    }
   } else {
     g.fillStyle = 'rgba(110,70,20,.28)'; rr(g, B.x + 2, B.y + 5, B.s, B.s, 14); g.fill();
     const wd = g.createLinearGradient(B.x, B.y, B.x + B.s, B.y + B.s); wd.addColorStop(0, '#f8dc9e'); wd.addColorStop(1, '#ebbf6e');
@@ -634,7 +766,7 @@ function buildLayer() {
     g.strokeStyle = '#9b6a2f'; g.lineWidth = Math.max(1.2, cs * 0.045);
     for (let k = 0; k < N; k++) { const q = gx + (k + 0.5) * cs; g.beginPath(); g.moveTo(q, b0); g.lineTo(q, b1); g.stroke(); const yy = gy + (k + 0.5) * cs; g.beginPath(); g.moveTo(a0, yy); g.lineTo(a1, yy); g.stroke(); }
     g.lineWidth = Math.max(2, cs * 0.07); g.strokeRect(a0, b0, a1 - a0, b1 - b0);
-    const st = N === 13 ? [3, 6, 9] : [3, 7, 11];
+    const st = N === 13 ? [3, 6, 9] : N === 9 ? [2, 4, 6] : [3, 7, 11];
     g.fillStyle = '#7a4f1c';
     for (const r of st) for (const c of st) if ((r === st[1]) === (c === st[1]) || N === 15) dot(g, gx + (c + 0.5) * cs, gy + (r + 0.5) * cs, Math.max(2.5, cs * 0.1));
   }
@@ -648,23 +780,30 @@ function buildLayer() {
 let worker = null, wseq = 0;
 const wcb = new Map();
 try {
-  const src = `'use strict';const LG=(${LOGIC.toString()})();onmessage=e=>{const d=e.data;let m=-1,t0=Date.now();try{m=LG.aiMove(d.kind,Int8Array.from(d.b),d.N,d.p,d.lv);}catch(err){m=-1;}postMessage({id:d.id,m,ms:Date.now()-t0});};`;
+  const src = `'use strict';const LG=(${LOGIC.toString()})();onmessage=e=>{const d=e.data;let m=-1,t0=Date.now();try{m=LG.aiMove(d.kind,Int8Array.from(d.b),d.N,d.p,d.lv,d.o||{});}catch(err){m=-1;}postMessage({id:d.id,m,ms:Date.now()-t0});};`;
   worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
   worker.onmessage = e => { const f = wcb.get(e.data.id); wcb.delete(e.data.id); thinkTimes.push(e.data.ms); if (f) f(e.data.m); };
   worker.onerror = () => { worker = null; for (const [id, f] of wcb) { wcb.delete(id); f(-2); } };
 } catch { worker = null; }
 function askAI(b, p, lv, cb) {
-  const sync = () => { const t0 = performance.now(); const m = LG.aiMove(kind, b, N, p, lv); thinkTimes.push(performance.now() - t0); cb(m); };
+  const sync = () => { const t0 = performance.now(); const m = LG.aiMove(kind, b, N, p, lv, aiOpts()); thinkTimes.push(performance.now() - t0); cb(m); };
   if (worker) {
     const id = ++wseq;
     wcb.set(id, m => m === -2 ? sync() : cb(m));
-    worker.postMessage({ id, kind, b: Array.from(b), N, p, lv });
+    worker.postMessage({ id, kind, b: Array.from(b), N, p, lv, o: aiOpts() });
     setTimeout(() => { if (wcb.has(id)) { wcb.delete(id); sync(); } }, 5000);
   } else setTimeout(sync, 40);
 }
-function legal(i, p = turn) { return i >= 0 && i < N * N && !board[i] && (kind === 'gk' || LG.rvCan(board, N, i, p)); }
+function legal(i, p = turn) {
+  if (i < 0 || i >= N * NR || board[i]) return false;
+  if (kind === 'c4') return ((i / N) | 0) === NR - 1 || !!board[i + N];
+  return kind !== 'rv' || LG.rvCan(board, N, i, p);
+}
+// 四子棋: a tap anywhere in a column means "drop it here"
+const target = i => kind === 'c4' && i >= 0 ? LG.c4Row(board, N, NR, i % N) : i;
 function fallbackMove(p) {
   if (kind === 'rv') { const ms = LG.rvMoves(board, N, p); return ms.length ? MG.pick(ms) : -1; }
+  if (lnKind()) { const ms = LG.lnMoves(kind, board, N, NR); return ms.length ? MG.pick(ms) : -1; }
   const C = LG.gkCands(board, N, 1); return C.length ? MG.pick(C) : -1;
 }
 function startThink() {
@@ -694,11 +833,15 @@ function doMove(i) {
   anims.set(i, { type: 'drop', t0: clock, to: p });
   last = i; moveNo++; lastFlipN = flips.length;
   MG.sfx('place');
-  busyUntil = clock + (kind === 'rv' ? 0.22 + flips.length * 0.085 + 0.36 : 0.3);
+  busyUntil = clock + (kind === 'rv' ? 0.22 + flips.length * 0.085 + 0.36 : kind === 'c4' ? 0.2 + 0.06 * ((i / N) | 0) + 0.25 : 0.3);
   if (kind === 'rv' && flips.length >= 4) say(vsCpu && p === cpuColor() ? `Oh no! −${flips.length} 😵` : `Wow! +${flips.length} ✨`, 1.8, vsCpu && p === cpuColor() ? human : p);
   // a juicy chime once the last stone has flipped (only for the player's own good moves)
   if (kind === 'rv' && flips.length >= 2 && !(vsCpu && p === cpuColor())) anims.get(flips[flips.length - 1]).big = flips.length;
-  if (kind === 'gk') {
+  if (lnKind()) {
+    if (LG.lnWinAt(board, N, NR, i, p, KW)) { winLine = LG.lnWinLine(board, N, NR, i, KW); return finish(p); }
+    if (!board.includes(0)) return finish(0);
+    turn = q;
+  } else if (kind === 'gk') {
     if (LG.gkWinAt(board, N, i, p)) { winLine = LG.gkWinLine(board, N, i); return finish(p); }
     if (!board.includes(0)) return finish(0);
     turn = q;
@@ -734,7 +877,7 @@ function undo() {
 const canUndo = () => state === 'play' && !result && hist.length > 0 && (!vsCpu || hist.some(s => s.turn === human));
 function giveHint() {
   if (!humanTurn()) return;
-  const m = LG.aiMove(kind, board, N, turn, 3, { time: 160 });
+  const m = LG.aiMove(kind, board, N, turn, 3, aiOpts({ time: 160 }));
   if (m < 0) return;
   hint = { cell: m, t0: clock };
   MG.sfx('good'); MG.sfx('sparkle'); say('Try here 💡', 2.2, turn);
@@ -746,8 +889,9 @@ function toggleDots() {
 
 // ---------- input ----------
 function cellAt(p) {
-  const c = Math.floor((p.x - gx) / cs), r = Math.floor((p.y - gy) / cs);
-  return c >= 0 && r >= 0 && c < N && r < N ? r * N + c : -1;
+  const c = Math.floor((p.x - gx) / cs); let r = Math.floor((p.y - gy) / cs);
+  if (kind === 'c4' && c >= 0 && c < N && p.y >= BRD.y && p.y <= BRD.y + BRD.s) r = clamp(r, 0, NR - 1);   // anywhere in the column
+  return c >= 0 && r >= 0 && c < N && r < NR ? r * N + c : -1;
 }
 function btnAt(p) { return btns.find(b => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) || null; }
 function btnEnabled(b) {
@@ -769,7 +913,7 @@ cv.addEventListener('pointerdown', e => {
   const b = btnAt(p);
   if (b) { pressBtn(b); return; }
   if (!humanTurn()) { if (think && cellAt(p) >= 0) say('Thinking… 🤔', 1.2, cpuColor()); return; }
-  const i = cellAt(p);
+  const i = target(cellAt(p));
   if (i < 0) return;
   press = { id: e.pointerId, cell: i };
   try { cv.setPointerCapture(e.pointerId); } catch {}
@@ -777,9 +921,9 @@ cv.addEventListener('pointerdown', e => {
 });
 cv.addEventListener('pointermove', e => {
   const p = cv.logical(e);
-  if (press && press.id === e.pointerId) { press.cell = cellAt(p); hover = press.cell; return; }
+  if (press && press.id === e.pointerId) { press.cell = target(cellAt(p)); hover = press.cell; return; }
   if (e.pointerType === 'mouse') {
-    hover = state === 'play' ? cellAt(p) : -1;
+    hover = state === 'play' ? target(cellAt(p)) : -1;
     cv.style.cursor = (humanTurn() && legal(hover)) || btnAt(p) ? 'pointer' : 'default';
   }
 });
@@ -826,7 +970,7 @@ function update(dt) {
     if (!result.shown && clock >= result.at) { result.shown = true; showOver(); }
     return;
   }
-  if (vsCpu && turn === cpuColor() && !isBusy()) {
+  if (vsCpu && turn === cpuColor() && !isBusy() && !MG.panelOpen()) {
     if (!think) startThink();
     else if (think.move != null && clock >= think.t0 + think.minT) { const m = think.move; think = null; if (m >= 0) doMove(m); }
   }
@@ -844,11 +988,15 @@ function drawBoard() {
     x.strokeStyle = 'rgba(255,255,255,.7)'; x.lineWidth = cs * 0.18; x.stroke(); x.restore();
   }
   const wave = result && result.cel && kind === 'rv' && result.w;
-  for (let i = 0; i < N * N; i++) {
+  for (let i = 0; i < N * NR; i++) {
     const v = board[i]; if (!v) continue;
     const c = cellXY(i), a = anims.get(i);
     let o = {};
-    if (a && a.type === 'drop') {
+    if (a && a.type === 'drop' && kind === 'c4') {
+      const row = (i / N) | 0, dur = 0.2 + 0.06 * row, k = (clock - a.t0) / dur;
+      if (k < 1) { if (k < 0) continue; o = { dy: -(1 - k * k) * ((row + 1) * cs + cs * 0.3) }; }
+      else { const k2 = (clock - a.t0 - dur) / 0.25; if (k2 < 1) { const s = Math.sin(k2 * Math.PI * 2) * (1 - k2) * 0.2; o = { sx: 1 + s, sy: 1 - s, dy: s * r * 0.3 }; } }
+    } else if (a && a.type === 'drop') {
       const k = (clock - a.t0) / 0.2;
       if (k < 1) o = { dy: -(1 - k) * (1 - k) * r * 1.4, sx: 0.92, sy: 1.08 };
       else { const k2 = (clock - a.t0 - 0.2) / 0.3; if (k2 < 1) { const s = Math.sin(k2 * Math.PI * 2) * (1 - k2) * 0.22; o = { sx: 1 + s, sy: 1 - s, dy: s * r * 0.3 }; } }
@@ -865,7 +1013,7 @@ function drawBoard() {
   }
   // last move marker
   const la = anims.get(last);
-  if (last >= 0 && board[last] && !(la && clock < la.t0 + 0.3) && !(result && result.cel)) {
+  if (last >= 0 && board[last] && !(la && clock < la.t0 + (kind === 'c4' ? 0.65 : 0.3)) && !(result && result.cel)) {
     const c = cellXY(last);
     x.strokeStyle = 'rgba(255,255,255,.95)'; x.lineWidth = Math.max(2, cs * 0.06);
     x.beginPath(); x.arc(c.x, c.y, r * (1.12 + 0.05 * Math.sin(t * 4)), 0, 7); x.stroke();
@@ -1052,13 +1200,19 @@ function newGame() {
   token++; think = null; result = null; winLine = null; anims.clear(); hist = []; moveNo = 0; last = -1;
   hint = null; ghost = -1; hover = -1; press = null; passNote = null; sayMsg = null; banner = null; lastFlipN = 0;
   MG.fx.clear();
-  board = kind === 'rv' ? LG.rvInit(N) : new Int8Array(N * N);
+  board = kind === 'rv' ? LG.rvInit(N) : new Int8Array(N * NR);
   turn = vsCpu ? 1 : firstColor;
   busyUntil = clock + 0.35;
   state = 'play';
   layout(); MG.hide(); hud();
   if (vsCpu) say(human === 1 ? `You ${DOT[1]} go first! 👆` : `You ${DOT[2]} · 🤖 first`, 2.2, human);
   else say(`${DOT[turn]} ${EN[turn]} first! 🚀`, 2, turn);
+  // a new kind of game: explain it once
+  const NEWS = { c4: ['🔵 四子棋', '點一個直排，棋子就會<b>掉到最下面</b>。橫的、直的或斜的，先連成<b>四個</b>一排就贏！'], tt: ['#️⃣ 井字遊戲', '輪流在格子裡放一顆，橫的、直的或斜的，先連成<b>三個</b>一排就贏！大井字遊戲是 4×4 的格子，一樣連成三個就贏。'] };
+  if (NEWS[kind] && !MG.store.get('chess.seen.' + kind, false)) {
+    MG.store.set('chess.seen.' + kind, true); busyUntil = clock + 0.8;
+    MG.panel({ title: NEWS[kind][0], html: `<p>${NEWS[kind][1]}</p>`, buttons: [{ label: '開始', on: () => { MG.hide(); busyUntil = Math.max(busyUntil, clock + 0.4); } }] });
+  }
 }
 function showOver() {
   state = 'over';
@@ -1076,7 +1230,7 @@ function showOver() {
   } else title = w ? `${CN[w]}噗噗贏了！🎉` : '平手！';
   let score;
   if (kind === 'rv') { const [a, c] = LG.rvCount(board); score = `<div class="ch-score"><span class="ch-dot g"></span>${a} : ${c}<span class="ch-dot p"></span></div>`; }
-  else score = `<p>${w ? '連成五個了！' : '棋盤下滿了'}一共下了 ${moveNo} 手</p>`;
+  else score = `<p>${w ? `連成${['', '', '', '三', '四', '五'][KW]}個了！` : '棋盤下滿了，'}一共下了 ${moveNo} 手</p>`;
   MG.panel({
     title, html: score + extra,
     buttons: [
@@ -1088,11 +1242,12 @@ function showOver() {
 }
 const MENU = {
   id: 'chess', title: '噗噗下棋', menuLabel: '☰ 選單',
-  html: '<p>綠色噗噗和粉紅噗噗來下棋！<b>黑白棋</b>：把對方夾在中間就會翻成你的顏色，最後誰多誰贏。<b>五子棋</b>：輪流放一顆，先連成五個一排就贏！</p>',
+  html: '<p>綠色噗噗和粉紅噗噗來下棋！<b>黑白棋</b>：把對方夾在中間就會翻成你的顏色，最後誰多誰贏。<b>五子棋</b>：輪流放一顆，先連成五個一排就贏！<b>四子棋</b>：棋子會掉到最下面，先連成四個就贏。<b>井字遊戲</b>：先連成三個就贏！</p>',
   picks: [
     { key: 'game', title: '下什麼棋？', def: 'r8', options: [
-      { id: 'r8', label: '⚫⚪ 黑白棋', sub: '8×8 標準棋盤' }, { id: 'r6', label: '⚫⚪ 小黑白棋', sub: '6×6 很快下完' },
-      { id: 'g13', label: '✖️⭕ 五子棋', sub: '13×13 適合小朋友' }, { id: 'g15', label: '✖️⭕ 大五子棋', sub: '15×15 大棋盤' }] },
+      { id: 'r8', label: '⚫⚪ 黑白棋', sub: '8×8 標準棋盤' }, { id: 'r6', label: '⚫⚪ 小黑白棋', sub: '6×6 很快下完' }, { id: 'r4', label: '⚫⚪ 迷你黑白棋', sub: '4×4 一下就下完' },
+      { id: 'g9', label: '✖️⭕ 小五子棋', sub: '9×9 小棋盤' }, { id: 'g13', label: '✖️⭕ 五子棋', sub: '13×13 適合小朋友' }, { id: 'g15', label: '✖️⭕ 大五子棋', sub: '15×15 大棋盤' },
+      { id: 't3', label: '#️⃣ 井字遊戲', sub: '3×3 連成三個' }, { id: 't4', label: '#️⃣ 大井字遊戲', sub: '4×4 連成三個' }, { id: 'c4', label: '🔵 四子棋', sub: '7×6 丟下去連成四個' }] },
     { key: 'first', title: '誰先下？', def: 'me', options: [{ id: 'me', label: '🟢 我先下', sub: '我是綠色噗噗' }, { id: 'cpu', label: '💗 對方先下', sub: '我是粉紅噗噗' }] },
   ],
   modesTitle: '跟誰下？',
@@ -1119,7 +1274,7 @@ const MENU = {
 function menu() {
   state = 'menu'; token++; think = null; result = null; winLine = null; anims.clear(); hint = null; ghost = -1; hover = -1; passNote = null; sayMsg = null; banner = null;
   setBoardType(MG.store.get('chess.pick.game', 'r8'));
-  board = kind === 'rv' ? LG.rvInit(N) : new Int8Array(N * N);
+  board = kind === 'rv' ? LG.rvInit(N) : new Int8Array(N * NR);
   if (kind === 'gk') { const h = (N / 2) | 0; board[h * N + h] = 1; board[h * N + h + 1] = 2; board[(h + 1) * N + h + 1] = 1; }
   turn = 1; last = -1; layout(); hud();
   MG.choose(MENU);
@@ -1134,7 +1289,7 @@ window.CHT = {
   get busy() { return isBusy() || !!think; }, get thinking() { return !!think; }, get myTurn() { return humanTurn(); }, get result() { return result ? { w: result.w, shown: result.shown } : null; },
   get ghost() { return ghost; }, get hint() { return hint ? hint.cell : -1; }, get showDots() { return showDots; }, get hist() { return hist.length; },
   get frames() { return frames; }, get msg() { return curMsg().text; }, get banner() { return banner && banner.text; }, get worker() { return !!worker; }, get winLine() { return winLine ? winLine.slice() : null; },
-  board: () => Array.from(board), legal: () => kind === 'rv' ? LG.rvMoves(board, N, turn) : Array.from(board).map((v, i) => v ? -1 : i).filter(i => i >= 0),
+  board: () => Array.from(board), legal: () => kind === 'rv' ? LG.rvMoves(board, N, turn) : lnKind() ? LG.lnMoves(kind, board, N, NR) : Array.from(board).map((v, i) => v ? -1 : i).filter(i => i >= 0),
   confirm: () => needConfirm('touch'), cellCss: () => cs * cssScale(),
   dims: () => ({ W, H, land, U, cs, BRD: { ...BRD }, P: { ...P }, mid: { ...mid } }),
   cellPoint: i => { const c = cellXY(i); return toClient(c.x, c.y); },
@@ -1146,7 +1301,8 @@ window.CHT = {
   ai(k, b, n, p, lv, o) { const t0 = performance.now(); const m = LG.aiMove(k, Int8Array.from(b), n, p, lv, o); return { m, ms: performance.now() - t0 }; },
   // play one whole game between two computer levels (A = green, moves first); returns the winner and timings
   match(k, n, lvA, lvB, o = {}) {
-    let b = k === 'rv' ? LG.rvInit(n) : new Int8Array(n * n), p = 1, moves = 0; const times = { 1: [], 2: [] };
+    const R = o.R || n, K = o.K || 5;
+    let b = k === 'rv' ? LG.rvInit(n) : new Int8Array(n * R), p = 1, moves = 0; const times = { 1: [], 2: [] };
     for (;;) {
       const lv = p === 1 ? lvA : lvB, t0 = performance.now(), m = LG.aiMove(k, b, n, p, lv, o);
       times[p].push(performance.now() - t0);
@@ -1156,6 +1312,12 @@ window.CHT = {
         const nx = LG.rvNext(b, n, p);
         if (nx.over) { const [a, c] = LG.rvCount(b); return { w: a > c ? 1 : c > a ? 2 : 0, a, c, moves, times }; }
         p = nx.turn;
+      } else if (k === 'c4' || k === 'tt') {
+        if (m < 0 || b[m] || (k === 'c4' && ((m / n) | 0) < R - 1 && !b[m + n])) return { w: -1, err: 'bad move', moves };
+        b[m] = p; moves++;
+        if (LG.lnWinAt(b, n, R, m, p, K)) return { w: p, moves, times };
+        if (!b.includes(0)) return { w: 0, moves, times };
+        p = 3 - p;
       } else {
         if (m < 0 || b[m]) return { w: -1, err: 'bad move', moves };
         b[m] = p; moves++;
