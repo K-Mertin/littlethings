@@ -123,7 +123,9 @@ function drawHUD(c) {
     const sec = W.timeLeft > 0 ? Math.ceil(W.timeLeft / 60) : (W.t / 60) | 0, ts = `${(sec / 60) | 0}:${String(sec % 60).padStart(2, '0')}`;
     c.textAlign = 'center'; c.font = W.timeLeft > 0 ? '900 22px "Noto Sans TC",sans-serif' : '700 14px "Noto Sans TC",sans-serif';
     c.fillStyle = W.timeLeft > 0 && W.timeLeft < 600 && (W.t >> 4) & 1 ? '#ff5a4a' : '#fff6e6'; c.lineWidth = 4;
-    const tx = two ? Wv / 2 - btnW / 2 : Wv / 2; c.strokeText(ts, tx, top + 24); c.fillText(ts, tx, top + 24);
+    let tx = two ? Wv / 2 - btnW / 2 : Wv / 2, ty = top + 24;
+    if (Wv < 660 && !two) { c.textAlign = 'left'; tx = 14; ty = top + 90 + (W.players.length > 2 ? 46 : 0); }   // narrow screens: under the panel
+    c.strokeText(ts, tx, ty); c.fillText(ts, tx, ty);
   }
   if (!isTouch && showKeys) drawKeyHint(c);
   if (W.msg) {
