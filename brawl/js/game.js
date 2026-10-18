@@ -34,7 +34,29 @@ const CHARS = {
     combo: ['bite'], skills: ['swoop'] },
   dragon: { name: '岩甲龍', hp: 1200, spd: 0.8, pow: 1.15, size: 1.45, heavy: true, enemy: true, boss: true,
     look: mkLook({ style: 'dragon', animal: true, build: 'big', skin: '#62b05c', hair: '#ff8a3d', acc: '#ffd34d', shirt: '#62b05c', pants: '#549c4e', shoe: '#3f7a3a', sleeve: 'none', glove: '#549c4e', tail: 'dragon', belly: '#f4e3a0', angry: true }),
-    combo: ['jab', 'cross', 'upper'], skills: ['spit', 'stomp', 'charge'] }
+    combo: ['jab', 'cross', 'upper'], skills: ['spit', 'stomp', 'charge'] },
+  /* stage 2-4 monsters */
+  cat: { name: '石虎', hp: 130, spd: 1.25, pow: 0.75, enemy: true,
+    look: mkLook({ style: 'cat', animal: true, skin: '#f4e6c8', hair: '#5a3a22', shirt: '#c99a5a', pants: '#b5874a', shoe: '#6a4426', glove: '#f4e6c8', tail: 'long', belly: '#f4e6c8', angry: true, spots: '#5a3a22' }),
+    combo: ['jab', 'cross'], skills: ['pounce'] },
+  crab: { name: '螃蟹兵', hp: 170, spd: 0.85, pow: 0.8, enemy: true, draw: 'crab', shell: true,
+    look: mkLook({ style: 'crab', animal: true, shirt: '#e8432f', skin: '#ffd2b8', pants: '#e8432f' }),
+    combo: ['pinch', 'pinch'], skills: [] },
+  octopus: { name: '小章魚', hp: 120, spd: 0.8, pow: 0.7, enemy: true, ranged: true, draw: 'octo',
+    look: mkLook({ style: 'octo', animal: true, shirt: '#b06ad9', skin: '#e6c2f2', pants: '#b06ad9' }),
+    combo: ['pinch'], skills: ['ink'] },
+  magpie: { name: '台灣藍鵲', hp: 100, spd: 1.2, pow: 0.75, enemy: true, fly: true, draw: 'magpie',
+    look: mkLook({ style: 'magpie', animal: true, shirt: '#2f6fd1', skin: '#1c1a2e', pants: '#2f6fd1' }),
+    combo: ['bite'], skills: ['swoop'] },
+  raccoon: { name: '狸貓大王', hp: 1300, spd: 0.85, pow: 1.1, size: 1.45, heavy: true, enemy: true, boss: true,
+    look: mkLook({ style: 'raccoon', animal: true, build: 'big', skin: '#f4e6c8', hair: '#3a2a22', shirt: '#9a7a5a', pants: '#7a5c40', shoe: '#3a2a22', glove: '#3a2a22', tail: 'ringed', belly: '#f4e6c8', angry: true, acc: '#e8432f', eyeRing: true }),
+    combo: ['jab', 'cross', 'upper'], skills: ['buns', 'belly', 'drum'] },
+  blackbear: { name: '黑熊王', hp: 1500, spd: 0.8, pow: 1.2, size: 1.6, heavy: true, enemy: true, boss: true,
+    look: mkLook({ style: 'bear', animal: true, build: 'big', skin: '#2b2733', hair: '#1c1a2e', shirt: '#2b2733', pants: '#24212c', shoe: '#1c1a2e', glove: '#1c1a2e', tail: 'stub', belly: '#fff6e6', vmark: true, angry: true, eyeRing: true }),
+    combo: ['cross', 'upper', 'cross'], skills: ['roar', 'slam', 'charge'] },
+  bigocto: { name: '大章魚', hp: 1500, spd: 0.5, pow: 1.15, size: 2.1, heavy: true, enemy: true, boss: true, draw: 'octo',
+    look: mkLook({ style: 'octo', animal: true, shirt: '#e8432f', skin: '#ffb3a9', pants: '#e8432f', crown: true }),
+    combo: ['sweep1'], skills: ['inkspray', 'sweep', 'summon'] }
 };
 const HEROES = ['rex', 'yuki', 'gan', 'kite'];
 
@@ -49,6 +71,8 @@ const ATK = {
   swing3: { pose: 'swing3', dur: 28, on: 9, off: 14, rx: [6, 64], hy: [0, 70], dz: 16, dmg: 36, kb: 4.5, kbY: 5, launch: true, weapon: true, sfx: 'heavy' },
   butt: { pose: 'butt', dur: 24, on: 8, off: 12, rx: [2, 38], hy: [26, 70], dz: 15, dmg: 20, kb: 3, stun: 20, fall: 45 },
   bite: { pose: 'bite', dur: 22, on: 7, off: 11, rx: [-4, 30], hy: [-40, 26], dz: 15, dmg: 12, kb: 1.5, stun: 16, fall: 30 },
+  pinch: { pose: 'jab', dur: 22, on: 7, off: 11, rx: [2, 36], hy: [0, 44], dz: 15, dmg: 14, kb: 1.6, stun: 18, fall: 34 },
+  sweep1: { pose: 'jab', dur: 34, on: 12, off: 18, rx: [-10, 70], hy: [0, 40], dz: 20, dmg: 22, kb: 4, kbY: 4, launch: true, sfx: 'heavy' },
   runAtk: { dur: 28, on: 3, off: 18, rx: [-4, 38], hy: [10, 58], dz: 15, dmg: 30, kb: 5, kbY: 5, launch: true, sfx: 'heavy' },
   jumpAtk: { on: 0, off: 999, rx: [-4, 36], hy: [-14, 44], dz: 15, dmg: 24, kb: 3.5, kbY: 4, fall: 70 }
 };
@@ -140,6 +164,30 @@ const SKILLS = {
     tick(f, t) { if (t >= 8 && t <= 34) { f.vx = f.face * 6; f.swoopY = 34 * Math.sin((t - 8) / 26 * Math.PI); f.meleeHit({ rx: [-6, 26], hy: [-30, 30], dz: 16, dmg: 18, kb: 3, kbY: 4, launch: true }); } else f.vx *= 0.8; } },
   spit: { name: '吐石彈', cost: 70, dur: 40, tick(f, t) { if (t === 20) { spawnProj(f, 'rock', { dx: 34, y: 92, vx: 7, vy: 3.5, grav: true, dmg: 38, kb: 4, kbY: 5, launch: true, life: 160, r: 16 }); Sound.play('throw'); Sound.play('fall', 0.5); } },
     pose(P, t) { const e = clamp((t - 8) / 10, 0, 1); P.lean = lerp(-0.35, 0.3, e); P.ht = lerp(-0.4, 0.25, e); P.mouth = t > 14 && t < 30; P.ar = [0.8, 1.4]; P.al = [0.6, 1.4]; } },
+  pounce: { name: '撲擊', cost: 80, dur: 50, start(f) { f.hitSet.clear(); },
+    tick(f, t) { if (t === 8) { f.vy = 6.5; f.vx = f.face * 7; Sound.play('whiff'); } if (t > 8) { f.meleeHit({ rx: [-4, 34], hy: [0, 60], dz: 16, dmg: 22, kb: 3, kbY: 4, launch: true }); if (f.y <= 0) return 'end'; } },
+    pose(P, t) { if (t < 8) { P.by = 8; P.lean = 0.5; } else { P.lean = 0.6; P.ar = [1.7, 0.1]; P.al = [1.5, 0.2]; P.ll = [-0.9, 0.4]; P.lr = [0.4, 1.2]; } } },
+  ink: { name: '噴墨', cost: 0, dur: 40, tick(f, t) { if (t === 20) { spawnProj(f, 'ink', { dx: 22, y: 30, vx: 6.5, dmg: 10, stun: 14, fall: 30, ink: true, life: 110, r: 11 }); Sound.play('pop'); } } },
+  buns: { name: '丟包子', cost: 80, dur: 46, tick(f, t) { if (t === 20) { [-1.5, 0, 1.5].forEach((vz, k) => spawnProj(f, 'bun', { dx: 30, y: 90, vx: 5 + k * 0.8, vy: 4.5, vz, grav: true, dmg: 26, kb: 3, kbY: 4, launch: true, life: 160, r: 12 })); Sound.play('throw'); } },
+    pose(P, t) { const e = clamp((t - 10) / 10, 0, 1); P.ar = [lerp(-2.6, 1.7, e), 0.3]; P.al = [lerp(-2.4, 1.4, e), 0.3]; P.lean = lerp(-0.3, 0.3, e); } },
+  belly: { name: '肚子彈', cost: 90, dur: 46, start(f) { f.superT = 40; f.hitSet.clear(); },
+    tick(f, t) { if (t >= 10 && t <= 36) { f.vx = f.face * 7; if (t === 10) { f.vy = 3; } f.meleeHit({ rx: [-6, 42], hy: [0, 80], dz: 20, dmg: 34, kb: 6, kbY: 5, launch: true, sfx: 'heavy' }); } else f.vx *= 0.8; },
+    pose(P, t) { P.lean = t < 10 ? -0.3 : -0.45; P.ar = [-0.6, 0.4]; P.al = [-0.9, 0.4]; P.by = t < 10 ? 6 : 0; P.ll = [-0.3, 0.8]; P.lr = [0.5, 1.2]; } },
+  drum: { name: '敲肚皮', cost: 120, dur: 64, start(f) { f.stomped = false; f.superT = 40; },
+    tick(f, t) { if (t % 12 === 6 && t < 44) { Sound.play('drum', 1); W.shake = 4; } if (t === 46) { Sound.play('quake'); W.shake = 10; f.areaHit({ rx: 150, dz: 50, dmg: 32, kb: 5, kbY: 6, launch: true, groundOnly: true, sfx: 'heavy' }); addPart('ring', f.x, 0, f.z, { r: 10, grow: 8, life: 24 }); } },
+    pose(P, t) { const k = (t >> 2) & 1; P.ar = [k ? 1.2 : 0.6, 1.6]; P.al = [k ? 0.6 : 1.2, 1.6]; P.lean = -0.15; P.face = 'happy'; } },
+  roar: { name: '大吼', cost: 100, dur: 56, start(f) { f.superT = 50; },
+    tick(f, t) {
+      if (t === 16) { Sound.play('roar'); W.shake = 12; addPart('ring', f.x + f.face * 30, 60, f.z, { r: 20, grow: 9, life: 22 });
+        for (const v of W.fighters) { if (v.team === f.team || v.dead || Math.abs(v.x - f.x) > 190 || Math.abs(v.z - f.z) > 60) continue; v.vx = sgn(v.x - f.x) * 6; if (v.canAct() || v.state === 'defend' || v.state === 'atk') { v.set('dizzy'); v.st = 30; } } }
+    },
+    pose(P, t) { const e = clamp((t - 6) / 10, 0, 1); P.lean = lerp(0.1, -0.35, e); P.ht = -0.4 * e; P.ar = [lerp(0.6, 2.5, e), 0.4]; P.al = [lerp(0.4, 2.3, e), 0.4]; P.mouth = t > 12; } },
+  inkspray: { name: '噴墨汁', cost: 70, dur: 50, tick(f, t) { if (t === 24) { [-1.3, 0, 1.3].forEach(vz => spawnProj(f, 'ink', { dx: 40, y: 50, vx: 6.5, vz, dmg: 16, stun: 16, fall: 40, ink: true, life: 120, r: 14 })); Sound.play('pop'); } } },
+  sweep: { name: '觸手掃', cost: 90, dur: 56, start(f) { f.hitSet.clear(); },
+    tick(f, t) { if (t === 24) { Sound.play('slash'); W.shake = 6; } if (t >= 24 && t <= 34) f.areaHit({ rx: 190, dz: 40, dmg: 30, kb: 6, kbY: 4, launch: true, groundOnly: true, sfx: 'heavy', once: true }); } },
+  summon: { name: '叫螃蟹', cost: 160, dur: 50, tick(f, t) {
+      if (t === 25 && W.fighters.filter(x => x.id === 'crab' && !x.dead).length < 3) { for (const side of [-1, 1]) { const c = new Fighter('crab', f.team, f.x + side * 120, clamp(f.z + rnd(-30, 30), 20, FLOOR_D - 20), new AICtl()); c.y = 200; c.set('jump'); W.fighters.push(c); } Sound.play('pop'); }
+    } },
   arrow: { name: '射箭', cost: 0, dur: 38, tick(f, t) { if (t === 20) { spawnProj(f, 'arrow', { dx: 28, y: 46, vx: 8.5, dmg: 24, kb: 2, stun: 20, fall: 60, life: 100, r: 10 }); Sound.play('arrow'); } },
     pose(P, t) { const e = clamp(t / 16, 0, 1); P.ar = [1.57, 0]; P.al = [1.45, lerp(0.2, 2.7, e)]; P.lean = -0.05; P.lr = [0.55, 0.3]; P.ll = [-0.45, 0.1]; } },
   rock: { name: '丟大石', cost: 60, dur: 40, tick(f, t) { if (t === 18) { spawnProj(f, 'rock', { dx: 20, y: 80, vx: 6.5, vy: 5, grav: true, dmg: 40, kb: 4, kbY: 5, launch: true, life: 160, r: 16 }); Sound.play('throw'); } },
@@ -237,11 +285,12 @@ class Fighter {
   areaHit(A) {
     for (const v of W.fighters) {
       if (v === this || v.team === this.team || v.dead) continue;
+      if (A.once && this.hitSet.has(v)) continue;
       if (Math.abs(v.x - this.x) > A.rx || Math.abs(v.z - this.z) > A.dz) continue;
       if (A.groundOnly && v.y > 30) continue;
       const dir = sgn(v.x - this.x);
       const B = Object.assign({}, A); if (A.pull) { B.kb = 0; v.vx += -dir * 1.2; }
-      applyHit(this, v, B, dir, true);
+      if (applyHit(this, v, B, dir, true) && A.once) this.hitSet.add(v);
     }
   }
 
@@ -257,7 +306,8 @@ class Fighter {
     if (!this.def.enemy && !this.dead && !this.dying) { if (this.regenT > 0) this.regenT--; else if (this.hp < this.cap) this.hp = Math.min(this.cap, this.hp + 0.12); }
     this.hpLag = this.hpLag > this.hp ? Math.max(this.hp, this.hpLag - 2.5) : this.hp;
     this.st++;
-    const spd = this.spd;
+    if (this.inkT > 0) this.inkT--;
+    const spd = this.spd * (this.inkT > 0 ? 0.6 : 1);
     let air = this.y > 0 || this.vy > 0;
 
     switch (this.state) {
@@ -407,6 +457,11 @@ function applyHit(att, v, A, dir, area) {
   const human = att && att.ctl && att.ctl.human;
   if (att) { att.mp = Math.min(att.maxMp, att.mp + 3 + dmg * 0.08); }
   // block: only from the front and only on the ground
+  // crabs block hits from the front with their shell unless caught mid-attack (hit them from behind or from above)
+  if (v.def.shell && v.face === -dir && !area && (v.state === 'idle' || v.state === 'walk') && Math.random() < 0.75 && !(att && att.y > 20)) {
+    v.vx = dir * 2; Sound.play('block'); addPart('spark', v.x - dir * 14, v.y + 26, v.z, { col: '#ffd2b8' }); if (att) att.freeze = 3; return true;
+  }
+  if (A.ink && !(v.state === 'defend' && v.face === -dir)) { v.inkT = 160; }
   if (v.state === 'defend' && v.face === -dir && v.hold && v.hold.kind === 'umbrella') {
     v.vx = dir * 1.5; Sound.play('block'); addPart('spark', v.x - dir * 18, v.y + 50, v.z, { col: '#8fd0ff' }); return true;
   }
@@ -483,6 +538,8 @@ function updateProjs() {
     if (p.kind === 'fire' && p.t % 2 === 0) addPart('fire', p.x - p.vx, p.y + rnd(-6, 6), p.z, { vx: -p.vx * 0.2, vy: rnd(0, 1) });
     if (p.kind === 'ice' && p.t % 3 === 0) addPart('snow', p.x - p.vx, p.y + rnd(-6, 6), p.z, { vx: -p.vx * 0.15 });
     if (p.kind === 'spikes' && p.t % 3 === 0) addPart('spike', p.x, 0, p.z + rnd(-6, 6), { h: rnd(26, 42) });
+    if (p.kind === 'bun' && p.y <= 0) { dead = true; addPart('dust', p.x, 0, p.z, {}); Sound.play('land', 0.4); }
+    if (p.kind === 'ink' && p.t % 3 === 0) addPart('smoke', p.x - p.vx, p.y, p.z, { col: 'ink', life: 14 });
     if (p.kind === 'rock' && p.y <= 0) { dead = true; W.shake = 4; Sound.play('fall', 0.6); for (let k = 0; k < 8; k++) addPart('rock', p.x, 4, p.z, { vx: rnd(-3, 3), vy: rnd(2, 5) }); }
     // projectiles cancel each other
     if (!dead && (p.kind === 'fire' || p.kind === 'ice' || p.kind === 'star' || p.kind === 'arrow' || p.kind === 'fruit')) {

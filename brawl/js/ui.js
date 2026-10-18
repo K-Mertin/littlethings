@@ -294,6 +294,7 @@ function startGame() {
   $('twoRotate').hidden = !(isTouch && portrait && W.players.length > 1);
   running = true; paused = false; acc = 0; last = performance.now();
   updateSkillButtons(true);
+  if (W.mode === 'stage') showStory(STORY['intro' + W.stageN]);
 }
 function toMenu() {
   running = false; paused = false; Sound.stopMusic(); Sound.startMusic('menu'); W = null;
@@ -321,10 +322,14 @@ function showResult() {
     for (const p of W.players) rows.push([two ? `${p.slot + 1}P ${p.def.name}` : '擊倒', two ? `擊倒 ${p.kos}・傷害 ${Math.round(p.dmgDone)}` : p.kos]);
     if (!two) rows.push(['造成傷害', Math.round(W.player.dmgDone)]);
   }
+  const hasNext = W.mode === 'stage' && W.win && W.stageN < STAGES.length - 1;
+  $('nextBtn').hidden = !hasNext;
+  $('nextBtn').onclick = () => { $('result').hidden = true; menuState.stage = W.stageN + 1; startGame(); };
+  if (W.mode === 'stage' && W.win && W.stageN === STAGES.length - 1) { W.label = '全部過關！'; rows.push(['', '怪獸們都變成好朋友了！']); }
   $('resTitle').textContent = W.label || (W.win ? '勝利！' : '戰敗…');
   $('resStats').innerHTML = rows.map(([a, b]) => `<span>${a}</span><span>${b}</span>`).join('');
   if (W.onResult) W.onResult(rows);
-  $('result').hidden = false; setTimeout(() => $('againBtn').focus(), 0);
+  $('result').hidden = false; setTimeout(() => (hasNext ? $('nextBtn') : $('againBtn')).focus(), 0);
 }
 let skillSig = '';
 function updateSkillButtons(force) {
@@ -334,11 +339,42 @@ function updateSkillButtons(force) {
   Touch.pads.forEach((pad, i) => { if (W.players[i]) pad.setSkills(W.players[i]); });
 }
 
+/* ------------------------------ story scenes ------------------------------ */
+let storyQ = null;
+const BUDDY = { rex: 'yuki', yuki: 'rex', gan: 'kite', kite: 'gan' };
+function speaker(who) {
+  if (who === 'hero') return W.players[0].id;
+  if (who === 'buddy') return W.players[1] ? W.players[1].id : (BUDDY[W.players[0].id] || 'yuki');
+  return who;
+}
+function showStory(lines, done) {
+  if (!lines || !lines.length) { done && done(); return; }
+  storyQ = { lines, i: 0, done }; $('story').hidden = false; drawStoryLine();
+}
+function drawStoryLine() {
+  const [who, text] = storyQ.lines[storyQ.i], id = speaker(who), d = CHARS[id];
+  $('storyName').textContent = d.name; $('storyText').textContent = text;
+  const cvs = $('storyFace'), c = cvs.getContext('2d');
+  c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, 180, 180);
+  const custom = d.draw || (d.fly ? 'bat' : null);
+  const fake = { def: d, look: d.look, clock: 10, state: 'idle', st: 0, face: 1, hold: null, vy: 0, inkT: 0, atk: null };
+  if (custom) { c.translate(90, 150); const k = 2.6 / Math.max(1, (d.size || 1) * 0.6); c.scale(k, k); if (d.fly) c.translate(0, -10); DRAWERS[custom](c, fake); }
+  else drawPortrait(c, d.look, 90, 98, 4.6);
+}
+function advanceStory() {
+  if (!storyQ) return; storyQ.i++;
+  if (storyQ.i >= storyQ.lines.length) { const d = storyQ.done; storyQ = null; $('story').hidden = true; acc = 0; last = performance.now(); d && d(); }
+  else drawStoryLine();
+}
+$('story').addEventListener('pointerdown', e => { if (e.target.id === 'storySkip') return; e.preventDefault(); advanceStory(); });
+$('storySkip').addEventListener('click', () => { if (!storyQ) return; storyQ.i = storyQ.lines.length - 1; advanceStory(); });
+addEventListener('keydown', e => { if (storyQ && ['Space', 'Enter', 'KeyJ', 'KeyK', 'Numpad1', 'Period', 'Escape'].includes(e.code)) { e.preventDefault(); if (e.code === 'Escape') { storyQ.i = storyQ.lines.length - 1; } advanceStory(); } }, true);
+
 /* ------------------------------ main loop ------------------------------ */
 let acc = 0, last = performance.now();
 function frame(now) {
   const dt = Math.min(100, now - last); last = now;
-  if (running && !paused && W) {
+  if (running && !paused && W && !storyQ) {
     acc += dt; let n = 0;
     while (acc >= 1000 / 60 && n < 5) { step(); acc -= 1000 / 60; n++; }
     if (n === 5) acc = 0;

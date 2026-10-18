@@ -3,14 +3,49 @@
 /* Each area is a stretch of street. Waves inside an area come one after another;
    when the last wave is down, "GO →" opens the way to the next area. */
 const STAGES = [{
-  name: '第一關', title: '怪獸大鬧老街', theme: 'street',
+  name: '第一關', title: '怪獸大鬧老街', theme: 'street', music: 'street', bossMusic: 'temple', bossLine: '廟口的大怪獸出現了！',
   areas: [
     { to: 1200, waves: [['boar', 'boar'], ['boar', 'boar:L', 'bat']], items: [['slipper', 700, 120]] },
     { to: 2400, waves: [['boar', 'monkey', 'boar:L'], ['bat', 'boar', 'monkey:L', 'bat']], items: [['stick', 1560, 90], ['milk', 2100, 40]] },
     { to: 3600, waves: [['bear', 'boar:L'], ['monkey', 'boar', 'bat:L', 'boar']], items: [['stone', 2780, 60], ['umbrella', 2900, 110], ['cracker', 3150, 40], ['juice', 3300, 80]] },
     { to: 4800, boss: true, waves: [['dragon', 'boar', 'boar:L']], items: [['chicken', 3800, 120], ['stick', 4100, 40], ['cracker', 4300, 90]], reinforce: ['boar', 'bat:L', 'boar', 'bat'] }
   ]
+}, {
+  name: '第二關', title: '夜市大混亂', theme: 'market', music: 'night', bossMusic: 'boss2', bossLine: '夜市的老大出來了！',
+  areas: [
+    { to: 1200, waves: [['cat', 'boar'], ['cat', 'boar:L', 'bat']], items: [['chicken', 800, 60]] },
+    { to: 2400, waves: [['monkey', 'cat:L', 'boar'], ['bat', 'cat', 'boar:L', 'monkey']], items: [['slipper', 1500, 100], ['cracker', 2000, 50]] },
+    { to: 3600, waves: [['bear', 'cat:L'], ['cat', 'cat:L', 'monkey', 'bat']], items: [['umbrella', 2700, 80], ['milk', 3200, 120]] },
+    { to: 4800, boss: true, waves: [['raccoon', 'cat', 'boar:L']], items: [['chicken', 3900, 40], ['cracker', 4200, 110]], reinforce: ['cat', 'cat:L', 'bat'] }
+  ]
+}, {
+  name: '第三關', title: '山上的茶園', theme: 'tea', music: 'mountain', bossMusic: 'boss2', bossLine: '茶園的主人生氣了！',
+  areas: [
+    { to: 1200, waves: [['monkey', 'magpie'], ['boar', 'monkey:L', 'magpie']], items: [['stick', 700, 80]] },
+    { to: 2400, waves: [['cat', 'magpie', 'boar:L'], ['monkey', 'monkey:L', 'magpie', 'cat']], items: [['juice', 1700, 60], ['stone', 2100, 120]] },
+    { to: 3600, waves: [['bear', 'magpie:L'], ['bear', 'cat', 'monkey:L']], items: [['milk', 2900, 80], ['umbrella', 3200, 40]] },
+    { to: 4800, boss: true, waves: [['blackbear', 'boar', 'monkey:L']], items: [['chicken', 3800, 100], ['stick', 4100, 60]], reinforce: ['bear', 'magpie:L'] }
+  ]
+}, {
+  name: '第四關', title: '漁港決戰', theme: 'harbor', music: 'harbor', bossMusic: 'boss2', bossLine: '海裡的大傢伙上岸了！',
+  areas: [
+    { to: 1200, waves: [['crab', 'crab:L'], ['crab', 'octopus', 'boar:L']], items: [['slipper', 800, 60]] },
+    { to: 2400, waves: [['octopus', 'crab', 'magpie:L'], ['crab', 'crab:L', 'octopus', 'cat']], items: [['umbrella', 1600, 100], ['milk', 2100, 40]] },
+    { to: 3600, waves: [['bear', 'crab:L', 'octopus'], ['crab', 'octopus:L', 'crab', 'magpie']], items: [['cracker', 2800, 80], ['chicken', 3300, 120]] },
+    { to: 4800, boss: true, waves: [['bigocto', 'crab', 'crab:L']], items: [['juice', 3800, 60], ['umbrella', 4000, 120]], reinforce: ['octopus', 'octopus:L'] }
+  ]
 }];
+/* Short scenes before and after each stage. who: 'hero' is 1P, 'buddy' is 2P (or a friend), others are monsters. */
+const STORY = {
+  intro0: [['hero', '怪獸跑進老街了！大家快來幫忙！'], ['boar', '噗嚕噗嚕！這條街的雞排好香喔！'], ['hero', '想吃東西要排隊，不可以搗蛋！']],
+  outro0: [['dragon', '嗚嗚……我只是聽說夜市很好玩……'], ['dragon', '是夜市的狸貓大王叫大家一起來的！'], ['hero', '那我們去夜市找牠問清楚！']],
+  intro1: [['hero', '晚上的夜市好熱鬧……咦，攤子都被弄亂了！'], ['cat', '喵嗚！這些小吃都是大王的！'], ['buddy', '小吃是大家的，一起排隊買啦！']],
+  outro1: [['raccoon', '好啦好啦，我認輸！我只是肚子太餓了……'], ['raccoon', '山上的黑熊王說，牠的茶園也被弄得亂七八糟，大家只好跑下山找東西吃。'], ['hero', '我們去山上看看發生什麼事！']],
+  intro2: [['hero', '茶園好漂亮，可是好多怪獸在亂跑。'], ['magpie', '嘎嘎！不准靠近黑熊王的茶園！']],
+  outro2: [['blackbear', '吼……你們好厲害。'], ['blackbear', '其實是海邊的大章魚把河口堵住了，山上的溪水流不下去，茶樹都快乾掉了……'], ['buddy', '那就去漁港把事情解決吧！']],
+  intro3: [['hero', '漁港到了！螃蟹和章魚把碼頭佔領了！'], ['crab', '橫著走！橫著走！不准過來！']],
+  outro3: [['bigocto', '對不起……我一個人在海裡好無聊，想要大家陪我玩。'], ['hero', '想要朋友，可以直接說呀！'], ['bigocto', '那……我可以一起去逛夜市嗎？'], ['buddy', '當然可以！大家一起去吃雞排、喝珍奶吧！']]
+};
 
 let running = false, paused = false;
 let menuState = {
@@ -204,7 +239,10 @@ function step() {
     if (W.mode === 'stage') finish(false);
     else { const rest = W.fighters.find(f => !isOut(f)); endBattle(rest ? rest.team : null, false); }
   }
-  if (W.over && ++W.overT === 170) showResult();
+  if (W.over && ++W.overT === 170) {
+    if (W.mode === 'stage' && W.win && STORY['outro' + W.stageN] && !W.outroDone) { W.outroDone = true; showStory(STORY['outro' + W.stageN], showResult); }
+    else showResult();
+  }
   // camera follows the players (the middle of them when two play)
   const tgt = humanCenter() - Wv * (W.mode === 'stage' ? 0.42 : 0.5);
   if (W.mode === 'stage') {

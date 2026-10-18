@@ -63,6 +63,8 @@ const Sound = {
       case 'power': this.tone(t, 0.35, 200, 800, 0.15 * vol, 'sawtooth'); this.tone(t + 0.05, 0.3, 300, 1200, 0.1 * vol, 'triangle'); break;
       case 'pick': this.tone(t, 0.08, 600, 900, 0.15 * vol, 'triangle'); break;
       case 'pop': this.noise(t, 0.06, 3000, 900, 0.7, 0.45 * vol); this.tone(t, 0.04, 900, 200, 0.2 * vol, 'square'); break;
+      case 'drum': this.tone(t, 0.18, 110, 70, 0.7 * vol, 'sine'); this.noise(t, 0.05, 900, 300, 0.7, 0.2 * vol, 'lowpass'); break;
+      case 'roar': this.noise(t, 0.9, 300, 120, 0.6, 0.6 * vol, 'lowpass'); this.tone(t, 0.8, 110, 70, 0.4 * vol, 'sawtooth'); this.tone(t, 0.8, 165, 100, 0.2 * vol, 'sawtooth'); break;
       case 'honk': this.tone(t, 0.18, 420, 410, 0.12 * vol, 'square'); this.tone(t + 0.22, 0.25, 420, 400, 0.12 * vol, 'square'); this.tone(t, 0.18, 530, 520, 0.08 * vol, 'square'); this.tone(t + 0.22, 0.25, 530, 520, 0.08 * vol, 'square'); break;
       case 'wave': this.noise(t, 1.2, 400, 1600, 0.4, 0.3 * vol, 'lowpass'); this.noise(t + 0.3, 1.0, 2500, 800, 0.6, 0.18 * vol); break;
       case 'train': this.noise(t, 2.5, 200, 120, 0.7, 0.25 * vol, 'lowpass'); [660, 830].forEach((f, i) => this.tone(t + i * 0.35, 0.3, f, f, 0.07 * vol, 'triangle')); break;
@@ -176,6 +178,26 @@ const SONGS = {
            'E5 . D5 C5 D5 . C5 A4 C5 . A4 G4 A4 - - . E4 G4 A4 C5 D5 C5 A4 G4 A4 - - - . . E5 .'],
     bass: ['A2', 'F2', 'G2', 'A2', 'C3', 'G2', 'A2', 'E2'], bassPat: 'R.RFR.RO',
     drums: { kick: 'x..x..x.', snare: '..x...x.', hat: 'xxxxxxxx' }, drumVol: { kick: 0.75, snare: 0.55, hat: 0.35 } },
+  night: { bpm: 124, leadInst: 'pluck', leadVol: 0.12,   // 夜市: bouncy minor pentatonic
+    lead: ['E4 . G4 A4 . G4 E4 . D4 E4 G4 . E4 D4 C4 . D4 . E4 G4 A4 C5 A4 G4 E4 - - . . . . .',
+           'A4 . C5 D5 . C5 A4 . G4 A4 C5 . A4 G4 E4 . G4 A4 G4 E4 D4 E4 D4 C4 A3 - - . . . . .'],
+    bass: ['A2', 'A2', 'D3', 'E2', 'F2', 'C3', 'D3', 'E2'], bassPat: 'R.FR.FR.',
+    drums: { kick: 'x...x...', snare: '..x...x.', hat: '.xx.xx.x', block: 'x..x..x.' }, drumVol: { kick: 0.7, snare: 0.5, hat: 0.4, block: 0.3 } },
+  mountain: { bpm: 112, leadInst: 'soft', leadVol: 0.2,   // 茶園: gentle folk tune
+    lead: ['G4 A4 C5 . D5 C5 A4 . G4 A4 G4 E4 D4 - . . E4 G4 A4 . C5 A4 G4 E4 G4 - - - . . . .',
+           'C5 . D5 E5 . D5 C5 A4 G4 . A4 C5 D5 - . . E5 D5 C5 A4 G4 A4 C5 D5 C5 - - - . . . .'],
+    bass: ['C3', 'A2', 'G2', 'C3', 'F2', 'C3', 'G2', 'C3'], bassPat: 'R...F.R.', bassVol: 0.15,
+    drums: { kick: 'x.......', hat: '..x...x.', block: '....x...' }, drumVol: { kick: 0.5, hat: 0.4, block: 0.3 } },
+  harbor: { bpm: 132, leadInst: 'pluck', leadVol: 0.12,   // 漁港: sea-shanty swing
+    lead: ['D4 G4 G4 A4 B4 . G4 . A4 . F#4 . D4 . . . D4 G4 G4 A4 B4 . D5 . C5 B4 A4 . G4 - - .',
+           'B4 . D5 . E5 D5 B4 . A4 . B4 A4 G4 . E4 . D4 G4 B4 D5 C5 B4 A4 . G4 - - - . . . .'],
+    bass: ['G2', 'D3', 'G2', 'D3', 'G2', 'E2', 'D3', 'G2'], bassPat: 'R..FR..F',
+    drums: { kick: 'x..x....', snare: '....x...', hat: 'x.xx.xx.' }, drumVol: { kick: 0.65, snare: 0.5, hat: 0.35 } },
+  boss2: { bpm: 158, leadInst: 'pluck', leadVol: 0.12,   // big boss fight
+    lead: ['A4 A4 C5 A4 D5 C5 A4 G4 A4 . E5 . D5 C5 A4 . G4 G4 A4 G4 E4 D4 E4 G4 A4 - - - . . E5 .',
+           'E5 E5 D5 C5 D5 D5 C5 A4 C5 C5 A4 G4 A4 . . . G4 A4 C5 D5 E5 D5 C5 D5 E5 - - - G5 - E5 .'],
+    bass: ['A2', 'A2', 'F2', 'G2', 'A2', 'F2', 'G2', 'E2'], bassPat: 'RRFRRRFO',
+    drums: { kick: 'x.x.x.x.', snare: '..x...x.', hat: 'xxxxxxxx', tanggu: 'x' + '.'.repeat(15) }, drumVol: { kick: 0.75, snare: 0.6, hat: 0.3, tanggu: 0.6 } },
   temple: { bpm: 152, leadInst: 'suona', leadVol: 0.09,   // 廟口: 嗩吶 over 鑼鼓
     lead: ['C5 D5 E5 . G5 E5 D5 C5 D5 . E5 D5 C5 A4 G4 . A4 C5 D5 . E5 . D5 C5 A4 - G4 - - . . .',
            'E5 G5 A5 . G5 E5 D5 . E5 D5 C5 . D5 C5 A4 . G4 A4 C5 D5 E5 D5 C5 A4 C5 - - - . . . .'],
