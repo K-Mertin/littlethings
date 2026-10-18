@@ -94,6 +94,7 @@ const Lobby = {
   heroList() { return HEROES.map(id => ({ id, name: CHARS[id].name, blurb: CHARS[id].blurb, locked: !heroUnlocked(id), img: heroThumb(id) })); },
   async open() {
     $('menu').hidden = true; $('hallLink').hidden = true; $('lobby').hidden = false;
+    hostWake.on();
     this.render();
     if (this.net) return this.broadcastLobby();
     this.setStatus('正在開房間…');
@@ -104,7 +105,7 @@ const Lobby = {
     this.drawQR();
     this.render();
   },
-  close() { if (this.net) this.net.close(); this.net = null; this.room = null; this.players = []; },
+  close() { hostWake.off(); if (this.net) this.net.close(); this.net = null; this.room = null; this.players = []; },
   async drawQR() {
     const url = this.url(); $('lobbyUrl').textContent = url.replace(/^https?:\/\//, ''); $('lobbyCode').textContent = this.room;
     try {
@@ -210,6 +211,18 @@ const Lobby = {
     $('lobbyLocal').disabled = this.players.length >= 4 || this.players.some(p => p.local);
   }
 };
+/* keep the big screen awake while phones are connected (a sleeping screen drops every phone) */
+const hostWake = {
+  want: false, lock: null,
+  async on() {
+    this.want = true;
+    if (this.lock || document.hidden || !('wakeLock' in navigator)) return;
+    try { this.lock = await navigator.wakeLock.request('screen'); this.lock.addEventListener('release', () => { this.lock = null; }); } catch (e) { /* not allowed here */ }
+    if (!this.want && this.lock) this.off();
+  },
+  off() { this.want = false; if (this.lock) { const l = this.lock; this.lock = null; l.release().catch(() => {}); } }
+};
+document.addEventListener('visibilitychange', () => { if (!document.hidden && hostWake.want) hostWake.on(); });   // the browser drops the lock when the tab is hidden
 function esc(s) { return String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])); }
 function openLobby() { Lobby.open(); }
 $('lobbyStart').onclick = () => Lobby.begin();
