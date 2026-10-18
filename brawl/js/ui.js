@@ -17,6 +17,7 @@ function drawPanel(c, f, x, y, size) {
   if (f.human) { const tag = (f.slot + 1) + 'P'; c.font = `900 ${large ? 13 : 11}px "Noto Sans TC",sans-serif`; const tw = c.measureText(tag).width + 10; c.fillStyle = SLOT_COL[f.slot]; c.beginPath(); c.roundRect ? c.roundRect(bx, y + (large ? 5 : 3), tw, large ? 16 : 13, 6) : c.rect(bx, y + 5, tw, 16); c.fill(); c.fillStyle = INK; c.fillText(tag, bx + 5, y + (large ? 18 : 14)); nx += tw + 5; c.font = `700 ${large ? 15 : 12}px "Noto Sans TC",sans-serif`; c.fillStyle = '#fff6e6'; }
   else if (f.ally) { c.fillStyle = '#38d39f'; c.fillText('隊友', nx, y + (large ? 18 : 14)); nx += 30; c.fillStyle = '#fff6e6'; }
   c.fillText(f.def.name, nx, y + (large ? 18 : 14));
+  if (f.ctl && f.ctl.offline) { const w0 = c.measureText(f.def.name).width; c.fillStyle = '#ff7a3d'; c.fillText(' 斷線', nx + w0, y + (large ? 18 : 14)); c.fillStyle = '#fff6e6'; }
   // lives (hearts) on the right of the name line
   if ((W.mode === 'battle' && (f.lives > 1 || W.livesRule > 1)) || (W.mode === 'stage' && f.human)) {
     const n = Math.max(0, f.lives || 0); c.textAlign = 'right'; c.fillStyle = '#ff5a7a'; c.font = `700 ${large ? 13 : 11}px "Noto Sans TC",sans-serif`;
@@ -48,6 +49,7 @@ function chip(c, x, y, key, label, sub, on) {
   return w;
 }
 function drawKeyHint(c) {
+  if (W.players.some(p => p.ctl && p.ctl.remote)) return;     // phone players have their own buttons
   if (W.players.length > 1) { // two players on one keyboard: one compact line each
     let y = VHv - offY - 70;
     const rows = [
@@ -97,15 +99,16 @@ function drawHUD(c) {
   for (let i = 2; i < W.players.length; i++) drawPanel(c, W.players[i], i === 2 ? 10 : Wv - 200 - btnW, top + 70, 'small');
   c.font = '700 13px "Noto Sans TC",sans-serif'; c.fillStyle = '#fff6e6'; c.textAlign = 'left'; c.lineWidth = 3; c.strokeStyle = INK; c.textBaseline = 'alphabetic';
   const sc = W.mode === 'stage' ? '分數 ' + W.score + '　擊倒 ' + W.kos : '';
-  if (sc) { c.strokeText(sc, 14, top + 86); c.fillText(sc, 14, top + 86); }
+  const ex = W.players.length > 2 ? 46 : 0;          // a row of small panels for 3P / 4P
+  if (sc) { c.strokeText(sc, 14, top + 86 + ex); c.fillText(sc, 14, top + 86 + ex); }
   if (W.mode === 'practice') drawTutorial(c, top);
   else if (W.mode === 'battle') {
-    let i = 0; const y0 = top + (two ? 74 : 54);
+    let i = 0; const y0 = top + (two ? 74 : 54) + (W.players.length > 3 ? 46 : 0);
     for (const f of W.fighters) if (!f.human) { drawPanel(c, f, Wv - 200 - (two ? btnW : 0), y0 + i * 46, 'small'); i++; }
   } else {
     const A = W.stage.areas, info = `${W.stage.name}・${W.stage.title}　${W.areaIdx + 1} / ${A.length}`;
     c.font = '700 14px "Noto Sans TC",sans-serif';
-    if (Wv < 760 || two) { c.textAlign = 'left'; c.strokeText(info, 14, top + 106); c.fillText(info, 14, top + 106); }
+    if (Wv < 760 || two) { c.textAlign = 'left'; c.strokeText(info, 14, top + 106 + ex); c.fillText(info, 14, top + 106 + ex); }
     else { c.textAlign = 'center'; c.strokeText(info, Wv / 2 + 40, top + 20); c.fillText(info, Wv / 2 + 40, top + 20); }
     if (W.boss && !W.boss.dead) {
       const bw = Math.min(420, Wv - 120), bx = (Wv - bw) / 2, by = top + 120;
@@ -230,8 +233,8 @@ function buildMenu() {
   $('helpBtn').onclick = () => { $('help').hidden = !$('help').hidden; };
   $('startBtn').onclick = startGame;
   $('resumeBtn').onclick = () => togglePause(false);
-  $('restartBtn').onclick = () => { $('pause').hidden = true; startGame(); };
-  $('quitBtn').onclick = toMenu; $('menuBtn').onclick = toMenu; $('againBtn').onclick = () => { $('result').hidden = true; startGame(); };
+  $('restartBtn').onclick = () => { $('pause').hidden = true; startGame(true); };
+  $('quitBtn').onclick = toMenu; $('menuBtn').onclick = toMenu; $('againBtn').onclick = () => { $('result').hidden = true; startGame(true); };
   $('pauseBtn').onclick = () => togglePause(true);
   $('muteBtn').onclick = () => { Sound.init(); Sound.setMuted(!Sound.muted); $('muteBtn').style.opacity = Sound.muted ? 0.45 : 1; };
   $('muteBtn').style.opacity = Sound.muted ? 0.45 : 1;
@@ -243,7 +246,7 @@ function buildStageRow() {
   r.querySelectorAll('.opt').forEach(b => b.onclick = () => { if (b.disabled) return; menuState.stage = +b.dataset.st; syncMenu(); });
 }
 function syncMenu() {
-  const M = menuState, two = M.players === 2;
+  const M = menuState, two = M.players === 2, phone = M.players === 'phone';
   if (!heroUnlocked(M.heroes[0])) M.heroes[0] = 'rex';
   if (!heroUnlocked(M.heroes[1])) M.heroes[1] = 'yuki';
   const press = (row, test) => document.querySelectorAll(`#${row} .opt`).forEach(b => b.setAttribute('aria-pressed', !!test(b)));
@@ -259,7 +262,7 @@ function syncMenu() {
   document.querySelectorAll('#stageRow .opt').forEach(b => { b.disabled = !stageUnlocked(+b.dataset.st); if (b.disabled) b.title = '先打通前一關'; });
   if (!stageUnlocked(M.stage)) M.stage = 0;
   // 0 computer fighters only makes sense when two people fight each other
-  const zero = document.querySelector('#foeRow .opt[data-n="0"]'); zero.disabled = !(two && M.team === 'ffa'); if (zero.disabled && M.foes === 0) { M.foes = 1; return syncMenu(); }
+  const zero = document.querySelector('#foeRow .opt[data-n="0"]'); zero.disabled = !((two && M.team === 'ffa') || phone); if (zero.disabled && M.foes === 0) { M.foes = 1; return syncMenu(); }
   // heroes
   document.querySelectorAll('.hero').forEach(b => {
     const id = b.dataset.hero, locked = !heroUnlocked(id);
@@ -277,8 +280,9 @@ function syncMenu() {
   $('battleOpts').hidden = M.mode !== 'battle';
   $('stageOpts').hidden = M.mode !== 'stage' || STAGES.length < 2;
   $('diffRow').hidden = M.mode === 'practice'; $('diffRow').previousElementSibling.hidden = M.mode === 'practice';
-  $('playersNote').hidden = !two;
-  $('playersNote').textContent = two ? (isTouch ? '平板橫放：1P 用左半邊，2P 用右半邊。' : '鍵盤：1P 用 WASD＋J K L（U I O 必殺），2P 用方向鍵＋數字鍵 1 2 3（4 5 6 必殺），沒有數字鍵可用 . / ,。插兩支手把也可以。') : '';
+  ['heroes', 'skillInfo', 'heroTitle'].forEach(id => $(id).hidden = phone);
+  $('playersNote').hidden = !two && !phone;
+  $('playersNote').textContent = phone ? '按「出發！」後，大家用自己的手機掃畫面上的 QR code，手機就變成手把，最多 4 個人。角色在手機上選。電視、電腦或平板當大螢幕。' : two ? (isTouch ? '平板橫放：1P 用左半邊，2P 用右半邊。' : '鍵盤：1P 用 WASD＋J K L（U I O 必殺），2P 用方向鍵＋數字鍵 1 2 3（4 5 6 必殺），沒有數字鍵可用 . / ,。插兩支手把也可以。') : '';
   const sel = M.heroes[two ? M.slotSel : 0], d = CHARS[sel], cmds = ['防 → 左右 → 攻', '防 → 上 → 攻', '防 → 下 → 攻'], keys = two ? (M.slotSel ? ['4', '5', '6'] : ['U', 'I', 'O']) : ['U', 'I', 'O'];
   $('skillInfo').innerHTML = `<b>${two ? (M.slotSel + 1) + 'P・' : ''}${d.name}的必殺技</b>（用藍色的氣）<br>` + d.skills.map((id, i) => id ? `<b>${SKILLS[id].name}</b>　氣 ${SKILLS[id].cost}　<kbd>${cmds[i]}</kbd> 或 <kbd>${keys[i]}</kbd>` : '').filter(Boolean).join('<br>');
 }
@@ -299,15 +303,16 @@ function animateCards() {
   };
   loop();
 }
-function startGame() {
+function startGame(quick, phone) {
   Sound.init();
   const M = menuState;
-  if (M.players === 'phone') return openLobby();
+  if (M.players === 'phone' && !phone) return quick === true && Lobby.players.some(p => p.online) ? Lobby.begin() : openLobby();
+  if (M.players !== 'phone' && Lobby.net) Lobby.close();
   $('menu').hidden = true; $('result').hidden = true; $('pause').hidden = true; $('hallLink').hidden = true; $('topBtns').hidden = false;
   resize();
-  newMatch({ mode: M.mode, players: M.players, heroes: M.heroes, foes: M.foes, diff: M.diff, team: M.team, lives: M.lives, time: M.time, arena: M.arena, stage: M.stage });
-  $('touch').hidden = !isTouch;
-  $('twoRotate').hidden = !(isTouch && portrait && W.players.length > 1);
+  newMatch({ mode: M.mode, players: M.players, heroes: M.heroes, ...(phone || {}), foes: M.foes, diff: M.diff, team: M.team, lives: M.lives, time: M.time, arena: M.arena, stage: M.stage });
+  $('touch').hidden = !isTouch || !!phone;
+  $('twoRotate').hidden = !(isTouch && portrait && W.players.length > 1) || !!phone;
   running = true; paused = false; acc = 0; last = performance.now();
   updateSkillButtons(true);
   if (W.mode === 'stage') showStory(STORY['intro' + W.stageN]);
@@ -315,6 +320,7 @@ function startGame() {
 function toMenu() {
   running = false; paused = false; Sound.stopMusic(); Sound.startMusic('menu'); W = null;
   ['pause', 'result', 'touch', 'topBtns'].forEach(id => $(id).hidden = true); $('menu').hidden = false; $('hallLink').hidden = false;
+  if (Lobby.net) { Lobby.players = Lobby.players.filter(p => p.online); Lobby.players.forEach(p => p.fighter = null); Lobby.broadcastLobby(); }
 }
 function togglePause(v) {
   if (!running || (W && W.over && W.overT > 160)) return;
@@ -342,12 +348,12 @@ function showResult() {
   }
   const hasNext = W.mode === 'stage' && W.win && W.stageN < STAGES.length - 1;
   $('nextBtn').hidden = !hasNext;
-  $('nextBtn').onclick = () => { $('result').hidden = true; menuState.stage = W.stageN + 1; startGame(); };
+  $('nextBtn').onclick = () => { $('result').hidden = true; menuState.stage = W.stageN + 1; startGame(true); };
   if (W.mode === 'stage' && W.win && W.stageN === STAGES.length - 1) { W.label = '全部過關！'; rows.push(['', '怪獸們都變成好朋友了！']); }
   $('resTitle').textContent = W.label || (W.win ? '勝利！' : '戰敗…');
   $('resStats').innerHTML = rows.map(([a, b]) => `<span>${a}</span><span>${b}</span>`).join('');
   if (W.onResult) W.onResult(rows);
-  $('result').hidden = false; setTimeout(() => (hasNext ? $('nextBtn') : $('againBtn')).focus(), 0);
+  $('result').hidden = false; if (Lobby.net) Lobby.broadcastLobby(); setTimeout(() => (hasNext ? $('nextBtn') : $('againBtn')).focus(), 0);
 }
 let skillSig = '';
 function updateSkillButtons(force) {
@@ -397,7 +403,8 @@ function frame(now) {
     while (acc >= 1000 / 60 && n < 5) { step(); acc -= 1000 / 60; n++; }
     if (n === 5) acc = 0;
     updateSkillButtons();
-  } else if (W && !paused && W.over) { /* frozen on result */ }
+  }
+  if (Lobby.net && running && W) Lobby.tick();
   render();
   requestAnimationFrame(frame);
 }
@@ -419,7 +426,7 @@ addEventListener('gamepadconnected', e => { const h = $('gpHint'); h.textContent
 setInterval(() => {
   if (running || $('menu').hidden && $('result').hidden) return;
   const p = navigator.getGamepads && [...navigator.getGamepads()].find(Boolean); if (!p) return;
-  if (p.buttons[0] && p.buttons[0].pressed || p.buttons[9] && p.buttons[9].pressed) { if (!window._gpLatch) { window._gpLatch = true; if (!$('result').hidden) { $('result').hidden = true; startGame(); } else startGame(); } }
+  if (p.buttons[0] && p.buttons[0].pressed || p.buttons[9] && p.buttons[9].pressed) { if (!window._gpLatch) { window._gpLatch = true; if (!$('result').hidden) { $('result').hidden = true; startGame(true); } else startGame(); } }
   else window._gpLatch = false;
 }, 100);
 
@@ -427,8 +434,8 @@ $('pauseHelp').innerHTML = $('help').innerHTML;
 addEventListener('pointerdown', () => { if (!running && !Sound.music) { Sound.init(); Sound.startMusic('menu'); } }, { once: false });
 addEventListener('keydown', () => { if (!running && !Sound.music) { Sound.init(); Sound.startMusic('menu'); } });
 Keyboard.init(); detectTouch(); resize(); buildMenu();
-requestAnimationFrame(frame);
+/* start the loop once every script (net.js too) has run */
+if (document.readyState === 'loading') addEventListener('DOMContentLoaded', () => requestAnimationFrame(frame)); else requestAnimationFrame(frame);
 /* hook for automated tests */
-window.__tf = { get W() { return W; }, startGame, menuState, step, CHARS, SKILLS, AICtl, setAuto(on, all) { if (!W) return; (all ? W.players : [W.player]).forEach(p => { if (on) { const c = new AICtl(); c.human = true; c.f = p; p.ctl = c; } else p.ctl = new HumanCtl(p.slot, localSources(p.slot, W.players.length)); }); } };
+window.__tf = { get W() { return W; }, get Lobby() { return Lobby; }, startGame, menuState, step, CHARS, SKILLS, AICtl, setAuto(on, all) { if (!W) return; (all ? W.players : [W.player]).forEach(p => { if (on) { const c = new AICtl(); c.human = true; c.f = p; p.ctl = c; } else p.ctl = new HumanCtl(p.slot, localSources(p.slot, W.players.length)); }); } };
 
-function openLobby() { menuState.players = 1; syncMenu(); startGame(); }

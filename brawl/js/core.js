@@ -349,7 +349,7 @@ class TouchPad {
   }
   remove() { this.root.remove(); }
 }
-const Touch = { pads: [], setup(n) { this.pads.forEach(p => p.remove()); this.pads = n === 1 ? [new TouchPad(0, 'R', false)] : [new TouchPad(0, 'L', true), new TouchPad(1, 'R', true)]; } };
+const Touch = { pads: [], setup(n) { this.pads.forEach(p => p.remove()); this.pads = n === 0 ? [] : n === 1 ? [new TouchPad(0, 'R', false)] : [new TouchPad(0, 'L', true), new TouchPad(1, 'R', true)]; } };
 
 /* Standard-mapping gamepads. index = which pad. */
 class PadCtl {

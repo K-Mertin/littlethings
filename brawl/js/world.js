@@ -115,10 +115,10 @@ function newMatch(o) {
     score: 0, kos: 0, over: false, overT: 0, msg: null, go: false, areaIdx: 0, waveIdx: 0, waveDelay: 0, result: null, itemT: 600,
     players: [], hazEnts: [], tide: 0, hpScale: 1 + 0.4 * (nH - 1), team: o.team, livesRule: o.lives, timeLeft: o.mode === 'battle' && o.time ? o.time * 60 : 0
   };
-  if (!o.remoteCtls) Touch.setup(nH);
+  Touch.setup(o.remoteCtls ? 0 : nH);
   for (let i = 0; i < nH; i++) {
     const ctl = o.remoteCtls ? o.remoteCtls[i] : new HumanCtl(i, localSources(i, nH));
-    const team = o.mode === 'battle' && o.team === 'ffa' ? 1 + i : 1;
+    const team = o.mode !== 'battle' ? 1 : o.team === 'ffa' ? 1 + i : nH >= 3 ? 1 + (i % 2) : 1;   // 3–4 people in team play: odd vs even
     const f = new Fighter(o.heroes[i] || 'rex', team, 140 + i * 50, 70 + i * 40, ctl);
     f.slot = i; f.human = true; f.lives = o.mode === 'battle' ? o.lives : STAGE_LIVES[o.diff];
     W.players.push(f); W.fighters.push(f);
@@ -135,17 +135,21 @@ function newMatch(o) {
     const A = ARENAS[o.arena === 'random' ? pick(Object.keys(ARENAS)) : o.arena] || ARENAS.roof;
     W.arenaDef = A; W.theme = A.theme; W.arena = Math.max(A.width || 1400, Wv + 100); W.maxX = W.arena;
     W.players.forEach((p, i) => { p.x = W.arena / 2 - 240 + i * 90; p.z = 50 + i * 50; p.face = 1; });
+    const split = o.team === 'team' && nH >= 3;
+    if (split) W.players.forEach((p, i) => { if (p.team === 2) { p.x = W.arena / 2 + 200 + i * 30; p.face = -1; } else p.x = W.arena / 2 - 260 + i * 30; p.z = 40 + i * 30; });
     // computer fighters
     const used = new Set(o.heroes.slice(0, nH));
     const pool = HEROES.filter(h => !used.has(h) && heroUnlocked(h)).sort(() => Math.random() - 0.5);
     const allPool = HEROES.filter(heroUnlocked);
-    let foes = o.foes; if (foes === 0 && (nH === 1 || o.team === 'team')) foes = 1;
+    let foes = o.foes; if (foes === 0 && (nH === 1 || (o.team === 'team' && nH < 3))) foes = 1;
     for (let i = 0; i < foes; i++) {
       let team = o.team === 'ffa' ? 10 + i : 2;
       if (o.team === 'team' && nH === 1 && foes >= 2 && i === 0) team = 1;     // a computer buddy for a lone player
+      if (split) { const cnt = t => W.fighters.filter(g => g.team === t).length; team = cnt(1) <= cnt(2) ? 1 : 2; }
       const id = pool.length ? pool[i % pool.length] : pick(allPool);
       const f = new Fighter(id, team, W.arena / 2 + 160 + i * 70, 30 + i * 45, new AICtl());
       if (team === 1) { f.x = W.arena / 2 - 300; f.ally = true; }
+      if (split && team === 2) f.ally = true;
       f.face = team === 1 ? 1 : -1; f.mp = 200; f.lives = o.lives; W.fighters.push(f);
     }
     message(o.team === 'team' ? '組隊對戰' : '大亂鬥', o.lives > 1 ? `每人 ${o.lives} 條命，最後留下的獲勝！` : '最後站著的人獲勝！', 110);
@@ -203,6 +207,7 @@ function endBattle(team, timeUp) {
   let label;
   if (team === null) label = '平手！';
   else if (W.players.length > 1 && W.team === 'ffa') { const h = winners.find(f => f.human); label = h ? `${h.slot + 1}P 勝利！` : '電腦獲勝'; }
+  else if (W.team === 'team' && W.players.some(p => p.team === 2)) label = team === 1 ? '太陽隊勝利！' : '月亮隊勝利！';
   else label = humanWin ? '勝利！' : '戰敗…';
   finish(humanWin || team === null, label, timeUp ? '時間到！' : '');
 }
