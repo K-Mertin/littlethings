@@ -12,6 +12,7 @@ Open `index.html` in a browser, pick a mode (**Quick race**, **Grand Prix** or *
 | ← → / A D | steer |
 | Space / Shift | drift (hold while turning) |
 | R | put the car back on the track |
+| C | change camera: chase, far chase, bumper |
 | P / Esc | pause |
 | M | sound on/off |
 
@@ -81,6 +82,7 @@ Every car comes with its stock parts, which give it the character described abov
 3. **Alpine Pass**: 2.4 km mountain road of stacked switchbacks with four hairpins and a hump at the top, between fir forests, chalets, a frozen lake, a ski lift, snowmen and falling snow under tall peaks. About 70 seconds.
 4. **Desert Canyon**: 2.4 km speedway: two huge straights and a twisting canyon section through red rock: striped mesas, a stone arch, cacti, an oasis, a roadside diner and wind pumps. About 70 seconds.
 5. **Harbor City**: 2.2 km street circuit at night with right-angle corners round city blocks and a chicane, between lit towers, with street lamps, neon signs, a container port with cranes, stars and the moon. Cars light the road with their headlights. About 74 seconds.
+6. **Maple Woods**: 2.3 km round a forest lake in autumn: a long sweeper, tight esses and a hairpin at the far end, between maples, birches and dark firs, with fallen leaves on the grass and drifting through the air, log cabins with smoking chimneys, a sawmill, a fire lookout tower on a rocky knoll, and a jetty with rowing boats on the lake. About 72 seconds.
 
 Every track can also be driven in **Reverse** (pick it above the track list in Quick race and Time trial), which turns each corner into its mirror and needs different braking points. The Grand Prix always runs forward.
 
@@ -89,7 +91,7 @@ All tracks have a grandstand, pit garages, a footbridge, advertising boards, tyr
 Best race time (per track, direction and lap count) and best lap (per track and direction) are saved in this browser.
 
 ## Grand Prix
-Choose **Grand Prix** in the menu to race all five tracks in order with the same rivals, laps and difficulty.
+Choose **Grand Prix** in the menu to race all six tracks in order with the same rivals, laps and difficulty.
 
 - Points per race: 10, 8, 6, 4, 2 and 1 for 1st to 6th, plus 1 for the fastest lap.
 - After every race the results show the points earned and the championship standings. Ties are split by number of wins.
@@ -112,6 +114,13 @@ A coach panel shows the current lesson and progress. Before each corner a hint s
 Choose **Time trial** to drive alone. Each lap is timed, and your best lap on each layout is saved as a **ghost**: a see-through car that drives it again next time. Under the lap timer, the green or red number is how far ahead (−) or behind (+) the ghost you are at that point of the lap.
 
 Each layout has bronze, silver and gold target lap times, shown in the menu. A tidy lap in the stock GT without drift boosts earns bronze; silver and gold need drift boosts and clean lines all the way round, and fresh tyres help, so your first flying lap is often the quickest.
+
+## Race view and sound
+- **Cameras**: press **C** (or the 🎥 button under pause) to switch between chase, far chase and a low bumper view. Your choice is remembered. After you cross the line the camera circles your car like a TV replay.
+- **Gaps**: under your position, the time to the car ahead (red) and behind (green). Gaining or losing a place flashes ▲ or ▼ next to the position.
+- **Lap times**: every lap shows its time and how far it was from your best lap on that layout.
+- **Tyre marks**: drifts, slides and hard braking leave dark marks on the road that stay for the rest of the race.
+- **Engine**: five gears with a short lift at each upshift, and each car has its own voice: the Muscle and Baja Truck are deep, the Rally Hatch and Prototype high and sharp.
 
 ## Rivals
 Bolt, Pip, Rosa, Mango and Zippy. They brake for corners, take a racing line (wide on the way in, clipping the inside at the apex), change lanes to pass, slipstream, and use the boost pads. You start at the back of the grid.
