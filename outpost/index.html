@@ -150,6 +150,9 @@ details[open] summary::after{content:" ▴"}
 .mcard .mn{font-size:12px;color:var(--mute);font-weight:600;letter-spacing:.08em;text-transform:uppercase}
 .mcard b{font-size:18px}
 .mcard p{margin:0;font-size:13px;color:var(--mute);line-height:1.4}
+#onCode{width:120px;height:46px;border:2px solid var(--line);border-radius:12px;font:inherit;font-size:24px;font-weight:700;letter-spacing:.25em;text-align:center;text-transform:uppercase;background:#fff;color:var(--ink)}
+.sub.bad{color:var(--red)}
+#netWait{position:fixed;left:50%;top:calc(max(8px,env(safe-area-inset-top)) + 54px);transform:translateX(-50%);padding:6px 14px;border-radius:12px;background:rgba(36,48,79,.9);color:#fff;font-weight:600;font-size:14px;z-index:5;pointer-events:none}
 .ctabs{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin:4px 0 8px}
 .ctabs button{border:2px solid var(--line);background:#fff;border-radius:12px;padding:6px 14px;font:inherit;font-weight:600;font-size:15px;color:var(--mute);cursor:pointer}
 .ctabs button.on{border-color:var(--blue);background:#dff0ff;color:var(--ink)}
@@ -293,6 +296,7 @@ body.small:not(.nosel) #qbar:empty{display:none}
     <button class="tb" id="bMute" title="Sound on/off">♪</button>
     <button class="tb" id="bMenu" title="Pause (Esc)">❚❚</button>
   </div>
+  <div id="netWait" class="hidden">Waiting for your opponent…</div>
   <div id="bottom">
     <div id="mmWrap" class="pnl"><canvas id="mm" width="344" height="344"></canvas><button id="mmX" title="Hide the minimap">–</button></div>
     <button id="mmT" class="tb" title="Show / hide the minimap">🗺</button>
@@ -315,6 +319,7 @@ body.small:not(.nosel) #qbar:empty{display:none}
       <button class="big" id="bSkirmish">Skirmish</button>
       <button class="big alt" id="bMissions">Missions</button>
       <button class="btn2" id="bCodex">Units</button>
+      <button class="btn2" id="bOnline">Play online</button>
       <button class="btn2 hidden" id="bContinue">Continue <span id="contInfo"></span></button>
     </div>
     <details id="howto"><summary>How to play</summary><div class="help" id="helpBox"></div></details>
@@ -350,6 +355,18 @@ body.small:not(.nosel) #qbar:empty{display:none}
     <p class="sub" style="margin-bottom:12px" id="xBlurb"></p>
     <div class="xlist" id="xlist"></div>
     <div class="row"><button class="btn2" id="bCodexBack">← Back</button></div>
+  </div>
+</div>
+
+<div id="online" class="screen hidden">
+  <div class="card pnl">
+    <div class="logo sm">Play online</div>
+    <p class="sub">1 vs 1 against a friend on another device. One of you creates a room, the other types its code.</p>
+    <div class="opts" id="onOpts"></div>
+    <div class="row" style="margin-top:14px"><button class="big" id="bHost">Create room</button></div>
+    <div class="row" style="margin-top:10px;gap:8px;align-items:center;justify-content:center"><input id="onCode" maxlength="4" placeholder="CODE" autocomplete="off" autocapitalize="characters" spellcheck="false"><button class="big alt" id="bJoin">Join</button></div>
+    <p class="sub" id="onStatus" style="margin-top:12px;min-height:22px"></p>
+    <div class="row"><button class="btn2" id="bOnBack">← Back</button></div>
   </div>
 </div>
 
@@ -519,11 +536,14 @@ const TC = t => t >= 0 && G && G.teams[t] ? PAL[G.teams[t].col] : PAL.blue;
 
 // ---------- grids (re-made for each map size)
 let TER, BLK, VIS, EXP, CREEP, pfG, pfFrom, pfSeen, pfClosed;
+let VISS = [], EXPS = [];   // visibility / explored grids per side; VIS and EXP point at the side shown on this screen
+// a small seeded random generator whose state lives in the game, so every computer simulates the same game
+function srand() { let t = (G.rs = (G.rs + 0x6D2B79F5) | 0); t = Math.imul(t ^ t >>> 15, 1 | t); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }
 function allocGrids(w, h) {
   MW = w; MH = h; N = w * h;
   TER = new Uint8Array(N);   // 0 ground, 1 rock, 2 water, 3 trees
   BLK = new Int32Array(N);   // id of the building/resource standing on a tile
-  VIS = new Uint8Array(N); EXP = new Uint8Array(N); CREEP = new Uint8Array(N);   // CREEP: bit per team that has living ground there
+  VISS = [new Uint8Array(N), new Uint8Array(N)]; EXPS = [new Uint8Array(N), new Uint8Array(N)]; VIS = VISS[0]; EXP = EXPS[0]; CREEP = new Uint8Array(N);   // CREEP: bit per team that has living ground there
   pfG = new Float32Array(N); pfFrom = new Int32Array(N); pfSeen = new Int32Array(N); pfClosed = new Int32Array(N);
 }
 allocGrids(80, 80);
@@ -635,7 +655,7 @@ function mk(kind, team, x, y) {
   const d = DEF[kind];
   const e = { id: G.nextId++, kind, team, d, hp: d.hp, alive: true, flash: 0, face: Math.PI * .25 };
   if (d.bld || d.res) {
-    e.tx = x; e.ty = y; e.w = d.w; e.h = d.h; e.x = (x + d.w / 2) * T; e.y = (y + d.h / 2) * T; e.built = 1; e.seen = false; if (d.shield) e.sh = d.shield;
+    e.tx = x; e.ty = y; e.w = d.w; e.h = d.h; e.x = (x + d.w / 2) * T; e.y = (y + d.h / 2) * T; e.built = 1; e.seen = false; e.seenM = 0; if (d.shield) e.sh = d.shield;
     if (d.refinery) {
       const g = G.ents.find(o => o.kind === 'geyser' && o.alive && o.tx === x && o.ty === y);
       e.geyser = g ? g.id : 0; if (g) g.ref = e.id;
@@ -643,8 +663,8 @@ function mk(kind, team, x, y) {
     occupy(e, true);
     if (d.bld) { e.queue = []; e.rally = null; e.cd = 0; e.aim = Math.PI * .75; G.blds.push(e); if (d.seeds) e.seeds = 3; if (d.scan) e.energy = 50; if (d.fac === 'bloom') G.creepDirty = true; }
   } else {
-    e.x = x; e.y = y; e.r = d.r; e.order = { t: 'idle' }; e.path = null; e.pi = 0; e.cd = Math.random() * .4;
-    e.carry = null; if (d.shield) e.sh = d.shield; e.home = { x, y }; e.px = x; e.py = y; e.tgt = null; e.scanT = Math.random() * .3; e.walk = 0; e.aim = e.face; e.fireT = 0; e.repath = 0;
+    e.x = x; e.y = y; e.r = d.r; e.order = { t: 'idle' }; e.path = null; e.pi = 0; e.cd = srand() * .4;
+    e.carry = null; if (d.shield) e.sh = d.shield; e.home = { x, y }; e.px = x; e.py = y; e.tgt = null; e.scanT = srand() * .3; e.walk = 0; e.aim = e.face; e.fireT = 0; e.repath = 0;
   }
   G.ents.push(e); G.byId.set(e.id, e);
   return e;
@@ -657,16 +677,18 @@ function edgeDist(a, b) {
   const x0 = b.tx * T, y0 = b.ty * T, x1 = x0 + b.w * T, y1 = y0 + b.h * T;
   return Math.hypot(a.x - clamp(a.x, x0, x1), a.y - clamp(a.y, y0, y1)) - ar;
 }
-function visibleP(e) {   // can the player (and allies) see this entity right now?
-  if (!G.fog || sideOf(e.team) === 0) return true;
-  if (e.d.unit) return (VIS[tOf(e.y) * MW + tOf(e.x)] === 1 || e.revealT > 0) && (e.burrow !== 2 || scanned(0, e.x, e.y));
-  return e.seen;
+function visibleBy(s, e) {   // can side s see this entity right now?
+  if (!G.fog || sideOf(e.team) === s) return true;
+  if (e.d.unit) return (VISS[s][tOf(e.y) * MW + tOf(e.x)] === 1 || (e.revealT > 0 && e.revealTo === s)) && (e.burrow !== 2 || scanned(s, e.x, e.y));
+  return ((e.seenM || 0) >> s & 1) === 1;
 }
+const visibleP = e => visibleBy(MYSIDE, e);   // what this screen shows
 // can `team` pick t as a target (it must be a foe it can see)?
 function targetable(team, t) {
   if (!t || !t.alive || t.d.res || !isFoe(team, t.team) || t.hidden) return false;
   if (t.captive || (t.burrow === 2 && !scanned(sideOf(team), t.x, t.y))) return false;
-  return sideOf(team) !== 0 || visibleP(t);
+  const s = sideOf(team);
+  return !G.fogSide[s] || visibleBy(s, t);   // computer players see through fog; people only what their side can see
 }
 const scanned = (side, x, y) => G.scans && G.scans.some(s => sideOf(s.team) === side && Math.hypot(s.x - x, s.y - y) < s.r);
 const onCreep = (team, x, y) => team >= 0 && (CREEP[tOf(y) * MW + tOf(x)] & (1 << team)) !== 0;
@@ -879,7 +901,7 @@ function separate() {
       if (e.burrow === 2 || b.burrow === 2) return;   // burrowed units are underground
       let dx = b.x - e.x, dy = b.y - e.y, d = Math.hypot(dx, dy);
       const min = e.r + b.r - 1; if (d >= min) return;
-      if (d < .01) { const a = Math.random() * 6.28; dx = Math.cos(a); dy = Math.sin(a); d = 1; }
+      if (d < .01) { const a = srand() * 6.28; dx = Math.cos(a); dy = Math.sin(a); d = 1; }
       const o = min - d, nx = dx / d, ny = dy / d;
       const we = e.planted ? .1 : .5, wb = b.planted ? .1 : .5, s = o / (we + wb);
       e.x -= nx * s * we; e.y -= ny * s * we;
@@ -978,7 +1000,7 @@ function canPlace(k, tx, ty, team) {
     if (x < 1 || y < 1 || x >= MW - 1 || y >= MH - 1) return false;
     const i = y * MW + x;
     if (TER[i] !== 0 || BLK[i] !== 0) return false;
-    if (team === 0 && G.fog && !EXP[i]) return false;
+    if (team >= 0 && G.fog && G.fogSide[sideOf(team)] && !EXPS[sideOf(team)][i]) return false;
   }
   if (d.hq) for (const r of G.ents) if (r.alive && r.d.res && rectGap(tx, ty, 3, 3, r) < 2) return false;
   if (d.fac === 'bloom' && !d.hq && team >= 0)
@@ -1174,8 +1196,8 @@ function hit(t, dmg, src, acid) {
   } else h = Math.max(.5, dmg - armorOf(t));
   if (t.hardT > 0) h *= .4;
   t.hp -= h; t.flash = .1; t.hitT = G.time;
-  if (t.team === 0 && !G.demo) underAttack(t);
-  if (src && src.alive && sideOf(t.team) === 0 && sideOf(src.team) !== 0) src.revealT = 2.5;
+  if (t.team === ME && !G.demo) underAttack(t);
+  if (src && src.alive && G.fogSide[sideOf(t.team)] && sideOf(src.team) !== sideOf(t.team)) { src.revealT = 2.5; src.revealTo = sideOf(t.team); }
   if (t.hp <= 0) { kill(t, src); return; }
   if (!src || !src.alive) return;
   if (t.burrow === 2) burrowUp(t);
@@ -1236,7 +1258,7 @@ function rootDown(u) {
   if (!ok) return placeError('thorn', tx, ty, u.team);
   u.alive = false; G.sel = G.sel.filter(id => id !== u.id);
   const b = mk('thorn', u.team, tx, ty); b.built = .6; b.hp = Math.max(1, Math.min(b.d.hp, u.hp));
-  if (u.team === 0) G.sel.push(b.id);
+  if (u.team === ME) G.sel.push(b.id);
   sfxAt('dig', b.x, b.y);
   return null;
 }
@@ -1250,8 +1272,8 @@ function kill(t, src) {
     if (t.order && t.order.t === 'build' && t.order.paid) refund(t.team, t.order.k);
     explode(t.x, t.y - (t.d.air ? AIR_ALT : 0), t.r * 1.6, t.team);
     sfxAt('pop', t.x, t.y);
-    if (t.team === 0) { G.stats.lost++; G.stats.lostK[t.kind] = (G.stats.lostK[t.kind] || 0) + 1; }
-    if (src && src.team === 0 && isFoe(0, t.team)) G.stats.killed++;
+    if (t.team === ME) { G.stats.lost++; G.stats.lostK[t.kind] = (G.stats.lostK[t.kind] || 0) + 1; }
+    if (src && src.team === ME && isFoe(ME, t.team)) G.stats.killed++;
   } else {
     occupy(t, false);
     if (t.d.fac === 'bloom') G.creepDirty = true;
@@ -1261,7 +1283,7 @@ function kill(t, src) {
       explode(t.x, t.y, big, t.team); for (let i = 0; i < 4; i++) explode(t.x + (Math.random() - .5) * big, t.y + (Math.random() - .5) * big, big * .5, t.team);
       G.parts.push({ k: 'scorch', x: t.x, y: t.y, life: 30, max: 30, s: big * .9 });
       sfxAt('boom', t.x, t.y, true);
-      if (src && src.team === 0 && isFoe(0, t.team)) G.stats.razed++;
+      if (src && src.team === ME && isFoe(ME, t.team)) G.stats.razed++;
       if (G.mission) G.stats.razedK[t.kind] = (G.stats.razedK[t.kind] || 0) + 1;
     }
   }
@@ -1315,7 +1337,7 @@ function updUnit(e, dt) {
     if (e.tgt && (!targetable(e.team, e.tgt) || !canHit(e, e.tgt))) e.tgt = null;
     e.scanT -= dt;
     if (e.scanT <= 0) {
-      e.scanT = .25 + Math.random() * .1;
+      e.scanT = .25 + srand() * .1;
       const r = o.t === 'hold' || sieged ? w.range + 2 : Math.max(e.d.sight * T * .85, w.range + 30);
       if (!e.tgt || !isThreat(e.tgt) || edgeDist(e, e.tgt) > w.range) {
         const n = acquire(e, r);
@@ -1428,7 +1450,7 @@ function deposit(e) {
   if (!e.carry) return;
   const ai = G.ais[e.team], amt = ai ? Math.round(e.carry.amt * ai.cfg.mult) : e.carry.amt;
   G.res[e.team][e.carry.type] += amt;
-  if (e.team === 0) G.stats[e.carry.type === 'c' ? 'mined' : 'gas'] += amt;
+  if (e.team === ME) G.stats[e.carry.type === 'c' ? 'mined' : 'gas'] += amt;
   e.carry = null;
 }
 function minerBusy(r, me) {
@@ -1493,13 +1515,13 @@ function updBuild(e, dt) {
   const rect = { tx: o.tx, ty: o.ty, w: d.w, h: d.h, x: (o.tx + d.w / 2) * T, y: (o.ty + d.h / 2) * T, d: { unit: 0 }, id: -1 - o.tx - o.ty * MW };
   if (edgeDist(e, rect) <= 12) {
     if (!canPlace(o.k, o.tx, o.ty, e.team)) {
-      if (e.team === 0) toast("Can't build there", 'bad');
+      if (e.team === ME) toast("Can't build there", 'bad');
       setOrder(e, { t: 'idle' }); return;
     }
     o.paid = false;
     const b = mk(o.k, e.team, o.tx, o.ty);
     b.built = .01; b.hp = Math.max(1, d.hp * .05); if (d.shield) b.sh = 0;
-    if (e.team === 0) sfx('place');
+    if (e.team === ME) sfx('place');
     if (d.fac === 'bloom') {   // the Sprout becomes the building and grows on its own
       for (let i = 0; i < 8; i++) G.parts.push({ k: 'spark', x: e.x, y: e.y, vx: (Math.random() - .5) * 80, vy: (Math.random() - .5) * 80, life: .5, max: .5, c: '#9cff9c' });
       consume(e); return;
@@ -1516,7 +1538,7 @@ function afterWork(e, b) {
   const prev = byId(e.prevGather); e.prevGather = 0;
   if (b && b.d.refinery && b.built >= 1) { setOrder(e, { t: 'gather', res: b.id }); e.lastRes = b.id; }
   else if (prev) { setOrder(e, { t: 'gather', res: prev.id }); e.lastRes = prev.id; }
-  else if (e.team !== 0 || G.demo) { const c = bestCrystal(e.x, e.y, 14 * T); if (c) setOrder(e, { t: 'gather', res: c.id }); else setOrder(e, { t: 'idle' }); }
+  else if (!G.humanT[e.team] || G.demo) { const c = bestCrystal(e.x, e.y, 14 * T); if (c) setOrder(e, { t: 'gather', res: c.id }); else setOrder(e, { t: 'idle' }); }
   else setOrder(e, { t: 'idle' });
 }
 function updConstruct(e, dt) {
@@ -1536,8 +1558,8 @@ function grow(b, dt) {
   b.hp = Math.min(b.d.hp, b.hp + b.d.hp * .95 * dt / t);
   if (b.built >= 1) {
     b.built = 1; if (b.hp > b.d.hp * .97) b.hp = b.d.hp;
-    if (b.team === 0 && !G.demo) { toast(b.d.name + ' complete', 'good'); sfx('done'); }
-    if (b.team === 0) G.stats.builtK[b.kind] = (G.stats.builtK[b.kind] || 0) + 1;
+    if (b.team === ME && !G.demo) { toast(b.d.name + ' complete', 'good'); sfx('done'); }
+    if (b.team === ME) G.stats.builtK[b.kind] = (G.stats.builtK[b.kind] || 0) + 1;
   }
 }
 
@@ -1585,7 +1607,7 @@ function updBld(b, dt) {
 }
 function finishResearch(b, rk) {
   G.up[b.team][rk]++;
-  if (b.team === 0 && !G.demo) { const R = RES[rk]; toast(resName(rk, 0) + (R.levels > 1 ? ' ' + G.up[0][rk] : '') + ' done', 'good'); sfx('done'); }
+  if (b.team === ME && !G.demo) { const R = RES[rk]; toast(resName(rk, ME) + (R.levels > 1 ? ' ' + G.up[ME][rk] : '') + ' done', 'good'); sfx('done'); }
 }
 function fireB(b, t) {
   const w = b.d.wpn; b.cd = w.cd;
@@ -1622,10 +1644,10 @@ function spawnOne(b, k, best, target, i, warp) {
   if (warp) {
     u.busyT = u.warpT = 1.4;
     G.parts.push({ k: 'ring', x: u.x, y: u.y, life: .9, max: .9, s: 34, c: '#ffffff' });
-    if (b.team === 0 && !G.demo) { G.stats.trained++; G.stats.warped = (G.stats.warped || 0) + 1; G.stats.made[k] = (G.stats.made[k] || 0) + 1; sfxAt('warp', u.x, u.y); }
+    if (b.team === ME && !G.demo) { G.stats.trained++; G.stats.warped = (G.stats.warped || 0) + 1; G.stats.made[k] = (G.stats.made[k] || 0) + 1; sfxAt('warp', u.x, u.y); }
     return;
   }
-  if (b.team === 0 && !G.demo && !i) { G.stats.trained++; G.stats.made[k] = (G.stats.made[k] || 0) + 1; sfxAt('ready', u.x, u.y); }
+  if (b.team === ME && !G.demo && !i) { G.stats.trained++; G.stats.made[k] = (G.stats.made[k] || 0) + 1; sfxAt('ready', u.x, u.y); }
   const rt = b.rally && b.rally.tid ? byId(b.rally.tid) : null;
   if (u.d.worker && rt && (rt.kind === 'crystal' || (rt.d.refinery && rt.team === b.team && rt.built >= 1))) cmdGather([u], rt);
   else if (u.d.worker && !b.rally) { const c = bestCrystal(b.x, b.y, 10 * T); if (c) { setOrder(u, { t: 'gather', res: c.id }); u.lastRes = c.id; } }
@@ -1733,26 +1755,33 @@ function makeFog() {
   fogBig = document.createElement('canvas'); fogBig.width = MW * 4; fogBig.height = MH * 4; fogBx = fogBig.getContext('2d');
 }
 function updFog() {
-  VIS.fill(0);
-  if (!G.fog) { VIS.fill(1); EXP.fill(1); }
-  else for (const e of G.ents) {
-    if (!e.alive || sideOf(e.team) !== 0 || e.hidden || e.captive) continue;
-    const s = e.d.sight * (e.d.bld && e.built < 1 ? .6 : 1), cx = e.x / T, cy = e.y / T;
-    const x0 = Math.max(0, Math.floor(cx - s)), x1 = Math.min(MW - 1, Math.ceil(cx - 1 + s)), y0 = Math.max(0, Math.floor(cy - s)), y1 = Math.min(MH - 1, Math.ceil(cy - 1 + s));
-    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-      if ((x + .5 - cx) ** 2 + (y + .5 - cy) ** 2 <= s * s) { const i = y * MW + x; VIS[i] = 1; EXP[i] = 1; }
+  for (let side = 0; side < 2; side++) {
+    const V = VISS[side], X = EXPS[side];
+    V.fill(0);
+    if (!G.fog) { V.fill(1); X.fill(1); continue; }
+    if (!G.fogSide[side]) continue;   // nobody on this side needs fog (computer players see everything)
+    for (const e of G.ents) {
+      if (!e.alive || sideOf(e.team) !== side || e.hidden || e.captive) continue;
+      const s = e.d.sight * (e.d.bld && e.built < 1 ? .6 : 1), cx = e.x / T, cy = e.y / T;
+      const x0 = Math.max(0, Math.floor(cx - s)), x1 = Math.min(MW - 1, Math.ceil(cx - 1 + s)), y0 = Math.max(0, Math.floor(cy - s)), y1 = Math.min(MH - 1, Math.ceil(cy - 1 + s));
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+        if ((x + .5 - cx) ** 2 + (y + .5 - cy) ** 2 <= s * s) { const i = y * MW + x; V[i] = 1; X[i] = 1; }
+      }
+    }
+    for (const sc of G.scans) if (sideOf(sc.team) === side) {
+      const s = sc.r / T, cx = sc.x / T, cy = sc.y / T;
+      for (let y = Math.max(0, Math.floor(cy - s)); y <= Math.min(MH - 1, Math.ceil(cy + s)); y++) for (let x = Math.max(0, Math.floor(cx - s)); x <= Math.min(MW - 1, Math.ceil(cx + s)); x++)
+        if ((x + .5 - cx) ** 2 + (y + .5 - cy) ** 2 <= s * s) { const i = y * MW + x; V[i] = 1; X[i] = 1; }
+    }
+    const bit = 1 << side;
+    for (const e of G.ents) {
+      if (!e.alive || !(e.d.bld || e.d.res) || (e.seenM & bit)) continue;
+      for (let y = e.ty; y < e.ty + e.h && !(e.seenM & bit); y++) for (let x = e.tx; x < e.tx + e.w; x++) if (V[y * MW + x]) { e.seenM = (e.seenM || 0) | bit; break; }
     }
   }
-  if (G.fog) for (const sc of G.scans) if (sideOf(sc.team) === 0) {
-    const s = sc.r / T, cx = sc.x / T, cy = sc.y / T;
-    for (let y = Math.max(0, Math.floor(cy - s)); y <= Math.min(MH - 1, Math.ceil(cy + s)); y++) for (let x = Math.max(0, Math.floor(cx - s)); x <= Math.min(MW - 1, Math.ceil(cx + s)); x++)
-      if ((x + .5 - cx) ** 2 + (y + .5 - cy) ** 2 <= s * s) { const i = y * MW + x; VIS[i] = 1; EXP[i] = 1; }
-  }
-  for (const e of G.ents) {
-    if (!e.alive || !(e.d.bld || e.d.res) || e.seen) continue;
-    if (!G.fog) { e.seen = true; continue; }
-    for (let y = e.ty; y < e.ty + e.h && !e.seen; y++) for (let x = e.tx; x < e.tx + e.w; x++) if (VIS[y * MW + x]) { e.seen = true; break; }
-  }
+  // what this screen shows
+  VIS = VISS[MYSIDE]; EXP = EXPS[MYSIDE];
+  for (const e of G.ents) if (e.d.bld || e.d.res) e.seen = !G.fog || ((e.seenM || 0) >> MYSIDE & 1) === 1;
   const d = fogImg.data;
   for (let i = 0; i < N; i++) { d[i * 4] = 18; d[i * 4 + 1] = 28; d[i * 4 + 2] = 48; d[i * 4 + 3] = VIS[i] ? 0 : EXP[i] ? 120 : 255; }
   fogCx.putImageData(fogImg, 0, 0);
@@ -1776,7 +1805,7 @@ class AI {
   constructor(team, diff, flags = {}) {
     this.team = team; this.diff = diff; this.style = AI_STYLES[flags.style] ? flags.style : 'balanced';
     this.cfg = AI_STYLES[this.style].cfg({ ...AI_CFG[diff] });
-    this.acc = Math.random() * .3; this.wave = this.cfg.wave; this.attacking = false; this.nextAttack = this.cfg.first; this.lastBuild = {}; this.lastFail = {};
+    this.acc = srand() * .3; this.wave = this.cfg.wave; this.attacking = false; this.nextAttack = this.cfg.first; this.lastBuild = {}; this.lastFail = {};
     this.passive = !!flags.passive; this.noBuild = !!flags.noBuild; this.noExpand = !!flags.noExpand; this.ally = sideOf(team) === 0;
     this.lastPush = 0;
     this.rng = mulberry32((G.seed * 7 + team * 131 + Math.floor(G.time)) | 0);
@@ -2085,6 +2114,7 @@ function blankGame(opt, teams) {
     time: 0, proj: [], parts: [], sel: [], groups: {}, mode: null, sub: null, fog: !opt.demo, demo: !!opt.demo, seed: opt.seed, diff: opt.diff,
     speed: SPEEDS[opt.speed] || 1, theme: opt.theme || 'meadow',
     stats: { trained: 0, killed: 0, lost: 0, mined: 0, gas: 0, razed: 0, made: {}, lostK: {}, razedK: {}, builtK: {} },
+    humanT: teams.map((t, i) => i === 0 || !!(opt.online)), fogSide: [true, !!opt.online], rs: (opt.seed * 2654435761) | 0,
     ais: teams.map(() => null), fogT: 0, over: false, pathBudget: 60, pings: [], playerPush: null, saveT: 30, scans: [], pools: [], creepDirty: true,
   };
 }
@@ -2103,6 +2133,7 @@ function newGame(opt) {
     teams.push({ side: 1, fac: e1, col: PAL_FOR[e1][2] }, { side: 1, fac: e2, col: PAL_FOR[e2][3] });
   } else { const e1 = pickFac(opt.facE || 'blue', R); teams.push({ side: 1, fac: e1, col: PAL_FOR[e1][2] }); }
   allocGrids(size, size);
+  ME = opt.me || 0; MYSIDE = teams[ME].side; VIS = VISS[MYSIDE]; EXP = EXPS[MYSIDE];
   G = blankGame({ ...opt, theme, mode }, teams);
   G.theme = theme;
   makeFog();
@@ -2120,7 +2151,7 @@ function newGame(opt) {
       placeStart(ti, s);
     });
     teams.forEach((tm, ti) => {
-      if (ti !== 0 || opt.demo) {
+      if (!opt.online && (ti !== 0 || opt.demo)) {
         const foe = tm.side === 1, st = foe ? (opt.style && opt.style !== 'random' ? opt.style : STYLE_KEYS[Math.floor(R() * STYLE_KEYS.length)]) : 'balanced';
         tm.style = st; G.ais[ti] = new AI(ti, ti === 0 || tm.side === 0 ? (opt.diffA || 'normal') : (opt.diff || 'normal'), { style: st });
       }
@@ -2129,7 +2160,7 @@ function newGame(opt) {
   G.nextSave = 30;
   updCreep(); updPower(); computeSupply(); updFog();
   bakeTerrain();
-  const myHQ = G.blds.find(b => b.team === 0) || G.ents.find(e => e.team === 0);
+  const myHQ = G.blds.find(b => b.team === ME) || G.ents.find(e => e.team === ME);
   if (myHQ) centerOn(myHQ.x, myHQ.y);
 }
 function placeStart(team, s, workers = 5) {
@@ -2179,7 +2210,7 @@ function checkEnd() {
   if (alive[0] && alive[1] && !(G.demo && G.time > 900)) return;
   G.over = true;
   if (G.demo) { G.overT = 3; return; }
-  onGameOver(alive[0]);
+  onGameOver(alive[MYSIDE]);
 }
 
 // =====================================================================
@@ -2199,6 +2230,7 @@ function resize() {
   if (G) clampCam();
 }
 let layoutSig = '';
+let ME = 0, MYSIDE = 0;   // which team / side this screen plays (team 1 for the guest in an online match)
 const isSmall = () => document.body.classList.contains('small');
 function hudH() { const b = document.getElementById('bottom'); return G && !G.demo && b.offsetParent !== null ? b.offsetHeight - 8 : 0; }
 function clampCam() {
@@ -2388,10 +2420,10 @@ function drawScene() {
   if (sw > 0 && sh > 0) ctx.drawImage(terCv, sx, sy, sw, sh, sx, sy, sw, sh);
   // scorch marks
   // living ground under Bloom buildings
-  for (const b of G.blds) if (b.alive && b.d.fac === 'bloom' && inView(b) && (sideOf(b.team) === 0 || !G.fog || b.seen)) drawCreep(ctx, b);
+  for (const b of G.blds) if (b.alive && b.d.fac === 'bloom' && inView(b) && (sideOf(b.team) === MYSIDE || !G.fog || b.seen)) drawCreep(ctx, b);
   // power fields: while placing a Shard building, or with an Obelisk / Crystal Core selected
   const placing = G.mode && G.mode.t === 'place' && DEF[G.mode.k].fac === 'shard';
-  for (const b of G.blds) if (b.alive && b.team === 0 && b.d.power && b.built >= 1 && inView(b) && (placing || G.sel.includes(b.id))) drawPower(ctx, b);
+  for (const b of G.blds) if (b.alive && b.team === ME && b.d.power && b.built >= 1 && inView(b) && (placing || G.sel.includes(b.id))) drawPower(ctx, b);
   // acid pools
   for (const p of G.pools) {
     const f = Math.min(1, p.t / .6), wob = Math.sin(NOW * 4 + p.x) * 2;
@@ -2404,7 +2436,7 @@ function drawScene() {
   // selection marks under things
   for (const id of G.sel) {
     const e = G.byId.get(id); if (!e || !e.alive || e.hidden || !inView(e)) continue;
-    const col = e.team === 0 ? '#3cff7a' : e.team < 0 ? '#ffd23f' : sideOf(e.team) === 0 ? '#5fd3ff' : '#ff4a5a';
+    const col = e.team === ME ? '#3cff7a' : e.team < 0 ? '#ffd23f' : sideOf(e.team) === MYSIDE ? '#5fd3ff' : '#ff4a5a';
     ctx.strokeStyle = col; ctx.lineWidth = 2;
     if (e.d.unit) { ctx.beginPath(); ctx.ellipse(e.x, e.y + 3, e.r + 4, (e.r + 4) * .72, 0, 0, 7); ctx.stroke(); }
     else { rr(ctx, e.tx * T - 1, e.ty * T - 1, e.w * T + 2, e.h * T + 2, 14); ctx.stroke(); }
@@ -2414,15 +2446,15 @@ function drawScene() {
     if (!e.alive || !inView(e)) continue;
     if (e.d.res) { if (e.kind === 'geyser' && e.ref) continue; drawRes(ctx, e); }
   }
-  const blds = G.blds.filter(b => b.alive && inView(b) && (sideOf(b.team) === 0 || !G.fog || b.seen)).sort((a, b) => a.y - b.y);
+  const blds = G.blds.filter(b => b.alive && inView(b) && (sideOf(b.team) === MYSIDE || !G.fog || b.seen)).sort((a, b) => a.y - b.y);
   for (const b of blds) drawBld(ctx, b);
   // build sites waiting for a worker
-  for (const e of G.ents) if (e.alive && e.team === 0 && e.d.unit && e.order.t === 'build') {
+  for (const e of G.ents) if (e.alive && e.team === ME && e.d.unit && e.order.t === 'build') {
     const d = DEF[e.order.k]; ctx.setLineDash([6, 5]); ctx.strokeStyle = 'rgba(60,255,122,.85)'; ctx.lineWidth = 2;
     rr(ctx, e.order.tx * T + 2, e.order.ty * T + 2, d.w * T - 4, d.h * T - 4, 10); ctx.stroke(); ctx.setLineDash([]);
   }
   if (G.mission) drawMarks(ctx);
-  for (const sc of G.scans) if (sideOf(sc.team) === 0) { ctx.setLineDash([8, 10]); ctx.strokeStyle = `rgba(159,224,255,${Math.min(1, sc.t / 2) * .8})`; ctx.lineWidth = 3; circ(ctx, sc.x, sc.y, sc.r); ctx.stroke(); ctx.setLineDash([]); }
+  for (const sc of G.scans) if (sideOf(sc.team) === MYSIDE) { ctx.setLineDash([8, 10]); ctx.strokeStyle = `rgba(159,224,255,${Math.min(1, sc.t / 2) * .8})`; ctx.lineWidth = 3; circ(ctx, sc.x, sc.y, sc.r); ctx.stroke(); ctx.setLineDash([]); }
   // units
   const units = G.ents.filter(e => e.alive && e.d.unit && !e.hidden && inView(e) && visibleP(e)).sort((a, b) => (!!a.d.air - !!b.d.air) || a.y - b.y);
   for (const u of units) drawUnit(ctx, u);
@@ -2480,8 +2512,8 @@ function drawScene() {
   // bars (above fog)
   for (const e of G.ents) {
     if (!e.alive || e.d.res || e.hidden || !inView(e)) continue;
-    if (sideOf(e.team) !== 0 && G.fog && !visibleP(e)) continue;
-    if (e.d.bld && sideOf(e.team) !== 0 && G.fog && !VIS[tOf(e.y) * MW + tOf(e.x)]) continue;
+    if (sideOf(e.team) !== MYSIDE && G.fog && !visibleP(e)) continue;
+    if (e.d.bld && sideOf(e.team) !== MYSIDE && G.fog && !VIS[tOf(e.y) * MW + tOf(e.x)]) continue;
     if (e.captive) continue;
     const s = sel.has(e.id), f = e.hp / e.d.hp, sf = e.d.shield ? (e.sh || 0) / e.d.shield : 1;
     if (e.d.bld && e.built < 1) { const w = e.w * T * .7; bar(e.x - w / 2, e.ty * T + e.h * T - 9, w, e.built, '#ffd23f'); if (!s && f > .98) continue; }
@@ -2492,7 +2524,7 @@ function drawScene() {
   }
   // rally line of selected buildings
   for (const id of G.sel) {
-    const b = G.byId.get(id); if (!b || !b.d.bld || b.team !== 0 || !b.rally) continue;
+    const b = G.byId.get(id); if (!b || !b.d.bld || b.team !== ME || !b.rally) continue;
     ctx.setLineDash([5, 6]); ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.rally.x, b.rally.y); ctx.stroke(); ctx.setLineDash([]);
     flag(ctx, b.rally.x, b.rally.y);
   }
@@ -2502,10 +2534,10 @@ function drawScene() {
   // building placement ghost
   if (G.mode && G.mode.t === 'place' && mouse.inside) {
     const k = G.mode.k, d = DEF[k], wp = toWorld(mouse.x, mouse.y), p = placeTile(k, wp.x, wp.y);
-    const ok = canPlace(k, p.x, p.y, 0) && !pendingAt(p.x, p.y, d.w, d.h);
+    const ok = canPlace(k, p.x, p.y, ME) && !pendingAt(p.x, p.y, d.w, d.h);
     for (let y = 0; y < d.h; y++) for (let x = 0; x < d.w; x++) {
       const tx = p.x + x, ty = p.y + y;
-      const good = d.refinery ? ok : tx > 0 && ty > 0 && tx < MW - 1 && ty < MH - 1 && TER[ty * MW + tx] === 0 && BLK[ty * MW + tx] === 0 && EXP[ty * MW + tx] && (d.fac !== 'bloom' || d.hq || (CREEP[ty * MW + tx] & 1)) && (!needsPower(d) || !!powerAt(0, (p.x + d.w / 2) * T, (p.y + d.h / 2) * T));
+      const good = d.refinery ? ok : tx > 0 && ty > 0 && tx < MW - 1 && ty < MH - 1 && TER[ty * MW + tx] === 0 && BLK[ty * MW + tx] === 0 && EXP[ty * MW + tx] && (d.fac !== 'bloom' || d.hq || (CREEP[ty * MW + tx] & (1 << ME))) && (!needsPower(d) || !!powerAt(ME, (p.x + d.w / 2) * T, (p.y + d.h / 2) * T));
       ctx.fillStyle = good ? 'rgba(60,255,122,.28)' : 'rgba(255,60,80,.35)'; ctx.fillRect(tx * T + 1, ty * T + 1, T - 2, T - 2);
     }
     ctx.globalAlpha = .6; drawBld(ctx, { kind: k, team: 0, tx: p.x, ty: p.y, w: d.w, h: d.h, x: (p.x + d.w / 2) * T, y: (p.y + d.h / 2) * T, built: 1, d, id: 0, aim: -.8, cd: 0, queue: [], flash: 0 }); ctx.globalAlpha = 1;
@@ -2534,7 +2566,7 @@ function drawMinimap() {
   for (const e of G.ents) {
     if (!e.alive || e.hidden) continue;
     if (e.d.res) { if (e.kind === 'geyser' && e.ref) continue; if (G.fog && !e.seen && !EXP[e.ty * MW + e.tx]) continue; mmc.fillStyle = e.kind === 'crystal' ? '#5fe1ff' : '#4fdc84'; mmc.fillRect(e.tx * S, e.ty * S, e.w * S, e.h * S); continue; }
-    if (sideOf(e.team) !== 0 && G.fog && !visibleP(e)) continue;
+    if (sideOf(e.team) !== MYSIDE && G.fog && !visibleP(e)) continue;
     mmc.fillStyle = TC(e.team).c;
     if (e.d.bld) { mmc.fillRect(e.tx * S, e.ty * S, e.w * S, e.h * S); mmc.strokeStyle = '#fff'; mmc.lineWidth = 1; mmc.strokeRect(e.tx * S + .5, e.ty * S + .5, e.w * S - 1, e.h * S - 1); }
     else { const z = Math.max(4, S * 2); mmc.fillRect(e.x / T * S - z / 2, e.y / T * S - z / 2, z, z); }
@@ -2547,7 +2579,7 @@ function drawMinimap() {
 
 // ---------- icons for the HUD (drawn with the same sprite code)
 const ICON = {};
-function icon(kind, team = 0) {
+function icon(kind, team = ME) {
   const key = kind + ':' + (DEF[kind] && !DEF[kind].res ? TC(team).name : ''); if (ICON[key]) return ICON[key];
   const S = 96, c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d');
   const d = DEF[kind];
@@ -3787,24 +3819,30 @@ function saveProgress(p) { try { localStorage.setItem('crystalOutpost.missions',
 // =====================================================================
 const SAVE_KEY = 'crystalOutpost.save';
 function saveGame() {
-  try {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(gameState())); } catch (e) { }
+}
+function gameState() {
+  {
     const ents = G.ents.filter(e => e.alive).map(e => { const o = {}; for (const k in e) { if (k === 'd') continue; if (k === 'tgt') { o.tgtId = e.tgt ? e.tgt.id : 0; continue; } o[k] = e[k]; } return o; });
     const data = {
-      v: 3, opt: G.opt, teams: G.teams, w: MW, h: MH, ter: Array.from(TER).join(''), exp: Array.from(EXP).join(''), ents, proj: G.proj,
+      v: 3, opt: G.opt, teams: G.teams, w: MW, h: MH, ter: Array.from(TER).join(''), exp: Array.from(EXPS[0]).join(''), exp1: Array.from(EXPS[1]).join(''), rs: G.rs, scans: G.scans, pools: G.pools, ents, proj: G.proj,
       nextId: G.nextId, res: G.res, up: G.up, stats: G.stats, time: G.time, sites: G.sites, mains: G.mains, theme: G.theme, groups: G.groups, seed: G.seed, diff: G.diff,
       ais: G.ais.map(a => a && { team: a.team, diff: a.diff, wave: a.wave, attacking: a.attacking, nextAttack: a.nextAttack, lastBuild: a.lastBuild, lastFail: a.lastFail, passive: a.passive, noBuild: a.noBuild, noExpand: a.noExpand, sent: a.sent, lastPush: a.lastPush, fwd: a.fwd, style: a.style }),
       cam: { x: cam.x, y: cam.y, z: cam.z }, when: Date.now(),
     };
-    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
-  } catch (e) { }
+    return data;
+  }
 }
 function readSave() { try { const d = JSON.parse(localStorage.getItem(SAVE_KEY)); return d && d.v === 3 ? d : null; } catch (e) { return null; } }
 function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { } }
 function loadGame(d) {
   allocGrids(d.w, d.h);
+  ME = d.me || 0; MYSIDE = d.teams[ME].side; VIS = VISS[MYSIDE]; EXP = EXPS[MYSIDE];
   G = blankGame(d.opt, d.teams);
+  if (d.rs !== undefined) G.rs = d.rs;
+  G.scans = d.scans || []; G.pools = d.pools || [];
   Object.assign(G, { nextId: d.nextId, res: d.res, up: d.up, stats: d.stats, time: d.time, sites: d.sites, mains: d.mains, theme: d.theme, groups: d.groups || {}, seed: d.seed, diff: d.diff });
-  for (let i = 0; i < N; i++) { TER[i] = +d.ter[i]; EXP[i] = +d.exp[i]; }
+  for (let i = 0; i < N; i++) { TER[i] = +d.ter[i]; EXPS[0][i] = +d.exp[i]; if (d.exp1) EXPS[1][i] = +d.exp1[i]; }
   makeFog();
   const tg = [];
   for (const s of d.ents.sort((a, b) => a.id - b.id)) {
@@ -4175,6 +4213,188 @@ function survivalDef(o) {
 }
 
 // =====================================================================
+//  Commands: everything a player does to the game goes through issue(),
+//  as plain data, so an online match can send it to the other computer
+//  and both run it at the same moment.
+// =====================================================================
+const ids = list => list.map(e => e.id);
+function doCmd(team, c) {
+  const own = id => { const e = byId(id); return e && e.team === team ? e : null; };
+  const units = () => (c.ids || []).map(own).filter(e => e && e.d.unit && !e.captive);
+  const blds = () => (c.ids || []).map(own).filter(e => e && e.d.bld);
+  const tgt = c.tid ? G.byId.get(c.tid) : null, t = tgt && tgt.alive ? tgt : null;
+  switch (c.t) {
+    case 'order': for (const u of units()) setOrder(u, { t: c.o }); return null;
+    case 'move': cmdMove(units(), c.x, c.y, !!c.atk); return null;
+    case 'attack': { const us = units(); if (t && targetable(team, t)) cmdAttack(us, t); else cmdMove(us, c.x, c.y, true); return null; }
+    case 'smart': return smartCmd(units(), c.x, c.y, t);
+    case 'repair': if (t && needsRepair(t, team)) for (const w of units()) cmdRepair(w, t); return null;
+    case 'build': { const w = own(c.wid); if (!w) return 'Worker lost'; return cmdBuild(w, c.k, c.tx, c.ty); }
+    case 'train': { const b = own(c.bid); if (!b) return null; return cmdTrain(b, c.k); }
+    case 'research': { const b = own(c.bid); if (!b) return null; return cmdResearch(b, c.rk); }
+    case 'cancelQ': { const b = own(c.bid); if (b) cancelTrain(b, c.i); return null; }
+    case 'cancelBuild': { const b = own(c.bid); if (b && b.built < 1) { const k = b.d.cost; G.res[team].c += Math.floor(k[0] * .75); G.res[team].g += Math.floor(k[1] * .75); kill(b, null); } return null; }
+    case 'rally': for (const b of blds()) setRally(b, c.x, c.y, t); return null;
+    case 'scan': return scanAt(team, c.x, c.y);
+    case 'rush': { let n = 0; for (const u of units()) if (rush(u)) n++; return n ? null : 'Too hurt or already rushing'; }
+    case 'harden': { let n = 0; for (const u of units()) if (harden(u)) n++; return n ? null : 'Still recovering'; }
+    case 'barrier': { for (const u of units()) if (barrier(u)) return null; return 'Barrier is still recharging'; }
+    case 'blink': { let n = 0; for (const u of units()) if (blink(u, c.x, c.y)) n++; return n ? null : 'Blink is still recharging'; }
+    case 'siege': for (const u of units()) { if (c.go) deploy(u); else pack(u); } return null;
+    case 'burrow': for (const u of units()) { if (c.go) burrowDown(u); else burrowUp(u); } return null;
+    case 'uproot': { const ws = []; for (const b of blds()) { const u = uproot(b); if (u) ws.push(u); } if (team === ME && ws.length) setSel(ws); return null; }
+    case 'root': { let err = null; for (const u of units()) err = rootDown(u) || err; return err; }
+  }
+  return null;
+}
+// run now (single player) or queue for the next network turn (online)
+function issue(c) {
+  if (typeof NET !== 'undefined' && NET.on) { NET.out.push(c); return null; }
+  return doCmd(ME, c);
+}
+
+// =====================================================================
+//  Online 1 vs 1: lockstep over a Cloudflare Durable Object relay.
+//  Both computers run the same simulation; only commands travel.
+// =====================================================================
+const TURN_STEPS = 3, NET_DELAY = 2;
+const NET = { on: false, ws: null, role: null, code: '', me: 0, turn: 0, step: 0, out: [], got: {}, hashes: {}, sentUpTo: -1, waiting: 0, needSync: false, fac: 'blue', opts: null, ended: false, log: {}, syncs: 0 };
+function netServer() {
+  const q = new URLSearchParams(location.search).get('server');
+  if (q) return q.replace(/\/$/, '');
+  if (location.protocol === 'http:' || location.protocol === 'https:') return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
+  return 'wss://littleland.mwstudio.workers.dev';
+}
+function netSend(m) { if (NET.ws && NET.ws.readyState === 1) NET.ws.send(JSON.stringify(m)); }
+function netStatus(text, bad) { const el = $('onStatus'); if (el) { el.textContent = text; el.className = 'sub' + (bad ? ' bad' : ''); } }
+function netClose() { NET.on = false; if (NET.ws) { try { NET.ws.onclose = null; NET.ws.close(); } catch (e) { } } NET.ws = null; }
+function netOpen(role, code) {
+  netClose();
+  NET.role = role; NET.code = code; NET.ended = false;
+  let ws;
+  try { ws = new WebSocket(netServer() + '/api/outpost/room/' + code + '?role=' + role); } catch (e) { netStatus('Could not connect: ' + e.message, true); return; }
+  NET.ws = ws;
+  netStatus('Connecting…');
+  ws.onopen = () => {
+    if (role === 'host') netStatus('Room code: ' + code + ' · waiting for a friend to join…');
+    else { netStatus('Joined room ' + code + ' · waiting for the host…'); netSend({ k: 'hello', fac: NET.fac }); }
+  };
+  ws.onerror = () => netStatus('Connection problem. Check your internet and try again.', true);
+  ws.onclose = () => {
+    if (NET.on && !NET.ended && G && !G.over) { netEnd(true, 'Your opponent\'s connection was lost.'); return; }
+    if (!NET.on) netStatus('Disconnected.', true);
+  };
+  ws.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } netMsg(m); };
+}
+function netMsg(m) {
+  switch (m.k) {
+    case 'error': netStatus(m.msg, true); netClose(); break;
+    case 'peer':
+      if (m.left && NET.on && !NET.ended) netEnd(true, 'Your opponent left the game.');
+      break;
+    case 'hello':   // the host hears the guest's faction, then starts the match
+      if (NET.role !== 'host' || NET.on) break;
+      {
+        const o = NET.opts, seed = (Math.random() * 1e9) | 0;
+        const theme = o.theme === 'random' ? ['meadow', 'desert', 'snow'][Math.floor(Math.random() * 3)] : o.theme;
+        const start = { k: 'start', seed, size: o.size, theme, startRes: o.startRes, facs: [NET.fac, m.fac] };
+        netSend(start); netBegin(start);
+      }
+      break;
+    case 'start': if (NET.role === 'guest' && !NET.on) netBegin(m); break;
+    case 'turn': {
+      const other = 1 - NET.me;
+      (NET.got[m.t] = NET.got[m.t] || [null, null])[other] = m.c || [];
+      if (m.h !== undefined) { (NET.hashes[m.ht] = NET.hashes[m.ht] || [])[other] = m.h; netCheckHash(m.ht); }
+      break;
+    }
+    case 'sync': if (NET.role === 'guest' && NET.on) netResync(m); break;
+  }
+}
+function netBegin(m) {
+  NET.me = NET.role === 'host' ? 0 : 1;
+  newGame({ online: true, me: NET.me, seed: m.seed, mode: '1v1', size: m.size, theme: m.theme, startRes: m.startRes, fac: m.facs[0], facE: m.facs[1], diff: 'normal', speed: 'normal' });
+  NET.on = true; NET.turn = 0; NET.step = 0; NET.out = []; NET.got = {}; NET.hashes = {}; NET.sentUpTo = NET_DELAY - 1; NET.waiting = 0; NET.needSync = false;
+  for (let t = 0; t < NET_DELAY; t++) NET.got[t] = [[], []];
+  lastStart = { kind: 'online' };
+  enterGame();
+  toast('Match started: you are ' + FAC[G.teams[NET.me].fac].name + '. Good luck!', 'good');
+}
+function stateHash() {
+  let x = 0x811c9dc5;
+  const mix = v => { x ^= v & 0xffff; x = Math.imul(x, 16777619); x ^= v >>> 16; x = Math.imul(x, 16777619); };
+  for (const e of G.ents) { mix(e.id); mix(Math.round(e.x * 10)); mix(Math.round(e.y * 10)); mix(Math.round(e.hp * 10)); mix(Math.round((e.sh || 0) * 10)); }
+  for (const r of G.res) { mix(Math.round(r.c)); mix(Math.round(r.g)); }
+  mix(G.rs); mix(G.ents.length);
+  return x >>> 0;
+}
+function netCheckHash(t) {
+  const h = NET.hashes[t]; if (!h || h[0] === undefined || h[1] === undefined) return;
+  if (h[0] !== h[1] && NET.role === 'host') NET.needSync = true;
+  delete NET.hashes[t];
+}
+function netEndTurn(T) {
+  const tt = T + NET_DELAY;
+  if (tt <= NET.sentUpTo) return;   // after a resync: these turns were already sent, keep the commands for the next one
+  const msg = { k: 'turn', t: tt, c: NET.out };
+  if (T % 10 === 0) { msg.h = stateHash(); msg.ht = T; NET.log[T] = msg.h; delete NET.log[T - 1000]; (NET.hashes[T] = NET.hashes[T] || [])[NET.me] = msg.h; netCheckHash(T); }
+  (NET.got[tt] = NET.got[tt] || [null, null])[NET.me] = NET.out;
+  NET.out = []; NET.sentUpTo = tt;
+  netSend(msg);
+}
+function netApply(T) {
+  const g = NET.got[T];
+  for (const team of [0, 1]) for (const c of g[team]) { const err = doCmd(team, c); if (err && team === NET.me) { toast(err, 'bad'); sfx('error'); } }
+  delete NET.got[T - 30];
+}
+// the host's simulation is the reference: if the two ever drift apart, the guest loads the host's state
+function netSendSync() {
+  NET.needSync = false; NET.syncs++;
+  const st = gameState(); delete st.cam;
+  netSend({ k: 'sync', turn: NET.turn, state: st });
+}
+function netResync(m) {
+  const sel = G.sel.slice(), groups = G.groups, stats = G.stats, cam2 = { x: cam.x, y: cam.y, z: cam.z };
+  m.state.me = NET.me;
+  loadGame(m.state);
+  G.sel = sel.filter(id => G.byId.get(id)); G.groups = groups; G.stats = stats;
+  cam.x = cam2.x; cam.y = cam2.y; cam.z = cam2.z;
+  NET.turn = m.turn; NET.step = 0; NET.hashes = {}; acc = 0; NET.syncs++;
+}
+// called from the main loop instead of the plain fixed-step loop
+function netFrame(dt) {
+  acc += dt; let n = 0;
+  while (acc >= STEP && n < 8) {
+    if (NET.step === 0) {
+      if (NET.needSync && NET.role === 'host') netSendSync();
+      const g = NET.got[NET.turn];
+      if (!g || !g[0] || !g[1]) { NET.waiting += dt; acc = Math.min(acc, STEP * 2); break; }
+      NET.waiting = 0;
+      netApply(NET.turn);
+    }
+    sim(STEP); acc -= STEP; n++;
+    if (++NET.step === TURN_STEPS) { NET.step = 0; netEndTurn(NET.turn); NET.turn++; }
+  }
+  const w = $('netWait'); if (w) w.classList.toggle('hidden', NET.waiting < .8);
+}
+function netEnd(win, why) {
+  if (NET.ended) return;
+  NET.ended = true;
+  if (G) G.over = true;
+  setTimeout(() => {
+    netClose();
+    if (!G || G.demo) return;
+    sfx(win ? 'win' : 'lose');
+    $('endStars').classList.add('hidden'); $('endStarList').classList.add('hidden');
+    $('bNext').classList.add('hidden'); $('bEndMissions').classList.add('hidden'); $('bAgain').classList.add('hidden');
+    const st = G.stats;
+    endScreen(win, win ? 'Victory!' : 'Defeat', why + ' · ' + fmtT(G.time),
+      [[st.mined, 'Crystals mined'], [st.trained, 'Units trained'], [st.killed, 'Enemy units destroyed'], [st.razed, 'Enemy buildings destroyed'], [st.lost, 'Units lost']]);
+  }, win && why.startsWith('Your opponent') ? 300 : 1800);
+}
+function netCode() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; let s = ''; for (let i = 0; i < 4; i++) s += A[Math.floor(Math.random() * A.length)]; return s; }
+
+// =====================================================================
 //  Sound (tiny synth, no files)
 // =====================================================================
 let AC = null, master = null, muted = false;
@@ -4257,8 +4477,8 @@ function underAttack(t) {
   sfx('alert');
 }
 const selEnts = () => G.sel.map(id => G.byId.get(id)).filter(e => e && e.alive);
-const ownUnits = () => selEnts().filter(e => e.team === 0 && e.d.unit && !e.captive);
-const ownBlds = () => selEnts().filter(e => e.team === 0 && e.d.bld);
+const ownUnits = () => selEnts().filter(e => e.team === ME && e.d.unit && !e.captive);
+const ownBlds = () => selEnts().filter(e => e.team === ME && e.d.bld);
 function setSel(list) {
   G.sel = list.map(e => e.id); G.sub = null;
   if (G.mode) setMode(null);
@@ -4271,13 +4491,13 @@ function costHtml(d) { return d.cost[0] + (d.cost[1] ? ' · ' + d.cost[1] : '');
 const MODE_BTN = { amove: 'Attack', move: 'Move', gather: 'Gather', rally: 'Set rally point', repair: 'Repair', scan: 'Scanner Sweep', blink: 'Blink' };
 const fmtSup = v => (v % 1 ? v.toFixed(1) : String(v));
 function card() {
-  const S = Array(12).fill(null), us = ownUnits(), bs = ownBlds(), R = G.res[0], fac = facOf(0);
+  const S = Array(12).fill(null), us = ownUnits(), bs = ownBlds(), R = G.res[ME], fac = facOf(ME);
   const poor = d => R.c < d.cost[0] || R.g < d.cost[1];
   if (us.length) {
     const allW = us.every(u => u.d.worker);
     if (allW && G.sub === 'build') {
       FAC[fac].build.forEach((k, i) => {
-        const d = DEF[k], off = !reqMet(0, k);
+        const d = DEF[k], off = !reqMet(ME, k);
         S[i] = { key: d.key, img: icon(k), name: d.name, d, cost: costHtml(d), poor: poor(d), off, why: off ? 'Requires ' + DEF[d.req].name : '', tip: d.desc + (fac === 'bloom' ? ' The Sprout turns into it.' : fac === 'shard' ? ' The Spark starts the warp and goes back to work.' : ''),
           act: () => { if (off) { toast('Requires ' + DEF[d.req].name, 'bad'); sfx('error'); return; } if (poor(d)) { toast(R.c < d.cost[0] ? 'Not enough crystals' : 'Not enough gas', 'bad'); sfx('error'); return; } setMode('place', k); sfx('click'); } };
       });
@@ -4286,38 +4506,38 @@ function card() {
     }
     if (us.every(u => u.kind === 'thornw')) {
       S[0] = { key: 'M', img: icon('move'), name: 'Move', act: () => setMode('move') };
-      S[1] = { key: 'S', img: icon('stop'), name: 'Stop', act: () => { for (const u of ownUnits()) setOrder(u, { t: 'idle' }); sfx('ack'); } };
+      S[1] = { key: 'S', img: icon('stop'), name: 'Stop', act: () => { issue({ t: 'order', o: 'idle', ids: ids(ownUnits()) }); sfx('ack'); } };
       S[5] = { key: 'E', img: icon('root'), name: 'Root', tip: 'Plant the Thorn right here. It needs living ground and a free 2×2 spot, and takes a few seconds to grow back.', act: () => {
-        let err = null; for (const u of ownUnits()) err = rootDown(u) || err; if (err) { toast(err, 'bad'); sfx('error'); } } };
+        const err = issue({ t: 'root', ids: ids(ownUnits()) }); if (err) { toast(err, 'bad'); sfx('error'); } } };
       return S;
     }
     S[0] = { key: 'M', img: icon('move'), name: 'Move', tip: 'Move, ignoring enemies on the way.', act: () => setMode('move') };
-    S[1] = { key: 'S', img: icon('stop'), name: 'Stop', act: () => { for (const u of ownUnits()) setOrder(u, { t: 'idle' }); sfx('ack'); } };
+    S[1] = { key: 'S', img: icon('stop'), name: 'Stop', act: () => { issue({ t: 'order', o: 'idle', ids: ids(ownUnits()) }); sfx('ack'); } };
     S[2] = { key: 'A', img: icon('attack'), name: 'Attack', tip: 'Then click an enemy to attack it, or the ground to attack-move. (Clicking the ground already attack-moves soldiers.)', act: () => setMode('amove') };
-    S[3] = { key: 'H', img: icon('hold'), name: 'Hold position', tip: 'Stay put and only shoot what comes in range.', act: () => { for (const u of ownUnits()) setOrder(u, { t: 'hold' }); sfx('ack'); } };
+    S[3] = { key: 'H', img: icon('hold'), name: 'Hold position', tip: 'Stay put and only shoot what comes in range.', act: () => { issue({ t: 'order', o: 'hold', ids: ids(ownUnits()) }); sfx('ack'); } };
     const has = k => us.some(u => u.kind === k);
-    if (has('trooper') && G.up[0].rush) S[4] = { key: 'R', img: icon('rush'), name: 'Rush', tip: 'Selected Troopers run and shoot 50% faster for 8 seconds. Costs 10 health each.', act: () => {
-      let n = 0; for (const u of ownUnits()) if (rush(u)) n++;
-      if (n) sfx('rush'); else { toast('Too hurt or already rushing', 'bad'); sfx('error'); } } };
-    if (has('beetle') && G.up[0].harden) S[4] = { key: 'R', img: icon('harden'), name: 'Harden', tip: 'Selected Beetles take 60% less damage for 6 seconds but move slower. Ready again after 18 seconds.', act: () => {
-      let n = 0; for (const u of ownUnits()) if (harden(u)) n++;
-      if (!n) { toast('Still recovering', 'bad'); sfx('error'); } } };
-    if (has('tank') && G.up[0].siege) {
+    if (has('trooper') && G.up[ME].rush) S[4] = { key: 'R', img: icon('rush'), name: 'Rush', tip: 'Selected Troopers run and shoot 50% faster for 8 seconds. Costs 10 health each.', act: () => {
+      const err = issue({ t: 'rush', ids: ids(ownUnits()) });
+      if (!err) sfx('rush'); else { toast(err, 'bad'); sfx('error'); } } };
+    if (has('beetle') && G.up[ME].harden) S[4] = { key: 'R', img: icon('harden'), name: 'Harden', tip: 'Selected Beetles take 60% less damage for 6 seconds but move slower. Ready again after 18 seconds.', act: () => {
+      const err = issue({ t: 'harden', ids: ids(ownUnits()) });
+      if (err) { toast(err, 'bad'); sfx('error'); } } };
+    if (has('tank') && G.up[ME].siege) {
       const up = us.filter(u => u.kind === 'tank').every(u => u.siege === 1 || u.siege === 2);
       S[5] = { key: 'E', img: icon(up ? 'unsiege' : 'siege'), name: up ? 'Tank mode' : 'Siege mode', tip: up ? 'Pack up so the Tanks can move again.' : 'Deploy: range 10 and heavier shells, but the Tank can\'t move and can\'t hit anything right next to it. Giving a move order packs it up.', act: () => {
         const ts = ownUnits().filter(u => u.kind === 'tank'), go = ts.some(u => !u.siege || u.siege === 3);
-        for (const u of ts) { if (go) deploy(u); else pack(u); } } };
+        issue({ t: 'siege', go, ids: ids(ts) }); } };
     }
-    if (has('blade') && G.up[0].blink) S[5] = { key: 'E', img: icon('blink'), name: 'Blink', tip: 'Then click where the Blades should jump: up to 6 tiles, in an instant. Ready again after 9 seconds.', act: () => {
+    if (has('blade') && G.up[ME].blink) S[5] = { key: 'E', img: icon('blink'), name: 'Blink', tip: 'Then click where the Blades should jump: up to 6 tiles, in an instant. Ready again after 9 seconds.', act: () => {
       if (!ownUnits().some(u => u.kind === 'blade' && !(u.blinkCD > 0))) { toast('Blink is still recharging', 'bad'); sfx('error'); return; } setMode('blink'); } };
-    if (has('warden') && G.up[0].barrier) S[4] = { key: 'R', img: icon('barrier'), name: 'Barrier', tip: 'Fill the shields of every friend near the Warden at once. Ready again after 30 seconds.', act: () => {
-      let n = 0; for (const u of ownUnits()) if (barrier(u)) { n++; break; }
-      if (!n) { toast('Barrier is still recharging', 'bad'); sfx('error'); } } };
-    if (has('burrower') && G.up[0].burrow) {
+    if (has('warden') && G.up[ME].barrier) S[4] = { key: 'R', img: icon('barrier'), name: 'Barrier', tip: 'Fill the shields of every friend near the Warden at once. Ready again after 30 seconds.', act: () => {
+      const err = issue({ t: 'barrier', ids: ids(ownUnits()) });
+      if (err) { toast(err, 'bad'); sfx('error'); } } };
+    if (has('burrower') && G.up[ME].burrow) {
       const down = us.filter(u => u.kind === 'burrower').every(u => u.burrow === 1 || u.burrow === 2);
       S[5] = { key: 'E', img: icon(down ? 'unburrow' : 'burrow'), name: down ? 'Unburrow' : 'Burrow', tip: down ? 'Burst out of the ground.' : 'Hide underground: enemies can\'t see or hit Burrowers. They burst out when an enemy walks close, and the first hit does double damage.', act: () => {
         const bs2 = ownUnits().filter(u => u.kind === 'burrower'), go = bs2.some(u => !u.burrow || u.burrow === 3);
-        for (const u of bs2) { if (go) burrowDown(u); else burrowUp(u); } } };
+        issue({ t: 'burrow', go, ids: ids(bs2) }); } };
     }
     if (allW) {
       S[4] = { key: 'G', img: icon('gather'), name: 'Gather', tip: fac === 'bloom' ? 'Gather crystals, or sap from your Sap Well.' : fac === 'shard' ? 'Gather crystals, or gas from your Prism Tap.' : 'Mine crystals, or collect gas from your Refinery.', act: () => setMode('gather') };
@@ -4330,12 +4550,12 @@ function card() {
     const k = bs[0].kind, d = DEF[k];
     if (bs.every(b => b.kind === k)) {
       if (bs.some(b => b.built >= 1)) (d.trains || []).forEach((u, i) => {
-        const ud = DEF[u], lock = ud.req && !hasBuilt(0, ud.req);
+        const ud = DEF[u], lock = ud.req && !hasBuilt(ME, ud.req);
         S[i] = { key: ud.key, img: icon(u), name: ud.name + (ud.pair ? ' ×' + ud.pair : ''), d: ud, cost: costHtml(ud), poor: poor(ud), off: lock, why: lock ? 'Requires ' + DEF[ud.req].name : '', tip: ud.desc + (d.seeds ? ' Uses one seed.' : ''), sup: ud.sup * (ud.pair || 1),
           act: () => {
             const ready = ownBlds().filter(b => b.kind === k && b.built >= 1).sort((a, b) => d.seeds ? b.seeds - a.seeds : a.queue.length - b.queue.length);
             if (!ready.length) return;
-            const err = cmdTrain(ready[0], u);
+            const err = issue({ t: 'train', bid: ready[0].id, k: u });
             if (err) { toast(err, 'bad'); sfx('error'); } else sfx('click');
           } };
       });
@@ -4344,18 +4564,18 @@ function card() {
         S[4] = { key: 'E', img: icon('scan'), name: 'Scanner Sweep', cost: '50⚡', off: en < 50, why: en < 50 ? `Energy ${Math.floor(en)}/50` : '', tip: 'Reveal any spot on the map for 12 seconds, including Burrowers hiding underground. Costs 50 energy; Command Centers recharge slowly.', act: () => { if (en < 50) { toast('Not enough energy', 'bad'); sfx('error'); return; } setMode('scan'); } };
       }
       if (k === 'thorn' && bs.some(b => b.built >= 1)) S[0] = { key: 'E', img: icon('uproot'), name: 'Uproot', tip: 'Pull up the roots and walk. Root (E) plants it again on living ground.', act: () => {
-        const ws = []; for (const b of ownBlds()) { const u = uproot(b); if (u) ws.push(u); } if (ws.length) setSel(ws); } };
+        issue({ t: 'uproot', ids: ids(ownBlds()) }); } };
       if (bs.some(b => b.built >= 1)) (d.research || []).forEach((rk, i) => {
-        const Rr = RES[rk], st = researchState(0, rk), maxed = st.lvl >= Rr.levels, cost = Rr.cost[Math.min(st.lvl, Rr.levels - 1)], dd = { cost };
-        S[(d.trains ? 4 : 0) + i] = { key: Rr.key, img: icon('r:' + rk), name: resName(rk, 0) + (Rr.levels > 1 ? ' ' + Math.min(st.lvl + 1, Rr.levels) : ''), d: dd, cost: maxed ? '✓' : costHtml(dd), poor: !maxed && poor(dd), off: !!st.err, why: st.err || '', tip: Rr.desc,
+        const Rr = RES[rk], st = researchState(ME, rk), maxed = st.lvl >= Rr.levels, cost = Rr.cost[Math.min(st.lvl, Rr.levels - 1)], dd = { cost };
+        S[(d.trains ? 4 : 0) + i] = { key: Rr.key, img: icon('r:' + rk), name: resName(rk, ME) + (Rr.levels > 1 ? ' ' + Math.min(st.lvl + 1, Rr.levels) : ''), d: dd, cost: maxed ? '✓' : costHtml(dd), poor: !maxed && poor(dd), off: !!st.err, why: st.err || '', tip: Rr.desc,
           act: () => {
             const b = ownBlds().filter(b => b.kind === k && b.built >= 1).sort((a, b) => a.queue.length - b.queue.length)[0]; if (!b) return;
-            const err = cmdResearch(b, rk); if (err) { toast(err, 'bad'); sfx('error'); } else sfx('click');
+            const err = issue({ t: 'research', bid: b.id, rk }); if (err) { toast(err, 'bad'); sfx('error'); } else sfx('click');
           } };
       });
       if (d.trains) S[8] = { key: 'Y', img: icon('rally'), name: 'Set rally point', tip: 'New units walk here. Right-click also sets it.' + (d.fac === 'shard' && !d.hq ? ' If the rally point is inside a power field, new units warp in right there.' : ''), act: () => setMode('rally') };
       if (bs.length === 1 && bs[0].built < 1) S[11] = { key: 'Esc', img: icon('cancel'), name: 'Cancel construction', tip: 'Get 75% of the cost back.', act: () => {
-        const b = bs[0], c = b.d.cost; G.res[0].c += Math.floor(c[0] * .75); G.res[0].g += Math.floor(c[1] * .75); kill(b, null);
+        issue({ t: 'cancelBuild', bid: bs[0].id });
       } };
     }
   }
@@ -4364,12 +4584,12 @@ function card() {
 let curCard = [], cardSig = '', infoSig = '', hudT = 0;
 function updHud() {
   if (!G || G.demo) return;
-  G.sel = G.sel.filter(id => { const e = G.byId.get(id); return e && e.alive && !(sideOf(e.team) !== 0 && e.team >= 0 && G.fog && !visibleP(e)); });
-  const R = G.res[0], s = G.sup[0];
+  G.sel = G.sel.filter(id => { const e = G.byId.get(id); return e && e.alive && !(sideOf(e.team) !== MYSIDE && e.team >= 0 && G.fog && !visibleP(e)); });
+  const R = G.res[ME], s = G.sup[ME];
   $('rC').textContent = Math.floor(R.c); $('rG').textContent = Math.floor(R.g);
   $('rS').textContent = fmtSup(s.used) + '/' + s.cap; $('rS').className = s.used >= s.cap ? 'full' : '';
   const m = Math.floor(G.time / 60), sec = Math.floor(G.time % 60); $('clock').textContent = m + ':' + String(sec).padStart(2, '0');
-  const idle = G.ents.filter(e => e.alive && e.team === 0 && e.d.worker && !e.captive && e.order.t === 'idle').length;
+  const idle = G.ents.filter(e => e.alive && e.team === ME && e.d.worker && !e.captive && e.order.t === 'idle').length;
   $('nIdle').textContent = idle; $('bIdle').classList.toggle('none', !idle);
   // command card
   curCard = card();
@@ -4414,7 +4634,7 @@ function smallInfo(list) {
   if (list.length === 1) {
     const e = list[0], d = e.d;
     if (d.res) return { sig: 'r' + e.id + e.amount, html: `<div class="chip"><img src="${icon(e.kind)}" alt=""><span class="cn">${d.name}</span><span class="cs2">${e.amount} left</span></div>` };
-    const f = e.hp / d.hp, own = e.team === 0, rel = own ? '' : sideOf(e.team) === 0 ? 'Ally' : 'Enemy';
+    const f = e.hp / d.hp, own = e.team === ME, rel = own ? '' : sideOf(e.team) === MYSIDE ? 'Ally' : 'Enemy';
     const st = d.bld ? (e.built < 1 ? (d.fac === 'shard' ? 'Warping in ' : 'Building ') + Math.floor(e.built * 100) + '%' : e.unpow ? 'No power' : own && e.queue.length ? 'Working' : rel || '') : own ? statusText(e) : rel;
     const sig = 'c' + e.id + Math.ceil(e.hp) + ':' + Math.ceil(e.sh || 0) + st;
     return { sig, html: `<div class="chip"><img src="${icon(e.kind, Math.max(0, e.team))}" alt=""><span class="cn">${d.name}</span><span class="bars">${d.shield ? `<div class="hpb"><i style="width:${(e.sh || 0) / d.shield * 100}%;background:#7fdcff"></i></div>` : ''}<div class="hpb"><i style="width:${f * 100}%;background:${hpCol(f)}"></i></div></span><span class="cs2">${st}</span></div>` };
@@ -4436,7 +4656,7 @@ function updSmallExtras() {
   if (key === selKey) return;
   selKey = key;
   if (!small || !G.sel.length) return;
-  const es = selEnts().filter(e => e.team === 0); if (!es.length) return;
+  const es = selEnts().filter(e => e.team === ME); if (!es.length) return;
   let x = 0, y = 0; for (const e of es) { x += e.x; y += e.y; } x /= es.length; y /= es.length;
   const sx = (x - cam.x) * cam.z, sy = (y - cam.y) * cam.z;
   const bottom = H - hudH() - 80, right = W - (parseFloat(getComputedStyle(document.body).getPropertyValue('--cmdw')) || 0) - 40;
@@ -4483,11 +4703,11 @@ function updInfo() {
       const amt = e.kind === 'crystal' ? e.amount : e.amount;
       sig = 'r' + e.id + amt;
       if (sig === infoSig) return;
-      html = `<div class="irow"><div class="port"><img src="${icon(e.kind)}" alt=""></div><div><p class="iname">${d.name}</p><p class="isub">${e.kind === 'crystal' ? 'Crystals left: ' : 'Gas left: '}<b>${amt}</b></p><p class="hint">${e.kind === 'crystal' ? 'Select workers and click to mine.' : 'Build a ' + DEF[roleK(0, 'refinery')].name + ' on it to collect gas.'}</p></div></div>`;
+      html = `<div class="irow"><div class="port"><img src="${icon(e.kind)}" alt=""></div><div><p class="iname">${d.name}</p><p class="isub">${e.kind === 'crystal' ? 'Crystals left: ' : 'Gas left: '}<b>${amt}</b></p><p class="hint">${e.kind === 'crystal' ? 'Select workers and click to mine.' : 'Build a ' + DEF[roleK(ME, 'refinery')].name + ' on it to collect gas.'}</p></div></div>`;
     } else {
-      const f = e.hp / d.hp, own = e.team === 0, rel = own ? '' : sideOf(e.team) === 0 ? 'Ally' : 'Enemy';
-      const qs = d.bld && own && e.built >= 1 && (d.trains || d.research) ? e.queue.map(q => q.k + Math.floor(q.t / q.time * 20)).join(',') + JSON.stringify(G.up[0]) + Math.floor((e.seeds || 0) * 9) + Math.floor(e.energy || 0) : '';
-      sig = 's' + e.id + Math.ceil(e.hp) + ':' + Math.ceil(e.sh || 0) + (e.unpow ? 'u' : '') + '|' + (d.bld ? Math.floor(e.built * 50) : statusText(e) + (e.carry ? e.carry.amt : '') + G.up[0].weapons + G.up[0].armor) + '|' + qs;
+      const f = e.hp / d.hp, own = e.team === ME, rel = own ? '' : sideOf(e.team) === MYSIDE ? 'Ally' : 'Enemy';
+      const qs = d.bld && own && e.built >= 1 && (d.trains || d.research) ? e.queue.map(q => q.k + Math.floor(q.t / q.time * 20)).join(',') + JSON.stringify(G.up[ME]) + Math.floor((e.seeds || 0) * 9) + Math.floor(e.energy || 0) : '';
+      sig = 's' + e.id + Math.ceil(e.hp) + ':' + Math.ceil(e.sh || 0) + (e.unpow ? 'u' : '') + '|' + (d.bld ? Math.floor(e.built * 50) : statusText(e) + (e.carry ? e.carry.amt : '') + G.up[ME].weapons + G.up[ME].armor) + '|' + qs;
       if (sig === infoSig) return;
       let extra = '';
       if (d.unit) {
@@ -4520,13 +4740,13 @@ $('cmd').addEventListener('pointerdown', ev => {
 });
 $('qbar').addEventListener('pointerdown', ev => {
   const q = ev.target.closest('.q[data-q]'); if (!q) return;
-  ev.preventDefault(); const b = prodBld(); if (b) { cancelTrain(b, +q.dataset.q); sfx('click'); qbarSig = ''; updHud(); }
+  ev.preventDefault(); const b = prodBld(); if (b) { issue({ t: 'cancelQ', bid: b.id, i: +q.dataset.q }); sfx('click'); qbarSig = ''; updHud(); }
 });
 $('info').addEventListener('pointerdown', ev => {
   const gp = ev.target.closest('.grp[data-k]');
   if (gp) { ev.preventDefault(); setSel(selEnts().filter(e => e.kind === gp.dataset.k)); sfx('click'); infoSig = ''; updHud(); return; }
   const q = ev.target.closest('.q[data-q]');
-  if (q) { const b = ownBlds()[0]; if (b) { cancelTrain(b, +q.dataset.q); sfx('click'); infoSig = ''; updHud(); } return; }
+  if (q) { const b = ownBlds()[0]; if (b) { issue({ t: 'cancelQ', bid: b.id, i: +q.dataset.q }); sfx('click'); infoSig = ''; updHud(); } return; }
   const m = ev.target.closest('.mu');
   if (m) { const e = G.byId.get(+m.dataset.id); if (!e) return; if (ev.shiftKey) G.sel = G.sel.filter(id => id !== e.id); else setSel([e]); infoSig = ''; updHud(); }
 });
@@ -4564,7 +4784,7 @@ function pick(wx, wy, touch) {
   for (const e of G.ents) {
     if (!e.alive || e.d.unit) continue;
     if (e.kind === 'geyser' && e.ref) continue;
-    if (sideOf(e.team) === 1 && G.fog && !e.seen) continue;
+    if (sideOf(e.team) !== MYSIDE && G.fog && !e.seen) continue;
     if (e.d.res && G.fog && !EXP[e.ty * MW + e.tx]) continue;
     const p = touch ? 6 : 0;
     if (wx >= e.tx * T - p && wx < (e.tx + e.w) * T + p && wy >= e.ty * T - p && wy < (e.ty + e.h) * T + p) return e;
@@ -4584,30 +4804,30 @@ function execMode(wx, wy, touch) {
     const ws = us.filter(u => u.d.worker); if (!ws.length) { setMode(null); return; }
     const cx = (p.x + DEF[m.k].w / 2) * T, cy = (p.y + DEF[m.k].h / 2) * T;
     const w = ws.slice().sort((a, b) => (a.order.t === 'build') - (b.order.t === 'build') || Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy))[0];
-    const err = cmdBuild(w, m.k, p.x, p.y);
+    const err = issue({ t: 'build', wid: w.id, k: m.k, tx: p.x, ty: p.y });
     if (err) { toast(err, 'bad'); sfx('error'); return; }
     sfx('ack'); cmdFx(cx, cy, '#3cff7a');
     if (!keys.Shift) { setMode(null); G.sub = null; }
     return;
   }
   if (m.t === 'amove') {
-    if (t && targetable(0, t)) { cmdAttack(us, t); cmdFx(t.x, t.y, '#ff4a5a'); }
-    else { cmdMove(us, wx, wy, true); cmdFx(wx, wy, '#ff4a5a'); }
-  } else if (m.t === 'move') { cmdMove(us, wx, wy, false); cmdFx(wx, wy, '#3cff7a'); }
+    const on = t && targetable(ME, t);
+    issue({ t: 'attack', ids: ids(us), tid: on ? t.id : 0, x: wx, y: wy }); cmdFx(on ? t.x : wx, on ? t.y : wy, '#ff4a5a');
+  } else if (m.t === 'move') { issue({ t: 'move', ids: ids(us), x: wx, y: wy }); cmdFx(wx, wy, '#3cff7a'); }
   else if (m.t === 'gather') {
-    if (t && (t.kind === 'crystal' || t.kind === 'geyser' || t.d.refinery)) { smartCmd(us, wx, wy, t); cmdFx(t.x, t.y, '#ffd23f'); }
+    if (t && (t.kind === 'crystal' || t.kind === 'geyser' || t.d.refinery)) { issue({ t: 'smart', ids: ids(us), x: wx, y: wy, tid: t.id }); cmdFx(t.x, t.y, '#ffd23f'); }
     else { toast('Pick crystals or your Refinery', 'bad'); sfx('error'); return; }
   } else if (m.t === 'repair') {
-    if (t && needsRepair(t, 0)) { for (const w of us) cmdRepair(w, t); cmdFx(t.x, t.y, '#5fd3ff'); }
+    if (t && needsRepair(t, ME)) { issue({ t: 'repair', ids: ids(us), tid: t.id }); cmdFx(t.x, t.y, '#5fd3ff'); }
     else { toast('Pick a damaged building or machine', 'bad'); sfx('error'); return; }
   } else if (m.t === 'scan') {
-    const err = scanAt(0, wx, wy); if (err) { toast(err, 'bad'); sfx('error'); return; }
+    const err = issue({ t: 'scan', x: wx, y: wy }); if (err) { toast(err, 'bad'); sfx('error'); return; }
     setMode(null); return;
   } else if (m.t === 'blink') {
-    let n = 0; for (const u of us) if (blink(u, wx, wy)) n++;
-    if (!n) { toast('Blink is still recharging', 'bad'); sfx('error'); return; }
+    const err = issue({ t: 'blink', ids: ids(us), x: wx, y: wy });
+    if (err) { toast(err, 'bad'); sfx('error'); return; }
     setMode(null); return;
-  } else if (m.t === 'rally') { for (const b of ownBlds()) setRally(b, wx, wy, t); cmdFx(wx, wy, '#3cff7a'); }
+  } else if (m.t === 'rally') { issue({ t: 'rally', ids: ids(ownBlds()), x: wx, y: wy, tid: t ? t.id : 0 }); cmdFx(wx, wy, '#3cff7a'); }
   sfx('ack');
   if (!keys.Shift) setMode(null);
 }
@@ -4615,31 +4835,38 @@ function execMode(wx, wy, touch) {
 function orderAt(wx, wy, touch) {
   const us = ownUnits(), bs = ownBlds(), t = pick(wx, wy, touch);
   if (us.length) {
-    const r = smartCmd(us, wx, wy, t);
+    const r = issue({ t: 'smart', ids: ids(us), x: wx, y: wy, tid: t ? t.id : 0 }) || guessSmart(us, t);
     const col = r === 'attack' || r === 'amove' ? '#ff4a5a' : r === 'gather' ? '#ffd23f' : r === 'repair' ? '#5fd3ff' : '#3cff7a';
     const onT = t && (r === 'attack' || r === 'gather' || r === 'repair');
     cmdFx(onT ? t.x : wx, onT ? t.y : wy, col);
     sfx('ack'); return true;
   }
-  if (bs.length && bs.some(b => b.d.trains)) { for (const b of bs) setRally(b, wx, wy, t); cmdFx(wx, wy, '#3cff7a'); sfx('ack'); return true; }
+  if (bs.length && bs.some(b => b.d.trains)) { issue({ t: 'rally', ids: ids(bs), x: wx, y: wy, tid: t ? t.id : 0 }); cmdFx(wx, wy, '#3cff7a'); sfx('ack'); return true; }
   return false;
 }
 const rightCmd = orderAt;
+// online, commands run a moment later, so guess the kind of order for the click effect
+function guessSmart(us, t) {
+  if (t && targetable(ME, t)) return 'attack';
+  if (t && us.some(u => u.d.worker) && (t.kind === 'crystal' || t.kind === 'geyser' || t.d.refinery)) return 'gather';
+  if (t && needsRepair(t, ME) && us.some(u => u.d.worker)) return 'repair';
+  return us.some(u => !u.d.worker) ? 'amove' : 'move';
+}
 function selectSame(t) {
   const vw = W / cam.z, vh = H / cam.z;
-  const list = G.ents.filter(e => e.alive && !e.hidden && e.team === t.team && e.kind === t.kind && e.x > cam.x && e.x < cam.x + vw && e.y > cam.y && e.y < cam.y + vh && (e.team === 0 || visibleP(e)));
-  setSel(t.team === 0 ? list : [t]);
+  const list = G.ents.filter(e => e.alive && !e.hidden && e.team === t.team && e.kind === t.kind && e.x > cam.x && e.x < cam.x + vw && e.y > cam.y && e.y < cam.y + vh && (e.team === ME || visibleP(e)));
+  setSel(t.team === ME ? list : [t]);
 }
 function selectArmy() {
-  const list = G.ents.filter(e => e.alive && e.team === 0 && e.d.unit && !e.d.worker && !e.captive);
+  const list = G.ents.filter(e => e.alive && e.team === ME && e.d.unit && !e.d.worker && !e.captive);
   if (!list.length) { toast('No army yet: train units at a Barracks'); return; }
   setSel(list); sfx('click');
 }
 // is clicking t (one of ours) with the current selection an order rather than a re-selection?
 function ownTargetIsOrder(t) {
-  const us = ownUnits(); if (!us.length || !t || t.team !== 0) return false;
+  const us = ownUnits(); if (!us.length || !t || t.team !== ME) return false;
   const ws = us.filter(u => u.d.worker); if (!ws.length) return false;
-  const blue = facOf(0) === 'blue';
+  const blue = facOf(ME) === 'blue';
   return (t.d.bld && t.built < 1 && blue) || (t.d.refinery && t.built >= 1) || (t.d.hq && ws.some(u => u.carry));
 }
 // left-click / tap without dragging
@@ -4649,7 +4876,7 @@ function clickAt(wx, wy, shift, ctrl, touch) {
   const now = performance.now();
   const dbl = t && now - lastClick.t < 350 && lastClick.id === t.id;
   lastClick = { t: now, id: t ? t.id : 0 };
-  if (t && t.team === 0 && !ownTargetIsOrder(t)) {
+  if (t && t.team === ME && !ownTargetIsOrder(t)) {
     if ((ctrl || dbl) && !t.d.res) { selectSame(t); return; }
     if (shift && t.d.unit && ownUnits().length) {
       if (G.sel.includes(t.id)) G.sel = G.sel.filter(id => id !== t.id); else G.sel.push(t.id);
@@ -4664,11 +4891,11 @@ function clickAt(wx, wy, shift, ctrl, touch) {
 function boxSelect(x0, y0, x1, y1, shift) {
   const a = toWorld(Math.min(x0, x1), Math.min(y0, y1)), b = toWorld(Math.max(x0, x1), Math.max(y0, y1));
   const inBox = e => { const y = e.y - (e.d.air ? AIR_ALT : 0); return e.x + e.r > a.x && e.x - e.r < b.x && y + e.r > a.y && y - e.r < b.y; };
-  let list = G.ents.filter(e => e.alive && !e.hidden && !e.captive && e.team === 0 && e.d.unit && inBox(e));
+  let list = G.ents.filter(e => e.alive && !e.hidden && !e.captive && e.team === ME && e.d.unit && inBox(e));
   // a box with soldiers in it selects only the soldiers (workers stay at work)
   if (list.some(e => !e.d.worker)) list = list.filter(e => !e.d.worker);
   if (!list.length) {
-    const bl = G.ents.filter(e => e.alive && e.team === 0 && e.d.bld && e.x > a.x && e.x < b.x && e.y > a.y && e.y < b.y);
+    const bl = G.ents.filter(e => e.alive && e.team === ME && e.d.bld && e.x > a.x && e.x < b.x && e.y > a.y && e.y < b.y);
     if (bl.length) list = bl.filter(e => e.kind === bl[0].kind);
   }
   if (shift && ownUnits().length && list.every(e => e.d.unit)) { const s = new Set(G.sel); for (const e of list) s.add(e.id); G.sel = [...s]; return; }
@@ -4777,7 +5004,7 @@ mm.addEventListener('pointermove', e => { if (mmDrag) { const w = mmWorld(e); ce
 mm.addEventListener('pointerup', () => mmDrag = false);
 
 function jumpIdle() {
-  const list = G.ents.filter(e => e.alive && e.team === 0 && e.d.worker && !e.captive && e.order.t === 'idle');
+  const list = G.ents.filter(e => e.alive && e.team === ME && e.d.worker && !e.captive && e.order.t === 'idle');
   if (!list.length) return;
   G.idleI = ((G.idleI || 0) + 1) % list.length;
   const w = list[G.idleI]; setSel([w]); centerOn(w.x, w.y); sfx('click');
@@ -4786,6 +5013,7 @@ addEventListener('keydown', e => {
   if (e.key === 'Shift') keys.Shift = true;
   if (!$('title').classList.contains('hidden')) { if (e.key === 'Enter') { renderSetup(); screen('setup'); } return; }
   if (!$('setup').classList.contains('hidden')) { if (e.key === 'Enter') startSkirmish(); if (e.key === 'Escape') screen('title'); return; }
+  if (!$('online').classList.contains('hidden')) { if (e.key === 'Escape') { netClose(); screen('title'); } return; }
   if (!$('missions').classList.contains('hidden') || !$('codex').classList.contains('hidden')) { if (e.key === 'Escape') screen('title'); return; }
   if (!G || G.demo) return;
   const k = e.key;
@@ -4808,7 +5036,7 @@ addEventListener('keydown', e => {
   if (k === ' ') {
     e.preventDefault();
     if (G.alertPos && G.time - G.alertPos.time < 10) centerOn(G.alertPos.x, G.alertPos.y);
-    else { const s = selEnts()[0] || G.blds.find(b => b.team === 0); if (s) centerOn(s.x, s.y); }
+    else { const s = selEnts()[0] || G.blds.find(b => b.team === ME); if (s) centerOn(s.x, s.y); }
     return;
   }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -4977,7 +5205,7 @@ function showTitle() {
   $('bContinue').classList.toggle('hidden', !sv);
   if (sv) $('contInfo').textContent = `(${FAC[sv.teams[0].fac].short} vs ${FAC[sv.teams[sv.teams.length > 2 ? 2 : 1].fac].short}${sv.teams.length > 2 ? ', 2v2' : ''}, ${fmtT(sv.time)})`;
 }
-function screen(id) { for (const s of ['title', 'setup', 'missions', 'codex', 'pause', 'end']) $(s).classList.toggle('hidden', s !== id); }
+function screen(id) { for (const s of ['title', 'setup', 'missions', 'codex', 'online', 'pause', 'end']) $(s).classList.toggle('hidden', s !== id); }
 function startDemo() {
   const R = Math.random;
   newGame({ demo: true, seed: (R() * 1e9) | 0, diff: 'normal', diffA: 'normal', fac: FACS[Math.floor(R() * 3)], facE: FACS[Math.floor(R() * 3)], size: 'medium', theme: 'random' });
@@ -4991,7 +5219,7 @@ function enterGame() {
   $('dlg').classList.add('hidden'); $('objs').classList.remove('min'); $('bObjs').textContent = '–';
   paused = false; camVel.x = camVel.y = 0; zoomTo = null; acc = 0;
   cam.z = W < 700 ? .75 : 1;
-  const hq = G.blds.find(b => b.team === 0) || G.ents.find(e => e.team === 0 && e.d.unit);
+  const hq = G.blds.find(b => b.team === ME) || G.ents.find(e => e.team === ME && e.d.unit);
   if (hq) centerOn(hq.x + 60, hq.y - 40);
   cardSig = ''; infoSig = ''; updHud();
 }
@@ -5015,14 +5243,17 @@ function startMission(i) {
 function continueGame() { const d = readSave(); if (!d) return; lastStart = { kind: 'skirmish' }; loadGame(d); enterGame(); if (d.cam) { cam.x = d.cam.x; cam.y = d.cam.y; cam.z = d.cam.z; clampCam(); } }
 function restart() { if (lastStart && lastStart.kind === 'mission') startMission(lastStart.i); else startSkirmish(); }
 function toTitle() {
-  if (G && !G.demo && !G.mission && !G.over) saveGame();
+  if (NET.on || NET.ws) { netSend({ k: 'bye' }); netClose(); NET.ended = true; }
+  if (G && !G.demo && !G.mission && !G.over && !G.opt.online) saveGame();
+  $('bAgain').classList.remove('hidden'); $('bRestart').classList.remove('hidden');
   paused = false;
   $('hud').classList.add('hidden'); $('mpanel').classList.add('hidden');
   screen('title'); showTitle(); startDemo();
 }
 function togglePause() {
   if (!G || G.demo || G.over) return;
-  paused = !paused; $('pause').classList.toggle('hidden', !paused);
+  paused = !paused; $('pause').classList.toggle('hidden', !paused);   // online, the game keeps running behind the menu
+  $('bRestart').classList.toggle('hidden', !!G.opt.online); $('bQuit').textContent = G.opt.online ? 'Leave match' : 'Quit to title';
 }
 function endScreen(win, title, sub, stats) {
   $('endT').textContent = title; $('endT').className = 'endt ' + (win ? 'win' : 'lose');
@@ -5044,6 +5275,7 @@ function survivalEnd(M) {
   }, 1800);
 }
 function onGameOver(win) {
+  if (G.opt.online) { netSend({ k: 'bye' }); netEnd(win, win ? 'The enemy base is destroyed.' : 'Your base has fallen.'); return; }
   if (win) { try { const w = loadWins(); w[G.diff] = (w[G.diff] || 0) + 1; const f = G.teams[0].fac; w.byFac = w.byFac || {}; w.byFac[f] = w.byFac[f] || {}; w.byFac[f][G.diff] = (w.byFac[f][G.diff] || 0) + 1; localStorage.setItem('crystalOutpost.wins', JSON.stringify(w)); } catch (e) { } }
   clearSave();
   setTimeout(() => {
@@ -5088,6 +5320,19 @@ $('bSetupBack').addEventListener('click', () => screen('title'));
 $('bMissBack').addEventListener('click', () => screen('title'));
 $('bCodex').addEventListener('click', () => { audio(); xfac = FAC[setup.fac] ? setup.fac : 'blue'; renderCodex(); screen('codex'); });
 $('bCodexBack').addEventListener('click', () => screen('title'));
+// ---------- online lobby
+function renderOnline() {
+  const opt = (k, label, vals) => `<label>${label}</label><div class="seg" data-ok="${k}">${vals.map(([v, t]) => `<button data-v="${v}" class="${NET.opts[k] === v ? 'on' : ''}">${t}</button>`).join('')}</div>`;
+  $('onOpts').innerHTML = opt('fac', 'You play', [['blue', 'Blue Outpost'], ['bloom', 'The Bloom'], ['shard', 'The Shards']]) +
+    opt('size', 'Map size (host)', [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']]) + opt('theme', 'Map (host)', [['meadow', 'Meadow'], ['desert', 'Desert'], ['snow', 'Snow'], ['random', 'Random']]) +
+    opt('startRes', 'Start with (host)', [['standard', 'Standard'], ['more', 'More'], ['lots', 'Lots']]);
+}
+$('onOpts').addEventListener('click', e => { const b = e.target.closest('button[data-v]'); if (!b) return; NET.opts[b.parentElement.dataset.ok] = b.dataset.v; sfx('click'); renderOnline(); });
+$('bOnline').addEventListener('click', () => { audio(); NET.opts = NET.opts || { fac: setup.fac, size: 'medium', theme: 'random', startRes: 'standard' }; renderOnline(); netStatus('Create a room and send the code to a friend, or type their code to join.'); screen('online'); });
+$('bHost').addEventListener('click', () => { NET.fac = NET.opts.fac; const code = netCode(); $('onCode').value = code; netOpen('host', code); });
+$('bJoin').addEventListener('click', () => { const code = ($('onCode').value || '').toUpperCase().replace(/[^A-Z]/g, ''); if (code.length !== 4) { netStatus('Room codes have 4 letters.', true); return; } NET.fac = NET.opts.fac; netOpen('guest', code); });
+$('onCode').addEventListener('keydown', e => { if (e.key === 'Enter') $('bJoin').click(); e.stopPropagation(); });
+$('bOnBack').addEventListener('click', () => { netClose(); screen('title'); });
 $('bResume').addEventListener('click', togglePause);
 $('bRestart').addEventListener('click', restart);
 $('bQuit').addEventListener('click', toTitle);
@@ -5099,11 +5344,12 @@ $('bEndTitle').addEventListener('click', toTitle);
 let last = performance.now(), acc = 0;
 function frame(now) {
   const dt = Math.min(.1, (now - last) / 1000); last = now; NOW += dt;
-  if (G && !paused) {
+  if (G && NET.on && !G.demo) netFrame(dt);
+  else if (G && !paused) {
     acc += dt * (G.speed || 1); let n = 0;
     while (acc >= STEP && n < 6) { sim(STEP); acc -= STEP; n++; }
     if (n === 6) acc = 0;
-    if (!G.demo && !G.mission && !G.over && G.time >= G.nextSave) { G.nextSave = G.time + 30; saveGame(); }
+    if (!G.demo && !G.mission && !G.over && !G.opt.online && G.time >= G.nextSave) { G.nextSave = G.time + 30; saveGame(); }
   }
   if (G) {
     cameraUpdate(dt);
@@ -5115,7 +5361,7 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 addEventListener('resize', resize);
-addEventListener('pagehide', () => { if (G && !G.demo && !G.mission && !G.over) saveGame(); });
+addEventListener('pagehide', () => { if (G && !G.demo && !G.mission && !G.over && !G.opt.online) saveGame(); });
 resize();
 if (matchMedia('(pointer: coarse)').matches) { isTouch = true; document.body.classList.add('touch'); }
 $('bMute').textContent = muted ? '♪̸' : '♪'; $('bMute').style.opacity = muted ? .5 : 1;

@@ -7,6 +7,7 @@ Open `index.html` in a browser. The title screen has three choices; a computer-v
 
 - **Skirmish**: pick your options and press **Start battle** (or Enter).
 - **Missions**: three campaigns, one per faction, that teach the game. Each mission unlocks the next one in its campaign and earns up to three stars.
+- **Play online**: 1 vs 1 against a friend on another device (see below).
 - **Units**: an encyclopedia of every unit in each faction, with cost, health, attack, and what it is good and bad against.
 - **Continue**: appears when there is an autosaved skirmish to pick up.
 
@@ -27,6 +28,14 @@ Open `index.html` in a browser. The title screen has three choices; a computer-v
 Your choices are remembered. Skirmish games autosave every 30 seconds and when you leave the page; **Continue** on the title screen picks the game back up. Missions don't autosave.
 
 In 2 vs 2 your ally builds its own base, defends yours, attacks on its own, and joins in when you send three or more soldiers somewhere.
+
+### Play online
+One player picks a faction (and, as host, the map size, map and starting resources) and presses **Create room**; the game shows a four-letter room code. The other player picks a faction, types the code and presses **Join**. The match starts at once on the same map for both.
+
+- Both computers run the same simulation and only send each other the commands you give (about ten small messages a second), so it works fine on a phone connection. Orders take effect about 0.2 seconds after you give them.
+- Once a second both sides compare a checksum of the game; if they ever drift apart (it can happen between different browsers), the host's game is sent over and the guest carries on from it.
+- The pause menu doesn't stop an online match. Leaving the match, or closing the page, gives the other player the win. If one player's tab is in the background, the other sees "Waiting for your opponent…".
+- The rooms run on a Cloudflare Durable Object (`worker/index.js` at the repo root), on Cloudflare's free plan.
 
 ### Mouse and keyboard
 | Input | Action |
@@ -224,5 +233,6 @@ In test matches between two Normal computers, games last about 10–11 minutes o
 - Maps are random blobs of rock, trees and water, mirrored through the centre so both sides are fair; a flood fill carves a path if any base gets cut off. Meadow, desert and snow maps use their own colors, trees (round trees, cacti and palms, snowy pines) and water.
 - Units find their way with A* on the tile grid and smooth the path with line-of-sight checks. Flyers go straight. Units push each other apart; mining workers slip past each other so mineral lines don't jam.
 - The simulation runs at a fixed 30 steps per second and units are drawn between steps, so motion stays smooth on 60 and 120 Hz screens. Fog of war is a per-tile visibility grid shared by your side, blurred when drawn.
+- The simulation is deterministic: it uses its own seeded random numbers (saved with the game), fog of war is worked out for both sides, and every player action goes through one command function, so online matches only exchange commands.
 - Teams sit on two sides, so 2 vs 2 uses the same rules as 1 vs 1. Each faction maps its buildings onto the same roles (main building, supply, gas, barracks, factory, air, tower, tech), which lets one computer player play any faction.
 - All art is drawn in code on a canvas, the HUD icons reuse the same drawing code, and sounds are synthesized with the Web Audio API. Autosaves are JSON in `localStorage`.
