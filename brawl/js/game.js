@@ -184,10 +184,10 @@ class Fighter {
   canAct() { return this.state === 'idle' || this.state === 'walk' || this.state === 'run' || this.state === 'brake' || this.state === 'land'; }
 
   startAttack(name) { this.atk = ATK[name]; this.atkName = name; this.set('atk'); this.hitSet.clear(); this.queued = false; Sound.play('whiff', 0.7); }
-  comboList() { return this.hold && this.hold.kind === 'stick' ? ['swing1', 'swing2', 'swing3'] : this.def.combo; }
+  comboList() { return this.hold && ITEMS[this.hold.kind].type === 'weapon' ? ['swing1', 'swing2', 'swing3'] : this.def.combo; }
   doAttack() {
     const it = this.hold;
-    if (it && it.kind === 'stone') return this.startThrow();
+    if (it && ITEMS[it.kind].type === 'throw') return this.startThrow();
     if (!it) { const near = this.nearItem(); if (near) return this.pickUp(near); }
     const list = this.comboList();
     if (this.comboT <= 0) this.combo = 0;
@@ -207,7 +207,7 @@ class Fighter {
   }
   pickUp(it) {
     this.set('pickup'); this.vx = this.vz = 0; Sound.play('pick');
-    if (it.kind === 'milk' || it.kind === 'juice') { W.items.splice(W.items.indexOf(it), 1); this.drinkKind = it.kind; this.pendingDrink = true; }
+    if (ITEMS[it.kind].type === 'food') { W.items.splice(W.items.indexOf(it), 1); this.drinkKind = it.kind; this.pendingDrink = true; }
     else { it.holder = this; this.hold = it; }
   }
   dropItem(throwIt) {
@@ -220,7 +220,8 @@ class Fighter {
   meleeHit(A) {
     let any = false;
     const s = this.def.size || 1;
-    const x0 = this.x + this.face * A.rx[0] * s, x1 = this.x + this.face * A.rx[1] * s, lo = Math.min(x0, x1), hi = Math.max(x0, x1);
+    const reach = A.weapon && this.hold ? (ITEMS[this.hold.kind].reach || 1) : 1;
+    const x0 = this.x + this.face * A.rx[0] * s, x1 = this.x + this.face * A.rx[1] * s * reach, lo = Math.min(x0, x1), hi = Math.max(x0, x1);
     const hy0 = this.y + A.hy[0] * s, hy1 = this.y + A.hy[1] * s;
     for (const v of W.fighters) {
       if (v === this || v.team === this.team || v.dead || this.hitSet.has(v)) continue;
@@ -280,7 +281,6 @@ class Fighter {
         if (this.st % 9 === 0) addPart('dust', this.x - this.face * 8, 1, this.z, { vx: -this.face });
         if (I.skill && this.trySkill(I.skill)) break;
         if (I.atk) {
-          if (this.hold && this.hold.kind !== 'stone') { this.startThrow(); break; }
           if (this.hold) { this.startThrow(); break; }
           this.set('runAtk'); this.atk = ATK.runAtk; this.hitSet.clear(); this.vy = 2.5; Sound.play('whiff'); break;
         }
@@ -305,7 +305,7 @@ class Fighter {
         this.vx *= 0.75; this.vz *= 0.6;
         if (this.st === A.on) this.vx += this.face * (A.weapon ? 1.2 : 1.6);
         if (this.st >= A.on && this.st <= A.off) {
-          if (this.meleeHit(A) && this.hold && this.hold.kind === 'stick' && A.weapon) { if (--this.hold.dur <= 0) { breakItem(this.hold); this.hold = null; } }
+          if (this.meleeHit(A) && this.hold && ITEMS[this.hold.kind].type === 'weapon' && A.weapon) { if (--this.hold.dur <= 0) { breakItem(this.hold); this.hold = null; } }
         }
         if (I.atk && this.st > 3) this.queued = true;
         if (this.queued && this.st >= A.off + 2) { this.comboT = 30; this.doAttack(); break; }
@@ -344,17 +344,17 @@ class Fighter {
         break;
       }
       case 'drink': {
-        if (this.drinkKind === 'milk') { this.hp = Math.min(this.maxHp, this.hp + 2.6); this.cap = Math.max(this.cap, this.hp); this.mp = Math.min(this.maxMp, this.mp + 0.8); }
-        else { this.mp = Math.min(this.maxMp, this.mp + 4.5); this.hp = Math.min(this.maxHp, this.hp + 0.6); }
-        if (this.st % 8 === 0) addPart('text', this.x, 86, this.z, { txt: this.drinkKind === 'milk' ? '+' : '+', col: this.drinkKind === 'milk' ? '#ff6f9a' : '#5ab8ff', life: 26 });
-        if (this.st >= 46 || I.atk || I.jmp) this.set('idle');
+        const F = ITEMS[this.drinkKind];
+        this.hp = Math.min(this.maxHp, this.hp + F.hp); this.cap = Math.max(this.cap, this.hp); this.mp = Math.min(this.maxMp, this.mp + F.mp);
+        if (this.st % 8 === 0) addPart('text', this.x, 86, this.z, { txt: '+', col: F.hp > F.mp ? '#ff6f9a' : '#5ab8ff', life: 26 });
+        if (this.st >= (F.time || 46) || I.atk || I.jmp) this.set('idle');
         break;
       }
       case 'throw': {
         this.vx *= 0.85;
         if (this.st === 7 && this.hold) {
           const it = this.hold; this.hold = null; it.holder = null; it.fly = true; it.owner = this; it.team = this.team;
-          it.x = this.x + this.face * 20; it.y = this.y + 60; it.z = this.z; it.vx = this.face * (it.kind === 'stone' ? 8.5 : 10); it.vy = it.kind === 'stone' ? 3.5 : 2; it.vz = this.inp.mz * 0.8; it.hit = new Set(); it.spin = 0;
+          it.x = this.x + this.face * 20; it.y = this.y + 60; it.z = this.z; const T = ITEMS[it.kind]; it.vx = this.face * (T.speed || 10); it.vy = T.vy || 2; it.vz = this.inp.mz * 0.8; it.hit = new Set(); it.spin = 0;
           Sound.play('throw');
         }
         if (this.st >= 18) this.set(air ? 'jump' : 'idle');
@@ -407,6 +407,9 @@ function applyHit(att, v, A, dir, area) {
   const human = att && att.ctl && att.ctl.human;
   if (att) { att.mp = Math.min(att.maxMp, att.mp + 3 + dmg * 0.08); }
   // block: only from the front and only on the ground
+  if (v.state === 'defend' && v.face === -dir && v.hold && v.hold.kind === 'umbrella') {
+    v.vx = dir * 1.5; Sound.play('block'); addPart('spark', v.x - dir * 18, v.y + 50, v.z, { col: '#8fd0ff' }); return true;
+  }
   if (v.state === 'defend' && v.face === -dir && !A.unblock && !A.freeze) {
     v.hp -= dmg * 0.08; v.guard -= dmg * 1.5; v.vx = dir * 2.6; v.freeze = 3; if (att) att.freeze = 3;
     Sound.play('block'); addPart('spark', v.x - dir * 10, v.y + 44, v.z, { col: '#8fd0ff', n: 1 });
@@ -441,9 +444,33 @@ function knock(v, dir, kb, kbY) {
   v.set('fall'); v.vx = dir * kb; v.vy = kbY; v.y = Math.max(v.y, 1); v.face = -dir; v.fallMeter = 0; v.bounced = false; v.invisible = false;
   if (v.hold) v.dropItem();
 }
+/* Items: weapons are swung (and thrown while running), throwables are thrown with attack, food is eaten. */
+const ITEMS = {
+  stick: { name: '木棍', type: 'weapon', dur: 10, chip: '#b07a3d' },
+  umbrella: { name: '雨傘', type: 'weapon', dur: 14, reach: 1.15, shield: true, chip: '#3fa9ff' },
+  stone: { name: '石頭', type: 'throw', dmg: 45, breaks: true, speed: 8.5, vy: 3.5 },
+  slipper: { name: '拖鞋', type: 'throw', dmg: 20, launch: false, stun: 26, dur: 5, speed: 11, vy: 2, chip: '#3fa9ff' },
+  cracker: { name: '鞭炮', type: 'throw', explode: true, speed: 7, vy: 5 },
+  milk: { name: '珍珠奶茶', type: 'food', hp: 2.6, mp: 0.8 },
+  juice: { name: '冬瓜茶', type: 'food', hp: 0.6, mp: 4.5 },
+  chicken: { name: '雞排', type: 'food', hp: 4.6, mp: 0.6, time: 60 }
+};
+/* firecrackers pop a few times, then burst and knock everyone nearby over */
+function explode(it) {
+  const i = W.items.indexOf(it); if (i >= 0) W.items.splice(i, 1);
+  for (let k = 0; k < 4; k++) setTimeout(() => Sound.play('pop'), k * 70);
+  Sound.play('heavy'); W.shake = Math.max(W.shake, 8);
+  for (let k = 0; k < 18; k++) addPart('spark', it.x + rnd(-40, 40), rnd(5, 50), it.z + rnd(-14, 14), { col: pick(['#ffcc33', '#ff5a4a', '#fff6b0']) });
+  addPart('ring', it.x, 0, it.z, { r: 8, grow: 5, life: 16 });
+  for (const v of W.fighters) {
+    if (v.dead) continue;
+    if (Math.abs(v.x - it.x) > 75 || Math.abs(v.z - it.z) > 34 || v.y > 60) continue;
+    applyHit(it.owner || null, v, { dmg: 36, kb: 4, kbY: 6, launch: true, sfx: 'heavy', unblock: true }, sgn(v.x - it.x || 1), true);
+  }
+}
 function breakItem(it) {
   const i = W.items.indexOf(it); if (i >= 0) W.items.splice(i, 1);
-  for (let k = 0; k < 6; k++) addPart('rock', it.x, it.y + 30, it.z, { vx: rnd(-3, 3), vy: rnd(2, 5), col: it.kind === 'stick' ? '#b07a3d' : '#9a9aa8', r: 3 });
+  for (let k = 0; k < 6; k++) addPart('rock', it.x, it.y + 30, it.z, { vx: rnd(-3, 3), vy: rnd(2, 5), col: ITEMS[it.kind].chip || '#9a9aa8', r: 3 });
 }
 
 /* ------------------------- projectiles & items ------------------------- */
@@ -478,6 +505,7 @@ function updateItems() {
   for (let i = W.items.length - 1; i >= 0; i--) {
     const it = W.items[i];
     if (it.holder) { if (it.holder.dead) it.holder.dropItem(); continue; }
+    if (it.fuse > 0) { if (it.fuse % 4 === 0) addPart('spark', it.x, 10, it.z, { col: '#ffcc33' }); if (--it.fuse === 0) explode(it); continue; }
     if (it.drop && it.y > 0) { it.vy -= 0.25; it.y += it.vy; if (it.y <= 0) { it.y = 0; it.vy = 0; it.drop = false; Sound.play('land', 0.5); addPart('dust', it.x, 0, it.z, {}); } continue; }
     if (it.fly) {
       it.vy -= 0.22; it.x += it.vx; it.y += it.vy; it.z = clamp(it.z + it.vz, 4, FLOOR_D - 4); it.spin += 0.4 * sgn(it.vx);
@@ -485,14 +513,17 @@ function updateItems() {
         if (v.team === it.team || v.dead || it.hit.has(v) || v.invul > 0 || v.state === 'lying') continue;
         if (Math.abs(v.z - it.z) > 15 || Math.abs(v.x - it.x) > 22 || it.y < v.y - 4 || it.y > v.y + 76) continue;
         it.hit.add(v);
-        applyHit(it.owner, v, { dmg: it.kind === 'stone' ? 45 : 32, kb: 4, kbY: 5, launch: true, sfx: 'heavy' }, sgn(it.vx), true);
-        if (it.kind === 'stone') { breakItem(it); it.gone = true; } else { it.vx *= -0.3; it.vy = 3; }
+        const T = ITEMS[it.kind];
+        if (T.explode) { explode(it); it.gone = true; break; }
+        applyHit(it.owner, v, { dmg: T.dmg || 32, kb: T.launch === false ? 2 : 4, kbY: 5, launch: T.launch !== false, stun: T.stun, fall: T.launch === false ? 40 : undefined, sfx: T.launch === false ? 'hit' : 'heavy' }, sgn(it.vx), true);
+        if (T.breaks) { breakItem(it); it.gone = true; } else { it.vx *= -0.3; it.vy = 3; }
         break;
       }
       if (it.gone) continue;
       if (it.y <= 0) {
         it.y = 0;
-        if (it.kind === 'stone' || --it.dur <= 0) { breakItem(it); continue; }
+        if (ITEMS[it.kind].explode) { it.fly = false; it.vx = it.vy = it.vz = 0; it.fuse = 26; continue; }
+        if (ITEMS[it.kind].breaks || --it.dur <= 0) { breakItem(it); continue; }
         it.fly = false; it.vx = 0; it.vy = 0; it.vz = 0; it.spin = 0; Sound.play('land', 0.5);
       }
       if (it.x < W.minX - 100 || it.x > W.maxX + 100) W.items.splice(i, 1);
@@ -500,7 +531,7 @@ function updateItems() {
   }
 }
 function spawnItem(kind, x, z, fromSky) {
-  W.items.push({ kind, x, z, y: fromSky ? 420 : 0, vx: 0, vy: 0, vz: 0, drop: !!fromSky, dur: kind === 'stick' ? 10 : 1, holder: null, fly: false, spin: 0 });
+  W.items.push({ kind, x, z, y: fromSky ? 420 : 0, vx: 0, vy: 0, vz: 0, drop: !!fromSky, dur: ITEMS[kind].dur || 1, holder: null, fly: false, spin: 0 });
 }
 function updateParts() {
   for (let i = W.parts.length - 1; i >= 0; i--) {

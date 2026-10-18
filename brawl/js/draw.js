@@ -295,12 +295,33 @@ function drawBat(c, f) {
   c.fillStyle = '#fff'; c.beginPath(); c.moveTo(4, 3); c.lineTo(5, 7); c.lineTo(6.5, 3); c.moveTo(8, 3); c.lineTo(9, 6.5); c.lineTo(10, 3); c.fill();
   c.restore();
 }
+function drawCracker(c, x, y, s, lit) {
+  c.save(); c.translate(x, y); c.scale(s, s);
+  for (let i = -1; i <= 1; i++) { c.beginPath(); c.roundRect ? c.roundRect(i * 6 - 3, -10, 6, 18, 2) : c.rect(i * 6 - 3, -10, 6, 18); c.fillStyle = '#e8432f'; c.fill(); c.lineWidth = 1.6; c.strokeStyle = INK; c.stroke(); c.fillStyle = '#ffcc33'; c.fillRect(i * 6 - 3, -2, 6, 3); }
+  c.strokeStyle = INK; c.lineWidth = 1.5; c.beginPath(); c.moveTo(0, -10); c.quadraticCurveTo(4, -16, 1, -20); c.stroke();
+  if (lit) { c.fillStyle = (Date.now() >> 6) & 1 ? '#ffcc33' : '#ff7a3d'; c.beginPath(); c.arc(1, -21, 3, 0, TAU); c.fill(); }
+  c.restore();
+}
 function drawHeld(c, it, g) {
   if (it.kind === 'stick') {
     const dx = Math.sin(g.s2), dy = Math.cos(g.s2);
     seg(c, [P2(g.h.x - dx * 8, g.h.y - dy * 8), P2(g.h.x + dx * 34, g.h.y + dy * 34)], 4.5, '#b07a3d');
     blob(c, g.h.x, g.h.y, 6, 6, '#f3c79c');
   } else if (it.kind === 'stone') { blob(c, g.h.x, g.h.y - 6, 10, 8, '#9a9aa8'); }
+  else if (it.kind === 'umbrella') {
+    const open = it.holder && it.holder.state === 'defend', dx = Math.sin(g.s2), dy = Math.cos(g.s2);
+    if (open) { // canopy opened towards the front
+      c.save(); c.translate(g.h.x + 6, g.h.y - 4); c.beginPath(); c.moveTo(0, -30); c.quadraticCurveTo(22, -24, 26, 0); c.quadraticCurveTo(22, 24, 0, 30); c.closePath();
+      c.fillStyle = '#3fa9ff'; c.fill(); c.lineWidth = 2.4; c.strokeStyle = INK; c.stroke();
+      c.strokeStyle = 'rgba(255,255,255,.7)'; c.lineWidth = 2; c.beginPath(); c.moveTo(0, -14); c.quadraticCurveTo(14, -10, 18, 0); c.stroke(); c.restore();
+    } else {
+      seg(c, [P2(g.h.x - dx * 8, g.h.y - dy * 8), P2(g.h.x + dx * 40, g.h.y + dy * 40)], 3, '#5a4632');
+      c.save(); c.translate(g.h.x + dx * 26, g.h.y + dy * 26); c.rotate(-g.s2 + Math.PI / 2); c.beginPath(); c.ellipse(0, 0, 16, 6, 0, 0, TAU); c.fillStyle = '#3fa9ff'; c.fill(); c.lineWidth = 2.2; c.strokeStyle = INK; c.stroke(); c.restore();
+    }
+    blob(c, g.h.x, g.h.y, 6, 6, '#f3c79c');
+  }
+  else if (it.kind === 'slipper') { c.save(); c.translate(g.h.x, g.h.y - 4); c.rotate(-0.4); blob(c, 0, 0, 11, 5, '#3fa9ff'); c.strokeStyle = '#fff'; c.lineWidth = 2; c.beginPath(); c.moveTo(-3, -4); c.lineTo(2, 1); c.lineTo(6, -4); c.stroke(); c.restore(); }
+  else if (it.kind === 'cracker') { drawCracker(c, g.h.x, g.h.y - 6, 0.9, true); }
 }
 
 /* Full fighter at its world position (camera already applied). */

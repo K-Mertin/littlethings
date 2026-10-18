@@ -94,7 +94,7 @@ class AICtl {
     }
     // grab a nearby weapon
     if (!f.hold && f.def.enemy && Math.random() < 0.3) {
-      for (const it of W.items) if (!it.holder && !it.fly && it.y <= 0 && (it.kind === 'stick' || it.kind === 'stone') && Math.abs(it.x - f.x) < 140 && Math.abs(it.z - f.z) < 50) { this.plan = 'pickup'; this.item = it; return; }
+      for (const it of W.items) if (!it.holder && !it.fly && it.y <= 0 && ITEMS[it.kind].type !== 'food' && Math.abs(it.x - f.x) < 140 && Math.abs(it.z - f.z) < 50) { this.plan = 'pickup'; this.item = it; return; }
     }
     // how many friends are already in the face of this target?
     let eng = 0; for (const o of W.fighters) if (o !== f && o.ctl instanceof AICtl && o.ctl.plan === 'engage' && o.ctl.tgt === g && !o.dead && o.team === f.team) eng++;
@@ -105,7 +105,7 @@ class AICtl {
     } else {
       this.plan = 'hover'; this.side = sgn(f.x - g.x || 1); this.hx = rnd(130, 220); this.zoff = rnd(-50, 50);
     }
-    if (f.hold && f.hold.kind === 'stone' && Math.abs(dz) < 10 && adx > 80 && adx < 300 && this.ready(g, true)) { this.face(dx); I.atk = true; this.claim(g, 0); }
+    if (f.hold && ITEMS[f.hold.kind].type === 'throw' && Math.abs(dz) < 10 && adx > 80 && adx < 300 && this.ready(g, true)) { this.face(dx); I.atk = true; this.claim(g, 0); }
   }
 }
 

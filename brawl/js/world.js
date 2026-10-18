@@ -5,10 +5,10 @@
 const STAGES = [{
   name: '第一關', title: '怪獸大鬧老街', theme: 'street',
   areas: [
-    { to: 1200, waves: [['boar', 'boar'], ['boar', 'boar:L', 'bat']], items: [] },
+    { to: 1200, waves: [['boar', 'boar'], ['boar', 'boar:L', 'bat']], items: [['slipper', 700, 120]] },
     { to: 2400, waves: [['boar', 'monkey', 'boar:L'], ['bat', 'boar', 'monkey:L', 'bat']], items: [['stick', 1560, 90], ['milk', 2100, 40]] },
-    { to: 3600, waves: [['bear', 'boar:L'], ['monkey', 'boar', 'bat:L', 'boar']], items: [['stone', 2780, 60], ['stone', 2840, 110], ['juice', 3300, 80]] },
-    { to: 4800, boss: true, waves: [['dragon', 'boar', 'boar:L']], items: [['milk', 3800, 120], ['stick', 4100, 40]], reinforce: ['boar', 'bat:L', 'boar', 'bat'] }
+    { to: 3600, waves: [['bear', 'boar:L'], ['monkey', 'boar', 'bat:L', 'boar']], items: [['stone', 2780, 60], ['umbrella', 2900, 110], ['cracker', 3150, 40], ['juice', 3300, 80]] },
+    { to: 4800, boss: true, waves: [['dragon', 'boar', 'boar:L']], items: [['chicken', 3800, 120], ['stick', 4100, 40], ['cracker', 4300, 90]], reinforce: ['boar', 'bat:L', 'boar', 'bat'] }
   ]
 }];
 
@@ -23,10 +23,54 @@ const SLOT_COL = ['#ffcc33', '#3fa9ff', '#38d39f', '#ff7aa8'];
 const STAGE_LIVES = [3, 2, 1];
 /* battle arenas: theme picks the background; hazard (optional) runs every step */
 const ARENAS = {
-  roof: { name: '公寓頂樓', theme: 'roof', music: 'battle' }
+  roof: { name: '公寓頂樓', theme: 'roof', music: 'battle' },
+  market: { name: '夜市', theme: 'market', music: 'temple', hazard: 'scooter', items: ['chicken', 'milk', 'cracker', 'slipper', 'stick', 'juice', 'chicken', 'cracker'] },
+  park: { name: '公園', theme: 'park', music: 'street', items: ['slipper', 'umbrella', 'stick', 'stone', 'milk', 'juice', 'slipper'] },
+  mrt: { name: '捷運站', theme: 'mrt', music: 'battle', hazard: 'train', items: ['umbrella', 'milk', 'juice', 'slipper', 'stick'] },
+  beach: { name: '海邊', theme: 'beach', music: 'street', hazard: 'tide', items: ['stone', 'slipper', 'milk', 'juice', 'cracker', 'umbrella'] }
 };
-const BATTLE_ITEMS = ['stick', 'stone', 'milk', 'juice', 'stick', 'milk'];
-const HAZARDS = {};
+const BATTLE_ITEMS = ['stick', 'umbrella', 'stone', 'slipper', 'cracker', 'milk', 'juice', 'chicken', 'stick', 'milk'];
+/* Arena hazards. Scooters ride through the night market (after a horn and a warning sign),
+   the tide at the beach washes in from the back and pushes everyone forward, and at the
+   MRT station a train comes and goes in the background. */
+const HAZARDS = {
+  scooter(W) {
+    const H = W.hz || (W.hz = { next: 540, warn: 0 });
+    if (H.warn > 0) {
+      if (--H.warn === 0) { W.hazEnts.push({ kind: 'scooter', x: H.dir > 0 ? W.camX - 90 : W.camX + Wv + 90, z: H.z, vx: H.dir * 9.5, hit: new Set(), col: pick(['#ff5a4a', '#3fa9ff', '#ffcc33', '#f4f1ea']) }); H.next = rnd(520, 900) | 0; }
+      return;
+    }
+    if (--H.next <= 0) { H.dir = pick([-1, 1]); H.z = rnd(20, FLOOR_D - 20); H.warn = 80; Sound.play('honk'); }
+  },
+  train(W) {
+    const T = W.train || (W.train = { x: null, ph: 'wait', t: 300, doors: 0 }), stop = W.arena / 2 - 690;
+    T.t--;
+    if (T.ph === 'wait' && T.t <= 0) { T.ph = 'in'; T.t = 140; T.x = stop + 1800; Sound.play('train'); }
+    else if (T.ph === 'in') { T.x = stop + 1800 * Math.pow(T.t / 140, 2); if (T.t <= 0) { T.ph = 'stop'; T.t = 220; } }
+    else if (T.ph === 'stop') { T.doors = Math.min(1, T.doors + 0.05) * (T.t > 30 ? 1 : T.t / 30); if (T.t <= 0) { T.ph = 'out'; T.t = 140; T.doors = 0; Sound.play('train', 0.6); } }
+    else if (T.ph === 'out') { T.x = stop - 1800 * Math.pow(1 - T.t / 140, 2); if (T.t <= 0) { T.ph = 'wait'; T.t = rnd(600, 900) | 0; T.x = null; } }
+  },
+  tide(W) {
+    const H = W.hz || (W.hz = { next: 600, t: 0 });
+    if (H.t > 0) {
+      H.t--; const k = H.t > 150 ? (240 - H.t) / 90 : H.t > 90 ? 1 : H.t / 90; W.tide = k;
+      if (H.t > 90) for (const f of W.fighters) if (!f.dead && f.y < 20 && f.z < k * 75 + 6 && !f.def.fly) { f.z = Math.min(FLOOR_D - 6, f.z + 1.8); if (f.canAct() && f.state !== 'run') f.vx *= 0.6; }
+      if (H.t === 0) { W.tide = 0; H.next = rnd(600, 900) | 0; }
+      return;
+    }
+    if (--H.next <= 0) { H.t = 240; Sound.play('wave'); message('浪來了！', '', 50); }
+  }
+};
+function updateHazards() {
+  for (let i = W.hazEnts.length - 1; i >= 0; i--) {
+    const h = W.hazEnts[i]; h.x += h.vx;
+    for (const v of W.fighters) {
+      if (v.dead || h.hit.has(v) || v.y > 30 || Math.abs(v.z - h.z) > 18 || Math.abs(v.x - h.x) > 34) continue;
+      h.hit.add(v); applyHit(null, v, { dmg: 30, kb: 6, kbY: 6, launch: true, unblock: true, sfx: 'heavy' }, sgn(h.vx), true);
+    }
+    if (h.x < W.camX - 300 || h.x > W.camX + Wv + 300) W.hazEnts.splice(i, 1);
+  }
+}
 function heroUnlocked(id) { return true; }
 
 function newMatch(o) {
@@ -34,7 +78,7 @@ function newMatch(o) {
   W = {
     mode: o.mode, D: DIFF[o.diff], diffN: o.diff, fighters: [], projs: [], items: [], parts: [], camX: 0, minX: 0, maxX: 1200, shake: 0, t: 0,
     score: 0, kos: 0, over: false, overT: 0, msg: null, go: false, areaIdx: 0, waveIdx: 0, waveDelay: 0, result: null, itemT: 600,
-    players: [], hpScale: 1 + 0.4 * (nH - 1), team: o.team, livesRule: o.lives, timeLeft: o.mode === 'battle' && o.time ? o.time * 60 : 0
+    players: [], hazEnts: [], tide: 0, hpScale: 1 + 0.4 * (nH - 1), team: o.team, livesRule: o.lives, timeLeft: o.mode === 'battle' && o.time ? o.time * 60 : 0
   };
   if (!o.remoteCtls) Touch.setup(nH);
   for (let i = 0; i < nH; i++) {
@@ -151,7 +195,7 @@ function step() {
     const dx = b.x - a.x, dz = b.z - a.z; if (Math.abs(dz) > 8 || Math.abs(dx) > 18) continue;
     const push = (18 - Math.abs(dx)) * 0.08 * sgn(dx || 1); if (!a.entering) a.x -= push; if (!b.entering) b.x += push;
   }
-  updateProjs(); updateItems(); updateParts();
+  updateProjs(); updateItems(); updateParts(); updateHazards();
   // knocked-out fighters with lives left come back; the rest are cleared away after a while
   for (const f of fs) if (f.dead && f.respawnT > 0 && --f.respawnT === 0 && !W.over) respawn(f);
   for (let i = fs.length - 1; i >= 0; i--) if (fs[i].dead && !fs[i].human && !(fs[i].lives > 0) && fs[i].st > 110) fs.splice(i, 1);

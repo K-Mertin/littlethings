@@ -117,6 +117,24 @@ function drawHUD(c) {
   }
 }
 
+function drawHazard(c, h) {
+  const gy = FLOOR_TOP + h.z;
+  c.fillStyle = 'rgba(20,16,40,.28)'; c.beginPath(); c.ellipse(h.x, gy, 34, 7, 0, 0, TAU); c.fill();
+  c.save(); c.translate(h.x, gy); c.scale(1.5, 1.5);
+  drawScooter(c, 0, 0, h.col, sgn(h.vx));
+  // rider: a little helmeted grown-up
+  c.scale(sgn(h.vx), 1);
+  blob(c, -4, -40, 9, 9, '#f2c49c'); c.beginPath(); c.arc(-4, -42, 10, Math.PI, 0); c.fillStyle = '#ff5a4a'; c.fill(); c.lineWidth = 2; c.strokeStyle = INK; c.stroke();
+  blob(c, -6, -26, 8, 9, '#3a8f5c'); blob(c, 10, -32, 3.5, 3.5, '#f2c49c');
+  for (let k = 0; k < 2; k++) { c.fillStyle = 'rgba(230,225,245,.6)'; c.beginPath(); c.arc(-30 - k * 10 - (W.t % 6), -6, 4 + k * 2, 0, TAU); c.fill(); }
+  c.restore();
+}
+function drawWarning(c, H) {
+  const x = H.dir > 0 ? W.camX + 40 : W.camX + Wv - 40, y = FLOOR_TOP + H.z - 30;
+  c.beginPath(); c.moveTo(x, y - 26); c.lineTo(x + 24, y + 16); c.lineTo(x - 24, y + 16); c.closePath(); c.fillStyle = '#ffcc33'; c.fill(); c.lineWidth = 3; c.strokeStyle = INK; c.stroke();
+  c.fillStyle = INK; c.font = '900 24px "Noto Sans TC",sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('!', x, y + 2);
+  c.font = '900 14px "Noto Sans TC",sans-serif'; c.lineWidth = 4; c.strokeStyle = INK; c.fillStyle = '#fff6e6'; c.strokeText('機車來了', x + (H.dir > 0 ? 40 : -40), y - 24); c.fillText('機車來了', x + (H.dir > 0 ? 40 : -40), y - 24);
+}
 function render() {
   const c = ctx;
   c.setTransform(1, 0, 0, 1, 0, 0); c.fillStyle = '#1b1f3a'; c.fillRect(0, 0, cv.width, cv.height);
@@ -130,8 +148,10 @@ function render() {
   for (const it of W.items) if (!it.holder) list.push([it.z, 0, it]);
   for (const f of W.fighters) list.push([f.z + (f.state === 'lying' || f.state === 'dead' ? -0.5 : 0), 1, f]);
   for (const p of W.projs) list.push([p.z + 0.1, 2, p]);
+  for (const h of W.hazEnts) list.push([h.z, 3, h]);
   list.sort((a, b) => a[0] - b[0]);
-  for (const [, t, o] of list) t === 0 ? drawItem(c, o) : t === 1 ? drawFighter(c, o) : drawProj(c, o);
+  for (const [, t, o] of list) t === 0 ? drawItem(c, o) : t === 1 ? drawFighter(c, o) : t === 2 ? drawProj(c, o) : drawHazard(c, o);
+  if (W.hz && W.hz.warn > 0 && (W.t >> 3) & 1) drawWarning(c, W.hz);
   // player marker and small enemy bars
   for (const f of W.fighters) {
     if (f.dead) continue; const s = f.def.size || 1, hy = FLOOR_TOP + f.z - f.y - 92 * s;
