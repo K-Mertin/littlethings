@@ -1,0 +1,1487 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon.ico" sizes="any"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>噗噗洗車場</title>
+<link rel="stylesheet" href="mini.css">
+<style>
+.mg-stage{padding:6px}
+.cw-stars{font-size:40px;letter-spacing:.12em;margin:2px 0 6px}
+.cw-box{background:#eef9ff;border-radius:14px;padding:6px 10px;margin:8px 0;text-align:left}
+.cw-box p{margin:3px 0!important}
+</style>
+</head>
+<body>
+<main class="mg-stage"><canvas id="cv" aria-label="遊戲畫面"></canvas></main>
+<script src="mini.js"></script>
+<script>
+'use strict';
+MG.init({ id: 'carwash', title: '噗噗洗車場', stats: ['level', 'info'] });
+const cv = document.getElementById('cv');
+let x = cv.getContext('2d');
+const FONT = '"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif';
+const TAU = Math.PI * 2;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v)), lerp = (a, b, k) => a + (b - a) * k;
+const ease = k => k * k * (3 - 2 * k);
+
+// =====================================================================
+// sounds: water hiss, foam, brush, dryer, squeaky clean, pump, glug, and the horns
+// =====================================================================
+let AC = null;
+const isMuted = () => !!MG.store.get('muted', false);
+function actx() { if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch { AC = null; } } if (AC && AC.state === 'suspended') AC.resume(); return AC; }
+addEventListener('pointerdown', () => actx(), true);
+function tn(f0, f1, dur, type = 'sine', vol = 0.1, delay = 0) {
+  const a = AC; if (!a || isMuted()) return;
+  const t0 = a.currentTime + delay, o = a.createOscillator(), g = a.createGain();
+  o.type = type; o.frequency.setValueAtTime(f0, t0); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t0 + dur);
+  g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + 0.012); g.gain.exponentialRampToValueAtTime(0.0006, t0 + dur);
+  o.connect(g).connect(a.destination); o.start(t0); o.stop(t0 + dur + 0.03);
+}
+let NB = null;
+function nz(dur, f0, f1, vol = 0.06, delay = 0, q = 1.2) {
+  const a = AC; if (!a || isMuted()) return;
+  if (!NB) { NB = a.createBuffer(1, a.sampleRate, a.sampleRate); const d = NB.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+  const t0 = a.currentTime + delay, s = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
+  s.buffer = NB; f.type = 'bandpass'; f.Q.value = q; f.frequency.setValueAtTime(f0, t0); f.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
+  g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + dur * 0.25); g.gain.exponentialRampToValueAtTime(0.0005, t0 + dur);
+  s.connect(f).connect(g).connect(a.destination); s.start(t0, Math.random() * 0.5); s.stop(t0 + dur + 0.02);
+}
+const SND = {
+  spray: () => nz(0.18, 2600, 3600, 0.05, 0, 0.7),
+  foam: () => { for (let i = 0; i < 3; i++) tn(900 + Math.random() * 900, 1500 + Math.random() * 900, 0.05, 'sine', 0.045, i * 0.045); },
+  brush: () => { nz(0.16, 260, 520, 0.08, 0, 0.8); tn(90, 70, 0.14, 'triangle', 0.04); },
+  sponge: () => { nz(0.12, 900, 1500, 0.05); tn(1700, 2300, 0.05, 'sine', 0.02); },
+  dryer: () => nz(0.2, 800, 1400, 0.06, 0, 0.5),
+  polish: () => tn(2300 + Math.random() * 1400, 3300, 0.08, 'sine', 0.03),
+  squeak: () => { tn(1500, 2600, 0.09, 'sine', 0.07); tn(2600, 1900, 0.08, 'sine', 0.06, 0.09); },
+  pump: () => nz(0.24, 1800, 500, 0.08, 0, 1.5),
+  glug: () => { tn(240, 140, 0.12, 'sine', 0.12); tn(280, 170, 0.1, 'sine', 0.08, 0.13); },
+  leaf: () => nz(0.22, 3000, 5200, 0.04, 0, 2),
+  paint: () => { nz(0.35, 500, 2200, 0.05); tn(380, 760, 0.25, 'triangle', 0.05); },
+  sticker: () => { tn(700, 1300, 0.07, 'square', 0.05); tn(1300, 1700, 0.05, 'sine', 0.05, 0.06); },
+  peel: () => nz(0.12, 2200, 700, 0.05),
+  engine: () => { tn(70, 130, 0.6, 'sawtooth', 0.05); tn(95, 160, 0.6, 'square', 0.025); },
+  vroom: () => { tn(80, 420, 0.8, 'sawtooth', 0.06); tn(120, 600, 0.8, 'square', 0.025); },
+  giggle: () => { [0, 1, 2].forEach(i => tn(700 + i * 90, 950 + i * 90, 0.07, 'sine', 0.07, i * 0.09)); },
+  // horns
+  beep: () => { tn(620, 620, 0.12, 'square', 0.07); tn(620, 620, 0.18, 'square', 0.07, 0.18); },
+  honk: () => { tn(240, 236, 0.4, 'sawtooth', 0.06); tn(302, 298, 0.4, 'sawtooth', 0.045); },
+  tune: () => { [523, 659, 784, 1046, 784, 1046].forEach((f, i) => tn(f, f, 0.12, 'square', 0.05, i * 0.11)); },
+  quack: () => { [0, 0.24].forEach(d => { tn(520, 300, 0.15, 'sawtooth', 0.07, d); nz(0.15, 1000, 600, 0.04, d, 3); }); },
+  moo: () => { tn(190, 120, 0.8, 'sawtooth', 0.06); tn(194, 124, 0.8, 'triangle', 0.05); },
+  siren: () => { for (let i = 0; i < 4; i++) tn(i % 2 ? 620 : 900, i % 2 ? 900 : 620, 0.25, 'triangle', 0.07, i * 0.25); },
+  whistle: () => { tn(880, 930, 0.6, 'sine', 0.08); tn(1100, 1160, 0.6, 'sine', 0.05); nz(0.6, 2000, 3000, 0.03); },
+  chime: () => { [784, 659, 523, 659, 784, 784].forEach((f, i) => tn(f, f, 0.2, 'sine', 0.08, i * 0.15)); },
+};
+const sndT = {};
+function snd(n, gap = 60) { const q = performance.now(); if (q - (sndT[n] || 0) < gap) return; sndT[n] = q; actx(); if (SND[n]) SND[n](); }
+function mgs(n, a, gap = 60) { const q = performance.now(), k = 'mg.' + n; if (q - (sndT[k] || 0) < gap) return; sndT[k] = q; MG.sfx(n, a); }
+
+// =====================================================================
+// small drawing helpers
+// =====================================================================
+const PC = new Map(); const P = d => { let q = PC.get(d); if (!q) { q = new Path2D(d); PC.set(d, q); } return q; };
+function rr(x0, y0, w, h, r) { x.beginPath(); x.roundRect(x0, y0, w, h, r); }
+function fs(fill, stroke, lw) { if (fill) { x.fillStyle = fill; x.fill(); } if (stroke) { x.strokeStyle = stroke; x.lineWidth = lw; x.stroke(); } }
+function fp(p, fill, stroke, lw) { if (fill) { x.fillStyle = fill; x.fill(p); } if (stroke) { x.strokeStyle = stroke; x.lineWidth = lw; x.stroke(p); } }
+function circ(cx, cy, r) { x.beginPath(); x.arc(cx, cy, Math.max(0.01, r), 0, TAU); }
+function ell(cx, cy, rx, ry, a = 0) { x.beginPath(); x.ellipse(cx, cy, Math.max(0.01, rx), Math.max(0.01, ry), a, 0, TAU); }
+function lgr(x0, y0, x1, y1, a, b, c) { const g = x.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, a); if (c) { g.addColorStop(0.55, b); g.addColorStop(1, c); } else g.addColorStop(1, b); return g; }
+function starPath(cx, cy, R, r, n = 5) { x.beginPath(); for (let i = 0; i < n * 2; i++) { const a = -Math.PI / 2 + i * Math.PI / n, q = i % 2 ? r : R; x.lineTo(cx + Math.cos(a) * q, cy + Math.sin(a) * q); } x.closePath(); }
+function heartPath(cx, cy, s) { x.beginPath(); x.moveTo(cx, cy + s * 0.85); x.bezierCurveTo(cx - s * 1.4, cy - s * 0.1, cx - s * 0.6, cy - s * 1.2, cx, cy - s * 0.45); x.bezierCurveTo(cx + s * 0.6, cy - s * 1.2, cx + s * 1.4, cy - s * 0.1, cx, cy + s * 0.85); x.closePath(); }
+function hex2rgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+const SHC = new Map();
+function shade(hex, k) {
+  const key = hex + k; let v = SHC.get(key); if (v) return v;
+  const [r, g, b] = hex2rgb(hex), m = k > 0 ? 255 : 0, a = Math.abs(k);
+  v = `rgb(${Math.round(r + (m - r) * a)},${Math.round(g + (m - g) * a)},${Math.round(b + (m - b) * a)})`; SHC.set(key, v); return v;
+}
+
+// =====================================================================
+// what the customer can choose: paint, stickers, wheels, horns
+// =====================================================================
+const COLS = [['red', '#ff5a5a'], ['orange', '#ff9a3c'], ['yellow', '#ffd23f'], ['green', '#5ccf6a'], ['mint', '#3fd2b0'], ['blue', '#4c9cf0'], ['purple', '#9a72f0'], ['pink', '#ff8fc0'], ['white', '#f2f4fa'], ['black', '#4a4f5c']];
+const COL = Object.fromEntries(COLS);
+const STICKERS = ['star', 'heart', 'flower', 'bolt', 'smile', 'note', 'paw', 'rainbow'];
+const WHEELS = ['basic', 'star', 'flower', 'gold', 'rainbow'];
+const HORNS = ['beep', 'tune', 'quack', 'moo', 'siren', 'whistle', 'honk', 'chime'];
+const COLNM = { red: '紅色', orange: '橘色', yellow: '黃色', green: '綠色', mint: '薄荷綠', blue: '藍色', purple: '紫色', pink: '粉紅色', white: '白色', black: '黑色' };
+const STKNM = { star: '星星', heart: '愛心', flower: '花花', bolt: '閃電', smile: '笑臉', note: '音符', paw: '腳印', rainbow: '彩虹' };
+
+// =====================================================================
+// vehicles (side view, front to the right, ground at y = 0). Local box: x -180..180, y -270..18
+// =====================================================================
+const LX0 = -180, LY0 = -270, LW = 360, LH = 288, GC = 12, NC = 30, NR = 24, LK = 1.5;
+const VD = {
+  car: {
+    nm: '小汽車', col: '#ffd23f', horn: 'beep',
+    body: 'M-150 -46 C-152 -80 -134 -92 -102 -94 L-76 -96 C-60 -146 -30 -162 6 -162 C46 -162 70 -144 86 -102 L120 -96 C150 -90 158 -72 156 -46 C155 -30 148 -24 134 -24 L-134 -24 C-148 -24 -150 -34 -150 -46 Z',
+    glass: ['M14 -150 C44 -150 62 -134 74 -104 L14 -104 Z', 'M2 -150 C-28 -150 -48 -134 -60 -104 L2 -104 Z'],
+    wheels: [[-92, 31], [92, 31]], eye: [40, -126, 12.5], mouth: [118, -62, 15], cap: [-116, -70], flat: 1,
+    det(c) {
+      x.strokeStyle = shade(c, -0.35); x.lineWidth = 2.5; x.beginPath(); x.moveTo(8, -102); x.lineTo(8, -30); x.stroke();
+      rr(20, -92, 20, 6, 3); fs('rgba(255,255,255,.7)', shade(c, -0.35), 1.5);
+      ell(148, -74, 7, 11); fs('#fff6b0', '#c9a020', 2); ell(-147, -72, 4.5, 9); fs('#ff6a6a', '#b33', 1.5);
+      rr(128, -38, 32, 12, 6); fs('#dfe5ee', '#8a96a8', 2); rr(-162, -38, 30, 12, 6); fs('#dfe5ee', '#8a96a8', 2);
+    },
+  },
+  truck: {
+    nm: '大卡車', col: '#4c9cf0', horn: 'honk',
+    body: 'M-164 -170 Q-164 -178 -156 -178 L22 -178 Q30 -178 30 -170 L30 -50 L-164 -50 Z M-164 -50 L36 -50 L36 -150 Q36 -168 56 -168 L100 -168 Q116 -168 124 -154 L144 -106 Q162 -100 162 -82 L162 -44 Q162 -28 146 -28 L-150 -28 Q-164 -28 -164 -42 Z',
+    glass: ['M54 -154 L102 -154 Q110 -154 114 -146 L132 -108 L54 -108 Z'],
+    wheels: [[-112, 32], [-46, 32], [104, 32]], eye: [84, -131, 12.5], mouth: [118, -66, 15], cap: [-10, -40], flat: 2,
+    det(c) {
+      x.strokeStyle = shade(c, -0.3); x.lineWidth = 2.5; for (const lx of [-118, -72, -26]) { x.beginPath(); x.moveTo(lx, -170); x.lineTo(lx, -58); x.stroke(); }
+      x.beginPath(); x.moveTo(70, -104); x.lineTo(70, -34); x.stroke(); rr(78, -96, 18, 6, 3); fs('rgba(255,255,255,.7)', shade(c, -0.35), 1.5);
+      rr(-160, -170, 186, 10, 4); fs('rgba(255,255,255,.25)');
+      ell(156, -84, 6, 10); fs('#fff6b0', '#c9a020', 2); rr(-168, -70, 7, 16, 3); fs('#ff6a6a', '#b33', 1.5);
+      rr(140, -40, 26, 12, 6); fs('#dfe5ee', '#8a96a8', 2);
+    },
+  },
+  bus: {
+    nm: '巴士', col: '#ff9a3c', horn: 'honk',
+    body: 'M-170 -176 Q-170 -194 -152 -194 L128 -194 Q160 -194 166 -160 L170 -60 Q170 -28 150 -28 L-154 -28 Q-170 -28 -170 -44 Z',
+    glass: ['M-158 -176 h46 v52 h-46 Z', 'M-102 -176 h46 v52 h-46 Z', 'M-46 -176 h46 v52 h-46 Z', 'M10 -176 h46 v52 h-46 Z', 'M78 -180 L136 -180 Q154 -180 158 -158 L162 -116 L78 -116 Z'],
+    wheels: [[-110, 30], [108, 30]], eye: [118, -150, 13], mouth: [132, -72, 17], cap: [-138, -58], flat: 0,
+    det(c) {
+      rr(-170, -110, 340, 12, 0); fs('rgba(255,255,255,.55)');
+      x.strokeStyle = shade(c, -0.3); x.lineWidth = 2.5; x.strokeRect(36, -96, 34, 66); x.beginPath(); x.moveTo(53, -96); x.lineTo(53, -30); x.stroke();
+      ell(164, -56, 5, 9); fs('#fff6b0', '#c9a020', 2); rr(-174, -80, 7, 16, 3); fs('#ff6a6a', '#b33', 1.5);
+      rr(146, -40, 28, 12, 6); fs('#dfe5ee', '#8a96a8', 2);
+    },
+  },
+  tractor: {
+    nm: '拖拉機', col: '#5ccf6a', horn: 'moo',
+    body: 'M-140 -196 L-12 -196 Q-4 -196 -4 -188 L-4 -60 L-140 -60 Z M-152 -208 L2 -208 Q8 -208 8 -202 L8 -194 L-152 -194 Z M-14 -116 L118 -116 Q150 -116 156 -90 L160 -56 Q160 -40 144 -40 L-14 -40 Z M-150 -84 Q-150 -138 -72 -138 Q6 -138 6 -84 L6 -70 L-150 -70 Z',
+    glass: ['M-128 -184 L-16 -184 L-16 -144 L-128 -144 Z'],
+    wheels: [[-72, 54], [112, 32]], eye: [-72, -164, 12.5], mouth: [118, -76, 14], cap: [36, -100], flat: 1,
+    det(c) {
+      x.strokeStyle = shade(c, -0.35); x.lineWidth = 2.5; for (let i = 0; i < 4; i++) { x.beginPath(); x.moveTo(140 + i * 3, -104 + i * 12); x.lineTo(152, -104 + i * 12); x.stroke(); }
+      x.beginPath(); x.moveTo(60, -112); x.lineTo(60, -44); x.stroke();
+      ell(150, -100, 6, 8); fs('#fff6b0', '#c9a020', 2);
+    },
+    front() { rr(66, -178, 12, 64, 5); fs(lgr(66, 0, 78, 0, '#9aa4b4', '#5a6474'), '#3e4654', 2); rr(62, -184, 20, 10, 4); fs('#4a5262', '#2e3440', 2); },
+  },
+  fire: {
+    nm: '消防車', col: '#ff5a5a', horn: 'siren',
+    body: 'M-170 -142 Q-170 -150 -162 -150 L76 -150 L76 -50 L-170 -50 Z M70 -50 L70 -166 Q70 -176 80 -176 L132 -176 Q148 -176 152 -160 L164 -104 Q170 -98 170 -82 L170 -44 Q170 -28 154 -28 L-156 -28 Q-170 -28 -170 -42 L-170 -50 Z',
+    glass: ['M88 -162 L130 -162 Q138 -162 140 -154 L150 -110 L88 -110 Z'],
+    wheels: [[-118, 30], [-52, 30], [118, 30]], eye: [116, -136, 12], mouth: [134, -68, 14], cap: [-20, -64], flat: 2,
+    det(c) {
+      x.strokeStyle = shade(c, -0.3); x.lineWidth = 2; for (let i = 0; i < 3; i++) { rr(-158 + i * 76, -138, 66, 72, 6); x.stroke(); for (let k = 1; k < 6; k++) { x.beginPath(); x.moveTo(-154 + i * 76, -138 + k * 12); x.lineTo(-96 + i * 76, -138 + k * 12); x.stroke(); } }
+      rr(-170, -64, 240, 8, 0); fs('#ffe066'); rr(70, -64, 100, 8, 0); fs('#ffe066');
+      ell(164, -86, 5, 9); fs('#fff6b0', '#c9a020', 2);
+      rr(150, -40, 26, 12, 6); fs('#dfe5ee', '#8a96a8', 2);
+    },
+    front() {
+      x.strokeStyle = '#8a96a8'; x.lineWidth = 3; x.lineCap = 'round';
+      for (const ly of [-158, -170]) { x.beginPath(); x.moveTo(-160, ly); x.lineTo(60, ly); x.stroke(); }
+      for (let i = 0; i < 12; i++) { x.beginPath(); x.moveTo(-154 + i * 18.5, -170); x.lineTo(-154 + i * 18.5, -158); x.stroke(); }
+      rr(-150, -154, 8, 6, 2); fs('#6f7f99'); rr(40, -154, 8, 6, 2); fs('#6f7f99');
+      const on = Math.floor(performance.now() / 260) % 2;
+      rr(92, -188, 14, 12, [6, 6, 2, 2]); fs(on ? '#ff3b3b' : '#ff9a9a', '#a02020', 2); rr(108, -188, 14, 12, [6, 6, 2, 2]); fs(on ? '#9ac6ff' : '#3b7bff', '#1d4f9e', 2);
+      circ(-118, -98, 0); // keeps the outline uniform
+    },
+  },
+  race: {
+    nm: '賽車', col: '#4c9cf0', horn: 'tune',
+    body: 'M-164 -44 C-166 -70 -150 -80 -120 -82 L-60 -86 C-44 -142 38 -146 58 -92 L118 -78 C152 -72 172 -62 172 -46 C172 -34 164 -28 152 -28 L-150 -28 C-162 -28 -164 -34 -164 -44 Z M-178 -126 L-118 -122 L-120 -106 L-176 -110 Z M-154 -110 L-148 -80 L-136 -80 L-142 -110 Z',
+    glass: ['M-48 -88 C-34 -132 32 -134 50 -92 Z'],
+    wheels: [[-104, 34], [118, 30]], eye: [2, -108, 11.5], mouth: [144, -52, 13], cap: [-130, -62], flat: 0,
+    det(c) {
+      x.fillStyle = 'rgba(255,255,255,.75)'; x.beginPath(); x.moveTo(-150, -64); x.lineTo(150, -54); x.lineTo(150, -46); x.lineTo(-150, -54); x.fill();
+      ell(164, -56, 5, 6); fs('#fff6b0', '#c9a020', 1.5);
+    },
+  },
+  ice: {
+    nm: '冰淇淋車', col: '#f2f4fa', horn: 'chime',
+    body: 'M-160 -186 Q-160 -196 -150 -196 L82 -196 Q100 -196 108 -180 L140 -120 Q160 -114 162 -92 L164 -46 Q164 -28 146 -28 L-148 -28 Q-160 -28 -160 -40 Z',
+    glass: ['M78 -184 L100 -184 Q106 -184 110 -176 L136 -120 L78 -120 Z', 'M-122 -158 L-14 -158 L-14 -104 L-122 -104 Z'],
+    wheels: [[-100, 30], [104, 30]], eye: [102, -150, 12], mouth: [138, -68, 14], cap: [-140, -60], flat: 1,
+    det(c) {
+      rr(-128, -104, 120, 10, 3); fs('#ffd7ad', '#b8835a', 2);
+      x.strokeStyle = shade(c, -0.3); x.lineWidth = 2.5; x.beginPath(); x.moveTo(40, -190); x.lineTo(40, -34); x.stroke();
+      ell(158, -80, 5, 9); fs('#fff6b0', '#c9a020', 2); rr(146, -40, 24, 12, 6); fs('#dfe5ee', '#8a96a8', 2);
+      // little ice creams in the window
+      for (const [ix, ic] of [[-100, '#ff8fc0'], [-68, '#8b5a2b'], [-36, '#a5e8ff']]) { x.beginPath(); x.moveTo(ix - 7, -118); x.lineTo(ix, -104); x.lineTo(ix + 7, -118); fs('#f2c27a', '#b8835a', 1.5); circ(ix, -122, 8); fs(ic, shade(ic, -0.3), 1.5); }
+    },
+    front() {
+      // the awning over the window
+      const cols = ['#ff7aa8', '#fff'];
+      for (let i = 0; i < 6; i++) { x.beginPath(); x.moveTo(-128 + i * 20, -172); x.lineTo(-108 + i * 20, -172); x.lineTo(-108 + i * 20, -162); x.arc(-118 + i * 20, -162, 10, 0, Math.PI); x.closePath(); fs(cols[i % 2], '#d0608a', 1.5); }
+      // the big cone on the roof
+      x.beginPath(); x.moveTo(-58, -196); x.lineTo(-40, -196); x.lineTo(-30, -226); x.lineTo(-68, -226); x.closePath(); fs('#f2c27a', '#b8835a', 2.5);
+      x.strokeStyle = 'rgba(184,131,90,.6)'; x.lineWidth = 1.5; for (let i = 0; i < 3; i++) { x.beginPath(); x.moveTo(-64 + i * 9, -224); x.lineTo(-54 + i * 9, -198); x.stroke(); }
+      circ(-49, -238, 22); fs(lgr(-60, -258, -40, -218, '#ffd0e4', '#ff8fc0'), '#d0608a', 2.5); circ(-49, -260, 6); fs('#ff4d5e', '#a02030', 2);
+      for (const [a, b, cc] of [[-58, -242, '#ffd23f'], [-44, -234, '#5ccf6a'], [-52, -228, '#4c9cf0'], [-38, -246, '#fff']]) { rr(a, b, 5, 2.4, 1.2); fs(cc); }
+    },
+  },
+  train: {
+    nm: '小火車', col: '#5ccf6a', horn: 'whistle',
+    body: 'M-160 -200 L-60 -200 L-60 -44 L-160 -44 Z M-172 -214 L-48 -214 Q-42 -214 -42 -206 L-42 -198 L-172 -198 Z M-62 -150 L118 -150 Q150 -150 150 -112 L150 -98 Q150 -60 118 -60 L-62 -60 Z M-166 -50 L160 -50 L160 -30 L-166 -30 Z',
+    glass: ['M-146 -186 L-74 -186 L-74 -128 L-146 -128 Z'],
+    wheels: [[-112, 26], [-36, 26], [40, 26], [124, 18]], eye: [-110, -158, 13], mouth: [-110, -96, 15], cap: [-20, -104], flat: 1,
+    det(c) {
+      x.strokeStyle = shade(c, -0.35); x.lineWidth = 4; for (const lx of [-10, 44, 98]) { x.beginPath(); x.moveTo(lx, -150); x.lineTo(lx, -60); x.stroke(); }
+      circ(150, -105, 0);
+      ell(150, -130, 7, 9); fs('#fff6b0', '#c9a020', 2);
+    },
+    front() {
+      x.beginPath(); x.moveTo(84, -150); x.lineTo(80, -184); x.lineTo(70, -198); x.lineTo(118, -198); x.lineTo(108, -184); x.lineTo(104, -150); x.closePath(); fs(lgr(70, 0, 118, 0, '#5a6474', '#3a4252'), '#262c38', 2.5);
+      x.beginPath(); x.arc(20, -150, 16, Math.PI, 0); x.closePath(); fs(lgr(0, -166, 0, -150, '#ffe680', '#e8a400'), '#a87400', 2.5);
+      x.beginPath(); x.moveTo(150, -46); x.lineTo(178, -24); x.lineTo(178, -6); x.lineTo(150, -6); x.closePath(); fs('#ff7a6b', '#a02020', 2.5);
+    },
+  },
+};
+const VKEYS = Object.keys(VD);
+const MT = document.createElement('canvas').getContext('2d');
+for (const k of VKEYS) {
+  const d = VD[k]; d.id = k; d.bodyP = P(d.body); d.glassP = d.glass.map(P);
+  // the mask: which grid cells are on the vehicle
+  const m = new Uint8Array(NC * NR); let n = 0;
+  for (let cy = 0; cy < NR; cy++) for (let cx = 0; cx < NC; cx++) { const i = cy * NC + cx; m[i] = MT.isPointInPath(d.bodyP, LX0 + (cx + 0.5) * GC, LY0 + (cy + 0.5) * GC) ? 1 : 0; n += m[i]; }
+  d.mask = m; d.maskN = n;
+  d.cells = [...m.keys()].filter(i => m[i]);
+  let y0 = 0; for (const i of d.cells) y0 = Math.min(y0, LY0 + (Math.floor(i / NC) + 0.5) * GC); d.top = y0;
+}
+const cellXY = i => [LX0 + (i % NC + 0.5) * GC, LY0 + (Math.floor(i / NC) + 0.5) * GC];
+const onBody = (d, lx, ly) => MT.isPointInPath(d.bodyP, lx, ly);
+
+// =====================================================================
+// levels (append only!) — every car: v vehicle, dirt mud|sand|snow, d density, leaves n, splats n,
+// bubble, tyre, fuel, dry, shine, col (start colour), req { c colour, s sticker, n, w wheels }
+// =====================================================================
+const LEVELS = [
+  { nm: '泥巴小汽車', cars: [{ v: 'car', dirt: 'mud', d: 0.55 }] },
+  { nm: '大卡車洗澎澎', cars: [{ v: 'truck', dirt: 'mud', d: 0.7, dry: 1 }] },
+  { nm: '紅色星星車', ty: 'paint', cars: [{ v: 'car', dirt: 'mud', d: 0.5, dry: 1, req: { c: 'red', s: 'star', n: 3 } }] },
+  { nm: '海邊回來的巴士', ty: 'sand', cars: [{ v: 'bus', dirt: 'sand', d: 0.8, dry: 1 }] },
+  { nm: '拖拉機爆胎了', ty: 'tyre', cars: [{ v: 'tractor', dirt: 'mud', d: 0.85, tyre: 1, dry: 1 }] },
+  { nm: '粉紅冰淇淋車', ty: 'paint', cars: [{ v: 'ice', dirt: 'mud', d: 0.5, dry: 1, req: { c: 'pink', s: 'heart', n: 3 } }] },
+  { nm: '落葉滿滿消防車', ty: 'leaves', cars: [{ v: 'fire', dirt: 'mud', d: 0.3, leaves: 9, dry: 1 }] },
+  { nm: '排隊洗車', ty: 'queue', th: 'sunset', cars: [{ v: 'car', dirt: 'mud', d: 0.4 }, { v: 'truck', dirt: 'mud', d: 0.4 }] },
+  { nm: '下雪的小火車', ty: 'snow', cars: [{ v: 'train', dirt: 'snow', dry: 1 }] },
+  { nm: '泡泡派對', ty: 'bubble', cars: [{ v: 'bus', dirt: 'mud', d: 0.5, bubble: 1, dry: 1 }] },
+  { nm: '卡車要加油', ty: 'fuel', th: 'rain', cars: [{ v: 'truck', dirt: 'mud', d: 0.5, fuel: 1, dry: 1 }] },
+  { nm: '賽車被噴漆了', ty: 'splat', cars: [{ v: 'race', splats: 6, dry: 1 }] },
+  { nm: '亮晶晶消防車', ty: 'shine', th: 'night', cars: [{ v: 'fire', dirt: 'mud', d: 0.5, dry: 1, shine: 1 }] },
+  { nm: '綠色花花拖拉機', ty: 'paint', cars: [{ v: 'tractor', col: 'red', dirt: 'mud', d: 0.7, dry: 1, req: { c: 'green', s: 'flower', n: 3, w: 'flower' } }] },
+  { nm: '三台車排隊', ty: 'queue', cars: [{ v: 'race', dirt: 'mud', d: 0.4 }, { v: 'ice', dirt: 'sand', d: 0.6 }, { v: 'car', leaves: 6, dirt: 'mud', d: 0.25 }] },
+  { nm: '雪地小汽車', ty: 'snow', cars: [{ v: 'car', col: 'red', dirt: 'snow', dry: 1, shine: 1 }] },
+  { nm: '巴士修輪胎加油', ty: 'combo', th: 'sunset', cars: [{ v: 'bus', dirt: 'mud', d: 0.5, tyre: 1, fuel: 1, dry: 1 }] },
+  { nm: '黃色閃電賽車', ty: 'paint', cars: [{ v: 'race', leaves: 6, dirt: 'mud', d: 0.3, dry: 1, req: { c: 'yellow', s: 'bolt', n: 2, w: 'star' } }] },
+  { nm: '冰淇淋車噴漆了', ty: 'splat', cars: [{ v: 'ice', col: 'mint', splats: 7, bubble: 1, dry: 1 }] },
+  { nm: '藍色星星火車', ty: 'paint', th: 'night', cars: [{ v: 'train', dirt: 'mud', d: 0.6, dry: 1, req: { c: 'blue', s: 'star', n: 4, w: 'gold' } }] },
+  { nm: '沙灘賽車', ty: 'sand', cars: [{ v: 'race', col: 'orange', dirt: 'sand', d: 0.8, dry: 1, shine: 1 }] },
+  { nm: '忙碌的早上', ty: 'queue', th: 'rain', cars: [{ v: 'car', col: 'mint', leaves: 7 }, { v: 'bus', dirt: 'sand', d: 0.6 }, { v: 'truck', dirt: 'snow', dry: 1 }] },
+  { nm: '泡泡和噴漆', ty: 'bubble', cars: [{ v: 'car', col: 'purple', splats: 5, bubble: 1, dry: 1, shine: 1 }] },
+  { nm: '消防車出任務', ty: 'combo', cars: [{ v: 'fire', dirt: 'mud', d: 0.6, tyre: 1, fuel: 1, dry: 1, req: { c: 'red', s: 'bolt', n: 2 } }] },
+  { nm: '超級髒卡車', ty: 'wash', cars: [{ v: 'truck', dirt: 'mud', d: 1, leaves: 6, splats: 4, dry: 1, shine: 1 }] },
+  { nm: '彩色客人排隊', ty: 'queue', th: 'night', cars: [{ v: 'car', dirt: 'mud', d: 0.4, req: { c: 'purple', s: 'smile', n: 2 } }, { v: 'ice', dirt: 'mud', d: 0.4, req: { c: 'mint', s: 'heart', n: 2 } }] },
+  { nm: '雪地拖拉機爆胎', ty: 'snow', cars: [{ v: 'tractor', dirt: 'snow', tyre: 1, dry: 1 }] },
+  { nm: '洗車大賽', ty: 'shine', cars: [{ v: 'race', dirt: 'mud', d: 0.6, splats: 3, dry: 1, shine: 1, req: { c: 'orange', s: 'star', n: 3, w: 'rainbow' } }] },
+  { nm: '火車大整理', ty: 'combo', cars: [{ v: 'train', leaves: 6, dirt: 'mud', d: 0.5, dry: 1, shine: 1, fuel: 1, req: { c: 'purple', s: 'note', n: 3 } }] },
+  { nm: '自由洗車場', ty: 'free', cars: [] },
+];
+const MK = { paint: '🎨', sand: '🏖️', tyre: '🛞', leaves: '🍂', queue: '🚦', snow: '❄️', bubble: '🫧', fuel: '⛽', splat: '🖍️', shine: '✨', combo: '🔧', free: '🎈' };
+const TY_NM = { wash: '洗車', paint: '🎨 照圖片打扮', sand: '🏖️ 沙子', tyre: '🛞 補輪胎', leaves: '🍂 落葉', queue: '🚦 排隊', snow: '❄️ 下雪', bubble: '🫧 泡泡派對', fuel: '⛽ 加油', splat: '🖍️ 噴漆', shine: '✨ 亮晶晶', combo: '🔧 修車', free: '🎈 自由玩' };
+const lvIcon = n => { const L = LEVELS[n - 1]; return MK[L.ty] || '🚗'; };
+function themeOf(L) {
+  if (L.th) return L.th;
+  const c = L.cars;
+  if (c.some(s => s.dirt === 'snow')) return 'snowy';
+  if (c.some(s => s.dirt === 'sand')) return 'beach';
+  if (c.some(s => s.leaves)) return 'autumn';
+  return 'day';
+}
+function randomSpec() {
+  const v = MG.pick(VKEYS), dirt = MG.pick(['mud', 'mud', 'sand', 'snow', null]);
+  return { v, col: MG.pick(COLS)[0], dirt, d: 0.4 + Math.random() * 0.5, leaves: Math.random() < 0.3 ? 6 : 0, splats: !dirt || Math.random() < 0.25 ? 4 : 0, dry: 1 };
+}
+
+// =====================================================================
+// the wash steps
+// =====================================================================
+const STEP = {
+  tyre: { tool: 'pump' }, leaves: { tool: 'dryer' }, snow: { tool: 'dryer' }, sand: { tool: 'water' }, wet: { tool: 'water' },
+  soap: { tool: 'soap' }, bubble: { tool: null }, scrub: { tool: 'brush' }, splat: { tool: 'sponge' }, rinse: { tool: 'water' },
+  dry: { tool: 'dryer' }, shine: { tool: 'polish' }, fuel: { tool: 'fuel' },
+};
+function stepsFor(sp) {
+  const s = [];
+  if (sp.tyre) s.push('tyre');
+  if (sp.leaves) s.push('leaves');
+  if (sp.dirt === 'snow') s.push('snow');
+  s.push(sp.dirt === 'sand' ? 'sand' : 'wet'); s.push('soap');
+  if (sp.bubble) s.push('bubble');
+  if (sp.dirt === 'mud') s.push('scrub');
+  if (sp.splats) s.push('splat');
+  s.push('rinse');
+  if (sp.dry) s.push('dry');
+  if (sp.shine) s.push('shine');
+  if (sp.fuel) s.push('fuel');
+  return s;
+}
+const TOOL_ORDER = ['water', 'soap', 'brush', 'sponge', 'dryer', 'polish', 'pump', 'fuel'];
+// tool art sizes (local units while dragging) and where the working tip is (× size, from the art's centre)
+const TOOLS = {
+  water: { ds: 58, tip: [0, -0.78] }, soap: { ds: 58, tip: [-0.42, -0.72] }, brush: { ds: 76, tip: [0, -0.3] }, sponge: { ds: 46, tip: [0, 0] },
+  dryer: { ds: 58, tip: [-0.12, -0.92] }, polish: { ds: 54, tip: [0, -0.45] }, pump: { ds: 58, tip: [0, -0.9] }, fuel: { ds: 58, tip: [-0.06, -0.92] },
+};
+
+// =====================================================================
+// state
+// =====================================================================
+let W = 800, H = 600, land = true, U = 1;
+let level = 1, LV = LEVELS[0], state = 'menu', phase = 'in', phaseT = 0, t = 0, theme = 'day', free = false;
+let S = { x: 0, y: 0, w: 800, h: 600 }, tray = { x: 0, y: 0, w: 0, h: 0 }, slots = [], slotSz = 70, chips = [], chipS = 40;
+let VX = 400, VY = 500, VS = 1, hero = { x: 60, y: 400, r: 40 }, bubBox = null, qBox = null, beamH = 24;
+let car = null, queue = [], qCars = [], qi = 0, steps = [], si = 0, stepP = 0, stepInit = 0, measT = 0, stepBusy = false;
+let drag = null, dragId = null, floats = [], bubs = [], idleT = 0, hintA = null, wrongT = 0, heroMood = 'happy', heroT = 0, heroJump = 0;
+let tab = 'paint', freeN = 0, gotStars = 3, carsDone = 0, wx = [];
+let bgCan = null, bgKey = '';
+let gen = 0;
+function later(fn, ms) { const g = gen; setTimeout(() => { if (g === gen) fn(); }, ms); }
+
+// ---------- the dirt / foam / water layers (offscreen, in the vehicle's local coordinates) ----------
+function mkLayer() { const c = document.createElement('canvas'); c.width = LW * LK; c.height = LH * LK; const g = c.getContext('2d'); g.setTransform(LK, 0, 0, LK, -LX0 * LK, -LY0 * LK); return { c, g, fade: 1, fading: false }; }
+const dirtL = mkLayer(), foamL = mkLayer(), wetL = mkLayer();
+function clearLayer(L) { L.g.save(); L.g.setTransform(1, 0, 0, 1, 0, 0); L.g.clearRect(0, 0, L.c.width, L.c.height); L.g.restore(); L.fade = 1; L.fading = false; L.empty = true; }
+const RD = document.createElement('canvas'); RD.width = NC * 4; RD.height = NR * 4;
+const rdg = RD.getContext('2d', { willReadFrequently: true });
+function measure(L) {
+  rdg.clearRect(0, 0, RD.width, RD.height); rdg.drawImage(L.c, 0, 0, RD.width, RD.height);
+  const d = rdg.getImageData(0, 0, RD.width, RD.height).data, out = new Float32Array(NC * NR);
+  for (let cy = 0; cy < NR; cy++) for (let cx = 0; cx < NC; cx++) { let s = 0; for (let yy = 0; yy < 4; yy++) for (let xx = 0; xx < 4; xx++) s += d[((cy * 4 + yy) * RD.width + cx * 4 + xx) * 4 + 3]; out[cy * NC + cx] = s / (16 * 255); }
+  return out;
+}
+const sumA = m => { let s = 0; for (const v of m) s += v; return s; };
+function covered(L, d) { const m = measure(L); let n = 0; for (const i of d.cells) if (m[i] > 0.3) n++; return n / d.maskN; }
+function erase(L, lx, ly, r, a, ry = r) {
+  if (a <= 0 || L.empty) return;
+  const g = L.g; g.save(); g.globalCompositeOperation = 'destination-out'; g.translate(lx, ly); g.scale(1, ry / r);
+  const gr = g.createRadialGradient(0, 0, r * 0.25, 0, 0, r); gr.addColorStop(0, `rgba(0,0,0,${Math.min(1, a)})`); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = gr; g.beginPath(); g.arc(0, 0, r, 0, TAU); g.fill(); g.restore();
+}
+function foamBubble(g, bx, by, br) {
+  const gr = g.createRadialGradient(bx - br * 0.35, by - br * 0.35, br * 0.1, bx, by, br); gr.addColorStop(0, '#ffffff'); gr.addColorStop(0.7, '#f3f8ff'); gr.addColorStop(1, '#d3e3fa');
+  g.fillStyle = gr; g.beginPath(); g.arc(bx, by, br, 0, TAU); g.fill(); g.strokeStyle = 'rgba(140,175,230,.75)'; g.lineWidth = 1.1; g.stroke();
+  g.fillStyle = 'rgba(255,255,255,.95)'; g.beginPath(); g.arc(bx - br * 0.35, by - br * 0.35, br * 0.22, 0, TAU); g.fill();
+}
+function addFoam(lx, ly, n = 4, spread = 26) {
+  const g = foamL.g; foamL.empty = false; g.save(); g.clip(car.d.bodyP);
+  const gr = g.createRadialGradient(lx, ly, 4, lx, ly, spread + 8); gr.addColorStop(0, 'rgba(250,252,255,.8)'); gr.addColorStop(1, 'rgba(250,252,255,0)'); g.fillStyle = gr; g.beginPath(); g.arc(lx, ly, spread + 8, 0, TAU); g.fill();
+  for (let i = 0; i < n; i++) { const a = Math.random() * TAU, d = Math.random() * spread; foamBubble(g, lx + Math.cos(a) * d, ly + Math.sin(a) * d, 5 + Math.random() * 11); }
+  g.restore();
+}
+function addWet(lx, ly, r = 34) {
+  const g = wetL.g; wetL.empty = false; g.save(); g.clip(car.d.bodyP);
+  const gr = g.createRadialGradient(lx, ly, 4, lx, ly, r); gr.addColorStop(0, 'rgba(140,200,255,.36)'); gr.addColorStop(1, 'rgba(140,200,255,0)'); g.fillStyle = gr; g.beginPath(); g.arc(lx, ly, r, 0, TAU); g.fill();
+  for (let i = 0; i < 2; i++) {
+    const a = Math.random() * TAU, d = Math.random() * r * 0.9, dx = lx + Math.cos(a) * d, dy = ly + Math.sin(a) * d, s = 2.5 + Math.random() * 3.5;
+    g.fillStyle = 'rgba(120,180,240,.55)'; g.beginPath(); g.moveTo(dx, dy - s * 1.6); g.quadraticCurveTo(dx + s, dy, dx, dy + s); g.quadraticCurveTo(dx - s, dy, dx, dy - s * 1.6); g.fill();
+    g.fillStyle = 'rgba(255,255,255,.85)'; g.beginPath(); g.arc(dx - s * 0.3, dy - s * 0.2, s * 0.3, 0, TAU); g.fill();
+  }
+  g.restore();
+}
+function fillAll(kind) { for (const i of car.d.cells) { const [cx, cy] = cellXY(i); if (kind === 'foam') addFoam(cx, cy, 1, 8); else addWet(cx, cy, 16); } }
+
+// dirt generation
+const MUD = ['#8a5a32', '#7a4e2a', '#9b6a3c', '#6e4424', '#a5764a'];
+function blob(g, bx, by, r, col, k = 9) {
+  // a soft lumpy blob: smooth curves through jittered points
+  const pts = Array.from({ length: k }, (_, i) => { const a = i / k * TAU, q = r * (0.78 + Math.random() * 0.36); return [bx + Math.cos(a) * q, by + Math.sin(a) * q]; });
+  g.fillStyle = col; g.beginPath();
+  for (let i = 0; i <= k; i++) { const p0 = pts[i % k], p1 = pts[(i + 1) % k], mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2; if (i === 0) g.moveTo(mx, my); else g.quadraticCurveTo(p0[0], p0[1], mx, my); }
+  g.closePath(); g.fill();
+}
+function genDirt(c) {
+  clearLayer(dirtL); clearLayer(foamL); clearLayer(wetL);
+  const sp = c.sp, d = c.d, g = dirtL.g;
+  c.leaves = []; c.splats = [];
+  if (sp.dirt) {
+    dirtL.empty = false;
+    g.save();
+    if (sp.dirt !== 'snow') g.clip(d.bodyP);
+    const dens = sp.d ?? 0.6;
+    if (sp.dirt === 'mud') {
+      const cells = MG.shuffle(d.cells.slice()), lowFirst = cells.sort((a, b) => (b / NC) - (a / NC) + (Math.random() - 0.5) * 14);
+      const n = Math.round(d.maskN * dens * 0.42);
+      for (let k = 0; k < n; k++) {
+        const [bx, by] = cellXY(lowFirst[k % lowFirst.length]), r = 12 + Math.random() * 14;
+        const mc = MG.pick(MUD), ox = MG.rand(-6, 6), oy = MG.rand(-6, 6);
+        blob(g, bx + ox + 2, by + oy + 3, r, 'rgba(70,40,15,.45)');
+        blob(g, bx + ox, by + oy, r, mc);
+        g.fillStyle = 'rgba(255,230,190,.22)'; g.beginPath(); g.ellipse(bx + ox - r * 0.3, by + oy - r * 0.35, r * 0.35, r * 0.18, -0.5, 0, TAU); g.fill();
+        if (Math.random() < 0.35) { g.fillStyle = MG.pick(MUD); const dw = 3 + Math.random() * 4, dl = 8 + Math.random() * 16; g.beginPath(); g.roundRect(bx - dw / 2, by, dw, r * 0.6 + dl, dw / 2); g.fill(); }
+        for (let s = 0; s < 3; s++) { g.fillStyle = MG.pick(MUD); g.beginPath(); g.arc(bx + MG.rand(-r * 1.6, r * 1.6), by + MG.rand(-r * 1.4, r * 1.4), 1.5 + Math.random() * 3, 0, TAU); g.fill(); }
+      }
+    } else if (sp.dirt === 'sand') {
+      const n = Math.round(d.maskN * dens * 0.5);
+      for (let k = 0; k < n; k++) { const [bx, by] = cellXY(MG.pick(d.cells)); blob(g, bx, by, 14 + Math.random() * 12, MG.pick(['rgba(232,198,130,.95)', 'rgba(222,186,118,.95)', 'rgba(240,210,150,.95)']), 12); }
+      for (let k = 0; k < 500; k++) { const [bx, by] = cellXY(MG.pick(d.cells)); g.fillStyle = MG.pick(['#c9975a', '#fff1cf', '#b9874a', '#e8c890']); g.fillRect(bx + MG.rand(-8, 8), by + MG.rand(-8, 8), 1.6, 1.6); }
+      for (let k = 0; k < 3; k++) { const [bx, by] = cellXY(MG.pick(d.cells)); g.save(); g.translate(bx, by); g.rotate(Math.random() * TAU); if (k % 2) { g.fillStyle = '#ff9f80'; g.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, q = i % 2 ? 3 : 8; g.lineTo(Math.cos(a) * q, Math.sin(a) * q); } g.fill(); } else { g.fillStyle = '#fff4ea'; g.strokeStyle = '#d9a88a'; g.lineWidth = 1; g.beginPath(); g.moveTo(0, 6); g.arc(0, 6, 9, Math.PI * 1.15, Math.PI * 1.85); g.closePath(); g.fill(); g.stroke(); } g.restore(); }
+    } else if (sp.dirt === 'snow') {
+      g.save(); g.clip(d.bodyP);
+      const gr = g.createLinearGradient(0, d.top - 10, 0, -20); gr.addColorStop(0, 'rgba(255,255,255,.98)'); gr.addColorStop(0.7, 'rgba(240,247,255,.94)'); gr.addColorStop(1, 'rgba(230,242,255,.35)');
+      g.fillStyle = gr; g.fillRect(LX0, LY0, LW, LH); g.restore();
+      // puffy caps along the top edge
+      for (let cx = 0; cx < NC; cx++) {
+        let top = -1; for (let cy = 0; cy < NR; cy++) if (d.mask[cy * NC + cx]) { top = cy; break; }
+        if (top < 0) continue;
+        const bx = LX0 + (cx + 0.5) * GC, by = LY0 + top * GC + 2;
+        g.fillStyle = '#d6e6f7'; g.beginPath(); g.arc(bx + 2, by + 3, 11 + Math.random() * 4, 0, TAU); g.fill();
+        g.fillStyle = '#ffffff'; g.beginPath(); g.arc(bx, by, 10 + Math.random() * 5, 0, TAU); g.fill();
+      }
+      for (let k = 0; k < 40; k++) { const [bx, by] = cellXY(MG.pick(d.cells)); g.fillStyle = 'rgba(160,200,240,.7)'; g.beginPath(); g.arc(bx + MG.rand(-6, 6), by + MG.rand(-6, 6), 1.4, 0, TAU); g.fill(); }
+    }
+    g.restore();
+  }
+  for (let k = 0; k < (sp.leaves || 0); k++) { const [lx, ly] = cellXY(MG.pick(d.cells)); c.leaves.push({ x: lx + MG.rand(-5, 5), y: ly + MG.rand(-5, 5), rot: Math.random() * TAU, s: 10 + Math.random() * 6, col: MG.pick(['#ff9a3c', '#ffc93a', '#e8643a', '#d9a03a', '#c8d040']), fly: 0, vx: 0, vy: 0, vr: 0 }); }
+  const SPL = ['#ff4d8d', '#3fb8ff', '#ffcc00', '#7a52f0', '#2fd27a', '#ff7a2a'];
+  for (let k = 0; k < (sp.splats || 0); k++) {
+    let best = null; for (let tr = 0; tr < 12; tr++) { const [lx, ly] = cellXY(MG.pick(d.cells)); const dd = Math.min(999, ...c.splats.map(s => Math.hypot(s.x - lx, s.y - ly))); if (!best || dd > best.dd) best = { lx, ly, dd }; }
+    const r = 16 + Math.random() * 9, pts = Array.from({ length: 12 }, (_, i) => r * (i % 2 ? 0.62 + Math.random() * 0.2 : 0.95 + Math.random() * 0.35));
+    c.splats.push({ x: best.lx, y: best.ly, r, col: SPL[k % SPL.length], hp: 1, pts, dots: Array.from({ length: 4 }, () => [MG.rand(-r * 1.7, r * 1.7), MG.rand(-r * 1.5, r * 1.5), 2 + Math.random() * 3]) });
+  }
+  c.leaves0 = c.leaves.length; c.splat0 = c.splats.length;
+  c.dirt0 = sp.dirt ? sumA(measure(dirtL)) : 0;
+}
+
+// =====================================================================
+// layout
+// =====================================================================
+MG.fit(cv, (sw, sh) => {
+  const cs = getComputedStyle(cv.parentElement);
+  const w = Math.max(300, Math.round(sw - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 6));
+  const h = Math.max(300, Math.round(sh - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 6));
+  return [w, h];
+});
+cv.onfit = () => layout();
+addEventListener('mg-big', () => layout());
+function trayItems() {
+  if (phase === 'custom') {
+    const tabs = ['paint', 'sticker', 'wheel', 'horn'].map(id => ({ kind: 'tab', id }));
+    const list = tab === 'paint' ? COLS.map(c => ({ kind: 'col', id: c[0] })) : tab === 'sticker' ? STICKERS.map(id => ({ kind: 'stk', id })) : tab === 'wheel' ? WHEELS.map(id => ({ kind: 'whl', id })) : HORNS.map(id => ({ kind: 'horn', id }));
+    return { tabs, list };
+  }
+  const need = free ? new Set(TOOL_ORDER) : new Set(steps.map(s => STEP[s].tool).filter(Boolean));
+  const list = TOOL_ORDER.filter(id => need.has(id)).map(id => ({ kind: 'tool', id }));
+  if (free) list.push({ kind: 'tocustom', id: 'tocustom' });
+  return { list };
+}
+function layout() {
+  W = cv.lw; H = cv.lh; land = W > H * 1.05; U = clamp(Math.min(W, H) / 420, 0.8, 1.9);
+  const g = 8, it = trayItems();
+  slots = [];
+  if (phase === 'custom') {
+    const list = it.list, half = Math.ceil(list.length / 2);
+    if (land) {
+      const rows = 2 + half + 1;
+      slotSz = Math.min((H - 2 * g - 16) / rows, 120 * U, W * 0.1);
+      const tw = 2 * slotSz + 16; tray = { x: W - tw - g, y: g, w: tw, h: H - 2 * g };
+      const y0 = tray.y + (tray.h - rows * slotSz) / 2, x0 = tray.x + 8;
+      it.tabs.forEach((s, i) => slots.push({ ...s, x: x0 + (i % 2) * slotSz, y: y0 + Math.floor(i / 2) * slotSz, w: slotSz, h: slotSz }));
+      list.forEach((s, i) => slots.push({ ...s, x: x0 + (i % 2) * slotSz, y: y0 + (2 + Math.floor(i / 2)) * slotSz + 6, w: slotSz, h: slotSz }));
+      slots.push({ kind: 'go', id: 'go', x: x0, y: y0 + (rows - 1) * slotSz + 10, w: slotSz * 2, h: slotSz - 4 });
+      S = { x: 0, y: 0, w: tray.x - g, h: H };
+    } else {
+      const per = Math.max(5, half);
+      slotSz = Math.min((W - 2 * g - 16) / per, H * 0.085, 110 * U);
+      const th = 3 * slotSz + 22; tray = { x: g, y: H - th - g, w: W - 2 * g, h: th };
+      const tabW = slotSz, goW = Math.min(slotSz * 2.4, tray.w - 16 - 4 * tabW - 12);
+      const rowW = 4 * tabW + 12 + goW, x0 = tray.x + (tray.w - rowW) / 2;
+      it.tabs.forEach((s, i) => slots.push({ ...s, x: x0 + i * tabW, y: tray.y + 8, w: tabW, h: slotSz }));
+      slots.push({ kind: 'go', id: 'go', x: x0 + 4 * tabW + 12, y: tray.y + 8, w: goW, h: slotSz });
+      for (let r = 0; r < 2; r++) {
+        const ids = list.slice(r * half, r * half + half), xx = tray.x + (tray.w - ids.length * slotSz) / 2;
+        ids.forEach((s, k) => slots.push({ ...s, x: xx + k * slotSz, y: tray.y + 14 + (r + 1) * slotSz, w: slotSz, h: slotSz }));
+      }
+      S = { x: 0, y: 0, w: W, h: tray.y - g };
+    }
+  } else {
+    const list = it.list, n = Math.max(1, list.length);
+    if (land) {
+      const cols = n <= 5 ? 1 : 2, rows = Math.ceil(n / cols);
+      slotSz = Math.min((H - 2 * g - 16) / rows, 128 * U, W * 0.12);
+      const tw = cols * slotSz + 16; tray = { x: W - tw - g, y: g, w: tw, h: H - 2 * g };
+      const y0 = tray.y + (tray.h - rows * slotSz) / 2;
+      list.forEach((s, i) => slots.push({ ...s, x: tray.x + 8 + (i % cols) * slotSz, y: y0 + Math.floor(i / cols) * slotSz, w: slotSz, h: slotSz }));
+      S = { x: 0, y: 0, w: tray.x - g, h: H };
+    } else {
+      const rows = n <= 6 ? 1 : 2, per = Math.ceil(n / rows);
+      slotSz = Math.min((W - 2 * g - 16) / per, H * 0.12, 120 * U);
+      const th = rows * slotSz + 16; tray = { x: g, y: H - th - g, w: W - 2 * g, h: th };
+      for (let r = 0; r < rows; r++) {
+        const ids = list.slice(r * per, r * per + per), x0 = tray.x + (tray.w - ids.length * slotSz) / 2;
+        ids.forEach((s, k) => slots.push({ ...s, x: x0 + k * slotSz, y: tray.y + 8 + r * slotSz, w: slotSz, h: slotSz }));
+      }
+      S = { x: 0, y: 0, w: W, h: tray.y - g };
+    }
+  }
+  // the scene: roof beam with step chips, then the bay with the vehicle on the floor
+  beamH = clamp(20 * U, 16, 36);
+  const n = Math.max(1, steps.length);
+  chipS = Math.min(clamp(40 * U, 32, 62), (S.w - 24) / (n * 1.18));
+  const chipY = S.y + beamH + 8, topBand = chipY + chipS + 10;
+  chips = steps.map((s, i) => ({ x: S.x + S.w / 2 + (i - (n - 1) / 2) * chipS * 1.18, y: chipY + chipS / 2 }));
+  if (!land) {
+    const rowH = clamp(S.h * 0.28, 80, 300), rowB = topBand + rowH;
+    VS = Math.min(S.w * 0.97 / 346, (S.y + S.h - rowB - 20) / 262);
+    const free2 = S.y + S.h - rowB - 250 * VS;
+    VY = Math.min(S.y + S.h - 12, rowB + 236 * VS + free2 * 0.45);
+    VX = S.x + S.w / 2;
+    hero.r = clamp(rowH * 0.26, 22, 56); hero.x = S.x + hero.r * 1.5; hero.y = rowB - hero.r * 1.05;
+    const bw = Math.min(S.w * 0.5, rowH * 1.9), bh = rowH * 0.86;
+    bubBox = { x: S.x + S.w - bw - 10, y: topBand + (rowH - bh) / 2, w: bw, h: bh };
+    qBox = { x: hero.x + hero.r * 1.5, y: topBand, w: bubBox.x - hero.x - hero.r * 1.5 - 6, h: rowH, row: true };
+  } else {
+    VY = S.y + S.h - clamp(S.h * 0.07, 12, 60);
+    VS = Math.min(S.w * 0.72 / 350, (VY - topBand - 10) / 262);
+    VX = S.x + S.w / 2 + S.w * 0.03;
+    const margin = (S.w - 350 * VS) / 2;
+    hero.r = clamp(Math.min(margin * 0.34, S.h * 0.09), 22, 70); hero.x = S.x + Math.max(hero.r * 1.3, margin * 0.5); hero.y = VY - hero.r * 1.0;
+    const bh = clamp(S.h * 0.24, 80, 230), bw = Math.min(bh * 1.5, S.w * 0.36);
+    bubBox = { x: S.x + S.w - bw - clamp(30 * U, 20, 50), y: topBand + 4, w: bw, h: bh };
+    qBox = { x: S.x + 6, y: topBand, w: margin - 12, h: hero.y - hero.r * 1.3 - topBand, row: false };
+  }
+  bgKey = '';
+}
+
+// =====================================================================
+// game flow
+// =====================================================================
+function makeCar(sp) {
+  const d = VD[sp.v];
+  return { sp, d, col: COL[sp.col] || d.col, wheel: 'basic', horn: d.horn, stickers: [], roll: 0, ox: 0, vx: 0, bob: 0, vb: 0,
+    flat: sp.tyre ? d.flat : -1, inflate: sp.tyre ? 0 : 1, fuel: sp.fuel ? 0.08 : 1, cap: 0, leaves: [], splats: [], shine: new Float32Array(NC * NR),
+    popped: 0, paint: null, honk: 0, laugh: 0, mood: 'meh', look: 0, clean: false };
+}
+function startLevel(n) {
+  gen++; level = n; LV = LEVELS[n - 1]; state = 'play'; MG.hide(); MG.fx.clear();
+  free = LV.ty === 'free'; theme = free ? 'day' : themeOf(LV);
+  queue = free ? [randomSpec()] : LV.cars.map(c => ({ ...c }));
+  qCars = queue.map(makeCar); qi = 0; freeN = 0; gotStars = 3; carsDone = 0; floats = []; bubs = []; drag = null;
+  wx = [];
+  startCar();
+  showIntro();
+}
+function startCar() {
+  car = qCars[qi]; genDirt(car);
+  steps = free ? [] : stepsFor(car.sp); si = 0; stepP = 0; stepBusy = false;
+  phase = 'in'; phaseT = 0; car.ox = -1; reqWas = false; car.mood = 'meh'; idleT = 0; hintA = null; tab = 'paint';
+  layout(); car.ox = -(VX + 200 * VS); snd('engine');
+  hud();
+}
+function hud() {
+  MG.stat('level', `第 ${level} 關`);
+  if (free) MG.stat('info', `🚗 ×${freeN}`);
+  else if (queue.length > 1) MG.stat('info', `🚗 ${qi + 1}/${queue.length}`);
+  else MG.stat('info', phase === 'custom' ? '🎨' : `🧽 ${Math.min(si + 1, steps.length)}/${steps.length}`);
+}
+const curStep = () => phase === 'wash' && si < steps.length ? steps[si] : null;
+const curTool = () => { const s = curStep(); return s ? STEP[s].tool : null; };
+function beginStep() {
+  stepP = 0; stepBusy = false; wrongT = 0; idleT = 0; hintA = null;
+  const s = curStep(); if (!s) return;
+  if (s === 'rinse') stepInit = sumA(measure(foamL));
+  else if (s === 'dry') stepInit = sumA(measure(wetL));
+  else if (s === 'snow' || s === 'sand' || s === 'scrub') stepInit = sumA(measure(dirtL));
+  if (s === 'bubble') { car.popped = 0; }
+  if (s === 'fuel') car.cap = 0.001;
+  hud();
+}
+function progressOf(s) {
+  const c = car;
+  switch (s) {
+    case 'tyre': return c.inflate;
+    case 'fuel': return clamp((c.fuel - 0.08) / 0.92, 0, 1);
+    case 'leaves': return c.leaves0 ? 1 - c.leaves.filter(l => !l.fly).length / c.leaves0 : 1;
+    case 'splat': return c.splat0 ? 1 - c.splats.reduce((a, q) => a + Math.max(0, q.hp), 0) / c.splat0 : 1;
+    case 'bubble': return c.popped / 8;
+    case 'shine': { let n = 0; for (const i of c.d.cells) if (c.shine[i] >= 1) n++; return n / c.d.maskN; }
+    case 'wet': return covered(wetL, c.d);
+    case 'soap': return covered(foamL, c.d);
+    case 'rinse': return stepInit > 0.5 ? 1 - sumA(measure(foamL)) / stepInit : 1;
+    case 'dry': return stepInit > 0.5 ? 1 - sumA(measure(wetL)) / stepInit : 1;
+    case 'snow': case 'sand': case 'scrub': return stepInit > 0.5 ? 1 - sumA(measure(dirtL)) / stepInit : 1;
+  }
+  return 1;
+}
+const THR = { tyre: 1, fuel: 1, leaves: 1, splat: 0.97, bubble: 1, shine: 0.86, wet: 0.86, soap: 0.86, rinse: 0.88, dry: 0.88, snow: 0.86, sand: 0.86, scrub: 0.86 };
+function fadeOut(L) { if (!L.empty) L.fading = true; }
+function completeStep() {
+  const s = curStep(); if (!s || stepBusy) return;
+  stepBusy = true; stepP = 1;
+  if (s === 'snow' || s === 'sand' || s === 'scrub') fadeOut(dirtL);
+  if (s === 'rinse') fadeOut(foamL);
+  if (s === 'dry') fadeOut(wetL);
+  if (s === 'wet') fillAll('wet');
+  if (s === 'soap') fillAll('foam');
+  if (s === 'leaves') car.leaves.forEach(l => blowLeaf(l, 0, -60));
+  if (s === 'splat') car.splats.forEach(q => q.hp = Math.min(q.hp, 0));
+  if (s === 'shine') { car.shine.fill(1); MG.sfx('sparkle'); }
+  if (s === 'tyre') car.inflate = 1;
+  if (s === 'fuel') car.fuel = 1;
+  const n = si + 1;
+  MG.sfx('match', n); mgs('sparkle');
+  if (['scrub', 'rinse', 'dry', 'shine', 'splat', 'sand', 'snow'].includes(s)) later(() => snd('squeak'), 150);
+  const p = toScreen(0, -120);
+  say(s === 'tyre' ? 'Fixed! 🛞' : s === 'fuel' ? MG.WORDS.full + ' ⛽' : MG.praise(Math.min(5, n)), p.x, p.y - 40 * VS, '#ff6a00');
+  MG.fx.burst(p.x, p.y, { n: 18, colors: ['#ffd23f', '#fff', '#8fd8ff'], shape: 'star', speed: 240, up: 120, size: 6 * U });
+  heroMood = 'yay'; heroT = 1; heroJump = 1; car.laugh = 0.8; car.vb = -120;
+  drag = drag && drag.kind === 'tool' ? drag : drag;
+  later(() => {
+    si++; stepBusy = false;
+    if (si >= steps.length) { car.clean = true; startCustom(); }
+    else beginStep();
+  }, 650);
+}
+function startCustom() {
+  phase = 'custom'; phaseT = 0; drag = null; tab = car.sp.req ? 'paint' : 'paint'; car.mood = 'happy';
+  layout(); hud(); mgs('yay'); snd('squeak');
+  const p = toScreen(0, -110); MG.fx.burst(p.x, p.y, { n: 30, colors: ['#ffd23f', '#fff', '#8fd8ff', '#ff8fc0'], shape: 'star', speed: 300, up: 160, size: 7 * U });
+  say('Clean! ✨', p.x, p.y - 50 * VS, '#2f9ae0');
+  if (!MG.store.get('carwash.seen.custom', false)) {
+    MG.store.set('carwash.seen.custom', true);
+    later(() => MG.panel({ title: '🎨 打扮時間', html: `<p>洗得亮晶晶了！現在可以幫車子<b>換顏色、貼貼紙、換輪子、換喇叭聲</b>。</p><p>上面四個按鈕切換：🎨 顏色、⭐ 貼紙、🛞 輪子、📯 喇叭。貼紙可以<b>拖到車上</b>，也可以點一下自動貼上；再點車上的貼紙就會撕掉。</p><p>弄好了按綠色的 <b>➜</b>，車子就會開開心心地出發！</p>`, buttons: [{ label: '好！', on: () => MG.hide() }] }), 500);
+  }
+}
+function reqState(c) {
+  const r = c.sp.req; if (!r) return null;
+  const n = c.stickers.filter(s => s.id === r.s).length;
+  const col = c.paint ? c.paint.to : c.col;
+  return { c: col === COL[r.c], s: n >= r.n, n, w: !r.w || c.wheel === r.w, all: col === COL[r.c] && n >= r.n && (!r.w || c.wheel === r.w) };
+}
+function driveOff() {
+  if (phase !== 'custom') return;
+  const rq = reqState(car);
+  if (rq && !rq.all) gotStars = Math.min(gotStars, 2);
+  if (rq && rq.all) { say(MG.WORDS.perfect, toScreen(0, -150).x, toScreen(0, -150).y, '#ff6a00'); mgs('perfect'); }
+  phase = 'out'; phaseT = 0; car.vx = 0; car.laugh = 2; drag = null;
+  snd(car.horn); later(() => snd('vroom'), 500);
+  heroMood = 'yay'; heroT = 1.6; heroJump = 1;
+  layout(); hud();
+}
+function carGone() {
+  carsDone++;
+  if (free) { freeN++; queue = [randomSpec()]; qCars = [makeCar(queue[0])]; qi = 0; startCar(); return; }
+  qi++;
+  if (qi < queue.length) { startCar(); return; }
+  win();
+}
+const NEWS = {
+  basic: ['🚿 歡迎來到噗噗洗車場', '<p>髒髒的車子開進來了！上面的<b>小圓圈</b>會告訴你現在要用哪一個工具，下面工具箱裡<b>會跳的那一個</b>就是了。</p><p>按住工具，<b>拖到車子上抹一抹</b>：先噴水、再抹泡泡、用大刷子刷一刷、最後沖乾淨。不會失敗，也不用計時，慢慢洗 ^_^</p>'],
+  dry: ['💨 吹乾', '<p>沖乾淨以後，用<b>吹風機</b>把車上的水珠吹乾！</p>'],
+  paint: ['🎨 照圖片打扮', '<p>這位客人有想要的樣子！看看右上角的<b>泡泡圖片</b>：要什麼顏色、貼幾張什麼貼紙。</p><p>洗好以後照著圖片打扮，客人會超開心，拿到 ⭐⭐⭐！</p>'],
+  sand: ['🏖️ 沙子', '<p>車子從海邊回來，全身都是沙子！用<b>水管</b>噴一噴，沙子就會被沖掉。</p>'],
+  tyre: ['🛞 爆胎了', '<p>有一個輪子扁扁的！把<b>打氣筒</b>拖到扁扁的輪子上，<b>按住不動</b>，輪子就會鼓起來。</p>'],
+  leaves: ['🍂 落葉', '<p>車上掉滿了葉子！先用<b>吹風機</b>把葉子吹走。</p>'],
+  queue: ['🚦 排隊洗車', '<p>今天有好幾台車在排隊！洗好一台開走，下一台就會開進來。</p>'],
+  snow: ['❄️ 下雪了', '<p>車子被雪蓋住了！先用<b>吹風機</b>的暖風把雪融掉。</p>'],
+  bubble: ['🫧 泡泡派對', '<p>抹完泡泡以後，車子會冒出好多<b>大泡泡</b>！用手指<b>點破 8 個泡泡</b>吧。</p>'],
+  fuel: ['⛽ 加油', '<p>車子肚子餓了！把<b>加油槍</b>拖到車子的油箱蓋上，<b>按住</b>直到儀表變綠色。</p>'],
+  splat: ['🖍️ 噴漆', '<p>車子被彩色噴漆弄花了！用<b>海綿</b>在彩色的地方<b>來回擦一擦</b>，就會擦掉。</p>'],
+  shine: ['✨ 亮晶晶', '<p>最後用<b>打蠟布</b>把整台車抹一遍，車子會閃閃發亮！</p>'],
+  free: ['🎈 自由洗車場', '<p>所有工具都可以用，想洗哪裡就洗哪裡！</p><p>洗夠了就按<b>調色盤</b>去打扮，打扮好按 ➜ 讓車子開走，下一台車就會來。想洗幾台就洗幾台 ^_^</p>'],
+};
+function showIntro() {
+  if (state !== 'play') return;
+  const keys = [];
+  if (!MG.store.get('carwash.seen.basic', false)) keys.push('basic');
+  const has = k => queue.some(s => k === 'dry' ? s.dry : k === 'paint' ? s.req : k === 'sand' || k === 'snow' ? s.dirt === k : k === 'splat' ? s.splats : s[k]);
+  for (const k of ['dry', 'paint', 'sand', 'tyre', 'leaves', 'snow', 'bubble', 'fuel', 'splat', 'shine']) if (!free && has(k) && !MG.store.get('carwash.seen.' + k, false)) keys.push(k);
+  if (queue.length > 1 && !MG.store.get('carwash.seen.queue', false)) keys.push('queue');
+  if (free && !MG.store.get('carwash.seen.free', false)) keys.push('free');
+  if (keys.length) {
+    keys.forEach(k => MG.store.set('carwash.seen.' + k, true));
+    MG.panel({ title: keys.map(k => NEWS[k][0]).join('＋'), html: keys.map(k => NEWS[k][1]).join(''), buttons: [{ label: '開始洗車', on: () => MG.hide() }] });
+  }
+}
+function win() {
+  state = 'over'; phase = 'won'; MG.sfx('win'); later(() => MG.sfx('yay'), 260);
+  const st = MG.store.get('carwash.stars', {}); st[level] = Math.max(st[level] || 0, gotStars); MG.store.set('carwash.stars', st);
+  const done = Object.keys(st).length; MG.record('carwash', done);
+  MG.fx.burst(S.x + S.w / 2, S.h * 0.4, { n: 50, colors: ['#ffd23f', '#ff8fc0', '#8fd8ff', '#5ccf6a', '#fff'], shape: 'star', speed: 320, up: 180, size: 7 * U });
+  const nx = level < LEVELS.length, rq = queue.some(s => s.req);
+  later(() => MG.panel({
+    title: queue.length > 1 ? '大家都洗好囉！' : '洗好囉！',
+    html: `<div class="cw-stars">${'⭐'.repeat(gotStars)}${'☆'.repeat(3 - gotStars)}</div><p>${queue.length > 1 ? `${queue.length} 台車都` : `${VD[queue[0].v].nm}`}洗得亮晶晶，開開心心地出發了 ^_^</p>` +
+      (rq && gotStars < 3 ? '<div class="cw-box"><p>💡 照著客人泡泡裡的圖片打扮，就可以拿到 3 顆星喔！</p></div>' : '') +
+      `<p>已經完成 <b>${done}</b> / ${LEVELS.length} 關</p>` + (nx ? `<p>下一關：${lvIcon(level + 1)} ${LEVELS[level].nm}</p>` : ''),
+    buttons: [
+      ...(nx ? [{ label: '下一關', on: () => { MG.store.set('carwash.pickLevel', level + 1); startLevel(level + 1); } }] : []),
+      { label: '再玩一次', alt: nx, on: () => startLevel(level) },
+      { label: '選關卡', alt: true, on: menu },
+    ],
+  }), 700);
+}
+
+// =====================================================================
+// coordinates
+// =====================================================================
+const toLocal = (px, py) => ({ x: (px - VX - car.ox) / VS, y: (py - VY - car.bob) / VS });
+const toScreen = (lx, ly) => ({ x: VX + car.ox + lx * VS, y: VY + car.bob + ly * VS });
+function wheelXY(i) { const [wx0, r] = car.d.wheels[i]; return toScreen(wx0, -r); }
+function capXY() { return toScreen(car.d.cap[0], car.d.cap[1]); }
+function tipOf(dr) { return { x: dr.x, y: dr.y - dr.off }; }
+
+// =====================================================================
+// tools at work
+// =====================================================================
+function blowLeaf(l, fx, fy) { if (l.fly) return; const a = Math.atan2(l.y - fy, l.x - fx); l.fly = 0.001; l.vx = Math.cos(a) * 260 + MG.rand(-60, 60); l.vy = Math.sin(a) * 200 - 220; l.vr = MG.rand(-9, 9); snd('leaf', 120); }
+function work(dt) {
+  if (!drag || drag.kind !== 'tool' || phase !== 'wash') { if (drag) drag.on = false; return; }
+  const tp = tipOf(drag), L = toLocal(tp.x, tp.y), id = drag.id, mv = drag.mv; drag.mv = 0;
+  const near = L.x > LX0 - 10 && L.x < LX0 + LW + 10 && L.y > LY0 && L.y < 20;
+  drag.on = near; car.look = clamp((L.x - car.d.eye[0]) / 120, -1, 1);
+  if (!near) return;
+  const prev = drag.pl && Math.hypot(drag.pl.x - L.x, drag.pl.y - L.y) < 400 ? drag.pl : L; drag.pl = L;
+  // slow frames: stamp the tool all along the path the finger moved, so nothing is skipped
+  const n = clamp(Math.ceil(Math.hypot(L.x - prev.x, L.y - prev.y) / 14), 1, 14);
+  for (let k = 1; k <= n; k++) { const q = { x: lerp(prev.x, L.x, k / n), y: lerp(prev.y, L.y, k / n) }; effect(id, q, toScreen(q.x, q.y), dt / n, mv / n, k === n); }
+  const s = curStep(), onCar = onBody(car.d, L.x, L.y);
+  // a tool that isn't the one for this step: after a moment, point at the right one
+  const want = curTool();
+  if (s && want && id !== want && onCar) { wrongT += dt; if (wrongT > 1.1) { wrongT = -2.5; const sl = slots.find(q => q.kind === 'tool' && q.id === want); if (sl) { say('💡', sl.x + sl.w / 2, sl.y - 6, '#ff9f1c'); sl.pulse = 1.6; } mgs('flip'); } }
+  idleT = 0; hintA = null;
+}
+function effect(id, L, tp, dt, mv, last) {
+  const sp = car.sp, rinsed = steps.indexOf('rinse') >= 0 && si > steps.indexOf('rinse');
+  const onCar = onBody(car.d, L.x, L.y);
+  if (id === 'water') {
+    erase(dirtL, L.x, L.y, 36, dt * (sp.dirt === 'sand' ? 5 : sp.dirt === 'snow' ? 1.6 : 0.35));
+    erase(foamL, L.x, L.y, 38, dt * 6);
+    if (!rinsed) addWet(L.x, L.y);
+    for (const l of car.leaves) if (!l.fly && Math.hypot(l.x - L.x, l.y - L.y) < 34) blowLeaf(l, L.x, L.y - 40);
+    for (const q of car.splats) if (Math.hypot(q.x - L.x, q.y - L.y) < q.r + 20) q.hp -= dt * 0.12;
+    if (last && Math.random() < 0.6) MG.fx.burst(tp.x, tp.y, { n: 2, colors: ['#8fd0ff', '#d9f0ff', '#5fb0f0'], speed: 140 * U, up: 30, size: 3.2 * U, life: 0.5, grav: 700 });
+    last && snd('spray', 150);
+  } else if (id === 'soap') {
+    if (!rinsed && onCar) { addFoam(L.x, L.y, last ? 4 : 2); if (last && Math.random() < 0.15) spawnBub(tp.x, tp.y, false); }
+    last && snd('foam', 140);
+  } else if (id === 'brush') {
+    erase(dirtL, L.x, L.y, 32, dt * (sp.dirt === 'snow' ? 1.5 : 6), 60);
+    erase(foamL, L.x, L.y, 30, dt * 2.2, 56);   // scrubbing thins the foam so the clean paint shows through
+    for (const q of car.splats) if (Math.abs(q.x - L.x) < q.r + 26 && Math.abs(q.y - L.y) < q.r + 50) q.hp -= dt * 0.9 + mv * 0.002;
+    for (const l of car.leaves) if (!l.fly && Math.abs(l.x - L.x) < 34 && Math.abs(l.y - L.y) < 60) blowLeaf(l, L.x, L.y);
+    drag.spin = (drag.spin || 0) + dt * 14;
+    if (sp.dirt === 'mud' && !dirtL.empty && Math.random() < 0.35) MG.fx.burst(tp.x, tp.y, { n: 2, colors: MUD, speed: 160 * U, up: 40, size: 3 * U, life: 0.5, grav: 800 });
+    if (onCar) { last && snd('brush', 170); car.laugh = Math.max(car.laugh, 0.3); }
+  } else if (id === 'sponge') {
+    erase(dirtL, L.x, L.y, 30, dt * 4); erase(foamL, L.x, L.y, 26, dt * 1.6);
+    for (const q of car.splats) if (Math.hypot(q.x - L.x, q.y - L.y) < q.r + 22) q.hp -= dt * 1.5 + mv * 0.004 / U;
+    if (onCar) { last && snd('sponge', 160); car.laugh = Math.max(car.laugh, 0.3); }
+  } else if (id === 'dryer') {
+    erase(wetL, L.x, L.y, 46, dt * 5);
+    erase(dirtL, L.x, L.y, 44, dt * (sp.dirt === 'snow' ? 3.6 : 0));
+    for (const l of car.leaves) if (!l.fly && Math.hypot(l.x - L.x, l.y - L.y) < 80) blowLeaf(l, L.x, L.y + 30);
+    if (last && Math.random() < 0.4) MG.fx.burst(tp.x, tp.y, { n: 1, colors: sp.dirt === 'snow' && !dirtL.empty ? ['#ffffff', '#cfe6ff'] : ['rgba(255,255,255,.8)'], angle: -Math.PI / 2, spread: 1.4, speed: 200 * U, up: 0, size: 3 * U, life: 0.45, grav: 0 });
+    last && snd('dryer', 180);
+  } else if (id === 'polish') {
+    if (onCar) {
+      for (const i of car.d.cells) { const [cx, cy] = cellXY(i); if (Math.hypot(cx - L.x, cy - L.y) < 32) car.shine[i] = Math.min(1, car.shine[i] + dt * 5); }
+      if (last && Math.random() < 0.3) MG.fx.burst(tp.x, tp.y, { n: 1, colors: ['#fff', '#ffe680'], shape: 'star', speed: 90 * U, up: 40, size: 5 * U, life: 0.6, grav: 0 });
+      last && snd('polish', 120);
+    }
+  } else if (id === 'pump') {
+    if (car.flat >= 0 && car.inflate < 1) {
+      const [wx0, r] = car.d.wheels[car.flat];
+      if (Math.hypot(L.x - wx0, L.y + r) < r + 30) { car.inflate = Math.min(1, car.inflate + dt / 1.6); last && snd('pump', 320); if (last && Math.random() < 0.3) MG.fx.burst(tp.x, tp.y, { n: 1, colors: ['#fff'], speed: 90, up: 30, size: 4 * U, life: 0.4 }); }
+    }
+  } else if (id === 'fuel') {
+    const [cx0, cy0] = car.d.cap;
+    if (car.fuel < 1 && Math.hypot(L.x - cx0, L.y - cy0) < 34) { car.cap = 1; car.fuel = Math.min(1, car.fuel + dt / 2.2); last && snd('glug', 380); }
+  }
+}
+function spawnBub(px, py, goal) { if (bubs.length > 14) return; bubs.push({ x: px + MG.rand(-30, 30) * U, y: py, r: (goal ? MG.rand(20, 30) : MG.rand(8, 14)) * U * (MG.big ? 1.15 : 1), vy: -MG.rand(30, 60) * U, ph: Math.random() * 6, goal, life: goal ? 12 : 4, pop: 0 }); }
+
+// =====================================================================
+// update
+// =====================================================================
+let measN = 0;
+function update(dt) {
+  t += dt; MG.fx.step(dt);
+  for (const f of floats) f.life -= dt; floats = floats.filter(f => f.life > 0);
+  heroT = Math.max(0, heroT - dt); if (!heroT) heroMood = 'happy'; heroJump = Math.max(0, heroJump - dt * 2.2);
+  for (const L of [dirtL, foamL, wetL]) if (L.fading) { L.fade -= dt * 2.6; if (L.fade <= 0) clearLayer(L); }
+  for (const b of bubs) { b.y += b.vy * dt; b.x += Math.sin(t * 2 + b.ph) * 18 * dt; b.life -= dt; if (b.pop) b.pop += dt * 5; }
+  bubs = bubs.filter(b => b.life > 0 && b.y > -40 && b.pop < 1);
+  updWeather(dt);
+  if (state !== 'play' || !car) return;
+  phaseT += dt;
+  // springy bounce
+  car.vb += (-car.bob * 180 - car.vb * 10) * dt; car.bob += car.vb * dt;
+  car.laugh = Math.max(0, car.laugh - dt); car.honk = Math.max(0, car.honk - dt);
+  for (const l of car.leaves) if (l.fly) { l.fly += dt; l.x += l.vx * dt; l.y += l.vy * dt; l.vy += 300 * dt; l.rot += l.vr * dt; }
+  car.leaves = car.leaves.filter(l => !l.fly || l.fly < 1.4);
+  if (car.paint) { car.paint.k += dt / 0.9; if (car.paint.k >= 1) { car.col = car.paint.to; car.paint = null; } }
+  if (car.cap > 0 && car.fuel >= 1) car.cap = Math.max(0, car.cap - dt * 0.6);
+  if (phase === 'in') {
+    const k = clamp(phaseT / 1.6, 0, 1), e = 1 - Math.pow(1 - k, 3), nx = -(VX + 200 * VS) * (1 - e);
+    car.roll += (nx - car.ox) / VS; car.ox = nx;
+    if (car.flat >= 0 && car.inflate < 1) car.bob = Math.abs(Math.sin(phaseT * 9)) * -4 * VS * (1 - k);
+    if (k >= 1) { phase = 'wash'; phaseT = 0; car.vb = -80; snd(car.horn); car.honk = 0.6; if (!free) beginStep(); hud(); }
+  } else if (phase === 'wash') {
+    work(dt);
+    const s = curStep();
+    if (s === 'bubble') { if (bubs.filter(b => b.goal && !b.pop).length < 5 && Math.random() < dt * 3) { const p = toScreen(MG.rand(-120, 120), MG.rand(-160, -60)); spawnBub(p.x, p.y, true); } }
+    measT -= dt;
+    if (s && !stepBusy && measT <= 0) {
+      measT = (s === 'wet' || s === 'soap' || s === 'rinse' || s === 'dry' || s === 'snow' || s === 'sand' || s === 'scrub') ? 0.18 : 0.05;
+      if ((drag && drag.on) || s === 'bubble' || ++measN % 6 === 0) { stepP = progressOf(s); if (stepP >= THR[s]) completeStep(); }
+    }
+    if (free) freeAuto();
+    if (!drag) { idleT += dt; if (idleT > 4.5 && !hintA && s) showHint(); }
+    if (hintA) { hintA.t += dt; if (hintA.t > 2.6) { hintA = null; idleT = 2; } }
+    car.mood = s === 'tyre' ? 'sad' : (si === 0 && !free && car.sp.dirt) ? 'meh' : 'happy';
+  } else if (phase === 'custom') {
+    car.mood = 'happy'; idleT += dt;
+  } else if (phase === 'out') {
+    if (phaseT > 0.55) { car.vx += dt * 1400 * U; car.ox += car.vx * dt; car.roll += car.vx * dt / VS; if (Math.random() < 0.5) { const p = toScreen(-150, -30); MG.fx.burst(p.x, p.y, { n: 1, colors: ['#ffffff', '#e6eef8'], speed: 60, up: 20, size: 7 * U, life: 0.6, grav: -40 }); } }
+    if (car.ox > W + 50) carGone();
+  }
+  for (const s of slots) if (s.pulse) s.pulse = Math.max(0, s.pulse - dt);
+}
+// free garage: no step list, layers clean themselves up once they're nearly gone
+let freeT = 0;
+function freeAuto() {
+  freeT -= 1 / 60; if (freeT > 0) return; freeT = 0.4;
+  if (!dirtL.empty && !dirtL.fading && car.dirt0 > 1 && sumA(measure(dirtL)) < car.dirt0 * 0.1) { fadeOut(dirtL); snd('squeak'); const p = toScreen(0, -120); say(MG.praise(3), p.x, p.y, '#ff6a00'); mgs('sparkle'); car.laugh = 0.8; }
+}
+function showHint() {
+  const s = curStep(); if (!s) return;
+  const tool = STEP[s].tool, sl = slots.find(q => q.kind === 'tool' && q.id === tool);
+  let to;
+  if (s === 'tyre') to = wheelXY(car.flat);
+  else if (s === 'fuel') to = capXY();
+  else if (s === 'bubble') { const b = bubs.find(q => q.goal && !q.pop); to = b ? { x: b.x, y: b.y } : toScreen(0, -120); }
+  else {
+    // a spot that still needs work
+    const L = s === 'soap' || s === 'wet' ? null : s === 'rinse' ? foamL : s === 'dry' ? wetL : dirtL;
+    let pick = null;
+    if (s === 'leaves') { const l = car.leaves.find(q => !q.fly); if (l) pick = [l.x, l.y]; }
+    else if (s === 'splat') { const q = car.splats.find(q => q.hp > 0); if (q) pick = [q.x, q.y]; }
+    else if (L) { const m = measure(L); let bi = -1; for (const i of car.d.cells) if (bi < 0 || m[i] > m[bi]) bi = i; if (bi >= 0) pick = cellXY(bi); }
+    else if (s === 'shine') { const i = car.d.cells.find(i => car.shine[i] < 1); if (i != null) pick = cellXY(i); }
+    else { const L2 = s === 'soap' ? foamL : wetL, m = measure(L2), i = car.d.cells.find(i => m[i] < 0.3); if (i != null) pick = cellXY(i); }
+    to = pick ? toScreen(pick[0], pick[1]) : toScreen(0, -100);
+  }
+  hintA = { t: 0, from: sl ? { x: sl.x + sl.w / 2, y: sl.y + sl.h / 2 } : to, to, tap: !tool };
+  if (sl) sl.pulse = 1.6;
+}
+
+// =====================================================================
+// input
+// =====================================================================
+const inR = (p, s) => p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h;
+cv.addEventListener('pointerdown', e => {
+  if (state !== 'play' || drag) return;
+  const p = cv.logical(e), touch = e.pointerType === 'touch';
+  idleT = 0; hintA = null;
+  const sl = slots.find(s => inR(p, s));
+  if (sl) {
+    if (sl.kind === 'tool' && phase === 'wash') {
+      const T = TOOLS[sl.id];
+      drag = { kind: 'tool', id: sl.id, x: p.x, y: p.y, sx: p.x, sy: p.y, off: touch ? clamp(T.ds * VS * 0.95, 40, 110) : 0, mv: 0, moved: 0, on: false };
+      dragId = e.pointerId; try { cv.setPointerCapture(e.pointerId); } catch {} mgs('pop'); return;
+    }
+    if (sl.kind === 'tocustom' && phase === 'wash') { MG.sfx('click'); clearLayer(foamL); clearLayer(wetL); startCustom(); return; }
+    if (phase !== 'custom') return;
+    if (sl.kind === 'tab') { if (tab !== sl.id) { tab = sl.id; layout(); MG.sfx('flip'); } return; }
+    if (sl.kind === 'col') { const c = COL[sl.id]; if (car.paint) { car.col = car.paint.to; car.paint = null; } if (c !== car.col) { car.paint = { from: car.col, to: c, k: 0 }; snd('paint'); car.vb = -90; } else mgs('flip'); checkReq(); return; }
+    if (sl.kind === 'stk') { drag = { kind: 'stk', id: sl.id, x: p.x, y: p.y, sx: p.x, sy: p.y, off: touch ? 46 * U : 0, mv: 0, moved: 0 }; dragId = e.pointerId; try { cv.setPointerCapture(e.pointerId); } catch {} mgs('pop'); return; }
+    if (sl.kind === 'whl') { car.wheel = sl.id; mgs('boing'); car.vb = -160; const w = wheelXY(0); MG.fx.burst(w.x, w.y, { n: 10, colors: ['#ffd23f', '#fff'], shape: 'star', speed: 160, up: 80, size: 5 * U }); checkReq(); return; }
+    if (sl.kind === 'horn') { car.horn = sl.id; snd(sl.id); car.honk = 0.8; car.vb = -100; return; }
+    if (sl.kind === 'go') { MG.sfx('click'); driveOff(); return; }
+    return;
+  }
+  // bubbles to pop
+  for (let i = bubs.length - 1; i >= 0; i--) {
+    const b = bubs[i]; if (b.pop) continue;
+    if (Math.hypot(p.x - b.x, p.y - b.y) < b.r + 12 * U) {
+      b.pop = 0.01; mgs('pop'); MG.fx.burst(b.x, b.y, { n: 10, colors: ['#ffffff', '#cfe8ff', '#ffd0ee'], speed: 150, up: 20, size: 3.5 * U, life: 0.4 });
+      if (b.goal && curStep() === 'bubble') { car.popped++; mgs('combo', car.popped); say(car.popped >= 8 ? MG.WORDS.clear : `${car.popped} 🫧`, b.x, b.y - b.r, '#3a86c8'); }
+      return;
+    }
+  }
+  // the hero: a hint
+  if (Math.hypot(p.x - hero.x, p.y - hero.y) < hero.r * 1.3) { heroMood = 'yay'; heroT = 0.8; heroJump = 1; MG.sfx('jump'); showHint(); return; }
+  if (!car || phase === 'in' || phase === 'out') return;
+  const L = toLocal(p.x, p.y);
+  // custom: tapping a sticker peels it off
+  if (phase === 'custom') {
+    for (let i = car.stickers.length - 1; i >= 0; i--) { const s = car.stickers[i]; if (Math.hypot(s.x - L.x, s.y - L.y) < 18) { car.stickers.splice(i, 1); snd('peel'); MG.fx.burst(p.x, p.y, { n: 8, colors: ['#fff', '#ffd23f'], speed: 120, up: 60, size: 4 * U }); checkReq(); return; } }
+  }
+  if (onBody(car.d, L.x, L.y)) { car.laugh = 0.9; car.vb = -140; snd('giggle'); snd(car.horn, 400); car.honk = 0.5; say(MG.pick(['Hehe! 😆', 'Beep! 🚗', 'Hi! 👋']), p.x, p.y - 20 * U, '#ff6fa8'); }
+});
+cv.addEventListener('pointermove', e => {
+  if (!drag || e.pointerId !== dragId) return;
+  const p = cv.logical(e), d = Math.hypot(p.x - drag.x, p.y - drag.y);
+  drag.mv += d; drag.moved += d; drag.x = p.x; drag.y = p.y;
+});
+function endDrag(e) {
+  if (!drag || (e && e.pointerId !== dragId)) return;
+  const d = drag; drag = null; dragId = null;
+  if (d.kind === 'tool') {
+    if (d.moved < 12 * U) { if (curTool() === d.id) showHint(); else mgs('flip'); }
+    return;
+  }
+  if (d.kind === 'stk' && phase === 'custom') placeSticker(d);
+}
+cv.addEventListener('pointerup', endDrag);
+cv.addEventListener('pointercancel', endDrag);
+function placeSticker(d) {
+  if (car.stickers.length >= 14) { mgs('miss'); say(MG.WORDS.full, d.x, d.y - 30, '#d0404e'); return; }
+  let L;
+  if (d.moved < 12 * U) {   // a tap: find a free spot on the car
+    let best = null;
+    for (let k = 0; k < 40; k++) { const [lx, ly] = cellXY(MG.pick(car.d.cells)); if (ly < car.d.eye[1] + 20 && Math.abs(lx - car.d.eye[0]) < 40) continue; const dd = Math.min(999, ...car.stickers.map(s => Math.hypot(s.x - lx, s.y - ly))); if (!best || dd > best.dd) best = { lx, ly, dd }; }
+    L = { x: best.lx, y: best.ly };
+  } else {
+    const tp = tipOf(d); L = toLocal(tp.x, tp.y);
+    if (!onBody(car.d, L.x, L.y)) { mgs('miss'); return; }
+  }
+  car.stickers.push({ id: d.id, x: L.x, y: L.y, rot: MG.rand(-0.35, 0.35), t: 0 });
+  snd('sticker'); car.vb = -90; car.laugh = 0.5;
+  const p = toScreen(L.x, L.y); MG.fx.burst(p.x, p.y, { n: 8, colors: ['#fff', '#ffd23f', '#ff8fc0'], shape: 'star', speed: 140, up: 60, size: 4 * U });
+  checkReq();
+}
+let reqWas = false;
+function checkReq() {
+  const r = reqState(car); if (!r) return;
+  const all = r.c && r.s && r.w;
+  if (all && !reqWas) { later(() => { const p = toScreen(0, -150); say(MG.WORDS.yes, p.x, p.y, '#2f9a48'); mgs('perfect'); }, car.paint ? 900 : 100); }
+  reqWas = all;
+}
+
+// =====================================================================
+// drawing — vehicle
+// =====================================================================
+function drawWheel(cx, cy, r, style, rot, sq = 1) {
+  x.save(); x.translate(cx, cy + r * (1 - sq)); x.scale(1 + (1 - sq) * 0.25, sq);
+  circ(0, 0, r); fs(lgr(0, -r, 0, r, '#4a505e', '#2a2e38'), '#1e222a', 3);
+  x.strokeStyle = 'rgba(255,255,255,.12)'; x.lineWidth = r * 0.12; circ(0, 0, r * 0.84); x.stroke();
+  x.rotate(rot);
+  const R = r * 0.6;
+  if (style === 'star') { circ(0, 0, R); fs('#fff3b0', '#c98a00', 2); starPath(0, 0, R * 0.9, R * 0.42); fs('#ffc93a', '#a87400', 2); }
+  else if (style === 'flower') { circ(0, 0, R); fs('#ffe0ee', '#d0608a', 2); for (let i = 0; i < 5; i++) { const a = i / 5 * TAU; ell(Math.cos(a) * R * 0.5, Math.sin(a) * R * 0.5, R * 0.36, R * 0.24, a); fs('#ff8fc0', '#d0608a', 1.5); } circ(0, 0, R * 0.26); fs('#ffd23f', '#c98a00', 1.5); }
+  else if (style === 'gold') { circ(0, 0, R); fs(lgr(-R, -R, R, R, '#fff2a8', '#e8a400'), '#a87400', 2); x.strokeStyle = '#a87400'; x.lineWidth = R * 0.14; for (let i = 0; i < 6; i++) { const a = i / 6 * TAU; x.beginPath(); x.moveTo(Math.cos(a) * R * 0.2, Math.sin(a) * R * 0.2); x.lineTo(Math.cos(a) * R * 0.86, Math.sin(a) * R * 0.86); x.stroke(); } circ(0, 0, R * 0.24); fs('#fff6c8', '#a87400', 1.5); }
+  else if (style === 'rainbow') { const cs = ['#ff5a5a', '#ff9a3c', '#ffd23f', '#5ccf6a', '#4c9cf0', '#9a72f0']; for (let i = 0; i < 6; i++) { x.beginPath(); x.moveTo(0, 0); x.arc(0, 0, R, i / 6 * TAU, (i + 1) / 6 * TAU); x.closePath(); fs(cs[i]); } circ(0, 0, R); fs(null, '#555', 2); circ(0, 0, R * 0.26); fs('#fff', '#888', 1.5); }
+  else { circ(0, 0, R); fs(lgr(-R, -R, R, R, '#f4f7fb', '#aab4c4'), '#6f7f99', 2); for (let i = 0; i < 5; i++) { const a = i / 5 * TAU; circ(Math.cos(a) * R * 0.55, Math.sin(a) * R * 0.55, R * 0.1); fs('#7d8aa0'); } circ(0, 0, R * 0.26); fs('#dfe5ee', '#6f7f99', 1.5); }
+  x.restore();
+}
+function drawFace(c, mood, look) {
+  const [ex, ey, s] = c.d.eye, [mx, my, ms] = c.d.mouth, ink = '#2a3350';
+  const laugh = c.laugh > 0 || mood === 'laugh';
+  const blink = ((t + c.d.eye[0] * 0.01) % 3.8) < 0.12;
+  for (const sd of [-1, 1]) {
+    const cx = ex + sd * s * 1.18;
+    if (laugh || blink) { x.strokeStyle = ink; x.lineWidth = s * 0.24; x.lineCap = 'round'; x.beginPath(); x.moveTo(cx - s * 0.75, ey + s * 0.15); x.quadraticCurveTo(cx, ey - s * (laugh ? 0.85 : 0.1), cx + s * 0.75, ey + s * 0.15); x.stroke(); continue; }
+    ell(cx, ey, s, s * 1.2); fs('#fff', ink, s * 0.16);
+    const py = mood === 'sad' || mood === 'meh' ? s * 0.3 : s * 0.12;
+    circ(cx + look * s * 0.35, ey + py, s * 0.56); fs(ink);
+    circ(cx + look * s * 0.35 - s * 0.2, ey + py - s * 0.25, s * 0.2); fs('#fff');
+    if (mood === 'sad' || mood === 'meh') { x.strokeStyle = ink; x.lineWidth = s * 0.18; x.lineCap = 'round'; x.beginPath(); x.moveTo(cx - s * 0.7, ey - s * 1.25 - sd * s * 0.25); x.lineTo(cx + s * 0.7, ey - s * 1.25 + sd * s * 0.25); x.stroke(); }
+  }
+  if (mood !== 'sad') { x.fillStyle = 'rgba(255,110,140,.45)'; for (const sd of [-1, 1]) { ell(ex + sd * s * 2.3, ey + s * 1.25, s * 0.5, s * 0.28); x.fill(); } }
+  // mouth
+  x.lineCap = 'round'; x.lineJoin = 'round';
+  if (c.honk > 0) { ell(mx, my, ms * 0.42, ms * 0.5); fs('#7a2a33', ink, 2.5); ell(mx, my + ms * 0.22, ms * 0.24, ms * 0.14); fs('#ff8aa0'); }
+  else if (laugh || mood === 'laugh') { x.beginPath(); x.moveTo(mx - ms * 0.8, my - ms * 0.15); x.quadraticCurveTo(mx, my + ms * 1.05, mx + ms * 0.8, my - ms * 0.15); x.closePath(); fs('#7a2a33', ink, 2.5); ell(mx, my + ms * 0.4, ms * 0.32, ms * 0.16); fs('#ff8aa0'); }
+  else if (mood === 'sad') { x.strokeStyle = ink; x.lineWidth = 3; x.beginPath(); x.moveTo(mx - ms * 0.6, my + ms * 0.3); x.quadraticCurveTo(mx, my - ms * 0.35, mx + ms * 0.6, my + ms * 0.3); x.stroke(); }
+  else if (mood === 'meh') { x.strokeStyle = ink; x.lineWidth = 3; x.beginPath(); x.moveTo(mx - ms * 0.6, my); for (let i = 1; i <= 4; i++) x.quadraticCurveTo(mx - ms * 0.6 + (i - 0.5) * ms * 0.3, my + (i % 2 ? -ms * 0.2 : ms * 0.2), mx - ms * 0.6 + i * ms * 0.3, my); x.stroke(); }
+  else { x.strokeStyle = ink; x.lineWidth = 3; x.beginPath(); x.moveTo(mx - ms * 0.7, my - ms * 0.1); x.quadraticCurveTo(mx, my + ms * 0.6, mx + ms * 0.7, my - ms * 0.1); x.stroke(); }
+}
+function bodyFill(col) {
+  const d = drawingCar.d, top = d.top - 6;
+  x.fillStyle = lgr(0, top, 0, -20, shade(col, 0.42), col, shade(col, -0.16)); x.fill(d.bodyP);
+}
+let drawingCar = null;
+function drawVehicle(c, gx, gy, s, full = true) {
+  const d = c.d, col = c.col, line = shade(c.paint ? c.paint.to : col, -0.48);
+  drawingCar = c;
+  x.save(); x.translate(gx, gy); x.scale(s, s);
+  x.fillStyle = 'rgba(30,40,60,.2)'; ell(0, 2, 170, 12); x.fill();
+  // flat tyre: the car leans towards it
+  if (c.flat >= 0 && c.inflate < 1) {
+    const fw = d.wheels[c.flat], other = d.wheels.reduce((a, w) => Math.abs(w[0] - fw[0]) > Math.abs(a[0] - fw[0]) ? w : a, d.wheels[0]);
+    const drop = fw[1] * 0.3 * (1 - c.inflate), ang = drop / (fw[0] - other[0]);
+    x.translate(other[0], 0); x.rotate(ang); x.translate(-other[0], 0);
+  }
+  if (d.back) d.back();
+  // paint
+  if (c.paint) {
+    bodyFill(c.paint.from);
+    const sx = LX0 + ease(c.paint.k) * (LW + 20);
+    x.save(); x.beginPath(); x.rect(LX0 - 10, LY0, sx - LX0 + 10, LH); x.clip(); bodyFill(c.paint.to); x.restore();
+  } else bodyFill(col);
+  // wheel wells
+  x.save(); x.clip(d.bodyP); for (const [wx0, r] of d.wheels) { circ(wx0, -r, r * 1.16); fs(shade(col, -0.55)); } x.restore();
+  // soft top-left shine on the paint
+  x.save(); x.clip(d.bodyP); x.fillStyle = 'rgba(255,255,255,.22)'; x.beginPath(); x.ellipse(-40, d.top + 14, 150, 22, -0.03, 0, TAU); x.fill(); x.restore();
+  d.det(c.paint ? c.paint.to : col);
+  // glass
+  for (const gp of d.glassP) { x.fillStyle = lgr(0, d.top, 0, -90, '#eefaff', '#a7d8f6'); x.fill(gp); }
+  x.save(); for (const gp of d.glassP) { x.save(); x.clip(gp); x.fillStyle = 'rgba(255,255,255,.55)'; x.beginPath(); x.moveTo(-200, -60); x.lineTo(-140, -260); x.lineTo(-110, -260); x.lineTo(-170, -60); x.fill(); x.beginPath(); x.moveTo(-60, -60); x.lineTo(0, -260); x.lineTo(14, -260); x.lineTo(-46, -60); x.fill(); x.beginPath(); x.moveTo(60, -60); x.lineTo(120, -260); x.lineTo(150, -260); x.lineTo(90, -60); x.fill(); x.restore(); } x.restore();
+  for (const gp of d.glassP) fp(gp, null, line, 3);
+  // fuel cap
+  if (c.sp.fuel || full === 'thumb') { const [fx0, fy0] = d.cap; circ(fx0, fy0, 9); fs(c.cap > 0 ? '#3a3f4a' : '#dfe5ee', '#6f7f99', 2); if (c.cap > 0) { ell(fx0 - 12 * c.cap, fy0, 4 * c.cap + 1, 9); fs('#dfe5ee', '#6f7f99', 1.5); } }
+  // stickers
+  for (const st of c.stickers) { x.save(); x.translate(st.x, st.y); x.rotate(st.rot); const k = Math.min(1, (st.t = (st.t || 0) + 0.04)); x.scale(0.6 + 0.4 * ease(k) + Math.sin(k * Math.PI) * 0.25, 0.6 + 0.4 * ease(k) + Math.sin(k * Math.PI) * 0.25); stickerArt(st.id, 15); x.restore(); }
+  if (full === true) {
+    // dirt, splats, leaves, foam, water
+    if (!dirtL.empty) { x.globalAlpha = dirtL.fade; x.drawImage(dirtL.c, LX0, LY0, LW, LH); x.globalAlpha = 1; }
+    for (const q of c.splats) if (q.hp > 0) drawSplat(q);
+    if (!wetL.empty) { x.globalAlpha = wetL.fade * 0.6; x.drawImage(wetL.c, LX0, LY0, LW, LH); x.globalAlpha = 1; }
+    if (!foamL.empty) { x.globalAlpha = foamL.fade; x.drawImage(foamL.c, LX0, LY0, LW, LH); x.globalAlpha = 1; }
+    for (const l of c.leaves) drawLeaf(l);
+    drawShine(c);
+  } else if (c.sp.dirt && !c.clean) { x.save(); x.clip(d.bodyP); x.fillStyle = c.sp.dirt === 'snow' ? 'rgba(255,255,255,.75)' : c.sp.dirt === 'sand' ? 'rgba(230,195,130,.6)' : 'rgba(120,80,40,.4)'; x.fillRect(LX0, d.top - 20, LW, c.sp.dirt === 'snow' ? 90 : 300); x.restore(); }
+  fp(d.bodyP, null, line, 4);
+  // wheels
+  for (let i = 0; i < d.wheels.length; i++) { const [wx0, r] = d.wheels[i]; drawWheel(wx0, -r, r, c.wheel, c.roll / r, i === c.flat ? 0.7 + 0.3 * c.inflate : 1); }
+  if (d.id === 'train') { const a = c.roll / 26; x.strokeStyle = '#8a96a8'; x.lineWidth = 6; x.lineCap = 'round'; x.beginPath(); x.moveTo(-112 + Math.cos(a) * 12, -26 + Math.sin(a) * 12); x.lineTo(40 + Math.cos(a) * 12, -26 + Math.sin(a) * 12); x.stroke(); }
+  if (d.front) d.front();
+  drawFace(c, c.mood, c.look);
+  if (c.sp.fuel && full === true && (curStep() === 'fuel' || (c.fuel > 0.08 && c.fuel < 1))) drawGauge(c);
+  x.restore();
+}
+function drawGauge(c) {
+  const [fx0, fy0] = c.d.cap, gx = fx0, gy = fy0 - 46, r = 24;
+  circ(gx, gy, r + 4); fs('#fff', '#6f7f99', 3);
+  const cs = ['#ff5a5a', '#ff9a3c', '#ffd23f', '#5ccf6a'];
+  for (let i = 0; i < 4; i++) { x.strokeStyle = cs[i]; x.lineWidth = 7; x.beginPath(); x.arc(gx, gy + 4, r - 6, Math.PI + i * Math.PI / 4 + 0.04, Math.PI + (i + 1) * Math.PI / 4 - 0.04); x.stroke(); }
+  const a = Math.PI + Math.PI * clamp(c.fuel, 0, 1);
+  x.strokeStyle = '#2a3350'; x.lineWidth = 3.5; x.lineCap = 'round'; x.beginPath(); x.moveTo(gx, gy + 4); x.lineTo(gx + Math.cos(a) * (r - 4), gy + 4 + Math.sin(a) * (r - 4)); x.stroke();
+  circ(gx, gy + 4, 3.5); fs('#2a3350');
+  if (curStep() === 'fuel' && c.fuel < 1) { x.setLineDash([6, 5]); x.strokeStyle = `rgba(255,159,28,${0.5 + Math.sin(t * 6) * 0.4})`; x.lineWidth = 3; circ(fx0, fy0, 20 + Math.sin(t * 5) * 2); x.stroke(); x.setLineDash([]); }
+}
+function drawSplat(q) {
+  x.save(); x.globalAlpha = clamp(q.hp * 1.4, 0, 1); x.translate(q.x, q.y);
+  x.fillStyle = q.col; x.beginPath();
+  q.pts.forEach((r, i) => { const a = i / q.pts.length * TAU; const px = Math.cos(a) * r, py = Math.sin(a) * r; if (i === 0) x.moveTo(px, py); else x.lineTo(px, py); });
+  x.closePath(); x.fill();
+  for (const [dx, dy, r] of q.dots) { circ(dx, dy, r); x.fill(); }
+  x.fillStyle = 'rgba(255,255,255,.35)'; ell(-q.r * 0.3, -q.r * 0.3, q.r * 0.3, q.r * 0.18, -0.6); x.fill();
+  x.restore();
+}
+function drawLeaf(l) {
+  x.save(); x.translate(l.x, l.y); x.rotate(l.rot); if (l.fly) x.globalAlpha = clamp(1 - (l.fly - 0.8) / 0.6, 0, 1);
+  const s = l.s; x.beginPath(); x.moveTo(-s, 0); x.quadraticCurveTo(0, -s * 0.75, s, 0); x.quadraticCurveTo(0, s * 0.75, -s, 0); x.closePath(); fs(l.col, shade(l.col, -0.35), 1.5);
+  x.strokeStyle = shade(l.col, -0.35); x.lineWidth = 1.2; x.beginPath(); x.moveTo(-s * 1.25, 0); x.lineTo(s * 0.8, 0); x.stroke();
+  for (const k of [-0.4, 0, 0.4]) { x.beginPath(); x.moveTo(k * s, 0); x.lineTo(k * s + s * 0.3, -s * 0.35); x.moveTo(k * s, 0); x.lineTo(k * s + s * 0.3, s * 0.35); x.stroke(); }
+  x.restore();
+}
+function drawShine(c) {
+  let n = 0; for (const i of c.d.cells) if (c.shine[i] >= 1) n++;
+  if (!n) return;
+  const fr = n / c.d.maskN;
+  x.save(); x.clip(c.d.bodyP);
+  const sw = ((t * 120) % 700) - 300;
+  x.fillStyle = `rgba(255,255,255,${0.35 * fr})`; x.beginPath(); x.moveTo(sw, -260); x.lineTo(sw + 40, -260); x.lineTo(sw - 40, 0); x.lineTo(sw - 80, 0); x.fill();
+  x.restore();
+  for (const i of c.d.cells) { if (c.shine[i] < 1 || (i * 7) % 9 > 1) continue; const [cx, cy] = cellXY(i), k = Math.sin(t * 3 + i * 1.7); if (k < 0.3) continue; const r = 7 * k; x.fillStyle = 'rgba(255,255,255,.95)'; starPath(cx, cy, r, r * 0.28, 4); x.fill(); }
+}
+
+// =====================================================================
+// drawing — stickers, tools, icons
+// =====================================================================
+function stickerArt(id, s) {
+  const B = '#ffffff', bw = s * 0.32;
+  const out = (fill, line) => { x.lineJoin = 'round'; x.strokeStyle = B; x.lineWidth = bw; x.stroke(); x.fillStyle = fill; x.fill(); x.strokeStyle = line; x.lineWidth = s * 0.07; x.stroke(); };
+  x.save(); x.shadowColor = 'rgba(0,0,0,.18)'; x.shadowOffsetY = s * 0.08; x.shadowBlur = s * 0.15;
+  if (id === 'star') { starPath(0, 0, s, s * 0.46); out('#ffd23f', '#c98a00'); }
+  else if (id === 'heart') { heartPath(0, s * 0.05, s * 0.95); out('#ff5a7a', '#c0304e'); }
+  else if (id === 'flower') { x.beginPath(); for (let i = 0; i < 5; i++) { const a = i / 5 * TAU - Math.PI / 2; x.moveTo(Math.cos(a) * s * 0.55 + s * 0.42, Math.sin(a) * s * 0.55); x.arc(Math.cos(a) * s * 0.55, Math.sin(a) * s * 0.55, s * 0.42, 0, TAU); } out('#ff8fc0', '#d0608a'); x.shadowColor = 'transparent'; circ(0, 0, s * 0.3); fs('#ffd23f', '#c98a00', s * 0.06); }
+  else if (id === 'bolt') { x.beginPath(); x.moveTo(s * 0.25, -s); x.lineTo(-s * 0.6, s * 0.15); x.lineTo(-s * 0.05, s * 0.15); x.lineTo(-s * 0.3, s); x.lineTo(s * 0.62, -s * 0.22); x.lineTo(s * 0.05, -s * 0.22); x.closePath(); out('#ffe14d', '#d08a00'); }
+  else if (id === 'smile') { circ(0, 0, s * 0.95); out('#ffd84d', '#c98a00'); x.shadowColor = 'transparent'; x.fillStyle = '#3a2a10'; circ(-s * 0.32, -s * 0.2, s * 0.12); x.fill(); circ(s * 0.32, -s * 0.2, s * 0.12); x.fill(); x.strokeStyle = '#3a2a10'; x.lineWidth = s * 0.12; x.lineCap = 'round'; x.beginPath(); x.arc(0, s * 0.05, s * 0.45, 0.3, Math.PI - 0.3); x.stroke(); }
+  else if (id === 'note') { x.beginPath(); x.ellipse(-s * 0.3, s * 0.55, s * 0.36, s * 0.27, -0.4, 0, TAU); x.rect(-s * 0.02, -s * 0.95, s * 0.2, s * 1.5); x.moveTo(s * 0.1, -s * 0.95); x.quadraticCurveTo(s * 0.8, -s * 0.7, s * 0.6, -s * 0.15); x.quadraticCurveTo(s * 0.6, -s * 0.5, s * 0.1, -s * 0.55); out('#9a72f0', '#5a3ab0'); }
+  else if (id === 'paw') { x.beginPath(); x.ellipse(0, s * 0.3, s * 0.48, s * 0.4, 0, 0, TAU); for (const [dx, dy] of [[-0.62, -0.25], [-0.22, -0.68], [0.22, -0.68], [0.62, -0.25]]) { x.moveTo(dx * s + s * 0.2, dy * s); x.ellipse(dx * s, dy * s, s * 0.2, s * 0.25, 0, 0, TAU); } out('#b07a50', '#6e4424'); }
+  else if (id === 'rainbow') { x.beginPath(); x.arc(0, s * 0.45, s, Math.PI, 0); x.lineTo(s * 0.4, s * 0.45); x.arc(0, s * 0.45, s * 0.4, 0, Math.PI, true); x.closePath(); out('#ff5a5a', '#c03030'); x.shadowColor = 'transparent'; const cs = ['#ff9a3c', '#ffd23f', '#5ccf6a', '#4c9cf0']; cs.forEach((c, i) => { x.strokeStyle = c; x.lineWidth = s * 0.12; x.beginPath(); x.arc(0, s * 0.45, s * (0.88 - i * 0.12), Math.PI, 0); x.stroke(); }); }
+  x.restore();
+}
+// tool art, head up, centred at 0,0, s = half height
+function toolArt(id, s, spin = 0) {
+  x.save(); x.scale(s, s); x.lineJoin = 'round'; x.lineCap = 'round';
+  const L = 0.06;
+  if (id === 'water') {
+    rr(-0.2, 0.05, 0.4, 0.9, 0.16); fs(lgr(-0.2, 0, 0.2, 0, '#8fcaff', '#2f78cf'), '#1d4f9e', L);
+    rr(-0.06, 0.18, 0.12, 0.35, 0.06); fs('#ffd23f', '#a87400', 0.04);
+    rr(-0.08, -0.55, 0.16, 0.65, 0.05); fs(lgr(-0.08, 0, 0.08, 0, '#e8edf4', '#9aa4b4'), '#5a6474', L);
+    ell(0, -0.68, 0.36, 0.17); fs(lgr(0, -0.85, 0, -0.5, '#fff3a0', '#ffc93a'), '#a87400', L);
+    for (let i = -2; i <= 2; i++) { circ(i * 0.12, -0.68, 0.035); fs('#a87400'); }
+  } else if (id === 'soap') {
+    rr(-0.36, -0.22, 0.72, 1.16, 0.22); fs(lgr(-0.36, 0, 0.36, 0, '#ffd0e4', '#f06a9e'), '#9a2f5d', L);
+    circ(0, 0.36, 0.22); fs('#fff', '#cf4a80', 0.04); circ(-0.06, 0.32, 0.08); fs('#bfe2ff'); circ(0.08, 0.42, 0.06); fs('#bfe2ff');
+    rr(-0.12, -0.42, 0.24, 0.22, 0.04); fs('#fff0f6', '#9a2f5d', L);
+    rr(-0.42, -0.62, 0.62, 0.2, 0.08); fs('#ff9cc2', '#9a2f5d', L);
+    for (const [bx, by, br] of [[-0.48, -0.72, 0.13], [-0.32, -0.8, 0.1], [-0.56, -0.86, 0.08]]) { circ(bx, by, br); fs('#fff', '#9ab6e0', 0.03); }
+  } else if (id === 'brush') {
+    rr(-0.08, 0.3, 0.16, 0.66, 0.08); fs(lgr(-0.08, 0, 0.08, 0, '#ffe36b', '#e8a400'), '#a87400', L);
+    rr(-0.46, -0.98, 0.92, 1.36, 0.3); x.save(); x.clip();
+    const cs = ['#4c9cf0', '#8fd8ff', '#ff8fc0', '#fff'];
+    for (let i = -2; i < 12; i++) { const yy = -0.98 + ((i * 0.16 + (spin * 0.08) % 0.64 + 6.4) % 2.08) - 0.2; x.fillStyle = cs[((i % 4) + 4) % 4]; x.fillRect(-0.5, yy, 1, 0.16); }
+    x.fillStyle = 'rgba(0,0,0,.14)'; x.fillRect(0.2, -1, 0.3, 1.5); x.fillStyle = 'rgba(255,255,255,.35)'; x.fillRect(-0.36, -1, 0.12, 1.5);
+    x.restore(); rr(-0.46, -0.98, 0.92, 1.36, 0.3); fs(null, '#1d4f9e', L);
+    rr(-0.16, -1.04, 0.32, 0.1, 0.04); fs('#dfe5ee', '#5a6474', 0.04); rr(-0.16, 0.32, 0.32, 0.1, 0.04); fs('#dfe5ee', '#5a6474', 0.04);
+  } else if (id === 'sponge') {
+    rr(-0.62, -0.38, 1.24, 0.84, 0.18); fs(lgr(0, -0.4, 0, 0.5, '#fff08a', '#ffc93a'), '#a87400', L);
+    rr(-0.62, -0.46, 1.24, 0.26, [0.18, 0.18, 0.04, 0.04]); fs('#5ccf6a', '#2a9447', L);
+    for (const [hx, hy, hr] of [[-0.35, 0.05, 0.09], [0.1, 0.18, 0.07], [0.38, -0.02, 0.1], [-0.1, 0.3, 0.06], [0.3, 0.3, 0.05]]) { circ(hx, hy, hr); fs('rgba(200,130,0,.45)'); }
+  } else if (id === 'dryer') {
+    rr(0.02, 0.2, 0.26, 0.76, 0.1); fs(lgr(0, 0, 0.3, 0, '#ffb877', '#e06a1c'), '#a04510', L);
+    circ(0.08, 0.05, 0.4); fs(lgr(-0.3, -0.3, 0.4, 0.4, '#ffd2a8', '#ff8c3a'), '#a04510', L);
+    circ(0.08, 0.05, 0.2); fs('#fff4ea', '#a04510', 0.04); for (let i = 0; i < 3; i++) { x.save(); x.translate(0.08, 0.05); x.rotate(t * 14 + i * 2.1); ell(0.09, 0, 0.09, 0.04); fs('#e06a1c'); x.restore(); }
+    x.beginPath(); x.moveTo(-0.24, -0.18); x.lineTo(-0.28, -0.86); x.lineTo(0.04, -0.86); x.lineTo(0.02, -0.18); x.closePath(); fs(lgr(-0.3, 0, 0.05, 0, '#ffd2a8', '#ff8c3a'), '#a04510', L);
+    rr(-0.32, -0.96, 0.4, 0.14, 0.05); fs('#a04510');
+  } else if (id === 'polish') {
+    rr(-0.13, -0.05, 0.26, 1.0, 0.1); fs(lgr(-0.13, 0, 0.13, 0, '#c3a2ff', '#7a52d0'), '#4f2f9a', L);
+    x.beginPath(); for (let i = 0; i < 16; i++) { const a = i / 16 * TAU, r = i % 2 ? 0.46 : 0.52; x.lineTo(Math.cos(a) * r, -0.45 + Math.sin(a) * r * 0.7); } x.closePath(); fs(lgr(0, -0.85, 0, -0.1, '#ffffff', '#e2d4ff'), '#7a52d0', L);
+    starPath(0.12, -0.52, 0.18, 0.06, 4); fs('#ffd23f'); starPath(-0.2, -0.38, 0.1, 0.035, 4); fs('#ffd23f');
+  } else if (id === 'pump') {
+    rr(-0.26, -0.1, 0.52, 1.04, 0.12); fs(lgr(-0.26, 0, 0.26, 0, '#ff8f84', '#d03a30'), '#8e2018', L);
+    circ(0, 0.36, 0.17); fs('#fff', '#8e2018', 0.04); x.strokeStyle = '#2a3350'; x.lineWidth = 0.04; x.beginPath(); x.moveTo(0, 0.36); x.lineTo(0.1, 0.28); x.stroke();
+    x.strokeStyle = '#3a3f4a'; x.lineWidth = 0.09; x.beginPath(); x.moveTo(0, -0.1); x.quadraticCurveTo(0.3, -0.4, 0, -0.8); x.stroke();
+    rr(-0.06, -0.96, 0.12, 0.2, 0.03); fs('#dfe5ee', '#5a6474', 0.04);
+  } else if (id === 'fuel') {
+    x.strokeStyle = '#3a3f4a'; x.lineWidth = 0.1; x.beginPath(); x.moveTo(0.2, 0.9); x.quadraticCurveTo(0.6, 0.6, 0.45, 0.2); x.stroke();
+    rr(-0.2, 0.05, 0.44, 0.86, 0.14); fs(lgr(-0.2, 0, 0.24, 0, '#8ff0a0', '#2a9447'), '#1f6e35', L);
+    rr(-0.04, 0.28, 0.16, 0.32, 0.06); fs('#1f6e35');
+    x.beginPath(); x.moveTo(-0.06, 0.05); x.lineTo(-0.1, -0.7); x.quadraticCurveTo(-0.1, -0.86, -0.02, -0.9); x.lineTo(0.06, -0.9); x.quadraticCurveTo(0.04, -0.7, 0.08, 0.05); x.closePath(); fs(lgr(-0.1, 0, 0.1, 0, '#eef2f7', '#9aa4b4'), '#5a6474', L);
+  }
+  x.restore();
+}
+function tabArt(id, s) {
+  if (id === 'paint') { x.save(); x.scale(s, s); ell(0, 0.05, 0.85, 0.7, -0.2); fs('#ffe7c2', '#b8835a', 0.07); circ(0.3, 0.3, 0.16); fs('#fff7e8', '#b8835a', 0.05); [['#ff5a5a', -0.45, -0.1], ['#ffd23f', -0.15, -0.38], ['#4c9cf0', 0.22, -0.36], ['#5ccf6a', 0.5, -0.05], ['#9a72f0', -0.35, 0.3]].forEach(([c, a, b]) => { circ(a, b, 0.15); fs(c); }); x.restore(); }
+  else if (id === 'sticker') stickerArt('star', s * 0.85);
+  else if (id === 'wheel') drawWheel(0, 0, s * 0.85, 'star', t * 0.6);
+  else hornArt('beep', s);
+}
+function hornArt(id, s) {
+  x.save(); x.scale(s, s); x.lineJoin = 'round'; x.lineCap = 'round';
+  const L = 0.06;
+  if (id === 'beep' || id === 'honk') {
+    const k = id === 'honk' ? 2 : 1;
+    for (let j = 0; j < k; j++) { x.save(); x.translate(0, k === 2 ? (j ? 0.28 : -0.28) : 0); x.scale(k === 2 ? 0.75 : 1, k === 2 ? 0.75 : 1); x.beginPath(); x.moveTo(-0.7, -0.12); x.lineTo(0.2, -0.2); x.lineTo(0.75, -0.55); x.lineTo(0.75, 0.55); x.lineTo(0.2, 0.2); x.lineTo(-0.7, 0.12); x.closePath(); fs(lgr(0, -0.5, 0, 0.5, '#fff2a8', '#e8a400'), '#a87400', L); x.restore(); }
+    if (id === 'beep') { circ(-0.72, 0, 0.2); fs('#ff5a5a', '#a02020', L); }
+  } else if (id === 'tune') { x.beginPath(); x.ellipse(-0.3, 0.5, 0.3, 0.22, -0.4, 0, TAU); x.ellipse(0.42, 0.36, 0.3, 0.22, -0.4, 0, TAU); fs('#4c9cf0', '#1d4f9e', L); x.fillStyle = '#4c9cf0'; x.fillRect(-0.06, -0.7, 0.1, 1.2); x.fillRect(0.66, -0.84, 0.1, 1.2); x.beginPath(); x.moveTo(-0.06, -0.7); x.lineTo(0.76, -0.84); x.lineTo(0.76, -0.6); x.lineTo(-0.06, -0.46); x.closePath(); x.fill(); x.strokeStyle = '#1d4f9e'; x.lineWidth = L; x.stroke(); }
+  else if (id === 'quack') { ell(0.05, 0.25, 0.65, 0.42); fs('#ffe046', '#c49a12', L); circ(0.35, -0.3, 0.36); fs('#ffe046', '#c49a12', L); ell(0.78, -0.22, 0.24, 0.1); fs('#ff9a2a', '#c0601a', L); circ(0.45, -0.38, 0.06); fs('#2b1f22'); }
+  else if (id === 'moo') { ell(-0.62, -0.42, 0.24, 0.12, -0.4); fs('#fffbf3', '#6b4a35', L); ell(0.62, -0.42, 0.24, 0.12, 0.4); fs('#fffbf3', '#6b4a35', L); ell(0, 0, 0.62, 0.58); fs('#fffbf3', '#6b4a35', L); ell(0.22, -0.2, 0.2, 0.16); fs('#dba06c'); ell(0, 0.28, 0.42, 0.24); fs('#ffc2cf', '#e7a9a4', 0.05); circ(-0.2, -0.12, 0.07); fs('#2a1f1a'); circ(0.2, -0.12, 0.07); fs('#2a1f1a'); }
+  else if (id === 'siren') { x.beginPath(); x.moveTo(-0.55, 0.45); x.lineTo(-0.45, -0.2); x.quadraticCurveTo(0, -0.75, 0.45, -0.2); x.lineTo(0.55, 0.45); x.closePath(); fs(Math.floor(t * 3) % 2 ? '#ff5a5a' : '#4c9cf0', '#3a3f4a', L); rr(-0.7, 0.42, 1.4, 0.28, 0.08); fs('#9aa4b4', '#3a3f4a', L); ell(-0.18, -0.15, 0.1, 0.2, 0.3); fs('rgba(255,255,255,.7)'); }
+  else if (id === 'whistle') { rr(-0.25, -0.5, 0.5, 1.0, 0.1); fs(lgr(-0.25, 0, 0.25, 0, '#fff2a8', '#e8a400'), '#a87400', L); rr(-0.35, -0.62, 0.7, 0.16, 0.06); fs('#a87400'); for (const [a, b, r] of [[-0.2, -0.82, 0.16], [0.12, -0.92, 0.2], [0.42, -0.78, 0.14]]) { circ(a, b, r); fs('#ffffff', '#c6d4e6', 0.04); } }
+  else if (id === 'chime') { x.beginPath(); x.moveTo(-0.3, -0.05); x.lineTo(0, 0.85); x.lineTo(0.3, -0.05); x.closePath(); fs('#f2c27a', '#b8835a', L); circ(0, -0.32, 0.38); fs('#ff8fc0', '#d0608a', L); circ(0.05, -0.72, 0.1); fs('#ff4d5e'); }
+  x.restore();
+}
+
+// =====================================================================
+// drawing — scene
+// =====================================================================
+const THEMES = {
+  day: { sky: ['#8fd3ff', '#e2f5ff'], hill: '#8ad67a', hill2: '#b5e6a0', floor: ['#d7dee8', '#b7c3d2'], post: '#4c9cf0', beam: '#ff7a6b' },
+  sunset: { sky: ['#ff9f7a', '#ffe0b0'], hill: '#c58fb0', hill2: '#e6b0b8', floor: ['#e2d2cf', '#c2aeb0'], post: '#9a72f0', beam: '#ff7a6b' },
+  night: { sky: ['#1f2a5a', '#4a5590'], hill: '#2f3d6e', hill2: '#3d4c80', floor: ['#7f8aa6', '#5f6a86'], post: '#5f6fd0', beam: '#ff7a6b' },
+  rain: { sky: ['#93a6bb', '#d4dee8'], hill: '#7fa98a', hill2: '#9fbea6', floor: ['#b9c4d2', '#96a4b6'], post: '#4c9cf0', beam: '#ff9a3c' },
+  autumn: { sky: ['#ffcf8f', '#fff2d8'], hill: '#e6a050', hill2: '#f2c27a', floor: ['#e2dcd2', '#c6bba9'], post: '#e06a1c', beam: '#5ccf6a' },
+  beach: { sky: ['#6fd0ff', '#e6f9ff'], hill: '#f2d9a0', hill2: '#3fb8e8', floor: ['#e8dcc0', '#cfc09c'], post: '#3fd2b0', beam: '#ff8fc0' },
+  snowy: { sky: ['#b8cde6', '#eef5fc'], hill: '#f4f8ff', hill2: '#dfe9f6', floor: ['#dfe6ef', '#c2ccda'], post: '#4c9cf0', beam: '#ff5a5a' },
+};
+function buildBg() {
+  const key = [W, H, theme, cv._mgScale, VS.toFixed(3), VY | 0, S.w | 0, S.h | 0, beamH | 0].join(',');
+  if (key === bgKey && bgCan) return;
+  bgKey = key; const px = cv._mgScale || 1;
+  bgCan = bgCan || document.createElement('canvas'); bgCan.width = Math.round(W * px); bgCan.height = Math.round(H * px);
+  const main = x; x = bgCan.getContext('2d'); x.setTransform(px, 0, 0, px, 0, 0); drawScene(); x = main;
+}
+function drawScene() {
+  const th = THEMES[theme] || THEMES.day, hy = VY - 46 * VS;
+  x.fillStyle = lgr(0, 0, 0, hy, th.sky[0], th.sky[1]); x.fillRect(0, 0, W, H);
+  // far away
+  if (theme === 'night') { for (let i = 0; i < 40; i++) { const sx = (i * 137) % W, sy = (i * 71) % Math.max(10, hy * 0.7); circ(sx, sy, (i % 3) * 0.6 + 0.8); fs('rgba(255,255,230,.85)'); } circ(S.x + S.w * 0.78, hy * 0.3, 22 * U); fs('#fff6c8'); circ(S.x + S.w * 0.78 + 9 * U, hy * 0.3 - 5 * U, 19 * U); fs(th.sky[0]); }
+  else if (theme !== 'rain') { const sx = S.x + S.w * 0.82, sy = Math.max(beamH + 60 * U, hy * 0.3); circ(sx, sy, 30 * U); fs('rgba(255,246,176,.55)'); circ(sx, sy, 20 * U); fs('#ffdf55', '#f0a020', 2); }
+  if (theme === 'rain') for (let i = 0; i < 4; i++) cloud(S.x + S.w * (0.1 + i * 0.27), hy * 0.32 + (i % 2) * 20 * U, 28 * U, '#e7edf4');
+  else if (theme !== 'night') for (let i = 0; i < 3; i++) cloud(S.x + S.w * (0.15 + i * 0.33), hy * 0.25 + (i % 2) * 26 * U, 20 * U, '#fff');
+  if (theme === 'beach') {
+    x.fillStyle = lgr(0, hy - 60 * VS, 0, hy, '#7fdcff', '#2fa6d8'); x.fillRect(0, hy - 60 * VS, W, 60 * VS);
+    x.strokeStyle = 'rgba(255,255,255,.7)'; x.lineWidth = 2; for (let i = 0; i < 12; i++) { const wx0 = (i * 97) % W, wy = hy - 50 * VS + (i % 4) * 12 * VS; x.beginPath(); x.moveTo(wx0, wy); x.quadraticCurveTo(wx0 + 10, wy - 5, wx0 + 20, wy); x.stroke(); }
+    palm(S.x + S.w * 0.12, hy, 90 * VS); palm(S.x + S.w * 0.88, hy, 70 * VS);
+  } else {
+    hills(hy, 70 * VS, th.hill2, 0.7); hills(hy, 44 * VS, th.hill, 1.3);
+    if (theme === 'autumn' || theme === 'day' || theme === 'sunset') for (let i = 0; i < 6; i++) tree(S.x + S.w * (0.06 + i * 0.18), hy - 6 * VS, 26 * VS, theme === 'autumn' ? MG.pick(['#ff9a3c', '#e8643a', '#ffc93a']) : theme === 'sunset' ? '#8a6aa0' : '#4cb85a');
+    if (theme === 'snowy') for (let i = 0; i < 6; i++) pine(S.x + S.w * (0.05 + i * 0.18), hy - 4 * VS, 34 * VS);
+    if (theme === 'night' || theme === 'rain') for (let i = 0; i < 7; i++) house(S.x + S.w * (0.04 + i * 0.15), hy - 2 * VS, 30 * VS, theme === 'night');
+  }
+  // floor
+  x.fillStyle = lgr(0, hy, 0, S.y + S.h, th.floor[0], th.floor[1]); x.fillRect(0, hy, W, S.y + S.h - hy);
+  x.strokeStyle = 'rgba(255,255,255,.35)'; x.lineWidth = 1.5;
+  for (let k = 1; k < 7; k++) { const yy = hy + (S.y + S.h - hy) * Math.pow(k / 7, 1.6); x.beginPath(); x.moveTo(0, yy); x.lineTo(W, yy); x.stroke(); }
+  for (let k = -6; k <= 6; k++) { x.beginPath(); x.moveTo(VX + k * 40 * VS, hy); x.lineTo(VX + k * 120 * VS, S.y + S.h); x.stroke(); }
+  // lane stripes and the drain
+  x.fillStyle = 'rgba(255,210,63,.75)'; for (const sd of [-1, 1]) { x.save(); x.translate(VX + sd * 190 * VS, VY); x.beginPath(); x.moveTo(-6 * VS, -40 * VS); x.lineTo(6 * VS, -40 * VS); x.lineTo(14 * VS, 30 * VS); x.lineTo(-2 * VS, 30 * VS); x.closePath(); x.fill(); x.restore(); }
+  rr(VX - 60 * VS, VY + 4 * VS, 120 * VS, 14 * VS, 6 * VS); fs('#7d8aa0', '#5a6474', 2); x.strokeStyle = '#4a5262'; x.lineWidth = 2; for (let i = -5; i <= 5; i++) { x.beginPath(); x.moveTo(VX + i * 10 * VS, VY + 7 * VS); x.lineTo(VX + i * 10 * VS, VY + 15 * VS); x.stroke(); }
+  // puddles
+  for (const [px0, py0, pr] of [[-0.36, 0.5, 46], [0.33, 0.62, 34], [0.05, 0.85, 52]]) { const cx = VX + px0 * S.w, cy = VY + (S.y + S.h - VY) * py0 + 8; if (cy > S.y + S.h - 6) continue; ell(cx, cy, pr * VS, pr * 0.22 * VS); fs('rgba(160,210,255,.45)'); ell(cx - pr * 0.3 * VS, cy - 2, pr * 0.3 * VS, 2); fs('rgba(255,255,255,.6)'); }
+  // the wash bay: two posts with spinning-brush decorations and a roof beam
+  const pw = clamp(18 * U, 14, 30), top = S.y + beamH;
+  for (const sd of [-1, 1]) {
+    const px0 = sd < 0 ? S.x + 4 : S.x + S.w - pw - 4;
+    rr(px0, top - 4, pw, hy + 30 * VS - top, 6); fs(lgr(px0, 0, px0 + pw, 0, shade(th.post, 0.3), th.post), shade(th.post, -0.4), 2);
+    for (let yy = top + 20; yy < hy; yy += 34) { rr(px0 + 3, yy, pw - 6, 12, 4); fs('rgba(255,255,255,.4)'); }
+    // a hanging roller brush
+    const bx = sd < 0 ? px0 + pw + 4 : px0 - 4 - pw * 1.4, bh = Math.min(hy - top - 40, 200 * VS);
+    x.save(); rr(bx, top + 14, pw * 1.4, bh, pw * 0.6); x.clip();
+    const cs = ['#ff8fc0', '#ffd0e4', '#8fd8ff', '#d9f2ff'];
+    for (let i = 0; i * 10 < bh + 20; i++) { x.fillStyle = cs[i % 4]; x.fillRect(bx, top + 14 + i * 10, pw * 1.4, 10); }
+    x.fillStyle = 'rgba(0,0,0,.12)'; x.fillRect(bx + pw * 0.9, top, pw, bh + 30);
+    x.restore(); rr(bx, top + 14, pw * 1.4, bh, pw * 0.6); fs(null, 'rgba(160,60,110,.6)', 2);
+    x.strokeStyle = '#8a96a8'; x.lineWidth = 3; x.beginPath(); x.moveTo(bx + pw * 0.7, top); x.lineTo(bx + pw * 0.7, top + 14); x.stroke();
+  }
+  // roof beam with a scalloped awning
+  x.fillStyle = lgr(0, S.y, 0, S.y + beamH, shade(th.beam, 0.2), th.beam); x.fillRect(S.x, S.y, S.w, beamH);
+  const sc = beamH * 0.9;
+  for (let i = 0, n = Math.ceil(S.w / sc); i <= n; i++) { x.beginPath(); x.arc(S.x + i * sc + sc / 2, S.y + beamH, sc / 2, 0, Math.PI); fs(i % 2 ? '#fff' : shade(th.beam, -0.1)); }
+  x.fillStyle = 'rgba(0,0,0,.12)'; x.fillRect(S.x, S.y + beamH - 3, S.w, 3);
+  // little bubbles painted on the beam
+  for (let i = 0; i < 9; i++) { circ(S.x + S.w * (0.06 + i * 0.11), S.y + beamH * 0.45, beamH * (0.16 + (i % 3) * 0.06)); fs('rgba(255,255,255,.55)'); }
+  // props: bucket on the floor
+  const bs = clamp(24 * U, 18, 44), bxx = S.x + S.w - bs - 26, byy = land ? VY + 6 * VS : Math.max(VY + 40 * VS + bs, S.y + S.h - 12);
+  if (!land || (S.w - 360 * VS) / 2 > bs * 2) bucket(bxx, byy, bs);
+  if (theme === 'night') for (const sd of [-1, 1]) { const lx = VX + sd * S.w * 0.36; x.fillStyle = 'rgba(255,240,170,.16)'; x.beginPath(); x.moveTo(lx - 8, top + 8); x.lineTo(lx + 8, top + 8); x.lineTo(lx + 90 * VS, VY); x.lineTo(lx - 90 * VS, VY); x.fill(); circ(lx, top + 8, 7); fs('#fff3b0', '#c9a020', 2); }
+}
+function cloud(cx, cy, s, c) { x.fillStyle = c; x.beginPath(); x.arc(cx - s, cy, s * 0.8, 0, TAU); x.arc(cx, cy - s * 0.45, s, 0, TAU); x.arc(cx + s, cy, s * 0.8, 0, TAU); x.rect(cx - s, cy, s * 2, s * 0.8); x.fill(); }
+function hills(hy, h, c, f) { x.fillStyle = c; x.beginPath(); x.moveTo(0, hy); for (let i = 0; i <= 12; i++) { const px0 = i / 12 * W; x.lineTo(px0, hy - h * (0.55 + 0.45 * Math.sin(i * f + 1.3))); } x.lineTo(W, hy); x.closePath(); x.fill(); }
+function tree(cx, by, s, c) { rr(cx - s * 0.1, by - s * 0.9, s * 0.2, s * 0.9, 2); fs('#9b6a3c'); circ(cx, by - s * 1.2, s * 0.62); fs(c, shade(c, -0.3), 1.5); circ(cx - s * 0.2, by - s * 1.35, s * 0.2); fs('rgba(255,255,255,.25)'); }
+function pine(cx, by, s) { rr(cx - s * 0.08, by - s * 0.3, s * 0.16, s * 0.3, 2); fs('#8a5a32'); for (let i = 0; i < 3; i++) { x.beginPath(); x.moveTo(cx, by - s * (1.4 - i * 0.3)); x.lineTo(cx + s * (0.35 + i * 0.12), by - s * (0.6 - i * 0.2)); x.lineTo(cx - s * (0.35 + i * 0.12), by - s * (0.6 - i * 0.2)); x.closePath(); fs('#3f9a5a', '#2a6a3e', 1.5); x.beginPath(); x.moveTo(cx, by - s * (1.4 - i * 0.3)); x.lineTo(cx + s * 0.18, by - s * (1.15 - i * 0.3)); x.lineTo(cx - s * 0.18, by - s * (1.15 - i * 0.3)); x.closePath(); fs('#fff'); } }
+function house(cx, by, s, lit) { rr(cx - s * 0.5, by - s * 0.8, s, s * 0.8, 2); fs(lit ? '#3d4c80' : '#c8b8a8', lit ? '#2a3560' : '#9a8a7a', 1.5); x.beginPath(); x.moveTo(cx - s * 0.6, by - s * 0.78); x.lineTo(cx, by - s * 1.25); x.lineTo(cx + s * 0.6, by - s * 0.78); x.closePath(); fs(lit ? '#2a3560' : '#c0605a'); rr(cx - s * 0.25, by - s * 0.6, s * 0.2, s * 0.2, 1); fs(lit ? '#ffe680' : '#dff3ff'); rr(cx + s * 0.06, by - s * 0.6, s * 0.2, s * 0.2, 1); fs(lit ? '#ffe680' : '#dff3ff'); }
+function palm(cx, by, s) { x.strokeStyle = '#b07a45'; x.lineWidth = s * 0.1; x.lineCap = 'round'; x.beginPath(); x.moveTo(cx, by); x.quadraticCurveTo(cx + s * 0.25, by - s * 0.6, cx + s * 0.1, by - s * 1.1); x.stroke(); for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + (i - 2) * 0.6; x.fillStyle = '#3fb05a'; x.beginPath(); x.ellipse(cx + s * 0.1 + Math.cos(a) * s * 0.35, by - s * 1.1 + Math.sin(a) * s * 0.2 + s * 0.08, s * 0.4, s * 0.1, a, 0, TAU); x.fill(); } }
+function bucket(cx, by, s) { x.beginPath(); x.moveTo(cx - s * 0.6, by - s); x.lineTo(cx + s * 0.6, by - s); x.lineTo(cx + s * 0.45, by); x.lineTo(cx - s * 0.45, by); x.closePath(); fs(lgr(cx - s, 0, cx + s, 0, '#8fcaff', '#2f78cf'), '#1d4f9e', 2); ell(cx, by - s, s * 0.6, s * 0.15); fs('#dff3ff', '#1d4f9e', 2); for (const [a, b, r] of [[-0.2, -1.12, 0.2], [0.15, -1.2, 0.16], [0.35, -1.08, 0.12]]) { circ(cx + a * s, by + b * s, r * s); fs('#fff', '#9ab6e0', 1); } x.strokeStyle = '#1d4f9e'; x.lineWidth = 2; x.beginPath(); x.arc(cx, by - s, s * 0.62, Math.PI, 0); x.stroke(); }
+// weather particles
+function updWeather(dt) {
+  const want = theme === 'rain' ? 50 : theme === 'snowy' ? 40 : theme === 'autumn' ? 8 : 0;
+  while (wx.length < want) wx.push({ x: Math.random() * W, y: Math.random() * H, s: Math.random() });
+  if (wx.length > want) wx.length = want;
+  for (const p of wx) {
+    if (theme === 'rain') { p.y += (500 + p.s * 200) * dt; p.x -= 60 * dt; }
+    else if (theme === 'snowy') { p.y += (30 + p.s * 30) * dt; p.x += Math.sin(t + p.s * 9) * 20 * dt; }
+    else { p.y += (40 + p.s * 30) * dt; p.x += Math.sin(t * 1.5 + p.s * 9) * 40 * dt; }
+    if (p.y > VY) { p.y = S.y + beamH; p.x = Math.random() * W; }
+  }
+}
+function drawWeather() {
+  for (const p of wx) {
+    if (theme === 'rain') { x.strokeStyle = 'rgba(255,255,255,.55)'; x.lineWidth = 1.5; x.beginPath(); x.moveTo(p.x, p.y); x.lineTo(p.x - 4, p.y + 12); x.stroke(); }
+    else if (theme === 'snowy') { circ(p.x, p.y, 1.5 + p.s * 2.5); fs('rgba(255,255,255,.9)'); }
+    else { x.save(); x.translate(p.x, p.y); x.rotate(t * 2 + p.s * 9); ell(0, 0, 6, 3); fs(p.s > 0.5 ? '#ff9a3c' : '#ffc93a'); x.restore(); }
+  }
+}
+
+// =====================================================================
+// drawing — HUD bits: chips, request bubble, tray, hero, hint
+// =====================================================================
+function drawChips() {
+  if (free || !steps.length) return;
+  const r = chipS / 2, n = steps.length;
+  rr(chips[0].x - r - 8, chips[0].y - r - 5, (n - 1) * chipS * 1.18 + chipS + 16, chipS + 10, r + 5); fs('rgba(255,255,255,.55)');
+  steps.forEach((s, i) => {
+    const c = chips[i], done = i < si || (phase !== 'wash' && phase !== 'in'), cur = i === si && phase === 'wash';
+    const rr0 = cur ? r * (1.08 + Math.sin(t * 5) * 0.04) : r * 0.92;
+    circ(c.x, c.y, rr0); fs(done ? '#5ccf6a' : cur ? '#fff3a8' : '#fff', done ? '#2a9447' : cur ? '#f0a020' : '#d6c6a8', cur ? 3 : 2);
+    if (cur) { x.strokeStyle = '#ff9f1c'; x.lineWidth = Math.max(3, r * 0.16); x.lineCap = 'round'; x.beginPath(); x.arc(c.x, c.y, rr0 + 1, -Math.PI / 2, -Math.PI / 2 + TAU * clamp(stepP, 0, 1)); x.stroke(); }
+    x.save(); x.translate(c.x, c.y); x.globalAlpha = done ? 0.55 : cur ? 1 : 0.55;
+    const tool = STEP[s].tool;
+    if (tool) toolArt(tool, r * 0.62); else { circ(0, 0, r * 0.5); fs('rgba(220,240,255,.7)', '#7fb8e8', 2); circ(-r * 0.18, -r * 0.18, r * 0.12); fs('#fff'); }
+    x.restore();
+    if (s === 'rinse') { circ(c.x + r * 0.55, c.y - r * 0.55, r * 0.28); fs('#fff', '#9ab6e0', 1.5); }
+    if (done) { x.strokeStyle = '#fff'; x.lineWidth = Math.max(3, r * 0.2); x.lineCap = 'round'; x.lineJoin = 'round'; x.beginPath(); x.moveTo(c.x - r * 0.38, c.y); x.lineTo(c.x - r * 0.08, c.y + r * 0.3); x.lineTo(c.x + r * 0.42, c.y - r * 0.3); x.stroke(); }
+  });
+}
+function drawRequest() {
+  const r = car && car.sp.req; if (!r || !bubBox || phase === 'out' && car.ox > W * 0.3) return;
+  const b = bubBox, rq = reqState(car), showChk = phase === 'custom';
+  // tail toward the car
+  const tx = toScreen(car.d.eye[0], car.d.eye[1] - 30);
+  x.fillStyle = '#fff'; x.strokeStyle = '#b8c8e0'; x.lineWidth = 2.5;
+  for (const [k, rr1] of [[0.45, 0.06], [0.7, 0.04]]) { const cx = lerp(b.x + b.w * 0.3, tx.x, k), cy = lerp(b.y + b.h, tx.y, k); circ(cx, cy, Math.min(b.h, b.w) * rr1); x.fill(); x.stroke(); }
+  rr(b.x, b.y, b.w, b.h, b.h * 0.3); x.shadowColor = 'rgba(40,60,90,.18)'; x.shadowBlur = 10; x.shadowOffsetY = 4; x.fill(); x.shadowColor = 'transparent'; x.stroke();
+  // a little picture of the car in the wanted colour
+  const s = Math.min(b.w * 0.56 / 345, b.h * 0.78 / 230), cx = b.x + b.w * 0.33, cy = b.y + b.h * 0.5 + 105 * s;
+  x.save(); x.translate(cx, cy); x.scale(s, s);
+  x.fillStyle = lgr(0, -200, 0, 0, shade(COL[r.c], 0.4), COL[r.c]); x.fill(car.d.bodyP); x.strokeStyle = shade(COL[r.c], -0.45); x.lineWidth = 6; x.stroke(car.d.bodyP);
+  for (const gp of car.d.glassP) { x.fillStyle = '#d6efff'; x.fill(gp); }
+  for (const [wx0, wr] of car.d.wheels) drawWheel(wx0, -wr, wr, r.w || 'basic', 0);
+  // stickers on the picture
+  const spots = car.d.cells.filter(i => { const [a, bb] = cellXY(i); return bb > car.d.eye[1] + 20 || Math.abs(a - car.d.eye[0]) > 50; });
+  for (let k = 0; k < r.n; k++) { const [a, bb] = cellXY(spots[Math.floor((k + 0.5) / r.n * spots.length * 0.999)]); x.save(); x.translate(a, bb); stickerArt(r.s, 24); x.restore(); }
+  x.restore();
+  // what it needs: colour dot, sticker ×n, wheel
+  const ix = b.x + b.w * 0.66, rs = Math.min(b.h * 0.13, b.w * 0.075), rows = r.w ? 3 : 2, gap = (b.h - 2 * rs * rows) / (rows + 1);
+  let yy = b.y + gap + rs;
+  const row = (ok, art) => { x.save(); x.translate(ix, yy); art(); x.restore(); if (showChk) { const kx = ix + rs * 3.2; circ(kx, yy, rs * 0.7); fs(ok ? '#5ccf6a' : '#eef1f6', ok ? '#2a9447' : '#c6ccd6', 2); if (ok) { x.strokeStyle = '#fff'; x.lineWidth = rs * 0.25; x.beginPath(); x.moveTo(kx - rs * 0.32, yy); x.lineTo(kx - rs * 0.05, yy + rs * 0.28); x.lineTo(kx + rs * 0.36, yy - rs * 0.28); x.stroke(); } } yy += gap + 2 * rs; };
+  row(rq.c, () => { circ(0, 0, rs); fs(lgr(-rs, -rs, rs, rs, shade(COL[r.c], 0.35), COL[r.c]), shade(COL[r.c], -0.4), 2); ell(-rs * 0.3, -rs * 0.35, rs * 0.3, rs * 0.18); fs('rgba(255,255,255,.6)'); });
+  row(rq.s, () => { x.translate(-rs * 0.5, 0); stickerArt(r.s, rs * 0.9); x.fillStyle = '#4a3520'; x.font = `900 ${Math.round(rs * 1.15)}px ${FONT}`; x.textAlign = 'left'; x.textBaseline = 'middle'; x.fillText('×' + r.n, rs * 0.95, rs * 0.08); });
+  if (r.w) row(rq.w, () => drawWheel(0, 0, rs, r.w, t));
+}
+function drawQueue() {
+  if (!qBox || qi + 1 >= qCars.length || qBox.w < 40 || qBox.h < 30) return;
+  const wait = qCars.slice(qi + 1), b = qBox;
+  if (b.row) {
+    const s = Math.min(b.w / (wait.length * 380), b.h * 0.6 / 250);
+    wait.forEach((c, i) => { c.mood = 'meh'; drawVehicle(c, b.x + b.w - (i + 0.5) * 380 * s, b.y + b.h - 8, s, false); });
+  } else {
+    const s = Math.min(b.w * 0.9 / 360, b.h / (wait.length * 270));
+    wait.forEach((c, i) => { c.mood = 'meh'; drawVehicle(c, b.x + b.w / 2, b.y + (i + 1) * 260 * s, s, false); });
+  }
+}
+function drawTray() {
+  rr(tray.x, tray.y, tray.w, tray.h, 18); fs(lgr(0, tray.y, 0, tray.y + tray.h, '#fff8ea', '#ffe7c2'), '#e0b77a', 3);
+  for (const s of slots) {
+    const cur = phase === 'wash' && s.kind === 'tool' && curTool() === s.id;
+    const sel = (s.kind === 'tab' && s.id === tab) || (s.kind === 'col' && (car.paint ? car.paint.to : car.col) === COL[s.id]) || (s.kind === 'whl' && car.wheel === s.id) || (s.kind === 'horn' && car.horn === s.id);
+    const pad = Math.max(3, s.w * 0.05), bounce = cur ? Math.abs(Math.sin(t * 4)) * s.h * 0.07 : 0, pulse = s.pulse ? Math.sin(s.pulse * 12) * 0.06 : 0;
+    const cx = s.x + s.w / 2, cy = s.y + s.h / 2 - bounce;
+    if (s.kind === 'go') {
+      const ok = car && (!car.sp.req || reqState(car).all), k = 1 + (ok ? Math.sin(t * 5) * 0.03 : 0);
+      x.save(); x.translate(cx, cy); x.scale(k, k);
+      rr(-s.w / 2 + pad, -s.h / 2 + pad, s.w - 2 * pad, s.h - 2 * pad, s.h * 0.3); fs(lgr(0, -s.h / 2, 0, s.h / 2, '#8ff09a', '#2fb54a'), '#1f7a35', 3);
+      const a = Math.min(s.h * 0.32, s.w * 0.2);
+      x.fillStyle = '#fff'; x.beginPath(); x.moveTo(-a * 1.1, -a * 0.35); x.lineTo(a * 0.1, -a * 0.35); x.lineTo(a * 0.1, -a * 0.85); x.lineTo(a * 1.2, 0); x.lineTo(a * 0.1, a * 0.85); x.lineTo(a * 0.1, a * 0.35); x.lineTo(-a * 1.1, a * 0.35); x.closePath(); x.fill(); x.strokeStyle = '#1f7a35'; x.lineWidth = 2; x.stroke();
+      x.restore(); continue;
+    }
+    x.save(); x.translate(cx, cy); x.scale(1 + pulse, 1 + pulse);
+    if (cur) { rr(-s.w / 2 + pad - 3, -s.h / 2 + pad - 3, s.w - 2 * pad + 6, s.h - 2 * pad + 6, s.w * 0.24); fs(`rgba(255,210,63,${0.35 + Math.sin(t * 5) * 0.2})`); }
+    rr(-s.w / 2 + pad, -s.h / 2 + pad, s.w - 2 * pad, s.h - 2 * pad, s.w * 0.2);
+    fs(cur ? '#fff6c2' : sel ? '#dff2ff' : s.kind === 'tab' ? '#fff3dc' : '#ffffff', cur ? '#f0a020' : sel ? '#3a86c8' : '#e2c495', cur || sel ? 3.5 : 2);
+    const r = (s.w - 2 * pad) * 0.36;
+    const ghost = drag && drag.kind === 'tool' && drag.id === s.id;
+    if (ghost) x.globalAlpha = 0.3;
+    if (s.kind === 'tool') toolArt(s.id, r * 1.1, t * 6);
+    else if (s.kind === 'tocustom') { tabArt('paint', r * 0.9); x.fillStyle = '#2fb54a'; x.beginPath(); x.moveTo(r * 0.5, r * 0.55); x.lineTo(r * 1.05, r * 0.85); x.lineTo(r * 0.5, r * 1.15); x.fill(); }
+    else if (s.kind === 'tab') tabArt(s.id, r);
+    else if (s.kind === 'col') { const c = COL[s.id]; x.beginPath(); for (let i = 0; i < 12; i++) { const a = i / 12 * TAU, q = r * (i % 2 ? 0.86 : 1); x.lineTo(Math.cos(a) * q, Math.sin(a) * q); } x.closePath(); fs(lgr(-r, -r, r, r, shade(c, 0.35), c), shade(c, -0.4), 2); ell(-r * 0.3, -r * 0.35, r * 0.3, r * 0.17, -0.5); fs('rgba(255,255,255,.6)'); }
+    else if (s.kind === 'stk') stickerArt(s.id, r * 0.92);
+    else if (s.kind === 'whl') drawWheel(0, 0, r * 0.95, s.id, t * 0.5);
+    else if (s.kind === 'horn') hornArt(s.id, r * 0.9);
+    x.restore();
+  }
+}
+function drawHero() {
+  const j = Math.sin(heroJump * Math.PI) * hero.r * 0.5, sq = Math.sin(t * 2.2) * 0.03 - (heroJump > 0.8 ? 0.1 : 0);
+  const hx = hero.x, hy = hero.y - j, r = hero.r;
+  if (!land) { rr(hx - r * 1.05, hero.y + r * 0.95, r * 2.1, r * 0.35, r * 0.12); fs('#c99a5a', '#8a5a20', 2); }
+  MG.puPu(x, hx, hy, r, heroMood === 'yay' ? (MG.hero === 'niu' ? 'yay' : 'wink') : drag ? 'wow' : 'happy', sq, { arms: heroMood === 'yay' ? 'up' : 'down', noLeaf: true, hideHorns: true, look: car ? clamp((VX + car.ox - hx) / (S.w * 0.5), -1, 1) : 0 });
+  // a little blue cap
+  const top = hy - r * 0.98 + r * MG.hatDrop + r * sq * 0.9;
+  x.save(); x.translate(hx, top + r * 0.12);
+  x.beginPath(); x.ellipse(r * 0.42, r * 0.02, r * 0.5, r * 0.12, 0.08, 0, TAU); fs('#2f78cf', '#1d4f9e', Math.max(1.5, r * 0.05));
+  x.beginPath(); x.arc(0, 0, r * 0.5, Math.PI, 0); x.closePath(); fs(lgr(0, -r * 0.5, 0, 0, '#8fcaff', '#4c9cf0'), '#1d4f9e', Math.max(1.5, r * 0.05));
+  circ(0, -r * 0.5, r * 0.07); fs('#fff');
+  circ(-r * 0.05, -r * 0.2, r * 0.12); fs('#fff', '#9ab6e0', 1); circ(r * 0.16, -r * 0.28, r * 0.07); fs('#fff', '#9ab6e0', 1);
+  x.restore();
+}
+function drawHint() {
+  if (!hintA) return;
+  const k = clamp(hintA.t / 1.4, 0, 1), e = ease(k);
+  const px0 = hintA.tap ? hintA.to.x : lerp(hintA.from.x, hintA.to.x, e), py0 = hintA.tap ? hintA.to.y : lerp(hintA.from.y, hintA.to.y, e) + Math.sin(hintA.t * 10) * 3;
+  const wig = k >= 1 ? Math.sin(hintA.t * 12) * 10 * U : 0;
+  x.save(); x.globalAlpha = Math.min(1, hintA.t * 3, (2.6 - hintA.t) * 2); x.translate(px0 + wig, py0 + 14 * U);
+  const s = 15 * U;
+  rr(-s * 0.32, -s * 1.3, s * 0.64, s * 1.5, s * 0.32); fs('#fff', '#7d8fb0', 2.5);
+  rr(-s * 0.85, -s * 0.2, s * 1.7, s * 1.3, s * 0.55); fs('#fff', '#7d8fb0', 2.5);
+  x.restore();
+}
+function say(text, px, py, col) { floats.push({ text, x: px, y: py, col, life: 1.3 }); if (floats.length > 6) floats.shift(); }
+function drawFloats() {
+  x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineJoin = 'round';
+  for (const f of floats) {
+    const sz = Math.round(clamp(24 * U, 18, 40) * MG.textScale);
+    x.font = `900 ${sz}px system-ui,${FONT}`;
+    const tw = x.measureText(f.text).width, fx = clamp(f.x, tw / 2 + 8, W - tw / 2 - 8), fy = Math.max(sz, f.y - (1.3 - f.life) * 36);
+    x.globalAlpha = Math.min(1, f.life * 2.5);
+    x.lineWidth = Math.max(3, sz * 0.2); x.strokeStyle = '#fff'; x.strokeText(f.text, fx, fy); x.fillStyle = f.col; x.fillText(f.text, fx, fy);
+  }
+  x.globalAlpha = 1;
+}
+function drawBubs() {
+  for (const b of bubs) {
+    const k = b.pop ? 1 + b.pop * 0.6 : 1; x.globalAlpha = b.pop ? 1 - b.pop : Math.min(1, b.life);
+    circ(b.x, b.y, b.r * k); x.fillStyle = 'rgba(220,240,255,.28)'; x.fill(); x.strokeStyle = b.goal ? 'rgba(120,170,240,.9)' : 'rgba(150,190,240,.7)'; x.lineWidth = b.goal ? 3 : 1.5; x.stroke();
+    x.strokeStyle = 'rgba(255,170,220,.6)'; x.lineWidth = 2; x.beginPath(); x.arc(b.x, b.y, b.r * k * 0.8, 0.3, 1.3); x.stroke();
+    ell(b.x - b.r * 0.35, b.y - b.r * 0.4, b.r * 0.22, b.r * 0.13, -0.6); fs('rgba(255,255,255,.9)');
+  }
+  x.globalAlpha = 1;
+}
+function drawDrag() {
+  if (!drag) return;
+  const tp = tipOf(drag);
+  if (drag.kind === 'tool') {
+    const T = TOOLS[drag.id], s = T.ds * VS;
+    if (drag.on) {
+      if (drag.id === 'water') { x.fillStyle = 'rgba(160,215,255,.35)'; x.beginPath(); x.moveTo(tp.x - 10 * VS, tp.y + 6 * VS); x.lineTo(tp.x + 10 * VS, tp.y + 6 * VS); x.lineTo(tp.x + 34 * VS, tp.y - 28 * VS); x.lineTo(tp.x - 34 * VS, tp.y - 28 * VS); x.fill(); }
+      if (drag.id === 'dryer') { x.strokeStyle = 'rgba(255,255,255,.8)'; x.lineWidth = 3; x.lineCap = 'round'; for (let i = -1; i <= 1; i++) { const o = (t * 160 + i * 20) % 40; x.beginPath(); x.moveTo(tp.x + i * 14 * VS, tp.y - o * VS); x.lineTo(tp.x + i * 18 * VS, tp.y - (o + 14) * VS); x.stroke(); } }
+    }
+    x.save(); x.translate(tp.x - T.tip[0] * s, tp.y - T.tip[1] * s); x.rotate(drag.on ? Math.sin(t * 20) * 0.04 : 0); toolArt(drag.id, s, drag.spin || 0); x.restore();
+  } else if (drag.kind === 'stk') { x.save(); x.translate(tp.x, tp.y); x.scale(VS, VS); stickerArt(drag.id, 17); x.restore(); }
+}
+function draw() {
+  buildBg();
+  x.drawImage(bgCan, 0, 0, W, H);
+  drawWeather();
+  if (state === 'menu' && !car) return;
+  drawChips();
+  drawQueue();
+  if (car) drawVehicle(car, VX + car.ox, VY + car.bob, VS, true);
+  drawRequest();
+  drawHero();
+  drawBubs();
+  drawTray();
+  MG.fx.draw(x);
+  drawDrag();
+  drawHint();
+  drawFloats();
+}
+
+// =====================================================================
+// menu
+// =====================================================================
+function menu() {
+  state = 'menu';
+  const st = MG.store.get('carwash.stars', {});
+  MG.choose({
+    id: 'carwash', title: '噗噗洗車場',
+    html: `<p>噗噗開了一間洗車場！髒兮兮的車子開進來，用<b>水管、泡泡、大刷子、海綿、吹風機</b>把它洗得亮晶晶。</p><p>洗好以後還可以<b>換顏色、貼貼紙、換輪子、換喇叭聲</b>，車子會開開心心地叭叭出發！</p><p>有卡車、巴士、拖拉機、消防車、賽車、冰淇淋車和小火車，還有落葉、沙子、下雪、噴漆、爆胎和加油。不會失敗，也不用計時，慢慢洗 ^_^</p>`,
+    levels: { count: LEVELS.length, max: LEVELS.length,
+      label: n => `${lvIcon(n)} ${LEVELS[n - 1].nm}${LEVELS[n - 1].ty && LEVELS[n - 1].ty !== 'wash' ? `・${TY_NM[LEVELS[n - 1].ty]}` : ''}${st[n] ? ' ' + '⭐'.repeat(st[n]) : ''}`,
+      short: n => `${n}${MK[LEVELS[n - 1].ty] || ''}${st[n] ? '<small>✓</small>' : ''}` },
+    playing: () => state === 'play',
+    start: (m, lv) => startLevel(lv),
+  });
+}
+// behind the start panel: a muddy car waiting
+queue = [{ v: 'car', dirt: 'mud', d: 0.5 }]; qCars = queue.map(makeCar); car = qCars[0]; genDirt(car); steps = stepsFor(car.sp); phase = 'wash'; layout(); car.mood = 'meh';
+menu();
+
+// =====================================================================
+// test hook
+// =====================================================================
+window.CWT = {
+  get state() { return state; }, get phase() { return phase; }, get level() { return level; }, get step() { return curStep(); }, get si() { return si; }, steps: () => steps.slice(), get qi() { return qi; }, get queue() { return queue.length; },
+  get progress() { return stepP; }, levels: LEVELS.length, get stars() { return gotStars; }, get freeN() { return freeN; },
+  start: n => startLevel(n), win: () => win(), finishStep() { if (curStep()) completeStep(); }, measure() { const s = curStep(); return s ? progressOf(s) : null; },
+  skipIn() { if (phase === 'in') phaseT = 99; },
+  client(lx, ly) { const r = cv.getBoundingClientRect(), B = 3; return { x: r.left + B + lx * (r.width - 2 * B) / cv.lw, y: r.top + B + ly * (r.height - 2 * B) / cv.lh }; },
+  slotXY(kind, id) { const s = slots.find(q => q.kind === kind && (id == null || q.id === id)); return s && this.client(s.x + s.w / 2, s.y + s.h / 2); },
+  carXY(lx, ly) { const p = toScreen(lx, ly); return this.client(p.x, p.y); },
+  // a screen point such that the tool tip (finger minus the touch offset) lands on local (lx, ly)
+  fingerFor(id, lx, ly, touch) { const p = toScreen(lx, ly); const off = touch ? clamp(TOOLS[id].ds * VS * 0.95, 40, 110) : 0; return this.client(p.x, p.y + off); },
+  cells: () => car.d.cells.map(cellXY), wheel: () => car.flat >= 0 ? car.d.wheels[car.flat] : null, cap: () => car.d.cap,
+  bubbles: () => bubs.filter(b => b.goal && !b.pop).map(b => CWT.client(b.x, b.y)),
+  get car() { return car && { v: car.d.id, col: car.col, wheel: car.wheel, horn: car.horn, stickers: car.stickers.length, req: reqState(car), inflate: car.inflate, fuel: car.fuel }; },
+  go() { driveOff(); }, tab(id) { tab = id; layout(); },
+};
+
+MG.loop(dt => { update(dt); draw(); });
+</script>
+</body>
+</html>
