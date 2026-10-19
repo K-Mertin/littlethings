@@ -76,6 +76,13 @@
   .meter i{display:block;height:100%;width:0;border-radius:4px;background:#5fc8ff;transition:background .15s}
   #pauseBtn{pointer-events:auto;position:absolute;top:calc(172px + env(safe-area-inset-top,0px));right:calc(12px + env(safe-area-inset-right,0px));width:44px;height:44px;border-radius:14px;
     border:2px solid var(--line);background:var(--glass);font-family:var(--round);font-weight:700;font-size:16px;box-shadow:0 4px 0 rgba(34,48,90,.12)}
+  #padBadge{position:absolute;top:calc(276px + env(safe-area-inset-top,0px));right:calc(12px + env(safe-area-inset-right,0px));width:44px;height:44px;border-radius:14px;background:var(--glass);border:2px solid #3ccf63;display:flex;align-items:center;justify-content:center;font-size:20px}
+  #padBadge.lost{border-color:#ff5a4a;animation:wflash .6s infinite}
+  .qr{width:min(260px,70vw);aspect-ratio:1;margin:6px auto 4px;background:#fff;border-radius:16px;padding:12px;box-sizing:border-box;display:flex;align-items:center;justify-content:center}
+  .qr svg,.qr img{width:100%;height:100%;display:block}
+  .padurl{text-align:center;font-size:12px;font-weight:700;color:var(--ink-2);word-break:break-all;margin:4px 0}
+  .padstat{text-align:center;font-weight:800;font-size:16px;margin:8px 0 6px;color:var(--ink-2)}
+  .padstat.ok{color:#2e9b48} .padstat.bad{color:#e5483b}
   #camBtn{pointer-events:auto;position:absolute;top:calc(224px + env(safe-area-inset-top,0px));right:calc(12px + env(safe-area-inset-right,0px));width:44px;height:44px;border-radius:14px;border:2px solid var(--line);background:var(--glass);font-size:18px;box-shadow:0 4px 0 rgba(34,48,90,.12)}
   @media (max-width:520px){ #camBtn{top:calc(182px + env(safe-area-inset-top,0px))} }
   #gaps{top:calc(84px + env(safe-area-inset-top,0px));left:calc(12px + env(safe-area-inset-left,0px));padding:5px 12px;font-size:13px;font-weight:800;display:flex;flex-direction:column;gap:1px;font-variant-numeric:tabular-nums}
@@ -229,6 +236,7 @@
   <canvas class="chip" id="mini" width="300" height="300"></canvas>
   <button id="pauseBtn" aria-label="Pause">II</button>
   <button id="camBtn" aria-label="Change camera">🎥</button>
+  <div id="padBadge" hidden>📱</div>
   <div class="chip" id="speedo"><div class="tags"><span id="hDraft" hidden>SLIPSTREAM</span><span id="hDmg" hidden></span><span id="hTyre"></span><span id="hWx" hidden></span></div><b id="hSpd">0</b><small>km/h</small><div class="meter"><i id="hMeter"></i></div></div>
 </div>
 <div id="coach" class="chip" hidden></div>
@@ -269,8 +277,22 @@
       <div id="wxBox"><div class="lbl">Weather</div><div class="seg" id="wxSeg"></div></div>
     </div>
     <button class="go" id="startBtn">Race!</button>
+    <button class="alt" id="padBtn">📱 Use your phone as the controller</button>
     <p class="help" id="helpKeys"><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&larr;</kbd><kbd>&rarr;</kbd> or <kbd>WASD</kbd> drive &middot; hold <kbd>Space</kbd> while turning to drift, let go for a boost (learn it in <b>Drift school</b>) &middot; press gas the moment the lights go green for a perfect start &middot; tuck in behind a car to slipstream &middot; <kbd>R</kbd> back on track &middot; <kbd>C</kbd> camera &middot; <kbd>P</kbd> pause &middot; <kbd>M</kbd> sound</p>
     <p class="help" id="helpTouch" hidden>The car accelerates by itself. Steer with &#9664; &#9654;, hold <b>DRIFT</b> while turning and let go for a boost (learn it in <b>Drift school</b>), <b>BRAKE</b> to slow down or reverse. Tap <b>DRIFT</b> the moment the lights go green for a perfect start.</p>
+  </div>
+</section>
+
+<section class="screen" id="padScreen" hidden>
+  <div class="card" style="max-width:440px">
+    <h2>Phone controller</h2>
+    <p class="sub">Scan this with your phone's camera. The controller opens in the phone's browser: no app needed.</p>
+    <div class="qr" id="padQr"></div>
+    <p class="padurl" id="padUrl"></p>
+    <div class="padstat" id="padStat">Starting…</div>
+    <p class="help">Steer by tilting the phone like a steering wheel, or with an on-screen stick: you choose on the phone. Both devices need the internet for the first handshake; after that they talk directly. On some office or school networks the connection is blocked.</p>
+    <button class="go" id="padDone">Done</button>
+    <button class="alt" id="padOff" hidden>Disconnect the phone</button>
   </div>
 </section>
 
@@ -2298,6 +2320,8 @@ document.querySelectorAll('.tb').forEach(b => {
 });
 
 function playerInput() {
+  const rp = padInput();
+  if (rp) return rp;
   const k = n => keys.has(n);
   const left = k('ArrowLeft') || k('KeyA') || touchKeys.has('left');
   const right = k('ArrowRight') || k('KeyD') || touchKeys.has('right');
@@ -2441,6 +2465,7 @@ function stopDemo(msg) {
 }
 function endDrift(c, why) {
   const lvl = why === 'wall' ? 0 : c.driftT >= DRIFT_ORANGE ? 2 : c.driftT >= DRIFT_BLUE ? 1 : 0;
+  if (c.isPlayer && lvl) padSend({ t: 'fx', k: 'boost', v: lvl });
   if (lvl === 2) { c.boostT = Math.max(c.boostT, 1.1); if (c.isPlayer) sfxBoost(); }
   else if (lvl === 1) { c.boostT = Math.max(c.boostT, 0.6); if (c.isPlayer) sfxBoost(); }
   if (c.isPlayer && DRILL()) drillDrift(lvl, c.driftT, why);
@@ -2536,7 +2561,7 @@ function updateTracking(c, full) {
   for (const p of TR.pads) {
     let d = c.idx - p.i; if (d > N / 2) d -= N; if (d < -N / 2) d += N;
     if (Math.abs(d) < 3.2 && Math.abs(c.lat - p.lat) < 2.3 && c.padCD <= 0) {
-      c.boostT = Math.max(c.boostT, 1.3); c.padCD = 0.6; if (c.isPlayer) sfxBoost();
+      c.boostT = Math.max(c.boostT, 1.3); c.padCD = 0.6; if (c.isPlayer) { sfxBoost(); padSend({ t: 'fx', k: 'pad' }); }
     }
   }
 }
@@ -2609,6 +2634,7 @@ function collideCars() {
 
 let crashCD = 0;
 function crashFx(x, z, strength, player, vx = 0, vz = 0) {
+  if (player && strength > 3) padSend({ t: 'fx', k: 'crash', v: Math.round(strength) });
   if (strength < 1) return;
   const near = (x - camera.position.x) ** 2 + (z - camera.position.z) ** 2 < 120 * 120;
   if (near && state !== 'menu') {
@@ -2809,7 +2835,7 @@ function ghostStep(dt) {
 // launch: press the gas (or DRIFT on touch screens) just as the lights go green for a perfect start;
 // holding it down early spins the wheels
 const launch = { at: null, done: false };
-const launchPressed = () => keys.has('ArrowUp') || keys.has('KeyW') || touchKeys.has('drift');
+const launchPressed = () => keys.has('ArrowUp') || keys.has('KeyW') || touchKeys.has('drift') || !!(PAD.live() && ((PAD.in.gas && !PAD.in.auto) || PAD.in.drift));
 function perfectStart(c) { c.boostT = Math.max(c.boostT, 1.1); if (c.isPlayer) { sfxBoost(); toast('Perfect start!'); } }
 function launchGo() {
   launch.done = false;
@@ -2819,6 +2845,105 @@ function launchGo() {
   }
   for (const c of cars) if (c.auto && !c.isPlayer && Math.random() < DIFFS[settings.diff].launch) perfectStart(c);
 }
+
+/* =====================================================================
+   Phone controller: the phone opens pad.html and talks to this page over WebRTC (PeerJS).
+   A BroadcastChannel carries the same messages between two tabs of one browser, handy for testing.
+   ===================================================================== */
+const PAD = {
+  id: null, peer: null, conn: null, bc: null, in: { steer: 0, gas: 0, brake: 0, drift: 0 }, last: 0, name: '',
+  live() { return !!(this.conn || this.bcOn) && performance.now() - this.last < 1500; },
+};
+const PEER_URL = 'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/+esm', QR_URL = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/+esm';
+function padInput() {
+  if (!PAD.live()) return null;
+  const i = PAD.in, k = n => keys.has(n);
+  if (demo.on && state === 'race' && (i.gas || i.brake || i.drift || Math.abs(i.steer) > 0.3)) stopDemo('Your turn!');
+  // keyboard still works alongside the phone
+  const kb = (k('ArrowRight') || k('KeyD') ? 1 : 0) - (k('ArrowLeft') || k('KeyA') ? 1 : 0);
+  return {
+    throttle: clamp((i.gas ? 1 : 0) - (i.brake ? 1 : 0) + (k('ArrowUp') || k('KeyW') ? 1 : 0) - (k('ArrowDown') || k('KeyS') ? 1 : 0), -1, 1),
+    steer: kb || clamp(i.steer, -1, 1),
+    drift: !!i.drift || k('Space') || k('ShiftLeft') || k('ShiftRight'),
+  };
+}
+function padSend(m) {
+  if (PAD.conn && PAD.conn.open) try { PAD.conn.send(m); } catch {}
+  if (PAD.bcOn && PAD.bc) PAD.bc.postMessage(m);
+}
+function padMsg(m) {
+  if (!m || typeof m !== 'object') return;
+  PAD.last = performance.now();
+  if (m.t === 'in') { PAD.in = { steer: +m.steer || 0, gas: +m.gas || 0, brake: +m.brake || 0, drift: +m.drift || 0, auto: +m.auto || 0 }; return; }
+  if (m.t === 'hello') { padStatus(true); audioInit(); return; }
+  if (m.t === 'btn') {
+    if (m.b === 'pause') { if (state === 'race' || state === 'countdown') pauseGame(); else if (state === 'paused') resumeGame(); }
+    else if (m.b === 'cam') cycleCam();
+    else if (m.b === 'start') {
+      if (state === 'menu' && !$('menu').hidden) startRace();
+      else if (state === 'menu' && !$('padScreen').hidden) { showUI('menu'); startRace(); }
+      else if (!$('results').hidden) $('againBtn').click();
+      else if (state === 'paused') resumeGame();
+    }
+    else if (m.b === 'reset' && state === 'race' && !player.finished) resetCar(player);
+  }
+}
+function padStatus(ok, text) {
+  const st = $('padStat');
+  st.textContent = text || (ok ? '✓ Phone connected' + (PAD.name ? ': ' + PAD.name : '') + '. You can close this and race.' : 'Waiting for the phone…');
+  st.className = 'padstat' + (ok ? ' ok' : text ? ' bad' : '');
+  $('padOff').hidden = !ok;
+  $('padBtn').textContent = ok ? '📱 Phone connected ✓' : '📱 Use your phone as the controller';
+}
+async function padOpen() {
+  showUI('pad');
+  if (!PAD.id) {
+    PAD.id = 'sunnycircuit-' + Math.random().toString(36).slice(2, 8);
+    PAD.bc = new BroadcastChannel(PAD.id); PAD.bc.onmessage = e => { PAD.bcOn = true; padMsg(e.data); };
+    // the controller page lives next to this one; from anywhere else (a preview copy) use the published site
+    const here = /github\.io$|^localhost$|^127\./.test(location.hostname) || location.protocol === 'file:';
+    const url = new URL('pad.html', here && location.protocol !== 'file:' ? location.href : 'https://k-mertin.github.io/littlethings/racing/'); url.hash = PAD.id.slice(13);
+    PAD.url = url.href; $('padUrl').textContent = url.href;
+    import(QR_URL).then(m => {
+      const qrcode = m.default || m.qrcode || m; const q = qrcode(0, 'M'); q.addData(PAD.url); q.make();
+      $('padQr').innerHTML = q.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
+    }).catch(() => { $('padQr').textContent = 'Could not load the QR code: open the link below on your phone.'; });
+    padStatus(false);
+    try {
+      const { Peer } = await import(PEER_URL).then(m => ({ Peer: m.Peer || m.default }));
+      const peer = PAD.peer = new Peer(PAD.id);
+      peer.on('connection', conn => {
+        if (PAD.conn && PAD.conn !== conn) try { PAD.conn.close(); } catch {}
+        PAD.conn = conn;
+        conn.on('data', padMsg);
+        conn.on('open', () => { PAD.last = performance.now(); conn.send({ t: 'welcome', track: TR.def.name }); padStatus(true); });
+        conn.on('close', () => { if (PAD.conn === conn) { PAD.conn = null; padStatus(false); } });
+      });
+      peer.on('disconnected', () => { try { peer.reconnect(); } catch {} });
+      peer.on('error', e => { if (!PAD.live()) padStatus(false, e && e.type === 'network' || e && e.type === 'server-error' ? 'Could not reach the pairing service. Check the internet connection.' : 'Connection problem (' + (e && e.type || 'unknown') + '). Try again.'); });
+    } catch { padStatus(false, 'Could not load the connection library. Check the internet connection.'); }
+  }
+}
+$('padBtn').onclick = padOpen;
+$('padDone').onclick = () => { buildMenu(); showUI('menu'); };
+$('padOff').onclick = () => { if (PAD.conn) try { PAD.conn.send({ t: 'bye' }); PAD.conn.close(); } catch {} PAD.conn = null; PAD.bcOn = false; padStatus(false); };
+// keep the phone informed about the race, a few times a second
+setInterval(() => {
+  if (!PAD.live()) return;
+  const st = state === 'menu' || !player ? null : standings();
+  padSend({ t: 'st', state: $('results').hidden ? state : 'results', pos: st ? st.indexOf(player) + 1 : 0, of: st ? st.length : 0,
+    lap: player ? Math.max(1, Math.min(settings.laps, player.lap)) : 0, laps: settings.laps, kmh: player ? Math.round(Math.abs(player.vf) * 3.6) : 0,
+    drift: player && player.drift ? (player.driftT >= DRIFT_ORANGE ? 2 : player.driftT >= DRIFT_BLUE ? 1 : 0.5) : 0, track: TR.def.name });
+}, 200);
+// a dropped phone pauses the race
+let padWasLive = false;
+setInterval(() => {
+  const live = PAD.live(), b = $('padBadge');
+  b.hidden = !(live || padWasLive) || $('hud').hidden; b.classList.toggle('lost', !live);
+  if (padWasLive && !live && state === 'race') { pauseGame(); toast('Phone controller lost: paused', true, 3); }
+  if (padWasLive && !live && !$('padScreen').hidden) padStatus(false);
+  padWasLive = live;
+}, 300);
 
 function step(dt) {
   if (state === 'countdown') {
@@ -3355,13 +3480,14 @@ function gpScore(order) {                        // order: cars in finishing ord
 function showUI(mode) {
   $('menu').hidden = mode !== 'menu';
   $('garage').hidden = mode !== 'garage';
+  $('padScreen').hidden = mode !== 'pad';
   $('pause').hidden = mode !== 'pause';
   $('results').hidden = mode !== 'results';
   const racing = mode === 'race' || mode === 'pause';
   $('hud').hidden = !racing;
   if (!racing) { $('coach').hidden = true; $('gauge').hidden = true; $('keypad').hidden = true; $('demoCap').hidden = true; } else if (mode === 'race') $('coach').hidden = settings.mode !== 'drill';
   $('touch').hidden = !(TOUCH && mode === 'race');
-  $('hallLink').hidden = racing || mode === 'results' || mode === 'garage';
+  $('hallLink').hidden = racing || mode === 'results' || mode === 'garage' || mode === 'pad';
   if (mode !== 'race') { $('big').hidden = true; $('toast').hidden = true; toastT = 0; }
 }
 

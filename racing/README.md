@@ -32,6 +32,18 @@ Open `index.html` in a browser, pick a mode (**Quick race**, **Grand Prix** or *
 
 **Weather:** choose **Dry**, **Rain** or **Random** in Quick race (on the Alpine Pass rain falls as snow). On a wet road every car has about a fifth less grip and brakes later; slicks lose a lot more, off-road and street tyres the least. The sky darkens, the road shines, cars throw up spray and you see less far ahead. Wet races pay 25% more credits. In the Grand Prix each round has its own forecast, shown in the calendar; time trials are always dry.
 
+## Phone as the controller
+Play on the computer and steer with your phone, no app needed:
+
+1. In the menu, press **📱 Use your phone as the controller**. A QR code appears.
+2. Scan it with the phone's camera. The controller page (`pad.html`) opens in the phone's browser.
+3. Choose how to steer: **tilt the phone** like a steering wheel, or an **on-screen stick**. Choose **automatic gas** or a **GAS** button you hold. For tilt you can pick gentle, normal or sharp steering, reverse the direction, and press **Center** to reset straight ahead. On an iPhone, allow motion sensors when asked.
+4. Press **Connect**. The phone has big DRIFT, BRAKE and GAS buttons, plus pause and camera. A **▶ Race!** button on the phone starts the race, and the phone shows your position, lap and speed.
+
+The phone vibrates on crashes, drift boosts and boost pads (Android only: iPhone browsers cannot vibrate), and keeps its screen awake. With automatic gas, tap DRIFT the moment the lights go green for a perfect start. The keyboard keeps working alongside the phone. If the phone drops out mid-race, the game pauses.
+
+The phone and the computer find each other through a free public pairing service (PeerJS) and then talk directly over WebRTC, so both need the internet for the first handshake. Some office, school or mobile networks block the direct connection; a home Wi-Fi network usually works. For testing on one computer, open the controller link with `?local` in a second tab of the same browser (`pad.html?local#code`).
+
 ## Phones and tablets
 Touch controls turn on automatically. The car accelerates by itself. Steer with ◀ ▶ on the left, hold **DRIFT** while turning and let go for a boost, and hold **BRAKE** to slow down or reverse. **II** pauses; the pause menu has **Back on track** if you get turned around. Both orientations work; landscape plays best.
 
