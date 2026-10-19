@@ -912,7 +912,7 @@ Screens.tracePick = {
 
 /* ---------------- write: tracing ---------------- */
 const TR = { cv: null, cx: null, dpr: 1, W: 0, H: 0, s: 1, ox: 0, oy: 0, l: 'a', stage: 0, strokes: [], cur: 0, ink: [],
-  down: false, active: false, last: null, demo: null, miss: 0, done: false, raf: 0, trails: [], pend: [] };
+  down: false, active: false, last: null, demo: null, miss: 0, done: false, raf: 0, trails: [] };
 // how far (in letter units; the letter box is 100 wide) the finger may stray from the stroke, per stage
 const TOL = [9, 10, 11];
 const mpath = $('#mpath');
@@ -957,13 +957,11 @@ function trDraw() {
   TR.strokes.forEach((st, i) => {
     c.strokeStyle = TR.done ? LCOL[(ABC.indexOf(TR.l) + i * 2) % LCOL.length] : col;
     if (i < TR.cur || TR.done) c.stroke(st.p2);
-    else if (i === TR.cur && st.prog > 1) polyline(c, st.pts, 0, Math.min(st.prog, st.pts.length) - 1);
   });
   c.globalAlpha = 1;
   // what the child drew: finished strokes stay on the paper
   const ink = (pts, colr, w) => { if (pts.length < 2) return; c.strokeStyle = colr; c.lineWidth = w; c.beginPath(); c.moveTo(pts[0].x, pts[0].y); for (const p of pts) c.lineTo(p.x, p.y); c.stroke(); };
   TR.trails.forEach(t => ink(t.pts, TR.done ? LCOL[(ABC.indexOf(TR.l) + t.k * 2) % LCOL.length] : col, 6));
-  TR.pend.forEach(t => ink(t, col, 6));
   if (!TR.done) ink(TR.ink, 'rgba(138,99,255,.6)', 4);
   // demo finger
   if (TR.demo && TR.demo.k != null && TR.strokes[TR.demo.k]) {
@@ -1008,43 +1006,41 @@ function demo() {
 }
 function toL(e) { const r = TR.cv.getBoundingClientRect(); return { x: (e.clientX - r.left - TR.ox) / TR.s, y: (e.clientY - r.top - TR.oy) / TR.s }; }
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-function advance(q) {
-  const st = TR.strokes[TR.cur]; if (!st) return;
-  const tol = TOL[TR.stage];
-  let moved = true;
-  while (moved && st.prog < st.pts.length) {
-    moved = false;
-    for (let j = st.prog; j < Math.min(st.pts.length, st.prog + 3); j++) if (dist(q, st.pts[j]) <= tol) { st.prog = j + 1; moved = true; break; }
+// Like ㄅㄆㄇ 小島: the whole stroke is checked when the finger lifts. It has to start and end in the right places,
+// pass the points along the stroke in order, and not wander off it much. A stroke that passes stays on the
+// paper (the child's own line); one that doesn't goes away and is written again.
+const lineLen = a => a.reduce((s, p, i) => i ? s + dist(p, a[i - 1]) : 0, 0);
+function checkStroke(u, st) {
+  const m = st.pts, tol = TOL[TR.stage], L = lineLen(m);
+  if (!u.length) return false;
+  // dots (the top of i and j): a tap on the dot is enough
+  if (L < 6) return u.some(p => dist(p, m[0]) <= tol * 1.6);
+  if (u.length < 2 || lineLen(u) < L * 0.6) return false;
+  if (dist(u[0], m[0]) > tol * 1.5 || dist(u[u.length - 1], m[m.length - 1]) > tol * 1.5) return false;
+  // the points along the stroke, in order: each one must be met by the line after the previous one was.
+  // Taking the first close point (not the closest) keeps loops (o, e) and lines that go back up (m, n, h, r) in order.
+  let last = 0;
+  for (let i = 0; i < m.length; i += 2) {
+    let j = Math.max(0, last - 2);
+    while (j < u.length && dist(m[i], u[j]) > tol) j++;
+    if (j >= u.length) return false;
+    last = j;
   }
-  // how far the finger itself has got (the drawn progress may run a little ahead of it)
-  for (let j = Math.max(0, st.reach - 2); j < st.prog; j++) if (dist(q, st.pts[j]) <= tol * 0.6) st.reach = Math.max(st.reach, j);
-  // the stroke is done when the finger gets to its end
-  if (st.prog >= st.pts.length - 1 && st.reach >= st.pts.length - 2) { st.prog = st.pts.length; strokeDone(); }
+  let off = 0;
+  for (const p of u) { let best = 1e9; for (const q of m) best = Math.min(best, dist(p, q)); if (best > tol) off++; }
+  return off <= u.length * 0.15;
 }
 function strokeDone() {
   const st = TR.strokes[TR.cur]; if (st) st.prog = st.pts.length;
-  // keep the child's lines for this stroke
-  for (const pts of TR.pend) if (pts.length > 1) TR.trails.push({ k: TR.cur, pts: [...pts] });
-  // the line being drawn now keeps growing until the finger lifts
-  if (TR.ink.length > 1) { TR.tail = { k: TR.cur, pts: TR.ink }; TR.trails.push(TR.tail); }
-  TR.pend = [];
-  SFX.pop(); TR.cur++; TR.ink = []; TR.active = false; TR.miss = 0;
+  if (TR.ink.length) TR.trails.push({ k: TR.cur, pts: TR.ink.length > 1 ? TR.ink : [TR.ink[0], TR.ink[0]] });
+  SFX.pop(); TR.cur++; TR.ink = []; TR.miss = 0;
   if (TR.cur >= TR.strokes.length) letterDone();
 }
 function trDown(e) {
-  if (TR.done || !TR.strokes.length) return;
+  if (TR.done || !TR.strokes.length || !TR.strokes[TR.cur]) return;
   e.preventDefault(); stopDemo();
   try { TR.cv.setPointerCapture(e.pointerId); } catch (_) {}
-  const p = toL(e); TR.down = true; TR.ink = [p]; TR.last = p; TR.tail = null;
-  const st = TR.strokes[TR.cur];
-  if (!st) { TR.down = false; return; }
-  // a finger may come back anywhere on the part already traced (or a little ahead of it) and carry on;
-  // starting again from the beginning of the stroke is fine too
-  const tol = TOL[TR.stage] * 1.4, upto = Math.min(st.pts.length - 1, st.prog + 2);
-  TR.active = false;
-  for (let j = 0; j <= upto; j++) if (dist(p, st.pts[j]) <= tol) { TR.active = true; break; }
-  TR.gain = st.prog;
-  if (TR.active) advance(p);
+  const p = toL(e); TR.down = true; TR.ink = [p]; TR.last = p;
   reqDraw();
 }
 function trMove(e) {
@@ -1053,32 +1049,24 @@ function trMove(e) {
   const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
   for (const ev of (evs.length ? evs : [e])) {
     const p = toL(ev), a = TR.last, n = Math.max(1, Math.ceil(dist(a, p) / 2));
-    for (let i = 1; i <= n; i++) {
-      const q = { x: a.x + (p.x - a.x) * i / n, y: a.y + (p.y - a.y) * i / n };
-      if (i === n) { if (TR.tail && !TR.active) TR.tail.pts.push(q); else TR.ink.push(q); }
-      if (TR.active && !TR.done) advance(q);
-    }
+    for (let i = 1; i <= n; i++) TR.ink.push({ x: a.x + (p.x - a.x) * i / n, y: a.y + (p.y - a.y) * i / n });
     TR.last = p;
   }
   reqDraw();
 }
 function trUp() {
   if (!TR.down) return;
-  TR.down = false; TR.tail = null;
+  TR.down = false;
   const st = TR.strokes[TR.cur];
-  if (TR.done || !st) { reqDraw(); return; }
-  // nearly there counts: lifting just before the end (92% traced) finishes the stroke
-  if (TR.active && st.reach >= (st.pts.length - 1) * 0.92) { strokeDone(); reqDraw(); return; }
-  const stuck = TR.ink.length > 6 && (!TR.active || st.prog === TR.gain);
-  // a part that moved the stroke on stays on the paper; a wrong line goes away
-  if (!stuck && TR.active && st.prog > TR.gain && TR.ink.length > 1) TR.pend.push([...TR.ink]);
-  if (stuck) {
-    TR.miss++; SFX.soft();
-    if (TR.miss >= 3) demo();                       // show the way again
-    say(['Start at the green dot!', zh('dot', '從綠色的點開始喔！')]);
-  }
-  TR.ink = [];
-  reqDraw();
+  if (TR.done || !st) { TR.ink = []; reqDraw(); return; }
+  if (checkStroke(TR.ink, st)) { strokeDone(); reqDraw(); return; }
+  // not right: the line goes away and the stroke is written again
+  const tapped = lineLen(TR.ink) < 3;
+  TR.ink = []; reqDraw();
+  if (tapped) return;                                // a stray tap is not a try
+  TR.miss++; SFX.soft();
+  if (TR.miss >= 3) demo();                          // show the way again
+  if (TR.miss === 1 || TR.miss % 3 === 0) say(['Oops! Write it again. Start at the green dot!', zh('dot', '從綠色的點開始，再寫一次！')]);
 }
 const STAGE_INTRO = [
   l => [`Let's write ${nameOf(l)}.`, 'Start at the green dot. Follow the arrow!', zh('tr0', '從綠色的點開始，跟著箭頭描！')],
@@ -1086,14 +1074,14 @@ const STAGE_INTRO = [
   l => [`Now write ${nameOf(l)} all by yourself!`, zh('tr2', '現在自己寫寫看！')]
 ];
 function startStage() {
-  TR.strokes = buildStrokes(TR.l); TR.cur = 0; TR.ink = []; TR.trails = []; TR.pend = []; TR.done = false; TR.miss = 0; TR.active = false;
+  TR.strokes = buildStrokes(TR.l); TR.cur = 0; TR.ink = []; TR.trails = []; TR.done = false; TR.miss = 0; TR.active = false;
   $('#tStages').innerHTML = [0, 1, 2].map(i => `<span class="${i < TR.stage || (S.trace[TR.l] || 0) > i ? 'on' : ''}">★</span>`).join('');
   trDraw();
   const f = flow, l = TR.l;
   const lines = STAGE_INTRO[TR.stage](l);
   Pip.again = () => { say(lines, TR.stage === 0 ? `Let's write ${l}!` : null); if (TR.stage < 2) demo(); };
   say(lines, TR.stage === 0 ? `Let's write ${l}!` : null);
-  if (TR.stage === 0) setTimeout(() => { if (live(f) && TR.cur === 0 && TR.strokes[0].prog === 0) demo(); }, 300);
+  if (TR.stage === 0) setTimeout(() => { if (live(f) && TR.cur === 0 && !TR.down && !TR.trails.length) demo(); }, 300);
 }
 async function letterDone() {
   TR.done = true; const f = flow, l = TR.l, lo = l.toLowerCase(), [w] = WORDS[lo][0];
