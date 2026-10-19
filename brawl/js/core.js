@@ -212,10 +212,10 @@ const SONGS = {
 
 /* ------------------------------ input ------------------------------ */
 /* One Input per fighter. Held values: mx, mz (-1..1), run, def.
-   Edge values (true for one step): atk, jmp, defP, skill (0 none, 1..3). */
+   Edge values (true for one step): atk, jmp, defP, item (pick up / throw), skill (0 none, 1..3). */
 class Input {
-  constructor() { this.mx = 0; this.mz = 0; this.run = false; this.def = false; this.atk = false; this.jmp = false; this.defP = false; this.skill = 0; }
-  clearEdges() { this.atk = this.jmp = this.defP = false; this.skill = 0; }
+  constructor() { this.mx = 0; this.mz = 0; this.run = false; this.def = false; this.atk = false; this.jmp = false; this.defP = false; this.skill = 0; this.item = false; }
+  clearEdges() { this.atk = this.jmp = this.defP = this.item = false; this.skill = 0; }
 }
 
 let lastDevice = 'keyboard';
@@ -223,10 +223,10 @@ let lastDevice = 'keyboard';
    With two players on one keyboard, 1P has the left side and 2P the right side. */
 const KEYSETS = {
   solo: { KeyA: 'L', ArrowLeft: 'L', KeyD: 'R', ArrowRight: 'R', KeyW: 'U', ArrowUp: 'U', KeyS: 'Dn', ArrowDown: 'Dn',
-    KeyJ: 'A', KeyZ: 'A', KeyK: 'J', KeyX: 'J', Space: 'J', KeyL: 'F', KeyC: 'F', KeyU: 'S1', KeyI: 'S2', KeyO: 'S3', ShiftLeft: 'RUN', ShiftRight: 'RUN' },
-  p1: { KeyA: 'L', KeyD: 'R', KeyW: 'U', KeyS: 'Dn', KeyJ: 'A', KeyK: 'J', Space: 'J', KeyL: 'F', KeyU: 'S1', KeyI: 'S2', KeyO: 'S3', ShiftLeft: 'RUN' },
+    KeyJ: 'A', KeyZ: 'A', KeyK: 'J', KeyX: 'J', Space: 'J', KeyL: 'F', KeyC: 'F', KeyU: 'S1', KeyI: 'S2', KeyO: 'S3', KeyE: 'IT', Semicolon: 'IT', ShiftLeft: 'RUN', ShiftRight: 'RUN' },
+  p1: { KeyA: 'L', KeyD: 'R', KeyW: 'U', KeyS: 'Dn', KeyJ: 'A', KeyK: 'J', Space: 'J', KeyL: 'F', KeyU: 'S1', KeyI: 'S2', KeyO: 'S3', KeyE: 'IT', ShiftLeft: 'RUN' },
   p2: { ArrowLeft: 'L', ArrowRight: 'R', ArrowUp: 'U', ArrowDown: 'Dn', Numpad1: 'A', Period: 'A', Numpad2: 'J', Slash: 'J', Numpad3: 'F', Comma: 'F',
-    Numpad4: 'S1', Numpad5: 'S2', Numpad6: 'S3', ShiftRight: 'RUN', Numpad0: 'RUN' }
+    Numpad4: 'S1', Numpad5: 'S2', Numpad6: 'S3', Numpad7: 'IT', Quote: 'IT', ShiftRight: 'RUN', Numpad0: 'RUN' }
 };
 class KeyboardSet {
   constructor(map) { this.map = map; this.held = new Set(); this.edges = []; this.lastTap = { L: -99, R: -99 }; this.runDir = 0; this.frame = 0; this.seq = []; }
@@ -259,6 +259,7 @@ class KeyboardSet {
       }
       if (k === 'J') inp.jmp = true;
       if (k === 'F') inp.defP = true;
+      if (k === 'IT') inp.item = true;
       if (k === 'S1') inp.skill = 1; if (k === 'S2') inp.skill = 2; if (k === 'S3') inp.skill = 3;
     }
     if (this.seq.length > 8) this.seq.splice(0, this.seq.length - 8);
@@ -288,8 +289,8 @@ const Keyboard = {
 /* On-screen controls. One pad fills the screen in one-player games; with two
    players each gets a compact pad on their own side of the tablet. */
 const PAD_LAYOUT = {
-  full: { atk: [10, 14, 84], jmp: [100, 4, 64], def: [24, 106, 64], s1: [176, 76, 58], s2: [108, 120, 58], s3: [96, 186, 58] },
-  half: { atk: [8, 10, 70], jmp: [84, 2, 54], def: [18, 88, 54], s1: [146, 60, 48], s2: [90, 104, 48], s3: [80, 160, 48] }
+  full: { atk: [10, 14, 84], jmp: [100, 4, 64], def: [24, 106, 64], item: [34, 184, 50], s1: [176, 76, 58], s2: [108, 120, 58], s3: [96, 186, 58] },
+  half: { atk: [8, 10, 70], jmp: [84, 2, 54], def: [18, 88, 54], item: [24, 150, 42], s1: [146, 60, 48], s2: [90, 104, 48], s3: [80, 160, 48] }
 };
 class TouchPad {
   constructor(slot, side, compact) {
@@ -297,7 +298,7 @@ class TouchPad {
     const root = this.root = document.createElement('div'); root.className = `tpad ${side}${compact ? ' compact' : ''}`;
     root.innerHTML = `<div class="stickZone"><div class="stickBase"><div class="stickKnob"></div></div></div><div class="pad">${compact ? `<span class="ptag p${slot + 1}">${slot + 1}P</span>` : ''}
       <button class="tb sk" data-b="s3"></button><button class="tb sk" data-b="s2"></button><button class="tb sk" data-b="s1"></button>
-      <button class="tb" data-b="def">防</button><button class="tb" data-b="jmp">跳</button><button class="tb" data-b="atk">攻</button></div>`;
+      <button class="tb it" data-b="item">撿</button><button class="tb" data-b="def">防</button><button class="tb" data-b="jmp">跳</button><button class="tb" data-b="atk">攻</button></div>`;
     document.getElementById('touch').appendChild(root);
     const L = PAD_LAYOUT[compact ? 'half' : 'full'], horiz = side === 'L' ? 'left' : 'right';
     root.querySelectorAll('.tb').forEach(b => { const [h, v, size] = L[b.dataset.b]; b.style[horiz] = h + 'px'; b.style.bottom = v + 'px'; b.style.width = b.style.height = size + 'px'; });
@@ -335,12 +336,13 @@ class TouchPad {
     if (this.sx || this.sz) { inp.mx = inp.mx || this.sx; inp.mz = inp.mz || this.sz; }
     inp.run = inp.run || this.run; inp.def = inp.def || !!this.held.def;
     for (const k of this.edges) {
-      if (k === 'atk') inp.atk = true; if (k === 'jmp') inp.jmp = true; if (k === 'def') inp.defP = true;
+      if (k === 'atk') inp.atk = true; if (k === 'jmp') inp.jmp = true; if (k === 'def') inp.defP = true; if (k === 'item') inp.item = true;
       if (k === 's1') inp.skill = 1; if (k === 's2') inp.skill = 2; if (k === 's3') inp.skill = 3;
     }
     this.edges.length = 0;
   }
   setSkills(f) {
+    const ib = this.root.querySelector('.tb[data-b="item"]'); if (ib) ib.textContent = f.hold ? '丟' : '撿';
     f.def.skills.forEach((id, i) => {
       const b = this.root.querySelector(`.tb[data-b="s${i + 1}"]`); if (!b) return;
       if (!id) { b.hidden = true; return; } b.hidden = false;
@@ -368,6 +370,7 @@ class PadCtl {
     inp.run = inp.run || (Math.abs(p.axes[0] || 0) > 0.92) || (b(7) && ax !== 0) || ((b(14) || b(15)) && b(7));
     inp.def = inp.def || b(1);
     if (ed(2)) inp.atk = true; if (ed(0)) inp.jmp = true; if (ed(1)) inp.defP = true;
+    if (ed(6)) inp.item = true;
     if (ed(3)) inp.skill = 1; if (ed(5)) inp.skill = 2; if (ed(4)) inp.skill = 3;
     if (ed(9) && running) togglePause();
     this.prev = p.buttons.map(x => x.pressed);

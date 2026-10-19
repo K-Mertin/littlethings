@@ -281,7 +281,8 @@ const TUT = [
   { t: '攻擊', kb: '走到稻草人旁邊，連按 J 三下把它打倒', touch: '走到稻草人旁邊，連按「攻」三下把它打倒', pad: '走到稻草人旁邊，連按 X 三下把它打倒', ok: P => P.tut.knocked },
   { t: '防禦', kb: '稻草人會丟球過來，面向它按住 L 擋住兩次', touch: '稻草人會丟球過來，面向它按住「防」擋住兩次', pad: '稻草人會丟球過來，按住 B 擋住兩次', ok: P => (P.p.blocks || 0) >= 2 },
   { t: '必殺技', kb: '按 U 放出第一招必殺技（也可以按 L、D、J：防、方向、攻）', touch: '按黃色的必殺技按鈕', pad: '按 Y 放出必殺技', ok: P => P.p.state === 'skill' },
-  { t: '撿道具', kb: '走到木棍旁按 J 撿起來', touch: '走到木棍旁按「攻」撿起來', pad: '走到木棍旁按 X 撿起來', ok: P => !!P.p.hold }
+  { t: '撿道具', kb: '走到木棍旁按 E 撿起來', touch: '走到木棍旁按「撿」撿起來', pad: '走到木棍旁按 LT 撿起來', ok: P => !!P.p.hold },
+  { t: '拿著打、丟出去', kb: '拿著東西按 J 是用它打，按 E 把它丟出去', touch: '拿著東西按「攻」是用它打，按「丟」把它丟出去', pad: '拿著東西按 X 是用它打，按 LT 把它丟出去', ok: P => P.p.state === 'throw' }
 ];
 class DummyCtl {
   constructor() { this.inp = new Input(); this.t = rnd(40, 100) | 0; }

@@ -297,11 +297,8 @@ class Fighter {
   canAct() { return this.state === 'idle' || this.state === 'walk' || this.state === 'run' || this.state === 'brake' || this.state === 'land'; }
 
   startAttack(name) { this.atk = ATK[name]; this.atkName = name; this.set('atk'); this.hitSet.clear(); this.queued = false; Sound.play('whiff', 0.7); }
-  comboList() { return this.hold && ITEMS[this.hold.kind].type === 'weapon' ? ['swing1', 'swing2', 'swing3'] : this.def.combo; }
+  comboList() { return this.hold && ITEMS[this.hold.kind].type !== 'food' ? ['swing1', 'swing2', 'swing3'] : this.def.combo; }
   doAttack() {
-    const it = this.hold;
-    if (it && ITEMS[it.kind].type === 'throw') return this.startThrow();
-    if (!it) { const near = this.nearItem(); if (near) return this.pickUp(near); }
     const list = this.comboList();
     if (this.comboT <= 0) this.combo = 0;
     this.startAttack(list[this.combo % list.length]); this.combo++;
@@ -328,6 +325,12 @@ class Fighter {
     it.x = this.x + this.face * 10; it.z = this.z; it.y = 20; it.vx = this.face * rnd(-1, 1.5); it.vy = 3;
   }
   startThrow() { this.set('throw'); this.vx *= 0.3; }
+  /* the item button: pick up what is underfoot, or throw what is in hand */
+  useItem() {
+    if (this.hold) { this.startThrow(); return true; }
+    const near = this.nearItem(); if (near) { this.pickUp(near); return true; }
+    return false;
+  }
 
   /* melee hitbox against every foe; each victim once per hitSet */
   meleeHit(A) {
@@ -384,6 +387,7 @@ class Fighter {
         if (this.state === 'land' && this.st < 5) { this.vx *= 0.6; this.vz *= 0.6; break; }
         if (this.pendingWin) { this.set('win'); break; }
         if (I.skill && this.trySkill(I.skill)) break;
+        if (I.item) { if (I.mx) this.face = sgn(I.mx); if (this.useItem()) break; }
         if (I.atk) { if (I.mx) this.face = sgn(I.mx); this.doAttack(); break; }
         if (I.jmp) { this.jump(I.mx * 2.6 * spd, I.mz * 1.7); break; }
         if (I.def) { this.set('defend'); this.vx = this.vz = 0; if (I.mx) this.face = sgn(I.mx); break; }
@@ -398,8 +402,8 @@ class Fighter {
         this.vx = this.face * 5.2 * spd; this.vz = I.mz * 1.3;
         if (this.st % 9 === 0) addPart('dust', this.x - this.face * 8, 1, this.z, { vx: -this.face });
         if (I.skill && this.trySkill(I.skill)) break;
+        if (I.item && this.hold) { this.startThrow(); break; }
         if (I.atk) {
-          if (this.hold) { this.startThrow(); break; }
           this.set('runAtk'); this.atk = ATK.runAtk; this.hitSet.clear(); this.vy = 2.5; Sound.play('whiff'); break;
         }
         if (I.jmp) { this.jump(this.face * 6.5 * spd, I.mz * 1.5); this.vy = 7.8; break; }
@@ -408,8 +412,8 @@ class Fighter {
         break;
       }
       case 'jump': {
+        if (I.item && this.hold && !this.didAirAtk) { this.didAirAtk = true; this.startThrow(); break; }
         if (I.atk && !this.didAirAtk) {
-          if (this.hold) { this.startThrow(); break; }
           this.didAirAtk = true; this.set('jumpAtk'); this.atk = ATK.jumpAtk; this.hitSet.clear(); Sound.play('whiff');
         }
         if (I.skill && this.def.skills[I.skill - 1] === 'shuriken' && this.trySkill(I.skill)) break;
@@ -438,6 +442,7 @@ class Fighter {
       case 'defend': {
         this.vx *= 0.7; this.vz *= 0.7;
         if (I.skill && this.trySkill(I.skill)) break;
+        if (I.item && this.useItem()) break;
         if (I.atk) { this.doAttack(); break; }
         if (I.jmp) { this.jump(I.mx * 2.6 * spd, I.mz * 1.7); break; }
         if (!I.def && this.st > 8) this.set('idle');

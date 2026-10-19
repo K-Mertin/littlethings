@@ -53,8 +53,8 @@ function drawKeyHint(c) {
   if (W.players.length > 1) { // two players on one keyboard: one compact line each
     let y = VHv - offY - 70;
     const rows = [
-      ['1P', [['WASD', '移動'], ['J', '攻'], ['K', '跳'], ['L', '防'], ['U I O', '必殺']]],
-      ['2P', [['方向鍵', '移動'], ['. 或 1', '攻'], ['/ 或 2', '跳'], [', 或 3', '防'], ['4 5 6', '必殺']]]
+      ['1P', [['WASD', '移動'], ['J', '攻'], ['K', '跳'], ['L', '防'], ['E', '撿／丟'], ['U I O', '必殺']]],
+      ['2P', [['方向鍵', '移動'], ['. 或 1', '攻'], ['/ 或 2', '跳'], [', 或 3', '防'], ["' 或 7", '撿／丟'], ['4 5 6', '必殺']]]
     ];
     rows.forEach(([tag, list], r) => {
       let x = 12; c.fillStyle = SLOT_COL[r]; c.font = '900 14px "Noto Sans TC",sans-serif'; c.textAlign = 'left'; c.textBaseline = 'middle';
@@ -73,8 +73,8 @@ function drawKeyHint(c) {
   });
   y += 34; x = 12;
   const basic = pad
-    ? [['左搖桿', '移動'], ['推到底', '跑'], ['X', '攻擊'], ['A', '跳'], ['B', '防禦'], ['Start', '暫停']]
-    : [['WASD', '移動'], ['連按兩下', '跑'], ['J', '攻擊'], ['K', '跳'], ['L', '防禦'], ['Esc', '暫停'], ['H', '隱藏提示']];
+    ? [['左搖桿', '移動'], ['推到底', '跑'], ['X', '攻擊'], ['A', '跳'], ['B', '防禦'], ['LT', p.hold ? '丟出去' : '撿東西'], ['Start', '暫停']]
+    : [['WASD', '移動'], ['連按兩下', '跑'], ['J', '攻擊'], ['K', '跳'], ['L', '防禦'], ['E', p.hold ? '丟出去' : '撿東西'], ['Esc', '暫停'], ['H', '隱藏提示']];
   for (const [k, l] of basic) x += chip(c, x, y, k, l, '', true) + 6;
 }
 function drawTutorial(c, top) {
@@ -284,7 +284,7 @@ function syncMenu() {
   $('diffRow').hidden = M.mode === 'practice'; $('diffRow').previousElementSibling.hidden = M.mode === 'practice';
   ['heroes', 'skillInfo', 'heroTitle'].forEach(id => $(id).hidden = phone);
   $('playersNote').hidden = !two && !phone;
-  $('playersNote').textContent = phone ? '按「出發！」後，用手機掃畫面上的 QR code，手機就變成手把。一個人用一支手機也可以，最多 4 個人。角色在手機上選。電視、電腦或平板當大螢幕。' : two ? (isTouch ? '平板橫放：1P 用左半邊，2P 用右半邊。' : '鍵盤：1P 用 WASD＋J K L（U I O 必殺），2P 用方向鍵＋數字鍵 1 2 3（4 5 6 必殺），沒有數字鍵可用 . / ,。插兩支手把也可以。') : '';
+  $('playersNote').textContent = phone ? '按「出發！」後，用手機掃畫面上的 QR code，手機就變成手把。一個人用一支手機也可以，最多 4 個人。角色在手機上選。電視、電腦或平板當大螢幕。' : two ? (isTouch ? '平板橫放：1P 用左半邊，2P 用右半邊。' : '鍵盤：1P 用 WASD＋J K L（E 撿／丟、U I O 必殺），2P 用方向鍵＋數字鍵 1 2 3（7 撿／丟、4 5 6 必殺），沒有數字鍵可用 . / , 和 \'。插兩支手把也可以。') : '';
   const sel = M.heroes[two ? M.slotSel : 0], d = CHARS[sel], cmds = ['防 → 左右 → 攻', '防 → 上 → 攻', '防 → 下 → 攻'], keys = two ? (M.slotSel ? ['4', '5', '6'] : ['U', 'I', 'O']) : ['U', 'I', 'O'];
   $('skillInfo').innerHTML = `<b>${two ? (M.slotSel + 1) + 'P・' : ''}${d.name}的必殺技</b>（用藍色的氣）<br>` + d.skills.map((id, i) => id ? `<b>${SKILLS[id].name}</b>　氣 ${SKILLS[id].cost}　<kbd>${cmds[i]}</kbd> 或 <kbd>${keys[i]}</kbd>` : '').filter(Boolean).join('<br>');
 }

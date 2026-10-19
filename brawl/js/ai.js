@@ -18,7 +18,7 @@ class AICtl {
 
     if (this.plan === 'pickup' && this.item && !this.item.holder && W.items.includes(this.item)) {
       const it = this.item; this.moveTo(it.x, it.z, 12, 6);
-      if (Math.abs(it.x - f.x) < 18 && Math.abs(it.z - f.z) < 10) { I.atk = true; this.plan = 'engage'; }
+      if (Math.abs(it.x - f.x) < 18 && Math.abs(it.z - f.z) < 10) { I.item = true; this.plan = 'engage'; }
       return;
     }
     if (this.plan === 'ranged') {
@@ -105,7 +105,7 @@ class AICtl {
     } else {
       this.plan = 'hover'; this.side = sgn(f.x - g.x || 1); this.hx = rnd(130, 220); this.zoff = rnd(-50, 50);
     }
-    if (f.hold && ITEMS[f.hold.kind].type === 'throw' && Math.abs(dz) < 10 && adx > 80 && adx < 300 && this.ready(g, true)) { this.face(dx); I.atk = true; this.claim(g, 0); }
+    if (f.hold && ITEMS[f.hold.kind].type === 'throw' && Math.abs(dz) < 10 && adx > 80 && adx < 300 && this.ready(g, true)) { this.face(dx); I.item = true; this.claim(g, 0); }
   }
 }
 

@@ -58,9 +58,9 @@ class HostNet {
 
 /* A phone player's fighter controller. The phone sends its held state plus
    running press counters, so a lost or merged message never loses a press. */
-const PRESS = ['atk', 'jmp', 'def', 's1', 's2', 's3'];
+const PRESS = ['atk', 'jmp', 'def', 's1', 's2', 's3', 'item'];
 class RemoteCtl {
-  constructor(p) { this.p = p; this.inp = new Input(); this.human = true; this.remote = true; this.seen = [0, 0, 0, 0, 0, 0]; }
+  constructor(p) { this.p = p; this.inp = new Input(); this.human = true; this.remote = true; this.seen = [0, 0, 0, 0, 0, 0, 0]; }
   get offline() { return !this.p.online; }
   poll() {
     const i = this.inp, s = this.p.st;
@@ -68,12 +68,12 @@ class RemoteCtl {
     if (!this.p.online || !s) return;
     i.mx = clamp(s.mx || 0, -1, 1); i.mz = clamp(s.mz || 0, -1, 1); i.run = !!s.run; i.def = !!s.def;
     const c = s.c || [];
-    for (let k = 0; k < 6; k++) if ((c[k] || 0) > this.seen[k]) {
+    for (let k = 0; k < 7; k++) if ((c[k] || 0) > this.seen[k]) {
       this.seen[k]++;                                     // at most one press per button per step
-      if (k === 0) i.atk = true; else if (k === 1) i.jmp = true; else if (k === 2) i.defP = true; else i.skill = k - 2;
+      if (k === 0) i.atk = true; else if (k === 1) i.jmp = true; else if (k === 2) i.defP = true; else if (k === 6) i.item = true; else i.skill = k - 2;
     }
   }
-  sync() { const c = (this.p.st && this.p.st.c) || []; this.seen = [0, 1, 2, 3, 4, 5].map(k => c[k] || 0); }
+  sync() { const c = (this.p.st && this.p.st.c) || []; this.seen = [0, 1, 2, 3, 4, 5, 6].map(k => c[k] || 0); }
 }
 
 /* hero pictures for the phones (drawn once, sent as small images) */
@@ -179,8 +179,8 @@ const Lobby = {
       if (p.local) continue;
       if (p.online && now - p.seen > 4000) { p.online = false; }    // phone went to sleep
       if (!p.fighter || !p.online || (W.t + this.slotOf(p) * 2) % 8) continue;
-      const f = p.fighter, h = { t: 'hud', hp: Math.max(0, Math.ceil(f.hp)), max: f.maxHp, mp: Math.floor(f.mp), lives: f.lives || 0, out: isOut(f) };
-      const key = h.hp + '/' + h.mp + '/' + h.lives + '/' + h.out;
+      const f = p.fighter, h = { t: 'hud', hp: Math.max(0, Math.ceil(f.hp)), max: f.maxHp, mp: Math.floor(f.mp), lives: f.lives || 0, out: isOut(f), it: f.hold ? ITEMS[f.hold.kind].name : '' };
+      const key = h.hp + '/' + h.mp + '/' + h.lives + '/' + h.out + '/' + h.it;
       if (key !== p.hudKey) { p.hudKey = key; this.net.send(p.peer, h); }
     }
   },
