@@ -92,7 +92,7 @@ function heroThumb(id) {
 const Lobby = {
   net: null, room: null, players: [], status: '', hudT: 0,
   url() { return new URL('controller.html?room=' + this.room + (NET_LOCAL ? '&net=local' : ''), location.href).href; },
-  heroList() { return HEROES.map(id => ({ id, name: CHARS[id].name, blurb: CHARS[id].blurb, locked: !heroUnlocked(id), img: heroThumb(id) })); },
+  heroList() { return HEROES.map(id => ({ id, name: CHARS[id].name, blurb: CHARS[id].blurb, locked: !heroUnlocked(id), lock: heroUnlocked(id) ? '' : unlockText(id), img: heroThumb(id) })); },
   async open() {
     $('menu').hidden = true; $('hallLink').hidden = true; $('lobby').hidden = false;
     hostWake.on();

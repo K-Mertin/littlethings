@@ -106,7 +106,7 @@ function updateHazards() {
     if (h.x < W.camX - 300 || h.x > W.camX + Wv + 300) W.hazEnts.splice(i, 1);
   }
 }
-function heroUnlocked(id) { const d = CHARS[id]; return d.unlockStage === undefined || store.get('cleared', []).includes(d.unlockStage) || store.get('unlockAll', false); }
+function heroUnlocked(id) { const d = CHARS[id]; if (d.unlockWins) return store.get('battleWins', 0) >= d.unlockWins || store.get('unlockAll', false); return d.unlockStage === undefined || store.get('cleared', []).includes(d.unlockStage) || store.get('unlockAll', false); }
 
 function newMatch(o) {
   const nH = o.players;
@@ -152,6 +152,7 @@ function newMatch(o) {
       if (split && team === 2) f.ally = true;
       f.face = team === 1 ? 1 : -1; f.mp = 200; f.lives = o.lives; W.fighters.push(f);
     }
+    W.vsCpu = foes > 0;
     message(o.team === 'team' ? '組隊對戰' : '大亂鬥', o.lives > 1 ? `每人 ${o.lives} 條命，最後留下的獲勝！` : '最後站著的人獲勝！', 110);
     Sound.startMusic(A.music || 'battle');
   }

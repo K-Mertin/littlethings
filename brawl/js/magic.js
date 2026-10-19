@@ -164,7 +164,16 @@ CHARS.moon = { name: '小月', en: 'Luna', blurb: '星星魔法少女。追蹤�
 CHARS.bobo = { name: '波波', en: 'Bobo', blurb: '泡泡魔法師。用泡泡把敵人包起來飄走、泡泡盾擋攻擊，大絕招大海嘯。', hp: 470, spd: 1.0, pow: 0.92, stats: [2, 2, 3], magic: true,
   look: mkLook({ style: 'bubblecap', skin: '#f1c29b', hair: '#3b6fd1', acc: '#5fd0ff', shirt: '#3fa9ff', trim: '#ffffff', pants: '#2a4f9a', shoe: '#ffffff', sleeve: 'long', wand: 'bubble' }),
   combo: ['jab', 'cross', 'kick'], skills: ['bubble', 'shield', 'tsunami'] };
-HEROES.push('moon', 'bobo');
+/* menu order: three groups of three. How each one is earned is in unlockStage / unlockWins. */
+HEROES.length = 0; HEROES.push('rex', 'gan', 'kite', 'yuki', 'zap', 'feng', 'mimi', 'moon', 'bobo');
+const HERO_GROUPS = [['拳腳', '靠拳頭和力氣', ['rex', 'gan', 'kite']], ['元素', '冰、雷、風', ['yuki', 'zap', 'feng']], ['魔法', '召喚和魔法', ['mimi', 'moon', 'bobo']]];
+Object.assign(CHARS.moon, { unlockStage: 3, unlock: '打通第四關解鎖' });
+Object.assign(CHARS.bobo, { unlockWins: 5 });
+function unlockText(id) {
+  const d = CHARS[id];
+  if (d.unlockWins) return `對戰模式贏 ${d.unlockWins} 場解鎖（${Math.min(store.get('battleWins', 0), d.unlockWins)}/${d.unlockWins}）`;
+  return d.unlock || '';
+}
 
 /* balance (from computer-vs-computer round robins) */
 Object.assign(CHARS.feng, { hp: 480, pow: 1.02 });

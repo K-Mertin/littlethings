@@ -238,6 +238,12 @@ addEventListener('resize', resize);
 const $ = id => document.getElementById(id);
 function buildMenu() {
   const box = $('heroes'); box.innerHTML = '';
+  const groupBox = {};
+  for (const [title, sub, ids] of HERO_GROUPS) {
+    const g = document.createElement('div'); g.className = 'heroGroup';
+    g.innerHTML = `<div class="groupTitle"><b>${title}</b><small>${sub}</small></div><div class="groupCards"></div>`;
+    box.appendChild(g); ids.forEach(id => groupBox[id] = g.querySelector('.groupCards'));
+  }
   for (const id of HEROES) {
     const d = CHARS[id], b = document.createElement('button'); b.className = 'hero'; b.dataset.hero = id;
     b.innerHTML = `<canvas width="300" height="192"></canvas><span class="badges"></span><b>${d.name} <span style="font-family:Bangers;font-weight:400;letter-spacing:.06em;opacity:.7">${d.en}</span></b><small>${d.blurb}</small>
@@ -249,7 +255,7 @@ function buildMenu() {
       if (n === 2) menuState.slotSel = (menuState.slotSel + 1) % 2;
       syncMenu();
     };
-    box.appendChild(b);
+    (groupBox[id] || box).appendChild(b);
   }
   const bind = (row, key, conv, after) => document.querySelectorAll(`#${row} .opt`).forEach(b => b.onclick = () => { if (b.disabled) return; menuState[key] = conv(b); if (after) after(); syncMenu(); });
   bind('modeRow', 'mode', b => b.dataset.mode);
@@ -300,7 +306,7 @@ function syncMenu() {
     const id = b.dataset.hero, locked = !heroUnlocked(id);
     b.setAttribute('aria-pressed', !two && M.heroes[0] === id);
     b.classList.toggle('locked', locked);
-    const lk = b.querySelector('.lock'); lk.hidden = !locked; if (locked) lk.textContent = '🔒 ' + (CHARS[id].unlock || '');
+    const lk = b.querySelector('.lock'); lk.hidden = !locked; if (locked) lk.textContent = '🔒 ' + unlockText(id);
     const bad = b.querySelector('.badges'); bad.innerHTML = two ? [0, 1].filter(i => M.heroes[i] === id).map(i => `<i style="background:${SLOT_COL[i]}">${i + 1}P</i>`).join('') : '';
     b.style.borderColor = two ? ([0, 1].find(i => M.heroes[i] === id) !== undefined ? SLOT_COL[[0, 1].find(i => M.heroes[i] === id)] : '') : '';
   });
@@ -375,8 +381,15 @@ function showResult() {
     unlocked.forEach(h => rows.push(['新角色解鎖！', CHARS[h].name]));
   } else {
     rows = [['時間', ts]];
+    // battles won against the computer count towards 波波
+    if (W.mode === 'battle' && W.win && W.vsCpu) {
+      const before = HEROES.filter(heroUnlocked); store.set('battleWins', store.get('battleWins', 0) + 1);
+      HEROES.filter(h => heroUnlocked(h) && !before.includes(h)).forEach(h => W.newHeroes = (W.newHeroes || []).concat(h));
+    }
     for (const p of W.players) rows.push([two ? `${p.slot + 1}P ${p.def.name}` : '擊倒', two ? `擊倒 ${p.kos}・傷害 ${Math.round(p.dmgDone)}` : p.kos]);
     if (!two) rows.push(['造成傷害', Math.round(W.player.dmgDone)]);
+    if (W.mode === 'battle' && W.win) rows.push(['對戰勝場', store.get('battleWins', 0)]);
+    (W.newHeroes || []).forEach(h => rows.push(['新角色解鎖！', CHARS[h].name]));
   }
   const hasNext = W.mode === 'stage' && W.win && W.stageN < STAGES.length - 1;
   $('nextBtn').hidden = !hasNext;
