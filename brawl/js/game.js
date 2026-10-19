@@ -313,7 +313,7 @@ class Fighter {
     return true;
   }
   nearItem() {
-    for (const it of W.items) if (!it.holder && !it.fly && it.y <= 1 && Math.abs(it.x - this.x) < 26 && Math.abs(it.z - this.z) < 14) return it;
+    for (const it of W.items) if (!it.holder && !it.fly && !it.fuse && it.y <= 1 && Math.abs(it.x - this.x) < 34 && Math.abs(it.z - this.z) < 18) return it;
     return null;
   }
   pickUp(it) {
@@ -367,6 +367,9 @@ class Fighter {
     this.clock++;
     if (this.freeze > 0) { this.freeze--; return; }
     const I = this.inp;
+    // the item button is remembered for a moment, so a press during an attack or a step too far away still counts
+    if (I.item) this.itemBuf = 12; else if (this.itemBuf > 0) this.itemBuf--;
+    const wantItem = this.itemBuf > 0;
     if (this.invul > 0) this.invul--; if (this.flash > 0) this.flash--; if (this.armorT > 0) this.armorT--; if (this.superT > 0) this.superT--; if (this.shakeT > 0) this.shakeT--;
     if (this.comboT > 0) this.comboT--;
     if (this.state !== 'hurt' && this.state !== 'fall') this.fallMeter = Math.max(0, this.fallMeter - 0.8);
@@ -388,7 +391,7 @@ class Fighter {
         if (this.state === 'land' && this.st < 5) { this.vx *= 0.6; this.vz *= 0.6; break; }
         if (this.pendingWin) { this.set('win'); break; }
         if (I.skill && this.trySkill(I.skill)) break;
-        if (I.item) { if (I.mx) this.face = sgn(I.mx); if (this.useItem()) break; }
+        if (wantItem && this.useItem()) { this.itemBuf = 0; break; }
         if (I.atk) { if (I.mx) this.face = sgn(I.mx); this.doAttack(); break; }
         if (I.jmp) { this.jump(I.mx * 2.6 * spd, I.mz * 1.7); break; }
         if (I.def) { this.set('defend'); this.vx = this.vz = 0; if (I.mx) this.face = sgn(I.mx); break; }
@@ -403,7 +406,8 @@ class Fighter {
         this.vx = this.face * 5.2 * spd; this.vz = I.mz * 1.3;
         if (this.st % 9 === 0) addPart('dust', this.x - this.face * 8, 1, this.z, { vx: -this.face });
         if (I.skill && this.trySkill(I.skill)) break;
-        if (I.item && this.hold) { this.startThrow(); break; }
+        if (wantItem && this.hold) { this.itemBuf = 0; this.startThrow(); break; }
+        if (wantItem && this.nearItem()) { this.itemBuf = 0; this.pickUp(this.nearItem()); break; }
         if (I.atk) {
           this.set('runAtk'); this.atk = ATK.runAtk; this.hitSet.clear(); this.vy = 2.5; Sound.play('whiff'); break;
         }
@@ -413,7 +417,7 @@ class Fighter {
         break;
       }
       case 'jump': {
-        if (I.item && this.hold && !this.didAirAtk) { this.didAirAtk = true; this.startThrow(); break; }
+        if (wantItem && this.hold && !this.didAirAtk) { this.itemBuf = 0; this.didAirAtk = true; this.startThrow(); break; }
         if (I.atk && !this.didAirAtk) {
           this.didAirAtk = true; this.set('jumpAtk'); this.atk = ATK.jumpAtk; this.hitSet.clear(); Sound.play('whiff');
         }
@@ -443,7 +447,7 @@ class Fighter {
       case 'defend': {
         this.vx *= 0.7; this.vz *= 0.7;
         if (I.skill && this.trySkill(I.skill)) break;
-        if (I.item && this.useItem()) break;
+        if (wantItem && this.useItem()) { this.itemBuf = 0; break; }
         if (I.atk) { this.doAttack(); break; }
         if (I.jmp) { this.jump(I.mx * 2.6 * spd, I.mz * 1.7); break; }
         if (!I.def && this.st > 8) this.set('idle');
@@ -464,7 +468,7 @@ class Fighter {
       case 'getup': { if (this.st >= 20) { this.set('idle'); this.invul = this.def.enemy ? 30 : 60; this.fallMeter = 0; } break; }
       case 'dead': { this.vx *= 0.8; if (this.def.enemy && this.st === 22) { smoke(this); for (let i = 0; i < 6; i++) addPart('star', this.x, 20, this.z, { vx: rnd(-3, 3), vy: rnd(2, 5) }); this.invisible = true; Sound.play('poof'); } break; }
       case 'pickup': {
-        if (this.st >= 10) { if (this.pendingDrink) { this.pendingDrink = false; this.set('drink'); Sound.play('drink'); } else this.set('idle'); }
+        if (this.st >= 6) { if (this.pendingDrink) { this.pendingDrink = false; this.set('drink'); Sound.play('drink'); } else this.set('idle'); }
         break;
       }
       case 'drink': {
@@ -669,17 +673,16 @@ function updateItems() {
         const T = ITEMS[it.kind];
         if (T.explode) { explode(it); it.gone = true; break; }
         applyHit(it.owner, v, { dmg: T.dmg || 32, kb: T.launch === false ? 2 : 4, kbY: 5, launch: T.launch !== false, stun: T.stun, fall: T.launch === false ? 40 : undefined, sfx: T.launch === false ? 'hit' : 'heavy' }, sgn(it.vx), true);
-        if (T.breaks) { breakItem(it); it.gone = true; } else { it.vx *= -0.3; it.vy = 3; }
+        it.vx *= -0.3; it.vy = 3;                                // bounce off and land, so it can be picked up again
         break;
       }
       if (it.gone) continue;
       if (it.y <= 0) {
         it.y = 0;
         if (ITEMS[it.kind].explode) { it.fly = false; it.vx = it.vy = it.vz = 0; it.fuse = 26; continue; }
-        if (ITEMS[it.kind].breaks || --it.dur <= 0) { breakItem(it); continue; }
         it.fly = false; it.vx = 0; it.vy = 0; it.vz = 0; it.spin = 0; Sound.play('land', 0.5);
       }
-      if (it.x < W.minX - 100 || it.x > W.maxX + 100) W.items.splice(i, 1);
+      if (it.x < W.minX + 10 || it.x > W.maxX - 10) { it.x = clamp(it.x, W.minX + 10, W.maxX - 10); it.vx *= -0.3; }   // bounce off the edges of the area
     }
   }
 }

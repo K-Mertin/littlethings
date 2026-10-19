@@ -178,7 +178,8 @@ function stageLogic() {
   if (A.reinforce && W.boss && !W.reinforced && W.boss.hp < W.boss.maxHp * 0.5) { W.reinforced = true; spawnWave(A.reinforce); }
   if (W.go) {
     const lead = Math.max(...aliveHumans().map(p => p.x));
-    if (lead > A.to - Wv * 0.55 && W.areaIdx < S.areas.length - 1) { W.go = false; W.areaIdx++; W.waveIdx = 0; W.waveDelay = 30; }
+    // the next part starts only when someone walks to where this one ended
+    if (lead > A.to - 30 && W.areaIdx < S.areas.length - 1) { W.go = false; W.areaIdx++; W.waveIdx = 0; W.waveDelay = 30; }
     return;
   }
   if (foes.length) return;
