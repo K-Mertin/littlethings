@@ -214,6 +214,22 @@
     { e: '🐘💦', t: '大象ㄉㄚˋ ㄒㄧㄤˋ|用ㄩㄥˋ|鼻子ㄅㄧˊ ㄗ˙|噴水ㄆㄣ ㄕㄨㄟˇ|。' },
     { e: '👶🍼', t: '寶寶ㄅㄠˇ ㄅㄠ˙|在ㄗㄞˋ|喝奶ㄏㄜ ㄋㄞˇ|。' },
   ];
+
+  // 只看注音讀短文：句子用 || 分開（每句格式同故事）
+  const PASSAGES = [
+    { title: '小狗和球', e: '🐶⚽', t: '小狗ㄒㄧㄠˇ ㄍㄡˇ|有ㄧㄡˇ|一ㄧ|顆ㄎㄜ|球ㄑㄧㄡˊ|。||小狗ㄒㄧㄠˇ ㄍㄡˇ|跑去ㄆㄠˇ ㄑㄩˋ|追ㄓㄨㄟ|球ㄑㄧㄡˊ|。||小狗ㄒㄧㄠˇ ㄍㄡˇ|好ㄏㄠˇ|開心ㄎㄞ ㄒㄧㄣ|！',
+      qs: [{ q: '小狗有什麼？', a: 0, o: [['⚽', '球'], ['🦴', '骨頭'], ['🧸', '玩具熊']] }, { q: '小狗覺得怎麼樣？', a: 0, o: [['😄', '很開心'], ['😢', '很難過'], ['😴', '想睡覺']] }] },
+    { title: '三顆蘋果', e: '🍎🍎🍎', t: '媽媽ㄇㄚ ㄇㄚ˙|買ㄇㄞˇ|了ㄌㄜ˙|三ㄙㄢ|顆ㄎㄜ|蘋果ㄆㄧㄥˊ ㄍㄨㄛˇ|。||我ㄨㄛˇ|吃ㄔ|一ㄧ|顆ㄎㄜ|，|妹妹ㄇㄟˋ ㄇㄟ˙|吃ㄔ|一ㄧ|顆ㄎㄜ|。',
+      qs: [{ q: '媽媽買了什麼？', a: 0, o: [['🍎', '蘋果'], ['🍌', '香蕉'], ['🍇', '葡萄']] }, { q: '媽媽買了幾顆？', a: 0, o: [['3️⃣', '三顆'], ['2️⃣', '兩顆'], ['5️⃣', '五顆']] }] },
+    { title: '下大雨', e: '🌧️🐸', t: '外面ㄨㄞˋ ㄇㄧㄢˋ|下ㄒㄧㄚˋ|大雨ㄉㄚˋ ㄩˇ|。||我ㄨㄛˇ|穿上ㄔㄨㄢ ㄕㄤˋ|雨鞋ㄩˇ ㄒㄧㄝˊ|，|打開ㄉㄚˇ ㄎㄞ|雨傘ㄩˇ ㄙㄢˇ|。||我ㄨㄛˇ|要ㄧㄠˋ|去ㄑㄩˋ|找ㄓㄠˇ|青蛙ㄑㄧㄥ ㄨㄚ|。',
+      qs: [{ q: '外面怎麼了？', a: 0, o: [['🌧️', '下雨'], ['☀️', '出太陽'], ['❄️', '下雪']] }, { q: '我要去找誰？', a: 0, o: [['🐸', '青蛙'], ['🐱', '小貓'], ['🐦', '小鳥']] }] },
+    { title: '小藍的家', e: '🐦🌳', t: '小藍ㄒㄧㄠˇ ㄌㄢˊ|住在ㄓㄨˋ ㄗㄞˋ|大樹ㄉㄚˋ ㄕㄨˋ|上ㄕㄤˋ|。||早上ㄗㄠˇ ㄕㄤˋ|，|牠ㄊㄚ|飛去ㄈㄟ ㄑㄩˋ|找ㄓㄠˇ|朋友ㄆㄥˊ ㄧㄡˇ|。||晚上ㄨㄢˇ ㄕㄤˋ|，|牠ㄊㄚ|回家ㄏㄨㄟˊ ㄐㄧㄚ|睡覺ㄕㄨㄟˋ ㄐㄧㄠˋ|。',
+      qs: [{ q: '小藍住在哪裡？', a: 0, o: [['🌳', '大樹上'], ['🏠', '房子裡'], ['🌊', '海邊']] }, { q: '晚上小藍做什麼？', a: 0, o: [['😴', '睡覺'], ['🍚', '吃飯'], ['⚽', '踢球']] }] },
+    { title: '做餅乾', e: '🍪', t: '爸爸ㄅㄚˋ ㄅㄚ˙|跟ㄍㄣ|我ㄨㄛˇ|一起ㄧ ㄑㄧˇ|做ㄗㄨㄛˋ|餅乾ㄅㄧㄥˇ ㄍㄢ|。||餅乾ㄅㄧㄥˇ ㄍㄢ|香香ㄒㄧㄤ ㄒㄧㄤ|的ㄉㄜ˙|，|好ㄏㄠˇ|好吃ㄏㄠˇ ㄔ|！',
+      qs: [{ q: '我們做了什麼？', a: 0, o: [['🍪', '餅乾'], ['🎂', '蛋糕'], ['🍕', '披薩']] }, { q: '誰跟我一起做？', a: 0, o: [['👨', '爸爸'], ['👩', '媽媽'], ['👵', '奶奶']] }] },
+    { title: '小貓和老鼠', e: '🐱🐭', t: '小貓ㄒㄧㄠˇ ㄇㄠ|看到ㄎㄢˋ ㄉㄠˋ|一ㄧ|隻ㄓ|老鼠ㄌㄠˇ ㄕㄨˇ|。||老鼠ㄌㄠˇ ㄕㄨˇ|跑進ㄆㄠˇ ㄐㄧㄣˋ|洞ㄉㄨㄥˋ|裡ㄌㄧˇ|。||小貓ㄒㄧㄠˇ ㄇㄠ|找不到ㄓㄠˇ ㄅㄨˋ ㄉㄠˋ|牠ㄊㄚ|。',
+      qs: [{ q: '小貓看到誰？', a: 0, o: [['🐭', '老鼠'], ['🐶', '小狗'], ['🐰', '兔子']] }, { q: '老鼠跑去哪裡？', a: 0, o: [['🕳️', '洞裡'], ['🌳', '樹上'], ['🏠', '房子裡']] }] },
+  ];
   // 把 '早安ㄗㄠˇ ㄢ' 拆成 { w:'早安', z:'ㄗㄠˇ ㄢ' }；標點 z 是空字串
   const ZY_RE = /[ㄅ-ㄩˊˇˋ˙]/;
   function parseLine(t) {
@@ -235,10 +251,11 @@
     { k: 'two', t: '拼兩個字' }, { k: 'story', i: 0 }, { k: 'story', i: 1 }, { k: 'story', i: 2 }, { k: 'story', i: 3 },
     { k: 'read', t: '看注音' }, { k: 'read2', t: '看注音讀詞' },
     { k: 'story', i: 4 }, { k: 'story', i: 5 }, { k: 'story', i: 6 }, { k: 'story', i: 7 }, { k: 'story', i: 8 }, { k: 'story', i: 9 },
-    { k: 'ww', t: '寫字的注音' }, { k: 'rs', t: '讀短句' },
+    { k: 'ww', t: '寫字的注音' }, { k: 'rs', t: '讀短句' }, { k: 'ww2', t: '寫詞的注音' },
+    { k: 'rp', i: 0, t: '讀短文' }, { k: 'rp', i: 1, t: '讀短文' }, { k: 'rp', i: 2, t: '讀短文' }, { k: 'rp', i: 3, t: '讀短文' }, { k: 'rp', i: 4, t: '讀短文' }, { k: 'rp', i: 5, t: '讀短文' },
   ];
   const CN = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'].concat(Array.from({ length: 30 }, (_, i) => ((i + 11) >= 20 ? ['', '', '二', '三', '四'][Math.floor((i + 11) / 10)] : '') + '十' + ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'][(i + 11) % 10]));
-  const lessonTitle = (L, n) => L.k === 'sym' ? L.s : L.k === 'story' ? STORIES[L.i].title : L.t;
+  const lessonTitle = (L, n) => L.k === 'sym' ? L.s : L.k === 'story' ? STORIES[L.i].title : L.k === 'rp' ? PASSAGES[L.i].title : L.t;
   const GROUPS = { c: '聲母', m: '介音', v: '韻母' };
   const TONES = ['ˊ', 'ˇ', 'ˋ', '˙'];
   const INITIALS = SYMBOLS.filter(x => x.g === 'c').map(x => x.s);
@@ -398,6 +415,11 @@
     wwQ: w => `寫出${w}的注音。`,
     wwTone: '是第幾聲？點一點。',
     wwHint: '看淡淡的字，跟著寫。',
+    wwIntro2: '聽一個詞，寫出每個字的注音。',
+    wwNext: ch => `接著寫${ch}。`,
+    // 讀短文
+    rpIntro: '只看注音，讀一讀這幾句話。讀好了按「我讀好了」。',
+    rpReveal: '答對了！我們一起來讀一遍。',
     // 讀短句
     rsIntro: '只看注音，讀一讀，找出對的圖。',
     // 課程
@@ -448,6 +470,8 @@
     for (const w of WORDS) add(w.w);
     for (const w of ONE) add(P.wwQ(w.w));
     for (const x of SENTS) add(pageText(x));
+    for (const w of TWO) { add(P.wwQ(w.w)); add(P.wwNext(Array.from(w.w)[1])); }
+    for (const ps of PASSAGES) { add(ps.title); add(ps.t.split('||').map(t => pageText({ t })).join('')); for (const q of ps.qs) { add(q.q); q.o.forEach(o => add(o[1])); } }
     for (const st of STORIES) {
       add(st.title);
       for (const pg of st.pages) { add(pageText(pg)); for (const x of parseLine(pg.t)) if (x.z && !NO_TAP.includes(x.w)) add(x.w); }
@@ -468,7 +492,7 @@
     return h.toString(16).padStart(8, '0');
   }
 
-  const ZY = { SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, SENTS, LESSONS, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
+  const ZY = { SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, SENTS, PASSAGES, LESSONS, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
     TONE_NAMES, TONE_MARKS, parseSyl, syllables, P, allLines, hash, symOf };
   if (typeof module !== 'undefined' && module.exports) module.exports = ZY;
   else root.ZY = ZY;
