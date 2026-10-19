@@ -212,6 +212,30 @@ function drawHair(c, L, back, f, P) {
       c.save(); c.beginPath(); c.arc(0, 0, R + 0.5, 0, TAU); c.clip(); c.fillStyle = '#2b2733'; c.fillRect(-R - 2, -9, R * 2 + 4, 3.5); c.restore();
       blob(c, R * 0.35, -11, 5, 4, '#9ad8f0');
       break;
+    case 'witch': // 小月: long hair and a pointed hat with a star
+      if (back) {
+        c.beginPath(); c.moveTo(4, -R + 1); c.quadraticCurveTo(-R - 5, -R, -R - 4, 4); c.quadraticCurveTo(-R - 6 + Math.sin(t * 0.1) * 1.5, R + 12, -3, R + 10);
+        c.quadraticCurveTo(-6, 4, 2, 0); c.closePath(); c.fillStyle = shade(hc, -0.1); c.fill(); c.lineWidth = 2.2; c.strokeStyle = INK; c.stroke();
+        return;
+      }
+      c.beginPath(); c.moveTo(R + 1, -2); c.quadraticCurveTo(R, -R - 2, -2, -R - 1); c.quadraticCurveTo(-R - 2, -R + 3, -R + 1, 5); c.lineTo(-4, 2); c.lineTo(1, -5); c.lineTo(5, -2); c.lineTo(9, -6); c.closePath();
+      c.fillStyle = hc; c.fill(); c.lineWidth = 2.2; c.strokeStyle = INK; c.stroke();
+      { const sway = Math.sin(t * 0.06) * 0.08;
+        c.save(); c.translate(-1, -R + 1); c.rotate(-0.25 + sway);
+        c.beginPath(); c.moveTo(-12, 0); c.quadraticCurveTo(-4, -14, 2, -26); c.quadraticCurveTo(6, -30, 10, -24); c.quadraticCurveTo(8, -12, 12, 0); c.closePath();
+        c.fillStyle = L.acc; c.fill(); c.lineWidth = 2.2; c.strokeStyle = INK; c.stroke();
+        c.fillStyle = L.trim; c.fillRect(-11, -5, 23, 4); c.strokeRect(-11, -5, 23, 4);
+        c.restore();
+        blob(c, -R - 4, -R + 3, 15, 3.6, shade(L.acc, -0.15), -0.25);
+        drawStar(c, 3, -R - 9, 4, '#ffd23f'); }
+      break;
+    case 'bubblecap': // 波波: a round knitted cap with a bubble on top
+      if (back) return;
+      c.beginPath(); c.moveTo(R + 1, -1); c.lineTo(R - 1, -6); c.lineTo(4, -4); c.lineTo(-1, -7); c.lineTo(-R, -2); c.lineTo(-R, 4); c.closePath(); c.fillStyle = hc; c.fill(); c.lineWidth = 2; c.strokeStyle = INK; c.stroke();
+      c.beginPath(); c.arc(0, -3, R + 2, Math.PI * 1.04, Math.PI * 1.96); c.closePath(); c.fillStyle = L.acc; c.fill(); c.lineWidth = 2.2; c.stroke();
+      c.fillStyle = L.trim; c.fillRect(-R - 2, -6, R * 2 + 4, 3.5); c.strokeRect(-R - 2, -6, R * 2 + 4, 3.5);
+      { const by = -R - 9 + Math.sin(t * 0.12) * 1.5; c.beginPath(); c.arc(-1, by, 6, 0, TAU); c.fillStyle = 'rgba(190,240,255,.65)'; c.fill(); c.lineWidth = 1.8; c.strokeStyle = INK; c.stroke(); c.fillStyle = '#fff'; c.beginPath(); c.arc(-3, by - 2, 1.8, 0, TAU); c.fill(); }
+      break;
     case 'buns':
       if (back) { blob(c, -R + 1, -R + 3, 6.5, 6.5, shade(hc, -0.1)); return; }
       blob(c, 4, -R - 1, 6.5, 6.5, hc);
@@ -317,6 +341,11 @@ function drawBody(c, L, P, f) {
   c.restore();
   const g = hand(P.ar, false);
   if (f && f.hold) drawHeld(c, f.hold, g);
+  if (L.wand && !(f && f.hold)) { // magic wand: a star or a bubble on a stick
+    c.save(); c.translate(g.h.x, g.h.y); c.rotate(-g.s2 + Math.PI * 0.85); seg(c, [P2(0, 2), P2(0, -20)], 2.6, '#8a5a2f');
+    if (L.wand === 'star') drawStar(c, 0, -24, 7, '#ffd23f'); else { c.beginPath(); c.arc(0, -25, 6.5, 0, TAU); c.fillStyle = 'rgba(190,240,255,.75)'; c.fill(); c.lineWidth = 1.8; c.strokeStyle = INK; c.stroke(); c.fillStyle = '#fff'; c.beginPath(); c.arc(-2, -27, 1.8, 0, TAU); c.fill(); }
+    c.restore();
+  }
   if (L.sling && !(f && f.hold)) { c.save(); c.translate(g.h.x, g.h.y); c.rotate(-g.s2 + Math.PI); seg(c, [P2(0, 2), P2(0, -8)], 2.5, '#a0662f'); seg(c, [P2(0, -8), P2(-4, -15)], 2.5, '#a0662f'); seg(c, [P2(0, -8), P2(4, -15)], 2.5, '#a0662f'); c.restore(); }
   return { head, hip, top };
 }
@@ -514,6 +543,7 @@ function drawFighter(c, f) {
   if (f.invisible && f.dead) return;
   c.fillStyle = 'rgba(20,16,40,.28)'; c.beginPath(); c.ellipse(sx, gy, 20 * sz * sh, 5.5 * sz * sh, 0, 0, TAU); c.fill();
   if (f.invisible) return;
+  if (f.frogT > 0 && !f.dead) { c.save(); c.translate(sx, sy); c.scale(f.face * sz, sz); drawFrog(c, f); c.restore(); return; }
   const custom = f.def.draw || (f.def.fly ? 'bat' : null);
   if (custom && f.state !== 'frozen') {
     c.save(); c.translate(sx, sy); c.scale(f.face * sz, sz);
@@ -534,6 +564,11 @@ function drawFighter(c, f) {
   }
   const P = f.state === 'frozen' ? (f.frozenPose || pose(f)) : pose(f);
   if (f.state !== 'frozen') f.lastPose = P;
+  // 分身術: two dark copies in the lanes beside you
+  if (f.cloneT > 0) for (const dz of [-24, 24]) {
+    c.save(); c.globalAlpha = f.cloneT < 60 ? 0.5 * f.cloneT / 60 : 0.5; c.translate(sx - f.face * 18, FLOOR_TOP + clamp(f.z + dz, 4, FLOOR_D - 4) - f.y); c.scale(f.face * sz, sz);
+    tinted(c, '#2a2266', 0.55, cc => drawBody(cc, f.look, P, f), 1.5); c.restore();
+  }
   let a = P.alpha;
   if ((f.invul > 0 && f.state !== 'lying' && f.state !== 'getup' && f.state !== 'roll' && f.state !== 'skill' && (f.clock >> 2) & 1)) a *= 0.45;
   if (f.state === 'dead' && f.st > 70) a *= Math.max(0, 1 - (f.st - 70) / 40);
@@ -551,11 +586,30 @@ function drawFighter(c, f) {
     c.beginPath(); c.moveTo(-10, -70); c.lineTo(-4, -40); c.moveTo(10, -78); c.lineTo(14, -60); c.strokeStyle = 'rgba(255,255,255,.9)'; c.stroke();
   }
   c.restore();
+  if (f.state === 'bubble') { // inside a floating bubble
+    const by = sy - 40 * sz, r = 44 * sz; c.save(); c.beginPath(); c.arc(sx, by, r, 0, TAU); c.fillStyle = 'rgba(170,230,255,.28)'; c.fill(); c.lineWidth = 3; c.strokeStyle = 'rgba(120,200,255,.9)'; c.stroke();
+    c.fillStyle = 'rgba(255,255,255,.8)'; c.beginPath(); c.ellipse(sx - r * 0.4, by - r * 0.45, r * 0.2, r * 0.12, -0.6, 0, TAU); c.fill(); c.restore();
+  }
+  if (f.shieldHits > 0) { // 水之盾
+    const by = sy - 40 * sz; c.save(); c.globalAlpha = 0.5 + Math.sin(f.clock * 0.2) * 0.15; c.beginPath(); c.ellipse(sx, by, 34 * sz, 50 * sz, 0, 0, TAU); c.strokeStyle = '#7fd8ff'; c.lineWidth = 4; c.stroke();
+    c.fillStyle = 'rgba(127,216,255,.15)'; c.fill(); for (let i = 0; i < f.shieldHits; i++) { c.beginPath(); c.arc(sx - 10 + i * 10, by - 56 * sz, 3.5, 0, TAU); c.fillStyle = '#bff0ff'; c.fill(); } c.restore();
+  }
   if (f.state === 'dizzy') {
     for (let i = 0; i < 3; i++) {
       const an = f.clock * 0.12 + i * TAU / 3; drawStar(c, sx + Math.cos(an) * 16 * sz, sy - 84 * sz + Math.sin(an) * 4, 5, '#ffd34d');
     }
   }
+}
+/* 變變變: a little frog (hops when moving) */
+function drawFrog(c, f) {
+  const hop = f.state === 'walk' || f.state === 'run' ? Math.abs(Math.sin(f.clock * 0.25)) * 8 : 0, y = -hop - (f.y > 0 ? 0 : 0);
+  blob(c, -10, y - 4, 7, 4, '#4fae52'); blob(c, 12, y - 4, 7, 4, '#4fae52');
+  blob(c, 0, y - 14, 18, 13, '#6fd06a');
+  blob(c, 4, y - 14, 10, 8, '#c9f2b0');
+  blob(c, -6, y - 28, 6, 6, '#6fd06a'); blob(c, 8, y - 28, 6, 6, '#6fd06a');
+  c.fillStyle = INK; c.beginPath(); c.arc(-5, y - 28, 2.4, 0, TAU); c.arc(9, y - 28, 2.4, 0, TAU); c.fill();
+  c.strokeStyle = INK; c.lineWidth = 1.8; c.beginPath(); c.arc(5, y - 20, 6, 0.3, Math.PI - 0.3); c.stroke();
+  c.fillStyle = 'rgba(255,120,140,.5)'; c.beginPath(); c.ellipse(13, y - 19, 3, 1.8, 0, 0, TAU); c.fill();
 }
 function drawStar(c, x, y, r, col) {
   c.beginPath(); for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5 - Math.PI / 2, rr = i & 1 ? r * 0.45 : r; c.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); }

@@ -83,13 +83,18 @@ class AICtl {
     const sk = f.def.skills;
     if (sk.length && f.def.ranged) { this.plan = 'ranged'; return; }
     if (sk.length && Math.random() < L.skill * (f.def.boss ? 0.6 : 0.35)) {
-      const can = n => sk[n - 1] && f.mp >= SKILLS[sk[n - 1]].cost;
+      const can = n => sk[n - 1] && (SKILLS[sk[n - 1]].ult ? f.ult >= ULT_MAX : f.mp >= SKILLS[sk[n - 1]].cost);
       let n = 0;
       if (Math.abs(dz) < 10 && adx > 110 && adx < 380 && can(1)) n = 1;
       else if (adx < 90 && Math.abs(dz) < 18) n = can(2) && Math.random() < 0.5 ? 2 : can(3) ? 3 : 0;
       if (sk[2] === 'iron' && n === 3 && f.armorT > 0) n = 0;
+      if (n === 3 && SKILLS[sk[2]].ult && !can(3)) n = 0;
+      if (sk[1] === 'shield' && n === 2 && f.shieldHits > 0) n = 0;
+      if (sk[1] === 'clone' && n === 2 && f.cloneT > 0) n = 0;
+      if (sk[1] === 'cheer' && n === 2 && f.hp > f.maxHp * 0.7) n = 0;
       if (sk[1] === 'shadowstep' && adx > 150 && can(2) && Math.random() < 0.3) n = 2;
       if (f.def.boss && n === 1 && can(3) && Math.random() < 0.4) n = 3;
+      if (SKILLS[sk[2]] && SKILLS[sk[2]].ult && can(3) && adx < 320) n = 3;            // a full gold meter: use the ultimate
       if (n && this.ready(g, true)) { this.face(dx); I.skill = n; this.claim(g, 20); return; }
     }
     // grab a nearby weapon

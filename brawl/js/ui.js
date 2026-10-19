@@ -7,7 +7,7 @@ function bar(c, x, y, w, h, v, lag, col, back, cap) {
   c.strokeStyle = INK; c.lineWidth = 2; c.strokeRect(x, y, w, h);
 }
 function drawPanel(c, f, x, y, size) {
-  const big = size === 'big', mid = size === 'mid', w = big ? 290 : mid ? 232 : 190, h = big || mid ? 62 : 40;
+  const big = size === 'big', mid = size === 'mid', w = big ? 290 : mid ? 232 : 190, h = big || mid ? 68 : 44;
   c.fillStyle = 'rgba(28,26,46,.78)'; c.beginPath(); c.roundRect ? c.roundRect(x, y, w, h, 12) : c.rect(x, y, w, h); c.fill();
   if (f.human) { c.strokeStyle = SLOT_COL[f.slot]; c.lineWidth = 2.5; c.beginPath(); c.roundRect ? c.roundRect(x, y, w, h, 12) : c.rect(x, y, w, h); c.stroke(); }
   c.save(); c.beginPath(); c.arc(x + h / 2, y + h / 2, h / 2 - 5, 0, TAU); c.fillStyle = isOut(f) ? '#555' : '#fff6e6'; c.fill(); c.clip(); drawPortrait(c, f.look, x + h / 2 + 2, y + h / 2 + 4, h > 50 ? 1.45 : 0.95); c.restore();
@@ -25,9 +25,15 @@ function drawPanel(c, f, x, y, size) {
   } else if (big) { c.textAlign = 'right'; c.font = '700 12px "Noto Sans TC",sans-serif'; c.fillStyle = '#a9a6c2'; c.fillText(Math.ceil(f.hp) + ' / ' + f.maxHp, x + w - 10, y + 18); c.textAlign = 'left'; }
   bar(c, bx, y + (large ? 24 : 19), bw, large ? 12 : 8, f.hp / f.maxHp, f.hpLag / f.maxHp, f.hp / f.maxHp < 0.3 ? '#ff7a3d' : '#ff4d3d', null, f.def.enemy ? 0 : f.cap / f.maxHp);
   bar(c, bx, y + (large ? 42 : 30), bw, large ? 9 : 5, f.mp / f.maxMp, null, f.flashMp > 0 && (f.flashMp >> 2) & 1 ? '#ffffff' : '#3fa9ff');
+  if (f.ult !== undefined && HEROES.includes(f.id)) { // the gold 絕招能量 meter
+    const full = f.ult >= ULT_MAX, uy = y + (large ? 55 : 37), uh = large ? 7 : 4;
+    const col = full ? ((W.t >> 3) & 1 ? '#fff27a' : '#ffb800') : f.flashUlt > 0 && (f.flashUlt >> 2) & 1 ? '#ffffff' : '#e0a400';
+    bar(c, bx, uy, bw, uh, f.ult / ULT_MAX, null, col);
+    if (full && large) { c.font = '900 11px "Noto Sans TC",sans-serif'; c.textAlign = 'right'; c.fillStyle = '#fff27a'; c.lineWidth = 3; c.strokeStyle = INK; c.strokeText('大絕招 OK！', bx + bw - 2, uy - 1); c.fillText('大絕招 OK！', bx + bw - 2, uy - 1); c.textAlign = 'left'; }
+  }
   if (large) { // skill cost ticks on the MP bar
     c.strokeStyle = 'rgba(255,255,255,.6)'; c.lineWidth = 1;
-    f.def.skills.forEach(id => { if (!id) return; const tx = bx + bw * SKILLS[id].cost / f.maxMp; c.beginPath(); c.moveTo(tx, y + 42); c.lineTo(tx, y + 51); c.stroke(); });
+    f.def.skills.forEach(id => { if (!id || SKILLS[id].ult) return; const tx = bx + bw * SKILLS[id].cost / f.maxMp; c.beginPath(); c.moveTo(tx, y + 42); c.lineTo(tx, y + 51); c.stroke(); });
   }
   if (f.dead && f.respawnT > 0) { c.fillStyle = 'rgba(28,26,46,.7)'; c.fillRect(x, y, w, h); c.fillStyle = '#fff6e6'; c.textAlign = 'center'; c.font = `900 ${large ? 16 : 12}px "Noto Sans TC",sans-serif`; c.fillText('復活中…', x + w / 2, y + h / 2 + 5); c.textAlign = 'left'; }
   else if (isOut(f)) { c.fillStyle = 'rgba(28,26,46,.6)'; c.fillRect(x, y, w, h); c.fillStyle = '#a9a6c2'; c.textAlign = 'center'; c.font = `900 ${large ? 16 : 12}px "Noto Sans TC",sans-serif`; c.fillText('出局', x + w / 2, y + h / 2 + 5); c.textAlign = 'left'; }
@@ -68,8 +74,8 @@ function drawKeyHint(c) {
   const keys = pad ? ['Y', 'RB', 'LB'] : ['U', 'I', 'O'], cmds = ['防・左右・攻', '防・上・攻', '防・下・攻'];
   let y = VHv - offY - 76, x = 12;
   p.def.skills.forEach((id, i) => {
-    if (!id) return; const S = SKILLS[id], ok = p.mp >= S.cost;
-    x += chip(c, x, y, keys[i], S.name, '氣' + S.cost + (pad ? '' : '　' + cmds[i]), ok) + 8;
+    if (!id) return; const S = SKILLS[id], ok = S.ult ? p.ult >= ULT_MAX : p.mp >= S.cost;
+    x += chip(c, x, y, keys[i], S.name, S.ult ? (ok ? '大絕招 OK！' : '大絕招・集滿金色能量') : '氣' + S.cost + (pad ? '' : '　' + cmds[i]), ok) + 8;
   });
   y += 34; x = 12;
   const basic = pad
@@ -90,6 +96,26 @@ function drawTutorial(c, top) {
   const msg = done ? '想練什麼就練什麼。按右上角的暫停可以回到選單。' : (L[dev] || L.kb);
   c.fillText(msg, x + 16, y + 56, w - 32);
   for (let i = 0; i < TUT.length; i++) { c.fillStyle = i < T.step ? '#38d39f' : i === T.step ? '#ffcc33' : 'rgba(255,255,255,.25)'; c.beginPath(); c.arc(x + w - 16 - (TUT.length - 1 - i) * 14, y + 22, 5, 0, TAU); c.fill(); }
+}
+/* 大絕招 cut-in: the screen darkens and the hero's face slides in with the move's name */
+function drawCutIn(c, k) {
+  const f = k.f, t = k.t, d = k.dur, a = Math.min(1, t / 6, (d - t) / 8), slide = Math.min(1, t / 10), col = f.look.acc || '#ffcc33';
+  c.save(); c.globalAlpha = a;
+  c.fillStyle = 'rgba(10,8,24,.62)'; c.fillRect(0, 0, Wv, VHv);
+  const cy = VHv * 0.42, bh = 150;
+  c.save(); c.translate(0, cy); c.transform(1, -0.08, 0, 1, 0, 0);
+  c.fillStyle = col; c.fillRect(0, -bh / 2, Wv, bh); c.fillStyle = 'rgba(255,255,255,.18)'; for (let i = 0; i < 9; i++) c.fillRect(((t * 22 + i * 140) % (Wv + 200)) - 100, -bh / 2 + 10 + (i % 3) * 44, 90, 6);
+  c.fillStyle = INK; c.fillRect(0, -bh / 2 - 6, Wv, 6); c.fillRect(0, bh / 2, Wv, 6);
+  c.restore();
+  const px = lerp(-160, Math.min(220, Wv * 0.24), 1 - Math.pow(1 - slide, 3));
+  c.save(); c.beginPath(); c.arc(px, cy, 92, 0, TAU); c.fillStyle = '#fff6e6'; c.fill(); c.lineWidth = 6; c.strokeStyle = INK; c.stroke(); c.clip();
+  drawPortrait(c, f.look, px + 6, cy + 16, 5.4); c.restore();
+  const tx = lerp(Wv + 200, Math.min(Wv - 30, px + 120 + 30), 1 - Math.pow(1 - slide, 3));
+  c.textAlign = 'left'; c.textBaseline = 'middle'; c.font = '900 56px "Noto Sans TC",sans-serif'; c.lineWidth = 10; c.strokeStyle = INK;
+  const txt = k.name + '！', w = c.measureText(txt).width, x0 = Math.min(tx, Wv - w - 20);
+  c.strokeText(txt, x0, cy - 8); c.fillStyle = '#fff27a'; c.fillText(txt, x0, cy - 8);
+  c.font = '900 20px "Noto Sans TC",sans-serif'; c.lineWidth = 6; c.strokeText(f.def.name + '的大絕招', x0 + 4, cy + 40); c.fillStyle = '#fff6e6'; c.fillText(f.def.name + '的大絕招', x0 + 4, cy + 40);
+  c.restore();
 }
 function drawHUD(c) {
   const top = 8, two = W.players.length > 1, size = two ? 'mid' : 'big', pw = two ? 232 : 290;
@@ -188,7 +214,10 @@ function render() {
   if (portrait) { c.fillStyle = 'rgba(255,246,230,.45)'; c.font = '700 13px "Noto Sans TC",sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('把手機轉成橫的，畫面會更大', W.camX + Wv / 2, VH + 22); }
   // HUD in screen space
   c.setTransform(k, 0, 0, k, 0, offY * k);
+  if (W.flashT > 0) { c.fillStyle = `rgba(255,255,255,${W.flashT / 10})`; c.fillRect(0, 0, Wv, VHv); }
+  if (W.stormT > 0) { c.fillStyle = `rgba(20,16,60,${Math.min(0.35, W.stormT / 60)})`; c.fillRect(0, 0, Wv, VHv); }
   drawHUD(c);
+  if (W.cine) drawCutIn(c, W.cine);
 }
 
 /* ------------------------------ layout ------------------------------ */
@@ -287,7 +316,7 @@ function syncMenu() {
   $('playersNote').hidden = !two && !phone;
   $('playersNote').textContent = phone ? '按「出發！」後，用手機掃畫面上的 QR code，手機就變成手把。一個人用一支手機也可以，最多 4 個人。角色在手機上選。電視、電腦或平板當大螢幕。' : two ? (isTouch ? '平板橫放：1P 用左半邊，2P 用右半邊。' : '鍵盤：1P 用 WASD＋J K L（E 撿／丟、U I O 必殺），2P 用方向鍵＋數字鍵 1 2 3（7 撿／丟、4 5 6 必殺），沒有數字鍵可用 . / , 和 \'。插兩支手把也可以。') : '';
   const sel = M.heroes[two ? M.slotSel : 0], d = CHARS[sel], cmds = ['防 → 左右 → 攻', '防 → 上 → 攻', '防 → 下 → 攻'], keys = two ? (M.slotSel ? ['4', '5', '6'] : ['U', 'I', 'O']) : ['U', 'I', 'O'];
-  $('skillInfo').innerHTML = `<b>${two ? (M.slotSel + 1) + 'P・' : ''}${d.name}的必殺技</b>（用藍色的氣）<br>` + d.skills.map((id, i) => id ? `<b>${SKILLS[id].name}</b>　氣 ${SKILLS[id].cost}　<kbd>${cmds[i]}</kbd> 或 <kbd>${keys[i]}</kbd>` : '').filter(Boolean).join('<br>');
+  $('skillInfo').innerHTML = `<b>${two ? (M.slotSel + 1) + 'P・' : ''}${d.name}的必殺技</b>（前兩招用藍色的氣，大絕招要集滿金色能量）<br>` + d.skills.map((id, i) => id ? `<b>${SKILLS[id].ult ? '★ ' : ''}${SKILLS[id].name}</b>　${SKILLS[id].ult ? '大絕招・打人和被打會集能量' : '氣 ' + SKILLS[id].cost}　<kbd>${cmds[i]}</kbd> 或 <kbd>${keys[i]}</kbd>` : '').filter(Boolean).join('<br>');
 }
 function stageUnlocked(i) { return i === 0 || (store.get('cleared', [])).includes(i - 1); }
 function animateCards() {
@@ -361,7 +390,7 @@ function showResult() {
 let skillSig = '';
 function updateSkillButtons(force) {
   if (!W || !isTouch) return;
-  const sig = W.players.map(f => f.id + f.def.skills.map(id => id && f.mp >= SKILLS[id].cost ? 1 : 0).join('')).join('|');
+  const sig = W.players.map(f => f.id + (f.hold ? 'h' : '') + (f.ult >= ULT_MAX ? 'U' : '') + f.def.skills.map(id => id && f.mp >= SKILLS[id].cost ? 1 : 0).join('')).join('|');
   if (sig === skillSig && !force) return; skillSig = sig;
   Touch.pads.forEach((pad, i) => { if (W.players[i]) pad.setSkills(W.players[i]); });
 }

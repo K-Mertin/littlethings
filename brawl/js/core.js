@@ -346,7 +346,8 @@ class TouchPad {
     f.def.skills.forEach((id, i) => {
       const b = this.root.querySelector(`.tb[data-b="s${i + 1}"]`); if (!b) return;
       if (!id) { b.hidden = true; return; } b.hidden = false;
-      b.innerHTML = `${SKILLS[id].name}<small>${SKILLS[id].cost}</small>`; b.classList.toggle('off', f.mp < SKILLS[id].cost);
+      const S = SKILLS[id], ready = S.ult ? f.ult >= ULT_MAX : f.mp >= S.cost;
+      b.innerHTML = `${S.name}<small>${S.ult ? '大絕招' : S.cost}</small>`; b.classList.toggle('off', !ready); b.classList.toggle('ult', !!S.ult); b.classList.toggle('ready', !!S.ult && ready);
     });
   }
   remove() { this.root.remove(); }

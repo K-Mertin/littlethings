@@ -165,7 +165,7 @@ const Lobby = {
     if (running && W && p.fighter) {
       const f = p.fighter;
       if (this.storyNow && storyQ) setTimeout(() => this.net && this.net.send(p.peer, { t: 'story', ...this.storyNow }), 0);
-      this.net.send(p.peer, { t: 'play', ...base, skills: f.def.skills.map(id => id ? { name: SKILLS[id].name, cost: SKILLS[id].cost } : null), maxMp: f.maxMp });
+      this.net.send(p.peer, { t: 'play', ...base, skills: f.def.skills.map(id => id ? { name: SKILLS[id].name, cost: SKILLS[id].cost, ult: !!SKILLS[id].ult } : null), maxMp: f.maxMp });
     } else if (!$('result').hidden) this.net.send(p.peer, { t: 'result', ...base, title: $('resTitle').textContent, next: !$('nextBtn').hidden });
     else this.net.send(p.peer, { t: 'lobby', ...base, players: this.players.map(q => ({ name: q.name, hero: q.hero, online: q.online })) });
   },
@@ -180,8 +180,8 @@ const Lobby = {
       if (p.local) continue;
       if (p.online && now - p.seen > 4000) { p.online = false; }    // phone went to sleep
       if (!p.fighter || !p.online || (W.t + this.slotOf(p) * 2) % 8) continue;
-      const f = p.fighter, h = { t: 'hud', hp: Math.max(0, Math.ceil(f.hp)), max: f.maxHp, mp: Math.floor(f.mp), lives: f.lives || 0, out: isOut(f), it: f.hold ? ITEMS[f.hold.kind].name : '' };
-      const key = h.hp + '/' + h.mp + '/' + h.lives + '/' + h.out + '/' + h.it;
+      const f = p.fighter, h = { t: 'hud', hp: Math.max(0, Math.ceil(f.hp)), max: f.maxHp, mp: Math.floor(f.mp), lives: f.lives || 0, out: isOut(f), it: f.hold ? ITEMS[f.hold.kind].name : '', ult: Math.floor(f.ult / 5) * 5 };
+      const key = h.hp + '/' + h.mp + '/' + h.lives + '/' + h.out + '/' + h.it + '/' + h.ult;
       if (key !== p.hudKey) { p.hudKey = key; this.net.send(p.peer, h); }
     }
   },

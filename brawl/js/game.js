@@ -221,12 +221,12 @@ const SKILLS = {
     },
     pose(P, t) { P.ar = [3.0, 0.1]; P.al = [2.8, 0.1]; P.face = t > 15 ? 'happy' : 'n'; P.lean = -0.1; } },
   /* 阿風 */
-  tornado: { name: '旋風彈', cost: 75, dur: 28, tick(f, t) { if (t === 10) { spawnProj(f, 'tornado', { dx: 30, y: 6, vx: 5, dmg: 9, kb: 0, kbY: 0, stun: 12, fall: 0, multi: 8, life: 90, r: 18, lift: true }); Sound.play('wind'); } }, pose(P, t) { castPose(P, t, 9, 16); } },
+  tornado: { name: '旋風彈', cost: 75, dur: 28, tick(f, t) { if (t === 10) { spawnProj(f, 'tornado', { dx: 30, y: 6, vx: 5, tall: true, dmg: 12, kb: 0, kbY: 0, stun: 12, fall: 0, multi: 8, life: 90, r: 18, lift: true }); Sound.play('wind'); } }, pose(P, t) { castPose(P, t, 9, 16); } },
   windjump: { name: '風之跳', cost: 90, dur: 80, start(f) { f.hitSet.clear(); f.dived = false; },
     tick(f, t) {
-      if (t === 4) { f.vy = 13; f.vx = f.face * 3; Sound.play('wind'); for (let k = 0; k < 8; k++) addPart('wind', f.x + rnd(-20, 20), 4, f.z, { vy: rnd(1, 3) }); }
-      if (t > 14 && !f.dived && f.vy < 2) { f.dived = true; f.vy = -12; f.vx = f.face * 7; }
-      if (f.dived) { f.meleeHit({ rx: [-10, 36], hy: [-20, 50], dz: 18, dmg: 40, kb: 4, kbY: 6, launch: true, sfx: 'heavy' }); if (f.y <= 0) { W.shake = 6; addPart('ring', f.x, 0, f.z, { r: 8, grow: 6, life: 16 }); return 'end'; } }
+      if (t === 4) { f.vy = 13; f.vx = f.face * 4.5; Sound.play('wind'); for (let k = 0; k < 8; k++) addPart('wind', f.x + rnd(-20, 20), 4, f.z, { vy: rnd(1, 3) }); }
+      if (t > 14 && !f.dived && f.vy < 2) { f.dived = true; f.vy = -12; f.vx = f.face * 9; const g = nearestFoe(f, 300); if (g) f.z += clamp(g.z - f.z, -30, 30); }
+      if (f.dived) { f.meleeHit({ rx: [-10, 40], hy: [-20, 50], dz: 20, dmg: 58, kb: 4, kbY: 6, launch: true, sfx: 'heavy' }); if (f.y <= 0) { W.shake = 6; addPart('ring', f.x, 0, f.z, { r: 8, grow: 6, life: 16 }); return 'end'; } }
     },
     pose(P, t, f) { if (!f.dived) { P.ll = [-0.2, 1.4]; P.lr = [0.9, 1.8]; P.ar = [2.8, 0.2]; P.al = [2.6, 0.2]; } else { P.lr = [1.2, 0]; P.ll = [0.4, 1.6]; P.lean = 0.3; P.ar = [1.2, 0.4]; } } },
   cyclone: { name: '龍捲風', cost: 160, dur: 80, start(f) { f.superT = 80; Sound.play('wind'); },
@@ -285,7 +285,7 @@ class Fighter {
   constructor(id, team, x, z, ctl) {
     const d = CHARS[id]; this.id = id; this.def = d; this.look = d.look; this.team = team; this.ctl = ctl; if (ctl) ctl.f = this;
     const hpMul = d.enemy && W && W.mode === 'stage' ? W.D.eHp * (W.hpScale || 1) : 1;
-    this.maxHp = this.hp = this.cap = Math.round(d.hp * hpMul); this.regenT = 0; this.hpLag = this.hp; this.maxMp = 500; this.mp = d.enemy ? 500 : 200;
+    this.maxHp = this.hp = this.cap = Math.round(d.hp * hpMul); this.regenT = 0; this.hpLag = this.hp; this.maxMp = 500; this.mp = d.enemy ? 500 : 200; this.ult = 0;
     this.pow = d.pow; this.spd = d.spd; this.x = x; this.y = 0; this.z = z; this.vx = this.vy = this.vz = 0; this.face = 1;
     this.state = 'idle'; this.st = 0; this.clock = (Math.random() * 100) | 0; this.freeze = 0; this.invul = 0; this.flash = 0; this.armorT = 0; this.superT = 0;
     this.fallMeter = 0; this.guard = 100; this.combo = 0; this.comboT = 0; this.queued = false; this.hitSet = new Set(); this.hold = null; this.dead = false; this.dying = false;
@@ -305,8 +305,14 @@ class Fighter {
   }
   trySkill(n) {
     const id = this.def.skills[n - 1]; if (!id) return false; const S = SKILLS[id];
-    if (this.mp < S.cost) { if (this.ctl && this.ctl.human) this.flashMp = 20; return false; }
-    this.mp -= S.cost; this.skill = id; this.set('skill'); this.hitSet.clear(); this.vx = 0; this.auraT = 22;
+    if (this.frogT > 0) return false;
+    if (S.ult) {
+      if (this.ult < ULT_MAX) { if (this.ctl && this.ctl.human) this.flashUlt = 20; return false; }
+      this.ult = 0; W.cine = { f: this, t: 0, dur: 48, name: S.name }; Sound.play('power'); Sound.play('gong', 0.6);
+    } else {
+      if (this.mp < S.cost) { if (this.ctl && this.ctl.human) this.flashMp = 20; return false; }
+      this.mp -= S.cost;
+    } this.skill = id; this.set('skill'); this.hitSet.clear(); this.vx = 0; this.auraT = 22;
     addPart('callout', this.x, 100 * (this.def.size || 1), this.z, { txt: S.name, life: 46, col: this.def.enemy ? '#ff7a6b' : '#fff27a' });
     if (this.inp.mx) this.face = sgn(this.inp.mx);
     if (S.start) S.start(this);
@@ -335,6 +341,13 @@ class Fighter {
 
   /* melee hitbox against every foe; each victim once per hitSet */
   meleeHit(A) {
+    // 分身術: two shadow copies in the lanes beside you hit as well
+    if (this.cloneT > 0 && !A.clone) {
+      const x0 = this.x, z0 = this.z, B = Object.assign({}, A, { clone: true, dmg: A.dmg * 0.6 }); let hit = false;
+      for (const dz of [-24, 24]) { this.x = x0 - this.face * 18; this.z = clamp(z0 + dz, 4, FLOOR_D - 4); hit = this.meleeHit(B) || hit; }
+      this.x = x0; this.z = z0;
+      return this.meleeHit(Object.assign({}, A, { clone: true })) || hit;
+    }
     let any = false;
     const s = this.def.size || 1;
     const reach = A.weapon && this.hold ? (ITEMS[this.hold.kind].reach || 1) : 1;
@@ -379,6 +392,10 @@ class Fighter {
     this.hpLag = this.hpLag > this.hp ? Math.max(this.hp, this.hpLag - 2.5) : this.hp;
     this.st++;
     if (this.inkT > 0) this.inkT--;
+    if (this.cloneT > 0) this.cloneT--;
+    if (this.shieldT > 0 && --this.shieldT === 0) this.shieldHits = 0;
+    if (this.flashUlt > 0) this.flashUlt--;
+    if (this.frogT > 0) { if (--this.frogT === 0) { smoke(this); Sound.play('poof'); } I.atk = false; I.skill = 0; I.item = false; if (this.hold) this.dropItem(); }
     if (this.healT > 0) { this.healT--; this.hp = Math.min(this.maxHp, this.hp + 1); this.cap = Math.max(this.cap, this.hp); if (this.healT % 10 === 0) addPart('heart', this.x + rnd(-12, 12), 80, this.z, { vy: 1 }); }
     if (this.lifeT > 0 && --this.lifeT === 0 && !this.dead) { smoke(this); this.dead = true; this.invisible = true; this.lives = 0; this.set('dead'); this.st = 200; }
     if (this.shockT > 0) { this.shockT--; if (this.shockT % 4 === 0) addPart('zap', this.x + rnd(-14, 14), rnd(20, 70), this.z, {}); }
@@ -494,11 +511,16 @@ class Fighter {
         break;
       }
       case 'win': this.vx = 0; this.vz = 0; break;
+      case 'bubble': { // floating helplessly inside a bubble until it pops
+        this.vx *= 0.9; this.vz *= 0.9; this.vx += (I.mx || 0) * 0.05;
+        if (--this.bubbleT <= 0) { this.set('fall'); this.vy = 0; this.bounced = true; Sound.play('pop'); for (let i = 0; i < 8; i++) addPart('bubbleP', this.x + rnd(-20, 20), this.y + rnd(20, 70), this.z, { vy: rnd(-1, 1) }); }
+        break;
+      }
     }
 
     // physics
-    const hover = this.def.fly && FLY_STATES.has(this.state);
-    if (hover) { const ty = 34 + Math.sin(this.clock * 0.07) * 5 - (this.state === 'skill' ? (this.swoopY || 0) : 0); this.y += (ty - this.y) * 0.15; this.vy = 0; }
+    const hover = (this.def.fly && FLY_STATES.has(this.state)) || this.state === 'bubble';
+    if (hover) { const ty = this.state === 'bubble' ? 64 + Math.sin(this.clock * 0.1) * 6 : 34 + Math.sin(this.clock * 0.07) * 5 - (this.state === 'skill' ? (this.swoopY || 0) : 0); this.y += (ty - this.y) * 0.15; this.vy = 0; }
     const wasAir = !hover && (this.y > 0 || this.vy > 0);
     if (wasAir) { this.vyLast = this.vy; this.vy -= GRAV; this.y += this.vy; if (this.y <= 0) { this.y = 0; this.vyLast = this.vy; this.vy = 0; this.onLand(); } }
     else if (!this.canAct() && this.state !== 'run' && this.state !== 'skill' && this.state !== 'roll' && this.state !== 'atk' && this.state !== 'runAtk') { this.vx *= 0.88; }
@@ -530,6 +552,10 @@ function applyHit(att, v, A, dir, area) {
   if (att && att.def.enemy && v.ctl && v.ctl.human && v.state === 'fall') return false; // monsters never juggle you
   if (v.state === 'lying' && !A.launch) return false;
   if (v.state === 'lying') return false;
+  // a bubble pops at the first hit and its prisoner flies off
+  if (v.state === 'bubble') { v.bubbleT = 0; Sound.play('pop'); for (let i = 0; i < 8; i++) addPart('bubbleP', v.x + rnd(-20, 20), v.y + rnd(20, 70), v.z, { vy: rnd(-1, 1) }); A = Object.assign({}, A, { launch: true, kbY: Math.max(A.kbY || 0, 6), kb: Math.max(A.kb || 0, 3), dmg: (A.dmg || 0) * 1.3 + 10, bubble: false }); }
+  // 水之盾 soaks up whole hits
+  if (v.shieldHits > 0 && !A.noUlt) { v.shieldHits--; v.vx = dir * 1.5; Sound.play('pop'); addPart('ring', v.x, 40, v.z, { r: 20, grow: 3, life: 14 }); if (att && !area) att.freeze = 4; return true; }
   let dmg = A.dmg * (att ? att.pow : 1);
   if (att && att.def.enemy && W.mode === 'stage') dmg *= W.D.eDmg;
   const human = att && att.ctl && att.ctl.human;
@@ -540,6 +566,9 @@ function applyHit(att, v, A, dir, area) {
     v.vx = dir * 2; Sound.play('block'); addPart('spark', v.x - dir * 14, v.y + 26, v.z, { col: '#ffd2b8' }); if (att) att.freeze = 3; return true;
   }
   if (A.ink && !(v.state === 'defend' && v.face === -dir)) { v.inkT = 160; }
+  const defending = v.state === 'defend' && v.face === -dir && !A.unblock;
+  if (A.frog && !defending && !v.def.boss && !v.def.draw) { v.frogT = 240; smoke(v); Sound.play('poof'); if (v.state === 'skill' || v.state === 'atk') v.set('idle'); }
+  if (A.bubble && !defending && !v.def.boss && !v.def.heavy && v.state !== 'fall') { v.hp -= A.dmg; v.flash = 5; v.set('bubble'); v.bubbleT = 150; v.vx = sgn(dir) * 1; v.y = Math.max(v.y, 1); v.dropItem(); Sound.play('pop'); v.lastHitBy = att; return true; }
   if (A.shock) v.shockT = 40;
   if (v.state === 'defend' && v.face === -dir && v.hold && v.hold.kind === 'umbrella') {
     v.blocks = (v.blocks || 0) + 1;
@@ -555,6 +584,9 @@ function applyHit(att, v, A, dir, area) {
   }
   if (v.armorT > 0) dmg *= 0.5;
   v.hp -= dmg; if (!v.def.enemy) { v.cap = Math.max(v.hp, v.cap - dmg / 3); v.regenT = 100; } v.flash = 5; v.shakeT = 8; v.lastHitBy = att;
+  // the gold meter fills from hitting and from being hit (not from ultimates themselves)
+  if (att && !A.noUlt && CHARS[att.id] && HEROES.includes(att.id)) att.ult = Math.min(ULT_MAX, att.ult + dmg * 0.45);
+  if (HEROES.includes(v.id)) v.ult = Math.min(ULT_MAX, v.ult + dmg * 0.35);
   if (att) { att.dmgDone += dmg; if (human) W.score += Math.round(dmg); }
   // heavy hits (launchers, finishers, big damage) get the full treatment: longer hit-stop, a white flash, a comic "砰！"
   const big = !!(A.launch || dmg >= 30);
@@ -638,6 +670,17 @@ function updateProjs() {
     if (p.kind === 'bolt' && p.t % 2 === 0) addPart('zap', p.x, p.y, p.z, {});
     if (p.kind === 'bun' && p.y <= 0) { dead = true; addPart('dust', p.x, 0, p.z, {}); Sound.play('land', 0.4); }
     if (p.kind === 'ink' && p.t % 3 === 0) addPart('smoke', p.x - p.vx, p.y, p.z, { col: 'ink', life: 14 });
+    if (p.vy < 0 && !p.grav && p.kind !== 'meteor' && p.y < -4) dead = true;     // falling stars that missed
+    if (p.home && p.t > 6) { const g = nearestFoe(p, 600); if (g) { p.vx += clamp(g.x - p.x, -1, 1) * 0.45; p.vz += clamp(g.z - p.z, -1, 1) * 0.25; p.vy += clamp(g.y + 40 - p.y, -1, 1) * 0.3; const sp = Math.hypot(p.vx, p.vz); if (sp > 7) { p.vx *= 7 / sp; p.vz *= 7 / sp; } p.vy *= 0.9; } if (p.t % 3 === 0) addPart('star', p.x, p.y, p.z, { life: 10 }); }
+    if (p.kind === 'phoenix' || p.kind === 'wave') { if (p.t % 2 === 0) addPart(p.kind === 'wave' ? 'bubbleP' : 'fire', p.x - p.vx * 3 + rnd(-30, 30), rnd(10, 110), p.z + rnd(-40, 40), { vx: -p.vx * 0.3, vy: rnd(0.5, 2) }); }
+    if (p.kind === 'bigtornado' && p.t % 2 === 0) addPart('wind', p.x + rnd(-40, 40), rnd(5, 160), p.z + rnd(-30, 30), { vy: 2 });
+    if (p.kind === 'boulder' && p.y <= 0) { dead = true; W.shake = 8; Sound.play('quake', 0.6); for (let k = 0; k < 12; k++) addPart('rock', p.x, 4, p.z, { vx: rnd(-4, 4), vy: rnd(2, 6) }); if (p.owner) for (const v of W.fighters) if (v.team !== p.team && !v.dead && Math.abs(v.x - p.x) < 60 && Math.abs(v.z - p.z) < 30 && !p.hit.has(v)) applyHit(p.owner, v, { dmg: 40, kb: 4, kbY: 6, launch: true, sfx: 'heavy' }, sgn(v.x - p.x || 1), true); }
+    if (p.kind === 'meteor' && p.y <= 0) { // explodes where it lands
+      dead = true; W.shake = 12; Sound.play('quake'); Sound.play('fire', 0.6);
+      addPart('ring', p.x, 0, p.z, { r: 12, grow: 7, life: 22 }); for (let k = 0; k < 14; k++) addPart('fire', p.x + rnd(-30, 30), rnd(0, 40), p.z, { vx: rnd(-3, 3), vy: rnd(1, 4) });
+      if (p.owner) for (const v of W.fighters) if (v.team !== p.team && !v.dead && Math.abs(v.x - p.x) < 80 && Math.abs(v.z - p.z) < 42) hitFoe(p.owner, v, p.last ? { dmg: 50, kb: 4, kbY: 8, launch: true, sfx: 'heavy' } : { dmg: 32, kb: 1.5, stun: 34, fall: 0, sfx: 'heavy' });
+    }
+    if (p.kind === 'bigtornado' && p.t === p.life - 2 && p.owner) for (const v of W.fighters) if (v.team !== p.team && !v.dead && Math.abs(v.x - p.x) < p.r + 20 && Math.abs(v.z - p.z) < p.dz) hitFoe(p.owner, v, Object.assign({}, p.finale));
     if (p.kind === 'rock' && p.y <= 0) { dead = true; W.shake = 4; Sound.play('fall', 0.6); for (let k = 0; k < 8; k++) addPart('rock', p.x, 4, p.z, { vx: rnd(-3, 3), vy: rnd(2, 5) }); }
     // projectiles cancel each other
     if (!dead && (p.kind === 'fire' || p.kind === 'ice' || p.kind === 'star' || p.kind === 'arrow' || p.kind === 'fruit')) {
@@ -645,15 +688,15 @@ function updateProjs() {
         q.dead = true; dead = true; smoke({ x: p.x, z: p.z }); Sound.play('block');
       }
     }
-    if (!dead) for (const v of W.fighters) {
+    if (!dead && !p.noHit) for (const v of W.fighters) {
       if (v.team === p.team || v.dead || p.hit.has(v)) continue;
       if (p.cool && p.cool.has(v) && p.t - p.cool.get(v) < 10) continue;
-      if (Math.abs(v.z - p.z) > 15 || Math.abs(v.x - p.x) > p.r + 12 * (v.def.size || 1)) continue;
-      if (p.ground ? v.y > 24 : (p.y < v.y - 6 || p.y > v.y + 76 * (v.def.size || 1))) continue;
+      if (Math.abs(v.z - p.z) > (p.dz || 15) || Math.abs(v.x - p.x) > p.r + 12 * (v.def.size || 1)) continue;
+      if (!p.tall && (p.ground ? v.y > 24 : (p.y < v.y - 6 || p.y > v.y + 76 * (v.def.size || 1)))) continue;
       if (v.state === 'lying' || v.invul > 0 || v.invisible) continue;
       const ok = applyHit(p.owner, v, p, sgn(p.vx), true); p.hit.add(v);
       if (p.multi) { p.hit.delete(v); (p.cool || (p.cool = new Map())).set(v, p.t); if (ok) { p.multi--; if (p.lift && v.y < 30 && v.state !== 'fall') { v.vy = 4; v.y = Math.max(v.y, 1); v.set('hurt'); v.stun = 18; } } if (p.multi > 0) continue; }
-      if (ok && p.kind !== 'spikes' && !p.multi && !p.boomer) { dead = true; if (p.kind === 'fire') for (let k = 0; k < 10; k++) addPart('fire', p.x, p.y, p.z, { vx: rnd(-3, 3), vy: rnd(-2, 3) }); break; }
+      if (ok && p.kind !== 'spikes' && !p.multi && !p.boomer && !p.pierce) { dead = true; if (p.kind === 'fire') for (let k = 0; k < 10; k++) addPart('fire', p.x, p.y, p.z, { vx: rnd(-3, 3), vy: rnd(-2, 3) }); break; }
     }
     if (dead || p.dead) W.projs.splice(i, 1);
   }

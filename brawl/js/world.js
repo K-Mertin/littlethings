@@ -229,6 +229,9 @@ function respawn(f) {
 /* --------------------------- one simulation step --------------------------- */
 function step() {
   W.t++;
+  // an ultimate's cut-in freezes everything for a moment
+  if (W.cine) { if (++W.cine.t >= W.cine.dur) W.cine = null; for (const f of W.fighters) if (f.ctl) { f.ctl.poll(); f.ctl.inp.clearEdges(); } updateParts(); return; }
+  if (W.flashT > 0) W.flashT--; if (W.stormT > 0) W.stormT--;
   for (const f of W.fighters) { if (f.ctl) f.ctl.poll(); }
   for (const f of W.fighters) { f.update(); if (f.ctl) f.ctl.inp.clearEdges(); if (f.flashMp > 0) f.flashMp--; trackGhosts(f); }
   // fighters push each other apart a little so crowds don't stack
