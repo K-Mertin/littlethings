@@ -190,6 +190,30 @@
       { q: '小藍是什麼顏色？', a: 0, o: [['🔵', '藍色'], ['🟣', '紫色'], ['⚫', '黑色']] },
     ] },
   ];
+
+  // 只看注音讀短句：e 圖、t 句子（格式同故事）
+  const SENTS = [
+    { e: '🐱💤', t: '小貓ㄒㄧㄠˇ ㄇㄠ|在ㄗㄞˋ|睡覺ㄕㄨㄟˋ ㄐㄧㄠˋ|。' },
+    { e: '🐶🦴', t: '小狗ㄒㄧㄠˇ ㄍㄡˇ|吃ㄔ|骨頭ㄍㄨˇ ㄊㄡ˙|。' },
+    { e: '🐟🌊', t: '魚ㄩˊ|在ㄗㄞˋ|水裡ㄕㄨㄟˇ ㄌㄧˇ|游ㄧㄡˊ|。' },
+    { e: '🐦🎵', t: '小鳥ㄒㄧㄠˇ ㄋㄧㄠˇ|在ㄗㄞˋ|唱歌ㄔㄤˋ ㄍㄜ|。' },
+    { e: '👦⚽', t: '哥哥ㄍㄜ ㄍㄜ˙|在ㄗㄞˋ|踢球ㄊㄧ ㄑㄧㄡˊ|。' },
+    { e: '👧🎨', t: '妹妹ㄇㄟˋ ㄇㄟ˙|在ㄗㄞˋ|畫畫ㄏㄨㄚˋ ㄏㄨㄚˋ|。' },
+    { e: '🐰🥕', t: '兔子ㄊㄨˋ ㄗ˙|吃ㄔ|紅蘿蔔ㄏㄨㄥˊ ㄌㄨㄛˊ ㄅㄛ˙|。' },
+    { e: '🌧️☂️', t: '下雨ㄒㄧㄚˋ ㄩˇ|了ㄌㄜ˙|，|要ㄧㄠˋ|帶ㄉㄞˋ|傘ㄙㄢˇ|。' },
+    { e: '🍦😋', t: '冰淇淋ㄅㄧㄥ ㄑㄧˊ ㄌㄧㄣˊ|好ㄏㄠˇ|好吃ㄏㄠˇ ㄔ|。' },
+    { e: '🚗💨', t: '車子ㄔㄜ ㄗ˙|跑ㄆㄠˇ|得ㄉㄜ˙|好ㄏㄠˇ|快ㄎㄨㄞˋ|。' },
+    { e: '🐢🐌', t: '烏龜ㄨ ㄍㄨㄟ|走ㄗㄡˇ|得ㄉㄜ˙|好ㄏㄠˇ|慢ㄇㄢˋ|。' },
+    { e: '🌙⭐', t: '晚上ㄨㄢˇ ㄕㄤˋ|有ㄧㄡˇ|星星ㄒㄧㄥ ㄒㄧㄥ|。' },
+    { e: '🐸🪷', t: '青蛙ㄑㄧㄥ ㄨㄚ|跳上ㄊㄧㄠˋ ㄕㄤˋ|荷葉ㄏㄜˊ ㄧㄝˋ|。' },
+    { e: '👵🍵', t: '奶奶ㄋㄞˇ ㄋㄞ˙|在ㄗㄞˋ|喝茶ㄏㄜ ㄔㄚˊ|。' },
+    { e: '🐒🌴', t: '猴子ㄏㄡˊ ㄗ˙|會ㄏㄨㄟˋ|爬樹ㄆㄚˊ ㄕㄨˋ|。' },
+    { e: '👨🚲', t: '爸爸ㄅㄚˋ ㄅㄚ˙|騎ㄑㄧˊ|腳踏車ㄐㄧㄠˇ ㄊㄚˋ ㄔㄜ|。' },
+    { e: '🐔🥚', t: '母雞ㄇㄨˇ ㄐㄧ|生ㄕㄥ|蛋ㄉㄢˋ|。' },
+    { e: '☀️😎', t: '太陽ㄊㄞˋ ㄧㄤˊ|好ㄏㄠˇ|大ㄉㄚˋ|。' },
+    { e: '🐘💦', t: '大象ㄉㄚˋ ㄒㄧㄤˋ|用ㄩㄥˋ|鼻子ㄅㄧˊ ㄗ˙|噴水ㄆㄣ ㄕㄨㄟˇ|。' },
+    { e: '👶🍼', t: '寶寶ㄅㄠˇ ㄅㄠ˙|在ㄗㄞˋ|喝奶ㄏㄜ ㄋㄞˇ|。' },
+  ];
   // 把 '早安ㄗㄠˇ ㄢ' 拆成 { w:'早安', z:'ㄗㄠˇ ㄢ' }；標點 z 是空字串
   const ZY_RE = /[ㄅ-ㄩˊˇˋ˙]/;
   function parseLine(t) {
@@ -211,6 +235,7 @@
     { k: 'two', t: '拼兩個字' }, { k: 'story', i: 0 }, { k: 'story', i: 1 }, { k: 'story', i: 2 }, { k: 'story', i: 3 },
     { k: 'read', t: '看注音' }, { k: 'read2', t: '看注音讀詞' },
     { k: 'story', i: 4 }, { k: 'story', i: 5 }, { k: 'story', i: 6 }, { k: 'story', i: 7 }, { k: 'story', i: 8 }, { k: 'story', i: 9 },
+    { k: 'ww', t: '寫字的注音' }, { k: 'rs', t: '讀短句' },
   ];
   const CN = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'].concat(Array.from({ length: 30 }, (_, i) => ((i + 11) >= 20 ? ['', '', '二', '三', '四'][Math.floor((i + 11) / 10)] : '') + '十' + ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'][(i + 11) % 10]));
   const lessonTitle = (L, n) => L.k === 'sym' ? L.s : L.k === 'story' ? STORIES[L.i].title : L.t;
@@ -368,6 +393,13 @@
     // 看注音
     readIntro: '看注音，找出對的圖片。',
     readTab: '讀故事，或是看注音找圖片。',
+    // 寫字的注音
+    wwIntro: '聽一個字，寫出它的注音。',
+    wwQ: w => `寫出${w}的注音。`,
+    wwTone: '是第幾聲？點一點。',
+    wwHint: '看淡淡的字，跟著寫。',
+    // 讀短句
+    rsIntro: '只看注音，讀一讀，找出對的圖。',
     // 課程
     mapIntro: '這是注音地圖。一課一課往前走吧！',
     mapLocked: '先把前面的課上完喔。',
@@ -414,6 +446,8 @@
     LESSONS.forEach((L, i) => { add(P.lessonIntro(L, i + 1)); add(P.lessonDone(i + 1)); });
     for (const x of SYMBOLS) add(P.lessonWrite(x.s));
     for (const w of WORDS) add(w.w);
+    for (const w of ONE) add(P.wwQ(w.w));
+    for (const x of SENTS) add(pageText(x));
     for (const st of STORIES) {
       add(st.title);
       for (const pg of st.pages) { add(pageText(pg)); for (const x of parseLine(pg.t)) if (x.z && !NO_TAP.includes(x.w)) add(x.w); }
@@ -434,7 +468,7 @@
     return h.toString(16).padStart(8, '0');
   }
 
-  const ZY = { SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, LESSONS, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
+  const ZY = { SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, SENTS, LESSONS, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
     TONE_NAMES, TONE_MARKS, parseSyl, syllables, P, allLines, hash, symOf };
   if (typeof module !== 'undefined' && module.exports) module.exports = ZY;
   else root.ZY = ZY;
