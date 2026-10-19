@@ -491,6 +491,21 @@ function drawHeld(c, it, g) {
   else if (it.kind === 'cracker') { drawCracker(c, g.h.x, g.h.y - 6, 0.9, true); }
 }
 
+/* Draws something with a colour wash over it (the white hit flash, the tint of after-images).
+   It goes through a small scratch canvas: ctx.filter would be simpler but is very slow on
+   many phones and tablets (and missing in Safari), which made every hit stutter. */
+const TINT = document.createElement('canvas'), TX = TINT.getContext('2d');
+const TINT_BOX = [-80, -135, 160, 185];                 // local area around a fighter's feet
+function tinted(c, col, amount, fn, maxScale = 3) {
+  const T = c.getTransform(), s = Math.min(maxScale, Math.hypot(T.a, T.b) || 1), [x0, y0, w, h] = TINT_BOX;
+  const pw = Math.ceil(w * s), ph = Math.ceil(h * s);
+  if (TINT.width < pw) TINT.width = pw; if (TINT.height < ph) TINT.height = ph;
+  TX.setTransform(1, 0, 0, 1, 0, 0); TX.globalAlpha = 1; TX.globalCompositeOperation = 'source-over'; TX.clearRect(0, 0, pw, ph);
+  TX.setTransform(s, 0, 0, s, -x0 * s, -y0 * s); TX.lineCap = 'round'; TX.lineJoin = 'round'; fn(TX);
+  TX.setTransform(1, 0, 0, 1, 0, 0); TX.globalCompositeOperation = 'source-atop'; TX.globalAlpha = amount; TX.fillStyle = col; TX.fillRect(0, 0, pw, ph);
+  TX.globalCompositeOperation = 'source-over'; TX.globalAlpha = 1;
+  c.drawImage(TINT, 0, 0, pw, ph, x0, y0, w, h);
+}
 /* Full fighter at its world position (camera already applied). */
 function drawFighter(c, f) {
   const sx = f.x, gy = FLOOR_TOP + f.z, sy = gy - f.y;
@@ -501,14 +516,15 @@ function drawFighter(c, f) {
   if (f.invisible) return;
   const custom = f.def.draw || (f.def.fly ? 'bat' : null);
   if (custom && f.state !== 'frozen') {
-    c.save(); c.translate(sx, sy); c.scale(f.face * sz, sz); if (f.flash > 0 && 'filter' in c) c.filter = f.whiteT > 0 ? 'brightness(3) saturate(0)' : 'brightness(1.9)'; DRAWERS[custom](c, f); c.filter = 'none'; c.restore(); return;
+    c.save(); c.translate(sx, sy); c.scale(f.face * sz, sz);
+    if (f.flash > 0) tinted(c, '#ffffff', f.whiteT > 0 ? 0.85 : 0.4, cc => DRAWERS[custom](cc, f)); else DRAWERS[custom](c, f);
+    c.restore(); return;
   }
   // after-images (drawn first, faded and tinted)
   if (f.ghosts && f.ghosts.length) for (const g of f.ghosts) {
     c.save(); c.globalAlpha = 0.32 * g.life / 12; c.translate(g.x, FLOOR_TOP + g.z - g.y); c.scale(g.face * sz, sz);
     if (g.P.rot) { c.translate(0, -g.P.rc + g.P.drop); c.rotate(g.P.rot); c.translate(0, g.P.rc); }
-    if ('filter' in c) c.filter = f.state === 'fall' ? 'brightness(1.6) saturate(.4)' : 'sepia(1) hue-rotate(160deg) saturate(3) brightness(1.3)';
-    drawBody(c, f.look, g.P, { clock: f.clock, look: f.look, state: f.state, vx: 0 }); c.filter = 'none'; c.restore();
+    tinted(c, f.state === 'fall' ? '#ffffff' : '#7fd8ff', 0.55, cc => drawBody(cc, f.look, g.P, { clock: f.clock, look: f.look, state: f.state, vx: 0 }), 1.2); c.restore();
   }
   // power-up glow when a special move starts
   if (f.auraT > 0) {
@@ -526,10 +542,8 @@ function drawFighter(c, f) {
   if (f.shakeT > 0) c.translate((Math.random() - 0.5) * 3, 0);
   if (P.rot) { c.translate(0, -P.rc + P.drop); c.rotate(P.rot); c.translate(0, P.rc); }
   if (f.armorT > 0) { c.save(); c.globalAlpha = a * (0.35 + Math.sin(f.clock * 0.3) * 0.15); c.fillStyle = '#ffd34d'; c.beginPath(); c.ellipse(0, -40, 30, 48, 0, 0, TAU); c.fill(); c.restore(); }
-  if (f.whiteT > 0 && 'filter' in c) c.filter = 'brightness(3) saturate(0)';
-  else if (f.flash > 0 && 'filter' in c) c.filter = 'brightness(1.9) saturate(.6)';
-  const parts = drawBody(c, f.look, P, f);
-  c.filter = 'none';
+  if (f.flash > 0) tinted(c, '#ffffff', f.whiteT > 0 ? 0.85 : 0.4, cc => drawBody(cc, f.look, P, f));
+  else drawBody(c, f.look, P, f);
   if (f.state === 'frozen') {
     c.globalAlpha = a * 0.75; c.beginPath(); c.moveTo(-20, 2); c.lineTo(-24, -40); c.lineTo(-14, -84); c.lineTo(8, -90); c.lineTo(24, -60); c.lineTo(22, 2); c.closePath();
     const gr = c.createLinearGradient(-20, -90, 20, 0); gr.addColorStop(0, 'rgba(220,245,255,.85)'); gr.addColorStop(1, 'rgba(120,200,255,.6)');

@@ -583,7 +583,7 @@ function trackGhosts(f) {
   if (f.whiteT > 0) f.whiteT--; if (f.auraT > 0) f.auraT--;
   const fast = (f.state === 'fall' && f.y > 4 && Math.abs(f.vx) > 3.2) || (f.state === 'skill' && Math.abs(f.vx) > 4.5) || (f.state === 'run' && f.superT > 0);
   if (!f.ghosts) f.ghosts = [];
-  if (fast && W.t % 3 === 0 && f.lastPose) { f.ghosts.push({ x: f.x, y: f.y, z: f.z, face: f.face, P: f.lastPose, life: 12 }); if (f.ghosts.length > 4) f.ghosts.shift(); }
+  if (fast && W.t % 3 === 0 && f.lastPose) { f.ghosts.push({ x: f.x, y: f.y, z: f.z, face: f.face, P: f.lastPose, life: 12 }); if (f.ghosts.length > 3) f.ghosts.shift(); }
   for (const g of f.ghosts) g.life--; while (f.ghosts.length && f.ghosts[0].life <= 0) f.ghosts.shift();
 }
 function knock(v, dir, kb, kbY) {
