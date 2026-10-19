@@ -92,6 +92,21 @@
 
   const WORDS = ONE.concat(TWO);
 
+  // 結合韻：z 注音、r 念的時候用的同音字（一聲）、w 例詞、wz 例詞注音、e 圖
+  const COMBOS = [
+    ['ㄧㄚ', '鴨', '鴨子', 'ㄧㄚ ㄗ˙', '🦆'], ['ㄧㄝ', '耶', '椰子', 'ㄧㄝˊ ㄗ˙', '🥥'],
+    ['ㄧㄠ', '腰', '藥', 'ㄧㄠˋ', '💊'], ['ㄧㄡ', '優', '郵筒', 'ㄧㄡˊ ㄊㄨㄥˇ', '📮'],
+    ['ㄧㄢ', '煙', '眼睛', 'ㄧㄢˇ ㄐㄧㄥ', '👀'], ['ㄧㄣ', '因', '音樂', 'ㄧㄣ ㄩㄝˋ', '🎵'],
+    ['ㄧㄤ', '央', '羊', 'ㄧㄤˊ', '🐑'], ['ㄧㄥ', '英', '櫻桃', 'ㄧㄥ ㄊㄠˊ', '🍒'],
+    ['ㄨㄚ', '蛙', '青蛙', 'ㄑㄧㄥ ㄨㄚ', '🐸'], ['ㄨㄛ', '窩', '蝸牛', 'ㄨㄛ ㄋㄧㄡˊ', '🐌'],
+    ['ㄨㄞ', '歪', '外套', 'ㄨㄞˋ ㄊㄠˋ', '🧥'], ['ㄨㄟ', '威', '圍巾', 'ㄨㄟˊ ㄐㄧㄣ', '🧣'],
+    ['ㄨㄢ', '彎', '碗', 'ㄨㄢˇ', '🥣'], ['ㄨㄣ', '溫', '蚊子', 'ㄨㄣˊ ㄗ˙', '🦟'],
+    ['ㄨㄤ', '汪', '王冠', 'ㄨㄤˊ ㄍㄨㄢ', '👑'], ['ㄨㄥ', '翁', '蟲', 'ㄔㄨㄥˊ', '🐛'],
+    ['ㄩㄝ', '約', '月亮', 'ㄩㄝˋ ㄌㄧㄤ˙', '🌙'], ['ㄩㄢ', '冤', '圓圈', 'ㄩㄢˊ ㄑㄩㄢ', '⭕'],
+    ['ㄩㄣ', '暈', '雲', 'ㄩㄣˊ', '☁️'], ['ㄩㄥ', '雍', '游泳', 'ㄧㄡˊ ㄩㄥˇ', '🏊'],
+  ].map(([z, r, w, wz, e]) => ({ z, r, w, wz, e }));
+
+
   // 四聲：同一個音的四個聲調
   const TONE_SETS = [
     { base: 'ㄇㄚ', ch: ['媽', '麻', '馬', '罵'] },
@@ -140,6 +155,19 @@
     spellIntro: '聽聽看，把注音放進格子裡。',
     spellQ: w => `我們來拼${w}。`,
     spellDone: w => { const sy = parseSyl(w.z); return sy.parts.join('，') + `，${w.w}！`; },
+    // 結合韻（念的用同音字，畫面顯示注音）
+    comboIntro: '兩個注音合在一起，會變成新的音。點點看。',
+    comboQuizIntro: '我念一個音，你找出來。',
+    combo: c => ({ text: c.r, show: c.z }),
+    comboEx: c => ({ text: `${c.r}，${c.w}的${c.r}。`, show: `${c.z}，${c.w}的${c.z}。` }),
+    comboParts: c => ({ text: `${Array.from(c.z).join('，')}，${c.r}。`, show: `${Array.from(c.z).join('，')}，${c.z}。` }),
+    comboFind: c => ({ text: `${c.r}。找出${c.r}。`, show: `${c.z}。找出${c.z}。` }),
+    comboThisIs: c => ({ text: `這是${c.r}。`, show: `這是${c.z}。` }),
+    // 兩個字的拼拼看
+    spellSyl: (ch, z) => parseSyl(z).parts.join('，') + `，${ch}！`,
+    spellWordDone: w => `${w}！`,
+    spellTabOne: '拼一個字。',
+    spellTabTwo: '拼兩個字的詞。',
     // 四聲
     toneIntro: '注音有四個聲調。聽聽看，是第幾聲？',
     toneLearn: '一聲平平的，二聲往上爬，三聲彎下去再上來，四聲往下跳。',
@@ -174,6 +202,8 @@
       add(P.firstAns(w.w, syllables(w.z)[0].parts[0]));
     }
     for (const w of ONE) { add(P.spellQ(w.w)); add(P.spellDone(w)); }
+    for (const c of COMBOS) for (const f of ['combo', 'comboEx', 'comboParts', 'comboFind', 'comboThisIs']) add(P[f](c).text);
+    for (const w of TWO) { add(P.spellQ(w.w)); add(P.spellWordDone(w.w)); Array.from(w.w).forEach((ch, i) => add(P.spellSyl(ch, w.z.split(' ')[i]))); }
     for (const t of TONE_SETS) t.ch.forEach((c, n) => { add(P.ch(c)); add(P.toneEx(c, n)); add(P.toneQ(c)); });
     TONE_NAMES.forEach((_, n) => add(P.toneName(n)));
     return Array.from(out);
@@ -187,7 +217,7 @@
     return h.toString(16).padStart(8, '0');
   }
 
-  const ZY = { SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, TONE_SETS,
+  const ZY = { SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, TONE_SETS,
     TONE_NAMES, TONE_MARKS, parseSyl, syllables, P, allLines, hash, symOf };
   if (typeof module !== 'undefined' && module.exports) module.exports = ZY;
   else root.ZY = ZY;
