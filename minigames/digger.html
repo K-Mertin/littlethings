@@ -1,0 +1,1842 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon.ico" sizes="any"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>噗噗工地</title>
+<link rel="stylesheet" href="mini.css">
+<style>
+body.game{background:linear-gradient(#cfeeff,#fff1d6)}
+.mg-stage{padding:4px 4px max(4px,env(safe-area-inset-bottom))}
+.dg-pic{font-size:34px;line-height:1.1;margin:2px 0 6px}
+</style>
+</head>
+<body>
+<main class="mg-stage"><canvas id="cv" aria-label="遊戲畫面"></canvas></main>
+<script src="mini.js"></script>
+<script>
+'use strict';
+MG.init({ id: 'digger', title: '噗噗工地', stats: ['level'] });
+const cv = document.getElementById('cv'), x = cv.getContext('2d');
+const GY = 430, WB = 560, CW = 4, GA = 30;          // ground line, world bottom, column width, one grain of dirt (area)
+const G = 0, R = 1, D = 2, H = 3;                    // column kinds: grass (hard), road (hard), soft dirt, bare hard dirt
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, k) => a + (b - a) * k;
+const FONT = '"Noto Sans TC",system-ui,sans-serif', EMO = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+
+// ---------- themes ----------
+const THEMES = {
+  day: { sky: ['#7fcbff', '#d9f2ff', '#fff4dc'], hill: ['#a8df8e', '#86cc72'], far: '#c5e8f5', dirt: ['#c98a4f', '#8e5a2e'], crust: '#6cc24a', crustD: '#4c9a35', grain: ['#b9773d', '#a5662f', '#c88a4f'] },
+  dusk: { sky: ['#ff9f7a', '#ffc99a', '#fff0c8'], hill: ['#c79ad0', '#a985c2'], far: '#f3c3c0', dirt: ['#c58450', '#86522c'], crust: '#7fbf55', crustD: '#5c9a3e', grain: ['#b9773d', '#a5662f', '#c88a4f'] },
+  snow: { sky: ['#9fd4ff', '#e2f3ff', '#ffffff'], hill: ['#f4f9ff', '#dbe9f7'], far: '#e8f2fb', dirt: ['#b98a62', '#7d583a'], crust: '#ffffff', crustD: '#cfe0f0', grain: ['#ffffff', '#eef6ff', '#dfeefa'] },
+  beach: { sky: ['#6fc8ff', '#c9efff', '#fff8e4'], hill: ['#7fd6e8', '#5cc0dc'], far: '#bfeaf5', dirt: ['#e9c27a', '#b98a45'], crust: '#f6dc98', crustD: '#ddb76a', grain: ['#f4d27e', '#e8c066', '#fbe0a0'] },
+};
+
+// ---------- levels ----------
+// every level is a job with a picture goal; v = vehicle marker in the level grid
+const VMK = { exc: '⛏️', truck: '🚚', dozer: '🪨', crane: '🏗️', mixer: '🪣', roller: '🛞', drill: '🔩', multi: '🔁' };
+const LEVELS = [
+  { name: '挖個大洞', mk: 'exc', build: w => { w.ww = 840; soil(w, 330, 640, GY); digGoal(w, 360, 520, 52, 'hole'); w.dumpX = 70; addV(w, 'exc', 230, { xmin: 150, xmax: 282 }); } },
+  { name: '把卡車裝滿', mk: 'exc', build: w => { w.ww = 900; mound(w, 520, 780, 70, GY + 30); addV(w, 'exc', 420, { xmin: 380, xmax: 440, dir: -1 }); npcTruck(w, 200, -1, 1); } },
+  { name: '卡車倒土填洞', mk: 'truck', build: w => { w.ww = 900; pit(w, 90, 220, 32, D); fillGoal(w, 90, 220); addV(w, 'truck', 560, { xmin: 280, xmax: 820, load: 4500 }); } },
+  { name: '推石頭', mk: 'dozer', build: w => { w.ww = 920; road(w, 0, 650); pit(w, 652, 900, 110); rock(w, 300, 26); rock(w, 420, 30); rock(w, 520, 22); rocksGoal(w, 660); addV(w, 'dozer', 140, { xmin: 100, xmax: 652 + 14 - 84 }); } },
+  { name: '吊積木疊高高', mk: 'crane', build: w => { w.ww = 780; addV(w, 'crane', 110, { tmax: 700 }); item(w, 'cube', 240, 0, 0); item(w, 'cube', 310, 0, 1); item(w, 'cube', 380, 0, 2); stack(w, 'cube', 560, 3, 56, [0, 1, 2]); } },
+  { name: '壓平新馬路', mk: 'roller', build: w => { w.ww = 1000; road(w, 0, 1000); for (const [bx, bw, bh] of [[300, 60, 18], [430, 70, 20], [570, 56, 16], [700, 72, 22], [830, 60, 18]]) bump(w, bx, bw, bh); w.reward = 'road'; addV(w, 'roller', 120, { xmin: 80, xmax: 940 }); } },
+  { name: '倒水泥', mk: 'mixer', build: w => { w.ww = 900; road(w, 0, 900); mould(w, 380, 84, 40); mould(w, 620, 96, 40); addV(w, 'mixer', 160, { xmin: 120, xmax: 840 }); } },
+  { name: '種路燈', mk: 'drill', build: w => { w.ww = 1000; for (const mx of [300, 520, 740]) mark(w, mx, 40, 'lamp'); w.reward = 'lamps'; addV(w, 'drill', 120, { xmin: 80, xmax: 900 }); } },
+  { name: '挖游泳池', mk: 'exc', ribbon: true, build: w => { w.ww = 900; soil(w, 360, 640, GY); digGoal(w, 372, 590, 64, 'pool'); w.dumpX = 70; w.reward = 'pool'; addV(w, 'exc', 250, { xmin: 170, xmax: 296 }); } },
+  { name: '推平土堆', mk: 'dozer', build: w => { w.ww = 1000; road(w, 0, 760); mound(w, 300, 460, 60, GY); mound(w, 560, 700, 45, GY); pit(w, 762, 990, 120); flatGoal(w, 180, 758); addV(w, 'dozer', 120, { xmin: 100, xmax: 762 + 14 - 84 }); } },
+  { name: '蓋小橋', mk: 'crane', ribbon: true, build: w => { w.ww = 960; addV(w, 'crane', 90, { tmax: 720 }); river(w, 380, 620, 90); fixed(w, 'pillar', 500, GY + 90); item(w, 'beam', 235, 0); item(w, 'beam', 235, 1); slot(w, 'beam', 445, GY); slot(w, 'beam', 555, GY); } },
+  { name: '來回運沙', mk: 'truck', build: w => { w.ww = 1100; pit(w, 60, 260, 46, D); fillGoal(w, 60, 260); hopper(w, 930); addV(w, 'truck', 620, { xmin: 320, xmax: 1010, load: 0 }); } },
+  { name: '裝滿兩台卡車', mk: 'exc', build: w => { w.ww = 900; mound(w, 520, 800, 80, GY + 40); addV(w, 'exc', 420, { xmin: 380, xmax: 440, dir: -1 }); npcTruck(w, 200, -1, 2); } },
+  { name: '長長的山路', mk: 'roller', ribbon: true, build: w => { w.ww = 1400; hills(w, 26); road(w, 0, 1400); for (const [bx, bw, bh] of [[260, 60, 18], [420, 70, 20], [600, 60, 18], [780, 76, 22], [960, 60, 16], [1140, 70, 20]]) bump(w, bx, bw, bh); w.reward = 'road'; addV(w, 'roller', 110, { xmin: 80, xmax: 1330 }); } },
+  { name: '水泥踏腳石', mk: 'mixer', build: w => { w.ww = 1100; road(w, 0, 1100); for (const mx of [340, 480, 620, 760]) mould(w, mx, 62, 30); addV(w, 'mixer', 150, { xmin: 120, xmax: 1040 }); } },
+  { name: '山崩了！', mk: 'dozer', build: w => { w.ww = 1000; road(w, 0, 640); mound(w, 250, 540, 80, GY); rock(w, 310, 24); rock(w, 400, 30); rock(w, 480, 22); pit(w, 642, 990, 150); rocksGoal(w, 650); flatGoal(w, 160, 640); addV(w, 'dozer', 110, { xmin: 90, xmax: 642 + 14 - 84 }); } },
+  { name: '蓋高塔', mk: 'crane', build: w => { w.ww = 820; addV(w, 'crane', 100, { tmax: 760 }); item(w, 'floor', 200, 0, 0); item(w, 'floor', 200, 1, 1); item(w, 'floor', 320, 0, 2); item(w, 'floor', 320, 1, 3); item(w, 'roof', 440, 0); stack(w, 'floor', 600, 4, 44, [0, 1, 2, 3]); slot(w, 'roof', 600, GY - 176, [3]); } },
+  { name: '打地基', mk: 'drill', build: w => { w.ww = 1000; road(w, 0, 1000); for (const mx of [320, 460, 600, 740]) mark(w, mx, 80, 'pile'); addV(w, 'drill', 140, { xmin: 80, xmax: 900 }); } },
+  { name: '挖化石', mk: 'exc', build: w => { w.ww = 900; soil(w, 300, 700, GY + 104); find(w, 380, GY + 58, 'bone'); find(w, 505, GY + 86, 'chest'); find(w, 625, GY + 48, 'egg'); w.dumpX = 60; addV(w, 'exc', 240, { xmin: 160, xmax: 400 }); } },
+  { name: '挖土裝車去填洞', mk: 'multi', build: w => { w.ww = 1200; pit(w, 80, 220, 32, D); fillGoal(w, 80, 220); mound(w, 700, 940, 70, GY + 30); addV(w, 'exc', 610, { xmin: 570, xmax: 620, dir: -1 }); addV(w, 'truck', 400, { xmin: 300, xmax: 470, load: 0 }); } },
+  { name: '推雪', mk: 'dozer', theme: 'snow', build: w => { w.ww = 1000; road(w, 0, 760); mound(w, 260, 420, 55, GY); mound(w, 500, 700, 65, GY); pit(w, 762, 990, 120); flatGoal(w, 160, 758); addV(w, 'dozer', 110, { xmin: 90, xmax: 762 + 14 - 84 }); } },
+  { name: '挖開小河', mk: 'exc', build: w => { w.ww = 960; river(w, 180, 400, 50, GY + 14); mound(w, 400, 580, 60, GY + 26); digGoal(w, 420, 560, 18, 'canal'); w.reward = 'canal'; w.dumpX = 900; addV(w, 'exc', 700, { xmin: 660, xmax: 780, dir: -1 }); } },
+  { name: '蓋大橋', mk: 'crane', ribbon: true, build: w => { w.ww = 1000; addV(w, 'crane', 80, { tmax: 780 }); river(w, 360, 740, 90); item(w, 'pillar', 150, 0); item(w, 'pillar', 196, 0); item(w, 'beam', 292, 0); item(w, 'beam', 292, 1); item(w, 'beam', 292, 2); slot(w, 'pillar', 460, GY + 90); slot(w, 'pillar', 640, GY + 90); slot(w, 'beam', 424, GY, [0]); slot(w, 'beam', 550, GY, [0, 1]); slot(w, 'beam', 676, GY, [1]); } },
+  { name: '黃昏的水泥地', mk: 'mixer', theme: 'dusk', build: w => { w.ww = 1000; road(w, 0, 1000); mould(w, 330, 60, 44); mould(w, 520, 110, 34); mould(w, 740, 72, 40); addV(w, 'mixer', 150, { xmin: 120, xmax: 940 }); } },
+  { name: '黃昏壓路', mk: 'roller', theme: 'dusk', build: w => { w.ww = 1200; hills(w, 36); road(w, 0, 1200); for (const [bx, bw, bh] of [[280, 64, 18], [460, 70, 22], [640, 60, 18], [820, 80, 22], [1000, 64, 18]]) bump(w, bx, bw, bh); w.reward = 'road'; addV(w, 'roller', 110, { xmin: 80, xmax: 1130 }); } },
+  { name: '海邊的沙坑', mk: 'truck', theme: 'beach', build: w => { w.ww = 1100; pit(w, 80, 270, 40, H); fillGoal(w, 80, 270); w.sandbox = [80, 270]; hopper(w, 930); addV(w, 'truck', 600, { xmin: 330, xmax: 1010, load: 0 }); } },
+  { name: '鑽井找水', mk: 'drill', build: w => { w.ww = 1000; mark(w, 300, 30, 'tree'); mark(w, 520, 110, 'well'); mark(w, 740, 30, 'tree'); addV(w, 'drill', 120, { xmin: 80, xmax: 900 }); } },
+  { name: '推平再壓路', mk: 'multi', build: w => { w.ww = 1300; road(w, 0, 520); mound(w, 250, 430, 55, GY); pit(w, 522, 660, 100); flatGoal(w, 150, 518); road(w, 662, 1300); for (const [bx, bw, bh] of [[820, 60, 18], [960, 70, 20], [1100, 60, 18]]) bump(w, bx, bw, bh); addV(w, 'dozer', 110, { xmin: 90, xmax: 522 + 14 - 84 }); addV(w, 'roller', 760, { xmin: 730, xmax: 1240 }); } },
+  { name: '挖池塘裝卡車', mk: 'exc', build: w => { w.ww = 960; soil(w, 470, 760, GY); digGoal(w, 490, 690, 56, 'pond'); w.reward = 'pond'; w.dumpX = 40; addV(w, 'exc', 400, { xmin: 360, xmax: 410 }); npcTruck(w, 170, -1, 1); } },
+  { name: '遊樂場完工', mk: 'crane', ribbon: true, finale: true, build: w => { w.ww = 1210; addV(w, 'crane', 80, { tmax: 1130 }); item(w, 'slide', 196, 0); item(w, 'swing', 326, 0); item(w, 'house', 446, 0); item(w, 'seesaw', 576, 0); slot(w, 'slide', 740, GY); slot(w, 'house', 866, GY); slot(w, 'swing', 988, GY); slot(w, 'seesaw', 1120, GY); } },
+];
+const LV = n => LEVELS[n - 1];
+const lvType = n => LV(n).mk;
+const VNAME = { exc: '挖土機', truck: '砂石車', dozer: '推土機', crane: '吊車', mixer: '水泥車', roller: '壓路機', drill: '鑽地車', multi: '換車開' };
+
+// ---------- world building helpers ----------
+let Wd = null;
+function newWorld(L) {
+  const w = { ww: 900, theme: L.theme || 'day', veh: [], rocks: [], items: [], slots: [], moulds: [], bumps: [], marks: [], finds: [], hoppers: [], waters: [], goals: [], splats: [], dumpX: null, reward: null };
+  L.build(w);
+  return w;
+}
+// the builders run before the column arrays exist, so they queue terrain operations and apply them in order
+function cols(w) {
+  if (w.n) return;
+  w.n = Math.ceil(w.ww / CW) + 2;
+  w.top = new Float32Array(w.n).fill(GY); w.floor = new Float32Array(w.n).fill(GY); w.kind = new Uint8Array(w.n).fill(G);
+}
+const C0 = xw => Math.floor(xw / CW);
+function eachCol(w, x0, x1, fn) { cols(w); for (let c = Math.max(0, C0(x0)); c <= Math.min(w.n - 1, C0(x1)); c++) fn(c, c * CW + CW / 2); }
+function road(w, x0, x1) { eachCol(w, x0, x1, c => { if (w.kind[c] === G) w.kind[c] = R; }); }
+function soil(w, x0, x1, fy) { eachCol(w, x0, x1, c => { w.kind[c] = D; w.floor[c] = Math.max(w.floor[c], fy); }); }
+function mound(w, x0, x1, h, fy) {
+  eachCol(w, x0, x1, (c, xw) => { const u = (xw - x0) / (x1 - x0), s = Math.pow(Math.sin(Math.PI * u), 0.8); w.top[c] = Math.min(w.top[c], GY - h * s); w.kind[c] = D; w.floor[c] = Math.max(fy, w.floor[c]); });
+}
+function pit(w, x0, x1, d, kind = H) {
+  const sl = Math.min(d * 0.7, (x1 - x0) / 3);
+  eachCol(w, x0, x1, (c, xw) => { const e = Math.min(xw - x0, x1 - xw), k = clamp(e / sl, 0, 1), y = GY + d * (k * k * (3 - 2 * k)); w.top[c] = y; w.floor[c] = y; w.kind[c] = kind === D ? H : kind; });
+}
+function hills(w, amp) { eachCol(w, 0, w.ww, (c, xw) => { const y = GY - amp * (0.5 + 0.5 * Math.sin(xw / 170 + 1.2)) * clamp((xw - 140) / 200, 0, 1) * clamp((w.ww - 120 - xw) / 200, 0, 1); w.top[c] = y; w.floor[c] = y; }); }
+function river(w, x0, x1, d, wy = GY + 30) { pit(w, x0, x1, d); w.waters.push({ x0, x1, y: wy, a: 1 }); }
+function digGoal(w, x0, x1, d, shape) {
+  eachCol(w, x0, x1, (c, xw) => {
+    const e = Math.min(xw - x0, x1 - xw), k = shape === 'pool' || shape === 'pond' ? Math.pow(clamp(e / 34, 0, 1), 0.6) : clamp(e / 26, 0, 1);
+    const base = w.top[c], fy = Math.max(GY, base) + d * k;
+    w.kind[c] = D; w.floor[c] = Math.max(base, fy);
+  });
+  w.goals.push({ type: 'dig', x0, x1, shape, prog: 0 });
+}
+function fillGoal(w, x0, x1) { w.goals.push({ type: 'fill', x0, x1, y: GY, prog: 0 }); }
+function flatGoal(w, x0, x1) { w.goals.push({ type: 'flat', x0, x1, y: GY, prog: 0 }); }
+function rocksGoal(w, zx) { w.goals.push({ type: 'rocks', zx, prog: 0 }); }
+function rock(w, rx, r) { w.rocks.push({ x: rx, y: GY - r - 80, r, vy: 0, vx: 0, rot: Math.random() * 6, col: ['#9aa3b5', '#a8a196', '#8f9aad'][w.rocks.length % 3], seed: Math.random() * 10, inZone: false }); }
+function bump(w, bx, bw, bh) { w.bumps.push({ x: bx, w: bw, h: bh, h0: bh, steam: Math.random() * 6 }); if (!w.goals.some(g => g.type === 'bumps')) w.goals.push({ type: 'bumps', prog: 0 }); }
+function mould(w, mx, mw, md) { w.moulds.push({ x: mx, w: mw, d: md, fill: 0, done: false, pop: 0 }); if (!w.goals.some(g => g.type === 'moulds')) w.goals.push({ type: 'moulds', prog: 0 }); }
+function mark(w, mx, d, kind) { w.marks.push({ x: mx, d, kind, depth: 0, done: false, pop: 0 }); if (!w.goals.some(g => g.type === 'marks')) w.goals.push({ type: 'marks', prog: 0 }); }
+function find(w, fx, fy, kind) { w.finds.push({ x: fx, y: fy, kind, found: false, pop: 0, sx: fx, sy: fy }); if (!w.goals.some(g => g.type === 'find')) w.goals.push({ type: 'find', prog: 0 }); }
+function hopper(w, hx) { w.hoppers.push({ x: hx, pour: 0, flying: 0, acc: 0 }); }
+const ITEM = { cube: [56, 56], floor: [104, 44], roof: [120, 54], beam: [128, 20], pillar: [34, 90], slide: [124, 96], swing: [116, 100], seesaw: [134, 40], house: [86, 104] };
+const CUBE_COL = ['#ff6b6b', '#ffc93a', '#4c9cf0', '#5ccf6e', '#b07cff'];
+function item(w, kind, ix, layer, col = 0) {
+  const [iw, ih] = ITEM[kind];
+  // stack on whatever is already at that spot
+  let by = GY; for (const o of w.items) if (o.state === 'ground' && Math.abs(o.x - ix) < (o.w + iw) / 2 - 4) by = Math.min(by, o.y - o.h);
+  w.items.push({ kind, x: ix, y: by, w: iw, h: ih, state: 'ground', col, vy: 0, slot: null, wob: 0 });
+  void layer;
+}
+function fixed(w, kind, ix, by) { const [iw, ih] = ITEM[kind]; w.items.push({ kind, x: ix, y: by, w: iw, h: ih, state: 'placed', col: 0, vy: 0, slot: null, fixed: true, wob: 0 }); }
+function slot(w, kind, sx, by, dep = []) { const [sw, sh] = ITEM[kind]; w.slots.push({ kind, x: sx, y: by, w: sw, h: sh, dep, item: null }); if (!w.goals.some(g => g.type === 'slots')) w.goals.push({ type: 'slots', prog: 0 }); }
+function stack(w, kind, sx, n, h, cols) { for (let i = 0; i < n; i++) slot(w, kind, sx, GY - i * h, i ? [w.slots.length - 1] : []); void cols; }
+function npcTruck(w, px, dir, n) {
+  addV(w, 'truck', px, { dir, npc: true, park: px, load: 0 });
+  w.goals.push({ type: 'trucks', n, count: 0, prog: 0 });
+}
+function addV(w, type, vx, o = {}) {
+  const v = { type, x: vx, y: GY, ang: 0, dir: o.dir || 1, vx: 0, xmin: o.xmin ?? 40, xmax: o.xmax ?? w.ww - 40, npc: !!o.npc, park: o.park, load: o.load || 0, cap: 4500, tip: 0, carry: 0, wheel: 0, spin: 0, puff: 0, depth: 0, pour: 0, state: 'park', dump: 0, pend: false, B: null, tgt: null, bang: 0, smoke: [] };
+  if (type === 'exc') { v.cap = 1500; v.load = 0; }
+  if (type === 'crane') { v.TX = vx; v.jy = 96; v.tmin = vx + 56; v.tmax = o.tmax || w.ww - 60; v.tro = vx + 160; v.hy = 200; v.sw = 0; v.swv = 0; v.hold = null; v.x = vx; }
+  if (type === 'mixer') v.drum = 0;
+  if (type === 'truck' && !v.npc) v.cap = 4500;
+  if (type === 'truck' && v.npc) v.cap = 3600;
+  w.veh.push(v);
+  return v;
+}
+
+// ---------- state ----------
+let level = 1, state = 'menu', act = 0, t = 0;
+let grains = [], floats = [], cheer = null, ribbon = null, animals = [], rewardT = 0, finishT = 0;
+const keys = { L: false, R: false, U: false, D: false, A: false };
+const press = { L: 0, R: 0, U: 0, D: 0, A: 0 };       // how many pointers hold each panel button
+let sceneDrive = null;                               // world x a finger is holding in the scene (drive towards it)
+let scenePtr = null;
+let bot = false;
+const cur = () => Wd && Wd.veh[act];
+
+// ---------- layout ----------
+let LW = 300, LH = 300, PH = 120, VH = 200, S = 1, YB = WB, camX = 0, btns = [], bgC = null, bgKey = '';
+function layout() {
+  LW = cv.lw; LH = cv.lh;
+  const wide = LW > LH * 1.25;
+  PH = Math.round((wide ? clamp(LH * 0.17, 92, 140) : clamp(LH * 0.17, 100, 170)) * (MG.big ? 1.12 : 1));
+  VH = LH - PH;
+  S = Math.min(VH / WB, LW / clamp(LW * 0.95, 400, 800));      // phones see ~400 world units across, tablets more
+  YB = WB + Math.max(0, VH / S - WB) * 0.42;          // tall screens: show more ground below, less empty sky
+  buildButtons();
+}
+MG.fit(cv, (sw, sh) => {
+  const cs = getComputedStyle(cv.parentElement);
+  const W = Math.max(300, Math.round(sw - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 6));
+  const Hh = Math.max(300, Math.round(sh - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 6));
+  return [W, Hh];
+});
+cv.onfit = () => layout();
+addEventListener('mg-big', () => layout());
+const wx2s = wx => (wx - camX) * S, wy2s = wy => VH - (YB - wy) * S;
+const s2w = (sx, sy) => ({ x: sx / S + camX, y: (sy - VH) / S + YB });
+const visW = () => LW / S;
+
+// panel buttons for the vehicle being driven
+const ACTS = {
+  exc: [{ id: 'dump', ic: '🪣', label: '倒土', tap: true }],
+  truck: [{ id: 'A', ic: '⤴', label: '翻斗', hold: true }],
+  dozer: [],
+  crane: [{ id: 'U', ic: '⬆', label: '往上', hold: true }, { id: 'D', ic: '⬇', label: '往下', hold: true }],
+  mixer: [{ id: 'A', ic: '💧', label: '倒水泥', hold: true }],
+  roller: [],
+  drill: [{ id: 'A', ic: '🌀', label: '鑽', hold: true }],
+};
+function buildButtons() {
+  btns = [];
+  const v = cur(); if (!v) return;
+  const pad = 10, gap = 8, by = VH + 8, bh = PH - 16;
+  const acts = ACTS[v.type] || [];
+  const multi = Wd.veh.filter(o => !o.npc).length > 1;
+  const mids = multi ? Wd.veh.map((o, i) => o.npc ? -1 : i).filter(i => i >= 0) : [];
+  const nMid = mids.length + 1;                          // + horn
+  const n = 2 + acts.length + nMid;
+  let bw = Math.min(bh * 1.12, 150 * (MG.big ? 1.15 : 1), (LW - pad * 2 - gap * (n - 1) - 24) / n);
+  const big = Math.min(bh * 1.25, bw * 1.18);           // the pedals get a little extra
+  let xL = pad;
+  btns.push({ id: 'L', x: xL, y: by, w: big, h: bh, kind: 'pedal', ic: '◀' }); xL += big + gap;
+  btns.push({ id: 'R', x: xL, y: by, w: big, h: bh, kind: 'pedal', ic: '▶' }); xL += big + gap;
+  let xR = LW - pad;
+  for (let i = acts.length - 1; i >= 0; i--) { const a = acts[i], aw = Math.min(big, bw * 1.12); xR -= aw; btns.push({ ...a, x: xR, y: by, w: aw, h: bh, kind: 'act' }); xR -= gap; }
+  const mw = Math.min(bw, bh * 0.95), totalMid = nMid * mw + (nMid - 1) * gap;
+  let mx = (xL + xR) / 2 - totalMid / 2;
+  mx = clamp(mx, xL, Math.max(xL, xR - totalMid));
+  for (const i of mids) { btns.push({ id: 'sw' + i, vi: i, x: mx, y: by + bh * 0.08, w: mw, h: bh * 0.84, kind: 'switch' }); mx += mw + gap; }
+  btns.push({ id: 'horn', x: mx, y: by + bh * 0.16, w: mw, h: bh * 0.68, kind: 'horn', ic: '📯' });
+}
+
+// ---------- terrain helpers ----------
+const topAt = wx => { const c = clamp(C0(wx), 0, Wd.n - 1); return Wd.top[c]; };
+function minTop(x0, x1) { let m = 1e9; for (let c = Math.max(0, C0(x0)); c <= Math.min(Wd.n - 1, C0(x1)); c++) m = Math.min(m, Wd.top[c]); return m; }
+function deposit(wx, area) {
+  const c = clamp(C0(wx), 1, Wd.n - 2), h = area / (3 * CW);
+  Wd.top[c - 1] -= h; Wd.top[c] -= h; Wd.top[c + 1] -= h;
+}
+function relax() {
+  const top = Wd.top, fl = Wd.floor, n = Wd.n, M = 3.2;
+  for (let pass = 0; pass < 3; pass++) {
+    for (let i = 0; i < n - 1; i++) {
+      const d = top[i + 1] - top[i];                  // > 0: column i is higher
+      if (d > M) { let m = (d - M) * 0.25; m = Math.min(m, fl[i] - top[i]); if (m > 0) { top[i] += m; top[i + 1] -= m; } }
+      else if (d < -M) { let m = (-d - M) * 0.25; m = Math.min(m, fl[i + 1] - top[i + 1]); if (m > 0) { top[i + 1] += m; top[i] -= m; } }
+    }
+  }
+}
+function spawnGrain(gx, gy, vx, vy, kind = 'dirt') {
+  const pal = kind === 'cem' ? ['#9aa1ab', '#8a919c', '#b3b9c2'] : THEMES[Wd.theme].grain;
+  grains.push({ x: gx, y: gy, vx, vy, kind, col: pal[(Math.random() * pal.length) | 0], s: 4 + Math.random() * 2.5, r: Math.random() * 6 });
+}
+
+// ---------- vehicles: geometry ----------
+const EXC = { L1: 170, L2: 140, sh: [34, -70] };
+function bedRange(v) { const a = v.x - v.dir * 90, b = v.x + v.dir * 28; return [Math.min(a, b), Math.max(a, b)]; }
+const bedRim = v => v.y - 82;
+function shoulder(v) { return { x: v.x + v.dir * EXC.sh[0], y: v.y + EXC.sh[1] }; }
+function ik(sh, B) {
+  const { L1, L2 } = EXC, dx = B.x - sh.x, dy = B.y - sh.y;
+  const d = clamp(Math.hypot(dx, dy), Math.abs(L1 - L2) + 2, L1 + L2 - 0.5), a = Math.atan2(dy, dx);
+  const A = Math.acos(clamp((L1 * L1 + d * d - L2 * L2) / (2 * L1 * d), -1, 1));
+  const e1 = { x: sh.x + Math.cos(a + A) * L1, y: sh.y + Math.sin(a + A) * L1 }, e2 = { x: sh.x + Math.cos(a - A) * L1, y: sh.y + Math.sin(a - A) * L1 };
+  return e1.y < e2.y ? e1 : e2;
+}
+const mouthOf = v => ({ x: v.B.x + v.dir * 10, y: v.B.y + 28 });
+
+// ---------- level flow ----------
+function startLevel(n, intro = true) {
+  level = clamp(n | 0, 1, LEVELS.length);
+  const L = LV(level);
+  Wd = newWorld(L); cols(Wd);
+  Wd.top0 = Float32Array.from(Wd.top);
+  for (const g of Wd.goals) {
+    if (g.type === 'fill' || g.type === 'flat') { g.tot = 0; eachCol(Wd, g.x0, g.x1, c => { g.tot += g.type === 'fill' ? Math.max(0, Wd.top[c] - g.y) : Math.max(0, g.y - Wd.top[c]); }); }
+    if (g.type === 'dig') { g.tot = 0; eachCol(Wd, g.x0, g.x1, c => { g.tot += Wd.floor[c] - Wd.top[c]; }); }
+  }
+  for (const r of Wd.rocks) { r.y = minTop(r.x - r.r * 0.5, r.x + r.r * 0.5) - r.r; }
+  act = Wd.veh.findIndex(v => !v.npc);
+  for (const v of Wd.veh) settleVeh(v, true);
+  for (const v of Wd.veh) if (v.type === 'exc') { const sh = shoulder(v); v.B = { x: sh.x + v.dir * 150, y: sh.y - 10 }; v.tgt = { ...v.B }; }
+  grains = []; floats = []; cheer = null; ribbon = null; animals = []; rewardT = 0; finishT = 0; MG.fx.clear();
+  sceneDrive = null; scenePtr = null; for (const k in press) press[k] = 0;
+  spectators();
+  state = 'play'; layout(); camX = camTarget(); MG.hide(); hud(); hintT = 0;
+  // the first time a new machine (or idea) shows up, explain it once
+  const NEWS = {
+    exc: ['⛏️ 挖土機', '用手指<b>拖著挖斗</b>去挖土（點一下也可以）。挖滿了拉到別的地方，<b>放開手指</b>或按「🪣 倒土」就會把土倒下來。<br>◀ ▶ 讓挖土機往前往後走。'],
+    truck: ['🚚 砂石車', '按住 ◀ ▶ 開車，或是按住畫面上想去的地方。<br>車斗對準洞洞以後，按住「⤴ 翻斗」把土倒進去！'],
+    dozer: ['🪨 推土機', '按住 ▶ 往前推！大鏟子會把石頭和土堆推走。<br>推到最後面的大洞裡就好了。'],
+    crane: ['🏗️ 吊車', '用手指<b>拖著吊鉤</b>去碰東西，就會勾起來。<br>拉到淡淡的虛線位置放下來，就會「喀」一聲裝好！'],
+    mixer: ['💧 水泥車', '開到木框上面，按住「💧 倒水泥」把木框倒滿！'],
+    roller: ['🛞 壓路機', '來回開過凸凸的地方，把新馬路壓得平平的！'],
+    drill: ['🌀 鑽地車', '開到 ✖ 記號那裡，按住「🌀 鑽」往下鑽洞，就會種出東西來！'],
+    multi: ['🔁 換車開', '這關有兩台車！點下面的車子圖案（或點畫面裡的車子）就能換車開。'],
+    ribbon: ['✂️ 剪綵', '工程完成以後，點一下紅色彩帶來剪綵，動物朋友都會來慶祝！'],
+  };
+  const ks = [...new Set(Wd.veh.filter(v => !v.npc).map(v => v.type))];
+  if (L.mk === 'multi') ks.push('multi');
+  if (L.ribbon) ks.push('ribbon');
+  const fresh = ks.filter(k => NEWS[k] && !MG.store.get('digger.seen.' + k, false));
+  if (intro && fresh.length) {
+    fresh.forEach(k => MG.store.set('digger.seen.' + k, true));
+    MG.panel({ title: fresh.map(k => NEWS[k][0]).join('＋'), html: fresh.map(k => `<p>${NEWS[k][1]}</p>`).join(''), buttons: [{ label: '開工！', on: () => MG.hide() }] });
+  }
+}
+function hud() { MG.stat('level', `第 ${level} 關`); }
+function switchTo(i) {
+  if (i === act || !Wd.veh[i] || Wd.veh[i].npc) return;
+  cur().vx = 0; cur().tip = cur().tip; act = i; sceneDrive = null; for (const k in press) press[k] = 0;
+  buildButtons(); MG.sfx('flip'); MG.sfx('pop'); say(cur().x, cur().y - 140, '🔁', '#2f78cf');
+}
+function cleared() { const c = MG.store.get('digger.clear', []); return Array.isArray(c) ? c : []; }
+
+// ---------- vehicles: update ----------
+function settleVeh(v, snap) {
+  if (v.type === 'crane') { v.y = GY; return; }
+  if (v.type === 'dozer') { v.y = GY; v.ang = 0; return; }
+  const wb = v.type === 'exc' ? 56 : 52;
+  let yr = topAt(v.x - wb), yf = topAt(v.x + wb);
+  if (v.type === 'roller') { yr -= bumpH(v.x - v.dir * 50) * 0.8; yf -= bumpH(v.x + v.dir * 52); }
+  const ty = Math.min((yr + yf) / 2, topAt(v.x) - (v.type === 'roller' ? bumpH(v.x) : 0));
+  const ta = clamp(Math.atan2(yf - yr, wb * 2), -0.3, 0.3);
+  if (snap) { v.y = ty; v.ang = ta; } else { v.y = lerp(v.y, ty, 0.25); v.ang = lerp(v.ang, ta, 0.2); }
+}
+let engT = 0;
+function drive(v, inp, dt, sp = 150) {
+  const want = inp * sp;
+  v.vx += clamp(want - v.vx, -420 * dt, 420 * dt);
+  v.x += v.vx * dt;
+  if (v.x < v.xmin) { v.x = v.xmin; v.vx = 0; }
+  if (v.x > v.xmax) { v.x = v.xmax; v.vx = 0; }
+  v.wheel += v.vx * dt / 20;
+  settleVeh(v, false);
+  if (Math.abs(v.vx) > 25 && !v.npc) { engT -= dt; if (engT <= 0) { engT = 0.22; MG.sfx('step'); } }
+  if (Math.abs(v.vx) > 25 && Math.random() < dt * 8) v.smoke.push({ x: 0, y: 0, life: 1, s: 4 + Math.random() * 3 });
+}
+function inputDrive(v) {
+  let d = (keys.R || press.R ? 1 : 0) - (keys.L || press.L ? 1 : 0);
+  if (!d && sceneDrive != null && v.type !== 'exc' && v.type !== 'crane') {
+    const ref = v.type === 'drill' ? v.x + v.dir * 94 : v.type === 'mixer' ? v.x - v.dir * 112 : v.type === 'truck' ? (bedRange(v)[0] + bedRange(v)[1]) / 2 : v.x;
+    const dx = sceneDrive - ref; d = Math.abs(dx) < 6 ? 0 : clamp(dx / 40, -1, 1);
+  }
+  return d;
+}
+let digSnd = 0, landSnd = 0;
+function updExc(v, dt, me) {
+  drive(v, me ? inputDrive(v) : 0, dt, 110);
+  const sh = shoulder(v);
+  // keyboard: arrows move the bucket target
+  if (me && (keys.U || keys.D || press.U || press.D)) { v.tgt = v.tgt || { ...v.B }; v.tgt.y += ((keys.D || press.D) - (keys.U || press.U)) * 260 * dt; }
+  const T = v.tgt || v.B;
+  // the finger points at the bucket's mouth; the arm's end sits a little above it
+  const goal = { x: T.x - v.dir * 10, y: T.y - 28 };
+  // to reach the other side the bucket swings up over the cab first
+  const zoneTop = v.y - 134, side = Math.sign(v.B.x - v.x) || v.dir, gside = Math.sign(goal.x - v.x) || side;
+  if ((gside !== side || Math.abs(goal.x - v.x) < 84) && Math.abs(v.B.x - v.x) < 170) {
+    if (v.B.y > zoneTop - 4 && Math.abs(v.B.x - v.x) < 96) goal.x = v.B.x;   // rise first…
+    goal.y = Math.min(goal.y, zoneTop - 10);                                  // …then across, above the cab
+  }
+  const px = v.B.x;
+  const dx = goal.x - v.B.x, dy = goal.y - v.B.y, dd = Math.hypot(dx, dy), stp = Math.min(dd, 560 * dt);
+  if (dd > 0.01) { v.B.x += dx / dd * stp; v.B.y += dy / dd * stp; }
+  if (Math.abs(v.B.x - v.x) < 84 && v.B.y > zoneTop) { if (Math.abs(px - v.x) >= 84) v.B.x = px; else v.B.y = Math.max(zoneTop, v.B.y - 500 * dt); }
+  // reach
+  const rx = v.B.x - sh.x, ry = v.B.y - sh.y, rd = Math.hypot(rx, ry), rMax = EXC.L1 + EXC.L2 - 4;
+  if (rd > rMax) { v.B.x = sh.x + rx / rd * rMax; v.B.y = sh.y + ry / rd * rMax; }
+  if (rd < 40) { v.B.x = sh.x + (rx || v.dir) / (rd || 1) * 40; v.B.y = sh.y + ry / (rd || 1) * 40; }
+  v.B.y = Math.max(v.B.y, -40);
+  // turn around when the bucket goes to the other side
+  if ((v.B.x - v.x) * v.dir < -30) { v.dir = -v.dir; MG.sfx('whoosh'); }
+  // never into hard ground; when full it can't sink into dirt either
+  let M = mouthOf(v);
+  let lim = 1e9;
+  for (let c = Math.max(0, C0(M.x - 7)); c <= Math.min(Wd.n - 1, C0(M.x + 7)); c++) lim = Math.min(lim, v.load >= v.cap ? Wd.top[c] : Math.max(Wd.top[c], Wd.floor[c]));
+  if (M.y > lim + 2) { v.B.y -= M.y - lim - 2; M = mouthOf(v); }
+  // dig
+  let dug = 0;
+  if (v.load < v.cap && !v.dump) {
+    for (let c = Math.max(0, C0(M.x - 15)); c <= Math.min(Wd.n - 1, C0(M.x + 15)); c++) {
+      if (Wd.top[c] < M.y) {
+        const rem = Math.min(M.y, Wd.floor[c]) - Wd.top[c];
+        if (rem > 0) { const a = Math.min(rem * CW, v.cap - v.load); Wd.top[c] += a / CW; v.load += a; dug += a; }
+      }
+    }
+  }
+  if (dug > 0) {
+    digSnd -= dt; if (digSnd <= 0) { digSnd = 0.28; MG.sfx('hit'); }
+    if (Math.random() < 0.5) MG.fx.burst(wx2s(M.x), wy2s(M.y - 6), { n: 2, colors: THEMES[Wd.theme].grain, speed: 90, up: 90, size: 3 * S, life: 0.5 });
+    if (v.load >= v.cap) { MG.sfx('good'); say(M.x, M.y - 70, 'Full! 🪣', '#e06a1c'); }
+  }
+  const inAir = M.y < minTop(M.x - 15, M.x + 15) - 6;
+  if (v.pend && Math.hypot(T.x - M.x, T.y - M.y) < 18) { v.pend = false; if (inAir && v.load > 0) startDump(v); }
+  // dumping: the bucket opens and the dirt pours out
+  if (v.dump > 0) {
+    v.dump -= dt;
+    const n = Math.min(Math.ceil(v.load / GA), Math.max(1, Math.round(v.cap / GA * dt / 0.45)));
+    for (let i = 0; i < n && v.load > 0; i++) { spawnGrain(M.x + (Math.random() - 0.5) * 22, M.y - 6 + Math.random() * 6, (Math.random() - 0.5) * 50 + v.dir * 10, 20 + Math.random() * 40); v.load = Math.max(0, v.load - GA); }
+    if (v.dump <= 0 || v.load <= 0) v.dump = 0;
+  }
+  const want = v.dump > 0 ? 1.15 : v.load > 0 ? -1.0 : -0.15;
+  v.bang = lerp(v.bang, want, Math.min(1, dt * 10));
+  v.E = ik(sh, v.B);
+}
+function startDump(v) { if (v.load <= 0 || v.dump > 0) return; v.dump = 0.6; MG.sfx('whoosh'); }
+function tryDump(v) {
+  const M = mouthOf(v);
+  if (M.y < minTop(M.x - 15, M.x + 15) - 6) startDump(v);
+  else { v.pend = true; v.tgt = { x: M.x, y: minTop(M.x - 30, M.x + 30) - 60 }; }
+}
+function updTruck(v, dt, me) {
+  if (v.npc) return updNpc(v, dt);
+  drive(v, me ? inputDrive(v) : 0, dt, 160);
+  const hold = me && (keys.A || press.A);
+  v.tip = clamp(v.tip + (hold ? 1.3 : -1.6) * dt, 0, 1);
+  if (hold && v.tip > 0.05 && v.tip < 0.07) MG.sfx('whoosh');
+  if (v.tip > 0.35 && v.load > 0) {
+    v.pour += 3400 * (v.tip - 0.3) * dt;
+    const piv = local(v, -90, -40);
+    while (v.pour >= GA && v.load > 0) { v.pour -= GA; v.load = Math.max(0, v.load - GA); spawnGrain(piv.x - v.dir * (4 + Math.random() * 10), piv.y - 4 - Math.random() * 10, -v.dir * (40 + Math.random() * 80), 10 + Math.random() * 30); }
+  }
+  // the hopper fills an empty truck parked under it
+  for (const hp of Wd.hoppers) {
+    const [b0, b1] = bedRange(v), bc = (b0 + b1) / 2;
+    hp.pour = Math.max(0, hp.pour - dt * 3);
+    if (Math.abs(bc - hp.x) < 40 && Math.abs(v.vx) < 30 && v.load + hp.flying < v.cap && v.tip < 0.1) {
+      hp.pour = 1; hp.acc = (hp.acc || 0) + 2600 * dt;
+      while (hp.acc >= GA) { hp.acc -= GA; hp.flying = (hp.flying || 0) + GA; spawnGrain(hp.x + (Math.random() - 0.5) * 16, GY - 196, (Math.random() - 0.5) * 20, 60, 'hop'); }
+    }
+  }
+}
+function updNpc(v, dt) {
+  // parked truck that the excavator fills; drives away when full and (maybe) a new one comes
+  const g = Wd.goals.find(q => q.type === 'trucks');
+  if (v.state === 'park') {
+    v.vx = 0; settleVeh(v, false);
+    if (v.load >= v.cap - 1) { v.state = 'wait'; v.wt = 0.7; g.count++; MG.sfx('match', g.count + 1); say(v.x, v.y - 150, MG.praise(2 + g.count), '#e06a1c'); MG.fx.burst(wx2s(v.x), wy2s(v.y - 100), { n: 20, colors: ['#ffd23f', '#fff', '#ff9f1c'], shape: 'star', speed: 200, up: 120, size: 6 }); }
+  } else if (v.state === 'wait') {
+    v.wt -= dt; if (v.wt <= 0) { v.state = 'leave'; horn(); }
+  } else if (v.state === 'leave') {
+    v.vx = v.dir * 150; v.x += v.vx * dt; v.wheel += v.vx * dt / 20; settleVeh(v, false);
+    if (v.x < Math.min(-160, camX - 160) || v.x > Math.max(Wd.ww + 160, camX + visW() + 160)) {
+      // the next empty truck backs in from the same side (beep beep)
+      if (g.count < g.n) { v.state = 'arrive'; v.load = 0; v.x = v.dir < 0 ? Math.min(-160, camX - 160) : Math.max(Wd.ww + 160, camX + visW() + 160); }
+      else v.state = 'gone';
+    }
+  } else if (v.state === 'arrive') {
+    const dx = v.park - v.x; v.vx = clamp(dx * 3, -150, 150); v.x += v.vx * dt; v.wheel += v.vx * dt / 20; settleVeh(v, false);
+    if (Math.abs(dx) < 2) { v.x = v.park; v.state = 'park'; MG.sfx('boing'); }
+  }
+}
+function updDozer(v, dt, me) {
+  const slow = 1 / (1 + v.carry / 5000);
+  const front0 = v.x + v.dir * 84;
+  drive(v, me ? inputDrive(v) : 0, dt, 130 * slow);
+  const front = v.x + v.dir * 84, grade = v.y;
+  // scrape everything above the road in front of the blade
+  const a = Math.min(front0, front) - 22, b = Math.max(front0, front) + 2;
+  let got = 0;
+  if (v.vx * v.dir > 1) for (let c = Math.max(0, C0(a)); c <= Math.min(Wd.n - 1, C0(b)); c++) if (Wd.top[c] < grade - 0.5) { got += (grade - Wd.top[c]) * CW; Wd.top[c] = grade; }
+  if (got > 0) { v.carry += got; digSnd -= dt; if (digSnd <= 0) { digSnd = 0.3; MG.sfx('hit'); } }
+  // spill over an edge in front
+  if (v.carry > 0) {
+    const ahead = topAt(front + v.dir * 10);
+    if (ahead > grade + 3) {
+      v.spill = (v.spill || 0) + 4200 * dt;
+      while (v.spill >= GA && v.carry > 0) { v.spill -= GA; v.carry = Math.max(0, v.carry - GA); spawnGrain(front + v.dir * (6 + Math.random() * 12), grade - 6 - Math.random() * Math.min(40, Math.sqrt(v.carry)), v.dir * (30 + Math.random() * 40), 10); }
+    } else if (v.vx * v.dir < -8) {   // backing up leaves the pile behind
+      const drop = Math.min(v.carry, 9000 * dt);
+      v.carry -= drop; for (let k = 0; k < 4; k++) deposit(front + v.dir * (8 + k * 10), drop / 4);
+    }
+  }
+  // push rocks
+  for (const r of Wd.rocks) {
+    if ((r.x - front) * v.dir > -r.r && (r.x - v.x) * v.dir > 0 && Math.abs(r.y - (grade - r.r)) < r.r + 30) {
+      const nx = front + v.dir * r.r;
+      if ((r.x - nx) * v.dir < 0) { r.rot += (nx - r.x) / r.r; r.x = nx; r.push = 0.2; }
+    }
+  }
+}
+function updMixer(v, dt, me) {
+  const hold = me && (keys.A || press.A);
+  drive(v, me ? inputDrive(v) : 0, dt, 150);
+  v.drum += dt * (hold ? 9 : 2.5);
+  v.pouring = hold;
+  if (hold) {
+    v.pour += 1700 * dt;
+    const ch = local(v, -112, -32);
+    while (v.pour >= GA) { v.pour -= GA; spawnGrain(ch.x + (Math.random() - 0.5) * 6, ch.y, -v.dir * (10 + Math.random() * 20), 30, 'cem'); }
+    digSnd -= dt; if (digSnd <= 0) { digSnd = 0.35; MG.sfx('flip'); }
+  }
+}
+function updRoller(v, dt, me) {
+  drive(v, me ? inputDrive(v) : 0, dt, 150);
+  const dx = v.x + v.dir * 52;
+  if (Math.abs(v.vx) > 10) for (const b of Wd.bumps) {
+    if (b.h > 0 && Math.abs(dx - b.x) < b.w / 2 + 12) {
+      const before = b.h; b.h = Math.max(0, b.h - 22 * dt * Math.abs(v.vx) / 120);
+      if (before >= 3 && b.h < 3) { b.h = 0; MG.sfx('match', 2); say(b.x, GY - 90, MG.praise(3), '#2f8a48'); MG.fx.burst(wx2s(b.x), wy2s(GY - 10), { n: 16, colors: ['#ffd23f', '#fff'], shape: 'star', speed: 160, up: 100, size: 5 }); }
+      digSnd -= dt; if (digSnd <= 0) { digSnd = 0.2; MG.sfx('place'); }
+    }
+  }
+}
+function bumpH(bx) { let h = 0; for (const b of Wd.bumps) { const u = Math.abs(bx - b.x) / (b.w / 2); if (u < 1) h = Math.max(h, b.h * (0.5 + 0.5 * Math.cos(Math.PI * u))); } return h; }
+function updDrill(v, dt, me) {
+  const hold = me && (keys.A || press.A);
+  const bit = v.x + v.dir * 94;
+  const m = Wd.marks.find(q => !q.done && Math.abs(q.x - bit) < 30);
+  if (hold) {
+    v.vx = 0;
+    if (m) { const tx = m.x - v.dir * 94; v.x += clamp(tx - v.x, -80 * dt, 80 * dt); settleVeh(v, false); }
+    const max = m ? m.d : 14;
+    v.depth = Math.min(max, v.depth + 60 * dt);
+    if (m) m.depth = Math.max(m.depth, v.depth);
+    v.spin += dt * 22;
+    digSnd -= dt; if (digSnd <= 0) { digSnd = 0.12; MG.sfx('tick'); }
+    if (Math.random() < 0.6) MG.fx.burst(wx2s(bit), wy2s(topAt(bit) - 2), { n: 2, colors: THEMES[Wd.theme].grain, speed: 120, up: 140, size: 3 * S, life: 0.6, angle: -Math.PI / 2, spread: 2 });
+    if (m && v.depth >= m.d - 0.01) { m.done = true; m.pop = 0.001; MG.sfx('match', 3); MG.sfx('sparkle'); say(m.x, GY - 150, MG.praise(3 + Wd.marks.filter(q => q.done).length % 3), '#2f78cf'); }
+  } else {
+    v.depth = Math.max(0, v.depth - 120 * dt);
+    drive(v, me && v.depth < 2 ? inputDrive(v) : 0, dt, 150);
+  }
+}
+function updCrane(v, dt, me) {
+  if (me) {
+    const d = (keys.R || press.R ? 1 : 0) - (keys.L || press.L ? 1 : 0), u = (keys.D || press.D ? 1 : 0) - (keys.U || press.U ? 1 : 0);
+    if (d || u) { v.tgt = v.tgt || { x: v.tro, y: v.hy }; v.tgt.x = clamp(v.tgt.x + d * 300 * dt, v.tmin, v.tmax); v.tgt.y = clamp(v.tgt.y + u * 260 * dt, v.jy + 40, GY); }
+  }
+  const T = v.tgt || { x: v.tro, y: v.hy };
+  const pTro = v.tro;
+  v.tro += clamp(clamp(T.x, v.tmin, v.tmax) - v.tro, -340 * dt, 340 * dt);
+  const acc = (v.tro - pTro) / Math.max(dt, 1e-3) - (v.lastV || 0); v.lastV = (v.tro - pTro) / Math.max(dt, 1e-3);
+  // how low may the hook go: down to whatever is under it (the item it carries included)
+  const it = v.hold, hw = it ? it.w / 2 - 4 : 6;
+  let floorY = minTop(v.tro - hw, v.tro + hw);
+  for (const o of Wd.items) if (o !== it && (o.state === 'placed' || o.state === 'ground') && Math.abs(o.x - v.tro) < (o.w / 2 + hw - 6)) floorY = Math.min(floorY, o.y - o.h);
+  const maxHy = floorY - (it ? it.h + 14 : 10);
+  const ty = clamp(T.y, v.jy + 46, maxHy);
+  v.hy += clamp(ty - v.hy, -280 * dt, 280 * dt);
+  if (v.hy > maxHy) v.hy = maxHy;
+  // a little swing
+  const L = v.hy - v.jy;
+  v.swv += (-v.sw * 900 / Math.max(60, L) - acc * 0.004 - v.swv * 2.6) * dt;
+  v.sw = clamp(v.sw + v.swv * dt, -0.25, 0.25);
+  const hx = v.tro + Math.sin(v.sw) * L * 0.4;
+  v.hx = hx;
+  if (it) {
+    it.x = hx; it.y = v.hy + 14 + it.h;
+    // snap into a matching ghost when it comes close
+    for (const s of Wd.slots) {
+      if (s.item || s.kind !== it.kind || !slotOpen(s)) continue;
+      if (Math.abs(it.x - s.x) < 26 && Math.abs(it.y - s.y) < 24) { placeItem(it, s); v.hold = null; if (!scenePtr) v.tgt = { x: v.tro, y: v.hy - 80 }; break; }
+    }
+  } else {
+    for (const o of Wd.items) {
+      if (o.state !== 'ground' || covered(o)) continue;
+      if (Math.abs(hx - o.x) < Math.max(24, o.w * 0.3) && Math.abs(v.hy + 14 - (o.y - o.h)) < 22) { v.hold = o; o.state = 'held'; MG.sfx('pop'); MG.sfx('flip'); say(o.x, o.y - o.h - 50, '🪝', '#e06a1c'); break; }
+    }
+  }
+}
+const slotOpen = s => s.dep.every(i => Wd.slots[i].item);
+const covered = o => Wd.items.some(q => q !== o && q.state === 'ground' && Math.abs(q.y - (o.y - o.h)) < 2 && Math.abs(q.x - o.x) < (q.w + o.w) / 2 - 6);
+function placeItem(it, s) {
+  it.state = 'placed'; it.x = s.x; it.y = s.y; s.item = it; it.wob = 0.5;
+  const n = Wd.slots.filter(q => q.item).length;
+  MG.sfx('place'); MG.sfx('match', n + 1); say(s.x, s.y - s.h - 40, MG.praise(Math.min(5, n + 1)), '#e06a1c');
+  MG.fx.burst(wx2s(s.x), wy2s(s.y - s.h / 2), { n: 18, colors: ['#ffd23f', '#fff', '#8fd0ff'], shape: 'star', speed: 180, up: 100, size: 5 });
+}
+function dropHeld(v) {
+  const it = v.hold; if (!it) return;
+  v.hold = null;
+  const s = Wd.slots.find(q => !q.item && q.kind === it.kind && slotOpen(q) && Math.abs(q.x - it.x) < Math.max(34, it.w * 0.4) && q.y >= it.y - 4);
+  it.state = 'fall'; it.vy = 0; it.slot = s || null; if (s) it.x0 = it.x;
+  MG.sfx('whoosh');
+}
+function updItems(dt) {
+  for (const o of Wd.items) {
+    o.wob = Math.max(0, o.wob - dt);
+    if (o.state !== 'fall') continue;
+    o.vy += 900 * dt; o.y += o.vy * dt;
+    if (o.slot) { o.x = lerp(o.x, o.slot.x, Math.min(1, dt * 10)); if (o.y >= o.slot.y) { placeItem(o, o.slot); o.slot = null; } continue; }
+    let fy = minTop(o.x - o.w / 2 + 4, o.x + o.w / 2 - 4);
+    for (const q of Wd.items) if (q !== o && (q.state === 'ground' || q.state === 'placed') && Math.abs(q.x - o.x) < (q.w + o.w) / 2 - 4 && q.y - q.h >= o.y - o.h - 2) fy = Math.min(fy, q.y - q.h);
+    if (o.y >= fy) { o.y = fy; o.state = 'ground'; o.vy = 0; o.wob = 0.3; MG.sfx('hit'); }
+  }
+}
+function local(v, lx, ly) { const c = Math.cos(v.ang), s = Math.sin(v.ang), X = lx * v.dir; return { x: v.x + X * c - ly * s, y: v.y + X * s + ly * c }; }
+
+// ---------- grains, rocks ----------
+function updGrains(dt) {
+  const keep = [];
+  for (const g of grains) {
+    g.vy += 900 * dt; g.vx *= Math.pow(0.5, dt); g.x += g.vx * dt; g.y += g.vy * dt; g.r += dt * 4;
+    if (g.x < 2 || g.x > Wd.ww - 2) { g.x = clamp(g.x, 2, Wd.ww - 2); g.vx = 0; }
+    // cement: lands in a mould or splats on the road
+    if (g.kind === 'cem') {
+      const m = Wd.moulds.find(q => Math.abs(g.x - q.x) < q.w / 2 + 6);
+      const ly = m ? GY + 14 + m.d * (1 - m.fill) : GY + 12;
+      if (g.y >= ly) {
+        if (m && !m.done) { m.fill = Math.min(1, m.fill + GA * 1.15 / (m.w * m.d)); if (m.fill >= 1) { m.done = true; m.pop = 0.001; MG.sfx('match', 2 + Wd.moulds.filter(q => q.done).length); MG.sfx('sparkle'); say(m.x, GY - 110, MG.praise(3), '#2f78cf'); MG.fx.burst(wx2s(m.x), wy2s(GY + 10), { n: 20, colors: ['#ffd23f', '#fff', '#8fd0ff'], shape: 'star', speed: 180, up: 120, size: 5 }); } }
+        else if (!m) { Wd.splats.push({ x: g.x, life: 4, s: 4 + Math.random() * 4 }); if (Wd.splats.length > 120) Wd.splats.shift(); }
+        continue;
+      }
+      keep.push(g); continue;
+    }
+    // into a truck bed
+    let into = null;
+    for (const v of Wd.veh) if (v.type === 'truck' && v.tip < 0.3 && v.state !== 'leave') { const [b0, b1] = bedRange(v); const heap = (v.load / v.cap) * 26; if (g.x > b0 + 6 && g.x < b1 - 6 && g.y >= bedRim(v) + 4 - heap && g.y < bedRim(v) + 40) into = v; }
+    if (into) {
+      if (g.kind === 'hop') for (const hp of Wd.hoppers) hp.flying = Math.max(0, (hp.flying || 0) - GA);
+      if (into.load < into.cap) { into.load = Math.min(into.cap, into.load + GA); landSnd -= dt; if (landSnd <= 0) { landSnd = 0.09; MG.sfx('tick'); } continue; }
+    }
+    if (g.y >= topAt(g.x) - 1) {
+      if (g.kind === 'hop') for (const hp of Wd.hoppers) hp.flying = Math.max(0, (hp.flying || 0) - GA);
+      deposit(g.x, GA); landSnd -= dt; if (landSnd <= 0) { landSnd = 0.12; MG.sfx('tick'); } continue;
+    }
+    keep.push(g);
+  }
+  grains = keep;
+}
+function updRocks(dt) {
+  const z = Wd.goals.find(g => g.type === 'rocks');
+  const rs = Wd.rocks;
+  for (const r of rs) {
+    let fy = minTop(r.x - r.r * 0.5, r.x + r.r * 0.5) - r.r;
+    for (const q of rs) if (q !== r && q.y > r.y + 2 && Math.abs(q.x - r.x) < (q.r + r.r) * 0.75) fy = Math.min(fy, q.y - (q.r + r.r) * 0.75);
+    if (r.y < fy - 0.5) { r.vy += 900 * dt; r.y += r.vy * dt; if (z && r.x > z.zx - 20) r.vx = Math.max(r.vx, 50); }
+    if (r.y >= fy) { if (r.vy > 220) { MG.sfx('hit'); MG.fx.burst(wx2s(r.x), wy2s(r.y + r.r), { n: 10, colors: ['#d8c7a8', '#bfae90'], speed: 120, up: 60, size: 4 * S }); } r.y = fy; r.vy = 0; }
+    // roll downhill a little
+    const gl = topAt(r.x - r.r), gr = topAt(r.x + r.r);
+    r.vx += clamp((gr - gl) / (2 * r.r), -1, 1) * 400 * dt; r.vx *= Math.pow(0.05, dt);
+    if (Math.abs(r.vx) > 1) { r.x += r.vx * dt; r.rot += r.vx * dt / r.r; }
+    r.x = clamp(r.x, r.r + 2, Wd.ww - r.r - 2);
+    if (z) {
+      const inZ = r.x > z.zx && r.vy === 0;
+      if (inZ && !r.inZone) { r.inZone = true; const k = rs.filter(q => q.inZone).length; MG.sfx('match', k + 1); say(r.x, r.y - 80, MG.praise(k + 1), '#e06a1c'); }
+    }
+  }
+  // rocks on the road don't overlap
+  const road = rs.filter(r => !r.inZone).sort((a, b) => a.x - b.x);
+  for (let i = 1; i < road.length; i++) { const a = road[i - 1], b = road[i]; if (Math.abs(a.y - b.y) < a.r + b.r && b.x - a.x < a.r + b.r) { const p = a.push > 0 ? 1 : 0; if (p) b.x = a.x + a.r + b.r; else a.x = b.x - a.r - b.r; } }
+  for (const r of rs) r.push = Math.max(0, (r.push || 0) - dt);
+}
+
+// ---------- goals ----------
+function goalProgress(g) {
+  const w = Wd;
+  if (g.type === 'dig') { let got = 0; eachCol(w, g.x0, g.x1, c => { got += clamp(w.top[c] - w.top0[c], 0, w.floor[c] - w.top0[c]); }); return g.tot ? got / g.tot : 1; }
+  if (g.type === 'fill') { let left = 0; eachCol(w, g.x0, g.x1, c => { left += w.top[c] - g.y; }); return g.tot ? clamp(1 - left / g.tot, 0, 1) : 1; }   // dirt piled above the line counts too (it gets smoothed out)
+  if (g.type === 'flat') { let left = 0; eachCol(w, g.x0, g.x1, c => { left += Math.max(0, g.y - w.top[c]); }); return g.tot ? clamp(1 - left / g.tot, 0, 1) : 1; }
+  if (g.type === 'rocks') return w.rocks.filter(r => r.inZone).length / w.rocks.length;
+  if (g.type === 'trucks') return g.count / g.n;
+  if (g.type === 'slots') return w.slots.filter(s => s.item).length / w.slots.length;
+  if (g.type === 'moulds') return w.moulds.filter(m => m.done).length / w.moulds.length;
+  if (g.type === 'bumps') { const h0 = w.bumps.reduce((a, b) => a + b.h0, 0), h = w.bumps.reduce((a, b) => a + b.h, 0); return 1 - h / h0; }
+  if (g.type === 'marks') return w.marks.filter(m => m.done).length / w.marks.length;
+  if (g.type === 'find') return w.finds.filter(f => f.found).length / w.finds.length;
+  return 1;
+}
+const DONE_AT = { dig: 0.86, fill: 0.8, flat: 0.93 };
+function checkGoals() {
+  let all = true;
+  for (const g of Wd.goals) {
+    if (g.done) continue;
+    g.prog = goalProgress(g);
+    if (g.prog >= (DONE_AT[g.type] || 0.999)) finishGoal(g); else all = false;
+  }
+  return all;
+}
+function finishGoal(g) {
+  g.done = true; g.prog = 1;
+  // tidy the last bits so the picture looks finished
+  if (g.type === 'dig') eachCol(Wd, g.x0, g.x1, c => { Wd.top[c] = Math.max(Wd.top[c], Wd.floor[c]); });
+  if (g.type === 'fill') eachCol(Wd, g.x0, g.x1, c => { Wd.top[c] = g.y; Wd.kind[c] = D; });
+  if (g.type === 'flat') eachCol(Wd, g.x0, g.x1, c => { Wd.top[c] = Math.max(Wd.top[c], g.y); });
+  if (g.type === 'bumps') for (const b of Wd.bumps) b.h = 0;
+  if (g.type === 'dig' && Wd.reward === 'canal') Wd.waters.push({ x0: g.x0 - 30, x1: g.x1 + 30, y: GY + 12, a: 0, grow: true });
+  const cx = g.x0 != null ? (g.x0 + g.x1) / 2 : cur().x;
+  MG.sfx('yay'); MG.sfx('sparkle');
+  MG.fx.burst(wx2s(cx), wy2s(GY - 40), { n: 34, colors: ['#ffd23f', '#ff8ac2', '#8fd0ff', '#8fe39a', '#fff'], shape: 'star', speed: 260, up: 160, size: 6 });
+  say(cx, GY - 130, MG.WORDS.clear, '#e0457a');
+}
+function finishFinds(dt) {
+  for (const f of Wd.finds) {
+    if (!f.found && topAt(f.x) >= f.y - 16 && minTop(f.x - 14, f.x + 14) >= f.y - 22) {
+      f.found = true; f.pop = 0.001; f.sx = f.x; f.sy = f.y;
+      // it hops out and lands beside the hole
+      f.tx = f.x + (f.x < Wd.ww / 2 ? -1 : 1) * 0; f.ty = 0;
+      MG.sfx('match', 3); MG.sfx('sparkle'); MG.sfx('yay');
+      say(f.x, f.y - 120, f.kind === 'chest' ? 'Treasure! 💰' : f.kind === 'egg' ? 'Wow! 🥚' : 'Wow! 🦴', '#e06a1c');
+      MG.fx.burst(wx2s(f.x), wy2s(f.y - 10), { n: 26, colors: ['#ffd23f', '#fff', '#ffe08a'], shape: 'star', speed: 220, up: 160, size: 6 });
+    }
+    if (f.pop > 0 && f.pop < 1) f.pop = Math.min(1, f.pop + dt * 1.2);
+  }
+}
+
+// ---------- update ----------
+let hintT = 0;
+function update(dt) {
+  t += dt; hintT += dt;
+  if (bot && state === 'play') botStep(dt);
+  Wd.veh.forEach((v, i) => {
+    const me = i === act && state === 'play';
+    if (v.type === 'exc') updExc(v, dt, me);
+    else if (v.type === 'truck') updTruck(v, dt, me);
+    else if (v.type === 'dozer') updDozer(v, dt, me);
+    else if (v.type === 'mixer') updMixer(v, dt, me);
+    else if (v.type === 'roller') updRoller(v, dt, me);
+    else if (v.type === 'drill') updDrill(v, dt, me);
+    else if (v.type === 'crane') updCrane(v, dt, me);
+    for (const p of v.smoke) { p.life -= dt * 0.9; p.y -= 30 * dt; p.x -= v.dir * 14 * dt; p.s += dt * 8; }
+    v.smoke = v.smoke.filter(p => p.life > 0);
+  });
+  updGrains(dt); relax(); updRocks(dt); updItems(dt); finishFinds(dt);
+  for (const m of Wd.marks) if (m.pop > 0 && m.pop < 1) m.pop = Math.min(1, m.pop + dt * 1.6);
+  for (const wv of Wd.waters) if (wv.grow) wv.a = Math.min(1, wv.a + dt * 0.8);
+  for (const m of Wd.moulds) if (m.pop > 0 && m.pop < 1) m.pop = Math.min(1, m.pop + dt * 1.5);
+  for (const s of Wd.splats) s.life -= dt; Wd.splats = Wd.splats.filter(s => s.life > 0);
+  if (state === 'play' && checkGoals()) beginFinish();
+  if (state === 'done' || state === 'ribbon' || state === 'cheer') { rewardT += dt; updAnimals(dt); }
+  if (state === 'done') { finishT -= dt; if (finishT <= 0) { if (LV(level).ribbon) startRibbon(); else startCheer(); } }
+  if (state === 'cheer') { finishT -= dt; if (finishT <= 0) { state = 'over'; showWin(); } }
+  if (ribbon && ribbon.cut > 0) ribbon.cut += dt;
+  MG.fx.step(dt);
+  for (const f of floats) f.life -= dt; floats = floats.filter(f => f.life > 0);
+  for (const s of spect) { s.hop = Math.max(0, s.hop - dt); }
+  // camera
+  const ct = camTarget();
+  camX = lerp(camX, ct, Math.min(1, dt * 4));
+}
+function camTarget() {
+  const v = cur(), vw = visW();
+  if (!v) return 0;
+  if (vw >= Wd.ww) return (Wd.ww - vw) / 2;
+  let f = v.x;
+  if (v.type === 'exc' && v.B) f = v.x + clamp(v.B.x - v.x, -260, 260) * 0.65;
+  if (v.type === 'crane') f = v.hx || v.tro;
+  if (v.type === 'mixer') f = v.x - v.dir * 50;
+  if (v.type === 'drill') f = v.x + v.dir * 40;
+  if (v.type === 'dozer') f = v.x + v.dir * 120;
+  if (state !== 'play' && ribbon) f = ribbon.cx;
+  return clamp(f - vw / 2, 0, Wd.ww - vw);
+}
+function beginFinish() {
+  state = 'done'; finishT = 1.3; rewardT = 0;
+  sceneDrive = null; for (const k in press) press[k] = 0;
+  for (const v of Wd.veh) { if (v.type === 'exc') v.tgt = { x: v.x + v.dir * 120, y: v.y - 170 }; if (v.type === 'truck') v.tip = 0; }
+  const c = cleared(); if (!c.includes(level)) { c.push(level); MG.store.set('digger.clear', c); }
+  MG.record('digger', level);
+  horn();
+}
+function startRibbon() {
+  state = 'ribbon';
+  const vw = visW(), cx = clamp(ribbonSpot(), camX + 120, camX + vw - 120);
+  ribbon = { cx, cut: 0, y: topAt(cx) };
+  callAnimals(true);
+}
+function ribbonSpot() {
+  const L = LV(level), w = Wd;
+  if (w.slots.length) return (Math.min(...w.slots.map(s => s.x)) + Math.max(...w.slots.map(s => s.x))) / 2;
+  const g = w.goals.find(q => q.x0 != null); if (g) return (g.x0 + g.x1) / 2;
+  if (w.bumps.length) return cur().x + 140;
+  void L; return camX + visW() / 2;
+}
+function cutRibbon() {
+  if (!ribbon || ribbon.cut) return;
+  ribbon.cut = 0.001; MG.sfx('pop'); MG.sfx('yay'); MG.sfx('sparkle');
+  MG.fx.burst(wx2s(ribbon.cx), wy2s(ribbon.y - 60), { n: 60, colors: ['#ff5d7a', '#ffd23f', '#8fd0ff', '#8fe39a', '#fff'], shape: 'star', speed: 320, up: 220, size: 7 });
+  say(ribbon.cx, ribbon.y - 170, 'Hooray! 🎉', '#e0457a');
+  for (const a of animals) a.hop = 1.2;
+  state = 'cheer'; finishT = 2.2;
+}
+function startCheer() { state = 'cheer'; finishT = 2.4; callAnimals(false); MG.sfx('yay'); }
+function showWin() {
+  const L = LV(level), next = level < LEVELS.length ? LV(level + 1) : null;
+  MG.panel({
+    title: `第 ${level} 關完成！`,
+    html: `<div class="dg-pic">${VMK[L.mk]} ✅</div><p>「${L.name}」做好了，大家都好開心 ^_^</p>` + (next ? `<p>下一個工作：${VMK[next.mk]} ${next.name}</p>` : '<p>全部的工程都完成了！你是最厲害的工地小隊長！</p>'),
+    buttons: [...(next ? [{ label: '下一關', on: () => { MG.store.set('digger.pickLevel', level + 1); startLevel(level + 1); } }] : []), { label: '再玩一次', alt: !!next, on: () => startLevel(level) }, { label: '選關卡', alt: true, on: menu }],
+  });
+}
+
+// ---------- animals (spectators + the cheering crowd) ----------
+const AKINDS = ['bunny', 'bear', 'duck', 'cat', 'pig', 'frog'];
+let spect = [];
+function spectators() {
+  spect = [];
+  // two friends watch from the edges of the site
+  const ks = MG.shuffle(AKINDS.slice());
+  spect.push({ kind: ks[0], x: 26, hop: 0, dir: 1 }, { kind: ks[1], x: Wd.ww - 26, hop: 0, dir: -1 });
+}
+function callAnimals(line) {
+  const vw = visW(), n = LV(level).finale ? 6 : 4, ks = MG.shuffle(AKINDS.slice());
+  animals = [];
+  const cx = ribbon ? ribbon.cx : camX + vw / 2;
+  for (let i = 0; i < n; i++) {
+    const fromL = i % 2 === 0, k = Math.floor(i / 2);
+    const tx = line ? cx + (fromL ? -1 : 1) * (130 + k * 50) : camX + vw * (0.15 + 0.7 * (i + 0.5) / n);
+    animals.push({ kind: ks[i % ks.length], x: fromL ? camX - 40 - k * 50 : camX + vw + 40 + k * 50, tx: clamp(tx, camX + 30, camX + vw - 30), hop: 0, ph: Math.random() * 6, dir: fromL ? 1 : -1 });
+  }
+}
+function updAnimals(dt) {
+  for (const a of animals) {
+    const dx = a.tx - a.x;
+    if (Math.abs(dx) > 2) { a.x += clamp(dx, -160 * dt, 160 * dt); a.dir = dx > 0 ? 1 : -1; a.walk = true; } else { a.walk = false; if (state === 'cheer' && a.hop <= 0 && Math.random() < dt * 2) a.hop = 0.6; }
+    a.hop = Math.max(0, a.hop - dt); a.ph += dt * 10;
+  }
+}
+
+// ---------- horn (a tiny "beep beep") ----------
+let hornAC = null;
+function horn() {
+  for (const s of spect) s.hop = 0.6;
+  if (MG.store.get('muted', false)) return;
+  try {
+    hornAC = hornAC || new (window.AudioContext || window.webkitAudioContext)();
+    if (hornAC.state === 'suspended') hornAC.resume();
+    const t0 = hornAC.currentTime;
+    for (const d of [0, 0.2]) for (const f of [392, 494]) {
+      const o = hornAC.createOscillator(), g = hornAC.createGain();
+      o.type = 'square'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t0 + d); g.gain.exponentialRampToValueAtTime(0.045, t0 + d + 0.015); g.gain.setValueAtTime(0.045, t0 + d + 0.12); g.gain.exponentialRampToValueAtTime(0.0005, t0 + d + 0.17);
+      o.connect(g).connect(hornAC.destination); o.start(t0 + d); o.stop(t0 + d + 0.2);
+    }
+  } catch {}
+}
+
+// ---------- input ----------
+const ptrs = new Map();
+function btnAt(p) { return btns.find(b => p.x >= b.x - 3 && p.x <= b.x + b.w + 3 && p.y >= b.y - 6 && p.y <= b.y + b.h + 6); }
+function vehAt(w) { return Wd.veh.findIndex(v => !v.npc && v.type !== 'crane' && Math.abs(w.x - v.x) < 80 && w.y > v.y - 130 && w.y < v.y + 10); }
+function pressBtn(b, on) {
+  if (b.kind === 'pedal' || b.hold) { press[b.id] = Math.max(0, press[b.id] + (on ? 1 : -1)); if (on) MG.sfx('click'); return; }
+  if (!on) return;
+  if (b.kind === 'horn') { horn(); MG.sfx('boing'); return; }
+  if (b.kind === 'switch') { switchTo(b.vi); return; }
+  if (b.id === 'dump') { const v = cur(); if (v.type === 'exc') { if (v.load > 0) tryDump(v); else { MG.sfx('miss'); say(mouthOf(v).x, mouthOf(v).y - 50, 'Empty 🪣', '#5a6f90'); } } }
+}
+cv.addEventListener('pointerdown', e => {
+  if (!Wd) return;
+  const p = cv.logical(e);
+  try { cv.setPointerCapture(e.pointerId); } catch {}
+  if (state === 'ribbon') { cutRibbon(); return; }
+  if (state !== 'play') return;
+  hintT = 0;
+  if (p.y >= VH) { const b = btnAt(p); if (b) { ptrs.set(e.pointerId, { b }); pressBtn(b, true); } return; }
+  const w = s2w(p.x, p.y), v = cur();
+  const vi = vehAt(w);
+  if (vi >= 0 && vi !== act && Wd.veh.filter(o => !o.npc).length > 1) { switchTo(vi); return; }
+  ptrs.set(e.pointerId, { scene: true });
+  scenePtr = e.pointerId;
+  if (v.type === 'exc') { v.tgt = { x: w.x, y: w.y }; v.pend = false; }
+  else if (v.type === 'crane') { v.tgt = { x: w.x, y: w.y }; }
+  else sceneDrive = w.x;
+});
+cv.addEventListener('pointermove', e => {
+  const q = ptrs.get(e.pointerId); if (!q || !q.scene || state !== 'play') return;
+  const p = cv.logical(e), w = s2w(p.x, Math.min(p.y, VH)), v = cur();
+  if (v.type === 'exc' || v.type === 'crane') v.tgt = { x: w.x, y: w.y };
+  else sceneDrive = w.x;
+});
+function endPtr(e) {
+  const q = ptrs.get(e.pointerId); if (!q) return;
+  ptrs.delete(e.pointerId);
+  if (q.b) { pressBtn(q.b, false); return; }
+  if (scenePtr === e.pointerId) scenePtr = null;
+  const v = cur(); if (!v || state !== 'play') { sceneDrive = null; return; }
+  if (v.type === 'exc') v.pend = true;
+  else if (v.type === 'crane') dropHeld(v);
+  else sceneDrive = null;
+}
+cv.addEventListener('pointerup', endPtr);
+cv.addEventListener('pointercancel', endPtr);
+const KEYMAP = { ArrowLeft: 'L', ArrowRight: 'R', ArrowUp: 'U', ArrowDown: 'D', a: 'L', d: 'R', w: 'U', s: 'D', ' ': 'A' };
+addEventListener('keydown', e => {
+  if (state === 'ribbon' && (e.key === ' ' || e.key === 'Enter')) { cutRibbon(); e.preventDefault(); return; }
+  if (state !== 'play' || MG.panelOpen()) return;
+  const k = KEYMAP[e.key] || KEYMAP[e.key.toLowerCase && e.key.toLowerCase()];
+  const v = cur();
+  if (k) {
+    e.preventDefault(); if (keys[k]) return; keys[k] = true;
+    if (k === 'A' && v.type === 'exc') tryDump(v);
+    if (k === 'A' && v.type === 'crane') dropHeld(v);
+    if ((k === 'U' || k === 'D') && v.type === 'exc') v.tgt = { ...mouthOf(v) };
+  }
+  if (e.key === 'h' || e.key === 'H') horn();
+  if (e.key === 'Tab') { e.preventDefault(); const ids = Wd.veh.map((o, i) => o.npc ? -1 : i).filter(i => i >= 0); switchTo(ids[(ids.indexOf(act) + 1) % ids.length]); }
+});
+addEventListener('keyup', e => { const k = KEYMAP[e.key] || KEYMAP[e.key.toLowerCase && e.key.toLowerCase()]; if (k) keys[k] = false; if ((k === 'U' || k === 'D') && cur() && cur().type === 'exc') cur().pend = true; });
+
+// ---------- autopilot (used by the tests to prove every job can be finished) ----------
+function botStep(dt) {
+  const v = cur(), w = Wd;
+  keys.L = keys.R = keys.A = keys.U = keys.D = false;
+  const goTo = (tx, tol = 4) => { const d = tx - v.x; if (d > tol) keys.R = true; else if (d < -tol) keys.L = true; return Math.abs(d) <= tol; };
+  const multi = w.veh.filter(o => !o.npc).length > 1;
+  if (v.type === 'exc') {
+    const truck = w.veh.find(o => o.type === 'truck' && (o.npc ? o.state === 'park' : true) && o.load < o.cap - GA);
+    const dig = w.goals.find(g => g.type === 'dig' && !g.done), fnd = w.finds.find(f => !f.found);
+    const fillG = w.goals.find(g => g.type === 'fill' && !g.done);
+    if (multi && truck && !truck.npc && truck.load >= truck.cap - GA * 2) { switchTo(w.veh.indexOf(truck)); return; }
+    if (multi && fillG && w.veh.find(o => o.type === 'truck' && !o.npc).load >= 3800) { switchTo(w.veh.findIndex(o => o.type === 'truck' && !o.npc)); return; }
+    const sh = shoulder(v), M = mouthOf(v);
+    const full = v.load >= v.cap - 2 || (v.load > 0 && v.botDump);
+    if (v.dump) return;
+    if (full) {
+      let tx, ty;
+      if (truck) { const [b0, b1] = bedRange(truck); tx = (b0 + b1) / 2; ty = bedRim(truck) - 50; }
+      else { tx = w.dumpX ?? 40; ty = minTop(tx - 40, tx + 40) - 50; }
+      const dxs = tx - sh.x;
+      if (Math.abs(dxs) > 250) { goTo(v.x + Math.sign(dxs) * 40); }
+      v.tgt = { x: tx, y: ty };
+      if (Math.hypot(M.x - tx, M.y - ty) < 20) { v.pend = false; startDump(v); v.botDump = false; }
+      return;
+    }
+    // choose where to dig
+    let best = null;
+    const consider = (c, score) => { if (!best || score > best.s) best = { c, s: score }; };
+    if (fnd) { for (let c = C0(fnd.x - 16); c <= C0(fnd.x + 16); c++) if (w.top[c] < w.floor[c] - 1) consider(c, -(Math.abs(c * CW - fnd.x)) + (w.floor[c] - w.top[c]) * 0.1); }
+    else if (dig) eachCol(w, dig.x0, dig.x1, c => { const rem = w.floor[c] - w.top[c]; if (rem > 2) consider(c, rem - Math.abs(c * CW - (dig.x0 + dig.x1) / 2) * 0.05); });
+    else if (truck) for (let c = 0; c < w.n; c++) { const rem = w.floor[c] - w.top[c]; if (w.kind[c] === D && rem > 3 && Math.abs(c * CW - sh.x) < 260) consider(c, -w.top[c] - Math.abs(c * CW - sh.x) * 0.2); }
+    if (!best) { if (v.load > 0) v.botDump = true; return; }
+    const tx = best.c * CW + CW / 2, ty = Math.min(w.floor[best.c], w.top[best.c] + 34);
+    const reach = Math.hypot(tx - sh.x, ty + 0 - sh.y);
+    if (reach > EXC.L1 + EXC.L2 - 30) goTo(v.x + Math.sign(tx - sh.x) * 60);
+    else if (Math.abs(tx - v.x) < 96) goTo(v.x - Math.sign(tx - v.x) * 60);
+    v.tgt = { x: tx, y: ty };
+    // stuck (bucket can't get deeper here): carry what we have
+    const moved = v.botM ? Math.hypot(M.x - v.botM.x, M.y - v.botM.y) : 99; v.botM = { ...M };
+    v.botStuck = moved < 0.5 ? (v.botStuck || 0) + dt : 0;
+    if (v.botStuck > 0.6) { if (v.load > 0) v.botDump = true; else { w.floor[best.c] = w.top[best.c]; } v.botStuck = 0; }
+  } else if (v.type === 'truck') {
+    const fill = w.goals.find(g => g.type === 'fill' && !g.done);
+    if (!fill) return;
+    const hp = w.hoppers[0];
+    if (v.mode !== 'dump' && v.load < v.cap - GA && (hp || !multi)) {
+      if (!hp) { v.mode = 'dump'; return; }
+      const [b0, b1] = bedRange(v), bc = (b0 + b1) / 2; const d = hp.x - bc;
+      if (Math.abs(d) > 6) { if (d > 0) keys.R = true; else keys.L = true; }
+      if (v.load >= v.cap - GA * 2) v.mode = 'dump';
+      return;
+    }
+    if (multi && v.load < 3000 && v.mode !== 'dump') { if (goTo(v.xmax, 3)) switchTo(w.veh.findIndex(o => o.type === 'exc')); return; }
+    v.mode = 'dump';
+    if (goTo(v.xmin, 3)) { keys.A = true; if (v.load <= 0 && v.tip > 0.9) v.mode = 'load'; }
+  } else if (v.type === 'dozer') {
+    const fl = w.goals.find(g => (g.type === 'flat' || g.type === 'rocks') && !g.done);
+    if (!fl && multi) { switchTo(w.veh.findIndex(o => o.type === 'roller')); return; }
+    if (v.bdir == null) v.bdir = 1;
+    if (v.bdir > 0) { keys.R = true; if (v.x >= v.xmax - 1) v.bdir = -1; } else { keys.L = true; if (v.x <= v.xmin + 2) v.bdir = 1; }
+  } else if (v.type === 'roller') {
+    if (v.bdir == null) v.bdir = 1;
+    if (v.bdir > 0) { keys.R = true; if (v.x >= v.xmax - 1) v.bdir = -1; } else { keys.L = true; if (v.x <= v.xmin + 2) v.bdir = 1; }
+  } else if (v.type === 'mixer') {
+    const m = w.moulds.find(q => !q.done); if (!m) return;
+    if (goTo(m.x + v.dir * 112 + (Math.random() - 0.5) * 0, 3)) keys.A = true;
+  } else if (v.type === 'drill') {
+    const m = w.marks.find(q => !q.done); if (!m) return;
+    if (goTo(m.x - v.dir * 94, 3)) keys.A = true;
+  } else if (v.type === 'crane') {
+    if (v.hold) {
+      const s = w.slots.find(q => !q.item && q.kind === v.hold.kind && slotOpen(q));
+      if (!s) { dropHeld(v); return; }
+      const above = s.y - v.hold.h - 14 - 60;
+      if (Math.abs(v.hx - s.x) > 6) v.tgt = { x: s.x, y: Math.min(above, v.hy) };
+      else v.tgt = { x: s.x, y: s.y - v.hold.h - 14 + 10 };
+    } else {
+      const it = w.items.find(o => o.state === 'ground' && !covered(o) && w.slots.some(s => !s.item && s.kind === o.kind && slotOpen(s)));
+      if (!it) return;
+      const top = it.y - it.h - 14;
+      if (Math.abs(v.hx - it.x) > 6) v.tgt = { x: it.x, y: Math.min(v.hy, top - 50) };
+      else v.tgt = { x: it.x, y: top + 4 };
+    }
+  }
+}
+
+// ---------- drawing helpers ----------
+function rr(X, Y, Wd2, Ht, r) { x.beginPath(); x.roundRect(X, Y, Wd2, Ht, r); }
+function fs(fill, stroke, lw) { if (fill) { x.fillStyle = fill; x.fill(); } if (stroke) { x.strokeStyle = stroke; x.lineWidth = lw; x.stroke(); } }
+function grad(y0, y1, a, b) { const g = x.createLinearGradient(0, y0, 0, y1); g.addColorStop(0, a); g.addColorStop(1, b); return g; }
+function wheel(cx, cy, r, rot, tyre = '#3a3f4b') {
+  x.beginPath(); x.arc(cx, cy, r, 0, 7); fs(tyre, '#23262e', 2.5);
+  x.beginPath(); x.arc(cx, cy, r * 0.55, 0, 7); fs(grad(cy - r, cy + r, '#e9edf3', '#aab3c2'), '#6d7686', 2);
+  x.fillStyle = '#6d7686'; for (let i = 0; i < 4; i++) { const a = rot + i * Math.PI / 2; x.beginPath(); x.arc(cx + Math.cos(a) * r * 0.32, cy + Math.sin(a) * r * 0.32, r * 0.08, 0, 7); x.fill(); }
+  x.fillStyle = 'rgba(255,255,255,.25)'; x.beginPath(); x.arc(cx - r * 0.3, cy - r * 0.35, r * 0.18, 0, 7); x.fill();
+}
+function track(x0, x1, yb, h, rot) {
+  rr(x0, yb - h, x1 - x0, h, h / 2); fs('#4a4f5c', '#2c3038', 3);
+  x.strokeStyle = 'rgba(255,255,255,.18)'; x.lineWidth = 2; x.setLineDash([5, 5]); x.lineDashOffset = -rot * 12;
+  rr(x0 + 3, yb - h + 3, x1 - x0 - 6, h - 6, (h - 6) / 2); x.stroke(); x.setLineDash([]);
+  const n = Math.max(3, Math.round((x1 - x0) / 26));
+  for (let i = 0; i < n; i++) wheel(x0 + h / 2 + (x1 - x0 - h) * i / (n - 1), yb - h / 2, h * 0.34, rot, '#5b6170');
+}
+// a cab window with the hero inside (wearing a hard hat)
+function cabWin(X, Y, w, h, look, here) {
+  rr(X, Y, w, h, 7); x.fillStyle = '#d8f1ff'; x.fill();
+  if (here) {
+    x.save(); rr(X, Y, w, h, 7); x.clip();
+    const r = Math.min(w, h) * 0.36, cx = X + w * 0.5, cy = Y + h - r * (MG.hero === 'niu' ? 0.85 : 0.62);
+    MG.puPu(x, cx, cy, r, state === 'cheer' || state === 'done' || state === 'ribbon' ? 'proud' : 'happy', 0, { look, noLeaf: true, hideHorns: true });
+    hardHat(cx, cy + r * MG.hatDrop, r);
+    x.restore();
+  }
+  x.fillStyle = 'rgba(255,255,255,.45)'; x.beginPath(); x.moveTo(X + w * 0.62, Y + 3); x.lineTo(X + w - 3, Y + 3); x.lineTo(X + w - 3, Y + h * 0.4); x.closePath(); x.fill();
+  rr(X, Y, w, h, 7); x.strokeStyle = 'rgba(40,60,80,.55)'; x.lineWidth = 3; x.stroke();
+}
+function hardHat(cx, cy, r) {
+  x.beginPath(); x.ellipse(cx, cy - r * 0.62, r * 0.8, r * 0.62, 0, Math.PI, 0); x.closePath(); fs(grad(cy - r * 1.25, cy - r * 0.6, '#fff3a0', '#ffc61a'), '#a87400', Math.max(1, r * 0.08));
+  rr(cx - r * 0.98, cy - r * 0.72, r * 1.96, r * 0.18, r * 0.09); fs('#ffb800', '#a87400', Math.max(1, r * 0.06));
+  x.strokeStyle = 'rgba(168,116,0,.7)'; x.lineWidth = Math.max(1, r * 0.08); x.beginPath(); x.moveTo(cx, cy - r * 1.22); x.lineTo(cx, cy - r * 0.74); x.stroke();
+  x.fillStyle = 'rgba(255,255,255,.6)'; x.beginPath(); x.ellipse(cx - r * 0.36, cy - r * 0.98, r * 0.17, r * 0.08, -0.5, 0, 7); x.fill();
+}
+function bodyPanel(X, Y, w, h, r, c1, c2, line) { rr(X, Y, w, h, r); fs(grad(Y, Y + h, c1, c2), line, 3); x.fillStyle = 'rgba(255,255,255,.35)'; rr(X + 5, Y + 4, w - 10, Math.min(6, h * 0.2), 3); x.fill(); }
+const YEL = ['#ffd84a', '#f5a800', '#a87400'];
+
+// ---------- vehicle drawing (facing right, origin = ground under the middle) ----------
+function drawVeh(v, here) {
+  x.save(); x.translate(v.x, v.y); x.rotate(v.ang); x.scale(v.dir, 1);
+  const look = 0.6;
+  for (const p of v.smoke) { x.globalAlpha = p.life * 0.5; x.fillStyle = '#e8ecf2'; x.beginPath(); x.arc(p.x + exhaustX(v), exhaustY(v) + p.y, p.s, 0, 7); x.fill(); }
+  x.globalAlpha = 1;
+  const T = v.type;
+  if (T === 'exc') {
+    track(-74, 74, 0, 30, v.wheel);
+    x.fillStyle = '#5b6170'; rr(-20, -38, 40, 10, 3); x.fill();
+    x.fillStyle = '#5b6170'; rr(-66, -90, 7, 22, 2); x.fill();                               // exhaust pipe
+    bodyPanel(-80, -74, 34, 40, 8, '#8a93a3', '#5d6676', '#3f4654');      // counterweight
+    bodyPanel(-64, -72, 124, 38, 10, YEL[0], YEL[1], YEL[2]);
+    x.fillStyle = '#2c3038'; for (let i = 0; i < 3; i++) { rr(16, -64 + i * 9, 30, 5, 2.5); x.fill(); }
+    bodyPanel(-48, -134, 64, 66, 12, YEL[0], YEL[1], YEL[2]);
+    cabWin(-42, -128, 52, 50, look, here);
+  } else if (T === 'truck') {
+    const npc = v.npc, c = npc ? ['#7fd0ff', '#3f9be0', '#1f5f9e'] : ['#ff8a5a', '#e5552a', '#9a3014'];
+    x.fillStyle = '#4a4f5c'; rr(-92, -42, 182, 18, 6); x.fill();
+    wheel(-52, -21, 21, v.wheel); wheel(52, -21, 21, v.wheel);
+    // cab
+    x.beginPath(); x.moveTo(30, -38); x.lineTo(30, -98); x.quadraticCurveTo(30, -106, 38, -106); x.lineTo(70, -106); x.quadraticCurveTo(80, -106, 84, -96); x.lineTo(94, -64); x.lineTo(94, -38); x.closePath();
+    fs(grad(-106, -38, c[0], c[1]), c[2], 3);
+    cabWin(40, -98, 40, 34, look, here && !npc);
+    if (npc) { x.save(); rr(40, -98, 40, 34, 7); x.clip(); MG.puPu(x, 60, -72, 13, 'happy', 0, { pal: MG.JELLY.pink, jelly: true, look: 0.5, noLeaf: true }); hardHat(60, -72, 13); x.restore(); }
+    x.fillStyle = '#ffe9a0'; rr(88, -56, 8, 8, 3); x.fill();
+    // bed (tips around the back corner)
+    x.save(); x.translate(-90, -40); x.rotate(-v.tip * 0.85);
+    const fillH = Math.min(1, v.load / v.cap);
+    if (fillH > 0) {
+      const top = -42 - fillH * 26;
+      x.beginPath(); x.moveTo(4, -40); x.quadraticCurveTo(20, top - 4, 58, top); x.quadraticCurveTo(100, top - 4, 114, -40); x.closePath();
+      x.fillStyle = grad(top, -40, THEMES[Wd.theme].grain[2], THEMES[Wd.theme].grain[1]); x.fill();
+      x.fillStyle = 'rgba(0,0,0,.12)'; for (let i = 0; i < 6; i++) { x.beginPath(); x.arc(20 + i * 16, -44 - fillH * 12 + (i % 2) * 5, 2.4, 0, 7); x.fill(); }
+    }
+    x.beginPath(); x.moveTo(0, 0); x.lineTo(0, -44); x.lineTo(118, -44); x.lineTo(118, 0); x.closePath();
+    fs(grad(-44, 0, c[0], c[1]), c[2], 3);
+    x.strokeStyle = 'rgba(0,0,0,.15)'; x.lineWidth = 3; for (const bx of [30, 60, 90]) { x.beginPath(); x.moveTo(bx, -38); x.lineTo(bx, -4); x.stroke(); }
+    x.fillStyle = 'rgba(255,255,255,.35)'; rr(6, -40, 106, 5, 2); x.fill();
+    x.restore();
+    if (v.tip > 0.05) { x.strokeStyle = '#b8c0cc'; x.lineWidth = 6; x.lineCap = 'round'; x.beginPath(); x.moveTo(-20, -40); const e = { x: -90 + Math.cos(-v.tip * 0.85) * 70 + Math.sin(-v.tip * 0.85) * 4, y: -40 + Math.sin(-v.tip * 0.85) * 70 }; x.lineTo(e.x, e.y); x.stroke(); }
+  } else if (T === 'dozer') {
+    track(-64, 52, 0, 28, v.wheel);
+    // push arms + blade
+    x.strokeStyle = '#a87400'; x.lineWidth = 9; x.lineCap = 'round'; x.beginPath(); x.moveTo(20, -22); x.lineTo(66, -20); x.stroke();
+    x.strokeStyle = YEL[1]; x.lineWidth = 5; x.beginPath(); x.moveTo(20, -22); x.lineTo(66, -20); x.stroke();
+    // the pile it is pushing
+    if (v.carry > 0) {
+      const h = Math.min(70, Math.sqrt(v.carry) * 0.75), wd = h * 1.5 + 10;
+      x.beginPath(); x.moveTo(84, 1); x.quadraticCurveTo(84, -h * 1.15, 84 + wd * 0.35, -h); x.quadraticCurveTo(84 + wd * 0.8, -h * 0.7, 84 + wd, 1); x.closePath();
+      x.fillStyle = grad(-h, 0, THEMES[Wd.theme].grain[2], THEMES[Wd.theme].grain[1]); x.fill();
+      x.fillStyle = 'rgba(0,0,0,.1)'; for (let i = 0; i < 5; i++) { x.beginPath(); x.arc(90 + i * wd * 0.17, -h * 0.4 + (i % 2) * 6, 2.2, 0, 7); x.fill(); }
+    }
+    x.beginPath(); x.moveTo(66, 2); x.lineTo(84, 2); x.quadraticCurveTo(72, -30, 84, -62); x.lineTo(66, -62); x.quadraticCurveTo(58, -30, 66, 2); x.closePath();
+    fs(grad(-62, 2, '#ffe07a', '#e09a00'), '#9a6a00', 3);
+    x.fillStyle = '#8a919c'; rr(64, -2, 22, 5, 2); x.fill();
+    bodyPanel(-56, -72, 88, 46, 10, YEL[0], YEL[1], YEL[2]);
+    x.fillStyle = '#2c3038'; for (let i = 0; i < 3; i++) { rr(4, -64 + i * 10, 22, 5, 2); x.fill(); }
+    // roll cage cab
+    x.strokeStyle = '#3f4654'; x.lineWidth = 5; x.lineCap = 'round';
+    x.beginPath(); x.moveTo(-48, -72); x.lineTo(-48, -122); x.lineTo(10, -122); x.lineTo(10, -72); x.stroke();
+    cabWin(-44, -118, 50, 44, look, here);
+    rr(-54, -128, 70, 9, 4); fs(YEL[1], YEL[2], 2.5);
+    x.fillStyle = '#5b6170'; rr(-40, -94, 6, 22, 2); x.fill();
+  } else if (T === 'mixer') {
+    x.fillStyle = '#4a4f5c'; rr(-96, -42, 188, 18, 6); x.fill();
+    wheel(-62, -21, 21, v.wheel); wheel(-18, -21, 21, v.wheel); wheel(56, -21, 21, v.wheel);
+    // chute
+    x.strokeStyle = '#8a919c'; x.lineWidth = 9; x.lineCap = 'round'; x.beginPath(); x.moveTo(-84, -58); x.lineTo(-112, -32); x.stroke();
+    x.strokeStyle = '#c7ccd4'; x.lineWidth = 4; x.beginPath(); x.moveTo(-84, -58); x.lineTo(-112, -32); x.stroke();
+    // drum with turning stripes
+    x.save(); x.translate(-22, -80); x.rotate(-0.12);
+    x.beginPath(); x.ellipse(0, 0, 62, 36, 0, 0, 7); fs(grad(-36, 36, '#ffffff', '#c9d6e6'), '#6d7f99', 3);
+    x.save(); x.beginPath(); x.ellipse(0, 0, 62, 36, 0, 0, 7); x.clip();
+    x.strokeStyle = '#ff7a4a'; x.lineWidth = 10;
+    for (let i = -3; i < 4; i++) { const ox = ((i * 34 + v.drum * 12) % 204 + 204) % 204 - 102; x.beginPath(); x.moveTo(ox - 20, -40); x.quadraticCurveTo(ox + 4, 0, ox - 20, 40); x.stroke(); }
+    x.restore();
+    x.fillStyle = 'rgba(255,255,255,.55)'; x.beginPath(); x.ellipse(-16, -20, 30, 6, -0.1, 0, 7); x.fill();
+    x.restore();
+    x.fillStyle = '#8a919c'; rr(-90, -66, 14, 26, 4); x.fill();
+    // cab
+    x.beginPath(); x.moveTo(44, -38); x.lineTo(44, -98); x.quadraticCurveTo(44, -106, 52, -106); x.lineTo(78, -106); x.quadraticCurveTo(88, -106, 90, -96); x.lineTo(98, -64); x.lineTo(98, -38); x.closePath();
+    fs(grad(-106, -38, '#7fd0ff', '#2f78cf'), '#1d4f9e', 3);
+    cabWin(52, -98, 36, 34, look, here);
+  } else if (T === 'roller') {
+    x.fillStyle = '#4a4f5c'; rr(-68, -46, 112, 20, 6); x.fill();
+    wheel(-50, -22, 22, v.wheel);
+    bodyPanel(-74, -70, 104, 34, 10, '#9be38a', '#4cb85a', '#2a7a3a');
+    // drum
+    x.beginPath(); x.arc(52, -32, 32, 0, 7); fs(grad(-64, 0, '#e9edf3', '#9aa3b2'), '#5d6676', 3);
+    x.strokeStyle = 'rgba(80,90,105,.35)'; x.lineWidth = 2; for (let i = 0; i < 6; i++) { const a = v.wheel * 0.9 + i * Math.PI / 3; x.beginPath(); x.moveTo(52 + Math.cos(a) * 12, -32 + Math.sin(a) * 12); x.lineTo(52 + Math.cos(a) * 28, -32 + Math.sin(a) * 28); x.stroke(); }
+    x.beginPath(); x.arc(52, -32, 10, 0, 7); fs('#ffc93a', '#a87400', 2.5);
+    x.strokeStyle = '#2a7a3a'; x.lineWidth = 8; x.lineCap = 'round'; x.beginPath(); x.moveTo(20, -60); x.lineTo(52, -32); x.stroke();
+    x.strokeStyle = '#4cb85a'; x.lineWidth = 4; x.beginPath(); x.moveTo(20, -60); x.lineTo(52, -32); x.stroke();
+    // canopy
+    x.strokeStyle = '#3f4654'; x.lineWidth = 4; x.beginPath(); x.moveTo(-54, -70); x.lineTo(-54, -124); x.moveTo(8, -70); x.lineTo(8, -124); x.stroke();
+    cabWin(-48, -114, 52, 44, look, here);
+    x.beginPath(); x.moveTo(-64, -122); x.quadraticCurveTo(-24, -140, 18, -122); x.lineTo(18, -118); x.lineTo(-64, -118); x.closePath(); fs('#ffc93a', '#a87400', 2.5);
+  } else if (T === 'drill') {
+    x.fillStyle = '#4a4f5c'; rr(-86, -42, 170, 18, 6); x.fill();
+    wheel(-50, -21, 21, v.wheel); wheel(42, -21, 21, v.wheel);
+    bodyPanel(-86, -76, 88, 36, 8, '#c3a2ff', '#8a63e0', '#55309e');
+    x.beginPath(); x.moveTo(6, -38); x.lineTo(6, -98); x.quadraticCurveTo(6, -106, 14, -106); x.lineTo(46, -106); x.quadraticCurveTo(56, -106, 60, -96); x.lineTo(70, -64); x.lineTo(70, -38); x.closePath();
+    fs(grad(-106, -38, '#c3a2ff', '#8a63e0'), '#55309e', 3);
+    cabWin(14, -98, 40, 34, look, here);
+    // mast
+    x.strokeStyle = '#6d7686'; x.lineWidth = 3;
+    x.fillStyle = '#ffc93a'; rr(86, -176, 16, 160, 4); x.fill(); x.strokeStyle = '#a87400'; x.stroke();
+    x.strokeStyle = 'rgba(168,116,0,.6)'; x.lineWidth = 2; for (let yy = -170; yy < -24; yy += 16) { x.beginPath(); x.moveTo(86, yy); x.lineTo(102, yy + 16); x.stroke(); }
+    x.strokeStyle = '#a87400'; x.lineWidth = 6; x.lineCap = 'round'; x.beginPath(); x.moveTo(66, -60); x.lineTo(88, -60); x.moveTo(66, -40); x.lineTo(88, -30); x.stroke();
+    // the drill bit (screws down)
+    const d = v.depth, tipY = -10 + d + 14, topY = -150 + d;
+    x.fillStyle = '#e04a3a'; rr(84, topY - 18, 20, 22, 4); x.fill(); x.strokeStyle = '#8e2018'; x.lineWidth = 2; x.stroke();
+    x.save(); x.beginPath(); x.rect(80, topY, 28, tipY - topY + 4); x.clip();
+    x.fillStyle = '#c7ccd4'; x.beginPath(); x.moveTo(89, topY); x.lineTo(99, topY); x.lineTo(99, tipY - 10); x.lineTo(94, tipY); x.lineTo(89, tipY - 10); x.closePath(); x.fill();
+    x.strokeStyle = '#6d7686'; x.lineWidth = 2.5; for (let yy = topY - 20; yy < tipY; yy += 8) { const o = ((v.spin * 6) % 8); x.beginPath(); x.moveTo(89, yy + o); x.lineTo(99, yy + o + 5); x.stroke(); }
+    x.restore();
+  }
+  x.restore();
+}
+const exhaustX = v => v.type === 'exc' ? -62 : v.type === 'dozer' ? -37 : -80;
+const exhaustY = v => v.type === 'exc' ? -92 : v.type === 'dozer' ? -96 : -40;
+function drawArm(v) {
+  const sh = shoulder(v), E = v.E || ik(sh, v.B), B = v.B;
+  const seg = (a, b, w, c1, c2) => {
+    x.lineCap = 'round'; x.strokeStyle = c2; x.lineWidth = w + 6; x.beginPath(); x.moveTo(a.x, a.y); x.lineTo(b.x, b.y); x.stroke();
+    x.strokeStyle = c1; x.lineWidth = w; x.beginPath(); x.moveTo(a.x, a.y); x.lineTo(b.x, b.y); x.stroke();
+    const n = Math.hypot(b.x - a.x, b.y - a.y) || 1, ox = -(b.y - a.y) / n * w * 0.22, oy = (b.x - a.x) / n * w * 0.22;
+    x.strokeStyle = 'rgba(255,255,255,.4)'; x.lineWidth = w * 0.22; x.beginPath(); x.moveTo(a.x - ox * 1.2, a.y - Math.abs(oy) - 2); x.lineTo(b.x - ox * 1.2, b.y - Math.abs(oy) - 2); x.stroke();
+  };
+  // hydraulic rams
+  const mid = { x: lerp(sh.x, E.x, 0.5), y: lerp(sh.y, E.y, 0.5) - 8 }, base = { x: sh.x + v.dir * 16, y: sh.y + 22 };
+  x.strokeStyle = '#6d7686'; x.lineWidth = 7; x.lineCap = 'round'; x.beginPath(); x.moveTo(base.x, base.y); x.lineTo(mid.x, mid.y); x.stroke();
+  x.strokeStyle = '#e9edf3'; x.lineWidth = 3; x.beginPath(); x.moveTo(lerp(base.x, mid.x, 0.45), lerp(base.y, mid.y, 0.45)); x.lineTo(mid.x, mid.y); x.stroke();
+  seg(sh, E, 18, YEL[0], YEL[2]);
+  seg(E, B, 13, YEL[0], YEL[2]);
+  for (const p of [sh, E]) { x.beginPath(); x.arc(p.x, p.y, 6.5, 0, 7); fs('#e9edf3', '#6d7686', 2.5); }
+  // bucket
+  x.save(); x.translate(B.x, B.y); x.scale(v.dir, 1); x.rotate(v.bang);
+  const fillK = Math.min(1, v.load / v.cap);
+  x.beginPath(); x.moveTo(-10, -6); x.quadraticCurveTo(-22, 22, 6, 34); x.lineTo(30, 30); x.lineTo(22, 0); x.quadraticCurveTo(10, -10, -10, -6); x.closePath();
+  fs(grad(-8, 34, '#ffe07a', '#e09a00'), '#9a6a00', 3);
+  if (fillK > 0) {
+    const g = THEMES[Wd.theme].grain;
+    x.beginPath(); x.moveTo(22, 0); x.quadraticCurveTo(30, -10 - fillK * 14, 12, -8 - fillK * 10); x.quadraticCurveTo(0, -8 - fillK * 6, -10, -6); x.quadraticCurveTo(6, 2, 22, 0); x.closePath();
+    x.fillStyle = g[0]; x.fill(); x.fillStyle = 'rgba(0,0,0,.12)'; x.beginPath(); x.arc(8, -6 - fillK * 6, 2, 0, 7); x.fill();
+  }
+  x.fillStyle = '#e9edf3'; x.strokeStyle = '#6d7686'; x.lineWidth = 1.5;
+  for (let i = 0; i < 3; i++) { const bx = 10 + i * 7, by = 32 - i * 1.3; x.beginPath(); x.moveTo(bx, by); x.lineTo(bx + 5, by + 7); x.lineTo(bx + 6, by - 1); x.closePath(); x.fill(); x.stroke(); }
+  x.beginPath(); x.arc(0, 0, 5, 0, 7); fs('#e9edf3', '#6d7686', 2);
+  x.restore();
+}
+function drawCrane(v, here) {
+  const TX = v.TX, jy = v.jy;
+  // base + tower
+  rr(TX - 40, GY - 18, 80, 20, 4); fs(grad(GY - 18, GY, '#c7ccd4', '#8a919c'), '#5d6676', 3);
+  x.fillStyle = '#ffc93a'; x.fillRect(TX - 16, jy + 30, 32, GY - 18 - jy - 30);
+  x.strokeStyle = '#a87400'; x.lineWidth = 3; x.strokeRect(TX - 16, jy + 30, 32, GY - 18 - jy - 30);
+  x.lineWidth = 2.5; x.beginPath(); for (let y = jy + 30; y < GY - 30; y += 28) { x.moveTo(TX - 16, y); x.lineTo(TX + 16, y + 28); x.moveTo(TX + 16, y); x.lineTo(TX - 16, y + 28); } x.stroke();
+  // jib (lattice)
+  const j0 = TX - 90, j1 = v.tmax + 40;
+  x.fillStyle = 'rgba(255,201,58,.25)'; x.fillRect(j0, jy, j1 - j0, 18);
+  x.strokeStyle = '#d99a00'; x.lineWidth = 3.5; x.beginPath(); x.moveTo(j0, jy); x.lineTo(j1, jy); x.moveTo(j0, jy + 18); x.lineTo(j1, jy + 18); x.stroke();
+  x.lineWidth = 2; x.beginPath(); for (let xx = j0; xx < j1; xx += 22) { x.moveTo(xx, jy + 18); x.lineTo(xx + 11, jy); x.lineTo(xx + 22, jy + 18); } x.stroke();
+  // tip + top tower with ties
+  x.strokeStyle = '#a87400'; x.lineWidth = 2; x.beginPath(); x.moveTo(TX, jy - 54); x.lineTo(j1 - 20, jy); x.moveTo(TX, jy - 54); x.lineTo(j0 + 10, jy); x.stroke();
+  x.beginPath(); x.moveTo(TX - 10, jy); x.lineTo(TX, jy - 58); x.lineTo(TX + 10, jy); x.closePath(); fs('#ffc93a', '#a87400', 2.5);
+  x.fillStyle = '#ff5d5d'; x.beginPath(); x.arc(TX, jy - 60, 4 + Math.sin(t * 4) * 1, 0, 7); x.fill();
+  // counterweight
+  for (let i = 0; i < 2; i++) { rr(j0 + 4 + i * 26, jy + 18, 24, 30, 3); fs(grad(jy + 18, jy + 48, '#c7ccd4', '#8a919c'), '#5d6676', 2); }
+  // machine house on the tower top
+  bodyPanel(TX + 6, jy + 18, 34, 26, 6, '#ffd84a', '#f5a800', '#a87400');
+  // trolley + the little cab that rides along with it (so the driver is always next to the hook)
+  const hx = v.hx ?? v.tro, hy = v.hy;
+  x.strokeStyle = '#5b6170'; x.lineWidth = 5; x.beginPath(); x.moveTo(v.tro - 10, jy + 22); x.lineTo(v.tro - 40, jy + 30); x.stroke();
+  bodyPanel(v.tro - 74, jy + 24, 56, 54, 10, '#ffd84a', '#f5a800', '#a87400');
+  cabWin(v.tro - 69, jy + 30, 46, 42, 0.8, here);
+  rr(v.tro - 16, jy + 16, 32, 12, 4); fs('#5b6170', '#2c3038', 2);
+  x.strokeStyle = '#3f4654'; x.lineWidth = 2.5; x.beginPath(); x.moveTo(v.tro - 4, jy + 28); x.lineTo(hx - 4, hy - 10); x.moveTo(v.tro + 4, jy + 28); x.lineTo(hx + 4, hy - 10); x.stroke();
+  if (v.hold) { const it = v.hold; x.strokeStyle = '#3f4654'; x.lineWidth = 2; x.beginPath(); x.moveTo(hx, hy + 8); x.lineTo(it.x - it.w * 0.35, it.y - it.h); x.moveTo(hx, hy + 8); x.lineTo(it.x + it.w * 0.35, it.y - it.h); x.stroke(); }
+  rr(hx - 11, hy - 14, 22, 16, 4); fs(grad(hy - 14, hy + 2, '#ffd84a', '#f5a800'), '#a87400', 2.5);
+  x.strokeStyle = '#e04a3a'; x.lineWidth = 4; x.lineCap = 'round'; x.beginPath(); x.moveTo(hx, hy + 2); x.lineTo(hx, hy + 8); x.arc(hx + 5, hy + 8, 5, Math.PI, Math.PI * 0.15, true); x.stroke();
+}
+
+// ---------- items for the crane ----------
+function drawItem(o, ghost) {
+  const { kind, w, h } = o, X = o.x - w / 2, Y = o.y - h;
+  x.save();
+  if (o.wob) { x.translate(o.x, o.y); x.rotate(Math.sin(o.wob * 30) * o.wob * 0.06); x.translate(-o.x, -o.y); }
+  if (ghost) { x.globalAlpha = 0.6 + Math.sin(t * 4) * 0.15; x.setLineDash([7, 6]); x.lineDashOffset = -t * 14; }
+  const line = ghost ? 'rgba(60,110,180,.85)' : null;
+  const S2 = (fill, stroke, lw = 3) => fs(ghost ? (fill ? 'rgba(255,255,255,.5)' : null) : fill, line || stroke, ghost ? 3 : lw);
+  if (kind === 'cube') {
+    const c = CUBE_COL[o.col % CUBE_COL.length];
+    rr(X, Y, w, h, 8); S2(grad(Y, Y + h, c, shade(c)), shade(c, 0.55));
+    if (!ghost) { x.fillStyle = 'rgba(255,255,255,.45)'; rr(X + 6, Y + 5, w - 12, 7, 3); x.fill(); x.fillStyle = 'rgba(255,255,255,.8)'; x.font = `900 26px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(['★', '♥', '●', '▲', '◆'][o.col % 5], o.x, Y + h / 2 + 3); }
+  } else if (kind === 'floor') {
+    const c = ['#ffb3c1', '#a6e0ff', '#ffe08a', '#b8f0b0'][o.col % 4];
+    rr(X, Y, w, h, 5); S2(grad(Y, Y + h, c, shade(c)), shade(c, 0.5));
+    if (!ghost) for (let i = 0; i < 3; i++) { rr(X + 12 + i * 30, Y + 10, 20, 22, 4); fs('#d8f1ff', '#5a7fa0', 2); x.fillStyle = 'rgba(255,255,255,.6)'; x.fillRect(X + 15 + i * 30, Y + 13, 5, 10); }
+  } else if (kind === 'roof') {
+    x.beginPath(); x.moveTo(X, Y + h); x.lineTo(o.x, Y); x.lineTo(X + w, Y + h); x.closePath(); S2(grad(Y, Y + h, '#ff8a7a', '#e04a3a'), '#8e2018');
+    if (!ghost) { x.fillStyle = '#ffd23f'; star(o.x, Y + 8, 10, 4.4); x.fill(); x.strokeStyle = '#c08a00'; x.lineWidth = 1.5; x.stroke(); }
+  } else if (kind === 'beam') {
+    rr(X, Y, w, h, 3); S2(grad(Y, Y + h, '#ff7a6e', '#c43a2e'), '#7a1e16');
+    if (!ghost) { x.strokeStyle = 'rgba(255,255,255,.5)'; x.lineWidth = 2; x.beginPath(); for (let xx = X + 6; xx < X + w - 10; xx += 16) { x.moveTo(xx, Y + h - 4); x.lineTo(xx + 8, Y + 4); x.lineTo(xx + 16, Y + h - 4); } x.stroke(); x.fillStyle = '#ffd23f'; for (const bx of [X + 6, X + w - 6]) { x.beginPath(); x.arc(bx, Y + h / 2, 2.5, 0, 7); x.fill(); } }
+  } else if (kind === 'pillar') {
+    rr(X, Y, w, h, 4); S2(grad(Y, Y + h, '#e4e8ee', '#a9b2c0'), '#5d6676');
+    if (!ghost) { x.fillStyle = 'rgba(255,255,255,.5)'; x.fillRect(X + 5, Y + 4, 5, h - 8); x.fillStyle = '#c7ccd4'; rr(X - 5, Y, w + 10, 8, 3); x.fill(); }
+  } else if (kind === 'slide') {
+    x.beginPath(); x.moveTo(X + 6, Y + h); x.lineTo(X + 6, Y + 22); x.lineTo(X + 40, Y + 22); x.lineTo(X + 40, Y + h); S2(null, ghost ? '#fff' : '#2f78cf', 5);
+    if (!ghost) { x.strokeStyle = '#4c9cf0'; x.lineWidth = 3; for (let yy = Y + 36; yy < Y + h; yy += 16) { x.beginPath(); x.moveTo(X + 6, yy); x.lineTo(X + 40, yy); x.stroke(); } }
+    rr(X, Y + 12, 48, 12, 4); S2('#ffd23f', '#a87400');
+    x.beginPath(); x.moveTo(X + 44, Y + 14); x.quadraticCurveTo(X + 80, Y + 20, X + w - 8, Y + h - 10); x.lineTo(X + w, Y + h - 2); x.lineTo(X + w - 14, Y + h - 2); x.quadraticCurveTo(X + 78, Y + 36, X + 44, Y + 30); x.closePath(); S2(grad(Y, Y + h, '#ff9cc2', '#f06a9e'), '#9a2f5d');
+  } else if (kind === 'swing') {
+    x.lineCap = 'round';
+    x.beginPath(); x.moveTo(X + 6, Y + h); x.lineTo(X + 22, Y + 6); x.lineTo(X + w - 22, Y + 6); x.lineTo(X + w - 6, Y + h); S2(null, ghost ? '#fff' : '#c43a2e', 6);
+    if (!ghost) { const sw = Math.sin(t * 2.4) * 0.25; for (const sx of [X + 40, X + w - 40]) { x.save(); x.translate(sx, Y + 8); x.rotate(sw); x.strokeStyle = '#6d7686'; x.lineWidth = 2; x.beginPath(); x.moveTo(-8, 0); x.lineTo(-8, h - 34); x.moveTo(8, 0); x.lineTo(8, h - 34); x.stroke(); rr(-12, h - 36, 24, 6, 3); fs('#ffc93a', '#a87400', 2); x.restore(); } }
+  } else if (kind === 'seesaw') {
+    x.beginPath(); x.moveTo(o.x - 14, Y + h); x.lineTo(o.x, Y + 14); x.lineTo(o.x + 14, Y + h); x.closePath(); S2('#4cb85a', '#2a7a3a');
+    x.save(); x.translate(o.x, Y + 14); x.rotate(ghost ? 0 : Math.sin(t * 1.8) * 0.12); rr(-w / 2, -6, w, 10, 4); S2(grad(-6, 4, '#ffb877', '#e06a1c'), '#a04510');
+    if (!ghost) for (const sx of [-w / 2 + 12, w / 2 - 12]) { rr(sx - 4, -18, 8, 14, 3); fs('#ffd23f', '#a87400', 2); }
+    x.restore();
+  } else if (kind === 'house') {
+    rr(X + 8, Y + 40, w - 16, h - 40, 4); S2(grad(Y + 40, Y + h, '#ffe08a', '#f5b400'), '#a87400');
+    x.beginPath(); x.moveTo(X, Y + 44); x.lineTo(o.x, Y + 4); x.lineTo(X + w, Y + 44); x.closePath(); S2(grad(Y, Y + 44, '#7fd0ff', '#2f78cf'), '#1d4f9e');
+    if (!ghost) { rr(o.x - 12, Y + h - 34, 24, 34, [12, 12, 0, 0]); fs('#c98a52', '#5a3a1a', 2); x.beginPath(); x.arc(o.x, Y + 58, 8, 0, 7); fs('#d8f1ff', '#5a7fa0', 2); x.strokeStyle = '#5ccf6e'; x.lineWidth = 3; x.beginPath(); x.moveTo(X + 14, Y + h); x.lineTo(X + 14, Y + h - 12); x.stroke(); }
+  }
+  x.setLineDash([]);
+  x.restore();
+}
+function shade(hex, k = 0.75) { const n = parseInt(hex.slice(1), 16); const r = (n >> 16) * k | 0, g = (n >> 8 & 255) * k | 0, b = (n & 255) * k | 0; return `rgb(${r},${g},${b})`; }
+function star(cx, cy, R1, r1) { x.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, q = i % 2 ? r1 : R1; x.lineTo(cx + Math.cos(a) * q, cy + Math.sin(a) * q); } x.closePath(); }
+
+// ---------- scene pieces ----------
+let soilPat = null;
+function soilPattern() {
+  if (soilPat) return soilPat;
+  const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d');
+  let s = 7; const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 70; i++) { const px = rnd() * 256, py = rnd() * 256, r = 2 + rnd() * 6; g.fillStyle = rnd() < 0.5 ? 'rgba(80,45,15,.16)' : 'rgba(255,235,200,.16)'; g.beginPath(); g.ellipse(px, py, r * 1.3, r, rnd() * 3, 0, 7); g.fill(); }
+  for (let i = 0; i < 14; i++) { const px = rnd() * 256, py = rnd() * 256, r = 6 + rnd() * 8; g.fillStyle = 'rgba(160,150,140,.35)'; g.beginPath(); g.ellipse(px, py, r, r * 0.7, rnd() * 3, 0, 7); g.fill(); g.fillStyle = 'rgba(255,255,255,.25)'; g.beginPath(); g.ellipse(px - r * 0.3, py - r * 0.25, r * 0.35, r * 0.2, 0, 0, 7); g.fill(); }
+  soilPat = x.createPattern(c, 'repeat'); try { soilPat.setTransform(new DOMMatrix().scale(0.5)); } catch {}
+  return soilPat;
+}
+function drawBg() {
+  const key = `${Wd.theme}|${LW}|${VH}`;
+  if (bgKey !== key) {
+    bgKey = key; bgC = document.createElement('canvas');
+    const k = Math.min(2, window.devicePixelRatio || 1) * 0.75; bgC.width = Math.max(1, Math.round(LW * k)); bgC.height = Math.max(1, Math.round(LH * k));
+    const g = bgC.getContext('2d'); g.scale(k, k);
+    const th = THEMES[Wd.theme], gy = VH - (YB - GY) * S;
+    const sk = g.createLinearGradient(0, 0, 0, gy); sk.addColorStop(0, th.sky[0]); sk.addColorStop(0.65, th.sky[1]); sk.addColorStop(1, th.sky[2]);
+    g.fillStyle = sk; g.fillRect(0, 0, LW, LH);
+    // sun
+    const sx = LW * 0.82, sy = Math.max(40, gy * 0.22);
+    g.fillStyle = Wd.theme === 'dusk' ? 'rgba(255,220,150,.5)' : 'rgba(255,250,200,.55)'; g.beginPath(); g.arc(sx, sy, 46, 0, 7); g.fill();
+    g.fillStyle = Wd.theme === 'dusk' ? '#ffb14a' : '#ffe066'; g.beginPath(); g.arc(sx, sy, 30, 0, 7); g.fill(); g.strokeStyle = Wd.theme === 'dusk' ? '#e07a20' : '#f0a020'; g.lineWidth = 3; g.stroke();
+    // far city / hills
+    g.fillStyle = th.far;
+    let bx = -20; let s2 = 3; const rnd = () => (s2 = (s2 * 16807) % 2147483647) / 2147483647;
+    while (bx < LW) { const bw = 30 + rnd() * 40, bh = 40 + rnd() * 70; g.beginPath(); g.roundRect(bx, gy - 60 * S - bh * S, bw * S, (bh + 80) * S, 4); g.fill(); bx += bw * S + 6; }
+    for (const [amp, col, off, yo] of [[34, th.hill[0], 0.4, 50], [26, th.hill[1], 2.1, 22]]) {
+      g.fillStyle = col; g.beginPath(); g.moveTo(0, LH);
+      for (let px = 0; px <= LW + 20; px += 20) g.lineTo(px, gy - yo * S - (Math.sin(px / (160 * S) + off) * 0.5 + 0.5) * amp * S);
+      g.lineTo(LW, LH); g.closePath(); g.fill();
+    }
+  }
+  x.drawImage(bgC, 0, 0, LW, LH);
+  // drifting clouds
+  x.fillStyle = 'rgba(255,255,255,.88)';
+  const gy = VH - (YB - GY) * S;
+  for (let i = 0; i < 4; i++) {
+    const cx = ((i * 263 + t * (6 + i * 2)) % (LW + 240)) - 120, cy = 24 + ((i * 97) % Math.max(60, gy * 0.45));
+    x.beginPath(); x.ellipse(cx, cy, 36, 13, 0, 0, 7); x.ellipse(cx - 18, cy + 2, 20, 11, 0, 0, 7); x.ellipse(cx + 14, cy - 8, 20, 14, 0, 0, 7); x.fill();
+  }
+  if (Wd.theme === 'snow') { x.fillStyle = 'rgba(255,255,255,.85)'; for (let i = 0; i < 40; i++) { const fx = (i * 97.3 + Math.sin(t + i) * 12 + t * 8) % LW, fy = (i * 53.1 + t * (20 + i % 5 * 6)) % VH; x.beginPath(); x.arc((fx + LW) % LW, fy, 1.6 + (i % 3), 0, 7); x.fill(); } }
+}
+function drawTerrain() {
+  const th = THEMES[Wd.theme], w = Wd;
+  const c0 = Math.max(0, C0(camX) - 2), c1 = Math.min(w.n - 1, C0(camX + visW()) + 2);
+  // holes show the far wall of the hole (darker dirt) instead of the sky behind
+  x.fillStyle = grad(GY, GY + 160, '#8a5a32', '#5e3a1e'); x.fillRect(c0 * CW - 4, GY + 6, (c1 - c0 + 2) * CW + 8, YB - GY);
+  x.strokeStyle = 'rgba(60,35,15,.25)'; x.lineWidth = 2; x.beginPath(); for (let yy = GY + 26; yy < GY + 200; yy += 22) { x.moveTo(c0 * CW, yy); x.lineTo(c1 * CW + CW, yy + 4); } x.stroke();
+  // the ground carries on past both ends of the site
+  const xa = Math.min(0, camX - 60), xb = Math.max(w.ww, camX + visW() + 60);
+  x.beginPath(); x.moveTo(xa, YB + 20); x.lineTo(xa, w.top[0]);
+  for (let c = c0; c <= c1; c++) x.lineTo(c * CW + CW / 2, w.top[c]);
+  x.lineTo(xb, w.top[w.n - 1]); x.lineTo(xb, YB + 20); x.closePath();
+  x.fillStyle = grad(GY - 120, YB, th.dirt[0], th.dirt[1]); x.fill();
+  x.save(); x.clip(); x.fillStyle = soilPattern(); x.fillRect(xa, GY - 200, xb - xa, YB - GY + 240);
+  // dug walls look darker and damp
+  x.fillStyle = 'rgba(70,40,15,.18)';
+  for (let c = c0; c <= c1; c++) if (w.top[c] > w.top0[c] + 2) x.fillRect(c * CW, w.top[c], CW + 0.5, 14);
+  x.restore();
+  // surface line
+  x.beginPath(); for (let c = c0; c <= c1; c++) x.lineTo(c * CW + CW / 2, w.top[c]);
+  x.strokeStyle = 'rgba(90,50,20,.55)'; x.lineWidth = 2.5; x.stroke();
+  // crust bands for untouched grass / road columns
+  let run = null;
+  const flush = () => {
+    if (!run) return;
+    const [a, b, k] = run;
+    x.beginPath(); for (let c = a; c <= b; c++) x.lineTo(c * CW + (c === a ? 0 : c === b ? CW : CW / 2), w.top[c] - 2);
+    for (let c = b; c >= a; c--) x.lineTo(c * CW + (c === a ? 0 : c === b ? CW : CW / 2), w.top[c] + (k === R ? 9 : 10));
+    x.closePath();
+    if (k === R) { x.fillStyle = '#6f7480'; x.fill(); x.strokeStyle = '#4c515c'; x.lineWidth = 1.5; x.stroke(); }
+    else { x.fillStyle = th.crust; x.fill(); x.strokeStyle = th.crustD; x.lineWidth = 2; x.stroke(); }
+    if (k === G && Wd.theme !== 'snow' && Wd.theme !== 'beach') { x.strokeStyle = th.crustD; x.lineWidth = 2; x.lineCap = 'round'; x.beginPath(); for (let c = a + 2; c < b; c += 5) { const gx = c * CW, gy = w.top[c] - 1; x.moveTo(gx, gy); x.lineTo(gx - 2, gy - 6); x.moveTo(gx + 3, gy); x.lineTo(gx + 4, gy - 5); } x.stroke(); }
+    if (k === R) { x.fillStyle = 'rgba(255,255,255,.5)'; for (let c = a + 3; c < b - 4; c += 12) x.fillRect(c * CW, w.top[c] + 3, 16, 2.5); }
+    run = null;
+  };
+  for (const [a, b] of [[xa, 0], [w.ww, xb]]) if (b > a) { x.fillStyle = th.crust; x.fillRect(a, GY - 2, b - a, 12); x.strokeStyle = th.crustD; x.lineWidth = 2; x.beginPath(); x.moveTo(a, GY - 2); x.lineTo(b, GY - 2); x.moveTo(a, GY + 10); x.lineTo(b, GY + 10); x.stroke(); }
+  for (let c = c0; c <= c1; c++) {
+    const k = w.kind[c], ok = (k === G || k === R) && w.top[c] >= w.top0[c] - 1.5;
+    if (ok && run && run[2] === k && run[1] === c - 1) run[1] = c;
+    else { flush(); if (ok) run = [c, c, k]; }
+  }
+  flush();
+}
+function drawWaters() {
+  for (const wv of Wd.waters) {
+    if ((wv.a ?? 1) <= 0) continue;
+    x.beginPath(); x.moveTo(wv.x0, wv.y); x.lineTo(wv.x1, wv.y);
+    for (let c = Math.min(Wd.n - 1, C0(wv.x1)); c >= Math.max(0, C0(wv.x0)); c--) x.lineTo(c * CW + CW / 2, Math.max(Wd.top[c], wv.y));
+    x.closePath();
+    x.globalAlpha = wv.a ?? 1; x.fillStyle = grad(wv.y, wv.y + 90, 'rgba(90,190,255,.85)', 'rgba(40,120,210,.9)'); x.fill();
+    x.strokeStyle = 'rgba(255,255,255,.75)'; x.lineWidth = 2.5; x.beginPath();
+    for (let xx = wv.x0 + 6; xx < wv.x1 - 10; xx += 22) { if (topAt(xx) <= wv.y + 2) continue; const o = Math.sin(t * 2 + xx * 0.05) * 2; x.moveTo(xx, wv.y + 4 + o); x.quadraticCurveTo(xx + 5, wv.y + 1 + o, xx + 10, wv.y + 4 + o); }
+    x.stroke(); x.globalAlpha = 1;
+  }
+}
+function drawGoals() {
+  const w = Wd, pulse = 0.55 + Math.sin(t * 4) * 0.2;
+  for (const g of w.goals) {
+    if (g.done) continue;
+    if (g.type === 'dig') {
+      // dashed outline of the hole we want
+      x.save(); x.setLineDash([8, 7]); x.lineDashOffset = -t * 20; x.strokeStyle = `rgba(255,255,255,${pulse + 0.2})`; x.lineWidth = 3.5;
+      x.beginPath(); eachCol(w, g.x0, g.x1, c => x.lineTo(c * CW + CW / 2, w.floor[c])); x.stroke(); x.restore();
+      x.fillStyle = 'rgba(255,255,255,.12)'; x.beginPath(); eachCol(w, g.x0, g.x1, c => x.lineTo(c * CW + CW / 2, w.floor[c])); eachColRev(g.x0, g.x1, c => x.lineTo(c * CW + CW / 2, Math.min(w.top[c], w.floor[c]))); x.closePath(); x.fill();
+    }
+    if (g.type === 'fill') {
+      x.save(); x.setLineDash([8, 7]); x.strokeStyle = `rgba(255,255,255,${pulse + 0.2})`; x.lineWidth = 3.5; x.beginPath(); x.moveTo(g.x0, g.y); x.lineTo(g.x1, g.y); x.stroke(); x.restore();
+    }
+    if (g.type === 'rocks') {
+      x.fillStyle = `rgba(255,220,80,${pulse * 0.35})`; x.fillRect(g.zx, GY - 4, w.ww - g.zx, 10);
+    }
+    if (g.type === 'flat') {
+      x.save(); x.setLineDash([8, 7]); x.strokeStyle = `rgba(255,255,255,${pulse})`; x.lineWidth = 3; x.beginPath(); x.moveTo(g.x0, g.y - 1); x.lineTo(g.x1, g.y - 1); x.stroke(); x.restore();
+    }
+  }
+}
+function eachColRev(x0, x1, fn) { for (let c = Math.min(Wd.n - 1, C0(x1)); c >= Math.max(0, C0(x0)); c--) fn(c); }
+function drawRocks() {
+  for (const r of Wd.rocks) {
+    x.save(); x.translate(r.x, r.y); x.rotate(r.rot);
+    x.beginPath(); for (let i = 0; i < 9; i++) { const a = i / 9 * Math.PI * 2, q = r.r * (0.86 + 0.14 * Math.sin(i * 2.3 + r.seed)); x.lineTo(Math.cos(a) * q, Math.sin(a) * q); } x.closePath();
+    x.rotate(-r.rot);
+    const g = x.createRadialGradient(-r.r * 0.35, -r.r * 0.4, r.r * 0.1, 0, 0, r.r * 1.1); g.addColorStop(0, '#eef0f4'); g.addColorStop(0.5, r.col); g.addColorStop(1, shade(r.col.length === 7 ? r.col : '#9aa3b5', 0.7));
+    x.fillStyle = g; x.fill(); x.strokeStyle = '#5d6676'; x.lineWidth = 3; x.stroke();
+    x.rotate(r.rot);
+    x.strokeStyle = 'rgba(80,90,105,.4)'; x.lineWidth = 2; x.beginPath(); x.moveTo(-r.r * 0.3, -r.r * 0.1); x.lineTo(r.r * 0.1, r.r * 0.2); x.lineTo(r.r * 0.4, r.r * 0.05); x.stroke();
+    x.restore();
+    // a little face once it is in the pit
+    if (r.inZone) { x.fillStyle = '#2a2a33'; for (const sd of [-1, 1]) { x.beginPath(); x.arc(r.x + sd * r.r * 0.3, r.y - r.r * 0.1, 2.4, 0, 7); x.fill(); } x.strokeStyle = '#2a2a33'; x.lineWidth = 2; x.beginPath(); x.arc(r.x, r.y + r.r * 0.12, r.r * 0.2, 0.3, Math.PI - 0.3); x.stroke(); }
+  }
+}
+function drawBumps() {
+  for (const b of Wd.bumps) {
+    const by = topAt(b.x);
+    // the new road: rough grey until rolled, then smooth black with lines
+    const flat = b.h < 0.5;
+    x.beginPath(); x.moveTo(b.x - b.w / 2 - 14, by + 1);
+    for (let i = 0; i <= 16; i++) { const u = i / 16, xx = b.x - b.w / 2 + u * b.w; x.lineTo(xx, topAt(xx) - b.h * (0.5 - 0.5 * Math.cos(u * Math.PI * 2)) - (i % 2 && !flat ? b.h * 0.12 : 0)); }
+    x.lineTo(b.x + b.w / 2 + 14, by + 1); x.closePath();
+    x.fillStyle = flat ? '#3d424c' : grad(by - b.h, by, '#7a7f8a', '#4a4f5a'); x.fill();
+    if (!flat) {
+      x.strokeStyle = '#2f333b'; x.lineWidth = 2; x.stroke();
+      x.fillStyle = 'rgba(255,255,255,.25)'; for (let i = 0; i < 5; i++) { x.beginPath(); x.arc(b.x - b.w * 0.3 + i * b.w * 0.15, by - b.h * 0.6 + (i % 2) * 4, 2, 0, 7); x.fill(); }
+      // steam: it's hot new asphalt
+      x.strokeStyle = 'rgba(255,255,255,.55)'; x.lineWidth = 2.5; x.lineCap = 'round';
+      for (let i = 0; i < 2; i++) { const sx = b.x - 10 + i * 18, ph = (t * 0.8 + b.steam + i * 0.5) % 1; x.globalAlpha = 1 - ph; x.beginPath(); x.moveTo(sx, by - b.h - 6 - ph * 24); x.quadraticCurveTo(sx + 6, by - b.h - 14 - ph * 24, sx, by - b.h - 22 - ph * 24); x.stroke(); }
+      x.globalAlpha = 1;
+    }
+  }
+  // finished road gets painted lines
+  const g = Wd.goals.find(q => q.type === 'bumps');
+  if (g && g.done) { x.fillStyle = '#fff6c0'; for (let xx = 40; xx < Wd.ww - 40; xx += 46) { x.globalAlpha = clamp(rewardT * 2 - xx / Wd.ww * 2, 0, 1); x.fillRect(xx, topAt(xx) + 3, 22, 3); } x.globalAlpha = 1; }
+}
+function drawMoulds(front) {
+  for (const m of Wd.moulds) {
+    const X = m.x - m.w / 2, Y = GY + 14;
+    if (!front) {
+      rr(X, Y, m.w, m.d, 3); x.fillStyle = '#6b4a2c'; x.fill();
+      if (m.fill > 0) { const h = m.d * m.fill; x.fillStyle = grad(Y + m.d - h, Y + m.d, '#b8bfc9', '#8a919c'); x.fillRect(X + 3, Y + m.d - h, m.w - 6, h); x.fillStyle = 'rgba(255,255,255,.35)'; x.fillRect(X + 3, Y + m.d - h, m.w - 6, 3); }
+      if (m.done) {
+        // a smooth finished tile with a paw print
+        x.fillStyle = grad(Y, Y + m.d, '#dfe3ea', '#aab2bf'); x.fillRect(X + 3, Y, m.w - 6, m.d);
+        const k = Math.min(1, m.pop * 2); x.globalAlpha = k; x.fillStyle = '#8a919c';
+        x.beginPath(); x.ellipse(m.x, Y + m.d * 0.58, 7, 6, 0, 0, 7); x.fill();
+        for (const [px, py] of [[-8, -6], [-3, -10], [3, -10], [8, -6]]) { x.beginPath(); x.arc(m.x + px, Y + m.d * 0.58 + py - 2, 2.6, 0, 7); x.fill(); }
+        x.globalAlpha = 1;
+      }
+    } else {
+      // wooden frame
+      x.fillStyle = '#c98a52'; x.strokeStyle = '#7a4f2a'; x.lineWidth = 2;
+      rr(X - 7, Y - 6, m.w + 14, 9, 3); x.fill(); x.stroke();
+      if (!m.done) { const bob = Math.sin(t * 5 + m.x) * 3; x.fillStyle = '#ffd23f'; x.beginPath(); x.moveTo(m.x, Y - 14 + bob); x.lineTo(m.x - 9, Y - 26 + bob); x.lineTo(m.x + 9, Y - 26 + bob); x.closePath(); x.fill(); x.strokeStyle = '#c08a00'; x.lineWidth = 2; x.stroke(); }
+    }
+  }
+  if (!front) for (const s of Wd.splats) { x.globalAlpha = Math.min(1, s.life); x.fillStyle = '#9aa1ab'; x.beginPath(); x.ellipse(s.x, GY + 10, s.s * 1.6, s.s * 0.5, 0, 0, 7); x.fill(); x.globalAlpha = 1; }
+}
+function drawMarks() {
+  for (const m of Wd.marks) {
+    const gy = topAt(m.x);
+    if (!m.done) {
+      // ✖ on the ground + a ghost of what will grow there + the hole so far
+      if (m.depth > 0) { rr(m.x - 9, gy, 18, m.depth + 6, 6); x.fillStyle = '#4a2c14'; x.fill(); }
+      x.save(); x.globalAlpha = 0.4 + Math.sin(t * 4) * 0.12; x.setLineDash([6, 5]); drawPost(m.kind, m.x, gy, 1, true); x.restore();
+      x.strokeStyle = '#ff5d5d'; x.lineWidth = 5; x.lineCap = 'round'; x.beginPath(); x.moveTo(m.x - 9, gy - 2); x.lineTo(m.x + 9, gy + 7); x.moveTo(m.x + 9, gy - 2); x.lineTo(m.x - 9, gy + 7); x.stroke();
+    } else {
+      const k = m.pop < 1 ? easeBack(m.pop) : 1;
+      drawPost(m.kind, m.x, gy, k, false);
+    }
+  }
+}
+const easeBack = u => { const c = 1.7; return 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); };
+function drawPost(kind, px, gy, k, ghost) {
+  x.save(); x.translate(px, gy); x.scale(k, k);
+  const S2 = (f, s, lw = 3) => fs(ghost ? 'rgba(255,255,255,.3)' : f, ghost ? '#fff' : s, lw);
+  if (kind === 'lamp') {
+    rr(-4, -120, 8, 120, 3); S2('#5b6170', '#2c3038', 2);
+    x.beginPath(); x.moveTo(0, -116); x.quadraticCurveTo(0, -132, 18, -130); S2(null, ghost ? '#fff' : '#2c3038', 5);
+    rr(10, -132, 22, 10, 4); S2('#5b6170', '#2c3038', 2);
+    if (!ghost) { const on = Wd.goals.every(g => g.done); x.fillStyle = on ? '#fff3a0' : '#e8edf3'; x.beginPath(); x.ellipse(21, -120, 9, 5, 0, 0, 7); x.fill(); if (on) { x.fillStyle = 'rgba(255,240,150,.35)'; x.beginPath(); x.moveTo(12, -120); x.lineTo(-14, 0); x.lineTo(56, 0); x.lineTo(30, -120); x.closePath(); x.fill(); } }
+  } else if (kind === 'pile') {
+    rr(-14, -70, 28, 72, 4); S2(grad(-70, 0, '#e4e8ee', '#a9b2c0'), '#5d6676');
+    if (!ghost) { x.fillStyle = 'rgba(255,255,255,.5)'; x.fillRect(-9, -66, 5, 62); x.fillStyle = '#ffd23f'; rr(-16, -76, 32, 8, 3); x.fill(); }
+  } else if (kind === 'tree') {
+    rr(-6, -60, 12, 62, 4); S2('#a0683a', '#5a3a1a', 2);
+    x.beginPath(); x.arc(0, -78, 30, 0, 7); x.arc(-20, -62, 18, 0, 7); x.arc(20, -62, 18, 0, 7); S2('#6cc24a', '#3d8a2a');
+    if (!ghost) { x.fillStyle = '#ff6b6b'; for (const [ax, ay] of [[-12, -84], [10, -72], [16, -92], [-18, -64]]) { x.beginPath(); x.arc(ax, ay, 4, 0, 7); x.fill(); } x.fillStyle = 'rgba(255,255,255,.35)'; x.beginPath(); x.ellipse(-10, -94, 10, 5, -0.4, 0, 7); x.fill(); }
+  } else if (kind === 'well') {
+    rr(-30, -36, 60, 36, 6); S2(grad(-36, 0, '#d0d5dd', '#9aa3b2'), '#5d6676');
+    if (!ghost) {
+      x.strokeStyle = 'rgba(90,100,115,.4)'; x.lineWidth = 2; for (let yy = -26; yy < 0; yy += 10) { x.beginPath(); x.moveTo(-30, yy); x.lineTo(30, yy); x.stroke(); }
+      // fountain
+      x.strokeStyle = 'rgba(90,190,255,.9)'; x.lineWidth = 5; x.lineCap = 'round';
+      for (let i = -2; i <= 2; i++) { const h = 60 + Math.sin(t * 6 + i) * 6; x.beginPath(); x.moveTo(0, -36); x.quadraticCurveTo(i * 10, -36 - h, i * 22, -38); x.stroke(); }
+      x.fillStyle = 'rgba(200,235,255,.9)'; for (let i = 0; i < 6; i++) { const a = t * 3 + i; x.beginPath(); x.arc(Math.sin(a) * 26, -40 - ((t * 60 + i * 17) % 50), 3, 0, 7); x.fill(); }
+    }
+  }
+  x.setLineDash([]);
+  x.restore();
+}
+function drawFinds() {
+  for (const f of Wd.finds) {
+    let fx = f.x, fy = f.y;
+    if (f.found) { const u = Math.min(1, f.pop); fx = f.x; fy = lerp(f.y, topAt(f.x) - 14, Math.min(1, u * 1.6)) - Math.sin(Math.min(1, u * 1.6) * Math.PI) * 60; }
+    x.save(); x.translate(fx, fy);
+    if (!f.found) x.globalAlpha = 0.9;
+    if (f.kind === 'bone') {
+      x.rotate(-0.2); rr(-26, -6, 52, 12, 6); fs('#fffaf0', '#b9a98a', 2.5);
+      for (const sx of [-26, 26]) for (const sy of [-6, 6]) { x.beginPath(); x.arc(sx, sy, 8, 0, 7); fs('#fffaf0', '#b9a98a', 2.5); }
+      rr(-26, -6, 52, 12, 6); x.fillStyle = '#fffaf0'; x.fill();
+    } else if (f.kind === 'chest') {
+      rr(-26, -16, 52, 34, 6); fs(grad(-16, 18, '#d99a5a', '#a0683a'), '#5a3a1a', 2.5);
+      x.beginPath(); x.moveTo(-26, -6); x.quadraticCurveTo(0, -30, 26, -6); fs('#c98a52', '#5a3a1a', 2.5);
+      x.fillStyle = '#ffd23f'; rr(-5, -8, 10, 12, 3); x.fill(); x.strokeStyle = '#a87400'; x.lineWidth = 1.5; x.stroke();
+      if (f.found) { x.fillStyle = '#ffd23f'; for (let i = 0; i < 3; i++) { x.beginPath(); x.arc(-12 + i * 12, -20 - Math.abs(Math.sin(t * 5 + i)) * 4, 5, 0, 7); x.fill(); } }
+    } else if (f.kind === 'egg') {
+      x.beginPath(); x.ellipse(0, 0, 18, 24, 0, 0, 7); fs(grad(-24, 24, '#e6fff0', '#9ee6b8'), '#3d8a5a', 2.5);
+      x.fillStyle = '#5ccf8e'; for (const [ex, ey, er] of [[-6, -8, 4], [6, 4, 5], [-4, 12, 3]]) { x.beginPath(); x.arc(ex, ey, er, 0, 7); x.fill(); }
+      if (f.found && f.pop >= 1) { x.fillStyle = '#2a1f1a'; for (const sd of [-1, 1]) { x.beginPath(); x.arc(sd * 6, -4, 2.4, 0, 7); x.fill(); } }
+    }
+    x.restore();
+    if (!f.found) { x.fillStyle = `rgba(255,255,200,${0.4 + Math.sin(t * 5 + f.x) * 0.3})`; star(f.x + 18, f.y - 26, 6, 2.5); x.fill(); }
+  }
+}
+function drawHopper(hp) {
+  const X = hp.x, top = GY - 300;
+  x.strokeStyle = '#6d7686'; x.lineWidth = 6; x.lineCap = 'round';
+  for (const sx of [-50, 50]) { x.beginPath(); x.moveTo(X + sx, GY); x.lineTo(X + sx * 0.8, top + 90); x.stroke(); }
+  x.lineWidth = 3; x.beginPath(); x.moveTo(X - 46, GY - 40); x.lineTo(X + 44, GY - 120); x.moveTo(X + 46, GY - 40); x.lineTo(X - 44, GY - 120); x.stroke();
+  x.beginPath(); x.moveTo(X - 56, top); x.lineTo(X + 56, top); x.lineTo(X + 56, top + 70); x.lineTo(X + 12, top + 104); x.lineTo(X - 12, top + 104); x.lineTo(X - 56, top + 70); x.closePath();
+  fs(grad(top, top + 104, '#7fd0ff', '#2f78cf'), '#1d4f9e', 3);
+  const sand = THEMES[Wd.theme].grain[0];
+  x.fillStyle = sand; x.beginPath(); x.moveTo(X - 52, top + 6); x.quadraticCurveTo(X, top - 22, X + 52, top + 6); x.closePath(); x.fill();
+  x.fillStyle = 'rgba(255,255,255,.35)'; rr(X - 48, top + 10, 10, 54, 4); x.fill();
+  rr(X - 12, top + 100, 24, 10, 3); fs(hp.pour > 0 ? '#5ccf6e' : '#ff7a6e', '#2c3038', 2);
+}
+function drawSpect() {
+  for (const s of spect) {
+    const gy = topAt(s.x);
+    // little fence in front of the watcher
+    drawAnimal(s.kind, s.x, gy - Math.sin(Math.min(1, s.hop / 0.6) * Math.PI) * 16, 15, s.dir, s.hop > 0 || state === 'cheer');
+  }
+}
+function drawAnimal(kind, ax, ay, r, dir, happy) {
+  const C = { bunny: ['#fff', '#e0d6e8', '#9a8aa8'], bear: ['#d9a06c', '#b07a45', '#6b4a2c'], duck: ['#ffe36b', '#ffc93a', '#a87400'], cat: ['#ffb877', '#ff8c3a', '#a04510'], pig: ['#ffc2d6', '#ff9cc2', '#b05a7a'], frog: ['#9be38a', '#5ccf6e', '#2a7a3a'] }[kind];
+  x.save(); x.translate(ax, ay); x.scale(dir, 1);
+  x.fillStyle = 'rgba(40,30,20,.16)'; x.beginPath(); x.ellipse(0, 0, r * 1.1, r * 0.25, 0, 0, 7); x.fill();
+  const head = () => { x.beginPath(); x.arc(0, -r * 1.7, r, 0, 7); };
+  // ears
+  x.lineWidth = 2.5; x.strokeStyle = C[2];
+  if (kind === 'bunny') for (const sd of [-1, 1]) { x.beginPath(); x.ellipse(sd * r * 0.4, -r * 2.8, r * 0.28, r * 0.75, sd * 0.15, 0, 7); fs(C[0], C[2], 2.5); x.fillStyle = '#ffc2cf'; x.beginPath(); x.ellipse(sd * r * 0.4, -r * 2.75, r * 0.13, r * 0.5, sd * 0.15, 0, 7); x.fill(); }
+  if (kind === 'bear') for (const sd of [-1, 1]) { x.beginPath(); x.arc(sd * r * 0.7, -r * 2.45, r * 0.34, 0, 7); fs(C[1], C[2], 2.5); }
+  if (kind === 'cat') for (const sd of [-1, 1]) { x.beginPath(); x.moveTo(sd * r * 0.85, -r * 2.05); x.lineTo(sd * r * 0.6, -r * 2.85); x.lineTo(sd * r * 0.15, -r * 2.5); x.closePath(); fs(C[1], C[2], 2.5); }
+  if (kind === 'pig') for (const sd of [-1, 1]) { x.beginPath(); x.moveTo(sd * r * 0.8, -r * 2.2); x.lineTo(sd * r * 0.75, -r * 2.7); x.lineTo(sd * r * 0.3, -r * 2.5); x.closePath(); fs(C[1], C[2], 2.5); }
+  // body
+  x.beginPath(); x.ellipse(0, -r * 0.62, r * 0.85, r * 0.7, 0, 0, 7); fs(C[1], C[2], 2.5);
+  if (happy) for (const sd of [-1, 1]) { x.beginPath(); x.ellipse(sd * r * 0.9, -r * 1.1, r * 0.22, r * 0.4, sd * -0.6, 0, 7); fs(C[1], C[2], 2); }
+  head(); const g = x.createRadialGradient(-r * 0.35, -r * 2.05, r * 0.1, 0, -r * 1.7, r * 1.1); g.addColorStop(0, '#fff'); g.addColorStop(0.4, C[0]); g.addColorStop(1, C[1]); x.fillStyle = g; x.fill(); x.strokeStyle = C[2]; x.lineWidth = 2.5; x.stroke();
+  if (kind === 'frog') for (const sd of [-1, 1]) { x.beginPath(); x.arc(sd * r * 0.45, -r * 2.55, r * 0.32, 0, 7); fs(C[0], C[2], 2.5); }
+  // face
+  const ey = kind === 'frog' ? -r * 2.55 : -r * 1.8;
+  x.fillStyle = '#2a1f1a';
+  for (const sd of [-1, 1]) { if (happy) { x.strokeStyle = '#2a1f1a'; x.lineWidth = 2; x.beginPath(); x.arc(sd * r * 0.38, ey + 1, r * 0.13, Math.PI + 0.3, -0.3); x.stroke(); } else { x.beginPath(); x.arc(sd * r * 0.38, ey, r * 0.12, 0, 7); x.fill(); x.fillStyle = '#fff'; x.beginPath(); x.arc(sd * r * 0.38 - 1, ey - 1.5, r * 0.05, 0, 7); x.fill(); x.fillStyle = '#2a1f1a'; } }
+  x.fillStyle = 'rgba(255,120,140,.45)'; for (const sd of [-1, 1]) { x.beginPath(); x.ellipse(sd * r * 0.62, -r * 1.48, r * 0.18, r * 0.1, 0, 0, 7); x.fill(); }
+  if (kind === 'duck') { x.beginPath(); x.ellipse(r * 0.15, -r * 1.48, r * 0.42, r * 0.18, 0, 0, 7); fs('#ff9f3a', '#c06a10', 2); }
+  else if (kind === 'pig') { x.beginPath(); x.ellipse(0, -r * 1.45, r * 0.32, r * 0.22, 0, 0, 7); fs('#ffadc8', C[2], 2); x.fillStyle = C[2]; for (const sd of [-1, 1]) { x.beginPath(); x.arc(sd * r * 0.1, -r * 1.45, r * 0.05, 0, 7); x.fill(); } }
+  else { x.strokeStyle = '#2a1f1a'; x.lineWidth = 2; x.beginPath(); x.arc(0, -r * 1.48, r * 0.16, 0.2, Math.PI - 0.2); x.stroke(); }
+  x.restore();
+}
+function drawRibbon() {
+  if (!ribbon) return;
+  const cx = ribbon.cx, y = ribbon.y, span = 100, cut = ribbon.cut;
+  for (const sd of [-1, 1]) {
+    const px = cx + sd * span;
+    rr(px - 4, y - 96, 8, 96, 3); fs('#fff', '#c43a2e', 2);
+    x.fillStyle = '#ff5d5d'; for (let yy = y - 90; yy < y - 4; yy += 16) x.fillRect(px - 4, yy, 8, 7);
+    x.beginPath(); x.arc(px, y - 98, 6, 0, 7); fs('#ffd23f', '#a87400', 2);
+  }
+  x.lineCap = 'round';
+  if (!cut) {
+    const sag = 10 + Math.sin(t * 3) * 2;
+    x.strokeStyle = '#e0303e'; x.lineWidth = 9; x.beginPath(); x.moveTo(cx - span, y - 80); x.quadraticCurveTo(cx, y - 80 + sag * 2, cx + span, y - 80); x.stroke();
+    x.strokeStyle = 'rgba(255,255,255,.4)'; x.lineWidth = 2; x.beginPath(); x.moveTo(cx - span, y - 82); x.quadraticCurveTo(cx, y - 82 + sag * 2, cx + span, y - 82); x.stroke();
+    // big bow
+    for (const sd of [-1, 1]) { x.beginPath(); x.moveTo(cx, y - 70 + sag); x.quadraticCurveTo(cx + sd * 30, y - 96 + sag, cx + sd * 30, y - 70 + sag); x.quadraticCurveTo(cx + sd * 26, y - 50 + sag, cx, y - 70 + sag); fs('#ff4d5e', '#a01e2a', 2.5); }
+    x.beginPath(); x.arc(cx, y - 70 + sag, 7, 0, 7); fs('#ffd23f', '#a87400', 2);
+    // scissors hint
+    const bob = Math.sin(t * 6) * 6;
+    x.font = `${Math.round(40)}px ${EMO}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('✂️', cx + 44, y - 130 + bob);
+    x.font = `${Math.round(34)}px ${EMO}`; x.fillText('👆', cx + 4, y - 30 + bob * 0.6);
+  } else {
+    const k = Math.min(1, cut * 1.5);
+    x.strokeStyle = '#e0303e'; x.lineWidth = 9;
+    x.beginPath(); x.moveTo(cx - span, y - 80); x.quadraticCurveTo(cx - span + 20, y - 40 * k - 70 * (1 - k), cx - span + 10 * k + 70 * (1 - k), y - 80 + 60 * k); x.stroke();
+    x.beginPath(); x.moveTo(cx + span, y - 80); x.quadraticCurveTo(cx + span - 20, y - 40 * k - 70 * (1 - k), cx + span - 10 * k - 70 * (1 - k), y - 80 + 60 * k); x.stroke();
+  }
+}
+function drawRewards() {
+  const L = Wd.reward, k = clamp(rewardT / 1.5, 0, 1);
+  const g = Wd.goals.find(q => q.type === 'dig');
+  if ((L === 'pool' || L === 'pond') && g && g.done) {
+    // water fills the new hole
+    let lo = 1e9; eachCol(Wd, g.x0, g.x1, c => { lo = Math.min(lo, Wd.top0[c]); });
+    const deep = Math.max(...Array.from({ length: C0(g.x1) - C0(g.x0) + 1 }, (_, i) => Wd.top[C0(g.x0) + i]));
+    const wy = lerp(deep, lo + 8, k);
+    x.beginPath(); x.moveTo(g.x0, wy); eachCol(Wd, g.x0, g.x1, c => { if (Wd.top[c] > wy) x.lineTo(c * CW + CW / 2, Wd.top[c]); else x.lineTo(c * CW + CW / 2, wy); }); x.lineTo(g.x1, wy); x.closePath();
+    x.fillStyle = L === 'pool' ? 'rgba(80,200,255,.85)' : 'rgba(70,170,220,.85)'; x.fill();
+    if (L === 'pool') { x.strokeStyle = '#fff'; x.lineWidth = 6; x.beginPath(); x.moveTo(g.x0 - 6, lo - 1); x.lineTo(g.x0 + 8, lo - 1); x.moveTo(g.x1 - 8, lo - 1); x.lineTo(g.x1 + 6, lo - 1); x.stroke(); }
+    if (k >= 1) {
+      // floaties: a duck ring and a beach ball (pool) or lily pads (pond)
+      const bx = (g.x0 + g.x1) / 2, bob = Math.sin(t * 2) * 2;
+      if (L === 'pool') { x.beginPath(); x.arc(bx - 40, wy + bob, 12, 0, 7); fs('#ff7a6e', '#a01e2a', 2.5); x.fillStyle = '#fff'; x.beginPath(); x.arc(bx - 40, wy + bob, 12, -0.4, 0.4); x.lineTo(bx - 40, wy + bob); x.fill(); drawAnimal('duck', bx + 30, wy + 4 + bob, 12, 1, true); }
+      else if (L === 'pond') { for (const [lx, lr] of [[bx - 50, 16], [bx + 40, 13]]) { x.beginPath(); x.ellipse(lx, wy + 1, lr, lr * 0.35, 0, 0.3, Math.PI * 2 - 0.1); fs('#5ccf6e', '#2a7a3a', 2); } x.fillStyle = '#ff9cc2'; star(bx - 50, wy - 6, 7, 3); x.fill(); drawAnimal('frog', bx + 40, wy - 2 + bob, 11, -1, true); }
+    }
+  }
+  if (L === 'canal' && g && g.done && rewardT > 1) { const bx = (g.x0 + g.x1) / 2; drawAnimal('duck', bx - 120 + Math.sin(t * 0.6) * 60, GY + 16 + Math.sin(t * 2) * 2, 11, Math.cos(t * 0.6) > 0 ? 1 : -1, true); }
+  if (L === 'road' && Wd.goals.every(q => q.done) && rewardT > 0.8) {
+    // a little car drives along the new road
+    const cx = ((rewardT - 0.8) * 220) % (Wd.ww + 200) - 100, cy = topAt(cx);
+    x.save(); x.translate(cx, cy); rr(-30, -26, 60, 18, 8); fs(grad(-26, -8, '#ff9cc2', '#f06a9e'), '#9a2f5d', 2.5); rr(-16, -40, 30, 16, [8, 8, 0, 0]); fs('#d8f1ff', '#9a2f5d', 2.5);
+    wheel(-18, -8, 8, rewardT * 10); wheel(18, -8, 8, rewardT * 10); x.restore();
+  }
+  if (Wd.sandbox && Wd.goals.every(q => q.done)) {
+    const [a, b] = Wd.sandbox;
+    x.fillStyle = '#c98a52'; x.strokeStyle = '#7a4f2a'; x.lineWidth = 2; for (const px of [a - 8, b - 4]) { rr(px, GY - 14, 12, 18, 3); x.fill(); x.stroke(); }
+    x.save(); x.translate((a + b) / 2 + 30, GY - 6); x.rotate(-0.3); rr(-10, -8, 20, 14, 3); fs('#ff7a6e', '#a01e2a', 2); x.restore();
+    x.strokeStyle = '#4c9cf0'; x.lineWidth = 3; x.beginPath(); x.moveTo((a + b) / 2 - 30, GY - 4); x.lineTo((a + b) / 2 - 18, GY - 26); x.stroke();
+  }
+}
+function drawUG() {
+  const w = Wd; if (!w.ug) return;
+  for (const u of w.ug) {
+    const c = clamp(C0(u.x), 0, w.n - 1); if (w.top[c] > u.y - 14 || w.top0[c] > GY + 4) continue;
+    x.save(); x.translate(u.x, u.y); x.scale(u.s, u.s);
+    if (u.k === 'worm') { x.strokeStyle = '#ff9cb4'; x.lineWidth = 6; x.lineCap = 'round'; x.beginPath(); x.moveTo(-14, 0); x.quadraticCurveTo(-7, -8 + Math.sin(t * 3 + u.r) * 3, 0, 0); x.quadraticCurveTo(7, 8, 14, 0); x.stroke(); x.fillStyle = '#2a1f1a'; x.beginPath(); x.arc(15, -1, 1.4, 0, 7); x.fill(); }
+    else if (u.k === 'stone') { x.beginPath(); x.ellipse(0, 0, 13, 9, u.r, 0, 7); fs(grad(-9, 9, '#c9c3ba', '#8f887e'), '#6b645a', 2); x.fillStyle = 'rgba(255,255,255,.4)'; x.beginPath(); x.ellipse(-4, -3, 4, 2, 0, 0, 7); x.fill(); }
+    else if (u.k === 'shell') { x.beginPath(); x.arc(0, 0, 9, 0, 7); fs('#f3e4c4', '#b9a07a', 2); x.strokeStyle = '#b9a07a'; x.lineWidth = 1.5; x.beginPath(); for (let a = 0; a < 9; a += 0.4) x.lineTo(Math.cos(a) * a * 0.9, Math.sin(a) * a * 0.9); x.stroke(); }
+    else { x.strokeStyle = 'rgba(120,80,40,.55)'; x.lineWidth = 3; x.lineCap = 'round'; x.beginPath(); x.moveTo(0, -30); x.quadraticCurveTo(-6, -10, 4, 6); x.moveTo(0, -18); x.quadraticCurveTo(10, -10, 14, 2); x.stroke(); }
+    x.restore();
+  }
+}
+function drawDeco() {
+  // trees and cones at the sides of the site (world space, behind everything)
+  const w = Wd;
+  if (!w.deco) {
+    w.deco = []; let s = level * 31 + 7; const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+    for (let xx = 30; xx < w.ww; xx += 90 + rnd() * 80) {
+      const c = C0(xx); if (w.kind[c] !== G || w.top[c] !== GY) continue;
+      w.deco.push({ x: xx, k: rnd() < 0.5 ? 'tree' : rnd() < 0.5 ? 'cone' : 'bush', s: 0.8 + rnd() * 0.5 });
+    }
+    // flag + site sign
+    w.deco.push({ x: 60, k: 'sign', s: 1 });
+    // little things living in the ground (they stay hidden once that dirt is dug away)
+    w.ug = [];
+    for (let xx = 40 + rnd() * 60; xx < w.ww - 30; xx += 110 + rnd() * 120) w.ug.push({ x: xx, y: GY + 50 + rnd() * 90, k: ['worm', 'stone', 'shell', 'root', 'worm', 'stone'][(rnd() * 6) | 0], s: 0.8 + rnd() * 0.4, r: rnd() * 6 });
+  }
+
+  for (const d of w.deco) {
+    const gy = w.top0[clamp(C0(d.x), 0, w.n - 1)];
+    if (Math.abs(w.top[C0(d.x)] - gy) > 3) continue;
+    x.save(); x.translate(d.x, gy); x.scale(d.s, d.s);
+    if (d.k === 'tree') { rr(-5, -50, 10, 52, 3); fs('#a0683a', '#5a3a1a', 2); const tc = Wd.theme === 'snow' ? ['#f4f9ff', '#b9cde0'] : ['#7fd46a', '#3d8a2a']; x.beginPath(); x.arc(0, -62, 24, 0, 7); x.arc(-16, -48, 15, 0, 7); x.arc(16, -48, 15, 0, 7); fs(tc[0], tc[1], 2.5); x.fillStyle = 'rgba(255,255,255,.35)'; x.beginPath(); x.ellipse(-8, -74, 8, 4, -0.4, 0, 7); x.fill(); }
+    else if (d.k === 'cone') { x.beginPath(); x.moveTo(-12, 0); x.lineTo(-4, -30); x.lineTo(4, -30); x.lineTo(12, 0); x.closePath(); fs('#ff8c3a', '#a04510', 2); x.fillStyle = '#fff'; x.fillRect(-7, -18, 14, 5); rr(-15, -3, 30, 5, 2); fs('#ff8c3a', '#a04510', 1.5); }
+    else if (d.k === 'bush') { const tc = Wd.theme === 'snow' ? ['#f4f9ff', '#b9cde0'] : ['#86d872', '#3d8a2a']; x.beginPath(); x.arc(-10, -10, 12, 0, 7); x.arc(6, -14, 14, 0, 7); x.arc(18, -8, 10, 0, 7); fs(tc[0], tc[1], 2.5); }
+    else if (d.k === 'sign') { rr(-3, -60, 6, 60, 2); fs('#a0683a', '#5a3a1a', 2); x.beginPath(); x.moveTo(0, -78); x.lineTo(22, -48); x.lineTo(-22, -48); x.closePath(); fs('#ffd23f', '#a87400', 2.5); x.fillStyle = '#2c3038'; x.font = `900 20px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('!', 0, -56); }
+    x.restore();
+  }
+}
+// bouncing arrow over what to do next
+function nextSpot() {
+  const v = cur(), w = Wd;
+  if (state !== 'play') return null;
+  if (v.type === 'exc') {
+    if (v.load >= v.cap - 1) { const tr = w.veh.find(o => o.type === 'truck' && (!o.npc || o.state === 'park')); if (tr) { const [a, b] = bedRange(tr); return { x: (a + b) / 2, y: bedRim(tr) - 30 }; } return null; }
+    const f = w.finds.find(q => !q.found); if (f) return { x: f.x, y: minTop(f.x - 10, f.x + 10) - 20 };
+    const g = w.goals.find(q => q.type === 'dig' && !q.done); if (g) return { x: (g.x0 + g.x1) / 2, y: minTop(g.x0, g.x1) - 20 };
+    const m = w.goals.find(q => q.type === 'trucks'); if (m) { let best = null; eachCol(w, 0, w.ww, c => { if (w.kind[c] === D && w.top[c] < w.floor[c] - 4 && (!best || w.top[c] < best.y)) best = { x: c * CW, y: w.top[c] - 20 }; }); return best; }
+  }
+  if (v.type === 'truck') {
+    const hp = w.hoppers[0], fl = w.goals.find(q => q.type === 'fill' && !q.done);
+    if (v.load < 200 && hp) return { x: hp.x, y: GY - 210 };
+    if (v.load < 200 && w.veh.some(o => o.type === 'exc')) return null;
+    if (fl) return { x: (fl.x0 + fl.x1) / 2, y: GY - 30 };
+  }
+  if (v.type === 'mixer') { const m = w.moulds.find(q => !q.done); if (m) return null; }
+  if (v.type === 'drill') return null;
+  if (v.type === 'crane') {
+    if (v.hold) { const s = w.slots.find(q => !q.item && q.kind === v.hold.kind && slotOpen(q)); return s && { x: s.x, y: s.y - s.h - 20 }; }
+    const it = w.items.find(o => o.state === 'ground' && !covered(o) && w.slots.some(s => !s.item && s.kind === o.kind && slotOpen(s)));
+    return it && { x: it.x, y: it.y - it.h - 16 };
+  }
+  if (v.type === 'dozer') { const r = w.rocks.find(q => !q.inZone); if (r) return { x: r.x, y: r.y - r.r - 16 }; const fl = w.goals.find(q => q.type === 'flat' && !q.done); if (fl) { let hi = null; eachCol(w, fl.x0, fl.x1, c => { if (w.top[c] < GY - 4 && (!hi || w.top[c] < hi.y)) hi = { x: c * CW, y: w.top[c] - 16 }; }); return hi; } }
+  if (v.type === 'roller') { const b = w.bumps.find(q => q.h > 0.5); if (b) return { x: b.x, y: GY - b.h - 30 }; }
+  return null;
+}
+function drawArrow(p) {
+  if (!p) return;
+  const bob = Math.sin(t * 6) * 7, a = 0.85;
+  x.save(); x.translate(p.x, p.y - 26 + bob); x.globalAlpha = a;
+  x.beginPath(); x.moveTo(0, 22); x.lineTo(-18, 0); x.lineTo(-8, 0); x.lineTo(-8, -20); x.lineTo(8, -20); x.lineTo(8, 0); x.lineTo(18, 0); x.closePath();
+  fs('#ffd23f', '#c47c00', 3); x.restore(); x.globalAlpha = 1;
+}
+
+// ---------- goal card + panel ----------
+const GICON = { dig: '⛏️', fill: '🕳️', flat: '⛰️', rocks: '🪨', trucks: '🚚', slots: '🧱', moulds: '🟫', bumps: '🛣️', marks: '✖️', find: '💎' };
+function goalIcon(g) {
+  if (g.type === 'dig') return { pool: '🏊', pond: '🐸', canal: '🌊', hole: '🕳️' }[g.shape] || '⛏️';
+  if (g.type === 'marks') return { lamp: '💡', pile: '🏛️', tree: '🌳', well: '⛲' }[Wd.marks[0].kind] || '✖️';
+  if (g.type === 'slots') return { cube: '🧱', floor: '🏢', beam: '🌉', pillar: '🌉', slide: '🎠' }[Wd.slots[0].kind] || '🧱';
+  return GICON[g.type];
+}
+function drawCard() {
+  const gs = Wd.goals; if (!gs.length) return;
+  const u = Math.max(1, Math.min(1.35, LW / 600)) * MG.textScale, rowH = 34 * u, pad = 8 * u, w = Math.min(LW - 20, 190 * u), h = pad * 2 + rowH * gs.length;
+  const X = 10, Y = 10;
+  x.fillStyle = 'rgba(255,255,255,.88)'; rr(X, Y, w, h, 14 * u); x.fill(); x.strokeStyle = 'rgba(200,150,60,.6)'; x.lineWidth = 2.5; x.stroke();
+  gs.forEach((g, i) => {
+    const yy = Y + pad + i * rowH + rowH / 2;
+    x.font = `${Math.round(22 * u)}px ${EMO}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(goalIcon(g), X + pad + 13 * u, yy + 1);
+    const bx = X + pad + 32 * u, bw = w - (bx - X) - pad - (g.done ? 26 * u : 0), bh = 14 * u;
+    const counts = { rocks: Wd.rocks.length, trucks: g.n, slots: Wd.slots.length, moulds: Wd.moulds.length, marks: Wd.marks.length, find: Wd.finds.length }[g.type];
+    if (counts && counts <= 6) {
+      const got = Math.round(g.prog * counts), r = Math.min(bh * 0.62, (bw / counts) * 0.38);
+      for (let k = 0; k < counts; k++) { const cx = bx + r + k * (bw - 2 * r) / Math.max(1, counts - 1) * (counts > 1 ? 1 : 0); x.beginPath(); x.arc(counts === 1 ? bx + r : cx, yy, r, 0, 7); fs(k < got ? '#ffc93a' : '#efe4cc', k < got ? '#c47c00' : '#d8c9a6', 2); if (k < got) { x.fillStyle = '#fff'; star(counts === 1 ? bx + r : cx, yy, r * 0.6, r * 0.27); x.fill(); } }
+    } else {
+      rr(bx, yy - bh / 2, bw, bh, bh / 2); x.fillStyle = '#efe4cc'; x.fill();
+      const p = clamp(g.prog / (DONE_AT[g.type] || 1), 0, 1);
+      if (p > 0) { rr(bx, yy - bh / 2, Math.max(bh, bw * p), bh, bh / 2); x.fillStyle = grad(yy - bh / 2, yy + bh / 2, '#9be38a', '#3cb85a'); x.fill(); }
+      rr(bx, yy - bh / 2, bw, bh, bh / 2); x.strokeStyle = '#c99a5a'; x.lineWidth = 2; x.stroke();
+    }
+    if (g.done) { x.font = `${Math.round(20 * u)}px ${EMO}`; x.fillText('✅', X + w - pad - 10 * u, yy + 1); }
+  });
+}
+function drawPanel() {
+  const Y = VH;
+  x.fillStyle = grad(Y, LH, '#fff3d6', '#ffe0a8'); x.fillRect(0, Y, LW, LH - Y);
+  // hazard stripe
+  x.save(); x.beginPath(); x.rect(0, Y, LW, 7); x.clip(); x.fillStyle = '#2c3038'; x.fillRect(0, Y, LW, 7); x.fillStyle = '#ffc93a'; for (let xx = -20; xx < LW + 20; xx += 22) { x.beginPath(); x.moveTo(xx, Y + 7); x.lineTo(xx + 11, Y); x.lineTo(xx + 22, Y); x.lineTo(xx + 11, Y + 7); x.closePath(); x.fill(); } x.restore();
+  const v = cur(); if (!v) return;
+  const glow = glowFor(v);
+  for (const b of btns) {
+    const held = (b.kind === 'pedal' || b.hold) && (press[b.id] > 0 || keys[b.id]);
+    const off = b.kind === 'act' && b.id === 'dump' && v.load <= 0;
+    const col = b.kind === 'pedal' ? ['#bfe3ff', '#6db8f5', '#2f78cf'] : b.kind === 'act' ? (off ? ['#f3ead8', '#e2d6bd', '#b9a888'] : ['#ffd9a8', '#ff9f4a', '#c0601a']) : b.kind === 'horn' ? ['#fff6c0', '#ffd84a', '#c49a00'] : (b.vi === act ? ['#fff', '#ffe08a', '#e0a000'] : ['#ffffff', '#eef2f6', '#b5bfcc']);
+    const dy = held ? 4 : 0;
+    x.fillStyle = 'rgba(120,70,20,.25)'; rr(b.x, b.y + 5, b.w, b.h, 16); x.fill();
+    rr(b.x, b.y + dy, b.w, b.h - 2, 16); x.fillStyle = grad(b.y, b.y + b.h, col[0], col[1]); x.fill(); x.strokeStyle = col[2]; x.lineWidth = 3; x.stroke();
+    if (b.id === glow || (b.kind === 'switch' && glow === 'sw' + b.vi)) { x.save(); x.globalAlpha = 0.5 + Math.sin(t * 8) * 0.4; x.strokeStyle = '#ff5d7a'; x.lineWidth = 5; rr(b.x - 4, b.y - 4 + dy, b.w + 8, b.h + 6, 19); x.stroke(); x.restore(); }
+    x.fillStyle = 'rgba(255,255,255,.45)'; rr(b.x + 8, b.y + 5 + dy, b.w - 16, 8, 4); x.fill();
+    const cx = b.x + b.w / 2, cy = b.y + b.h / 2 + dy;
+    if (b.kind === 'pedal') {
+      const r = Math.min(b.w, b.h) * 0.24; x.fillStyle = '#fff'; x.strokeStyle = '#1d4f9e'; x.lineWidth = 3; x.beginPath();
+      const d = b.id === 'L' ? -1 : 1; x.moveTo(cx + d * r * 1.2, cy); x.lineTo(cx - d * r * 0.8, cy - r * 1.2); x.lineTo(cx - d * r * 0.8, cy + r * 1.2); x.closePath(); x.fill(); x.stroke();
+    } else if (b.kind === 'switch') {
+      const o = Wd.veh[b.vi]; x.save(); x.beginPath(); x.roundRect(b.x + 3, b.y + 3 + dy, b.w - 6, b.h - 8, 13); x.clip();
+      const k = Math.min(b.w / 230, b.h / 160); x.translate(cx, b.y + b.h * 0.84 + dy); x.scale(k, k);
+      drawIcon(o.type);
+      x.restore();
+    } else {
+      const fsz = Math.round(Math.min(b.h * 0.36, b.w * 0.36, 34));
+      x.font = `${fsz}px ${EMO}`; x.textAlign = 'center'; x.textBaseline = 'middle';
+      const lab = b.label && b.h > 70;
+      x.fillStyle = '#5a3a10'; x.fillText(b.ic, cx, cy - (lab ? fsz * 0.38 : 0));
+      if (lab) { let ls = Math.round(Math.min(18 * MG.textScale, b.h * 0.2)); x.font = `800 ${ls}px ${FONT}`; while (ls > 10 && x.measureText(b.label).width > b.w - 8) { ls--; x.font = `800 ${ls}px ${FONT}`; } x.fillStyle = off ? '#a8987a' : '#5a3a10'; x.fillText(b.label, cx, cy + fsz * 0.72); }
+    }
+  }
+}
+function drawIcon(type) {
+  const fake = { type, x: 0, y: 0, ang: 0, dir: 1, wheel: 0, smoke: [], load: 0, cap: 1, tip: 0, carry: 0, depth: 0, spin: 0, drum: t, B: { x: 120, y: -60 }, bang: -0.15, npc: false };
+  if (type === 'exc') { fake.E = ik(shoulder(fake), fake.B); drawVeh(fake, false); drawArm(fake); }
+  else drawVeh(fake, false);
+}
+function glowFor(v) {
+  const w = Wd;
+  if (v.type === 'truck' && v.load > 0 && v.x <= v.xmin + 30 && w.goals.some(g => g.type === 'fill' && !g.done)) return 'A';
+  if (v.type === 'mixer') { const ch = v.x - v.dir * 112; if (w.moulds.some(m => !m.done && Math.abs(m.x - ch) < m.w / 2)) return 'A'; }
+  if (v.type === 'drill') { const b = v.x + v.dir * 94; if (w.marks.some(m => !m.done && Math.abs(m.x - b) < 30)) return 'A'; }
+  if (v.type === 'exc' && v.load > 0 && hintT > 4) return 'dump';
+  // multi-machine levels: show which machine to switch to
+  const others = w.veh.map((o, i) => [o, i]).filter(([o, i]) => !o.npc && i !== act);
+  if (others.length) {
+    if (v.type === 'exc') { const tr = others.find(([o]) => o.type === 'truck'); if (tr && tr[0].load >= tr[0].cap - GA * 3) return 'sw' + tr[1]; }
+    if (v.type === 'truck' && v.load <= 0 && w.goals.some(g => g.type === 'fill' && !g.done)) { const ex = others.find(([o]) => o.type === 'exc'); if (ex) return 'sw' + ex[1]; }
+    if (v.type === 'dozer' && w.goals.filter(g => g.type === 'flat' || g.type === 'rocks').every(g => g.done)) { const ro = others.find(([o]) => o.type === 'roller'); if (ro) return 'sw' + ro[1]; }
+    if (v.type === 'roller' && w.goals.some(g => g.type === 'flat' && !g.done) && w.goals.find(g => g.type === 'bumps')?.done) { const dz = others.find(([o]) => o.type === 'dozer'); if (dz) return 'sw' + dz[1]; }
+  }
+  if (hintT > 5 && ['dozer', 'roller', 'truck', 'mixer', 'drill'].includes(v.type) && Math.abs(v.vx) < 5) return 'R';
+  return null;
+}
+
+// ---------- floats ----------
+function say(wx, wy, text, col) {
+  // stack on top of words that are still showing nearby instead of drawing over them
+  for (let k = 0; k < 4; k++) { const o = floats.find(f => f.life > 0.5 && Math.abs(f.x - wx) < 150 && Math.abs(f.y - wy) < 30); if (!o) break; wy = o.y - 34; }
+  floats.push({ x: wx, y: wy, text, col, life: 1.3 }); if (floats.length > 5) floats.shift();
+}
+function drawFloats() {
+  x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineJoin = 'round';
+  for (const f of floats) {
+    const sz = Math.round(Math.max(20, Math.min(32, 26 * S)) * MG.textScale);
+    x.font = `900 ${sz}px system-ui,${FONT}`;
+    const tw = x.measureText(f.text).width;
+    const sx = clamp(wx2s(f.x), tw / 2 + 8, LW - tw / 2 - 8), sy = Math.max(sz, wy2s(f.y) - (1.3 - f.life) * 30);
+    x.globalAlpha = Math.min(1, f.life * 2.5);
+    x.lineWidth = Math.max(3, sz * 0.2); x.strokeStyle = '#fff'; x.strokeText(f.text, sx, sy);
+    x.fillStyle = f.col; x.fillText(f.text, sx, sy);
+  }
+  x.globalAlpha = 1;
+}
+
+// ---------- main draw ----------
+function draw() {
+  if (!Wd) return;
+  drawBg();
+  x.save(); x.beginPath(); x.rect(0, 0, LW, VH); x.clip();
+  x.save(); x.translate(-camX * S, VH - YB * S); x.scale(S, S);
+  drawDeco();
+  for (const hp of Wd.hoppers) drawHopper(hp);
+  for (const v of Wd.veh) if (v.type === 'crane') drawCrane(v, Wd.veh.indexOf(v) === act);
+  for (const s of Wd.slots) if (!s.item) drawItem({ ...s, wob: 0, col: 0 }, true);
+  drawTerrain();
+  drawUG();
+  drawMoulds(false);
+  drawWaters();
+  drawRewards();
+  drawFinds();
+  drawGoals();
+  drawBumps();
+  drawMarks();
+  for (const o of Wd.items) if (o.state !== 'held') drawItem(o, false);
+  drawRocks();
+  Wd.veh.forEach((v, i) => { if (v.type !== 'crane') { drawVeh(v, i === act); if (v.type === 'exc') drawArm(v); } });
+  for (const o of Wd.items) if (o.state === 'held') drawItem(o, false);
+  for (const g of grains) { x.fillStyle = g.col; x.save(); x.translate(g.x, g.y); x.rotate(g.r); x.fillRect(-g.s / 2, -g.s / 2, g.s, g.s); x.restore(); }
+  drawMoulds(true);
+  drawSpect();
+  drawRibbon();
+  for (const a of animals) drawAnimal(a.kind, a.x, topAt(a.x) - (a.hop > 0 ? Math.abs(Math.sin(a.hop * 8)) * 22 : a.walk ? Math.abs(Math.sin(a.ph)) * 5 : 0), 16, a.dir, state === 'cheer' || !a.walk);
+  if (state === 'cheer') for (const a of animals) if (a.hop > 0) { x.fillStyle = '#ff5d7a'; x.font = `20px ${EMO}`; x.textAlign = 'center'; x.fillText('💖', a.x, topAt(a.x) - 70 - (1.2 - a.hop) * 20); }
+  if (hintT > 2.5 || level <= 3) drawArrow(nextSpot());
+  x.restore();
+  MG.fx.draw(x);
+  drawFloats();
+  drawCard();
+  x.restore();
+  drawPanel();
+}
+
+// ---------- menu ----------
+function menu() {
+  state = 'menu';
+  const done = cleared();
+  MG.choose({
+    id: 'digger', title: '噗噗工地',
+    html: `<p>戴上安全帽，開工囉！噗噗要開<b>挖土機、砂石車、推土機、吊車、水泥車、壓路機和鑽地車</b>，把每個工作做好。</p><p>照著虛線的圖案做就對了：挖游泳池、裝滿卡車、推石頭、蓋橋、壓馬路、蓋遊樂場⋯⋯完工還要和動物朋友一起剪綵！不限時間，慢慢玩 ^_^</p>`,
+    levels: { count: LEVELS.length, max: LEVELS.length, label: n => `${n}（${VMK[LV(n).mk]} ${LV(n).name}${done.includes(n) ? ' ✓' : ''}）`, short: n => `${n}${done.includes(n) ? '✓' : VMK[LV(n).mk]}` },
+    keys: '用手指拖挖斗、吊鉤，按住 ◀ ▶ 開車　鍵盤：<kbd>←</kbd><kbd>→</kbd> 開車　<kbd>↑</kbd><kbd>↓</kbd> 挖斗／吊鉤　<kbd>空白鍵</kbd> 動作　<kbd>H</kbd> 喇叭　<kbd>Tab</kbd> 換車',
+    playing: () => state === 'play',
+    start: (m, lv) => startLevel(lv),
+  });
+}
+// a scene behind the start menu
+startLevel(Math.min(MG.store.get('digger.pickLevel', 1), LEVELS.length), false); state = 'menu';
+menu();
+
+// ---------- test hook ----------
+window.DIGT = {
+  get state() { return state; }, get level() { return level; }, levels: LEVELS.length,
+  start: n => startLevel(n), menu: () => menu(),
+  progress: () => Wd.goals.map(g => ({ type: g.type, prog: +(g.done ? 1 : goalProgress(g)).toFixed(3), done: !!g.done })),
+  veh: () => Wd.veh.map(v => ({ type: v.type, x: Math.round(v.x), y: Math.round(v.y), load: Math.round(v.load), npc: v.npc, st: v.state })),
+  get act() { return act; },
+  bot(on = true) { bot = on; if (!on) for (const k in keys) keys[k] = false; },
+  step(sec, dt = 1 / 30) { for (let i = 0, n = Math.round(sec / dt); i < n; i++) { if (MG.panelOpen() && state === 'play') MG.hide(); update(dt); if (state === 'over') break; } return state; },
+  win() { for (const g of Wd.goals) if (!g.done) { if (g.type === 'trucks') g.count = g.n; if (g.type === 'slots') for (const s of Wd.slots) if (!s.item) { const it = Wd.items.find(o => o.kind === s.kind && o.state === 'ground'); if (it) placeItem(it, s); } if (g.type === 'moulds') Wd.moulds.forEach(m => { m.done = true; m.fill = 1; }); if (g.type === 'marks') Wd.marks.forEach(m => { m.done = true; m.pop = 1; }); if (g.type === 'find') Wd.finds.forEach(f => { f.found = true; f.pop = 1; }); if (g.type === 'rocks') Wd.rocks.forEach(r => { r.inZone = true; }); finishGoal(g); } beginFinish(); },
+  cut: () => cutRibbon(),
+  toClient(wx, wy) { const rc = cv.getBoundingClientRect(), B = 3, sx = wx2s(wx), sy = wy2s(wy); return { x: rc.left + B + sx * (rc.width - 2 * B) / LW, y: rc.top + B + sy * (rc.height - 2 * B) / LH }; },
+  btn(id) { const b = btns.find(q => q.id === id); if (!b) return null; const rc = cv.getBoundingClientRect(), B = 3; return { x: rc.left + B + (b.x + b.w / 2) * (rc.width - 2 * B) / LW, y: rc.top + B + (b.y + b.h / 2) * (rc.height - 2 * B) / LH }; },
+  bucket() { const v = Wd.veh.find(o => o.type === 'exc'); return v && { ...mouthOf(v), load: v.load }; },
+  hook() { const v = Wd.veh.find(o => o.type === 'crane'); return v && { x: v.hx, y: v.hy, hold: !!v.hold }; },
+  items: () => Wd.items.map(o => ({ kind: o.kind, x: o.x, y: o.y, h: o.h, state: o.state })),
+  slots: () => Wd.slots.map(s => ({ kind: s.kind, x: s.x, y: s.y, h: s.h, filled: !!s.item })),
+  get layout() { return { LW, LH, PH, VH, S, camX }; },
+};
+
+MG.loop(dt => {
+  if (Wd && !MG.panelOpen()) update(dt);
+  else if (Wd) { t += dt; MG.fx.step(dt); }
+  draw();
+});
+</script>
+</body>
+</html>
