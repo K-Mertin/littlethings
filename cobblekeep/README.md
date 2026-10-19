@@ -11,6 +11,15 @@ A 3D fantasy first-person shooter that plays like DOOM: keys, doors, secrets, a 
 - **Ending:** clearing stage 10 plays a four-panel epilogue before the final results.
 - Story panels advance with a tap, click, Space or Enter, and can be skipped.
 
+## Phone as a controller
+Press **📱 Phone controller** on the title screen. The big screen (computer or TV browser) shows a QR code and a 5-letter room code. Scan it with a phone, or open `cobblekeep/controller.html` on the phone and type the code. Hold the phone sideways.
+
+- **Playing:** left half is a floating stick (walk and sidestep), the right half turns when you drag, plus Attack (hold), Use, Swap weapon and 180° buttons. The top bar shows health, shield and ammo, with Map and Pause.
+- **Menus and story:** the phone switches to arrows, OK and Back. The arrows move a gold highlight between the buttons on the big screen; in the story, OK turns the page and Back skips.
+- **Phone settings (⚙):** drag aim on/off and speed, gyro aim on/off and speed (turn the phone left and right; iPhone asks for permission), auto-attack, vibration when hurt (Android only) and language. Settings are kept on the phone.
+- One phone drives the game; a second phone takes over. If the phone disconnects, open the same page again and it rejoins.
+- **How it connects:** PeerJS (WebRTC). The free PeerJS server only introduces the two sides, then they talk directly. Both need internet; some work or school networks block WebRTC. Add `?net=local` to both pages to test on one computer with two tabs.
+
 ## Play
 Open `index.html` in a browser, or play it at https://k-mertin.github.io/littlethings/cobblekeep/.
 
