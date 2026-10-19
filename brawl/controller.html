@@ -75,6 +75,11 @@ input{background:rgba(255,255,255,.08);border:2px solid var(--line);border-radiu
 .b.s1{top:5%}.b.s2{top:37%}.b.s3{top:69%}
 .hint{position:absolute;left:50%;transform:translateX(-50%);top:calc(max(10px, 5vh) + 70px + env(safe-area-inset-top,0px));color:var(--mute);font-size:12px;pointer-events:none;text-align:center;white-space:nowrap}
 .out{position:absolute;inset:0;display:grid;place-items:center;font-weight:900;font-size:28px;color:var(--mute);pointer-events:none;background:rgba(14,12,28,.4)}
+/* story lines mirrored from the big screen: any phone can turn the page */
+.pstory{position:absolute;left:50%;top:55%;transform:translate(-50%,-50%);width:min(560px,calc(100% - 32px));background:var(--panel);border:3px solid var(--sun);border-radius:20px;
+  padding:14px 18px;box-shadow:0 14px 40px rgba(0,0,0,.5);text-align:center;z-index:3}
+.pstory b{color:var(--sun);font-size:17px}.pstory p{margin:6px 0 12px;font-size:18px;line-height:1.5}
+.pstory .row{display:flex;gap:10px;justify-content:center;align-items:center}
 @media (orientation:portrait){
   .hud{width:calc(100% - 90px);left:12px;transform:none;flex-wrap:wrap}
   .stickBase{top:72%;width:140px;height:140px;margin:-70px 0 0 -70px}
@@ -109,6 +114,7 @@ input{background:rgba(255,255,255,.08);border:2px solid var(--line);border-radiu
 <div class="page" id="wait" hidden>
   <p class="title" id="waitTitle">看大螢幕！</p>
   <p class="sub" id="waitSub"></p>
+  <button class="go" id="nextStageBtn" hidden>下一關 ▶</button>
   <button class="go" id="againBtn" hidden>再來一場</button>
   <p class="status" id="waitStatus"></p>
 </div>
@@ -125,6 +131,10 @@ input{background:rgba(255,255,255,.08);border:2px solid var(--line);border-radiu
     <button class="b def" data-k="2">防</button><button class="b jmp" data-k="1">跳</button><button class="b atk" data-k="0">攻</button>
   </div>
   <div class="out" id="outMsg" hidden>出局了，等下一場</div>
+  <div class="pstory" id="pStory" hidden>
+    <b id="psName"></b><p id="psText"></p>
+    <div class="row"><button class="go" id="psNext">下一句 ▶</button><button class="ghost" id="psSkip">跳過</button></div>
+  </div>
 </div>
 
 <script>
@@ -185,9 +195,10 @@ function onMsg(d) {
   if (d.t === 'busy') { show('join'); return status('正在打，這場結束後再按一次加入。'); }
   if (d.t === 'closed') { show('join'); return status('大螢幕把房間關掉了。'); }
   if (d.t === 'welcome') { heroes = d.heroes; return; }
-  if (d.t === 'lobby') { setMe(d); mode = 'lobby'; drawHeroes(d.players); show('pick'); return; }
+  if (d.t === 'lobby') { setMe(d); mode = 'lobby'; $('pStory').hidden = true; drawHeroes(d.players); show('pick'); return; }
   if (d.t === 'play') { setMe(d); mode = 'play'; skills = d.skills; maxMp = d.maxMp; lastHp = null; setupSkills(); show('pad'); $('outMsg').hidden = true; vib(60); return; }
-  if (d.t === 'result') { setMe(d); mode = 'result'; $('waitTitle').textContent = d.title || '比賽結束'; $('waitSub').textContent = '要再打一場嗎？'; $('againBtn').hidden = false; show('wait'); releaseAll(); return; }
+  if (d.t === 'result') { setMe(d); mode = 'result'; $('pStory').hidden = true; $('waitTitle').textContent = d.title || '比賽結束'; $('waitSub').textContent = d.next ? '要繼續下一關嗎？' : '要再打一場嗎？'; $('nextStageBtn').hidden = !d.next; $('againBtn').hidden = false; $('againBtn').className = d.next ? 'ghost' : 'go'; show('wait'); releaseAll(); return; }
+  if (d.t === 'story') { $('pStory').hidden = !d.on; if (d.on) { $('psName').textContent = d.name; $('psText').textContent = d.text; $('psNext').textContent = d.last ? '開始 ▶' : '下一句 ▶'; releaseAll(); } return; }
   if (d.t === 'hud') {
     $('hpBar').style.width = (100 * d.hp / d.max) + '%';
     $('hpBar').style.background = d.hp / d.max < 0.3 ? '#ff7a3d' : '';
@@ -253,7 +264,11 @@ document.querySelectorAll('.b').forEach(b => {
 function releaseAll() { endStick(); st.def = false; document.querySelectorAll('.b.on').forEach(b => b.classList.remove('on')); }
 $('pauseBtn').onclick = () => Net.send({ t: 'pause' });
 $('startBtn').onclick = () => Net.send({ t: 'start' });
-$('againBtn').onclick = () => { Net.send({ t: 'start' }); $('againBtn').hidden = true; $('waitSub').textContent = '等大家…'; };
+$('psNext').onclick = () => { Net.send({ t: 'storyNext' }); vib(10); };
+$('psSkip').onclick = () => { Net.send({ t: 'storySkip' }); vib(10); };
+$('pStory').addEventListener('pointerdown', e => { if (e.target.tagName !== 'BUTTON') { Net.send({ t: 'storyNext' }); vib(10); } });
+$('nextStageBtn').onclick = () => { Net.send({ t: 'next' }); $('nextStageBtn').hidden = $('againBtn').hidden = true; $('waitSub').textContent = '下一關開始…'; };
+$('againBtn').onclick = () => { Net.send({ t: 'start' }); $('againBtn').hidden = $('nextStageBtn').hidden = true; $('waitSub').textContent = '等大家…'; };
 
 /* keep the screen awake while playing */
 let lock = null;

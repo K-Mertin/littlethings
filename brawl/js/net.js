@@ -148,6 +148,9 @@ const Lobby = {
       if (!$('lobby').hidden) this.begin();
       else if (!$('result').hidden) { $('result').hidden = true; startGame(true); }
     } else if (d.t === 'pause') { if (running) togglePause(); }
+    else if (d.t === 'storyNext') { if (storyQ) { advanceStory(); if (p.ctl) p.ctl.sync(); } }
+    else if (d.t === 'storySkip') { if (storyQ) { skipStory(); if (p.ctl) p.ctl.sync(); } }
+    else if (d.t === 'next') { if (!$('result').hidden && !$('nextBtn').hidden) $('nextBtn').click(); }
   },
   onClose(peer) {
     const p = this.find(peer); if (!p) return;
@@ -160,10 +163,13 @@ const Lobby = {
     const slot = this.slotOf(p), base = { slot, col: SLOT_COL[slot], hero: p.hero, name: p.name };
     if (running && W && p.fighter) {
       const f = p.fighter;
+      if (this.storyNow && storyQ) setTimeout(() => this.net && this.net.send(p.peer, { t: 'story', ...this.storyNow }), 0);
       this.net.send(p.peer, { t: 'play', ...base, skills: f.def.skills.map(id => id ? { name: SKILLS[id].name, cost: SKILLS[id].cost } : null), maxMp: f.maxMp });
-    } else if (!$('result').hidden) this.net.send(p.peer, { t: 'result', ...base, title: $('resTitle').textContent });
+    } else if (!$('result').hidden) this.net.send(p.peer, { t: 'result', ...base, title: $('resTitle').textContent, next: !$('nextBtn').hidden });
     else this.net.send(p.peer, { t: 'lobby', ...base, players: this.players.map(q => ({ name: q.name, hero: q.hero, online: q.online })) });
   },
+  /* the story box on the big screen, mirrored on every phone so any player can turn the page */
+  story(s) { this.storyNow = s.on ? s : null; this.players.forEach(p => { if (p.online && p.peer && !p.local) this.net.send(p.peer, { t: 'story', ...s }); }); },
   broadcastLobby() { this.players.forEach(p => { if (p.online && p.peer) this.sendState(p); }); },
   /* called every step while a phone match runs */
   tick() {

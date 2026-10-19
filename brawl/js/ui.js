@@ -380,6 +380,7 @@ function showStory(lines, done) {
 function drawStoryLine() {
   const [who, text] = storyQ.lines[storyQ.i], id = speaker(who), d = CHARS[id];
   $('storyName').textContent = d.name; $('storyText').textContent = text;
+  if (Lobby.net) Lobby.story({ on: true, name: d.name, text, last: storyQ.i === storyQ.lines.length - 1 });
   const cvs = $('storyFace'), c = cvs.getContext('2d');
   c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, 180, 180);
   const custom = d.draw || (d.fly ? 'bat' : null);
@@ -389,11 +390,12 @@ function drawStoryLine() {
 }
 function advanceStory() {
   if (!storyQ) return; storyQ.i++;
-  if (storyQ.i >= storyQ.lines.length) { const d = storyQ.done; storyQ = null; $('story').hidden = true; acc = 0; last = performance.now(); d && d(); }
+  if (storyQ.i >= storyQ.lines.length) { const d = storyQ.done; storyQ = null; $('story').hidden = true; acc = 0; last = performance.now(); if (Lobby.net) Lobby.story({ on: false }); d && d(); }
   else drawStoryLine();
 }
 $('story').addEventListener('pointerdown', e => { if (e.target.id === 'storySkip') return; e.preventDefault(); advanceStory(); });
-$('storySkip').addEventListener('click', () => { if (!storyQ) return; storyQ.i = storyQ.lines.length - 1; advanceStory(); });
+function skipStory() { if (!storyQ) return; storyQ.i = storyQ.lines.length - 1; advanceStory(); }
+$('storySkip').addEventListener('click', skipStory);
 addEventListener('keydown', e => { if (storyQ && ['Space', 'Enter', 'KeyJ', 'KeyK', 'Numpad1', 'Period', 'Escape'].includes(e.code)) { e.preventDefault(); if (e.code === 'Escape') { storyQ.i = storyQ.lines.length - 1; } advanceStory(); } }, true);
 
 /* ------------------------------ main loop ------------------------------ */
