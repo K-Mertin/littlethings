@@ -146,6 +146,17 @@ button:focus-visible{outline:4px solid var(--sun);outline-offset:3px}
 .combogrid{grid-template-columns:repeat(auto-fill,minmax(110px,1fr))}
 .combo .syl .col i{font-size:44px}.optc .syl .col i{font-size:58px}
 
+/* 寫注音 */
+.writewrap{flex-direction:row;align-items:flex-start;justify-content:center;gap:24px;flex-wrap:wrap}
+.writebox{width:min(62vh,88vw,560px);aspect-ratio:1;padding:0;touch-action:none}
+.writebox canvas{width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
+.writeside{display:flex;flex-direction:column;gap:12px;align-items:stretch}
+.wstars{font-size:46px;letter-spacing:6px;color:#d9e2dc;text-align:center}.wstars .on{color:var(--sun);text-shadow:0 2px 0 #e3a800}
+#home{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media (max-width:860px){#home{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:620px){#home{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-aspect-ratio:1/1){.writewrap{flex-direction:column-reverse;align-items:center}.writeside{flex-direction:row;flex-wrap:wrap;justify-content:center}.wstars{width:100%}}
+
 /* 結合韻 */
 .combogrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:12px;max-width:1000px;margin:0 auto 18px}
 .combo{aspect-ratio:1;font-size:100px;box-shadow:0 4px 0 #b7d5bd}
@@ -214,6 +225,7 @@ button:focus-visible{outline:4px solid var(--sun);outline-offset:3px}
   .tonecard{width:120px;padding:4px}.tonecard .syl{font-size:60px}.tonecard svg{height:28px}.tonecard .nm{font-size:16px}
   #sheet .zg{width:140px;height:140px;font-size:110px}#sheet .ex .emo{font-size:70px}
   .two .slot{width:52px;height:52px;font-size:40px}.two .sylch{font-size:38px}.two .tonebox{font-size:36px;width:24px}.two .pic .emo{font-size:56px}.two .pic .w{font-size:40px}
+  .writebox{width:calc(100vh - 150px);max-width:calc(100vh - 150px)}.writewrap{flex-direction:row!important;align-items:flex-start}.writeside{flex-direction:column!important}.writeside .say{min-height:44px;padding:8px 16px;font-size:17px}.wstars{font-size:30px}
   .combogrid{grid-template-columns:repeat(8,minmax(0,1fr));gap:8px;margin-bottom:8px}.combo .syl .col i{font-size:30px}.optc .syl .col i{font-size:40px}}
 @media (max-width:520px){.two .slot{width:58px;height:58px;font-size:44px}.two .sylch{font-size:40px;margin-right:2px}.two .tonebox{width:24px;font-size:40px}
   .two .slots{gap:4px}.sylgroup{padding:4px}.combogrid{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.combo .syl .col i{font-size:34px}
@@ -247,7 +259,7 @@ button:focus-visible{outline:4px solid var(--sun);outline-offset:3px}
 <script src="data.js"></script>
 <script>
 'use strict';
-const { SYMBOLS, GROUPS, ONE, TWO, WORDS, COMBOS, TONE_SETS, TONE_NAMES, TONE_MARKS, CONFUSE, P, parseSyl, syllables, hash, symOf } = ZY;
+const { SYMBOLS, GROUPS, ONE, TWO, WORDS, COMBOS, strokesOf, TONE_SETS, TONE_NAMES, TONE_MARKS, CONFUSE, P, parseSyl, syllables, hash, symOf } = ZY;
 const $ = (s, el = document) => el.querySelector(s);
 const view = $('#view');
 const rand = n => Math.floor(Math.random() * n);
@@ -378,6 +390,7 @@ SCREENS.home = () => {
     <button class="tile" data-go="learn"><span class="big">ㄅㄆㄇ</span><span class="lab">認識注音</span></button>
     <button class="tile" data-go="listen"><span class="emo">👂</span><span class="lab">聽音找注音</span></button>
     <button class="tile" data-go="first"><span class="emo">🍉</span><span class="lab">第一個音</span></button>
+    <button class="tile" data-go="write"><span class="emo">✏️</span><span class="lab">寫注音</span></button>
     <button class="tile" data-go="spell"><span class="emo">🧩</span><span class="lab">拼拼看</span></button>
     <button class="tile" data-go="combo"><span class="big">ㄧㄚ</span><span class="lab">結合韻</span></button>
     <button class="tile" data-go="tone"><span class="big">ˉˊˇˋ</span><span class="lab">四聲</span></button>
@@ -423,7 +436,7 @@ async function finishRound() {
   S.stickers.push(st); save(); updStars();
   const r = h(`<div id="reward"><div class="card"><div class="stk got">${st}</div>
     <div class="row"><button class="say" data-a="again">🔁 再玩一次</button><button class="say alt" data-a="home">🏠 回首頁</button></div></div></div>`);
-  const back = screen;
+  const back = screen === 'writeOne' ? 'write' : screen;
   document.body.appendChild(r);
   r.querySelector('[data-a=again]').onclick = () => { r.remove(); go(back); };
   r.querySelector('[data-a=home]').onclick = () => { r.remove(); go('home'); };
@@ -640,6 +653,146 @@ function comboQuiz() {
   say(P.comboQuizIntro).then(ok => ok && next());
 }
 
+/* 寫注音 */
+function densePts(pts) { // 在轉角切開，每段用 Catmull-Rom 平滑，每 2 單位一點
+  const segs = [[pts[0]]];
+  for (let i = 1; i < pts.length; i++) {
+    segs[segs.length - 1].push(pts[i]);
+    if (i < pts.length - 1) {
+      const a = pts[i - 1], b = pts[i], c = pts[i + 1];
+      const v1 = [b[0] - a[0], b[1] - a[1]], v2 = [c[0] - b[0], c[1] - b[1]];
+      if ((v1[0] * v2[0] + v1[1] * v2[1]) / Math.hypot(...v1) / Math.hypot(...v2) < .5) segs.push([b]);
+    }
+  }
+  const out = [];
+  for (const s of segs) {
+    if (s.length < 2) continue;
+    for (let i = 0; i < s.length - 1; i++) {
+      const p0 = s[Math.max(0, i - 1)], p1 = s[i], p2 = s[i + 1], p3 = s[Math.min(s.length - 1, i + 2)];
+      const n = Math.max(2, Math.ceil(Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) / 2));
+      for (let k = 0; k < n; k++) {
+        const t = k / n, t2 = t * t, t3 = t2 * t;
+        out.push([0, 1].map(j => .5 * (2 * p1[j] + (-p0[j] + p2[j]) * t + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t2 + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * t3)));
+      }
+    }
+    out.push(s[s.length - 1]);
+  }
+  return out;
+}
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+const pathLen = d => d.reduce((s, p, i) => i ? s + dist(p, d[i - 1]) : 0, 0);
+// 檢查一筆：起點、終點、沿路的檢查點都要依序經過；容忍度寬
+function checkStroke(user, model) {
+  if (user.length < 2) return false;
+  const L = pathLen(model);
+  if (pathLen(user) < Math.min(L * .45, L - 6)) return false;
+  if (dist(user[0], model[0]) > 20 || dist(user[user.length - 1], model[model.length - 1]) > 22) return false;
+  let last = 0;
+  const step = Math.max(1, Math.round(10 / 2));
+  for (let i = 0; i < model.length; i += step) {
+    let best = 1e9, bi = -1;
+    for (let j = 0; j < user.length; j++) { const d = dist(model[i], user[j]); if (d < best) { best = d; bi = j; } }
+    if (best > 18) return false;
+    if (bi < last - 6) return false;
+    last = Math.max(last, bi);
+  }
+  let off = 0;
+  for (const u of user) { let best = 1e9; for (const m of model) best = Math.min(best, dist(u, m)); if (best > 18) off++; }
+  return off <= user.length * .15;
+}
+SCREENS.write = () => {
+  S.write = S.write || {};
+  const stars = s => '⭐'.repeat(S.write[s] || 0);
+  view.innerHTML = ['c', 'm', 'v'].map(g => `<div class="grouplabel">${GROUPS[g]}</div><div class="symgrid">${SYMBOLS.filter(x => x.g === g).map(x =>
+    `<button class="zg sym" data-s="${x.s}" aria-label="寫${x.s}">${x.s}<span class="gl">${stars(x.s)}</span></button>`).join('')}</div>`).join('');
+  view.querySelectorAll('.sym').forEach(b => b.onclick = () => go('writeOne', b.dataset.s));
+  say(P.writeIntro);
+};
+SCREENS.writeOne = (s) => {
+  S.write = S.write || {};
+  const strokes = strokesOf(s).map(densePts);
+  let stage = (S.write[s] || 0) % 3, cur = 0, miss = 0, drawing = null, demoT = 0;
+  const idx = SYMBOLS.findIndex(x => x.s === s);
+  view.innerHTML = `<div class="center writewrap">
+    <div class="writeside"><div class="wstars" id="wstars"></div>
+      <button class="say alt" id="wdemo">👀 看示範</button><button class="say alt" id="wclear">↺ 重寫</button>
+      <button class="say alt" id="wnext">下一個 ▶</button><button class="say alt" id="wall">🔤 全部</button></div>
+    <div class="writebox zg"><canvas id="wc"></canvas></div></div>`;
+  const cv = $('#wc'), g = cv.getContext('2d');
+  let px = 0;
+  const fit = () => { const r = cv.parentElement.getBoundingClientRect(); const dpr = devicePixelRatio || 1; cv.width = r.width * dpr; cv.height = r.height * dpr; px = cv.width / 100; draw(); };
+  const line = (d, w, color, dash) => {
+    g.save(); g.lineCap = g.lineJoin = 'round'; g.lineWidth = w * px; g.strokeStyle = color; g.setLineDash(dash ? dash.map(v => v * px) : []);
+    g.beginPath(); d.forEach((p, k) => k ? g.lineTo(p[0] * px, p[1] * px) : g.moveTo(p[0] * px, p[1] * px)); g.stroke(); g.restore();
+  };
+  const dot = (p, r, color) => { g.beginPath(); g.arc(p[0] * px, p[1] * px, r * px, 0, 7); g.fillStyle = color; g.fill(); };
+  const arrow = d => {
+    const n = d.length, a = d[Math.max(0, n - 5)], b = d[n - 1], ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    g.save(); g.translate(b[0] * px, b[1] * px); g.rotate(ang); g.fillStyle = '#e0392b';
+    g.beginPath(); g.moveTo(3 * px, 0); g.lineTo(-4 * px, -4 * px); g.lineTo(-4 * px, 4 * px); g.closePath(); g.fill(); g.restore();
+  };
+  function draw(demoUpto) {
+    g.clearRect(0, 0, cv.width, cv.height);
+    if (stage === 0) strokes.forEach(d => line(d, 9, '#e3ece6'));
+    if (stage === 1) strokes.forEach(d => line(d, 9, '#eef3ef'));
+    for (let i = 0; i < cur; i++) line(strokes[i], 8, '#1c3765');
+    if (demoUpto != null) return;
+    if (cur < strokes.length) {
+      const d = strokes[cur];
+      if (stage === 0) {
+        line(d, 2.2, '#e0392b', [3, 3]); arrow(d);
+        g.font = `900 ${7 * px}px Noto Sans TC,sans-serif`; g.fillStyle = '#e0392b'; g.textAlign = 'center';
+        const p = d[0]; g.fillText(cur + 1, (p[0] - 6) * px, (p[1] - 5) * px);
+      }
+      if (stage < 2 || miss) dot(d[0], 4.2, '#2e9d57');
+    }
+    if (drawing) line(drawing, 6, '#2468c2');
+  }
+  function stars() { $('#wstars').innerHTML = [0, 1, 2].map(i => `<span class="${i < stage || (S.write[s] || 0) >= 3 ? 'on' : ''}">★</span>`).join(''); }
+  function intro() { say([P.write0, P.write1, P.write2][stage](s)); }
+  const pos = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * 100, (e.clientY - r.top) / r.height * 100]; };
+  cv.addEventListener('pointerdown', e => { if (demoT || cur >= strokes.length) return; e.preventDefault(); cv.setPointerCapture(e.pointerId); drawing = [pos(e)]; draw(); });
+  cv.addEventListener('pointermove', e => { if (!drawing) return; const p = pos(e); if (dist(p, drawing[drawing.length - 1]) > .8) { drawing.push(p); draw(); } });
+  const up = async () => {
+    if (!drawing) return; const u = drawing; drawing = null;
+    if (checkStroke(u, strokes[cur])) {
+      cur++; miss = 0; chime(true); draw();
+      if (cur >= strokes.length) {
+        stage++; S.write[s] = Math.max(S.write[s] || 0, stage); save(); stars();
+        if (stage >= 3) { await say(P.writeAll(s)); if (screen === 'writeOne') finishRound(); return; }
+        const ok = await say(P.writeStage); if (!ok) return;
+        cur = 0; draw(); intro();
+      }
+    } else { miss++; chime(false); draw(); if (miss === 1 || miss % 3 === 0) say(P.writeOops); }
+  };
+  cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', () => { drawing = null; draw(); });
+  $('#wclear').onclick = () => { cur = 0; miss = 0; draw(); };
+  $('#wall').onclick = () => go('write');
+  $('#wnext').onclick = () => go('writeOne', SYMBOLS[(idx + 1) % SYMBOLS.length].s);
+  $('#wdemo').onclick = async () => {
+    if (demoT) return; const my = ++demoT; const save0 = cur; cur = 0;
+    say(P.writeDemo(s));
+    for (let i = 0; i < strokes.length; i++) {
+      for (let k = 2; k <= strokes[i].length; k += 2) {
+        if (my !== demoT || screen !== 'writeOne') return;
+        draw(true); for (let j = 0; j < i; j++) line(strokes[j], 8, '#2468c2'); line(strokes[i].slice(0, k), 8, '#2468c2');
+        await sleep(22);
+      }
+      await sleep(260);
+    }
+    await sleep(500); demoT = 0; cur = save0; draw();
+  };
+  addEventListener('resize', fit, { once: true });
+  stars(); requestAnimationFrame(fit); intro();
+};
+// 短短的提示音（不用音檔）
+function chime(ok) {
+  const c = ctx(); if (!c) return; const t = c.currentTime, o = c.createOscillator(), gn = c.createGain();
+  o.type = 'sine'; o.frequency.setValueAtTime(ok ? 660 : 220, t); if (ok) o.frequency.exponentialRampToValueAtTime(990, t + .12);
+  gn.gain.setValueAtTime(.0001, t); gn.gain.exponentialRampToValueAtTime(.18, t + .02); gn.gain.exponentialRampToValueAtTime(.0001, t + (ok ? .25 : .2));
+  o.connect(gn); gn.connect(c.destination); o.start(t); o.stop(t + .3);
+}
+
 /* 四聲 */
 const CURVES = ['M10 18 L90 18', 'M10 46 L90 10', 'M10 18 Q42 62 90 12', 'M10 8 L90 48'];
 const curveSVG = n => `<svg viewBox="0 0 100 56" aria-hidden="true"><path d="${CURVES[n]}" fill="none" stroke="#e0392b" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
@@ -725,7 +878,7 @@ function parentPanel() {
     <div class="panel"><h2>設定</h2>
       <div class="row">休息提醒：${[0, 10, 15, 20, 30].map(m => `<button class="chip ${S.rest === m ? 'on' : ''}" data-rest="${m}">${m ? m + ' 分鐘' : '關閉'}</button>`).join('')}</div>
       <div class="row"><button class="chip" data-a="fs">全螢幕</button><button class="chip" data-a="reset">清除進度</button><a class="chip" href="../index.html" style="text-decoration:none;color:inherit">回遊戲大廳</a></div>
-      <p class="note">聲音：微軟 Edge 台灣中文神經語音（曉臻 HsiaoChen）預錄。進度只存在這台裝置的瀏覽器裡。</p>
+      <p class="note">筆順依據教育部《國字標準字體筆順學習網》。聲音：微軟台灣中文神經語音（曉臻 HsiaoChen）預錄。進度只存在這台裝置的瀏覽器裡。</p>
     </div>
     <button class="say" data-a="close">✔ 回到遊戲</button></div>`);
   document.body.appendChild(o);
