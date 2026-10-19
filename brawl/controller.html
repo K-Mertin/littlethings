@@ -39,6 +39,9 @@ input{background:rgba(255,255,255,.08);border:2px solid var(--line);border-radiu
 .hero.locked{opacity:.35}
 .hero .who{position:absolute;top:3px;left:4px;font-size:10px;font-weight:900;color:var(--ink);background:#fff6e6;border-radius:8px;padding:0 5px}
 .others{font-size:13px;color:var(--mute);text-align:center}
+.field{display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--mute);font-size:13px;font-weight:700}
+#room{font-family:"Bangers",var(--sans);letter-spacing:.2em;text-transform:uppercase;width:min(200px,60vw);color:var(--sun)}
+.roomline{margin:0;color:var(--mute);font-size:13px;display:flex;gap:8px;align-items:center}.roomline b{color:var(--sun);letter-spacing:.12em}.roomline .ghost{padding:4px 10px;font-size:12px}
 .status{color:#ffb35c;font-size:14px;text-align:center;min-height:1em}
 
 /* ---------- the pad ----------
@@ -101,8 +104,10 @@ input{background:rgba(255,255,255,.08);border:2px solid var(--line);border-radiu
 
 <div class="page" id="join">
   <p class="title">小夥伴大作戰</p>
-  <p class="sub">這支手機會變成手把。<br>輸入你的名字：</p>
-  <input id="name" maxlength="8" placeholder="名字" autocomplete="off">
+  <p class="sub">這支手機會變成手把。</p>
+  <label class="field">房間號碼<input id="room" maxlength="5" placeholder="看大螢幕" autocomplete="off" autocapitalize="characters" spellcheck="false"></label>
+  <label class="field">你的名字<input id="name" maxlength="8" placeholder="名字" autocomplete="off"></label>
+  <p class="sub" style="font-size:12px">房間號碼要和大螢幕上的一樣。</p>
   <button class="go" id="joinBtn">加入！</button>
   <p class="status" id="joinStatus"></p>
 </div>
@@ -111,6 +116,7 @@ input{background:rgba(255,255,255,.08);border:2px solid var(--line);border-radiu
   <p style="margin:0;font-size:18px"><span class="tag" id="pickTag">1P</span> <b id="pickName"></b> 選一個角色</p>
   <div class="heroes" id="heroes"></div>
   <p class="others" id="others"></p>
+  <p class="roomline">房間 <b class="roomCode"></b> <button class="ghost leave">換房間</button></p>
   <button class="go" id="startBtn">大家都好了，開始！</button>
   <p class="sub" style="font-size:12px">也可以在大螢幕上按開始。</p>
 </div>
@@ -121,6 +127,7 @@ input{background:rgba(255,255,255,.08);border:2px solid var(--line);border-radiu
   <button class="go" id="nextStageBtn" hidden>下一關 ▶</button>
   <button class="go" id="againBtn" hidden>再來一場</button>
   <p class="status" id="waitStatus"></p>
+  <p class="roomline">房間 <b class="roomCode"></b> <button class="ghost leave">換房間</button></p>
 </div>
 
 <div id="pad" hidden>
@@ -144,7 +151,9 @@ input{background:rgba(255,255,255,.08);border:2px solid var(--line);border-radiu
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
-const Q = new URLSearchParams(location.search), ROOM = (Q.get('room') || '').toUpperCase(), LOCAL = Q.get('net') === 'local';
+const Q = new URLSearchParams(location.search), LOCAL = Q.get('net') === 'local';
+let ROOM = (Q.get('room') || '').toUpperCase();
+const cleanRoom = s => String(s).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
 const PEER_JS = 'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js';
 const store = { get(k, d) { try { const v = localStorage.getItem('buddybattle.pad.' + k); return v == null ? d : v; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem('buddybattle.pad.' + k, v); } catch (e) {} } };
 /* one id per tab (survives a reload, so a phone that drops out gets its seat back) */
@@ -160,7 +169,11 @@ const Net = {
     if (this.bc) this.bc.postMessage({ to: 'host', from: this.me, d });
     else if (this.conn && this.conn.open) try { this.conn.send(d); } catch (e) {}
   },
-  hello() { this.send({ t: 'hello', cid, name: $('name').value.trim() }); },
+  hello() {
+    this.send({ t: 'hello', cid, name: $('name').value.trim() });
+    clearTimeout(this.helloT);
+    this.helloT = setTimeout(() => { if (mode === 'join' && (this.ok || this.peer)) status('房間 ' + ROOM + ' 沒有回應。請確認大螢幕上的房間號碼，改好再按加入。'); }, 5000);
+  },
   async start() {
     if (LOCAL) {
       this.me = cid + '-' + Math.random().toString(36).slice(2, 6);
@@ -171,15 +184,26 @@ const Net = {
     await new Promise((ok, bad) => { const s = document.createElement('script'); s.src = PEER_JS; s.onload = ok; s.onerror = bad; document.head.appendChild(s); });
     this.peer = new Peer({ debug: 0 });
     this.peer.on('open', () => this.connect());
-    this.peer.on('error', e => { if (e.type === 'peer-unavailable') status('找不到房間 ' + ROOM + '，大螢幕上的房間可能關掉了。'); else status('連線有問題，重試中…'); setTimeout(() => this.connect(), 2500); });
-    this.peer.on('disconnected', () => setTimeout(() => !this.peer.destroyed && this.peer.reconnect(), 1000));
+    this.peer.on('error', e => {
+      if (e.type === 'peer-unavailable') { this.leave(); show('join'); status('找不到房間 ' + ROOM + '。請確認大螢幕上的房間號碼，改好再按加入。'); $('room').focus(); return; }
+      status('連線有問題，重試中…'); setTimeout(() => this.peer && this.connect(), 2500);
+    });
+    this.peer.on('disconnected', () => setTimeout(() => this.peer && !this.peer.destroyed && this.peer.reconnect(), 1000));
+  },
+  /* drop the connection (to switch rooms) */
+  leave() {
+    if (this.ok) this.send({ t: 'bye' });
+    if (this.bc) { this.bc.close(); this.bc = null; }
+    const p = this.peer; this.peer = null; this.conn = null; if (p && !p.destroyed) p.destroy();
+    this.ok = false; mode = 'join';
   },
   connect() {
+    if (!this.peer) return;
     if (this.conn && this.conn.open) return;
     const c = this.conn = this.peer.connect('buddybattle-' + ROOM, { reliable: true });
     c.on('open', () => { this.ok = true; status(''); this.hello(); });
     c.on('data', d => onMsg(d));
-    c.on('close', () => { if (this.conn !== c) return; this.ok = false; status('斷線了，重新連線中…'); setTimeout(() => this.connect(), 1500); });
+    c.on('close', () => { if (this.conn !== c || !this.peer) return; this.ok = false; status('斷線了，重新連線中…'); setTimeout(() => this.connect(), 1500); });
   }
 };
 function status(t) { ['joinStatus', 'waitStatus'].forEach(id => $(id).textContent = t); }
@@ -282,8 +306,16 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) { wa
 
 /* ---------------- join ---------------- */
 $('name').value = store.get('name', '');
-if (!ROOM) { $('joinBtn').hidden = true; $('name').hidden = true; status('網址裡沒有房間號碼。請用相機掃大螢幕上的 QR code。'); }
+$('room').value = ROOM;
+$('room').addEventListener('input', () => { $('room').value = cleanRoom($('room').value); });
+const showRoom = () => document.querySelectorAll('.roomCode').forEach(b => b.textContent = ROOM);
+document.querySelectorAll('.leave').forEach(b => b.onclick = () => { Net.leave(); show('join'); status(''); $('room').focus(); });
+if (!ROOM) status('輸入大螢幕上的房間號碼，或用相機掃大螢幕上的 QR code。');
 $('joinBtn').onclick = async () => {
+  const r = cleanRoom($('room').value);
+  if (r.length < 5) { status('房間號碼是 5 個字，看大螢幕上的「房間」。'); $('room').focus(); return; }
+  if (r !== ROOM || !Net.ok) { if (Net.peer || Net.bc) Net.leave(); ROOM = r; }
+  const u = new URL(location.href); u.searchParams.set('room', ROOM); history.replaceState(null, '', u); showRoom();
   const n = $('name').value.trim() || '玩家'; $('name').value = n; store.set('name', n);
   wake();
   try { if (document.documentElement.requestFullscreen && matchMedia('(pointer:coarse)').matches) await document.documentElement.requestFullscreen(); } catch (e) {}
@@ -294,6 +326,8 @@ $('joinBtn').onclick = async () => {
   $('joinBtn').disabled = false;
 };
 $('name').addEventListener('keydown', e => { if (e.key === 'Enter') $('joinBtn').click(); });
+$('room').addEventListener('keydown', e => { if (e.key === 'Enter') $('name').focus(); });
+showRoom();
 addEventListener('pagehide', () => Net.send({ t: 'bye' }));
 </script>
 </body>

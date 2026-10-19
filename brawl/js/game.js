@@ -323,7 +323,7 @@ class Fighter {
   }
   dropItem(throwIt) {
     const it = this.hold; if (!it) return; this.hold = null; it.holder = null;
-    it.x = this.x + this.face * 10; it.z = this.z; it.y = 20; it.vx = this.face * rnd(-1, 1.5); it.vy = 3;
+    it.x = this.x + this.face * 10; it.z = this.z; it.y = 20; it.vx = 0; it.vy = 3; it.drop = true;   // falls to the floor (it used to hang in the air and could never be picked up again)
   }
   startThrow() { this.set('throw'); this.vx *= 0.3; }
   /* the item button: pick up what is underfoot, or throw what is in hand */

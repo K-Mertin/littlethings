@@ -23,15 +23,16 @@ class HostNet {
   constructor(h) { this.h = h; this.conns = new Map(); this.room = null; }
   async open() {
     if (NET_LOCAL) {
-      this.room = roomCode();
+      this.room = store.get('room', null) || roomCode(); store.set('room', this.room);
       this.bc = new BroadcastChannel('buddybattle-' + this.room);
       this.bc.onmessage = e => { const m = e.data; if (m.to !== 'host') return; if (m.d.t === 'bye') this.h.close(m.from); else this.h.msg(m.from, m.d); };
       return;
     }
     await loadScript(NET_CDN.peer);
-    for (let tries = 0; tries < 3; tries++) {
-      this.room = roomCode();
-      try { await this.listen(); return; } catch (e) { if (!(e && e.type === 'unavailable-id')) throw e; }
+    // keep the same room number as last time, so phones that still have the old address can join again
+    for (let tries = 0; tries < 4; tries++) {
+      this.room = tries === 0 && store.get('room', null) || roomCode();
+      try { await this.listen(); store.set('room', this.room); return; } catch (e) { if (!(e && e.type === 'unavailable-id')) throw e; }
     }
     throw new Error('no room');
   }
@@ -234,4 +235,6 @@ function openLobby() { Lobby.open(); }
 $('lobbyStart').onclick = () => Lobby.begin();
 $('lobbyLocal').onclick = () => Lobby.addLocal();
 $('lobbyBack').onclick = () => { $('lobby').hidden = true; toMenu(); };
+// a fresh room number (everyone already in the room has to join again)
+$('lobbyNew').onclick = () => { if (Lobby.players.some(p => !p.local) && !confirm('換號碼後，已經加入的手機要重新加入。確定嗎？')) return; store.set('room', null); Lobby.close(); $('lobbyQR').hidden = true; $('lobbyCode').textContent = '…'; Lobby.open(); };
 addEventListener('pagehide', () => Lobby.close());
