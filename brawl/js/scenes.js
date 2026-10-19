@@ -331,6 +331,25 @@ function drawPart(c, p) {
       c.restore(); break;
     }
     case 'star': drawStar(c, x, y, 7 * (1 - k) + 2, '#ffd34d'); break;
+    case 'burst': { // comic impact star with a word, pops in then shrinks away
+      const s = p.t < 3 ? 0.6 + p.t * 0.2 : 1.2 - k * 0.45, r = p.r * s;
+      c.save(); c.translate(x, y); c.globalAlpha = k > 0.7 ? (1 - k) / 0.3 : 1;
+      c.beginPath(); for (let i = 0; i < 20; i++) { const a = i * TAU / 20 + 0.1, rr = i & 1 ? r * 0.56 : r * (i % 4 === 0 ? 1.12 : 0.92); c.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); } c.closePath();
+      c.fillStyle = p.col; c.fill(); c.lineWidth = 3; c.strokeStyle = INK; c.stroke();
+      c.beginPath(); c.arc(0, 0, r * 0.3, 0, TAU); c.fillStyle = '#fff'; c.fill();
+      if (p.word) { c.rotate(-0.12); c.font = `900 ${Math.round(r * 0.7)}px "Noto Sans TC",sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineWidth = 5; c.strokeStyle = INK; c.strokeText(p.word, 0, 1); c.fillStyle = '#ff4d3d'; c.fillText(p.word, 0, 1); }
+      c.restore(); break;
+    }
+    case 'puff': { // landing dust: a row of round clouds
+      const s = (p.s || 1) * (0.8 + k * 0.5); c.save(); c.globalAlpha = 1 - k * k;
+      [[-1, 0.8], [-0.45, 1.1], [0.2, 1], [0.8, 0.85]].forEach(([dx, kk]) => { c.beginPath(); c.arc(x + dx * 24 * s * (1 + k * 0.6), y - 7 * kk * s - k * 6, 10 * kk * s, 0, TAU); c.fillStyle = '#fff8e8'; c.fill(); c.lineWidth = 2; c.strokeStyle = INK; c.stroke(); });
+      c.restore(); break;
+    }
+    case 'callout': { // the name of a special move above the fighter's head
+      const s = p.t < 5 ? 0.7 + p.t * 0.06 : 1; c.save(); c.globalAlpha = k > 0.75 ? (1 - k) / 0.25 : 1; c.translate(x, y - Math.min(p.t, 10)); c.scale(s, s);
+      c.font = '900 22px "Noto Sans TC",sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineWidth = 6; c.strokeStyle = INK; c.strokeText(p.txt + '！', 0, 0); c.fillStyle = p.col; c.fillText(p.txt + '！', 0, 0);
+      c.restore(); break;
+    }
     case 'zap': c.globalAlpha = 1 - k; zigzag(c, x - 8, y - 8, x + 8, y + 8, '#ffe14a'); c.globalAlpha = 1; break;
     case 'wind': c.strokeStyle = `rgba(230,250,245,${1 - k})`; c.lineWidth = 2.5; c.beginPath(); c.arc(x, y, 6 + k * 8, 0, Math.PI * 1.3); c.stroke(); break;
     case 'heart': c.globalAlpha = 1 - k; c.fillStyle = '#ff5a7a'; c.font = '20px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('♥', x, y); c.globalAlpha = 1; break;
@@ -580,3 +599,55 @@ function drawHarbor(c) {
   for (let i = Math.floor(cx / 260) - 1; i < cx / 260 + Wv / 260 + 2; i++) { const x = i * 260 + 60; c.fillStyle = '#5a6170'; c.fillRect(x - 8, FLOOR_TOP + FLOOR_D - 6, 16, 14); c.beginPath(); c.ellipse(x, FLOOR_TOP + FLOOR_D - 6, 8, 3, 0, 0, TAU); c.fill(); }
 }
 THEMES.tea = drawTea; THEMES.harbor = drawHarbor;
+
+/* ------------------------------ foreground ------------------------------
+   Dark silhouettes in front of everything that slide past a little faster than the
+   fighters, so the street has depth. They fade when someone walks behind them. */
+const FG_INK = 'rgba(28,26,48,.9)';
+const FG = {
+  pole(c, x) {
+    c.fillStyle = FG_INK; c.fillRect(x - 10, -120, 20, VH + 140); c.fillRect(x - 30, -40, 60, 7); c.fillRect(x - 24, -14, 48, 6);
+    c.fillStyle = 'rgba(255,204,51,.85)'; c.fillRect(x - 10, VH - 120, 20, 8); c.fillRect(x - 10, VH - 96, 20, 8);
+  },
+  plant(c, x) {
+    c.fillStyle = FG_INK; c.beginPath(); c.moveTo(x - 30, VH + 4); c.lineTo(x - 25, VH - 36); c.lineTo(x + 25, VH - 36); c.lineTo(x + 30, VH + 4); c.fill();
+    [[-26, -60, -0.7], [-10, -84, -0.25], [8, -88, 0.2], [24, -66, 0.65], [-36, -40, -1.1], [36, -42, 1.1]].forEach(([dx, h, r]) => { c.save(); c.translate(x + dx * 0.55, VH - 36); c.rotate(r); c.beginPath(); c.ellipse(0, h * 0.5, 10, -h * 0.5, 0, 0, TAU); c.fill(); c.restore(); });
+  },
+  scooter(c, x) {
+    c.fillStyle = FG_INK; c.beginPath(); c.ellipse(x, VH - 26, 44, 24, 0, Math.PI, 0); c.fill();
+    c.beginPath(); c.arc(x - 30, VH - 10, 13, 0, TAU); c.arc(x + 32, VH - 10, 13, 0, TAU); c.fill(); c.fillRect(x + 28, VH - 78, 6, 50); c.fillRect(x + 18, VH - 80, 26, 6);
+  },
+  bush(c, x) { c.fillStyle = 'rgba(24,52,40,.9)'; [[-40, 26], [-12, 36], [18, 32], [44, 24]].forEach(([dx, r]) => { c.beginPath(); c.arc(x + dx, VH - r * 0.7, r, 0, TAU); c.fill(); }); },
+  lamp(c, x) { c.fillStyle = FG_INK; c.fillRect(x - 5, VH - 260, 10, 270); c.beginPath(); c.ellipse(x, VH - 262, 18, 10, 0, 0, TAU); c.fill(); c.fillStyle = 'rgba(255,230,150,.7)'; c.beginPath(); c.arc(x, VH - 256, 6, 0, TAU); c.fill(); },
+  lanterns(c, x) {
+    c.strokeStyle = FG_INK; c.lineWidth = 2; c.beginPath(); c.moveTo(x - 180, 96); c.quadraticCurveTo(x, 156, x + 180, 96); c.stroke();
+    for (let i = 0; i < 7; i++) { const t = (i + 0.5) / 7, lx = x - 180 + t * 360, ly = 96 + Math.sin(t * Math.PI) * 30 + 6; c.fillStyle = '#e8402f'; c.beginPath(); c.ellipse(lx, ly + 10, 9, 12, 0, 0, TAU); c.fill(); c.lineWidth = 2; c.strokeStyle = INK; c.stroke(); c.fillStyle = '#ffcc33'; c.fillRect(lx - 5, ly - 3, 10, 4); }
+  },
+  crate(c, x) { c.fillStyle = FG_INK; c.fillRect(x - 34, VH - 56, 68, 60); c.fillRect(x - 6, VH - 98, 48, 44); c.strokeStyle = 'rgba(255,255,255,.12)'; c.lineWidth = 2; c.strokeRect(x - 28, VH - 50, 56, 50); },
+  bollard(c, x) { c.fillStyle = FG_INK; c.fillRect(x - 16, VH - 52, 32, 56); c.beginPath(); c.ellipse(x, VH - 52, 22, 9, 0, 0, TAU); c.fill(); c.strokeStyle = FG_INK; c.lineWidth = 5; c.beginPath(); c.moveTo(x + 16, VH - 40); c.quadraticCurveTo(x + 90, VH - 4, x + 170, VH - 30); c.stroke(); },
+  pillar(c, x) { c.fillStyle = FG_INK; c.fillRect(x - 22, -120, 44, VH + 140); c.fillStyle = 'rgba(255,204,51,.7)'; c.fillRect(x - 22, VH - 150, 44, 10); },
+  tea(c, x) { c.fillStyle = 'rgba(30,70,46,.9)'; c.beginPath(); c.ellipse(x, VH - 6, 80, 42, 0, Math.PI, 0); c.fill(); c.beginPath(); c.ellipse(x + 90, VH, 60, 30, 0, Math.PI, 0); c.fill(); },
+  rail(c, x) { c.fillStyle = FG_INK; c.fillRect(x - 90, VH - 70, 180, 6); c.fillRect(x - 90, VH - 40, 180, 5); for (let i = -90; i <= 90; i += 45) c.fillRect(x + i - 3, VH - 70, 6, 80); },
+  umbrella(c, x) { c.fillStyle = FG_INK; c.fillRect(x - 3, VH - 150, 6, 160); c.beginPath(); c.moveTo(x - 80, VH - 140); c.quadraticCurveTo(x, VH - 210, x + 80, VH - 140); c.closePath(); c.fill(); }
+};
+const FOREGROUNDS = {
+  street: { every: 620, list: ['pole', 'plant', 'scooter'] },
+  market: { every: 520, list: ['lanterns', 'scooter', 'lanterns', 'plant'] },
+  roof: { every: 700, list: ['rail', 'plant'] },
+  park: { every: 560, list: ['bush', 'plant', 'bush'] },
+  mrt: { every: 760, list: ['pillar', 'plant'] },
+  beach: { every: 680, list: ['umbrella', 'bush'] },
+  tea: { every: 560, list: ['tea', 'pole', 'tea'] },
+  harbor: { every: 600, list: ['bollard', 'crate', 'pole'] }
+};
+function drawForeground(c) {
+  const F = FOREGROUNDS[W.theme]; if (!F) return;
+  const p = 1.3, shift = (p - 1) * W.camX;                     // moves 30% faster than the floor
+  const n0 = Math.floor((W.camX + shift - 200) / F.every), n1 = Math.ceil((W.camX + shift + Wv + 200) / F.every);
+  for (let n = n0; n <= n1; n++) {
+    const kind = F.list[((n % F.list.length) + F.list.length) % F.list.length], x = n * F.every + 160 - shift;
+    const tall = kind === 'pole' || kind === 'pillar' || kind === 'lamp' || kind === 'lanterns';
+    const behind = W.fighters.some(f => !f.dead && Math.abs(f.x - x) < (tall ? 40 : 90) && (tall || f.z > 90));
+    c.save(); c.globalAlpha = behind ? 0.35 : 1; FG[kind](c, x); c.restore();
+  }
+}

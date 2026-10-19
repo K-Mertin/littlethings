@@ -8,7 +8,7 @@ function mkLook(o) {
 }
 const CHARS = {
   rex: { name: '阿烈', en: 'Rex', blurb: '火拳少年。出拳快、連段順，火焰波可以遠攻。', hp: 500, spd: 1, pow: 1, stats: [3, 3, 2],
-    look: mkLook({ style: 'spiky', hair: '#3b2417', acc: '#ff3b2f', shirt: '#ff5a4a', trim: '#ffd34d', pants: '#2f3a63', shoe: '#f2efe6' }),
+    look: mkLook({ style: 'spiky', hair: '#3b2417', acc: '#ff3b2f', shirt: '#ff5a4a', trim: '#ffd34d', pants: '#2f3a63', shoe: '#f2efe6', scarf: '#ffcc33' }),
     combo: ['jab', 'cross', 'kick'], skills: ['fireball', 'uppercut', 'flurry'] },
   yuki: { name: '小雪', en: 'Yuki', blurb: '冰之少女。冰球會把敵人凍成冰塊，再打一下就碎。', hp: 460, spd: 1.03, pow: 0.92, stats: [2, 3, 2],
     look: mkLook({ style: 'long', skin: '#f8d6bd', hair: '#d6efff', acc: '#3fa9ff', shirt: '#6fbfff', trim: '#ffffff', pants: '#2f6fd1', shoe: '#ffffff', shorts: true, sleeve: 'long' }),
@@ -269,7 +269,7 @@ const DIFF = [
 
 function addPart(kind, x, y, z, o = {}) {
   if (!W || W.parts.length > 420) return;
-  W.parts.push(Object.assign({ kind, x, y, z, vx: 0, vy: 0, life: o.life || ({ spark: 12, dust: 22, fire: 22, snow: 30, ice: 24, smoke: 26, text: 40, ring: 20, rock: 50, slash: 12, ghost: 12, spike: 26, star: 22, bonk: 18 })[kind] || 20, t: 0 }, o));
+  W.parts.push(Object.assign({ kind, x, y, z, vx: 0, vy: 0, life: o.life || ({ spark: 12, dust: 22, fire: 22, snow: 30, ice: 24, smoke: 26, text: 40, ring: 20, burst: 22, puff: 28, callout: 46, rock: 50, slash: 12, ghost: 12, spike: 26, star: 22, bonk: 18 })[kind] || 20, t: 0 }, o));
 }
 function smoke(f) { for (let i = 0; i < 12; i++) addPart('smoke', f.x + rnd(-14, 14), rnd(5, 60), f.z, { vx: rnd(-1.5, 1.5), vy: rnd(0, 1.5) }); }
 function nearestFoe(f, maxD = 1e9) {
@@ -306,7 +306,8 @@ class Fighter {
   trySkill(n) {
     const id = this.def.skills[n - 1]; if (!id) return false; const S = SKILLS[id];
     if (this.mp < S.cost) { if (this.ctl && this.ctl.human) this.flashMp = 20; return false; }
-    this.mp -= S.cost; this.skill = id; this.set('skill'); this.hitSet.clear(); this.vx = 0;
+    this.mp -= S.cost; this.skill = id; this.set('skill'); this.hitSet.clear(); this.vx = 0; this.auraT = 22;
+    addPart('callout', this.x, 100 * (this.def.size || 1), this.z, { txt: S.name, life: 46, col: this.def.enemy ? '#ff7a6b' : '#fff27a' });
     if (this.inp.mx) this.face = sgn(this.inp.mx);
     if (S.start) S.start(this);
     return true;
@@ -454,7 +455,7 @@ class Fighter {
       case 'frozen': { this.vx *= 0.9; if (this.st % 7 === 0) addPart('ice', this.x + rnd(-14, 14), rnd(10, 70), this.z, { vy: rnd(0.5, 1.2) }); if (this.st >= 110) { this.set('idle'); this.invul = 20; Sound.play('shatter', 0.5); for (let i = 0; i < 8; i++) addPart('ice', this.x, rnd(10, 70), this.z, { vx: rnd(-3, 3), vy: rnd(1, 4) }); } break; }
       case 'fall': {
         if (!air && this.st > 2) {
-          if (!this.bounced && Math.abs(this.vyLast) > 4) { this.bounced = true; this.vy = 3; this.vx *= 0.5; Sound.play('fall'); W.shake = Math.max(W.shake, 4); addPart('dust', this.x, 0, this.z, { vx: 2 }); addPart('dust', this.x, 0, this.z, { vx: -2 }); }
+          if (!this.bounced && Math.abs(this.vyLast) > 4) { this.bounced = true; this.vy = 3; this.vx *= 0.5; Sound.play('fall'); W.shake = Math.max(W.shake, 4); addPart('puff', this.x, 0, this.z + 1, { s: (this.def.size || 1) * clamp(Math.abs(this.vyLast) / 7, 0.7, 1.3) }); for (let i = 0; i < 3; i++) addPart('star', this.x, 30, this.z, { vx: rnd(-2.5, 2.5), vy: rnd(2, 4) }); }
           else { this.set(this.dying ? 'dead' : 'lying'); this.vx = 0; this.vz = 0; if (this.dying) this.die(); }
         }
         break;
@@ -551,7 +552,13 @@ function applyHit(att, v, A, dir, area) {
   if (v.armorT > 0) dmg *= 0.5;
   v.hp -= dmg; if (!v.def.enemy) { v.cap = Math.max(v.hp, v.cap - dmg / 3); v.regenT = 100; } v.flash = 5; v.shakeT = 8; v.lastHitBy = att;
   if (att) { att.dmgDone += dmg; if (human) W.score += Math.round(dmg); }
-  const stop = A.stop || (A.launch ? 6 : 4); v.freeze = stop; if (att && !area) att.freeze = stop;
+  // heavy hits (launchers, finishers, big damage) get the full treatment: longer hit-stop, a white flash, a comic "砰！"
+  const big = !!(A.launch || dmg >= 30);
+  const stop = A.stop || (big ? 8 : 4); v.freeze = stop; if (att && !area) att.freeze = stop;
+  if (big) {
+    v.whiteT = 5; W.shake = Math.max(W.shake, A.launch ? 7 : 5);
+    addPart('burst', v.x - dir * 4, v.y + clamp((A.hy ? (A.hy[0] + A.hy[1]) / 2 : 46), 26, 66) * (v.def.size || 1), v.z + 2, { word: pick(['砰！', '啪！', '碰！', '咚！']), r: 32 + Math.min(14, dmg * 0.2), col: A.freeze ? '#cdeeff' : '#fff27a' });
+  }
   Sound.play(A.sfx || 'hit', 0.9);
   addPart('spark', v.x - dir * 6, v.y + clamp((A.hy ? (A.hy[0] + A.hy[1]) / 2 : 40), 20, 60), v.z + 1, { col: A.freeze ? '#bfe9ff' : '#fff6b0' });
   addPart('text', v.x, v.y + 84 * (v.def.size || 1), v.z, { txt: Math.round(dmg) + '', col: human ? '#ffd34d' : '#ffffff' });
@@ -570,6 +577,14 @@ function applyHit(att, v, A, dir, area) {
   v.set('hurt'); v.stun = (A.stun || 16) * (heavy ? 0.6 : 1); v.vx = dir * (A.kb || 1.5) * (heavy ? 0.5 : 1); if (v.hold && Math.random() < 0.25) v.dropItem();
   if (v.state === 'hurt') v.face = -dir;
   return true;
+}
+/* after-images: kept while flying after a big hit, while dashing in a special move, and while rolling */
+function trackGhosts(f) {
+  if (f.whiteT > 0) f.whiteT--; if (f.auraT > 0) f.auraT--;
+  const fast = (f.state === 'fall' && f.y > 4 && Math.abs(f.vx) > 3.2) || (f.state === 'skill' && Math.abs(f.vx) > 4.5) || (f.state === 'run' && f.superT > 0);
+  if (!f.ghosts) f.ghosts = [];
+  if (fast && W.t % 3 === 0 && f.lastPose) { f.ghosts.push({ x: f.x, y: f.y, z: f.z, face: f.face, P: f.lastPose, life: 12 }); if (f.ghosts.length > 4) f.ghosts.shift(); }
+  for (const g of f.ghosts) g.life--; while (f.ghosts.length && f.ghosts[0].life <= 0) f.ghosts.shift();
 }
 function knock(v, dir, kb, kbY) {
   v.set('fall'); v.vx = dir * kb; v.vy = kbY; v.y = Math.max(v.y, 1); v.face = -dir; v.fallMeter = 0; v.bounced = false; v.invisible = false;

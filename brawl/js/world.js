@@ -229,7 +229,7 @@ function respawn(f) {
 function step() {
   W.t++;
   for (const f of W.fighters) { if (f.ctl) f.ctl.poll(); }
-  for (const f of W.fighters) { f.update(); if (f.ctl) f.ctl.inp.clearEdges(); if (f.flashMp > 0) f.flashMp--; }
+  for (const f of W.fighters) { f.update(); if (f.ctl) f.ctl.inp.clearEdges(); if (f.flashMp > 0) f.flashMp--; trackGhosts(f); }
   // fighters push each other apart a little so crowds don't stack
   const fs = W.fighters;
   for (let i = 0; i < fs.length; i++) for (let j = i + 1; j < fs.length; j++) {

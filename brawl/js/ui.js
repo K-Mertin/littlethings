@@ -183,6 +183,7 @@ function render() {
     else if (!f.def.boss && f.hp < f.maxHp && f.state !== 'lying') bar(c, f.x - 18, hy + 4, 36, 5, f.hp / f.maxHp, null, '#ff4d3d');
   }
   for (const p of W.parts) drawPart(c, p);
+  drawForeground(c);
   c.fillStyle = '#1b1f3a'; c.fillRect(W.camX - 20, VH, Wv + 40, 4000);
   if (portrait) { c.fillStyle = 'rgba(255,246,230,.45)'; c.font = '700 13px "Noto Sans TC",sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('把手機轉成橫的，畫面會更大', W.camX + Wv / 2, VH + 22); }
   // HUD in screen space
