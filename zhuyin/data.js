@@ -86,6 +86,61 @@
     'ㄦ': '35,16 32,59 13,86 | 58,15 58,49 57,82 87,79',
   };
   const strokesOf = s => STROKES[s].split(' | ').map(st => st.split(' ').map(p => p.split(',').map(Number)));
+
+  // 注音小故事：每頁 e 圖、t 句子（詞用 | 分開，字後面接注音，音節用空白；標點沒有注音）
+  const STORIES = [
+    { title: '小藍的早上', e: '🌅', pages: [
+      { e: '🌅🐦', t: '早安ㄗㄠˇ ㄢ|！|小藍ㄒㄧㄠˇ ㄌㄢˊ|起床ㄑㄧˇ ㄔㄨㄤˊ|了ㄌㄜ˙|。' },
+      { e: '🪥😁', t: '小藍ㄒㄧㄠˇ ㄌㄢˊ|刷牙ㄕㄨㄚ ㄧㄚˊ|，|刷ㄕㄨㄚ|刷ㄕㄨㄚ|刷ㄕㄨㄚ|。' },
+      { e: '🍞🥛', t: '小藍ㄒㄧㄠˇ ㄌㄢˊ|吃ㄔ|麵包ㄇㄧㄢˋ ㄅㄠ|，|喝ㄏㄜ|牛奶ㄋㄧㄡˊ ㄋㄞˇ|。' },
+      { e: '🎒🏫', t: '小藍ㄒㄧㄠˇ ㄌㄢˊ|揹ㄅㄟ|書包ㄕㄨ ㄅㄠ|，|去ㄑㄩˋ|上學ㄕㄤˋ ㄒㄩㄝˊ|。' },
+      { e: '👩👋', t: '媽媽ㄇㄚ ㄇㄚ˙|說ㄕㄨㄛ|：「|再見ㄗㄞˋ ㄐㄧㄢˋ|！」' },
+    ], qs: [
+      { q: '小藍喝什麼？', a: 0, o: [['🥛', '牛奶'], ['🍵', '茶'], ['🧃', '果汁']] },
+      { q: '小藍去哪裡？', a: 0, o: [['🏫', '學校'], ['🏖️', '海邊'], ['🏪', '商店']] },
+    ] },
+    { title: '下雨了', e: '🌧️', pages: [
+      { e: '☁️☁️', t: '天上ㄊㄧㄢ ㄕㄤˋ|有ㄧㄡˇ|黑黑ㄏㄟ ㄏㄟ|的ㄉㄜ˙|雲ㄩㄣˊ|。' },
+      { e: '🌧️💧', t: '下雨ㄒㄧㄚˋ ㄩˇ|了ㄌㄜ˙|，|滴答ㄉㄧ ㄉㄚ|滴答ㄉㄧ ㄉㄚ|。' },
+      { e: '🐸💦', t: '青蛙ㄑㄧㄥ ㄨㄚ|好ㄏㄠˇ|開心ㄎㄞ ㄒㄧㄣ|，|呱呱呱ㄍㄨㄚ ㄍㄨㄚ ㄍㄨㄚ|。' },
+      { e: '🐦☂️', t: '小藍ㄒㄧㄠˇ ㄌㄢˊ|打開ㄉㄚˇ ㄎㄞ|雨傘ㄩˇ ㄙㄢˇ|。' },
+      { e: '🌈☀️', t: '雨ㄩˇ|停ㄊㄧㄥˊ|了ㄌㄜ˙|，|天上ㄊㄧㄢ ㄕㄤˋ|有ㄧㄡˇ|彩虹ㄘㄞˇ ㄏㄨㄥˊ|！' },
+    ], qs: [
+      { q: '誰好開心？', a: 0, o: [['🐸', '青蛙'], ['🐱', '貓咪'], ['🐶', '小狗']] },
+      { q: '雨停了，天上有什麼？', a: 0, o: [['🌈', '彩虹'], ['⭐', '星星'], ['🌙', '月亮']] },
+    ] },
+    { title: '去公園', e: '🏞️', pages: [
+      { e: '☀️😊', t: '今天ㄐㄧㄣ ㄊㄧㄢ|天氣ㄊㄧㄢ ㄑㄧˋ|很ㄏㄣˇ|好ㄏㄠˇ|。' },
+      { e: '🐦👨🏞️', t: '小藍ㄒㄧㄠˇ ㄌㄢˊ|跟ㄍㄣ|爸爸ㄅㄚˋ ㄅㄚ˙|去ㄑㄩˋ|公園ㄍㄨㄥ ㄩㄢˊ|。' },
+      { e: '🦆🦆🦆', t: '池子ㄔˊ ㄗ˙|裡ㄌㄧˇ|有ㄧㄡˇ|三ㄙㄢ|隻ㄓ|鴨子ㄧㄚ ㄗ˙|。' },
+      { e: '🎈', t: '爸爸ㄅㄚˋ ㄅㄚ˙|買ㄇㄞˇ|紅色ㄏㄨㄥˊ ㄙㄜˋ|的ㄉㄜ˙|氣球ㄑㄧˋ ㄑㄧㄡˊ|。' },
+      { e: '🐦💕', t: '小藍ㄒㄧㄠˇ ㄌㄢˊ|說ㄕㄨㄛ|：「|謝謝ㄒㄧㄝˋ ㄒㄧㄝ˙|爸爸ㄅㄚˋ ㄅㄚ˙|！」' },
+    ], qs: [
+      { q: '池子裡有幾隻鴨子？', a: 0, o: [['3️⃣', '三隻'], ['2️⃣', '兩隻'], ['5️⃣', '五隻']] },
+      { q: '氣球是什麼顏色？', a: 0, o: [['🔴', '紅色'], ['🔵', '藍色'], ['🟡', '黃色']] },
+    ] },
+    { title: '好朋友', e: '🐻', pages: [
+      { e: '🐻🐦', t: '小熊ㄒㄧㄠˇ ㄒㄩㄥˊ|是ㄕˋ|小藍ㄒㄧㄠˇ ㄌㄢˊ|的ㄉㄜ˙|好ㄏㄠˇ|朋友ㄆㄥˊ ㄧㄡˇ|。' },
+      { e: '⚽🌿', t: '他們ㄊㄚ ㄇㄣ˙|在ㄗㄞˋ|草地ㄘㄠˇ ㄉㄧˋ|上ㄕㄤˋ|踢球ㄊㄧ ㄑㄧㄡˊ|。' },
+      { e: '🐻😢', t: '小熊ㄒㄧㄠˇ ㄒㄩㄥˊ|跌倒ㄉㄧㄝˊ ㄉㄠˇ|了ㄌㄜ˙|，|好ㄏㄠˇ|痛ㄊㄨㄥˋ|！' },
+      { e: '🐦🤗🐻', t: '小藍ㄒㄧㄠˇ ㄌㄢˊ|抱抱ㄅㄠˋ ㄅㄠˋ|小熊ㄒㄧㄠˇ ㄒㄩㄥˊ|。' },
+      { e: '🐻😄', t: '小熊ㄒㄧㄠˇ ㄒㄩㄥˊ|笑ㄒㄧㄠˋ|了ㄌㄜ˙|：「|我ㄨㄛˇ|不ㄅㄨˋ|痛ㄊㄨㄥˋ|了ㄌㄜ˙|！」' },
+    ], qs: [
+      { q: '小藍的好朋友是誰？', a: 0, o: [['🐻', '小熊'], ['🐰', '小兔'], ['🐼', '熊貓']] },
+      { q: '他們在做什麼？', a: 0, o: [['⚽', '踢球'], ['🎨', '畫畫'], ['🏊', '游泳']] },
+    ] },
+  ];
+  // 把 '早安ㄗㄠˇ ㄢ' 拆成 { w:'早安', z:'ㄗㄠˇ ㄢ' }；標點 z 是空字串
+  const ZY_RE = /[ㄅ-ㄩˊˇˋ˙]/;
+  function parseLine(t) {
+    return t.split('|').map(tok => {
+      const i = Array.from(tok).findIndex(c => ZY_RE.test(c));
+      if (i < 0) return { w: tok, z: '' };
+      const a = Array.from(tok); return { w: a.slice(0, i).join(''), z: a.slice(i).join('') };
+    });
+  }
+  const pageText = pg => parseLine(pg.t).map(x => x.w).join('');
+  const NO_TAP = ['的', '了'];
   const GROUPS = { c: '聲母', m: '介音', v: '韻母' };
   const TONES = ['ˊ', 'ˇ', 'ˋ', '˙'];
   const INITIALS = SYMBOLS.filter(x => x.g === 'c').map(x => x.s);
@@ -220,6 +275,10 @@
     writeOops: '從綠色的點開始，再試一次。',
     writeStage: '寫好了！',
     writeAll: s => `${s}，三顆星星都拿到了！`,
+    // 小故事
+    storyIntro: '選一本故事書。',
+    storyTitle: st => st.title,
+    storyQIntro: '我們來回答問題。',
     // 四聲
     toneIntro: '注音有四個聲調。聽聽看，是第幾聲？',
     toneLearn: '一聲平平的，二聲往上爬，三聲彎下去再上來，四聲往下跳。',
@@ -255,6 +314,11 @@
     }
     for (const w of ONE) { add(P.spellQ(w.w)); add(P.spellDone(w)); }
     for (const x of SYMBOLS) for (const f of ['write0', 'write1', 'write2', 'writeDemo', 'writeAll']) add(P[f](x.s));
+    for (const st of STORIES) {
+      add(st.title);
+      for (const pg of st.pages) { add(pageText(pg)); for (const x of parseLine(pg.t)) if (x.z && !NO_TAP.includes(x.w)) add(x.w); }
+      for (const q of st.qs) { add(q.q); q.o.forEach(o => add(o[1])); }
+    }
     for (const c of COMBOS) for (const f of ['combo', 'comboEx', 'comboParts', 'comboFind', 'comboThisIs']) add(P[f](c).text);
     for (const w of TWO) { add(P.spellQ(w.w)); add(P.spellWordDone(w.w)); Array.from(w.w).forEach((ch, i) => add(P.spellSyl(ch, w.z.split(' ')[i]))); }
     for (const t of TONE_SETS) t.ch.forEach((c, n) => { add(P.ch(c)); add(P.toneEx(c, n)); add(P.toneQ(c)); });
@@ -270,7 +334,7 @@
     return h.toString(16).padStart(8, '0');
   }
 
-  const ZY = { SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, STROKES, strokesOf, TONE_SETS,
+  const ZY = { SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
     TONE_NAMES, TONE_MARKS, parseSyl, syllables, P, allLines, hash, symOf };
   if (typeof module !== 'undefined' && module.exports) module.exports = ZY;
   else root.ZY = ZY;
