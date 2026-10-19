@@ -141,6 +141,17 @@
   }
   const pageText = pg => parseLine(pg.t).map(x => x.w).join('');
   const NO_TAP = ['的', '了'];
+
+  // 課程：照教學順序一課一課往下走。k 類型：sym 新符號、tone 四聲、spell 拼一個字、combo 結合韻、two 拼兩個字、story 故事
+  const LESSONS = [
+    { k: 'sym', s: 'ㄅㄆㄇㄈ' }, { k: 'sym', s: 'ㄉㄊㄋㄌ' }, { k: 'sym', s: 'ㄍㄎㄏ' }, { k: 'sym', s: 'ㄐㄑㄒ' },
+    { k: 'sym', s: 'ㄓㄔㄕㄖ' }, { k: 'sym', s: 'ㄗㄘㄙ' }, { k: 'sym', s: 'ㄧㄨㄩ' }, { k: 'sym', s: 'ㄚㄛㄜㄝ' },
+    { k: 'sym', s: 'ㄞㄟㄠㄡ' }, { k: 'sym', s: 'ㄢㄣㄤㄥㄦ' }, { k: 'tone', t: '四聲' }, { k: 'spell', t: '拼一個字' },
+    { k: 'combo', s: 'ㄧ', t: '結合韻ㄧ' }, { k: 'combo', s: 'ㄨ', t: '結合韻ㄨ' }, { k: 'combo', s: 'ㄩ', t: '結合韻ㄩ' },
+    { k: 'two', t: '拼兩個字' }, { k: 'story', i: 0 }, { k: 'story', i: 1 }, { k: 'story', i: 2 }, { k: 'story', i: 3 },
+  ];
+  const CN = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十'];
+  const lessonTitle = (L, n) => L.k === 'sym' ? L.s : L.k === 'story' ? STORIES[L.i].title : L.t;
   const GROUPS = { c: '聲母', m: '介音', v: '韻母' };
   const TONES = ['ˊ', 'ˇ', 'ˋ', '˙'];
   const INITIALS = SYMBOLS.filter(x => x.g === 'c').map(x => x.s);
@@ -279,6 +290,14 @@
     storyIntro: '選一本故事書。',
     storyTitle: st => st.title,
     storyQIntro: '我們來回答問題。',
+    // 課程
+    mapIntro: '這是注音地圖。一課一課往前走吧！',
+    mapLocked: '先把前面的課上完喔。',
+    lessonIntro: (L, n) => L.k === 'sym' ? `第${CN[n]}課。${Array.from(L.s).join('，')}。` : `第${CN[n]}課。${lessonTitle(L, n)}。`,
+    lessonTapAll: '每一個都點點看，聽一聽。',
+    lessonNext: '很好！我們做下一個。',
+    lessonDone: n => `第${CN[n]}課完成了！好棒！`,
+    lessonWrite: s => `我們來寫${s}。`,
     // 四聲
     toneIntro: '注音有四個聲調。聽聽看，是第幾聲？',
     toneLearn: '一聲平平的，二聲往上爬，三聲彎下去再上來，四聲往下跳。',
@@ -314,6 +333,8 @@
     }
     for (const w of ONE) { add(P.spellQ(w.w)); add(P.spellDone(w)); }
     for (const x of SYMBOLS) for (const f of ['write0', 'write1', 'write2', 'writeDemo', 'writeAll']) add(P[f](x.s));
+    LESSONS.forEach((L, i) => { add(P.lessonIntro(L, i + 1)); add(P.lessonDone(i + 1)); });
+    for (const x of SYMBOLS) add(P.lessonWrite(x.s));
     for (const st of STORIES) {
       add(st.title);
       for (const pg of st.pages) { add(pageText(pg)); for (const x of parseLine(pg.t)) if (x.z && !NO_TAP.includes(x.w)) add(x.w); }
@@ -334,7 +355,7 @@
     return h.toString(16).padStart(8, '0');
   }
 
-  const ZY = { SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
+  const ZY = { SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, LESSONS, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
     TONE_NAMES, TONE_MARKS, parseSyl, syllables, P, allLines, hash, symOf };
   if (typeof module !== 'undefined' && module.exports) module.exports = ZY;
   else root.ZY = ZY;
