@@ -1443,8 +1443,8 @@ return { make, animate, BUILD, bake, ENV };
    weapons are dressed on here, and a bone rig drives walk / attack poses. Until a file arrives (or if
    it can't be fetched, e.g. from file://) the older hand-built model stands in. */
 const SCULPT = (() => {
-  const LOD = touchMode ? 'lo' : 'hi', PROTO = {}, WANT = ['goblin', 'goblinChief', 'imp', 'darkWizard', 'bat', 'batQueen', 'knight', 'wisp', 'totem', 'mummy', 'giant'];
-  const KIND = { mummy: 'mummy', giant: 'giant', knight: 'knight', wisp: 'wisp', totem: 'totem', goblin: 'goblin', goblinChief: 'goblin', imp: 'imp', darkWizard: 'imp', bat: 'bat', batQueen: 'bat' };
+  const LOD = touchMode ? 'lo' : 'hi', PROTO = {}, WANT = ['goblin', 'goblinChief', 'imp', 'darkWizard', 'bat', 'batQueen', 'knight', 'wisp', 'totem', 'mummy', 'giant', 'cactus'];
+  const KIND = { cactus: 'prop', mummy: 'mummy', giant: 'giant', knight: 'knight', wisp: 'wisp', totem: 'totem', goblin: 'goblin', goblinChief: 'goblin', imp: 'imp', darkWizard: 'imp', bat: 'bat', batQueen: 'bat' };
   const C = h => new THREE.Color(h);
   const E = () => ({ envMap: CAST.ENV });
   const MATS = {
@@ -1474,8 +1474,10 @@ const SCULPT = (() => {
       g.setAttribute('skinWeight', new THREE.Uint8BufferAttribute(new Uint8Array(buf.slice(base + M.sw, base + M.sw + n * 4)), 4, true));
       g.setIndex(new THREE.BufferAttribute(M.big ? new Uint32Array(buf.slice(base + M.idx, base + M.idx + M.idxLen * 4)) : new Uint16Array(buf.slice(base + M.idx, base + M.idx + M.idxLen * 2)), 1));
       g.computeBoundingSphere(); g.boundingSphere.radius *= 1.6;   // poses reach outside the bind pose
-      const m = new THREE.SkinnedMesh(g, (MATS[M.mat] || MATS.leather)()); m.name = 's_' + M.name; m.castShadow = m.receiveShadow = true; m.frustumCulled = true;
-      if (first) { m.add(list[0]); first = false; } m.bind(skel); root.add(m);
+      const still = J.bones.length === 1;   // scenery: one bone, so a plain mesh is cheaper than skinning
+      if (still) { g.deleteAttribute('skinIndex'); g.deleteAttribute('skinWeight'); }
+      const m = new (still ? THREE.Mesh : THREE.SkinnedMesh)(g, (MATS[M.mat] || MATS.leather)()); m.name = 's_' + M.name; m.castShadow = m.receiveShadow = true;
+      if (still) { if (first) { root.add(list[0]); first = false; } root.add(m); } else { if (first) { m.add(list[0]); first = false; } m.bind(skel); root.add(m); }
     }
     return { root, bones, meta: J.meta };
   }
@@ -1640,6 +1642,7 @@ const SCULPT = (() => {
     if (e.painT > 0) { R('spine', -.18, 0, .08); R('head', .15, 0, 0); }
     B.hips.position.y = U.hipY + hy;
   };
+  POSE.prop = () => { };
   POSE.wisp = function (U, e, time) {
     const B = U.bones, t = time + e.phase, atk = e.state === 'attack';
     B.core.position.y = U.hipY + Math.sin(time * 2.4 + e.phase) * .03; B.core.rotation.set(Math.sin(t * 1.7) * .08, Math.sin(t * .8) * .3, Math.sin(t * 1.3) * .08); B.core.scale.setScalar(atk ? 1.15 : 1);
@@ -1694,7 +1697,7 @@ const SCULPT = (() => {
   function load() {
     if (ready) return ready;
     if (location.protocol === 'file:') return ready = Promise.resolve();   // fetch can't read local files; keep the stand-ins
-    ready = Promise.all(WANT.map(n => fetch(`assets/cast/${n}.${LOD}.bin`).then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); }).then(b => { const P = parse(b); DRESS[n] && DRESS[n](P); P.root.traverse(o => { if (o.isMesh) o.castShadow = true; }); PROTO[n] = P; }).catch(err => console.warn('sculpt', n, err.message))))
+    ready = Promise.all(WANT.map(n => fetch(`assets/cast/${n}.${LOD}.bin`).then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); }).then(b => { const P = parse(b); DRESS[n] && DRESS[n](P); P.root.traverse(o => { if (o.isMesh) o.castShadow = LOD === 'hi'; }); PROTO[n] = P; }).catch(err => console.warn('sculpt', n, err.message))))
       .then(() => { for (const f of onReady) f(); onReady = []; });
     return ready;
   }
@@ -1705,19 +1708,20 @@ const SCULPT = (() => {
     outer.userData = { sculpt: key, kind: KIND[key], bones, mats, flashOn: false, hipY: (bones.hips || bones.body || bones.core || bones.base).position.y, crystal: g.getObjectByName('crystal'), crystalY: g.getObjectByName('crystal')?.position.y, fl: [0, 1, 2].map(i => g.getObjectByName('fl' + i)).filter(Boolean), em: [...Array(9)].map((_, i) => g.getObjectByName('em' + i)).filter(Boolean), orb: g.getObjectByName('orb'), orbGlow: g.getObjectByName('orbGlow'), rocks: [0, 1, 2].map(i => g.getObjectByName('rock' + i)).filter(Boolean), boss: !!ETYPE[Object.keys(ETYPE).find(k => ETYPE[k].model === key)] };
     return outer;
   }
-  function animate(U, e, time) {
-    POSE[U.kind](U, e, time);
+  function animate(U, e, time) { POSE[U.kind](U, e, time); flash(U, e); }
+  function flash(U, e) {
     const fl = e.flash > 0;
     if (U.flashOn !== fl) { U.flashOn = fl; for (const mt of U.mats) { if (fl) { mt.emissive.setRGB(1, 1, 1); mt.emissiveIntensity = .7; } else { mt.emissive.copy(mt.userData.baseE); mt.emissiveIntensity = mt.userData.baseI; } } }
   }
-  return { load, make, animate, has: k => !!PROTO[k], whenReady: f => onReady.push(f), LOD, PROTO };
+  return { load, make, animate, flash, has: k => !!PROTO[k], whenReady: f => onReady.push(f), LOD, PROTO };
 })();
 
 // game enemy type -> model (bosses name their own model in ETYPE)
 const TYPEMODEL = { jelly: 'goblin', shroom: 'imp', puff: 'wisp', golem: 'knight', bee: 'bat', teapot: 'totem' };
 function modelFor(type) { const T = ETYPE[type], key = T.boss ? T.model : TYPEMODEL[type]; return SCULPT.has(key) ? SCULPT.make(key) : CAST.make(key); }
 // once the sculpted models arrive, swap them in for any stand-ins already on the map
-SCULPT.whenReady(() => { if (!level) return; for (const e of ents) { if (!e.model || e.state === 'dead' || e.model.userData.sculpt) continue; const key = e.T.boss ? e.T.model : TYPEMODEL[e.type]; if (!SCULPT.has(key)) continue; const m = SCULPT.make(key); m.scale.copy(e.model.scale); m.position.copy(e.model.position); m.rotation.copy(e.model.rotation); level.remove(e.model); level.add(m); e.model = m; } });
+SCULPT.whenReady(() => { if (!level) return; for (const d of decor) if (d.ch === 'k' && d.model && !d.model.userData.sculpt) { level.remove(d.model); d.model = decorModel('k'); d.model.position.set(d.x, 0, d.y); level.add(d.model); }
+  for (const e of ents) { if (!e.model || e.state === 'dead' || e.model.userData.sculpt) continue; const key = e.T.boss ? e.T.model : TYPEMODEL[e.type]; if (!SCULPT.has(key)) continue; const m = SCULPT.make(key); m.scale.copy(e.model.scale); m.position.copy(e.model.position); m.rotation.copy(e.model.rotation); level.remove(e.model); level.add(m); e.model = m; } });
 SCULPT.load();
 
 function pickupModel(kind) {
@@ -1756,6 +1760,7 @@ function pickupModel(kind) {
   return g;
 }
 function decorModel(ch) {
+  if (ch === 'k' && SCULPT.has('cactus')) { const m = SCULPT.make('cactus'); m.rotation.y = Math.random() * 6.28; m.scale.setScalar(.85 + Math.random() * .3); return m; }
   const g = new THREE.Group();
   if (ch === 't') { // iron lamp post with a caged flame
     const iron = std('#2e2a30', { roughness: .45, metalness: .6 });
@@ -2629,7 +2634,12 @@ function syncScene(dt) {
     m.rotation.y = Math.atan2(p.x - e.x, p.y - e.y);
     if (e.grow !== undefined && e.grow < 1) { e.grow = Math.min(1, e.grow + dt * 3); m.scale.setScalar(e.T.size * e.grow); }
     const U = m.userData;
-    if (U.sculpt) SCULPT.animate(U, e, time); else CAST.animate(U, e, time);
+    if (U.sculpt) {
+      // far away or behind the player: skip the bone pose this frame (the hit flash still updates)
+      const dx = e.x - p.x, dy = e.y - p.y, d2 = dx * dx + dy * dy, behind = dx * Math.cos(p.a) + dy * Math.sin(p.a) < -1.5;
+      U.skip = (d2 > 225 || behind) && !e.T.boss ? (U.skip || 0) + 1 : 0;
+      if (U.skip % 4 === 0) SCULPT.animate(U, e, time); else SCULPT.flash(U, e);
+    } else CAST.animate(U, e, time);
   }
   // pickups & projectiles
   for (const it of pickups) if (it.model) { it.model.position.set(it.x, .3 + Math.sin(time * 3 + it.x) * .05, it.y); it.model.rotation.y = time * 1.8 + it.x; }

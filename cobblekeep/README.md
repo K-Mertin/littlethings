@@ -16,9 +16,10 @@ Monsters are sculpted in code as distance fields ("digital clay"): smooth shapes
 
 - **Source:** `sculpt/sdf.mjs` (the toolkit) and `sculpt/models/*.mjs` (one file per monster).
 - **Build:** `node cobblekeep/sculpt/bake.mjs` (needs `npm i meshoptimizer`). It meshes each model, bakes colour, shading and bone weights into the vertices, and writes two detail levels to `assets/cast/<name>.hi.bin` and `<name>.lo.bin`. Run it again after changing a model and commit the `.bin` files.
-- **Phones:** touch devices load the `.lo` files (about a quarter of the triangles) with a cheaper skin material. Nothing is sculpted on the device.
+- **Phones:** touch devices load the `.lo` files (about a quarter of the triangles) with a cheaper skin material, and the monsters cast no shadows. Nothing is sculpted on the device.
+- **Far away:** monsters out of view or more than 15 tiles off update their pose every fourth frame.
 - **In the game:** eyes, teeth and weapons are simple shapes added at load time. The older built-in model is shown until a file arrives, then swapped.
-- **Done so far:** goblin, Goblin Chief, imp mage, Dark Wizard, bat, Bat Queen, knight, fire wisp, crystal totem, Mummy King, Frost Giant (the whole cast).
+- **Done so far:** goblin, Goblin Chief, imp mage, Dark Wizard, bat, Bat Queen, knight, fire wisp, crystal totem, Mummy King, Frost Giant (the whole cast), plus the desert cactus.
 
 ## Baked surfaces
 Walls, floors and ceilings in all five worlds are generated in code as height fields: bricks, stones, planks and tiles with chipped edges, grime, moss, frost and wood grain. From the height come normal maps (light catches the relief), roughness maps (marble and ice shine, plaster stays matte) and glow maps for cursed runes, key gems and the goal seal.
