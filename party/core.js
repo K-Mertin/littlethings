@@ -268,12 +268,13 @@ const Party = {
         if (d.col === 'next') p.col = this.freeCol(p, p.col + 1);
         yardHop(p); renderLobby(); this.broadcast(); break;
       case 'say': yardHop(p); break;
-      case 'pick': if ((this.state === 'lobby' || this.state === 'result') && GAMES.some(g => g.id === d.id)) { this.gameId = d.id; store.set('game', d.id); Sfx.play('pop'); renderLobby(); this.broadcast(); } break;
-      case 'mode': if (this.state === 'lobby' || this.state === 'result') { this.setKid(!!d.kid); } break;
-      case 'start': if (this.state === 'lobby') this.begin(); else if (this.state === 'result') this.begin(); break;
-      case 'menu': if (this.state === 'result') this.toLobby(); break;
-      case 'pause': if (this.state === 'play' || this.state === 'intro') this.togglePause(); break;
-      case 'quit': if (this.paused) this.toLobby(); break;
+      // only the room leader (房主) runs the show; the big screen's own keyboard/mouse can always do it too
+      case 'pick': if (p === this.leader() && (this.state === 'lobby' || this.state === 'result') && GAMES.some(g => g.id === d.id)) { this.gameId = d.id; store.set('game', d.id); Sfx.play('pop'); renderLobby(); this.broadcast(); } break;
+      case 'mode': if (p === this.leader() && (this.state === 'lobby' || this.state === 'result')) { this.setKid(!!d.kid); } break;
+      case 'start': if (p === this.leader() && (this.state === 'lobby' || this.state === 'result')) this.begin(); break;
+      case 'menu': if (p === this.leader() && this.state === 'result') this.toLobby(); break;
+      case 'pause': if (p === this.leader() && (this.state === 'play' || this.state === 'intro')) this.togglePause(); break;
+      case 'quit': if (p === this.leader() && this.state !== 'lobby') this.toLobby(); break;
     }
   },
   onClose(peer) {
@@ -291,12 +292,14 @@ const Party = {
     if (m > 1) { x /= m; y /= m; }
     return { x, y };
   },
-  you(p) { return { slot: this.players.indexOf(p), name: p.name, col: p.col, animal: p.animal, trophies: p.trophies }; },
+  /* the room leader: the earliest phone still connected (keyboard players don't count) */
+  leader() { return this.players.find(p => p.peer && p.online && !p.local) || null; },
+  you(p) { return { slot: this.players.indexOf(p), name: p.name, col: p.col, animal: p.animal, trophies: p.trophies, lead: p === this.leader() }; },
   btnFor(p) { const b = this.def.btn; return typeof b === 'function' ? b(p, this.kid) : b; },
   /* what a phone should be showing right now */
   view(p) {
     if (!this.net || !p.peer || p.local) return;
-    const you = this.you(p), base = { you, kid: this.kid, game: this.gameId };
+    const you = this.you(p), L = this.leader(), base = { you, kid: this.kid, game: this.gameId, leadName: L ? L.name : '' };
     if (this.state === 'lobby' || (this.state === 'result' && !p.inGame)) {
       this.net.send(p.peer, { t: 'lobby', ...base, games: GAMES.map(g => ({ id: g.id, name: g.name, icon: g.icon, col: g.col, blurb: g.blurb, team: g.kind === 'team' })), players: this.players.map(q => ({ name: q.name, col: q.col, animal: q.animal, online: q.online, trophies: q.trophies })) });
     } else if (this.state === 'result') {
@@ -306,7 +309,7 @@ const Party = {
       this.net.send(p.peer, { t: 'wait', ...base, msg: '大家正在玩「' + this.def.name + '」，這一局結束就換你加入！' });
     } else {
       const b = this.btnFor(p);
-      this.net.send(p.peer, { t: 'pad', ...base, name: this.def.name, icon: this.def.icon, gcol: this.def.col, btn: b, intro: this.state === 'intro' });
+      this.net.send(p.peer, { t: 'pad', ...base, name: this.def.name, icon: this.def.icon, gcol: this.def.col, btn: b, intro: this.state === 'intro', paused: this.paused });
       p.hudKey = '';
     }
   },
@@ -367,6 +370,7 @@ const Party = {
     if (this.state !== 'play' && this.state !== 'intro') return;
     this.paused = !this.paused; $('pause').hidden = !this.paused;
     if (!this.paused) this.players.forEach(p => this.sync(p));
+    this.broadcast();
   },
   /* phones: small score line + whether the button is ready */
   netTick(dt) {
@@ -375,6 +379,8 @@ const Party = {
       if (p.local || !p.peer) continue;
       if (p.online && now - p.last > 5000) { p.online = false; p.inp.x = p.inp.y = 0; renderLobby(); }
     }
+    const L = this.leader(), lu = L ? L.uid : 0;
+    if (lu !== this.leadUid) { this.leadUid = lu; renderLobby(); this.broadcast(); }
     this.hudT -= dt; if (this.hudT > 0) return; this.hudT = 0.12;
     if (!this.game || !(this.state === 'play' || this.state === 'intro') || !this.net) return;
     for (const p of this.players) {
@@ -465,6 +471,7 @@ function yardDraw(t) {
     const y = p.yard, bob = y.walk ? Math.abs(Math.sin(y.walk)) * 6 : 0;
     drawCritter(g, y.x, y.y, 34, p.col, p.animal, { face: y.face, hop: y.hop + bob, alpha: p.online || p.local ? 1 : 0.35, blink: (t + p.uid * 1.7) % 4 < 0.12, happy: y.say > 0 });
     drawTag(g, y.x, y.y + 52, p);
+    if (p === Party.leader()) { g.font = '30px system-ui'; g.textAlign = 'center'; g.fillText('👑', y.x, y.y - 56 - y.hop - bob); }
     if (y.say > 0) {
       const tx = y.x + 46, ty = y.y - 70 - y.hop;
       g.fillStyle = '#fff'; g.beginPath(); g.roundRect(tx - 6, ty - 24, 74, 44, 16); g.fill();
@@ -500,7 +507,7 @@ function renderLobby() {
   $('start').style.setProperty('--gc', d.col);
   const on = Party.players.filter(p => p.online || p.local);
   $('count').textContent = on.length ? `${on.length} 人已加入` : '等大家加入';
-  $('chips').innerHTML = Party.players.map(p => `<span class="chip${p.online || p.local ? '' : ' off'}" data-uid="${p.uid}" style="--pc:${PARTY_COLORS[p.col].c}"><img src="${critterURL(p.col, p.animal, 64)}" alt=""><b>${esc(p.name)}</b>${p.trophies ? `<i>🏆${p.trophies}</i>` : ''}${p.local ? '<u title="移除">×</u>' : ''}</span>`).join('');
+  $('chips').innerHTML = Party.players.map(p => `<span class="chip${p.online || p.local ? '' : ' off'}" data-uid="${p.uid}" style="--pc:${PARTY_COLORS[p.col].c}"><img src="${critterURL(p.col, p.animal, 64)}" alt="">${p === Party.leader() ? '<i title="房主">👑</i>' : ''}<b>${esc(p.name)}</b>${p.trophies ? `<i>🏆${p.trophies}</i>` : ''}${p.local ? '<u title="移除">×</u>' : ''}</span>`).join('');
   $('chips').querySelectorAll('.chip').forEach(c => {
     const p = Party.players.find(q => q.uid === +c.dataset.uid);
     if (p && p.local) c.onclick = () => { Party.players.splice(Party.players.indexOf(p), 1); renderLobby(); Party.broadcast(); };

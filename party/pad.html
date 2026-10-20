@@ -90,6 +90,16 @@ input{background:#fff;border:3px solid var(--line);border-radius:16px;padding:10
   .bigBtn{left:50%;top:33%;width:min(190px,50vw,30vh)}
   .kid .bigBtn{width:min(220px,58vw,34vh)}
 }
+.leadNote{margin:0;font-size:15px;font-weight:700;color:var(--ink);background:#fff;border:2px dashed var(--line);border-radius:14px;padding:8px 14px;text-align:center;max-width:420px}
+.leadNote:empty{display:none}
+.notLead .gbtn{pointer-events:none;opacity:.75}
+.notLead .gbtn[aria-pressed="true"]{opacity:1}
+.notLead .seg{pointer-events:none;opacity:.6}
+.pauseBox{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:rgba(255,244,223,.98);touch-action:manipulation}
+.pauseBox b{font-size:30px;font-weight:900}
+.pauseBox #pauseLead{display:flex;flex-direction:column;gap:12px;align-items:center}
+.pauseBox p{margin:0;color:var(--mute);font-size:17px;font-weight:700}
+.crown{font-style:normal}
 /* result */
 .rank{font-family:var(--round);font-weight:700;font-size:64px;line-height:1;margin:0}
 .rtitle{margin:0;font-weight:900;font-size:24px;text-align:center}
@@ -115,6 +125,7 @@ input{background:#fff;border:3px solid var(--line);border-radius:16px;padding:10
   </div>
   <div class="seg" role="group" aria-label="模式"><button id="mKid" aria-pressed="true">🧒 小朋友</button><button id="mAdult" aria-pressed="false">🧑 大人</button></div>
   <div class="glist" id="glist"></div>
+  <p class="leadNote" id="leadNote"></p>
   <button class="go" id="startBtn">開始！</button>
   <p class="plist" id="plist"></p>
   <p class="roomline">房間 <b class="roomCode"></b> <button class="ghost leave">換房間</button></p>
@@ -133,6 +144,7 @@ input{background:#fff;border:3px solid var(--line);border-radius:16px;padding:10
   <p class="rline" id="rLine"></p>
   <button class="go" id="againBtn">再玩一次</button>
   <button class="ghost" id="menuBtn" style="font-size:18px;padding:10px 22px">換遊戲</button>
+  <p class="leadNote" id="resNote"></p>
 </div>
 
 <div id="pad" hidden>
@@ -140,6 +152,11 @@ input{background:#fff;border:3px solid var(--line);border-radius:16px;padding:10
   <button id="pauseBtn" aria-label="暫停">II</button>
   <div class="stickZone" id="stickZone"><div class="stickBase" id="stickBase"><div class="stickKnob" id="knob"></div></div></div>
   <button class="bigBtn" id="bigBtn"><span class="ic" id="bIc"></span><span class="lb" id="bLb"></span></button>
+  <div class="pauseBox" id="pauseBox" hidden>
+    <b>⏸ 暫停中</b>
+    <div id="pauseLead"><button class="go" id="resumeBtn">繼續玩</button><button class="ghost" id="quitBtn">退出，回去選遊戲</button></div>
+    <p id="pauseOther">等 👑 房主繼續…</p>
+  </div>
   <div class="introCover" id="introCover" hidden>看大螢幕，馬上開始！</div>
   <div class="hint" id="padHint">按住拖曳就能走路・大按鈕是特別動作</div>
 </div>
@@ -210,7 +227,7 @@ let me = { col: 0, animal: 0, name: '' }, mode = 'join', kid = true, gameSel = n
 function setMe(y) {
   me = y; const C = PARTY_COLORS[y.col];
   document.documentElement.style.setProperty('--me', C.c); document.documentElement.style.setProperty('--med', C.d);
-  $('meName').textContent = y.name; $('meSub').textContent = PARTY_COLORS[y.col].n + '色' + PARTY_ANIMALS[y.animal].n + (y.trophies ? '　🏆 × ' + y.trophies : '');
+  $('meName').textContent = (y.lead ? '👑 ' : '') + y.name; $('meSub').textContent = PARTY_COLORS[y.col].n + '色' + PARTY_ANIMALS[y.animal].n + (y.trophies ? '　🏆 × ' + y.trophies : '');
   const draw = (cv, r) => { const g = cv.getContext('2d'); g.clearRect(0, 0, cv.width, cv.height); drawCritter(g, cv.width / 2, cv.height * 0.58, cv.width * r, y.col, y.animal, { noShadow: true, happy: mode === 'result' }); };
   draw($('meCv'), 0.3); draw($('hudCv'), 0.3);
   store.set('animal', y.animal);
@@ -229,6 +246,8 @@ function onMsg(d) {
       $('glist').innerHTML = d.games.map(g => `<button class="gbtn" data-id="${g.id}" style="--c:${g.col}" aria-pressed="${g.id === d.game}"><b>${g.icon} ${esc(g.name)}</b><small>${esc(g.blurb)}</small></button>`).join('');
       $('glist').querySelectorAll('.gbtn').forEach(b => b.onclick = () => { Net.send({ t: 'pick', id: b.dataset.id }); PadSfx.blip(700); vib(10); });
       $('plist').textContent = d.players.length > 1 ? '一起玩：' + d.players.map(p => p.name).join('、') : '等其他人加入，也可以自己先玩';
+      const lead = !!d.you.lead; $('lobby').classList.toggle('notLead', !lead); $('startBtn').hidden = !lead;
+      $('leadNote').textContent = lead ? '👑 你是房主：選遊戲、選模式，大家準備好就按開始' : '👑 房主「' + d.leadName + '」會選遊戲和開始，先點你的動物打招呼吧！';
       setMe(d.you); show('lobby'); return;
     }
     case 'wait': mode = 'wait'; releaseAll(); $('waitMsg').textContent = d.msg; show('wait'); return;
@@ -237,6 +256,9 @@ function onMsg(d) {
       document.documentElement.style.setProperty('--gc', d.gcol);
       $('gName').textContent = d.icon + ' ' + d.name; $('bIc').textContent = d.btn.icon; $('bLb').textContent = d.btn.label;
       $('introCover').hidden = !d.intro;
+      $('pauseBtn').hidden = !d.you.lead;
+      $('pauseBox').hidden = !d.paused; $('pauseLead').hidden = !d.you.lead; $('pauseOther').hidden = !!d.you.lead;
+      if (d.paused) releaseAll();
       if (enter) { releaseAll(); vib(60); $('padHint').hidden = false; }
       show('pad'); return;
     }
@@ -246,7 +268,8 @@ function onMsg(d) {
       mode = 'result'; releaseAll();
       $('rRank').textContent = d.team ? '⭐'.repeat(d.stars) + '☆'.repeat(3 - d.stars) : d.n > 1 ? (['', '🥇', '🥈', '🥉'][d.rank] || '第 ' + d.rank + ' 名') : '👏';
       $('rTitle').textContent = d.title; $('rLine').textContent = (d.team && d.sub ? d.sub + '・' : '') + d.line;
-      $('againBtn').hidden = $('menuBtn').hidden = false;
+      $('againBtn').hidden = $('menuBtn').hidden = !d.you.lead;
+      $('resNote').textContent = d.you.lead ? '' : '等 👑 房主「' + d.leadName + '」決定要再玩還是換遊戲';
       setMe(d.you); show('result'); if (d.rank === 1 && d.n > 1) vib([80, 60, 80]); return;
     }
   }
@@ -299,7 +322,9 @@ const up = () => { st.h[0] = 0; bb.classList.remove('on'); push(); };
 bb.addEventListener('pointerup', up); bb.addEventListener('pointercancel', up); bb.addEventListener('lostpointercapture', up);
 bb.addEventListener('contextmenu', e => e.preventDefault());
 function releaseAll() { endStick(); st.h = [0, 0, 0]; bb.classList.remove('on'); }
-$('pauseBtn').onclick = () => Net.send({ t: 'pause' });
+$('pauseBtn').onclick = () => { Net.send({ t: 'pause' }); PadSfx.blip(500); };
+$('resumeBtn').onclick = () => { Net.send({ t: 'pause' }); PadSfx.blip(700); };
+$('quitBtn').onclick = () => { Net.send({ t: 'quit' }); PadSfx.blip(400); };
 
 /* ---------------- lobby buttons ---------------- */
 $('meCv').addEventListener('pointerdown', () => { Net.send({ t: 'say' }); PadSfx.say(me.animal); vib(20); const c = $('meCv'); c.classList.add('say'); setTimeout(() => c.classList.remove('say'), 160); });
