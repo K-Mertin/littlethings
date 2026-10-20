@@ -6,31 +6,32 @@
   const X0 = 60, Y0 = 150, FW = 1480, FH = 700, CS = 20, GW = FW / CS, GH = FH / CS;
   class Paint {
     constructor(ctx) {
-      this.ctx = ctx; this.kid = ctx.kid; this.t = 0; this.dur = 60; this.over = false;
+      this.ctx = ctx; this.kid = ctx.kid; this.t = 0; this.dur = 60; this.over = false; this.teams = !!ctx.teams;
       this.own = new Int8Array(GW * GH).fill(-1); this.total = GW * GH;
       this.layer = document.createElement('canvas'); this.layer.width = FW; this.layer.height = FH;
       this.lg = this.layer.getContext('2d'); this.lg.fillStyle = '#fffaf0'; this.lg.fillRect(0, 0, FW, FH);
       this.lg.fillStyle = 'rgba(200,180,140,.35)';
       for (let y = CS / 2; y < FH; y += CS * 2) for (let x = CS / 2; x < FW; x += CS * 2) { this.lg.beginPath(); this.lg.arc(x, y, 2.2, 0, TAU); this.lg.fill(); }
-      const n = ctx.players.length;
+      const n = ctx.players.length, order = this.teams ? ctx.players.slice().sort((a, b) => a.team - b.team) : ctx.players;
       this.es = ctx.players.map((p, i) => {
-        const a = -Math.PI / 2 + i * TAU / n + Math.PI / n, rr = n === 1 ? 0 : 1;
-        return { p, i, x: X0 + FW / 2 + Math.cos(a) * FW * 0.36 * rr, y: Y0 + FH / 2 + Math.sin(a) * FH * 0.34 * rr, vx: 0, vy: 0, face: a + Math.PI, r: 32, cd: 0, stun: 0, cnt: 0, squash: 0, walk: 0 };
+        const j = order.indexOf(p), a = this.teams ? (p.team ? 0 : Math.PI) + (order.filter(q => q.team === p.team).indexOf(p) - (order.filter(q => q.team === p.team).length - 1) / 2) * 0.7 : -Math.PI / 2 + j * TAU / n + Math.PI / n, rr = n === 1 ? 0 : 1;
+        return { p, i, x: X0 + FW / 2 + Math.cos(a) * FW * 0.36 * rr, y: Y0 + FH / 2 + Math.sin(a) * FH * 0.34 * rr, vx: 0, vy: 0, face: a + Math.PI, r: 32, cd: 0, stun: 0, mine: 0, squash: 0, walk: 0, oid: this.teams ? p.team : i };
       });
+      this.cnt = new Array(this.teams ? 2 : n).fill(0);
       this.by = new Map(this.es.map(e => [e.p, e]));
       this.drops = [];
     }
     circle(e, x, y, r) {
-      const C = PARTY_COLORS[e.p.col], lx = x - X0, ly = y - Y0;
-      this.lg.fillStyle = C.c; this.lg.beginPath(); this.lg.arc(lx, ly, r, 0, TAU); this.lg.fill();
+      const lx = x - X0, ly = y - Y0;
+      this.lg.fillStyle = this.colOf(e.oid); this.lg.beginPath(); this.lg.arc(lx, ly, r, 0, TAU); this.lg.fill();
       const c0 = Math.max(0, Math.floor((lx - r) / CS)), c1 = Math.min(GW - 1, Math.floor((lx + r) / CS));
       const r0 = Math.max(0, Math.floor((ly - r) / CS)), r1 = Math.min(GH - 1, Math.floor((ly + r) / CS));
       for (let cy = r0; cy <= r1; cy++) for (let cx = c0; cx <= c1; cx++) {
         if (hyp(cx * CS + CS / 2 - lx, cy * CS + CS / 2 - ly) > r) continue;
         const k = cy * GW + cx, o = this.own[k];
-        if (o === e.i) continue;
-        if (o >= 0) this.es[o].cnt--;
-        this.own[k] = e.i; e.cnt++;
+        if (o === e.oid) continue;
+        if (o >= 0) this.cnt[o]--;
+        this.own[k] = e.oid; this.cnt[e.oid]++; e.mine++;
       }
     }
     under(x, y) { const cx = Math.floor((x - X0) / CS), cy = Math.floor((y - Y0) / CS); return cx < 0 || cy < 0 || cx >= GW || cy >= GH ? -1 : this.own[cy * GW + cx]; }
@@ -41,7 +42,7 @@
         if (e.stun > 0) { e.stun -= dt; e.vx *= 0.8; e.vy *= 0.8; continue; }
         const i = ctx.input(e.p);
         let sp = kid ? 340 : 330;
-        if (!kid) { const o = this.under(e.x, e.y); sp *= o === e.i ? 1.25 : o >= 0 ? 0.78 : 1; }
+        if (!kid) { const o = this.under(e.x, e.y); sp *= o === e.oid ? 1.25 : o >= 0 ? 0.78 : 1; }
         const k = 1 - Math.exp(-10 * dt);
         e.vx += (i.x * sp - e.vx) * k; e.vy += (i.y * sp - e.vy) * k;
         if (i.x || i.y) { e.face = Math.atan2(i.y, i.x); e.walk += dt * 12; } else e.walk = 0;
@@ -63,18 +64,20 @@
       if (this.t >= this.dur) this.over = true;
     }
     splash(e) {
-      const ctx = this.ctx, R = this.kid ? 125 : 108, C = PARTY_COLORS[e.p.col];
+      const ctx = this.ctx, R = this.kid ? 125 : 108, C = { c: this.colOf(e.oid) };
       e.cd = this.kid ? 3 : 4.5; e.squash = 0.2;
       this.circle(e, e.x, e.y, R * 0.75);
       for (let k = 0; k < 10; k++) { const a = rnd(0, TAU), d = rnd(R * 0.6, R * 1.15); this.drops.push({ e, x: e.x + Math.cos(a) * d, y: e.y + Math.sin(a) * d, r: rnd(14, 30), t: 0, T: rnd(0.05, 0.25), sx: e.x, sy: e.y }); }
       Fx.ring(e.x, e.y, C.c, R * 1.2, 0.5); Fx.burst(e.x, e.y, C.c, 14, 380);
       ctx.sfx('splat');
       if (!this.kid) for (const o of this.es) {
-        if (o === e || o.stun > 0) continue;
+        if (o === e || o.stun > 0 || (this.teams && o.p.team === e.p.team)) continue;
         if (hyp(o.x - e.x, o.y - e.y) < R + o.r * 0.5) { o.stun = 1.0; ctx.buzz(o.p, 220); Fx.pop(o.x, o.y - 60, '暈～', '#2b2340', 34); ctx.sfx('stun'); }
       }
     }
-    pct(e) { return Math.round(e.cnt / this.total * 100); }
+    colOf(oid) { return this.teams ? TEAMS[oid].c : PARTY_COLORS[this.es[oid].p.col].c; }
+    pct(e) { return Math.round(this.cnt[e.oid] / this.total * 100); }
+    teamScore(t) { return Math.round(this.cnt[t] / this.total * 100) + '%'; }
     draw(g) {
       const t = this.t;
       g.fillStyle = '#f2e3c4'; g.fillRect(-400, 0, W + 800, H);
@@ -82,7 +85,7 @@
       g.fillStyle = 'rgba(80,50,20,.18)'; g.beginPath(); g.roundRect(X0 - 4, Y0 + 6, FW + 16, FH + 16, 28); g.fill();
       g.save(); g.beginPath(); g.roundRect(X0, Y0, FW, FH, 24); g.clip();
       g.drawImage(this.layer, X0, Y0);
-      for (const d of this.drops) { const k = d.t / d.T; g.fillStyle = PARTY_COLORS[d.e.p.col].c; g.beginPath(); g.arc(d.sx + (d.x - d.sx) * k, d.sy + (d.y - d.sy) * k - Math.sin(k * Math.PI) * 60, 9, 0, TAU); g.fill(); }
+      for (const d of this.drops) { const k = d.t / d.T; g.fillStyle = this.colOf(d.e.oid); g.beginPath(); g.arc(d.sx + (d.x - d.sx) * k, d.sy + (d.y - d.sy) * k - Math.sin(k * Math.PI) * 60, 9, 0, TAU); g.fill(); }
       g.restore();
       g.strokeStyle = '#c9a66a'; g.lineWidth = 8; g.beginPath(); g.roundRect(X0, Y0, FW, FH, 24); g.stroke();
       const list = this.es.slice().sort((a, b) => a.y - b.y);
@@ -94,18 +97,19 @@
       // territory bar along the bottom
       const bx = X0 + 200, bw = FW - 400, by = Y0 + FH + 4;
       g.fillStyle = 'rgba(255,255,255,.9)'; g.beginPath(); g.roundRect(bx - 6, by - 2, bw + 12, 30, 15); g.fill();
-      let x = bx; for (const e of this.es) { const w = bw * e.cnt / this.total; g.fillStyle = PARTY_COLORS[e.p.col].c; g.fillRect(x, by + 4, w, 18); x += w; }
+      let x = bx; this.cnt.forEach((c, o) => { const w = bw * c / this.total; g.fillStyle = this.colOf(o); g.fillRect(x, by + 4, w, 18); x += w; });
       void t;
     }
     chip(p) { return this.pct(this.by.get(p)) + '%'; }
-    pad(p) { const e = this.by.get(p); return '塗了 ' + this.pct(e) + '%' + (e.stun > 0 ? '　暈～' : ''); }
+    pad(p) { const e = this.by.get(p); return (this.teams ? '你們隊塗了 ' : '塗了 ') + this.pct(e) + '%' + (e.stun > 0 ? '　暈～' : ''); }
     ready(p) { const e = this.by.get(p); return e.cd <= 0 && e.stun <= 0; }
     results() {
-      return { rows: this.es.slice().sort((a, b) => b.cnt - a.cnt).map(e => ({ p: e.p, key: e.cnt, line: `塗了 ${this.pct(e)}%` })) };
+      if (this.teams) return { teamScores: [this.cnt[0], this.cnt[1]], teamText: t => this.teamScore(t), rows: this.es.slice().sort((a, b) => b.mine - a.mine).map(e => ({ p: e.p, key: e.mine, line: `幫忙塗了 ${Math.round(e.mine / this.total * 100)}%` })) };
+      return { rows: this.es.slice().sort((a, b) => this.cnt[b.oid] - this.cnt[a.oid]).map(e => ({ p: e.p, key: this.cnt[e.oid], line: `塗了 ${this.pct(e)}%` })) };
     }
   }
   GAMES.push({
-    id: 'paint', name: '塗塗樂', icon: '🎨', col: '#9b5cff', bg: '#f2e3c4', kind: 'vs', players: '1–6 人',
+    id: 'paint', name: '塗塗樂', icon: '🎨', col: '#9b5cff', bg: '#f2e3c4', kind: 'vs', teams: true, players: '1–6 人',
     blurb: '走到哪塗到哪，顏色最多的人贏！',
     btn: { label: '噴漆', icon: '💦' },
     rules: kid => kid

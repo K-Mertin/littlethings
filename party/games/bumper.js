@@ -7,10 +7,10 @@
   class Bumper {
     constructor(ctx) {
       this.ctx = ctx; this.kid = ctx.kid; this.t = 0; this.over = false;
-      this.dur = this.kid ? 60 : 120; this.R0 = this.kid ? 365 : 350; this.R = this.R0; this.outN = 0;
-      const n = ctx.players.length;
+      this.teams = !!ctx.teams; this.dur = this.kid ? 60 : 120; this.R0 = this.kid ? 365 : 350; this.R = this.R0; this.outN = 0;
+      const n = ctx.players.length, order = this.teams ? ctx.players.slice().sort((a, b) => a.team - b.team) : ctx.players;
       this.es = ctx.players.map((p, i) => {
-        const a = -Math.PI / 2 + i * TAU / n, rr = n === 1 ? 0 : this.R0 * 0.58;
+        const mates = order.filter(q => q.team === p.team), a = this.teams ? (p.team ? 0 : Math.PI) + (mates.indexOf(p) - (mates.length - 1) / 2) * 0.6 : -Math.PI / 2 + i * TAU / n, rr = n === 1 ? 0 : this.R0 * 0.58;
         return { p, x: CX + Math.cos(a) * rr, y: CY + Math.sin(a) * rr, vx: 0, vy: 0, face: a + Math.PI, r: 38, cd: 0, dash: 0, fall: 0, inv: 0,
           hitBy: null, hitT: -9, credit: null, score: 0, falls: 0, lives: 3, out: false, outAt: 0, squash: 0, trail: [] };
       });
@@ -72,11 +72,12 @@
       }
       const alive = this.es.filter(e => !e.out);
       if (this.t >= this.dur) this.over = true;
-      if (!kid && (this.es.length > 1 ? alive.length <= 1 : alive.length === 0)) this.over = true;
+      if (!kid && (this.teams ? new Set(alive.map(e => e.p.team)).size <= 1 : (this.es.length > 1 ? alive.length <= 1 : alive.length === 0))) this.over = true;
     }
     landed(e) {
       const ctx = this.ctx; e.falls++;
-      const by = e.credit && this.by.get(e.credit);
+      let by = e.credit && this.by.get(e.credit);
+      if (by && this.teams && by.p.team === e.p.team) by = null;   // pushing a teammate off doesn't score
       if (by) { by.score++; Fx.pop(by.x, by.y - 70, '+1', PARTY_COLORS[by.p.col].d, 44); ctx.sfx('coin'); }
       if (!this.kid) {
         e.lives--;
@@ -137,15 +138,17 @@
     chip(p) { const e = this.by.get(p); return this.kid ? '撞下 ' + e.score : e.out ? '出局' : '♥'.repeat(e.lives) + ' ' + e.score; }
     pad(p) { const e = this.by.get(p); if (this.kid) return '撞下 ' + e.score + ' 人'; return e.out ? '出局了，看大家打！' : '♥ × ' + e.lives + '　撞下 ' + e.score + ' 人'; }
     ready(p) { const e = this.by.get(p); return e.cd <= 0 && e.fall <= 0 && !e.out; }
+    teamScore(t) { const m = this.es.filter(e => e.p.team === t); return this.kid ? m.reduce((s, e) => s + e.score, 0) : '♥' + m.reduce((s, e) => s + (e.out ? 0 : e.lives), 0); }
     results() {
       let rows;
       if (this.kid) rows = this.es.slice().sort((a, b) => b.score - a.score || a.falls - b.falls).map(e => ({ p: e.p, key: e.score + '/' + e.falls, line: `撞下 ${e.score} 人・掉水 ${e.falls} 次` }));
       else rows = this.es.slice().sort((a, b) => (a.out - b.out) || (a.out ? b.outAt - a.outAt : (b.lives - a.lives || b.score - a.score))).map(e => ({ p: e.p, key: e.out ? 'o' + e.outAt : e.lives + '/' + e.score, line: e.out ? `出局・撞下 ${e.score} 人` : `剩 ${e.lives} 條命・撞下 ${e.score} 人` }));
+      if (this.teams) { const v = t => this.es.filter(e => e.p.team === t).reduce((s, e) => s + (this.kid ? e.score : (e.out ? 0 : e.lives)), 0); return { rows, teamScores: [v(0), v(1)], teamText: t => this.teamScore(t) }; }
       return { rows };
     }
   }
   GAMES.push({
-    id: 'bumper', name: '碰碰島', icon: '💥', col: '#ff7a45', bg: '#45bde8', kind: 'vs', players: '1–6 人',
+    id: 'bumper', name: '碰碰島', icon: '💥', col: '#ff7a45', bg: '#45bde8', kind: 'vs', teams: true, players: '1–6 人',
     blurb: '用力衝撞，把大家擠下小島！',
     btn: { label: '衝！', icon: '💨' },
     rules: kid => kid

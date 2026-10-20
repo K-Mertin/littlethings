@@ -8,7 +8,7 @@
   const BALL_COLS = ['#ff5a5f', '#ffb21f', '#3d9bff', '#2fc46b', '#a066ff', '#ff7fb8'];
   class Dodge {
     constructor(ctx) {
-      this.ctx = ctx; this.kid = ctx.kid; this.t = 0; this.over = false; this.dur = this.kid ? 60 : 120; this.outN = 0;
+      this.ctx = ctx; this.kid = ctx.kid; this.t = 0; this.over = false; this.dur = this.kid ? 60 : 120; this.outN = 0; this.teams = !!ctx.teams;
       const n = ctx.players.length;
       this.es = ctx.players.map((p, i) => {
         const a = i * TAU / Math.max(1, n);
@@ -79,7 +79,7 @@
       }
       const alive = this.es.filter(e => !e.out);
       if (this.t >= this.dur) this.over = true;
-      if (!kid && (this.es.length > 1 ? alive.length <= 1 : alive.length === 0)) this.over = true;
+      if (!kid && (this.teams ? new Set(alive.map(e => e.p.team)).size <= 1 : (this.es.length > 1 ? alive.length <= 1 : alive.length === 0))) this.over = true;
     }
     draw(g) {
       const t = this.t;
@@ -114,13 +114,16 @@
     chip(p) { const e = this.by.get(p); return this.kid ? '被打 ' + e.hits : e.out ? '出局' : '♥'.repeat(e.lives); }
     pad(p) { const e = this.by.get(p); return this.kid ? '被打到 ' + e.hits + ' 次' : e.out ? '出局了，看大家躲！' : '♥ × ' + e.lives; }
     ready(p) { const e = this.by.get(p); return e.cd <= 0 && !e.out; }
+    teamScore(t) { const m = this.es.filter(e => e.p.team === t); return this.kid ? '被打 ' + m.reduce((s, e) => s + e.hits, 0) : '♥' + m.reduce((s, e) => s + (e.out ? 0 : e.lives), 0); }
     results() {
-      if (this.kid) return { rows: this.es.slice().sort((a, b) => a.hits - b.hits).map(e => ({ p: e.p, key: e.hits, line: e.hits ? `被打到 ${e.hits} 次` : '一次都沒被打到！' })) };
-      return { rows: this.es.slice().sort((a, b) => (a.out - b.out) || (a.out ? b.outAt - a.outAt : b.lives - a.lives)).map(e => ({ p: e.p, key: e.out ? 'o' + e.outAt : 'l' + e.lives, line: e.out ? `撐了 ${Math.round(e.alive)} 秒` : `剩 ${e.lives} 顆心` })) };
+      const tv = t => this.es.filter(e => e.p.team === t).reduce((s, e) => s + (this.kid ? e.hits : (e.out ? 0 : e.lives)), 0);
+      const team = this.teams ? { teamScores: [tv(0), tv(1)], lowWins: this.kid, teamText: t => this.teamScore(t) } : {};
+      if (this.kid) return { ...team, rows: this.es.slice().sort((a, b) => a.hits - b.hits).map(e => ({ p: e.p, key: e.hits, line: e.hits ? `被打到 ${e.hits} 次` : '一次都沒被打到！' })) };
+      return { ...team, rows: this.es.slice().sort((a, b) => (a.out - b.out) || (a.out ? b.outAt - a.outAt : b.lives - a.lives)).map(e => ({ p: e.p, key: e.out ? 'o' + e.outAt : 'l' + e.lives, line: e.out ? `撐了 ${Math.round(e.alive)} 秒` : `剩 ${e.lives} 顆心` })) };
     }
   }
   GAMES.push({
-    id: 'dodge', name: '躲躲球', icon: '⚽', col: '#ff9a1f', bg: '#ffd9a8', kind: 'vs', players: '1–6 人',
+    id: 'dodge', name: '躲躲球', icon: '⚽', col: '#ff9a1f', bg: '#ffd9a8', kind: 'vs', teams: true, players: '1–6 人',
     blurb: '彈來彈去的球越來越多，快躲開！',
     btn: { label: '閃開', icon: '💨' },
     rules: kid => kid

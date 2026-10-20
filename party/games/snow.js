@@ -7,10 +7,11 @@
   const X0 = 60, Y0 = 150, X1 = 1540, Y1 = 860;
   class Snow {
     constructor(ctx) {
-      this.ctx = ctx; this.kid = ctx.kid; this.t = 0; this.over = false; this.dur = 60;
+      this.ctx = ctx; this.kid = ctx.kid; this.t = 0; this.over = false; this.dur = 60; this.teams = !!ctx.teams;
       const n = ctx.players.length;
       this.es = ctx.players.map((p, i) => {
-        const left = i % 2 === 0, row = Math.floor(i / 2), rows = Math.ceil(n / 2);
+        const side = this.teams ? ctx.players.filter(q => q.team === p.team) : null;
+        const left = this.teams ? p.team === 0 : i % 2 === 0, row = this.teams ? side.indexOf(p) : Math.floor(i / 2), rows = this.teams ? side.length : Math.ceil(n / 2);
         return { p, x: left ? 220 : 1380, y: Y0 + (Y1 - Y0) * (row + 1) / (rows + 1), vx: 0, vy: 0, face: left ? 0 : Math.PI, r: 32, cd: 0, cold: 0, inv: 0, hits: 0, hurt: 0, walk: 0, squash: 0 };
       });
       if (n === 1) this.es[0].x = 800;
@@ -34,7 +35,7 @@
       let a = e.face;
       if (this.kid) {   // a gentle nudge toward the nearest target in front
         let best = null, bd = 0.45;
-        const targets = this.es.filter(o => o !== e).map(o => ({ x: o.x, y: o.y })).concat(this.men.filter(m => m.st === 'up'));
+        const targets = this.es.filter(o => o !== e && !(this.teams && o.p.team === e.p.team)).map(o => ({ x: o.x, y: o.y })).concat(this.men.filter(m => m.st === 'up'));
         for (const o of targets) { const ang = Math.atan2(o.y - e.y, o.x - e.x), diff = Math.abs(Math.atan2(Math.sin(ang - a), Math.cos(ang - a))); if (diff < bd && hyp(o.x - e.x, o.y - e.y) < 650) { bd = diff; best = ang; } }
         if (best !== null) a = best;
       }
@@ -79,7 +80,7 @@
         }
         if (b.dead) continue;
         for (const e of this.es) {
-          if (e === b.from || e.inv > 0 || hyp(e.x - b.x, e.y - b.y) > e.r + b.r) continue;
+          if (e === b.from || e.inv > 0 || (this.teams && e.p.team === b.from.p.team) || hyp(e.x - b.x, e.y - b.y) > e.r + b.r) continue;
           b.dead = true; b.from.hits++; e.hurt = 0.5; e.inv = 1.0;
           e.vx += b.vx * 0.35; e.vy += b.vy * 0.35;
           if (!kid) { e.cold = 0.8; ctx.sfx('stun'); } else ctx.sfx('bonk', 0.4);
@@ -141,10 +142,11 @@
     chip(p) { return '❄ ' + this.by.get(p).hits; }
     pad(p) { const e = this.by.get(p); return '打中 ' + e.hits + ' 次' + (e.cold > 0 ? '　凍住了！' : ''); }
     ready(p) { const e = this.by.get(p); return e.cd <= 0 && e.cold <= 0; }
-    results() { return { rows: this.es.slice().sort((a, b) => b.hits - a.hits).map(e => ({ p: e.p, key: e.hits, line: `打中 ${e.hits} 次` })) }; }
+    teamScore(t) { return this.es.filter(e => e.p.team === t).reduce((s, e) => s + e.hits, 0); }
+    results() { return { teamScores: this.teams ? [this.teamScore(0), this.teamScore(1)] : null, rows: this.es.slice().sort((a, b) => b.hits - a.hits).map(e => ({ p: e.p, key: e.hits, line: `打中 ${e.hits} 次` })) }; }
   }
   GAMES.push({
-    id: 'snow', name: '雪球大戰', icon: '⛄', col: '#2f8cff', bg: '#cfe6f7', kind: 'vs', players: '1–6 人',
+    id: 'snow', name: '雪球大戰', icon: '⛄', col: '#2f8cff', bg: '#cfe6f7', kind: 'vs', teams: true, players: '1–6 人',
     blurb: '丟雪球打中別人和雪人，打中最多的人贏！',
     btn: { label: '丟雪球', icon: '❄️' },
     rules: kid => kid

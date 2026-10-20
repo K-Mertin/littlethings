@@ -29,7 +29,7 @@
   }
   class Fruit {
     constructor(ctx) {
-      this.ctx = ctx; this.kid = ctx.kid; this.t = 0; this.dur = 60; this.over = false;
+      this.ctx = ctx; this.kid = ctx.kid; this.t = 0; this.dur = 60; this.over = false; this.teams = !!ctx.teams;
       this.items = []; this.bombs = []; this.spawnAcc = 0; this.nextShower = 15;
       const n = ctx.players.length;
       this.es = ctx.players.map((p, i) => ({ p, x: X0 + (X1 - X0) * (i + 1) / (n + 1), y: (Y0 + Y1) / 2 + (i % 2 ? 80 : -80), vx: 0, vy: 0, face: Math.PI / 2, r: 34, cd: 0, dash: 0, stun: 0, inv: 0, score: 0, walk: 0, squash: 0 }));
@@ -98,7 +98,7 @@
         const o = (m - d) / 2; A.x -= dx / d * o; A.y -= dy / d * o; B.x += dx / d * o; B.y += dy / d * o;
         if (kid) continue;
         for (const [hit, vic] of [[A, B], [B, A]]) {
-          if (hit.dash > 0 && vic.inv <= 0 && vic.dash <= 0) {
+          if (hit.dash > 0 && vic.inv <= 0 && vic.dash <= 0 && !(this.teams && hit.p.team === vic.p.team)) {
             vic.stun = 0.45; vic.inv = 1.0; vic.vx = (vic.x - hit.x) / d * 420; vic.vy = (vic.y - hit.y) / d * 420; hit.dash = 0;
             this.spill(vic, 2); ctx.sfx('bonk', 0.8); ctx.buzz(vic.p, 150); Fx.burst((A.x + B.x) / 2, (A.y + B.y) / 2, '#ffe066', 8, 260);
           }
@@ -152,10 +152,11 @@
     chip(p) { return '🍎 ' + this.by.get(p).score; }
     pad(p) { const e = this.by.get(p); return '🍎 ' + e.score + ' 個' + (e.stun > 0 ? '　暈～' : ''); }
     ready(p) { const e = this.by.get(p); return e.cd <= 0 && e.stun <= 0; }
-    results() { return { rows: this.es.slice().sort((a, b) => b.score - a.score).map(e => ({ p: e.p, key: e.score, line: `撿到 ${e.score} 個水果` })) }; }
+    teamScore(t) { return this.es.filter(e => e.p.team === t).reduce((s, e) => s + e.score, 0); }
+    results() { return { teamScores: this.teams ? [this.teamScore(0), this.teamScore(1)] : null, rows: this.es.slice().sort((a, b) => b.score - a.score).map(e => ({ p: e.p, key: e.score, line: `撿到 ${e.score} 個水果` })) }; }
   }
   GAMES.push({
-    id: 'fruit', name: '搶果果', icon: '🍎', col: '#ff5a3d', bg: '#7cc95e', kind: 'vs', players: '1–6 人',
+    id: 'fruit', name: '搶果果', icon: '🍎', col: '#ff5a3d', bg: '#7cc95e', kind: 'vs', teams: true, players: '1–6 人',
     blurb: '水果從天上掉下來，搶最多的人贏！',
     btn: { label: '衝刺', icon: '⚡' },
     rules: kid => kid

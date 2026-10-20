@@ -100,10 +100,17 @@ input{background:#fff;border:3px solid var(--line);border-radius:16px;padding:10
 .pauseBox #pauseLead{display:flex;flex-direction:column;gap:12px;align-items:center}
 .pauseBox p{margin:0;color:var(--mute);font-size:17px;font-weight:700}
 .crown{font-style:normal}
+.segs{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.segs .seg button{padding:7px 12px;font-size:15px}
+.myTeam{font-weight:900;font-size:18px;padding:10px 18px;border-radius:16px;color:#fff;background:var(--tc,#ff9a1f);box-shadow:0 4px 0 rgba(0,0,0,.2)}
+.myTeam small{font-weight:700;font-size:13px;opacity:.9;margin-left:6px}
+.handover{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:13px;color:var(--mute)}
+.handover #handList{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+.handover button{padding:6px 12px;border-radius:12px;background:#fff;border:2px solid var(--line);font-weight:700;font-size:14px}
 /* result */
 .rank{font-family:var(--round);font-weight:700;font-size:64px;line-height:1;margin:0}
 .rtitle{margin:0;font-weight:900;font-size:24px;text-align:center}
-.rline{margin:0;font-size:18px;color:var(--mute);font-weight:700}
+.rline{margin:0;font-size:18px;color:var(--mute);font-weight:700;white-space:pre-line;text-align:center}
 </style>
 </head>
 <body>
@@ -123,11 +130,14 @@ input{background:#fff;border:3px solid var(--line);border-radius:16px;padding:10
     <div class="who"><b id="meName"></b><small id="meSub"></small><small class="tip">點你的動物，它會在大螢幕上叫一聲！</small></div>
     <div class="looks"><button class="lk" id="aniBtn">🔄 換動物</button><button class="lk" id="colBtn"><i></i> 換顏色</button></div>
   </div>
-  <div class="seg" role="group" aria-label="模式"><button id="mKid" aria-pressed="true">🧒 小朋友</button><button id="mAdult" aria-pressed="false">🧑 大人</button></div>
+  <div class="segs"><div class="seg" role="group" aria-label="模式"><button id="mKid" aria-pressed="true">🧒 小朋友</button><button id="mAdult" aria-pressed="false">🧑 大人</button></div>
+  <div class="seg" role="group" aria-label="分隊" id="tSeg"><button id="tOff" aria-pressed="true">各自比</button><button id="tOn" aria-pressed="false">☀️🌙 分隊</button></div></div>
+  <button class="myTeam" id="myTeam" hidden></button>
   <div class="glist" id="glist"></div>
   <p class="leadNote" id="leadNote"></p>
   <button class="go" id="startBtn">開始！</button>
   <p class="plist" id="plist"></p>
+  <div class="handover" id="handover" hidden><span>把 👑 房主交給：</span><div id="handList"></div></div>
   <p class="roomline">房間 <b class="roomCode"></b> <button class="ghost leave">換房間</button></p>
 </div>
 
@@ -172,6 +182,7 @@ const PEER_JS = 'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js';
 const store = { get(k, d) { try { const v = localStorage.getItem('mwparty.pad.' + k); return v == null ? d : v; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem('mwparty.pad.' + k, v); } catch (e) { } } };
 let cid = null; try { cid = sessionStorage.getItem('mwparty.pad.cid'); } catch (e) { }
 if (!cid) { cid = Math.random().toString(36).slice(2, 10); try { sessionStorage.setItem('mwparty.pad.cid', cid); } catch (e) { } }
+const TEAMS_PAD = [{ n: '太陽隊', icon: '☀️', c: '#ff9a1f' }, { n: '月亮隊', icon: '🌙', c: '#5b5bd6' }];
 const PAGES = ['join', 'lobby', 'wait', 'result', 'pad'];
 const show = id => PAGES.forEach(p => $(p).hidden = p !== id);
 const vib = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) { } };
@@ -247,6 +258,14 @@ function onMsg(d) {
       $('glist').querySelectorAll('.gbtn').forEach(b => b.onclick = () => { Net.send({ t: 'pick', id: b.dataset.id }); PadSfx.blip(700); vib(10); });
       $('plist').textContent = d.players.length > 1 ? '一起玩：' + d.players.map(p => p.name).join('、') : '等其他人加入，也可以自己先玩';
       const lead = !!d.you.lead; $('lobby').classList.toggle('notLead', !lead); $('startBtn').hidden = !lead;
+      $('tOff').setAttribute('aria-pressed', !d.teams); $('tOn').setAttribute('aria-pressed', !!d.teams);
+      const T = TEAMS_PAD[d.you.team || 0]; $('myTeam').hidden = !d.teams;
+      $('myTeam').style.setProperty('--tc', T.c); $('myTeam').innerHTML = `我是 ${T.icon} ${T.n}<small>點這裡換隊</small>`;
+      if (d.teams) $('plist').innerHTML = [0, 1].map(t => TEAMS_PAD[t].icon + ' ' + TEAMS_PAD[t].n + '：' + (d.players.filter(p => (p.team || 0) === t).map(p => esc(p.name)).join('、') || '還沒有人')).join('<br>');
+      const others = d.players.map((p, i) => ({ ...p, i })).filter(p => !p.lead && p.online && p.i !== d.you.slot);
+      $('handover').hidden = !lead || !others.length;
+      $('handList').innerHTML = others.map(p => `<button data-i="${p.i}">${esc(p.name)}</button>`).join('');
+      $('handList').querySelectorAll('button').forEach(b => b.onclick = () => { if (confirm('把房主交給「' + b.textContent + '」？')) { Net.send({ t: 'lead', slot: +b.dataset.i }); PadSfx.blip(800); } });
       $('leadNote').textContent = lead ? '👑 你是房主：選遊戲、選模式，大家準備好就按開始' : '👑 房主「' + d.leadName + '」會選遊戲和開始，先點你的動物打招呼吧！';
       setMe(d.you); show('lobby'); return;
     }
@@ -254,7 +273,7 @@ function onMsg(d) {
     case 'pad': {
       const enter = mode !== 'pad'; mode = 'pad';
       document.documentElement.style.setProperty('--gc', d.gcol);
-      $('gName').textContent = d.icon + ' ' + d.name; $('bIc').textContent = d.btn.icon; $('bLb').textContent = d.btn.label;
+      $('gName').textContent = d.icon + ' ' + d.name + (d.teamPlay ? '・' + TEAMS_PAD[d.you.team || 0].icon + TEAMS_PAD[d.you.team || 0].n : ''); $('bIc').textContent = d.btn.icon; $('bLb').textContent = d.btn.label;
       $('introCover').hidden = !d.intro;
       $('pauseBtn').hidden = !d.you.lead;
       $('pauseBox').hidden = !d.paused; $('pauseLead').hidden = !d.you.lead; $('pauseOther').hidden = !!d.you.lead;
@@ -266,8 +285,8 @@ function onMsg(d) {
     case 'buzz': vib(d.ms); return;
     case 'result': {
       mode = 'result'; releaseAll();
-      $('rRank').textContent = d.team ? '⭐'.repeat(d.stars) + '☆'.repeat(3 - d.stars) : d.n > 1 ? (['', '🥇', '🥈', '🥉'][d.rank] || '第 ' + d.rank + ' 名') : '👏';
-      $('rTitle').textContent = d.title; $('rLine').textContent = (d.team && d.sub ? d.sub + '・' : '') + d.line;
+      $('rRank').textContent = d.team ? '⭐'.repeat(d.stars) + '☆'.repeat(3 - d.stars) : d.win > -9 ? (d.win < 0 ? '🤝' : d.you.team === d.win ? '🏆' : '👏') : d.n > 1 ? (['', '🥇', '🥈', '🥉'][d.rank] || '第 ' + d.rank + ' 名') : '👏';
+      $('rTitle').textContent = d.title; $('rLine').textContent = (d.sub ? d.sub + '\n' : '') + d.line;
       $('againBtn').hidden = $('menuBtn').hidden = !d.you.lead;
       $('resNote').textContent = d.you.lead ? '' : '等 👑 房主「' + d.leadName + '」決定要再玩還是換遊戲';
       setMe(d.you); show('result'); if (d.rank === 1 && d.n > 1) vib([80, 60, 80]); return;
@@ -330,6 +349,9 @@ $('quitBtn').onclick = () => { Net.send({ t: 'quit' }); PadSfx.blip(400); };
 $('meCv').addEventListener('pointerdown', () => { Net.send({ t: 'say' }); PadSfx.say(me.animal); vib(20); const c = $('meCv'); c.classList.add('say'); setTimeout(() => c.classList.remove('say'), 160); });
 $('aniBtn').onclick = () => { Net.send({ t: 'look', animal: (me.animal + 1) % 6 }); PadSfx.blip(660); vib(10); };
 $('colBtn').onclick = () => { Net.send({ t: 'look', col: 'next' }); PadSfx.blip(780); vib(10); };
+$('tOff').onclick = () => { Net.send({ t: 'teams', on: false }); vib(10); };
+$('tOn').onclick = () => { Net.send({ t: 'teams', on: true }); vib(10); };
+$('myTeam').onclick = () => { Net.send({ t: 'team', team: 1 - (me.team || 0) }); PadSfx.blip(720); vib(15); };
 $('mKid').onclick = () => { Net.send({ t: 'mode', kid: true }); vib(10); };
 $('mAdult').onclick = () => { Net.send({ t: 'mode', kid: false }); vib(10); };
 $('startBtn').onclick = () => { Net.send({ t: 'start' }); vib(20); };

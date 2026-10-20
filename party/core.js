@@ -186,19 +186,23 @@ const Fx = {
 };
 
 /* name tag above a character */
+const TEAMS = [{ n: '太陽隊', icon: '☀️', c: '#ff9a1f', d: '#c25e00', soft: '#fff1dc' }, { n: '月亮隊', icon: '🌙', c: '#5b5bd6', d: '#3434a0', soft: '#e9e9ff' }];
+/* teams are shown while they matter: in the lobby when switched on, in a game that is being played in teams */
+function teamsShown() { return Party.state === 'lobby' ? Party.teams : !!(Party.game && Party.game.teams); }
 function drawTag(g, x, y, p) {
-  const C = PARTY_COLORS[p.col];
+  const C = teamsShown() ? { c: TEAMS[p.team].c } : PARTY_COLORS[p.col];
   g.font = '700 20px "Noto Sans TC",system-ui,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
   const w = Math.max(44, g.measureText(p.name).width + 18);
   g.fillStyle = 'rgba(255,255,255,.9)'; g.beginPath(); g.roundRect(x - w / 2, y - 14, w, 28, 14); g.fill();
   g.strokeStyle = C.c; g.lineWidth = 3; g.stroke();
   g.fillStyle = '#2b2340'; g.fillText(p.name, x, y + 1);
+  if (teamsShown()) { g.font = '18px system-ui'; g.fillText(TEAMS[p.team].icon, x - w / 2 - 12, y + 1); }
 }
 
 /* ------------------------------ the party: players, room, game flow ------------------------------ */
 const Party = {
   net: null, room: null, players: [], uid: 0,
-  state: 'lobby', gameId: store.get('game', 'bumper'), kid: store.get('kid', true),
+  state: 'lobby', gameId: store.get('game', 'bumper'), kid: store.get('kid', true), teams: store.get('teams', false), leadPref: 0,
   game: null, def: null, introT: 0, finishT: 0, paused: false, res: null, hudT: 0, lastSec: -1,
 
   def_(id) { return GAMES.find(g => g.id === id) || GAMES[0]; },
@@ -228,7 +232,8 @@ const Party = {
     const p = Object.assign({
       uid: ++this.uid, peer: null, cid: null, name: '玩家', col: this.freeCol(null, n), animal: n % 6, online: true, local: null,
       inp: { x: 0, y: 0, c: [0, 0, 0], h: [0, 0, 0] }, seen: [0, 0, 0], last: performance.now(), trophies: 0, inGame: false, hudKey: '',
-      yard: { x: rnd(120, 880), y: rnd(120, 240), face: Math.PI / 2, hop: 0, vy: 0, say: 0, walk: 0 }
+      yard: { x: rnd(120, 880), y: rnd(120, 240), face: Math.PI / 2, hop: 0, vy: 0, say: 0, walk: 0 },
+      team: this.players.filter(q => q.team === 0).length <= this.players.filter(q => q.team === 1).length ? 0 : 1
     }, o);
     this.players.push(p);
     return p;
@@ -270,6 +275,9 @@ const Party = {
       case 'say': yardHop(p); break;
       // only the room leader (房主) runs the show; the big screen's own keyboard/mouse can always do it too
       case 'pick': if (p === this.leader() && (this.state === 'lobby' || this.state === 'result') && GAMES.some(g => g.id === d.id)) { this.gameId = d.id; store.set('game', d.id); Sfx.play('pop'); renderLobby(); this.broadcast(); } break;
+      case 'teams': if (p === this.leader() && (this.state === 'lobby' || this.state === 'result')) this.setTeams(!!d.on); break;
+      case 'team': if (this.state === 'lobby' || this.state === 'result') { p.team = d.team ? 1 : 0; yardHop(p); renderLobby(); this.broadcast(); } break;
+      case 'lead': if (p === this.leader()) { const q = this.players[d.slot | 0]; if (q && q !== p && q.peer && q.online) { this.leadPref = q.uid; Sfx.play('join'); renderLobby(); this.broadcast(); } } break;
       case 'mode': if (p === this.leader() && (this.state === 'lobby' || this.state === 'result')) { this.setKid(!!d.kid); } break;
       case 'start': if (p === this.leader() && (this.state === 'lobby' || this.state === 'result')) this.begin(); break;
       case 'menu': if (p === this.leader() && this.state === 'result') this.toLobby(); break;
@@ -293,27 +301,33 @@ const Party = {
     return { x, y };
   },
   /* the room leader: the earliest phone still connected (keyboard players don't count) */
-  leader() { return this.players.find(p => p.peer && p.online && !p.local) || null; },
-  you(p) { return { slot: this.players.indexOf(p), name: p.name, col: p.col, animal: p.animal, trophies: p.trophies, lead: p === this.leader() }; },
+  leader() {
+    const pref = this.leadPref && this.players.find(p => p.uid === this.leadPref && p.peer && p.online);
+    return pref || this.players.find(p => p.peer && p.online && !p.local) || null;
+  },
+  /* teams only count for games that support them, with someone on each side */
+  teamsOn(def) { return this.teams && def.teams && [0, 1].every(t => this.players.some(p => (p.online || p.local) && p.team === t)); },
+  you(p) { return { slot: this.players.indexOf(p), name: p.name, col: p.col, animal: p.animal, trophies: p.trophies, lead: p === this.leader(), team: p.team }; },
   btnFor(p) { const b = this.def.btn; return typeof b === 'function' ? b(p, this.kid) : b; },
   /* what a phone should be showing right now */
   view(p) {
     if (!this.net || !p.peer || p.local) return;
-    const you = this.you(p), L = this.leader(), base = { you, kid: this.kid, game: this.gameId, leadName: L ? L.name : '' };
+    const you = this.you(p), L = this.leader(), base = { you, kid: this.kid, game: this.gameId, leadName: L ? L.name : '', teams: this.teams };
     if (this.state === 'lobby' || (this.state === 'result' && !p.inGame)) {
-      this.net.send(p.peer, { t: 'lobby', ...base, games: GAMES.map(g => ({ id: g.id, name: g.name, icon: g.icon, col: g.col, blurb: g.blurb, team: g.kind === 'team' })), players: this.players.map(q => ({ name: q.name, col: q.col, animal: q.animal, online: q.online, trophies: q.trophies })) });
+      this.net.send(p.peer, { t: 'lobby', ...base, games: GAMES.map(g => ({ id: g.id, name: g.name, icon: g.icon, col: g.col, blurb: g.blurb, team: g.kind === 'team', teams: !!g.teams })), players: this.players.map(q => ({ name: q.name, col: q.col, animal: q.animal, online: q.online, trophies: q.trophies, team: q.team, lead: q === L })) });
     } else if (this.state === 'result') {
       const row = this.res.rows.find(r => r.p === p);
-      this.net.send(p.peer, { t: 'result', ...base, title: this.res.title, sub: this.res.sub || '', stars: this.res.stars, team: !!this.res.team, rank: row ? row.rank : 0, n: this.res.rows.length, line: row ? row.line : '' });
+      this.net.send(p.peer, { t: 'result', ...base, title: this.res.title, sub: this.res.sub || '', stars: this.res.stars, team: !!this.res.team, rank: row ? row.rank : 0, n: this.res.rows.length, line: row ? row.line : '', win: this.res.winTeam === undefined ? -9 : this.res.winTeam });
     } else if (!p.inGame) {
       this.net.send(p.peer, { t: 'wait', ...base, msg: '大家正在玩「' + this.def.name + '」，這一局結束就換你加入！' });
     } else {
       const b = this.btnFor(p);
-      this.net.send(p.peer, { t: 'pad', ...base, name: this.def.name, icon: this.def.icon, gcol: this.def.col, btn: b, intro: this.state === 'intro', paused: this.paused });
+      this.net.send(p.peer, { t: 'pad', ...base, name: this.def.name, icon: this.def.icon, gcol: this.def.col, btn: b, intro: this.state === 'intro', paused: this.paused, teamPlay: !!this.game.teams });
       p.hudKey = '';
     }
   },
   broadcast(skip) { for (const p of this.players) if (p !== skip && p.online && p.peer) this.view(p); },
+  setTeams(v) { this.teams = v; store.set('teams', v); Sfx.play('pop'); renderLobby(); this.broadcast(); },
   setKid(v) { this.kid = v; store.set('kid', v); Sfx.play('pop'); renderLobby(); this.broadcast(); },
   pick(id) { this.gameId = id; store.set('game', id); renderLobby(); this.broadcast(); },
 
@@ -327,6 +341,7 @@ const Party = {
     Fx.clear();
     this.game = this.def.create({
       players: ps.slice(), kid: this.kid, input: p => this.input(p), pressed: (p, k) => this.pressed(p, k), held: (p, k) => p.online && !!p.inp.h[k],
+      teams: this.teamsOn(this.def_(this.gameId)), teamOf: p => p.team,
       sfx: (n, a) => Sfx.play(n, a), buzz: (p, ms) => { if (p.peer && p.online && this.net) this.net.send(p.peer, { t: 'buzz', ms }); }
     });
     this.state = 'intro'; this.introT = this.kid ? 8 : 6.5; this.lastSec = -1; this.paused = false;
@@ -343,7 +358,15 @@ const Party = {
     this.state = 'finish'; this.finishT = 1.8;
     const r = this.res = this.game.results();
     // ranks with ties, then trophies for the winners of a real match
-    if (!r.team) {
+    if (this.game.teams && r.teamScores) {
+      const [a, b] = r.teamScores, low = !!r.lowWins, win = a === b ? -1 : ((a > b) !== low ? 0 : 1);
+      r.winTeam = win;
+      r.rows.forEach(row => { row.rank = win < 0 ? 1 : row.p.team === win ? 1 : 2; row.line = TEAMS[row.p.team].icon + ' ' + row.line; });
+      r.rows.sort((x, y) => x.rank - y.rank);
+      r.rows.filter(row => row.rank === 1 && win >= 0).forEach(row => row.p.trophies++);
+      r.title = win < 0 ? '兩隊平手！' : TEAMS[win].icon + ' ' + TEAMS[win].n + '贏了！';
+      r.sub = `☀️ 太陽隊 ${r.teamText ? r.teamText(0) : a}　：　${r.teamText ? r.teamText(1) : b} 月亮隊 🌙`;
+    } else if (!r.team) {
       let rank = 0, prev = null;
       r.rows.forEach((row, i) => { if (prev === null || row.key !== prev) rank = i + 1; row.rank = rank; prev = row.key; });
       const winners = r.rows.filter(row => row.rank === 1);
@@ -432,6 +455,7 @@ addEventListener('keydown', e => {
   else if (e.key === 'p' || e.key === 'P') Party.togglePause();
   else if (S === 'lobby' && /^[1-9]$/.test(e.key) && GAMES[+e.key - 1]) Party.pick(GAMES[+e.key - 1].id);
   else if (S === 'lobby' && (e.key === 'm' || e.key === 'M')) Party.setKid(!Party.kid);
+  else if (S === 'lobby' && (e.key === 't' || e.key === 'T')) Party.setTeams(!Party.teams);
 });
 addEventListener('keyup', e => keys.delete(e.code));
 addEventListener('blur', () => keys.clear());
@@ -489,12 +513,15 @@ function flashLobby(t) { const el = $('hint'); el.textContent = t; el.classList.
 function renderLobby() {
   if (!$('lobby')) return;
   $('modeKid').setAttribute('aria-pressed', Party.kid); $('modeAdult').setAttribute('aria-pressed', !Party.kid);
+  $('teamOff').setAttribute('aria-pressed', !Party.teams); $('teamOn').setAttribute('aria-pressed', Party.teams);
+  const sel = Party.def_(Party.gameId);
+  $('teamNote').textContent = Party.teams ? (sel.teams ? (Party.teamsOn(sel) ? '分隊比：☀️ 太陽隊 對 🌙 月亮隊，在手機上可以換隊' : '兩隊都要有人才能分隊，現在先各自比') : '「' + sel.name + '」不分隊' + (sel.kind === 'team' ? '，本來就是大家一起合作' : '，這款各自比')) : '';
   $('modeNote').textContent = Party.kid ? '小朋友模式：慢一點、不會被淘汰、掉下去會回來。' : '大人模式：速度快、有淘汰、炸彈和大野狼。';
   const box = $('cards');
   if (!box.childElementCount) {
     GAMES.forEach((g, i) => {
       const b = document.createElement('button'); b.className = 'card'; b.dataset.id = g.id; b.style.setProperty('--gc', g.col);
-      b.innerHTML = `<span class="num">${i + 1}</span><canvas width="320" height="180" aria-hidden="true"></canvas><span class="cbody"><b>${g.icon} ${esc(g.name)}</b><small>${esc(g.blurb)}</small><em>${g.kind === 'team' ? '大家合作' : '比賽'}・${g.players}</em></span>`;
+      b.innerHTML = `<span class="num">${i + 1}</span><canvas width="320" height="180" aria-hidden="true"></canvas><span class="cbody"><b>${g.icon} ${esc(g.name)}</b><small>${esc(g.blurb)}</small><em>${g.kind === 'team' ? '大家合作' : g.teams ? '比賽・可分隊' : '比賽'}・${g.players}</em></span>`;
       b.onclick = () => { Sfx.ensure(); Party.pick(g.id); };
       b.ondblclick = () => Party.begin();
       box.appendChild(b);
@@ -507,10 +534,12 @@ function renderLobby() {
   $('start').style.setProperty('--gc', d.col);
   const on = Party.players.filter(p => p.online || p.local);
   $('count').textContent = on.length ? `${on.length} 人已加入` : '等大家加入';
-  $('chips').innerHTML = Party.players.map(p => `<span class="chip${p.online || p.local ? '' : ' off'}" data-uid="${p.uid}" style="--pc:${PARTY_COLORS[p.col].c}"><img src="${critterURL(p.col, p.animal, 64)}" alt="">${p === Party.leader() ? '<i title="房主">👑</i>' : ''}<b>${esc(p.name)}</b>${p.trophies ? `<i>🏆${p.trophies}</i>` : ''}${p.local ? '<u title="移除">×</u>' : ''}</span>`).join('');
+  $('chips').innerHTML = Party.players.map(p => `<span class="chip${p.online || p.local ? '' : ' off'}" data-uid="${p.uid}" style="--pc:${Party.teams ? TEAMS[p.team].c : PARTY_COLORS[p.col].c}">${Party.teams ? `<i title="${TEAMS[p.team].n}">${TEAMS[p.team].icon}</i>` : ''}<img src="${critterURL(p.col, p.animal, 64)}" alt="">${p === Party.leader() ? '<i title="房主">👑</i>' : ''}<b>${esc(p.name)}</b>${p.trophies ? `<i>🏆${p.trophies}</i>` : ''}${p.local ? '<u title="移除">×</u>' : ''}</span>`).join('');
   $('chips').querySelectorAll('.chip').forEach(c => {
     const p = Party.players.find(q => q.uid === +c.dataset.uid);
-    if (p && p.local) c.onclick = () => { Party.players.splice(Party.players.indexOf(p), 1); renderLobby(); Party.broadcast(); };
+    if (!p) return;
+    const x = c.querySelector('u'); if (x) x.onclick = ev => { ev.stopPropagation(); Party.players.splice(Party.players.indexOf(p), 1); renderLobby(); Party.broadcast(); };
+    c.onclick = () => { if (Party.teams) { p.team = 1 - p.team; yardHop(p); renderLobby(); Party.broadcast(); } };   // the big screen can sort teams too
   });
   $('addKb').disabled = Party.players.length >= MAX_PLAYERS || ['k1', 'k2'].every(k => Party.players.some(p => p.local === k));
   $('sound').textContent = Sfx.on ? '🔊' : '🔇';
@@ -522,7 +551,7 @@ function renderIntro() {
   $('intro').hidden = false; $('result').hidden = true;
   $('intro').style.setProperty('--gc', d.col);
   $('inIcon').textContent = d.icon; $('inName').textContent = d.name;
-  $('inMode').textContent = kid ? '🧒 小朋友模式' : '🧑 大人模式';
+  $('inMode').textContent = (kid ? '🧒 小朋友模式' : '🧑 大人模式') + (Party.game && Party.game.teams ? '・☀️ 太陽隊 對 🌙 月亮隊' : '');
   $('inRules').innerHTML = d.rules(kid).map(r => `<li>${esc(r)}</li>`).join('');
   const b = Party.btnFor(Party.players[0] || { animal: 1 });
   $('inBtn').innerHTML = `手機上的大按鈕：<b>${esc(b.icon)} ${esc(b.label)}</b>　・　鍵盤 A：WASD＋空白鍵　鍵盤 B：方向鍵＋/`;
@@ -559,7 +588,14 @@ function drawHud(g) {
     g.fillStyle = urgent ? '#ff3b4a' : '#2b2340'; g.font = `900 ${urgent ? 54 : 48}px "Fredoka","Noto Sans TC",system-ui,sans-serif`;
     g.fillText(Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0'), W / 2, 50);
   }
-  if (gm.center) {
+  if (gm.teams && gm.teamScore) {
+    const sc = [gm.teamScore(0), gm.teamScore(1)];
+    g.font = '900 26px "Fredoka","Noto Sans TC",system-ui,sans-serif';
+    for (const t of [0, 1]) {
+      const T = TEAMS[t], s = t ? sc[1] + ' ' + T.icon : T.icon + ' ' + sc[0], w = g.measureText(s).width + 28, x = t ? W / 2 + 4 : W / 2 - 4 - w;
+      g.fillStyle = T.c; g.beginPath(); g.roundRect(x, 100, w, 40, 20); g.fill(); g.fillStyle = '#fff'; g.fillText(s, x + w / 2, 121);
+    }
+  } else if (gm.center) {
     const s = gm.center(); if (s) {
       g.font = '700 24px "Noto Sans TC",system-ui,sans-serif'; const w = g.measureText(s).width + 30;
       g.fillStyle = 'rgba(255,255,255,.94)'; g.beginPath(); g.roundRect(W / 2 - w / 2, 100, w, 38, 19); g.fill();
@@ -567,11 +603,12 @@ function drawHud(g) {
     }
   }
   // score chips, half on each side of the timer
-  const half = Math.ceil(list.length / 2);
-  list.forEach((p, i) => {
-    const side = i < half ? -1 : 1, j = i < half ? half - 1 - i : i - half;
-    const cw = 214, x = side < 0 ? W / 2 - 96 - cw - j * (cw + 12) : W / 2 + 96 + j * (cw + 12), y = 18;
-    const C = PARTY_COLORS[p.col];
+  const half = Math.ceil(list.length / 2), sides = gm.teams ? [list.filter(p => p.team === 0), list.filter(p => p.team === 1)] : [list.slice(0, half), list.slice(half)];
+  const cw = Math.min(214, (W / 2 - 110) / Math.max(sides[0].length, sides[1].length, 1) - 12);
+  list.forEach(p => {
+    const side = sides[0].includes(p) ? -1 : 1, arr = side < 0 ? sides[0] : sides[1], j = side < 0 ? arr.length - 1 - arr.indexOf(p) : arr.indexOf(p);
+    const x = side < 0 ? W / 2 - 96 - cw - j * (cw + 12) : W / 2 + 96 + j * (cw + 12), y = 18;
+    const C = gm.teams ? { c: TEAMS[p.team].c, d: TEAMS[p.team].d } : PARTY_COLORS[p.col];
     g.globalAlpha = p.online || p.local ? 1 : 0.5;
     g.fillStyle = 'rgba(255,255,255,.94)'; g.beginPath(); g.roundRect(x, y, cw, 66, 22); g.fill();
     g.strokeStyle = C.c; g.lineWidth = 5; g.stroke();
@@ -623,6 +660,8 @@ function init() {
   $('modeKid').onclick = () => { Sfx.ensure(); Party.setKid(true); };
   $('modeAdult').onclick = () => { Sfx.ensure(); Party.setKid(false); };
   $('start').onclick = () => Party.begin();
+  $('teamOff').onclick = () => { Sfx.ensure(); Party.setTeams(false); };
+  $('teamOn').onclick = () => { Sfx.ensure(); Party.setTeams(true); };
   $('addKb').onclick = () => addKeyboard();
   $('newRoom').onclick = () => {
     if (Party.players.some(p => !p.local) && !confirm('換號碼後，已經加入的手機要重新掃一次。確定嗎？')) return;
