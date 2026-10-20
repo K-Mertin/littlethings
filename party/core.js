@@ -79,7 +79,7 @@ const SONGS = {
   action: { bpm: 150, roots: [48, 41, 48, 43], mel: [72,-1,76,79, 84,79,76,79, 77,-1,81,84, 81,77,74,77, 76,-1,79,84, 88,84,79,76, 74,77,79,83, 84,-1,84,-1] },
   farm: { bpm: 116, roots: [48, 43, 41, 48], mel: [79,76,79,76, 74,72,74,76, 77,74,77,81, 79,-1,-1,-1, 79,76,79,84, 83,81,79,77, 76,74,72,74, 72,-1,-1,-1] }
 };
-const TRACKS = { lobby: ['lobby', 0, 104], bumper: ['action', 0, 150], paint: ['action', 2, 138], fruit: ['action', 5, 144], sheep: ['farm', 0, 116] };
+const TRACKS = { lobby: ['lobby', 0, 104], bumper: ['action', 0, 150], paint: ['action', 2, 138], fruit: ['action', 5, 144], sheep: ['farm', 0, 116], tag: ['action', 7, 152], snow: ['farm', 5, 126], fire: ['action', -3, 140], dodge: ['action', 3, 156] };
 const Music = {
   cur: null, step: 0, next: 0, timer: null, out: null,
   want() {
@@ -326,7 +326,7 @@ const Party = {
     this.def = this.def_(this.gameId);
     Fx.clear();
     this.game = this.def.create({
-      players: ps.slice(), kid: this.kid, input: p => this.input(p), pressed: (p, k) => this.pressed(p, k),
+      players: ps.slice(), kid: this.kid, input: p => this.input(p), pressed: (p, k) => this.pressed(p, k), held: (p, k) => p.online && !!p.inp.h[k],
       sfx: (n, a) => Sfx.play(n, a), buzz: (p, ms) => { if (p.peer && p.online && this.net) this.net.send(p.peer, { t: 'buzz', ms }); }
     });
     this.state = 'intro'; this.introT = this.kid ? 8 : 6.5; this.lastSec = -1; this.paused = false;
