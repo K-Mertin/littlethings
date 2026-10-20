@@ -1411,8 +1411,8 @@ return { make, animate, BUILD, bake, ENV };
    weapons are dressed on here, and a bone rig drives walk / attack poses. Until a file arrives (or if
    it can't be fetched, e.g. from file://) the older hand-built model stands in. */
 const SCULPT = (() => {
-  const LOD = touchMode ? 'lo' : 'hi', PROTO = {}, WANT = ['goblin', 'goblinChief', 'imp', 'darkWizard', 'bat', 'batQueen', 'knight'];
-  const KIND = { knight: 'knight', goblin: 'goblin', goblinChief: 'goblin', imp: 'imp', darkWizard: 'imp', bat: 'bat', batQueen: 'bat' };
+  const LOD = touchMode ? 'lo' : 'hi', PROTO = {}, WANT = ['goblin', 'goblinChief', 'imp', 'darkWizard', 'bat', 'batQueen', 'knight', 'wisp', 'totem'];
+  const KIND = { knight: 'knight', wisp: 'wisp', totem: 'totem', goblin: 'goblin', goblinChief: 'goblin', imp: 'imp', darkWizard: 'imp', bat: 'bat', batQueen: 'bat' };
   const C = h => new THREE.Color(h);
   const E = () => ({ envMap: CAST.ENV });
   const MATS = {
@@ -1422,6 +1422,8 @@ const SCULPT = (() => {
     metal: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .45, metalness: .8, ...E(), envMapIntensity: 1.2 }),
     steel: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .26, metalness: .88, ...E(), envMapIntensity: 1.6 }),
     gold: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .3, metalness: .9, ...E(), envMapIntensity: 1.5 }),
+    rock: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .9, ...E(), envMapIntensity: .4 }),
+    glow: () => new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }),
   };
   function parse(buf) {
     const dv = new DataView(buf); if (String.fromCharCode(...new Uint8Array(buf, 0, 4)) !== 'SCK1') throw new Error('bad cast file');
@@ -1513,6 +1515,23 @@ const SCULPT = (() => {
       for (const s of [-1, 1]) { const f = new THREE.Mesh(new THREE.ConeGeometry(.006 * sz, .024 * sz, 6), tooth); f.position.set(mx + s * .018 * sz - hb[0], my - .008 - hb[1], mz - .004 - hb[2]); f.rotation.x = Math.PI; P.bones.head.add(f); }
     },
     batQueen(P) { DRESS.bat(P, true); },
+    wisp(P) {
+      const C = P.meta.C, prof = (hh, r) => [[0, -r * .9], [r * .7, -r * .55], [r, 0], [r * .8, hh * .35], [r * .45, hh * .7], [0, hh]].map(([x, y]) => new THREE.Vector2(x, y));
+      [['#ff4a1f', .5, .2, .5], ['#ff8a2a', .4, .16, .65], ['#ffd25a', .3, .12, .85]].forEach(([c, hh, r, op], i) => {
+        const geo = new THREE.LatheGeometry(prof(hh, r), 32), ps = geo.attributes.position;
+        for (let k = 0; k < ps.count; k++) { const y = ps.getY(k), t = Math.max(0, y / hh), a = Math.atan2(ps.getZ(k), ps.getX(k)); ps.setX(k, ps.getX(k) + Math.sin(a * 3 + i) * .012 * t); ps.setZ(k, ps.getZ(k) - .04 * t * t); }
+        geo.computeVertexNormals();
+        const f = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: op, toneMapped: false, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+        f.position.set(0, .13 - i * .015, -.03); f.name = 'fl' + i; f.renderOrder = 2; P.bones.core.add(f);
+      });
+      const halo = glowSprite('rgba(255,120,30,.5)', .55, .6); halo.position.z = -.12; P.bones.core.add(halo);
+      for (let i = 0; i < 9; i++) { const em = new THREE.Mesh(new THREE.SphereGeometry(.008, 6, 4), new THREE.MeshBasicMaterial({ color: i % 2 ? '#ffd25a' : '#ff7a2a', toneMapped: false })); em.name = 'em' + i; P.root.add(em); }
+    },
+    totem(P) {
+      const cr = new THREE.Mesh(new THREE.OctahedronGeometry(.085, 0), new THREE.MeshPhysicalMaterial({ color: '#d9b8ff', roughness: .05, transmission: LOD === 'hi' ? .3 : 0, emissive: '#9a5aff', emissiveIntensity: .7, flatShading: true, transparent: true, opacity: .92 }));
+      cr.scale.set(1, 1.6, 1); cr.position.set(...P.meta.crystal); cr.name = 'crystal'; P.root.add(cr);
+      const g = glowSprite('rgba(200,150,255,.9)', .45); g.position.copy(cr.position); g.name = 'orbGlow'; P.root.add(g);
+    },
     knight(P) {
       const steel = new THREE.MeshStandardMaterial({ color: '#e4e8f0', metalness: .65, roughness: .3, envMap: CAST.ENV, envMapIntensity: 1.6 }), gold = new THREE.MeshStandardMaterial({ color: '#e8b85a', metalness: .9, roughness: .3, envMap: CAST.ENV, envMapIntensity: 1.5 });
       // a ghostly light inside the visor slit
@@ -1570,6 +1589,17 @@ const SCULPT = (() => {
     if (e.painT > 0) { R('spine', -.18, 0, .08); R('head', .15, 0, 0); }
     B.hips.position.y = U.hipY + hy;
   };
+  POSE.wisp = function (U, e, time) {
+    const B = U.bones, t = time + e.phase, atk = e.state === 'attack';
+    B.core.position.y = U.hipY + Math.sin(time * 2.4 + e.phase) * .03; B.core.rotation.set(Math.sin(t * 1.7) * .08, Math.sin(t * .8) * .3, Math.sin(t * 1.3) * .08); B.core.scale.setScalar(atk ? 1.15 : 1);
+    U.fl.forEach((l, i) => { const k = 1 + Math.sin(time * (8 + i * 3) + i + e.phase) * .08 + (atk ? .25 : 0); l.scale.set(1 / Math.sqrt(k), k, 1 / Math.sqrt(k)); });
+    U.em.forEach((E, i) => { const s = .6 + i * .07, a = i / 9 * 6.283 + time * s, r = .16 + (i % 3) * .05; E.position.set(Math.cos(a) * r, ((time * .3 * s + i / 9 * 6.283) % 1) * .5 + .05, Math.sin(a) * r); });
+  };
+  POSE.totem = function (U, e, time) {
+    const atk = e.state === 'attack', c = U.crystal; if (!c) return;
+    c.rotation.y = time * .8; c.position.y = U.crystalY + Math.sin(time * 1.6) * .025; c.scale.set(atk ? 1.25 : 1, (atk ? 1.25 : 1) * 1.6, atk ? 1.25 : 1);
+    if (U.orbGlow) { U.orbGlow.position.y = c.position.y; U.orbGlow.scale.setScalar(atk ? .7 : .45 + Math.sin(time * 3) * .04); }
+  };
   POSE.bat = function (U, e, time) {
     const B = U.bones, t = time + e.phase, sp = U.boss ? 9 : 13, f = Math.sin(t * sp), atk = e.state === 'attack';
     B.wingL.rotation.set(0, .15, f * .75 + .1); B.wingR.rotation.set(0, -.15, -f * .75 - .1);
@@ -1605,7 +1635,7 @@ const SCULPT = (() => {
     const P = PROTO[key], g = SkeletonUtils.clone(P.root), own = new Map(), mats = [], bones = {};
     g.traverse(o => { if (o.isBone) bones[o.name] = o; if (!o.isMesh || !o.material.emissive) return; let c = own.get(o.material); if (!c) { c = o.material.clone(); c.userData = { baseE: c.emissive.clone(), baseI: c.emissiveIntensity }; own.set(o.material, c); mats.push(c); } o.material = c; });
     const outer = new THREE.Group(); outer.add(g);
-    outer.userData = { sculpt: key, kind: KIND[key], bones, mats, flashOn: false, hipY: (bones.hips || bones.body).position.y, orb: g.getObjectByName('orb'), orbGlow: g.getObjectByName('orbGlow'), rocks: [0, 1, 2].map(i => g.getObjectByName('rock' + i)).filter(Boolean), boss: !!ETYPE[Object.keys(ETYPE).find(k => ETYPE[k].model === key)] };
+    outer.userData = { sculpt: key, kind: KIND[key], bones, mats, flashOn: false, hipY: (bones.hips || bones.body || bones.core || bones.base).position.y, crystal: g.getObjectByName('crystal'), crystalY: g.getObjectByName('crystal')?.position.y, fl: [0, 1, 2].map(i => g.getObjectByName('fl' + i)).filter(Boolean), em: [...Array(9)].map((_, i) => g.getObjectByName('em' + i)).filter(Boolean), orb: g.getObjectByName('orb'), orbGlow: g.getObjectByName('orbGlow'), rocks: [0, 1, 2].map(i => g.getObjectByName('rock' + i)).filter(Boolean), boss: !!ETYPE[Object.keys(ETYPE).find(k => ETYPE[k].model === key)] };
     return outer;
   }
   function animate(U, e, time) {

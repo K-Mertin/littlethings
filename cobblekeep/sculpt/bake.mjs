@@ -12,8 +12,9 @@ import * as goblins from './models/goblin.mjs';
 import * as imps from './models/imp.mjs';
 import * as bats from './models/bat.mjs';
 import * as knights from './models/knight.mjs';
+import * as wisps from './models/wisp.mjs';
 
-const MODELS = { goblin: goblins.goblin, goblinChief: goblins.goblinChief, imp: imps.imp, darkWizard: imps.darkWizard, bat: bats.bat, batQueen: bats.batQueen, knight: knights.knight };
+const MODELS = { goblin: goblins.goblin, goblinChief: goblins.goblinChief, imp: imps.imp, darkWizard: imps.darkWizard, bat: bats.bat, batQueen: bats.batQueen, knight: knights.knight, wisp: wisps.wisp, totem: wisps.totem };
 // triangle budgets per model, shared between its pieces by size
 const LODS = { hi: { budget: 18000, min: 300, err: .01 }, lo: { budget: 5000, min: 120, err: .04 } };
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'cast');
@@ -34,10 +35,10 @@ function buildPiece(model, pc) {
   return { pos: new Float32Array(pos), idx: new Uint32Array(idx), nor, col, si, sw, N };
 }
 
-function simplify(P, lod, share) {
+function simplify(P, lod, share, errScale = 1) {
   const target = Math.max(lod.min, Math.round(lod.budget * share)) * 3;
   const attr = new Float32Array(P.N * 6); for (let v = 0; v < P.N; v++) { attr.set(P.nor.subarray(v * 3, v * 3 + 3), v * 6); attr.set(P.col.subarray(v * 3, v * 3 + 3).map(x => x * 2), v * 6 + 3); }
-  const [ix] = target < P.idx.length ? MeshoptSimplifier.simplifyWithAttributes(P.idx, P.pos, 3, attr, 6, [.6, .6, .6, 1, 1, 1], null, target, lod.err) : [P.idx];
+  const [ix] = target < P.idx.length ? MeshoptSimplifier.simplifyWithAttributes(P.idx, P.pos, 3, attr, 6, [.6, .6, .6, 1, 1, 1], null, target, lod.err * errScale) : [P.idx];
   // keep only the vertices still in use
   const map = new Int32Array(P.N).fill(-1), keep = []; const idx = new Uint32Array(ix.length);
   for (let i = 0; i < ix.length; i++) { let m = map[ix[i]]; if (m < 0) { m = map[ix[i]] = keep.length; keep.push(ix[i]); } idx[i] = m; }
@@ -73,7 +74,7 @@ for (const [key, make] of Object.entries(MODELS)) {
   const t0 = Date.now(), model = make(), raw = model.pieces.map(pc => [pc, buildPiece(model, pc)]);
   const report = [];
   for (const [lodName, lod] of Object.entries(LODS)) {
-    const total = raw.reduce((a, [, P]) => a + P.idx.length / 3, 0), meshes = raw.map(([pc, P]) => [pc, simplify(P, lod, P.idx.length / 3 / total * (model.budget || 1))]), buf = pack(model, meshes);
+    const total = raw.reduce((a, [, P]) => a + P.idx.length / 3, 0), meshes = raw.map(([pc, P]) => [pc, simplify(P, lod, P.idx.length / 3 / total * (model.budget || 1), model.errScale)]), buf = pack(model, meshes);
     writeFileSync(join(OUT, `${model.name}.${lodName}.bin`), buf);
     report.push(`${lodName}: ${meshes.reduce((a, [, m]) => a + m.idx.length / 3, 0)} tris, ${(buf.length / 1024).toFixed(0)} KB`);
   }
