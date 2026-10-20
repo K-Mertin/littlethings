@@ -1,6 +1,6 @@
 # Cobble Keep
 
-A 3D fantasy first-person shooter that plays like DOOM: keys, doors, secrets, a status bar and a hero portrait that reacts. The Dark Wizard Morvane has stolen the Crown Crystal; you play a young squire, Rowan or Lyra, crossing five lands to bring it home. Ten stages in five worlds, each world ending with a boss. The game is one file (`index.html`) with no image or sound files. Three.js loads from a CDN, so it needs an internet connection the first time. Sculpted monsters load from `assets/cast/` (see below); opened straight from disk (`file://`) the game falls back to its simpler built-in models.
+A 3D fantasy first-person shooter that plays like DOOM: keys, doors, secrets, a status bar and a hero portrait that reacts. The Dark Wizard Morvane has stolen the Crown Crystal; you play a young squire, Rowan or Lyra, crossing five lands to bring it home. Ten stages in five worlds, each world ending with a boss. The game is one file (`index.html`) with no sound files. Three.js loads from a CDN, so it needs an internet connection the first time. Sculpted monsters load from `assets/cast/` and baked surfaces from `assets/tex/` (see below); opened straight from disk (`file://`) the game falls back to its simpler built-in models and painted textures.
 
 ## Story
 - **Hero:** pick Rowan (squire knight) or Lyra (spellblade squire) on the title screen. The choice changes the HUD portrait and the name used in the story.
@@ -19,6 +19,13 @@ Monsters are sculpted in code as distance fields ("digital clay"): smooth shapes
 - **Phones:** touch devices load the `.lo` files (about a quarter of the triangles) with a cheaper skin material. Nothing is sculpted on the device.
 - **In the game:** eyes, teeth and weapons are simple shapes added at load time. The older built-in model is shown until a file arrives, then swapped.
 - **Done so far:** goblin, Goblin Chief, imp mage, Dark Wizard, bat, Bat Queen, knight, fire wisp, crystal totem, Mummy King, Frost Giant (the whole cast).
+
+## Baked surfaces
+Walls, floors and ceilings in all five worlds are generated in code as height fields: bricks, stones, planks and tiles with chipped edges, grime, moss, frost and wood grain. From the height come normal maps (light catches the relief), roughness maps (marble and ice shine, plaster stays matte) and glow maps for cursed runes, key gems and the goal seal.
+
+- **Source:** `tools/textures.js` (one recipe per texture).
+- **Build:** serve the repo over HTTP, then `node cobblekeep/tools/bake-textures.cjs http://localhost:8000/cobblekeep/tools/texbake.html` (needs Playwright). It writes WebP files to `assets/tex/`: 1024 px for desktops and 512 px for phones, plus `index.json`.
+- **In the game:** the old painted textures show first and are swapped for the baked set as it loads, one world at a time.
 
 ## Phone as a controller
 Press **📱 Phone controller** on the title screen. The big screen (computer or TV browser) shows a QR code and a 5-letter room code. Scan it with a phone, or open `cobblekeep/controller.html` on the phone and type the code. Hold the phone sideways.
