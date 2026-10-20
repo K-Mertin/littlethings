@@ -9,9 +9,11 @@ import { fileURLToPath } from 'node:url';
 import { MeshoptSimplifier } from 'meshoptimizer';
 import { surfaceNets, len, clamp } from './sdf.mjs';
 import * as goblins from './models/goblin.mjs';
+import * as imps from './models/imp.mjs';
 
-const MODELS = { goblin: goblins.goblin, goblinChief: goblins.goblinChief };
-const LODS = { hi: { ratio: .17, min: 400, err: .01 }, lo: { ratio: .045, min: 150, err: .04 } };
+const MODELS = { goblin: goblins.goblin, goblinChief: goblins.goblinChief, imp: imps.imp, darkWizard: imps.darkWizard };
+// triangle budgets per model, shared between its pieces by size
+const LODS = { hi: { budget: 18000, min: 300, err: .01 }, lo: { budget: 5000, min: 120, err: .04 } };
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'cast');
 
 function buildPiece(model, pc) {
@@ -30,8 +32,8 @@ function buildPiece(model, pc) {
   return { pos: new Float32Array(pos), idx: new Uint32Array(idx), nor, col, si, sw, N };
 }
 
-function simplify(P, lod) {
-  const tris = P.idx.length / 3, target = Math.max(lod.min, Math.round(tris * lod.ratio)) * 3;
+function simplify(P, lod, share) {
+  const target = Math.max(lod.min, Math.round(lod.budget * share)) * 3;
   const attr = new Float32Array(P.N * 6); for (let v = 0; v < P.N; v++) { attr.set(P.nor.subarray(v * 3, v * 3 + 3), v * 6); attr.set(P.col.subarray(v * 3, v * 3 + 3).map(x => x * 2), v * 6 + 3); }
   const [ix] = target < P.idx.length ? MeshoptSimplifier.simplifyWithAttributes(P.idx, P.pos, 3, attr, 6, [.6, .6, .6, 1, 1, 1], null, target, lod.err) : [P.idx];
   // keep only the vertices still in use
@@ -69,7 +71,7 @@ for (const [key, make] of Object.entries(MODELS)) {
   const t0 = Date.now(), model = make(), raw = model.pieces.map(pc => [pc, buildPiece(model, pc)]);
   const report = [];
   for (const [lodName, lod] of Object.entries(LODS)) {
-    const meshes = raw.map(([pc, P]) => [pc, simplify(P, lod)]), buf = pack(model, meshes);
+    const total = raw.reduce((a, [, P]) => a + P.idx.length / 3, 0), meshes = raw.map(([pc, P]) => [pc, simplify(P, lod, P.idx.length / 3 / total)]), buf = pack(model, meshes);
     writeFileSync(join(OUT, `${model.name}.${lodName}.bin`), buf);
     report.push(`${lodName}: ${meshes.reduce((a, [, m]) => a + m.idx.length / 3, 0)} tris, ${(buf.length / 1024).toFixed(0)} KB`);
   }
