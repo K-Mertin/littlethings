@@ -1,6 +1,6 @@
 # Cobble Keep
 
-A 3D fantasy first-person shooter that plays like DOOM: keys, doors, secrets, a status bar and a hero portrait that reacts. The Dark Wizard Morvane has stolen the Crown Crystal; you play a young squire, Rowan or Lyra, crossing five lands to bring it home. Ten stages in five worlds, each world ending with a boss. Everything runs from one file (`index.html`) with no build step and no image or sound files. The only download is Three.js, loaded from a CDN, so it needs an internet connection the first time it loads.
+A 3D fantasy first-person shooter that plays like DOOM: keys, doors, secrets, a status bar and a hero portrait that reacts. The Dark Wizard Morvane has stolen the Crown Crystal; you play a young squire, Rowan or Lyra, crossing five lands to bring it home. Ten stages in five worlds, each world ending with a boss. The game is one file (`index.html`) with no image or sound files. Three.js loads from a CDN, so it needs an internet connection the first time. Sculpted monsters load from `assets/cast/` (see below); opened straight from disk (`file://`) the game falls back to its simpler built-in models.
 
 ## Story
 - **Hero:** pick Rowan (squire knight) or Lyra (spellblade squire) on the title screen. The choice changes the HUD portrait and the name used in the story.
@@ -10,6 +10,15 @@ A 3D fantasy first-person shooter that plays like DOOM: keys, doors, secrets, a 
 - **Bosses:** each boss arrives with a cinematic banner (name, title and a line) and says something when defeated: Grukk the Goblin Chief, Nocturna the Bat Queen, Sethep the Mummy King, Hrimgar the Frost Giant and Morvane the Dark Wizard.
 - **Ending:** clearing stage 10 plays a four-panel epilogue before the final results.
 - Story panels advance with a tap, click, Space or Enter, and can be skipped.
+
+## Sculpted monsters
+Monsters are sculpted in code as distance fields ("digital clay"): smooth shapes blended together, with eye sockets and mouths carved out, skinned to a bone rig so arms and legs bend when they walk and swing.
+
+- **Source:** `sculpt/sdf.mjs` (the toolkit) and `sculpt/models/*.mjs` (one file per monster).
+- **Build:** `node cobblekeep/sculpt/bake.mjs` (needs `npm i meshoptimizer`). It meshes each model, bakes colour, shading and bone weights into the vertices, and writes two detail levels to `assets/cast/<name>.hi.bin` and `<name>.lo.bin`. Run it again after changing a model and commit the `.bin` files.
+- **Phones:** touch devices load the `.lo` files (about a quarter of the triangles) with a cheaper skin material. Nothing is sculpted on the device.
+- **In the game:** eyes, teeth and weapons are simple shapes added at load time. The older built-in model is shown until a file arrives, then swapped.
+- **Done so far:** goblin, Goblin Chief.
 
 ## Phone as a controller
 Press **📱 Phone controller** on the title screen. The big screen (computer or TV browser) shows a QR code and a 5-letter room code. Scan it with a phone, or open `cobblekeep/controller.html` on the phone and type the code. Hold the phone sideways.
