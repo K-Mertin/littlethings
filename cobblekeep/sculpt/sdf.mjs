@@ -26,6 +26,13 @@ export function ellLocal(q, r) { const k0 = Math.hypot(q[0] / r[0], q[1] / r[1],
 export const ell = (p, c, r) => ellLocal(sub(p, c), r);
 export const sph = (p, c, r) => len(sub(p, c)) - r;
 export function box(p, c, h, r = 0) { const q = sub(p, c).map((v, i) => Math.abs(v) - h[i] + r); return len(q.map(v => Math.max(v, 0))) + Math.min(Math.max(q[0], q[1], q[2]), 0) - r; }
+// a cone with flat ends standing on the y axis at (cx, cz), radius r0 at y0 and r1 at y1 (exact)
+export function cappedConeY(p, c, y0, y1, r0, r1) {
+  const h = (y1 - y0) / 2, qx = Math.hypot(p[0] - c[0], p[2] - c[2]), qy = p[1] - (y0 + y1) / 2;
+  const k1x = r1, k1y = h, k2x = r1 - r0, k2y = 2 * h, cax = qx - Math.min(qx, qy < 0 ? r0 : r1), cay = Math.abs(qy) - h;
+  const t = clamp(((k1x - qx) * k2x + (k1y - qy) * k2y) / (k2x * k2x + k2y * k2y), 0, 1), cbx = qx - k1x + k2x * t, cby = qy - k1y + k2y * t;
+  const s = cbx < 0 && cay < 0 ? -1 : 1; return s * Math.sqrt(Math.min(cax * cax + cay * cay, cbx * cbx + cby * cby));
+}
 export const torusY = (p, c, R, r) => { const q = sub(p, c); return Math.hypot(Math.hypot(q[0], q[2]) - R, q[1]) - r; };
 export const shell = (d, off, th) => Math.abs(d - off) - th;
 // a frame for oriented parts: u along the part, w across it (closest to `up`), v through it
