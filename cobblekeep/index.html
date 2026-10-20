@@ -607,8 +607,40 @@ function material(name, opts = {}) {
   const key = name + JSON.stringify(opts); if (MATS[key]) return MATS[key];
   const T = texture(name);
   const m = new THREE.MeshStandardMaterial({ map: T.map, bumpMap: T.bump, bumpScale: T.bump ? 1.6 : 0, roughness: GLOSSY[name] ?? .82, metalness: 0, ...opts });
+  SURF.apply(m, name);
   return MATS[key] = m;
 }
+/* ================= BAKED SURFACES =================
+   Walls, floors and ceilings generated at build time (tools/textures.js) as colour, normal, roughness
+   and glow maps in assets/tex/. Phones get the 512 px set, desktops 1024 px. The painted canvas
+   textures above show until the files arrive, and stay if they can't be fetched (e.g. from file://). */
+const SURF = (() => {
+  const LOD = touchMode ? 'lo' : 'hi', loader = new THREE.TextureLoader(), cache = {}, aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  let man = null; const waiting = [];
+  if (location.protocol !== 'file:') fetch('assets/tex/index.json').then(r => r.ok ? r.json() : null).then(j => { man = j; for (const [m, n, o] of waiting.splice(0)) apply(m, n, o); }).catch(() => { });
+  const tex = (name, k, srgb) => new Promise(ok => loader.load(`assets/tex/${name}.${LOD}.${k}.webp`, t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = aniso; if (srgb) t.colorSpace = THREE.SRGBColorSpace; ok(t); }, undefined, () => ok(null)));
+  function load(name) {
+    if (!cache[name]) { const E = man[name].e; cache[name] = Promise.all([tex(name, 'c', true), tex(name, 'n'), tex(name, 'r'), E ? tex(name, 'e', true) : null]).then(([c, n, r, e]) => ({ c, n, r, e })); }
+    return cache[name];
+  }
+  // o.glow: emissive strength for maps with a glow layer; o.onMap(map) is told about the new colour map
+  function apply(m, name, o = {}) {
+    if (!man) { if (location.protocol !== 'file:') waiting.push([m, name, o]); return; }
+    if (!man[name]) return;
+    load(name).then(({ c, n, r, e }) => {
+      if (!c) return;
+      if (m.userData.want && m.userData.want !== name) return;   // a newer swap superseded this one
+      m.map = c; m.bumpMap = null; m.bumpScale = 0;
+      if (n) { m.normalMap = n; m.normalScale.set(1, 1); }
+      if (r) { m.roughnessMap = r; m.roughness = 1; }
+      if (e) { m.emissiveMap = e; m.emissive.set('#ffffff'); m.emissiveIntensity = o.glow ?? 1; } else if (o.glow !== undefined) { m.emissiveMap = null; m.emissive.set('#000000'); }
+      m.userData.surf = name; m.needsUpdate = true; if (o.onMap) o.onMap(c);
+    });
+  }
+  // switch a material to another surface (the goal lighting up)
+  function swap(m, name, o) { m.userData.want = name; apply(m, name, o); }
+  return { apply, swap, get ready() { return !!man; } };
+})();
 
 /* ================= STAGES ================= */
 const L = (hp, armor, bub, con, star, has) => ({ hp, armor, bub, con, star, has });
@@ -1908,6 +1940,8 @@ function buildWorld() {
     const name = ST.floors['='][0], T = texture(name), map = T.map.clone(); map.needsUpdate = true;
     const hm = new THREE.MeshStandardMaterial({ map, emissiveMap: map, emissive: '#ffffff', emissiveIntensity: .35, roughness: .1, transparent: true, opacity: .92 });
     hazardMats.push(map); level.add(quadsToMesh(hazQ, hm, false, true));
+    // the baked liquid gets its own copies of the maps so they can drift without moving other floors
+    SURF.apply(hm, name, { glow: .5, onMap: () => { for (const k of ['map', 'normalMap', 'roughnessMap', 'emissiveMap']) if (hm[k]) { hm[k] = hm[k].clone(); hm[k].needsUpdate = true; hazardMats.push(hm[k]); } if (!hm.emissiveMap) { hm.emissiveMap = hm.map; hm.emissive.set('#ffffff'); hm.emissiveIntensity = .25; } } });
   }
   // doors & the goal block are their own meshes so they can move / glow
   for (const [i, d] of doors) {
@@ -1918,6 +1952,7 @@ function buildWorld() {
   }
   for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) if (at(x, y) === 'X') {
     const gm = new THREE.MeshStandardMaterial({ map: texture('goalOff').map, emissiveMap: texture('goalOff').map, emissive: '#ffffff', emissiveIntensity: .45, roughness: .3 });
+    SURF.swap(gm, 'goalOff', { glow: 1.2 });
     goalMesh = new THREE.Mesh(new THREE.BoxGeometry(1, WALLH, 1), gm); goalMesh.userData.own = true; goalMesh.position.set(x + .5, WALLH / 2, y + .5); goalMesh.castShadow = true; level.add(goalMesh);
     const s = glowSprite('rgba(255,220,120,.8)', 2.4); s.position.set(x + .5, WALLH * .6, y + .5); level.add(s); goalMesh.userData.glow = s;
   }
@@ -2204,7 +2239,7 @@ function use() {
     }
     if (ch === 'X' && !exitUsed) {
       if (boss && boss.state !== 'dead') { say(t('bossFirst', { b: bossName(boss.T) })); SFX.deny(); return; }
-      exitUsed = true; const T = texture('goalOn'); goalMesh.material.map = T.map; goalMesh.material.emissiveMap = T.map; goalMesh.material.emissiveIntensity = 1; goalMesh.material.needsUpdate = true;
+      exitUsed = true; const T = texture('goalOn'); goalMesh.material.userData.want = 'goalOn'; goalMesh.material.map = T.map; goalMesh.material.emissiveMap = T.map; goalMesh.material.emissiveIntensity = 1; goalMesh.material.normalMap = null; goalMesh.material.needsUpdate = true; SURF.swap(goalMesh.material, 'goalOn', { glow: 2 });
       SFX.win(); burst(cx + .5 - dx * .6, cy + .5 - dy * .6, .6, null, 60, 2); setTimeout(() => stageClear(), 1000); return;
     }
     return;
@@ -3142,5 +3177,6 @@ requestAnimationFrame(frame);
 // small debug/test hook
 window.CK = { get state() { return state; }, get player() { return player; }, get ents() { return ents; }, get doors() { return doors; }, get stats() { return stats; }, get boss() { return boss; }, get MW() { return MW; }, get quality() { return quality; }, beginStage, STAGES, mkEnemy, hurtEnemy, hurtPlayer, use, renderer, CAST, spawnProj, startStage, titleScreen, stageClear, setLang, setHero, playStory, get storyRun() { return storyRun; }, STORY, Pad, pad };
 window.CK.SCULPT = SCULPT;
+window.CK.texture = texture; window.CK.PAINT = PAINT;
 </script>
 </html>
