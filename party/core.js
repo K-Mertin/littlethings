@@ -33,7 +33,7 @@ const Sfx = {
   ctx: null, on: store.get('sound', true), last: {},
   ensure() {
     if (!this.ctx) { try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; } }
-    if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => { });
+    if (this.ctx.state === 'suspended') this.ctx.resume().then(() => Music.sync()).catch(() => { }); else Music.sync();
   },
   tone(f, d, type, v, f2, delay) {
     const c = this.ctx, t = c.currentTime + (delay || 0), o = c.createOscillator(), g = c.createGain();
@@ -69,6 +69,51 @@ const Sfx = {
       case 'howl': this.tone(300, 0.9, 'sawtooth', 0.07, 520); break;
       case 'win': [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.22, 'triangle', 0.14, 0, i * 0.12)); break;
       case 'end': this.tone(784, 0.15, 'square', 0.08); this.tone(523, 0.35, 'square', 0.08, 0, 0.15); break;
+    }
+  }
+};
+
+/* ------------------------------ background music: little looping tunes, synthesized ------------------------------ */
+const SONGS = {
+  lobby: { bpm: 104, roots: [48, 43, 41, 48], mel: [76,79,81,79, 76,-1,72,74, 76,79,81,84, 79,-1,-1,-1, 81,84,86,84, 81,79,76,74, 76,79,76,74, 72,-1,-1,-1] },
+  action: { bpm: 150, roots: [48, 41, 48, 43], mel: [72,-1,76,79, 84,79,76,79, 77,-1,81,84, 81,77,74,77, 76,-1,79,84, 88,84,79,76, 74,77,79,83, 84,-1,84,-1] },
+  farm: { bpm: 116, roots: [48, 43, 41, 48], mel: [79,76,79,76, 74,72,74,76, 77,74,77,81, 79,-1,-1,-1, 79,76,79,84, 83,81,79,77, 76,74,72,74, 72,-1,-1,-1] }
+};
+const TRACKS = { lobby: ['lobby', 0, 104], bumper: ['action', 0, 150], paint: ['action', 2, 138], fruit: ['action', 5, 144], sheep: ['farm', 0, 116] };
+const Music = {
+  cur: null, step: 0, next: 0, timer: null, out: null,
+  want() {
+    const S = Party.state;
+    if (S === 'intro' || S === 'play' || S === 'finish') return Party.def ? Party.def.id : 'lobby';
+    return 'lobby';
+  },
+  sync() {
+    const c = Sfx.ctx, id = Sfx.on && c && c.state === 'running' ? this.want() : null;
+    if (id === this.cur) return;
+    this.stop(); if (!id) return;
+    this.cur = id; this.step = 0; this.next = c.currentTime + 0.1;
+    this.out = c.createGain(); this.out.gain.value = 0.055; this.out.connect(c.destination);
+    this.timer = setInterval(() => this.tick(), 30);
+  },
+  stop() {
+    if (this.timer) clearInterval(this.timer); this.timer = null; this.cur = null;
+    if (this.out) { const o = this.out; o.gain.setTargetAtTime(0, Sfx.ctx.currentTime, 0.05); setTimeout(() => o.disconnect(), 400); this.out = null; }
+  },
+  note(m, t, d, type, v) {
+    const c = Sfx.ctx, o = c.createOscillator(), g = c.createGain();
+    o.type = type; o.frequency.value = 440 * Math.pow(2, (m - 69) / 12);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(g); g.connect(this.out); o.start(t); o.stop(t + d + 0.05);
+  },
+  tick() {
+    const c = Sfx.ctx; if (!c || !this.out) return;
+    const [song, key, bpm] = TRACKS[this.cur] || TRACKS.lobby, S = SONGS[song], dt = 60 / bpm / 2;
+    while (this.next < c.currentTime + 0.15) {
+      const i = this.step % 32, t = this.next, m = S.mel[i];
+      if (m >= 0) this.note(m + key, t, dt * 1.6, 'triangle', 0.9);
+      if (i % 2 === 0) { const r = S.roots[i >> 3] + key; this.note(i % 8 === 4 ? r + 7 : r, t, dt * 1.8, 'square', 0.28); }
+      if (i % 2 === 1) this.note(96, t, 0.03, 'square', 0.05);
+      this.step++; this.next += dt;
     }
   }
 };
@@ -222,6 +267,7 @@ const Party = {
         if (typeof d.animal === 'number') p.animal = ((d.animal | 0) % 6 + 6) % 6;
         if (d.col === 'next') p.col = this.freeCol(p, p.col + 1);
         yardHop(p); renderLobby(); this.broadcast(); break;
+      case 'say': yardHop(p); break;
       case 'pick': if ((this.state === 'lobby' || this.state === 'result') && GAMES.some(g => g.id === d.id)) { this.gameId = d.id; store.set('game', d.id); Sfx.play('pop'); renderLobby(); this.broadcast(); } break;
       case 'mode': if (this.state === 'lobby' || this.state === 'result') { this.setKid(!!d.kid); } break;
       case 'start': if (this.state === 'lobby') this.begin(); else if (this.state === 'result') this.begin(); break;
@@ -281,7 +327,7 @@ const Party = {
       sfx: (n, a) => Sfx.play(n, a), buzz: (p, ms) => { if (p.peer && p.online && this.net) this.net.send(p.peer, { t: 'buzz', ms }); }
     });
     this.state = 'intro'; this.introT = this.kid ? 8 : 6.5; this.lastSec = -1; this.paused = false;
-    showScreen('game'); renderIntro();
+    showScreen('game'); renderIntro(); Music.sync();
     this.broadcast();
   },
   startPlay() {
@@ -307,7 +353,7 @@ const Party = {
     Fx.pop(W / 2, H / 2, r.team ? (r.ok ? '成功！' : '時間到！') : '時間到！', this.def.col, 110);
   },
   showResult() {
-    this.state = 'result'; renderResult(); if (!this.res.team && this.res.rows.length > 1) Sfx.play('win');
+    this.state = 'result'; renderResult(); Music.sync(); if (!this.res.team && this.res.rows.length > 1) Sfx.play('win');
     this.broadcast();
   },
   again() { this.begin(); },
@@ -315,7 +361,7 @@ const Party = {
     this.state = 'lobby'; this.game = null; this.paused = false; $('pause').hidden = true;
     this.players = this.players.filter(p => p.online || p.local);
     this.players.forEach(p => { p.inGame = false; this.sync(p); });
-    showScreen('lobby'); renderLobby(); this.broadcast();
+    showScreen('lobby'); renderLobby(); this.broadcast(); Music.sync();
   },
   togglePause() {
     if (this.state !== 'play' && this.state !== 'intro') return;
@@ -412,7 +458,7 @@ function yardDraw(t) {
   for (const d of yardDeco) { g.fillStyle = d.c; for (let k = 0; k < 5; k++) { const a = k * TAU / 5; g.beginPath(); g.arc(d.x + Math.cos(a) * 4 * d.k, d.y + Math.sin(a) * 4 * d.k, 3 * d.k, 0, TAU); g.fill(); } g.fillStyle = '#ffb21f'; g.beginPath(); g.arc(d.x, d.y, 2.4 * d.k, 0, TAU); g.fill(); }
   if (!Party.players.length) {
     g.fillStyle = 'rgba(43,35,64,.55)'; g.font = '700 30px "Noto Sans TC",system-ui,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText('加入的人會出現在這裡，搖桿可以走來走去', YW / 2, YH / 2 + 30);
+    g.fillText('加入的人會出現在這裡', YW / 2, YH / 2 + 30);
   }
   const list = Party.players.slice().sort((a, b) => a.yard.y - b.yard.y);
   for (const p of list) {
@@ -472,7 +518,7 @@ function renderIntro() {
   $('inMode').textContent = kid ? '🧒 小朋友模式' : '🧑 大人模式';
   $('inRules').innerHTML = d.rules(kid).map(r => `<li>${esc(r)}</li>`).join('');
   const b = Party.btnFor(Party.players[0] || { animal: 1 });
-  $('inBtn').innerHTML = `手機右邊的按鈕：<b>${esc(b.icon)} ${esc(b.label)}</b>　・　鍵盤 A：WASD＋空白鍵　鍵盤 B：方向鍵＋/`;
+  $('inBtn').innerHTML = `手機上的大按鈕：<b>${esc(b.icon)} ${esc(b.label)}</b>　・　鍵盤 A：WASD＋空白鍵　鍵盤 B：方向鍵＋/`;
   $('inCount').textContent = '';
 }
 function renderResult() {
@@ -559,6 +605,7 @@ function frame(now) {
     g.restore();
     drawHud(g);
   }
+  const mute = Sfx.on && (!Sfx.ctx || Sfx.ctx.state !== 'running'); if ($('soundGate').hidden !== !mute) $('soundGate').hidden = !mute;
   Party.netTick(dt);
   requestAnimationFrame(frame);
 }
@@ -574,13 +621,15 @@ function init() {
     if (Party.players.some(p => !p.local) && !confirm('換號碼後，已經加入的手機要重新掃一次。確定嗎？')) return;
     store.set('room', null); Party.players = Party.players.filter(p => p.local); Party.close(); $('qr').hidden = true; $('roomCode').textContent = '…'; Party.open();
   };
-  $('sound').onclick = () => { Sfx.on = !Sfx.on; store.set('sound', Sfx.on); Sfx.ensure(); Sfx.play('pop'); renderLobby(); };
+  $('sound').onclick = () => { Sfx.on = !Sfx.on; store.set('sound', Sfx.on); Sfx.ensure(); Music.sync(); Sfx.play('pop'); renderLobby(); };
+  $('soundGate').onclick = () => { Sfx.on = true; store.set('sound', true); Sfx.ensure(); renderLobby(); };
   $('reAgain').onclick = () => Party.again();
   $('reMenu').onclick = () => Party.toLobby();
   $('pResume').onclick = () => Party.togglePause();
   $('pQuit').onclick = () => Party.toLobby();
   $('inSkip').onclick = () => { if (Party.introT > 3.2) Party.introT = 3.2; };
   document.addEventListener('pointerdown', () => Sfx.ensure());
+  Sfx.ensure();   // some browsers allow sound right away; otherwise the gate button asks for one tap
   addEventListener('pagehide', () => Party.close());
   showScreen('lobby'); renderLobby();
   Party.open();
