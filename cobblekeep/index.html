@@ -1411,8 +1411,8 @@ return { make, animate, BUILD, bake, ENV };
    weapons are dressed on here, and a bone rig drives walk / attack poses. Until a file arrives (or if
    it can't be fetched, e.g. from file://) the older hand-built model stands in. */
 const SCULPT = (() => {
-  const LOD = touchMode ? 'lo' : 'hi', PROTO = {}, WANT = ['goblin', 'goblinChief', 'imp', 'darkWizard', 'bat', 'batQueen', 'knight', 'wisp', 'totem'];
-  const KIND = { knight: 'knight', wisp: 'wisp', totem: 'totem', goblin: 'goblin', goblinChief: 'goblin', imp: 'imp', darkWizard: 'imp', bat: 'bat', batQueen: 'bat' };
+  const LOD = touchMode ? 'lo' : 'hi', PROTO = {}, WANT = ['goblin', 'goblinChief', 'imp', 'darkWizard', 'bat', 'batQueen', 'knight', 'wisp', 'totem', 'mummy', 'giant'];
+  const KIND = { mummy: 'mummy', giant: 'giant', knight: 'knight', wisp: 'wisp', totem: 'totem', goblin: 'goblin', goblinChief: 'goblin', imp: 'imp', darkWizard: 'imp', bat: 'bat', batQueen: 'bat' };
   const C = h => new THREE.Color(h);
   const E = () => ({ envMap: CAST.ENV });
   const MATS = {
@@ -1424,6 +1424,7 @@ const SCULPT = (() => {
     gold: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .3, metalness: .9, ...E(), envMapIntensity: 1.5 }),
     rock: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .9, ...E(), envMapIntensity: .4 }),
     glow: () => new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }),
+    ice: () => LOD === 'hi' ? new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: .15, clearcoat: 1, clearcoatRoughness: .1, emissive: C('#3aa8ff'), emissiveIntensity: .15, ...E(), envMapIntensity: 1.2 }) : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .2, emissive: C('#3aa8ff'), emissiveIntensity: .15, ...E() }),
   };
   function parse(buf) {
     const dv = new DataView(buf); if (String.fromCharCode(...new Uint8Array(buf, 0, 4)) !== 'SCK1') throw new Error('bad cast file');
@@ -1532,6 +1533,24 @@ const SCULPT = (() => {
       cr.scale.set(1, 1.6, 1); cr.position.set(...P.meta.crystal); cr.name = 'crystal'; P.root.add(cr);
       const g = glowSprite('rgba(200,150,255,.9)', .45); g.position.copy(cr.position); g.name = 'orbGlow'; P.root.add(g);
     },
+    mummy(P) {
+      eyePair(P, { iris: ['#f0ffd0', '#b8ff6a', '#3ac83a', '#0a3a0a'], eyeGlow: '#8aff5a', glow: 1.4, lid: '#3a3020', lidTilt: .5, lidCover: .32 });
+      // a golden crook in the right hand
+      const gold = new THREE.MeshStandardMaterial({ color: '#f2c14e', metalness: .9, roughness: .3, envMap: CAST.ENV, envMapIntensity: 1.5 }), lapis = new THREE.MeshStandardMaterial({ color: '#2b4fb8', roughness: .3, envMap: CAST.ENV });
+      const curve = new THREE.CatmullRomCurve3([[0, -.25, 0], [0, .35, 0], [0, .42, .02], [0, .45, .07], [0, .42, .11], [0, .38, .1]].map(v => new THREE.Vector3(...v)));
+      const crook = new THREE.Group(); crook.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 40, .014, 8), gold));
+      for (let i = 0; i < 6; i++) crook.add(at(new THREE.Mesh(new THREE.CylinderGeometry(.016, .016, .02, 10), lapis), 0, -.2 + i * .09, 0));
+      crook.position.set(0, -.04, .02); crook.rotation.set(.3, 0, 0); P.bones.handR.add(crook);
+    },
+    giant(P) {
+      eyePair(P, { iris: ['#f0fbff', '#9fe8ff', '#3aa8ff', '#0a2a5a'], eyeGlow: '#7ad8ff', glow: 1.1, lid: '#6a94b8', lidTilt: .5, lidCover: .4 });
+      // a club of frozen ice studded with shards
+      const ice = new THREE.MeshPhysicalMaterial({ color: '#bfefff', roughness: .1, clearcoat: 1, emissive: '#3aa8ff', emissiveIntensity: .35, flatShading: true, transparent: true, opacity: .92, envMap: CAST.ENV });
+      const club = new THREE.Group(), shaft = new THREE.Mesh(new THREE.CylinderGeometry(.075, .035, .62, 7, 3), ice); shaft.position.y = .25; club.add(shaft);
+      const ps = shaft.geometry.attributes.position; for (let i = 0; i < ps.count; i++) ps.setX(i, ps.getX(i) * (1 + Math.sin(i * 1.7) * .12)); shaft.geometry.computeVertexNormals();
+      for (let i = 0; i < 9; i++) { const a = i * 2.3, y = .38 + (i % 3) * .07, sp = new THREE.Mesh(new THREE.OctahedronGeometry(.035, 0), ice); sp.scale.set(.6, 1.8, .6); sp.position.set(Math.cos(a) * .07, y, Math.sin(a) * .07); sp.rotation.set(Math.sin(a) * 1.2, 0, -Math.cos(a) * 1.2); club.add(sp); }
+      club.position.set(0, -.07, .02); club.rotation.set(1.25, 0, 0); club.name = 'club'; P.bones.handR.add(club);
+    },
     knight(P) {
       const steel = new THREE.MeshStandardMaterial({ color: '#e4e8f0', metalness: .65, roughness: .3, envMap: CAST.ENV, envMapIntensity: 1.6 }), gold = new THREE.MeshStandardMaterial({ color: '#e8b85a', metalness: .9, roughness: .3, envMap: CAST.ENV, envMapIntensity: 1.5 });
       // a ghostly light inside the visor slit
@@ -1600,6 +1619,22 @@ const SCULPT = (() => {
     c.rotation.y = time * .8; c.position.y = U.crystalY + Math.sin(time * 1.6) * .025; c.scale.set(atk ? 1.25 : 1, (atk ? 1.25 : 1) * 1.6, atk ? 1.25 : 1);
     if (U.orbGlow) { U.orbGlow.position.y = c.position.y; U.orbGlow.scale.setScalar(atk ? .7 : .45 + Math.sin(time * 3) * .04); }
   };
+  // shared upright poses for the two big bosses
+  function brute(U, e, time, o) {
+    const B = U.bones, R = (b, x, y, z) => B[b] && B[b].rotation.set(x, y, z), t = time + e.phase, br = Math.sin(t * 1.4) * .025;
+    R('spine', o.lean + br, 0, 0); R('chest', .04, 0, 0); R('head', -o.lean * .8 - br, Math.sin(t * .5) * .15, 0);
+    R('armL', o.armL[0], 0, o.armL[1]); R('foreL', o.foreL, .2, 0); R('armR', o.armR[0], .1, o.armR[1]); R('foreR', o.foreR, 0, .1); R('handR', .2, 0, 0);
+    R('legL', -.1, 0, .05); R('shinL', .2, 0, 0); R('legR', .08, 0, -.05); R('shinR', .18, 0, 0); R('footL', -.08, 0, 0); R('footR', -.08, 0, 0);
+    let hy = -.01;
+    if (e.moving) { const s = Math.sin(t * o.step); R('legL', -s * .4, 0, .05); R('legR', s * .4, 0, -.05); R('shinL', .25 + Math.max(0, s) * .55, 0, 0); R('shinR', .25 + Math.max(0, -s) * .55, 0, 0); R('spine', o.lean + .04, s * .08, s * o.sway); hy += Math.abs(Math.cos(t * o.step)) * .015; }
+    if (e.state === 'attack') { const k = clamp(1 - (e.atkT || 0) / .45, 0, 1), sw = k < .55 ? k / .55 : 1 - (k - .55) / .45 * 1.7;
+      if (o.smash) { R('armR', o.armR[0] - sw * 2.3, 0, o.armR[1] + sw * .2); R('foreR', o.foreR + sw * .5, 0, .1); R('spine', o.lean - sw * .15, -sw * .2, 0); }
+      else { R('armL', -1.3 - sw * .5, 0, .2); R('armR', -1.3 - sw * .5, 0, -.2); R('foreL', -.2, 0, 0); R('foreR', -.2, 0, 0); R('spine', o.lean + sw * .3, 0, 0); } }
+    if (e.painT > 0) { R('spine', -.2, 0, .1); R('head', .2, 0, 0); }
+    B.hips.position.y = U.hipY + hy;
+  }
+  POSE.mummy = (U, e, time) => brute(U, e, time, { lean: .14, armL: [-1.2, .15], foreL: -.25, armR: [-.9, -.15], foreR: -.5, step: 3.5, sway: .08, smash: false });
+  POSE.giant = (U, e, time) => brute(U, e, time, { lean: .1, armL: [-.2, .35], foreL: -.6, armR: [-.6, -.35], foreR: -1.0, step: 3.8, sway: .04, smash: true });
   POSE.bat = function (U, e, time) {
     const B = U.bones, t = time + e.phase, sp = U.boss ? 9 : 13, f = Math.sin(t * sp), atk = e.state === 'attack';
     B.wingL.rotation.set(0, .15, f * .75 + .1); B.wingR.rotation.set(0, -.15, -f * .75 - .1);
