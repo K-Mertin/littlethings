@@ -1411,8 +1411,8 @@ return { make, animate, BUILD, bake, ENV };
    weapons are dressed on here, and a bone rig drives walk / attack poses. Until a file arrives (or if
    it can't be fetched, e.g. from file://) the older hand-built model stands in. */
 const SCULPT = (() => {
-  const LOD = touchMode ? 'lo' : 'hi', PROTO = {}, WANT = ['goblin', 'goblinChief', 'imp', 'darkWizard'];
-  const KIND = { goblin: 'goblin', goblinChief: 'goblin', imp: 'imp', darkWizard: 'imp' };
+  const LOD = touchMode ? 'lo' : 'hi', PROTO = {}, WANT = ['goblin', 'goblinChief', 'imp', 'darkWizard', 'bat', 'batQueen'];
+  const KIND = { goblin: 'goblin', goblinChief: 'goblin', imp: 'imp', darkWizard: 'imp', bat: 'bat', batQueen: 'bat' };
   const C = h => new THREE.Color(h);
   const MATS = {
     skin: () => LOD === 'hi' ? new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: .62, sheen: .25, sheenRoughness: .7, sheenColor: C('#c8ffb0'), clearcoat: .12, clearcoatRoughness: .6, envMapIntensity: .6 }) : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .65, envMapIntensity: .6 }),
@@ -1504,6 +1504,12 @@ const SCULPT = (() => {
       eyePair(P, { iris: ['#fff7b0', '#ffe14a', '#f0a018', '#7a3a08'], eyeGlow: '#ffd040', glow: .5, lid: '#7a4aa8', lidTilt: .45, lidCover: .33 });
       const st = magicStaff({ orb: '#c79bff', orbE: '#7a3cff', glowC: 'rgba(190,140,255,1)' }); st.position.set(.0, .0, .0); st.rotation.set(0, 0, 0); P.bones.handR.add(st);
     },
+    bat(P, big) {
+      eyePair(P, { iris: ['#ffe0c0', '#ff5a2a', '#c8140a', '#3a0404'], eyeGlow: '#ff3020', glow: 1.1, lid: big ? '#3a1220' : '#2a1c3a', lidTilt: .5, lidCover: .3 });
+      const hb = P.meta.J.head, [mx, my, mz] = P.meta.mouth, tooth = new THREE.MeshStandardMaterial({ color: '#f4ecd8', roughness: .35 }), sz = big ? 1.35 : 1;
+      for (const s of [-1, 1]) { const f = new THREE.Mesh(new THREE.ConeGeometry(.006 * sz, .024 * sz, 6), tooth); f.position.set(mx + s * .018 * sz - hb[0], my - .008 - hb[1], mz - .004 - hb[2]); f.rotation.x = Math.PI; P.bones.head.add(f); }
+    },
+    batQueen(P) { DRESS.bat(P, true); },
     darkWizard(P) {
       eyePair(P, { iris: ['#ffe0ff', '#e080ff', '#9a20d0', '#3a0650'], eyeGlow: '#d47bff', glow: 1, lid: '#8a92b0', lidTilt: .5, lidCover: .38 });
       const st = magicStaff({ orb: '#ff7ae0', orbE: '#c0208f', glowC: 'rgba(255,90,216,1)', wood: '#6a5a7a' }); st.scale.setScalar(1.25); P.bones.handR.add(st);
@@ -1525,6 +1531,14 @@ const SCULPT = (() => {
     }
     if (e.painT > 0) { R('spine', -.25, 0, .1); R('head', .2, 0, 0); }
     B.hips.position.y = U.hipY + hy;
+  };
+  POSE.bat = function (U, e, time) {
+    const B = U.bones, t = time + e.phase, sp = U.boss ? 9 : 13, f = Math.sin(t * sp), atk = e.state === 'attack';
+    B.wingL.rotation.set(0, .15, f * .75 + .1); B.wingR.rotation.set(0, -.15, -f * .75 - .1);
+    B.wingTipL.rotation.set(0, 0, Math.max(0, -f) * .5 + .1); B.wingTipR.rotation.set(0, 0, -Math.max(0, -f) * .5 - .1);
+    B.body.rotation.set(atk ? .5 : .12 + Math.cos(t * sp) * .05, 0, Math.sin(t * 1.3) * .06); B.body.position.y = U.hipY + Math.cos(t * sp) * .02;
+    B.head.rotation.set(atk ? -.5 : -.1, Math.sin(t * .9) * .3, 0);
+    if (e.painT > 0) B.body.rotation.set(-.4, 0, .3);
   };
   POSE.imp = function (U, e, time) {
     const B = U.bones, R = (b, x, y, z) => B[b] && B[b].rotation.set(x, y, z), t = time + e.phase, f = Math.sin(t * 2);
@@ -1553,7 +1567,7 @@ const SCULPT = (() => {
     const P = PROTO[key], g = SkeletonUtils.clone(P.root), own = new Map(), mats = [], bones = {};
     g.traverse(o => { if (o.isBone) bones[o.name] = o; if (!o.isMesh || !o.material.emissive) return; let c = own.get(o.material); if (!c) { c = o.material.clone(); c.userData = { baseE: c.emissive.clone(), baseI: c.emissiveIntensity }; own.set(o.material, c); mats.push(c); } o.material = c; });
     const outer = new THREE.Group(); outer.add(g);
-    outer.userData = { sculpt: key, kind: KIND[key], bones, mats, flashOn: false, hipY: bones.hips.position.y, orb: g.getObjectByName('orb'), orbGlow: g.getObjectByName('orbGlow'), rocks: [0, 1, 2].map(i => g.getObjectByName('rock' + i)).filter(Boolean), boss: !!ETYPE[Object.keys(ETYPE).find(k => ETYPE[k].model === key)] };
+    outer.userData = { sculpt: key, kind: KIND[key], bones, mats, flashOn: false, hipY: (bones.hips || bones.body).position.y, orb: g.getObjectByName('orb'), orbGlow: g.getObjectByName('orbGlow'), rocks: [0, 1, 2].map(i => g.getObjectByName('rock' + i)).filter(Boolean), boss: !!ETYPE[Object.keys(ETYPE).find(k => ETYPE[k].model === key)] };
     return outer;
   }
   function animate(U, e, time) {
