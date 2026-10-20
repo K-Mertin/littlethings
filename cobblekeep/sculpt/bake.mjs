@@ -10,8 +10,9 @@ import { MeshoptSimplifier } from 'meshoptimizer';
 import { surfaceNets, len, clamp } from './sdf.mjs';
 import * as goblins from './models/goblin.mjs';
 import * as imps from './models/imp.mjs';
+import * as bats from './models/bat.mjs';
 
-const MODELS = { goblin: goblins.goblin, goblinChief: goblins.goblinChief, imp: imps.imp, darkWizard: imps.darkWizard };
+const MODELS = { goblin: goblins.goblin, goblinChief: goblins.goblinChief, imp: imps.imp, darkWizard: imps.darkWizard, bat: bats.bat, batQueen: bats.batQueen };
 // triangle budgets per model, shared between its pieces by size
 const LODS = { hi: { budget: 18000, min: 300, err: .01 }, lo: { budget: 5000, min: 120, err: .04 } };
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'cast');
@@ -71,7 +72,7 @@ for (const [key, make] of Object.entries(MODELS)) {
   const t0 = Date.now(), model = make(), raw = model.pieces.map(pc => [pc, buildPiece(model, pc)]);
   const report = [];
   for (const [lodName, lod] of Object.entries(LODS)) {
-    const total = raw.reduce((a, [, P]) => a + P.idx.length / 3, 0), meshes = raw.map(([pc, P]) => [pc, simplify(P, lod, P.idx.length / 3 / total)]), buf = pack(model, meshes);
+    const total = raw.reduce((a, [, P]) => a + P.idx.length / 3, 0), meshes = raw.map(([pc, P]) => [pc, simplify(P, lod, P.idx.length / 3 / total * (model.budget || 1))]), buf = pack(model, meshes);
     writeFileSync(join(OUT, `${model.name}.${lodName}.bin`), buf);
     report.push(`${lodName}: ${meshes.reduce((a, [, m]) => a + m.idx.length / 3, 0)} tris, ${(buf.length / 1024).toFixed(0)} KB`);
   }

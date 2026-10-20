@@ -18,7 +18,7 @@ Monsters are sculpted in code as distance fields ("digital clay"): smooth shapes
 - **Build:** `node cobblekeep/sculpt/bake.mjs` (needs `npm i meshoptimizer`). It meshes each model, bakes colour, shading and bone weights into the vertices, and writes two detail levels to `assets/cast/<name>.hi.bin` and `<name>.lo.bin`. Run it again after changing a model and commit the `.bin` files.
 - **Phones:** touch devices load the `.lo` files (about a quarter of the triangles) with a cheaper skin material. Nothing is sculpted on the device.
 - **In the game:** eyes, teeth and weapons are simple shapes added at load time. The older built-in model is shown until a file arrives, then swapped.
-- **Done so far:** goblin, Goblin Chief, imp mage, Dark Wizard.
+- **Done so far:** goblin, Goblin Chief, imp mage, Dark Wizard, bat, Bat Queen.
 
 ## Phone as a controller
 Press **📱 Phone controller** on the title screen. The big screen (computer or TV browser) shows a QR code and a 5-letter room code. Scan it with a phone, or open `cobblekeep/controller.html` on the phone and type the code. Hold the phone sideways.
