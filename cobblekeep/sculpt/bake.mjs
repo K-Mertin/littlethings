@@ -13,8 +13,9 @@ import * as imps from './models/imp.mjs';
 import * as bats from './models/bat.mjs';
 import * as knights from './models/knight.mjs';
 import * as wisps from './models/wisp.mjs';
+import * as bosses from './models/bosses.mjs';
 
-const MODELS = { goblin: goblins.goblin, goblinChief: goblins.goblinChief, imp: imps.imp, darkWizard: imps.darkWizard, bat: bats.bat, batQueen: bats.batQueen, knight: knights.knight, wisp: wisps.wisp, totem: wisps.totem };
+const MODELS = { goblin: goblins.goblin, goblinChief: goblins.goblinChief, imp: imps.imp, darkWizard: imps.darkWizard, bat: bats.bat, batQueen: bats.batQueen, knight: knights.knight, wisp: wisps.wisp, totem: wisps.totem, mummy: bosses.mummy, giant: bosses.giant };
 // triangle budgets per model, shared between its pieces by size
 const LODS = { hi: { budget: 18000, min: 300, err: .01 }, lo: { budget: 5000, min: 120, err: .04 } };
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'cast');
