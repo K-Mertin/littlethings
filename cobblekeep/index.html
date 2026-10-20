@@ -1411,15 +1411,17 @@ return { make, animate, BUILD, bake, ENV };
    weapons are dressed on here, and a bone rig drives walk / attack poses. Until a file arrives (or if
    it can't be fetched, e.g. from file://) the older hand-built model stands in. */
 const SCULPT = (() => {
-  const LOD = touchMode ? 'lo' : 'hi', PROTO = {}, WANT = ['goblin', 'goblinChief', 'imp', 'darkWizard', 'bat', 'batQueen'];
-  const KIND = { goblin: 'goblin', goblinChief: 'goblin', imp: 'imp', darkWizard: 'imp', bat: 'bat', batQueen: 'bat' };
+  const LOD = touchMode ? 'lo' : 'hi', PROTO = {}, WANT = ['goblin', 'goblinChief', 'imp', 'darkWizard', 'bat', 'batQueen', 'knight'];
+  const KIND = { knight: 'knight', goblin: 'goblin', goblinChief: 'goblin', imp: 'imp', darkWizard: 'imp', bat: 'bat', batQueen: 'bat' };
   const C = h => new THREE.Color(h);
+  const E = () => ({ envMap: CAST.ENV });
   const MATS = {
-    skin: () => LOD === 'hi' ? new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: .62, sheen: .25, sheenRoughness: .7, sheenColor: C('#c8ffb0'), clearcoat: .12, clearcoatRoughness: .6, envMapIntensity: .6 }) : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .65, envMapIntensity: .6 }),
-    leather: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .72, envMapIntensity: .5 }),
-    cloth: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .92, envMapIntensity: .4 }),
-    metal: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .38, metalness: .85 }),
-    gold: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .3, metalness: .9 }),
+    skin: () => LOD === 'hi' ? new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: .62, sheen: .25, sheenRoughness: .7, sheenColor: C('#c8ffb0'), clearcoat: .12, clearcoatRoughness: .6, ...E(), envMapIntensity: .5 }) : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .65, ...E(), envMapIntensity: .5 }),
+    leather: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .72, ...E(), envMapIntensity: .5 }),
+    cloth: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .92, ...E(), envMapIntensity: .4 }),
+    metal: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .45, metalness: .8, ...E(), envMapIntensity: 1.2 }),
+    steel: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .26, metalness: .88, ...E(), envMapIntensity: 1.6 }),
+    gold: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .3, metalness: .9, ...E(), envMapIntensity: 1.5 }),
   };
   function parse(buf) {
     const dv = new DataView(buf); if (String.fromCharCode(...new Uint8Array(buf, 0, 4)) !== 'SCK1') throw new Error('bad cast file');
@@ -1478,6 +1480,7 @@ const SCULPT = (() => {
     P.meta.eyes.forEach(([x, y, z]) => { const s = Math.sign(x), e = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 14), eyeM); e.position.set(x - hb[0], y - hb[1], z - hb[2]); e.rotation.set(.15, s * .2, 0); P.bones.head.add(e);
       const lid = new THREE.Mesh(new THREE.SphereGeometry(r * 1.08, 20, 8, 0, Math.PI * 2, 0, Math.PI * (o.lidCover || .4)), lidM); lid.position.copy(e.position); lid.rotation.set(.35, 0, s * (o.lidTilt ?? -.25)); P.bones.head.add(lid); });
   }
+  const at = (m, x, y, z) => { m.position.set(x, y, z); return m; };
   function magicStaff(o) {
     const st = new THREE.Group(), wood = new THREE.MeshStandardMaterial({ map: woodTex(), roughness: .8, color: o.wood || '#ffffff' });
     const curve = new THREE.CatmullRomCurve3([[0, -.3, 0], [0, .1, 0], [.01, .44, 0], [.07, .54, 0], [.11, .48, 0], [.09, .43, 0]].map(v => new THREE.Vector3(...v)));
@@ -1510,6 +1513,28 @@ const SCULPT = (() => {
       for (const s of [-1, 1]) { const f = new THREE.Mesh(new THREE.ConeGeometry(.006 * sz, .024 * sz, 6), tooth); f.position.set(mx + s * .018 * sz - hb[0], my - .008 - hb[1], mz - .004 - hb[2]); f.rotation.x = Math.PI; P.bones.head.add(f); }
     },
     batQueen(P) { DRESS.bat(P, true); },
+    knight(P) {
+      const steel = new THREE.MeshStandardMaterial({ color: '#e4e8f0', metalness: .65, roughness: .3, envMap: CAST.ENV, envMapIntensity: 1.6 }), gold = new THREE.MeshStandardMaterial({ color: '#e8b85a', metalness: .9, roughness: .3, envMap: CAST.ENV, envMapIntensity: 1.5 });
+      // a ghostly light inside the visor slit
+      const hb = P.meta.J.head, v = P.meta.visor, glowM = new THREE.MeshBasicMaterial({ color: '#8af0ff', toneMapped: false });
+      const g = new THREE.Mesh(new THREE.BoxGeometry(.12, .012, .01), glowM); g.position.set(v[0] - hb[0], v[1] - hb[1], v[2] - hb[2] - .012); P.bones.head.add(g);
+      const sp = glowSprite('rgba(120,230,255,.9)', .16); sp.position.copy(g.position); sp.position.z += .02; P.bones.head.add(sp);
+      // longsword: fullered blade, cross guard, wrapped grip, pommel
+      const sw = new THREE.Group(), bl = new THREE.Shape(); bl.moveTo(-.022, 0); bl.lineTo(.022, 0); bl.lineTo(.018, .42); bl.lineTo(0, .48); bl.lineTo(-.018, .42); bl.closePath();
+      const blade = new THREE.Mesh(new THREE.ExtrudeGeometry(bl, { depth: .006, bevelEnabled: true, bevelThickness: .003, bevelSize: .004, bevelSegments: 1 }), new THREE.MeshStandardMaterial({ color: '#dfe6ee', metalness: .45, roughness: .25, envMap: CAST.ENV })); blade.geometry.translate(0, 0, -.003); blade.position.y = .05; sw.add(blade);
+      sw.add(at(new THREE.Mesh(new THREE.BoxGeometry(.14, .018, .024), gold), 0, .045, 0));
+      sw.add(at(new THREE.Mesh(new THREE.CylinderGeometry(.013, .013, .09, 8), new THREE.MeshStandardMaterial({ color: '#3a2418', roughness: .8 })), 0, -.005, 0));
+      sw.add(at(new THREE.Mesh(new THREE.SphereGeometry(.02, 10, 8), gold), 0, -.055, 0));
+      sw.name = 'sword'; sw.position.set(-.005, -.05, .02); sw.rotation.set(1.35, 0, 0); P.bones.handR.add(sw);
+      // heater shield with the crest, strapped to the left forearm
+      const hs = new THREE.Shape(); hs.moveTo(-.15, .17); hs.lineTo(.15, .17); hs.lineTo(.15, .03); hs.quadraticCurveTo(.12, -.15, 0, -.23); hs.quadraticCurveTo(-.12, -.15, -.15, .03); hs.closePath();
+      const sh = new THREE.Group(), body = new THREE.Mesh(new THREE.ExtrudeGeometry(hs, { depth: .02, bevelEnabled: true, bevelThickness: .008, bevelSize: .012, bevelSegments: 2, curveSegments: 16 }), steel); sh.add(body);
+      const face = new THREE.Mesh(new THREE.ShapeGeometry(hs, 16), new THREE.MeshStandardMaterial({ color: '#8e1a2e', roughness: .6 })); face.scale.setScalar(.86); face.position.z = .031; sh.add(face);
+      const st = new THREE.Shape(); for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2 + Math.PI / 2, r = i % 2 ? .03 : .075; st[i ? 'lineTo' : 'moveTo'](Math.cos(a) * r, Math.sin(a) * r); } st.closePath();
+      sh.add(at(new THREE.Mesh(new THREE.ExtrudeGeometry(st, { depth: .006, bevelEnabled: false }), gold), 0, .0, .032));
+      sh.name = 'shield'; sh.position.set(.05, -.07, .05); sh.rotation.set(1.65, -.35, 0); P.bones.foreL.add(sh);
+      P.root.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    },
     darkWizard(P) {
       eyePair(P, { iris: ['#ffe0ff', '#e080ff', '#9a20d0', '#3a0650'], eyeGlow: '#d47bff', glow: 1, lid: '#8a92b0', lidTilt: .5, lidCover: .38 });
       const st = magicStaff({ orb: '#ff7ae0', orbE: '#c0208f', glowC: 'rgba(255,90,216,1)', wood: '#6a5a7a' }); st.scale.setScalar(1.25); P.bones.handR.add(st);
@@ -1530,6 +1555,19 @@ const SCULPT = (() => {
       R('armR', -.9 + sw * .9, .2, -.5); R('foreR', -1.1 + sw * .3, 0, .2); R('spine', .12 - sw * .12, -sw * .2, 0); R('head', -.3, 0, 0);
     }
     if (e.painT > 0) { R('spine', -.25, 0, .1); R('head', .2, 0, 0); }
+    B.hips.position.y = U.hipY + hy;
+  };
+  POSE.knight = function (U, e, time) {
+    const B = U.bones, R = (b, x, y, z) => B[b] && B[b].rotation.set(x, y, z), t = time + e.phase, br = Math.sin(t * 1.6) * .02;
+    R('spine', .04 + br, 0, 0); R('chest', .02, 0, 0); R('head', -.04, Math.sin(t * .5) * .1, 0);
+    R('armL', -.55, .3, .35); R('foreL', -1.2, 0, -.2); R('handL', 0, 0, 0);   // shield up across the body
+    R('armR', -.2, 0, -.25); R('foreR', -.75, 0, .1); R('handR', .2, 0, 0);
+    R('legL', -.08, 0, .04); R('shinL', .12, 0, 0); R('footL', -.04, 0, 0); R('legR', .06, 0, -.04); R('shinR', .1, 0, 0); R('footR', -.04, 0, 0);
+    let hy = -.008;
+    if (e.moving) { const s = Math.sin(t * 5); R('legL', -s * .45, 0, .04); R('legR', s * .45, 0, -.04); R('shinL', .2 + Math.max(0, s) * .6, 0, 0); R('shinR', .2 + Math.max(0, -s) * .6, 0, 0); R('armR', -.2 + s * .25, 0, -.25); R('spine', .06, s * .06, 0); hy += Math.abs(Math.cos(t * 5)) * .012; }
+    if (e.state === 'attack') { const k = clamp(1 - (e.atkT || 0) / .45, 0, 1), sw = k < .5 ? k / .5 : 1 - (k - .5) / .5 * 1.6;
+      R('armR', -.2 - sw * 2.2, 0, -.25 + sw * .2); R('foreR', -.75 + sw * .4, 0, .1); R('spine', .04 - sw * .1, -sw * .25, 0); R('chest', 0, -sw * .2, 0); }
+    if (e.painT > 0) { R('spine', -.18, 0, .08); R('head', .15, 0, 0); }
     B.hips.position.y = U.hipY + hy;
   };
   POSE.bat = function (U, e, time) {

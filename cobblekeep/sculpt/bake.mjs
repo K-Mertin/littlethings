@@ -11,8 +11,9 @@ import { surfaceNets, len, clamp } from './sdf.mjs';
 import * as goblins from './models/goblin.mjs';
 import * as imps from './models/imp.mjs';
 import * as bats from './models/bat.mjs';
+import * as knights from './models/knight.mjs';
 
-const MODELS = { goblin: goblins.goblin, goblinChief: goblins.goblinChief, imp: imps.imp, darkWizard: imps.darkWizard, bat: bats.bat, batQueen: bats.batQueen };
+const MODELS = { goblin: goblins.goblin, goblinChief: goblins.goblinChief, imp: imps.imp, darkWizard: imps.darkWizard, bat: bats.bat, batQueen: bats.batQueen, knight: knights.knight };
 // triangle budgets per model, shared between its pieces by size
 const LODS = { hi: { budget: 18000, min: 300, err: .01 }, lo: { budget: 5000, min: 120, err: .04 } };
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'cast');
