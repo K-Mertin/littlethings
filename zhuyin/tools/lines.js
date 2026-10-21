@@ -1,6 +1,6 @@
 // 列出所有台詞：node tools/lines.js > audio/phrases.tsv
 const ZY = require('../data.js');
-const lines = ZY.allLines();
+const lines = [...new Set(ZY.allLines().map(ZY.spoken))];
 const seen = new Map();
 for (const t of lines) {
   const id = ZY.hash(t);
