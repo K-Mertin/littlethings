@@ -67,6 +67,16 @@
     { id: 26, t: '平分', e: '🐻', g: 'G' },
     { id: 27, t: '除法算式', e: '➗', g: 'G' },
   ];
+  // 小遊戲
+  const GAMES = [
+    { id: 'feed', t: '餵動物', e: '🐶', lv: ['count', 'add', 'sub', 'mix'] },
+    { id: 'balloon', t: '戳氣球', e: '🎈', lv: ['count', 'add', 'sub', 'mix'] },
+    { id: 'fish', t: '魚缸', e: '🐠', lv: ['add', 'sub', 'mix'] },
+    { id: 'ten', t: '湊數配對', e: '🃏', lv: ['five', 'ten'] },
+  ];
+  const LVNAME = { count: '數數', add: '加法', sub: '減法', mix: '加減', five: '湊五', ten: '湊十' };
+  const ANIMALS = [{ e: '🐶', n: '小狗', f: '🍖' }, { e: '🐰', n: '小兔子', f: '🥕' }, { e: '🐵', n: '小猴子', f: '🍌' }];
+  const FISH = ITEMS.find(x => x.e === '🐟');
   const GROUPS = { A: '數與量', B: '分與合', C: '加法', D: '減法', E: '加減一起', F: '乘法入門', G: '除法入門' };
 
   const P = {
@@ -108,6 +118,20 @@
       26: '把東西平分給小熊，每隻要一樣多。點一下東西，就會分給一隻小熊。',
       27: '除法就是平分。看算式，算算每隻小熊有幾個。',
     },
+    // 小遊戲
+    gIntro: {
+      feed: '小動物肚子餓了！點食物餵牠，餵好了就按吃飽了。',
+      balloon: '點一下對的氣球，把它戳破！',
+      fish: '看看魚缸裡的小魚，算算有幾條。',
+    },
+    feed: (an, n) => `${an.n}想吃${Q(n)}個。`,
+    feedEq: an => `${an.n}想吃幾個呢？`,
+    ate: n => `吃了${Q(n)}個，吃飽了！`,
+    tooFew: '還不夠，再餵一點。',
+    tooMany: '太多了，多的還給你。',
+    pairQ: { 5: '找兩張加起來是五的卡片。', 10: '找兩張加起來是十的卡片。' },
+    pairNo: { 5: '不是五喔。', 10: '不是十喔。' },
+    boardDone: '全部配好了！',
     // 分與合
     splitAll: (c, n) => `一共有${Q(n)}${c}。`,
     splitHere: (c, a) => `這邊有${Q(a)}${c}，`,
@@ -198,6 +222,13 @@
       add(P.share('顆', k * r, k)); add(P.eachA('顆', r));
       add(P.eqQ(k * r, '÷', k)); add(P.eqA(k * r, '÷', k, r));
     }
+    // 小遊戲
+    Object.values(P.gIntro).forEach(add); Object.values(P.pairQ).forEach(add); Object.values(P.pairNo).forEach(add);
+    ['tooFew', 'tooMany', 'boardDone'].forEach(k => add(P[k]));
+    for (const an of ANIMALS) { add(P.feedEq(an)); for (let n = 1; n <= 10; n++) add(P.feed(an, n)); }
+    for (let n = 1; n <= 10; n++) add(P.ate(n));
+    add(P.nowQ('條'));
+    for (let n = 0; n <= 10; n++) { add(P.have(FISH, n || 1)); add(P.come('條', n)); add(P.away('條', n)); add(P.now('條', n)); add(P.allC('條', n || 1)); }
     return Array.from(out);
   }
 
@@ -209,7 +240,7 @@
     return h.toString(16).padStart(8, '0');
   }
 
-  const M = { CN, Q, ITEMS, BOXABLE, FOOD, STORY, LESSONS, GROUPS, P, allLines, hash };
+  const M = { GAMES, LVNAME, ANIMALS, FISH, CN, Q, ITEMS, BOXABLE, FOOD, STORY, LESSONS, GROUPS, P, allLines, hash };
   if (typeof module !== 'undefined' && module.exports) module.exports = M;
   else root.M = M;
 })(typeof window !== 'undefined' ? window : globalThis);
