@@ -484,6 +484,11 @@
     return Array.from(out);
   }
 
+
+  // 雲哲單獨念 ㄅㄆㄇ 會念成「ㄅㄜ」，所以這三個改用同音的一聲字（ㄅㄛ 玻、ㄆㄛ 坡、ㄇㄛ 摸）。畫面還是顯示注音
+  const SPEAK_AS = { 'ㄅ': '玻', 'ㄆ': '坡', 'ㄇ': '摸' };
+  const spoken = t => t.replace(/[ㄅㄆㄇ]/g, c => SPEAK_AS[c]);
+
   // FNV-1a 32-bit，音檔檔名
   function hash(text) {
     let h = 0x811c9dc5;
@@ -493,7 +498,7 @@
   }
 
   const ZY = { SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, SENTS, PASSAGES, LESSONS, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
-    TONE_NAMES, TONE_MARKS, parseSyl, syllables, P, allLines, hash, symOf };
+    TONE_NAMES, TONE_MARKS, parseSyl, syllables, P, allLines, hash, symOf, spoken };
   if (typeof module !== 'undefined' && module.exports) module.exports = ZY;
   else root.ZY = ZY;
 })(typeof window !== 'undefined' ? window : globalThis);

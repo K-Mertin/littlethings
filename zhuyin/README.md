@@ -36,7 +36,7 @@
 進度存在瀏覽器的 localStorage（`zhuyin-v1`）。
 
 ## 語音
-- 全部台詞預錄在 `audio/`：微軟 Edge 的台灣中文神經語音 **zh-TW-HsiaoChenNeural（曉臻）**，語速 -10%，用 [edge-tts](https://github.com/rany2/edge-tts) 錄、ffmpeg 剪掉前後靜音。遊戲用 Web Audio 播放；沒有音檔的句子才用瀏覽器的 zh-TW 語音。
+- 全部台詞預錄在 `audio/`：微軟 Edge 的台灣中文神經語音 **zh-TW-YunJheNeural（雲哲，男聲）**，語速 +5%（2026-10-21 從曉臻 -10% 換過來，和 123 小島一樣），用 [edge-tts](https://github.com/rany2/edge-tts) 錄、ffmpeg 剪掉前後靜音。遊戲用 Web Audio 播放；沒有音檔的句子才用瀏覽器的 zh-TW 語音。
 - 台詞都寫在 `data.js` 的 `P`，`allLines()` 會列出每一句。`audio/phrases.tsv` 是「id、文字」，id 是文字的 FNV-1a 32-bit 雜湊。
 - 改了台詞或加了字以後：
   ```sh
@@ -45,9 +45,9 @@
   python3 tools/record.py audio/phrases.tsv audio            # 只錄還沒有的句子
   python3 tools/record.py audio/phrases.tsv audio zh-TW-HsiaoYuNeural   # 換聲音要先刪掉舊音檔
   ```
-- 單獨念一個注音（例如 ㄅ）時，語音會念它的名稱（ㄅ 念「ㄅㄛ」、ㄗ 念「ㄗ」），用聲音比對確認過。
+- 單獨念一個注音（例如 ㄗ）時，語音會念它的名稱，用聲音比對確認過。雲哲會把 ㄅㄆㄇ 念成「ㄅㄜ」，所以這三個在送去錄音前換成同音字（玻、坡、摸，見 `data.js` 的 `spoken()`）；`audio/phrases.tsv` 存的是實際送去念的文字。
 - 結合韻不直接把「ㄧㄚ」丟給語音（有幾個會念得不準），而是用同音的一聲字代替（ㄧㄚ 念「鴨」、ㄩㄥ 念「雍」），畫面上還是顯示注音。台詞物件是 `{ text: 念的字, show: 泡泡顯示的字 }`。
-- **授權注意**：edge-tts 用的是 Edge「大聲朗讀」的服務，不是有授權的 Azure API。正式公開前打算改用 Azure AI Speech（同一個曉臻聲音）重錄。
+- **授權注意**：edge-tts 用的是 Edge「大聲朗讀」的服務，不是有授權的 Azure API。正式公開前打算改用 Azure AI Speech（同一個聲音）重錄。
 
 ## 遊玩
 ```sh
