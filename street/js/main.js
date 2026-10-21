@@ -405,7 +405,7 @@ function updatePlayer(dt, t) {
       if (!auto.path.length) { heading = auto.it.face; const it = auto.it; auto = null; camYaw = angLerp(camYaw, heading + Math.PI, 1); lastCamInput = -9; }
     } else { mx = dx / d; mz = dz / d; mag = Math.min(1, d / 0.5 + 0.2); run = d > 3; }
   }
-  const sp = mag < 0.05 ? 0 : (run ? 4.2 : 2.05) * Math.max(0.35, mag);
+  const sp = mag < 0.05 ? 0 : (run ? 5.2 : 2.7) * Math.max(0.35, mag);
   speedNow += (sp - speedNow) * Math.min(1, dt * (sp > speedNow ? 6 : 9));
   if (mag > 0.05) heading = angLerp(heading, Math.atan2(mx, mz), Math.min(1, dt * 10));
   const dir = mag > 0.05 ? tmp.set(mx, 0, mz) : tmp.set(Math.sin(heading), 0, Math.cos(heading));

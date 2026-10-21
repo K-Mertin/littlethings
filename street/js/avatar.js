@@ -46,7 +46,7 @@ export class Character {
     this.onStep = null;
   }
   setMotion(speed) {
-    const want = speed < 0.12 ? "idle" : speed < 2.6 ? 'walk' : 'run';
+    const want = speed < 0.12 ? "idle" : speed < 3.3 ? 'walk' : 'run';
     if (want !== this.state) {
       const from = this.actions[this.state], to = this.actions[want];
       if ((want === 'walk' || want === 'run') && (this.state === 'walk' || this.state === 'run')) {
@@ -56,8 +56,8 @@ export class Character {
       from.crossFadeTo(to, want === 'idle' || this.state === 'idle' ? 0.28 : 0.2, false);
       this.state = want;
     }
-    if (want === 'walk') this.actions.walk.setEffectiveTimeScale(THREE.MathUtils.clamp(speed / this.speeds.walk, 0.55, 1.95));
-    if (want === 'run') this.actions.run.setEffectiveTimeScale(THREE.MathUtils.clamp(speed / this.speeds.run, 0.7, 1.7));
+    if (want === 'walk') this.actions.walk.setEffectiveTimeScale(THREE.MathUtils.clamp(speed / this.speeds.walk, 0.55, 2.45));
+    if (want === 'run') this.actions.run.setEffectiveTimeScale(THREE.MathUtils.clamp(speed / this.speeds.run, 0.7, 2.0));
   }
   update(dt) {
     this.mixer.update(dt);
