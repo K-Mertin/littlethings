@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>MW 大街</title>
+<meta name="description" content="擬真 3D 商店街：操作寫實人物逛街，走進 MW 遊戲大廳挑遊戲。">
+<meta name="theme-color" content="#14121a">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&family=Noto+Serif+TC:wght@900&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<style>
+  :root { --ink: #fff; --panel: rgba(18, 16, 26, .78); --line: rgba(255, 255, 255, .14); --accent: #ff5ac8; --accent2: #3fe0ff; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #14121a; color: var(--ink);
+    font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif; user-select: none; -webkit-user-select: none; touch-action: none; }
+  canvas#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
+  .hidden { display: none !important; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+
+  /* loading */
+  #loading { position: fixed; inset: 0; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 40%, #2b2440, #0e0c14 70%); z-index: 50; transition: opacity .6s; }
+  #loading .box { width: min(420px, 82vw); text-align: center; }
+  #loading h1 { font-family: "Noto Serif TC", serif; font-size: clamp(40px, 9vw, 72px); margin: 0 0 6px; letter-spacing: .12em; }
+  #loading p { opacity: .7; margin: 0 0 22px; }
+  .bar { height: 8px; border-radius: 8px; background: rgba(255,255,255,.12); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .2s; }
+  #loadMsg { margin-top: 12px; font-size: 14px; opacity: .6; min-height: 1.2em; }
+
+  /* title */
+  #title { position: fixed; inset: 0; z-index: 40; display: flex; flex-direction: column; justify-content: space-between; pointer-events: none;
+    padding: max(18px, env(safe-area-inset-top)) 18px max(22px, env(safe-area-inset-bottom)); }
+  #title .top { text-align: center; text-shadow: 0 2px 18px rgba(0,0,0,.55); }
+  #title h1 { font-family: "Noto Serif TC", serif; font-size: clamp(44px, 10vw, 92px); margin: 6px 0 0; letter-spacing: .14em; }
+  #title .sub { font-size: clamp(15px, 2.4vw, 19px); opacity: .92; }
+  #title .bottom { display: flex; flex-direction: column; align-items: center; gap: 14px; pointer-events: auto; }
+  .pick { display: flex; gap: 10px; background: var(--panel); padding: 6px; border-radius: 999px; border: 1px solid var(--line); backdrop-filter: blur(8px); }
+  .pick button { border: 0; background: transparent; padding: 10px 22px; border-radius: 999px; font-weight: 700; font-size: 17px; }
+  .pick button[aria-pressed="true"] { background: #fff; color: #1b1824; }
+  .go { border: 0; padding: 15px 46px; border-radius: 999px; font-size: 21px; font-weight: 900; color: #1b1824;
+    background: linear-gradient(135deg, #fff, #ffd6f0); box-shadow: 0 8px 30px rgba(255, 90, 200, .35); }
+  .hint { font-size: 14px; opacity: .85; text-align: center; text-shadow: 0 1px 8px rgba(0,0,0,.8); }
+  .tiny-link { font-size: 13px; opacity: .75; color: #fff; text-decoration: underline; text-underline-offset: 3px; }
+
+  /* hud */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 20; }
+  #place { position: absolute; left: max(14px, env(safe-area-inset-left)); top: max(14px, env(safe-area-inset-top)); background: var(--panel); border: 1px solid var(--line);
+    padding: 8px 14px; border-radius: 999px; font-weight: 700; backdrop-filter: blur(8px); display: flex; gap: 8px; align-items: center; }
+  #place small { opacity: .65; font-weight: 500; }
+  #tools { position: absolute; right: max(14px, env(safe-area-inset-right)); top: max(14px, env(safe-area-inset-top)); display: flex; gap: 8px; pointer-events: auto; }
+  .tb { min-width: 44px; height: 44px; border-radius: 22px; border: 1px solid var(--line); background: var(--panel); backdrop-filter: blur(8px); font-size: 15px; font-weight: 700; padding: 0 14px; display: flex; align-items: center; gap: 6px; }
+  .tb svg { width: 20px; height: 20px; }
+
+  /* prompt card */
+  #prompt { position: absolute; left: 50%; bottom: max(22px, env(safe-area-inset-bottom)); transform: translate(-50%, 20px); opacity: 0; transition: .25s;
+    width: min(560px, calc(100vw - 28px)); background: var(--panel); border: 1px solid var(--line); border-radius: 20px; padding: 12px; backdrop-filter: blur(10px);
+    display: grid; grid-template-columns: 132px 1fr; gap: 14px; pointer-events: none; }
+  #prompt.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+  #prompt img { width: 132px; height: 74px; object-fit: cover; border-radius: 10px; display: block; }
+  #prompt .genre { font-size: 12px; opacity: .7; }
+  #prompt h2 { margin: 0 0 2px; font-size: 21px; line-height: 1.2; }
+  #prompt p { margin: 0; font-size: 14px; opacity: .88; line-height: 1.45; }
+  #prompt .row { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  #prompt .tags span { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: rgba(255,255,255,.1); margin-right: 4px; }
+  #prompt .play { margin-left: auto; border: 0; border-radius: 999px; padding: 11px 22px; font-weight: 900; font-size: 17px; color: #1b1824; background: #fff; }
+  #prompt kbd { font-family: inherit; font-size: 12px; border: 1px solid rgba(0,0,0,.25); border-radius: 6px; padding: 0 6px; margin-left: 6px; }
+  @media (max-height: 520px) { #prompt { grid-template-columns: 110px 1fr; padding: 10px; gap: 10px; width: min(480px, calc(100vw - 28px)); } #prompt img { width: 110px; height: 62px; } #prompt p, #prompt .tags { display: none; } #prompt h2 { font-size: 18px; } #prompt .play { padding: 8px 16px; font-size: 15px; } }
+  @media (max-width: 520px) { #prompt { grid-template-columns: 96px 1fr; } #prompt img { width: 96px; height: 54px; } #prompt p { font-size: 13px; } #prompt .tags { display: none; } }
+
+  /* touch joystick */
+  #stick { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; border: 2px solid rgba(255,255,255,.35); background: rgba(255,255,255,.08); display: none; }
+  #stick i { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; background: rgba(255,255,255,.75); }
+  #touchHelp { position: absolute; left: 50%; bottom: 120px; transform: translateX(-50%); font-size: 14px; background: var(--panel); padding: 8px 14px; border-radius: 999px; transition: opacity 1s; white-space: nowrap; }
+
+  /* menus */
+  .sheet { position: fixed; inset: 0; z-index: 30; background: rgba(8, 6, 12, .55); display: grid; place-items: center; padding: 18px; }
+  .sheet .card { width: min(560px, 100%); max-height: 86vh; overflow: auto; background: #1d1a27; border: 1px solid var(--line); border-radius: 22px; padding: 18px; touch-action: pan-y; }
+  .sheet h3 { margin: 0 0 4px; font-size: 20px; }
+  .sheet .lead { margin: 0 0 14px; opacity: .7; font-size: 14px; }
+  .glist { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .glist button { border: 1px solid var(--line); background: rgba(255,255,255,.05); border-radius: 14px; padding: 8px; text-align: left; }
+  .glist img { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: 9px; display: block; margin-bottom: 6px; }
+  .glist b { display: block; font-size: 15px; } .glist span { font-size: 12px; opacity: .65; }
+  .zone-h { grid-column: 1 / -1; font-size: 13px; font-weight: 700; margin: 6px 0 -2px; }
+  .opts { display: grid; gap: 10px; }
+  .opts .line { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .seg { display: flex; background: rgba(255,255,255,.08); border-radius: 999px; padding: 4px; }
+  .seg button { border: 0; background: transparent; padding: 7px 14px; border-radius: 999px; font-weight: 700; }
+  .seg button[aria-pressed="true"] { background: #fff; color: #1b1824; }
+  .close { margin-top: 14px; width: 100%; border: 0; border-radius: 999px; padding: 12px; font-weight: 900; background: #fff; color: #1b1824; font-size: 16px; }
+  .keys { font-size: 14px; line-height: 1.8; opacity: .85; }
+  .keys kbd { font-family: inherit; border: 1px solid var(--line); border-radius: 6px; padding: 0 7px; background: rgba(255,255,255,.06); }
+
+  #fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 60; transition: opacity .5s; }
+  #fade.on { opacity: 1; }
+  #toast { position: fixed; left: 50%; top: 74px; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--line); padding: 8px 16px; border-radius: 999px; z-index: 25; font-weight: 700; opacity: 0; transition: opacity .4s; pointer-events: none; }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<canvas id="view" tabindex="0"></canvas>
+
+<div id="loading"><div class="box">
+  <h1>MW 大街</h1><p>正在把街道搭起來…</p>
+  <div class="bar"><i id="loadBar"></i></div><div id="loadMsg"></div>
+</div></div>
+
+<div id="title" class="hidden">
+  <div class="top"><div class="sub">逛逛街，走進遊戲大廳挑一款來玩</div><h1>MW 大街</h1></div>
+  <div class="bottom">
+    <div class="pick" role="group" aria-label="選擇角色">
+      <button data-av="boy" aria-pressed="true">男生</button>
+      <button data-av="girl" aria-pressed="false">女生</button>
+    </div>
+    <button class="go" id="goBtn">出發逛街</button>
+    <div class="hint" id="titleHint"></div>
+    <a class="tiny-link" href="../index.html">回到一般版遊戲大廳</a>
+  </div>
+</div>
+
+<div id="hud" class="hidden">
+  <div id="place"><span id="placeName">MW 大街</span><small id="placeSub"></small></div>
+  <div id="tools">
+    <button class="tb" id="btnGo" aria-label="快速前往"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg><span>前往</span></button>
+    <button class="tb" id="btnSet" aria-label="設定"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  </div>
+  <div id="prompt">
+    <img id="pImg" alt="">
+    <div><div class="genre" id="pGenre"></div><h2 id="pTitle"></h2><p id="pDesc"></p></div>
+    <div class="row"><div class="tags" id="pTags"></div><button class="play" id="pPlay">進入遊戲<kbd>E</kbd></button></div>
+  </div>
+  <div id="stick"><i></i></div>
+  <div id="touchHelp" class="hidden">左邊拖曳走路・右邊拖曳轉視角・點機台自動走過去</div>
+</div>
+
+<div id="goSheet" class="sheet hidden"><div class="card">
+  <h3>快速前往</h3><p class="lead">選一台機台，角色會自己跑過去。動一下方向就會停。</p>
+  <div class="glist" id="goList"></div>
+  <button class="close" data-close>關閉</button>
+</div></div>
+
+<div id="setSheet" class="sheet hidden"><div class="card">
+  <h3>設定</h3>
+  <div class="opts">
+    <div class="line"><span>角色</span><div class="seg" id="segAv"><button data-v="boy">男生</button><button data-v="girl">女生</button></div></div>
+    <div class="line"><span>畫質</span><div class="seg" id="segQ"><button data-v="high">高</button><button data-v="low">省電</button></div></div>
+    <div class="line"><span>聲音</span><div class="seg" id="segS"><button data-v="on">開</button><button data-v="off">關</button></div></div>
+  </div>
+  <p class="keys"><b>電腦</b>：<kbd>W A S D</kbd> 或方向鍵走路、按住 <kbd>Shift</kbd> 跑步、滑鼠拖曳轉視角、滾輪拉近拉遠、<kbd>E</kbd> 開始遊戲<br>
+  <b>平板手機</b>：左邊拖曳走路（推到底會跑）、右邊拖曳轉視角、點一下機台會自動走過去</p>
+  <a class="tiny-link" href="../index.html">回到一般版遊戲大廳</a>
+  <button class="close" data-close>關閉</button>
+</div></div>
+
+<div id="toast"></div>
+<div id="fade"></div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
