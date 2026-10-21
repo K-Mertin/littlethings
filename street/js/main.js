@@ -310,7 +310,7 @@ function buildGoList() {
     const h = document.createElement('div'); h.className = 'zone-h'; h.textContent = z.name; h.style.color = z.color; el.appendChild(h);
     for (const g of GAMES.filter((x) => x.zone === zid)) {
       const b = document.createElement('button');
-      b.innerHTML = `<img src="../${g.id}/hall_shot.jpg" alt="" loading="lazy"><b>${g.title}</b><span>${g.genre}</span>`;
+      b.innerHTML = `<img src="../${g.id}/hall_shot.jpg" alt=""><b>${g.title}</b><span>${g.genre}</span>`;
       b.addEventListener('click', () => { $('goSheet').classList.add('hidden'); goTo(world.interact.find((i) => i.game.id === g.id)); });
       el.appendChild(b);
     }
