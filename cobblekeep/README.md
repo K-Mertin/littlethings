@@ -19,7 +19,7 @@ Monsters are sculpted in code as distance fields ("digital clay"): smooth shapes
 - **Phones:** touch devices load the `.lo` files (about a quarter of the triangles) with a cheaper skin material, and the monsters cast no shadows. Nothing is sculpted on the device.
 - **Far away:** monsters out of view or more than 15 tiles off update their pose every fourth frame.
 - **In the game:** eyes, teeth and weapons are simple shapes added at load time. The older built-in model is shown until a file arrives, then swapped.
-- **Done so far:** goblin, Goblin Chief, imp mage, Dark Wizard, bat, Bat Queen, knight, fire wisp, crystal totem, Mummy King, Frost Giant (the whole cast), plus the hero's four weapons, glove and bracer, and all the scenery: cactus, lamp posts, flowers, frost crystals and cursed crystals. The hand-held kit always loads the detailed set.
+- **Done so far:** goblin, Goblin Chief, imp mage, Dark Wizard, bat, Bat Queen, knight, fire wisp, crystal totem, Mummy King, Frost Giant (the whole cast), plus the hero's four weapons, glove and bracer, all the scenery (cactus, lamp posts, flowers, frost crystals, cursed crystals) and every pickup (hearts, ward shield, potions, quiver, fire runes, keys). The hand-held kit always loads the detailed set.
 
 ## Baked surfaces
 Walls, floors and ceilings in all five worlds are generated in code as height fields: bricks, stones, planks and tiles with chipped edges, grime, moss, frost and wood grain. From the height come normal maps (light catches the relief), roughness maps (marble and ice shine, plaster stays matte) and glow maps for cursed runes, key gems and the goal seal.
