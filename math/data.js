@@ -7,6 +7,7 @@
   function CN(n) {
     if (n <= 10) return D[n];
     if (n < 20) return '十' + D[n - 10];
+    if (n >= 100) return '一百';
     return D[Math.floor(n / 10)] + '十' + (n % 10 ? D[n % 10] : '');
   }
   // 接量詞時 2 念「兩」
@@ -29,6 +30,12 @@
     { e: '🌸', n: '花', c: '朵' },
   ];
   const BOXABLE = ITEMS.filter(x => x.c === '顆');   // 數到 20 用「一盒十顆」
+  const FOOD = ITEMS.filter(x => ['🍎', '🍓', '🍬'].includes(x.e));   // 放盤子、分給小熊的
+  const CLS = ['顆', '隻'];   // 加減乘除的題目只用這兩種量詞（少錄一點音檔）
+  const STORY = ITEMS.filter(x => CLS.includes(x.c));
+  const COME = { 隻: '又跑來了', 條: '又游來了', 台: '又開來了' };
+  const AWAY = { 隻: '跑走了', 條: '游走了', 台: '開走了' };
+  const OPW = { '+': '加', '-': '減', '×': '乘以', '÷': '除以' };
 
   // 第一段：A 數與量
   const LESSONS = [
@@ -39,8 +46,28 @@
     { id: 5, t: '比多少', e: '⚖️', g: 'A' },
     { id: 6, t: '排順序', e: '🚂', g: 'A' },
     { id: 7, t: '數到 20', e: '📦', g: 'A' },
+    { id: 8, t: '5 的分合', e: '✋', g: 'B' },
+    { id: 9, t: '6–9 的分合', e: '🤲', g: 'B' },
+    { id: 10, t: '湊十', e: '🔟', g: 'B' },
+    { id: 11, t: '5 以內加法', e: '🐤', g: 'C' },
+    { id: 12, t: '10 以內加法', e: '➕', g: 'C' },
+    { id: 13, t: '加法算式', e: '📝', g: 'C' },
+    { id: 14, t: '加法小祕訣', e: '💡', g: 'C' },
+    { id: 15, t: '數線跳跳', e: '🐸', g: 'C' },
+    { id: 16, t: '5 以內減法', e: '🎈', g: 'D' },
+    { id: 17, t: '10 以內減法', e: '➖', g: 'D' },
+    { id: 18, t: '減法算式', e: '📝', g: 'D' },
+    { id: 19, t: '減法小祕訣', e: '💡', g: 'D' },
+    { id: 20, t: '加還是減', e: '🤔', g: 'E' },
+    { id: 21, t: '小故事', e: '📖', g: 'E' },
+    { id: 22, t: '20 以內加法', e: '🧮', g: 'E' },
+    { id: 23, t: '幾個一盤', e: '🧺', g: 'F' },
+    { id: 24, t: '跳著數', e: '🦘', g: 'F' },
+    { id: 25, t: '乘法算式', e: '✖️', g: 'F' },
+    { id: 26, t: '平分', e: '🐻', g: 'G' },
+    { id: 27, t: '除法算式', e: '➗', g: 'G' },
   ];
-  const GROUPS = { A: '數與量' };
+  const GROUPS = { A: '數與量', B: '分與合', C: '加法', D: '減法', E: '加減一起', F: '乘法入門', G: '除法入門' };
 
   const P = {
     hello: '嗨！我是小黑，我們一起來玩數字！',
@@ -60,7 +87,57 @@
       5: '看看哪一盤比較多，哪一盤比較少。',
       6: '數字小火車，一節一節排好。',
       7: '一盒裝十顆，數完一盒再往下數。',
+      8: '這邊有幾個，猜猜另一邊藏了幾個？',
+      9: '數字變大了，猜猜另一邊藏了幾個？',
+      10: '十格框要裝滿十個。還要幾個才會滿？',
+      11: '東西變多了，就是加法。一起來算算看！',
+      12: '看圖，也看算式。加號就是合起來。',
+      13: '這次只有算式，可以用手指頭幫忙喔。',
+      14: '加零、加一、一樣的數相加，都有小祕訣喔！',
+      15: '小青蛙在數線上跳，加幾就往前跳幾格。',
+      16: '東西變少了，就是減法。',
+      17: '看圖，也看算式。減號就是拿走。',
+      18: '這次只有減法算式，可以用手指頭幫忙喔。',
+      19: '減零、減一、全部拿走，都有小祕訣喔！',
+      20: '聽故事想一想：變多了用加，變少了用減。',
+      21: '聽小故事，算算看。',
+      22: '先把十格框裝滿，再數多出來的。',
+      23: '每盤一樣多，一盤一盤跳著數。',
+      24: '兩個兩個數、五個五個數、十個十個數。',
+      25: '每盤幾個、有幾盤，就是乘法。',
+      26: '把東西平分給小熊，每隻要一樣多。點一下東西，就會分給一隻小熊。',
+      27: '除法就是平分。看算式，算算每隻小熊有幾個。',
     },
+    // 分與合
+    splitAll: (c, n) => `一共有${Q(n)}${c}。`,
+    splitHere: (c, a) => `這邊有${Q(a)}${c}，`,
+    splitQ: c => `另一邊藏了幾${c}？`,
+    splitAns: (c, b) => `另一邊有${Q(b)}${c}。`,
+    tenQ: '還要幾個，才會變成十？',
+    // 加減小故事
+    have: (it, n) => `有${Q(n)}${it.c}${it.n}，`,
+    come: (c, n) => `${COME[c] || '又放了'}${Q(n)}${c}，`,
+    away: (c, n) => `${AWAY[c] || '拿走了'}${Q(n)}${c}，`,
+    nowQ: c => `現在有幾${c}？`,
+    now: (c, n) => `現在有${Q(n)}${c}。`,
+    allC: (c, n) => `一共有${Q(n)}${c}！`,
+    // 算式
+    eqQ: (a, op, b) => `${CN(a)}${OPW[op]}${CN(b)}等於多少？`,
+    eqA: (a, op, b, r) => `${CN(a)}${OPW[op]}${CN(b)}等於${CN(r)}。`,
+    tip: { add0: '加零，數字不會變。', add1: '加一，就是下一個數。', dbl: '一樣的數相加，叫做雙倍。', sub0: '減零，數字不會變。', sub1: '減一，就是前一個數。', suball: '全部拿走，就是零。' },
+    frog: '小青蛙一格一格往前跳。',
+    opQ: '要用加，還是用減？',
+    opPlus: '變多了，用加！',
+    opMinus: '變少了，用減！',
+    makeTen: '先把十格框裝滿。',
+    thenMore: '再往下數。',
+    // 乘法、除法
+    groups: (c, g, k) => `有${Q(g)}盤，每盤${Q(k)}${c}，`,
+    allQ: c => `一共有幾${c}？`,
+    skip: { 2: '兩個兩個數。', 5: '五個五個數。', 10: '十個十個數。' },
+    share: (c, n, k) => `有${Q(n)}${c}，平分給${Q(k)}隻小熊，`,
+    eachQ: c => `每隻小熊有幾${c}？`,
+    eachA: (c, r) => `每隻小熊有${Q(r)}${c}。`,
     n: CN,
     howMany: it => `有幾${it.c}${it.n}？`,
     total: (it, n) => `一共有${Q(n)}${it.c}${it.n}！`,
@@ -100,6 +177,27 @@
       if (a < b) add(P.lessThan(a, b));
     }
     for (let n = 1; n <= 10; n++) add(P.sameAs(n));
+    // 加減乘除
+    for (let n = 0; n <= 100; n++) add(CN(n));
+    Object.values(P.tip).forEach(add); Object.values(P.skip).forEach(add);
+    ['tenQ', 'frog', 'opQ', 'opPlus', 'opMinus', 'makeTen', 'thenMore'].forEach(k => add(P[k]));
+    for (const c of CLS) {
+      add(P.splitQ(c)); add(P.nowQ(c)); add(P.allQ(c)); add(P.eachQ(c));
+      for (let n = 0; n <= 10; n++) { add(P.splitAll(c, n)); add(P.splitHere(c, n)); add(P.splitAns(c, n)); add(P.come(c, n)); add(P.away(c, n)); add(P.now(c, n)); }
+      for (let n = 1; n <= (c === '顆' ? 50 : 10); n++) add(P.allC(c, n));
+    }
+    for (const it of STORY) for (let n = 1; n <= 10; n++) add(P.have(it, n));
+    for (let a = 0; a <= 10; a++) for (let b = 0; a + b <= 10; b++) { add(P.eqQ(a, '+', b)); add(P.eqA(a, '+', b, a + b)); }
+    for (let a = 6; a <= 9; a++) for (let b = 2; b <= 9; b++) if (a + b > 10) { add(P.eqQ(a, '+', b)); add(P.eqA(a, '+', b, a + b)); }
+    for (let a = 0; a <= 10; a++) for (let b = 0; b <= a; b++) { add(P.eqQ(a, '-', b)); add(P.eqA(a, '-', b, a - b)); }
+    for (const k of [1, 2, 3, 4, 5, 10]) for (let g = 2; g <= 5; g++) {
+      add(P.groups('顆', g, k));
+      add(P.eqQ(k, '×', g)); add(P.eqA(k, '×', g, k * g));
+    }
+    for (let k = 2; k <= 4; k++) for (let r = 1; r <= 5; r++) {
+      add(P.share('顆', k * r, k)); add(P.eachA('顆', r));
+      add(P.eqQ(k * r, '÷', k)); add(P.eqA(k * r, '÷', k, r));
+    }
     return Array.from(out);
   }
 
@@ -111,7 +209,7 @@
     return h.toString(16).padStart(8, '0');
   }
 
-  const M = { CN, Q, ITEMS, BOXABLE, LESSONS, GROUPS, P, allLines, hash };
+  const M = { CN, Q, ITEMS, BOXABLE, FOOD, STORY, LESSONS, GROUPS, P, allLines, hash };
   if (typeof module !== 'undefined' && module.exports) module.exports = M;
   else root.M = M;
 })(typeof window !== 'undefined' ? window : globalThis);

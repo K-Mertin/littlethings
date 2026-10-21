@@ -28,18 +28,18 @@ def trim(src, dst):
 async def one(i, t, sem):
     async with sem:
         tmp = tempfile.mktemp(suffix='.mp3')
-        for k in range(4):
+        for k in range(12):
             try:
                 await edge_tts.Communicate(t, voice, rate=rate).save(tmp)
                 if os.path.getsize(tmp) > 0:
                     trim(tmp, os.path.join(outdir, i + '.mp3')); os.remove(tmp); return
             except Exception as e:
                 err = e
-            await asyncio.sleep(1 + k)
+            await asyncio.sleep(min(30, 2 ** k))
         print('失敗', i, t)
 
 async def main():
-    sem = asyncio.Semaphore(6)
+    sem = asyncio.Semaphore(int(os.environ.get('TTS_JOBS', '3')))
     await asyncio.gather(*(one(i, t, sem) for i, t in todo))
 
 asyncio.run(main())
