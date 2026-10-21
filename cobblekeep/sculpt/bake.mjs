@@ -16,8 +16,9 @@ import * as wisps from './models/wisp.mjs';
 import * as bosses from './models/bosses.mjs';
 import * as props from './models/props.mjs';
 import * as weapons from './models/weapons.mjs';
+import * as pickups from './models/pickups.mjs';
 
-const MODELS = { goblin: goblins.goblin, goblinChief: goblins.goblinChief, imp: imps.imp, darkWizard: imps.darkWizard, bat: bats.bat, batQueen: bats.batQueen, knight: knights.knight, wisp: wisps.wisp, totem: wisps.totem, mummy: bosses.mummy, giant: bosses.giant, cactus: props.cactus, flower: props.flower, cursedCrystal: props.cursedCrystal, ...Object.fromEntries(Object.entries(weapons)) };
+const MODELS = { goblin: goblins.goblin, goblinChief: goblins.goblinChief, imp: imps.imp, darkWizard: imps.darkWizard, bat: bats.bat, batQueen: bats.batQueen, knight: knights.knight, wisp: wisps.wisp, totem: wisps.totem, mummy: bosses.mummy, giant: bosses.giant, cactus: props.cactus, flower: props.flower, cursedCrystal: props.cursedCrystal, ...Object.fromEntries(Object.entries(weapons)), ...Object.fromEntries(Object.entries(pickups)) };
 // triangle budgets per model, shared between its pieces by size
 const LODS = { hi: { budget: 18000, min: 300, err: .01 }, lo: { budget: 5000, min: 120, err: .04 } };
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'cast');
