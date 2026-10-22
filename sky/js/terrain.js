@@ -170,12 +170,12 @@ function cloud(g, x, y, r, seed, alpha = 0.9) {
 
 // 第 5 關的高空雲層（比地面捲得快，畫在空中敵機下面）
 const SkyClouds = {
-  list: [], init() { this.list = []; for (let i = 0; i < 6; i++) this.add(rnd(-200, H)); },
+  list: [], init() { this.list = []; for (let i = 0; i < 4; i++) this.add(rnd(-200, H)); },
   add(y) { this.list.push({ x: rnd(-20, W + 20), y, r: rnd(30, 60), seed: (Math.random() * 1000) | 0, sp: rnd(1.9, 2.6) }); },
   update(dt, speed) {
     for (const c of this.list) c.y += speed * c.sp * dt;
     this.list = this.list.filter(c => c.y < H + 120);
-    while (this.list.length < 6) this.add(rnd(-260, -100));
+    while (this.list.length < 4) this.add(rnd(-260, -100));
   },
   draw(ctx) { for (const c of this.list) cloud(ctx, c.x, c.y, c.r, c.seed, 0.42); },
 };

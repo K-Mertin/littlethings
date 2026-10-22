@@ -174,7 +174,7 @@ const H4 = (x, v) => {
   let h = fbm(x * 0.004, v * 0.004, 41) * 26;
   h += Math.pow(ridge(x * 0.014 + v * 0.006, v * 0.022, 42), 2.2) * 16 * (1 - z.flat * 0.6);
   const m = fbm(x * 0.0055, v * 0.0055, 43);
-  h += smooth(0.52, 0.56, m) * 48 * z.mesa;
+  h += smooth(0.49, 0.59, m) * 38 * z.mesa;
   h -= Math.pow(ridge(x * 0.008, v * 0.008, 44), 8) * 34 * z.mesa;
   return h;
 };
@@ -188,7 +188,7 @@ const C4 = (x, v, h, s) => {
 };
 // ================= 第 5 關：高空雲海 =================
 const cloudN = (x, v) => fbm(x * 0.0055, v * 0.0055 + 3, 51) * 0.8 + vnoise(x * 0.03, v * 0.03, 52) * 0.2;
-const cloudCover = v => { const d = -v; return 0.6 - smooth(800, 2600, d) * 0.05 + smooth(3000, 3800, d) * 0.05; };
+const cloudCover = v => { const d = -v; return 0.64 - smooth(800, 2600, d) * 0.05 + smooth(3000, 3800, d) * 0.05; };
 const cloudH = (x, v) => Math.max(0, cloudN(x, v) - cloudCover(v)) * 140;
 const H5 = (x, v) => { const c = cloudH(x, v); return c > 0 ? c * 0.6 : vnoise(x * 0.06, v * 0.09, 53) * 1.2; };
 const C5 = (x, v) => {
@@ -196,7 +196,7 @@ const C5 = (x, v) => {
   const shade = smooth(0, 9, cloudH(x - 20, v - 30));
   const sea = mixC([24, 70, 122], [36, 96, 152], fbm(x * 0.005, v * 0.005, 54)).map(k => k * (1 - shade * 0.35));
   if (c <= 0) return sea;
-  return mixC(sea, mixC([226, 234, 246], [255, 255, 255], clamp(c / 18, 0, 1)), smooth(0, 5, c));
+  return mixC(sea, mixC([226, 234, 246], [255, 255, 255], clamp(c / 18, 0, 1)), smooth(0, 12, c));
 };
 
 PAINT.push(
