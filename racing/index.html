@@ -514,11 +514,68 @@ TEX.road = canvasTex(256, 512, (g, w, h) => {
   g.fillStyle = '#f4f1ea'; g.fillRect(8, 0, 7, h); g.fillRect(w - 15, 0, 7, h);   // edge lines
   g.fillRect(w / 2 - 4, 0, 8, h * 0.5);                                              // center dash
 });
-TEX.kerb = canvasTex(32, 64, (g, w, h) => { g.fillStyle = '#ff4f5e'; g.fillRect(0, 0, w, h / 2); g.fillStyle = '#ffffff'; g.fillRect(0, h / 2, w, h / 2); });
+/* ---------- realistic surfaces: textures painted from noise, with normal and roughness maps ---------- */
+const TEXQ = TOUCH ? 1 : 2;                         // phones get half-size surface textures
+function valueNoise(w, h, cell, seed) {             // tileable smooth noise in 0..1
+  const r = rng(seed), gw = Math.ceil(w / cell), gh = Math.ceil(h / cell), G = new Float32Array(gw * gh).map(() => r()), out = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const fx = x / cell, fy = y / cell, x0 = Math.floor(fx) % gw, y0 = Math.floor(fy) % gh, x1 = (x0 + 1) % gw, y1 = (y0 + 1) % gh, tx = fx - Math.floor(fx), ty = fy - Math.floor(fy);
+    const sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
+    out[y * w + x] = lerp(lerp(G[y0 * gw + x0], G[y0 * gw + x1], sx), lerp(G[y1 * gw + x0], G[y1 * gw + x1], sx), sy);
+  }
+  return out;
+}
+function fbmField(w, h, seed, base, oct = 4) { const o = new Float32Array(w * h); let amp = 0.5, tot = 0; for (let k = 0; k < oct; k++) { const n = valueNoise(w, h, Math.max(1, base >> k), seed + k * 17); for (let i = 0; i < o.length; i++) o[i] += n[i] * amp; tot += amp; amp *= 0.5; } for (let i = 0; i < o.length; i++) o[i] /= tot; return o; }
+function texFromField(w, h, fn, srgb = true) {     // fn(x, y, i) -> [r, g, b] in 0..255
+  const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'), d = g.createImageData(w, h);
+  for (let y = 0, i = 0; y < h; y++) for (let x = 0; x < w; x++, i++) { const [r, gg, b] = fn(x, y, i); d.data[i * 4] = r; d.data[i * 4 + 1] = gg; d.data[i * 4 + 2] = b; d.data[i * 4 + 3] = 255; }
+  g.putImageData(d, 0, 0); const t = new THREE.CanvasTexture(c); if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = MAX_ANISO; return t;
+}
+function normalFromHeight(H, w, h, k) {
+  return texFromField(w, h, (x, y) => { const L = H[y * w + (x - 1 + w) % w], Rr = H[y * w + (x + 1) % w], U = H[((y - 1 + h) % h) * w + x], D = H[((y + 1) % h) * w + x];
+    let nx = (L - Rr) * k, ny = (U - D) * k, nz = 1; const l = Math.hypot(nx, ny, nz); return [(nx / l * 0.5 + 0.5) * 255, (ny / l * 0.5 + 0.5) * 255, (nz / l * 0.5 + 0.5) * 255]; }, false);
+}
+// asphalt: one tile covers the full road width (13.5 m) and 27 m along it
+const ASPH = (() => {
+  const w = 512 * TEXQ, h = 1024 * TEXQ, r = rng(7);
+  const big = fbmField(w, h, 3, 64 * TEXQ, 4), fine = fbmField(w, h, 9, 3 * TEXQ, 2), H = new Float32Array(w * h);
+  const stones = new Float32Array(w * h);
+  for (let k = 0; k < w * h / 9; k++) { const x = (r() * w) | 0, y = (r() * h) | 0, v = r(); stones[y * w + x] = v; if (r() < 0.4 && x + 1 < w) stones[y * w + x + 1] = v * 0.8; }
+  const edge = w * 0.6 / 13.5, lineW = w * 0.12 / 13.5;   // painted edge lines 0.12 m wide, 0.6 m in from the kerb
+  const isLine = (x, y) => (Math.abs(x - edge) < lineW / 2 || Math.abs(x - (w - edge)) < lineW / 2);
+  for (let i = 0; i < w * h; i++) H[i] = big[i] * 0.4 + fine[i] * 0.4 + stones[i] * 0.6;
+  const map = texFromField(w, h, (x, y, i) => {
+    let v = 48 + big[i] * 22 + fine[i] * 26 + stones[i] * 34 - (fine[i] < 0.25 ? 14 : 0);
+    const wear = big[i] > 0.62 ? (big[i] - 0.62) * 50 : 0;            // patches of paler, older tarmac
+    v += wear;
+    if (isLine(x, y)) { const worn = fine[i] < 0.3 || stones[i] > 0.85 ? 0.55 : 1; return [lerp(v, 236, worn), lerp(v, 234, worn), lerp(v, 226, worn)]; }
+    return [v, v + 1, v + 4];
+  });
+  const rough = texFromField(w, h, (x, y, i) => { const v = isLine(x, y) ? 150 : 215 + fine[i] * 30 - stones[i] * 50; return [v, v, v]; }, false);
+  const normal = normalFromHeight(H, w, h, 2.2);
+  return { map, rough, normal };
+})();
+// grass: mown, with clover and clumps
+const GRASS = (() => {
+  const w = 256 * TEXQ, h = 256 * TEXQ, n1 = fbmField(w, h, 21, 32 * TEXQ, 4), n2 = fbmField(w, h, 22, 2 * TEXQ, 2), H = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) H[i] = n2[i] * 0.8 + n1[i] * 0.2;
+  return { map: texFromField(w, h, (x, y, i) => { const v = 0.75 + n1[i] * 0.35 + (n2[i] - 0.5) * 0.5; return [255 * v * 0.92, 255 * v, 255 * v * 0.85]; }), normal: normalFromHeight(H, w, h, 3) };
+})();
+TEX.kerb = canvasTex(64, 128, (g, w, h) => { const r = rng(5); g.fillStyle = '#d8333b'; g.fillRect(0, 0, w, h / 2); g.fillStyle = '#f2f0ea'; g.fillRect(0, h / 2, w, h / 2);
+  for (let i = 0; i < 260; i++) { g.fillStyle = `rgba(30,28,30,${0.05 + r() * 0.12})`; g.fillRect(r() * w, r() * h, 1 + r() * 3, 1 + r() * 2); }       // tyre rubber and grit
+  const gr = g.createLinearGradient(0, 0, w, 0); gr.addColorStop(0, 'rgba(40,40,44,.25)'); gr.addColorStop(0.35, 'rgba(40,40,44,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h); });
 TEX.wall = canvasTex(64, 64, (g, w, h) => {
   g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h); g.fillStyle = '#4aa6ff'; g.fillRect(0, 0, w, h / 2);
   g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(0, 0, 6, h);
 });
+TEX.rail = canvasTex(256, 64, (g, w, h) => {      // W-beam: two bulges, light on top, shade in the trough
+  const gr = g.createLinearGradient(0, 0, 0, h); [[0, '#7c838c'], [0.12, '#d9dee4'], [0.28, '#aab1ba'], [0.5, '#5f666f'], [0.62, '#c9ced5'], [0.8, '#a1a8b1'], [1, '#6a717a']].forEach(([t, c]) => gr.addColorStop(t, c));
+  g.fillStyle = gr; g.fillRect(0, 0, w, h); const r = rng(13); for (let i = 0; i < 400; i++) { g.fillStyle = `rgba(90,70,50,${r() * 0.12})`; g.fillRect(r() * w, r() * h, 2 + r() * 8, 1 + r() * 2); }
+  g.fillStyle = '#4a5058'; for (let x = 6; x < w; x += 64) for (const y of [h * 0.3, h * 0.72]) { g.beginPath(); g.arc(x, y, 2.5, 0, 7); g.fill(); }
+});
+TEX.railN = canvasTex(4, 64, (g, w, h) => { for (let y = 0; y < h; y++) { const t = y / h, slope = Math.cos(t * Math.PI * 4) * 0.9; g.fillStyle = `rgb(128,${Math.round(128 + slope * 110)},${Math.round(255 - Math.abs(slope) * 60)})`; g.fillRect(0, y, w, 1); } }, false);
+TEX.concrete = canvasTex(128, 64, (g, w, h) => { const r = rng(17); g.fillStyle = '#b9b6ae'; g.fillRect(0, 0, w, h); speckle(g, w, h, ['#a9a69e', '#c8c5bd', '#9d9a93'], 900, 2, r); g.fillStyle = 'rgba(60,60,60,.35)'; g.fillRect(0, 0, 2, h); g.fillStyle = 'rgba(40,40,40,.25)'; g.fillRect(0, h - 8, w, 8); });
+TEX.fence = canvasTex(64, 64, (g, w, h) => { g.clearRect(0, 0, w, h); g.strokeStyle = '#c4c9cf'; g.lineWidth = 2; for (let k = -64; k < 128; k += 12) { g.beginPath(); g.moveTo(k, 0); g.lineTo(k + 64, 64); g.stroke(); g.beginPath(); g.moveTo(k + 64, 0); g.lineTo(k, 64); g.stroke(); } g.fillStyle = '#8a9098'; g.fillRect(0, 0, 4, h); });
 TEX.checker = canvasTex(64, 16, (g, w, h) => { for (let x = 0; x < 16; x++) for (let y = 0; y < 4; y++) { g.fillStyle = (x + y) % 2 ? '#222' : '#fff'; g.fillRect(x * 4, y * 4, 4, 4); } });
 TEX.checker.magFilter = THREE.NearestFilter;
 TEX.pad = canvasTex(64, 128, (g, w, h) => {
@@ -648,6 +705,23 @@ function ribbon(a, b, y, vScale, mat, colFn) {   // flat band between lateral of
   g.setIndex(idx);
   const m = new THREE.Mesh(g, mat); m.receiveShadow = true; world.add(m); return m;
 }
+function kerbRibbon(a, b, mat) {                     // a kerb strip with a raised, rounded profile across it
+  const { N, X, Z, NX, NZ, seg } = TR, S = 6, pos = [], uv = [], idx = [];
+  for (let i = 0; i <= N; i++) {
+    const j = i % N, v = i * seg / 3;
+    for (let k = 0; k <= S; k++) { const t = k / S, l = lerp(a, b, t), y = 0.025 + Math.sin(t * Math.PI) * 0.06; pos.push(X[j] + NX[j] * l, y, Z[j] + NZ[j] * l); uv.push(t, v); }
+  }
+  for (let i = 0; i < N; i++) for (let k = 0; k < S; k++) { const p = i * (S + 1) + k, q = p + S + 1; idx.push(p, q, p + 1, p + 1, q, q + 1); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+  const m = new THREE.Mesh(g, mat); m.receiveShadow = true; world.add(m); return m;
+}
+function wallRibbonY(o, y0, y1, vScale, mat) {     // vertical band at lateral offset o between heights y0 and y1
+  const { N, X, Z, NX, NZ, seg } = TR, pos = [], uv = [], idx = [];
+  for (let i = 0; i <= N; i++) { const j = i % N, v = i * seg / vScale, x = X[j] + NX[j] * o, z = Z[j] + NZ[j] * o; pos.push(x, y0, z, x, y1, z); uv.push(v, 0, v, 1); }
+  for (let i = 0; i < N; i++) { const p = i * 2; idx.push(p, p + 2, p + 1, p + 1, p + 2, p + 3); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+  const m = new THREE.Mesh(g, mat); m.castShadow = true; m.receiveShadow = true; world.add(m); return m;
+}
 function wallRibbon(o, h, vScale, mat) {            // vertical band at lateral offset o
   const { N, X, Z, NX, NZ, seg } = TR, pos = [], uv = [], idx = [];
   for (let i = 0; i <= N; i++) {
@@ -705,7 +779,7 @@ function applyWeather(wet) {
   hemi.intensity = (th.hemiI ?? 1.0) * (wet ? 0.8 : 1);
   sun.intensity = (th.sunI ?? 2.3) * (wet ? 0.35 : 1);
   renderer.toneMappingExposure = (th.exposure ?? 1.05) * (wet ? 0.95 : 1);
-  if (TR.roadMat) { TR.roadMat.roughness = wet ? 0.38 : 0.92; TR.roadMat.metalness = wet ? 0.12 : 0; TR.roadMat.color.set(wet ? 0xa9afba : 0xffffff); }
+  if (TR.roadMat) { TR.roadMat.roughness = wet ? 0.4 : 1; TR.roadMat.metalness = wet ? 0.12 : 0; TR.roadMat.color.set(wet ? 0x8f949e : TR.def.theme.night ? 0xb8bcc8 : 0xffffff); }
   rain.visible = wet;
   const snow = isSnow(); rainMat.color.set(snow ? 0xffffff : 0xc8d4e6); rainMat.opacity = snow ? 0.8 : 0.42;
   rain.userData.speed = snow ? 5 : 32; rain.userData.len = snow ? 0.12 : 0.9;
@@ -746,6 +820,7 @@ function buildWorld(def) {
 
   // ground
   const gt = groundTex(th.ground); gt.repeat.set(160, 160);
+  const lush = th.kind === 'meadow' || th.kind === 'forest' || th.kind === 'coast';
   if (th.water) {
     const sand = new THREE.Mesh(new THREE.RingGeometry(0.01, TR.rad + 70, 72, 24), new THREE.MeshLambertMaterial({ map: gt }));
     gt.repeat.set(40, 40);
@@ -755,15 +830,32 @@ function buildWorld(def) {
     const foam = new THREE.Mesh(new THREE.RingGeometry(TR.rad + 69, TR.rad + 72, 72), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7 }));
     foam.rotation.x = -Math.PI / 2; foam.position.set(TR.cx, -0.1, TR.cz); world.add(foam);
   } else {
-    const g = new THREE.Mesh(new THREE.PlaneGeometry(TR.rad * 2 + 3000, TR.rad * 2 + 3000, 120, 120), new THREE.MeshLambertMaterial({ map: gt }));
+    const gm = lush || th.kind === 'alpine' || th.kind === 'desert' ? (() => { const m = GRASS.map.clone(), n = GRASS.normal.clone(); const rep = (TR.rad * 2 + 3000) / 6; m.repeat.set(rep, rep); n.repeat.set(rep, rep); m.needsUpdate = n.needsUpdate = true;
+      return new THREE.MeshStandardMaterial({ map: m, normalMap: n, normalScale: new THREE.Vector2(0.8, 0.8), color: new THREE.Color(th.ground[0]).multiplyScalar(1.1), roughness: 0.95 }); })() : new THREE.MeshLambertMaterial({ map: gt });
+    const g = new THREE.Mesh(new THREE.PlaneGeometry(TR.rad * 2 + 3000, TR.rad * 2 + 3000, 120, 120), gm);
     g.rotation.x = -Math.PI / 2; g.position.set(TR.cx, 0, TR.cz); g.receiveShadow = true; world.add(g);
   }
 
   // road, kerbs, run-off, walls
-  const roadMat = new THREE.MeshStandardMaterial({ map: TEX.road, roughness: 0.92, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-  ribbon(-W, W, 0.02, 16, roadMat); TR.roadMat = roadMat;
-  const kerbMat = new THREE.MeshStandardMaterial({ map: TEX.kerb, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-  ribbon(-W - KERB, -W, 0.03, 3, kerbMat); ribbon(W, W + KERB, 0.03, 3, kerbMat);
+  const roadMat = new THREE.MeshStandardMaterial({ map: ASPH.map, roughnessMap: ASPH.rough, normalMap: ASPH.normal, normalScale: new THREE.Vector2(0.6, 0.6), roughness: 1, color: th.night ? 0xb8bcc8 : 0xffffff, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  ribbon(-W, W, 0.02, 27, roadMat); TR.roadMat = roadMat;
+  // centre dashes on the straight bits and a rubbered-in racing line
+  {
+    const { N, K, seg } = TR, Ks = new Float32Array(N); for (let i = 0; i < N; i++) { let a = 0; for (let k = -12; k <= 12; k++) a += K[(i + k + N) % N]; Ks[i] = a / 25; }
+    const line = i => clamp(-Ks[(i + Math.round(14 / seg)) % N] * 190 + Ks[(i + Math.round(55 / seg)) % N] * 120, -4.4, 4.4);
+    const lat = new Float32Array(N); for (let i = 0; i < N; i++) lat[i] = line(i);
+    for (let pass = 0; pass < 4; pass++) for (let i = 0; i < N; i++) lat[i] = (lat[(i - 3 + N) % N] + lat[i] * 2 + lat[(i + 3) % N]) / 4;
+    const rubber = canvasTex(64, 8, (g, w, h) => { const gr = g.createLinearGradient(0, 0, w, 0); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(0.2, 'rgba(0,0,0,.9)'); gr.addColorStop(0.42, 'rgba(0,0,0,.55)'); gr.addColorStop(0.5, 'rgba(0,0,0,.4)'); gr.addColorStop(0.58, 'rgba(0,0,0,.55)'); gr.addColorStop(0.8, 'rgba(0,0,0,.9)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h); });
+    const pos = [], uv = [], idx = [];
+    for (let i = 0; i <= N; i++) { const j = i % N, a = lat[j] - 1.25, b = lat[j] + 1.25; pos.push(TR.X[j] + TR.NX[j] * a, 0.028, TR.Z[j] + TR.NZ[j] * a, TR.X[j] + TR.NX[j] * b, 0.028, TR.Z[j] + TR.NZ[j] * b); uv.push(0, 0, 1, 0); }
+    for (let i = 0; i < N; i++) { const p = i * 2; idx.push(p, p + 2, p + 1, p + 1, p + 2, p + 3); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map: rubber, color: 0x0a0a0c, transparent: true, opacity: 0.22, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
+    m.renderOrder = 1; world.add(m);
+  }
+  // kerbs: raised, rounded red-and-white sausage strips with a little wear
+  const kerbMat = new THREE.MeshStandardMaterial({ map: TEX.kerb, roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  kerbRibbon(-W - KERB, -W, kerbMat); kerbRibbon(W, W + KERB, kerbMat);
   const runMat = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   {   // run-off: grass on the straights, gravel traps on the outside of bends
     const Kb = new Float32Array(TR.N);
@@ -772,8 +864,24 @@ function buildWorld(def) {
     const fn = side => j => tmp.copy(grass).lerp(gravel, Math.sign(Kb[j]) === side ? clamp((Math.abs(Kb[j]) - 1 / 110) * 260, 0, 1) : 0);
     ribbon(-WALL, -W - KERB, 0.01, 10, runMat, fn(-1)); ribbon(W + KERB, WALL, 0.01, 10, runMat, fn(1));
   }
-  const wallMat = new THREE.MeshStandardMaterial({ map: TEX.wall, roughness: 0.6, side: THREE.DoubleSide });
-  wallRibbon(-WALL - 0.3, 0.9, 4, wallMat); wallRibbon(WALL + 0.3, 0.9, 4, wallMat);
+  if (th.kind === 'city') {                     // concrete barriers with a catch fence on top
+    const conc = new THREE.MeshStandardMaterial({ map: TEX.concrete, roughness: 0.85, side: THREE.DoubleSide });
+    wallRibbon(-WALL - 0.3, 1.0, 4, conc); wallRibbon(WALL + 0.3, 1.0, 4, conc);
+    for (const sd of [-1, 1]) { const f = wallRibbonY(sd * (WALL + 0.32), 1.0, 3.0, 2, new THREE.MeshStandardMaterial({ map: TEX.fence, transparent: true, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.4, metalness: 0.6 })); f.castShadow = false; }
+  } else {                                      // galvanised steel guardrail on posts
+    const rail = new THREE.MeshStandardMaterial({ map: TEX.rail, normalMap: TEX.railN, roughness: 0.35, metalness: 0.85, side: THREE.DoubleSide, envMapIntensity: 0.6 });
+    for (const sd of [-1, 1]) wallRibbonY(sd * (WALL + 0.3), 0.42, 0.78, 4, rail);
+    const postG = new THREE.BoxGeometry(0.12, 0.8, 0.1).translate(0, 0.4, 0), posts = new THREE.InstancedMesh(postG, new THREE.MeshStandardMaterial({ color: 0x8a9098, roughness: 0.5, metalness: 0.7 }), Math.ceil(TR.N * 2 / (2 / TR.seg)) + 4);
+    const M4p = new THREE.Matrix4(), Qp = new THREE.Quaternion(), Up = new THREE.Vector3(0, 1, 0); let pi = 0;
+    for (let i = 0; i < TR.N; i += Math.round(2 / TR.seg)) for (const sd of [-1, 1]) {
+      const o = sd * (WALL + 0.42); Qp.setFromAxisAngle(Up, Math.atan2(TR.TX[i], TR.TZ[i]));
+      M4p.compose(new THREE.Vector3(TR.X[i] + TR.NX[i] * o, 0, TR.Z[i] + TR.NZ[i] * o), Qp, new THREE.Vector3(1, 1, 1)); posts.setMatrixAt(pi++, M4p);
+    }
+    posts.count = pi; posts.castShadow = true; world.add(posts);
+    // a low concrete footing keeps the look of a solid barrier from far away
+    const foot = new THREE.MeshStandardMaterial({ map: TEX.concrete, roughness: 0.9, side: THREE.DoubleSide });
+    wallRibbon(-WALL - 0.36, 0.22, 4, foot); wallRibbon(WALL + 0.36, 0.22, 4, foot);
+  }
 
   // start line + gantry
   const line = atIdx(new THREE.Mesh(new THREE.PlaneGeometry(2 * W, 2.4), new THREE.MeshLambertMaterial({ map: TEX.checker, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 })), 0, 0, 0.05);
