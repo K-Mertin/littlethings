@@ -103,6 +103,7 @@ function pose(f) {
 
 /* Hair, hats and faces. Coordinates are around the head centre, facing +x. */
 function drawHair(c, L, back, f, P) {
+  if (L.beast) return beastHead(c, L, back, f, P);
   const R = HR, hc = L.hair, t = f ? f.clock : 0;
   switch (L.style) {
     case 'spiky':
@@ -269,7 +270,7 @@ function drawHair(c, L, back, f, P) {
 }
 function drawFace(c, L, P) {
   const R = HR, f = P.face, kid = L.style !== 'hood' && !L.animal;
-  if (kid) { c.beginPath(); c.ellipse(-2, 1, 3, 4, 0, 0, TAU); c.fillStyle = shade(L.skin, -0.15); c.fill(); c.lineWidth = 1.6; c.strokeStyle = INK; c.stroke(); } // ear
+  if (kid && !L.beast) { c.beginPath(); c.ellipse(-2, 1, 3, 4, 0, 0, TAU); c.fillStyle = shade(L.skin, -0.15); c.fill(); c.lineWidth = 1.6; c.strokeStyle = INK; c.stroke(); } // ear
   const ex = R * 0.52, ey = -1;
   if (kid && f !== 'ko') { c.fillStyle = 'rgba(255,110,120,.36)'; c.beginPath(); c.ellipse(ex + 1, ey + 5, 3.4, 1.9, 0, 0, TAU); c.fill(); } // blush
   c.strokeStyle = INK; c.fillStyle = INK; c.lineWidth = 2; c.lineCap = 'round';
@@ -284,6 +285,7 @@ function drawFace(c, L, P) {
       c.fillStyle = L.eye; c.beginPath(); c.ellipse(ex + 0.4, ey + 0.3, 2.05, 3.1, 0, 0, TAU); c.fill();
       c.fillStyle = INK; c.beginPath(); c.ellipse(ex + 0.5, ey + 0.4, 1.1, 1.8, 0, 0, TAU); c.fill();
       c.fillStyle = '#fff'; c.beginPath(); c.arc(ex + 1.1, ey - 1.3, 0.95, 0, TAU); c.fill(); c.beginPath(); c.arc(ex - 0.4, ey + 1.7, 0.45, 0, TAU); c.fill();
+      eyeLid(c, ex, ey, L.lash);
       if (L.lash) { c.strokeStyle = INK; c.lineWidth = 1.3; c.beginPath(); c.moveTo(ex + 2.2, ey - 3); c.lineTo(ex + 3.8, ey - 4.2); c.moveTo(ex + 2.7, ey - 1.6); c.lineTo(ex + 4.3, ey - 2.2); c.stroke(); }
     } else {
       c.beginPath(); c.ellipse(ex, ey, 2.1, 3.5, 0, 0, TAU); c.fill();
@@ -326,11 +328,11 @@ function drawBody(c, L, P, f) {
   const hand = (a, dk) => {
     const g = arm(a); blob(c, g.h.x, g.h.y, fist, fist, L.glove ? (dk ? shade(L.glove, -0.2) : L.glove) : (dk ? L.skinD : L.skin));
     if (DETAIL && !L.animal) { c.save(); c.translate(g.h.x, g.h.y); c.rotate(-g.s2 + Math.PI / 2); c.strokeStyle = 'rgba(28,26,46,.55)'; c.lineWidth = 1; c.beginPath(); for (const k of [-0.35, 0.05, 0.45]) { c.moveTo(fist * 0.35, k * fist); c.lineTo(fist * 0.85, k * fist + 0.5); } c.stroke(); if (L.cuff) { c.fillStyle = L.cuff; c.fillRect(-fist - 1, -fist * 0.8, 3, fist * 1.6); } c.restore(); }
-    return g;
+    drawHandAcc(c, L, g, fist); return g;
   };
   const foot = (a, side, dk) => {
     const g = leg(a, side), fx = g.ft.x + 3, fy = g.ft.y - 1.5, rx = big ? 9.5 : 8.5, rot = -g.s * 0.3;
-    blob(c, fx, fy, rx, 5.2, dk ? shade(L.shoe, -0.2) : L.shoe, rot);
+    blob(c, fx, fy, rx, 5.2, dk ? shade(L.shoe, -0.2) : L.shoe, rot); drawShoeAcc(c, L, fx, fy, rx, rot);
     if (DETAIL && !L.animal) { // sole and laces
       c.save(); c.translate(fx, fy); c.rotate(rot); c.beginPath(); c.ellipse(0, 0, rx - 1, 4.2, 0, 0, TAU); c.clip();
       c.fillStyle = L.sole || shade(L.shoe, -0.45); c.fillRect(-rx, 2, rx * 2, 4); c.restore();
@@ -340,6 +342,7 @@ function drawBody(c, L, P, f) {
   c.lineCap = 'round'; c.lineJoin = 'round';
   if (L.tail) drawTail(c, L, hip, f);
   if (L.scarf) drawScarf(c, L, top, f);
+  drawBack(c, L, top, hip, f);
   c.save(); c.translate(head.x, head.y); c.rotate(ha); drawHair(c, L, true, f, P); c.restore();
   hand(P.al, true); foot(P.ll, -1, true);
   // body: a small egg, shirt above and pants below
@@ -359,10 +362,11 @@ function drawBody(c, L, P, f) {
   if (L.vmark) { c.fillStyle = '#fff6e6'; c.beginPath(); c.moveTo(-6, -th + 2); c.lineTo(4, -th * 0.45); c.lineTo(14, -th + 2); c.lineTo(12, -th + 1); c.lineTo(4, -th * 0.62); c.lineTo(-3, -th + 1); c.closePath(); c.fill(); }
   softShade(c, 0, -th / 2, tw, th / 2 + 4);
   c.restore(); rimLight(c, 0, -th / 2, tw, th / 2 + 4, 0, 2.2); egg(); c.lineWidth = 2.6; c.strokeStyle = INK; c.stroke(); c.restore();
+  drawNeck(c, L, top);
   foot(P.lr, 1, false);
   c.save(); c.translate(head.x, head.y); c.rotate(ha);
   if (L.style !== 'hood') blob(c, 0, 0, R, R, L.fur || L.skin);
-  drawHair(c, L, false, f, P); if (DETAIL && !L.animal && L.style !== 'hood' && L.style !== 'bubblecap' && L.style !== 'witch') hairSheen(c, L); drawFace(c, L, P);
+  drawHair(c, L, false, f, P); hairLocks(c, L); if (DETAIL && !L.animal && !L.beast && L.style !== 'hood' && L.style !== 'bubblecap' && L.style !== 'witch') hairSheen(c, L); drawFace(c, L, P); drawHeadAcc(c, L, P, f);
   if (f && f.inkT > 0) inkSplat(c, f);
   c.restore();
   const g = hand(P.ar, false);
@@ -385,6 +389,7 @@ function drawScarf(c, L, top, f) {
   c.restore();
 }
 function drawTail(c, L, hip, f) {
+  if (L.beast) return beastTail(c, L, hip, f);
   const t = f ? f.clock : 0, fur = L.fur, y = hip.y;
   if (L.tail === 'curly') { c.beginPath(); c.arc(-9, y - 2, 4, 0.5, Math.PI * 2.2); c.lineWidth = 6; c.strokeStyle = INK; c.stroke(); c.lineWidth = 3; c.strokeStyle = shade(fur, 0.1); c.stroke(); }
   else if (L.tail === 'long') { const w = Math.sin(t * 0.1) * 4; seg(c, [P2(-4, y + 2), P2(-16, y + 6), P2(-26, y - 6 + w), P2(-24, y - 20 + w), P2(-17, y - 22 + w)], 3.5, fur); }
