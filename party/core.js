@@ -629,9 +629,24 @@ function renderResult() {
 /* ------------------------------ main loop ------------------------------ */
 const cv = $('cv'), g = cv.getContext('2d');
 let lastT = performance.now(), acc = 0, clock = 0;
+/* adaptive resolution: weak TV boxes render the game a bit smaller and let the browser scale it up.
+   The canvas never goes above 1920 px wide; if a game runs under ~45 fps the render scale steps down
+   (to 55% at most), and creeps back up when there's headroom. The last good scale is remembered per device. */
+const Render = { scale: clamp(+store.get('rscale', 1) || 1, 0.55, 1), t: 0, n: 0, changes: 0 };
 function fit() {
-  const dpr = Math.min(2, devicePixelRatio || 1);
-  cv.width = Math.round(innerWidth * dpr); cv.height = Math.round(innerHeight * dpr);
+  const dpr = Math.min(2, devicePixelRatio || 1), w = innerWidth * dpr, h = innerHeight * dpr;
+  const k = Math.min(1, 1920 / w) * Render.scale;
+  cv.width = Math.max(320, Math.round(w * k)); cv.height = Math.max(180, Math.round(h * k));
+}
+function renderTune(dt) {
+  if (Party.state !== 'play' || Party.paused || document.hidden) { Render.t = Render.n = 0; return; }
+  Render.t += dt; Render.n++;
+  if (Render.t < 2.5) return;
+  const fps = Render.n / Render.t; Render.t = Render.n = 0;
+  let next = Render.scale;
+  if (fps < 46 && Render.scale > 0.55) next = Math.max(0.55, Render.scale - 0.15);
+  else if (fps > 58 && Render.scale < 1 && Render.changes < 8) next = Math.min(1, Render.scale + 0.1);
+  if (next !== Render.scale) { Render.scale = next; Render.changes++; store.set('rscale', next); fit(); }
 }
 addEventListener('resize', fit);
 function drawHud(g) {
@@ -680,7 +695,7 @@ function drawHud(g) {
 }
 function frame(now) {
   const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now; clock += dt;
-  kbTick(); Party.smoothInputs(dt);
+  kbTick(); Party.smoothInputs(dt); renderTune(dt);
   const S = Party.state;
   if (S === 'lobby') { yardTick(dt); yardDraw(clock); }
   if (S === 'intro' && !Party.paused) {

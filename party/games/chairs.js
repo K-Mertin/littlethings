@@ -22,6 +22,7 @@
   const SOFA_Y = 744;                    // standing players stay above the sofas
   const SEATS = [[118, 798], [1482, 798], [209, 798], [1391, 798], [300, 798], [1300, 798]];
   const DASH = [16, 14], NODASH = [];
+  const BEAMS = [[230, -30, '#ff8fab'], [1380, -30, '#7dd3fc'], [1048, 112, '#fde047']];   // party light sources
   const wrap = a => { while (a > Math.PI) a -= TAU; while (a < -Math.PI) a += TAU; return a; };
   const turnTo = (a, b, dt, rate) => wrap(a + wrap(b - a) * (1 - Math.exp(-rate * dt)));
 
@@ -506,9 +507,8 @@
     drawLights(g, t) {
       const L = this.lightA; if (L < 0.02) return;
       g.globalAlpha = 0.1 * L; g.fillStyle = '#3c1a5a'; g.fillRect(0, 0, W, H);
-      const src = [[230, -30, '#ff8fab'], [1380, -30, '#7dd3fc'], [1048, 112, '#fde047']];
       for (let i = 0; i < 3; i++) {
-        const [sx, sy, c] = src[i], tx = CX + Math.sin(t * 0.6 + i * 2.1) * 520, ty = CY + Math.cos(t * 0.45 + i * 1.3) * 210;
+        const [sx, sy, c] = BEAMS[i], tx = CX + Math.sin(t * 0.6 + i * 2.1) * 520, ty = CY + Math.cos(t * 0.45 + i * 1.3) * 210;
         const dx = tx - sx, dy = ty - sy, d = hyp(dx, dy), nx = -dy / d, ny = dx / d, w = 80;
         g.globalAlpha = 0.17 * L; g.fillStyle = c;
         g.beginPath(); g.moveTo(sx, sy); g.lineTo(tx + nx * w, ty + ny * w * 0.6); g.lineTo(tx - nx * w, ty - ny * w * 0.6); g.closePath(); g.fill();

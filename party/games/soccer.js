@@ -13,8 +13,8 @@
      go and a 「按！」 bubble appears. Pressing when the ball is only a little too far makes you
      lunge for it and kick in one go; a press just before you reach it is remembered (~0.25 s).
    - otherwise the button is a short dash.
-   小朋友: 90 s, big goals, big reach, slower ball that sticks a little to your feet.
-   大人:   120 s, smaller goals, faster ball and harder kicks, the dash is a shoulder charge.
+   小朋友: 90 s, big goals, big reach, easy pick-ups, stronger aim assist, steals need a longer touch.
+   大人:   120 s, smaller goals, faster ball and harder kicks, light aim assist, the dash is a shoulder charge.
    1 player (no teams): shooting practice against a computer goalkeeper on the right goal.
    The pitch has rounded corners that gently roll the ball back out, so it can't get stuck. */
 (() => {
