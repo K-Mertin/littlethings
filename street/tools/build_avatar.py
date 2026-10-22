@@ -326,6 +326,8 @@ def build(cfg):
     anims = make_anims(head, aim)
     write_glb(cfg, prims, head, anims)
 
+import os as _os
+TWIST = float(_os.environ.get('TWIST', '-0.9'))
 # ============================================================ animation retarget
 def make_anims(head, aim):
     bones, hier = read_asf(os.path.join(CMU, '35.asf'))
@@ -460,6 +462,37 @@ def make_anims(head, aim):
             tracks[n].append(m2q(w[p].T @ w[n]) if p else m2q(w[n]))
         rooty.append(head['root'][1] - 0.004 * (1 - math.cos(2 * ph)))
     out['idle'] = {'times': times, 'tracks': tracks, 'rooty': np.array(rooty), 'speed': 0}
+    # run: CMU 35_17 keeps the arms almost still, so drive a proper running arm swing from the legs
+    a = out['run']
+    nF = len(a['times'])
+    def fk(fi):
+        Wd = {}
+        for n in KEEP:
+            p = PARENT[n]
+            l = q2m(a['tracks'][n][fi]) if n in a['tracks'] else np.eye(3)
+            Wd[n] = l if p is None else Wd[p] @ l
+        return Wd
+    Ws = [fk(fi) for fi in range(nF)]
+    pitch = {s: np.array([(lambda d: math.atan2(d[2], -d[1]))(Ws[fi]['root'].T @ (Ws[fi][f'upperleg01.{s}'] @ aim[f'upperleg01.{s}'])) for fi in range(nF)]) for s in SIDES}
+    for s, sg, other in (('L', 1, 'R'), ('R', -1, 'L')):
+        pt = pitch[other]; mid = (pt.max() + pt.min()) / 2; half = max(1e-3, (pt.max() - pt.min()) / 2)
+        A0 = arc(aim[f'upperarm01.{s}'], np.array([sg * 0.18, -1, 0.0]))
+        A1 = arc(aim[f'lowerarm01.{s}'], np.array([sg * 0.18, -1, 0.0]))
+        for fi in range(nF):
+            W = Ws[fi]; ch = W['spine01']
+            sw = 0.62 * (pt[fi] - mid) / half          # + = arm forward
+            el = 1.45 + 0.25 * max(0.0, (pt[fi] - mid) / half)   # elbow bends more on the forward swing
+            Wu = ch @ ry(-sg * 0.08) @ rx(-sw + 0.12) @ A0
+            Wl = ch @ ry(-sg * (0.32 + 0.1 * max(0.0, sw))) @ rx(-sw + 0.12 - el) @ A1 @ axis_angle(aim[f'lowerarm01.{s}'], TWIST * sg)
+            Wc = W[f'clavicle.{s}']
+            a['tracks'][f'upperarm01.{s}'][fi] = m2q(Wc.T @ Wu)
+            a['tracks'][f'lowerarm01.{s}'][fi] = m2q(Wu.T @ Wl)
+            a['tracks'][f'wrist.{s}'][fi] = m2q(rx(-0.15))
+    # small torso counter-rotation so the shoulders turn against the hips
+    for fi in range(nF):
+        tw = 0.10 * (pitch['L'][fi] - pitch['R'][fi]) / max(1e-3, np.abs(pitch['L'] - pitch['R']).max())
+        q = q2m(a['tracks']['spine02'][fi]) @ ry(tw)
+        a['tracks']['spine02'][fi] = m2q(q)
     # fingers: a relaxed curl on top of every clip
     for clip, a in out.items():
         for s, sg in (('L', 1), ('R', -1)):
@@ -469,7 +502,7 @@ def make_anims(head, aim):
                     d = aim[n] / np.linalg.norm(aim[n])
                     # curl axis: perpendicular to the finger in the horizontal-ish plane
                     ax = np.cross(d, np.array([0, 0, 1.0]))
-                    ang = (0.25 if f > 1 else 0.12) * (1.2 if kk == 1 else 1.0)
+                    ang = (0.25 if f > 1 else 0.12) * (1.2 if kk == 1 else 1.0) * (3.6 if clip == 'run' and f > 1 else 2.0 if clip == 'run' else 1.0)
                     q = m2q(axis_angle(ax, ang))
                     a['tracks'][n] = [q] * len(a['times'])
     return out

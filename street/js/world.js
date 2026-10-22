@@ -4,7 +4,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Batch, mbox, mplane, mat4, pbr, std, canvasTex, FONT, SERIF, roundRect, fitText, rand, pick, TAU } from './kit.js';
-import { GAMES, ZONES } from './games.js';
+import { STREET, PARTY, ZONES } from './games.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // ------------------------------------------------------------------ layout (meters)
 export const L = {
@@ -155,6 +156,12 @@ export async function buildWorld(scene, opts) {
       z += w;
     }
   }
+  {
+    const inner = (s) => blocks.filter((b) => b.side === s && b.z1 <= L.gateZ - 0.5 && b.z0 >= L.shopZ0).sort((a, b) => b.z0 - a.z0);
+    const Lb = inner(-1), Rb = inner(1), order = [];
+    for (let k = 0; k < Math.max(Lb.length, Rb.length); k++) { if (Rb[k]) order.push(Rb[k]); if (Lb[k]) order.push(Lb[k]); }
+    STREET.forEach((g, k) => { if (order[k]) { order[k].game = g; order[k].vsign = null; } });
+  }
   const winTexs = [0, 1, 2, 3, 4, 5].map(windowTex);
   const winMats = winTexs.map((t) => new THREE.MeshStandardMaterial({ map: t, roughness: .08, metalness: .2, envMapIntensity: 1.3 }));
   for (const b of blocks) buildShop(b);
@@ -180,16 +187,32 @@ export async function buildWorld(scene, opts) {
     solid(b.side < 0 ? fx - D : fx - 0.3, b.side < 0 ? fx + 0.3 : fx + D, b.z0, b.z1, 0, H, true);
     // shop interior (seen through the glass): floor, ceiling, side walls, painted back wall
     const iw = W - 1.2;
-    const intTex = canvasTex(512, 256, (g, w, h) => drawInterior(g, w, h, b.shop));
-    const intMat = new THREE.MeshBasicMaterial({ map: intTex, color: 0xdddddd });
-    put(mplane(iw, L.ground - 0.6, false), intMat, 0, (L.ground - 0.6) / 2, -2.38, { noShadow: true });
+    const s = b.game ? { id: 'game', zh: b.game.title, en: b.game.en, ...b.game.shop } : b.shop;
+    if (b.game) {
+      // game shop: the back wall is a big screen showing the game, with the title above
+      put(mplane(iw, L.ground - 0.6, false), std(shade(s.wall, -0.35), .9), 0, (L.ground - 0.6) / 2, -2.38, { noShadow: true });
+      const sw = Math.min(iw - 1.0, 4.2), sh = sw * 9 / 16;
+      put(mbox(sw + 0.16, sh + 0.16, 0.06), M.blackPlastic, 0, 1.95, -2.33, { noCast: true });
+      const scr = new THREE.Mesh(new THREE.PlaneGeometry(sw, sh), new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xffffff, emissiveMap: shots[b.game.id], emissiveIntensity: 1.1, roughness: .25 }));
+      scr.applyMatrix4(base.clone().multiply(mat4(0, 1.95, -2.29))); root.add(scr);
+      // a small counter with two demo pads
+      put(mbox(Math.min(iw - 1.4, 3), 0.9, 0.5), std(shade(s.bg, -0.05), .5, .1), 0, 0.45, -1.0);
+      put(mbox(Math.min(iw - 1.4, 3) + 0.06, 0.04, 0.56), std(0xf2f2f2, .3), 0, 0.92, -1.0);
+      const spot = new THREE.Vector3(0, 0, 1.5).applyMatrix4(base);
+      const n = new THREE.Vector3(0, 0, 1).transformDirection(base);
+      const focus = new THREE.Vector3(0, 1.95, -2.29).applyMatrix4(base);
+      interact.push({ game: { ...b.game, zone: 'street' }, spot, face: Math.atan2(-n.x, -n.z), focus, normal: n, screen: scr, radius: 1.9, street: true, side: b.side });
+    } else {
+      const intTex = canvasTex(512, 256, (g, w, h) => drawInterior(g, w, h, b.shop));
+      const intMat = new THREE.MeshBasicMaterial({ map: intTex, color: 0xdddddd });
+      put(mplane(iw, L.ground - 0.6, false), intMat, 0, (L.ground - 0.6) / 2, -2.38, { noShadow: true });
+    }
     put(mbox(iw, 0.05, 2.3), M.tiles, 0, 0.0, -1.2, { noCast: true });
     put(mbox(iw, 0.05, 2.3), std(0xf5efe6, .9, 0, { emissive: 0xfff2d8, emissiveIntensity: .25 }), 0, L.ground - 0.6, -1.2, { noShadow: true });
-    put(mbox(0.05, L.ground - 0.6, 2.3), std(shade(b.shop.wall, -0.05), .9), -iw / 2, (L.ground - 0.6) / 2, -1.2, { noShadow: true });
-    put(mbox(0.05, L.ground - 0.6, 2.3), std(shade(b.shop.wall, -0.05), .9), iw / 2, (L.ground - 0.6) / 2, -1.2, { noShadow: true });
+    put(mbox(0.05, L.ground - 0.6, 2.3), std(shade(s.wall, -0.05), .9), -iw / 2, (L.ground - 0.6) / 2, -1.2, { noShadow: true });
+    put(mbox(0.05, L.ground - 0.6, 2.3), std(shade(s.wall, -0.05), .9), iw / 2, (L.ground - 0.6) / 2, -1.2, { noShadow: true });
     // fascia above the glass + sign board
     put(mbox(W - 1.2, 0.6, 0.3), b.wall, 0, L.ground - 0.3, -0.15);
-    const s = b.shop;
     const signTex = canvasTex(1024, 160, (g, w, h) => {
       g.fillStyle = s.bg; g.fillRect(0, 0, w, h);
       g.strokeStyle = s.fg; g.globalAlpha = .35; g.lineWidth = 4; g.strokeRect(10, 10, w - 20, h - 20); g.globalAlpha = 1;
@@ -276,7 +299,7 @@ export async function buildWorld(scene, opts) {
   // lamps
   const lampZ = []; for (let z = 10; z < L.endZ; z += 11) lampZ.push(z);
   for (const z of lampZ) for (const sx of [-1, 1]) {
-    const x = sx * 6.4;
+    const x = sx * 5.4;
     B.add(new THREE.CylinderGeometry(0.06, 0.09, 4.6, 10), M.darkMetal, mat4(x, 2.3, z));
     B.add(new THREE.CylinderGeometry(0.16, 0.2, 0.35, 10), M.darkMetal, mat4(x, 0.17, z));
     B.add(mbox(0.06, 0.06, 0.9), M.darkMetal, mat4(x - sx * 0.4, 4.55, z, Math.PI / 2));
@@ -468,15 +491,22 @@ export async function buildWorld(scene, opts) {
     const zhMat = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xffffff, emissiveMap: zhTex, emissiveIntensity: 2.2, transparent: true, alphaMap: zhTex, depthWrite: false });
     const zh = new THREE.Mesh(new THREE.PlaneGeometry(9, 1.95), zhMat); zh.position.set(0, 8.4, zf + 0.06); root.add(zh);
     // LED screen at the side of the facade, cycling the games
-    const led = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 3.15), new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xffffff, emissiveMap: shots[GAMES[0].id], emissiveIntensity: 1.25, roughness: .3 }));
+    // LED walls cycle through the mini-games inside (cropping the thumbnail atlas)
+    const { mini: MINI, atlas: ATLAS } = opts;
+    const AR = Math.ceil(MINI.length / 8);
+    const ledTex = [ATLAS.clone(), ATLAS.clone()];
+    const setTile = (t, i) => { t.repeat.set(1 / 8, 1 / AR); t.offset.set((i % 8) / 8, 1 - (Math.floor(i / 8) + 1) / AR); t.needsUpdate = true; };
+    ledTex.forEach((t, k) => setTile(t, k * 7));
+    const led = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 3.5), new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xffffff, emissiveMap: ledTex[0], emissiveIntensity: 1.2, roughness: .3 }));
     led.position.set(-10.2, 7.5, zf + 0.12); root.add(led);
-    B.add(mbox(6, 3.55, 0.25), M.blackPlastic, mat4(-10.2, 7.5, zf + 0.0));
-    const led2 = led.clone(); led2.material = led.material.clone(); led2.position.x = 10.2; root.add(led2);
-    B.add(mbox(6, 3.55, 0.25), M.blackPlastic, mat4(10.2, 7.5, zf + 0.0));
-    let ledI = 0;
+    B.add(mbox(6, 3.9, 0.25), M.blackPlastic, mat4(-10.2, 7.5, zf + 0.0));
+    const led2 = new THREE.Mesh(led.geometry, new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xffffff, emissiveMap: ledTex[1], emissiveIntensity: 1.2, roughness: .3 }));
+    led2.position.set(10.2, 7.5, zf + 0.12); root.add(led2);
+    B.add(mbox(6, 3.9, 0.25), M.blackPlastic, mat4(10.2, 7.5, zf + 0.0));
+    let ledI = -1;
     animated.push((dt, t) => {
-      const k = Math.floor(t / 3.5);
-      if (k !== ledI) { ledI = k; led.material.emissiveMap = shots[GAMES[k % GAMES.length].id]; led2.material.emissiveMap = shots[GAMES[(k + 5) % GAMES.length].id]; led.material.needsUpdate = led2.material.needsUpdate = true; }
+      const k = Math.floor(t / 3);
+      if (k !== ledI) { ledI = k; setTile(ledTex[0], (k * 5) % MINI.length); setTile(ledTex[1], (k * 5 + 23) % MINI.length); }
     });
     // LED light lines across the facade + a fascia band above the glass
     const ledPink = std(0x000000, .4, 0, { emissive: 0xff4fb8, emissiveIntensity: 3.2 });
@@ -536,133 +566,100 @@ export async function buildWorld(scene, opts) {
     g.position.set(x, 3.9, z); g.rotation.y = ry; root.add(g);
   }
 
-  // cabinets
-  const cabs = {
-    minigames: { x: -4.2, z: -11, face: Math.PI / 2 },
-    abc: { x: -4.2, z: -12.7, face: Math.PI / 2 },
-    zhuyin: { x: -4.2, z: -14.4, face: Math.PI / 2 },
-    math: { x: -4.2, z: -16.1, face: Math.PI / 2 },
-    face: { x: -4.2, z: -20.4, face: Math.PI / 2 },
-    cobblekeep: { x: 4.2, z: -11, face: -Math.PI / 2 },
-    brawl: { x: 4.2, z: -12.7, face: -Math.PI / 2 },
-    racing: { x: 4.6, z: -15.2, face: -Math.PI / 2 },
-    zijia: { x: 4.2, z: -19.2, face: -Math.PI / 2 },
-    outpost: { x: 4.2, z: -20.9, face: -Math.PI / 2 },
-    party: { x: 0, z: zb + 0.4, face: 0 },
-  };
-  zoneSign('learn', -4.2, -13.55, Math.PI / 2);
-  zoneSign('create', -4.2, -20.4, Math.PI / 2);
-  zoneSign('action', 4.2, -13.1, -Math.PI / 2);
-  zoneSign('strategy', 4.2, -20.05, -Math.PI / 2);
-  zoneSign('party', 0, -23.4, 0);
+  // ---------------- 噗噗的遊戲小屋：每款小遊戲一台機台（三個分區，一排排背對背）＋派對區
+  const { mini, atlas } = opts;
+  const aRows = Math.ceil(mini.length / 8);
+  const tileUV = (i) => { const c = i % 8, r = Math.floor(i / 8); return [c / 8, 1 - (r + 1) / aRows, (c + 1) / 8, 1 - r / aRows]; };
+  const CAT_ROWS = { react: [-10.0, -10.95], puzzle: [-14.2, -15.15], play: [-18.4, -19.35] };
+  const PALETTE = { react: ['#ff5a6e', '#ff8a3d', '#ffc93b', '#ff6fb5'], puzzle: ['#4aa8ff', '#7a6dff', '#29c4c4', '#5ee0a0'], play: ['#ffb14a', '#f7a8c9', '#c77dff', '#7bd66b'] };
+  for (const [cat, rows] of Object.entries(CAT_ROWS)) {
+    const zc = (rows[0] + rows[1]) / 2;
+    zoneSign(cat, 0, zc, 0); zoneSign(cat, -5.2, zc, 0); zoneSign(cat, 5.2, zc, 0);
+  }
+  zoneSign('party', 0, -22.6, 0);
 
   const cabMats = { metal: M.steel, black: M.blackPlastic, bezel: std(0x050507, .3, 0), coin: std(0x6b6b6b, .35, .8), coinLit: std(0x000000, .5, 0, { emissive: 0xff3030, emissiveIntensity: 2 }) };
   const btnCols = [0xff3b3b, 0xffd23f, 0x3bd16f, 0x3b8bff];
   const btnMats = btnCols.map((c) => std(c, .35, 0, { emissive: c, emissiveIntensity: .35 }));
-  function marqueeTex(game) {
-    return canvasTex(768, 160, (g, w, h) => {
-      const gr = g.createLinearGradient(0, 0, w, 0); gr.addColorStop(0, '#0b0b10'); gr.addColorStop(.5, '#1c1a26'); gr.addColorStop(1, '#0b0b10');
-      g.fillStyle = gr; g.fillRect(0, 0, w, h);
-      g.strokeStyle = game.color; g.lineWidth = 6; g.strokeRect(8, 8, w - 16, h - 16);
-      g.textAlign = 'center'; g.textBaseline = 'middle'; g.shadowColor = game.color; g.shadowBlur = 18; g.fillStyle = '#ffffff';
-      const fs = fitText(g, game.title, w - 70, 96, 900); g.font = `900 ${fs}px ${FONT}`; g.fillText(game.title, w / 2, h / 2 + 4);
+  // marquee atlas: 4 x 32 slots of 512 x 64
+  const MQ = 4, MQR = 32;
+  const marqueeAtlas = canvasTex(2048, 2048, (g, w, h) => {
+    mini.forEach((m, i) => {
+      const x = (i % MQ) * 512, y = Math.floor(i / MQ) * 64, col = ZONES[m.cat].color;
+      const gr = g.createLinearGradient(x, 0, x + 512, 0); gr.addColorStop(0, '#0b0b10'); gr.addColorStop(.5, '#1c1a26'); gr.addColorStop(1, '#0b0b10');
+      g.fillStyle = gr; g.fillRect(x, y, 512, 64);
+      g.strokeStyle = col; g.lineWidth = 4; g.strokeRect(x + 4, y + 4, 504, 56);
+      g.save(); g.textAlign = 'center'; g.textBaseline = 'middle'; g.shadowColor = col; g.shadowBlur = 10; g.fillStyle = '#fff';
+      const fs = fitText(g, m.name, 470, 40, 900); g.font = `900 ${fs}px ${FONT}`; g.fillText(m.name, x + 256, y + 34); g.restore();
+    });
+  });
+  const mqUV = (i) => { const c = i % MQ, r = Math.floor(i / MQ); return [c / MQ, 1 - (r + 1) / MQR, (c + 1) / MQ, 1 - r / MQR]; };
+  const planeUV = (w, h, uv) => { const g = new THREE.PlaneGeometry(w, h); const a = g.attributes.uv; for (let k = 0; k < a.count; k++) a.setXY(k, a.getX(k) ? uv[2] : uv[0], a.getY(k) ? uv[3] : uv[1]); return g; };
+  const screenGeos = [], marqueeGeos = [];
+  const prof = new THREE.Shape();
+  prof.moveTo(-0.45, 0); prof.lineTo(0.42, 0); prof.lineTo(0.42, 0.86); prof.lineTo(0.5, 0.92); prof.lineTo(0.42, 1.02);
+  prof.lineTo(0.16, 1.05); prof.lineTo(0.06, 1.62); prof.lineTo(0.22, 1.66); prof.lineTo(0.22, 1.95); prof.lineTo(-0.45, 1.95); prof.lineTo(-0.45, 0);
+  const sideGeo = new THREE.ExtrudeGeometry(prof, { depth: 0.04, bevelEnabled: false }); sideGeo.rotateY(-Math.PI / 2);
+  const tilt = Math.atan2(0.1, 0.57);
+  function miniCab(i, color, x, z, face) {
+    const base = mat4(x, 0, z, face);
+    const put = (geo, mat, lx, ly, lz, rx = 0, o = {}) => B.add(geo, mat, base.clone().multiply(mat4(lx, ly, lz, 0, rx)), o);
+    const W = 0.86, inner = W - 0.08, side = std(color, .45, .15);
+    put(sideGeo, side, W / 2, 0, 0); put(sideGeo, side, -W / 2 + 0.04, 0, 0);
+    put(mbox(inner, 0.86, 0.86), cabMats.black, 0, 0.43, -0.01);
+    put(mbox(inner, 0.06, 0.38), cabMats.black, 0, 0.98, 0.29, -0.2);
+    put(mbox(inner, 0.02, 0.36), std(color, .5), 0, 1.015, 0.29, -0.2);
+    put(new THREE.CylinderGeometry(0.012, 0.012, 0.09, 6), cabMats.metal, -0.2, 1.08, 0.3);
+    put(new THREE.SphereGeometry(0.03, 8, 6), btnMats[i % 4], -0.2, 1.13, 0.3);
+    for (let k = 0; k < 4; k++) put(new THREE.CylinderGeometry(0.022, 0.022, 0.02, 8), btnMats[k], 0.02 + (k % 2) * 0.08 + Math.floor(k / 2) * 0.03, 1.04, 0.3 + (Math.floor(k / 2) - 0.5) * 0.08, 0, { noCast: true });
+    put(mbox(inner, 0.6, 0.5), cabMats.black, 0, 1.33, -0.17);
+    put(mbox(inner, 0.6, 0.02), cabMats.bezel, 0, 1.335, 0.11, -tilt);
+    put(mbox(inner, 0.28, 0.5), cabMats.black, 0, 1.81, -0.03);
+    put(mbox(0.32, 0.36, 0.02), cabMats.coin, 0, 0.5, 0.425);
+    for (const cx of [-0.07, 0.07]) put(mbox(0.05, 0.07, 0.01), cabMats.coinLit, cx, 0.58, 0.437, 0, { noCast: true });
+    screenGeos.push(planeUV(0.68, 0.425, tileUV(i)).applyMatrix4(base.clone().multiply(mat4(0, 1.335, 0.125, 0, -tilt))));
+    marqueeGeos.push(planeUV(inner - 0.02, 0.24, mqUV(i)).applyMatrix4(base.clone().multiply(mat4(0, 1.81, 0.225))));
+    const fx = Math.sin(face), fz = Math.cos(face);
+    solid(x - (Math.abs(fx) > .5 ? .47 : .45), x + (Math.abs(fx) > .5 ? .47 : .45), z - (Math.abs(fx) > .5 ? .45 : .47), z + (Math.abs(fx) > .5 ? .45 : .47), 0, 2, true);
+    return { spot: new THREE.Vector3(x + fx * 1.05, 0, z + fz * 1.05), focus: new THREE.Vector3(x + fx * 0.125, 1.335, z + fz * 0.125), normal: new THREE.Vector3(fx, 0, fz), face: face + Math.PI };
+  }
+  // slot x positions: center aisle |x| < 1.45, up to 6 cabinets per side
+  const SLOTS = []; for (let j = 0; j < 6; j++) SLOTS.push(-(1.9 + j * 1.02), 1.9 + j * 1.02);
+  const miniItems = [];
+  for (const [cat, rows] of Object.entries(CAT_ROWS)) {
+    const list = mini.map((m, i) => ({ m, i })).filter((o) => o.m.cat === cat);
+    const half = Math.ceil(list.length / 2);
+    [list.slice(0, half), list.slice(half)].forEach((part, r) => {
+      const xs = SLOTS.slice(0, part.length).sort((a, b) => a - b);
+      part.forEach(({ m, i }, k) => {
+        const face = r === 0 ? 0 : Math.PI;            // front row faces the lobby, back row faces the next aisle
+        const x = r === 0 ? xs[k] : xs[xs.length - 1 - k];
+        const pal = PALETTE[cat];
+        const c = miniCab(i, pal[k % pal.length], x, rows[r], face);
+        miniItems.push({ i, m, ...c });
+      });
     });
   }
-  function uprightCab(game, c) {
-    const grp = new THREE.Group();
-    const side = std(game.color, .45, .15);
-    const W = 0.86;
-    const prof = new THREE.Shape();
-    // profile in (z, y): front is +z
-    prof.moveTo(-0.45, 0); prof.lineTo(0.42, 0); prof.lineTo(0.42, 0.86); prof.lineTo(0.5, 0.92); prof.lineTo(0.42, 1.02);
-    prof.lineTo(0.16, 1.05); prof.lineTo(0.06, 1.62); prof.lineTo(0.22, 1.66); prof.lineTo(0.22, 1.95); prof.lineTo(-0.45, 1.95); prof.lineTo(-0.45, 0);
-    const sideGeo = new THREE.ExtrudeGeometry(prof, { depth: 0.04, bevelEnabled: false });
-    sideGeo.rotateY(-Math.PI / 2);   // shape x -> world z, extrude -> -x
-    for (const sx of [-1, 1]) { const m = new THREE.Mesh(sideGeo, side); m.position.x = sx > 0 ? W / 2 : -W / 2 + 0.04; m.castShadow = m.receiveShadow = true; grp.add(m); }
-    const inner = W - 0.08;
-    const add = (geo, mat, x, y, z, rx = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.x = rx; m.castShadow = m.receiveShadow = true; grp.add(m); return m; };
-    add(mbox(inner, 0.86, 0.86), cabMats.black, 0, 0.43, -0.01);
-    add(mbox(inner, 0.06, 0.38), cabMats.black, 0, 0.98, 0.29, -0.2);
-    // control panel art strip
-    add(mbox(inner, 0.02, 0.36), std(game.color, .5), 0, 1.015, 0.29, -0.2);
-    // joystick + buttons
-    add(new THREE.CylinderGeometry(0.012, 0.012, 0.09, 8), cabMats.metal, -0.2, 1.08, 0.3);
-    add(new THREE.SphereGeometry(0.03, 12, 8), btnMats[0], -0.2, 1.13, 0.3);
-    for (let k = 0; k < 4; k++) add(new THREE.CylinderGeometry(0.022, 0.022, 0.02, 12), btnMats[k], 0.02 + (k % 2) * 0.08 + Math.floor(k / 2) * 0.03, 1.04, 0.3 + (Math.floor(k / 2) - 0.5) * 0.08);
-    // screen housing + bezel + screen
-    add(mbox(inner, 0.6, 0.5), cabMats.black, 0, 1.33, -0.17);
-    const tilt = Math.atan2(0.1, 0.57);
-    add(mbox(inner, 0.6, 0.02), cabMats.bezel, 0, 1.335, 0.11, -tilt);
-    const scr = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xffffff, emissiveMap: shots[game.id], emissiveIntensity: 1.15, roughness: .18, metalness: 0 });
-    const screen = add(new THREE.PlaneGeometry(0.68, 0.38), scr, 0, 1.335, 0.125, -tilt);
-    screen.castShadow = false;
-    // marquee
-    add(mbox(inner, 0.28, 0.5), cabMats.black, 0, 1.81, -0.03);
-    const mt = marqueeTex(game);
-    const mq = add(new THREE.PlaneGeometry(inner - 0.02, 0.25), new THREE.MeshStandardMaterial({ map: mt, emissive: 0xffffff, emissiveMap: mt, emissiveIntensity: 1.3 }), 0, 1.81, 0.225);
-    mq.castShadow = false;
-    // coin door
-    add(mbox(0.32, 0.36, 0.02), cabMats.coin, 0, 0.5, 0.425);
-    for (const x of [-0.07, 0.07]) add(mbox(0.05, 0.07, 0.01), cabMats.coinLit, x, 0.58, 0.437);
-    grp.position.set(c.x, 0, c.z); grp.rotation.y = c.face; root.add(grp);
-    return { screen, focusY: 1.335, focusFwd: 0.125 };
-  }
-  function racerCab(game, c) {
-    const grp = new THREE.Group();
-    const add = (geo, mat, x, y, z, rx = 0, ry = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.set(rx, ry, 0); m.castShadow = m.receiveShadow = true; grp.add(m); return m; };
-    const body = std(game.color, .4, .2);
-    // screen tower at the back (-z), seat at the front (+z)
-    add(mbox(1.25, 1.0, 0.8), cabMats.black, 0, 0.5, -0.6);
-    add(mbox(1.25, 0.95, 0.65), body, 0, 1.45, -0.62);
-    const scr = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xffffff, emissiveMap: shots[game.id], emissiveIntensity: 1.15, roughness: .18 });
-    const screen = add(new THREE.PlaneGeometry(1.0, 0.56), scr, 0, 1.45, -0.285); screen.castShadow = false;
-    add(mbox(1.25, 0.32, 0.7), cabMats.black, 0, 2.08, -0.6);
-    const mt = marqueeTex(game);
-    add(new THREE.PlaneGeometry(1.2, 0.27), new THREE.MeshStandardMaterial({ map: mt, emissive: 0xffffff, emissiveMap: mt, emissiveIntensity: 1.3 }), 0, 2.08, -0.245).castShadow = false;
-    // dashboard + wheel
-    add(mbox(1.0, 0.25, 0.5), body, 0, 0.95, -0.05, 0.25);
-    add(new THREE.CylinderGeometry(0.04, 0.05, 0.4, 8), cabMats.metal, 0, 0.95, 0.15, -1.1);
-    add(new THREE.TorusGeometry(0.17, 0.025, 8, 24), cabMats.black, 0, 1.05, 0.28, -0.35);
-    // base + seat
-    add(mbox(1.25, 0.12, 2.1), body, 0, 0.06, 0.4);
-    add(mbox(0.62, 0.18, 0.55), cabMats.black, 0, 0.5, 0.9);
-    add(mbox(0.62, 0.75, 0.14), cabMats.black, 0, 0.9, 1.15, -0.25);
-    add(mbox(0.3, 0.32, 0.4), cabMats.metal, 0, 0.27, 0.9);
-    grp.position.set(c.x, 0, c.z); grp.rotation.y = c.face; root.add(grp);
-    return { screen, focusY: 1.45, focusFwd: -0.285, dz: 1.6 };
-  }
-  function partyScreen(game, c) {
-    const grp = new THREE.Group();
-    const add = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; grp.add(m); return m; };
+  const screenMat = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xffffff, emissiveMap: atlas, emissiveIntensity: 1.05, roughness: .2 });
+  const screens = new THREE.Mesh(mergeGeometries(screenGeos), screenMat); root.add(screens);
+  const marquees = new THREE.Mesh(mergeGeometries(marqueeGeos), new THREE.MeshStandardMaterial({ map: marqueeAtlas, emissive: 0xffffff, emissiveMap: marqueeAtlas, emissiveIntensity: 1.3 }));
+  root.add(marquees);
+  // screens were merged in the order of miniItems: two triangles per screen
+  miniItems.forEach((o, k) => {
+    const g = { id: 'mini-' + o.m.id, path: `minigames/${o.m.id}.html`, title: o.m.name, genre: '噗噗的遊戲小屋', desc: o.m.desc, tags: [], zone: o.m.cat, tile: o.i };
+    interact.push({ game: g, spot: o.spot, face: o.face, focus: o.focus, normal: o.normal, screen: screens, screenIndex: k, radius: 1.0 });
+  });
+
+  // party screen on the back wall
+  {
+    const c = { x: 0, z: zb + 0.4 };
+    const add = (geo, mat, x, y, z) => B.add(geo, mat, mat4(c.x + x, y, c.z + z));
     add(mbox(5.4, 3.1, 0.12), cabMats.black, 0, 2.55, 0.06);
-    const scr = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xffffff, emissiveMap: shots[game.id], emissiveIntensity: 1.1, roughness: .2 });
-    const screen = add(new THREE.PlaneGeometry(5.2, 2.925), scr, 0, 2.55, 0.125); screen.castShadow = false;
     add(mbox(3.6, 0.45, 0.5), std(0x3b2a20, .6), 0, 0.225, 0.4);
-    grp.position.set(c.x, 0, c.z); root.add(grp);
-    return { screen, focusY: 2.55, focusFwd: 0.125, dz: 6.2 };
-  }
-  // fold every static part of a machine into the shared batches (keeps draw calls low); only the screen stays separate
-  function absorb(r) {
-    const grp = r.screen.parent; grp.updateMatrixWorld(true);
-    for (const m of [...grp.children]) {
-      if (m === r.screen || !m.isMesh) continue;
-      B.add(m.geometry, m.material, m.matrixWorld.clone(), { noCast: !m.castShadow });
-      grp.remove(m);
-    }
-  }
-  for (const game of GAMES) {
-    const c = cabs[game.id];
-    const r = game.kind === 'racer' ? racerCab(game, c) : game.kind === 'party' ? partyScreen(game, c) : uprightCab(game, c);
-    absorb(r);
-    const fx = Math.sin(c.face), fz = Math.cos(c.face);
-    const dz = r.dz ?? 0.95;
-    // footprint collider
-    if (game.kind === 'upright') solid(c.x - (Math.abs(fx) > .5 ? .47 : .45), c.x + (Math.abs(fx) > .5 ? .47 : .45), c.z - (Math.abs(fx) > .5 ? .45 : .47), c.z + (Math.abs(fx) > .5 ? .45 : .47), 0, 2, true);
-    if (game.kind === 'racer') solid(c.x - 1.45, c.x + 0.95, c.z - 0.65, c.z + 0.65, 0, 2.2, true);
-    if (game.kind === 'party') solid(c.x - 2.7, c.x + 2.7, c.z - 0.1, c.z + 0.7, 0, 1, false);
-    const spot = new THREE.Vector3(c.x + fx * (dz + 0.15), 0, c.z + fz * (dz + 0.15));
-    const focus = new THREE.Vector3(c.x + fx * r.focusFwd, r.focusY, c.z + fz * r.focusFwd);
-    interact.push({ game, spot, face: c.face + Math.PI, focus, screen: r.screen, radius: game.kind === 'party' ? 2.6 : 1.5, normal: new THREE.Vector3(fx, 0, fz) });
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 2.925), new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xffffff, emissiveMap: shots.party, emissiveIntensity: 1.1, roughness: .2 }));
+    screen.position.set(c.x, 2.55, c.z + 0.125); root.add(screen);
+    solid(c.x - 2.7, c.x + 2.7, c.z - 0.1, c.z + 0.7, 0, 1, false);
+    interact.push({ game: { ...PARTY, zone: 'party' }, spot: new THREE.Vector3(0, 0, c.z + 6.35), face: Math.PI, focus: new THREE.Vector3(0, 2.55, c.z + 0.125), normal: new THREE.Vector3(0, 0, 1), screen, radius: 2.6 });
   }
 
   // party lounge: sofas, table, rug
@@ -697,7 +694,7 @@ export async function buildWorld(scene, opts) {
   }
   // posters of the games on the walls
   const posterFrame = std(0x111111, .4, .3);
-  const posters = GAMES.filter((g) => g.kind !== 'party');
+  const posters = STREET;
   posters.forEach((g, i) => {
     const left = i < 5;
     const k = left ? i : i - 5;
