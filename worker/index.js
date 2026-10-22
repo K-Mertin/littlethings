@@ -1,6 +1,10 @@
-// littleland Worker: serves the static site, plus a tiny API for online games.
+// littleland Worker: serves the static site, plus a tiny API for online games and the hall chatbot.
+//   /api/chat, /api/issue  →  MW 小幫手 (worker/chat.js)
 //   /api/outpost/room/ABCD?role=host|guest  →  Crystal Outpost 1 vs 1 relay (one Durable Object per room)
 // Only /api/* reaches this script (assets.run_worker_first); every other path is a plain static file.
+
+import { handleChat, ChatGuard } from './chat.js';
+export { ChatGuard };
 
 export class OutpostRoom {
   constructor(ctx, env) { this.ctx = ctx; }
@@ -46,6 +50,7 @@ export default {
     const url = new URL(request.url);
     const m = url.pathname.match(/^\/api\/outpost\/room\/([A-Z]{4})$/);
     if (m) return env.OUTPOST_ROOMS.get(env.OUTPOST_ROOMS.idFromName(m[1])).fetch(request);
+    if (url.pathname === '/api/chat' || url.pathname === '/api/issue') return handleChat(request, env, url.pathname);
     if (url.pathname.startsWith('/api/')) return new Response('Not found', { status: 404 });
     return env.ASSETS.fetch(request);
   },
