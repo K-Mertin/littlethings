@@ -79,11 +79,12 @@ const SONGS = {
   action: { bpm: 150, roots: [48, 41, 48, 43], mel: [72,-1,76,79, 84,79,76,79, 77,-1,81,84, 81,77,74,77, 76,-1,79,84, 88,84,79,76, 74,77,79,83, 84,-1,84,-1] },
   farm: { bpm: 116, roots: [48, 43, 41, 48], mel: [79,76,79,76, 74,72,74,76, 77,74,77,81, 79,-1,-1,-1, 79,76,79,84, 83,81,79,77, 76,74,72,74, 72,-1,-1,-1] }
 };
-const TRACKS = { lobby: ['lobby', 0, 104], bumper: ['action', 0, 150], paint: ['action', 2, 138], fruit: ['action', 5, 144], sheep: ['farm', 0, 116], tag: ['action', 7, 152], snow: ['farm', 5, 126], fire: ['action', -3, 140], dodge: ['action', 3, 156] };
+const TRACKS = { lobby: ['lobby', 0, 104], bumper: ['action', 0, 150], paint: ['action', 2, 138], fruit: ['action', 5, 144], sheep: ['farm', 0, 116], tag: ['action', 7, 152], snow: ['farm', 5, 126], fire: ['action', -3, 140], dodge: ['action', 3, 156], soccer: ['action', 2, 148], chairs: ['lobby', 5, 132], cake: ['farm', 3, 120], race: ['action', 9, 160] };
 const Music = {
   cur: null, step: 0, next: 0, timer: null, out: null,
   want() {
     const S = Party.state;
+    if (S === 'play' && Party.game && Party.game.music === false) return null;   // a game may silence the music (搶椅子)
     if (S === 'intro' || S === 'play' || S === 'finish') return Party.def ? Party.def.id : 'lobby';
     return 'lobby';
   },
@@ -341,7 +342,11 @@ const Party = {
     return pref || this.players.find(p => p.peer && p.online && !p.local) || null;
   },
   /* teams only count for games that support them, with someone on each side */
-  teamsOn(def) { return this.teams && def.teams && [0, 1].every(t => this.players.some(p => (p.online || p.local) && p.team === t)); },
+  teamsOn(def) {
+    const on = this.players.filter(p => p.online || p.local);
+    if (def.forceTeams) return on.length >= 2;   // games that are always team-vs-team (動物足球)
+    return this.teams && def.teams && [0, 1].every(t => on.some(p => p.team === t));
+  },
   you(p) { return { slot: this.players.indexOf(p), name: p.name, col: p.col, animal: p.animal, trophies: p.trophies, lead: p === this.leader(), team: p.team }; },
   btnFor(p) { const b = this.def.btn; return typeof b === 'function' ? b(p, this.kid) : b; },
   /* what a phone should be showing right now */
@@ -372,6 +377,9 @@ const Party = {
     if (!ps.length) { flashLobby('還沒有人加入：先用手機掃 QR code，或按「＋ 鍵盤玩家」'); return; }
     Sfx.ensure();
     ps.forEach(p => { p.inGame = true; this.sync(p); });
+    // always-team games: if one side is empty, split everyone up alternately
+    const fd = this.def_(this.gameId);
+    if (fd.forceTeams && ps.length >= 2 && ![0, 1].every(t => ps.some(p => p.team === t))) ps.forEach((p, i) => { p.team = i % 2; });
     this.def = this.def_(this.gameId);
     Fx.clear();
     this.game = this.def.create({
@@ -550,7 +558,7 @@ function renderLobby() {
   $('modeKid').setAttribute('aria-pressed', Party.kid); $('modeAdult').setAttribute('aria-pressed', !Party.kid);
   $('teamOff').setAttribute('aria-pressed', !Party.teams); $('teamOn').setAttribute('aria-pressed', Party.teams);
   const sel = Party.def_(Party.gameId);
-  $('teamNote').textContent = Party.teams ? (sel.teams ? (Party.teamsOn(sel) ? '分隊比：☀️ 太陽隊 對 🌙 月亮隊，在手機上可以換隊' : '兩隊都要有人才能分隊，現在先各自比') : '「' + sel.name + '」不分隊' + (sel.kind === 'team' ? '，本來就是大家一起合作' : '，這款各自比')) : '';
+  $('teamNote').textContent = sel.forceTeams ? '「' + sel.name + '」一定是兩隊比，會自動分好隊' : Party.teams ? (sel.teams ? (Party.teamsOn(sel) ? '分隊比：☀️ 太陽隊 對 🌙 月亮隊，在手機上可以換隊' : '兩隊都要有人才能分隊，現在先各自比') : '「' + sel.name + '」不分隊' + (sel.kind === 'team' ? '，本來就是大家一起合作' : '，這款各自比')) : '';
   $('modeNote').textContent = Party.kid ? '小朋友模式：慢一點、不會被淘汰、掉下去會回來。' : '大人模式：速度快、有淘汰、炸彈和大野狼。';
   const box = $('cards');
   if (!box.childElementCount) {
@@ -689,6 +697,7 @@ function frame(now) {
     drawHud(g);
   }
   const mute = Sfx.on && (!Sfx.ctx || Sfx.ctx.state !== 'running'); if ($('soundGate').hidden !== !mute) $('soundGate').hidden = !mute;
+  Party.musicT = (Party.musicT || 0) - dt; if (Party.musicT <= 0) { Party.musicT = 0.2; Music.sync(); }
   Party.netTick(dt);
   requestAnimationFrame(frame);
 }
