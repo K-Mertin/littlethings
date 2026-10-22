@@ -166,12 +166,15 @@ export function gt() {
   };
   const cabinCol = p => { const x = Math.abs(p[0]); if (p[1] > 0.75 && p[2] > 0.3) return hexLin('#18181b'); if (Math.abs(x - 0.37) < 0.06 && p[1] > 0.3) return hexLin('#7a2a22'); return hexLin('#2b2b30'); };
 
-  const step = 0.009, all = { lo: [-1.02, 0.08, -2.32], hi: [1.02, 1.32, 2.32] };
+  const step = 0.0075, all = { lo: [-1.02, 0.08, -2.32], hi: [1.02, 1.32, 2.32] };
   const sideLo = { lo: [0.8, 0.85, 0.3], hi: [1.12, 1.07, 0.56] };
   const mirrorBox = { lo: [-1.12, 0.85, 0.3], hi: [1.12, 1.07, 0.56] };
   return {
     name: 'gt',
-    meta: { L: 4.5, wheels: [[0.83, WCY, 1.36], [0.83, WCY, -1.36]], R: WR },
+    meta: { L: 4.5, wheels: [[0.83, WCY, 1.36], [0.83, WCY, -1.36]], R: WR,
+      // for parts and decals placed in the game: top of the body along the centre line, door panel side, exhaust tips
+      deck: Array.from({ length: 46 }, (_, i) => { const z = -2.25 + i * 0.1; let lo = 0.45, hi = 1.6; if (hull([0, hi, z]) < 0 || hull([0, lo, z]) > 0) return [+z.toFixed(2), 0.5]; for (let k = 0; k < 30; k++) { const m = (lo + hi) / 2; if (hull([0, m, z]) < 0) lo = m; else hi = m; } return [+z.toFixed(2), +lo.toFixed(4)]; }),
+      door: [+(body.sideX(-0.1, 0.56)).toFixed(4), 0.56, -0.1], exh: [[-0.42, 0.25, -2.2], [0.42, 0.25, -2.2]] },
     pieces: [
       { name: 'body', sdf: paintSdf, ...all, step, split, paint: paintCol, ao: true },
       { name: 'glass', mat: 'glass', sdf: glassSdf, lo: [-0.8, 0.88, -1.56], hi: [0.8, 1.29, 0.82], step: 0.005, paint: () => W },
@@ -236,7 +239,7 @@ export function wheelSplit() {
   };
   const tyreCol = p => { const r = Math.hypot(p[1], p[2]); return hexLin(r > 0.335 ? '#161616' : Math.abs(r - 0.3) < 0.008 && p[0] > 0.1 ? '#2a2a2a' : '#1c1c1c'); };
   return {
-    name: 'wheelSplit', meta: { R, TW },
+    name: 'wheelSplit', meta: { R, TW }, lodScale: { hi: 0.17, lo: 0.2 }, errScale: 4,   // four of these per car
     pieces: [
       { name: 'tyre', mat: 'rubber', sdf: tyre, lo: [-0.15, -0.36, -0.36], hi: [0.15, 0.36, 0.36], step: 0.0045, paint: tyreCol, ao: true },
       { name: 'rim', mat: 'rim', sdf: rim, lo: [-0.13, -0.26, -0.26], hi: [0.14, 0.26, 0.26], step: 0.0035, paint: () => [1, 1, 1], ao: true },

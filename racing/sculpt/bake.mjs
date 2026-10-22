@@ -39,10 +39,10 @@ function buildPiece(pc) {
   return { pos: new Float32Array(pos), nor, col, N, groups: Object.entries(groups).map(([m, ix]) => [m, new Uint32Array(ix)]) };
 }
 
-function simplify(P, ix, lod, share) {
+function simplify(P, ix, lod, share, errScale = 1) {
   const target = Math.max(lod.min, Math.round(lod.budget * share)) * 3;
   const attr = new Float32Array(P.N * 6); for (let v = 0; v < P.N; v++) { attr.set(P.nor.subarray(v * 3, v * 3 + 3), v * 6); attr.set(P.col.subarray(v * 3, v * 3 + 3).map(x => x * 2), v * 6 + 3); }
-  const [out] = target < ix.length ? MeshoptSimplifier.simplifyWithAttributes(ix, P.pos, 3, attr, 6, [.8, .8, .8, 1.5, 1.5, 1.5], null, target, lod.err, ['LockBorder']) : [ix];
+  const [out] = target < ix.length ? MeshoptSimplifier.simplifyWithAttributes(ix, P.pos, 3, attr, 6, [.8, .8, .8, 1.5, 1.5, 1.5], null, target, lod.err * errScale, ['LockBorder']) : [ix];
   const map = new Int32Array(P.N).fill(-1), keep = [], idx = new Uint32Array(out.length);
   for (let i = 0; i < out.length; i++) { let m = map[out[i]]; if (m < 0) { m = map[out[i]] = keep.length; keep.push(out[i]); } idx[i] = m; }
   const pick = (a, n) => { const o = new Float32Array(keep.length * n); keep.forEach((v, i) => { for (let k = 0; k < n; k++) o[i * n + k] = a[v * n + k]; }); return o; };
@@ -79,7 +79,7 @@ for (const [key, make] of Object.entries(MODELS)) {
   const total = raw.reduce((a, [, P]) => a + P.groups.reduce((b, [, ix]) => b + ix.length / 3, 0), 0), report = [];
   for (const [lodName, lod] of Object.entries(LODS)) {
     const meshes = [];
-    for (const [pc, P] of raw) for (const [m, ix] of P.groups) meshes.push([pc.name + (P.groups.length > 1 ? ':' + m : ''), m, pc.static ? { static: true } : {}, simplify(P, ix, lod, ix.length / 3 / total)]);
+    for (const [pc, P] of raw) for (const [m, ix] of P.groups) meshes.push([pc.name + (P.groups.length > 1 ? ':' + m : ''), m, pc.static ? { static: true } : {}, simplify(P, ix, lod, ix.length / 3 / total * (model.lodScale?.[lodName] ?? 1), model.errScale)]);
     const buf = pack(model, meshes);
     writeFileSync(join(OUT, `${model.name}.${lodName}.bin`), buf);
     report.push(`${lodName}: ${meshes.reduce((a, m) => a + m[3].idx.length / 3, 0)} tris, ${(buf.length / 1024).toFixed(0)} KB`);
