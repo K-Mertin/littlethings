@@ -41,6 +41,9 @@
 #mwh textarea:focus{outline:2px solid var(--amber,#f3bb4f);outline-offset:-1px}
 #mwh form button{border:0;border-radius:12px;background:var(--amber,#f3bb4f);color:#1d1606;font:600 15px var(--sans,system-ui);padding:0 16px;cursor:pointer}
 #mwh form button:disabled{opacity:.5}
+#mwh form button.mic{background:#2a2f35;color:var(--ink,#e7e4dc);padding:0 12px;font-size:20px}
+#mwh form button.mic.on{background:#c0392b;color:#fff;animation:mwhpulse 1s infinite}
+@keyframes mwhpulse{50%{opacity:.6}}
 #mwh .chips{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px 10px}
 #mwh .chips button{border:1px solid var(--line,#2a2f35);background:transparent;color:var(--ink,#e7e4dc);border-radius:999px;padding:5px 11px;font:14px var(--sans,system-ui);cursor:pointer}
 #mwh .chips button:hover{border-color:var(--amber,#f3bb4f)}
@@ -57,9 +60,9 @@
   box.innerHTML = `<header><span style="font-size:22px">🏝️</span><b>MW 小幫手</b><button type="button" class="new" title="重新開始" aria-label="重新開始">↺</button><button type="button" class="x" aria-label="關閉">✕</button></header>
     <div class="log" aria-live="polite"></div>
     <div class="chips"><button type="button">推薦一款遊戲</button><button type="button">我要回報問題</button><button type="button">我有新遊戲點子</button></div>
-    <form><textarea rows="1" maxlength="600" placeholder="輸入訊息…" aria-label="訊息"></textarea><button type="submit">送出</button></form>`;
+    <form><textarea rows="1" maxlength="600" placeholder="輸入訊息…" aria-label="訊息"></textarea><button type="button" class="mic" hidden aria-label="語音輸入" title="按一下開始說話">🎤</button><button type="submit">送出</button></form>`;
   document.body.append(btn, box);
-  const log = box.querySelector('.log'), ta = box.querySelector('textarea'), send = box.querySelector('form button'), chips = box.querySelector('.chips');
+  const log = box.querySelector('.log'), ta = box.querySelector('textarea'), send = box.querySelector('form button[type=submit]'), chips = box.querySelector('.chips');
 
   // 對話記在 sessionStorage：同一個分頁回到大廳還在，關掉就清掉
   let msgs = [];
@@ -128,4 +131,30 @@
   box.querySelector('form').onsubmit = e => { e.preventDefault(); const t = ta.value; ta.value = ''; ask(t); };
   ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); box.querySelector('form').requestSubmit(); } });
   chips.querySelectorAll('button').forEach(b => b.onclick = () => ask(b.textContent));
+
+  // 語音輸入：用瀏覽器內建的語音辨識，結果填進輸入框，讓使用者確認後再按送出；不支援的瀏覽器就不顯示麥克風
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const mic = box.querySelector('.mic');
+  if (SR && mic) {
+    mic.hidden = false;
+    let rec = null, base = '';
+    const stop = () => { mic.classList.remove('on'); mic.setAttribute('aria-label', '語音輸入'); mic.title = '按一下開始說話'; rec = null; };
+    mic.onclick = () => {
+      if (rec) { rec.stop(); return; }
+      rec = new SR(); rec.lang = 'zh-TW'; rec.interimResults = true; rec.continuous = false;
+      base = ta.value;
+      rec.onresult = e => {
+        let t = ''; for (const r of e.results) t += r[0].transcript;
+        ta.value = (base + t).slice(0, 600);
+      };
+      rec.onerror = e => {
+        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') add('err', '需要允許使用麥克風才能說話喔，也可以直接打字。');
+        else if (e.error !== 'no-speech' && e.error !== 'aborted') add('err', '語音輸入好像不能用，直接打字也可以。');
+      };
+      rec.onend = () => { stop(); ta.focus(); };
+      try { rec.start(); mic.classList.add('on'); mic.setAttribute('aria-label', '停止語音輸入'); mic.title = '說完了，按一下停止'; }
+      catch (e) { stop(); }
+    };
+    box.querySelector('.x').addEventListener('click', () => { if (rec) rec.abort(); });
+  }
 })();
