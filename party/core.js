@@ -329,12 +329,27 @@ const Party = {
   },
   sync(p) { p.seen = p.inp.c.slice(); },
   pressed(p, k) { if (p.inp.c[k] > p.seen[k]) { p.seen[k] = p.inp.c[k]; return true; } return false; },
-  input(p) {
+  /* the raw stick with a dead zone; the live stick is rescaled so it starts from 0 just outside the dead zone (no sudden jump) */
+  rawInput(p) {
     if (!p.online) return { x: 0, y: 0 };
     let x = p.inp.x, y = p.inp.y; const m = hyp(x, y);
-    if (m < 0.18) return { x: 0, y: 0 };
-    if (m > 1) { x /= m; y /= m; }
-    return { x, y };
+    if (m < 0.15) return { x: 0, y: 0 };
+    const k = Math.min(1, (m - 0.15) / 0.8) / m;
+    return { x: x * k, y: y * k };
+  },
+  /* smoothed every frame (≈40 ms) so phone packets arriving in bursts don't make characters jitter */
+  smoothInputs(dt) {
+    const a = 1 - Math.exp(-dt / 0.04);
+    for (const p of this.players) {
+      const r = this.rawInput(p);
+      if (p.sx === undefined) { p.sx = r.x; p.sy = r.y; }
+      p.sx += (r.x - p.sx) * a; p.sy += (r.y - p.sy) * a;
+      if (!r.x && !r.y && Math.hypot(p.sx, p.sy) < 0.06) p.sx = p.sy = 0;   // let go = stop, no creeping
+    }
+  },
+  input(p) {
+    if (p.sx === undefined) return this.rawInput(p);
+    const m = hyp(p.sx, p.sy); return m > 1 ? { x: p.sx / m, y: p.sy / m } : { x: p.sx, y: p.sy };
   },
   /* the room leader: the earliest phone still connected (keyboard players don't count) */
   leader() {
@@ -614,9 +629,24 @@ function renderResult() {
 /* ------------------------------ main loop ------------------------------ */
 const cv = $('cv'), g = cv.getContext('2d');
 let lastT = performance.now(), acc = 0, clock = 0;
+/* adaptive resolution: weak TV boxes render the game a bit smaller and let the browser scale it up.
+   The canvas never goes above 1920 px wide; if a game runs under ~45 fps the render scale steps down
+   (to 55% at most), and creeps back up when there's headroom. The last good scale is remembered per device. */
+const Render = { scale: clamp(+store.get('rscale', 1) || 1, 0.55, 1), t: 0, n: 0, changes: 0 };
 function fit() {
-  const dpr = Math.min(2, devicePixelRatio || 1);
-  cv.width = Math.round(innerWidth * dpr); cv.height = Math.round(innerHeight * dpr);
+  const dpr = Math.min(2, devicePixelRatio || 1), w = innerWidth * dpr, h = innerHeight * dpr;
+  const k = Math.min(1, 1920 / w) * Render.scale;
+  cv.width = Math.max(320, Math.round(w * k)); cv.height = Math.max(180, Math.round(h * k));
+}
+function renderTune(dt) {
+  if (Party.state !== 'play' || Party.paused || document.hidden) { Render.t = Render.n = 0; return; }
+  Render.t += dt; Render.n++;
+  if (Render.t < 2.5) return;
+  const fps = Render.n / Render.t; Render.t = Render.n = 0;
+  let next = Render.scale;
+  if (fps < 46 && Render.scale > 0.55) next = Math.max(0.55, Render.scale - 0.15);
+  else if (fps > 58 && Render.scale < 1 && Render.changes < 8) next = Math.min(1, Render.scale + 0.1);
+  if (next !== Render.scale) { Render.scale = next; Render.changes++; store.set('rscale', next); fit(); }
 }
 addEventListener('resize', fit);
 function drawHud(g) {
@@ -665,7 +695,7 @@ function drawHud(g) {
 }
 function frame(now) {
   const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now; clock += dt;
-  kbTick();
+  kbTick(); Party.smoothInputs(dt); renderTune(dt);
   const S = Party.state;
   if (S === 'lobby') { yardTick(dt); yardDraw(clock); }
   if (S === 'intro' && !Party.paused) {

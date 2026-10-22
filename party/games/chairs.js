@@ -22,7 +22,9 @@
   const SOFA_Y = 744;                    // standing players stay above the sofas
   const SEATS = [[118, 798], [1482, 798], [209, 798], [1391, 798], [300, 798], [1300, 798]];
   const DASH = [16, 14], NODASH = [];
+  const BEAMS = [[230, -30, '#ff8fab'], [1380, -30, '#7dd3fc'], [1048, 112, '#fde047']];   // party light sources
   const wrap = a => { while (a > Math.PI) a -= TAU; while (a < -Math.PI) a += TAU; return a; };
+  const turnTo = (a, b, dt, rate) => wrap(a + wrap(b - a) * (1 - Math.exp(-rate * dt)));
 
   function steer(e, ix, iy, sp, dt, acc) {
     const tx = ix * sp, ty = iy * sp, moving = ix || iy;
@@ -55,7 +57,20 @@
     g.fillStyle = 'rgba(80,40,60,.2)'; g.beginPath(); g.ellipse(x + 4, y + ry * 0.55, rx * 1.02, ry * 0.75, 0, 0, TAU); g.fill();
     g.fillStyle = C[1]; g.beginPath(); g.ellipse(x, y + 6, rx, ry, 0, 0, TAU); g.fill();
     g.fillStyle = C[0]; g.beginPath(); g.ellipse(x, y, rx * 0.97, ry * 0.9, 0, 0, TAU); g.fill();
-    g.fillStyle = C[2]; g.beginPath(); g.ellipse(x - rx * 0.22, y - ry * 0.3, rx * 0.45, ry * 0.28, -0.2, 0, TAU); g.fill();
+    // each cushion has its own fabric: stripes, dots, a star, a heart, checks or flowers
+    g.save(); g.clip();
+    const pat = ci % 6, sx = rx / 50, sy = ry / 34;
+    g.fillStyle = C[2]; g.globalAlpha = 0.7;
+    if (pat === 0) { for (let k = -5; k <= 5; k++) { g.beginPath(); g.moveTo(x + k * 18 * sx - 6 * sx, y - ry); g.lineTo(x + k * 18 * sx + 6 * sx, y - ry); g.lineTo(x + k * 18 * sx + 6 * sx + ry * 0.6, y + ry); g.lineTo(x + k * 18 * sx - 6 * sx + ry * 0.6, y + ry); g.fill(); } }
+    else if (pat === 1) { for (let i = -3; i <= 3; i++) for (let j = -2; j <= 2; j++) { g.beginPath(); g.ellipse(x + i * 15 * sx + (j & 1) * 7.5 * sx, y + j * 11 * sy, 3.6 * sx, 2.8 * sy, 0, 0, TAU); g.fill(); } }
+    else if (pat === 2) { g.beginPath(); for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + k * Math.PI / 5, rr = k % 2 ? 9 : 21; g.lineTo(x + Math.cos(a) * rr * sx, y + 1 + Math.sin(a) * rr * sy * 0.8); } g.closePath(); g.fill(); }
+    else if (pat === 3) { g.save(); g.translate(x, y + 2); g.scale(sx, sy * 0.8); g.beginPath(); g.moveTo(0, 14); g.bezierCurveTo(-26, -2, -14, -24, 0, -10); g.bezierCurveTo(14, -24, 26, -2, 0, 14); g.fill(); g.restore(); }
+    else if (pat === 4) { for (let i = -4; i <= 4; i++) for (let j = -3; j <= 3; j++) if ((i + j) & 1) g.fillRect(x + i * 12 * sx - 6 * sx, y + j * 10 * sy - 5 * sy, 12 * sx, 10 * sy); }
+    else { for (const [u, v] of [[-26, -8], [24, -10], [-6, 14], [30, 12], [-34, 12], [4, -18]]) for (let k = 0; k < 5; k++) { const a = k * TAU / 5; g.beginPath(); g.arc(x + u * sx + Math.cos(a) * 4 * sx, y + v * sy + Math.sin(a) * 3 * sy, 2.8 * sx, 0, TAU); g.fill(); } }
+    g.globalAlpha = 1; g.restore();
+    g.fillStyle = 'rgba(255,255,255,.4)'; g.beginPath(); g.ellipse(x - rx * 0.22, y - ry * 0.3, rx * 0.45, ry * 0.28, -0.2, 0, TAU); g.fill();
+    // piping round the edge
+    g.strokeStyle = C[1]; g.lineWidth = 2.5; g.setLineDash([5, 4]); g.beginPath(); g.ellipse(x, y, rx * 0.88, ry * 0.8, 0, 0, TAU); g.stroke(); g.setLineDash(NODASH);
     // tufts: four dimples and a button in the middle
     g.fillStyle = C[1];
     for (const [u, v] of [[-0.48, 0], [0.48, 0], [0, -0.5], [0, 0.5]]) { g.beginPath(); g.ellipse(x + u * rx, y + v * ry, 3.2, 2.4, 0, 0, TAU); g.fill(); }
@@ -79,6 +94,23 @@
     g.restore(); g.globalAlpha = 1;
   }
 
+  /* a striped party hat with a pompom (same transform as drawCritter, so it rides every hop and squash) */
+  function partyHat(g, x, y, r, hop, rot, sq, col, dark, tilt) {
+    g.save(); g.translate(x, y - hop); if (rot) g.rotate(rot); g.scale(1 + sq, 1 - sq);
+    g.translate(r * 0.08, -r * 0.8); g.rotate(tilt || 0.12);
+    const w = r * 0.36, h = r * 0.72;
+    g.fillStyle = col; g.beginPath(); g.moveTo(-w, 0); g.lineTo(0, -h); g.lineTo(w, 0); g.quadraticCurveTo(0, r * 0.1, -w, 0); g.fill();
+    g.save(); g.clip();
+    g.fillStyle = '#ffffff'; g.globalAlpha = 0.85;
+    for (let k = 0; k < 3; k++) { const yy = -h * (0.18 + k * 0.28); g.beginPath(); g.moveTo(-w, yy + h * 0.1); g.lineTo(w, yy - h * 0.06); g.lineTo(w, yy + h * 0.02); g.lineTo(-w, yy + h * 0.18); g.fill(); }
+    g.globalAlpha = 1; g.fillStyle = 'rgba(0,0,0,.14)'; g.fillRect(w * 0.25, -h, w, h * 1.2);
+    g.restore();
+    g.strokeStyle = dark; g.lineWidth = r * 0.05; g.lineJoin = 'round'; g.beginPath(); g.moveTo(-w, 0); g.lineTo(0, -h); g.lineTo(w, 0); g.quadraticCurveTo(0, r * 0.1, -w, 0); g.stroke();
+    g.fillStyle = '#ffe066'; g.beginPath(); g.arc(0, -h, r * 0.13, 0, TAU); g.fill();
+    g.fillStyle = '#ffffff'; g.beginPath(); g.arc(-r * 0.04, -h - r * 0.04, r * 0.05, 0, TAU); g.fill();
+    g.restore();
+  }
+
   class Chairs {
     constructor(ctx) {
       this.ctx = ctx; this.kid = ctx.kid; this.t = 0; this.over = false; this.dur = null; this.edge = '#c98f5a';
@@ -92,7 +124,7 @@
         const x = CX + Math.cos(a) * PRX, y = CY + Math.sin(a) * PRY;
         return { p, x, y, vx: 0, vy: 0, kx: 0, ky: 0, face: a + Math.PI / 2, r: 32, walk: 0, sq: 0, sqv: 0, st: 'walk', seat: null,
           cd: 0, dash: 0, dx: 0, dy: 0, freeze: 0, freeze0: 0, fhop: 0, frot: 0, stun: 0, th: Math.atan2((y - CY) / PRY, (x - CX) / PRX), av: 0, idle: 0, lazy: false,
-          snap: 1, sx0: 0, sy0: 0, stars: 0, sits: 0, best: null, outAt: 0, sad: 0, sofa: -1, onSofa: false, cheer: 0, say: '', sayT: 0, hopT: 0, hopV: 0, hop: 0, missT: 0 };
+          step: 0, snap: 1, sx0: 0, sy0: 0, stars: 0, sits: 0, best: null, outAt: 0, sad: 0, sofa: -1, onSofa: false, cheer: 0, say: '', sayT: 0, hopT: 0, hopV: 0, hop: 0, missT: 0 };
       });
       this.by = new Map(this.es.map(e => [e.p, e]));
       const k = this.solo ? 1 : Math.max(1, n - 1);
@@ -101,6 +133,16 @@
       this.phase = 'walk'; this.pt = rnd(5, 9); this.rt = 0; this.rushT = 0; this.removed = false;
       this.notes = []; this.noteT = 0; this.scratchT = 0; this.discA = 0; this.armA = 1;
       this.confetti = []; this.msg = null;
+      // party atmosphere: a disco ball, sweeping lights, drifting confetti, guests dancing by the wall
+      this.disco = 0; this.lightA = 1; this.amb = []; this.ambT = 0;
+      const taken = ctx.players.map(p => p.col);
+      this.guests = [[505, 246, 0.9], [640, 250, 0.82], [1050, 246, 0.86]].map(([x, y, s], i) => {
+        let col = (i * 2 + 1) % 6; for (let k = 0; k < 6 && taken.includes(col); k++) col = (col + 1) % 6;
+        taken.push(col);
+        return { x, y, s, col, animal: (i * 2 + 3) % 6, ph: rnd(0, TAU), face: Math.PI / 2 };
+      });
+      this.balloons = [[40, 70, '#ff8fab'], [72, 52, '#7dd3fc'], [96, 82, '#fde047'], [1520, 64, '#86efac'], [1556, 46, '#c4b5fd'], [1576, 84, '#fdba74']].map(([x, y, c]) => ({ x, y, c, ph: rnd(0, TAU) }));
+      this.spots = []; for (let i = 0; i < 26; i++) this.spots.push({ a: rnd(0, TAU), d: rnd(0.25, 1), c: CUSH[i % 6][0], s: rnd(0.7, 1.3) });
       this.dl = []; this.dn = 0;
       this.place();
       this.announced = false;
@@ -246,6 +288,17 @@
       this.notes = this.notes.filter(q => q.t < 1.8);
       this.scratchT -= dt;
       for (const c of this.confetti) if (c.life > 0) { c.life -= dt; c.vy += 260 * dt; c.vx *= 0.99; c.x += c.vx * dt; c.y += c.vy * dt; c.a += c.va * dt; }
+      // disco ball spins and the lights sweep while the music plays; the room lights come up when it stops
+      this.lightA += ((this.music ? 1 : 0) - this.lightA) * Math.min(1, dt * (this.music ? 3 : 10));
+      if (this.music) this.disco += dt;
+      this.ambT -= dt;
+      if (this.music && this.ambT <= 0 && this.amb.length < 36) {
+        this.ambT = 0.12;
+        this.amb.push({ x: rnd(0, W), y: rnd(-30, 120), vx: rnd(-20, 20), vy: rnd(50, 90), a: rnd(0, TAU), va: rnd(-5, 5), c: CUSH[rint(6)][0], w: rnd(7, 12), ph: rnd(0, TAU) });
+      }
+      for (const c of this.amb) { c.x += (c.vx + Math.sin(this.t * 2 + c.ph) * 30) * dt; c.y += c.vy * dt; c.a += c.va * dt; }
+      for (let k = this.amb.length - 1; k >= 0; k--) if (this.amb[k].y > H + 20) this.amb.splice(k, 1);
+      for (const q of this.guests) q.face = turnTo(q.face, this.music ? Math.PI / 2 + Math.sin(this.t * 1.3 + q.ph) * 0.9 : Math.atan2(CY - q.y, CX - q.x), dt, 6);
 
       for (const e of this.es) this.step(e, dt);
       this.collide();
@@ -262,9 +315,9 @@
         if (!e.onSofa) {
           const dx = sx - e.x, dy = sy - e.y, d = hyp(dx, dy);
           if (d < 12) { e.onSofa = true; e.x = sx; e.y = sy; e.vx = e.vy = 0; e.sq = 0.25; ctx.sfx('pop'); Fx.dust(e.x, e.y + 26, 'rgba(255,255,255,.8)', 12); }
-          else { const sp = 280; steer(e, dx / d, dy / d, Math.min(sp, d * 6), dt, 10); e.x += e.vx * dt; e.y += e.vy * dt; e.face = Math.atan2(dy, dx); e.walk += dt * (6 + hyp(e.vx, e.vy) / 40); Fx.walk(e, dt, 'rgba(255,240,220,.85)'); }
+          else { const sp = 280; steer(e, dx / d, dy / d, Math.min(sp, d * 6), dt, 10); e.x += e.vx * dt; e.y += e.vy * dt; e.face = turnTo(e.face, Math.atan2(dy, dx), dt, 12); e.walk += dt * (6 + hyp(e.vx, e.vy) / 40); e.step += hyp(e.vx, e.vy) * dt / (e.r * 0.5); Fx.walk(e, dt, 'rgba(255,240,220,.85)'); }
         } else {
-          e.face = Math.atan2(CY - e.y, CX - e.x);
+          e.face = turnTo(e.face, Math.atan2(CY - e.y, CX - e.x), dt, 8);
           if (e.sad <= 0) {
             e.cheer -= dt;
             if (e.cheer <= 0) { e.cheer = rnd(1.4, 3.2); this.hopUp(e, rnd(300, 420)); if (Math.random() < 0.4) { const L = this.phase === 'win' ? ['恭喜！', '好厲害！', '耶～'] : this.phase === 'rush' ? ['快坐快坐！', '衝啊～', '那邊有空位！'] : ['加油！', '好緊張！', '繞圈圈～']; this.say(e, L[rint(L.length)], 1.1); } }
@@ -294,7 +347,7 @@
       e.dash -= dt;
       let ix = i.x, iy = i.y; if (e.dash > 0) { ix = e.dx; iy = e.dy; }
       const sp = (kid ? 300 : 335) * (e.dash > 0 ? 2.3 : 1);
-      if (ix || iy) e.face = Math.atan2(iy, ix);
+      if (ix || iy) e.face = turnTo(e.face, Math.atan2(iy, ix), dt, e.dash > 0 ? 30 : 14);   // turns smoothly, never snaps
       steer(e, ix, iy, sp, dt, e.dash > 0 ? 24 : 13);
       const kf = Math.exp(-5 * dt); e.kx *= kf; e.ky *= kf;
       e.x += (e.vx + e.kx) * dt; e.y += (e.vy + e.ky) * dt;
@@ -315,6 +368,7 @@
       e.x = clamp(e.x, BX0, BX1); e.y = clamp(e.y, BY0, BY1);
       for (const s of SOFAS) if (e.x > s.x0 - 20 && e.x < s.x1 + 20 && e.y > SOFA_Y) e.y = SOFA_Y;
       const s = hyp(e.vx, e.vy); if (s > 30) e.walk += dt * (6 + s / 40);
+      e.step += hyp(e.vx + e.kx, e.vy + e.ky) * dt / (e.r * 0.5);
       Fx.walk(e, dt, 'rgba(255,240,220,.85)');
       // touch a free cushion to sit on it
       if (ph === 'rush') {
@@ -406,12 +460,6 @@
       // corner decorations: a potted plant, a lamp, presents and balloons
       this.plant(g, 110, 300); this.lamp(g, 1490, 300);
       this.gifts(g, 1150, 250);
-      for (const [x, y, c] of [[40, 70, '#ff8fab'], [72, 52, '#7dd3fc'], [96, 82, '#fde047'], [1520, 64, '#86efac'], [1556, 46, '#c4b5fd'], [1576, 84, '#fdba74']]) {
-        g.strokeStyle = 'rgba(80,60,60,.5)'; g.lineWidth = 2; g.beginPath(); g.moveTo(x, y + 34); g.quadraticCurveTo(x + 6, y + 80, x - 2, y + 140); g.stroke();
-        g.fillStyle = c; g.beginPath(); g.ellipse(x, y, 26, 32, 0, 0, TAU); g.fill();
-        g.fillStyle = 'rgba(255,255,255,.45)'; g.beginPath(); g.ellipse(x - 9, y - 11, 6, 10, -0.4, 0, TAU); g.fill();
-        g.fillStyle = c; g.beginPath(); g.moveTo(x - 5, y + 36); g.lineTo(x + 5, y + 36); g.lineTo(x, y + 30); g.fill();
-      }
       // record player cabinet
       g.fillStyle = 'rgba(80,40,20,.2)'; g.beginPath(); g.ellipse(1300, 252, 110, 14, 0, 0, TAU); g.fill();
       g.fillStyle = '#a0683a'; g.beginPath(); g.roundRect(1200, 176, 200, 74, 10); g.fill();
@@ -454,6 +502,82 @@
         g.fillStyle = r; g.fillRect(x + dx + w / 2 - 4, y + dy, 8, h); g.fillRect(x + dx, y + dy + h / 2 - 4, w, 8);
         g.beginPath(); g.ellipse(x + dx + w / 2 - 9, y + dy - 4, 9, 6, -0.5, 0, TAU); g.ellipse(x + dx + w / 2 + 9, y + dy - 4, 9, 6, 0.5, 0, TAU); g.fill();
       }
+    }
+    /* party lights: a purple dusk while the music plays, coloured beams sweeping the floor, disco sparkles */
+    drawLights(g, t) {
+      const L = this.lightA; if (L < 0.02) return;
+      g.globalAlpha = 0.1 * L; g.fillStyle = '#3c1a5a'; g.fillRect(0, 0, W, H);
+      for (let i = 0; i < 3; i++) {
+        const [sx, sy, c] = BEAMS[i], tx = CX + Math.sin(t * 0.6 + i * 2.1) * 520, ty = CY + Math.cos(t * 0.45 + i * 1.3) * 210;
+        const dx = tx - sx, dy = ty - sy, d = hyp(dx, dy), nx = -dy / d, ny = dx / d, w = 80;
+        g.globalAlpha = 0.17 * L; g.fillStyle = c;
+        g.beginPath(); g.moveTo(sx, sy); g.lineTo(tx + nx * w, ty + ny * w * 0.6); g.lineTo(tx - nx * w, ty - ny * w * 0.6); g.closePath(); g.fill();
+        g.globalAlpha = 0.26 * L; g.beginPath(); g.ellipse(tx, ty, w * 1.1, w * 0.6, 0, 0, TAU); g.fill();
+      }
+      // disco sparkles drifting round the room
+      const a0 = this.disco * 0.5;
+      for (const s of this.spots) {
+        const a = s.a + a0, x = CX + Math.cos(a) * s.d * 760, y = 470 + Math.sin(a) * s.d * 380;
+        if (y < 30) continue;
+        g.globalAlpha = (0.35 + 0.25 * Math.sin(t * 6 + s.a * 5)) * L; g.fillStyle = s.c;
+        g.beginPath(); g.ellipse(x, y, 7 * s.s, 4.5 * s.s, 0, 0, TAU); g.fill();
+        g.globalAlpha *= 0.6; g.fillStyle = '#ffffff'; g.beginPath(); g.ellipse(x, y, 3 * s.s, 2 * s.s, 0, 0, TAU); g.fill();
+      }
+      g.globalAlpha = 1;
+    }
+    drawDisco(g, t) {
+      const x = 1048, y = 112, R = 28, L = this.lightA;
+      g.strokeStyle = '#8f93ad'; g.lineWidth = 2; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, y - R); g.stroke();
+      g.fillStyle = '#6b6f8a'; g.fillRect(x - 6, y - R - 6, 12, 8);
+      g.fillStyle = '#9aa0bd'; g.beginPath(); g.arc(x, y, R, 0, TAU); g.fill();
+      g.save(); g.beginPath(); g.arc(x, y, R - 1, 0, TAU); g.clip();
+      const sp = this.disco * 1.6;
+      for (let j = -3; j <= 3; j++) {
+        const yy = y + j * 9, half = Math.sqrt(Math.max(0, R * R - (j * 9) ** 2)), n = Math.max(3, Math.round(half / 5));
+        for (let i = 0; i < n * 2; i++) {
+          const u = (i / (n * 2) + sp * 0.08) % 1, xx = x + Math.cos(u * Math.PI) * half;
+          const lit = ((i + j * 3 + (sp * 4 | 0)) % 5 === 0);
+          g.fillStyle = lit ? (L > 0.5 ? CUSH[(i + j + 6) % 6][2] : '#ffffff') : ((i + j) & 1 ? '#c9cde2' : '#7c819e');
+          g.fillRect(xx - 4, yy - 4, 7, 7);
+        }
+      }
+      g.fillStyle = 'rgba(255,255,255,.4)'; g.beginPath(); g.ellipse(x - 10, y - 12, 9, 6, -0.5, 0, TAU); g.fill();
+      g.restore();
+      g.strokeStyle = '#5b5f7a'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, R, 0, TAU); g.stroke();
+      if (L > 0.3) {   // twinkles on the ball
+        for (let k = 0; k < 3; k++) {
+          const ph = (t * 2 + k / 3) % 1, a = k * 2.1 + this.disco, s = Math.sin(ph * Math.PI) * 9 * L;
+          const px = x + Math.cos(a) * R * 0.7, py = y + Math.sin(a) * R * 0.7;
+          g.fillStyle = '#ffffff'; g.beginPath(); g.moveTo(px - s, py); g.lineTo(px, py - 2); g.lineTo(px + s, py); g.lineTo(px, py + 2); g.closePath(); g.fill();
+          g.beginPath(); g.moveTo(px, py - s); g.lineTo(px + 2, py); g.lineTo(px, py + s); g.lineTo(px - 2, py); g.closePath(); g.fill();
+        }
+      }
+    }
+    drawBalloons(g, t) {
+      for (const b of this.balloons) {
+        const x = b.x + Math.sin(t * 0.9 + b.ph) * 4, y = b.y + Math.sin(t * 1.3 + b.ph) * 5;
+        g.strokeStyle = 'rgba(80,60,60,.5)'; g.lineWidth = 2; g.beginPath(); g.moveTo(x, y + 34); g.quadraticCurveTo(x + 6 + Math.sin(t * 2 + b.ph) * 4, y + 80, b.x - 2, b.y + 140); g.stroke();
+        g.fillStyle = b.c; g.beginPath(); g.ellipse(x, y, 26, 32, Math.sin(t + b.ph) * 0.08, 0, TAU); g.fill();
+        g.fillStyle = 'rgba(0,0,0,.08)'; g.beginPath(); g.ellipse(x + 8, y + 6, 14, 22, 0, 0, TAU); g.fill();
+        g.fillStyle = 'rgba(255,255,255,.5)'; g.beginPath(); g.ellipse(x - 9, y - 11, 6, 10, -0.4, 0, TAU); g.fill();
+        g.fillStyle = b.c; g.beginPath(); g.moveTo(x - 5, y + 36); g.lineTo(x + 5, y + 36); g.lineTo(x, y + 30); g.fill();
+      }
+    }
+    /* guests by the back wall: they dance while the music plays and look round when it stops */
+    drawGuests(g, t) {
+      for (const q of this.guests) {
+        const r = 26 * q.s, beat = this.music ? Math.abs(Math.sin(t * 5.2 + q.ph)) : 0, hop = beat * 9, sq = this.music ? (0.5 - beat) * 0.1 : 0, rot = this.music ? Math.sin(t * 2.6 + q.ph) * 0.12 : 0;
+        drawCritter(g, q.x, q.y, r, q.col, q.animal, { face: q.face, hop, squash: sq, rot, happy: this.music, step: 0, moving: false, blink: (t + q.ph) % 3.4 < 0.12 });
+        partyHat(g, q.x, q.y, r, hop, rot, sq, CUSH[q.col % 6][0], CUSH[q.col % 6][1], -0.1);
+        if (!this.music && this.phase === 'rush') { g.font = `900 22px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineWidth = 5; g.strokeStyle = '#fff'; g.strokeText('！', q.x + r, q.y - r - 14); g.fillStyle = '#ff3b4a'; g.fillText('！', q.x + r, q.y - r - 14); }
+      }
+    }
+    drawAmbient(g) {
+      for (const c of this.amb) {
+        const w = c.w * Math.abs(Math.cos(c.a));
+        g.globalAlpha = c.y < 20 ? Math.max(0, (c.y + 30) / 50) : 0.9; g.fillStyle = c.c; g.fillRect(c.x - w / 2, c.y - 3, Math.max(1.5, w), 6);
+      }
+      g.globalAlpha = 1;
     }
     drawPath(g, t) {
       // chevrons marching round the path, showing which way to go
@@ -533,7 +657,9 @@
         g.globalAlpha = 1;
       }
       const sad = e.st === 'out' && e.sad > 0, happy = (e.st === 'out' && !sad && e.hop > 0) || (this.phase === 'res' && e.st === 'sit');
-      drawCritter(g, e.x + (frozen ? Math.sin(t * 70) * 1.5 : 0), e.y, e.r, e.p.col, e.p.animal, { face: e.face, squash: sq, hop, rot, stun: e.stun > 0 || sad, blink: !frozen && (t + e.p.uid * 1.3) % 3.6 < 0.12, happy });
+      const moving = !frozen && s > 30, jx = frozen ? Math.sin(t * 70) * 1.5 : 0;
+      drawCritter(g, e.x + jx, e.y, e.r, e.p.col, e.p.animal, { face: e.face, squash: sq, hop, rot, stun: e.stun > 0 || sad, blink: !frozen && (t + e.p.uid * 1.3) % 3.6 < 0.12, happy, step: e.step, moving });
+      partyHat(g, e.x + jx, e.y, e.r, hop + (moving ? Math.abs(Math.sin(e.step)) * e.r * 0.06 : 0), rot, sq, C.c === '#ffbf1f' ? '#ff6fb7' : '#ffbf1f', C.d, frozen ? 0.4 : 0.12 + Math.sin(e.step * 0.5) * 0.06);
       if (sad) {   // a little tear
         const k = (t * 1.6) % 1; g.fillStyle = '#7fd0ff'; g.globalAlpha = 1 - k;
         g.beginPath(); g.ellipse(e.x + e.r * 0.42, e.y - hop + k * 22, 4.5, 7, 0, 0, TAU); g.fill(); g.globalAlpha = 1;
@@ -546,15 +672,21 @@
     drawSitter(g, e, t) {
       const c = e.seat, k = e.snap, x = c ? (e.sx0 + (c.x - e.sx0) * k) : e.x, y0 = c ? (e.sy0 + (c.y - e.sy0) * k) : e.y;
       const hop = Math.sin(k * Math.PI) * 46 + e.hop + 14;
-      drawCritter(g, x, y0, e.r, e.p.col, e.p.animal, { face: Math.PI / 2, squash: 0.08 + e.sq, hop, happy: true, noShadow: true });
+      drawCritter(g, x, y0, e.r, e.p.col, e.p.animal, { face: Math.PI / 2, squash: 0.08 + e.sq, hop, happy: true, noShadow: true, step: 0, moving: false });
+      const C = PARTY_COLORS[e.p.col];
+      partyHat(g, x, y0, e.r, hop, 0, 0.08 + e.sq, C.c === '#ffbf1f' ? '#ff6fb7' : '#ffbf1f', C.d, 0.12);
     }
     add(y, k, o) { let it = this.dl[this.dn]; if (!it) it = this.dl[this.dn] = { y: 0, k: 0, o: null }; it.y = y; it.k = k; it.o = o; this.dn++; }
     draw(g) {
       const t = this.t;
       bgLayer(this, g, cg => this.paintBg(cg));
+      this.drawLights(g, t);
+      this.drawBalloons(g, t);
+      this.drawDisco(g, t);
       Fx.ground(g);
       this.drawPath(g, t);
       this.drawCushions(g, t);
+      this.drawGuests(g, t);
       if (this.kid && this.phase === 'rush') this.drawHelp(g, t);
       // everyone sorted by depth (spectators on the sofa come after, with the sofa front over their legs)
       this.dn = 0;
@@ -571,11 +703,12 @@
       }
       if (!this.es.some(e => e.onSofa)) for (const s of SOFAS) for (const sx of [s.x0, s.x1]) { g.fillStyle = s.d; g.beginPath(); g.roundRect(sx - 12, 772, 28, 84, 14); g.fill(); g.fillStyle = s.c; g.beginPath(); g.roundRect(sx - 8, 776, 20, 30, 10); g.fill(); }
       this.drawRecord(g, t);
+      this.drawAmbient(g);
       // name tags, then the ‼ and speech bubbles on top
       for (const e of this.es) {
         const sit = e.st === 'sit', hop = sit ? Math.sin(e.snap * Math.PI) * 46 + e.hop + 14 : e.hop + (e.freeze > 0 ? e.fhop : 0);
         const x = sit && e.seat ? e.seat.x : e.x, y = sit && e.seat ? e.seat.y : e.y;
-        drawTag(g, x, y - e.r - 30 - hop, e.p);
+        drawTag(g, x, y - e.r - 42 - hop, e.p);
         if (this.kid && e.stars) { g.font = `900 20px "Fredoka",${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineWidth = 5; g.strokeStyle = '#fff'; const s2 = '⭐' + e.stars; g.strokeText(s2, x, y + e.r + 16); g.fillStyle = '#b07000'; g.fillText(s2, x, y + e.r + 16); }
         if (e.freeze > 0) bangMark(g, x + 34, y - e.r - 78 - hop, t, Math.min(1, e.freeze / e.freeze0 * 1.2, e.freeze * 5));
         if (e.sayT > 0 && e.say) bubble(g, x, y - e.r - 84 - hop - (e.freeze > 0 ? 30 : 0), e.say, e.st === 'out' ? '#6a5a8a' : DEEP, 22);

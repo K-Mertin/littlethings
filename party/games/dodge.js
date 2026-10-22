@@ -11,12 +11,50 @@
 
   function steer(e, ix, iy, sp, dt, acc) {
     const tx = ix * sp, ty = iy * sp, moving = ix || iy;
-    const rate = !moving ? 24 : (e.vx * tx + e.vy * ty < 0 ? 22 : (acc || 13));
+    const rate = !moving ? 28 : (e.vx * tx + e.vy * ty < 0 ? 30 : (acc || 13));
     const k = 1 - Math.exp(-rate * dt);
     e.vx += (tx - e.vx) * k; e.vy += (ty - e.vy) * k;
     if (!moving && e.vx * e.vx + e.vy * e.vy < 300) { e.vx = 0; e.vy = 0; }
   }
   function spring(e, dt) { e.sqv += (-e.sq * 320 - e.sqv * 15) * dt; e.sq += e.sqv * dt; }
+  function turn(e, a, dt, rate) { const d = Math.atan2(Math.sin(a - e.face), Math.cos(a - e.face)); e.face += d * (1 - Math.exp(-rate * dt)); }
+  const NUMS = [7, 10, 23, 3, 11, 5];
+  /* the same body transform drawCritter uses, so the kit sits exactly on the critter */
+  function bodyOn(g, x, y, r, hop, moving, step, rot, sq) {
+    g.save(); g.translate(x, y - hop - (moving ? Math.abs(Math.sin(step)) * r * 0.06 : 0));
+    if (rot) g.rotate(rot); g.scale(1 + sq, 1 - sq);
+  }
+  /* sports kit: a jersey with a number, a headband, wristbands and sneakers */
+  function kit(g, r, face, moving, step, happy, main, trim, acc, num, frog) {
+    const lx = Math.cos(face), walk = moving ? Math.sin(step) : 0, walk2 = moving ? Math.cos(step) : 0;
+    g.save(); g.beginPath(); g.arc(0, 0, r * 1.01, 0, TAU); g.clip();
+    g.fillStyle = main; g.beginPath(); g.moveTo(-r * 1.1, r * 0.46); g.lineTo(-r * 0.28, r * 0.46); g.lineTo(0, r * 0.62); g.lineTo(r * 0.28, r * 0.46); g.lineTo(r * 1.1, r * 0.46); g.lineTo(r * 1.1, r * 1.1); g.lineTo(-r * 1.1, r * 1.1); g.closePath(); g.fill();
+    g.strokeStyle = trim; g.lineWidth = r * 0.07; g.beginPath(); g.moveTo(-r * 0.28, r * 0.46); g.lineTo(0, r * 0.62); g.lineTo(r * 0.28, r * 0.46); g.stroke();
+    g.fillStyle = trim; g.fillRect(-r * 1.1, r * 0.43, r * 0.82, r * 0.06); g.fillRect(r * 0.28, r * 0.43, r * 0.82, r * 0.06);
+    g.fillStyle = 'rgba(0,0,0,.1)'; g.fillRect(-r * 1.1, r * 0.92, r * 2.2, r * 0.2);
+    g.font = `900 ${Math.round(r * 0.5)}px "Fredoka",system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = trim; g.fillText(String(num), lx * r * 0.1, r * 0.8);
+    // headband (frogs wear it lower, under their eyes)
+    const by = frog ? -r * 0.36 : -r * 0.6;
+    g.fillStyle = trim; g.fillRect(-r * 1.1, by - r * 0.1, r * 2.2, r * 0.2);
+    g.fillStyle = main; g.fillRect(-r * 1.1, by - r * 0.03, r * 2.2, r * 0.06);
+    g.restore();
+    for (const s of [-1, 1]) {   // wristbands
+      const up = happy ? -r * 0.35 : 0, sw = moving ? s * walk * r * 0.12 : 0;
+      g.fillStyle = trim; g.beginPath(); g.ellipse(s * r * 0.92, r * 0.44 + up + sw, r * 0.14, r * 0.075, s * (happy ? -0.6 : 0.35), 0, TAU); g.fill();
+      g.fillStyle = main; g.beginPath(); g.ellipse(s * r * 0.92, r * 0.44 + up + sw, r * 0.14, r * 0.025, s * (happy ? -0.6 : 0.35), 0, TAU); g.fill();
+    }
+    for (const s of [-1, 1]) {   // sneakers
+      const fy = r * 0.88 + s * walk * r * 0.1, fx = s * r * 0.4 + s * walk2 * r * 0.04 + lx * r * 0.12;
+      g.fillStyle = '#ffffff'; g.strokeStyle = '#8c84a6'; g.lineWidth = r * 0.06;
+      g.beginPath(); g.ellipse(fx, fy, r * 0.27, r * 0.16, 0, 0, TAU); g.fill(); g.stroke();
+      g.fillStyle = acc; g.beginPath(); g.ellipse(fx, fy + r * 0.07, r * 0.25, r * 0.06, 0, 0, Math.PI); g.fill();
+      g.strokeStyle = acc; g.lineWidth = r * 0.05; g.beginPath(); g.moveTo(fx - r * 0.12, fy - r * 0.02); g.quadraticCurveTo(fx, fy - r * 0.1, fx + r * 0.12, fy - r * 0.02); g.stroke();
+    }
+  }
+  function drop(g, x, y, s) {
+    g.beginPath(); g.moveTo(x, y - s * 1.6); g.quadraticCurveTo(x + s, y - s * 0.2, x, y + s * 0.8); g.quadraticCurveTo(x - s, y - s * 0.2, x, y - s * 1.6); g.fill();
+  }
   function bgLayer(self, g, paint) {
     const m = g.getTransform(), s = clamp(Math.round(Math.hypot(m.a, m.b) * 4) / 4, 0.5, 2);
     if (!self.bgCv || self.bgS !== s) {
@@ -41,13 +79,20 @@
       this.es = ctx.players.map((p, i) => {
         const a = i * TAU / Math.max(1, n), ghosts = []; for (let k = 0; k < 4; k++) ghosts.push({ x: 0, y: 0, face: 0, a: 0 });
         return { p, x: CX + Math.cos(a) * (n > 1 ? 200 : 0), y: CY + Math.sin(a) * (n > 1 ? 140 : 0), vx: 0, vy: 0, face: a, r: 30, cd: 0, dash: 0, inv: 1.5, hits: 0, lives: 3, out: false, outAt: 0, outT: 0, alive: 0,
-          walk: 0, sq: 0, sqv: 0, flashT: 0, stunT: 0, dodges: 0, dodgeB: null, dodgeT: 0, ghosts, gi: 0, gT: 0 };
+          walk: 0, sq: 0, sqv: 0, flashT: 0, stunT: 0, dodges: 0, dodgeB: null, dodgeT: 0, ghosts, gi: 0, gT: 0, lean: 0, panic: 0, num: NUMS[i % NUMS.length] };
       });
       this.by = new Map(this.es.map(e => [e.p, e]));
       this.balls = []; this.warn = [];
       this.nextBall = 1.5; this.stage = 0; this.spd = this.target();
       this.max = (this.kid ? 4 : 6) + Math.min(4, n);
       this.grain = []; for (let i = 0; i < 70; i++) this.grain.push(rnd(X0, X1 - 120), rnd(Y0, Y1), rnd(40, 120));
+      // the crowd in the bleachers (cheers when someone gets hit or slips through a ball)
+      this.fans = []; this.cheer = 0;
+      const FAN_COLS = ['#e99a9a', '#ebbf88', '#95bfe0', '#a3d19b', '#bfaee0', '#e8aecb', '#e6d38c', '#a2d8cc'];
+      for (const [ry, sc] of [[104, 0.78], [122, 0.88], [140, 1]]) for (let x = 14 + rnd(0, 20); x < W - 10; x += rnd(30, 42)) this.fans.push({ x, y: ry, s: sc, c: rint(FAN_COLS.length), sk: rint(3), ph: rnd(0, TAU), sp: rnd(5, 8) });
+      this.fanCols = FAN_COLS;
+      this.lamps = [[330, 330], [800, 330], [1270, 330], [330, 690], [800, 690], [1270, 690]];
+      this.flick = rint(6);
       this.dl = []; this.dn = 0;
     }
     stageLen() { return this.kid ? 20 : 25; }
@@ -80,6 +125,7 @@
         if (this.t < this.dur - 12) { ctx.sfx('star'); Fx.announce(st % 2 ? '球變快了！' : '球變多了！', '#ff3b4a'); Fx.flash('#ffe9c2', 0.25); }
       }
       this.spd += (this.target() - this.spd) * Math.min(1, dt * 2);
+      this.cheer = Math.max(0, this.cheer - dt * 0.45);
       this.nextBall -= dt;
       const cap = Math.min(this.max, 2 + Math.floor(this.t / (kid ? 7 : 5)) + this.stage);
       if (this.nextBall <= 0 && this.balls.length + this.warn.length < cap) { this.spawn(); this.nextBall = Math.max(kid ? 1.6 : 1, (kid ? 3 : 2) - this.stage * (kid ? 0.4 : 0.25)); }
@@ -111,11 +157,16 @@
         const i = ctx.input(e.p);
         if (ctx.pressed(e.p, 0) && e.cd <= 0) {
           e.dash = 0.32; e.cd = kid ? 1.2 : 1.6; e.sq = -0.22; e.sqv = 0; e.gT = 0; ctx.sfx('whoosh');
+          if (i.x || i.y) e.face = Math.atan2(i.y, i.x);   // the dash goes exactly where the stick points
           for (let k = 0; k < 3; k++) Fx.dust(e.x, e.y + e.r * 0.7, 'rgba(255,240,220,.9)', 12);
         }
         let ix = i.x, iy = i.y; if (e.dash > 0 && !ix && !iy) { ix = Math.cos(e.face); iy = Math.sin(e.face); }
-        steer(e, ix, iy, (kid ? 330 : 360) * (e.dash > 0 ? 2.2 : 1), dt, e.dash > 0 ? 20 : 13);
-        if (ix || iy) e.face = Math.atan2(iy, ix);
+        steer(e, ix, iy, (kid ? 330 : 360) * (e.dash > 0 ? 2.2 : 1), dt, e.dash > 0 ? 22 : 17);
+        if (ix || iy) turn(e, Math.atan2(iy, ix), dt, e.dash > 0 ? 30 : 20);
+        e.lean += (clamp(e.vx / 2600, -0.14, 0.14) - e.lean) * (1 - Math.exp(-dt * 12));
+        // panic when a ball is close and coming this way
+        let near = 0; for (const b of this.balls) { const dx = e.x - b.x, dy = e.y - b.y, d = hyp(dx, dy); if (d < 190 && dx * b.vx + dy * b.vy > 0) { near = 1; break; } }
+        e.panic += (near - e.panic) * (1 - Math.exp(-dt * (near ? 10 : 3)));
         e.x = clamp(e.x + e.vx * dt, X0 + e.r, X1 - e.r); e.y = clamp(e.y + e.vy * dt, Y0 + e.r, Y1 - e.r);
         const s = hyp(e.vx, e.vy); if (s > 30) e.walk += dt * (6 + s / 40);
         Fx.walk(e, dt, 'rgba(255,240,220,.85)');
@@ -127,7 +178,7 @@
           if (d > e.r + b.r - 6) continue;
           if (e.dash > 0) {   // slipped right through it!
             if (b !== e.dodgeB) {
-              e.dodges++; ctx.sfx('coin'); ctx.buzz(e.p, 30);
+              e.dodges++; ctx.sfx('coin'); ctx.buzz(e.p, 30); this.cheer = Math.max(this.cheer, 0.7);
               Fx.pop(e.x, e.y - 78, '閃！', '#1f9a52', 48); Fx.ring(e.x, e.y, '#7dffb0', 90, 0.35);
             }
             e.dodgeB = b; e.dodgeT = 0.4; continue;
@@ -136,13 +187,13 @@
           e.hits++; e.inv = kid ? 1.5 : 1.3; e.sq = 0.3; e.sqv = 0; e.flashT = 0.3; e.stunT = 0.4;
           e.vx = dx / (d || 1) * 520; e.vy = dy / (d || 1) * 520;
           const bs = hyp(b.vx, b.vy); b.vx = -dx / (d || 1) * bs; b.vy = -dy / (d || 1) * bs; b.sq = 0.4; b.sax = Math.abs(dx) > Math.abs(dy) ? 1 : 0;
-          ctx.sfx('bonk', 0.7); ctx.buzz(e.p, 200); Fx.burst(e.x, e.y, b.col, 12, 300); Fx.shake(kid ? 4 : 7);
+          ctx.sfx('bonk', 0.7); ctx.buzz(e.p, 200); this.cheer = 1; Fx.burst(e.x, e.y, b.col, 12, 300); Fx.shake(kid ? 4 : 7);
           if (!kid) {
             e.lives--;
             const hx = e.x - e.lives * 12 + e.lives * 24, hy = e.y + e.r + 18;   // the heart that just went
             Fx.burst(hx, hy, '#ff8fa3', 8, 180); Fx.pop(hx, hy - 10, '💔', '#ff4f6d', 34);
             if (e.lives <= 0) {
-              e.out = true; e.outAt = ++this.outN; e.outT = 0; ctx.hitstop(0.05); Fx.shake(11); Fx.flash('#ff4f6d', 0.18);
+              e.out = true; e.outAt = ++this.outN; this.cheer = 1; e.outT = 0; ctx.hitstop(0.05); Fx.shake(11); Fx.flash('#ff4f6d', 0.18);
               Fx.burst(e.x, e.y, PARTY_COLORS[e.p.col].c, 20, 360); Fx.pop(e.x, e.y - 70, e.p.name + ' 出局', '#2b2340', 44); ctx.buzz(e.p, 400);
             } else Fx.pop(e.x + 40, e.y - 60, '♥ -1', '#ff4f6d', 34);
           } else Fx.pop(e.x, e.y - 74, '哎呀！', '#ff4f6d', 36);
@@ -164,18 +215,47 @@
     /* ---------------- drawing ---------------- */
     paintBg(g) {
       g.fillStyle = '#d9bb93'; g.fillRect(0, 0, W, H);
-      // gym wall: blue safety mats and a string of little flags
-      g.fillStyle = '#c9a77c'; g.fillRect(0, 88, W, 8);
-      for (let x = 4; x < W; x += 132) {
-        g.fillStyle = '#3d6fd1'; g.beginPath(); g.roundRect(x, 96, 124, 48, 8); g.fill();
-        g.fillStyle = '#5a8ae6'; g.beginPath(); g.roundRect(x + 6, 100, 112, 10, 5); g.fill();
+      // the gym's back wall: high windows, a string of flags, the scoreboards' frames
+      g.fillStyle = '#e8d5b5'; g.fillRect(0, 0, W, 92);
+      for (let x = 30; x < W; x += 190) {
+        const sk = g.createLinearGradient(0, 6, 0, 46); sk.addColorStop(0, '#7fc3f0'); sk.addColorStop(1, '#cfeaff');
+        g.fillStyle = '#b89a72'; g.fillRect(x - 4, 2, 128, 50); g.fillStyle = sk; g.fillRect(x, 6, 120, 42);
+        g.strokeStyle = '#b89a72'; g.lineWidth = 4; g.beginPath(); for (let k = 1; k < 4; k++) { g.moveTo(x + k * 30, 6); g.lineTo(x + k * 30, 48); } g.stroke();
+        g.fillStyle = 'rgba(255,255,255,.45)'; g.beginPath(); g.moveTo(x + 8, 46); g.lineTo(x + 26, 8); g.lineTo(x + 36, 8); g.lineTo(x + 18, 46); g.fill();
       }
+      g.strokeStyle = 'rgba(80,50,30,.5)'; g.lineWidth = 2; g.beginPath(); g.moveTo(0, 58); for (let x = 0; x <= W; x += 80) g.quadraticCurveTo(x + 40, 74, x + 80, 58); g.stroke();
+      for (let x = 0, k = 0; x < W; x += 40, k++) { g.fillStyle = BALL_COLS[k % BALL_COLS.length]; const yy = 59 + Math.sin((x % 80) / 80 * Math.PI) * 8; g.beginPath(); g.moveTo(x + 6, yy); g.lineTo(x + 26, yy); g.lineTo(x + 16, yy + 18); g.closePath(); g.fill(); }
+      for (const sx of [14, W - 254]) { g.fillStyle = '#3a3048'; g.beginPath(); g.roundRect(sx - 6, 4, 252, 84, 12); g.fill(); g.fillStyle = '#1d1726'; g.beginPath(); g.roundRect(sx, 10, 240, 72, 8); g.fill(); g.fillStyle = '#ff9a1f'; g.fillRect(sx + 10, 16, 220, 4); }
+      // bleachers: three tiers of wooden benches (the fans are drawn live on top)
+      g.fillStyle = '#7a5434'; g.fillRect(0, 86, W, 66);
+      for (const [y, h] of [[96, 14], [114, 14], [132, 14]]) {
+        g.fillStyle = '#5e3e24'; g.fillRect(0, y + h - 2, W, 6);
+        g.fillStyle = '#c88a50'; g.fillRect(0, y, W, h); g.fillStyle = 'rgba(255,255,255,.22)'; g.fillRect(0, y, W, 3);
+        g.fillStyle = 'rgba(0,0,0,.15)'; for (let x = 0; x < W; x += 160) g.fillRect(x, y, 2, h);
+      }
+      g.fillStyle = '#9aa2b4'; g.fillRect(0, 146, W, 5); g.fillStyle = '#d7dbe6'; g.fillRect(0, 146, W, 2);
+      for (let x = 20; x < W; x += 100) { g.fillStyle = '#9aa2b4'; g.fillRect(x, 140, 4, 10); }
+      // side walls: padded mats, team banners and a rack of spare balls
       for (const sx of [0, X1 + 16]) for (let y = 160; y < H; y += 120) {
         g.fillStyle = '#3d6fd1'; g.beginPath(); g.roundRect(sx + 4, y, 36, 112, 8); g.fill();
         g.fillStyle = '#5a8ae6'; g.fillRect(sx + 9, y + 6, 8, 100);
       }
-      g.strokeStyle = 'rgba(80,50,30,.5)'; g.lineWidth = 2; g.beginPath(); g.moveTo(0, 96); for (let x = 0; x <= W; x += 80) g.quadraticCurveTo(x + 40, 112, x + 80, 96); g.stroke();
-      for (let x = 0, k = 0; x < W; x += 40, k++) { g.fillStyle = BALL_COLS[k % BALL_COLS.length]; const yy = 97 + Math.sin((x % 80) / 80 * Math.PI) * 8; g.beginPath(); g.moveTo(x + 6, yy); g.lineTo(x + 26, yy); g.lineTo(x + 16, yy + 20); g.closePath(); g.fill(); }
+      for (const [sx, y, c, txt] of [[4, 168, TEAMS[0].c, '加油'], [X1 + 20, 660, TEAMS[1].c, '加油']]) {
+        g.fillStyle = 'rgba(0,0,0,.2)'; g.beginPath(); g.moveTo(sx + 3, y + 3); g.lineTo(sx + 39, y + 3); g.lineTo(sx + 39, y + 163); g.lineTo(sx + 21, y + 147); g.lineTo(sx + 3, y + 163); g.fill();
+        g.fillStyle = c; g.beginPath(); g.moveTo(sx, y); g.lineTo(sx + 36, y); g.lineTo(sx + 36, y + 160); g.lineTo(sx + 18, y + 144); g.lineTo(sx, y + 160); g.fill();
+        g.fillStyle = '#fff'; g.font = '900 24px "Noto Sans TC",system-ui,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.fillText(txt[0], sx + 18, y + 42); g.fillText(txt[1], sx + 18, y + 74); g.font = '22px system-ui'; g.fillText('★', sx + 18, y + 110);
+      }
+      for (const [sx, y0] of [[2, 430], [X1 + 18, 290]]) {
+        g.fillStyle = '#6b7488'; g.fillRect(sx + 2, y0, 4, 200); g.fillRect(sx + 34, y0, 4, 200); g.fillRect(sx, y0 + 196, 40, 6);
+        for (let k = 0; k < 5; k++) {
+          const by = y0 + 20 + k * 38, c = BALL_COLS[(k + (sx > 100 ? 2 : 0)) % BALL_COLS.length];
+          g.fillStyle = c; g.beginPath(); g.arc(sx + 20, by, 16, 0, TAU); g.fill();
+          g.fillStyle = 'rgba(255,255,255,.55)'; g.beginPath(); g.arc(sx + 14, by - 6, 5, 0, TAU); g.fill();
+          g.fillStyle = '#6b7488'; g.fillRect(sx + 2, by + 16, 36, 3);
+        }
+      }
+      g.fillStyle = '#b89a72'; g.fillRect(0, 878, W, 22);
       // wooden floor
       g.save(); g.beginPath(); g.roundRect(X0 - 10, Y0 - 10, X1 - X0 + 20, Y1 - Y0 + 20, 30); g.clip();
       for (let y = Y0 - 10, row = 0; y < Y1 + 10; y += 30, row++) {
@@ -189,6 +269,13 @@
       const sh = g.createLinearGradient(0, Y0, 0, Y1); sh.addColorStop(0, 'rgba(255,255,255,.18)'); sh.addColorStop(0.5, 'rgba(255,255,255,0)'); sh.addColorStop(1, 'rgba(120,60,20,.08)');
       g.fillStyle = sh; g.fillRect(X0 - 10, Y0 - 10, X1 - X0 + 20, Y1 - Y0 + 20);
       if (this.teams) { g.globalAlpha = 0.08; g.fillStyle = TEAMS[0].c; g.fillRect(X0 - 10, Y0 - 10, CX - X0 + 10, Y1 - Y0 + 20); g.fillStyle = TEAMS[1].c; g.fillRect(CX, Y0 - 10, X1 - CX + 10, Y1 - Y0 + 20); g.globalAlpha = 1; }
+      // pools of light from the hanging lamps and a glossy sheen on the varnish
+      for (const [lx, ly] of this.lamps) {
+        const pg = g.createRadialGradient(lx, ly, 10, lx, ly, 240); pg.addColorStop(0, 'rgba(255,250,230,.32)'); pg.addColorStop(1, 'rgba(255,250,230,0)');
+        g.fillStyle = pg; g.beginPath(); g.ellipse(lx, ly, 240, 130, 0, 0, TAU); g.fill();
+        g.fillStyle = 'rgba(255,255,255,.35)'; g.beginPath(); g.ellipse(lx, ly, 34, 10, 0, 0, TAU); g.fill();
+      }
+      g.fillStyle = 'rgba(255,255,255,.07)'; for (let k = 0; k < 6; k++) { const x = X0 + 120 + k * 260; g.beginPath(); g.moveTo(x, Y0); g.lineTo(x + 70, Y0); g.lineTo(x - 90, Y1); g.lineTo(x - 160, Y1); g.closePath(); g.fill(); }
       // painted court
       g.fillStyle = 'rgba(255,110,50,.16)';
       g.fillRect(X0, CY - 150, 230, 300); g.fillRect(X1 - 230, CY - 150, 230, 300);
@@ -238,35 +325,94 @@
       g.fillStyle = 'rgba(255,255,255,.6)'; g.beginPath(); g.ellipse(-b.r * 0.36, -b.r * 0.38, b.r * 0.26, b.r * 0.17, -0.7, 0, TAU); g.fill();
       g.restore();
     }
-    drawPlayer(g, e, t) {
+    kitCols(e) { const C = PARTY_COLORS[e.p.col]; return this.teams ? [TEAMS[e.p.team].c, '#ffffff', TEAMS[e.p.team].d] : ['#ffffff', C.d, C.c]; }
+    /* a faint mirror image on the polished floor */
+    drawReflect(g, e) {
+      const s = hyp(e.vx, e.vy), moving = s > 30, fy = e.y + e.r * 0.98;
+      g.save(); g.translate(0, fy); g.scale(1, -0.5); g.translate(0, -fy); g.globalAlpha = 0.14;
+      drawCritter(g, e.x, e.y, e.r, e.p.col, e.p.animal, { face: e.face, step: e.walk, moving, noShadow: true, blink: false, stun: e.stunT > 0 });
+      g.restore(); g.globalAlpha = 1;
+    }
+    drawPlayer(g, e, t, at) {
       if (e.out) {   // floats up and fades away
         const k = Math.min(1, e.outT / 1.2);
-        drawCritter(g, e.x, e.y, e.r, e.p.col, e.p.animal, { face: e.face, stun: true, hop: k * 60, rot: Math.sin(t * 6) * 0.3, alpha: 1 - k, noShadow: true });
+        drawCritter(g, e.x, e.y, e.r, e.p.col, e.p.animal, { face: e.face, stun: true, hop: k * 60, rot: Math.sin(t * 6) * 0.3, alpha: 1 - k, noShadow: true, step: 0, moving: false });
         return;
       }
-      for (const G of e.ghosts) if (G.a > 0.02) drawCritter(g, G.x, G.y, e.r, e.p.col, e.p.animal, { face: G.face, alpha: G.a * 0.7, noShadow: true });
-      const s = hyp(e.vx, e.vy), m = Math.min(1, s / 220), bob = Math.abs(Math.sin(e.walk)), hop = bob * 7 * m, sq = e.sq + (0.5 - bob) * 0.08 * m;
-      const stun = e.stunT > 0;
+      for (const G of e.ghosts) if (G.a > 0.02) drawCritter(g, G.x, G.y, e.r, e.p.col, e.p.animal, { face: G.face, alpha: G.a * 0.7, noShadow: true, step: e.walk, moving: true });
+      const s = hyp(e.vx, e.vy), m = Math.min(1, s / 220), bob = Math.abs(Math.sin(e.walk)), hop = bob * 7 * m, sq = e.sq + (0.5 - bob) * 0.08 * m, moving = s > 30;
+      const stun = e.stunT > 0, happy = e.dodgeT > 0 && e.dash <= 0, al = e.inv > 0 && !stun && (t * 10 | 0) % 2 ? 0.5 : 1;
       if (e.dash > 0) { g.strokeStyle = 'rgba(125,255,176,.8)'; g.lineWidth = 4; g.beginPath(); g.arc(e.x, e.y - hop, e.r + 9, 0, TAU); g.stroke(); }
-      drawCritter(g, e.x, e.y, e.r, e.p.col, e.p.animal, { face: e.face, squash: sq, hop, rot: clamp(e.vx / 2600, -0.14, 0.14), stun,
-        alpha: e.inv > 0 && !stun && (t * 10 | 0) % 2 ? 0.5 : 1, blink: (t + e.p.uid * 1.3) % 3.6 < 0.12, happy: e.dodgeT > 0 && e.dash <= 0 });
+      drawCritter(g, e.x, e.y, e.r, e.p.col, e.p.animal, { face: e.face, squash: sq, hop, rot: e.lean, stun, step: e.walk, moving,
+        alpha: al, blink: (t + e.p.uid * 1.3) % 3.6 < 0.12, happy });
+      const K = this.kitCols(e);
+      g.globalAlpha = al; bodyOn(g, e.x, e.y, e.r, hop, moving, e.walk, e.lean, sq);
+      kit(g, e.r, e.face, moving, e.walk, happy, K[0], K[1], K[2], e.num, PARTY_ANIMALS[e.p.animal].id === 'frog');
+      g.restore(); g.globalAlpha = 1;
+      if (e.panic > 0.3 && !stun) {   // a ball is coming: sweat!
+        g.globalAlpha = Math.min(1, (e.panic - 0.3) * 2); g.fillStyle = '#8fd8ff';
+        for (let k = 0; k < 2; k++) { const ph = (at * 2.8 + k * 0.5) % 1, sd = k ? 1 : -1; drop(g, e.x + sd * (e.r * 0.75 + ph * 16), e.y - hop - e.r * 0.75 + ph * ph * 26 - ph * 10, 5 * (1 - ph * 0.3)); }
+        g.globalAlpha = 1;
+      }
       if (e.flashT > 0) { g.globalAlpha = Math.min(1, e.flashT * 3.5) * 0.8; g.fillStyle = '#ffffff'; g.beginPath(); g.arc(e.x, e.y - hop, e.r * 1.04, 0, TAU); g.fill(); g.globalAlpha = 1; }
       if (stun) { g.font = '22px system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle'; for (let k = 0; k < 3; k++) { const a = t * 5 + k * TAU / 3; g.fillText('⭐', e.x + Math.cos(a) * 30, e.y - e.r - 6 - hop + Math.sin(a) * 9); } }
       drawTag(g, e.x, e.y - e.r - 30, e.p);
       if (!this.kid) { g.fillStyle = '#ff4f6d'; for (let h = 0; h < e.lives; h++) heart(g, e.x - (e.lives - 1) * 12 + h * 24, e.y + e.r + 20, 22); }
     }
     add(y, k, o) { let it = this.dl[this.dn]; if (!it) it = this.dl[this.dn] = { y: 0, k: 0, o: null }; it.y = y; it.k = k; it.o = o; this.dn++; }
-    draw(g) {
-      const t = this.t;
+    /* the crowd: bobbing along, jumping with arms up when something exciting happens, a wave now and then */
+    drawFans(g, at) {
+      const ch = this.cheer, wv = (at * 0.3) % 3, waveX = wv < 1 ? wv * (W + 400) - 200 : -9999, F = this.fans;
+      for (let row = 0; row < 3; row++) {
+        const ry = row === 0 ? 104 : row === 1 ? 122 : 140;
+        for (let c = 0; c < this.fanCols.length; c++) {
+          g.fillStyle = this.fanCols[c]; g.strokeStyle = this.fanCols[c]; g.lineWidth = 4; g.lineCap = 'round';
+          g.beginPath(); let arms = false;
+          for (const f of F) {
+            if (f.y !== ry || f.c !== c) continue;
+            const dw = (f.x - waveX) / 80, b = (Math.sin(at * f.sp + f.ph) * 0.5 + 0.5) * (1.5 + ch * 9) + Math.exp(-dw * dw) * 14, s = f.s, y = f.y - b;
+            f.b = b;
+            g.moveTo(f.x + 11 * s, y); g.arc(f.x, y, 11 * s, 0, TAU);
+            g.moveTo(f.x + 8 * s, y - 15 * s); g.arc(f.x, y - 15 * s, 8 * s, 0, TAU);
+            g.moveTo(f.x - 4 * s, y - 21 * s); g.arc(f.x - 6 * s, y - 21 * s, 3.5 * s, 0, TAU); g.moveTo(f.x + 9 * s, y - 21 * s); g.arc(f.x + 6 * s, y - 21 * s, 3.5 * s, 0, TAU);
+            if (b > 7) arms = true;
+          }
+          g.fill();
+          if (arms) {
+            g.beginPath();
+            for (const f of F) { if (f.y !== ry || f.c !== c || f.b <= 7) continue; const y = f.y - f.b, s = f.s; g.moveTo(f.x - 9 * s, y - 2); g.lineTo(f.x - 15 * s, y - 20 * s); g.moveTo(f.x + 9 * s, y - 2); g.lineTo(f.x + 15 * s, y - 20 * s); }
+            g.stroke();
+          }
+        }
+        g.fillStyle = '#2b2340'; g.beginPath();
+        for (const f of F) { if (f.y !== ry) continue; const y = f.y - f.b - 15 * f.s; g.moveTo(f.x - 2 * f.s, y); g.arc(f.x - 3 * f.s, y, 1.6 * f.s, 0, TAU); g.moveTo(f.x + 4 * f.s, y); g.arc(f.x + 3 * f.s, y, 1.6 * f.s, 0, TAU); }
+        g.fill();
+        if (ch > 0.3) { g.strokeStyle = '#2b2340'; g.lineWidth = 1.5; g.beginPath(); for (const f of F) { if (f.y !== ry || f.b <= 7) continue; const y = f.y - f.b - 11 * f.s; g.moveTo(f.x + 3 * f.s, y); g.arc(f.x, y, 3 * f.s, 0, Math.PI); } g.stroke(); }
+      }
+      // scoreboards (red and yellow lights)
+      g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '900 30px "Noto Sans TC",system-ui,sans-serif';
+      g.fillStyle = '#ff5a3c'; g.fillText('第 ' + (this.stage + 1) + ' 關', 134, 54);
+      g.fillStyle = '#ffd24a'; g.fillText('⚽ × ' + this.balls.length, W - 134, 54);
+    }
+    draw(g, clock) {
+      const t = this.t, at = clock || t;
       bgLayer(this, g, cg => this.paintBg(cg));
+      this.drawFans(g, at);
+      // one of the hanging lamps flickers now and then
+      const fk = (at % 6.5) < 1.1 && Math.sin(at * 37) > 0.2;
+      if (fk) { const [lx, ly] = this.lamps[this.flick]; g.fillStyle = 'rgba(90,50,20,.14)'; g.beginPath(); g.ellipse(lx, ly, 170, 90, 0, 0, TAU); g.fill(); }
       Fx.ground(g);
+      // reflections in the varnish
+      for (const b of this.balls) { g.globalAlpha = 0.16; g.fillStyle = b.col; g.beginPath(); g.ellipse(b.x, b.y + b.r * 1.55, b.r * 0.9, b.r * 0.45, 0, 0, TAU); g.fill(); }
+      g.globalAlpha = 1;
+      for (const e of this.es) if (!e.out) this.drawReflect(g, e);
       for (const w of this.warn) this.drawWarn(g, w, t);
       this.dn = 0;
       for (const b of this.balls) this.add(b.y, 0, b);
       for (const e of this.es) if (!e.out || e.outT < 1.2) this.add(e.y, 1, e);
       const L = this.dl;
       for (let i = 1; i < this.dn; i++) { const it = L[i]; let j = i - 1; while (j >= 0 && L[j].y > it.y) { L[j + 1] = L[j]; j--; } L[j + 1] = it; }
-      for (let i = 0; i < this.dn; i++) { const it = L[i]; if (it.k === 0) this.drawBall(g, it.o); else this.drawPlayer(g, it.o, t); }
+      for (let i = 0; i < this.dn; i++) { const it = L[i]; if (it.k === 0) this.drawBall(g, it.o); else this.drawPlayer(g, it.o, t, at); }
     }
     chip(p) { const e = this.by.get(p); return this.kid ? '被打 ' + e.hits : e.out ? '出局' : '♥'.repeat(e.lives); }
     pad(p) { const e = this.by.get(p); return this.kid ? '被打到 ' + e.hits + ' 次' + (e.dodges ? '・閃過 ' + e.dodges : '') : e.out ? '出局了，看大家躲！' : '♥ × ' + e.lives + (e.dodges ? '　閃過 ' + e.dodges : ''); }
