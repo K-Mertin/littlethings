@@ -1,5 +1,5 @@
 'use strict';
-// 雲霄戰機：主迴圈、關卡流程、畫面、選單
+// 空戰：主迴圈、關卡流程、畫面、選單
 const DIFF = {
   easy: { label: '簡單', lives: 5, bombs: 3, bs: 0.7, fr: 0.55, hp: 0.8, bossHp: 0.7, dens: 0.6, autoBomb: true, drop: 1, ext: 100000, hit: 2.2, shotChance: 0.35, beams: false },
   normal: { label: '普通', lives: 3, bombs: 3, bs: 1, fr: 1, hp: 1, bossHp: 1, dens: 1, autoBomb: false, drop: 2, ext: 200000, hit: 2.8, shotChance: 0.7, beams: true },

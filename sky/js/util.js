@@ -1,5 +1,5 @@
 'use strict';
-// 雲霄戰機：共用常數、數學、雜訊、存檔、輸入
+// 空戰：共用常數、數學、雜訊、存檔、輸入
 const W = 360, H = 640, TAU = Math.PI * 2;
 const rnd = (a = 1, b) => b === undefined ? Math.random() * a : a + Math.random() * (b - a);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
