@@ -189,3 +189,8 @@ Object.assign(CHARS.mimi, { pow: 0.95, hp: 460 });
 Object.assign(CHARS.moon, { pow: 0.85 });
 Object.assign(CHARS.rex, { pow: 0.95 });
 Object.assign(CHARS.feng, { hp: 500 });
+
+/* finer details: iris colour, chest emblem, eyelashes */
+[['rex', '#7a3a14', 'flame', '#ffd34d'], ['yuki', '#3fa9ff', 'flake', '#ffffff', 1], ['gan', '#4a3020', 'power', '#ffcc33'], ['kite', '#3f4ea8', 'shuriken', '#c9ced8'],
+ ['zap', '#d49a00', 'bolt', '#ffd23f'], ['feng', '#2f8a5a', 'swirl', '#ffffff'], ['mimi', '#c2407a', 'paw', '#ffffff', 1], ['moon', '#8a5cf6', 'star', '#ffd23f', 1], ['bobo', '#2a6fd1', 'drop', '#bff0ff']]
+  .forEach(([id, eye, emblem, col, lash]) => Object.assign(CHARS[id].look, { eye, emblem, emblemCol: col, lash: !!lash }));
