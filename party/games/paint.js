@@ -73,7 +73,7 @@
     constructor(ctx) {
       this.ctx = ctx; this.kid = ctx.kid; this.t = 0; this.dur = 60; this.over = false; this.teams = !!ctx.teams;
       this.edge = '#d9b98a';
-      this.own = new Int8Array(GW * GH).fill(-1); this.total = GW * GH;
+      this.own = new Int8Array(GW * GH).fill(-1); this.painter = new Int8Array(GW * GH).fill(-1); this.total = GW * GH;
       const n = ctx.players.length, order = this.teams ? ctx.players.slice().sort((a, b) => a.team - b.team) : ctx.players;
       this.es = ctx.players.map((p, i) => {
         const j = order.indexOf(p), mates = order.filter(q => q.team === p.team);
@@ -150,7 +150,7 @@
           const k = cy * GW + cx, o = this.own[k];
           if (o === e.oid) continue;
           if (o >= 0) this.cnt[o]--;
-          this.own[k] = e.oid; this.cnt[e.oid]++; e.mine++;
+          this.own[k] = e.oid; this.painter[k] = e.i; this.cnt[e.oid]++;
         }
       }
     }
@@ -300,7 +300,7 @@
     teamScore(t) { return Math.round(this.cnt[t] / this.total * 100) + '%'; }
     center() {
       if (this.teams || this.es.length < 2) return '';
-      const L = this.lead; return L ? '👑 領先：' + L.p.name + '　' + this.pct(L) + '%' : '快去塗顏色！';
+      const L = this.lead; return L ? '👑 領先：' + L.p.name + '　' + this.pct(L) + '%' : this.t > 3 ? '不相上下，加油！' : '快去塗顏色！';
     }
     draw(g, clock) {
       const t = this.t, tt = clock || t;
@@ -383,7 +383,12 @@
     }
     ready(p) { const e = this.by.get(p); return e.cd <= 0 && e.stun <= 0; }
     results() {
-      if (this.teams) return { teamScores: [this.cnt[0], this.cnt[1]], teamText: t => this.teamScore(t), rows: this.es.slice().sort((a, b) => b.mine - a.mine).map(e => ({ p: e.p, key: e.mine, line: `幫忙塗了 ${Math.round(e.mine / this.total * 100)}%` })) };
+      if (this.teams) {
+        // each player's share of their team's floor: the cells they were the last to paint
+        for (const e of this.es) e.mine = 0;
+        for (let k = 0; k < this.total; k++) { const w = this.painter[k]; if (w >= 0) this.es[w].mine++; }
+        return { teamScores: [this.cnt[0], this.cnt[1]], teamText: t => this.teamScore(t), rows: this.es.slice().sort((a, b) => b.mine - a.mine).map(e => ({ p: e.p, key: e.mine, line: `幫忙塗了 ${Math.round(e.mine / this.total * 100)}%` })) };
+      }
       return { rows: this.es.slice().sort((a, b) => this.cnt[b.oid] - this.cnt[a.oid]).map(e => ({ p: e.p, key: this.cnt[e.oid], line: `塗了 ${this.pct(e)}%` })) };
     }
   }
