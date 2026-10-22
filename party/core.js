@@ -159,8 +159,28 @@ class HostNet {
 
 /* ------------------------------ effects shared by every game ------------------------------ */
 const Fx = {
-  parts: [], pops: [], rings: [],
-  clear() { this.parts = []; this.pops = []; this.rings = []; },
+  parts: [], pops: [], rings: [], dusts: [], shakeAmt: 0, flashA: 0, flashCol: '#fff', groundDone: false, banner: null,
+  clear() { this.parts = []; this.pops = []; this.rings = []; this.dusts = []; this.shakeAmt = 0; this.flashA = 0; this.banner = null; },
+  /* screen shake (in world pixels); bigger calls win */
+  shake(a) { this.shakeAmt = Math.max(this.shakeAmt, a); },
+  /* a quick full-screen flash, e.g. white for a big hit */
+  flash(col, a) { this.flashCol = col || '#fff'; this.flashA = Math.max(this.flashA, a || 0.4); },
+  /* a big line of text across the middle for a moment ("最後 10 秒！") */
+  announce(text, col) { this.banner = { text, col: col || '#2b2340', t: 0 }; },
+  /* soft puffs on the ground: footsteps, landings, skids */
+  dust(x, y, col, size) { this.dusts.push({ x: x + rnd(-6, 6), y: y + rnd(-3, 3), vx: rnd(-20, 20), vy: rnd(-30, -8), r: (size || 9) * rnd(0.7, 1.2), t: 0, life: rnd(0.35, 0.55), col: col || 'rgba(255,255,255,.75)' }); },
+  /* call every step for a moving character: leaves puffs at its feet now and then */
+  walk(e, dt, col) {
+    const sp = Math.hypot(e.vx || 0, e.vy || 0); if (sp < 90) return;
+    e._dustT = (e._dustT || 0) - dt * Math.min(2.5, sp / 220);
+    if (e._dustT <= 0) { e._dustT = 0.16; this.dust(e.x - (e.vx || 0) * 0.04, e.y + (e.r || 30) * 0.75, col, (e.r || 30) * 0.28); }
+  },
+  /* games may call this right after their background so puffs sit under the characters */
+  ground(g) {
+    this.groundDone = true;
+    for (const d of this.dusts) { const k = d.t / d.life; g.globalAlpha = (1 - k) * 0.9; g.fillStyle = d.col; g.beginPath(); g.arc(d.x, d.y, d.r * (0.6 + k * 0.9), 0, TAU); g.fill(); }
+    g.globalAlpha = 1;
+  },
   burst(x, y, col, n, sp) { for (let i = 0; i < n; i++) { const a = rnd(0, TAU), s = rnd(0.3, 1) * (sp || 260); this.parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rnd(0.35, 0.7), t: 0, r: rnd(4, 9), col }); } },
   pop(x, y, text, col, size) { this.pops.push({ x, y, text, col: col || '#2b2340', size: size || 34, t: 0 }); },
   ring(x, y, col, R, life) { this.rings.push({ x, y, col, R, life: life || 0.45, t: 0 }); },
@@ -169,8 +189,14 @@ const Fx = {
     this.parts = this.parts.filter(p => p.t < p.life);
     for (const p of this.pops) p.t += dt; this.pops = this.pops.filter(p => p.t < 1.1);
     for (const r of this.rings) r.t += dt; this.rings = this.rings.filter(r => r.t < r.life);
+    for (const d of this.dusts) { d.t += dt; d.x += d.vx * dt; d.y += d.vy * dt; } this.dusts = this.dusts.filter(d => d.t < d.life);
+    this.shakeAmt = Math.max(0, this.shakeAmt - dt * 60 - this.shakeAmt * dt * 6);
+    this.flashA = Math.max(0, this.flashA - dt * 2.2);
+    if (this.banner) { this.banner.t += dt; if (this.banner.t > 1.6) this.banner = null; }
   },
   draw(g) {
+    if (!this.groundDone) this.ground(g);
+    this.groundDone = false;
     for (const r of this.rings) { const k = r.t / r.life; g.globalAlpha = 1 - k; g.strokeStyle = r.col; g.lineWidth = 10 * (1 - k) + 2; g.beginPath(); g.arc(r.x, r.y, r.R * (0.25 + 0.75 * Math.sqrt(k)), 0, TAU); g.stroke(); }
     for (const p of this.parts) { g.globalAlpha = 1 - p.t / p.life; g.fillStyle = p.col; g.beginPath(); g.arc(p.x, p.y, p.r * (1 - p.t / p.life * 0.5), 0, TAU); g.fill(); }
     g.globalAlpha = 1;
@@ -181,6 +207,15 @@ const Fx = {
       g.font = `900 ${s}px "Fredoka","Noto Sans TC",system-ui,sans-serif`;
       g.lineWidth = s * 0.18; g.strokeStyle = '#fff'; g.strokeText(p.text, p.x, p.y - k * 60); g.fillStyle = p.col; g.fillText(p.text, p.x, p.y - k * 60);
     }
+    g.globalAlpha = 1;
+    if (this.banner) {
+      const b = this.banner, k = b.t / 1.6, x = W / 2 + (k < 0.15 ? (1 - k / 0.15) * 600 : k > 0.85 ? -(k - 0.85) / 0.15 * 600 : 0);
+      g.globalAlpha = k > 0.85 ? 1 - (k - 0.85) / 0.15 : 1;
+      g.fillStyle = 'rgba(43,35,64,.75)'; g.fillRect(-400, H / 2 - 60, W + 800, 120);
+      g.font = '900 72px "Noto Sans TC",system-ui,sans-serif'; g.lineWidth = 12; g.strokeStyle = '#fff'; g.strokeText(b.text, x, H / 2); g.fillStyle = b.col; g.fillText(b.text, x, H / 2);
+      g.globalAlpha = 1;
+    }
+    if (this.flashA > 0) { g.globalAlpha = this.flashA; g.fillStyle = this.flashCol; g.fillRect(-400, 0, W + 800, H); g.globalAlpha = 1; }
     g.globalAlpha = 1;
   }
 };
@@ -341,10 +376,10 @@ const Party = {
     Fx.clear();
     this.game = this.def.create({
       players: ps.slice(), kid: this.kid, input: p => this.input(p), pressed: (p, k) => this.pressed(p, k), held: (p, k) => p.online && !!p.inp.h[k],
-      teams: this.teamsOn(this.def_(this.gameId)), teamOf: p => p.team,
+      teams: this.teamsOn(this.def_(this.gameId)), teamOf: p => p.team, hitstop: s => { this.stopT = Math.max(this.stopT || 0, s); },
       sfx: (n, a) => Sfx.play(n, a), buzz: (p, ms) => { if (p.peer && p.online && this.net) this.net.send(p.peer, { t: 'buzz', ms }); }
     });
-    this.state = 'intro'; this.introT = this.kid ? 8 : 6.5; this.lastSec = -1; this.paused = false;
+    this.state = 'intro'; this.introT = this.kid ? 8 : 6.5; this.lastSec = -1; this.paused = false; this.stopT = 0;
     showScreen('game'); renderIntro(); Music.sync();
     this.broadcast();
   },
@@ -632,8 +667,11 @@ function frame(now) {
   if (S === 'play' && !Party.paused) {
     acc += dt;
     while (acc >= STEP) {
-      acc -= STEP; Party.game.update(STEP); Fx.update(STEP);
+      acc -= STEP;
+      if (Party.stopT > 0) { Party.stopT -= STEP; Fx.update(STEP * 0.3); continue; }   // a tiny freeze on big hits
+      Party.game.update(STEP); Fx.update(STEP);
       const left = Party.game.dur ? Math.ceil(Party.game.dur - Party.game.t) : 99;
+      if (left === 10 && Party.lastSec !== 10 && Party.game.dur >= 30) { Party.lastSec = 10; Fx.announce('最後 10 秒！', '#ff3b4a'); Sfx.play('tick'); }
       if (left <= 5 && left !== Party.lastSec && left > 0) { Party.lastSec = left; Sfx.play('tick'); }
       if (Party.game.over) { Party.finish(); break; }
     }
@@ -644,6 +682,7 @@ function frame(now) {
     g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = Party.game.edge || Party.def.bg || '#222'; g.fillRect(0, 0, cv.width, cv.height);
     g.setTransform(s, 0, 0, s, (cv.width - W * s) / 2, (cv.height - H * s) / 2);
     g.save(); g.beginPath(); g.rect(-400, 0, W + 800, H); g.clip();
+    if (Fx.shakeAmt > 0.3 && !Party.paused) g.translate(rnd(-1, 1) * Fx.shakeAmt, rnd(-1, 1) * Fx.shakeAmt);
     Party.game.draw(g, clock);
     Fx.draw(g);
     g.restore();
