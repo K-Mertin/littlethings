@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Sunny Circuit Showroom</title>
+<style>
+  :root{--ink:#eef2fb;--ink-2:#9aa4bd;--glass:rgba(16,20,32,.72)}
+  html,body{margin:0;height:100%;background:#0d1018;color:var(--ink);font-family:system-ui,-apple-system,'Segoe UI',sans-serif;overflow:hidden}
+  canvas{display:block}
+  .ui{position:fixed;left:16px;top:16px;max-width:min(340px,calc(100vw - 32px));background:var(--glass);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:14px 16px}
+  h1{margin:0 0 2px;font-size:20px} p{margin:0 0 10px;color:var(--ink-2);font-size:13px;line-height:1.4}
+  .lbl{font-size:11px;font-weight:800;letter-spacing:.08em;color:var(--ink-2);text-transform:uppercase;margin:10px 0 6px}
+  .sw{display:flex;gap:8px;flex-wrap:wrap}
+  .sw button{width:30px;height:30px;border-radius:50%;border:2px solid rgba(255,255,255,.25);cursor:pointer}
+  .sw button[aria-pressed="true"]{outline:3px solid #fff;outline-offset:2px}
+  .seg{display:flex;gap:6px;flex-wrap:wrap}
+  .seg button{background:transparent;color:var(--ink);border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:6px 12px;font-weight:700;font-size:13px;cursor:pointer}
+  .seg button[aria-pressed="true"]{background:#fff;color:#111}
+  #stat{position:fixed;right:16px;bottom:14px;font-size:12px;color:var(--ink-2)}
+  a{color:#9cc8ff}
+</style>
+</head>
+<body>
+<div class="ui">
+  <h1>GT Coupe · sculpted</h1>
+  <p>The new, detailed GT for Sunny Circuit. Drag to look around, scroll or pinch to zoom.</p>
+  <div class="lbl">Paint</div><div class="sw" id="paint"></div>
+  <div class="lbl">Light</div><div class="seg" id="env"></div>
+  <div class="lbl">Detail</div><div class="seg" id="lod"></div>
+  <div class="lbl">View</div><div class="seg" id="views"></div>
+</div>
+<div id="stat"></div>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const $ = id => document.getElementById(id);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(32, innerWidth / innerHeight, 0.05, 200);
+camera.position.set(5.6, 1.7, 5.2);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0.55, 0); controls.enableDamping = true; controls.minDistance = 2.2; controls.maxDistance = 14; controls.maxPolarAngle = Math.PI * 0.49;
+controls.autoRotate = true; controls.autoRotateSpeed = 0.6;
+controls.addEventListener('start', () => controls.autoRotate = false);
+
+/* ---------- lighting: a studio and an outdoor sky ---------- */
+const pmrem = new THREE.PMREMGenerator(renderer);
+const studioEnv = pmrem.fromScene(new RoomEnvironment(renderer), 0.03).texture;
+function skyEnv() {
+  const s = new THREE.Scene(), g = new THREE.SphereGeometry(50, 32, 16), c = document.createElement('canvas'); c.width = 4; c.height = 256;
+  const x = c.getContext('2d'), gr = x.createLinearGradient(0, 0, 0, 256); gr.addColorStop(0, '#2f6fc4'); gr.addColorStop(0.47, '#cfe6ff'); gr.addColorStop(0.5, '#e6eadf'); gr.addColorStop(0.53, '#6b8a4c'); gr.addColorStop(1, '#3b4a2c');
+  x.fillStyle = gr; x.fillRect(0, 0, 4, 256); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  s.add(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map: t, side: THREE.BackSide })));
+  const sun = new THREE.Mesh(new THREE.SphereGeometry(3, 16, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(30, 28, 24) })); sun.position.set(25, 30, 18); s.add(sun);
+  return pmrem.fromScene(s, 0.02).texture;
+}
+const outdoorEnv = skyEnv();
+const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(4, 7, 3); key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048); Object.assign(key.shadow.camera, { left: -4, right: 4, top: 4, bottom: -4, near: 1, far: 20 }); key.shadow.bias = -0.0004; key.shadow.radius = 6;
+scene.add(key);
+const floor = new THREE.Mesh(new THREE.CircleGeometry(12, 64).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x24272f, roughness: 0.35, metalness: 0.2 }));
+floor.receiveShadow = true; scene.add(floor);
+const ENVS = {
+  studio: () => { scene.environment = studioEnv; scene.background = new THREE.Color(0x14171f); floor.material.color.set(0x24272f); key.intensity = 1.6; renderer.toneMappingExposure = 1.0; },
+  sunny: () => { scene.environment = outdoorEnv; scene.background = new THREE.Color(0x9cc7f0); floor.material.color.set(0x55585e); key.intensity = 3.2; renderer.toneMappingExposure = 0.9; },
+};
+
+/* ---------- materials ---------- */
+const flakeTex = (() => {          // metallic flake: a fine noisy normal map under the clear coat
+  const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d'), d = g.createImageData(256, 256);
+  for (let i = 0; i < d.data.length; i += 4) { d.data[i] = 128 + (Math.random() - .5) * 70; d.data[i + 1] = 128 + (Math.random() - .5) * 70; d.data[i + 2] = 255; d.data[i + 3] = 255; }
+  g.putImageData(d, 0, 0); const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(30, 30); return t;
+})();
+const paint = new THREE.MeshPhysicalMaterial({ color: 0xc8102e, vertexColors: true, metalness: 0.55, roughness: 0.38, clearcoat: 1, clearcoatRoughness: 0.025, normalMap: flakeTex, normalScale: new THREE.Vector2(0.06, 0.06), envMapIntensity: 1.2 });
+const MATS = {
+  paint: () => paint,
+  black: () => new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.1, clearcoat: 0.4 }),
+  liner: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }),
+  interior: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75 }),
+  housing: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.15, metalness: 0.9 }),
+  tailHousing: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.3, metalness: 0.3 }),
+  glass: () => new THREE.MeshPhysicalMaterial({ color: 0x151b24, transparent: true, opacity: 0.55, roughness: 0.02, metalness: 0, clearcoat: 1, envMapIntensity: 1.6, depthWrite: false }),
+  lens: () => new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: 0.18, roughness: 0.0, clearcoat: 1, envMapIntensity: 2, depthWrite: false }),
+  chrome: () => new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 1, roughness: 0.06 }),
+  led: () => new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 2.2, 2.4), toneMapped: false }),
+  tailLens: () => new THREE.MeshPhysicalMaterial({ color: 0x7a0010, transparent: true, opacity: 0.8, roughness: 0.05, clearcoat: 1, emissive: 0x500008, emissiveIntensity: 0.6 }),
+  tailLed: () => new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 0.15, 0.2), toneMapped: false }),
+  carbon: () => new THREE.MeshPhysicalMaterial({ color: 0x1b1d22, roughness: 0.35, metalness: 0.3, clearcoat: 0.8 }),
+  rubber: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 }),
+  rim: () => new THREE.MeshStandardMaterial({ color: 0xc9ced6, metalness: 0.95, roughness: 0.22, vertexColors: true }),
+  disc: () => new THREE.MeshStandardMaterial({ color: 0x8f949b, metalness: 0.85, roughness: 0.5 }),
+  caliper: () => new THREE.MeshPhysicalMaterial({ color: 0xe8b21a, roughness: 0.35, clearcoat: 1 }),
+};
+
+/* ---------- loading the baked models (SCK1, as in Cobble Keep) ---------- */
+function parse(buf) {
+  const dv = new DataView(buf); if (String.fromCharCode(...new Uint8Array(buf, 0, 4)) !== 'SCK1') throw new Error('bad file');
+  const jl = dv.getUint32(4, true), J = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 8, jl))), base = 8 + jl + ((4 - ((8 + jl) % 4)) % 4);
+  const root = new THREE.Group(), spin = new THREE.Group(), still = new THREE.Group(); root.add(spin, still); let tris = 0;
+  for (const M of J.meshes) {
+    const n = M.count, qp = new Uint16Array(buf, base + M.pos, n * 4), qn = new Int8Array(buf, base + M.nor, n * 4), qc = new Uint8Array(buf, base + M.col, n * 4);
+    const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), col = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) for (let k = 0; k < 3; k++) { pos[i * 3 + k] = M.lo[k] + qp[i * 4 + k] / 65535 * (M.hi[k] - M.lo[k]); nor[i * 3 + k] = qn[i * 4 + k] / 127; col[i * 3 + k] = Math.pow(qc[i * 4 + k] / 255, 2.2); }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    g.setIndex(new THREE.BufferAttribute(M.big ? new Uint32Array(buf.slice(base + M.idx, base + M.idx + M.idxLen * 4)) : new Uint16Array(buf.slice(base + M.idx, base + M.idx + M.idxLen * 2)), 1));
+    if (M.mat === 'paint') { const uv = new Float32Array(n * 2); for (let i = 0; i < n; i++) { uv[i * 2] = pos[i * 3] + pos[i * 3 + 2] * 0.7; uv[i * 2 + 1] = pos[i * 3 + 1] + pos[i * 3 + 2] * 0.3; } g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); }
+    const m = new THREE.Mesh(g, (MATS[M.mat] || MATS.black)()); m.castShadow = M.mat !== 'glass' && M.mat !== 'lens'; m.receiveShadow = true;
+    if (M.mat === 'glass' || M.mat === 'lens') m.renderOrder = 2;
+    (M.static ? still : spin).add(m); tris += M.tris;
+  }
+  return { root, spin, meta: J.meta, tris };
+}
+const load = (name, lod) => fetch(`assets/cars/${name}.${lod}.bin`).then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); }).then(parse);
+
+let car = null, LOD = 'hi';
+async function build() {
+  const [body, wheel] = await Promise.all([load('gt', LOD), load('wheelSplit', LOD)]);
+  if (car) scene.remove(car);
+  car = new THREE.Group(); car.add(body.root);
+  let tris = body.tris;
+  for (const [x, y, z] of [...body.meta.wheels, ...body.meta.wheels.map(([x, y, z]) => [-x, y, z])]) {
+    const w = wheel.root.clone(); w.position.set(x, y, z); if (x < 0) w.rotation.y = Math.PI; car.add(w); tris += wheel.tris;
+  }
+  scene.add(car);
+  $('stat').textContent = `${LOD === 'hi' ? 'Desktop' : 'Phone'} detail · ${(tris / 1000).toFixed(0)}k triangles`;
+}
+
+/* ---------- UI ---------- */
+const PAINTS = [['Rosso', 0xc8102e], ['Racing green', 0x0f4a32], ['Midnight', 0x14213d], ['Silver', 0xb9bec6], ['Pearl', 0xf1efe8], ['Sun yellow', 0xf2b705], ['Orange', 0xe8541c], ['Black', 0x0b0c0f]];
+PAINTS.forEach(([n, c], i) => { const b = document.createElement('button'); b.style.background = '#' + c.toString(16).padStart(6, '0'); b.title = n; b.setAttribute('aria-pressed', i === 0);
+  b.onclick = () => { paint.color.setHex(c); paint.metalness = c === 0xf1efe8 || c === 0x0b0c0f ? 0.3 : 0.55; document.querySelectorAll('#paint button').forEach(x => x.setAttribute('aria-pressed', x === b)); }; $('paint').append(b); });
+const seg = (id, items, cb, first) => items.forEach(([v, label]) => { const b = document.createElement('button'); b.textContent = label; b.setAttribute('aria-pressed', v === first); b.onclick = () => { document.querySelectorAll('#' + id + ' button').forEach(x => x.setAttribute('aria-pressed', x === b)); cb(v); }; $(id).append(b); });
+seg('env', [['studio', 'Studio'], ['sunny', 'Sunny day']], v => ENVS[v](), 'studio');
+seg('lod', [['hi', 'Desktop'], ['lo', 'Phone']], v => { LOD = v; build(); }, 'hi');
+const VIEWS = { three: [5.6, 1.7, 5.2], front: [0.01, 0.9, 6.5], side: [7, 0.8, 0.01], rear: [-3.5, 1.4, -5.5], top: [0.01, 8, 0.5], cabin: [1.6, 1.6, 1.4] };
+seg('views', [['three', '¾'], ['front', 'Front'], ['side', 'Side'], ['rear', 'Rear'], ['top', 'Top'], ['cabin', 'Cabin']], v => { controls.autoRotate = false; camera.position.set(...VIEWS[v]); controls.target.set(0, v === 'cabin' ? 0.8 : 0.55, v === 'cabin' ? 0.1 : 0); }, 'three');
+ENVS.studio();
+build().catch(e => { $('stat').textContent = 'Could not load the car: ' + e.message; });
+
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+window.__lab = { camera, controls, scene, renderer, VIEWS, setView: v => { camera.position.set(...VIEWS[v]); controls.target.set(0, v === 'cabin' ? 0.8 : 0.55, v === 'cabin' ? 0.1 : 0); controls.autoRotate = false; controls.update(); } };
+</script>
+</body>
+</html>
