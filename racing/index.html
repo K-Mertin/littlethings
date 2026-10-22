@@ -2070,7 +2070,7 @@ function buildParts(ctx, parts) {
   const { add, B, G, M, paint } = ctx, L = M.L;
   // rear wing
   if (parts.wing !== 'none') {
-    const at = M.wingAt, lf = at.g ? G : B, s = lf.at(at.u), y0 = lf.topY(s, 0), z = s.z + (at.g ? 0.04 : 0.12), span = at.span;
+    const at = M.wingAt, lf = at.g ? G : B, s = lf.at(at.u), z = s.z + (at.g ? 0.04 : 0.12), y0 = ctx.topY ? ctx.topY(z) : lf.topY(s, 0), span = at.span;
     if (parts.wing === 'lip') add(airfoil(span * 0.96, 0.26, 0.05), paint, 0, y0 + 0.015, z - 0.04, true).rotation.x = -0.12;
     else {
       const big = parts.wing === 'big', h = big ? 0.42 : 0.22, chord = big ? 0.52 : 0.42;
@@ -2084,10 +2084,10 @@ function buildParts(ctx, parts) {
   // body kit
   const front = B.at(0.985), mid = B.at(0.5), rear = B.at(0.015);
   if (parts.kit === 'aero') {
-    add(new THREE.BoxGeometry(front.hw * 1.8, 0.028, 0.26), carbonMat, 0, Math.max(0.16, B.at(0.95).yb - 0.02), L / 2 - 0.04);
+    if (!ctx.sculpt) add(new THREE.BoxGeometry(front.hw * 1.8, 0.028, 0.26), carbonMat, 0, Math.max(0.16, B.at(0.95).yb - 0.02), L / 2 - 0.04);
     for (const sd of [-1, 1]) add(new RoundedBoxGeometry(0.07, 0.09, L * 0.44, 2, 0.02), carbonMat, sd * (B.sideX(mid, -0.85) + 0.015), mid.yb + 0.05, 0);
-    add(new THREE.BoxGeometry(rear.hw * 1.4, 0.08, 0.26), carbonMat, 0, Math.max(0.18, B.at(0.05).yb + 0.02), -L / 2 + 0.1);
-    for (const x of [-0.4, 0, 0.4]) add(new THREE.BoxGeometry(0.02, 0.16, 0.26), carbonMat, x, Math.max(0.18, B.at(0.05).yb + 0.02) + 0.06, -L / 2 + 0.1);
+    if (!ctx.sculpt) add(new THREE.BoxGeometry(rear.hw * 1.4, 0.08, 0.26), carbonMat, 0, Math.max(0.18, B.at(0.05).yb + 0.02), -L / 2 + 0.1);
+    if (!ctx.sculpt) for (const x of [-0.4, 0, 0.4]) add(new THREE.BoxGeometry(0.02, 0.16, 0.26), carbonMat, x, Math.max(0.18, B.at(0.05).yb + 0.02) + 0.06, -L / 2 + 0.1);
   } else if (parts.kit === 'rally') {
     const y = front.yb + (front.yt - front.yb) * 0.42, z = L / 2 + 0.06;
     for (const x of [-0.6, -0.2, 0.2, 0.6]) {
@@ -2098,13 +2098,13 @@ function buildParts(ctx, parts) {
     add(new THREE.BoxGeometry(1.2, 0.04, 0.5), RIM.silver, 0, Math.max(0.16, B.at(0.9).yb - 0.03), L / 2 - 0.35);
     for (const sd of [-1, 1]) for (const wz of M.wx) add(new THREE.BoxGeometry(0.3, 0.26, 0.015), trimMat, sd * M.track, M.R * 0.65, wz - M.R - 0.07);
   } else if (parts.kit === 'light') {
-    ctx.strip(B, 0.74, 0.975, -front.hw * 0.42, front.hw * 0.42, carbonMat);
-    if (G) ctx.strip(G, M.green.roof[0] + 0.02, M.green.roof[1] - 0.02, -0.4, 0.4, carbonMat);
+    if (!ctx.sculpt) ctx.strip(B, 0.74, 0.975, -front.hw * 0.42, front.hw * 0.42, carbonMat);
+    if (G && !ctx.sculpt) ctx.strip(G, M.green.roof[0] + 0.02, M.green.roof[1] - 0.02, -0.4, 0.4, carbonMat);
     add(new THREE.TorusGeometry(0.05, 0.015, 6, 12), caliperMat, 0.5, front.yb + 0.08, L / 2 + 0.04).rotation.y = Math.PI / 2;  // tow hook
   }
   // engine
   if (parts.engine === 'turbo') {
-    const s = B.at(0.8), y = B.topY(s, 0);
+    const s = B.at(0.8), y = ctx.topY ? ctx.topY(s.z) + 0.02 : B.topY(s, 0);
     add(lens(0.3, 0.07, 0.45), paint, 0, y - 0.02, s.z);
     add(new RoundedBoxGeometry(0.34, 0.05, 0.05, 2, 0.02), underMat, 0, y + 0.03, s.z + 0.36);
   }
@@ -2112,18 +2112,67 @@ function buildParts(ctx, parts) {
   return parts;
 }
 
+/* ---------- sculpted cars: baked by racing/sculpt/bake.mjs into assets/cars/*.bin (SCK1 format, as in Cobble Keep) ---------- */
+const SCULPT = {}, SCULPT_LOD = TOUCH ? 'lo' : 'hi';
+const SMAT = {
+  black: envd(new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.1, clearcoat: 0.4, envMapIntensity: 0.6 })),
+  liner: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }),
+  interior: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75 }),
+  housing: envd(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.15, metalness: 0.9 })),
+  tailHousing: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.3, metalness: 0.3 }),
+  glass: envd(new THREE.MeshPhysicalMaterial({ color: 0x151b24, transparent: true, opacity: 0.6, roughness: 0.02, clearcoat: 1, envMapIntensity: 1.6, depthWrite: false })),
+  lens: envd(new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: 0.18, roughness: 0, clearcoat: 1, envMapIntensity: 2, depthWrite: false })),
+  chrome: chromeMat,
+  led: new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 2.2, 2.4), toneMapped: false }),
+  tailLens: envd(new THREE.MeshPhysicalMaterial({ color: 0x7a0010, transparent: true, opacity: 0.8, roughness: 0.05, clearcoat: 1, emissive: 0x500008, emissiveIntensity: 0.6 })),
+  tailLed: new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 0.15, 0.2), toneMapped: false }),
+  carbon: carbonMat,
+  rubber: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }),
+  disc: discMat, caliper: caliperMat,
+};
+function parseSculpt(buf) {
+  const dv = new DataView(buf); if (String.fromCharCode(...new Uint8Array(buf, 0, 4)) !== 'SCK1') throw new Error('bad car file');
+  const jl = dv.getUint32(4, true), J = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 8, jl))), base = 8 + jl + ((4 - ((8 + jl) % 4)) % 4), parts = [];
+  for (const m of J.meshes) {
+    const n = m.count, qp = new Uint16Array(buf, base + m.pos, n * 4), qn = new Int8Array(buf, base + m.nor, n * 4), qc = new Uint8Array(buf, base + m.col, n * 4);
+    const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), col = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) for (let k = 0; k < 3; k++) { pos[i * 3 + k] = m.lo[k] + qp[i * 4 + k] / 65535 * (m.hi[k] - m.lo[k]); nor[i * 3 + k] = qn[i * 4 + k] / 127; col[i * 3 + k] = Math.pow(qc[i * 4 + k] / 255, 2.2); }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    g.setIndex(new THREE.BufferAttribute(m.big ? new Uint32Array(buf.slice(base + m.idx, base + m.idx + m.idxLen * 4)) : new Uint16Array(buf.slice(base + m.idx, base + m.idx + m.idxLen * 2)), 1));
+    g.computeBoundingSphere(); SHARED_GEO.add(g);
+    parts.push({ name: m.name, mat: m.mat, still: !!m.static, geo: g });
+  }
+  return { parts, meta: J.meta };
+}
+const SCULPTED = { gt: ['gt', 'wheelSplit'] };            // model id -> [body file, wheel file]
+function loadSculpts() {
+  const files = [...new Set(Object.values(SCULPTED).flat())];
+  return Promise.all(files.map(f => fetch(`assets/cars/${f}.${SCULPT_LOD}.bin`).then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); }).then(b => { SCULPT[f] = parseSculpt(b); })
+    .catch(e => console.warn('sculpted car', f, e.message))));
+}
+const sculptFor = M => { const k = SCULPTED[M.id]; return k && SCULPT[k[0]] && SCULPT[k[1]] ? { body: SCULPT[k[0]], wheel: SCULPT[k[1]] } : null; };
+
 function makeCarMesh(model, hex, num, parts = MODELS[model].stock) {
-  const M = MODELS[model], L = M.L;
+  const M = MODELS[model], L = M.L, SC = sculptFor(M);
   const group = new THREE.Group(), body = new THREE.Group(); group.add(body);
   group.scale.setScalar(CAR_SCALE);
   const paint = envd(new THREE.MeshPhysicalMaterial({ color: hex, roughness: 0.28, metalness: 0.45, clearcoat: 1, clearcoatRoughness: 0.04, envMapIntensity: 1.0 }));
   const add = (geo, mat, x = 0, y = 0, z = 0, shadow = false) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = shadow; body.add(m); return m; };
   const B = M.B, G = M.G;
-  add(M.geo.body, [paint, trimMat, trimMat], 0, 0, 0, true);
-  if (G) add(M.geo.green, [paint, glassMat, glassMat], 0, 0, 0, true);
-  // dark wheel wells and floor between the wheels
-  const inner = M.track - M.TW / 2 - 0.05;
-  add(new THREE.BoxGeometry(inner * 2, Math.max(0.2, B.at(0.5).yb + 0.3 - M.R * 0.5), L * 0.82), underMat, 0, M.R * 0.5 + Math.max(0.2, B.at(0.5).yb + 0.3 - M.R * 0.5) / 2, 0);
+  if (SC) {                                         // sculpted body: every piece shares its geometry between cars
+    paint.vertexColors = true;
+    for (const pc of SC.body.parts) {
+      const m = add(pc.geo, pc.mat === 'paint' ? paint : SMAT[pc.mat] || SMAT.black, 0, 0, 0, pc.mat !== 'glass' && pc.mat !== 'lens' && pc.mat !== 'led');
+      if (pc.mat === 'glass' || pc.mat === 'lens') m.renderOrder = 2;
+    }
+  } else {
+    add(M.geo.body, [paint, trimMat, trimMat], 0, 0, 0, true);
+    if (G) add(M.geo.green, [paint, glassMat, glassMat], 0, 0, 0, true);
+    // dark wheel wells and floor between the wheels
+    const inner = M.track - M.TW / 2 - 0.05;
+    add(new THREE.BoxGeometry(inner * 2, Math.max(0.2, B.at(0.5).yb + 0.3 - M.R * 0.5), L * 0.82), underMat, 0, M.R * 0.5 + Math.max(0.2, B.at(0.5).yb + 0.3 - M.R * 0.5) / 2, 0);
+  }
   const ctx = {
     add, B, G, paint, M,
     strip: (lf, u0, u1, x0, x1, mat) => add(stripGeo(lf, u0, u1, Math.min(x0, x1), Math.max(x0, x1)), mat),
@@ -2172,17 +2221,23 @@ function makeCarMesh(model, hex, num, parts = MODELS[model].stock) {
       }
     },
   };
-  M.extras.call(M, ctx);
+  if (SC) {                                         // parts sit on the sculpted surface
+    const deck = SC.body.meta.deck;
+    ctx.sculpt = true;
+    ctx.topY = z => { for (let i = 1; i < deck.length; i++) if (deck[i][0] >= z) { const [z0, y0] = deck[i - 1], [z1, y1] = deck[i]; return lerp(y0, y1, (z - z0) / (z1 - z0)); } return deck[deck.length - 1][1]; };
+  } else M.extras.call(M, ctx);
   buildParts(ctx, parts);
   // door numbers
   const numMat = new THREE.MeshBasicMaterial({ map: numberTex(num), color: 0xe8e8e8, transparent: true, polygonOffset: true, polygonOffsetFactor: -2 });
-  {
+  if (SC) { const [dx, dy, dz] = SC.body.meta.door; for (const sd of [-1, 1]) { const d = add(new THREE.PlaneGeometry(0.42, 0.42), numMat, sd * (dx + 0.004), dy, dz); d.rotation.y = sd * Math.PI / 2; } }
+  else {
     const s = B.at(M.door[0]), y = s.yb + (s.yt - s.yb) * M.door[1], yn = ((y - (s.yb + s.yt) / 2) / ((s.yt - s.yb) / 2));
     for (const sd of [-1, 1]) { const d = add(new THREE.PlaneGeometry(0.46, 0.46), numMat, sd * (B.sideX(s, yn) + 0.012), y, s.z); d.rotation.y = sd * Math.PI / 2; }
   }
-  const flames = M.exh.map(([x, y, z]) => { const f = add(flameGeo, flameMat, x, y, z); f.visible = false; return f; });
+  const exh = SC ? SC.body.meta.exh : M.exh;
+  const flames = exh.map(([x, y, z]) => { const f = add(flameGeo, flameMat, x, y, z); f.visible = false; return f; });
   const tip = parts.engine === 'turbo' ? 1.55 : parts.engine === 'tuned' ? 1.3 : 1;
-  if (M.exh.length) M.exh.forEach(([x, y, z]) => add(new THREE.CylinderGeometry(0.055 * tip, 0.06 * tip, 0.18, 14).rotateX(Math.PI / 2), chromeMat, x, y, z + 0.05));
+  if (M.exh.length && !SC) M.exh.forEach(([x, y, z]) => add(new THREE.CylinderGeometry(0.055 * tip, 0.06 * tip, 0.18, 14).rotateX(Math.PI / 2), chromeMat, x, y, z + 0.05));
   // contact shadow
   const sh = new THREE.Mesh(new THREE.PlaneGeometry(2.3, L + 0.5), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, opacity: 0.75 }));
   sh.rotation.x = -Math.PI / 2; sh.position.y = 0.025; sh.renderOrder = 1; group.add(sh);
@@ -2193,6 +2248,19 @@ function makeCarMesh(model, hex, num, parts = MODELS[model].stock) {
   const wheels = [], fronts = [];
   for (const [x, z] of [[-1, M.wx[1]], [1, M.wx[1]], [-1, M.wx[0]], [1, M.wx[0]]]) {
     const pivot = new THREE.Group(); pivot.position.set(x * M.track, M.R, z);
+    if (SC) {                                       // sculpted tyre, rim, disc and caliper; outer face toward +x, so the left side turns round
+      const side = new THREE.Group(); if (x < 0) side.rotation.y = Math.PI; pivot.add(side);
+      const w = new THREE.Group(); w.userData.sgn = x < 0 ? -1 : 1; side.add(w);
+      for (const pc of SC.wheel.parts) {
+        let geo = pc.geo, mat = SMAT[pc.mat] || SMAT.black;
+        if (pc.name === 'rim') { mat = RIM[parts.rimCol] || RIM.silver; if (parts.rim !== 'split') geo = wg.rim; }
+        const m = new THREE.Mesh(geo, mat); m.castShadow = pc.mat === 'rubber';
+        (pc.still ? side : w).add(m);
+      }
+      if (tread) w.add(new THREE.Mesh(tread.geo, tread.mat));
+      group.add(pivot); wheels.push(w); if (z > 0) fronts.push(pivot);
+      continue;
+    }
     const w = new THREE.Group();
     const t = new THREE.Mesh(wg.tyre, tyreMat); t.castShadow = true; w.add(t);
     const rim = new THREE.Mesh(wg.rim, rimMat), barrel = new THREE.Mesh(wg.barrel, underMat);
@@ -2231,7 +2299,7 @@ function makeCars() {
 makeCars();
 
 function setCarModel(c, model, hex, num, parts = MODELS[model].stock) {
-  const key = model + JSON.stringify(parts);
+  const key = model + JSON.stringify(parts) + (sculptFor(MODELS[model]) ? '+s' : '');
   if (c.mesh && c.partsKey === key) { c.paint.color.set(hex); return; }
   c.partsKey = key; c.parts = parts;
   if (c.mesh) {
@@ -3719,7 +3787,7 @@ function updateCarMeshes(dt) {
     if (state === 'countdown' && c.isPlayer) c.body.position.y = (c.throttle > 0 ? Math.sin(performance.now() * 0.06) * 0.015 : 0);
     else c.body.position.y = 0;
     const spin = c.vf * dt / (c.R * CAR_SCALE);
-    c.wheels.forEach(w => w.rotation.x += spin);
+    c.wheels.forEach(w => w.rotation.x += spin * (w.userData.sgn || 1));
     c.fronts.forEach(f => f.rotation.y = -c.steer * 0.45);
     const fl = c.boostT > 0;
     c.beam.visible = !!TR.def.theme.night;
@@ -3770,8 +3838,9 @@ buildWorld(curTrack());
 buildMinimap();
 assignCars();
 toMenu();
+loadSculpts().then(() => { if (state === 'menu') assignCars(); });
 camera.position.set(cars[0].x - 12, 6, cars[0].z - 12);
-window.__game = { snapCam() { for (let i = 0; i < 80; i++) updateCamera(0.05); }, get state() { return state; }, cars, camera, scene, renderer, MODELS, get TR() { return TR; }, settings, startRace, toMenu, step, keys, get raceTime() { return raceTime; }, drill, demo, setDemoG(v) { DEMO_G = v; }, get player() { return player; } };
+window.__game = { snapCam() { for (let i = 0; i < 80; i++) updateCamera(0.05); }, get state() { return state; }, cars, camera, scene, renderer, MODELS, get TR() { return TR; }, settings, startRace, toMenu, step, keys, get raceTime() { return raceTime; }, drill, demo, setDemoG(v) { DEMO_G = v; }, get player() { return player; }, SCULPT, assignCars, placeOnGrid };
 requestAnimationFrame(frame);
 </script>
 </body>
