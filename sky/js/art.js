@@ -7,7 +7,18 @@ const Art = {
     const key = name + variant;
     let c = this.cache[key];
     if (c) return c;
+    const bk = typeof Bake !== 'undefined' && Bake.imgs[name];
+    if (bk) {
+      if (!variant) return bk;
+      c = document.createElement('canvas'); c.width = bk.width; c.height = bk.height;
+      const g = c.getContext('2d'); g.drawImage(bk, 0, 0);
+      g.globalCompositeOperation = 'source-atop';
+      g.fillStyle = variant === 'w' ? 'rgba(255,255,255,.75)' : '#000'; g.fillRect(0, 0, c.width, c.height);
+      c.lw = bk.lw; c.lh = bk.lh; this.cache[key] = c;
+      return c;
+    }
     const d = SPR[name], pad = 2;
+    if (!d) return null;
     c = document.createElement('canvas');
     c.width = Math.ceil((d.w + pad * 2) * this.scale); c.height = Math.ceil((d.h + pad * 2) * this.scale);
     const g = c.getContext('2d');
@@ -25,6 +36,7 @@ const Art = {
   },
   draw(ctx, name, x, y, ang = 0, alpha = 1, sx = 1, sy = 1, variant = '') {
     const c = this.get(name, variant);
+    if (!c) return;
     ctx.save(); ctx.translate(x, y);
     if (ang) ctx.rotate(ang);
     if (alpha !== 1) ctx.globalAlpha *= alpha;
@@ -195,10 +207,20 @@ const SPR = {
     rr(g, -5.5, 5, 11, 7, 2, '#7a8a52'); rr(g, -4, 9, 8, 2, 1, '#2d3a40');
   } },
   // 子彈
-  eb: { w: 12, h: 12, draw(g) { circ(g, 0, 0, 5.5, rad(g, 0, 0, 5.5, ['#ffffff', '#fff2b0', '#ff9a2e', 'rgba(255,90,20,0)'])); } },
-  ebB: { w: 18, h: 18, draw(g) { circ(g, 0, 0, 8.5, rad(g, 0, 0, 8.5, ['#ffffff', '#ffd1ea', '#ff3f9a', 'rgba(200,0,90,0)'])); } },
+  // 敵彈：亮核心＋彩色環＋深色外框（在白雲、沙漠上也看得清楚）
+  eb: { w: 13, h: 13, draw(g) {
+    circ(g, 0, 0, 6.2, rad(g, 0, 0, 6.2, ['rgba(255,120,30,.55)', 'rgba(255,90,20,0)']));
+    circ(g, 0, 0, 4.1, 'rgba(70,10,0,.85)');
+    circ(g, 0, 0, 3.4, rad(g, -0.8, -0.8, 3.6, ['#ffffff', '#fff1a8', '#ff8a1e']));
+  } },
+  ebB: { w: 19, h: 19, draw(g) {
+    circ(g, 0, 0, 9, rad(g, 0, 0, 9, ['rgba(255,60,160,.55)', 'rgba(255,0,120,0)']));
+    circ(g, 0, 0, 6.4, 'rgba(60,0,30,.85)');
+    circ(g, 0, 0, 5.6, rad(g, -1.2, -1.2, 6, ['#ffffff', '#ffc4e6', '#ff2f92']));
+    circ(g, 0, 0, 3.6, null, 'rgba(255,255,255,.6)', 0.8);
+  } },
   emis: { w: 8, h: 18, draw(g) { rr(g, -2, -7, 4, 13, 2, '#d9d9d9'); P_(g, [0, 9, 2, 5, -2, 5], '#e74c3c'); mirror(g, [2, -6, 4, -8, 2, -3], '#999'); } },
-  pb: { w: 6, h: 18, draw(g) { rr(g, -2, -8, 4, 16, 2, lin(g, 0, -8, 0, 8, ['#ffffff', '#fff3a0', 'rgba(255,170,30,.2)'])); } },
+  pb: { w: 8, h: 20, draw(g) { rr(g, -3, -9, 6, 18, 3, lin(g, 0, -9, 0, 9, ['rgba(255,240,150,.5)', 'rgba(255,170,40,.35)', 'rgba(255,120,20,0)'])); rr(g, -1.5, -8, 3, 13, 1.5, lin(g, 0, -8, 0, 5, ['#ffffff', '#fff6b0', 'rgba(255,200,60,.4)'])); } },
   mis: { w: 8, h: 18, draw(g) { rr(g, -2, -7, 4, 13, 2, '#e5e8ea'); P_(g, [0, -10, 2, -6, -2, -6], '#d8322b'); mirror(g, [2, 3, 4, 7, 2, 6], '#7f8c95'); } },
   hmis: { w: 8, h: 18, draw(g) { rr(g, -2, -7, 4, 13, 2, '#e5e8ea'); P_(g, [0, -10, 2, -6, -2, -6], '#2ecc71'); mirror(g, [2, 3, 4, 7, 2, 6], '#7f8c95'); } },
 };
