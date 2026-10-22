@@ -189,6 +189,7 @@ function render() {
   const sx = W.shake ? (Math.random() - 0.5) * W.shake : 0, sy = W.shake ? (Math.random() - 0.5) * W.shake * 0.6 : 0;
   c.setTransform(k, 0, 0, k, (-W.camX + sx) * k, (-viewTop + offY + sy) * k);
   (THEMES[W.theme] || drawRoof)(c);
+  matFloor(c);
   // depth-sorted entities
   const list = [];
   for (const it of W.items) if (!it.holder) list.push([it.z, 0, it]);
@@ -210,6 +211,7 @@ function render() {
   }
   for (const p of W.parts) drawPart(c, p);
   drawForeground(c);
+  matLight(c);
   c.fillStyle = '#1b1f3a'; c.fillRect(W.camX - 20, VH, Wv + 40, 4000);
   if (portrait) { c.fillStyle = 'rgba(255,246,230,.45)'; c.font = '700 13px "Noto Sans TC",sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('把手機轉成橫的，畫面會更大', W.camX + Wv / 2, VH + 22); }
   // HUD in screen space
@@ -449,7 +451,7 @@ function frame(now) {
     acc += dt; let n = 0;
     while (acc >= 1000 / 60 && n < 5) { step(); acc -= 1000 / 60; n++; }
     if (n === 5) acc = 0;
-    updateSkillButtons();
+    updateSkillButtons(); matWatch(dt);
   }
   if (Lobby.net && running && W) Lobby.tick();
   render();

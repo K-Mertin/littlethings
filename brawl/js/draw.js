@@ -17,7 +17,7 @@ function seg(c, pts, w, col) {
 /* a round shape with an ink outline; big enough ones get a soft light from the upper left and a shadow on the lower right */
 function blob(c, x, y, rx, ry, col, rot = 0) {
   c.beginPath(); c.ellipse(x, y, rx, ry, rot, 0, TAU); c.fillStyle = col; c.fill();
-  if (rx > 4.5) softShade(c, x, y, rx, ry, rot);
+  if (rx > 4.5) { softShade(c, x, y, rx, ry, rot); if (rx > 5.5) rimLight(c, x, y, rx, ry, rot); }
   c.beginPath(); c.ellipse(x, y, rx, ry, rot, 0, TAU); c.lineWidth = 2.2; c.strokeStyle = INK; c.stroke();
 }
 function softShade(c, x, y, rx, ry, rot = 0) {
@@ -345,9 +345,9 @@ function drawBody(c, L, P, f) {
   // body: a small egg, shirt above and pants below
   c.save(); c.translate(hip.x, hip.y); c.rotate(P.lean);
   const egg = () => { c.beginPath(); c.ellipse(0, -th / 2, tw, th / 2 + 4, 0, 0, TAU); };
-  egg(); c.save(); c.clip(); c.fillStyle = L.shirt; c.fillRect(-30, -40, 60, 60);
+  egg(); c.save(); c.clip(); paint(c, 'fabric', L.shirt, -30, -40, 60, 60, 0.45);
   if (L.belly) { c.fillStyle = L.belly; c.beginPath(); c.ellipse(4, -th / 2, tw * 0.6, th * 0.38, 0, 0, TAU); c.fill(); }
-  if (!L.animal) { c.fillStyle = L.pants; c.fillRect(-30, -3, 60, 20); }
+  if (!L.animal) paint(c, 'fabric', L.pants, -30, -3, 60, 20, 0.45);
   if (L.trim) { c.fillStyle = L.trim; c.fillRect(-30, -th * 0.62, 60, 3); }
   if (L.belt) { c.fillStyle = L.belt; c.fillRect(-30, -6, 60, 3.5); }
   if (DETAIL && !L.animal) {
@@ -358,7 +358,7 @@ function drawBody(c, L, P, f) {
   }
   if (L.vmark) { c.fillStyle = '#fff6e6'; c.beginPath(); c.moveTo(-6, -th + 2); c.lineTo(4, -th * 0.45); c.lineTo(14, -th + 2); c.lineTo(12, -th + 1); c.lineTo(4, -th * 0.62); c.lineTo(-3, -th + 1); c.closePath(); c.fill(); }
   softShade(c, 0, -th / 2, tw, th / 2 + 4);
-  c.restore(); egg(); c.lineWidth = 2.6; c.strokeStyle = INK; c.stroke(); c.restore();
+  c.restore(); rimLight(c, 0, -th / 2, tw, th / 2 + 4, 0, 2.2); egg(); c.lineWidth = 2.6; c.strokeStyle = INK; c.stroke(); c.restore();
   foot(P.lr, 1, false);
   c.save(); c.translate(head.x, head.y); c.rotate(ha);
   if (L.style !== 'hood') blob(c, 0, 0, R, R, L.fur || L.skin);
@@ -567,7 +567,7 @@ function drawFighter(c, f) {
   const sz = f.def.size || 1;
   const sh = 1 - Math.min(f.y, 160) / 260;
   if (f.invisible && f.dead) return;
-  c.fillStyle = 'rgba(20,16,40,.28)'; c.beginPath(); c.ellipse(sx, gy, 20 * sz * sh, 5.5 * sz * sh, 0, 0, TAU); c.fill();
+  if (MAT) matShadow(c, sx, gy, 22 * sz * sh, 6 * sz * sh); else { c.fillStyle = 'rgba(20,16,40,.28)'; c.beginPath(); c.ellipse(sx, gy, 20 * sz * sh, 5.5 * sz * sh, 0, 0, TAU); c.fill(); }
   if (f.invisible) return;
   if (f.frogT > 0 && !f.dead) { c.save(); c.translate(sx, sy); c.scale(f.face * sz, sz); drawFrog(c, f); c.restore(); return; }
   const custom = f.def.draw || (f.def.fly ? 'bat' : null);
@@ -638,7 +638,7 @@ function drawFrog(c, f) {
   c.fillStyle = 'rgba(255,120,140,.5)'; c.beginPath(); c.ellipse(13, y - 19, 3, 1.8, 0, 0, TAU); c.fill();
 }
 /* finer drawing: iris colours, shirt emblems, soles, finger creases, hair sheen */
-let DETAIL = true;
+let DETAIL = MAT;
 function hairSheen(c, L) { c.save(); c.strokeStyle = shade(L.hair, 0.45); c.globalAlpha = 0.8; c.lineWidth = 1.8; c.lineCap = 'round'; c.beginPath(); c.arc(-1, -1, HR + 1.5, -2.35, -1.85); c.stroke(); c.lineWidth = 1.2; c.beginPath(); c.arc(-1, -1, HR - 1, -2.2, -2.0); c.stroke(); c.restore(); }
 function drawEmblem(c, kind, x, y, col) {
   c.save(); c.translate(x, y); c.fillStyle = col; c.strokeStyle = INK; c.lineWidth = 1;
