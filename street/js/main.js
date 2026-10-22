@@ -8,7 +8,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { buildWorld, L } from './world.js';
 import { loadAvatar, Character } from './avatar.js';
-import { GAMES, ZONES } from './games.js';
+import { STREET, PARTY, ZONES } from './games.js';
 import { setAniso } from './kit.js';
 import { Sound } from './sound.js';
 
@@ -78,6 +78,16 @@ const bar = $('loadBar'), msg = $('loadMsg');
 let prog = 0; const step = (p, m) => { prog = Math.max(prog, p); bar.style.width = (prog * 100).toFixed(0) + '%'; if (m) msg.textContent = m; };
 
 const shots = {};
+let miniAtlasImg = null, miniCount = 0;
+const thumbCache = {};
+function thumbOf(g) {
+  if (g.tile === undefined) return `../${g.id}/hall_shot.jpg`;
+  if (thumbCache[g.tile]) return thumbCache[g.tile];
+  const c = document.createElement('canvas'); c.width = 256; c.height = 160;
+  const rows = Math.ceil(miniCount / 8), iw = miniAtlasImg.width / 8, ih = miniAtlasImg.height / rows;
+  c.getContext('2d').drawImage(miniAtlasImg, (g.tile % 8) * iw, Math.floor(g.tile / 8) * ih, iw, ih, 0, 0, 256, 160);
+  return (thumbCache[g.tile] = c.toDataURL('image/jpeg', 0.85));
+}
 async function loadAll() {
   step(0.05, '載入字型');
   try { await Promise.all(['900 64px "Noto Sans TC"', '700 32px "Noto Sans TC"', '900 64px "Noto Serif TC"', '700 32px "Silkscreen"'].map((f) => document.fonts.load(f, '大街MW遊戲'))); } catch { }
@@ -87,11 +97,14 @@ async function loadAll() {
   scene.environment = pmrem.fromEquirectangular(hdr).texture; hdr.dispose();
   step(0.25, '載入遊戲畫面');
   const tl = new THREE.TextureLoader();
-  await Promise.all(GAMES.map((g) => new Promise((res) => tl.load(`../${g.id}/hall_shot.jpg`, (t) => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; shots[g.id] = t; res(); }, undefined, () => { shots[g.id] = new THREE.Texture(); res(); }))));
+  const mini = await (await fetch('assets/minigames.json')).json();
+  const atlas = await tl.loadAsync('assets/minigames-atlas.webp'); atlas.colorSpace = THREE.SRGBColorSpace; atlas.anisotropy = 4;
+  miniAtlasImg = atlas.image; miniCount = mini.length;
+  await Promise.all([...STREET, PARTY].map((g) => new Promise((res) => tl.load(`../${g.id}/hall_shot.jpg`, (t) => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; shots[g.id] = t; res(); }, undefined, () => { shots[g.id] = new THREE.Texture(); res(); }))));
   step(0.35, '載入角色');
   const avs = await Promise.all(['boy', 'girl'].map((id) => loadAvatar(id, (e) => e.total && step(0.35 + 0.3 * e.loaded / e.total / 2))));
   step(0.7, '蓋房子');
-  const world = await buildWorld(scene, { shots, quality });
+  const world = await buildWorld(scene, { shots, quality, mini, atlas });
   step(0.95, '準備好了');
   return { world, avs: { boy: avs[0], girl: avs[1] } };
 }
@@ -127,7 +140,7 @@ function makeNPCs() {
     const t = tints[i % tints.length]; const tint = new THREE.Color(t[0]); tint.hair = new THREE.Color(t[1]).multiplyScalar(2.2);
     const c = new Character(g, { tint });
     const inside = i === 4;
-    const lane = [-4.2, 3.6, 5.6, -5.8][i % 4];
+    const lane = [-4.0, 3.8, 4.4, -3.4][i % 4];
     const npc = { c, inside, x: inside ? 12.3 : lane, z: inside ? -10.5 : 14 + i * 9, dir: i % 2 ? 1 : -1, speed: 1.05 + (i % 3) * 0.12, pause: 0, heading: 0 };
     if (inside) { npc.heading = Math.PI / 2; }
     c.root.position.set(npc.x, 0, npc.z);
@@ -213,24 +226,42 @@ function tapAt(x, y) {
   if (mode !== 'play') return;
   ndc.set((x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1);
   ray.setFromCamera(ndc, camera);
-  const hits = ray.intersectObjects(world.interact.map((i) => i.screen), false);
+  const objs = [...new Set(world.interact.map((i) => i.screen))];
+  const hits = ray.intersectObjects(objs, false);
   if (!hits.length) return;
-  const it = world.interact.find((i) => i.screen === hits[0].object);
+  const h = hits[0];
+  const it = world.interact.find((i) => i.screen === h.object && (i.screenIndex === undefined || i.screenIndex === Math.floor(h.faceIndex / 2)));
+  if (!it) return;
   if (near === it) launch(it); else goTo(it);
 }
 
 // ------------------------------------------------------------------ auto walk
+const V = (x, z) => new THREE.Vector3(x, 0, z);
+const AISLES = [-8.9, -12.55, -16.8, -21.2];
 function goTo(it) {
   const path = [];
   const inHall = pos.z < L.hallFront - 0.3;
-  if (!inHall) {
-    if (pos.z > L.shopZ0) { const lx = pos.x < 0 ? -3.1 : 3.1; path.push(new THREE.Vector3(lx, 0, pos.z)); path.push(new THREE.Vector3(lx, 0, L.shopZ0 - 1)); }
-    if (pos.z > L.hallFront + 3) path.push(new THREE.Vector3(0, 0, L.hallFront + 2.5));
-    path.push(new THREE.Vector3(0, 0, L.hallFront - 2.5));
+  const targetHall = it.spot.z < L.hallFront - 0.3;
+  if (inHall) {
+    if (Math.abs(pos.x) > 1.3) {
+      const az = pos.z < -21.5 ? pos.z : AISLES.reduce((a, b) => (Math.abs(b - pos.z) < Math.abs(a - pos.z) ? b : a));
+      path.push(V(pos.x, az), V(0, az));
+    }
+    if (!targetHall) path.push(V(0, L.hallFront - 2.5), V(0, L.hallFront + 2.5));
   }
-  else if (Math.abs(pos.x) > 4.8 && pos.z < -10) { path.push(new THREE.Vector3(pos.x, 0, -8.6)); path.push(new THREE.Vector3(0, 0, -8.6)); }
-  if (Math.abs(it.spot.x) < 4) path.push(new THREE.Vector3(0, 0, it.spot.z));
-  else path.push(new THREE.Vector3(0, 0, it.spot.z));
+  if (targetHall) {
+    if (!inHall) {
+      if (pos.z > L.shopZ0) { const lx = pos.x < 0 ? -3.1 : 3.1; path.push(V(lx, pos.z), V(lx, L.shopZ0 - 1)); }
+      if (pos.z > L.hallFront + 3) path.push(V(0, L.hallFront + 2.5));
+      path.push(V(0, L.hallFront - 2.5));
+    }
+    path.push(V(0, it.spot.z));
+  } else {
+    const lx = it.side < 0 ? -3.1 : 3.1;
+    if (!inHall && pos.z > L.shopZ0) path.push(V(lx, pos.z));
+    else path.push(V(0, L.shopZ0 - 1), V(lx, L.shopZ0 + 0.5));
+    path.push(V(lx, it.spot.z));
+  }
   path.push(it.spot.clone());
   auto = { path, it, stuck: 0 };
   toast(`前往：${it.game.title}`);
@@ -287,8 +318,8 @@ function showPrompt(it) {
   promptFor = it;
   if (!it) { ui.prompt.classList.remove('show'); return; }
   const g = it.game;
-  $('pImg').src = `../${g.id}/hall_shot.jpg`;
-  $('pGenre').textContent = `${ZONES[g.zone].name} · ${g.genre}`;
+  $('pImg').src = thumbOf(g);
+  $('pGenre').textContent = g.zone === 'street' ? `大街的店 · ${g.genre}` : `${ZONES[g.zone].name} · ${g.genre}`;
   $('pTitle').textContent = g.title; $('pDesc').textContent = g.desc;
   $('pTags').innerHTML = g.tags.map((t) => `<span>${t}</span>`).join('');
   $('pPlay').innerHTML = isTouch ? '進入遊戲' : '進入遊戲<kbd>E</kbd>';
@@ -306,12 +337,16 @@ $('btnGo').addEventListener('click', () => openSheet('goSheet'));
 $('btnSet').addEventListener('click', () => openSheet('setSheet'));
 function buildGoList() {
   const el = $('goList'); el.innerHTML = '';
+  const heads = { street: '大街上的店', react: '遊戲小屋 · 反應區', puzzle: '遊戲小屋 · 益智區', play: '遊戲小屋 · 扮家家酒區', party: '派對區' };
   for (const [zid, z] of Object.entries(ZONES)) {
-    const h = document.createElement('div'); h.className = 'zone-h'; h.textContent = z.name; h.style.color = z.color; el.appendChild(h);
-    for (const g of GAMES.filter((x) => x.zone === zid)) {
-      const b = document.createElement('button');
-      b.innerHTML = `<img src="../${g.id}/hall_shot.jpg" alt=""><b>${g.title}</b><span>${g.genre}</span>`;
-      b.addEventListener('click', () => { $('goSheet').classList.add('hidden'); goTo(world.interact.find((i) => i.game.id === g.id)); });
+    const items = world.interact.filter((i) => i.game.zone === zid);
+    if (zid === 'street') items.sort((a, b) => STREET.findIndex((g) => g.id === a.game.id) - STREET.findIndex((g) => g.id === b.game.id));
+    if (!items.length) continue;
+    const h = document.createElement('div'); h.className = 'zone-h'; h.textContent = heads[zid] || z.name; h.style.color = z.color; el.appendChild(h);
+    for (const it of items) {
+      const g = it.game, b = document.createElement('button');
+      b.innerHTML = `<img src="${thumbOf(g)}" alt=""><b>${g.title}</b><span>${g.genre}</span>`;
+      b.addEventListener('click', () => { $('goSheet').classList.add('hidden'); goTo(it); });
       el.appendChild(b);
     }
   }
