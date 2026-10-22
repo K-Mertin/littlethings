@@ -5,8 +5,8 @@
    Laps are counted from progress along the track's centreline, so driving the
    wrong way (or backing over the line) never earns a lap.
    小朋友: wide track, a gentle auto-steer that nudges you along the road, grass only
-           slows you a little, and if you wander far off a cloud carries you back. 2 laps.
-   大人:   narrower track, grass is slow, harder bumps, 🍌 peels spin you out. 3 laps. */
+           slows you a little, and if you wander far off a cloud carries you back. 3 laps.
+   大人:   narrower track, grass is slow, harder bumps, 🍌 peels spin you out. 5 laps. */
 (() => {
   const FONT = '"Noto Sans TC",system-ui,sans-serif', NUM = '"Fredoka","Noto Sans TC",system-ui,sans-serif';
   const GRASS = '#7fcf5b', SEG = 6, R = 30;
@@ -104,9 +104,9 @@
   class Race {
     constructor(ctx) {
       this.ctx = ctx; this.kid = ctx.kid; this.t = 0; this.over = false; this.teams = !!ctx.teams;
-      this.dur = 150; this.laps = this.kid ? 2 : 3; this.edge = GRASS;
+      this.dur = 150; this.laps = this.kid ? 3 : 5; this.edge = GRASS;
       this.T = track(); this.hw = this.kid ? 110 : 86;
-      this.vmax = this.kid ? 310 : 410; this.finN = 0; this.winT = 0; this.endT = 0; this.finalAnn = false; this.started = false;
+      this.vmax = this.kid ? 280 : 385; this.finN = 0; this.winT = 0; this.endT = 0; this.finalAnn = false; this.started = false;
       const T = this.T, n = ctx.players.length;
       const order = this.teams ? ctx.players.slice().sort((a, b) => a.team - b.team) : ctx.players.slice();
       this.es = ctx.players.map(p => {
@@ -115,12 +115,12 @@
         const x = T.xs[i] + nx * lat, y = T.ys[i] + ny * lat, a = Math.atan2(T.ty[i], T.tx[i]);
         const e = { p, x, y, a, v: 0, vx: 0, vy: 0, kx: 0, ky: 0, r: 20, idx: i, s: 0, d: 0, lat: 0, prog: 0, lapsDone: 0,
           meter: this.kid ? 0.67 : 0.34, boostT: 0, spinT: 0, spinVis: 0, inv: 0, st: 'run', stT: 0, fin: false, place: 0, time: 0,
-          sq: 0, sqv: 0, steer: 0, pos: 1, bestPos: 9, passT: 0, offT: 0, flT: 0, puffT: 0, bump: new Map(), rx: 0, ry: 0, ra: 0, ri: 0, hop: 0 };
+          sq: 0, sqv: 0, steer: 0, pos: k + 1, bestPos: 9, passT: 0, offT: 0, flT: 0, puffT: 0, bump: new Map(), rx: 0, ry: 0, ra: 0, ri: 0, hop: 0 };
         this.locate(e, true); e.prog = this.wrap(e.s - T.i0 * T.seg);
         return e;
       });
       this.by = new Map(this.es.map(e => [e.p, e]));
-      this.order = this.es.slice();
+      this.order = this.es.slice().sort((a, b) => a.pos - b.pos);
       this.fl = [];   // flame particles
       // ⭐: rows across the road at fixed spots; they come back a few seconds after being taken
       this.stars = [];
@@ -615,8 +615,8 @@
     blurb: '開小賽車繞賽道，加速衝第一！',
     btn: { label: '加速', icon: '🔥' },
     rules: kid => kid
-      ? ['搖桿推向哪裡，小車就往哪裡開', '跟著地上的箭頭繞圈，跑完 2 圈就到終點', '吃到 ⭐ 會充電，按「加速」咻一下衝出去', '開太遠會有雲朵把你送回賽道，不用怕']
-      : ['搖桿推向哪裡，車子就轉向那裡開；草地會變慢', '跑完 3 圈先衝過終點的人贏', '加速條會慢慢充電，吃 ⭐ 充更快，按「加速」衝刺', '小心 🍌 香蕉皮會讓你打滑，撞車也會被撞開'],
+      ? ['搖桿推向哪裡，小車就往哪裡開', '跟著地上的箭頭繞圈，跑完 3 圈就到終點', '吃到 ⭐ 會充電，按「加速」咻一下衝出去', '開太遠會有雲朵把你送回賽道，不用怕']
+      : ['搖桿推向哪裡，車子就轉向那裡開；草地會變慢', '跑完 5 圈先衝過終點的人贏', '加速條會自己充電，吃 ⭐ 充更快，按「加速」衝', '小心 🍌 香蕉皮會讓你打滑，撞車也會被撞開'],
     thumb(g) {
       g.fillStyle = GRASS; g.fillRect(0, 0, 320, 180);
       g.lineJoin = 'round';

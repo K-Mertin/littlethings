@@ -20,7 +20,7 @@
   const CUSH = [['#ff8fab', '#e05780', '#ffc2d1'], ['#7dd3fc', '#2b8fd1', '#c4ecff'], ['#fde047', '#c99a06', '#fff3a6'], ['#86efac', '#2fa860', '#c9f8d9'], ['#c4b5fd', '#7c5cd6', '#e4dcff'], ['#fdba74', '#d9711d', '#ffe0c2']];
   const SOFAS = [{ x0: 66, x1: 352, c: '#8b8ffb', d: '#5b5fd6' }, { x0: 1248, x1: 1534, c: '#f58ab9', d: '#c9548a' }];
   const SOFA_Y = 744;                    // standing players stay above the sofas
-  const SEATS = [[118, 812], [1482, 812], [209, 812], [1391, 812], [300, 812], [1300, 812]];
+  const SEATS = [[118, 798], [1482, 798], [209, 798], [1391, 798], [300, 798], [1300, 798]];
   const DASH = [16, 14], NODASH = [];
   const wrap = a => { while (a > Math.PI) a -= TAU; while (a < -Math.PI) a += TAU; return a; };
 
@@ -67,8 +67,15 @@
   /* a big two-tone ‼ that wobbles above a frozen character */
   function bangMark(g, x, y, t, a) {
     g.save(); g.translate(x + Math.sin(t * 60) * 2.5, y); g.rotate(Math.sin(t * 40) * 0.08); g.globalAlpha = a;
-    g.font = `900 52px "Fredoka",${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.lineWidth = 10; g.lineJoin = 'round'; g.strokeStyle = '#fff'; g.strokeText('‼', 0, 0); g.fillStyle = '#ff3b4a'; g.fillText('‼', 0, 0);
+    const s = 1 + Math.max(0, a - 0.85) * 2;   // pops in big, then settles
+    g.scale(s, s);
+    for (const [dx, rot] of [[-11, -0.12], [11, 0.12]]) {
+      g.save(); g.translate(dx, 0); g.rotate(rot);
+      g.lineJoin = 'round'; g.lineWidth = 7; g.strokeStyle = '#fff'; g.fillStyle = '#ff3b4a';
+      g.beginPath(); g.moveTo(-8, -26); g.lineTo(8, -26); g.lineTo(4, 6); g.lineTo(-4, 6); g.closePath(); g.stroke(); g.fill();
+      g.beginPath(); g.arc(0, 18, 7, 0, TAU); g.stroke(); g.fill();
+      g.restore();
+    }
     g.restore(); g.globalAlpha = 1;
   }
 
@@ -89,11 +96,11 @@
       });
       this.by = new Map(this.es.map(e => [e.p, e]));
       const k = this.solo ? 1 : Math.max(1, n - 1);
-      this.cush = []; for (let i = 0; i < k; i++) this.cush.push({ a: i * TAU / k, ta: i * TAU / k, ci: i, who: null, sq: 0, sqv: 0, x: 0, y: 0, gone: 0 });
+      this.cush = []; for (let i = 0; i < k; i++) this.cush.push({ a: i * TAU / k, ta: i * TAU / k, ci: i, who: null, sq: 0, sqv: 0, x: 0, y: 0, gone: 0, rad: k > 1 ? 1 : 0 });
       this.spin = -Math.PI / 2;
       this.phase = 'walk'; this.pt = rnd(5, 9); this.rt = 0; this.rushT = 0; this.removed = false;
       this.notes = []; this.noteT = 0; this.scratchT = 0; this.discA = 0; this.armA = 1;
-      this.confetti = [];
+      this.confetti = []; this.msg = null;
       this.dl = []; this.dn = 0;
       this.place();
       this.announced = false;
@@ -101,7 +108,7 @@
     alive() { return this.es.filter(e => e.st !== 'out'); }
     free() { return this.cush.filter(c => !c.who && !c.gone); }
     place() {
-      for (const c of this.cush) { c.x = CX + Math.cos(c.a + this.spin) * CRX; c.y = CY + Math.sin(c.a + this.spin) * CRY; }
+      for (const c of this.cush) { c.x = CX + Math.cos(c.a + this.spin) * CRX * c.rad; c.y = CY + Math.sin(c.a + this.spin) * CRY * c.rad; }
     }
     respace() {
       const live = this.cush.filter(c => !c.gone), k = live.length;
@@ -116,6 +123,7 @@
       Sfx.tone(1100, 0.12, 'sawtooth', 0.07, 260); Sfx.tone(700, 0.16, 'sawtooth', 0.06, 1400, 0.1); Sfx.tone(900, 0.22, 'sawtooth', 0.05, 120, 0.24);
       Sfx.noise(0.35, 0.18, 2200, 1.2);
     }
+    ribbon(text, col, T) { this.msg = { text, col, t: 0, T: T || 1.8 }; }
     say(e, text, T) { e.say = text; e.sayT = T || 1.2; }
     hopUp(e, v) { e.hopV = v || 420; if (e.hop <= 0) e.hop = 0.01; }
 
@@ -128,16 +136,16 @@
         e.idle = 0; e.lazy = false; e.freeze = 0; e.stun = 0; e.kx = e.ky = 0;
       }
       for (const c of this.cush) c.who = null;
-      Fx.announce('第 ' + this.round + ' 輪！音樂開始～', DEEP); ctx.sfx('go');
+      this.ribbon('第 ' + this.round + ' 輪！音樂開始～', DEEP); ctx.sfx('go');
     }
     stopMusic() {
       const ctx = this.ctx, kid = this.kid;
-      this.phase = 'rush'; this.music = false; this.rt = 0; this.rushT = 0.45 + (kid ? 4.2 : 3.5); this.scratchT = 0.8;
+      this.phase = 'rush'; this.music = false; this.rt = 0; this.rushT = 0.55 + (kid ? 4.2 : 3.5); this.scratchT = 0.8;
       Fx.flash('#fff', 0.55); Fx.shake(12); Fx.announce('音樂停了！快坐下！', '#c026d3'); this.scratch(); ctx.hitstop(0.1);
       for (const e of this.alive()) {
         const s = hyp(e.vx, e.vy), m = Math.min(1, s / 220), bob = Math.abs(Math.sin(e.walk));
         e.fhop = bob * 9 * m + 4; e.frot = clamp(e.vx / 1600, -0.22, 0.22) + rnd(-0.08, 0.08);
-        e.freeze = e.freeze0 = 0.45 + (e.lazy && !kid ? 0.5 : 0); e.vx = e.vy = 0; e.dash = 0;
+        e.freeze = e.freeze0 = 0.55 + (e.lazy && !kid ? 0.5 : 0); e.vx = e.vy = 0; e.dash = 0;
         if (e.lazy && !kid) { this.say(e, '咦？發呆了！', 1); }
         ctx.buzz(e.p, 220);
       }
@@ -147,7 +155,7 @@
       e.st = 'sit'; e.seat = c; c.who = e; e.snap = 0; e.sx0 = e.x; e.sy0 = e.y; e.vx = e.vy = e.kx = e.ky = 0; e.dash = 0;
       e.sits++; c.sq = 0.42; c.sqv = 0; e.sq = 0.3; e.sqv = 0;
       const tm = this.rt;
-      if (this.solo) { if (e.best == null || tm < e.best) { e.best = tm; } }
+      if (this.solo) { e.rec = e.best != null && tm < e.best; if (e.best == null || tm < e.best) e.best = tm; }
       if (this.kid) { e.stars++; ctx.sfx('star'); Fx.pop(c.x, c.y - 96, '⭐+1', '#d48a00', 46); }
       else { ctx.sfx('coin'); Fx.pop(c.x, c.y - 96, this.solo ? tm.toFixed(2) + ' 秒' : '坐到了！', DEEP, 40); }
       ctx.sfx('pop'); ctx.buzz(e.p, 70);
@@ -168,13 +176,13 @@
       }
       const left = this.alive().filter(e => e.st !== 'sit');
       if (this.solo) {
-        if (left.length) { this.say(left[0], '太慢了～', 1.6); ctx.sfx('stun'); Fx.announce('差一點點！', '#2b2340'); }
-        else Fx.announce(this.es[0].best === this.rt ? '新紀錄！' : '坐好了！', DEEP);
+        if (left.length) { this.say(left[0], '太慢了～', 1.6); ctx.sfx('stun'); this.ribbon('差一點點！', '#2b2340'); }
+        else this.ribbon(this.es[0].rec ? '新紀錄！' : '坐好了！', DEEP);
         return;
       }
       if (this.kid) {
         for (const e of left) { this.say(e, '下次加油！', 1.8); e.sq = 0.2; }
-        Fx.announce('坐到的人拿 ⭐！', '#d48a00');
+        this.ribbon('坐到的人拿 ⭐！', '#d48a00');
         return;
       }
       for (const e of left) {
@@ -183,7 +191,7 @@
         Fx.burst(e.x, e.y, '#9aa3c7', 10, 200);
       }
       ctx.sfx('stun');
-      if (left.length) Fx.announce(left.map(e => e.p.name).join('、') + ' 出局！', '#2b2340');
+      if (left.length) this.ribbon(left.map(e => e.p.name).join('、') + ' 出局！', '#2b2340');
     }
     nextAfterRes() {
       const ctx = this.ctx;
@@ -191,7 +199,7 @@
         const al = this.alive();
         if (al.length <= 1) {
           this.phase = 'win'; this.pt = 3; this.music = true; this.winner = al[0] || null;
-          if (this.winner) { Fx.announce(this.winner.p.name + ' 贏了！', DEEP); this.hopUp(this.winner, 520); }
+          if (this.winner) { this.ribbon('🏆 ' + this.winner.p.name + ' 贏了！', DEEP, 3); this.hopUp(this.winner, 520); }
           ctx.sfx('win'); Fx.flash(PINK, 0.25);
           for (let i = 0; i < 70; i++) this.confetti.push({ x: rnd(200, 1400), y: rnd(-200, 120), vx: rnd(-90, 90), vy: rnd(40, 220), a: rnd(0, TAU), va: rnd(-8, 8), c: CUSH[rint(6)][0], life: rnd(2.5, 3.5) });
           return;
@@ -216,7 +224,9 @@
       this.pt -= dt;
       // the cushions slowly turn while the music plays (faster for grown-ups)
       if (this.phase === 'walk') this.spin += dt * (kid ? 0.14 : 0.34);
-      for (const c of this.cush) { c.a += wrap(c.ta - c.a) * Math.min(1, dt * 3); spring(c, dt); }
+      const lone = this.cush.length === 1 ? 0 : 1;
+      for (const c of this.cush) { c.a += wrap(c.ta - c.a) * Math.min(1, dt * 3); c.rad += (lone - c.rad) * Math.min(1, dt * 2.5); spring(c, dt); }
+      if (this.msg) { this.msg.t += dt; if (this.msg.t > this.msg.T) this.msg = null; }
       this.place();
       if (this.phase === 'walk' && this.pt <= 0) this.stopMusic();
       else if (this.phase === 'rush') {
@@ -257,7 +267,7 @@
           e.face = Math.atan2(CY - e.y, CX - e.x);
           if (e.sad <= 0) {
             e.cheer -= dt;
-            if (e.cheer <= 0) { e.cheer = rnd(1.4, 3.2); this.hopUp(e, rnd(300, 420)); if (Math.random() < 0.4) this.say(e, ['加油！', '快坐快坐！', '衝啊～', '好緊張！'][rint(4)], 1.1); }
+            if (e.cheer <= 0) { e.cheer = rnd(1.4, 3.2); this.hopUp(e, rnd(300, 420)); if (Math.random() < 0.4) { const L = this.phase === 'win' ? ['恭喜！', '好厲害！', '耶～'] : this.phase === 'rush' ? ['快坐快坐！', '衝啊～', '那邊有空位！'] : ['加油！', '好緊張！', '繞圈圈～']; this.say(e, L[rint(L.length)], 1.1); } }
           }
         }
         return;
@@ -567,19 +577,30 @@
         const x = sit && e.seat ? e.seat.x : e.x, y = sit && e.seat ? e.seat.y : e.y;
         drawTag(g, x, y - e.r - 30 - hop, e.p);
         if (this.kid && e.stars) { g.font = `900 20px "Fredoka",${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineWidth = 5; g.strokeStyle = '#fff'; const s2 = '⭐' + e.stars; g.strokeText(s2, x, y + e.r + 16); g.fillStyle = '#b07000'; g.fillText(s2, x, y + e.r + 16); }
-        if (e.freeze > 0) bangMark(g, x + 30, y - e.r - 74 - hop, t, Math.min(1, e.freeze * 4));
+        if (e.freeze > 0) bangMark(g, x + 34, y - e.r - 78 - hop, t, Math.min(1, e.freeze / e.freeze0 * 1.2, e.freeze * 5));
         if (e.sayT > 0 && e.say) bubble(g, x, y - e.r - 84 - hop - (e.freeze > 0 ? 30 : 0), e.say, e.st === 'out' ? '#6a5a8a' : DEEP, 22);
+      }
+      if (this.msg) {
+        const m = this.msg, k = m.t / m.T, sc = k < 0.1 ? 0.6 + k / 0.1 * 0.4 : 1;
+        g.save(); g.translate(CX, 186); g.scale(sc, sc); g.globalAlpha = k > 0.85 ? (1 - k) / 0.15 : 1;
+        g.font = `900 44px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+        const w = g.measureText(m.text).width + 80;
+        g.fillStyle = 'rgba(43,35,64,.82)'; g.beginPath(); g.roundRect(-w / 2, -34, w, 68, 34); g.fill();
+        g.strokeStyle = PINK; g.lineWidth = 5; g.stroke();
+        g.lineWidth = 9; g.lineJoin = 'round'; g.strokeStyle = '#fff'; g.strokeText(m.text, 0, 2); g.fillStyle = m.col; g.fillText(m.text, 0, 2);
+        g.restore(); g.globalAlpha = 1;
       }
       if (this.phase === 'win') {
         const w = this.winner;
         if (w && w.seat) { g.font = '54px system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('👑', w.seat.x, w.seat.y - w.r - 96 - w.hop - Math.sin(t * 6) * 6); }
         for (const c of this.confetti) { if (c.life <= 0) continue; g.save(); g.translate(c.x, c.y); g.rotate(c.a); g.fillStyle = c.c; g.fillRect(-7, -4, 14, 8); g.restore(); }
       }
-      if (this.phase === 'rush' && this.rt > 0.45) {   // a shrinking ring of time on the record player side
+      if (this.phase === 'rush' && this.rt > 0.55) {   // a shrinking ring of time on the record player side
         const k = clamp(this.rushT / ((this.kid ? 4.2 : 3.5)), 0, 1);
-        g.fillStyle = 'rgba(255,255,255,.9)'; g.beginPath(); g.arc(CX, CY, 34, 0, TAU); g.fill();
-        g.strokeStyle = k < 0.35 ? '#ff3b4a' : PINK; g.lineWidth = 8; g.lineCap = 'round'; g.beginPath(); g.arc(CX, CY, 34, -Math.PI / 2, -Math.PI / 2 + TAU * k); g.stroke();
-        g.font = `900 30px "Fredoka",${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#2b2340'; g.fillText(String(Math.ceil(this.rushT)), CX, CY + 1);
+        const cx = CX, cy = 184;
+        g.fillStyle = 'rgba(255,255,255,.95)'; g.beginPath(); g.arc(cx, cy, 36, 0, TAU); g.fill();
+        g.strokeStyle = k < 0.35 ? '#ff3b4a' : PINK; g.lineWidth = 8; g.lineCap = 'round'; g.beginPath(); g.arc(cx, cy, 36, -Math.PI / 2, -Math.PI / 2 + TAU * k); g.stroke();
+        g.font = `900 32px "Fredoka",${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#2b2340'; g.fillText(String(Math.ceil(this.rushT)), cx, cy + 1);
       }
     }
 
