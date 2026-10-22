@@ -21,6 +21,10 @@
 #mwh .m{max-width:85%;padding:9px 13px;border-radius:14px;font-size:15px;line-height:1.55;white-space:pre-wrap;word-break:break-word}
 #mwh .m.bot{align-self:flex-start;background:#23282e;border-bottom-left-radius:4px}
 #mwh .m.me{align-self:flex-end;background:var(--amber,#f3bb4f);color:#1d1606;border-bottom-right-radius:4px}
+#mwh .spk{margin-left:6px;border:0;background:transparent;color:var(--mute,#8e949b);font-size:15px;cursor:pointer;padding:0 4px;border-radius:6px;vertical-align:baseline}
+#mwh .spk:hover,#mwh .spk.on{color:var(--amber,#f3bb4f);background:rgba(255,255,255,.06)}
+#mwh header button.auto{font-size:18px}
+#mwh header button.auto.on{color:var(--amber,#f3bb4f)}
 #mwh .m.err{align-self:center;background:transparent;color:#ff9b8f;font-size:13px}
 #mwh .m.dots{color:var(--mute,#8e949b)}
 #mwh .acts{align-self:flex-start;display:flex;flex-wrap:wrap;gap:8px}
@@ -57,7 +61,7 @@
   btn.innerHTML = '<span class="i">💬</span><span>問問小幫手</span>';
   const box = document.createElement('section');
   box.id = 'mwh'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', 'MW 小幫手');
-  box.innerHTML = `<header><span style="font-size:22px">🏝️</span><b>MW 小幫手</b><button type="button" class="new" title="重新開始" aria-label="重新開始">↺</button><button type="button" class="x" aria-label="關閉">✕</button></header>
+  box.innerHTML = `<header><span style="font-size:22px">🏝️</span><b>MW 小幫手</b><button type="button" class="auto" hidden title="自動朗讀回覆：關" aria-label="自動朗讀回覆：關" aria-pressed="false">🔇</button><button type="button" class="new" title="重新開始" aria-label="重新開始">↺</button><button type="button" class="x" aria-label="關閉">✕</button></header>
     <div class="log" aria-live="polite"></div>
     <div class="chips"><button type="button">推薦一款遊戲</button><button type="button">我要回報問題</button><button type="button">我有新遊戲點子</button></div>
     <form><textarea rows="1" maxlength="600" placeholder="輸入訊息…" aria-label="訊息"></textarea><button type="button" class="mic" hidden aria-label="語音輸入" title="按一下開始說話">🎤</button><button type="submit">送出</button></form>`;
@@ -71,6 +75,32 @@
   let busy = false;
 
   const add = (cls, text) => { const d = document.createElement('div'); d.className = 'm ' + cls; d.textContent = text; log.appendChild(d); log.scrollTop = log.scrollHeight; return d; };
+  // 語音輸出：用瀏覽器內建的語音合成朗讀回覆（zh-TW）；每則回覆有 🔊 按鈕，標題列可開「自動朗讀」（預設關閉）
+  const TTS = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window ? window.speechSynthesis : null;
+  let autoRead = false;
+  try { autoRead = !!TTS && localStorage.getItem('mwh-auto') === '1'; } catch (e) { }
+  const speakable = t => t.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\uFE0F\u200D]/gu, '').replace(/[*_`#>~]+/g, '').replace(/\s+/g, ' ').trim();
+  const stopSpeak = () => { if (TTS) { TTS.cancel(); log.querySelectorAll('.spk.on').forEach(b => b.classList.remove('on')); } };
+  const speak = (text, b) => {
+    if (!TTS) return;
+    stopSpeak();
+    const t = speakable(text); if (!t) return;
+    const u = new SpeechSynthesisUtterance(t); u.lang = 'zh-TW'; u.rate = 0.95;
+    const v = TTS.getVoices().find(v => /zh[-_]TW/i.test(v.lang)) || TTS.getVoices().find(v => /^zh/i.test(v.lang));
+    if (v) u.voice = v;
+    if (b) { b.classList.add('on'); u.onend = u.onerror = () => b.classList.remove('on'); }
+    TTS.speak(u);
+  };
+  const addBot = (text, auto) => {
+    const d = add('bot', text);
+    if (TTS) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'spk'; b.textContent = '🔊'; b.title = '念給我聽'; b.setAttribute('aria-label', '朗讀這則回覆');
+      b.onclick = () => { if (b.classList.contains('on')) stopSpeak(); else speak(text, b); };
+      d.appendChild(b);
+      if (auto && autoRead) speak(text, b);
+    }
+    return d;
+  };
   const games = list => {
     if (!list || !list.length) return;
     const a = document.createElement('div'); a.className = 'acts';
@@ -92,7 +122,7 @@
         if (!r.ok || !j.ok) throw new Error(j.error || '送出失敗了，等一下再試試看。');
         c.querySelector('.row').innerHTML = `<div style="color:#8fe0a6">✓ 已送出（編號 #${j.number}），謝謝你！</div>`;
         const t = `謝謝你！已經送給製作團隊了（編號 #${j.number}）。`;
-        msgs.push({ role: 'assistant', content: t }); save(); add('bot', t);
+        msgs.push({ role: 'assistant', content: t }); save(); addBot(t);
       } catch (e) { ok.disabled = no.disabled = false; ok.textContent = '✅ 再試一次'; add('err', e.message); }
     };
     log.appendChild(c); log.scrollTop = log.scrollHeight;
@@ -101,7 +131,7 @@
   function render() {
     log.innerHTML = '';
     add('bot', HELLO);
-    for (const m of msgs) add(m.role === 'user' ? 'me' : 'bot', m.content);
+    for (const m of msgs) m.role === 'user' ? add('me', m.content) : addBot(m.content);
     chips.hidden = msgs.length > 0;
   }
 
@@ -117,20 +147,31 @@
       wait.remove();
       if (!r.ok || j.error) { msgs.pop(); save(); add('err', j.error || '小幫手連不上，等一下再試試看。'); ta.value = ta.value || text; return; }
       msgs.push({ role: 'assistant', content: j.reply }); save();
-      add('bot', j.reply); games(j.games); if (j.draft) draftCard(j.draft);
+      addBot(j.reply, true); games(j.games); if (j.draft) draftCard(j.draft);
     } catch (e) { wait.remove(); msgs.pop(); save(); add('err', '網路好像斷了，等一下再試試看。'); }
     finally { busy = false; send.disabled = false; ta.focus(); }
   }
 
   const open = () => { box.classList.add('open'); btn.hidden = true; if (!log.childElementCount) render(); setTimeout(() => ta.focus(), 50); };
-  const close = () => { box.classList.remove('open'); btn.hidden = false; btn.focus(); };
+  const close = () => { stopSpeak(); box.classList.remove('open'); btn.hidden = false; btn.focus(); };
   btn.onclick = open;
   box.querySelector('.x').onclick = close;
-  box.querySelector('.new').onclick = () => { msgs = []; save(); render(); ta.focus(); };
+  box.querySelector('.new').onclick = () => { stopSpeak(); msgs = []; save(); render(); ta.focus(); };
   box.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Escape') close(); });   // 不讓大廳的數字快捷鍵搶走輸入
   box.querySelector('form').onsubmit = e => { e.preventDefault(); const t = ta.value; ta.value = ''; ask(t); };
   ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); box.querySelector('form').requestSubmit(); } });
   chips.querySelectorAll('button').forEach(b => b.onclick = () => ask(b.textContent));
+
+  const autoBtn = box.querySelector('.auto');
+  if (TTS && autoBtn) {
+    autoBtn.hidden = false;
+    const sync = () => { const l = '自動朗讀回覆：' + (autoRead ? '開' : '關'); autoBtn.textContent = autoRead ? '🔊' : '🔇'; autoBtn.classList.toggle('on', autoRead); autoBtn.title = l; autoBtn.setAttribute('aria-label', l); autoBtn.setAttribute('aria-pressed', autoRead); };
+    sync();
+    autoBtn.onclick = () => {
+      autoRead = !autoRead; sync(); if (!autoRead) stopSpeak();
+      try { localStorage.setItem('mwh-auto', autoRead ? '1' : '0'); } catch (e) { }
+    };
+  }
 
   // 語音輸入：用瀏覽器內建的語音辨識，結果填進輸入框，讓使用者確認後再按送出；不支援的瀏覽器就不顯示麥克風
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
