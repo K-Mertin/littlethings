@@ -81,13 +81,26 @@
   try { autoRead = !!TTS && localStorage.getItem('mwh-auto') === '1'; } catch (e) { }
   const speakable = t => t.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\uFE0F\u200D]/gu, '').replace(/[*_`#>~]+/g, '').replace(/\s+/g, ' ').trim();
   const stopSpeak = () => { if (TTS) { TTS.cancel(); log.querySelectorAll('.spk.on').forEach(b => b.classList.remove('on')); } };
+  // 挑裝置上最自然的中文聲音：台灣 > 其他中文；神經／優化版本（Edge Natural、Google、Apple 優化）優先，粵語排除
+  let voiceCache = null;
+  const pickVoice = () => {
+    if (voiceCache) return voiceCache;
+    const vs = TTS.getVoices().filter(v => /^(zh|cmn)/i.test(v.lang) && !/HK|yue|粵|廣東/i.test(v.lang + v.name));
+    if (!vs.length) return null;
+    const score = v => (/TW|Hant|臺灣|台灣|國語/i.test(v.lang + v.name) ? 100 : 0)
+      + (/Natural|Neural|Online/i.test(v.name) ? 40 : 0) + (/Google/i.test(v.name) ? 30 : 0)
+      + (/Enhanced|Premium|優化|高品質/i.test(v.name) ? 30 : 0) + (v.localService === false ? 5 : 0);
+    voiceCache = vs.sort((a, b) => score(b) - score(a))[0];
+    return voiceCache;
+  };
+  if (TTS && 'onvoiceschanged' in TTS) TTS.addEventListener('voiceschanged', () => { voiceCache = null; });
   const speak = (text, b) => {
     if (!TTS) return;
     stopSpeak();
     const t = speakable(text); if (!t) return;
-    const u = new SpeechSynthesisUtterance(t); u.lang = 'zh-TW'; u.rate = 0.95;
-    const v = TTS.getVoices().find(v => /zh[-_]TW/i.test(v.lang)) || TTS.getVoices().find(v => /^zh/i.test(v.lang));
-    if (v) u.voice = v;
+    const u = new SpeechSynthesisUtterance(t); u.lang = 'zh-TW'; u.rate = 1.1;
+    const v = pickVoice();
+    if (v) { u.voice = v; u.lang = v.lang; }
     if (b) { b.classList.add('on'); u.onend = u.onerror = () => b.classList.remove('on'); }
     TTS.speak(u);
   };
