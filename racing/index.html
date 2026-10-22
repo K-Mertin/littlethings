@@ -345,7 +345,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -503,6 +503,14 @@ function canvasTex(w, h, draw, srgb = true) {
   t.anisotropy = MAX_ANISO;
   return t;
 }
+// 3D value noise for shaping scenery meshes
+function hash3(x, y, z) { let h = (x * 374761393 + y * 668265263 + z * 2147483647) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967295; }
+function noise3(x, y, z) {
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z), xf = x - xi, yf = y - yi, zf = z - zi, s = t => t * t * (3 - 2 * t), u = s(xf), v = s(yf), w = s(zf), c = (i, j, k) => hash3(xi + i, yi + j, zi + k);
+  return lerp(lerp(lerp(c(0, 0, 0), c(1, 0, 0), u), lerp(c(0, 1, 0), c(1, 1, 0), u), v), lerp(lerp(c(0, 0, 1), c(1, 0, 1), u), lerp(c(0, 1, 1), c(1, 1, 1), u), v), w);
+}
+const fbm3 = (x, y, z, oct = 4) => { let a = 0, w = 0.5, t = 0, f = 1; for (let o = 0; o < oct; o++) { a += noise3(x * f, y * f, z * f + o * 7.3) * w; t += w; w *= 0.5; f *= 2.03; } return a / t; };
+const ridge3 = (x, y, z, oct = 4) => { let a = 0, w = 0.5, t = 0, f = 1; for (let o = 0; o < oct; o++) { a += (1 - Math.abs(noise3(x * f, y * f, z * f + o * 3.1) * 2 - 1)) * w; t += w; w *= 0.5; f *= 2.1; } return a / t; };
 function rng(seed) { let s = seed >>> 0 || 1; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
 const speckle = (g, w, h, cols, n, size, r) => { for (let i = 0; i < n; i++) { g.fillStyle = cols[(r() * cols.length) | 0]; g.fillRect(r() * w, r() * h, size * (0.5 + r()), size * (0.5 + r())); } };
 
@@ -582,6 +590,14 @@ TEX.pad = canvasTex(64, 128, (g, w, h) => {
   g.fillStyle = '#2fc3ff'; g.fillRect(0, 0, w, h);
   g.lineWidth = 10; g.lineJoin = 'round';
   for (let i = 0; i < 2; i++) { g.strokeStyle = i ? '#fff3a0' : '#ffb21f'; const y = 20 + i * 64; g.beginPath(); g.moveTo(10, y + 34); g.lineTo(32, y + 8); g.lineTo(54, y + 34); g.stroke(); }
+});
+const CLOUD_MATS = [0, 1, 2].map(k => {             // fluffy cloud puffs painted from noise, brighter on top
+  const w = 256, h = 160, n = fbmField(w, h, 31 + k * 5, 32, 5);
+  const t = texFromField(w, h, (x, y, i) => { const v = 225 + n[i] * 30 - (y / h) * 30; return [v, v, Math.min(255, v + 8)]; });
+  const a = document.createElement('canvas'); a.width = w; a.height = h; const g = a.getContext('2d'), d = g.createImageData(w, h);
+  for (let y = 0, i = 0; y < h; y++) for (let x = 0; x < w; x++, i++) { const dx = (x / w - 0.5) * 2, dy = (y / h - 0.58) * 2.2, r = Math.hypot(dx, dy * (dy > 0 ? 1.6 : 1)); const al = clamp((1 - r) * 1.6 + (n[i] - 0.5) * 1.8, 0, 1); d.data[i * 4] = d.data[i * 4 + 1] = d.data[i * 4 + 2] = 255; d.data[i * 4 + 3] = al * al * 255; }
+  g.putImageData(d, 0, 0); const at = new THREE.CanvasTexture(a);
+  return new THREE.SpriteMaterial({ map: t, alphaMap: at, transparent: true, depthWrite: false, fog: false, color: 0xffffff });
 });
 TEX.soft = canvasTex(64, 64, (g, w, h) => {
   const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
@@ -773,7 +789,7 @@ function applyWeather(wet) {
   if (!WX_ADD) { scene.add(rain); WX_ADD = true; }
   const th = TR.def.theme, grey = th.night ? '#0c1018' : isSnow() ? '#c9d2dc' : '#7d8794', f = th.night ? 0.4 : 0.7;
   if (scene.background) scene.background.dispose();
-  scene.background = wet ? skyTex(mixHex(th.skyTop, grey, f), mixHex(th.skyBot, grey, f)) : skyTex(th.skyTop, th.skyBot);
+  scene.background = wet ? skyTex(mixHex(th.skyTop, grey, f), mixHex(th.skyBot, grey, f)) : skyTex(th.skyTop, th.skyBot); setSkyDome(th, wet);
   scene.fog.color.set(wet ? mixHex(th.fog, grey, f) : th.fog);
   scene.fog.near = wet ? 90 : 320; scene.fog.far = (TR.rad * 2 + 1300) * (wet ? 0.45 : 1);
   hemi.intensity = (th.hemiI ?? 1.0) * (wet ? 0.8 : 1);
@@ -803,6 +819,34 @@ function raceWeather() {                         // decided when a race starts
   return settings.weather === 'rain' || (settings.weather === 'random' && Math.random() < 0.4);
 }
 
+/* sky: a dome that follows the camera, with a soft horizon haze and a glow round the sun */
+const skyMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false, fog: false,
+  uniforms: { top: { value: new THREE.Color() }, mid: { value: new THREE.Color() }, hor: { value: new THREE.Color() }, sunDir: { value: new THREE.Vector3(0, 1, 0) }, sunCol: { value: new THREE.Color() }, sunAmt: { value: 1 } },
+  vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform vec3 top, mid, hor, sunCol, sunDir; uniform float sunAmt; varying vec3 vDir;
+    void main(){ vec3 d = normalize(vDir); float h = d.y;
+      vec3 c = mix(hor, mid, smoothstep(0.0, 0.18, h)); c = mix(c, top, smoothstep(0.15, 0.75, h));
+      if (h < 0.0) c = hor * (1.0 - min(1.0, -h * 3.0) * 0.25);
+      float sd = max(dot(d, normalize(sunDir)), 0.0);
+      c += sunCol * (pow(sd, 6.0) * 0.18 + pow(sd, 60.0) * 0.4) * sunAmt;
+      c += sunCol * smoothstep(0.9993, 0.9997, sd) * 2.5 * sunAmt;          // the sun's disc
+      gl_FragColor = vec4(c, 1.0);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }`,
+});
+const skyDome = new THREE.Mesh(new THREE.SphereGeometry(3800, 48, 24), skyMat); skyDome.renderOrder = -10; skyDome.frustumCulled = false;
+let SKY_ADD = false;
+function setSkyDome(th, wet = false) {
+  if (!SKY_ADD) { scene.add(skyDome); SKY_ADD = true; }
+  const grey = new THREE.Color(th.night ? '#0c1018' : th.kind === 'alpine' ? '#c9d2dc' : '#7d8794'), f = wet ? (th.night ? 0.4 : 0.7) : 0;
+  const top = new THREE.Color(th.skyTop).lerp(grey, f), bot = new THREE.Color(th.skyBot).lerp(grey, f);
+  skyMat.uniforms.top.value.copy(top); skyMat.uniforms.mid.value.copy(top).lerp(bot, 0.45); skyMat.uniforms.hor.value.copy(bot).lerp(new THREE.Color(th.fog), 0.35).lerp(grey, f);
+  skyMat.uniforms.sunDir.value.set(...th.sunDir).normalize(); skyMat.uniforms.sunCol.value.set(th.sun);
+  skyMat.uniforms.sunAmt.value = th.night || wet ? 0 : 1;
+}
+
 function buildWorld(def) {
   disposeWorld();
   TR = buildTrackData(def);
@@ -811,7 +855,7 @@ function buildWorld(def) {
   if (typeof setSkyEnv === 'function' && buildWorld.done) setSkyEnv(th);
   buildWorld.done = true;
   if (scene.background) scene.background.dispose();
-  scene.background = skyTex(th.skyTop, th.skyBot);
+  scene.background = skyTex(th.skyTop, th.skyBot); setSkyDome(th);
   scene.fog = new THREE.Fog(th.fog, 320, TR.rad * 2 + 1300);
   hemi.color.set(th.hemiSky); hemi.groundColor.set(th.hemiGround); hemi.intensity = th.hemiI ?? 1.0;
   sun.color.set(th.sun); sun.intensity = th.sunI ?? 2.3; renderer.toneMappingExposure = th.exposure ?? 1.05;
@@ -986,7 +1030,68 @@ function palmGeos() {
   const nut = new THREE.SphereGeometry(0.5, 8, 6); nut.translate(0, 5.8, 0); leaves.push(toNI(nut));
   return { trunkG, crownG: mergeGeometries(leaves) };
 }
+// a mountain: a cone roughened with ridged noise, coloured by height and steepness (meadow at the foot,
+// rock above, snow on the gentler upper slopes)
+function mountainGeo(R, H, seed, PK, th) {
+  const g = new THREE.ConeGeometry(R, H, 72, 40, true).translate(0, H / 2, 0), P = g.attributes.position, col = [], C = new THREE.Color();
+  const rock = new THREE.Color(PK.cols[seed % PK.cols.length]), foot = new THREE.Color(th.hills[seed % th.hills.length]), snow = new THREE.Color(0xf4f8ff), o = seed * 13.7;
+  for (let i = 0; i < P.count; i++) {
+    let x = P.getX(i), y = P.getY(i), z = P.getZ(i); const t = y / H, rr = Math.hypot(x, z) || 1;
+    const n = ridge3(x / R * 2.2 + o, t * 3, z / R * 2.2, 5), d = (n - 0.5) * R * 0.5 * (0.4 + t * 0.6) + (fbm3(x / R * 6, t * 8 + o, z / R * 6, 3) - 0.5) * R * 0.12;
+    const s = Math.max(0, rr + d * (1 - t * 0.3)) / rr; x *= s; z *= s; y += (n - 0.5) * H * 0.12 * (1 - t);
+    if (t > 0.97) y = H * (0.94 + n * 0.08);
+    P.setXYZ(i, x, Math.max(0, y), z);
+  }
+  g.computeVertexNormals();
+  const N = g.attributes.normal;
+  for (let i = 0; i < P.count; i++) {
+    const y = P.getY(i), t = y / H, ny = N.getY(i), j = fbm3(P.getX(i) * 0.03, y * 0.05, P.getZ(i) * 0.03, 3);
+    C.copy(foot).lerp(rock, clamp((t - 0.12 + (j - 0.5) * 0.2) * 4, 0, 1));
+    C.multiplyScalar(0.8 + j * 0.4);
+    if (PK.snow) { const line = 1 - PK.snow * 1.25 + (j - 0.5) * 0.18; if (t > line && ny > 0.35) C.lerp(snow, clamp((t - line) * 10, 0, 1) * clamp((ny - 0.35) * 4, 0, 1)); }
+    col.push(C.r, C.g, C.b);
+  }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  return g;
+}
+function mesaGeo(R, H, seed) {                    // flat-topped mesa with eroded, uneven walls
+  const g = new THREE.CylinderGeometry(R * 0.72, R, H, 64, 16).translate(0, H / 2, 0), P = g.attributes.position, o = seed * 9.1;
+  for (let i = 0; i < P.count; i++) { let x = P.getX(i), y = P.getY(i), z = P.getZ(i); const rr = Math.hypot(x, z); if (rr < 1e-3) continue;
+    const a = Math.atan2(z, x), n = fbm3(Math.cos(a) * 3 + o, y / H * 4, Math.sin(a) * 3, 4), s = 1 + (n - 0.5) * 0.35; P.setX(i, x * s); P.setZ(i, z * s);
+    if (y > H - 0.1) P.setY(i, H + (n - 0.5) * H * 0.04); }
+  g.computeVertexNormals(); return g;
+}
 const bandTex = cols => canvasTex(8, 128, (g, w, h) => { const rr = rng(cols.length * 13); let y = 0; while (y < h) { const t = 4 + rr() * 14; g.fillStyle = cols[(rr() * cols.length) | 0]; g.fillRect(0, y, w, t); y += t; } });
+// a broadleaf crown: several lumpy blobs merged, with darker undersides and inner shade baked into vertex colours
+function leafyCrown(R, y, seed) {
+  const r = rng(seed * 31 + 7), parts = [];
+  const blob = (cx, cy, cz, rad) => { const g = new THREE.IcosahedronGeometry(rad, 3), P = g.attributes.position;
+    for (let i = 0; i < P.count; i++) { const x = P.getX(i), yy = P.getY(i), z = P.getZ(i), n = fbm3(x * 2.4 + cx * 3 + seed, yy * 2.4 + cy, z * 2.4 + cz * 3, 3), s = 0.82 + n * 0.36; P.setXYZ(i, x * s + cx, yy * s * 0.9 + cy, z * s + cz); }
+    return toNI(g); };
+  parts.push(blob(0, y, 0, R));
+  for (let k = 0; k < 5; k++) { const a = k / 5 * 6.28 + r(), d = R * (0.55 + r() * 0.2); parts.push(blob(Math.cos(a) * d, y + (r() - 0.6) * R * 0.6, Math.sin(a) * d, R * (0.55 + r() * 0.2))); }
+  parts.push(blob(0, y + R * 0.6, 0, R * 0.7));
+  let g = mergeGeometries(parts); g.deleteAttribute('normal'); g.deleteAttribute('uv'); g = mergeVertices(g, 1e-3); g.computeVertexNormals();   // smooth shading across each blob
+  const P = g.attributes.position, N = g.attributes.normal, col = [];
+  for (let i = 0; i < P.count; i++) { const ny = N.getY(i), out = Math.hypot(P.getX(i), P.getY(i) - y, P.getZ(i)) / (R * 1.4), v = clamp(0.55 + ny * 0.25 + out * 0.25, 0.4, 1.1) * (0.9 + hash3(i, seed, 1) * 0.2); col.push(v, v, v); }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); return g;
+}
+// a conifer: stacked drooping skirts of foliage with ragged edges
+function conifer(R, H, trunk, seed) {
+  const parts = [], tiers = 5;
+  for (let t = 0; t < tiers; t++) {
+    const f = t / tiers, rad = R * (1 - f * 0.78), h = H / tiers * 1.5, y0 = trunk + f * H;
+    const g = new THREE.ConeGeometry(rad, h, 16, 3, true), P = g.attributes.position;
+    for (let i = 0; i < P.count; i++) { const x = P.getX(i), y = P.getY(i), z = P.getZ(i), a = Math.atan2(z, x), edge = y < -h * 0.4 ? 1 : 0;
+      const jag = 1 + (noise3(Math.cos(a) * 4 + t * 3, Math.sin(a) * 4 + seed, t) - 0.5) * 0.5 * edge; P.setXYZ(i, x * jag, y - edge * (noise3(a * 3, t, seed) * 0.25 * h), z * jag); }
+    parts.push(toNI(g.translate(0, y0 + h / 2, 0)));
+  }
+  parts.push(toNI(new THREE.CylinderGeometry(0.12, 0.2, trunk + 0.4, 6).translate(0, (trunk + 0.4) / 2, 0)));
+  let g = mergeGeometries(parts); g.deleteAttribute('normal'); g.deleteAttribute('uv'); g = mergeVertices(g, 1e-3); g.computeVertexNormals();
+  const P = g.attributes.position, N = g.attributes.normal, col = [];
+  for (let i = 0; i < P.count; i++) { const isTrunk = Math.hypot(P.getX(i), P.getZ(i)) < 0.21 && P.getY(i) < trunk + 0.4; const v = isTrunk ? 0.5 : clamp(0.6 + N.getY(i) * 0.3, 0.35, 1) * (0.9 + hash3(i, seed, 2) * 0.2); col.push(isTrunk ? 0.6 : v, isTrunk ? 0.42 : v, isTrunk ? 0.3 : v); }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); return g;
+}
 function decorate(def, r) {
   const th = def.theme, KIND = th.kind, water = !!th.water, ISL = TR.rad + 60;
   const occ = [];
@@ -1104,11 +1209,10 @@ function decorate(def, r) {
   for (let k = 0; k < nTrees; k++) { const p = spot(2.6, WALL + 4, water ? 400 : VEG === 'pines' ? 300 : VEG === 'autumn' ? 210 : 230, 60); if (p) spots.push(p); }
   if (VEG === 'autumn') {                    // maples, birches and a few dark firs in autumn colours, leaves on the ground
     const trunkG = new THREE.CylinderGeometry(0.2, 0.32, 2.4, 7).translate(0, 1.2, 0);
-    const crownG = mergeGeometries([new THREE.IcosahedronGeometry(1.35, 1).translate(0, 3.2, 0), new THREE.IcosahedronGeometry(0.95, 1).translate(0.7, 2.7, 0.3), new THREE.IcosahedronGeometry(0.9, 1).translate(-0.6, 2.8, -0.4)].map(toNI));
-    const firG = mergeGeometries([new THREE.ConeGeometry(1.4, 2.6, 8).translate(0, 2.6, 0), new THREE.ConeGeometry(1.05, 2.2, 8).translate(0, 3.9, 0), new THREE.ConeGeometry(0.7, 1.8, 8).translate(0, 5.0, 0)].map(toNI));
+    const crownG = leafyCrown(1.4, 3.2, 7), firG = conifer(1.4, 4.4, 1.4, 9);
     const trunks = new THREE.InstancedMesh(trunkG, lam(0xffffff), spots.length);
-    const crowns = new THREE.InstancedMesh(crownG, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, flatShading: true }), spots.length);
-    const firs = new THREE.InstancedMesh(firG, std(0x2f5e3c, 0.9), spots.length);
+    const crowns = new THREE.InstancedMesh(crownG, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }), spots.length);
+    const firs = new THREE.InstancedMesh(firG, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, color: 0x2f5e3c }), spots.length);
     const fall = [0xe0571f, 0xf08a24, 0xf6b02c, 0xc9361f, 0xd9772a, 0xa8b33a, 0xf2c94a];
     let nc = 0, nf = 0;
     spots.forEach(([x, z], i) => {
@@ -1133,11 +1237,10 @@ function decorate(def, r) {
     lf.count = li; world.add(lf);
   } else if (VEG === 'broadleaf') {
     const trunkG = new THREE.CylinderGeometry(0.22, 0.32, 2, 7); trunkG.translate(0, 1, 0);
-    const crownG = new THREE.SphereGeometry(1.25, 14, 10); crownG.translate(0, 2.9, 0);
-    const pineG = new THREE.ConeGeometry(1.2, 3.6, 9); pineG.translate(0, 3.4, 0);
+    const crownG = leafyCrown(1.25, 2.9, 3), pineG = conifer(1.2, 3.6, 1.6, 5);
     const trunks = new THREE.InstancedMesh(trunkG, lam(0x9a6a45), spots.length);
-    const crowns = new THREE.InstancedMesh(crownG, std(0xffffff, 0.85), spots.length);
-    const pines = new THREE.InstancedMesh(pineG, std(0x3d8c4a, 0.85), spots.length);
+    const crowns = new THREE.InstancedMesh(crownG, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }), spots.length);
+    const pines = new THREE.InstancedMesh(pineG, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, color: 0x3d8c4a }), spots.length);
     const greens = [0x5cbf4a, 0x4fae45, 0x72cc58, 0x3f9f46, 0xffa6c9, 0xffd35a];
     let nc = 0, np = 0;
     spots.forEach(([x, z], i) => {
@@ -1208,29 +1311,32 @@ function decorate(def, r) {
   }
 
   /* --- far away: mountains, hills, clouds, balloons --- */
-  const PK = th.peaks;
+  const PK = th.peaks, peakMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 });
   for (let k = 0; k < PK.n; k++) {
     const a = k / PK.n * Math.PI * 2 + r() * 0.25, d = TR.rad + PK.dist + r() * 220;
     const R = PK.R[0] + r() * (PK.R[1] - PK.R[0]), H = PK.H[0] + r() * (PK.H[1] - PK.H[0]), rot = r() * 6;
     const x = TR.cx + Math.cos(a) * d, z = TR.cz + Math.sin(a) * d;
-    const mat = PK.bands ? new THREE.MeshLambertMaterial({ map: bandTex(PK.bands), flatShading: true }) : new THREE.MeshLambertMaterial({ color: PK.cols[k % PK.cols.length], flatShading: true });
-    const geo = PK.mesa ? new THREE.CylinderGeometry(R * 0.72, R, H, 9) : new THREE.ConeGeometry(R, H, PK.seg);
-    const m = mesh(geo, mat, x, H / 2 - 4, z); m.rotation.y = rot;
-    if (PK.snow) { const ch = H * PK.snow; const cap = mesh(new THREE.ConeGeometry(R * ch / H * 1.04, ch, PK.seg), new THREE.MeshLambertMaterial({ color: 0xf6f9ff, flatShading: true }), x, H - 4 - ch / 2 + 0.5, z); cap.rotation.y = rot; }
+    const m = mesh(PK.mesa ? mesaGeo(R, H, k) : mountainGeo(R, H, k, PK, th), PK.mesa ? new THREE.MeshStandardMaterial({ map: bandTex(PK.bands), roughness: 0.95 }) : peakMat, x, -4, z);
+    m.rotation.y = rot;
   }
   const HL = th.hillsCfg;
   for (let k = 0; k < HL.n; k++) {
     const a = k / HL.n * Math.PI * 2 + r() * 0.3, d = TR.rad + HL.dist + r() * 160;
     const R = HL.R[0] + r() * (HL.R[1] - HL.R[0]);
-    const h = mesh(new THREE.SphereGeometry(R, 20, 12), lam(th.hills[k % th.hills.length]), TR.cx + Math.cos(a) * d, HL.y ?? -R * 0.08, TR.cz + Math.sin(a) * d);
+    const hg = new THREE.SphereGeometry(R, 40, 20), HP = hg.attributes.position, hc = [], base = new THREE.Color(th.hills[k % th.hills.length]), C2 = new THREE.Color();
+    for (let i = 0; i < HP.count; i++) { const x = HP.getX(i), y = HP.getY(i), z = HP.getZ(i), n = fbm3(x / R * 2 + k, y / R * 2, z / R * 2, 4), sc = 1 + (n - 0.5) * 0.25; HP.setXYZ(i, x * sc, y * sc, z * sc); C2.copy(base).multiplyScalar(0.82 + n * 0.36); hc.push(C2.r, C2.g, C2.b); }
+    hg.setAttribute('color', new THREE.Float32BufferAttribute(hc, 3)); hg.computeVertexNormals();
+    const h = mesh(hg, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }), TR.cx + Math.cos(a) * d, HL.y ?? -R * 0.08, TR.cz + Math.sin(a) * d);
     h.scale.y = HL.sy;
   }
-  const cm = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.35 }), cg = new THREE.SphereGeometry(1, 14, 10);
-  for (let k = 0; k < (th.clouds ?? 28); k++) {
-    const g = new THREE.Group(), a = r() * 6.28, d = 100 + r() * (TR.rad + 350);
-    g.position.set(TR.cx + Math.cos(a) * d, 75 + r() * 50, TR.cz + Math.sin(a) * d);
-    const puffs = 3 + (r() * 3 | 0);
-    for (let i = 0; i < puffs; i++) { const m = mesh(cg, cm, (i - puffs / 2) * 9 + r() * 4, r() * 4, r() * 6, g); const s = 8 + r() * 8; m.scale.set(s, s * 0.7, s); }
+  for (let k = 0; k < (th.clouds ?? 28); k++) {           // soft cumulus: a few overlapping billboards, lit on top
+    const g = new THREE.Group(), a = r() * 6.28, d = 200 + r() * (TR.rad + 700);
+    g.position.set(TR.cx + Math.cos(a) * d, 110 + r() * 90, TR.cz + Math.sin(a) * d);
+    const puffs = 4 + (r() * 4 | 0), w = 50 + r() * 70;
+    for (let i = 0; i < puffs; i++) {
+      const sp = new THREE.Sprite(CLOUD_MATS[(r() * CLOUD_MATS.length) | 0]); const s = w * (0.45 + r() * 0.45);
+      sp.scale.set(s, s * 0.62, 1); sp.position.set((i / (puffs - 1) - 0.5) * w * 1.1 + (r() - 0.5) * 10, (r() - 0.3) * s * 0.18, (r() - 0.5) * 20); g.add(sp);
+    }
     g.userData.v = 1.5 + r() * 2; world.add(g); anim.clouds.push(g);
   }
   const balloonCols = [['#ff5a4e', '#ffd23f'], ['#4aa6ff', '#ffffff'], ['#34d1a0', '#ff8fbf'], ['#9a6cff', '#ffc23a'], ['#ff8c42', '#22305a']];
@@ -3929,7 +4035,8 @@ function frame(now) {
   if (toastT > 0) { toastT -= dt; if (toastT <= 0) $('toast').style.opacity = 0; }
   anim.pads.forEach(t => t.offset.y = (t.offset.y + dt * 1.6) % 1);
   anim.t = (anim.t || 0) + dt; anim.fns.forEach(f => f(dt, anim.t));
-  anim.clouds.forEach(g => { g.position.x += g.userData.v * dt; if (g.position.x > TR.cx + 500) g.position.x = TR.cx - 500; });
+  anim.clouds.forEach(g => { g.position.x += g.userData.v * dt; if (g.position.x > TR.cx + 900) g.position.x = TR.cx - 900; });
+  skyDome.position.copy(camera.position);
   if (!window.__camFree) updateCamera(dt);
   if (state !== 'menu' && !$('hud').hidden) updateHud();
   engineUpdate();
