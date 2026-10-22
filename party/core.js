@@ -167,7 +167,7 @@ const Fx = {
   /* a quick full-screen flash, e.g. white for a big hit */
   flash(col, a) { this.flashCol = col || '#fff'; this.flashA = Math.max(this.flashA, a || 0.4); },
   /* a big line of text across the middle for a moment ("最後 10 秒！") */
-  announce(text, col) { this.banner = { text, col: col || '#2b2340', t: 0 }; },
+  announce(text, col, y) { this.banner = { text, col: col || '#2b2340', t: 0, y: y || H / 2 }; },   // y: where the band sits (default: middle)
   /* soft puffs on the ground: footsteps, landings, skids */
   dust(x, y, col, size) { this.dusts.push({ x: x + rnd(-6, 6), y: y + rnd(-3, 3), vx: rnd(-20, 20), vy: rnd(-30, -8), r: (size || 9) * rnd(0.7, 1.2), t: 0, life: rnd(0.35, 0.55), col: col || 'rgba(255,255,255,.75)' }); },
   /* call every step for a moving character: leaves puffs at its feet now and then */
@@ -212,8 +212,8 @@ const Fx = {
     if (this.banner) {
       const b = this.banner, k = b.t / 1.6, x = W / 2 + (k < 0.15 ? (1 - k / 0.15) * 600 : k > 0.85 ? -(k - 0.85) / 0.15 * 600 : 0);
       g.globalAlpha = k > 0.85 ? 1 - (k - 0.85) / 0.15 : 1;
-      g.fillStyle = 'rgba(43,35,64,.75)'; g.fillRect(-400, H / 2 - 60, W + 800, 120);
-      g.font = '900 72px "Noto Sans TC",system-ui,sans-serif'; g.lineWidth = 12; g.strokeStyle = '#fff'; g.strokeText(b.text, x, H / 2); g.fillStyle = b.col; g.fillText(b.text, x, H / 2);
+      const by = b.y; g.fillStyle = 'rgba(43,35,64,.75)'; g.fillRect(-400, by - 60, W + 800, 120);
+      g.font = '900 72px "Noto Sans TC",system-ui,sans-serif'; g.lineWidth = 12; g.strokeStyle = '#fff'; g.strokeText(b.text, x, by); g.fillStyle = b.col; g.fillText(b.text, x, by);
       g.globalAlpha = 1;
     }
     if (this.flashA > 0) { g.globalAlpha = this.flashA; g.fillStyle = this.flashCol; g.fillRect(-400, 0, W + 800, H); g.globalAlpha = 1; }
@@ -626,6 +626,7 @@ function drawHud(g) {
   g.fillStyle = 'rgba(255,255,255,.94)'; g.beginPath(); g.roundRect(W / 2 - 74, 10, 148, 84, 24); g.fill();
   g.strokeStyle = Party.def.col; g.lineWidth = 5; g.stroke();
   g.textAlign = 'center'; g.textBaseline = 'middle';
+  if (left === null) { g.font = '52px system-ui'; g.fillStyle = '#2b2340'; g.fillText(Party.def.icon, W / 2, 54); }
   if (left !== null) {
     const urgent = left <= 10 && Party.state === 'play';
     g.fillStyle = urgent ? '#ff3b4a' : '#2b2340'; g.font = `900 ${urgent ? 54 : 48}px "Fredoka","Noto Sans TC",system-ui,sans-serif`;

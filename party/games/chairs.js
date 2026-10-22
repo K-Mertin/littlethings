@@ -141,7 +141,7 @@
     stopMusic() {
       const ctx = this.ctx, kid = this.kid;
       this.phase = 'rush'; this.music = false; this.rt = 0; this.rushT = 0.55 + (kid ? 4.2 : 3.5); this.scratchT = 0.8;
-      Fx.flash('#fff', 0.55); Fx.shake(12); Fx.announce('音樂停了！快坐下！', '#c026d3'); this.scratch(); ctx.hitstop(0.1);
+      Fx.flash('#fff', 0.55); Fx.shake(12); Fx.announce('音樂停了！快坐下！', '#c026d3', 210); this.scratch(); ctx.hitstop(0.1);
       for (const e of this.alive()) {
         const s = hyp(e.vx, e.vy), m = Math.min(1, s / 220), bob = Math.abs(Math.sin(e.walk));
         e.fhop = bob * 9 * m + 4; e.frot = clamp(e.vx / 1600, -0.22, 0.22) + rnd(-0.08, 0.08);
