@@ -9,8 +9,9 @@ import { fileURLToPath } from 'node:url';
 import { MeshoptSimplifier } from 'meshoptimizer';
 import { surfaceNets, len, clamp } from './shape.mjs';
 import { gt, wheelSplit } from './gt.mjs';
+import { muscle } from './muscle.mjs';
 
-const MODELS = { gt, wheelSplit };
+const MODELS = { gt, wheelSplit, muscle };
 const LODS = { hi: { budget: 90000, min: 200, err: .004 }, lo: { budget: 16000, min: 60, err: .02 } };
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'cars');
 

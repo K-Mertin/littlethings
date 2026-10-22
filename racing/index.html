@@ -2127,6 +2127,8 @@ const SMAT = {
   tailLens: envd(new THREE.MeshPhysicalMaterial({ color: 0x7a0010, transparent: true, opacity: 0.8, roughness: 0.05, clearcoat: 1, emissive: 0x500008, emissiveIntensity: 0.6 })),
   tailLed: new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 0.15, 0.2), toneMapped: false }),
   carbon: carbonMat,
+  stripe: envd(new THREE.MeshPhysicalMaterial({ color: 0xf4f4f0, vertexColors: true, roughness: 0.3, metalness: 0.1, clearcoat: 1, clearcoatRoughness: 0.03 })),
+  chromeTrim: chromeMat,
   rubber: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }),
   disc: discMat, caliper: caliperMat,
 };
@@ -2145,7 +2147,7 @@ function parseSculpt(buf) {
   }
   return { parts, meta: J.meta };
 }
-const SCULPTED = { gt: ['gt', 'wheelSplit'] };            // model id -> [body file, wheel file]
+const SCULPTED = { gt: ['gt', 'wheelSplit'], muscle: ['muscle', 'wheelSplit'] };            // model id -> [body file, wheel file]
 function loadSculpts() {
   const files = [...new Set(Object.values(SCULPTED).flat())];
   return Promise.all(files.map(f => fetch(`assets/cars/${f}.${SCULPT_LOD}.bin`).then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); }).then(b => { SCULPT[f] = parseSculpt(b); })
@@ -2250,11 +2252,13 @@ function makeCarMesh(model, hex, num, parts = MODELS[model].stock) {
     const pivot = new THREE.Group(); pivot.position.set(x * M.track, M.R, z);
     if (SC) {                                       // sculpted tyre, rim, disc and caliper; outer face toward +x, so the left side turns round
       const side = new THREE.Group(); if (x < 0) side.rotation.y = Math.PI; pivot.add(side);
+      const wm = SC.wheel.meta, sr = M.R / wm.R, sx = M.TW / wm.TW;     // the one sculpted wheel, sized to this car
       const w = new THREE.Group(); w.userData.sgn = x < 0 ? -1 : 1; side.add(w);
       for (const pc of SC.wheel.parts) {
         let geo = pc.geo, mat = SMAT[pc.mat] || SMAT.black;
         if (pc.name === 'rim') { mat = RIM[parts.rimCol] || RIM.silver; if (parts.rim !== 'split') geo = wg.rim; }
         const m = new THREE.Mesh(geo, mat); m.castShadow = pc.mat === 'rubber';
+        if (geo === pc.geo) m.scale.set(sx, sr, sr);
         (pc.still ? side : w).add(m);
       }
       if (tread) w.add(new THREE.Mesh(tread.geo, tread.mat));
