@@ -476,6 +476,9 @@
     ctIntro: m => `${m}可以跟別的注音做朋友。兩個合在一起，念快一點，就變成新的音。`,
     // 教一教：兩個字
     twIntro: '兩個字的詞，就一個字一個字拼。',
+    // 教一教：寫字的注音、讀注音
+    wwT: ['寫字的注音，要先把字拆開來聽。貓：ㄇ，ㄠ。', '先寫ㄇ，再寫ㄠ，從上面寫到下面。', '最後想想是第幾聲。貓是一聲，不用標符號。', '換你寫寫看！'],
+    rdT: ['只看注音的時候，先念出每一個音，再拼起來。', 'ㄇ，ㄠ，拼起來：貓。', '一句話，就一個字一個字讀：魚，在，水，裡，游。', '再讀快一點：魚在水裡游。', '換你讀讀看！'],
     // 課程
     mapIntro: '這是注音地圖。一課一課往前走吧！',
     mapLocked: '先把前面的課上完喔。',
@@ -523,6 +526,7 @@
     add(P.ttIntro); P.tt.forEach(add); add(P.ttYou); add(P.ttAgain); ['衣', '姨', '椅', '意'].forEach(add);
     add(P.spT.intro); P.spT.ex.forEach(e => add(e[2])); add(P.spT.you); add(P.spT.youAns);
     ['ㄧ', 'ㄨ', 'ㄩ'].forEach(m => add(P.ctIntro(m))); add(P.twIntro);
+    P.wwT.forEach(add); P.rdT.forEach(add);
     LESSONS.forEach((L, i) => { add(P.lessonIntro(L, i + 1)); add(P.lessonDone(i + 1)); });
     for (const x of SYMBOLS) add(P.lessonWrite(x.s));
     for (const w of WORDS) add(w.w);
