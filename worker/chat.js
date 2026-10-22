@@ -4,9 +4,10 @@
 // Secrets（Cloudflare → Worker → Settings → Variables and secrets）：
 //   ANTHROPIC_API_KEY  Claude API 金鑰
 //   GITHUB_TOKEN       fine-grained token，只給 K-Mertin/littlethings 的 Issues: Read and write
+//   CLAUDE_MODEL       （一般變數，可不設）要用的模型，預設 claude-haiku-5-5
 // 只有本機測試會設：ANTHROPIC_API_URL / GITHUB_API_URL（指到假伺服器）
 
-const MODEL = 'claude-haiku-5-5';
+const DEFAULT_MODEL = 'claude-haiku-5-5';   // Cloudflare 變數 CLAUDE_MODEL 可以覆蓋，例如 claude-sonnet-5-5
 const REPO = 'K-Mertin/littlethings';
 const LIMITS = { perIpHour: 30, perIpIssuesDay: 5, perDay: 1500, maxMsgs: 16, maxChars: 600 };
 const KINDS = { bug: '問題回報', idea: '新點子', question: '疑問' };
@@ -136,7 +137,7 @@ async function chat(request, env) {
     const res = await fetch(env.ANTHROPIC_API_URL || 'https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: MODEL, max_tokens: 600, system: systemPrompt(games), tools: tools(games), messages: convo }),
+      body: JSON.stringify({ model: (env.CLAUDE_MODEL || DEFAULT_MODEL).trim(), max_tokens: 600, system: systemPrompt(games), tools: tools(games), messages: convo }),
     });
     if (!res.ok) {
       console.log('claude error', res.status, (await res.text()).slice(0, 300));
