@@ -40,13 +40,66 @@
   const TYPE = { N: 0, F: 1, B: 2, L: 0 };
   let BG = null, BUGS = null, STAR = null, CRUMB = null; const CAKES = {};
 
+  const POND = { x: 330, y: 800, rx: 118, ry: 46 };
+  const NTR = 300;   // ant-trail dots (ring buffer)
+  /* picnic guests sitting just above the meadow: [x, y, colour, animal, hat colour] */
+  const GUESTS = [[150, 128, 2, 3, '#2f8cff'], [206, 136, 4, 2, '#ffbf1f'], [1398, 128, 3, 4, '#ff4f58'], [1454, 136, 1, 0, '#22c26a']];
+
+  /* ---------- smooth controls: ease in, stop a little quicker, turn without snapping ---------- */
+  function angTo(a, b, k) { let d = b - a; d = Math.atan2(Math.sin(d), Math.cos(d)); return a + d * k; }
+  function steer(e, i, sp, dt) {
+    const tx = i.x * sp, ty = i.y * sp, cur = hyp(e.vx, e.vy), tgt = hyp(tx, ty);
+    const k = 1 - Math.exp(-(tgt > cur + 1 ? 9 : 15) * dt);
+    e.vx += (tx - e.vx) * k; e.vy += (ty - e.vy) * k;
+    if (!tgt && hyp(e.vx, e.vy) < 14) e.vx = e.vy = 0;
+    const s = hyp(e.vx, e.vy), go = tgt > 0;
+    if (go !== e.moving) { e.moving = go; e.sqv += go ? -1.8 : 2.2; }
+    if (go) e.face = angTo(e.face, Math.atan2(i.y, i.x), 1 - Math.exp(-13 * dt));
+    e.mv += (Math.min(1, s / sp) - e.mv) * (1 - Math.exp(-10 * dt));
+    e.walk += s * dt / 26;
+    e.sqv += (-e.squash * 260 - e.sqv * 16) * dt; e.squash += e.sqv * dt;
+  }
+  function onBody(g, x, y, r, hop, sq, bob) { g.save(); g.translate(x, y - hop - bob); g.scale(1 + sq, 1 - sq); }
+  function sweat(g, x, y, t, ph) {
+    const k = (t * 2.2 + ph) % 1; g.globalAlpha = 1 - k; g.fillStyle = '#7fd0ff';
+    g.beginPath(); g.moveTo(x, y + k * 10 - 7); g.quadraticCurveTo(x + 5, y + k * 10 + 1, x, y + k * 10 + 4); g.quadraticCurveTo(x - 5, y + k * 10 + 1, x, y + k * 10 - 7); g.fill();
+    g.fillStyle = 'rgba(255,255,255,.8)'; g.beginPath(); g.arc(x - 1.2, y + k * 10, 1.2, 0, TAU); g.fill(); g.globalAlpha = 1;
+  }
+  /* a striped party hat with a pompom, worn a little to one side */
+  function partyHat(g, r, col, face, tilt) {
+    const lx = Math.cos(face) * r * 0.06;
+    g.save(); g.translate(lx - r * 0.12, -r * 0.78); g.rotate(-0.22 + tilt);
+    const h = r * 1.08, w = r * 0.42;
+    g.fillStyle = 'rgba(60,30,60,.2)'; g.beginPath(); g.ellipse(0, r * 0.06, w * 1.05, r * 0.11, 0, 0, TAU); g.fill();
+    g.save(); g.beginPath(); g.moveTo(-w, 0); g.lineTo(0, -h); g.lineTo(w, 0); g.quadraticCurveTo(0, r * 0.12, -w, 0); g.closePath(); g.clip();
+    g.fillStyle = col; g.fillRect(-w, -h, w * 2, h + r * 0.2);
+    g.fillStyle = '#fff'; for (let k = 0; k < 4; k++) { g.beginPath(); g.moveTo(-w, -k * h * 0.28 + r * 0.02); g.lineTo(w, -k * h * 0.28 - h * 0.16); g.lineTo(w, -k * h * 0.28 - h * 0.06); g.lineTo(-w, -k * h * 0.28 + h * 0.1); g.closePath(); g.fill(); }
+    g.fillStyle = 'rgba(255,255,255,.3)'; g.beginPath(); g.moveTo(-w * 0.55, 0); g.lineTo(-w * 0.1, -h * 0.85); g.lineTo(-w * 0.25, 0); g.closePath(); g.fill();
+    g.fillStyle = 'rgba(0,0,0,.12)'; g.beginPath(); g.moveTo(w * 0.3, 0); g.lineTo(0, -h); g.lineTo(w, 0); g.closePath(); g.fill();
+    g.restore();
+    g.fillStyle = '#ffd23f'; for (let k = 0; k < 6; k++) { const a = k * TAU / 6; g.beginPath(); g.arc(Math.cos(a) * r * 0.08, -h + Math.sin(a) * r * 0.08, r * 0.08, 0, TAU); g.fill(); }
+    g.fillStyle = '#fff6b0'; g.beginPath(); g.arc(-r * 0.03, -h - r * 0.03, r * 0.06, 0, TAU); g.fill();
+    g.restore();
+  }
+  /* a white bib with a scalloped edge and a little strawberry */
+  function bib(g, r, face) {
+    const bx = Math.cos(face) * r * 0.14, by = r * 0.66;
+    g.strokeStyle = '#ff8fbd'; g.lineWidth = r * 0.05; g.beginPath(); g.moveTo(bx - r * 0.32, by - r * 0.12); g.quadraticCurveTo(bx - r * 0.5, by - r * 0.2, bx - r * 0.6, by - r * 0.3); g.moveTo(bx + r * 0.32, by - r * 0.12); g.quadraticCurveTo(bx + r * 0.5, by - r * 0.2, bx + r * 0.6, by - r * 0.3); g.stroke();
+    g.fillStyle = '#fffaf3'; g.beginPath(); g.ellipse(bx, by, r * 0.42, r * 0.21, 0, 0, TAU); g.fill();
+    for (let k = 0; k < 5; k++) { const a = 0.15 * Math.PI + k * 0.175 * Math.PI; g.beginPath(); g.arc(bx + Math.cos(a) * r * 0.39, by + Math.sin(a) * r * 0.19, r * 0.085, 0, TAU); g.fill(); }
+    g.strokeStyle = '#ff8fbd'; g.lineWidth = r * 0.035; g.beginPath(); g.ellipse(bx, by, r * 0.42, r * 0.21, 0, 0, TAU); g.stroke();
+    g.fillStyle = '#e8303f'; g.beginPath(); g.moveTo(bx - r * 0.08, by - r * 0.04); g.quadraticCurveTo(bx, by + r * 0.16, bx + r * 0.08, by - r * 0.04); g.quadraticCurveTo(bx, by - r * 0.09, bx - r * 0.08, by - r * 0.04); g.fill();
+    g.fillStyle = '#3fae4a'; g.beginPath(); g.ellipse(bx, by - r * 0.06, r * 0.07, r * 0.03, 0, 0, TAU); g.fill();
+  }
   /* ---------- drawn once ---------- */
-  function tree(g, x, y, s) {
+  function tree(g, x, y, s, pink) {
     g.fillStyle = 'rgba(30,70,20,.25)'; g.beginPath(); g.ellipse(x + 10 * s, y + 6 * s, 50 * s, 14 * s, 0, 0, TAU); g.fill();
     g.fillStyle = '#8a5a2b'; g.beginPath(); g.roundRect(x - 9 * s, y - 50 * s, 18 * s, 56 * s, 6 * s); g.fill();
-    for (const [dx, dy, r, c] of [[0, -78, 46, '#2f8a3a'], [-30, -60, 32, '#2f8a3a'], [30, -60, 32, '#38983f'], [-10, -96, 30, '#45ab4a'], [16, -88, 26, '#52ba52']]) {
-      g.fillStyle = c; g.beginPath(); g.arc(x + dx * s, y + dy * s, r * s, 0, TAU); g.fill();
-    }
+    const C = pink ? ['#f59ac0', '#f59ac0', '#f7a8cb', '#ffbfd9', '#ffd3e4'] : ['#2f8a3a', '#2f8a3a', '#38983f', '#45ab4a', '#52ba52'];
+    [[0, -78, 46], [-30, -60, 32], [30, -60, 32], [-10, -96, 30], [16, -88, 26]].forEach(([dx, dy, r], i) => {
+      g.fillStyle = C[i]; g.beginPath(); g.arc(x + dx * s, y + dy * s, r * s, 0, TAU); g.fill();
+    });
+    if (pink) { g.fillStyle = '#fff'; for (let k = 0; k < 14; k++) { g.beginPath(); g.arc(x + rnd(-50, 50) * s, y + rnd(-120, -46) * s, rnd(2, 3.5) * s, 0, TAU); g.fill(); } }
   }
   function anthill(g, x, y) {
     g.fillStyle = 'rgba(60,40,20,.2)'; g.beginPath(); g.ellipse(x + 4, y + 8, 46, 14, 0, 0, TAU); g.fill();
@@ -75,6 +128,43 @@
       g.fillStyle = '#ffb21f'; g.beginPath(); g.arc(x, y, 2.4 * k, 0, TAU); g.fill();
     }
     for (const [x, y] of [[120, 214], [1478, 222], [118, 818], [1480, 822]]) anthill(g, x, y);
+    // the duck pond (bottom left): reeds, stones, lily pads
+    { const P = POND;
+      g.fillStyle = 'rgba(30,70,20,.2)'; g.beginPath(); g.ellipse(P.x + 6, P.y + 8, P.rx + 18, P.ry + 14, 0, 0, TAU); g.fill();
+      for (let k = 0; k < 20; k++) { const a = k * TAU / 20; g.fillStyle = k % 2 ? '#c9c1b2' : '#a8a093'; g.beginPath(); g.ellipse(P.x + Math.cos(a) * (P.rx + 8), P.y + Math.sin(a) * (P.ry + 7), 13, 8, a, 0, TAU); g.fill(); }
+      g.fillStyle = '#4fb2e0'; g.beginPath(); g.ellipse(P.x, P.y, P.rx, P.ry, 0, 0, TAU); g.fill();
+      g.fillStyle = '#7fd0f5'; g.beginPath(); g.ellipse(P.x - 18, P.y - 10, P.rx * 0.66, P.ry * 0.46, 0, 0, TAU); g.fill();
+      for (const [dx, dy, s] of [[-80, 18, 1], [70, -16, 0.8], [88, 14, 0.9]]) { g.fillStyle = '#3fae4a'; g.beginPath(); g.ellipse(P.x + dx, P.y + dy, 14 * s, 8 * s, 0.3, 0.4, TAU - 0.2); g.fill(); }
+      g.fillStyle = '#ff9fc4'; g.beginPath(); g.arc(P.x - 76, P.y + 16, 4.5, 0, TAU); g.fill();
+      g.strokeStyle = '#3f8a3c'; g.lineWidth = 3; g.lineCap = 'round';
+      for (const [rx, ry] of [[P.x - P.rx - 4, P.y - 10], [P.x - P.rx + 10, P.y - 24], [P.x + P.rx - 6, P.y - 26], [P.x + P.rx + 4, P.y - 8]]) {
+        for (const d of [-5, 0, 5]) { g.beginPath(); g.moveTo(rx + d, ry); g.quadraticCurveTo(rx + d * 2, ry - 18, rx + d * 1.4, ry - 30); g.stroke(); }
+        g.fillStyle = '#8a5a2b'; g.beginPath(); g.ellipse(rx, ry - 27, 3.5, 8, 0, 0, TAU); g.fill();
+      }
+    }
+    // playground (bottom right): a sandbox with a sandcastle, bucket and spade
+    { const x = 1250, y = 800;
+      g.fillStyle = 'rgba(30,70,20,.2)'; g.beginPath(); g.roundRect(x - 78, y - 30, 164, 76, 12); g.fill();
+      g.fillStyle = '#c08850'; g.beginPath(); g.roundRect(x - 84, y - 38, 168, 78, 12); g.fill();
+      g.fillStyle = '#f3dc9b'; g.beginPath(); g.roundRect(x - 74, y - 30, 148, 62, 8); g.fill();
+      g.fillStyle = 'rgba(200,160,80,.4)'; for (let k = 0; k < 30; k++) { g.beginPath(); g.arc(x + rnd(-68, 68), y + rnd(-24, 26), 1.6, 0, TAU); g.fill(); }
+      g.fillStyle = '#e8c477'; g.fillRect(x - 40, y - 14, 44, 28); g.fillRect(x - 46, y - 24, 14, 38); g.fillRect(x - 6, y - 24, 14, 38);
+      g.fillStyle = '#d9b05e'; for (const tx of [-46, -6]) for (let k = 0; k < 3; k++) g.fillRect(x + tx + k * 5, y - 28, 3, 4);
+      g.fillStyle = '#8a6a30'; g.beginPath(); g.roundRect(x - 23, y - 2, 10, 16, [5, 5, 0, 0]); g.fill();
+      g.strokeStyle = '#5a3a1a'; g.lineWidth = 2; g.beginPath(); g.moveTo(x - 26, y - 14); g.lineTo(x - 26, y - 40); g.stroke();
+      g.fillStyle = '#ff4f58'; g.beginPath(); g.moveTo(x - 26, y - 40); g.lineTo(x - 12, y - 35); g.lineTo(x - 26, y - 30); g.fill();
+      g.fillStyle = '#2f8cff'; g.beginPath(); g.moveTo(x + 30, y - 10); g.lineTo(x + 54, y - 10); g.lineTo(x + 50, y + 16); g.lineTo(x + 34, y + 16); g.closePath(); g.fill();
+      g.strokeStyle = '#1658b5'; g.lineWidth = 2; g.beginPath(); g.arc(x + 42, y - 10, 12, Math.PI, 0); g.stroke();
+      g.fillStyle = '#ffbf1f'; g.save(); g.translate(x + 60, y + 20); g.rotate(0.7); g.fillRect(-2, -18, 4, 22); g.beginPath(); g.ellipse(0, 8, 6, 9, 0, 0, TAU); g.fill(); g.restore();
+    }
+    // the guests' little blankets just above the meadow
+    for (const [x0, col] of [[178, 'rgba(47,140,255,.55)'], [1426, 'rgba(34,194,106,.55)']]) {
+      g.fillStyle = 'rgba(30,70,20,.2)'; g.beginPath(); g.roundRect(x0 - 76, 116, 156, 40, 8); g.fill();
+      g.save(); g.beginPath(); g.roundRect(x0 - 80, 110, 160, 40, 8); g.clip();
+      g.fillStyle = '#fff'; g.fillRect(x0 - 80, 110, 160, 40); g.fillStyle = col;
+      for (let x = x0 - 80; x < x0 + 80; x += 20) g.fillRect(x, 110, 10, 40); for (let y = 110; y < 150; y += 20) g.fillRect(x0 - 80, y, 160, 10);
+      g.restore();
+    }
     // picnic blanket: gingham with stitched border and tassels
     g.fillStyle = 'rgba(30,70,20,.22)'; g.beginPath(); g.roundRect(BX0 + 8, BY0 + 12, BX1 - BX0, BY1 - BY0, 18); g.fill();
     g.save(); g.beginPath(); g.roundRect(BX0, BY0, BX1 - BX0, BY1 - BY0, 18); g.clip();
@@ -138,7 +228,7 @@
     g.fillStyle = '#ffffff'; g.beginPath(); g.ellipse(CX, CY, PRX, PRY, 0, 0, TAU); g.fill();
     g.strokeStyle = '#ffcf5a'; g.lineWidth = 4; g.beginPath(); g.ellipse(CX, CY, PRX - 9, PRY - 5, 0, 0, TAU); g.stroke();
     g.fillStyle = '#f4f1f9'; g.beginPath(); g.ellipse(CX, CY - 2, PRX - 26, PRY - 13, 0, 0, TAU); g.fill();
-    for (const [x, y, s] of [[110, 152, 0.9], [1490, 146, 0.85], [-30, 420, 1], [1630, 440, 1], [-10, 905, 1.1], [1610, 905, 1.1], [420, 930, 0.85], [1180, 930, 0.85]]) tree(g, x, y, s);
+    for (const [x, y, s, p] of [[20, 140, 0.9, 1], [1590, 140, 0.85, 1], [-30, 420, 1, 1], [1630, 440, 1, 1], [-10, 905, 1.1, 0], [1610, 905, 1.1, 0], [560, 935, 0.85, 1], [1060, 935, 0.85, 0]]) tree(g, x, y, s, p);
     return c;
   }
   /* bugs face +x; 4 walking frames each: 0 ant, 1 fast red ant, 2 beetle */
@@ -308,13 +398,18 @@
       this.spd = kid ? { N: 46, F: 80, L: 46, B: 40 } : { N: 64, F: 112, L: 60, B: 42 };
       this.es = ctx.players.map((p, i) => ({
         kind: 0, p, x: CX + (i - (n - 1) / 2) * 92, y: CY + 175 + (i % 2) * 34, vx: 0, vy: 0, face: -Math.PI / 2, r: 30,
-        cd: 0, walk: 0, squash: 0, sqv: 0, moving: false, boom: 0, scared: 0
+        cd: 0, walk: 0, squash: 0, sqv: 0, moving: false, boom: 0, scared: 0, mv: 0, cheer: 0, worry: 0
       }));
       this.by = new Map(this.es.map(e => [e.p, e]));
       this.ants = []; this.wave = 0; this.cakeHurt = 0; this.danger = null; this.total = 0;
       this.cake = { kind: 2, y: CY - 30 }; this.balloon = { kind: 3, y: BY0 + 40 };
       this.confetti = []; for (let i = 0; i < 90; i++) this.confetti.push({ x: 0, y: 0, vx: 0, vy: 0, a: 0, va: 0, c: CONF[i % 6], life: 0 });
       this.endT = 0; this.lastClock = null; this.blown = false;
+      // ambient life: guests who cheer and gasp, petals, ant trails, ducks
+      this.guests = GUESTS.map(([x, y, col, animal, hat], i) => ({ x, y, col, animal, hat, cheer: 0, worry: 0, ph: i * 1.7 }));
+      this.petals = []; for (let i = 0; i < 18; i++) this.petals.push({ x: rnd(-100, W), y: rnd(0, H), vx: rnd(14, 34), vy: rnd(22, 40), a: rnd(0, TAU), va: rnd(-2, 2), ph: rnd(0, TAU) });
+      this.trail = new Float32Array(NTR * 3); this.trI = 0; for (let i = 0; i < NTR; i++) this.trail[i * 3 + 2] = -99;
+      this.quack = 0; this.quackT = rnd(4, 8);
       this.buildWaves();
       ensureArt(); if (!BG) BG = makeBg();
       cakeSprite(0, this.lives, this.biteR);
@@ -356,7 +451,7 @@
       const sp = this.spd[gr.c] * (1 + 0.18 * this.t / this.dur) * rnd(0.92, 1.08);
       const a = {
         kind: 1, type, x: gr.sx + px * j, y: gr.sy + py * j, h: gr.a, sp, st: 'march', stT: 0, ph: rnd(0, TAU), step: rnd(0, 4),
-        r: type === 2 ? 30 : 19, hp: type === 2 ? 2 : 1, vx: 0, vy: 0, hz: 0, hv: 0, spin: 0, carry: false, lead: null, flag: false, ex: 0, gone: false
+        r: type === 2 ? 30 : 19, hp: type === 2 ? 2 : 1, lx: gr.sx + px * j, ly: gr.sy + py * j, vx: 0, vy: 0, hz: 0, hv: 0, spin: 0, carry: false, lead: null, flag: false, ex: 0, gone: false
       };
       if (gr.c === 'L') { if (gr.prev) a.lead = gr.prev; else a.flag = true; gr.prev = a; }
       this.ants.push(a);
@@ -382,18 +477,17 @@
       // players
       for (const e of this.es) {
         e.cd -= dt; e.boom = Math.max(0, e.boom - dt);
-        const i = ctx.input(e.p), sp = kid ? 340 : 360, go = !!(i.x || i.y), k = 1 - Math.exp(-(go ? 14 : 24) * dt);
-        e.vx += (i.x * sp - e.vx) * k; e.vy += (i.y * sp - e.vy) * k;
-        if (go !== e.moving) { e.moving = go; e.sqv += go ? -2.2 : 2.6; }
-        if (go) { e.face = Math.atan2(i.y, i.x); e.walk += dt * 13; } else e.walk = 0;
-        e.sqv += (-e.squash * 260 - e.sqv * 16) * dt; e.squash += e.sqv * dt;
+        e.cheer -= dt;
+        steer(e, ctx.input(e.p), kid ? 340 : 360, dt);
         e.x += e.vx * dt; e.y += e.vy * dt;
+        this.offPond(e, e.r * 0.7);
         // keep off the cake plate
         const sx = PRX + e.r * 0.7, sy = PRY + e.r * 0.45, qd = this.q(e.x, e.y, sx, sy);
         if (qd < 1) { if (qd < 1e-3) e.y = CY + sy; else { e.x = CX + (e.x - CX) / qd; e.y = CY + (e.y - CY) / qd; } }
         e.x = clamp(e.x, X0 + e.r, X1 - e.r); e.y = clamp(e.y, Y0 + e.r, Y1 - e.r);
         Fx.walk(e, dt, 'rgba(255,255,255,.7)');
         if (ctx.pressed(e.p, 0) && e.cd <= 0) this.stomp(e);
+        const d = this.danger; e.worry = d && d.st === 'munch' ? 1 : Math.max(0, e.worry - dt * 2);
       }
       // bugs
       let best = null, bq = Infinity;
@@ -401,6 +495,10 @@
       for (const a of A) {
         a.ex = Math.max(0, a.ex - dt);
         this.move(a, dt);
+        this.offPond(a, a.r * 0.6);
+        if ((a.st === 'march' || a.st === 'carry' || a.st === 'lost') && hyp(a.x - a.lx, a.y - a.ly) > 14) {   // a dotted trail behind every marching bug
+          a.lx = a.x; a.ly = a.y; const T = this.trail, j = this.trI * 3; T[j] = a.x - Math.cos(a.h) * a.r * 0.6; T[j + 1] = a.y - Math.sin(a.h) * a.r * 0.6 + 3; T[j + 2] = this.t; this.trI = (this.trI + 1) % NTR;
+        }
         if (kid && (a.st === 'march' || a.st === 'lost' || a.st === 'munch')) {
           for (const e of this.es) {
             const dx = a.x - e.x, dy = a.y - e.y, rr = e.r + a.r * 0.7;
@@ -424,7 +522,22 @@
         }
       }
       let k = 0; for (const a of A) if (!a.gone) A[k++] = a; A.length = k;
+      this.ambient(dt);
       if (this.t >= this.dur && !this.over) this.win();
+    }
+    /* keep players and bugs out of the duck pond (they slide round its edge) */
+    offPond(o, pad) {
+      const P = POND, qx = (o.x - P.x) / (P.rx + pad), qy = (o.y - P.y) / (P.ry + pad * 0.6), q = Math.sqrt(qx * qx + qy * qy);
+      if (q < 1) { if (q < 1e-3) o.y = P.y - P.ry - pad; else { o.x = P.x + qx / q * (P.rx + pad); o.y = P.y + qy / q * (P.ry + pad * 0.6); } }
+    }
+    /* petals drift, guests calm down, ducks quack now and then */
+    ambient(dt) {
+      for (const p of this.petals) {
+        p.ph += dt; p.a += p.va * dt; p.x += (p.vx + Math.sin(p.ph * 1.3) * 22) * dt; p.y += p.vy * dt;
+        if (p.y > H + 20 || p.x > W + 40) { p.x = rnd(-200, W - 300); p.y = -20; }
+      }
+      for (const q of this.guests) { q.cheer -= dt; q.worry -= dt; }
+      this.quack -= dt; this.quackT -= dt; if (this.quackT <= 0) { this.quackT = rnd(7, 14); this.quack = 1.1; }
     }
     /* one bug's little brain */
     move(a, dt) {
@@ -479,7 +592,8 @@
         } else { this.scare(a, dx / d, dy / d); n++; }
       }
       if (n) {
-        e.scared += n; this.total += n;
+        e.scared += n; this.total += n; e.cheer = 0.8;
+        if (n >= 2) for (const q of this.guests) q.cheer = Math.max(q.cheer, 1);
         Fx.pop(e.x, e.y - 92, n > 1 ? `嚇跑了 ${n} 隻！` : '嚇跑了！', C.d, n > 2 ? 40 : 32);
         ctx.sfx(n >= 3 ? 'star' : 'stun'); Fx.shake(n >= 3 ? 6 : 3); if (n >= 4) ctx.hitstop(0.05);
       }
@@ -494,6 +608,7 @@
       const ctx = this.ctx; a.st = 'carry'; a.carry = true; a.h = Math.atan2(a.y - CY, a.x - CX); a.lead = null;
       if (this.bitten >= this.lives || this.over) return;
       this.bitten++; this.cakeHurt = 0.5;
+      for (const q of this.guests) q.worry = 1.4;
       const [bx, by] = BITES[this.bitten - 1];
       Fx.burst(CX + bx, CY + by, '#f7d894', 12, 260); Fx.burst(CX + bx, CY + by, '#ff9cc2', 8, 220);
       Fx.pop(CX + bx * 1.2, CY + by - 30, '被咬一口！', '#e0402f', 34);
@@ -512,7 +627,8 @@
       ctx.sfx('star'); Fx.flash('#fff6c8', 0.35);
       for (const a of this.ants) if (a.st !== 'flee') { a.st = 'flee'; a.h = Math.atan2(a.y - CY, a.x - CX); a.hz = 0; a.spin = 0; a.ex = 0.8; }
       this.confettiBurst(CX, CY - 200, 60);
-      this.es.forEach(e => { ctx.buzz(e.p, 150); e.sqv -= 3; });
+      this.es.forEach(e => { ctx.buzz(e.p, 150); e.sqv -= 3; e.cheer = 0.8; });
+      for (const q of this.guests) q.cheer = 99;
     }
     confettiBurst(x, y, n) {
       for (const c of this.confetti) {
@@ -528,7 +644,8 @@
         if (a.st === 'dizzy') { a.st = 'flee'; a.hz = 0; }
         a.x += Math.cos(a.h) * a.sp * 2.2 * dt; a.y += Math.sin(a.h) * a.sp * 2.2 * dt; a.step += a.sp * dt * 0.3;
       }
-      for (const e of this.es) { e.sqv += (-e.squash * 260 - e.sqv * 16) * dt; e.squash += e.sqv * dt; }
+      for (const e of this.es) { e.sqv += (-e.squash * 260 - e.sqv * 16) * dt; e.squash += e.sqv * dt; e.cheer -= dt; if (this.ok && e.cheer < -0.6) e.cheer = 0.8; e.mv *= Math.exp(-8 * dt); }
+      this.ambient(dt);
       if (this.ok && this.endT < 1.6 && Math.random() < dt * 8) this.confettiBurst(rnd(BX0 + 60, BX1 - 60), CY - 120, 5);
       for (const c of this.confetti) if (c.life > 0) { c.life -= dt; c.vy += 560 * dt; c.vx *= 0.985; c.x += c.vx * dt; c.y += c.vy * dt; c.a += c.va * dt; }
     }
@@ -610,15 +727,21 @@
       g.fillStyle = '#8a5a2b'; g.beginPath(); g.roundRect(x0 - 4, y0 - 8, 8, 14, 3); g.fill();
     }
     drawPlayer(g, e, t) {
-      const C = PARTY_COLORS[e.p.col], hop = e.walk ? Math.abs(Math.sin(e.walk)) * 8 : 0, r = e.r;
+      const C = PARTY_COLORS[e.p.col], r = e.r, ch = Math.max(0, e.cheer), hop = Math.abs(Math.sin(e.walk)) * 7 * e.mv + (ch > 0 ? Math.sin((1 - ch / 0.8) * Math.PI) * 14 : 0);
       if (e.boom > 0) {   // a cartoon "pow" star under the feet
         const k = e.boom / 0.28, s = (1 - k) * 0.6 + 0.6;
         g.globalAlpha = k; g.fillStyle = '#ffe066'; g.beginPath();
         for (let i = 0; i < 16; i++) { const a = i * Math.PI / 8, rr = (i % 2 ? 26 : 54) * s; g.lineTo(e.x + Math.cos(a) * rr, e.y + 22 + Math.sin(a) * rr * 0.45); }
         g.closePath(); g.fill(); g.globalAlpha = 1;
       }
-      drawCritter(g, e.x, e.y, r, e.p.col, e.p.animal, { face: e.face, hop: hop + (e.boom > 0.2 ? 4 : 0), squash: clamp(e.squash, -0.24, 0.36), happy: e.boom > 0, blink: (t + e.p.uid * 1.3) % 3.6 < 0.12 });
-      drawTag(g, e.x, e.y - r - 32 - hop, e.p);
+      const sq = clamp(e.squash, -0.24, 0.36), hh = hop + (e.boom > 0.2 ? 4 : 0), bob = e.mv > 0.15 ? Math.abs(Math.sin(e.walk)) * r * 0.06 : 0;
+      drawCritter(g, e.x, e.y, r, e.p.col, e.p.animal, { face: e.face, hop: hh, squash: sq, step: e.walk, moving: e.mv > 0.15, happy: e.boom > 0 || e.cheer > 0, blink: (t + e.p.uid * 1.3) % 3.6 < 0.12 });
+      onBody(g, e.x, e.y, r, hh, sq, bob);
+      bib(g, r, e.face);
+      partyHat(g, r, C.c, e.face, e.boom > 0 ? -0.25 : Math.sin(e.walk) * 0.06 * e.mv);
+      if (e.worry > 0.3 && e.boom <= 0) sweat(g, (Math.cos(e.face) >= 0 ? -1 : 1) * r * 0.8, -r * 0.4, t, e.p.uid * 0.37);
+      g.restore();
+      drawTag(g, e.x, e.y - r - 48 - hop, e.p);
       if (e.cd > 0) { g.strokeStyle = C.c; g.globalAlpha = 0.85; g.lineWidth = 5; g.beginPath(); g.arc(e.x, e.y + r + 14, 9, -Math.PI / 2, -Math.PI / 2 + TAU * (1 - e.cd / this.cdMax)); g.stroke(); g.globalAlpha = 1; }
       // kids: an arrow to the bug that's closest to the cake when it's out of reach
       const d = this.danger;
@@ -626,6 +749,78 @@
         const a = Math.atan2(d.y - e.y, d.x - e.x), R = r + 34 + Math.sin(t * 8) * 4, ax = e.x + Math.cos(a) * R, ay = e.y + Math.sin(a) * R * 0.8;
         g.save(); g.translate(ax, ay); g.rotate(a); g.fillStyle = d.st === 'munch' ? '#ff3b4a' : '#ff8a1f'; g.strokeStyle = '#fff'; g.lineWidth = 3; g.globalAlpha = 0.9;
         g.beginPath(); g.moveTo(13, 0); g.lineTo(-8, -12); g.lineTo(-3, 0); g.lineTo(-8, 12); g.closePath(); g.stroke(); g.fill(); g.restore();
+      }
+    }
+    /* picnic guests above the meadow: cheer when bugs are scared off, gasp when the cake is bitten */
+    drawGuests(g, t) {
+      for (const q of this.guests) {
+        const ch = q.cheer > 0, wo = q.worry > 0 && !ch, hop = ch ? Math.abs(Math.sin(t * 9 + q.ph)) * 10 : Math.abs(Math.sin(t * 1.5 + q.ph)) * 1.5;
+        drawCritter(g, q.x, q.y, 17, q.col, q.animal, { face: Math.PI / 2 + Math.sin(t * 0.6 + q.ph) * 0.4, hop, step: 0, moving: false, happy: ch, stun: wo });
+        onBody(g, q.x, q.y, 17, hop, 0, 0); partyHat(g, 17, q.hat, Math.PI / 2, 0.1 * Math.sin(t + q.ph)); if (wo) sweat(g, 13, -8, t, q.ph); g.restore();
+      }
+      // parasols over each group
+      for (const [px, col] of [[178, '#ff6fb7'], [1426, '#ffbf1f']]) {
+        g.strokeStyle = '#8a5a2b'; g.lineWidth = 4; g.beginPath(); g.moveTo(px, 150); g.lineTo(px - 6, 74); g.stroke();
+        g.fillStyle = 'rgba(30,70,20,.12)'; g.beginPath(); g.ellipse(px + 4, 146, 70, 10, 0, 0, TAU); g.fill();
+        g.save(); g.translate(px - 6, 74); g.rotate(-0.06);
+        for (let k = 0; k < 6; k++) { g.fillStyle = k % 2 ? '#fff' : col; g.beginPath(); g.moveTo(0, -8); g.lineTo(-72 + k * 24, 10); g.quadraticCurveTo(-60 + k * 24, 16, -48 + k * 24, 10); g.closePath(); g.fill(); }
+        g.fillStyle = col; g.beginPath(); g.arc(0, -10, 4, 0, TAU); g.fill();
+        g.restore();
+      }
+    }
+    /* kites flown by the guests on each side */
+    drawKites(g, t) {
+      for (const [ax, ay, kx, ky, col, ph] of [[222, 128, 380, 214, '#2f8cff', 0], [1470, 128, 1250, 196, '#ff4f58', 2.2]]) {
+        const x = kx + Math.sin(t * 0.7 + ph) * 34, y = ky + Math.sin(t * 1.1 + ph) * 18, rot = Math.sin(t * 1.3 + ph) * 0.18;
+        g.strokeStyle = 'rgba(255,255,255,.75)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(ax, ay); g.quadraticCurveTo((ax + x) / 2, Math.max(ay, y) + 30, x, y + 26); g.stroke();
+        g.save(); g.translate(x, y); g.rotate(rot);
+        g.strokeStyle = '#5a3a1a'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(0, 26);
+        for (let k = 1; k <= 6; k++) g.lineTo(Math.sin(t * 5 + k + ph) * 6, 26 + k * 10); g.stroke();
+        for (let k = 2; k <= 6; k += 2) { const bx = Math.sin(t * 5 + k + ph) * 6, by = 26 + k * 10; g.fillStyle = k % 4 ? '#ffd23f' : '#ff6fb7'; g.beginPath(); g.moveTo(bx, by); g.lineTo(bx - 6, by - 4); g.lineTo(bx - 6, by + 4); g.closePath(); g.moveTo(bx, by); g.lineTo(bx + 6, by - 4); g.lineTo(bx + 6, by + 4); g.closePath(); g.fill(); }
+        g.fillStyle = col; g.beginPath(); g.moveTo(0, -30); g.lineTo(22, -2); g.lineTo(0, 26); g.lineTo(-22, -2); g.closePath(); g.fill();
+        g.fillStyle = 'rgba(255,255,255,.45)'; g.beginPath(); g.moveTo(0, -30); g.lineTo(22, -2); g.lineTo(0, -2); g.closePath(); g.moveTo(0, -2); g.lineTo(-22, -2); g.lineTo(0, 26); g.closePath(); g.fill();
+        g.strokeStyle = '#5a3a1a'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(0, -30); g.lineTo(0, 26); g.moveTo(-22, -2); g.lineTo(22, -2); g.stroke();
+        g.restore();
+      }
+    }
+    /* a mother duck and her ducklings paddling round the pond */
+    drawDucks(g, t) {
+      const P = POND;
+      g.strokeStyle = 'rgba(255,255,255,.5)'; g.lineWidth = 2;
+      for (let k = 0; k < 2; k++) { const u = (t * 0.4 + k / 2) % 1; g.globalAlpha = 1 - u; g.beginPath(); g.ellipse(P.x + 30, P.y + 6, 10 + u * 50, 4 + u * 20, 0, 0, TAU); g.stroke(); }
+      g.globalAlpha = 1;
+      for (let i = 0; i < 3; i++) {
+        const a = t * 0.32 - i * 0.42, x = P.x + Math.cos(a) * P.rx * 0.62, y = P.y + Math.sin(a) * P.ry * 0.55, s = i ? 0.62 : 1, d = -Math.sin(a) >= 0 ? 1 : -1, bob = Math.sin(t * 4 + i) * 1.2;
+        g.strokeStyle = 'rgba(255,255,255,.6)'; g.lineWidth = 1.6; g.beginPath(); g.moveTo(x - d * 14 * s, y - 4 * s); g.lineTo(x - d * 24 * s, y - 9 * s); g.moveTo(x - d * 14 * s, y + 4 * s); g.lineTo(x - d * 24 * s, y + 7 * s); g.stroke();
+        g.save(); g.translate(x, y + bob); g.scale(d * s, s);
+        g.fillStyle = i ? '#ffe066' : '#fffaf3'; g.beginPath(); g.ellipse(0, 0, 15, 9, 0, 0, TAU); g.fill();
+        g.beginPath(); g.moveTo(-12, -3); g.lineTo(-19, -9); g.lineTo(-14, 2); g.fill();
+        g.fillStyle = i ? '#f2c94c' : '#e9e4f2'; g.beginPath(); g.ellipse(-2, -2, 8, 5, -0.2, 0, TAU); g.fill();
+        g.fillStyle = i ? '#ffe066' : '#fffaf3'; g.beginPath(); g.arc(10, -10, 7, 0, TAU); g.fill();
+        g.fillStyle = '#ff9f43'; g.beginPath(); g.moveTo(15, -11); g.lineTo(23, -9 + (this.quack > 0 && !i ? Math.sin(t * 30) * 2 : 0)); g.lineTo(15, -7); g.closePath(); g.fill();
+        g.fillStyle = '#2b2340'; g.beginPath(); g.arc(12, -12, 1.6, 0, TAU); g.fill();
+        g.restore();
+      }
+      if (this.quack > 0) {
+        const a = t * 0.32, x = P.x + Math.cos(a) * P.rx * 0.62, y = P.y + Math.sin(a) * P.ry * 0.55;
+        g.globalAlpha = Math.min(1, this.quack * 3); g.font = `900 18px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.lineWidth = 5; g.strokeStyle = '#fff'; g.strokeText('呱呱～', x, y - 34); g.fillStyle = '#c96a2a'; g.fillText('呱呱～', x, y - 34); g.globalAlpha = 1;
+      }
+    }
+    /* tiny dotted paths the ants leave behind */
+    drawTrails(g, now) {
+      const T = this.trail; g.fillStyle = '#6b4a30';
+      for (let b = 0; b < 4; b++) {
+        g.globalAlpha = 0.34 - b * 0.08; g.beginPath();
+        for (let i = 0; i < NTR; i++) { const age = now - T[i * 3 + 2]; if (age < 0 || age >= 6 || (age / 1.5 | 0) !== b) continue; const x = T[i * 3], y = T[i * 3 + 1]; g.moveTo(x + 2.2, y); g.arc(x, y, 2.2, 0, TAU); }
+        g.fill();
+      }
+      g.globalAlpha = 1;
+    }
+    drawPetals(g) {
+      for (const p of this.petals) {
+        const fl = Math.cos(p.ph * 3); g.fillStyle = fl > 0 ? '#ffc6dc' : '#ff9fc4';
+        g.beginPath(); g.ellipse(p.x, p.y, 6 * Math.max(0.25, Math.abs(fl)), 4, p.a, 0, TAU); g.fill();
       }
     }
     drawWarn(g, gr, t) {
@@ -654,6 +849,17 @@
         if (ready) { g.strokeStyle = C.c; g.globalAlpha = 0.35; g.lineWidth = 3; g.setLineDash([12, 10]); g.lineDashOffset = -tt * 20; g.stroke(); g.setLineDash([]); }
       }
       g.globalAlpha = 1;
+      this.drawTrails(g, this.t);
+      this.drawDucks(g, tt);
+      this.drawGuests(g, tt);
+      // a seesaw by the sandbox that rocks gently
+      { const x = 1110, y = 812, a = Math.sin(tt * 1.2) * 0.16;
+        g.fillStyle = 'rgba(30,70,20,.22)'; g.beginPath(); g.ellipse(x, y + 10, 70, 9, 0, 0, TAU); g.fill();
+        g.fillStyle = '#7a4a22'; g.beginPath(); g.moveTo(x - 12, y + 8); g.lineTo(x, y - 12); g.lineTo(x + 12, y + 8); g.closePath(); g.fill();
+        g.save(); g.translate(x, y - 12); g.rotate(a);
+        g.fillStyle = '#ff9f43'; g.beginPath(); g.roundRect(-66, -5, 132, 10, 4); g.fill();
+        for (const s of [-1, 1]) { g.fillStyle = s < 0 ? '#ff4f58' : '#2f8cff'; g.beginPath(); g.roundRect(s * 58 - 9, -10, 18, 7, 3); g.fill(); g.strokeStyle = '#3a3346'; g.lineWidth = 3; g.beginPath(); g.moveTo(s * 46, -4); g.lineTo(s * 46, -18); g.lineTo(s * 40, -18); g.stroke(); }
+        g.restore(); }
       Fx.ground(g);
       // warnings where the next bugs will come in
       if (!this.over) for (const gr of this.groups) { if (gr.t - 1.5 > t) break; if (gr.left === gr.n && t < gr.t + 0.4) this.drawWarn(g, gr, tt); }
@@ -673,6 +879,8 @@
         g.fillStyle = 'rgba(255,255,255,.35)'; g.fillText('生日快樂！', -2, -3);
         g.restore();
       }
+      this.drawKites(g, tt);
+      this.drawPetals(g);
       for (const c of this.confetti) if (c.life > 0) {
         g.globalAlpha = Math.min(1, c.life * 2); g.fillStyle = c.c;
         g.save(); g.translate(c.x, c.y); g.rotate(c.a); g.fillRect(-6, -3.5, 12, 7); g.restore();
