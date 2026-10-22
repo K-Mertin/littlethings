@@ -1,4 +1,4 @@
-// MW 小幫手：大廳聊天機器人
+// 大廳小幫手：聊天機器人
 //   POST /api/chat   { messages:[{role,content}] }        → { reply, games:[{slug,name,url}], draft }
 //   POST /api/issue  { draft }  (draft 來自 /api/chat，帶簽章) → { ok, number }
 // Secrets（Cloudflare → Worker → Settings → Variables and secrets）：
@@ -36,7 +36,8 @@ async function getCatalog(env, request) {
 }
 
 function systemPrompt(games) {
-  return `你是「MW 小幫手」，住在 MW Game Hall（一個免費的瀏覽器小遊戲網站）大廳裡的聊天小幫手。來聊天的常常是小朋友，也有家長。
+  return `你是 MW Game Hall（一個免費的瀏覽器小遊戲網站）大廳裡的聊天小幫手。來聊天的常常是小朋友，也有家長。
+不要自我介紹，也不要替自己取名字；直接回答對方的問題。被問到「你是誰」時，只要說你是大廳的小幫手。
 
 說話方式：
 - 一律用繁體中文（台灣用語）。如果對方用英文，就用簡單英文回答。
@@ -184,7 +185,7 @@ async function issue(request, env) {
   if (!await allow(env, 'issue:' + ip, LIMITS.perIpIssuesDay, 86400e3)) return json({ error: '今天已經送很多份了，謝謝你！明天再來。' }, 429);
 
   const ua = (request.headers.get('user-agent') || '').slice(0, 160);
-  const body = `${d.body}\n\n---\n- 類型：${KINDS[d.kind]}\n- 遊戲：\`${d.game}\`\n- 裝置：${ua || '（未知）'}\n- 來源：大廳「MW 小幫手」聊天，使用者確認後送出`;
+  const body = `${d.body}\n\n---\n- 類型：${KINDS[d.kind]}\n- 遊戲：\`${d.game}\`\n- 裝置：${ua || '（未知）'}\n- 來源：大廳小幫手聊天，使用者確認後送出`;
   const labels = ['from-chatbot', d.kind];
   if (d.game && !['site', 'new'].includes(d.game)) labels.push('game:' + d.game);
   const res = await fetch(`${env.GITHUB_API_URL || 'https://api.github.com'}/repos/${REPO}/issues`, {

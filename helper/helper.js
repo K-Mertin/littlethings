@@ -1,7 +1,7 @@
-// MW 小幫手：大廳右下角的聊天視窗。後端在 worker/chat.js（/api/chat、/api/issue）。
+// 大廳小幫手：大廳右下角的聊天視窗。後端在 worker/chat.js（/api/chat、/api/issue）。
 (() => {
   const KIND = { bug: '問題回報', idea: '新點子', question: '疑問' };
-  const HELLO = '嗨！我是 MW 小幫手 👋\n想找好玩的遊戲、問怎麼玩，或是遊戲怪怪的、有新點子，都可以跟我說！';
+  const HELLO = '想找好玩的遊戲、問怎麼玩，或是遊戲怪怪的、有新點子，都可以跟我說！';
   const css = `
 #mwh-btn{position:fixed;right:max(16px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));z-index:50;
   display:flex;align-items:center;gap:8px;border:0;border-radius:999px;padding:12px 18px 12px 14px;cursor:pointer;
@@ -57,11 +57,11 @@
   const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
 
   const btn = document.createElement('button');
-  btn.id = 'mwh-btn'; btn.type = 'button'; btn.setAttribute('aria-label', '開啟 MW 小幫手');
+  btn.id = 'mwh-btn'; btn.type = 'button'; btn.setAttribute('aria-label', '開啟小幫手');
   btn.innerHTML = '<span class="i">💬</span><span>問問小幫手</span>';
   const box = document.createElement('section');
-  box.id = 'mwh'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', 'MW 小幫手');
-  box.innerHTML = `<header><span style="font-size:22px">🏝️</span><b>MW 小幫手</b><button type="button" class="auto" hidden title="自動朗讀回覆：關" aria-label="自動朗讀回覆：關" aria-pressed="false">🔇</button><button type="button" class="new" title="重新開始" aria-label="重新開始">↺</button><button type="button" class="x" aria-label="關閉">✕</button></header>
+  box.id = 'mwh'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', '小幫手');
+  box.innerHTML = `<header><span style="font-size:22px">🏝️</span><b>小幫手</b><button type="button" class="auto" hidden title="自動朗讀回覆：關" aria-label="自動朗讀回覆：關" aria-pressed="false">🔇</button><button type="button" class="new" title="重新開始" aria-label="重新開始">↺</button><button type="button" class="x" aria-label="關閉">✕</button></header>
     <div class="log" aria-live="polite"></div>
     <div class="chips"><button type="button">推薦一款遊戲</button><button type="button">我要回報問題</button><button type="button">我有新遊戲點子</button></div>
     <form><textarea rows="1" maxlength="600" placeholder="輸入訊息…" aria-label="訊息"></textarea><button type="button" class="mic" hidden aria-label="語音輸入" title="按一下開始說話">🎤</button><button type="submit">送出</button></form>`;
@@ -98,7 +98,7 @@
     if (!TTS) return;
     stopSpeak();
     const t = speakable(text); if (!t) return;
-    const u = new SpeechSynthesisUtterance(t); u.lang = 'zh-TW'; u.rate = 1.1;
+    const u = new SpeechSynthesisUtterance(t); u.lang = 'zh-TW'; u.rate = 1.3;
     const v = pickVoice();
     if (v) { u.voice = v; u.lang = v.lang; }
     if (b) { b.classList.add('on'); u.onend = u.onerror = () => b.classList.remove('on'); }
