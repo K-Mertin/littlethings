@@ -379,7 +379,7 @@
       if (this.t >= this.dur && !this.over) { this.over = true; this.ok = true; }
     }
     /* where a cat sits: on a house roof, or (i < 0) on the fire station */
-    seat(i) { if (i < 0) return [STATION.x + 30, STATION.y - 112]; const h = HOUSES[i]; return i % 2 ? [h[0] + 34, h[1] - 63] : [h[0] - 40, h[1] - 58]; }
+    seat(i) { if (i < 0) return [STATION.x + 30, STATION.y - 112]; const h = HOUSES[i]; return i % 2 ? [h[0] + 14, h[1] - 76] : [h[0] - 40, h[1] - 58]; }
     /* a puddle where the water lands: grows if there's one already */
     puddle(x, y, grow) {
       let best = null, bd = 40, free = null, old = null;
