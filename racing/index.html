@@ -984,24 +984,50 @@ function buildWorld(def) {
   for (const s of [-1, 1]) { const d = distToTrack(TR.X[si] + TR.NX[si] * s * 34, TR.Z[si] + TR.NZ[si] * s * 34, 2); if (d > best) { best = d; side = s; } }
   TR.standSide = side;
   const stand = atIdx(new THREE.Group(), si, side * (WALL + 7));
-  const tierMat = new THREE.MeshStandardMaterial({ color: 0xe9eef7, roughness: 0.8 });
-  const crowdCols = [0xff5a4e, 0xffc23a, 0x34d1a0, 0x4aa6ff, 0x9a6cff, 0xff8fbf, 0xffffff];
-  const crowd = new THREE.InstancedMesh(new RoundedBoxGeometry(0.6, 0.9, 0.5, 1, 0.2), new THREE.MeshLambertMaterial(), 4 * 40);
-  const M = new THREE.Matrix4(), C = new THREE.Color();
-  let ci = 0;
-  for (let t = 0; t < 4; t++) {
-    const tier = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1 + t * 1.1, 44), tierMat);
-    tier.position.set(side * (t * 2.4), (1 + t * 1.1) / 2, 0); tier.castShadow = tier.receiveShadow = true; stand.add(tier);
-    for (let k = 0; k < 40; k++) {
-      if (r() < 0.12) continue;
-      M.makeTranslation(side * (t * 2.4) + (r() - 0.5) * 0.6, 1 + t * 1.1 + 0.45, -20.5 + k * 1.05);
-      crowd.setMatrixAt(ci, M); crowd.setColorAt(ci, C.set(crowdCols[(r() * crowdCols.length) | 0])); ci++;
-    }
+  // terraces: stepped concrete, a seat row on each step
+  const conc = new THREE.MeshStandardMaterial({ map: TEX.concrete, roughness: 0.9 }), LEN = 48, ROWS = 9, RD = 1.0, RH = 0.55;
+  const stepG = [];
+  for (let t = 0; t < ROWS; t++) stepG.push(toNI(new THREE.BoxGeometry(RD, RH * (t + 1) + 0.6, LEN).translate(t * RD + RD / 2, (RH * (t + 1) + 0.6) / 2, 0)));
+  const steps = new THREE.Mesh(mergeGeometries(stepG), conc); steps.scale.x = side; steps.castShadow = steps.receiveShadow = true; stand.add(steps);
+  const back = new THREE.Mesh(new THREE.BoxGeometry(0.4, RH * ROWS + 3.2, LEN + 0.8), new THREE.MeshStandardMaterial({ color: 0x2b3352, roughness: 0.7 })); back.position.set(side * (ROWS * RD + 0.2), (RH * ROWS + 3.2) / 2, 0); back.castShadow = true; stand.add(back);
+  for (const z of [-LEN / 2 - 0.2, LEN / 2 + 0.2]) { const e = new THREE.Mesh(new THREE.BoxGeometry(ROWS * RD + 0.4, RH * ROWS + 1.2, 0.4), conc); e.position.set(side * (ROWS * RD / 2), (RH * ROWS + 1.2) / 2, z); e.castShadow = true; stand.add(e); }
+  // seats: moulded plastic in bands of colour, instanced
+  const seatCols = [0xd8333b, 0x2a5cc8, 0xf2b705, 0x2a5cc8, 0xd8333b];
+  const seatG = mergeGeometries([new THREE.BoxGeometry(0.42, 0.06, 0.42).translate(0, 0.2, 0), new THREE.BoxGeometry(0.06, 0.4, 0.42).translate(0.2, 0.4, 0)].map(toNI));
+  const nSeat = ROWS * Math.floor(LEN / 0.52), seats = new THREE.InstancedMesh(seatG, new THREE.MeshStandardMaterial({ roughness: 0.45 }), nSeat);
+  // spectators: legs, torso, arms and a head in one mesh; some wave
+  const person = (() => { const parts = [new THREE.CylinderGeometry(0.17, 0.2, 0.55, 8).translate(0, 0.62, 0), new THREE.SphereGeometry(0.13, 10, 8).translate(0, 1.02, 0), new THREE.CylinderGeometry(0.06, 0.06, 0.45, 6).rotateZ(0.25).translate(0.2, 0.62, 0), new THREE.CylinderGeometry(0.06, 0.06, 0.45, 6).rotateZ(-0.25).translate(-0.2, 0.62, 0), new THREE.BoxGeometry(0.3, 0.12, 0.42).translate(-0.05, 0.3, -0.15)];
+    const g = mergeGeometries(parts.map(toNI)); const P = g.attributes.position, col = [];
+    for (let i = 0; i < P.count; i++) { const y = P.getY(i), head = y > 0.9; col.push(head ? 0.88 : 1, head ? 0.7 : 1, head ? 0.55 : 1); }
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); return g; })();
+  const crowd = new THREE.InstancedMesh(person, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 }), nSeat);
+  const shirt = [0xff5a4e, 0xffc23a, 0x34d1a0, 0x4aa6ff, 0x9a6cff, 0xff8fbf, 0xffffff, 0x22305a, 0xe8541c, 0x3a3a3a];
+  const M = new THREE.Matrix4(), C = new THREE.Color(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S1 = new THREE.Vector3(1, 1, 1);
+  let si2 = 0, ci = 0; const wavers = [];
+  for (let t = 0; t < ROWS; t++) for (let z = -LEN / 2 + 0.4; z < LEN / 2 - 0.3; z += 0.52) {
+    const x = side * (t * RD + 0.45), y = RH * (t + 1) + 0.6;
+    Q.setFromAxisAngle(V.set(0, 1, 0), side > 0 ? 0 : Math.PI); M.compose(V.set(x, y, z), Q, S1); seats.setMatrixAt(si2, M); seats.setColorAt(si2++, C.set(seatCols[t % seatCols.length]));
+    if (r() < 0.72) { Q.setFromAxisAngle(V.set(0, 1, 0), (side > 0 ? -Math.PI / 2 : Math.PI / 2) + (r() - 0.5) * 0.5); const sc = 0.9 + r() * 0.2; M.compose(V.set(x - side * 0.05, y, z), Q, new THREE.Vector3(sc, sc, sc)); crowd.setMatrixAt(ci, M); crowd.setColorAt(ci, C.set(shirt[(r() * shirt.length) | 0])); if (r() < 0.25) wavers.push([ci, x - side * 0.05, y, z, sc, Q.clone(), r() * 6]); ci++; }
   }
-  crowd.count = ci; crowd.castShadow = true; stand.add(crowd);
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(11, 0.4, 46), new THREE.MeshStandardMaterial({ color: 0xff5a4e, roughness: 0.6 }));
-  roof.position.set(side * 3.6, 7.6, 0); roof.castShadow = true; stand.add(roof);
-  for (const z of [-22, 0, 22]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 7.6, 8), white); p.position.set(side * 8.6, 3.8, z); stand.add(p); }
+  seats.count = si2; crowd.count = ci; seats.receiveShadow = true; crowd.castShadow = true; stand.add(seats, crowd);
+  anim.fns.push((dt, t) => { if (state === 'menu' && camera.position.distanceToSquared(stand.position) > 200 * 200) return;
+    const go = state === 'race' || state === 'finished' || state === 'countdown';
+    for (const [i, x, y, z, sc, q, ph] of wavers) { const hop = go ? Math.max(0, Math.sin(t * 7 + ph)) * 0.12 : 0; M.compose(V.set(x, y + hop, z), q, new THREE.Vector3(sc, sc, sc)); crowd.setMatrixAt(i, M); }
+    crowd.instanceMatrix.needsUpdate = true; });
+  // cantilever roof on steel trusses
+  const steel = new THREE.MeshStandardMaterial({ color: 0xd8dde4, roughness: 0.4, metalness: 0.7 });
+  const roofH = RH * ROWS + 4.4, roofW = ROWS * RD + 3;
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(roofW, 0.25, LEN + 2), new THREE.MeshStandardMaterial({ color: 0xff5a4e, roughness: 0.55, metalness: 0.2 })); roof.position.set(side * (ROWS * RD - roofW / 2 + 0.4), roofH, 0); roof.rotation.z = side * 0.08; roof.castShadow = true; stand.add(roof);
+  const truss = [];
+  for (let z = -LEN / 2; z <= LEN / 2 + 0.01; z += 8) {
+    truss.push(new THREE.CylinderGeometry(0.18, 0.22, roofH + 0.5, 8).translate(ROWS * RD + 0.6, (roofH + 0.5) / 2, z));
+    truss.push(new THREE.CylinderGeometry(0.1, 0.1, roofW, 6).rotateZ(Math.PI / 2 - 0.08).translate(ROWS * RD + 0.6 - roofW / 2, roofH - 0.3, z));
+    truss.push(new THREE.CylinderGeometry(0.07, 0.07, roofW * 0.55, 6).rotateZ(Math.PI / 2 + 0.22).translate(ROWS * RD + 0.6 - roofW * 0.27, roofH - 0.95, z));   // brace under the roof
+  }
+  const tr = new THREE.Mesh(mergeGeometries(truss.map(toNI)), steel); tr.scale.x = side; tr.castShadow = true; stand.add(tr);
+  // a banner along the front
+  const bt = bannerTex('SUNNY CIRCUIT');
+  const ban = new THREE.Mesh(new THREE.PlaneGeometry(LEN, 0.9), new THREE.MeshBasicMaterial({ map: bt, toneMapped: false, side: THREE.DoubleSide })); ban.position.set(-side * 0.02, 0.75, 0); ban.rotation.y = -side * Math.PI / 2; stand.add(ban);
   world.add(stand);
 
   decorate(def, r);
