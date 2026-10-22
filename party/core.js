@@ -329,12 +329,27 @@ const Party = {
   },
   sync(p) { p.seen = p.inp.c.slice(); },
   pressed(p, k) { if (p.inp.c[k] > p.seen[k]) { p.seen[k] = p.inp.c[k]; return true; } return false; },
-  input(p) {
+  /* the raw stick with a dead zone; the live stick is rescaled so it starts from 0 just outside the dead zone (no sudden jump) */
+  rawInput(p) {
     if (!p.online) return { x: 0, y: 0 };
     let x = p.inp.x, y = p.inp.y; const m = hyp(x, y);
-    if (m < 0.18) return { x: 0, y: 0 };
-    if (m > 1) { x /= m; y /= m; }
-    return { x, y };
+    if (m < 0.15) return { x: 0, y: 0 };
+    const k = Math.min(1, (m - 0.15) / 0.8) / m;
+    return { x: x * k, y: y * k };
+  },
+  /* smoothed every frame (≈40 ms) so phone packets arriving in bursts don't make characters jitter */
+  smoothInputs(dt) {
+    const a = 1 - Math.exp(-dt / 0.04);
+    for (const p of this.players) {
+      const r = this.rawInput(p);
+      if (p.sx === undefined) { p.sx = r.x; p.sy = r.y; }
+      p.sx += (r.x - p.sx) * a; p.sy += (r.y - p.sy) * a;
+      if (!r.x && !r.y && Math.hypot(p.sx, p.sy) < 0.06) p.sx = p.sy = 0;   // let go = stop, no creeping
+    }
+  },
+  input(p) {
+    if (p.sx === undefined) return this.rawInput(p);
+    const m = hyp(p.sx, p.sy); return m > 1 ? { x: p.sx / m, y: p.sy / m } : { x: p.sx, y: p.sy };
   },
   /* the room leader: the earliest phone still connected (keyboard players don't count) */
   leader() {
@@ -665,7 +680,7 @@ function drawHud(g) {
 }
 function frame(now) {
   const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now; clock += dt;
-  kbTick();
+  kbTick(); Party.smoothInputs(dt);
   const S = Party.state;
   if (S === 'lobby') { yardTick(dt); yardDraw(clock); }
   if (S === 'intro' && !Party.paused) {
