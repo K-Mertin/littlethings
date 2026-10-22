@@ -242,7 +242,7 @@ function buildMenu() {
   const box = $('heroes'); box.innerHTML = '';
   const groupBox = {};
   for (const [title, sub, ids] of HERO_GROUPS) {
-    const g = document.createElement('div'); g.className = 'heroGroup';
+    const g = document.createElement('div'); g.className = 'heroGroup' + (ids.length === 4 ? ' g4' : '');
     g.innerHTML = `<div class="groupTitle"><b>${title}</b><small>${sub}</small></div><div class="groupCards"></div>`;
     box.appendChild(g); ids.forEach(id => groupBox[id] = g.querySelector('.groupCards'));
   }
@@ -371,6 +371,9 @@ function showResult() {
   running = false; $('touch').hidden = true; $('topBtns').hidden = true; $('twoRotate').hidden = true;
   const tsec = (W.t / 60) | 0, ts = `${(tsec / 60) | 0}:${String(tsec % 60).padStart(2, '0')}`, two = W.players.length > 1;
   let rows = [];
+  // monsters knocked out add up across games (unlocks some animal heroes)
+  const beforeK = HEROES.filter(heroUnlocked); if (W.kos) store.set('koTotal', store.get('koTotal', 0) + W.kos);
+  const newK = HEROES.filter(h => heroUnlocked(h) && !beforeK.includes(h));
   if (W.mode === 'stage') {
     const bonus = W.win ? Math.round(W.players.reduce((s, p) => s + Math.max(0, p.hp), 0) * 2 / W.players.length + Math.max(0, 300 - tsec) * 5) : 0; W.score += bonus;
     const key = `best.${W.stageN}.${W.diffN}`; const best = store.get(key, null);
@@ -393,6 +396,7 @@ function showResult() {
     if (W.mode === 'battle' && W.win) rows.push(['對戰勝場', store.get('battleWins', 0)]);
     (W.newHeroes || []).forEach(h => rows.push(['新角色解鎖！', CHARS[h].name]));
   }
+  newK.forEach(h => rows.push(['新角色解鎖！', CHARS[h].name]));
   const hasNext = W.mode === 'stage' && W.win && W.stageN < STAGES.length - 1;
   $('nextBtn').hidden = !hasNext;
   $('nextBtn').onclick = () => { $('result').hidden = true; menuState.stage = W.stageN + 1; startGame(true); };
