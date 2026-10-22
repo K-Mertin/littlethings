@@ -23,8 +23,9 @@
 </head>
 <body>
 <div class="ui">
-  <h1>GT Coupe · sculpted</h1>
-  <p>The new, detailed GT for Sunny Circuit. Drag to look around, scroll or pinch to zoom.</p>
+  <h1 id="title">GT Coupe · sculpted</h1>
+  <p>Sunny Circuit's new sculpted cars. Drag to look around, scroll or pinch to zoom.</p>
+  <div class="lbl">Car</div><div class="seg" id="cars"></div>
   <div class="lbl">Paint</div><div class="sw" id="paint"></div>
   <div class="lbl">Light</div><div class="seg" id="env"></div>
   <div class="lbl">Detail</div><div class="seg" id="lod"></div>
@@ -98,6 +99,8 @@ const MATS = {
   led: () => new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 2.2, 2.4), toneMapped: false }),
   tailLens: () => new THREE.MeshPhysicalMaterial({ color: 0x7a0010, transparent: true, opacity: 0.8, roughness: 0.05, clearcoat: 1, emissive: 0x500008, emissiveIntensity: 0.6 }),
   tailLed: () => new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 0.15, 0.2), toneMapped: false }),
+  stripe: () => new THREE.MeshPhysicalMaterial({ color: 0xf4f4f0, vertexColors: true, roughness: 0.3, metalness: 0.1, clearcoat: 1, clearcoatRoughness: 0.03 }),
+  chromeTrim: () => new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 1, roughness: 0.08 }),
   carbon: () => new THREE.MeshPhysicalMaterial({ color: 0x1b1d22, roughness: 0.35, metalness: 0.3, clearcoat: 0.8 }),
   rubber: () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 }),
   rim: () => new THREE.MeshStandardMaterial({ color: 0xc9ced6, metalness: 0.95, roughness: 0.22, vertexColors: true }),
@@ -126,14 +129,17 @@ function parse(buf) {
 }
 const load = (name, lod) => fetch(`assets/cars/${name}.${lod}.bin`).then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); }).then(parse);
 
-let car = null, LOD = 'hi';
+let car = null, LOD = 'hi', CAR = new URLSearchParams(location.search).get('car') || 'gt';
+const CARS = { gt: 'GT Coupe', muscle: 'Muscle' };
 async function build() {
-  const [body, wheel] = await Promise.all([load('gt', LOD), load('wheelSplit', LOD)]);
+  $('title').textContent = CARS[CAR] + ' · sculpted';
+  const [body, wheel] = await Promise.all([load(CAR, LOD), load('wheelSplit', LOD)]);
+  const sr = (body.meta.R || 0.345) / 0.345, sx = (body.meta.TW || 0.25) / 0.25;
   if (car) scene.remove(car);
   car = new THREE.Group(); car.add(body.root);
   let tris = body.tris;
   for (const [x, y, z] of [...body.meta.wheels, ...body.meta.wheels.map(([x, y, z]) => [-x, y, z])]) {
-    const w = wheel.root.clone(); w.position.set(x, y, z); if (x < 0) w.rotation.y = Math.PI; car.add(w); tris += wheel.tris;
+    const w = wheel.root.clone(); w.position.set(x, y, z); w.scale.set(sx, sr, sr); if (x < 0) w.rotation.y = Math.PI; car.add(w); tris += wheel.tris;
   }
   scene.add(car);
   $('stat').textContent = `${LOD === 'hi' ? 'Desktop' : 'Phone'} detail · ${(tris / 1000).toFixed(0)}k triangles`;
@@ -144,6 +150,7 @@ const PAINTS = [['Rosso', 0xc8102e], ['Racing green', 0x0f4a32], ['Midnight', 0x
 PAINTS.forEach(([n, c], i) => { const b = document.createElement('button'); b.style.background = '#' + c.toString(16).padStart(6, '0'); b.title = n; b.setAttribute('aria-pressed', i === 0);
   b.onclick = () => { paint.color.setHex(c); paint.metalness = c === 0xf1efe8 || c === 0x0b0c0f ? 0.3 : 0.55; document.querySelectorAll('#paint button').forEach(x => x.setAttribute('aria-pressed', x === b)); }; $('paint').append(b); });
 const seg = (id, items, cb, first) => items.forEach(([v, label]) => { const b = document.createElement('button'); b.textContent = label; b.setAttribute('aria-pressed', v === first); b.onclick = () => { document.querySelectorAll('#' + id + ' button').forEach(x => x.setAttribute('aria-pressed', x === b)); cb(v); }; $(id).append(b); });
+seg('cars', Object.entries(CARS), v => { CAR = v; build(); }, CAR);
 seg('env', [['studio', 'Studio'], ['sunny', 'Sunny day']], v => ENVS[v](), 'studio');
 seg('lod', [['hi', 'Desktop'], ['lo', 'Phone']], v => { LOD = v; build(); }, 'hi');
 const VIEWS = { three: [5.6, 1.7, 5.2], front: [0.01, 0.9, 6.5], side: [7, 0.8, 0.01], rear: [-3.5, 1.4, -5.5], top: [0.01, 8, 0.5], cabin: [1.6, 1.6, 1.4] };
