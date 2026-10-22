@@ -256,6 +256,36 @@
   ];
   const CN = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'].concat(Array.from({ length: 30 }, (_, i) => ((i + 11) >= 20 ? ['', '', '二', '三', '四'][Math.floor((i + 11) / 10)] : '') + '十' + ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'][(i + 11) % 10]));
   const lessonTitle = (L, n) => L.k === 'sym' ? L.s : L.k === 'story' ? STORIES[L.i].title : L.k === 'rp' ? PASSAGES[L.i].title : L.t;
+
+  // 教一教：每個符號的發音方法（給小朋友聽的說法）
+  const TIPS = {
+    'ㄅ': '嘴唇閉起來，再輕輕打開。', 'ㄆ': '嘴唇閉起來，打開的時候噴出一口氣。手放在嘴巴前面，可以感覺到風喔。',
+    'ㄇ': '嘴唇閉著，聲音從鼻子跑出來。', 'ㄈ': '上面的牙齒輕輕碰下嘴唇，再吹氣。',
+    'ㄉ': '舌頭尖尖頂住上面牙齒的後面，再放開。', 'ㄊ': '跟ㄉ一樣，放開的時候再噴一口氣。',
+    'ㄋ': '舌頭尖尖頂住上面，聲音從鼻子跑出來。', 'ㄌ': '舌頭尖尖頂住上面，聲音從舌頭兩邊跑出來。',
+    'ㄍ': '舌頭後面抬高頂住，再放開。', 'ㄎ': '跟ㄍ一樣，放開的時候再噴一口氣。', 'ㄏ': '舌頭後面抬高，喉嚨輕輕哈一口氣。',
+    'ㄐ': '舌頭前面貼住上面，嘴角往兩邊拉。', 'ㄑ': '跟ㄐ一樣，再噴一口氣。', 'ㄒ': '舌頭前面靠近上面，讓氣慢慢擠出來。',
+    'ㄓ': '舌頭尖尖往上捲，碰到上面再放開。', 'ㄔ': '跟ㄓ一樣，再噴一口氣。', 'ㄕ': '舌頭尖尖往上捲，讓氣慢慢擠出來。',
+    'ㄖ': '舌頭跟念ㄕ一樣往上捲，喉嚨要出聲音。',
+    'ㄗ': '舌頭尖尖頂住上面牙齒的後面，再放開。', 'ㄘ': '跟ㄗ一樣，再噴一口氣。', 'ㄙ': '舌頭尖尖靠近牙齒，讓氣慢慢擠出來，像蛇的聲音。',
+    'ㄧ': '嘴角往兩邊拉，像在笑。', 'ㄨ': '嘴巴嘟起來，圓圓小小的。', 'ㄩ': '嘴巴嘟起來，舌頭跟念ㄧ一樣。',
+    'ㄚ': '嘴巴張得大大的。', 'ㄛ': '嘴巴圓圓的，不要太大。', 'ㄜ': '嘴巴半開，不要圓。', 'ㄝ': '嘴角往兩邊，嘴巴半開。',
+    'ㄞ': '先念ㄚ，再滑到ㄧ。', 'ㄟ': '先念ㄝ，再滑到ㄧ。', 'ㄠ': '先念ㄚ，再滑到ㄨ。', 'ㄡ': '先念ㄛ，再滑到ㄨ。',
+    'ㄢ': '先念ㄚ，最後舌頭尖尖頂住上面。', 'ㄣ': '先念ㄜ，最後舌頭尖尖頂住上面。',
+    'ㄤ': '先念ㄚ，最後聲音從鼻子後面出來。', 'ㄥ': '先念ㄜ，最後聲音從鼻子後面出來。', 'ㄦ': '念ㄜ的時候，舌頭往上捲。',
+  };
+  // 例詞：先用符號自己的例字，再找第一個音節裡有這個符號的詞
+  function teachWords(s) {
+    const x = SYMBOLS.find(y => y.s === s);
+    const out = [{ w: x.w, z: x.z, e: x.e }];
+    for (const w of WORDS) {
+      if (out.length >= 3) break;
+      if (out.some(o => o.w === w.w || o.e === w.e)) continue;
+      if (Array.from(w.z.split(' ')[0]).includes(s)) out.push(w);
+    }
+    return out;
+  }
+  const strokeCount = s => STROKES[s].split(' | ').length;
   const GROUPS = { c: '聲母', m: '介音', v: '韻母' };
   const TONES = ['ˊ', 'ˇ', 'ˋ', '˙'];
   const INITIALS = SYMBOLS.filter(x => x.g === 'c').map(x => x.s);
@@ -422,6 +452,15 @@
     rpReveal: '答對了！我們一起來讀一遍。',
     // 讀短句
     rsIntro: '只看注音，讀一讀，找出對的圖。',
+    // 教一教
+    teachThis: s => `這是${s}。${s}，${s}。`,
+    teachTip: s => `念${s}的時候，${TIPS[s]}`,
+    teachYou: s => `換你念念看：${s}。`,
+    teachGood: '很好！',
+    teachWordsIntro: s => `聽聽看，哪些字有${s}。`,
+    teachWrite: s => `看我寫${s}。${s}有${strokeCount(s) === 2 ? '兩' : CN[strokeCount(s)]}筆。`,
+    teachNext: '我們看下一個。',
+    teachDone: '學會了！我們來玩一玩。',
     // 課程
     mapIntro: '這是注音地圖。一課一課往前走吧！',
     mapLocked: '先把前面的課上完喔。',
@@ -465,6 +504,7 @@
     }
     for (const w of ONE) { add(P.spellQ(w.w)); add(P.spellDone(w)); }
     for (const x of SYMBOLS) for (const f of ['write0', 'write1', 'write2', 'writeDemo', 'writeAll']) add(P[f](x.s));
+    for (const x of SYMBOLS) { for (const f of ['teachThis', 'teachTip', 'teachYou', 'teachWordsIntro', 'teachWrite']) add(P[f](x.s)); teachWords(x.s).forEach(w => add(w.w)); }
     LESSONS.forEach((L, i) => { add(P.lessonIntro(L, i + 1)); add(P.lessonDone(i + 1)); });
     for (const x of SYMBOLS) add(P.lessonWrite(x.s));
     for (const w of WORDS) add(w.w);
@@ -498,7 +538,7 @@
   }
 
   const ZY = { SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, SENTS, PASSAGES, LESSONS, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
-    TONE_NAMES, TONE_MARKS, parseSyl, syllables, P, allLines, hash, symOf, spoken };
+    TONE_NAMES, TONE_MARKS, parseSyl, syllables, P, allLines, hash, symOf, spoken, TIPS, teachWords, strokeCount };
   if (typeof module !== 'undefined' && module.exports) module.exports = ZY;
   else root.ZY = ZY;
 })(typeof window !== 'undefined' ? window : globalThis);
