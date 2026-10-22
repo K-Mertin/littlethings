@@ -120,17 +120,22 @@ function playerHit() {
 function drawPlayer(ctx) {
   if (!P.alive) return;
   if (P.inv > 0 && !P.entering && Math.floor(G.t * 20) % 2 === 0) return;
-  const sx = 1 - Math.abs(P.bank) * 0.22;
-  // 尾焰
-  const fl = 6 + Math.random() * 5 + (P.auto ? 12 : 0);
+  const baked = Bake.has('player');
+  const sx = baked ? 1 : 1 - Math.abs(P.bank) * 0.22;
+  const bi = Math.round(clamp(P.bank, -1, 1) * 3);
+  const pn = baked && bi ? (bi > 0 ? 'player_r' : 'player_l') + Math.abs(bi) : 'player';
+  const ex = 3.7 * Math.cos(bi * 0.28);
+  // 尾焰（藍白色電漿）
+  const fl = 7 + Math.random() * 6 + (P.auto ? 14 : 0);
   ctx.save(); ctx.globalCompositeOperation = 'lighter';
-  for (const ox of [-2.7, 2.7]) {
-    const gr = ctx.createLinearGradient(0, P.y + 18, 0, P.y + 18 + fl);
-    gr.addColorStop(0, 'rgba(255,255,220,.95)'); gr.addColorStop(0.4, 'rgba(255,170,60,.8)'); gr.addColorStop(1, 'rgba(255,60,20,0)');
-    ctx.fillStyle = gr; ctx.beginPath(); ctx.moveTo(P.x + ox * sx - 2, P.y + 18); ctx.lineTo(P.x + ox * sx + 2, P.y + 18); ctx.lineTo(P.x + ox * sx, P.y + 18 + fl); ctx.fill();
+  for (const ox of [-ex, ex]) {
+    const gr = ctx.createLinearGradient(0, P.y + 18, 0, P.y + 19 + fl);
+    gr.addColorStop(0, 'rgba(240,255,255,.95)'); gr.addColorStop(0.35, 'rgba(90,210,255,.85)'); gr.addColorStop(1, 'rgba(40,90,255,0)');
+    ctx.fillStyle = gr; ctx.beginPath(); ctx.moveTo(P.x + ox * sx - 2.2, P.y + 18.5); ctx.lineTo(P.x + ox * sx + 2.2, P.y + 18.5); ctx.lineTo(P.x + ox * sx, P.y + 19 + fl); ctx.fill();
+    ctx.fillStyle = 'rgba(120,220,255,.35)'; ctx.beginPath(); ctx.arc(P.x + ox * sx, P.y + 19.5, 4, 0, TAU); ctx.fill();
   }
   ctx.restore();
-  Art.draw(ctx, 'player', P.x, P.y, 0, 1, sx, 1);
+  Art.draw(ctx, pn, P.x, P.y, 0, 1, sx, 1);
   if (P.inv > 0 && P.entering <= 0 && G.bombT <= 0) {
     ctx.strokeStyle = 'rgba(120,220,255,.5)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(P.x, P.y, 22, 0, TAU); ctx.stroke();
   }
@@ -342,7 +347,9 @@ function updateEnemies(dt) {
 function drawEnemies(ctx, layer) {
   for (const e of G.enemies) {
     if (e.layer !== layer || e.hidden) continue;
-    ET[e.type].draw(ctx, e);
+    const T = ET[e.type];
+    if (T.gs && Bake.ready) Art.draw(ctx, T.gs, e.x + 3, e.y + 4, T.gs === 'pad' ? 0 : (e.body || 0), 0.4, 1, 1, 's');
+    T.draw(ctx, e);
   }
 }
 function drawEnemyShadows(ctx) {
@@ -455,7 +462,7 @@ const ET = {
       ctx.restore();
     },
   },
-  tank: { hp: 7, r: 12, score: 200, ground: true,
+  tank: { hp: 7, r: 12, score: 200, ground: true, gs: 'tank',
     init(e, o) { e.vx = o.vx || 0; e.vy = o.vy ?? 14; e.body = (e.vx || e.vy) ? Math.atan2(e.vy, e.vx) - Math.PI / 2 : 0; e.tur = Math.PI / 2; },
     update(e, dt) {
       e.tur = turnTo(e.tur, aim(e.x, e.y), 2.4 * dt);
@@ -464,7 +471,7 @@ const ET = {
     },
     draw(ctx, e) { spr(ctx, e, 'tank', e.body); spr(ctx, e, 'tankTur', e.tur - Math.PI / 2); },
   },
-  turret: { hp: 12, r: 14, score: 400, ground: true, medal: 0.5,
+  turret: { hp: 12, r: 14, score: 400, ground: true, medal: 0.5, gs: 'pad',
     init(e) { e.tur = Math.PI / 2; e.ft = rnd(0.8, 1.8); },
     update(e, dt) {
       e.tur = turnTo(e.tur, aim(e.x, e.y), 2 * dt);
@@ -477,7 +484,7 @@ const ET = {
     },
     draw(ctx, e) { Art.draw(ctx, 'pad', e.x, e.y); spr(ctx, e, 'gunTur', e.tur - Math.PI / 2); },
   },
-  truck: { hp: 3, r: 8, score: 150, ground: true, medal: 0.9,
+  truck: { hp: 3, r: 8, score: 150, ground: true, medal: 0.9, gs: 'truck',
     init(e) { e.vy = 38; },
     update() { },
     draw(ctx, e) { spr(ctx, e, 'truck', 0); },
@@ -511,10 +518,17 @@ const ET = {
   },
 };
 function wake(ctx, x, y, w, t) {
-  ctx.save(); ctx.globalAlpha = 0.5;
-  ctx.fillStyle = '#e8f6ff';
-  ctx.beginPath(); ctx.moveTo(x - w * 0.6, y - 6); ctx.lineTo(x - w * 2.2, y + w * 4); ctx.lineTo(x - w * 1.4, y + w * 4); ctx.lineTo(x, y + 2); ctx.lineTo(x + w * 1.4, y + w * 4); ctx.lineTo(x + w * 2.2, y + w * 4); ctx.lineTo(x + w * 0.6, y - 6); ctx.closePath(); ctx.fill();
-  ctx.globalAlpha = 0.35; ctx.fillRect(x - w * 0.5, y - 4, w, w * 3);
+  // 船尾浪花：兩條往外散開的白浪＋中間的泡沫
+  ctx.save(); ctx.lineCap = 'round';
+  const L = w * 5;
+  for (const s of [-1, 1]) {
+    const gr = ctx.createLinearGradient(x, y, x, y + L); gr.addColorStop(0, 'rgba(240,250,255,.75)'); gr.addColorStop(1, 'rgba(240,250,255,0)');
+    ctx.strokeStyle = gr; ctx.lineWidth = Math.max(1.5, w * 0.18);
+    ctx.beginPath(); ctx.moveTo(x + s * w * 0.4, y - 4); ctx.quadraticCurveTo(x + s * w * 0.8, y + L * 0.4, x + s * w * 1.6, y + L); ctx.stroke();
+  }
+  const gr = ctx.createLinearGradient(x, y, x, y + L * 0.8); gr.addColorStop(0, 'rgba(230,245,255,.55)'); gr.addColorStop(1, 'rgba(230,245,255,0)');
+  ctx.fillStyle = gr; ctx.beginPath(); ctx.moveTo(x - w * 0.45, y - 4); ctx.lineTo(x + w * 0.45, y - 4); ctx.lineTo(x + w * 0.2, y + L * 0.8); ctx.lineTo(x - w * 0.2, y + L * 0.8); ctx.fill();
+  for (let k = 0; k < 6; k++) { const yy = y + ((k * 13 + t * 40) % (L * 0.7)); ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.beginPath(); ctx.arc(x + Math.sin(k * 7 + t * 3) * w * 0.25, yy, 1 + w * 0.06, 0, TAU); ctx.fill(); }
   ctx.restore();
 }
 
@@ -904,4 +918,82 @@ function drawFX(ctx, ground) {
     ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.strokeText(p.text, p.x, p.y); ctx.fillStyle = p.color; ctx.fillText(p.text, p.x, p.y);
     ctx.globalAlpha = 1;
   }
+}
+
+
+// ---------- 頭目的 3D 預渲染畫法（沒有預渲染圖時沿用上面的 2D 畫法）----------
+function bFlash(ctx, name, e, x = e.x, y = e.y, ang = 0, sc = 1) { if (e.flash > 0) Art.draw(ctx, name, x, y, ang, 0.65, sc, sc, 'w'); }
+function treadAnim(ctx, rects) {
+  const off = (G.scroll * 1.6 + G.t * 30) % 6.4;
+  ctx.fillStyle = 'rgba(0,0,0,.26)';
+  for (const [x, y, w, h] of rects) {
+    ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+    for (let k = -6.4 + off; k < h; k += 6.4) ctx.fillRect(x, y + k, w, 1.8);
+    ctx.restore();
+  }
+}
+function glowDot(ctx, x, y, r, col) {
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = rad(ctx, x, y, r, [col, 'rgba(0,0,0,0)']); ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+  ctx.restore();
+}
+const B3D = {
+  boss1: ['b1', (ctx, e) => {
+    const x = e.x, y = e.y;
+    Art.draw(ctx, 'b1', x + 6, y + 8, 0, 0.35, 1, 1, 's');
+    Art.draw(ctx, 'b1', x, y);
+    treadAnim(ctx, [[-1, -1], [-1, 1], [1, -1], [1, 1]].map(([sx, sy]) => [x + sx * 54 - 11, y + sy * 42 - 31, 22, 62]));
+    bFlash(ctx, 'b1', e);
+    if (e.p2 && Math.floor(e.t * 3) % 2) { glowDot(ctx, x - 34, y - 60, 10, 'rgba(255,60,60,.9)'); glowDot(ctx, x + 34, y - 60, 10, 'rgba(255,60,60,.9)'); }
+    Art.draw(ctx, 'gunTur', x - 42, y + 34, e.gl - Math.PI / 2, 1, 1.25, 1.25);
+    Art.draw(ctx, 'gunTur', x + 42, y + 34, e.gr - Math.PI / 2, 1, 1.25, 1.25);
+    Art.draw(ctx, 'b1tur', x, y - 6, e.tur - Math.PI / 2);
+    bFlash(ctx, 'b1tur', e, x, y - 6, e.tur - Math.PI / 2);
+  }],
+  boss2: ['b2', (ctx, e) => {
+    const x = e.x, y = e.y;
+    wake(ctx, x, y + 150, 22, e.t);
+    Art.draw(ctx, 'b2', x + 5, y + 7, 0, 0.3, 1, 1, 's');
+    Art.draw(ctx, 'b2', x, y);
+    bFlash(ctx, 'b2', e);
+    if (e.p2) for (const s of [-1, 1]) for (let k = 0; k < 3; k++) if ((Math.floor(e.t * 4) + k) % 2) glowDot(ctx, x + s * 34, y + k * 20 - 10, 7, 'rgba(255,60,60,.9)');
+    ET.boss2.offs.forEach(([ox, oy], i) => Art.draw(ctx, 'gunTur', x + ox, y + oy, e.tur[i] - Math.PI / 2, 1, 1.5, 1.5));
+  }],
+  boss3: ['b3', (ctx, e) => {
+    const x = e.x, y = e.y;
+    Art.draw(ctx, 'b3', x, y);
+    bFlash(ctx, 'b3', e);
+    if (Math.floor(e.t * (e.p2 ? 6 : 2)) % 2) glowDot(ctx, x, y - 10, 9, e.p2 ? 'rgba(255,50,50,.95)' : 'rgba(255,190,60,.8)');
+    rotor(ctx, x - 56, y - 8, 40, e.t, 3); rotor(ctx, x + 56, y - 8, 40, -e.t, 3);
+  }],
+  boss4: ['b4', (ctx, e) => {
+    const x = e.x, y = e.y;
+    Art.draw(ctx, 'b4', x + 6, y + 8, 0, 0.35, 1, 1, 's');
+    Art.draw(ctx, 'b4', x, y);
+    treadAnim(ctx, [[x - 104 - 11, y - 79, 22, 158], [x + 104 - 11, y - 79, 22, 158]]);
+    bFlash(ctx, 'b4', e);
+    ET.boss4.corners.forEach(([ox, oy], i) => Art.draw(ctx, 'gunTur', x + ox, y + oy, e.ct[i] - Math.PI / 2, 1, 1.3, 1.3));
+    Art.draw(ctx, 'b4tur', x, y, e.tur - Math.PI / 2);
+    bFlash(ctx, 'b4tur', e, x, y, e.tur - Math.PI / 2);
+    if (G.beams.some(b => b.t < b.warn)) {
+      const k = 0.6 + 0.4 * Math.random();
+      glowDot(ctx, x + Math.cos(e.tur) * 64, y + Math.sin(e.tur) * 64, 16 * k, 'rgba(255,90,90,.95)');
+      glowDot(ctx, x + Math.cos(e.tur) * 10, y + Math.sin(e.tur) * 10, 12 * k, 'rgba(255,120,90,.8)');
+    }
+  }],
+  boss5: ['b5', (ctx, e) => {
+    const x = e.x, y = e.y;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (const ex of [-120, -60, 60, 120]) glowDot(ctx, x + ex, y - 50, 12 + Math.random() * 5, 'rgba(110,200,255,.85)');
+    ctx.restore();
+    Art.draw(ctx, 'b5', x, y);
+    bFlash(ctx, 'b5', e);
+    const core = e.p2 ? 0.6 + 0.4 * Math.sin(e.t * 10) : 0.35 + 0.15 * Math.sin(e.t * 3);
+    glowDot(ctx, x, y + 6, 30, e.p2 ? `rgba(255,70,70,${core})` : `rgba(150,170,255,${core})`);
+    glowDot(ctx, x, y + 6, 12, `rgba(255,255,255,${core})`);
+  }],
+};
+for (const k in B3D) {
+  const [img, fn] = B3D[k], old = ET[k].draw;
+  ET[k].draw = (ctx, e) => Bake.has(img) ? fn(ctx, e) : old(ctx, e);
 }

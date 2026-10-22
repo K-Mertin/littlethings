@@ -106,7 +106,7 @@ function runScript(dt) {
 function update(dt) {
   Input.pollPad();
   if (G.state === 'title') {
-    G.t += dt; G.scroll += 28 * dt; Terrain.ensure(G.scroll);
+    G.t += dt; G.scroll += 28 * dt; Terrain.ensure(G.scroll); Terrain.work(3);
     if (Input.hit('Enter') || Input.pad.startEdge) startFromTitle();
     return;
   }
@@ -114,7 +114,7 @@ function update(dt) {
     if (Input.hit('KeyP') || Input.hit('Escape') || Input.pad.startEdge) { setPause(!G.paused); }
     if (G.paused) return;
     G.t += dt; G.st += dt;
-    G.scroll += G.speed * dt; Terrain.ensure(G.scroll);
+    G.scroll += G.speed * dt; Terrain.ensure(G.scroll); Terrain.work(3);
     for (const s of Terrain.takeStatics(G.scroll)) spawn(s.type, s.x, s.y);
     if (G.stage === 4) SkyClouds.update(dt, G.speed);
     runScript(dt);
@@ -388,9 +388,10 @@ if (matchMedia('(pointer: coarse)').matches) Input.setTouchUI(true);
 bindUI();
 addEventListener('resize', resize);
 resize();
+Bake.init(Math.min(3, Math.max(2, Math.ceil(RS))));
 Terrain.reset(0);
 refreshTitle(); showOv('title');
 Music.play('title');
 requestAnimationFrame(frame);
 // 測試用
-window.__sky = { G, P, STAGES, startStage, spawn, newGame };
+window.__sky = { G, P, STAGES, startStage, spawn, newGame, Bake };
