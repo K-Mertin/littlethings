@@ -461,6 +461,21 @@
     teachWrite: s => `看我寫${s}。${s}有${strokeCount(s) === 2 ? '兩' : CN[strokeCount(s)]}筆。`,
     teachNext: '我們看下一個。',
     teachDone: '學會了！我們來玩一玩。',
+    // 教一教：四聲
+    ttIntro: '說話的時候，聲音有高高低低。注音有四個聲調，我們用媽媽的媽來聽。',
+    tt: ['一聲平平的，像飛機飛得直直的，不用標符號：媽。', '二聲往上爬，像在問問題，符號往上斜：麻？', '三聲先往下彎，再往上，符號像小勾勾：馬。', '四聲從上面往下跳，符號往下斜：罵。'],
+    ttYou: '換你念念看：媽，麻，馬，罵。',
+    ttAgain: '我們再聽一組：衣，姨，椅，意。',
+    // 教一教：拼音
+    spT: {
+      intro: '我們來學拼音。把注音像積木一樣合在一起，念快一點，就變成一個字。',
+      ex: [['ㄇㄚ', '媽', 'ㄇ，ㄚ，拼起來：媽。'], ['ㄇㄚˇ', '馬', 'ㄇ，ㄚ，拼起來是媽；加上三聲，就是馬。'], ['ㄇㄠ', '貓', 'ㄇ，ㄠ，拼起來：貓。'], ['ㄏㄨㄚ', '花', '三個也可以拼：ㄏ，ㄨ，ㄚ，花。']],
+      you: '換你拼拼看：ㄐ，ㄧ。', youAns: '是雞！拼對了！',
+    },
+    // 教一教：結合韻
+    ctIntro: m => `${m}可以跟別的注音做朋友。兩個合在一起，念快一點，就變成新的音。`,
+    // 教一教：兩個字
+    twIntro: '兩個字的詞，就一個字一個字拼。',
     // 課程
     mapIntro: '這是注音地圖。一課一課往前走吧！',
     mapLocked: '先把前面的課上完喔。',
@@ -505,6 +520,9 @@
     for (const w of ONE) { add(P.spellQ(w.w)); add(P.spellDone(w)); }
     for (const x of SYMBOLS) for (const f of ['write0', 'write1', 'write2', 'writeDemo', 'writeAll']) add(P[f](x.s));
     for (const x of SYMBOLS) { for (const f of ['teachThis', 'teachTip', 'teachYou', 'teachWordsIntro', 'teachWrite']) add(P[f](x.s)); teachWords(x.s).forEach(w => add(w.w)); }
+    add(P.ttIntro); P.tt.forEach(add); add(P.ttYou); add(P.ttAgain); ['衣', '姨', '椅', '意'].forEach(add);
+    add(P.spT.intro); P.spT.ex.forEach(e => add(e[2])); add(P.spT.you); add(P.spT.youAns);
+    ['ㄧ', 'ㄨ', 'ㄩ'].forEach(m => add(P.ctIntro(m))); add(P.twIntro);
     LESSONS.forEach((L, i) => { add(P.lessonIntro(L, i + 1)); add(P.lessonDone(i + 1)); });
     for (const x of SYMBOLS) add(P.lessonWrite(x.s));
     for (const w of WORDS) add(w.w);
