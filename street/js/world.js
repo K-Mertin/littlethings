@@ -164,8 +164,76 @@ export async function buildWorld(scene, opts) {
   }
   const winTexs = [0, 1, 2, 3, 4, 5].map(windowTex);
   const winMats = winTexs.map((t) => new THREE.MeshStandardMaterial({ map: t, roughness: .08, metalness: .2, envMapIntensity: 1.3 }));
-  for (const b of blocks) buildShop(b);
 
+  // ---- 可以進去玩的店：門框霓虹燈、伸出來的「進來玩」圓形燈牌、門口地上會呼吸的光圈＋箭頭
+  const playSignTex = canvasTex(512, 512, (g, w, h) => {
+    g.clearRect(0, 0, w, h);
+    g.beginPath(); g.arc(w / 2, h / 2, 236, 0, Math.PI * 2); g.fillStyle = '#14121c'; g.fill();
+    g.lineWidth = 22; g.strokeStyle = '#ffffff'; g.shadowColor = '#ffffff'; g.shadowBlur = 24; g.stroke();
+    g.shadowBlur = 0; g.fillStyle = '#ffffff'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.beginPath(); g.moveTo(205, 120); g.lineTo(205, 230); g.lineTo(300, 175); g.closePath(); g.fill();
+    g.font = `900 104px ${FONT}`; g.fillText('進來玩', w / 2, 318);
+    g.font = `700 54px "Silkscreen", ${FONT}`; g.fillText('PLAY', w / 2, 400);
+  });
+  const floorTex = canvasTex(256, 256, (g, w, h) => {
+    g.clearRect(0, 0, w, h);
+    const rg = g.createRadialGradient(w / 2, h / 2, 60, w / 2, h / 2, 124);
+    rg.addColorStop(0, 'rgba(255,255,255,0)'); rg.addColorStop(.72, 'rgba(255,255,255,.95)'); rg.addColorStop(.82, 'rgba(255,255,255,.25)'); rg.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = rg; g.fillRect(0, 0, w, h);
+    g.fillStyle = 'rgba(255,255,255,.95)';
+    for (const y of [40, 88]) { g.beginPath(); g.moveTo(w / 2, y); g.lineTo(w / 2 + 34, y + 34); g.lineTo(w / 2 + 18, y + 34); g.lineTo(w / 2, y + 16); g.lineTo(w / 2 - 18, y + 34); g.lineTo(w / 2 - 34, y + 34); g.closePath(); g.fill(); }
+  });
+  const neonOf = (s) => { const c = new THREE.Color(s.neon || s.bg); const hsl = {}; c.getHSL(hsl); if (hsl.s < 0.2 || hsl.l < 0.12) { c.set(s.fg); c.getHSL(hsl); } c.setHSL(hsl.h, Math.max(hsl.s, 0.85), 0.55); return c; };
+  function playableMarks(b, base, W, iw, s) {
+    const neon = neonOf(s);
+    const nm = std(0x000000, .4, 0, { emissive: neon.getHex(), emissiveIntensity: 4 });
+    const put = (geo, mat, x, y, z, o = {}) => B.add(geo, mat, base.clone().multiply(mat4(x, y, z, o.ry || 0, o.rx || 0, o.rz || 0)), o);
+    // neon door frame around the glass
+    const gh = L.ground - 1.0;
+    put(mbox(iw + 0.14, 0.11, 0.1), nm, 0, gh + 0.07, -0.05, { noShadow: true });
+    put(mbox(0.11, gh, 0.1), nm, -iw / 2 - 0.03, gh / 2, -0.05, { noShadow: true });
+    put(mbox(0.11, gh, 0.1), nm, iw / 2 + 0.03, gh / 2, -0.05, { noShadow: true });
+    // light strip under the sign board
+    put(mbox(Math.min(W - 1.6, 7), 0.05, 0.05), nm, 0, L.ground - 1.14, 0.2, { noShadow: true });
+    // round "進來玩" blade sign sticking out of the facade, both faces, pulsing
+    const sm = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: neon, emissiveMap: playSignTex, emissiveIntensity: 2.2, alphaMap: playSignTex, transparent: true, alphaTest: 0.05, roughness: .5 });
+    const x = W / 2 - 0.85;
+    for (const ry of [Math.PI / 2, -Math.PI / 2]) {   // two one-sided faces so the text reads correctly from both directions
+      const disc = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.6), sm);
+      disc.applyMatrix4(base.clone().multiply(mat4(x + (ry > 0 ? 0.01 : -0.01), L.ground + 0.95, 0.95, ry))); root.add(disc);
+    }
+    put(mbox(0.05, 0.05, 0.95), M.darkMetal, x, L.ground + 1.85, 0.48);
+    put(mbox(0.04, 0.12, 0.04), M.darkMetal, x, L.ground + 1.78, 0.95);
+    // sidewalk A-frame board at eye level
+    const boardTex = canvasTex(256, 384, (g, w, h) => {
+      g.fillStyle = '#' + neon.getHexString(); g.fillRect(0, 0, w, h);
+      g.fillStyle = '#14121c'; roundRect(g, 14, 14, w - 28, h - 28, 18); g.fill();
+      g.fillStyle = '#' + neon.getHexString(); g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.beginPath(); g.moveTo(98, 60); g.lineTo(98, 150); g.lineTo(176, 105); g.closePath(); g.fill();
+      g.fillStyle = '#ffffff'; g.font = `900 58px ${FONT}`; g.fillText('進來玩', w / 2, 210);
+      g.font = `700 30px "Silkscreen", ${FONT}`; g.fillStyle = '#' + neon.getHexString(); g.fillText('PLAY', w / 2, 262);
+      g.fillStyle = '#ffffff'; const fs = fitText(g, s.zh, w - 50, 34, 700); g.font = `700 ${fs}px ${FONT}`; g.fillText(s.zh, w / 2, 318);
+    });
+    const bm = new THREE.MeshStandardMaterial({ map: boardTex, emissive: 0xffffff, emissiveMap: boardTex, emissiveIntensity: .55, roughness: .6, side: THREE.DoubleSide });
+    const bx = -(iw / 2 - 0.55), bz = 1.0, bt = 0.2;
+    for (const sgn of [1, -1]) {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.95), bm);
+      m.applyMatrix4(base.clone().multiply(mat4(bx, 0.47, bz + sgn * 0.09, sgn > 0 ? 0 : Math.PI, sgn > 0 ? -bt : -bt)));
+      m.castShadow = true; root.add(m);
+    }
+    { const p = new THREE.Vector3(bx, 0, bz).applyMatrix4(base); solid(p.x - 0.35, p.x + 0.35, p.z - 0.35, p.z + 0.35, 0, 1, false); }
+    // glowing ring + arrows on the ground in front of the door
+    const fm = new THREE.MeshBasicMaterial({ map: floorTex, color: neon.clone().multiplyScalar(1.4), transparent: true, opacity: .9, depthWrite: false, toneMapped: false });
+    const ring = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 1.8), fm);
+    ring.applyMatrix4(base.clone().multiply(mat4(0, 0.02, 1.15, 0, -Math.PI / 2))); root.add(ring);
+    const ph = rand() * 6;
+    animated.push((dt, t) => {
+      const k = 0.5 + 0.5 * Math.sin(t * 2.6 + ph);
+      sm.emissiveIntensity = 1.6 + 1.2 * k;
+      fm.opacity = 0.55 + 0.45 * k;
+    });
+  }
+  for (const b of blocks) buildShop(b);
   function buildShop(b) {
     const W = b.z1 - b.z0, cz = (b.z0 + b.z1) / 2;
     const H = L.ground + b.floors * L.floor, D = 12;
@@ -202,6 +270,7 @@ export async function buildWorld(scene, opts) {
       const n = new THREE.Vector3(0, 0, 1).transformDirection(base);
       const focus = new THREE.Vector3(0, 1.95, -2.29).applyMatrix4(base);
       interact.push({ game: { ...b.game, zone: 'street' }, spot, face: Math.atan2(-n.x, -n.z), focus, normal: n, screen: scr, radius: 1.9, street: true, side: b.side });
+      playableMarks(b, base, W, iw, s);
     } else {
       const intTex = canvasTex(512, 256, (g, w, h) => drawInterior(g, w, h, b.shop));
       const intMat = new THREE.MeshBasicMaterial({ map: intTex, color: 0xdddddd });
