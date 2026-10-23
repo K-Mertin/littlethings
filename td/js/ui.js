@@ -9,9 +9,10 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 const Prog = {
   rec(i) { return Store.data.levels[i] || null; },
   levelStars(i) { const r = this.rec(i); return r ? (r.stars || 0) + (r.hard ? 2 : 0) : 0; },
+  chalStars(i) { const c = Store.data.chal[i]; return c ? CHAL_ORDER.filter(k => c[k]).length : 0; },
   endlessStars(i) { return Math.min(5, Math.floor((Store.data.endless[i] || 0) / 10)); },
-  total() { let n = 0; for (let i = 0; i < LEVELS.length; i++) n += this.levelStars(i) + this.endlessStars(i); return n; },
-  max() { return LEVELS.length * 10; },
+  total() { let n = 0; for (let i = 0; i < LEVELS.length; i++) n += this.levelStars(i) + this.endlessStars(i) + this.chalStars(i); return n; },
+  max() { return LEVELS.length * 13; },
   spent() { let n = 0; for (const m of META) { const r = Store.data.meta[m.id] || 0; for (let i = 0; i < r; i++) n += m.cost[i]; } return n; },
   avail() { return this.total() - this.spent(); },
   cleared() { let c = 0; for (let i = 0; i < LEVELS.length; i++) if (this.rec(i) && this.rec(i).stars) c = i + 1; return c; },
@@ -192,6 +193,8 @@ const UI = (() => {
     if (info && !G.endless) {
       for (const k of Object.keys(info.sum)) if (!seenBefore(G, k, info.n)) return `<b>新敵人 · ${ENEMIES[k].name}</b>：${esc(ENEMIES[k].desc)}`;
     }
+    if (G.endless && G.mod) return `<b>詞綴 · ${ENDLESS_MODS[G.mod].name}</b>：${ENDLESS_MODS[G.mod].desc}`;
+    if (G.chal && G.wave < 1) return `<b>挑戰 · ${CHALLENGES[G.chal].name}</b>：${G.chal === 'limit' ? '只能用 ' + G.L.limit.map(k => TOWERS[k].name).join('、') : CHALLENGES[G.chal].desc}`;
     if (G.state === 'run' && G.nextT !== null && G.wave < G.nWaves - 1) return `提早叫下一波可以多拿 <b>${earlyBonus(G)}</b> 金幣。`;
     return '點塔可以升級、換目標或賣掉。';
   }
@@ -268,7 +271,7 @@ const UI = (() => {
       b.className = 'wnode' + (ok ? '' : ' locked') + (i === cur ? ' cur' : '') + (r && r.stars ? ' done' : '');
       b.style.left = m.pts[i][0] + 'px'; b.style.top = m.pts[i][1] + 'px';
       const eb = Prog.endlessOk(i) ? `<em class="inf">${Store.data.endless[i] ? '無盡 ' + Store.data.endless[i] + ' 波' : '無盡模式'}</em>` : '';
-      b.innerHTML = `<span class="wn-num">${ok ? i + 1 : '🔒'}</span><span class="wn-lbl"><b>${L.name}</b><span class="stars">${starsHtml(r ? r.stars : 0)}</span>${r && r.hard ? '<em>困難</em>' : ''}${eb}</span>${i === cur ? '<i class="wn-flag"></i>' : ''}`;
+      b.innerHTML = `<span class="wn-num">${ok ? i + 1 : '🔒'}</span><span class="wn-lbl"><b>${L.name}</b><span class="stars">${starsHtml(r ? r.stars : 0)}</span>${r && r.hard ? '<em>困難</em>' : ''}${Prog.chalStars(i) ? `<em class="ch">挑戰 ${Prog.chalStars(i)}/3</em>` : ''}${eb}</span>${i === cur ? '<i class="wn-flag"></i>' : ''}`;
       b.setAttribute('aria-label', `第 ${i + 1} 關 ${L.name}${ok ? '' : '（尚未解鎖）'}`);
       if (ok) b.addEventListener('click', () => { Snd.sfx('click'); brief(i); });
       else b.addEventListener('click', () => Snd.sfx('deny'));
@@ -288,6 +291,16 @@ const UI = (() => {
     const e = Prog.endlessOk(li);
     $('bEndless').hidden = !e;
     if (e) $('bEndless').textContent = `無盡模式（最佳 ${Store.data.endless[li] || 0} 波）`;
+    // 挑戰
+    const cb = $('bChal'), done = Store.data.chal[li] || {};
+    if (!(r && r.stars)) cb.innerHTML = '<p class="lbl">過關之後可以挑戰：限定塔種、無技能、鐵人（各得 1 顆星）</p>';
+    else {
+      cb.innerHTML = '<p class="lbl">挑戰（各得 1 顆星，不影響原本的星星）</p><div class="chal-row">' + CHAL_ORDER.map(c => {
+        const d = c === 'limit' ? '只能用 ' + L.limit.map(k => TOWERS[k].name).join('、') : CHALLENGES[c].desc;
+        return `<button class="ch-b${done[c] ? ' done' : ''}" data-c="${c}"><b>${CHALLENGES[c].name}</b><small>${esc(d)}</small><i>★</i></button>`;
+      }).join('') + '</div>';
+      for (const b of cb.querySelectorAll('.ch-b')) b.addEventListener('click', () => { Snd.init(); Snd.sfx('click'); App.startLevel(li, 'normal', false, b.dataset.c); });
+    }
     syncDiff();
     show('ovLevels', 'ovBrief');
   }
@@ -317,7 +330,7 @@ const UI = (() => {
         const btn = el.querySelector('.cost');
         if (btn) btn.addEventListener('click', () => {
           if (Prog.avail() < m.cost[r]) return;
-          Store.data.meta[m.id] = r + 1; Store.save(); Snd.sfx('spec'); meta();
+          Store.data.meta[m.id] = r + 1; Store.save(); Snd.sfx('spec'); meta(); Ach.meta();
         });
         col.appendChild(el);
       }
@@ -335,7 +348,9 @@ const UI = (() => {
       <li>點已經蓋好的塔：升級、選攻擊目標（最前／最後／最強／最近）或賣掉。Lv3 之後可以選兩種專精之一。</li>
       <li>一波出完之後會倒數，提早叫下一波能多拿金幣。右上角可以切換 1×／2×／3× 速度。</li>
       <li>隕石：點技能再點地圖。冰封：凍住全場。都有冷卻時間。</li>
-      <li>過關剩越多生命，星星越多。星星可以到「天賦樹」換永久加成。</li></ul>
+      <li>過關剩越多生命，星星越多。星星可以到「天賦樹」換永久加成。</li>
+      <li>過關之後可以挑戰「限定塔種」「無技能」「鐵人」，各多拿 1 顆星。無盡模式每 5 波會換一個詞綴。</li>
+      <li>「圖鑑」裡可以看所有的塔、遇過的敵人和成就。</li></ul>
       <h3>防禦塔</h3><div class="hl">${tw}</div>
       <h3>敵人</h3><div class="hl">${en}</div>
       <h3 class="kb">鍵盤快捷鍵</h3>
@@ -365,7 +380,8 @@ const UI = (() => {
     $('rArt').src = Render.icon('castle', 'c', 0, undefined, 160);
     $('ovResult').classList.toggle('lost', !won && !G.endless);
     $('ovResult').classList.toggle('won', won);
-    $('rReward').textContent = rec.gained > 0 ? `獲得 ★ ${rec.gained}！可以到天賦樹使用。` : (won || G.endless ? '' : '調整一下塔的位置再試一次吧！');
+    $('rReward').textContent = rec.chalNew ? `挑戰「${CHALLENGES[G.chal].name}」完成！獲得 ★ 1` : rec.gained > 0 ? `獲得 ★ ${rec.gained}！可以到天賦樹使用。` : (won || G.endless ? (G.chal && won ? '這個挑戰已經完成過了。' : '') : '調整一下塔的位置再試一次吧！');
+    if (G.chal) { $('rTitle').textContent = won ? '挑戰成功！' : '挑戰失敗…'; $('rSub').textContent = `${G.L.name} · 挑戰「${CHALLENGES[G.chal].name}」`; }
     const u = $('rUnlock');
     if (rec.unlock) {
       u.hidden = false;
@@ -379,5 +395,13 @@ const UI = (() => {
     show('ovResult');
   }
 
-  return { buildShop, tick, resetPanel, show, syncToggles, levels, brief, syncDiff, meta, help, showResult, say, skillIcon, starsHtml };
+  let achT = null;
+  function achToast(id) {
+    const a = ACHIEVEMENTS.find(x => x.id === id); if (!a) return;
+    const el = $('achToast');
+    el.innerHTML = `<i class="medal on"></i><div><small>成就解鎖</small><b>${esc(a.name)}</b><span>${esc(a.desc)}</span></div>`;
+    el.hidden = false; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+    clearTimeout(achT); achT = setTimeout(() => { el.hidden = true; }, 3600);
+  }
+  return { achToast, buildShop, tick, resetPanel, show, syncToggles, levels, brief, syncDiff, meta, help, showResult, say, skillIcon, starsHtml };
 })();

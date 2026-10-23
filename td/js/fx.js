@@ -212,9 +212,9 @@ const FX = (() => {
     if (th === 'snow') { if (count('snow') < 70 * lim) part('snow', rx(), ry(), 3 + R() * 2, 0, 0.15, -0.6 - R() * 0.3, 6, 0.03 + R() * 0.035, '#ffffff', { wind: 0.25 }); }
     if (th === 'volcano') { if (count('ember') < 26 * lim) part('ember', rx(), ry(), 0, (R() - 0.5) * 0.3, -0.1, 0.5 + R() * 0.6, 3 + R() * 2, 0.025 + R() * 0.02, R() < 0.5 ? '#ff8a2a' : '#ffd36b'); }
     if (th === 'night' || th === 'swamp' || th === 'forest') { if (count('firefly') < (th === 'forest' ? 8 : 18) * lim) part('firefly', rx(), ry(), 0.2 + R() * 0.6, 0, 0, 0, 5 + R() * 3, 0.03, th === 'night' ? '#b8f0ff' : '#e8ff8a'); }
-    if (th === 'forest' || th === 'meadow') { if (count('leaf') < (th === 'forest' ? 12 : 5) * lim && R() < 0.3) part('leaf', rx(), ry(), 2.5 + R(), 0.2, 0.1, -0.5, 6, 0.06, R() < 0.5 ? Terrain.pal(th).leaf : '#c8a040'); }
+    if (th === 'forest' || th === 'meadow' || th === 'autumn') { if (count('leaf') < (th === 'meadow' ? 5 : 14) * lim && R() < 0.3) part('leaf', rx(), ry(), 2.5 + R(), 0.2, 0.1, -0.5, 6, 0.06, R() < 0.5 ? Terrain.pal(th).leaf : '#c8a040'); }
     if (th === 'meadow' || th === 'coast' || th === 'forest') { if (count('fly') < 4 * lim && R() < 0.1) part('fly', rx(), ry(), 0.4, 0, 0, 0, 8, 0.05, ['#ffffff', '#ffd36b', '#ff9ec7', '#9fd8ff'][Math.floor(R() * 4)]); }
-    if (th === 'desert') { if (count('dust') < 10 * lim && R() < 0.3) part('dust', -0.5, ry(), 0.1 + R() * 0.3, 1.5 + R(), 0.1, 0, 7, 0.3 + R() * 0.3, '#f6dfaa'); }
+    if (th === 'desert' || th === 'canyon') { if (count('dust') < 10 * lim && R() < 0.3) part('dust', -0.5, ry(), 0.1 + R() * 0.3, 1.5 + R(), 0.1, 0, 7, 0.3 + R() * 0.3, '#f6dfaa'); }
     if (th !== 'night' && th !== 'volcano' && count('bird') < 2 && R() < 0.012) {
       const fromL = R() < 0.5, y0 = R() * ROWS;
       for (let i = 0; i < 3; i++) part('bird', fromL ? -1 - i * 0.4 : COLS + 1 + i * 0.4, y0 + i * 0.3, 3, fromL ? 1.6 : -1.6, (R() - 0.5) * 0.3, 0, 14, 0.12, th === 'coast' ? '#ffffff' : '#2a2a3a');

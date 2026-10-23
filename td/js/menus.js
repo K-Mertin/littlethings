@@ -4,10 +4,10 @@
 const WorldMap = (() => {
   const { TAU, shade, rgba, circ, lgrad, rgrad, fbm } = Gfx;
   // 節點位置（0~1），橫式與直式各一套
-  const NL = [[0.08, 0.76], [0.21, 0.5], [0.33, 0.78], [0.46, 0.46], [0.58, 0.74], [0.7, 0.36], [0.82, 0.66], [0.92, 0.26]];
-  const NP = [[0.3, 0.93], [0.7, 0.82], [0.3, 0.7], [0.7, 0.58], [0.28, 0.46], [0.7, 0.34], [0.32, 0.22], [0.68, 0.09]];
+  const NL = [[0.07, 0.78], [0.17, 0.5], [0.27, 0.78], [0.37, 0.46], [0.47, 0.74], [0.56, 0.38], [0.65, 0.7], [0.74, 0.32], [0.84, 0.66], [0.93, 0.32]];
+  const NP = [[0.3, 0.94], [0.7, 0.85], [0.3, 0.75], [0.7, 0.655], [0.28, 0.56], [0.7, 0.46], [0.3, 0.365], [0.7, 0.27], [0.3, 0.175], [0.7, 0.07]];
   let cache = null;
-  const ICON = { meadow: 'tree', forest: 'pine', desert: 'cactus', snow: 'spine', swamp: 'mush', volcano: 'crystal', coast: 'palm', night: 'grave' };
+  const ICON = { autumn: 'tree', canyon: 'rock', meadow: 'tree', forest: 'pine', desert: 'cactus', snow: 'spine', swamp: 'mush', volcano: 'crystal', coast: 'palm', night: 'grave' };
   function positions(w, h) { const P = h > w * 1.05 ? NP : NL; return P.map(([x, y]) => [x * w, y * h]); }
   function draw(w, h) {
     const d = Math.min(2, window.devicePixelRatio || 1);
@@ -118,7 +118,9 @@ const Codex = (() => {
   function build() {
     const box = $('cxBody');
     for (const b of document.querySelectorAll('#cxTabs button')) b.classList.toggle('on', b.dataset.tab === tab);
-    if (tab === 'tower') {
+    if (tab === 'ach') {
+      box.innerHTML = ACHIEVEMENTS.map(a => { const t = Store.data.ach[a.id]; return `<div class="cx-card ach${t ? '' : ' locked'}"><i class="medal${t ? ' on' : ''}"></i><div class="cx-info"><b>${esc(a.name)}</b><p>${esc(a.desc)}</p>${t ? `<small class="bt" style="color:var(--mint)">${new Date(t).toLocaleDateString('zh-TW')} 達成</small>` : ''}</div></div>`; }).join('');
+    } else if (tab === 'tower') {
       box.innerHTML = TOWER_ORDER.map(k => {
         const d = TOWERS[k], ok = towerUnlocked(k), v = sel[k] || 0;
         const tier = v < 3 ? v : 3, spec = v < 3 ? -1 : v - 3;
@@ -139,8 +141,9 @@ const Codex = (() => {
           <div class="cx-info"><b>${ok ? esc(d.name) : '？？？'}</b>${d.boss ? '<small class="bt">頭目</small>' : ''}<p>${ok ? esc(d.desc || '分裂膠被打爆之後跑出來的小膠。') : '還沒遇見過。在戰場上遇到之後就會記錄下來。'}</p><div class="cx-stats">${stats}</div></div></div>`;
       }).join('');
     }
+    const nA = ACHIEVEMENTS.filter(a => Store.data.ach[a.id]).length;
     const nT = TOWER_ORDER.filter(towerUnlocked).length, nE = Object.keys(ENEMIES).filter(k => Store.data.seen[k]).length;
-    $('cxCount').textContent = tab === 'tower' ? `已解鎖 ${nT}/${TOWER_ORDER.length}` : `已遇見 ${nE}/${Object.keys(ENEMIES).length}`;
+    $('cxCount').textContent = tab === 'ach' ? `已達成 ${nA}/${ACHIEVEMENTS.length}` : tab === 'tower' ? `已解鎖 ${nT}/${TOWER_ORDER.length}` : `已遇見 ${nE}/${Object.keys(ENEMIES).length}`;
   }
   function statLine(k, st) {
     const out = [];

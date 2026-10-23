@@ -44,7 +44,7 @@ function genWaves(L) {
       // 下一隊稍微重疊出場
       delay += n * groupGap(k) * (E > 1 ? 0.35 : 0.7) + 1;
     });
-    if (L.midBoss && w === L.midBoss[0]) groups.push(makeGroup(L.midBoss[1], 1, 0, delay + 2, 1));
+    if (L.midBoss && w === L.midBoss[0]) groups.push(makeGroup(L.midBoss[1], 1, 0, delay + 2, L.midBoss[2] || 1));
     if (L.boss && w === N - 1) {
       groups.push(makeGroup(L.boss, 1, 0, delay + 3, 1));
       if (L.boss === 'bossLich' && E > 1) groups.push(makeGroup('bossGolem', 1, 1, delay + 10, 0.8));
@@ -72,12 +72,21 @@ function genEndlessWave(L, w) {
     groups.push(makeGroup(k, n, entry, delay, hpMul));
     delay += n * groupGap(k) * (E > 1 ? 0.35 : 0.6) + 1;
   }
+  // 詞綴：第 6 波起每 5 波換一次
+  const mods = Object.keys(ENDLESS_MODS);
+  const mod = w >= 5 ? mods[Math.floor(mkRng(L.seed * 7 + Math.floor(w / 5) * 101)() * mods.length)] : null;
+  if (mod === 'swarm') for (const g of groups) { g.n = Math.min(60, Math.round(g.n * 1.5)); g.hp *= 0.7; g.gap *= 0.75; }
+  if (mod === 'sky') { const fk = w >= 12 && rng() < 0.5 ? 'gargoyle' : 'bat'; groups.push(makeGroup(fk, clamp(Math.round(budget / 3 / ENEMIES[fk].cost), 3, 30), (E > 1 ? 1 : 0), delay * 0.5, hpMul)); }
+  // 精英：每 5 波（不是頭目波）一隊巨魔
+  if ((w + 1) % 5 === 0 && (w + 1) % 10 !== 0) groups.push(makeGroup('ogre', 1 + Math.floor(w / 10), 0, delay + 1, hpMul));
   if ((w + 1) % 10 === 0) {
     const bosses = ['bossGolem', 'bossDragon', 'bossLich'];
     const b = bosses[Math.floor((w + 1) / 10 - 1) % 3];
     groups.push(makeGroup(b, 1 + Math.floor(w / 30), 0, delay + 2, (1 + 0.06 * w) * 0.9));
+    // 第 20 波之後頭目會帶一個不同的頭目副手
+    if (w >= 19) groups.push(makeGroup(bosses[(Math.floor((w + 1) / 10)) % 3], 1, E > 1 ? 1 : 0, delay + 8, (1 + 0.06 * w) * 0.55));
   }
-  return { groups };
+  return { groups, mod };
 }
 
 function waveSummary(wave) {

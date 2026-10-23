@@ -17,12 +17,15 @@ App.ui = newUi();
 let quiet = false;
 Hook.sfx = n => { if (!quiet) Snd.sfx(n); };
 Hook.shake = a => { if (!quiet) App.ui.shake = Math.max(App.ui.shake, a); };
-Hook.fx = (n, g, a, b, c, d, e) => FX.on(n, g, a, b, c, d, e);
+Hook.fx = (n, g, a, b, c, d, e) => {
+  FX.on(n, g, a, b, c, d, e);
+  if (g === App.game && !quiet) Ach.event(n, g, a);
+};
 Hook.banner = (G, boss) => {
   if (G !== App.game) return;
   App.ui.banner = boss
     ? { t: 0, big: '頭目來襲！', small: ENEMIES[boss].name, boss: true, k: boss }
-    : { t: 0, big: `第 ${G.wave + 1} 波`, small: G.endless ? '無盡模式' : (G.wave === G.nWaves - 1 ? '最後一波！' : `共 ${G.nWaves} 波`) };
+    : { t: 0, big: `第 ${G.wave + 1} 波`, small: G.endless ? '無盡模式' + (G.mod ? ` · 詞綴「${ENDLESS_MODS[G.mod].name}」${ENDLESS_MODS[G.mod].desc}` : '') : (G.wave === G.nWaves - 1 ? '最後一波！' : `共 ${G.nWaves} 波`) };
   if (boss) Snd.play(9, 1);
 };
 Hook.ended = G => {
@@ -73,16 +76,19 @@ addEventListener('resize', () => { layout(); if (!$('ovLevels').hidden && App.sc
 addEventListener('orientationchange', () => setTimeout(layout, 150));
 
 // ───────── 遊戲流程 ─────────
-function startLevel(li, diff, endless) {
-  App.game = newGame(li, diff, { endless });
+function startLevel(li, diff, endless, chal) {
+  if (chal) { diff = chal === 'iron' ? 'easy' : 'normal'; endless = false; }
+  App.game = newGame(li, diff, { endless, chal });
   App.ui = newUi(); App.speed = 1; App.paused = false; App.acc = 0; App.bot = null;
   App.scene = 'play';
-  Store.data.diff = diff; Store.data.plays = (Store.data.plays || 0) + 1; Store.save();
+  if (!chal) Store.data.diff = diff;
+  Store.data.plays = (Store.data.plays || 0) + 1; Store.save();
   UI.resetPanel(); UI.show();
   app.classList.add('playing');
   Snd.play(THEMES[LEVELS[li].theme].music, 1);
-  App.ui.banner = { t: 0, intro: true, li, en: LEVELS[li].en, big: LEVELS[li].name, small: endless ? '無盡模式 · 準備好就按開始' : `${DIFFS[diff].name}難度 · 共 ${App.game.nWaves} 波` };
+  App.ui.banner = { t: 0, intro: true, li, en: LEVELS[li].en, big: LEVELS[li].name, small: chal ? `挑戰 · ${CHALLENGES[chal].name}（${CHALLENGES[chal].desc}）` : endless ? '無盡模式 · 準備好就按開始' : `${DIFFS[diff].name}難度 · 共 ${App.game.nWaves} 波` };
 }
+App.startLevel = (...a) => startLevel(...a);
 function toScene(s) {
   App.scene = s;
   app.classList.toggle('playing', s === 'play');
@@ -92,13 +98,20 @@ function toScene(s) {
   if (s === 'meta') { UI.meta(); UI.show('ovMeta'); }
 }
 function recordResult(G) {
-  const out = { gained: 0, unlock: null, endlessNew: false, cleared: 0, newBest: false };
+  const out = { gained: 0, unlock: null, endlessNew: false, cleared: 0, newBest: false, chalNew: false };
   if (G.endless) {
-    const cleared = Math.max(0, G.wave);
+    // 正在倒數下一波（這一波已經清光）時離開，這一波也算撐過
+    const allClear = G.wave >= 0 && !G.spawners.length && !G.enemies.some(e => e.alive) && G.lives > 0;
+    const cleared = Math.max(0, G.wave + (allClear ? 1 : 0));
     out.cleared = cleared;
     const before = Prog.endlessStars(G.li);
     if (cleared > (Store.data.endless[G.li] || 0)) { Store.data.endless[G.li] = cleared; out.newBest = true; }
     out.gained = Prog.endlessStars(G.li) - before;
+  } else if (G.chal) {
+    if (G.state === 'won') {
+      const c = Store.data.chal[G.li] = Store.data.chal[G.li] || {};
+      if (!c[G.chal]) { c[G.chal] = 1; out.gained = 1; out.chalNew = true; }
+    }
   } else if (G.state === 'won') {
     const clearedBefore = Prog.cleared(), before = Prog.levelStars(G.li);
     const r = Store.data.levels[G.li] || { stars: 0, hard: false, best: {} };
@@ -115,6 +128,7 @@ function recordResult(G) {
     }
   }
   Store.save();
+  Ach.ended(G, out);
   return out;
 }
 function setPaused(p) {
@@ -123,7 +137,7 @@ function setPaused(p) {
   App.paused = p;
   if (p) {
     const G = App.game;
-    $('pInfo').textContent = `${G.L.name} · ${G.endless ? '無盡模式' : DIFFS[G.diff].name} · 第 ${Math.max(1, G.wave + 1)} 波`;
+    $('pInfo').textContent = `${G.L.name} · ${G.chal ? '挑戰「' + CHALLENGES[G.chal].name + '」' : G.endless ? '無盡模式' : DIFFS[G.diff].name} · 第 ${Math.max(1, G.wave + 1)} 波`;
     UI.syncToggles(); UI.show('ovPause');
   } else UI.show();
 }
@@ -285,14 +299,14 @@ bindClick('bGo', () => startLevel(App.brief.li, App.brief.diff, false));
 bindClick('bEndless', () => startLevel(App.brief.li, App.brief.diff, true));
 bindClick('bBack', () => { UI.show('ovLevels'); UI.levels(); });
 bindClick('pResume', () => setPaused(false));
-bindClick('pRestart', () => { const G = App.game; startLevel(G.li, G.diff, G.endless); });
+bindClick('pRestart', () => { const G = App.game; startLevel(G.li, G.diff, G.endless, G.chal); });
 bindClick('pQuit', () => {
   const G = App.game;
   if (G && G.endless && G.wave >= 0) { G.state = 'lost'; recordResult(G); }
   toScene('levels');
 });
 bindClick('pHelp', () => UI.help(() => UI.show('ovPause')));
-bindClick('rRetry', () => { const G = App.game; startLevel(G.li, G.diff, G.endless); });
+bindClick('rRetry', () => { const G = App.game; startLevel(G.li, G.diff, G.endless, G.chal); });
 bindClick('rLevels', () => toScene('levels'));
 bindClick('rNext', () => { const G = App.game; toScene('levels'); UI.brief(G.li + 1); });
 for (const b of document.querySelectorAll('.tog')) b.addEventListener('click', () => {
@@ -355,6 +369,49 @@ function newDemo() {
   App.demoT = 0;
 }
 
+// ───────── 成就 ─────────
+const Ach = {
+  dirty: false,
+  give(id) {
+    if (Store.data.ach[id]) return;
+    Store.data.ach[id] = Date.now(); Store.save();
+    UI.achToast(id); Snd.sfx('spec');
+  },
+  event(n, G, a) {
+    const T = Store.data.tot;
+    if (n === 'kill') { T.kills = (T.kills || 0) + 1; this.dirty = true; if (a.boss) this.give(a.k); }
+    else if (n === 'build') { T.built = (T.built || 0) + 1; this.dirty = true; }
+    else if (n === 'upgrade' && a.tier === 3) { Store.data.specs[a.k + a.spec] = 1; this.dirty = true; }
+  },
+  tick(G) {
+    const T = Store.data.tot;
+    if (G.gold >= 2000) this.give('rich');
+    if ((T.kills || 0) >= 1000) this.give('k1000');
+    if ((T.kills || 0) >= 10000) this.give('k10000');
+    if ((T.built || 0) >= 100) this.give('b100');
+    if (Object.keys(Store.data.specs).length >= TOWER_ORDER.length * 2) this.give('specs');
+    if (G.endless && G.wave >= 20 && G.nextT !== null) this.give('e20');
+    if (G.endless && G.wave >= 40 && G.nextT !== null) this.give('e40');
+  },
+  ended(G, out) {
+    if (G.endless) { if (out.cleared >= 20) this.give('e20'); if (out.cleared >= 40) this.give('e40'); return; }
+    if (G.state !== 'won') return;
+    this.give('win1');
+    if (G.chal) {
+      this.give('chal1'); if (G.chal === 'iron') this.give('iron');
+      let n = 0; for (const k in Store.data.chal) n += Object.keys(Store.data.chal[k]).length;
+      if (n >= 10) this.give('chal10');
+      return;
+    }
+    if (G.stars === 3) this.give('stars3');
+    if (G.lives >= G.maxLives) this.give('noleak');
+    if (G.diff === 'hard') this.give('hard');
+    if (Prog.cleared() >= 5) this.give('half');
+    if (Prog.cleared() >= LEVELS.length) this.give('all');
+  },
+  meta() { let n = 0; for (const k in Store.data.meta) n += Store.data.meta[k]; if (n >= 10) this.give('meta'); },
+};
+
 // 圖鑑：記錄遇過的敵人
 let seenT = 0;
 function markSeen(G, dt) {
@@ -362,6 +419,8 @@ function markSeen(G, dt) {
   seenT = 0.5;
   let ch = false;
   for (const e of G.enemies) if (!Store.data.seen[e.k]) { Store.data.seen[e.k] = 1; ch = true; }
+  if (Ach.dirty) { Ach.dirty = false; ch = true; }
+  Ach.tick(G);
   if (ch) Store.save();
 }
 
@@ -434,7 +493,8 @@ else boot();
 // ───────── 測試用掛勾 ─────────
 window.__td = {
   get G() { return App.game; }, App, Store, Prog,
-  start(li, diff, endless) { startLevel(li || 0, diff || 'normal', !!endless); return App.game; },
+  start(li, diff, endless, chal) { startLevel(li || 0, diff || 'normal', !!endless, chal); return App.game; },
+  Ach: () => Ach,
   build(k, x, y) { return buildTower(App.game, k, x, y); },
   upgrade(t, spec) { return upgradeTower(App.game, t, spec); },
   sell(t) { return sellTower(App.game, t); },

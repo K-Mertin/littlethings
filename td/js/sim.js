@@ -90,6 +90,12 @@ function newGame(li, diff, opts) {
     },
     stats: { kills: 0, leaks: 0, built: 0, earned: 0 }, bossOn: null, flash: 0,
   };
+  // 挑戰模式
+  G.chal = opts.chal || null;
+  if (G.chal === 'limit' && L.limit) G.towersAvail = G.towersAvail.filter(k => L.limit.includes(k));
+  if (G.chal === 'noskill') { G.skills.meteor.on = false; G.skills.freeze.on = false; }
+  if (G.chal === 'iron') G.lives = 1;
+  G.mod = null;
   G.maxLives = G.lives;
   G.waves = G.endless ? [] : genWaves(L);
   G.nWaves = G.endless ? Infinity : G.waves.length;
@@ -222,6 +228,7 @@ function callWave(G, early) {
   G.wave++;
   if (G.endless) G.waves[G.wave] = genEndlessWave(G.L, G.wave);
   const W = G.waves[G.wave];
+  if (G.endless) G.mod = W.mod || null;
   let boss = null;
   for (const g of W.groups) {
     G.spawners.push({ k: g.k, left: g.n, gap: g.gap, delay: g.delay, timer: 0, entry: g.entry, hp: g.hp });
@@ -271,6 +278,8 @@ function spawnEnemy(G, k, entry, hpMul, pi, at) {
     off: d.boss ? 0 : (G.rnd() - 0.5) * 0.34, x: 0, y: 0, dx: 1, dy: 0, alive: true, wob: G.rnd() * 6.28, r: d.r,
     lives: d.lives || 1, healFx: 0,
   };
+  if (G.mod === 'swift') e.spd *= 1.15;
+  if (G.mod === 'armored') e.armor = Math.min(0.85, e.armor + 0.2);
   placeEnemy(e);
   G.enemies.push(e);
   if (e.boss) { G.bossOn = e; Hook.sfx('roar'); Hook.shake(0.5); Hook.fx('boss', G, e); }
@@ -303,7 +312,7 @@ function hurt(G, e, amt, type, src) {
 function killEnemy(G, e, src) {
   e.alive = false;
   Hook.fx('kill', G, e);
-  const b = Math.max(1, Math.round(e.d.bounty * Math.pow(e.hpMul, 0.7) * G.D.bounty * G.M.bounty));
+  const b = Math.max(1, Math.round(e.d.bounty * Math.pow(e.hpMul, 0.7) * G.D.bounty * G.M.bounty * (G.mod === 'rich' ? 1.3 : 1)));
   G.gold += b; G.stats.kills++;
   if (src && src.t) src.t.kills++;
   addText(G, e.x, e.y - 0.35 - (e.fly ? 0.5 : 0), '+' + b, '#ffd84a', e.boss ? 1.6 : 0.9);
@@ -379,6 +388,7 @@ function updateEnemies(G, dt) {
       if (e.abilT <= 0) { e.abilT = d.dash; e.dashT = 1.6; Hook.sfx('roar'); Hook.fx('dash', G, e); }
     }
     if (e.healFx > 0) e.healFx -= dt;
+    if (G.mod === 'regen' && e.hp < e.maxHp) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * 0.02 * dt);
   }
 }
 function leak(G, e) {

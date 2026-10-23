@@ -15,6 +15,8 @@ const Terrain = (() => {
     swamp: { g: ['#5e7a3e', '#6e8c48', '#7e9c52', '#90ac5e'], tuft: ['#4a6630', '#6a8a40', '#9ab860'], dirt: '#5a4a30', path: '#9a845a', pathD: '#6e5a3a', pathL: '#b49c70', edge: '#3e3020', cliff: ['#6a5a3e', '#4a3e2a', '#30281a'], out: '#2a3a22', outD: '#1a2614', water: ['#7aa878', '#4a7a58', '#2e5440'], flowers: ['#d7ff8a', '#b9a6ff'], amb: 'swamp', leaf: '#a8c060', tree: ['#5a7a3a', '#6e8e44', '#46602e'], dark: 0, darkC: '#1a2a20', tint: 'rgba(50,80,60,.12)' },
     volcano: { g: ['#3e302c', '#4c3c36', '#5a4840', '#6a5850'], tuft: ['#2e2422', '#5a4a40', '#7a6050'], dirt: '#2a1e1a', path: '#7a6a5e', pathD: '#4e403a', pathL: '#968676', edge: '#1e1614', cliff: ['#4a3830', '#2e221e', '#1a1210'], out: '#1c1210', outD: '#100a08', water: ['#ffe27a', '#ff8a2a', '#c83a12'], flowers: ['#ff8a3a'], amb: 'volcano', leaf: '#ff8a3a', tree: ['#3a3030', '#4a3a36', '#2a2222'], cobble: true, dark: 0.32, darkC: '#2a0e08', tint: 'rgba(255,90,30,.07)' },
     coast: { g: ['#6cbc4c', '#80cc5a', '#94da68', '#acE47c'], tuft: ['#58a840', '#78c458', '#a0dc74'], dirt: '#c8a86a', path: '#ecd6a2', pathD: '#c4a46a', pathL: '#fbeccc', edge: '#9a7a4a', cliff: ['#c8b08a', '#9a8264', '#6e5a44'], out: '#1e86b8', outD: '#14628e', water: ['#7ae4f4', '#2fb0e0', '#1a78b0'], flowers: ['#ffffff', '#ffd1e6', '#ffe66b'], amb: 'coast', leaf: '#94da68', tree: ['#3fa84a', '#56bc58', '#2e8a3c'], dark: 0, tint: 'rgba(255,220,160,.04)' },
+    autumn: { g: ['#a8843a', '#bc9446', '#d0a854', '#e2bc66'], tuft: ['#8a7030', '#b89040', '#d8b058'], dirt: '#8a6a3a', path: '#e0c48e', pathD: '#b08a56', pathL: '#f2dcaa', edge: '#6a4a2a', cliff: ['#9a7a54', '#6e5236', '#4e3a26'], out: '#5a4020', outD: '#3a2814', water: ['#6ad0e0', '#2f9ac0', '#1f6a90'], flowers: ['#ff8a3a', '#ffd36b', '#ffffff'], amb: 'autumn', leaf: '#e0782a', tree: ['#e0782a', '#d84a2a', '#f0a830'], dark: 0, tint: 'rgba(255,140,40,.06)' },
+    canyon: { g: ['#a85a34', '#bc6c42', '#cc8052', '#dc9666'], tuft: ['#8a6a3a', '#a8884a', '#7a7a3a'], dirt: '#8a4a2a', path: '#f0cc9e', pathD: '#c09060', pathL: '#ffe6c4', edge: '#7a3a1e', cliff: ['#b05a32', '#843c1e', '#5a2410'], out: '#6a2e18', outD: '#401808', water: ['#6ae0f0', '#2fb4d8', '#1f86b0'], flowers: ['#ffd36b', '#ffffff'], amb: 'desert', leaf: '#e8a070', tree: ['#7aa84a', '#8aba5a', '#5a8a3a'], dark: 0, tint: 'rgba(255,90,40,.06)' },
     night: { g: ['#323c66', '#3a4674', '#445282', '#506090'], tuft: ['#28305a', '#3e4a7c', '#6070a8'], dirt: '#2a2a48', path: '#6c6a8c', pathD: '#4a4866', pathL: '#8c8aaa', edge: '#1e1c34', cliff: ['#3a3e60', '#262a46', '#16182e'], out: '#0c0f24', outD: '#060816', water: ['#5a7ad8', '#3a52a8', '#24347a'], flowers: ['#9ef0ff', '#d7a8ff'], amb: 'night', leaf: '#8a7ab8', tree: ['#2a4a5a', '#345a68', '#1e3644'], cobble: true, dark: 0.5, darkC: '#0a0c26', tint: 'rgba(90,110,255,.06)' },
   };
   const pal = th => PAL[th] || PAL.meadow;
@@ -65,7 +67,7 @@ const Terrain = (() => {
       }
       case 'rock': case 'pebble': {
         const big = k === 'rock', sz = (big ? 0.85 : 0.45) + v * 0.35;
-        const c = th === 'volcano' ? '#4a3a36' : th === 'snow' ? '#90a4b8' : th === 'desert' ? '#c49060' : th === 'night' ? '#5a5a7a' : '#9aa0a6';
+        const c = th === 'volcano' ? '#4a3a36' : th === 'snow' ? '#90a4b8' : th === 'desert' ? '#c49060' : th === 'canyon' ? '#b0603a' : th === 'night' ? '#5a5a7a' : '#9aa0a6';
         ell(x, u * 0.04, 0, u * 0.32 * sz, u * 0.1 * sz, 'rgba(0,0,0,.25)');
         const pts = [-0.32, 0.02, -0.28, -0.2, -0.1, -0.36, 0.14, -0.34, 0.3, -0.16, 0.32, 0.02].map(n => n * u * sz);
         x.beginPath(); x.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) x.lineTo(pts[i], pts[i + 1]); x.closePath();
@@ -434,7 +436,7 @@ const Terrain = (() => {
   }
   function themeGround(ctx, V, G, P, th, rng, s) {
     const free = () => { for (let t = 0; t < 20; t++) { const gx = Math.floor(rng() * COLS), gy = Math.floor(rng() * ROWS); const c = G.grid[gy][gx]; if (!c.path && !c.water) return [gx, gy]; } return null; };
-    if (th === 'desert') {
+    if (th === 'desert' || th === 'canyon') {
       // 沙丘紋
       ctx.strokeStyle = rgba('#ffffff', 0.18); ctx.lineWidth = Math.max(1, s * 0.025);
       for (let i = 0; i < 40; i++) { const [px, py] = V.P(rng() * COLS, rng() * ROWS); const w = s * (0.4 + rng() * 0.5); ctx.beginPath(); ctx.moveTo(px - w, py); ctx.quadraticCurveTo(px, py - s * 0.08, px + w, py); ctx.stroke(); }
