@@ -116,9 +116,17 @@ const ENEMIES = {
   ogre: { name: '巨魔', hp: 280, spd: 0.58, bounty: 30, r: 0.42, armor: 0.3, lives: 3, cost: 8, desc: '血超厚，漏掉一隻扣 3 條命。' },
   gargoyle: { name: '石像鬼', hp: 95, spd: 1.0, bounty: 14, r: 0.32, fly: true, armor: 0.4, cost: 3.6, desc: '有護甲的飛行敵人。' },
   skeleton: { name: '骷髏兵', hp: 32, spd: 1.15, bounty: 2, r: 0.24, armor: 0.2, cost: 1, desc: '巫妖王召喚出來的小兵。' },
+  wisp: { name: '風精靈', hp: 30, spd: 1.9, bounty: 7, r: 0.24, fly: true, cost: 1.4, desc: '天空浮島的小精靈，飛得又快又輕。' },
+  crawler: { name: '晶甲蛛', hp: 85, spd: 1.0, bounty: 13, r: 0.3, armor: 0.35, mres: 0.35, cost: 3, desc: '背著水晶的蜘蛛，物理和魔法都只吃六成五傷害。' },
+  mummy: { name: '木乃伊', hp: 110, spd: 0.7, bounty: 14, r: 0.3, revive: 0.45, cost: 3.2, desc: '倒下一次會再站起來（回復四成五生命）。' },
+  crab: { name: '鐵螯蟹', hp: 65, spd: 1.1, bounty: 11, r: 0.3, armor: 0.55, cost: 2.4, desc: '硬殼橫著走，物理攻擊打不太動。' },
   bossGolem: { name: '岩石巨人王', hp: 3200, spd: 0.38, bounty: 300, r: 0.62, armor: 0.5, lives: 10, boss: true, stomp: 6, cost: 0, desc: '頭目！每 6 秒跺腳，震暈附近的塔。' },
   bossDragon: { name: '炎龍', hp: 2800, spd: 0.55, bounty: 350, r: 0.62, mres: 0.3, fly: true, lives: 10, boss: true, dash: 7, cost: 0, desc: '頭目！會飛，還會突然加速衝刺。' },
   bossLich: { name: '巫妖王', hp: 5200, spd: 0.4, bounty: 500, r: 0.6, mres: 0.55, armor: 0.2, lives: 15, boss: true, summon: 5, cost: 0, desc: '最終頭目！不斷召喚骷髏兵。' },
+  bossRoc: { name: '雷霆巨鷹', hp: 3600, spd: 0.6, bounty: 380, r: 0.62, mres: 0.25, fly: true, lives: 10, boss: true, summon: 6, summonK: 'wisp', summonN: 3, cost: 0, desc: '頭目！在空中盤旋，不斷召來風精靈。' },
+  bossWorm: { name: '晶甲巨蟲', hp: 4600, spd: 0.45, bounty: 420, r: 0.62, armor: 0.45, lives: 12, boss: true, burrow: 7, cost: 0, desc: '頭目！會鑽進地底快速前進，這時候打不到牠。' },
+  bossPharaoh: { name: '沙漠法老', hp: 5400, spd: 0.4, bounty: 480, r: 0.6, mres: 0.45, armor: 0.15, lives: 15, boss: true, summon: 7, summonK: 'mummy', summonN: 2, cost: 0, desc: '頭目！喚醒沉睡的木乃伊為他開路。' },
+  bossKraken: { name: '深淵海妖', hp: 7200, spd: 0.38, bounty: 600, r: 0.64, armor: 0.3, mres: 0.3, lives: 20, boss: true, stomp: 6.5, ink: true, cost: 0, desc: '最終頭目！噴出墨汁，讓附近的塔暫時無法攻擊。' },
 };
 
 // ───────── 地圖主題 ─────────
@@ -132,6 +140,10 @@ const THEMES = {
   coast: { g1: '#8fdc6a', g2: '#84d160', edge: '#5a9c41', path: '#f7e2ae', pathE: '#c9a462', deco: ['palm', 'tree', 'rock', 'palm'], flower: ['#ffffff', '#ffd1e6'], bg: '#1d6f9a', music: 6, water: '#3fb6e6' },
   autumn: { g1: '#c8a24a', g2: '#bf9842', edge: '#8a6a2a', path: '#e2c690', pathE: '#a8824e', deco: ['tree', 'tree', 'bush', 'rock', 'mush', 'tree'], flower: ['#ff8a3a', '#ffd36b', '#ffffff'], bg: '#5a3a1e', music: 1, water: '#5ab8d0' },
   canyon: { g1: '#d88a5a', g2: '#cf8050', edge: '#8a4a2a', path: '#f0c89a', pathE: '#b07848', deco: ['rock', 'cactus', 'dead', 'rock', 'crystal'], flower: ['#ffd36b'], bg: '#6a2e1a', music: 5, water: '#4cc7e8' },
+  sky: { g1: '#9ce07a', g2: '#90d470', edge: '#5aa048', path: '#f4ecd2', pathE: '#c8b48a', deco: ['tree', 'bush', 'crystal', 'rock', 'tree'], flower: ['#ffffff', '#ffd1e6', '#c9f2ff'], bg: '#7ac4f0', music: 0, water: '#bfe8ff', void: true },
+  cave: { g1: '#4a4a5e', g2: '#424256', edge: '#24243a', path: '#8a8270', pathE: '#4a4438', deco: ['crystal', 'crystal', 'rock', 'mush', 'rock'], flower: ['#9ef0ff', '#ff9ef0'], bg: '#141420', music: 7, water: '#5ae8e0' },
+  ruins: { g1: '#e2c488', g2: '#d8b87a', edge: '#a8844a', path: '#cfc2a8', pathE: '#8a7a5a', deco: ['pillar', 'cactus', 'rock', 'pillar', 'palm'], flower: ['#ffb36b'], bg: '#a8743a', music: 2, water: '#4cc7e8' },
+  deep: { g1: '#3a8a98', g2: '#34808e', edge: '#1e4e5a', path: '#d8d0b0', pathE: '#8a8468', deco: ['coral', 'coral', 'rock', 'coral', 'shell'], flower: ['#ff9ad0', '#ffd36b', '#9ef0ff'], bg: '#0e3048', music: 6, water: '#1a5a7a' },
   night: { g1: '#4b5a86', g2: '#45537d', edge: '#262e4f', path: '#8f8aa8', pathE: '#4c4766', deco: ['crystal', 'dead', 'rock', 'grave'], flower: ['#9ef0ff', '#d7a8ff'], bg: '#151a33', music: 7 },
 };
 
@@ -253,6 +265,63 @@ const LEVELS = [
     b0: 10, bg: 1.15, hp0: 1.5, hpg: 0.06, story: '峽谷裡兩條路交叉成井字，到處都是火力交會點。這是王國最後的防線！',
     limit: ['cannon', 'frost', 'sniper'],
   },
+  {
+    name: '天空浮島', en: 'SKY ISLES', theme: 'sky', seed: 151, waves: 20, gold: 520,
+    paths: [
+      [[-1, 2], [5, 2], [5, 7], [10, 1], [10, 4], [14, 4], [14, 8], [16, 8]],
+      [[-1, 8], [3, 8], [3, 5], [5, 5], [5, 7], [10, 1], [10, 4], [14, 4], [14, 8], [16, 8]],
+    ],
+    tp: [[2], [4]], // 傳送陣：這一段不用走，直接跳過去
+    entries: [[0], [1]],
+    water: [[7, 6, 3, 3], [12, 0, 3, 2]],
+    pool: [['slime', 0, 1], ['runner', 0, 2], ['bat', 0, 2], ['wisp', 1, 3], ['beetle', 1, 2], ['golem', 2, 2], ['shield', 2, 2], ['gargoyle', 3, 2], ['splitter', 4, 1], ['healer', 3, 2], ['ogre', 5, 2]],
+    boss: 'bossRoc', midBoss: [12, 'bossDragon', 0.5],
+    b0: 10, bg: 1.15, hp0: 1.55, hpg: 0.06, story: '雲端上的浮島，敵人會踩著傳送陣從一座島跳到另一座。注意大量飛行敵人！',
+    limit: ['arrow', 'magic', 'sniper'],
+  },
+  {
+    name: '水晶礦坑', en: 'CRYSTAL MINE', theme: 'cave', seed: 167, waves: 20, gold: 540,
+    paths: [
+      [[-1, 1], [6, 1], [6, 4], [2, 4], [2, 8], [11, 8], [11, 3], [16, 3]],
+      [[-1, 1], [6, 1], [6, 4], [9, 4], [9, 6], [11, 6], [11, 3], [16, 3]],
+    ],
+    entries: [[0, 1]],
+    pads: [[4, 6], [8, 2], [13, 5], [7, 6]], // 水晶基座：蓋在上面的塔傷害 +25%、射程 +10%
+    water: [[13, 7, 2, 2]],
+    pool: [['slime', 0, 1], ['runner', 0, 2], ['beetle', 0, 2], ['golem', 1, 2], ['crawler', 2, 3], ['bat', 2, 2], ['shield', 3, 2], ['splitter', 3, 2], ['healer', 4, 2], ['gargoyle', 5, 2], ['ogre', 6, 2]],
+    boss: 'bossWorm', midBoss: [10, 'bossGolem', 0.65],
+    b0: 10.5, bg: 1.155, hp0: 1.95, hpg: 0.06, story: '黑漆漆的礦坑裡，地上發光的水晶基座能讓蓋在上面的塔更強。晶甲巨蟲在最深處等著。',
+    limit: ['cannon', 'frost', 'magic'],
+  },
+  {
+    name: '沙暴遺跡', en: 'DUNE RUINS', theme: 'ruins', seed: 181, waves: 22, gold: 560,
+    paths: [
+      [[-1, 3], [4, 3], [4, 7], [8, 7], [8, 2], [12, 2], [12, 6], [16, 6]],
+      [[6, -1], [6, 4], [10, 4], [10, 8], [14, 8], [14, 6], [16, 6]],
+    ],
+    entries: [[0], [1]],
+    storm: [30, 7, 0.8], // 每 30 秒一次沙暴，持續 7 秒，所有塔射程變成八成
+    water: [[1, 7, 2, 2]],
+    pool: [['slime', 0, 1], ['runner', 0, 2], ['beetle', 0, 2], ['golem', 0, 2], ['mummy', 1, 3], ['bat', 1, 2], ['shield', 2, 2], ['healer', 2, 2], ['splitter', 3, 2], ['gargoyle', 3, 2], ['ogre', 4, 2], ['skeleton', 4, 1]],
+    boss: 'bossPharaoh', midBoss: [11, 'bossLich', 0.45],
+    b0: 10, bg: 1.15, hp0: 1.55, hpg: 0.06, story: '古老的沙漠遺跡，每隔一陣子就會刮起沙暴，所有塔的射程都會變短。木乃伊打倒一次還會再爬起來！',
+    limit: ['arrow', 'cannon', 'banner'],
+  },
+  {
+    name: '海底神殿', en: 'ABYSS TEMPLE', theme: 'deep', seed: 197, waves: 24, gold: 600,
+    paths: [
+      [[-1, 2], [3, 2], [3, 6], [7, 6], [7, 8], [12, 8], [12, 4], [16, 4]],
+      [[7, -1], [7, 3], [10, 3], [10, 6], [12, 6], [12, 4], [16, 4]],
+      [[-1, 8], [5, 8], [5, 6], [7, 6], [7, 8], [12, 8], [12, 4], [16, 4]],
+    ],
+    entries: [[0], [1], [2]],
+    current: [[7, 7, 1, 2], [8, 8, 4, 1], [12, 5, 1, 3]], // 海流：敵人經過時速度 ×1.4
+    water: [[13, 6, 3, 2]],
+    pool: [['slime', 0, 1], ['runner', 0, 2], ['beetle', 0, 2], ['crab', 0, 3], ['golem', 1, 2], ['bat', 1, 2], ['shield', 2, 2], ['splitter', 2, 2], ['healer', 3, 2], ['gargoyle', 3, 2], ['ogre', 4, 2], ['wisp', 5, 1], ['mummy', 6, 1]],
+    boss: 'bossKraken', midBoss: [12, 'bossPharaoh', 0.5],
+    b0: 11, bg: 1.14, hp0: 1.62, hpg: 0.06, story: '沉在海底的古神殿，三個入口同時湧入，中間的海流會讓敵人突然加速。深淵海妖是王國最後的威脅！',
+    limit: ['frost', 'magic', 'sniper'],
+  },
 ];
 
 // ───────── 難度 ─────────
@@ -317,9 +386,14 @@ const ACHIEVEMENTS = [
   { id: 'hard', name: '硬漢', desc: '用困難難度過關' },
   { id: 'half', name: '王國英雄', desc: '打贏前 5 關' },
   { id: 'all', name: '王國守護者', desc: '打贏所有關卡' },
+  { id: 'ten', name: '王國的盾', desc: '打贏前 10 關' },
   { id: 'bossGolem', name: '撼動大地', desc: '擊倒岩石巨人王' },
   { id: 'bossDragon', name: '屠龍者', desc: '擊倒炎龍' },
   { id: 'bossLich', name: '驅散黑暗', desc: '擊倒巫妖王' },
+  { id: 'bossRoc', name: '馴鷹人', desc: '擊倒雷霆巨鷹' },
+  { id: 'bossWorm', name: '礦坑英雄', desc: '擊倒晶甲巨蟲' },
+  { id: 'bossPharaoh', name: '遺跡探險家', desc: '擊倒沙漠法老' },
+  { id: 'bossKraken', name: '深海霸主', desc: '擊倒深淵海妖' },
   { id: 'k1000', name: '千人斬', desc: '累計擊倒 1000 個敵人' },
   { id: 'k10000', name: '萬夫莫敵', desc: '累計擊倒 10000 個敵人' },
   { id: 'b100', name: '建築大師', desc: '累計蓋 100 座塔' },
@@ -331,6 +405,46 @@ const ACHIEVEMENTS = [
   { id: 'iron', name: '鐵人', desc: '完成任何一關的鐵人挑戰' },
   { id: 'chal10', name: '挑戰大師', desc: '完成 10 個關卡挑戰' },
   { id: 'meta', name: '學以致用', desc: '在天賦樹學會 10 階天賦' },
+  { id: 'hero5', name: '英雄出師', desc: '任何一位英雄升到 5 級' },
+  { id: 'hero10', name: '傳奇英雄', desc: '任何一位英雄升到 10 級' },
 ];
 const ENDLESS_UNLOCK = 3; // 打贏第 4 關後解鎖無盡模式
 const WAVE_GAP = 14; // 一波出完之後到下一波的秒數
+
+// ───────── 英雄 ─────────
+// 每關帶一位英雄上場：點英雄、再點道路就能移動。英雄會自動攻擊、自動放技能，倒下後在城堡重生。
+// 等級（1~10）跨關卡永久保存，每升一級生命與傷害 +9%；第 3 級學會第二個技能。
+// unlock：打贏幾關之後可以選；atk 類型：melee 近戰（會擋住敵人）、arrow 箭、orb 魔法彈
+const HEROES = {
+  knight: {
+    name: '雷歐', title: '鐵壁騎士', color: '#4a7ad8', unlock: 0, atk: 'melee', dt: 'phys',
+    hp: 340, armor: 0.35, mres: 0, dmg: 26, rate: 1.15, range: 0.85, air: false, spd: 2.0, respawn: 14, block: 1, engage: 1.8,
+    desc: '近戰坦克。會擋住路上的敵人，讓周圍的塔集中火力。',
+    skills: [
+      { id: 'whirl', name: '旋風斬', cd: 11, lv: 1, r: 1.35, dmg: 75, desc: '旋轉大劍，砍傷周圍所有地面敵人。' },
+      { id: 'wall', name: '盾牆怒吼', cd: 22, lv: 3, r: 1.7, stun: 2, heal: 0.3, desc: '附近敵人暈眩 2 秒，自己回復三成生命。' },
+    ],
+  },
+  ranger: {
+    name: '小嵐', title: '疾風遊俠', color: '#3f9a5a', unlock: 2, atk: 'arrow', dt: 'phys',
+    hp: 170, armor: 0.1, mres: 0, dmg: 12, rate: 1.7, range: 2.8, air: true, spd: 2.4, respawn: 12, block: 0, engage: 0,
+    desc: '遠程射手，射得快，地面空中都能打。',
+    skills: [
+      { id: 'rain', name: '箭雨', cd: 13, lv: 1, r: 1.25, dmg: 16, n: 6, desc: '朝敵人最密集的地方射出一陣箭雨。' },
+      { id: 'pierce', name: '穿雲箭', cd: 18, lv: 3, dmg: 170, desc: '一箭貫穿直線上所有敵人，無視一半護甲。' },
+    ],
+  },
+  mage: {
+    name: '露米', title: '星辰法師', color: '#9a5ae0', unlock: 4, atk: 'orb', dt: 'magic',
+    hp: 150, armor: 0, mres: 0.4, dmg: 24, rate: 0.85, range: 2.5, splash: 0.55, air: true, spd: 1.9, respawn: 12, block: 0, engage: 0,
+    desc: '魔法彈會小範圍爆炸，無視護甲。',
+    skills: [
+      { id: 'nova', name: '冰霜新星', cd: 14, lv: 1, r: 1.6, dmg: 40, freeze: 1.6, desc: '以自己為中心爆出寒冰，凍住附近的敵人。' },
+      { id: 'storm', name: '星落雷霆', cd: 20, lv: 3, n: 4, dmg: 110, desc: '召喚雷霆劈中射程內最強的 4 個敵人。' },
+    ],
+  },
+};
+const HERO_ORDER = ['knight', 'ranger', 'mage'];
+const HERO_MAX = 10;
+const heroXpNeed = lv => 150 + 110 * (lv - 1); // 從 lv 升到 lv+1 需要的經驗
+function heroLevel(xp) { let lv = 1; while (lv < HERO_MAX && xp >= heroXpNeed(lv)) { xp -= heroXpNeed(lv); lv++; } return { lv, xp, need: lv < HERO_MAX ? heroXpNeed(lv) : 0 }; }

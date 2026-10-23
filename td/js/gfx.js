@@ -63,7 +63,7 @@ const Gfx = (() => {
   // 快取精靈：w,h 是 CSS 像素，ax,ay 是錨點（通常是腳底中心），draw(ctx) 以錨點為原點作畫
   const cache = new Map();
   let cacheCount = 0;
-  function sprite(key, w, h, ax, ay, dpr, draw, outline) {
+  function sprite(key, w, h, ax, ay, dpr, draw, outline, bev) {
     const k = key + '@' + dpr;
     let sp = cache.get(k);
     if (sp) return sp;
@@ -73,7 +73,8 @@ const Gfx = (() => {
     x.scale(dpr, dpr); x.translate(ax + pad, ay + pad);
     draw(x);
     let out = c;
-    if (outline) out = addOutline(c, outline * dpr, 'rgba(28,18,36,.82)');
+    if (bev) out = bevel(c, Math.max(1, bev * dpr));
+    if (outline) out = addOutline(out, outline * dpr, 'rgba(28,18,36,.82)');
     sp = { c: out, w: w + pad * 2, h: h + pad * 2, ax: ax + pad, ay: ay + pad };
     cache.set(k, sp); cacheCount++;
     if (cacheCount > 6000) { cache.clear(); cacheCount = 0; }
@@ -88,10 +89,42 @@ const Gfx = (() => {
     const w = src.width, h = src.height;
     const sil = canvas(w, h), sx = sil.getContext('2d');
     sx.drawImage(src, 0, 0); sx.globalCompositeOperation = 'source-in'; sx.fillStyle = color; sx.fillRect(0, 0, w, h);
+    // 半透明的光暈不要描邊（只描實心的部分）
+    try {
+      const im = sx.getImageData(0, 0, w, h), d = im.data;
+      for (let i = 3; i < d.length; i += 4) d[i] = d[i] < 110 ? 0 : 255;
+      sx.putImageData(im, 0, 0);
+    } catch (e) { /* 讀不到像素就照舊 */ }
     const out = canvas(w, h), o = out.getContext('2d');
     const n = px > 2.5 ? 12 : 8;
     for (let i = 0; i < n; i++) { const a = i / n * TAU; o.drawImage(sil, Math.cos(a) * px, Math.sin(a) * px); }
     o.drawImage(src, 0, 0);
+    return out;
+  }
+  // 立體感：用自身輪廓位移做出「左上亮邊、右下暗邊」＋由上往下的明暗，讓所有角色都有一致的三階光影
+  function bevel(src, px, opts) {
+    opts = opts || {};
+    const w = src.width, h = src.height;
+    const out = canvas(w, h), o = out.getContext('2d');
+    o.drawImage(src, 0, 0);
+    const tmp = canvas(w, h), t = tmp.getContext('2d');
+    // 亮邊：輪廓 減去 往右下位移的輪廓
+    const rim = (dx, dy, col, a) => {
+      t.globalCompositeOperation = 'source-over'; t.clearRect(0, 0, w, h);
+      t.drawImage(src, 0, 0);
+      t.globalCompositeOperation = 'destination-out'; t.drawImage(src, dx, dy);
+      t.globalCompositeOperation = 'source-in'; t.fillStyle = col; t.fillRect(0, 0, w, h);
+      o.globalAlpha = a; o.globalCompositeOperation = 'source-atop'; o.drawImage(tmp, 0, 0);
+      o.globalAlpha = 1;
+    };
+    rim(px, px, '#fffbe8', opts.hi || 0.5);
+    rim(-px * 0.8, -px * 0.8, '#1a0e24', opts.lo || 0.38);
+    // 整體由上往下的光（上亮下暗）
+    o.globalCompositeOperation = 'source-atop';
+    const g = o.createLinearGradient(0, 0, w * 0.35, h);
+    g.addColorStop(0, 'rgba(255,250,230,.16)'); g.addColorStop(0.45, 'rgba(255,250,230,0)'); g.addColorStop(0.75, 'rgba(20,10,40,0)'); g.addColorStop(1, 'rgba(20,10,40,.22)');
+    o.fillStyle = g; o.fillRect(0, 0, w, h);
+    o.globalCompositeOperation = 'source-over';
     return out;
   }
   // 把精靈染成單色（受傷閃白、冰凍染藍）
@@ -156,5 +189,5 @@ const Gfx = (() => {
     stops.forEach((c, i) => g.addColorStop(Array.isArray(c) ? c[0] : i / (stops.length - 1), Array.isArray(c) ? c[1] : c));
     return g;
   }
-  return { TAU, hex, mix, shade, rgba, vnoise, fbm, hash2, canvas, sprite, drawSprite, addOutline, tinted, glow, puff, ell, circ, rrect, poly, star, lgrad, rgrad, clear() { cache.clear(); cacheCount = 0; } };
+  return { TAU, hex, mix, shade, rgba, vnoise, fbm, hash2, canvas, sprite, drawSprite, addOutline, bevel, tinted, glow, puff, ell, circ, rrect, poly, star, lgrad, rgrad, clear() { cache.clear(); cacheCount = 0; } };
 })();

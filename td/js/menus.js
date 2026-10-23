@@ -4,10 +4,11 @@
 const WorldMap = (() => {
   const { TAU, shade, rgba, circ, lgrad, rgrad, fbm } = Gfx;
   // 節點位置（0~1），橫式與直式各一套
-  const NL = [[0.07, 0.78], [0.17, 0.5], [0.27, 0.78], [0.37, 0.46], [0.47, 0.74], [0.56, 0.38], [0.65, 0.7], [0.74, 0.32], [0.84, 0.66], [0.93, 0.32]];
-  const NP = [[0.3, 0.94], [0.7, 0.85], [0.3, 0.75], [0.7, 0.655], [0.28, 0.56], [0.7, 0.46], [0.3, 0.365], [0.7, 0.27], [0.3, 0.175], [0.7, 0.07]];
+  // 14 關：橫式是蛇形的兩排（下排往右、上排往左），直式由下往上之字形
+  const NL = Array.from({ length: 14 }, (_, i) => i < 7 ? [0.07 + i * 0.143, 0.82 - (i % 2) * 0.15] : [0.93 - (i - 7) * 0.143, 0.4 - (i % 2) * 0.15]);
+  const NP = Array.from({ length: 14 }, (_, i) => [i % 2 ? 0.72 : 0.28, 0.955 - i * 0.07]);
   let cache = null;
-  const ICON = { autumn: 'tree', canyon: 'rock', meadow: 'tree', forest: 'pine', desert: 'cactus', snow: 'spine', swamp: 'mush', volcano: 'crystal', coast: 'palm', night: 'grave' };
+  const ICON = { autumn: 'tree', canyon: 'rock', meadow: 'tree', forest: 'pine', desert: 'cactus', snow: 'spine', swamp: 'mush', volcano: 'crystal', coast: 'palm', night: 'grave', sky: 'tree', cave: 'crystal', ruins: 'pillar', deep: 'coral' };
   function positions(w, h) { const P = h > w * 1.05 ? NP : NL; return P.map(([x, y]) => [x * w, y * h]); }
   function draw(w, h) {
     const d = Math.min(2, window.devicePixelRatio || 1);
@@ -47,11 +48,15 @@ const WorldMap = (() => {
     // 海岸：先畫一圈淺色沙灘
     const shore = Gfx.canvas(lw, lh), sx = shore.getContext('2d');
     sx.drawImage(lc, 0, 0); sx.globalCompositeOperation = 'source-in'; sx.fillStyle = '#f2dca0'; sx.fillRect(0, 0, lw, lh);
-    x.imageSmoothingEnabled = true;
+    x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+    // 低解析度的區域圖放大後邊緣會有鋸齒：稍微模糊一下
+    const blurOk = 'filter' in x;
     x.save(); x.shadowColor = 'rgba(0,30,60,.5)'; x.shadowBlur = 18; x.shadowOffsetY = 6;
     for (const [ox, oy] of [[-2, 0], [2, 0], [0, -2], [0, 2]]) x.drawImage(shore, ox * 2, oy * 2, lw * q, lh * q);
     x.restore();
+    if (blurOk) x.filter = 'blur(1.2px)';
     x.drawImage(lc, 0, 0, lw * q, lh * q);
+    if (blurOk) x.filter = 'none';
     // 小路
     x.save();
     x.lineCap = 'round'; x.lineJoin = 'round';
@@ -120,6 +125,17 @@ const Codex = (() => {
     for (const b of document.querySelectorAll('#cxTabs button')) b.classList.toggle('on', b.dataset.tab === tab);
     if (tab === 'ach') {
       box.innerHTML = ACHIEVEMENTS.map(a => { const t = Store.data.ach[a.id]; return `<div class="cx-card ach${t ? '' : ' locked'}"><i class="medal${t ? ' on' : ''}"></i><div class="cx-info"><b>${esc(a.name)}</b><p>${esc(a.desc)}</p>${t ? `<small class="bt" style="color:var(--mint)">${new Date(t).toLocaleDateString('zh-TW')} 達成</small>` : ''}</div></div>`; }).join('');
+    } else if (tab === 'hero') {
+      const cur = HeroUI.current();
+      box.innerHTML = HERO_ORDER.map(id => {
+        const d = HEROES[id], ok = HeroUI.unlocked(id), L = HeroUI.level(id), m = heroMul(L.lv);
+        const st = [['生命', Math.round(d.hp * m)], ['傷害', fmt(d.dmg * m)], ['每秒', d.rate], [d.atk === 'melee' ? '近戰' : '射程', d.atk === 'melee' ? '' : d.range], ['重生', d.respawn + '秒']].map(([a, b]) => `<span>${a}${b !== '' ? ' <b>' + b + '</b>' : ''}</span>`).join('');
+        const sk = d.skills.map(k => `<div class="cx-sk"><img alt="" src="${HeroUI.skillIcon(k.id)}"><span><b>${esc(k.name)}</b>${k.lv > 1 ? `（Lv ${k.lv}）` : ''}：${esc(k.desc)}</span></div>`).join('');
+        const xp = L.need ? `Lv ${L.lv} · 經驗 ${Math.floor(L.xp)}/${L.need}` : `Lv ${L.lv}（最高）`;
+        return `<div class="cx-card hero${ok ? '' : ' locked'}${ok && id === cur ? ' on' : ''}"><div class="cx-art"><img alt="" src="${heroStandee(id)}"></div>
+          <div class="cx-info"><b>${esc(d.name)}</b><small>${esc(d.title)} · ${ok ? xp : '打贏第 ' + d.unlock + ' 關解鎖'}</small><p>${esc(d.desc)}</p><div class="cx-stats">${st}</div>${sk}
+          <button class="cx-pick" data-h="${id}" ${ok && id !== cur ? '' : 'disabled'}>${id === cur && ok ? '出戰中' : '選這位出戰'}</button></div></div>`;
+      }).join('');
     } else if (tab === 'tower') {
       box.innerHTML = TOWER_ORDER.map(k => {
         const d = TOWERS[k], ok = towerUnlocked(k), v = sel[k] || 0;
@@ -133,18 +149,20 @@ const Codex = (() => {
           <div class="cx-info"><b>${esc(nm)}</b><small>${d.en}</small><p>${esc(desc)}</p><div class="cx-stats">${stats}</div><div class="cx-chips">${chips}</div></div></div>`;
       }).join('');
     } else {
-      const order = ['slime', 'runner', 'beetle', 'bat', 'golem', 'healer', 'shield', 'splitter', 'mini', 'ogre', 'gargoyle', 'skeleton', 'bossGolem', 'bossDragon', 'bossLich'];
+      const order = ['slime', 'runner', 'beetle', 'bat', 'golem', 'healer', 'shield', 'splitter', 'mini', 'ogre', 'gargoyle', 'skeleton', 'wisp', 'crawler', 'mummy', 'crab', 'bossGolem', 'bossDragon', 'bossLich', 'bossRoc', 'bossWorm', 'bossPharaoh', 'bossKraken'];
       box.innerHTML = order.map(k => {
         const d = ENEMIES[k], ok = !!Store.data.seen[k];
-        const stats = ok ? [['生命', d.hp], ['速度', d.spd], d.armor ? ['護甲', Math.round(d.armor * 100) + '%'] : null, d.mres ? ['抗魔', Math.round(d.mres * 100) + '%'] : null, ['金幣', d.bounty], d.lives > 1 ? ['扣命', d.lives] : null, d.fly ? ['飛行', ''] : null].filter(Boolean).map(([a, b]) => `<span>${a}${b !== '' ? ' <b>' + b + '</b>' : ''}</span>`).join('') : '';
+        const stats = ok ? [['生命', d.hp], ['速度', d.spd], d.armor ? ['護甲', Math.round(d.armor * 100) + '%'] : null, d.mres ? ['抗魔', Math.round(d.mres * 100) + '%'] : null, ['金幣', d.bounty], d.lives > 1 ? ['扣命', d.lives] : null, d.fly ? ['飛行', ''] : null, d.revive ? ['會復活', ''] : null].filter(Boolean).map(([a, b]) => `<span>${a}${b !== '' ? ' <b>' + b + '</b>' : ''}</span>`).join('') : '';
         return `<div class="cx-card${ok ? '' : ' locked'}${d.boss ? ' boss' : ''}"><div class="cx-art"><img alt="" src="${Render.icon('enemy', k, 0, undefined, 160)}"></div>
           <div class="cx-info"><b>${ok ? esc(d.name) : '？？？'}</b>${d.boss ? '<small class="bt">頭目</small>' : ''}<p>${ok ? esc(d.desc || '分裂膠被打爆之後跑出來的小膠。') : '還沒遇見過。在戰場上遇到之後就會記錄下來。'}</p><div class="cx-stats">${stats}</div></div></div>`;
       }).join('');
     }
     const nA = ACHIEVEMENTS.filter(a => Store.data.ach[a.id]).length;
     const nT = TOWER_ORDER.filter(towerUnlocked).length, nE = Object.keys(ENEMIES).filter(k => Store.data.seen[k]).length;
-    $('cxCount').textContent = tab === 'ach' ? `已達成 ${nA}/${ACHIEVEMENTS.length}` : tab === 'tower' ? `已解鎖 ${nT}/${TOWER_ORDER.length}` : `已遇見 ${nE}/${Object.keys(ENEMIES).length}`;
+    $('cxCount').textContent = tab === 'hero' ? `已解鎖 ${HERO_ORDER.filter(h => HeroUI.unlocked(h)).length}/${HERO_ORDER.length}` : tab === 'ach' ? `已達成 ${nA}/${ACHIEVEMENTS.length}` : tab === 'tower' ? `已解鎖 ${nT}/${TOWER_ORDER.length}` : `已遇見 ${nE}/${Object.keys(ENEMIES).length}`;
   }
+  const stCache = {};
+  function heroStandee(id) { return stCache[id] || (stCache[id] = HeroArt.standee(id, 240).toDataURL()); }
   function statLine(k, st) {
     const out = [];
     if (st.dmg) out.push(['傷害', fmt(st.dmg) + (st.multi ? ' ×' + st.multi : '') + (st.missiles ? ' ×' + st.missiles : '')]);
@@ -163,7 +181,7 @@ const Codex = (() => {
   }
   function init() {
     $('cxTabs').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; tab = b.dataset.tab; Snd.sfx('click'); build(); });
-    $('cxBody').addEventListener('click', e => { const b = e.target.closest('.cx-chip'); if (!b || b.disabled) return; sel[b.dataset.k] = +b.dataset.v; Snd.sfx('click'); build(); });
+    $('cxBody').addEventListener('click', e => { const p = e.target.closest('.cx-pick'); if (p && !p.disabled) { Store.data.hero = p.dataset.h; Store.save(); Snd.sfx('spec'); build(); return; } const b = e.target.closest('.cx-chip'); if (!b || b.disabled) return; sel[b.dataset.k] = +b.dataset.v; Snd.sfx('click'); build(); });
   }
   return { open, init, build };
 })();

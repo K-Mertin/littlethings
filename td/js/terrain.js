@@ -18,6 +18,10 @@ const Terrain = (() => {
     autumn: { g: ['#a8843a', '#bc9446', '#d0a854', '#e2bc66'], tuft: ['#8a7030', '#b89040', '#d8b058'], dirt: '#8a6a3a', path: '#e0c48e', pathD: '#b08a56', pathL: '#f2dcaa', edge: '#6a4a2a', cliff: ['#9a7a54', '#6e5236', '#4e3a26'], out: '#5a4020', outD: '#3a2814', water: ['#6ad0e0', '#2f9ac0', '#1f6a90'], flowers: ['#ff8a3a', '#ffd36b', '#ffffff'], amb: 'autumn', leaf: '#e0782a', tree: ['#e0782a', '#d84a2a', '#f0a830'], dark: 0, tint: 'rgba(255,140,40,.06)' },
     canyon: { g: ['#a85a34', '#bc6c42', '#cc8052', '#dc9666'], tuft: ['#8a6a3a', '#a8884a', '#7a7a3a'], dirt: '#8a4a2a', path: '#f0cc9e', pathD: '#c09060', pathL: '#ffe6c4', edge: '#7a3a1e', cliff: ['#b05a32', '#843c1e', '#5a2410'], out: '#6a2e18', outD: '#401808', water: ['#6ae0f0', '#2fb4d8', '#1f86b0'], flowers: ['#ffd36b', '#ffffff'], amb: 'desert', leaf: '#e8a070', tree: ['#7aa84a', '#8aba5a', '#5a8a3a'], dark: 0, tint: 'rgba(255,90,40,.06)' },
     night: { g: ['#323c66', '#3a4674', '#445282', '#506090'], tuft: ['#28305a', '#3e4a7c', '#6070a8'], dirt: '#2a2a48', path: '#6c6a8c', pathD: '#4a4866', pathL: '#8c8aaa', edge: '#1e1c34', cliff: ['#3a3e60', '#262a46', '#16182e'], out: '#0c0f24', outD: '#060816', water: ['#5a7ad8', '#3a52a8', '#24347a'], flowers: ['#9ef0ff', '#d7a8ff'], amb: 'night', leaf: '#8a7ab8', tree: ['#2a4a5a', '#345a68', '#1e3644'], cobble: true, dark: 0.5, darkC: '#0a0c26', tint: 'rgba(90,110,255,.06)' },
+    sky: { g: ['#7cc458', '#90d468', '#a8e07c', '#c4ec98'], tuft: ['#6ab84c', '#8cd068', '#b8e890'], dirt: '#b8a070', path: '#f2e8cc', pathD: '#c8b490', pathL: '#fffaea', edge: '#8a7a5a', cliff: ['#d8d0c0', '#a89a88', '#7a6e62'], out: '#8acdf2', outD: '#5aa8e0', water: ['#e8f6ff', '#b8e0fa', '#8ac8f0'], flowers: ['#ffffff', '#ffd1e6', '#c9f2ff', '#fff3a8'], amb: 'sky', leaf: '#c4ec98', tree: ['#58b850', '#6ccc5c', '#44a040'], cobble: true, dark: 0, tint: 'rgba(200,230,255,.06)' },
+    cave: { g: ['#2e2e40', '#383a4e', '#44465c', '#50546a'], tuft: ['#3a4a5a', '#4a5e6e', '#5a7a88'], dirt: '#26263a', path: '#7a7266', pathD: '#4e483e', pathL: '#9a9282', edge: '#1a1a26', cliff: ['#3a3a4e', '#24243a', '#141420'], out: '#101018', outD: '#08080e', water: ['#9ffcf0', '#3ad8d0', '#1a8a98'], flowers: ['#9ef0ff', '#ff9ef0'], amb: 'cave', leaf: '#9ef0ff', tree: ['#3a5a6a', '#4a6a7a', '#2a4a5a'], cobble: true, dark: 0.45, darkC: '#06061a', tint: 'rgba(80,120,255,.06)' },
+    ruins: { g: ['#c8a468', '#d8b87a', '#e6ca90', '#f0daa8'], tuft: ['#a89a50', '#b8a860', '#8a8a4a'], dirt: '#b08a50', path: '#d8ccb0', pathD: '#a89a7a', pathL: '#f0e6cc', edge: '#8a6a40', cliff: ['#c89a5a', '#9a6e38', '#6a4a22'], out: '#c89050', outD: '#9a6a30', water: ['#6ae0f0', '#2fb4d8', '#1f86b0'], flowers: ['#ffb36b', '#ff7f9a'], amb: 'desert', leaf: '#e8c070', tree: ['#4caf6a', '#5fc070', '#3a8a50'], cobble: true, dark: 0, tint: 'rgba(255,160,60,.07)' },
+    deep: { g: ['#24707e', '#2c808e', '#36909c', '#44a0aa'], tuft: ['#1e6a5a', '#2a8a6a', '#3aa87a'], dirt: '#1a5a66', path: '#d8d0b0', pathD: '#a89c7a', pathL: '#f0ead2', edge: '#14404a', cliff: ['#2a6a78', '#1a4a58', '#0e2e3a'], out: '#0c3a58', outD: '#06203a', water: ['#2a7a9a', '#14506e', '#0a2e48'], flowers: ['#ff9ad0', '#ffd36b', '#9ef0ff'], amb: 'deep', leaf: '#3aa87a', tree: ['#e86a8a', '#f08a5a', '#c84a9a'], dark: 0.12, darkC: '#04182e', tint: 'rgba(40,140,200,.12)' },
   };
   const pal = th => PAL[th] || PAL.meadow;
 
@@ -67,7 +71,7 @@ const Terrain = (() => {
       }
       case 'rock': case 'pebble': {
         const big = k === 'rock', sz = (big ? 0.85 : 0.45) + v * 0.35;
-        const c = th === 'volcano' ? '#4a3a36' : th === 'snow' ? '#90a4b8' : th === 'desert' ? '#c49060' : th === 'canyon' ? '#b0603a' : th === 'night' ? '#5a5a7a' : '#9aa0a6';
+        const c = th === 'cave' ? '#5a5a74' : th === 'deep' ? '#5a8a90' : th === 'sky' ? '#c8c4bc' : th === 'volcano' ? '#4a3a36' : th === 'snow' ? '#90a4b8' : th === 'desert' || th === 'ruins' ? '#c49060' : th === 'canyon' ? '#b0603a' : th === 'night' ? '#5a5a7a' : '#9aa0a6';
         ell(x, u * 0.04, 0, u * 0.32 * sz, u * 0.1 * sz, 'rgba(0,0,0,.25)');
         const pts = [-0.32, 0.02, -0.28, -0.2, -0.1, -0.36, 0.14, -0.34, 0.3, -0.16, 0.32, 0.02].map(n => n * u * sz);
         x.beginPath(); x.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) x.lineTo(pts[i], pts[i + 1]); x.closePath();
@@ -195,6 +199,37 @@ const Terrain = (() => {
         x.beginPath(); x.moveTo(-u * 0.22, -u * 0.17); x.lineTo(u * 0.22, -u * 0.17); x.moveTo(-u * 0.22, -u * 0.08); x.lineTo(u * 0.22, -u * 0.08); x.stroke();
         break;
       }
+      case 'pillar': {
+        const c = '#e2d2aa', sz = 0.85 + v * 0.3, broken = v < 0.55;
+        ell(x, u * 0.05, 0, u * 0.3 * sz, u * 0.1 * sz, 'rgba(0,0,0,.25)');
+        rrect(x, -u * 0.17 * sz, -u * 0.08 * sz, u * 0.34 * sz, u * 0.08 * sz, u * 0.01); x.fillStyle = shade(c, -0.2); x.fill();
+        const h = u * (broken ? 0.42 : 0.72) * sz, w = u * 0.11 * sz;
+        x.beginPath(); x.moveTo(-w, -u * 0.08 * sz); x.lineTo(-w, -h); if (broken) { x.lineTo(-w * 0.3, -h + u * 0.06); x.lineTo(w * 0.2, -h - u * 0.05); x.lineTo(w, -h + u * 0.03); } else x.lineTo(w, -h); x.lineTo(w, -u * 0.08 * sz); x.closePath();
+        x.fillStyle = lgrad(x, -w, 0, w, 0, [shade(c, 0.25), c, shade(c, -0.3)]); x.fill();
+        x.strokeStyle = rgba('#6a5030', 0.35); x.lineWidth = Math.max(1, u * 0.012);
+        for (let i = -1; i <= 1; i++) { x.beginPath(); x.moveTo(i * w * 0.55, -u * 0.1 * sz); x.lineTo(i * w * 0.55, -h + u * 0.04); x.stroke(); }
+        if (!broken) { rrect(x, -w * 1.5, -h - u * 0.07 * sz, w * 3, u * 0.07 * sz, u * 0.01); x.fillStyle = shade(c, 0.1); x.fill(); }
+        else { rrect(x, w * 1.2, -u * 0.1 * sz, u * 0.16 * sz, u * 0.1 * sz, u * 0.02); x.fillStyle = shade(c, -0.1); x.fill(); }
+        x.fillStyle = rgba('#c8a868', 0.6); x.beginPath(); x.ellipse(0, -u * 0.03, u * 0.2 * sz, u * 0.04, 0, 0, TAU); x.fill();
+        break;
+      }
+      case 'coral': {
+        const cs = [['#ff7aa8', '#c84a7a'], ['#ffa25a', '#c86a2a'], ['#b88aff', '#7a4ac8']][Math.floor(v * 3) % 3], sz = 0.8 + v * 0.4;
+        ell(x, u * 0.03, 0, u * 0.28 * sz, u * 0.09 * sz, 'rgba(0,0,0,.25)');
+        x.lineCap = 'round';
+        const br = (x0, y0, a, L, w, d) => { if (d > 3) return; const x1 = x0 + Math.cos(a) * L, y1 = y0 + Math.sin(a) * L; x.strokeStyle = cs[1]; x.lineWidth = w + 2; x.beginPath(); x.moveTo(x0, y0); x.lineTo(x1, y1); x.stroke(); x.strokeStyle = cs[0]; x.lineWidth = w; x.stroke(); br(x1, y1, a - 0.45 - rng() * 0.3, L * 0.7, w * 0.75, d + 1); br(x1, y1, a + 0.45 + rng() * 0.3, L * 0.65, w * 0.75, d + 1); if (d === 3) circ(x, x1, y1, w * 0.7, shade(cs[0], 0.35)); };
+        br(0, 0, -Math.PI / 2, u * 0.2 * sz, u * 0.07 * sz, 0);
+        x.lineCap = 'butt';
+        break;
+      }
+      case 'shell': {
+        ell(x, u * 0.03, 0, u * 0.2, u * 0.07, 'rgba(0,0,0,.25)');
+        x.beginPath(); x.moveTo(0, -u * 0.02); for (let i = 0; i <= 8; i++) { const a = Math.PI + i / 8 * Math.PI; x.lineTo(Math.cos(a) * u * 0.17, -u * 0.04 + Math.sin(a) * u * 0.17); } x.closePath();
+        x.fillStyle = lgrad(x, 0, -u * 0.2, 0, 0, ['#fff4e8', '#f0c8b0', '#d8987a']); x.fill();
+        x.strokeStyle = rgba('#a86a4a', 0.6); x.lineWidth = Math.max(1, u * 0.012); for (let i = 1; i < 8; i++) { const a = Math.PI + i / 8 * Math.PI; x.beginPath(); x.moveTo(0, -u * 0.03); x.lineTo(Math.cos(a) * u * 0.16, -u * 0.04 + Math.sin(a) * u * 0.16); x.stroke(); }
+        circ(x, u * 0.18, -u * 0.03, u * 0.04, '#ffffff'); circ(x, u * 0.17, -u * 0.04, u * 0.015, '#ffe9f0');
+        break;
+      }
       case 'snowman': {
         ell(x, u * 0.03, 0, u * 0.18, u * 0.06, 'rgba(0,0,0,.18)');
         circ(x, 0, -u * 0.12, u * 0.13, '#f4faff'); circ(x, 0, -u * 0.32, u * 0.09, '#ffffff');
@@ -231,19 +266,22 @@ const Terrain = (() => {
         case 'palm': add('palm', cx - 0.1, cy, v); if (v > 0.4) add('bush', cx + 0.25, cy + 0.2, 0.2); break;
         case 'dead': add('dead', cx, cy, v); if (v > 0.5) add('pebble', cx - 0.25, cy + 0.2, rng()); break;
         case 'crystal': add('crystal', cx, cy, v); break;
+        case 'pillar': add('pillar', cx, cy, v); if (v > 0.4) add('pebble', cx + 0.28, cy + 0.2, rng()); break;
+        case 'coral': add('coral', cx - 0.1, cy - 0.05, v); if (v > 0.45) add(v > 0.8 ? 'shell' : 'coral', cx + 0.25, cy + 0.22, rng()); break;
+        case 'shell': add('shell', cx, cy, v); add('rock', cx - 0.25, cy - 0.15, 0.1); break;
         case 'grave': add('grave', cx - 0.08, cy - 0.05, v); if (v > 0.4) add(v > 0.75 ? 'lamp' : 'grave', cx + 0.26, cy + 0.2, rng()); break;
       }
     }
     // 水邊的蘆葦
     for (const [wx, wy, ww, wh] of (G.L.water || [])) {
-      if (th === 'volcano') continue;
+      if (th === 'volcano' || th === 'sky' || th === 'cave') continue;
       const n = Math.max(2, Math.round((ww + wh) * 0.8));
       for (let i = 0; i < n; i++) {
         const side = rng() < 0.5, px = side ? wx + rng() * ww : (rng() < 0.5 ? wx - 0.05 : wx + ww + 0.05), py = side ? (rng() < 0.5 ? wy - 0.05 : wy + wh + 0.05) : wy + rng() * wh;
         if (px < 0.2 || py < 0.2 || px > COLS - 0.2 || py > ROWS - 0.2) continue;
         const gx = Math.floor(px), gy = Math.floor(py);
         if (G.grid[gy] && G.grid[gy][gx] && (G.grid[gy][gx].path || (!G.grid[gy][gx].water && !G.grid[gy][gx].block))) continue;
-        add(th === 'desert' || th === 'coast' ? 'pebble' : 'reed', px, py, rng());
+        add(th === 'desert' || th === 'coast' || th === 'ruins' ? 'pebble' : th === 'deep' ? 'shell' : 'reed', px, py, rng());
       }
     }
     return out;
@@ -362,22 +400,24 @@ const Terrain = (() => {
     const waters = [];
     (G.L.water || []).forEach((rect, i) => {
       const sh = waterShape(V, rect, s, G.L.seed + i * 13);
-      sh.lava = !!G.T.lava; sh.swamp = th === 'swamp';
+      sh.lava = !!G.T.lava; sh.swamp = th === 'swamp'; sh.void = !!G.T.void; sh.deep = th === 'deep';
       waters.push(sh);
       drawWaterBase(ctx, sh, P, s, rng, th);
     });
     // 5. 道路
     drawPaths(ctx, V, G, P, s, rng, th);
+    // 水晶基座
+    for (const [px, py] of (G.L.pads || [])) drawPad(ctx, V, px, py, s);
     // 6. 草叢、小花
     for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
       const c = G.grid[y][x];
       if (c.path || c.water) continue;
-      const n = th === 'desert' || th === 'volcano' ? 2 : th === 'snow' ? 2 : 6;
+      const n = th === 'desert' || th === 'volcano' || th === 'ruins' ? 2 : th === 'snow' || th === 'cave' ? 2 : 6;
       for (let i = 0; i < n; i++) {
         const [px, py] = V.P(x + rng(), y + rng());
         tuft(ctx, px, py, s * (0.08 + rng() * 0.07), P.tuft[Math.floor(rng() * P.tuft.length)], rng);
       }
-      if (rng() < (th === 'volcano' ? 0.1 : th === 'snow' ? 0.15 : 0.35)) {
+      if (rng() < (th === 'volcano' || th === 'cave' ? 0.1 : th === 'snow' ? 0.15 : 0.35)) {
         const [px, py] = V.P(x + 0.15 + rng() * 0.7, y + 0.15 + rng() * 0.7);
         const fc = P.flowers[Math.floor(rng() * P.flowers.length)];
         for (let k = 0; k < 3; k++) flower(ctx, px + (rng() - 0.5) * s * 0.25, py + (rng() - 0.5) * s * 0.18, s * 0.035, fc);
@@ -436,7 +476,22 @@ const Terrain = (() => {
   }
   function themeGround(ctx, V, G, P, th, rng, s) {
     const free = () => { for (let t = 0; t < 20; t++) { const gx = Math.floor(rng() * COLS), gy = Math.floor(rng() * ROWS); const c = G.grid[gy][gx]; if (!c.path && !c.water) return [gx, gy]; } return null; };
-    if (th === 'desert' || th === 'canyon') {
+    if (th === 'ruins') {
+      // 古老的石板地磚，半埋在沙裡
+      for (let i = 0; i < 26; i++) { const f = free(); if (!f) continue; const [px, py] = V.P(f[0] + rng(), f[1] + rng()), w = s * (0.22 + rng() * 0.18); ctx.fillStyle = rgba('#cfc0a0', 0.55); ctx.strokeStyle = rgba('#8a7050', 0.45); ctx.lineWidth = 1; rrect(ctx, px - w / 2, py - w * 0.35, w, w * 0.7, s * 0.03); ctx.fill(); ctx.stroke(); }
+      ctx.strokeStyle = rgba('#ffffff', 0.16); ctx.lineWidth = Math.max(1, s * 0.025);
+      for (let i = 0; i < 30; i++) { const [px, py] = V.P(rng() * COLS, rng() * ROWS); const w = s * (0.4 + rng() * 0.5); ctx.beginPath(); ctx.moveTo(px - w, py); ctx.quadraticCurveTo(px, py - s * 0.08, px + w, py); ctx.stroke(); }
+    } else if (th === 'cave') {
+      ctx.lineCap = 'round';
+      for (let i = 0; i < 18; i++) { const f = free(); if (!f) continue; let [px, py] = V.P(f[0] + rng(), f[1] + rng()); ctx.strokeStyle = rgba('#7fe8ff', 0.35); ctx.lineWidth = Math.max(1, s * 0.025); ctx.beginPath(); ctx.moveTo(px, py); for (let k = 0; k < 3; k++) { px += (rng() - 0.5) * s * 0.4; py += (rng() - 0.5) * s * 0.3; ctx.lineTo(px, py); } ctx.stroke(); }
+      for (let i = 0; i < 80; i++) { const [px, py] = V.P(rng() * COLS, rng() * ROWS); circ(ctx, px, py, Math.max(0.6, s * 0.012), rgba(rng() < 0.5 ? '#9ef0ff' : '#e0b0ff', 0.5)); }
+    } else if (th === 'deep') {
+      ctx.strokeStyle = rgba('#a8f0ff', 0.12); ctx.lineWidth = Math.max(1, s * 0.03);
+      for (let i = 0; i < 36; i++) { const [px, py] = V.P(rng() * COLS, rng() * ROWS); const w = s * (0.3 + rng() * 0.4); ctx.beginPath(); ctx.moveTo(px - w, py); ctx.quadraticCurveTo(px, py - s * 0.08, px + w, py); ctx.stroke(); }
+      for (let i = 0; i < 12; i++) { const f = free(); if (!f) continue; const [px, py] = V.P(f[0] + 0.5, f[1] + 0.5); ctx.strokeStyle = rgba('#2a8a5a', 0.7); ctx.lineWidth = Math.max(1.5, s * 0.04); ctx.lineCap = 'round'; for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.moveTo(px + (k - 1) * s * 0.08, py); ctx.quadraticCurveTo(px + (k - 1) * s * 0.12 + s * 0.08, py - s * 0.2, px + (k - 1) * s * 0.06, py - s * (0.3 + rng() * 0.15)); ctx.stroke(); } }
+    } else if (th === 'sky') {
+      for (let i = 0; i < 10; i++) { const f = free(); if (!f) continue; const [px, py] = V.P(f[0] + 0.5, f[1] + 0.5); for (let k = 0; k < 4; k++) flower(ctx, px + (rng() - 0.5) * s * 0.6, py + (rng() - 0.5) * s * 0.4, s * 0.04, P.flowers[Math.floor(rng() * P.flowers.length)]); }
+    } else if (th === 'desert' || th === 'canyon') {
       // 沙丘紋
       ctx.strokeStyle = rgba('#ffffff', 0.18); ctx.lineWidth = Math.max(1, s * 0.025);
       for (let i = 0; i < 40; i++) { const [px, py] = V.P(rng() * COLS, rng() * ROWS); const w = s * (0.4 + rng() * 0.5); ctx.beginPath(); ctx.moveTo(px - w, py); ctx.quadraticCurveTo(px, py - s * 0.08, px + w, py); ctx.stroke(); }
@@ -473,8 +528,33 @@ const Terrain = (() => {
       }
     }
   }
+  function drawPad(ctx, V, gx, gy, s) {
+    const [a, b] = V.P(gx + 0.5, gy + 0.55);
+    const w = s * 0.42, h = s * 0.24;
+    ctx.save();
+    ctx.shadowColor = '#7fe8ff'; ctx.shadowBlur = s * 0.35;
+    ctx.beginPath(); for (let i = 0; i < 6; i++) { const an = i / 6 * TAU + TAU / 12; ctx.lineTo(a + Math.cos(an) * w, b + Math.sin(an) * h); } ctx.closePath();
+    ctx.fillStyle = lgrad(ctx, a - w, b - h, a + w, b + h, ['#d8fbff', '#6fd8f0', '#2a8ab0']); ctx.fill();
+    ctx.shadowBlur = 0; ctx.strokeStyle = '#1a4a6a'; ctx.lineWidth = Math.max(1, s * 0.03); ctx.stroke();
+    ctx.beginPath(); for (let i = 0; i < 6; i++) { const an = i / 6 * TAU + TAU / 12; ctx.lineTo(a + Math.cos(an) * w * 0.6, b + Math.sin(an) * h * 0.6); } ctx.closePath();
+    ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = Math.max(1, s * 0.025); ctx.stroke();
+    for (let i = 0; i < 6; i++) { const an = i / 6 * TAU + TAU / 12; ctx.beginPath(); ctx.moveTo(a + Math.cos(an) * w * 0.6, b + Math.sin(an) * h * 0.6); ctx.lineTo(a + Math.cos(an) * w, b + Math.sin(an) * h); ctx.stroke(); }
+    ctx.restore();
+  }
   function drawWaterBase(ctx, sh, P, s, rng, th) {
     const [x0, y0, x1, y1] = sh.box;
+    if (sh.void) {
+      // 浮島之間的天空：看下去是藍天和雲
+      ctx.save();
+      ctx.strokeStyle = 'rgba(120,96,70,.9)'; ctx.lineWidth = s * 0.3; ctx.lineJoin = 'round'; ctx.stroke(sh.path);
+      ctx.clip(sh.path);
+      ctx.fillStyle = lgrad(ctx, 0, y0, 0, y1, ['#5aa8e8', '#9fd4f8', '#d8f0ff']); ctx.fillRect(x0 - 2, y0 - 2, x1 - x0 + 4, y1 - y0 + 4);
+      for (let i = 0; i < 5; i++) { const px = x0 + rng() * (x1 - x0), py = y0 + (0.4 + rng() * 0.6) * (y1 - y0), r = s * (0.3 + rng() * 0.3); circ(ctx, px, py, r, 'rgba(255,255,255,.75)'); circ(ctx, px + r * 0.7, py + r * 0.15, r * 0.7, 'rgba(255,255,255,.7)'); }
+      // 懸崖內壁
+      ctx.fillStyle = lgrad(ctx, 0, y0, 0, y0 + s * 0.6, ['rgba(110,86,62,1)', 'rgba(110,86,62,0)']); ctx.fillRect(x0 - 2, y0 - 2, x1 - x0 + 4, s * 0.6);
+      ctx.restore();
+      return;
+    }
     ctx.save();
     // 岸
     ctx.lineJoin = 'round';
@@ -502,7 +582,7 @@ const Terrain = (() => {
     ctx.restore();
   }
   function drawPaths(ctx, V, G, P, s, rng, th) {
-    const lines = G.paths.map(p => p.pts);
+    const lines = [].concat(...G.paths.map(pathRuns));
     const mw = Math.ceil(V.w + 2), mh = Math.ceil(V.h + 2), ox = V.ox - 1, oy = V.oy - 1;
     const dpr = ctx.getTransform ? ctx.getTransform().a : 1;
     // 遮罩
@@ -571,15 +651,15 @@ const Terrain = (() => {
         const gx = Math.floor(wx), gy = Math.floor(wy), c = G.grid[gy] && G.grid[gy][gx];
         // 落在別條路裡面就跳過（十字路口）
         let inside = false;
-        for (const P2 of G.paths) for (const sg of P2.seg) if (segDist2(wx, wy, sg.a.x, sg.a.y, sg.b.x, sg.b.y) < 0.4 * 0.4) inside = true;
+        for (const P2 of G.paths) for (const sg of P2.seg) if (!sg.tp && segDist2(wx, wy, sg.a.x, sg.a.y, sg.b.x, sg.b.y) < 0.4 * 0.4) inside = true;
         if (inside || (c && c.water)) return;
         const [px, py] = V.P(wx + (rng() - 0.5) * 0.08, wy + (rng() - 0.5) * 0.08);
         const r0 = rng();
         if (r0 < 0.35) {
-          const r = s * (0.04 + rng() * 0.04), c0 = th === 'volcano' ? '#3a2e2a' : th === 'snow' ? '#a8b8c8' : th === 'night' ? '#5a5878' : '#a8a296';
+          const r = s * (0.04 + rng() * 0.04), c0 = th === 'cave' ? '#3a3a50' : th === 'volcano' ? '#3a2e2a' : th === 'snow' ? '#a8b8c8' : th === 'night' ? '#5a5878' : '#a8a296';
           ell(ctx, px + r * 0.2, py + r * 0.45, r * 1.1, r * 0.7, rgba('#000000', 0.25));
           ell(ctx, px, py, r, r * 0.75, c0); ell(ctx, px - r * 0.3, py - r * 0.3, r * 0.45, r * 0.3, shade(c0, 0.35));
-        } else if (r0 < 0.8 && th !== 'volcano') {
+        } else if (r0 < 0.8 && th !== 'volcano' && th !== 'cave') {
           tuft(ctx, px, py + s * 0.04, s * (0.09 + rng() * 0.07), P.tuft[Math.floor(rng() * P.tuft.length)], rng);
         }
       });
@@ -596,13 +676,23 @@ const Terrain = (() => {
       ctx.strokeStyle = rgba('#ffffff', 0.18); ctx.lineWidth = Math.max(1, s * 0.03); ctx.lineCap = 'round';
       for (let i = 0; i < W * H / (s * s) * 0.8; i++) { const px = rng() * W, py = rng() * H, w = s * (0.15 + rng() * 0.25); ctx.beginPath(); ctx.moveTo(px - w, py); ctx.quadraticCurveTo(px, py - s * 0.08, px + w, py); ctx.stroke(); }
       ctx.lineCap = 'butt';
+    } else if (th === 'sky') {
+      ctx.fillStyle = lgrad(ctx, 0, 0, 0, H, ['#7ac4f4', '#a8dcfa', '#e4f4ff']); ctx.fillRect(0, 0, W, H);
+      for (let i = 0; i < W * H / (s * s) * 0.5; i++) { const px = rng() * W, py = rng() * H, r = s * (0.4 + rng() * 0.8); ctx.globalAlpha = 0.5 + rng() * 0.4; circ(ctx, px, py, r, '#ffffff'); circ(ctx, px + r * 0.8, py + r * 0.2, r * 0.7, '#ffffff'); circ(ctx, px - r * 0.7, py + r * 0.25, r * 0.6, '#f4faff'); ctx.globalAlpha = 1; }
+      return;
+    } else if (th === 'cave') {
+      for (let i = 0; i < W * H / (s * s) * 1.2; i++) { const px = rng() * W, py = rng() * H, r = s * (0.3 + rng() * 0.6); circ(ctx, px, py, r, rgba('#1c1c2a', 0.8)); circ(ctx, px - r * 0.2, py - r * 0.25, r * 0.6, rgba('#26263a', 0.8)); }
+      for (let i = 0; i < 26; i++) { const px = rng() * W, py = rng() * H; ctx.globalAlpha = 0.6; Art.crystal(ctx, px, py, s * 0.1, s * (0.25 + rng() * 0.3), rng() < 0.5 ? '#7fe8ff' : '#c49bff', s, (rng() - 0.5) * 0.8); ctx.globalAlpha = 1; }
+    } else if (th === 'deep') {
+      for (let i = 0; i < 9; i++) { const px = rng() * W; ctx.fillStyle = lgrad(ctx, px, 0, px + s * 2, H, ['rgba(160,230,255,.18)', 'rgba(160,230,255,0)']); ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px + s * 0.8, 0); ctx.lineTo(px + s * 3, H); ctx.lineTo(px + s * 1.5, H); ctx.closePath(); ctx.fill(); }
+      for (let i = 0; i < W * H / 1600; i++) { const r = 1 + rng() * 3; ctx.strokeStyle = rgba('#cff4ff', 0.25 + rng() * 0.3); ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(rng() * W, rng() * H, r, 0, TAU); ctx.stroke(); }
     } else if (th === 'night') {
       for (let i = 0; i < W * H / 900; i++) circ(ctx, rng() * W, rng() * H, rng() < 0.1 ? 1.4 : 0.7, rgba('#ffffff', 0.3 + rng() * 0.6));
     } else if (th === 'volcano') {
       for (let i = 0; i < 12; i++) { const px = rng() * W, py = rng() * H, r = s * (1 + rng() * 2); ctx.fillStyle = rgrad(ctx, px, py, 0, r, [rgba('#ff5a1a', 0.25), rgba('#ff5a1a', 0)]); ctx.fillRect(px - r, py - r, r * 2, r * 2); }
     } else {
       // 遠方樹冠 / 雪堆 / 沙丘
-      const c = th === 'snow' ? '#7a96b0' : th === 'desert' ? '#c08a4a' : th === 'swamp' ? '#34482a' : shade(P.out, 0.1);
+      const c = th === 'snow' ? '#7a96b0' : th === 'desert' || th === 'ruins' ? '#c08a4a' : th === 'swamp' ? '#34482a' : shade(P.out, 0.1);
       for (let i = 0; i < W * H / (s * s) * 1.4; i++) {
         const px = rng() * W, py = rng() * H, r = s * (0.3 + rng() * 0.5);
         circ(ctx, px, py + r * 0.2, r, rgba(shade(c, -0.3), 0.6)); circ(ctx, px - r * 0.15, py, r * 0.9, rgba(c, 0.8)); circ(ctx, px - r * 0.35, py - r * 0.3, r * 0.4, rgba(shade(c, 0.2), 0.5));

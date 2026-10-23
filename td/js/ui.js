@@ -20,6 +20,42 @@ const Prog = {
   endlessOk(i) { return this.cleared() > ENDLESS_UNLOCK && !!(this.rec(i) && this.rec(i).stars); },
 };
 
+// ───────── 英雄（存檔、選擇） ─────────
+const HeroUI = {
+  rec(id) { const r = Store.data.heroes[id]; return r && typeof r.xp === 'number' && isFinite(r.xp) ? r : { xp: 0 }; },
+  unlocked(id) { return HEROES[id].unlock <= Prog.cleared(); },
+  current() { const h = Store.data.hero; return HEROES[h] && this.unlocked(h) ? h : 'knight'; },
+  level(id) { return heroLevel(this.rec(id).xp); },
+  skillDesc(id, sk) { return sk.desc; },
+  icons: {},
+  skillIcon(id) {
+    if (this.icons[id]) return this.icons[id];
+    const S = 64, c = document.createElement('canvas'); c.width = S; c.height = S; const x = c.getContext('2d');
+    x.lineCap = 'round'; x.lineJoin = 'round';
+    const glow = (col) => { x.shadowColor = col; x.shadowBlur = 8; };
+    if (id === 'whirl') {
+      glow('#9fd0ff'); x.strokeStyle = '#cfe8ff'; x.lineWidth = 5; x.beginPath(); x.arc(32, 32, 22, 0.3, 5.2); x.stroke();
+      x.shadowBlur = 0; x.save(); x.translate(32, 32); x.rotate(-0.8); x.fillStyle = '#e8eef8'; x.fillRect(-3, -26, 6, 34); x.fillStyle = '#f2c14e'; x.fillRect(-9, 6, 18, 5); x.fillStyle = '#6a4a2a'; x.fillRect(-2.5, 11, 5, 10); x.restore();
+    } else if (id === 'wall') {
+      glow('#ffd36b'); x.fillStyle = '#f2c14e'; x.beginPath(); x.moveTo(14, 12); x.lineTo(50, 12); x.lineTo(50, 32); x.quadraticCurveTo(48, 50, 32, 58); x.quadraticCurveTo(16, 50, 14, 32); x.closePath(); x.fill();
+      x.shadowBlur = 0; x.fillStyle = '#3a68d8'; x.beginPath(); x.moveTo(20, 18); x.lineTo(44, 18); x.lineTo(44, 32); x.quadraticCurveTo(32, 50, 20, 32); x.closePath(); x.fill(); Gfx.star(x, 32, 29, 8, '#ffe9a0', false);
+    } else if (id === 'rain') {
+      for (let i = 0; i < 4; i++) { const ax = 14 + i * 12, ay = 10 + (i % 2) * 10; x.strokeStyle = '#a8784a'; x.lineWidth = 3; x.beginPath(); x.moveTo(ax, ay); x.lineTo(ax, ay + 26); x.stroke(); x.fillStyle = '#e8eef8'; x.beginPath(); x.moveTo(ax - 5, ay + 24); x.lineTo(ax + 5, ay + 24); x.lineTo(ax, ay + 33); x.closePath(); x.fill(); }
+      glow('#ffd36b'); x.strokeStyle = 'rgba(255,220,140,.8)'; x.lineWidth = 2; x.beginPath(); x.ellipse(32, 54, 24, 6, 0, 0, 7); x.stroke();
+    } else if (id === 'pierce') {
+      glow('#ffe9a0'); x.strokeStyle = 'rgba(255,233,160,.8)'; x.lineWidth = 9; x.beginPath(); x.moveTo(6, 52); x.lineTo(46, 18); x.stroke();
+      x.shadowBlur = 0; x.strokeStyle = '#6b4a2a'; x.lineWidth = 4; x.beginPath(); x.moveTo(12, 48); x.lineTo(46, 18); x.stroke(); x.fillStyle = '#ffffff'; x.beginPath(); x.moveTo(58, 8); x.lineTo(40, 16); x.lineTo(48, 24); x.closePath(); x.fill();
+    } else if (id === 'nova') {
+      glow('#7fe0ff'); x.strokeStyle = '#dff8ff'; x.lineWidth = 4;
+      for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; x.beginPath(); x.moveTo(32, 32); x.lineTo(32 + Math.cos(a) * 24, 32 + Math.sin(a) * 24); x.stroke(); }
+      x.lineWidth = 3; x.beginPath(); x.arc(32, 32, 27, 0, 7); x.stroke();
+    } else {
+      glow('#bfe0ff'); x.fillStyle = '#fff3a0'; x.beginPath(); x.moveTo(36, 4); x.lineTo(18, 34); x.lineTo(30, 34); x.lineTo(24, 60); x.lineTo(46, 26); x.lineTo(34, 26); x.lineTo(42, 4); x.closePath(); x.fill();
+    }
+    return (this.icons[id] = c.toDataURL());
+  },
+};
+
 const UI = (() => {
   let lastPanelKey = '', lastPv = '', msg = null, msgT = 0;
   const hudCache = {};
@@ -151,6 +187,47 @@ const UI = (() => {
     const sb = $('info').querySelector('.sell b'); if (sb) { const v = '+' + sellValue(G, t); if (sb.textContent !== v) sb.textContent = v; }
   }
 
+  // ───────── 英雄資訊 ─────────
+  function buildHeroInfo(G, H) {
+    const d = H.d, L = heroLevel(H.xp);
+    let h = `<div class="ti-head"><img alt="" src="${HeroArt.portrait(H.id, 96)}" class="hp-img"><div class="ti-name"><b>${esc(d.name)} · ${esc(d.title)}</b><span>英雄 Lv ${H.lv} · 擊倒 ${H.kills}</span></div><button class="ti-x" data-act="close" aria-label="關閉">✕</button></div>`;
+    h += `<div class="hbars"><div class="hbar hp"><i></i><span></span></div><div class="hbar xp"><i></i><span></span></div></div>`;
+    const st = [['傷害', fmt(H.dmg)], ['每秒', d.rate], [d.atk === 'melee' ? '近戰' : '射程', d.atk === 'melee' ? '' : d.range]];
+    if (d.armor) st.push(['護甲', pct(d.armor)]); if (d.mres) st.push(['抗魔', pct(d.mres)]);
+    if (d.block) st.push(['擋住', H.block + ' 個']); if (d.air) st.push(['可打空中', '']);
+    h += '<div class="ti-stats">' + st.map(([a, b]) => `<span>${a}${b !== '' ? ' <b>' + b + '</b>' : ''}</span>`).join('') + '</div>';
+    h += '<div class="hsk">' + d.skills.map((sk, i) => {
+      const on = H.lv >= sk.lv;
+      return `<button class="hs${on ? '' : ' locked'}" data-act="hcast" data-i="${i}" ${on ? '' : 'disabled'}><span class="hs-ic"><img alt="" src="${HeroUI.skillIcon(sk.id)}"><i class="hs-cd"></i><em></em></span><span class="hs-t"><b>${esc(sk.name)}</b><small>${on ? esc(sk.desc) : `英雄 Lv ${sk.lv} 學會`}</small></span></button>`;
+    }).join('') + '</div>';
+    h += `<div class="ti-note">點<b>道路</b>上的位置，${esc(d.name)}就會走過去。技能好了會自動施放，也可以手動按。</div>`;
+    $('info').innerHTML = h; void L;
+  }
+  function refreshHeroInfo(G, H) {
+    const box = $('info');
+    const hp = box.querySelector('.hbar.hp'), xp = box.querySelector('.hbar.xp');
+    const nm = box.querySelector('.ti-name span'); if (nm) { const t = `英雄 Lv ${H.lv} · 擊倒 ${H.kills}`; if (nm.textContent !== t) nm.textContent = t; }
+    if (hp) { hp.firstChild.style.width = (H.hp / H.maxHp * 100).toFixed(1) + '%'; const t = H.dead ? `重生 ${Math.ceil(H.respT)} 秒` : `生命 ${Math.ceil(H.hp)}/${H.maxHp}`; if (hp.lastChild.textContent !== t) hp.lastChild.textContent = t; }
+    if (xp) { const L = heroLevel(H.xp); xp.firstChild.style.width = (L.need ? L.xp / L.need * 100 : 100).toFixed(1) + '%'; const t = L.need ? `經驗 ${Math.floor(L.xp)}/${L.need}` : '已達最高等級'; if (xp.lastChild.textContent !== t) xp.lastChild.textContent = t; }
+    box.querySelectorAll('.hs').forEach((b, i) => {
+      const sk = H.d.skills[i], cd = Math.max(0, H.sk[i]);
+      b.style.setProperty('--cd', H.lv >= sk.lv ? (cd / sk.cd).toFixed(3) : 1);
+      const em = b.querySelector('em'), t = H.lv >= sk.lv && cd > 0 ? String(Math.ceil(cd)) : '';
+      if (em.textContent !== t) em.textContent = t;
+      b.classList.toggle('ready', H.lv >= sk.lv && cd <= 0 && !H.dead);
+    });
+  }
+  function tickHeroBtn(G) {
+    const el = $('skHero'), H = G.hero;
+    el.hidden = !H; if (!H) return;
+    const img = el.querySelector('img');
+    if (img._id !== H.id) { img._id = H.id; img.src = HeroArt.portrait(H.id, 96); }
+    el.classList.toggle('dead', H.dead); el.classList.toggle('sel', !!App.ui.selHero);
+    el.style.setProperty('--hp', H.dead ? (1 - H.respT / H.d.respawn).toFixed(3) : (H.hp / H.maxHp).toFixed(3));
+    const t = H.dead ? String(Math.ceil(H.respT)) : 'Lv' + H.lv, cn = el.querySelector('.cdn');
+    if (cn.textContent !== t) cn.textContent = t;
+  }
+
   // ───────── 下一波預覽 ─────────
   function seenBefore(G, k, upto) {
     for (let i = 0; i < upto; i++) if (G.waves[i] && G.waves[i].groups.some(g => g.k === k)) return true;
@@ -184,6 +261,7 @@ const UI = (() => {
       return `<b>${d.name}</b>：${esc(d.desc)}${ui.pending ? ' 再點一次確認建造。' : ' 點空地建造。'}`;
     }
     if (ui.selTile) return '選一座塔蓋在這裡。';
+    if (ui.selHero) return '';
     if (ui.selTower) return '';
     if (G.li === 0 && !G.endless && G.wave < 1) {
       if (!G.towers.length) return '點路旁的<b>空草地</b>，再選一座塔來蓋。';
@@ -234,14 +312,17 @@ const UI = (() => {
     $('bSpeed').classList.toggle('on', App.speed > 1);
     refreshPreview(G);
     // 面板
-    const t = App.ui.selTower;
-    const key = t ? 't' + t.id + ':' + t.tier + ':' + t.mode + ':' + G.towers.length : 'shop';
+    const t = App.ui.selTower, H = App.ui.selHero && G.hero ? G.hero : null;
+    if (G.hero && G.hero.dead && App.ui.selHero) App.ui.selHero = false;
+    const key = H ? 'h' + H.lv + ':' + H.dead : t ? 't' + t.id + ':' + t.tier + ':' + t.mode + ':' + G.towers.length : 'shop';
     if (key !== lastPanelKey) {
       lastPanelKey = key;
-      $('shop').hidden = !!t; $('info').hidden = !t;
-      if (t) buildInfo(G, t);
+      $('shop').hidden = !!(t || H); $('info').hidden = !(t || H);
+      $('info').classList.toggle('hinfo', !!H);
+      if (H) buildHeroInfo(G, H); else if (t) buildInfo(G, t);
     }
-    if (t) refreshInfo(G, t); else refreshShop(G);
+    if (H) refreshHeroInfo(G, H); else if (t) refreshInfo(G, t); else refreshShop(G);
+    tickHeroBtn(G);
     const th = tipHtml(G);
     if (th !== lastTipHtml) { lastTipHtml = th; $('tip').innerHTML = th; }
   }
@@ -276,6 +357,7 @@ const UI = (() => {
       if (ok) b.addEventListener('click', () => { Snd.sfx('click'); brief(i); });
       else b.addEventListener('click', () => Snd.sfx('deny'));
       box.appendChild(b);
+      if (i === cur) requestAnimationFrame(() => { try { const ov = $('ovLevels'); if (ov.scrollHeight > ov.clientHeight + 20) b.scrollIntoView({ block: 'center' }); } catch (e) { /* 舊瀏覽器 */ } });
     });
   }
   function brief(li) {
@@ -286,7 +368,7 @@ const UI = (() => {
     $('bEn').textContent = L.en;
     $('bStory').textContent = L.story;
     const foes = [...new Set(L.pool.map(p => p[0]).concat(L.boss ? [L.boss] : []).concat(L.midBoss ? [L.midBoss[1]] : []))];
-    $('bInfo').textContent = `${L.waves} 波 · ${L.entries.length > 1 ? L.entries.length + ' 個入口' : L.paths.length > 1 ? '岔路' : '單一路線'}${L.boss ? ' · 有頭目' : ''}${r ? ' · 最佳 ' + '★'.repeat(r.stars) : ''}`;
+    $('bInfo').textContent = `${L.waves} 波 · ${L.entries.length > 1 ? L.entries.length + ' 個入口' : L.paths.length > 1 ? '岔路' : '單一路線'}${L.boss ? ' · 有頭目' : ''}${L.tp ? ' · 傳送陣' : ''}${L.pads ? ' · 水晶基座' : ''}${L.storm ? ' · 沙暴' : ''}${L.current ? ' · 海流' : ''}${r ? ' · 最佳 ' + '★'.repeat(r.stars) : ''}`;
     $('bFoes').innerHTML = foes.map(k => `<img alt="${ENEMIES[k].name}" title="${ENEMIES[k].name}" src="${Render.icon('enemy', k)}">`).join('');
     const e = Prog.endlessOk(li);
     $('bEndless').hidden = !e;
@@ -302,7 +384,20 @@ const UI = (() => {
       for (const b of cb.querySelectorAll('.ch-b')) b.addEventListener('click', () => { Snd.init(); Snd.sfx('click'); App.startLevel(li, 'normal', false, b.dataset.c); });
     }
     syncDiff();
+    heroPick();
     show('ovLevels', 'ovBrief');
+  }
+  function heroPick() {
+    const box = $('bHero'), cur = HeroUI.current();
+    box.innerHTML = '<p class="lbl">帶哪位英雄出征？</p><div class="hp-row">' + HERO_ORDER.map(id => {
+      const d = HEROES[id], ok = HeroUI.unlocked(id), L = HeroUI.level(id);
+      return `<button class="hp-b${id === cur ? ' on' : ''}${ok ? '' : ' locked'}" data-h="${id}"><img alt="" src="${HeroArt.portrait(id, 96)}"><span><b>${esc(d.name)}</b><small>${ok ? esc(d.title) + ' · Lv ' + L.lv : '打贏第 ' + d.unlock + ' 關解鎖'}</small></span></button>`;
+    }).join('') + `</div><p class="sub hp-desc">${esc(HEROES[cur].desc)}技能：${HEROES[cur].skills.map(k => k.name).join('、')}</p>`;
+    for (const b of box.querySelectorAll('.hp-b')) b.addEventListener('click', () => {
+      const id = b.dataset.h;
+      if (!HeroUI.unlocked(id)) { Snd.sfx('deny'); return; }
+      Store.data.hero = id; Store.save(); Snd.sfx('click'); heroPick();
+    });
   }
   function syncDiff() {
     const d = App.brief.diff;
@@ -340,7 +435,7 @@ const UI = (() => {
 
   function help(back) {
     const tw = TOWER_ORDER.map(k => `<div><img alt="" src="${Render.icon('tower', k, 1)}"><span><b>${TOWERS[k].name}</b>${esc(TOWERS[k].desc)}</span></div>`).join('');
-    const en = ['slime', 'runner', 'beetle', 'bat', 'golem', 'healer', 'shield', 'splitter', 'ogre', 'gargoyle', 'bossGolem', 'bossDragon', 'bossLich'].map(k => `<div><img alt="" src="${Render.icon('enemy', k)}"><span><b>${ENEMIES[k].name}</b>${esc(ENEMIES[k].desc)}</span></div>`).join('');
+    const en = ['slime', 'runner', 'beetle', 'bat', 'golem', 'healer', 'shield', 'splitter', 'ogre', 'gargoyle', 'wisp', 'crawler', 'mummy', 'crab', 'bossGolem', 'bossDragon', 'bossLich', 'bossRoc', 'bossWorm', 'bossPharaoh', 'bossKraken'].map(k => `<div><img alt="" src="${Render.icon('enemy', k)}"><span><b>${ENEMIES[k].name}</b>${esc(ENEMIES[k].desc)}</span></div>`).join('');
     $('helpBody').innerHTML = `<h2>怎麼玩</h2>
       <p>敵人會沿著道路走向你的城堡，漏掉一隻就扣生命。在路旁的空地蓋塔擋住牠們，撐過所有波次就過關。</p>
       <h3>基本操作</h3>
@@ -350,11 +445,18 @@ const UI = (() => {
       <li>隕石：點技能再點地圖。冰封：凍住全場。都有冷卻時間。</li>
       <li>過關剩越多生命，星星越多。星星可以到「天賦樹」換永久加成。</li>
       <li>過關之後可以挑戰「限定塔種」「無技能」「鐵人」，各多拿 1 顆星。無盡模式每 5 波會換一個詞綴。</li>
-      <li>「圖鑑」裡可以看所有的塔、遇過的敵人和成就。</li></ul>
+      <li>「圖鑑」裡可以看所有的塔、英雄、遇過的敵人和成就。</li></ul>
+      <h3>英雄</h3>
+      <ul><li>每關帶一位英雄上場（出征前選）：<b>點英雄，再點道路</b>，英雄就會走過去。也可以按面板上的英雄頭像（鍵盤 <kbd>H</kbd>）。</li>
+      <li>英雄會自動攻擊、技能好了會自動施放，也可以在英雄面板手動按（鍵盤 <kbd>E</kbd>／<kbd>R</kbd>）。騎士雷歐會擋住路上的敵人。</li>
+      <li>英雄倒下後會在城堡休養一陣子再回來。打倒敵人和撐過每一波都會得到經驗，等級會一直保留（最高 10 級），第 3 級學會第二個技能。</li></ul>
+      <h3>特殊地形（第 11 關以後）</h3>
+      <ul><li><b>傳送陣</b>：敵人踩上去會直接跳到另一頭。<b>水晶基座</b>：蓋在上面的塔傷害 +25%、射程 +10%。</li>
+      <li><b>沙暴</b>：每隔一陣子所有塔射程暫時變短。<b>海流</b>：敵人經過會突然加速。</li></ul>
       <h3>防禦塔</h3><div class="hl">${tw}</div>
       <h3>敵人</h3><div class="hl">${en}</div>
       <h3 class="kb">鍵盤快捷鍵</h3>
-      <p class="kb"><kbd>1</kbd>–<kbd>7</kbd> 選塔　<kbd>U</kbd>/<kbd>I</kbd> 升級（左／右專精）　<kbd>S</kbd> 賣掉　<kbd>T</kbd> 換目標　<kbd>Q</kbd> 隕石　<kbd>W</kbd> 冰封　<kbd>N</kbd> 下一波　<kbd>F</kbd> 速度　<kbd>空白</kbd> 暫停　<kbd>Esc</kbd> 取消　<kbd>M</kbd> 靜音</p>
+      <p class="kb"><kbd>1</kbd>–<kbd>7</kbd> 選塔　<kbd>U</kbd>/<kbd>I</kbd> 升級（左／右專精）　<kbd>S</kbd> 賣掉　<kbd>T</kbd> 換目標　<kbd>Q</kbd> 隕石　<kbd>W</kbd> 冰封　<kbd>H</kbd> 選英雄　<kbd>E</kbd>/<kbd>R</kbd> 英雄技能　<kbd>N</kbd> 下一波　<kbd>F</kbd> 速度　<kbd>空白</kbd> 暫停　<kbd>Esc</kbd> 取消　<kbd>M</kbd> 靜音</p>
       <button class="big" id="hClose">知道了</button>`;
     $('hClose').addEventListener('click', () => { Snd.sfx('click'); $('ovHelp').hidden = true; if (back) back(); });
     $('ovHelp').hidden = false;
@@ -400,8 +502,13 @@ const UI = (() => {
     const a = ACHIEVEMENTS.find(x => x.id === id); if (!a) return;
     const el = $('achToast');
     el.innerHTML = `<i class="medal on"></i><div><small>成就解鎖</small><b>${esc(a.name)}</b><span>${esc(a.desc)}</span></div>`;
+    // 遊戲中：小一點，放在地圖下緣，不擋住上方的路線
+    const V = App.scene === 'play' && App.Vplay, inPlay = !!V;
+    el.classList.toggle('inplay', inPlay);
+    if (inPlay) { el.style.left = (V.ox + V.w / 2) + 'px'; el.style.top = (V.oy + V.h - 6) + 'px'; }
+    else { el.style.left = ''; el.style.top = ''; }
     el.hidden = false; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
-    clearTimeout(achT); achT = setTimeout(() => { el.hidden = true; }, 3600);
+    clearTimeout(achT); achT = setTimeout(() => { el.hidden = true; }, inPlay ? 2800 : 3600);
   }
   return { achToast, buildShop, tick, resetPanel, show, syncToggles, levels, brief, syncDiff, meta, help, showResult, say, skillIcon, starsHtml };
 })();
