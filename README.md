@@ -21,6 +21,7 @@ MK 的瀏覽器遊戲合集，每個資料夾自成一體。線上遊玩：https
 | [夜市小吃王](https://littleland.mwstudio.workers.dev/shop/) | [`shop/`](shop/README.md) | 開羅風模擬經營：從夜市小攤車做到傳說夜市，擺設相鄰組合、員工培訓、食材兩兩組合研發 42 道台灣小吃、節慶與隨機事件、小吃大賽與年度頒獎、28 家對手排行、三格自動存檔，支援觸控與滑鼠 |
 | [八音盒謎屋](https://littleland.mwstudio.workers.dev/escape/) | [`escape/`](escape/README.md) | 密室逃脫＋推理：8 間謎屋（四面牆、特寫、道具組合，17 種謎題）、3 件推理事件（證詞矛盾、出示證物、指認犯人）、每步三層提示、星星評分、自動存檔，支援觸控與滑鼠 |
 | [深淵地牢](https://littleland.mwstudio.workers.dev/dungeon/) | [`dungeon/`](dungeon/README.md) | 回合制 Roguelike：17 層隨機地牢（4 種地形＋最終頭目）、5 職業、22 種怪物＋5 頭目、未鑑定的藥水／卷軸／戒指／魔杖、詛咒裝備、陷阱與秘門、升級三選一天賦、靈魂石永久強化、每日挑戰種子、永久死亡＋自動存檔，支援點擊移動與鍵盤 |
+| [曉鐘傳說](https://littleland.mwstudio.workers.dev/rpg/) | [`rpg/`](rpg/README.md) | 經典回合制 RPG（原創劇情）：4 城鎮、6 迷宮 17 層、4 人隊伍、35 種怪物＋8 頭目、選單式戰鬥、練等學法術、商店裝備比較、4 個支線、晶片音樂、3 個記錄欄位＋進城自動記錄、三種難度，支援觸控與鍵盤 |
 | [捏臉工坊](https://k-mertin.github.io/littlethings/face/) | [`face/`](face/README.md) | 2D 捏臉：臉型、五官、髮型、瀏海、配件、衣服，即時預覽縮圖、隨機、復原、存檔、下載 PNG，支援手機 |
 | [寫實捏臉 3D](https://k-mertin.github.io/littlethings/face3d/) | [`face3d/`](face3d/README.md) | 寫實 3D 捏臉：MakeHuman CC0 人體、417 個變形滑桿、寫實皮膚、3D 髮型眉毛睫毛、表情、眼睛看游標，支援手機 |
 
@@ -51,6 +52,7 @@ td/               index.html＋js/（依序載入，無建置步驟，不需外�
 shop/             index.html＋js/（依序載入，無建置步驟，不需外部函式庫）
 escape/           index.html＋css/＋js/（依序載入，無建置步驟，不需外部函式庫，美術全用 SVG）
 dungeon/          index.html＋js/（依序載入，無建置步驟，不需外部函式庫）
+rpg/              index.html＋js/（依序載入，無建置步驟，不需外部函式庫）
 face/             單一檔案，無建置步驟，不需任何外部函式庫（純 SVG）
 face3d/           index.html＋預先處理的 data/（Three.js 由 CDN 載入）；data/ 由 tools/build.py 從 MakeHuman 素材產生
 ```
