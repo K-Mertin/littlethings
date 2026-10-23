@@ -4,6 +4,7 @@ const Main = {
   state: 'title', acc: 0, last: 0, saveT: 0, scen: 'std',
   init() {
     Prefs.load();
+    if (typeof Prefs.d.q === 'number') R.q = clamp(Prefs.d.q, 0, 2);
     Legacy.load();
     R.init($('#cv'));
     UI.init();
@@ -186,13 +187,16 @@ const Main = {
       if (sp) {
         this.acc += dt * sp;
         let n = 0;
-        while (this.acc >= 1 / 30 && n < 12) { Game.step(1 / 30); this.acc -= 1 / 30; n++; if (Game.pending.length) { this.acc = 0; break; } }
+        // 慢的手機上一格最多跑 6 步，跑不完就讓時間慢一點，不會越來越卡
+        while (this.acc >= 1 / 30 && n < 6) { Game.step(1 / 30); this.acc -= 1 / 30; n++; if (Game.pending.length) { this.acc = 0; break; } }
+        if (n >= 6) this.acc = 0;
       }
       this.hudT = (this.hudT || 0) - dt;
       if (this.hudT <= 0) { this.hudT = 0.25; UI.refreshHud(); UI.measure(); Tut.update(); if (UI.info?.s && !UI.inf.hidden) UI.showStaff(Game.srt.get(UI.info.s.uid)); }
       this.saveT += dt;
       if (this.saveT > 60) { this.saveT = 0; UI.save(UI.slot, false); }
     }
+    R.perfTick(dt);
     R.draw(dt);
     requestAnimationFrame(t2 => this.frame(t2));
   },
@@ -207,55 +211,14 @@ window.__shop = {
       let guard = 0;
       while (Game.S.week < target && guard++ < 2000) {
         Game.step(1 / 15);
-        while (Game.pending.length) { const p = Game.pending.shift(); if (p.k === 'contest') Game.runContest(Game.known().sort((a, b) => Game.contestScore(b) - Game.contestScore(a))[0]); if (p.k === 'award') Game.applyAward(p); if (p.k === 'quest' && auto) Game.acceptQuest(p.q); }
+        while (Game.pending.length) { const p = Game.pending.shift(); if (p.k === 'contest') Game.runContest(Game.known().sort((a, b) => Game.contestScore(b) - Game.contestScore(a))[0]); if (p.k === 'award') Game.applyAward(p); if (p.k === 'quest' && auto) Game.acceptQuest(p.q); if (p.k === 'duel' && auto) Game.acceptDuel(p.d); }
       }
       if (auto) this.bot();
     }
     return this.stat();
   },
   stat() { const S = Game.S; return { y: Game.year(), m: Game.month(), money: Math.round(S.money), pop: Math.round(S.pop), idea: S.idea, rank: S.rank, lv: S.lv, staff: S.staff.length, dishes: Game.known().length, combos: Object.keys(S.combos).length, items: S.items.length, cust: S.st.cust, sat: S.st.satN ? Math.round(S.st.satS / S.st.satN) : 0, rate: +Game.spawnRate().toFixed(2) }; },
-  // 簡單的自動玩家：模擬一般玩家的決策
-  bot() {
-    const S = Game.S, G = Game;
-    const free = () => { const out = []; for (let y = 0; y < S.H - 1; y++) for (let x = 0; x < S.W; x++) if (!G.itemAt(x, y)) out.push([x, y]); return shuffle(out); };
-    const tryPlace = id => { for (const [x, y] of free()) if (!G.place(id, x, y)) return true; return false; };
-    if (!G.canExpand() && S.money > LEVELS[S.lv + 1].cost + G.rent() * 4 + S.staff.reduce((a, s) => a + s.sal, 0) * 3) G.expand();
-    const nx = LEVELS[S.lv + 1], saving = nx && S.pop >= nx.pop;
-    const spend = v => !saving || S.money - v > nx.cost;
-    // 研發
-    for (let k = 0; k < (S.week % 2 ? 1 : 0); k++) {
-      const cand = Object.keys(DISH).filter(d => !S.dishes[d] && G.canUse(DISH[d].a) && G.canUse(DISH[d].b));
-      if (cand.length && S.idea >= G.ideaCost() && S.money > G.moneyCost() * 3) { const d = cand[0]; G.research(DISH[d].a, DISH[d].b); }
-      else if (S.idea >= G.ideaCost() * 2 && S.money > G.moneyCost() * 3) { const ks = Object.keys(ING).filter(k => S.ings[k]); G.research(pick(ks), pick(ks)); }
-    }
-    for (const k in ING) if (!S.ings[k] && ING[k].lv <= S.lv && S.money > ING[k].buy * 4) G.buyIng(k);
-    // 攤位
-    const nst0 = S.items.filter(i => F[i.id].cat === 'station').length, cooksN0 = S.staff.filter(s => s.job === 'cook').length;
-    for (const st of Object.keys(STN)) { const f = FAC.find(f => f.st === st); if (cooksN0 >= nst0 && !G.hasStation(st) && f.lv <= S.lv && S.money > f.price * 2 && G.known().some(k => DISH[k].st === st)) tryPlace(f.id); }
-    const nst = S.items.filter(i => F[i.id].cat === 'station').length, nseat = S.items.filter(i => F[i.id].cat === 'seat').reduce((a, i) => a + F[i.id].seats, 0);
-    const busy = [...G.rts.values()].some(r => r.queue.length >= 4);
-    const cooksN = S.staff.filter(s => s.job === 'cook').length;
-    if (busy && S.money > 15000 && cooksN > nst) { const r = [...G.rts.values()].filter(r => F[r.it.id].cat === 'station').sort((a, b) => b.queue.length - a.queue.length)[0]; if (r) tryPlace(r.it.id); }
-    if (nseat < nst * 2.5 && S.money > 3000) tryPlace(S.lv >= 2 ? 'round' : S.lv >= 1 ? 'wood' : 'stool');
-    // 員工
-    const cooks = S.staff.filter(s => s.job === 'cook').length, servs = S.staff.filter(s => s.job === 'serve').length;
-    if (S.staff.length < LEVELS[S.lv].staff && S.hire.length && S.money > S.hire[0].sal * 6) {
-      const i = S.hire.reduce((b, s, i) => (s.cook + s.serv + s.charm > S.hire[b].cook + S.hire[b].serv + S.hire[b].charm ? i : b), 0);
-      G.hire(i); const s = S.staff[S.staff.length - 1];
-      G.setJob(s, cooks < nst + 1 ? 'cook' : servs < Math.max(1, nst / 3) ? 'serve' : 'tout');
-    }
-    // 裝飾
-    if (S.money > 20000 && Math.random() < 0.5 && spend(20000)) { const opts = FAC.filter(f => (f.cat === 'decor' || f.cat === 'fun') && f.lv <= S.lv && !f.unlock && f.price < S.money / 6); if (opts.length) tryPlace(pick(opts).id); }
-    // 改良
-    for (const k of G.known()) if (S.dishes[k].lv < 10 && S.idea > G.upCost(k).idea * 2 && S.money > G.upCost(k).money * 4 && spend(G.upCost(k).money)) G.upgradeDish(k);
-    if (S.money > 30000 && spend(5000)) { const s = pick(S.staff); G.train(s, { cook: 'cook', serve: 'serv', tout: 'charm' }[s.job]); }
-    // 新系統：秘方、活動、分店（有閒錢才用）
-    if (!this.noNew) {
-      for (const t of TECHS) { const c = G.techCost(t); if (G.tech(t.id) < 5 && S.idea >= c.idea * 1.5 && S.money > c.money * 3 && spend(c.money)) { G.techUp(t.id); break; } }
-      if (!S.hostCD) { const e = HOSTEV.filter(e => e.lv <= S.lv && S.money > G.hostCost(e) * 4 && spend(G.hostCost(e))).pop(); if (e && Math.random() < 0.3) G.host(e.id); }
-      for (const b of BRANCHES) { const c = G.branchCost(b); if (S.lv >= b.lv && (S.br[b.id] || 0) < 5 && S.money > c * 2.5 && spend(c)) { G.buyBranch(b.id); break; } }
-    }
-    for (const it of S.items) if (F[it.id].cat === 'station' && it.lv < G.maxStLv() && S.money > G.upgradeCost(it) * 5 && spend(G.upgradeCost(it)) && Math.random() < 0.3) G.upgrade(it);
-  },
+  // 自動玩家（js/bot.js）：照藍圖整齊擺設、按優先順序花錢
+  bot() { Bot.week(); },
 };
 addEventListener('DOMContentLoaded', () => Main.init());

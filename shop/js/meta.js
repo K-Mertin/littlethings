@@ -37,7 +37,7 @@ const TUT = [
   { t: '客人是怎麼來的', x: '客人會走到攤位前面<b>排隊</b>，廚師煮好就付錢，再找位子坐下來吃。右上角可以<b>暫停</b>或<b>加快時間</b>。', next: 1, hl: ['#speed'] },
   { t: '多擺幾張桌椅', x: '座位太少，客人只能外帶。打開<b>「建造」→「座位」</b>，買一組<b>塑膠桌椅</b>，放在店裡的空地上。', hl: ['[data-a="pick"][data-v="stool"]', '#panel [data-a="tab"][data-v="seat"]', '#bar [data-v="build"]'], done: () => Game.S.items.filter(i => F[i.id].cat === 'seat').length >= 3, r: { money: 600 } },
   { t: '研發新菜色', x: '菜色越多，客人越開心。打開<b>「研發」</b>，把<b>麵粉</b>和<b>雞蛋</b>放進兩個格子，按「研發！」。', sweet: '菜色越多，客人越開心。打開<b>「研發」</b>，把<b>茶葉</b>和<b>牛奶</b>放進兩個格子，按「研發！」。',
-    hl: ['[data-a="rgo"]:not([disabled])', '[data-a="rpick"][data-v="@A"]:not(.on)', '[data-a="rpick"][data-v="@B"]:not(.on)', '#panel [data-a="tab"][data-v="lab"]', '#bar [data-v="lab"]'], done: () => Game.known().length >= 3, r: { idea: 6 } },
+    hl: ['[data-a="rgo"]:not([disabled])', '[data-a="rpick"][data-v="@A"]:not(.on)', '[data-a="rpick"][data-v="@B"]:not(.on)', '#panel [data-a="tab"][data-v="lab"]', '#bar [data-v="lab"]'], done: () => Game.nKnown() >= 3, r: { idea: 6 } },
   { t: '調整價錢', x: '打開<b>「菜單」</b>可以調整每道菜的價錢。<b>綠色</b>剛好、<b>紅色</b>太貴、<b>藍色</b>太便宜。新菜也記得上架喔！', hl: ['#bar [data-v="menu"]'], done: () => UI.panel === 'menu' },
   { t: '請個幫手', x: '人手不夠了！到<b>「員工」→「徵人」</b>請一位新員工。<b>外場</b>會清桌子、招呼排隊的客人；每個人還有不同的<b>特質</b>。', hl: ['#panel [data-a="hire"]', '#panel [data-a="tab"][data-v="hire"]', '#bar [data-v="staff"]'], done: () => Game.S.staff.length >= 3, r: { money: 800 } },
   { t: '擺設組合', x: '有些東西放在<b>隔壁</b>（斜的也算）會變成<b>擺設組合</b>！試試把<b>兩個紅燈籠</b>放在一起。', hl: ['[data-a="pick"][data-v="lantern"]', '#panel [data-a="tab"][data-v="decor"]', '#bar [data-v="build"]'], done: () => Object.keys(Game.S.combos).length >= 1, r: { money: 1000 } },
@@ -45,8 +45,27 @@ const TUT = [
   { t: '出師了！', x: '基本功都會了！之後會有<b>客人委託</b>、<b>節慶挑戰</b>、每年 10 月的<b>小吃大賽</b>，店變大以後還能到<b>「事業」</b>開分店、辦活動。目標是排行榜第一名，加油！', next: 1, r: { idea: 10 } },
 ];
 
+// 每年開頭阿德伯的話（第 2 年～第 10 年），之後隨機
+const STORY = [
+  '第一年辛苦了！夜市的老客人開始記得你的味道了。今年，試著讓更多人認識你吧。',
+  '聽說隔壁街的老店在打聽你的名字……被對手注意到，代表你真的變強了。',
+  '我年輕的時候也想過要做到夜市第一。那時候啊，一碗滷肉飯才三十塊……',
+  '颱風、寒流、菜價上漲，夜市人什麼沒遇過？撐過去，招牌就會越來越亮。',
+  '有記者跑來問我你的事，我說：那孩子啊，是真心喜歡做吃的。',
+  '別忘了常回頭看看第一天的那台小攤車。它記得你所有的努力。',
+  '我打算明年把香腸攤收起來了。以後這條街，就交給你們年輕人了。',
+  '我的攤子收了，但每天晚上我還是會來你店裡坐坐。這裡的燈，比以前更亮了。',
+  '十年了。夜市的燈每晚都會亮起來，而你，已經是這條街的光。',
+];
+const STORY_LATE = [
+  '新的一年，夜市又多了好多新面孔。保持初心，繼續前進吧！',
+  '今天有個小朋友說，長大以後也想開一家像你這樣的店。',
+  '老客人帶著孫子來吃了。你的味道，已經傳到第三代了呢。',
+  '外國觀光客拿著手機，說是看了網路介紹專程來的。了不起！',
+];
 const Tut = {
   el: null, hlEl: null, last: -2,
+  look() { const L = makeLook(4242, 'elder'); L.hat = 'band'; L.key += 'tut'; return L; },
   init() { this.el = $('#tut'); },
   step() { const S = Game.S; return S && S.tut ? S.tut.step : -1; },
   active() { return Main.state === 'play' && this.step() >= 0 && this.step() < TUT.length; },
@@ -85,7 +104,7 @@ const Tut = {
   render() {
     const i = this.step(), T = TUT[i];
     this.last = i;
-    const look = makeLook(4242, 'elder'); look.hat = 'band'; look.key += 'tut';
+    const look = this.look();
     const txt = Game.S.scen === 'sweet' && T.sweet ? T.sweet : T.x;
     this.el.innerHTML = `<div class="tp">${UI.img(Art.portrait(look, 'happy'), 2)}</div><div class="tx"><b>${T.t}</b><p>${txt}</p>
       <div class="tb"><span class="dots">${TUT.map((_, k) => `<i class="${k < i ? 'd' : k === i ? 'c' : ''}"></i>`).join('')}</span>

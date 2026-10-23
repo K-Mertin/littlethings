@@ -211,7 +211,23 @@ const DISH = {
   shrimpomelet: { n: '蝦仁煎', a: 'shrimp', b: 'egg', st: 'griddle', cat: 'salty', p: 90, q: 7, t: 4, h: '跟蚵仔煎很像，換一種海鮮' },
   feast: { n: '夜市滿漢全席', a: 'kingbowl', b: 'combo', st: 'soup', cat: 'salty', p: 380, q: 12, t: 6, h: '把最強的湯和最強的套餐合在一起…' },
   tarobubble: { n: '芋頭珍奶', a: 'bubble', b: 'taro', st: 'drink', cat: 'drink', p: 85, q: 9, t: 3, h: '珍奶再加紫色的根莖' },
+  // 季節限定：不用研發，到了那個月份、有那種攤位就會自動上架（lim = 月份、lv = 店舖等級）
+  tanghulu: { n: '草莓糖葫蘆', a: 'strawberry', b: 'sugar', st: 'grill', cat: 'sweet', p: 60, q: 7, t: 3, lim: [1, 2, 3], lv: 2, h: '冬天限定，紅通通亮晶晶' },
+  yuanxiao: { n: '芝麻湯圓', a: 'glutinous', b: 'sugar', st: 'soup', cat: 'sweet', p: 50, q: 7, t: 3, lim: [2], lv: 1, h: '元宵節一定要吃一碗' },
+  sakuraice: { n: '櫻花雪花冰', a: 'ice', b: 'milk', st: 'ice', cat: 'sweet', p: 85, q: 8, t: 3, lim: [3, 4], lv: 1, h: '春天限定的粉紅色冰' },
+  alkalizong: { n: '冰鹼粽', a: 'glutinous', b: 'sugar', st: 'steam', cat: 'sweet', p: 45, q: 6, t: 3, lim: [6], lv: 2, h: '端午節的甜粽子，沾蜂蜜' },
+  watermelon: { n: '西瓜牛奶', a: 'milk', b: 'sugar', st: 'drink', cat: 'drink', p: 55, q: 7, t: 2, lim: [7, 8], lv: 0, h: '暑假限定，消暑第一名' },
+  yolkpastry: { n: '蛋黃酥', a: 'egg', b: 'flour', st: 'griddle', cat: 'sweet', p: 65, q: 8, t: 4, lim: [9], lv: 1, h: '中秋節限定，一口就停不下來' },
+  chestnut: { n: '糖炒栗子', a: 'sugar', b: 'peanut', st: 'grill', cat: 'sweet', p: 55, q: 7, t: 3, lim: [10, 11], lv: 2, h: '秋天限定，香香甜甜熱呼呼' },
+  gingerduck: { n: '薑母鴨', a: 'duckblood', b: 'basil', st: 'soup', cat: 'salty', p: 170, q: 10, t: 5, lim: [12, 1], lv: 3, meat: 1, h: '冬天一定要來一鍋' },
+  hotsoymilk: { n: '熱豆漿', a: 'soybean', b: 'sugar', st: 'drink', cat: 'drink', p: 30, q: 5, t: 2, lim: [12, 1, 2], lv: 0, h: '寒流來了喝一杯' },
 };
+// 研發、圖鑑、目標只算一般菜色（季節限定另外算）
+const DISH_ALL = Object.keys(DISH).filter(k => !DISH[k].lim);
+const DISH_LIM = Object.keys(DISH).filter(k => DISH[k].lim);
+// 素食模式：用到這些食材（或用到這些食材做的菜）就不是素的
+const MEAT = ['chicken', 'pork', 'beef', 'oyster', 'squid', 'shrimp', 'duckblood'];
+function isVeg(k) { const d = DISH[k]; if (!d) return !MEAT.includes(k); if (d.meat) return false; return isVeg(d.a) && isVeg(d.b); }
 
 // 顧客：b = 預算倍率、pat = 耐心、w = 出現權重、lv = 幾級店才會來
 const CTYPES = {
@@ -268,7 +284,7 @@ const GOALS = [
   { id: 'sale3', n: '千萬富翁', d: '累積營業額 1000 萬', k: 'sales', v: 1e7, r: { pop: 300 } },
   { id: 'rank1', n: '夜市之王', d: '排行第 1 名', k: 'rank', v: 1, r: { money: 300000 } },
   { id: 'lv5', n: '傳說夜市', d: '擴建成「傳說夜市」', k: 'lv', v: 5, r: { idea: 300 } },
-  { id: 'dall', n: '全菜單制霸', d: '研發出所有菜色', k: 'dishes', v: Object.keys(DISH).length, r: { money: 1e6 } },
+  { id: 'dall', n: '全菜單制霸', d: '研發出所有菜色', k: 'dishes', v: DISH_ALL.length, r: { money: 1e6 } },
   { id: 'comboall', n: '組合圖鑑完成', d: '發現所有擺設組合', k: 'combos', v: COMBOS.length, r: { money: 1e6 } },
   { id: 'y10', n: '十年有成', d: '經營滿 10 年', k: 'year', v: 11, r: { pop: 500 } },
 ];
@@ -310,6 +326,14 @@ const BRANCHES = [
   { id: 'tokyo', n: '東京海外旗艦店', cost: 16000000, inc: 128000, pop: 30, lv: 5 },
 ];
 
+const BRANCH_TXT = {
+  shilin: '大牌樓下人擠人，學生和觀光客最多，是台北最熱鬧的夜市。',
+  raohe: '從廟口一路排到街尾的燈籠，胡椒餅的香味飄滿整條街。',
+  fengjia: '霓虹燈牌一塊接一塊，年輕人最愛來這裡挖新奇的小吃。',
+  liuhe: '椰子樹和高樓夜景，南部的大路邊夜市，攤位又大又寬。',
+  luodong: '就在公園旁邊，水池映著燈光，宜蘭的在地好味道。',
+  tokyo: '紅白鐵塔下的屋台街，日本人排隊也要吃一口台灣味！',
+};
 // 可以自己舉辦的活動
 const HOSTEV = [
   { id: 'tasting', n: '試吃大會', cost: 12000, lv: 0, w: 1, mul: 1.3, pop: 8, d: '免費試吃，路人都被香味吸過來' },
@@ -337,6 +361,8 @@ const SCENARIOS = [
   { id: 'sweet', n: '甜點專賣店', d: '只賣甜的和喝的！喜歡甜食的客人比較多。' },
   { id: 'rush', n: '限時挑戰', d: '5 年內登上排行榜第 1 名！對手比較強。', lock: 1 },
   { id: 'hard', n: '逆境開局', d: '本金只有 $5,000、租金兩倍、對手成長更快。', lock: 1 },
+  { id: 'veg', n: '素食小館', d: '只賣不含肉和海鮮的菜！阿公阿嬤和上班族特別捧場。' },
+  { id: 'tour', n: '觀光夜市', d: '觀光客是平常的三倍、出手大方，但租金貴五成、對手也很強。', lock: 1 },
 ];
 
 // 傳承加成（跨存檔，用傳承點數購買）
@@ -376,6 +402,11 @@ const ACHS = [
   { id: 'rush', n: '限時達成', d: '限時挑戰：5 年內拿下第 1 名', pt: 6 },
   { id: 'sweet', n: '甜蜜帝國', d: '甜點專賣店擴建到「美食廣場」', pt: 4 },
   { id: 'hard', n: '逆境翻身', d: '逆境開局擠進前 10 名', pt: 5 },
+  { id: 'veg', n: '蔬食名店', d: '素食小館擴建到「排隊名店」', pt: 3 },
+  { id: 'tour', n: '國際觀光地標', d: '觀光夜市擠進前 3 名', pt: 5 },
+  { id: 'duel3', n: '挑戰者殺手', d: '贏得 3 次對手的挑戰書', pt: 2 },
+  { id: 'season', n: '四季饕客', d: '賣過 5 種季節限定菜色', pt: 2 },
+  { id: 'story', n: '十年一夢', d: '完成 5 個年度目標', pt: 3 },
 ];
 
 // 委託人的名字
