@@ -58,7 +58,7 @@ function genWaves(L) {
 function genEndlessWave(L, w) {
   const rng = mkRng(L.seed * 104729 + w * 31);
   const E = L.entries.length;
-  const all = ['slime', 'runner', 'beetle', 'bat', 'golem', 'healer', 'shield', 'splitter', 'gargoyle', 'ogre'];
+  const all = ['slime', 'runner', 'beetle', 'bat', 'golem', 'healer', 'shield', 'splitter', 'crab', 'wisp', 'gargoyle', 'mummy', 'crawler', 'ogre'];
   const unlocked = all.slice(0, clamp(3 + w, 3, all.length));
   const budget = 10 * Math.pow(1.13, Math.min(w, 40)) * (1 + Math.max(0, w - 40) * 0.08);
   const hpMul = 1.2 * (1 + 0.075 * w) * (w > 15 ? Math.pow(1.1, w - 15) : 1);
@@ -80,11 +80,11 @@ function genEndlessWave(L, w) {
   // 精英：每 5 波（不是頭目波）一隊巨魔
   if ((w + 1) % 5 === 0 && (w + 1) % 10 !== 0) groups.push(makeGroup('ogre', 1 + Math.floor(w / 10), 0, delay + 1, hpMul));
   if ((w + 1) % 10 === 0) {
-    const bosses = ['bossGolem', 'bossDragon', 'bossLich'];
-    const b = bosses[Math.floor((w + 1) / 10 - 1) % 3];
+    const bosses = ['bossGolem', 'bossDragon', 'bossLich', 'bossRoc', 'bossWorm', 'bossPharaoh', 'bossKraken'];
+    const b = bosses[Math.floor((w + 1) / 10 - 1) % bosses.length];
     groups.push(makeGroup(b, 1 + Math.floor(w / 30), 0, delay + 2, (1 + 0.06 * w) * 0.9));
     // 第 20 波之後頭目會帶一個不同的頭目副手
-    if (w >= 19) groups.push(makeGroup(bosses[(Math.floor((w + 1) / 10)) % 3], 1, E > 1 ? 1 : 0, delay + 8, (1 + 0.06 * w) * 0.55));
+    if (w >= 19) groups.push(makeGroup(bosses[(Math.floor((w + 1) / 10)) % bosses.length], 1, E > 1 ? 1 : 0, delay + 8, (1 + 0.06 * w) * 0.55));
   }
   return { groups, mod };
 }

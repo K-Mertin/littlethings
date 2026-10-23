@@ -19,8 +19,29 @@ const Render = (() => {
   let lightC = null, frostC = null, frostKey = '', goldPos = null, goldT = 0;
   let lastG = null;
   function setView(v) { V = v; }
+  // ── 加色亮度上限：把畫面切成格子，每格累積的加色亮度超過上限就逐漸不再加亮（避免爆炸疊在一起變成一片白）──
+  let bud = null, budW = 0, budH = 0, budC = 32;
+  const BUD_CAP = 1.6;
+  function budReset(W, H, s) {
+    budC = Math.max(20, s * 0.85);
+    const w = Math.ceil(W / budC) + 1, h = Math.ceil(H / budC) + 1;
+    if (!bud || w * h > bud.length) bud = new Float32Array(w * h);
+    budW = w; budH = h; bud.fill(0, 0, w * h);
+  }
+  function glowAt(ctx, img, x, y, r, a) {
+    if (a <= 0.01 || r <= 0) return;
+    const cx = Math.floor(x / budC), cy = Math.floor(y / budC);
+    let k = 1, i = -1;
+    if (cx >= 0 && cy >= 0 && cx < budW && cy < budH) { i = cy * budW + cx; k = Math.max(0, 1 - bud[i] / BUD_CAP); }
+    if (k < 0.03) return;
+    const aa = Math.min(1, a) * k;
+    ctx.globalAlpha = aa;
+    ctx.drawImage(img, x - r, y - r, r * 2, r * 2);
+    if (i >= 0) bud[i] += aa * clamp(r / budC, 0.2, 2.5);
+  }
   function view() { return V; }
-  function setLow(l) { lowFx = l; FX.setLow(l); }
+  let qual = 0;
+  function setLow(l, q) { lowFx = l; qual = q || 0; FX.setLow(l); }
 
   // ───────── 背景快取 ─────────
   function ensureBg(G, W, H, d) {
@@ -32,6 +53,7 @@ const Render = (() => {
     TR = Terrain.paint(c, V, G, W, H);
     props = Terrain.genProps(G);
     TR.portals = portalSpots(G);
+    TR.pathGlow = pathGlow(G, W, H);
     bgKey = key;
     goldPos = null;
     prewarm(G);
@@ -46,11 +68,24 @@ const Render = (() => {
       return { x: a.x + sg.dx * (t + 0.42), y: a.y + sg.dy * (t + 0.42), dx: sg.dx, dy: sg.dy };
     });
   }
+  // 精靈圖預先畫好：排進佇列，每幀用一點點時間慢慢畫，避免開場卡一下
+  let warmQ = [];
+  function warmStep(ms) { const t0 = performance.now(); while (warmQ.length && performance.now() - t0 < ms) warmQ.shift()(); }
   function prewarm(G) {
+    warmQ = [];
     const ks = new Set();
     if (G.L.pool) for (const p of G.L.pool) ks.add(p[0]);
     if (G.L.boss) ks.add(G.L.boss);
-    for (const k of ks) { const d = ENEMIES[k]; const R = Beasts.visR(k, d.r, V.s); for (let f = 0; f < Beasts.FR; f++) { Beasts.frame(k, R, f, 0, dpr); Beasts.frame(k, R, f, 1, dpr); } }
+    if (G.L.midBoss) ks.add(G.L.midBoss[1]);
+    for (const k of [...ks]) { const d = ENEMIES[k]; if (d.split) ks.add(d.split); if (d.summon) ks.add(d.summonK || 'skeleton'); }
+    const knight = G.hero && G.hero.d.block;
+    for (const k of ks) {
+      const d = ENEMIES[k], R = Beasts.visR(k, d.r, V.s) * (d.boss ? 0.85 : 1);
+      const dd = dpr;
+      for (let f = 0; f < Beasts.FR; f++) warmQ.push(() => { Beasts.frame(k, R, f, 0, dd); Beasts.frame(k, R, f, 1, dd); });
+      if (knight && !d.fly && !d.boss) for (let f = 0; f < Beasts.FA; f++) warmQ.push(() => Beasts.frame(k, R, f, 0, dd, true));
+    }
+    if (G.hero) { const dd = dpr, id = G.hero.id, R = V.s * 0.33; for (const an of ['idle', 'walk', 'atk', 'cast']) for (let f = 0; f < HeroArt.FR[an]; f++) warmQ.unshift(() => HeroArt.frame(id, R, an, f, dd)); }
   }
 
   // ───────── 塔 ─────────
@@ -91,7 +126,11 @@ const Render = (() => {
         ctx.restore();
       }
     }
-    if (t.stunT > 0) {
+    if (t.stunT > 0 && t.inked) {
+      ctx.save(); ctx.globalAlpha = Math.min(1, t.stunT * 1.5) * 0.85; ctx.fillStyle = '#24142e';
+      for (let i = 0; i < 5; i++) { const an = i * 1.3 + t.id; ctx.beginPath(); ctx.ellipse(a + Math.cos(an) * s * 0.18, gy - s * 0.7 + Math.sin(an) * s * 0.25, s * 0.13, s * 0.09, an, 0, TAU); ctx.fill(); }
+      ctx.restore();
+    } else if (t.stunT > 0) {
       for (let i = 0; i < 3; i++) { const aa = time * 5 + i * 2.1; Gfx.star(ctx, a + Math.cos(aa) * s * 0.25, gy - s * 1.05 + Math.sin(aa) * s * 0.08, s * 0.07, '#ffe27a'); }
     }
   }
@@ -124,15 +163,25 @@ const Render = (() => {
     const fade = clamp(e.dist / 0.7, 0, 1) * clamp((e.P.len - e.dist) / 0.45, 0, 1);
     if (fade <= 0.01) return;
     const gy = b + s * 0.08;
+    if (e.under > 0) {
+      // 鑽地中：只看得到翻起的土堆
+      ctx.globalAlpha = fade;
+      for (let i = 0; i < 5; i++) { const ox = (i - 2) * R * 0.35 - e._face * R * 0.2, h = R * (0.35 + 0.15 * Math.sin(time * 12 + i)); ell(ctx, a + ox, gy - h * 0.4, R * 0.3, h * 0.6, i % 2 ? '#5a5a74' : '#44445a'); }
+      ell(ctx, a + e._face * R * 0.6, gy - R * 0.25, R * 0.18, R * 0.12, '#9ef0ff');
+      ctx.globalAlpha = 1;
+      return null;
+    }
     const y0 = e.fly ? gy - s * 0.68 + Math.sin(e.wob * 0.5) * s * 0.05 : gy;
     ctx.globalAlpha = fade;
     if (!e.fly) ell(ctx, a, gy, R * (e.boss ? 1.1 : 0.85), R * 0.3, 'rgba(20,10,20,.3)');
-    const sp = Beasts.frame(e.k, R, f, 0, dpr);
+    const atk = !!e.held;
+    const fa = atk ? (Math.floor(time * 9 + e.id) % Beasts.FA) : f;
+    const sp = Beasts.frame(e.k, R, fa, 0, dpr, atk);
     const flip = face < 0;
     if (flip) { ctx.save(); ctx.translate(a, 0); ctx.scale(-1, 1); a = 0; }
     Gfx.drawSprite(ctx, sp, a, y0);
-    if (e.frozenT <= 0 && e.slowA > 0) { ctx.globalAlpha = fade * 0.65; Gfx.drawSprite(ctx, Beasts.frame(e.k, R, f, 2, dpr), a, y0); ctx.globalAlpha = fade; }
-    if (e.flash > 0) { ctx.globalAlpha = fade * Math.min(1, e.flash / 0.09) * 0.85; Gfx.drawSprite(ctx, Beasts.frame(e.k, R, f, 1, dpr), a, y0); ctx.globalAlpha = fade; }
+    if (e.frozenT <= 0 && e.slowA > 0) { ctx.globalAlpha = fade * 0.65; Gfx.drawSprite(ctx, Beasts.frame(e.k, R, fa, 2, dpr, atk), a, y0); ctx.globalAlpha = fade; }
+    if (e.flash > 0) { ctx.globalAlpha = fade * Math.min(1, e.flash / 0.09) * 0.85; Gfx.drawSprite(ctx, Beasts.frame(e.k, R, fa, 1, dpr, atk), a, y0); ctx.globalAlpha = fade; }
     if (flip) ctx.restore();
     ctx.globalAlpha = 1;
     return { R, y0, top: y0 - B.top * R };
@@ -144,8 +193,8 @@ const Render = (() => {
     if (e.shield > 0) {
       const f = e.shield / e.shieldMax, rr = (y0 - top) * 0.62;
       ctx.save();
-      ctx.fillStyle = rgrad(ctx, a, midY, rr * 0.6, rr, ['rgba(120,220,255,0)', `rgba(120,220,255,${0.12 + f * 0.15})`]);
-      ctx.beginPath(); ctx.arc(a, midY, rr, 0, TAU); ctx.fill();
+      ctx.globalAlpha = 0.45 + f * 0.55; ctx.drawImage(bubbleSprite(), a - rr, midY - rr, rr * 2, rr * 2); ctx.globalAlpha = 1;
+      ctx.beginPath(); ctx.arc(a, midY, rr, 0, TAU);
       ctx.strokeStyle = `rgba(170,235,255,${0.35 + f * 0.5})`; ctx.lineWidth = Math.max(1.2, s * 0.03); ctx.stroke();
       ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = Math.max(1, s * 0.025); ctx.beginPath(); ctx.arc(a, midY, rr * 0.82, Math.PI * 1.1, Math.PI * 1.45); ctx.stroke();
       ctx.restore();
@@ -158,7 +207,7 @@ const Render = (() => {
         const w = R * 2.1, h = (y0 - top) * 1.05;
         ctx.save();
         rrect(ctx, a - w / 2, y0 - h, w, h + R * 0.15, R * 0.25);
-        ctx.fillStyle = lgrad(ctx, a - w / 2, y0 - h, a + w / 2, y0, ['rgba(220,248,255,.75)', 'rgba(150,215,245,.55)', 'rgba(110,180,230,.65)']); ctx.fill();
+        ctx.fillStyle = 'rgba(170,225,250,.65)'; ctx.fill();
         ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = Math.max(1, s * 0.025); ctx.stroke();
         poly(ctx, [a - w * 0.38, y0 - h * 0.9, a - w * 0.18, y0 - h * 0.9, a - w * 0.42, y0 - h * 0.35], 'rgba(255,255,255,.65)');
         poly(ctx, [a + w * 0.2, y0 - h * 0.15, a + w * 0.38, y0 - h * 0.15, a + w * 0.4, y0 - h * 0.4], 'rgba(255,255,255,.45)');
@@ -203,7 +252,7 @@ const Render = (() => {
       const bw = Math.max(s * 0.55, R * 1.7), bh = Math.max(3.5, s * 0.075), bx = a - bw / 2, by = top - bh - s * 0.06;
       rrect(ctx, bx - 1.5, by - 1.5, bw + 3, bh + 3, bh); ctx.fillStyle = 'rgba(20,14,28,.82)'; ctx.fill();
       const f = clamp(e.hp / e.maxHp, 0, 1);
-      if (f > 0) { rrect(ctx, bx, by, Math.max(bh, bw * f), bh, bh / 2); ctx.fillStyle = f > 0.5 ? lgrad(ctx, 0, by, 0, by + bh, ['#9cf58a', '#4ec85c']) : f > 0.25 ? lgrad(ctx, 0, by, 0, by + bh, ['#ffe27a', '#f0b030']) : lgrad(ctx, 0, by, 0, by + bh, ['#ff8a8a', '#e83a4a']); ctx.fill(); }
+      if (f > 0) { rrect(ctx, bx, by, Math.max(bh, bw * f), bh, bh / 2); ctx.fillStyle = f > 0.5 ? '#62d46a' : f > 0.25 ? '#f4c440' : '#ee4a56'; ctx.fill(); }
       ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fillRect(bx + 1, by + 0.5, Math.max(0, bw * f - 2), Math.max(1, bh * 0.3));
       if (e.shieldMax) { const sf = clamp(e.shield / e.shieldMax, 0, 1); if (sf > 0) { rrect(ctx, bx, by - bh * 0.75, bw * sf, bh * 0.6, bh * 0.3); ctx.fillStyle = '#8fe8ff'; ctx.fill(); } }
       if (e.armor >= 0.4 || e.mres >= 0.5) { const ix = bx - s * 0.07, iy = by + bh / 2; circ(ctx, ix, iy, s * 0.055, e.armor >= 0.4 ? '#9aa6b8' : '#b48bff'); ctx.strokeStyle = 'rgba(20,14,28,.8)'; ctx.lineWidth = 1; ctx.stroke(); }
@@ -279,10 +328,155 @@ const Render = (() => {
     ctx.save(); ctx.translate(a, b); Art.portalSwirl(ctx, u, time, PORTAL_COL[th] || ['#ff9ae0', '#8a2ad8']); ctx.restore();
   }
 
+
+  // ───────── 關卡機制的畫面：傳送陣、海流、水晶基座光芒 ─────────
+  function levelFx(ctx, G, s, time) {
+    const L = G.L;
+    if (L.tp) {
+      for (const P of G.paths) for (const sg of P.seg) if (sg.tp) for (const [pt, out] of [[sg.a, 0], [sg.b, 1]]) {
+        const [a, b] = V.P(pt.x, pt.y), rr = s * 0.5;
+        ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.55 + 0.2 * Math.sin(time * 3); ctx.drawImage(Gfx.glow('#b88aff'), a - rr * 1.3, b - rr * 1.6, rr * 2.6, rr * 2.2); ctx.restore();
+        ctx.save(); ctx.translate(a, b); ctx.scale(1, 0.55);
+        ctx.fillStyle = rgrad(ctx, 0, 0, 0, rr, [out ? 'rgba(255,230,255,.85)' : 'rgba(220,200,255,.85)', 'rgba(150,100,255,.5)', 'rgba(120,80,255,0)']); ctx.beginPath(); ctx.arc(0, 0, rr, 0, TAU); ctx.fill();
+        ctx.strokeStyle = '#e8d8ff'; ctx.lineWidth = Math.max(1.5, s * 0.04);
+        for (let i = 0; i < 3; i++) { const a0 = time * (out ? -2.4 : 2.4) + i * 2.1; ctx.beginPath(); ctx.arc(0, 0, rr * (0.55 + i * 0.15), a0, a0 + 1.6); ctx.stroke(); }
+        ctx.restore();
+      }
+    }
+    if (G.hasCur) {
+      ctx.save();
+      for (const [cx, cy, cw, chh] of L.current) for (let y = cy; y < cy + chh; y++) for (let x = cx; x < cx + cw; x++) {
+        // 找這格路的方向
+        let dx = 0, dy = 0;
+        for (const P of G.paths) for (const sg of P.seg) if (segDist2(x + 0.5, y + 0.5, sg.a.x, sg.a.y, sg.b.x, sg.b.y) < 0.05) { dx = sg.dx; dy = sg.dy; }
+        if (!dx && !dy) continue;
+        { const [a0, b0] = V.P(x + 0.5, y + 0.5); ctx.globalAlpha = 0.22 + 0.06 * Math.sin(time * 3 + x + y); ctx.fillStyle = '#5ad8ff'; rrect(ctx, a0 - s * 0.42, b0 - s * 0.42, s * 0.84, s * 0.84, s * 0.2); ctx.fill(); }
+        for (let k = 0; k < 2; k++) {
+          const ph = ((time * 1.2 + k * 0.5) % 1), wx = x + 0.5 + dx * (ph - 0.5), wy = y + 0.5 + dy * (ph - 0.5);
+          const [a, b] = V.P(wx, wy), an = V.A(Math.atan2(dy, dx));
+          ctx.globalAlpha = Math.sin(ph * Math.PI) * 0.9;
+          ctx.save(); ctx.translate(a, b); ctx.rotate(an);
+          ctx.strokeStyle = '#e8fcff'; ctx.lineWidth = Math.max(2, s * 0.07); ctx.lineCap = 'round';
+          ctx.beginPath(); ctx.moveTo(-s * 0.08, -s * 0.14); ctx.lineTo(s * 0.06, 0); ctx.lineTo(-s * 0.08, s * 0.14); ctx.stroke();
+          ctx.restore();
+        }
+      }
+      ctx.restore(); ctx.globalAlpha = 1;
+    }
+  }
+
+  // ───────── 英雄 ─────────
+  function heroAnim(H, time) {
+    if (H.castT > 0) return ['cast', Math.min(5, Math.floor((1 - H.castT / 0.55) * 6))];
+    if (H.atkT > 0) return ['atk', Math.min(5, Math.floor((1 - H.atkT / 0.32) * 6))];
+    if (H.moving) return ['walk', Math.floor(H.walkPh / TAU * 8)];
+    return ['idle', Math.floor(time * 5 + H.lv) % 8];
+  }
+  function drawHero(ctx, G, H, a, b, s, time, ui) {
+    const R = s * 0.33, gy = b + s * 0.1;
+    const sd = V.rot ? -H.fdy : H.fdx;
+    if (sd < -0.25) H._sf = -1; else if (sd > 0.25) H._sf = 1; else if (!H._sf) H._sf = 1;
+    const sel = ui && ui.selHero;
+    // 光環與影子
+    if (sel) {
+      ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = Math.max(2, s * 0.05);
+      ctx.beginPath(); ctx.ellipse(a, gy, s * 0.42, s * 0.18, 0, 0, TAU); ctx.stroke();
+      ctx.setLineDash([s * 0.08, s * 0.08]); ctx.lineDashOffset = -time * s * 0.3; ctx.beginPath(); ctx.ellipse(a, gy, s * 0.52, s * 0.23, 0, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
+    }
+    ell(ctx, a, gy, R * 0.8, R * 0.24, 'rgba(20,10,20,.32)');
+    if (H.lvUp > 0) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(1, H.lvUp) * 0.7;
+      ctx.drawImage(Gfx.glow('#ffe27a'), a - s * 0.7, gy - s * 1.2, s * 1.4, s * 1.4);
+      ctx.fillStyle = 'rgba(255,230,140,.35)'; ctx.fillRect(a - s * 0.3 * H.lvUp / 1.6, gy - s * 2.2, s * 0.6 * H.lvUp / 1.6, s * 2.2);
+      ctx.restore();
+    }
+    // 盾牆：金色護罩
+    if (H.castK === 'wall' && H.castT > 0) {
+      const q = 1 - H.castT / 0.55;
+      ctx.save(); ctx.globalAlpha = 1 - q; ctx.strokeStyle = '#ffe27a'; ctx.lineWidth = Math.max(2, s * 0.06);
+      ctx.beginPath(); ctx.ellipse(a, gy - s * 0.35, s * (0.5 + q * 0.4), s * (0.6 + q * 0.4), 0, Math.PI, TAU); ctx.stroke(); ctx.restore();
+    }
+    const [an, f] = heroAnim(H, time);
+    const sp = HeroArt.frame(H.id, R, an, f, dpr, H.hurtT > 0 ? 1 : 0);
+    ctx.save(); ctx.translate(a, gy); if (H._sf < 0) ctx.scale(-1, 1);
+    Gfx.drawSprite(ctx, sp, 0, 0);
+    // 旋風斬：劍光
+    if (H.castK === 'whirl' && H.castT > 0) {
+      const q = 1 - H.castT / 0.55;
+      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 1 - q;
+      ctx.strokeStyle = '#e8f4ff'; ctx.lineWidth = s * 0.12;
+      ctx.beginPath(); ctx.ellipse(0, -s * 0.35, s * 0.85, s * 0.38, 0, q * 9, q * 9 + 3.6); ctx.stroke();
+      ctx.lineWidth = s * 0.05; ctx.strokeStyle = '#ffffff'; ctx.stroke();
+    } else if (H.d.atk === 'melee' && an === 'atk' && f >= 2 && f <= 4) {
+      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.75;
+      ctx.strokeStyle = '#eaf4ff'; ctx.lineWidth = s * 0.07; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(R * 0.4, -R * 1.25, R * 1.5, -1.6 + (f - 2) * 0.5, -0.4 + (f - 2) * 0.5); ctx.stroke(); ctx.lineCap = 'butt';
+    }
+    ctx.restore();
+    // 法杖光點
+    if (H.id === 'mage') {
+      const lift = an === 'cast' ? Math.sin(f / 5 * Math.PI) * R * 0.45 : 0;
+      const gx = a + H._sf * R * 0.42, gyy = gy - R * 2.45 - lift;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = an === 'cast' ? 0.9 : 0.45 + 0.15 * Math.sin(time * 4);
+      ctx.drawImage(Gfx.glow('#b88aff'), gx - R * 0.6, gyy - R * 0.6, R * 1.2, R * 1.2); ctx.restore();
+    }
+    // 血條＋等級
+    const top = gy - HeroArt.BOX.top * R;
+    const bw = s * 0.62, bh = Math.max(4, s * 0.08), bx = a - bw / 2 + s * 0.08, by = top - bh - s * 0.02;
+    rrect(ctx, bx - 1.5, by - 1.5, bw + 3, bh + 3, bh); ctx.fillStyle = 'rgba(20,14,28,.85)'; ctx.fill();
+    const hf = clamp(H.hp / H.maxHp, 0, 1);
+    if (hf > 0) { rrect(ctx, bx, by, Math.max(bh, bw * hf), bh, bh / 2); ctx.fillStyle = hf > 0.5 ? '#5ad86a' : hf > 0.25 ? '#f0c030' : '#e8404a'; ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fillRect(bx + 1, by + 0.5, Math.max(0, bw * hf - 2), Math.max(1, bh * 0.3)); }
+    const lr = Math.max(7, s * 0.15);
+    circ(ctx, bx - lr * 0.6, by + bh / 2, lr, H.d.color); ctx.strokeStyle = '#ffe08a'; ctx.lineWidth = Math.max(1.5, s * 0.03); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = `700 ${Math.round(lr * 1.15)}px "Fredoka",sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(H.lv, bx - lr * 0.6, by + bh / 2 + 0.5);
+  }
+  function drawHeroGround(ctx, G, H, ui, s, time) {
+    // 集結旗：選取英雄時、或正在走過去時顯示
+    if (!H.dead && (ui.selHero || H.cmd)) {
+      const [a, b] = V.P(H.rx, H.ry);
+      ctx.strokeStyle = 'rgba(255,216,74,.8)'; ctx.lineWidth = Math.max(1.5, s * 0.035);
+      const p = (time * 1.5) % 1;
+      ctx.globalAlpha = 1 - p; ctx.beginPath(); ctx.ellipse(a, b, s * (0.15 + p * 0.3), s * (0.07 + p * 0.14), 0, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1;
+      ctx.fillStyle = '#5a3a22'; ctx.fillRect(a - 1, b - s * 0.55, Math.max(2, s * 0.04), s * 0.55);
+      const wv = Math.sin(time * 6) * s * 0.03;
+      ctx.beginPath(); ctx.moveTo(a + 1, b - s * 0.55); ctx.quadraticCurveTo(a + s * 0.15, b - s * 0.5 + wv, a + s * 0.3, b - s * 0.47); ctx.lineTo(a + 1, b - s * 0.36); ctx.closePath(); ctx.fillStyle = H.d.color; ctx.fill(); ctx.strokeStyle = 'rgba(30,20,30,.8)'; ctx.lineWidth = 1; ctx.stroke();
+      if (ui.selHero && H.d.engage) { ctx.setLineDash([s * 0.1, s * 0.1]); ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.beginPath(); ctx.arc(a, b, H.d.engage * s, 0, TAU); ctx.stroke(); ctx.setLineDash([]); }
+      if (ui.selHero && !H.d.engage) { ctx.setLineDash([s * 0.1, s * 0.1]); ctx.strokeStyle = 'rgba(255,255,255,.35)'; const [ha, hb] = V.P(H.x, H.y); ctx.beginPath(); ctx.arc(ha, hb, H.d.range * s, 0, TAU); ctx.stroke(); ctx.setLineDash([]); }
+    }
+    // 選取英雄時，道路微微發亮提示可以點
+    if (ui.selHero && TR.pathGlow) { ctx.globalAlpha = 0.25 + 0.12 * Math.sin(time * 4); ctx.drawImage(TR.pathGlow, V.ox, V.oy, V.w, V.h); ctx.globalAlpha = 1; }
+    // 箭雨落點
+    for (const p of H.pend) if (p.k === 'rain') {
+      const [a, b] = V.P(p.x, p.y), q = 1 - p.t / p.T;
+      ctx.strokeStyle = `rgba(255,230,150,${0.25 + q * 0.5})`; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(a, b, p.r * s * 0.8, p.r * s * 0.4, 0, 0, TAU); ctx.stroke();
+    }
+  }
+  function drawHeroAir(ctx, H, s) {
+    const HS = s * Art.HS;
+    for (const p of H.pend) if (p.k === 'rain') {
+      const q = clamp(1 - p.t / p.T, 0, 1);
+      for (let i = 0; i < 4; i++) {
+        const ox = ((i * 37) % 7 - 3) * 0.12, oy = ((i * 53) % 5 - 2) * 0.12;
+        const [a, b0] = V.P(p.x + ox, p.y + oy), h = (1 - q) * 5 + i * 0.25, b = b0 - h * HS;
+        ctx.strokeStyle = '#7a5532'; ctx.lineWidth = Math.max(1.5, s * 0.035); ctx.beginPath(); ctx.moveTo(a, b - s * 0.3); ctx.lineTo(a, b); ctx.stroke();
+        poly(ctx, [a, b + s * 0.07, a - s * 0.035, b, a + s * 0.035, b], '#e8eef8');
+      }
+    }
+  }
+  function pathGlow(G, W, H) {
+    const c = Gfx.canvas(V.w, V.h), x = c.getContext('2d');
+    x.lineCap = 'round'; x.lineJoin = 'round';
+    x.strokeStyle = 'rgba(255,240,180,1)'; x.lineWidth = V.s * 0.75;
+    for (const P of G.paths) for (const run of pathRuns(P)) { x.beginPath(); run.forEach((p, i) => { const [a, b] = V.P(p.x, p.y); i ? x.lineTo(a - V.ox, b - V.oy) : x.moveTo(a - V.ox, b - V.oy); }); x.stroke(); }
+    x.globalCompositeOperation = 'destination-out'; x.lineWidth = V.s * 0.5; x.stroke();
+    for (const P of G.paths) for (const run of pathRuns(P)) { x.beginPath(); run.forEach((p, i) => { const [a, b] = V.P(p.x, p.y); i ? x.lineTo(a - V.ox, b - V.oy) : x.moveTo(a - V.ox, b - V.oy); }); x.stroke(); }
+    return c;
+  }
+
   // ───────── 縮圖、圖示 ─────────
   function fakeGame(li) {
     const L = LEVELS[li];
-    const fake = { L, T: THEMES[L.theme], grid: buildGrid(L, THEMES[L.theme]), paths: L.paths.map(buildPath), li, lives: 1, maxLives: 1, enemies: [], towers: [] };
+    const fake = { L, T: THEMES[L.theme], grid: buildGrid(L, THEMES[L.theme]), paths: levelPaths(L), li, lives: 1, maxLives: 1, enemies: [], towers: [] };
     const lp = fake.paths[0], ls = lp.seg[lp.seg.length - 1];
     fake.exitPt = { x: ls.b.x - ls.dx * 0.5, y: ls.b.y - ls.dy * 0.5, dx: ls.dx, dy: ls.dy };
     return fake;
@@ -355,7 +549,9 @@ const Render = (() => {
     if (G !== FX.G) FX.reset(G);
     lastG = G;
     FX.update(dt, time);
+    if (warmQ.length) warmStep(qual ? 3 : 5);
     const s = V.s, HS = s * Art.HS, th = G.L.theme, PAL = Terrain.pal(th);
+    budReset(W, H, s);
     const P = V.P;
     ctx.save();
     if (ui.shake > 0) ctx.translate((Math.random() - 0.5) * ui.shake * s * 0.25, (Math.random() - 0.5) * ui.shake * s * 0.25);
@@ -366,13 +562,16 @@ const Render = (() => {
     drawWaterAnim(ctx, s, time);
     drawDecals(ctx, s, time);
     groundUi(ctx, G, ui, s, time);
+    levelFx(ctx, G, s, time);
+    if (G.hero) drawHeroGround(ctx, G, G.hero, ui, s, time);
     // 光環（模擬層的衝擊波）
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const ringK = Math.min(1, 6 / Math.max(1, G.rings.length));
     for (const r of G.rings) {
       const [a, b] = P(r.x, r.y), u = 1 - r.life / r.max, rr = lerp(r.r0, r.r1, Math.sqrt(u)) * s;
-      ctx.globalAlpha = (1 - u) * 0.7; ctx.strokeStyle = r.c; ctx.lineWidth = Math.max(2, s * 0.09 * (1 - u));
+      ctx.globalAlpha = (1 - u) * 0.6 * ringK; ctx.strokeStyle = r.c; ctx.lineWidth = Math.max(2, s * 0.09 * (1 - u));
       ctx.beginPath(); ctx.arc(a, b, rr, 0, TAU); ctx.stroke();
-      ctx.globalAlpha = (1 - u) * 0.25; ctx.lineWidth = Math.max(4, s * 0.25 * (1 - u)); ctx.stroke();
+      ctx.globalAlpha = (1 - u) * 0.2 * ringK; ctx.lineWidth = Math.max(4, s * 0.25 * (1 - u)); ctx.stroke();
     }
     ctx.restore();
     // 飛行敵人的影子
@@ -388,6 +587,7 @@ const Render = (() => {
     for (const d of FX.deaths) if (!d.fly) { const [, b] = P(d.x, d.y); items.push([b + s * 0.08, 3, d]); }
     for (const g of FX.ghosts) { const [, b] = P(g.x, g.y); items.push([b + s * 0.12, 4, g]); }
     items.push([castlePos(G)[1] + s * 0.2, 5, null]);
+    if (G.hero && !G.hero.dead) items.push([P(G.hero.x, G.hero.y)[1] + s * 0.1, 7, G.hero]);
     for (const p of TR.portals) items.push([P(p.x, p.y)[1] + s * 0.3, 6, p]);
     items.sort((p, q) => p[0] - q[0]);
     const statusQ = [];
@@ -406,17 +606,20 @@ const Render = (() => {
         case 2: drawProp(ctx, o, s, time); break;
         case 3: drawDeath(ctx, o, s, time); break;
         case 4: {
+          if (o.hero) { const [a, b] = P(o.x, o.y), u = o.t / o.dur, sp = HeroArt.frame(o.hero, s * 0.33, 'idle', 0, dpr); ctx.save(); ctx.globalAlpha = (1 - u) * 0.7; ctx.translate(a, b + s * 0.1 - u * s * 0.9); ctx.scale(o.sf, 1); Gfx.drawSprite(ctx, Gfx.tinted(sp, 'ghost:' + o.hero + ':' + sp.w, '#cfe6ff', 0.75), 0, 0); ctx.restore(); break; }
           const [a, b] = P(o.x, o.y), [bk] = towerSprites(o.k, o.tier, o.spec, s), u = o.t / o.dur;
           ctx.globalAlpha = 1 - u * u; partial(ctx, bk, a, b + s * 0.12 + u * s * 0.15, 1 - u); ctx.globalAlpha = 1; break;
         }
         case 5: drawCastle(ctx, G, s, time); break;
         case 6: drawPortal(ctx, o, s, time, th); break;
+        case 7: { const [a, b] = P(o.x, o.y); drawHero(ctx, G, o, a, b, s, time, ui); break; }
       }
     }
     for (const [o, a, inf] of statusQ) enemyStatus(ctx, o, a, inf, s, time, dt);
 
     // ── 投射物 ──
     drawProjectiles(ctx, G, s, HS, time, dt);
+    if (G.hero) drawHeroAir(ctx, G.hero, s);
     // ── 飛行敵人 ──
     const fl = G.enemies.filter(e => e.alive && e.fly).sort((p, q) => p.y - q.y);
     for (const e of fl) {
@@ -431,7 +634,7 @@ const Render = (() => {
     drawParticles(ctx, G, s, HS, time, false);
     // ── 雲影 ──
     ctx.save(); rrect(ctx, V.ox, V.oy, V.w, V.h, s * 0.3); ctx.clip();
-    if (th !== 'night') {
+    if (th !== 'night' && th !== 'cave' && qual < 2) {
       const cs = cloudSprite();
       ctx.globalAlpha = th === 'desert' ? 0.5 : th === 'snow' ? 0.35 : 0.45;
       for (const c of FX.clouds) { const [a, b] = P(c.x, c.y), w = s * 7 * c.sc, h = w * 0.5; ctx.drawImage(cs, a - w / 2, b - h / 2, w, h); }
@@ -443,7 +646,7 @@ const Render = (() => {
     ctx.restore();
     // ── 發光（加色）──
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    for (const l of lights) { if (!l.c) continue; const r = l.r * s * (PAL.dark > 0 ? 0.8 : 0.5); ctx.globalAlpha = Math.min(1, l.a * (PAL.dark > 0 ? 0.2 : 0.14)); ctx.drawImage(Gfx.glow(l.c), l.sx - r, l.sy - r, r * 2, r * 2); }
+    for (const l of lights) { if (!l.c) continue; const r = l.r * s * (PAL.dark > 0 ? 0.8 : 0.5); glowAt(ctx, Gfx.glow(l.c), l.sx, l.sy, r, l.a * (PAL.dark > 0 ? 0.2 : 0.14)); }
     ctx.globalAlpha = 1;
     drawBolts(ctx, G, s, HS);
     drawParticles(ctx, G, s, HS, time, true);
@@ -470,6 +673,7 @@ const Render = (() => {
 
   function drawWaterAnim(ctx, s, time) {
     for (const w of TR.waters) {
+      if (w.void) continue;
       const [x0, y0, x1, y1] = w.box;
       ctx.save();
       ctx.clip(w.path);
@@ -510,12 +714,16 @@ const Render = (() => {
       const al = Math.min(1, u * 2.5);
       switch (d.k) {
         case 'scorch': case 'crater': {
-          ctx.globalAlpha = al * (d.k === 'crater' ? 0.85 : 0.6);
-          ctx.fillStyle = rgrad(ctx, a, b, 0, r, ['rgba(26,14,8,.85)', 'rgba(40,24,14,.45)', 'rgba(40,26,18,0)']);
-          ctx.beginPath(); ctx.ellipse(a, b, r * 0.8, r * 0.6, 0, 0, TAU); ctx.fill();
-          ctx.fillStyle = 'rgba(30,18,10,.7)';
-          for (let i = 0; i < 7; i++) { const an = d.rot + i * 0.9, q = r * (0.55 + (i % 3) * 0.12); ctx.beginPath(); ctx.ellipse(a + Math.cos(an) * q, b + Math.sin(an) * q * 0.72, r * 0.07, r * 0.05, an, 0, TAU); ctx.fill(); }
-          if (d.k === 'crater') { ctx.strokeStyle = 'rgba(120,90,60,.8)'; ctx.lineWidth = Math.max(1, s * 0.04); ctx.beginPath(); ctx.ellipse(a, b, r * 0.55, r * 0.4, 0, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke(); if (u > 0.6) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = (u - 0.6) * 1.5; ctx.drawImage(Gfx.glow('#ff6a1a'), a - r * 0.6, b - r * 0.45, r * 1.2, r * 0.9); ctx.globalCompositeOperation = 'source-over'; } }
+          const sp = decalSprite(d.k === 'crater' ? 'crater' : 'scorch', d.v);
+          ctx.globalAlpha = al * (d.k === 'crater' ? 0.75 : 0.45);
+          ctx.drawImage(sp, a - r, b - r * 0.75, r * 2, r * 1.5);
+          if (d.k === 'crater' && u > 0.55) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = (u - 0.55) * 1.2; ctx.drawImage(Gfx.glow('#ff6a1a'), a - r * 0.55, b - r * 0.4, r * 1.1, r * 0.8); ctx.globalCompositeOperation = 'source-over'; }
+          break;
+        }
+        case 'ink': {
+          ctx.globalAlpha = al * 0.7;
+          ctx.fillStyle = '#1e1028'; ctx.beginPath(); ctx.ellipse(a, b, r * 0.5, r * 0.35, 0, 0, TAU); ctx.fill();
+          for (let i = 0; i < 9; i++) { const an = d.rot + i * 0.7, q = r * (0.45 + (i % 3) * 0.15); ctx.beginPath(); ctx.ellipse(a + Math.cos(an) * q, b + Math.sin(an) * q * 0.7, r * 0.1, r * 0.07, an, 0, TAU); ctx.fill(); }
           break;
         }
         case 'shock': {
@@ -538,11 +746,8 @@ const Render = (() => {
           break;
         }
         case 'frost': {
-          ctx.globalAlpha = al * 0.55;
-          ctx.fillStyle = rgrad(ctx, a, b, 0, r, ['rgba(230,250,255,.9)', 'rgba(180,230,255,.5)', 'rgba(180,230,255,0)']);
-          ctx.beginPath(); ctx.ellipse(a, b, r, r * 0.75, 0, 0, TAU); ctx.fill();
-          ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 1;
-          for (let i = 0; i < 6; i++) { const an = d.rot + i * TAU / 6; ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(a + Math.cos(an) * r * 0.7, b + Math.sin(an) * r * 0.5); ctx.stroke(); }
+          ctx.globalAlpha = al * 0.6;
+          ctx.drawImage(decalSprite('frost', d.v), a - r, b - r * 0.75, r * 2, r * 1.5);
           break;
         }
         case 'crack': {
@@ -553,7 +758,7 @@ const Render = (() => {
         }
         case 'rune': {
           ctx.globalAlpha = al; ctx.save(); ctx.translate(a, b); ctx.scale(1, 0.7); ctx.rotate(time * 1.5);
-          ctx.strokeStyle = '#c8a0ff'; ctx.lineWidth = Math.max(1.5, s * 0.04); ctx.shadowColor = '#b38aff'; ctx.shadowBlur = s * 0.2;
+          ctx.strokeStyle = '#c8a0ff'; ctx.lineWidth = Math.max(1.5, s * 0.04); 
           ctx.beginPath(); ctx.arc(0, 0, r * 0.8, 0, TAU); ctx.stroke(); ctx.beginPath(); ctx.arc(0, 0, r * 0.55, 0, TAU); ctx.stroke();
           ctx.beginPath(); for (let i = 0; i < 6; i++) { const an = i * TAU / 6 * 2; ctx.lineTo(Math.cos(an) * r * 0.8, Math.sin(an) * r * 0.8); } ctx.closePath(); ctx.stroke();
           ctx.restore();
@@ -562,6 +767,41 @@ const Render = (() => {
       }
     }
     ctx.globalAlpha = 1;
+  }
+  // 地面痕跡的快取圖（每種 3 個變化）
+  const decalC = {};
+  function decalSprite(k, v) {
+    v = (v || 0) % 3;
+    const key = k + v;
+    if (decalC[key]) return decalC[key];
+    const S = 128, c = Gfx.canvas(S, S), x = c.getContext('2d'), rr = mkRng(v * 17 + k.length * 5 + 3), C = S / 2;
+    if (k === 'frost') {
+      x.fillStyle = rgrad(x, C, C, 0, C, ['rgba(235,250,255,.9)', 'rgba(190,235,255,.5)', 'rgba(190,235,255,0)']); x.fillRect(0, 0, S, S);
+      x.strokeStyle = 'rgba(255,255,255,.85)'; x.lineWidth = 2; x.lineCap = 'round';
+      for (let i = 0; i < 7; i++) { const an = rr() * TAU, L = C * (0.45 + rr() * 0.4); x.beginPath(); x.moveTo(C, C); x.lineTo(C + Math.cos(an) * L, C + Math.sin(an) * L); x.stroke(); const m = 0.55; x.beginPath(); x.moveTo(C + Math.cos(an) * L * m, C + Math.sin(an) * L * m); x.lineTo(C + Math.cos(an + 0.5) * L * 0.75, C + Math.sin(an + 0.5) * L * 0.75); x.stroke(); }
+    } else {
+      // 焦痕：淡淡的暖棕色、邊緣不規則、中間比較淺（像被燒過的草地），不是一團黑
+      const crater = k === 'crater';
+      for (let i = 0; i < 9; i++) {
+        const an = rr() * TAU, q = rr() * C * 0.35, px = C + Math.cos(an) * q, py = C + Math.sin(an) * q, R = C * (0.35 + rr() * 0.3);
+        x.fillStyle = rgrad(x, px, py, 0, R, [crater ? 'rgba(60,36,22,.45)' : 'rgba(92,62,36,.32)', crater ? 'rgba(70,44,26,.25)' : 'rgba(110,80,46,.16)', 'rgba(110,80,46,0)']);
+        x.beginPath(); x.arc(px, py, R, 0, TAU); x.fill();
+      }
+      // 放射狀的灰燼條紋
+      x.strokeStyle = crater ? 'rgba(40,26,18,.32)' : 'rgba(80,58,38,.16)'; x.lineCap = 'round';
+      for (let i = 0; i < 11; i++) { const an = i / 11 * TAU + rr() * 0.4, r0 = C * (0.3 + rr() * 0.15), r1 = C * (0.6 + rr() * 0.3); x.lineWidth = 1.5 + rr() * 2.5; x.beginPath(); x.moveTo(C + Math.cos(an) * r0, C + Math.sin(an) * r0); x.lineTo(C + Math.cos(an) * r1, C + Math.sin(an) * r1); x.stroke(); }
+      // 灰白色的灰燼點
+      for (let i = 0; i < 10; i++) { const an = rr() * TAU, q = rr() * C * 0.6; x.fillStyle = rr() < 0.5 ? 'rgba(200,190,170,.35)' : 'rgba(60,40,30,.35)'; x.beginPath(); x.arc(C + Math.cos(an) * q, C + Math.sin(an) * q, 1.5 + rr() * 2.5, 0, TAU); x.fill(); }
+      if (crater) { x.strokeStyle = 'rgba(150,120,90,.55)'; x.lineWidth = 4; x.beginPath(); x.ellipse(C, C, C * 0.42, C * 0.36, 0, Math.PI * 1.05, Math.PI * 1.95); x.stroke(); x.strokeStyle = 'rgba(40,24,16,.4)'; x.beginPath(); x.ellipse(C, C + 3, C * 0.42, C * 0.36, 0, 0.1, Math.PI - 0.1); x.stroke(); }
+    }
+    return (decalC[key] = c);
+  }
+  let bubbleC = null;
+  function bubbleSprite() {
+    if (bubbleC) return bubbleC;
+    const S = 64; bubbleC = Gfx.canvas(S, S); const x = bubbleC.getContext('2d');
+    x.fillStyle = rgrad(x, S / 2, S / 2, S * 0.3, S / 2, ['rgba(120,220,255,0)', 'rgba(120,220,255,.3)']); x.beginPath(); x.arc(S / 2, S / 2, S / 2, 0, TAU); x.fill();
+    return bubbleC;
   }
   function rangeCircle(ctx, wx, wy, r, c, s, time, dash) {
     const [a, b] = V.P(wx, wy), R = r * s;
@@ -630,7 +870,7 @@ const Render = (() => {
         const tl = s * 2.2;
         ctx.strokeStyle = lgrad(ctx, a, b, a + dx / l * tl, b + dy / l * tl, ['rgba(255,220,120,.9)', 'rgba(255,120,40,.5)', 'rgba(255,60,20,0)']);
         ctx.lineWidth = s * 0.35; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(a + dx / l * tl, b + dy / l * tl); ctx.stroke();
-        ctx.drawImage(Gfx.glow('#ff9a3a'), a - s * 0.8, b - s * 0.8, s * 1.6, s * 1.6);
+        glowAt(ctx, Gfx.glow('#ff9a3a'), a, b, s * 0.8, 1);
         ctx.restore();
         circ(ctx, a, b, s * 0.24, rgrad(ctx, a, b, 0, s * 0.24, ['#fff0b0', '#ff8a2a', '#8a2a10'], -s * 0.06, -s * 0.06));
         // 地上影子
@@ -663,7 +903,7 @@ const Render = (() => {
           const b = b0 - p.h * HS;
           ell(ctx, a, b0 + s * 0.05, s * 0.11, s * 0.05, 'rgba(0,0,0,.25)');
           const r = s * (p.big ? 0.15 : 0.11);
-          circ(ctx, a, b, r, rgrad(ctx, a, b, 0, r, ['#8a909a', '#3a3e46', '#16181c'], -r * 0.4, -r * 0.4));
+          circ(ctx, a, b, r, '#2e3238'); circ(ctx, a - r * 0.35, b - r * 0.35, r * 0.35, '#8a909a');
           if (p.big) { ctx.strokeStyle = '#ffb347'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(a, b, r * 0.7, time * 8, time * 8 + 1.5); ctx.stroke(); }
           p._st = (p._st || 0) - dt;
           if (p._st <= 0) { p._st = lowFx ? 0.08 : 0.04; FX.part('smoke', p.x, p.y, p.h, 0, 0, 0.1, 0.45, 0.07, '#cfc8bc'); }
@@ -683,9 +923,9 @@ const Render = (() => {
         case 'orb': {
           const b = b0 - p.h * HS;
           ctx.save(); ctx.globalCompositeOperation = 'lighter';
-          ctx.drawImage(Gfx.glow('#b06bff'), a - s * 0.35, b - s * 0.35, s * 0.7, s * 0.7);
+          glowAt(ctx, Gfx.glow('#b06bff'), a, b, s * 0.35, 1);
           ctx.restore();
-          circ(ctx, a, b, s * 0.09, rgrad(ctx, a, b, 0, s * 0.09, ['#ffffff', '#e2c8ff', '#9a5aff']));
+          circ(ctx, a, b, s * 0.09, '#b07aff'); circ(ctx, a, b, s * 0.055, '#f0e4ff');
           for (let i = 0; i < 2; i++) { const an = time * 12 + i * Math.PI; circ(ctx, a + Math.cos(an) * s * 0.14, b + Math.sin(an) * s * 0.07, s * 0.025, '#f4e8ff'); }
           if (Math.random() < 0.5) FX.part('glint', p.x, p.y, p.h, 0, 0, 0, 0.35, 0.04, '#d8b8ff');
           break;
@@ -714,11 +954,11 @@ const Render = (() => {
       if (bo.beam) {
         const [x0, y0] = pts[0], [x1, y1] = pts[1];
         for (const [w, c, al] of [[s * 0.5, bo.c, 0.3], [s * 0.26, bo.c, 0.8], [s * 0.1, '#ffffff', 1]]) { ctx.globalAlpha = u * al; ctx.strokeStyle = c; ctx.lineWidth = w * (0.4 + u * 0.6); ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); }
-        ctx.globalAlpha = u; ctx.drawImage(Gfx.glow(bo.c), x0 - s * 0.4, y0 - s * 0.4, s * 0.8, s * 0.8);
+        glowAt(ctx, Gfx.glow(bo.c), x0, y0, s * 0.4, u);
       } else if (bo.tracer) {
         const [x0, y0] = pts[0], [x1, y1] = pts[1];
         ctx.globalAlpha = u; ctx.strokeStyle = lgrad(ctx, x0, y0, x1, y1, ['rgba(255,246,200,0)', 'rgba(255,246,200,.95)']); ctx.lineWidth = Math.max(1.5, s * 0.04); ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
-        ctx.drawImage(Gfx.glow('#fff2a8'), x1 - s * 0.25, y1 - s * 0.25, s * 0.5, s * 0.5);
+        glowAt(ctx, Gfx.glow('#fff2a8'), x1, y1, s * 0.25, u);
       } else {
         // 連鎖閃電：每幀重新抖動
         const path = [];
@@ -732,8 +972,7 @@ const Render = (() => {
           ctx.globalAlpha = Math.min(1, u * 1.5) * al; ctx.strokeStyle = c; ctx.lineWidth = w; ctx.beginPath();
           path.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke();
         }
-        ctx.globalAlpha = Math.min(1, u * 1.5);
-        for (const [x, y] of pts.slice(1)) ctx.drawImage(Gfx.glow('#d8c0ff'), x - s * 0.3, y - s * 0.3, s * 0.6, s * 0.6);
+        for (let i = 1; i < pts.length; i++) glowAt(ctx, Gfx.glow('#d8c0ff'), pts[i][0], pts[i][1], s * 0.3, Math.min(1, u * 1.5));
       }
       ctx.globalAlpha = 1; ctx.lineCap = 'butt';
     }
@@ -764,6 +1003,8 @@ const Render = (() => {
       const [a, b0] = P(p.x, p.y), b = b0 - p.h * HS, u = p.life / p.max;
       switch (p.k) {
         case 'smoke': case 'mist': { ctx.globalAlpha = u * (p.k === 'mist' ? 0.35 : 0.45); const r = p.sz * s * (1 + (1 - u) * 1.3); ctx.drawImage(Gfx.puff(p.c), a - r, b - r, r * 2, r * 2); break; }
+        case 'bubble': { ctx.globalAlpha = Math.min(1, u * 2) * 0.7; const rr = Math.max(1.5, p.sz * s); ctx.strokeStyle = p.c; ctx.lineWidth = Math.max(1, s * 0.015); ctx.beginPath(); ctx.arc(a, b, rr, 0, TAU); ctx.stroke(); circ(ctx, a - rr * 0.35, b - rr * 0.35, rr * 0.25, 'rgba(255,255,255,.8)'); break; }
+        case 'cloudlet': { ctx.globalAlpha = Math.min(1, u * 4, (1 - u) * 4) * 0.55; const rr = p.sz * s; ctx.drawImage(cloudSprite(), a - rr * 2, b - rr, rr * 4, rr * 2); break; }
         case 'dust': { ctx.globalAlpha = Math.sin(u * Math.PI) * 0.25; const r = p.sz * s; ctx.drawImage(Gfx.puff(p.c), a - r * 1.6, b - r * 0.6, r * 3.2, r * 1.2); break; }
         case 'debris': { ctx.globalAlpha = Math.min(1, u * 3); ctx.save(); ctx.translate(a, b); ctx.rotate(p.rot); const r = p.sz * s; ctx.fillStyle = p.c; ctx.fillRect(-r, -r * 0.7, r * 2, r * 1.4); ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fillRect(-r, r * 0.2, r * 2, r * 0.5); ctx.restore(); break; }
         case 'ice': { ctx.globalAlpha = Math.min(1, u * 2); ctx.save(); ctx.translate(a, b); ctx.rotate(p.rot); const r = p.sz * s; poly(ctx, [0, -r * 1.6, r * 0.6, 0, 0, r * 1.6, -r * 0.6, 0], '#e8fbff'); ctx.restore(); break; }
@@ -773,11 +1014,11 @@ const Render = (() => {
         case 'snow': { ctx.globalAlpha = Math.min(1, u * 3) * 0.9; circ(ctx, a, b, p.sz * s, p.c); break; }
         case 'fly': { ctx.globalAlpha = Math.min(1, u * 3); const fl = Math.abs(Math.sin(time * 18 + p.rot)); ctx.fillStyle = p.c; ctx.beginPath(); ctx.ellipse(a - s * 0.04 * fl, b, s * 0.045 * fl + 1, s * 0.035, -0.4, 0, TAU); ctx.ellipse(a + s * 0.04 * fl, b, s * 0.045 * fl + 1, s * 0.035, 0.4, 0, TAU); ctx.fill(); break; }
         case 'bird': { ctx.globalAlpha = 1; const fl = Math.sin(time * 10 + p.rot) * s * 0.06; ctx.strokeStyle = p.c; ctx.lineWidth = Math.max(1.5, s * 0.03); ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(a - s * 0.12, b - fl); ctx.quadraticCurveTo(a - s * 0.05, b - s * 0.04, a, b); ctx.quadraticCurveTo(a + s * 0.05, b - s * 0.04, a + s * 0.12, b - fl); ctx.stroke(); break; }
-        case 'fire': { ctx.globalAlpha = u; const r = p.sz * s * (0.6 + u * 0.6); ctx.drawImage(Gfx.glow(u > 0.6 ? '#ffe27a' : u > 0.3 ? p.c : '#c8401a', true), a - r, b - r, r * 2, r * 2); break; }
-        case 'flash': { ctx.globalAlpha = u * 0.75; const r = p.sz * s * (1.2 - u * 0.3); ctx.drawImage(Gfx.glow(p.c), a - r, b - r, r * 2, r * 2); break; }
-        case 'glint': { ctx.globalAlpha = Math.min(1, u * 2); const r = Math.max(1.5, p.sz * s * 1.5); ctx.drawImage(Gfx.glow(p.c, true), a - r, b - r, r * 2, r * 2); break; }
-        case 'ember': { ctx.globalAlpha = Math.sin(u * Math.PI); const r = Math.max(1.5, p.sz * s * 2); ctx.drawImage(Gfx.glow(p.c, true), a - r, b - r, r * 2, r * 2); break; }
-        case 'firefly': { ctx.globalAlpha = Math.sin(u * Math.PI) * (0.5 + 0.5 * Math.sin(time * 4 + p.rot * 3)); const r = Math.max(2, s * 0.09); ctx.drawImage(Gfx.glow(p.c), a - r, b - r, r * 2, r * 2); break; }
+        case 'fire': { const r = p.sz * s * (0.6 + u * 0.6); glowAt(ctx, Gfx.glow(u > 0.6 ? '#ffd36b' : u > 0.3 ? p.c : '#c8401a', true), a, b, r, u * 0.85); break; }
+        case 'flash': { const r = p.sz * s * (1.2 - u * 0.3); glowAt(ctx, Gfx.glow(p.c), a, b, r, u * 0.6); break; }
+        case 'glint': { const r = Math.max(1.5, p.sz * s * 1.5); glowAt(ctx, Gfx.glow(p.c, true), a, b, r, Math.min(1, u * 2)); break; }
+        case 'ember': { const r = Math.max(1.5, p.sz * s * 2); glowAt(ctx, Gfx.glow(p.c, true), a, b, r, Math.sin(u * Math.PI)); break; }
+        case 'firefly': { const r = Math.max(2, s * 0.09); glowAt(ctx, Gfx.glow(p.c), a, b, r, Math.sin(u * Math.PI) * (0.5 + 0.5 * Math.sin(time * 4 + p.rot * 3))); break; }
       }
     }
     ctx.globalAlpha = 1;
@@ -792,7 +1033,8 @@ const Render = (() => {
       if (t.k === 'magic' || t.k === 'frost') add(t.cx, t.cy, h + 0.25, 1.6 + t.tier * 0.15, LCOL[t.k], 0.8 + 0.2 * Math.sin(time * 3 + t.id));
       else if (dark) add(t.cx, t.cy, h * 0.7, 1.4, LCOL[t.k], 0.75 + 0.1 * Math.sin(time * 9 + t.id));
     }
-    for (const p of props) { if (p.k === 'crystal') add(p.wx, p.wy, 0.3, 1.2, th === 'volcano' ? '#ffb35a' : '#9fe6ff', 0.7 + 0.2 * Math.sin(time * 2 + p.ph)); else if (p.k === 'lamp') add(p.wx, p.wy, 0.8, 1.6, '#ffcf7a', 0.85); }
+    for (const [px, py] of (G.L.pads || [])) add(px + 0.5, py + 0.5, 0.1, 1.3, '#7fe8ff', 0.8 + 0.2 * Math.sin(time * 2.5 + px));
+    for (const p of props) { if (p.k === 'crystal') add(p.wx, p.wy, 0.3, 1.2, th === 'volcano' ? '#ffb35a' : p.v < 0.5 ? '#9fe6ff' : '#d0a8ff', 0.7 + 0.2 * Math.sin(time * 2 + p.ph)); else if (p.k === 'lamp') add(p.wx, p.wy, 0.8, 1.6, '#ffcf7a', 0.85); }
     for (const p of TR.portals) add(p.x, p.y, 0.4, 2, (PORTAL_COL[th] || ['#ff9ae0', '#b06bff'])[1], 0.8 + 0.2 * Math.sin(time * 3));
     if (dark) { const e = G.exitPt; add(e.x, e.y, 0.6, 2.4, '#ffcf7a', 0.8); }
     if (TR.waters.length && TR.waters[0].lava) for (const w of TR.waters) { const [x0, y0, x1, y1] = w.box; L.push({ sx: (x0 + x1) / 2, sy: (y0 + y1) / 2, r: Math.max(x1 - x0, y1 - y0) / s * 0.9, c: '#ff7a2a', a: 0.8 + 0.15 * Math.sin(time * 2) }); }
@@ -801,6 +1043,7 @@ const Render = (() => {
     if (dark) for (const p of FX.parts) if (p.k === 'firefly' || p.k === 'ember' || p.k === 'fire') { const [sx, sy] = P(p.x, p.y); L.push({ sx, sy: sy - p.h * HS, r: p.k === 'fire' ? 0.8 : 0.35, c: null, a: 0.6 }); }
     for (const e of G.enemies) if (e.alive && (e.k === 'bossLich' || e.k === 'bossGolem')) add(e.x, e.y, 0.6, 1.8, e.k === 'bossLich' ? '#b38aff' : '#ff8a2a', 0.7);
     for (const b of G.bolts) { const p = b.pts[b.pts.length - 1]; add(p.x, p.y, p.h, 1.4, b.c, b.life / b.max); }
+    if (G.hero && !G.hero.dead) { const H = G.hero; add(H.x, H.y, 0.9, dark ? 1.6 : 0.9, H.id === 'mage' ? '#c08bff' : dark ? '#ffcf7a' : null, 0.7); }
     return L;
   }
   function drawDarkness(ctx, lights, PAL) {
@@ -854,7 +1097,15 @@ const Render = (() => {
   function overlays(ctx, G, ui, s, time, W, H) {
     // 隕石召喚時天色變紅
     if (FX.st.meteorSky > 0) { ctx.fillStyle = lgrad(ctx, 0, 0, 0, H * 0.6, [`rgba(255,90,30,${FX.st.meteorSky * 0.18})`, 'rgba(255,90,30,0)']); ctx.fillRect(0, 0, W, H); }
-    if (FX.st.flashW > 0) { ctx.fillStyle = `rgba(255,240,200,${FX.st.flashW * 0.8})`; ctx.fillRect(0, 0, W, H); }
+    if (FX.st.flashW > 0) { ctx.fillStyle = `rgba(255,214,150,${Math.min(0.12, FX.st.flashW * 0.45)})`; ctx.fillRect(0, 0, W, H); }
+    // 沙暴
+    if (FX.st.stormA > 0.02) {
+      ctx.save(); ctx.beginPath(); ctx.rect(V.ox, V.oy, V.w, V.h); ctx.clip();
+      ctx.globalAlpha = FX.st.stormA * 0.32; ctx.fillStyle = '#d8a860'; ctx.fillRect(V.ox, V.oy, V.w, V.h);
+      ctx.globalAlpha = FX.st.stormA * 0.5; const cs = cloudSprite();
+      for (let i = 0; i < 5; i++) { const ph = (time * 0.25 + i * 0.21) % 1; ctx.drawImage(cs, V.ox - V.w * 0.4 + ph * V.w * 1.4, V.oy + V.h * (i / 5) - s, V.w * 0.6, s * 2.5); }
+      ctx.restore(); ctx.globalAlpha = 1;
+    }
     // 頭目在場：暗紅邊緣
     const boss = G.enemies.find(e => e.alive && e.boss);
     if (boss) {

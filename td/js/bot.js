@@ -4,7 +4,7 @@ function botSpotScores(G, r) {
   G._spotCache = G._spotCache || {};
   if (G._spotCache[r]) return G._spotCache[r];
   const samples = [], o = { x: 0, y: 0 };
-  G.paths.forEach(P => { for (let d = 0.5; d < P.len; d += 0.5) { pathPos(P, d, o); samples.push({ x: o.x, y: o.y, w: 0.6 + 0.4 * d / P.len }); } });
+  G.paths.forEach(P => { for (let d = 0.5; d < P.len; d += 0.5) { if (P.hasTp && P.seg.some(sg => sg.tp && d > sg.s && d < sg.s + sg.l)) continue; pathPos(P, d, o); samples.push({ x: o.x, y: o.y, w: 0.6 + 0.4 * d / P.len }); } });
   G.fpaths.forEach(P => { for (let d = 0.5; d < P.len; d += 0.5) { pathPos(P, d, o); samples.push({ x: o.x, y: o.y, w: 0.5 }); } });
   const out = [];
   for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
@@ -12,7 +12,7 @@ function botSpotScores(G, r) {
     if (c.path || c.block) continue;
     let s = 0;
     for (const p of samples) if (dist2(p.x, p.y, x + 0.5, y + 0.5) <= r * r) s += p.w;
-    out.push({ x, y, s: s + (c.near === 1 ? 0.5 : 0) });
+    out.push({ x, y, s: s * (c.pad ? 1.35 : 1) + (c.near === 1 ? 0.5 : 0) + (c.pad ? 3 : 0) });
   }
   out.sort((a, b) => b.s - a.s);
   G._spotCache[r] = out;
@@ -75,10 +75,30 @@ function botThink(G, bot) {
     }
     if (!did) break;
   }
+  if (G.hero && bot.hero !== false) botHero(G, bot);
   if (G.state === 'ready') callWave(G, false);
   if (bot.meteor && G.skills.meteor.on && G.skills.meteor.cd <= 0) {
     let best = null;
     for (const e of G.enemies) if (!best || e.dist > best.dist) best = e;
     if (best && G.enemies.length > 6) castMeteor(G, best.x, best.y);
   }
+}
+// 英雄：站在塔火力最集中的道路上（塔有變化時重新找位置）
+function botHero(G, bot) {
+  const H = G.hero; if (!H || H.dead) return;
+  let key = G.towers.length * 100; for (const t of G.towers) key += t.tier;
+  if (bot.hk === key) return;
+  bot.hk = key;
+  const o = { x: 0, y: 0 };
+  let best = null, bs = -1;
+  for (const P of G.paths) for (let d = 0.5; d < P.len; d += 0.5) {
+    if (P.hasTp && P.seg.some(sg => sg.tp && d > sg.s && d < sg.s + sg.l)) continue;
+    pathPos(P, d, o);
+    if (o.x < 0.5 || o.y < 0.5 || o.x > COLS - 0.5 || o.y > ROWS - 0.5) continue;
+    let sc = 0;
+    for (const t of G.towers) { if (!t.st || TOWERS[t.k].support || !t.st.rate) continue; if (dist2(t.cx, t.cy, o.x, o.y) <= t.st.range * t.st.range) sc += 1 + t.tier; }
+    sc *= 0.5 + d / P.len;
+    if (sc > bs) { bs = sc; best = { x: o.x, y: o.y }; }
+  }
+  if (best && dist2(best.x, best.y, H.rx, H.ry) > 0.5) heroMove(G, best.x, best.y);
 }

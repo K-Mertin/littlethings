@@ -13,12 +13,12 @@ function metaBonus(meta) {
   };
 }
 
-function buildPath(pts) {
+function buildPath(pts, tp) {
   const p = pts.map(([x, y]) => ({ x: x + 0.5, y: y + 0.5 }));
   const seg = []; let len = 0;
   for (let i = 0; i < p.length - 1; i++) {
     const a = p[i], b = p[i + 1], l = Math.hypot(b.x - a.x, b.y - a.y);
-    seg.push({ a, b, l, s: len, dx: (b.x - a.x) / l, dy: (b.y - a.y) / l });
+    seg.push({ a, b, l, s: len, dx: (b.x - a.x) / l, dy: (b.y - a.y) / l, tp: !!(tp && tp.includes(i)) });
     len += l;
   }
   return { pts: p, seg, len };
@@ -30,13 +30,23 @@ function pathPos(P, d, o) {
   o.x = s.a.x + s.dx * t; o.y = s.a.y + s.dy * t; o.dx = s.dx; o.dy = s.dy;
   return o;
 }
+// 每條路線（含傳送段的標記）
+const levelPaths = L => L.paths.map((p, i) => buildPath(p, L.tp && L.tp[i]));
+// 一條路線拆成不含傳送段的幾段折線（畫路用）
+function pathRuns(P) {
+  const runs = []; let cur = [P.pts[0]];
+  P.seg.forEach((sg, i) => { if (sg.tp) { if (cur.length > 1) runs.push(cur); cur = [P.pts[i + 1]]; } else cur.push(P.pts[i + 1]); });
+  if (cur.length > 1) runs.push(cur);
+  return runs;
+}
 const inMap = (x, y) => x >= 0 && y >= 0 && x < COLS && y < ROWS;
 
 function buildGrid(L, T) {
   const g = [];
   for (let y = 0; y < ROWS; y++) { const row = []; for (let x = 0; x < COLS; x++) row.push({ path: false, block: false, water: false, deco: null, tower: null, near: 9 }); g.push(row); }
-  for (const P of L.paths) {
+  L.paths.forEach((P, pi) => {
     for (let i = 0; i < P.length - 1; i++) {
+      if (L.tp && L.tp[pi] && L.tp[pi].includes(i)) continue;
       let [x0, y0] = P[i]; const [x1, y1] = P[i + 1];
       const sx = Math.sign(x1 - x0), sy = Math.sign(y1 - y0);
       for (;;) {
@@ -45,7 +55,9 @@ function buildGrid(L, T) {
         x0 += sx; y0 += sy;
       }
     }
-  }
+  });
+  for (const [px, py] of (L.pads || [])) if (inMap(px, py)) g[py][px].pad = true;
+  for (const [cx, cy, cw, chh] of (L.current || [])) for (let y = cy; y < cy + chh; y++) for (let x = cx; x < cx + cw; x++) if (inMap(x, y)) g[y][x].cur = true;
   for (const [wx, wy, ww, wh] of (L.water || [])) {
     for (let y = wy; y < wy + wh; y++) for (let x = wx; x < wx + ww; x++) if (inMap(x, y) && !g[y][x].path) { g[y][x].water = true; g[y][x].block = true; }
   }
@@ -60,7 +72,7 @@ function buildGrid(L, T) {
     const c = g[y][x];
     const p = c.near === 1 ? 0.05 : c.near === 2 ? 0.1 : 0.2;
     const r = rng();
-    if (!c.path && !c.water && r < p) { c.block = true; c.deco = T.deco[Math.floor(rng() * T.deco.length)]; c.dv = rng(); }
+    if (!c.path && !c.water && !c.pad && r < p) { c.block = true; c.deco = T.deco[Math.floor(rng() * T.deco.length)]; c.dv = rng(); }
   }
   return g;
 }
@@ -80,7 +92,7 @@ function newGame(li, diff, opts) {
   const G = {
     li, L, T, D, M, diff, endless: !!opts.endless, noFx: !!opts.noFx, rnd: mkRng(opts.seed || (Date.now() & 0xffffff)),
     t: 0, gold: L.gold + D.gold + M.startGold + (opts.endless ? 200 : 0), lives: D.lives + M.lives, uid: 1,
-    paths: L.paths.map(buildPath), fpaths: L.paths.map(p => buildPath([p[0], p[p.length - 1]])),
+    paths: levelPaths(L), fpaths: L.paths.map(p => buildPath([p[0], p[p.length - 1]])),
     grid: buildGrid(L, T), wave: -1, spawners: [], enemies: [], towers: [], projs: [],
     parts: [], texts: [], rings: [], bolts: [], nextT: null, state: 'ready', dirty: true,
     towersAvail: TOWER_ORDER.filter(k => TOWERS[k].unlock <= lv),
@@ -96,6 +108,7 @@ function newGame(li, diff, opts) {
   if (G.chal === 'noskill') { G.skills.meteor.on = false; G.skills.freeze.on = false; }
   if (G.chal === 'iron') G.lives = 1;
   G.mod = null;
+  G.stormT = L.storm ? L.storm[0] * 0.6 : 0; G.stormOn = false;
   G.maxLives = G.lives;
   G.waves = G.endless ? [] : genWaves(L);
   G.nWaves = G.endless ? Infinity : G.waves.length;
@@ -106,6 +119,9 @@ function newGame(li, diff, opts) {
   });
   const ex = G.paths[0], last = ex.seg[ex.seg.length - 1];
   G.exitPt = { x: last.b.x - last.dx * 0.5, y: last.b.y - last.dy * 0.5, dx: last.dx, dy: last.dy };
+  G.hasCur = !!(L.current && L.current.length);
+  for (const P of G.paths) P.hasTp = P.seg.some(sg => sg.tp);
+  G.hero = opts.hero && typeof makeHero === 'function' ? makeHero(G, opts.hero) : null;
   return G;
 }
 
@@ -193,8 +209,9 @@ function calcStats(G) {
     const d = TOWERS[t.k], s = baseStats(t);
     s.air = s.air !== undefined ? s.air : d.air;
     if (t.buff.air) s.air = true;
-    if (s.dmg) s.dmg *= M.dmg[t.k] * (1 + t.buff.dmg);
-    s.range *= M.range * (1 + t.buff.range);
+    const pad = G.grid[t.y][t.x].pad;
+    if (s.dmg) s.dmg *= M.dmg[t.k] * (1 + t.buff.dmg) * (pad ? 1.25 : 1);
+    s.range *= M.range * (1 + t.buff.range) * (pad ? 1.1 : 1) * (G.stormOn ? G.L.storm[2] : 1);
     if (s.rate) s.rate *= 1 + t.buff.rate;
     if (s.splash && t.k === 'cannon') s.splash *= M.splash;
     if (s.slowT) s.slowT *= M.slowT;
@@ -236,7 +253,7 @@ function callWave(G, early) {
   }
   G.nextT = null;
   // 每波的軍餉
-  if (G.wave > 0) { const wg = waveGold(G); G.gold += wg; G.stats.earned += wg; }
+  if (G.wave > 0) { const wg = waveGold(G); G.gold += wg; G.stats.earned += wg; if (G.hero) heroXp(G, G.hero, 10); }
   // 金礦發薪水
   for (const t of G.towers) {
     if (t.k !== 'mine') continue;
@@ -274,7 +291,7 @@ function spawnEnemy(G, k, entry, hpMul, pi, at) {
     armor: d.armor || 0, mres: d.mres || 0, fly: !!d.fly, boss: !!d.boss,
     shield: d.shield ? d.shield * hpMul * G.D.hp : 0, shieldMax: d.shield ? d.shield * hpMul * G.D.hp : 0,
     slowT: 0, slowA: 0, frozenT: 0, brittle: false, markT: 0, markA: 0, shred: 0, flash: 0, lastHit: -9,
-    abilT: d.stomp || d.summon || d.dash || 2.4, dashT: 0, stunFx: 0,
+    abilT: d.stomp || d.summon || d.dash || d.burrow || 2.4, under: 0, revived: false, dashT: 0, stunFx: 0,
     off: d.boss ? 0 : (G.rnd() - 0.5) * 0.34, x: 0, y: 0, dx: 1, dy: 0, alive: true, wob: G.rnd() * 6.28, r: d.r,
     lives: d.lives || 1, healFx: 0,
   };
@@ -292,7 +309,7 @@ function placeEnemy(e) {
 }
 
 function hurt(G, e, amt, type, src) {
-  if (!e.alive || amt <= 0) return 0;
+  if (!e.alive || amt <= 0 || e.under > 0) return 0;
   let m = 1;
   if (e.markT > 0) m += e.markA;
   if (e.frozenT > 0 && e.brittle) m += 0.5;
@@ -306,15 +323,23 @@ function hurt(G, e, amt, type, src) {
   if (e.shield > 0) { const ab = Math.min(e.shield, a); e.shield -= ab; a -= ab; }
   e.hp -= a; e.flash = 0.09; e.lastHit = G.t;
   if (src && src.t) src.t.dmgDone += dealt;
+  else if (src && src.h) src.h.dmgDone += dealt;
   if (e.hp <= 0) killEnemy(G, e, src);
   return dealt;
 }
 function killEnemy(G, e, src) {
+  if (e.d.revive && !e.revived) {
+    // 木乃伊：倒下一次會再站起來
+    e.revived = true; e.hp = e.maxHp * e.d.revive; e.frozenT = Math.max(e.frozenT, 0.8); e.stunFx = 0;
+    ring(G, e.x, e.y, 0.1, 0.9, 0.5, '#e8d8a0'); Hook.fx('revive', G, e); Hook.sfx('summon');
+    return;
+  }
   e.alive = false;
   Hook.fx('kill', G, e);
   const b = Math.max(1, Math.round(e.d.bounty * Math.pow(e.hpMul, 0.7) * G.D.bounty * G.M.bounty * (G.mod === 'rich' ? 1.3 : 1)));
   G.gold += b; G.stats.kills++;
   if (src && src.t) src.t.kills++;
+  else if (src && src.h) { src.h.kills++; heroXp(G, src.h, e.boss ? 120 : Math.max(2, Math.round(b * 0.8))); }
   addText(G, e.x, e.y - 0.35 - (e.fly ? 0.5 : 0), '+' + b, '#ffd84a', e.boss ? 1.6 : 0.9);
   const col = enemyColor(e.k);
   if (e.boss) {
@@ -334,7 +359,7 @@ function killEnemy(G, e, src) {
   }
 }
 function enemyColor(k) {
-  return ({ slime: '#6ad65e', runner: '#ff9a3c', beetle: '#9aa6b6', bat: '#9c6bff', golem: '#b9a98e', healer: '#ffffff', shield: '#5aa8ff', splitter: '#ff7fbf', mini: '#ff9fd0', ogre: '#7fae55', gargoyle: '#8e98a8', skeleton: '#f1eee2', bossGolem: '#b28c63', bossDragon: '#ff5a3a', bossLich: '#8a5cff' })[k] || '#fff';
+  return ({ slime: '#6ad65e', runner: '#ff9a3c', beetle: '#9aa6b6', bat: '#9c6bff', golem: '#b9a98e', healer: '#ffffff', shield: '#5aa8ff', splitter: '#ff7fbf', mini: '#ff9fd0', ogre: '#7fae55', gargoyle: '#8e98a8', skeleton: '#f1eee2', bossGolem: '#b28c63', bossDragon: '#ff5a3a', bossLich: '#8a5cff', wisp: '#bfe8ff', crawler: '#7fe8ff', mummy: '#e8dcc0', crab: '#ff7a4a', bossRoc: '#6a8ae8', bossWorm: '#9a7ad8', bossPharaoh: '#ffd36b', bossKraken: '#b04ad8' })[k] || '#fff';
 }
 
 function updateEnemies(G, dt) {
@@ -345,8 +370,18 @@ function updateEnemies(G, dt) {
     if (e.slowT > 0) { e.slowT -= dt; if (e.slowT <= 0) e.slowA = 0; }
     let sp = e.spd * (1 - e.slowA);
     if (e.frozenT > 0) { e.frozenT -= dt; sp = 0; if (e.frozenT <= 0) e.brittle = false; }
+    if (e.held) sp = 0;
     if (e.dashT > 0) { e.dashT -= dt; sp *= 2.4; }
+    if (e.under > 0) e.under -= dt;
+    if (!e.fly && G.hasCur) { const cx = Math.floor(e.x), cy = Math.floor(e.y); if (inMap(cx, cy) && G.grid[cy][cx].cur) sp *= 1.4; }
     e.dist += sp * dt;
+    if (e.P.hasTp) {
+      for (const sg of e.P.seg) if (sg.tp && e.dist > sg.s && e.dist < sg.s + sg.l) {
+        const fx = e.x, fy = e.y; e.dist = sg.s + sg.l + 0.02; placeEnemy(e);
+        Hook.fx('tp', G, e, fx, fy); Hook.sfx('magic');
+        break;
+      }
+    }
     e.wob += dt * (2 + sp * 4);
     if (e.dist >= e.P.len) { leak(G, e); continue; }
     placeEnemy(e);
@@ -369,9 +404,10 @@ function updateEnemies(G, dt) {
       e.abilT -= dt;
       if (e.abilT <= 0) {
         e.abilT = d.stomp; let n = 0;
-        for (const t of G.towers) if (dist2(t.cx, t.cy, e.x, e.y) < 2.0 * 2.0) { t.stunT = 2.5; n++; }
-        ring(G, e.x, e.y, 0.3, 2.0, 0.6, '#d9b27a'); burst(G, e.x, e.y, 0, 20, '#a88a66', 3, 0.7);
-        Hook.shake(0.6); Hook.sfx('stomp'); Hook.fx('stomp', G, e);
+        const sr = d.ink ? 2.3 : 2.0;
+        for (const t of G.towers) if (dist2(t.cx, t.cy, e.x, e.y) < sr * sr) { t.stunT = d.ink ? 2.2 : 2.5; t.inked = !!d.ink; n++; }
+        ring(G, e.x, e.y, 0.3, sr, 0.6, d.ink ? '#5a3a8a' : '#d9b27a'); burst(G, e.x, e.y, 0, 20, d.ink ? '#2a1a3a' : '#a88a66', 3, 0.7);
+        Hook.shake(0.6); Hook.sfx('stomp'); Hook.fx(d.ink ? 'ink' : 'stomp', G, e);
       }
     }
     if (d.summon && e.frozenT <= 0) {
@@ -379,9 +415,14 @@ function updateEnemies(G, dt) {
       if (e.abilT <= 0) {
         e.abilT = d.summon;
         const hm = 1 + 0.05 * Math.max(0, G.wave);
-        for (let i = 0; i < 3; i++) { const c = spawnEnemy(G, 'skeleton', 0, hm, e.pi, Math.max(0, e.dist - 0.3 - i * 0.3)); c.off = (i - 1) * 0.22; placeEnemy(c); }
-        ring(G, e.x, e.y, 0.2, 1.5, 0.6, '#b38aff'); Hook.sfx('summon'); Hook.fx('summon', G, e);
+        const sk = d.summonK || 'skeleton', sn = d.summonN || 3;
+        for (let i = 0; i < sn; i++) { const c = spawnEnemy(G, sk, 0, hm, e.pi, Math.max(0, e.dist - 0.3 - i * 0.3)); c.off = (i - (sn - 1) / 2) * 0.22; placeEnemy(c); }
+        ring(G, e.x, e.y, 0.2, 1.5, 0.6, sk === 'wisp' ? '#bfe8ff' : sk === 'mummy' ? '#ffd36b' : '#b38aff'); Hook.sfx('summon'); Hook.fx('summon', G, e);
       }
+    }
+    if (d.burrow && e.frozenT <= 0) {
+      e.abilT -= dt;
+      if (e.abilT <= 0) { e.abilT = d.burrow; e.under = 2; e.dashT = 2; Hook.sfx('stomp'); Hook.fx('burrow', G, e); }
     }
     if (d.dash) {
       e.abilT -= dt;
@@ -414,7 +455,7 @@ function score(t, e) {
 function targets(G, t, n) {
   const st = t.st, r2 = st.range * st.range, out = [];
   for (const e of G.enemies) {
-    if (!e.alive || (e.fly && !st.air) || e.dist < 0.35) continue;
+    if (!e.alive || (e.fly && !st.air) || e.dist < 0.35 || e.under > 0) continue;
     if (dist2(t.cx, t.cy, e.x, e.y) > r2) continue;
     out.push(e);
   }
@@ -643,7 +684,8 @@ function updateProjs(G, dt) {
           Hook.fx('hit', G, p, tg);
           if (p.splash) ring(G, p.tx, p.ty, 0.1, p.splash, 0.3, '#bdefff');
         } else {
-          if (tg) hurt(G, tg, p.dmg, 'magic', p.src);
+          if (p.splash) explode(G, p.tx, p.ty, p.splash, p.dmg, 'magic', p.src, { air: true });
+          else if (tg) hurt(G, tg, p.dmg, 'magic', p.src);
           spark(G, p.tx, p.ty, th, '#e2c8ff', 8);
           Hook.fx('hit', G, p, tg);
         }
@@ -719,8 +761,6 @@ function boom(G, x, y, r, big, h) {
     const a = G.rnd() * 6.283, v = G.rnd() * r;
     part(G, x, y, h + 0.15, Math.cos(a) * v, Math.sin(a) * v, 0.6, 0.8 + G.rnd() * 0.5, '#6d6258', 0.16 + G.rnd() * 0.1, 'smoke');
   }
-  G.scorch = G.scorch || [];
-  if (h < 0.2) { G.scorch.push({ x, y, r: r * 0.55, life: 6 }); if (G.scorch.length > 40) G.scorch.shift(); }
 }
 function addText(G, x, y, s, c, sz, small) {
   if (G.noFx) return;
@@ -743,7 +783,6 @@ function updateFx(G, dt) {
   G.texts = G.texts.filter(t => (t.life -= dt) > 0);
   G.rings = G.rings.filter(r => (r.life -= dt) > 0);
   G.bolts = G.bolts.filter(b => (b.life -= dt) > 0);
-  if (G.scorch) G.scorch = G.scorch.filter(s => (s.life -= dt) > 0);
   if (G.flash > 0) G.flash -= dt;
   if (G.iceFlash > 0) G.iceFlash -= dt;
 }
@@ -754,6 +793,13 @@ function step(G, dt) {
   if (G.state === 'won' || G.state === 'lost') return;
   G.t += dt;
   for (const k in G.skills) { const s = G.skills[k]; if (s.cd > 0 && G.state === 'run') s.cd = Math.max(0, s.cd - dt); }
+  if (G.L.storm && G.state === 'run') {
+    G.stormT -= dt;
+    if (G.stormT <= 0) {
+      G.stormOn = !G.stormOn; G.stormT = G.stormOn ? G.L.storm[1] : G.L.storm[0];
+      G.dirty = true; Hook.fx('storm', G, G.stormOn);
+    }
+  }
   if (G.nextT !== null) { G.nextT -= dt; if (G.nextT <= 0) { G.nextT = 0; callWave(G, false); } }
   for (const sp of G.spawners) {
     if (sp.delay > 0) { sp.delay -= dt; continue; }
@@ -763,6 +809,7 @@ function step(G, dt) {
   if (G.spawners.length) G.spawners = G.spawners.filter(s => s.left > 0);
   if (G.state === 'run' && G.wave >= 0 && !G.spawners.length && G.nextT === null && G.wave < G.nWaves - 1) G.nextT = WAVE_GAP;
   updateEnemies(G, dt);
+  if (G.hero) updateHero(G, dt);
   if (G.state !== 'run') return;
   updateTowers(G, dt);
   updateProjs(G, dt);

@@ -163,65 +163,72 @@ const Art = (() => {
   }
 
   // ───────── 角色 ─────────
-  const SKIN = '#f2c79b';
+  const SKIN = '#f6cfa6';
+  // Q 版小兵：腳底在 (0,0)、面向右。look：{ c 衣服, hat 帽子種類, hc 帽子顏色, feather, hair }
+  // 頭比較大、有眼睛和腮紅，衣服三階明暗，帽子依兵種不同，一眼就分得出來。
+  function chibi(x, u, look) {
+    const k = u * 1.3, c = look.c || '#4f9a4a', L = lw(u, 0.011);
+    // 靴子
+    for (const bx of [-0.03, 0.012]) { rrect(x, bx * k, -k * 0.045, k * 0.03, k * 0.045, k * 0.008); fs(x, '#3a2a22', OUT, L); }
+    // 斗篷（背後）
+    if (look.cape) { x.beginPath(); x.moveTo(-k * 0.04, -k * 0.17); x.quadraticCurveTo(-k * 0.1, -k * 0.1, -k * 0.085, -k * 0.035); x.lineTo(-k * 0.02, -k * 0.06); x.closePath(); fs(x, look.cape, OUT, L); }
+    // 身體
+    x.beginPath(); x.moveTo(-k * 0.055, -k * 0.04); x.quadraticCurveTo(-k * 0.06, -k * 0.13, -k * 0.042, -k * 0.165); x.lineTo(k * 0.042, -k * 0.165); x.quadraticCurveTo(k * 0.065, -k * 0.13, k * 0.058, -k * 0.04); x.closePath();
+    fs(x, lgrad(x, -k * 0.06, 0, k * 0.06, 0, [shade(c, 0.3), c, shade(c, -0.35)]), OUT, L);
+    if (look.robe) { x.beginPath(); x.moveTo(-k * 0.06, -k * 0.04); x.lineTo(k * 0.065, -k * 0.04); x.lineTo(k * 0.07, -k * 0.005); x.lineTo(-k * 0.068, -k * 0.005); x.closePath(); fs(x, shade(c, -0.15), OUT, L); }
+    x.fillStyle = look.belt || '#5a3a1e'; x.fillRect(-k * 0.055, -k * 0.088, k * 0.112, k * 0.016);
+    circ(x, k * 0.005, -k * 0.08, k * 0.008, '#f2c14e');
+    // 頭
+    const hy = -k * 0.225, hr = k * 0.06;
+    if (look.hair) { x.beginPath(); x.arc(-k * 0.01, hy + k * 0.005, hr * 1.05, Math.PI * 0.5, Math.PI * 1.5); x.fillStyle = look.hair; x.fill(); }
+    circ(x, 0, hy, hr, rgrad(x, -hr * 0.3, hy - hr * 0.35, hr * 0.1, hr * 1.2, ['#ffe6cc', SKIN, '#d8a07a'])); x.strokeStyle = OUT; x.lineWidth = L; x.stroke();
+    for (const ex of [0.018, 0.042]) { x.beginPath(); x.ellipse(ex * k, hy + k * 0.002, k * 0.008, k * 0.012, 0, 0, TAU); x.fillStyle = '#2a1a22'; x.fill(); circ(x, ex * k + k * 0.003, hy - k * 0.004, k * 0.0035, '#ffffff'); }
+    ell(x, k * 0.05, hy + k * 0.02, k * 0.01, k * 0.006, 'rgba(255,110,110,.55)');
+    // 帽子
+    const hc = look.hc || shade(c, -0.25);
+    switch (look.hat) {
+      case 'hood': x.beginPath(); x.arc(0, hy - k * 0.004, hr * 1.12, Math.PI * 0.92, Math.PI * 2.12); x.lineTo(-hr * 1.1, hy + k * 0.06); x.closePath(); fs(x, lgrad(x, -hr, 0, hr, 0, [shade(hc, 0.25), hc, shade(hc, -0.3)]), OUT, L); break;
+      case 'helm': x.beginPath(); x.arc(0, hy - k * 0.002, hr * 1.1, Math.PI, 0); x.lineTo(hr * 1.25, hy + k * 0.002); x.lineTo(-hr * 1.2, hy + k * 0.002); x.closePath(); fs(x, lgrad(x, 0, hy - hr, 0, hy, ['#ffffff', hc, shade(hc, -0.35)]), OUT, L); circ(x, 0, hy - hr * 1.05, k * 0.01, '#e5484d'); break;
+      case 'wizard': x.beginPath(); x.moveTo(-hr * 1.4, hy - k * 0.02); x.quadraticCurveTo(0, hy - k * 0.035, hr * 1.5, hy - k * 0.02); x.quadraticCurveTo(0, hy - k * 0.005, -hr * 1.4, hy - k * 0.02); x.closePath(); fs(x, hc, OUT, L); x.beginPath(); x.moveTo(-hr * 0.8, hy - k * 0.025); x.quadraticCurveTo(-hr * 0.2, hy - k * 0.12, -hr * 1.2, hy - k * 0.16); x.quadraticCurveTo(hr * 0.4, hy - k * 0.1, hr * 0.85, hy - k * 0.025); x.closePath(); fs(x, lgrad(x, -hr, 0, hr, 0, [shade(hc, 0.3), hc, shade(hc, -0.3)]), OUT, L); Gfx.star(x, -hr * 1.2, hy - k * 0.16, k * 0.014, '#ffe27a', false); break;
+      case 'miner': x.beginPath(); x.arc(0, hy - k * 0.004, hr * 1.08, Math.PI, 0); x.closePath(); fs(x, lgrad(x, 0, hy - hr, 0, hy, ['#fff3a0', '#f2c14e', '#b8862a']), OUT, L); x.fillStyle = '#b8862a'; x.fillRect(-hr * 1.25, hy - k * 0.006, hr * 2.5, k * 0.01); circ(x, hr * 0.5, hy - hr * 0.55, k * 0.012, '#ffffff'); break;
+      case 'tophat': x.beginPath(); x.ellipse(0, hy - hr * 0.55, hr * 1.4, hr * 0.32, 0, 0, TAU); fs(x, hc, OUT, L); rrect(x, -hr * 0.75, hy - hr * 1.6, hr * 1.5, hr * 1.05, hr * 0.25); fs(x, lgrad(x, -hr, 0, hr, 0, [shade(hc, 0.25), hc, shade(hc, -0.3)]), OUT, L); x.fillStyle = look.band || '#e5484d'; x.fillRect(-hr * 0.75, hy - hr * 0.85, hr * 1.5, hr * 0.22); break;
+      default: x.beginPath(); x.moveTo(-hr * 1.15, hy - k * 0.006); x.quadraticCurveTo(0, hy - k * 0.1, hr * 1.1, hy - k * 0.012); x.lineTo(hr * 1.4, hy - k * 0.004); x.lineTo(-hr * 1.25, hy); x.closePath(); fs(x, lgrad(x, 0, hy - k * 0.08, 0, hy, [shade(hc, 0.3), hc]), OUT, L);
+    }
+    if (look.feather) { x.strokeStyle = look.feather; x.lineWidth = lw(u, 0.018); x.lineCap = 'round'; x.beginPath(); x.moveTo(-k * 0.03, hy - k * 0.05); x.quadraticCurveTo(-k * 0.08, hy - k * 0.1, -k * 0.115, hy - k * 0.07); x.stroke(); x.lineCap = 'butt'; }
+    return { k, hy };
+  }
   // 弓箭手：腳底在 (0,0)，面向右。aim = 相對角度（往右為 0），pull 0~1 拉弓程度
   function archer(x, u, aim, pull, look) {
-    const tunic = look.tunic || '#3f8a4a', hat = look.hat || '#2f6b38';
-    const k = u * 1.15;
-    // 腿
-    x.fillStyle = '#3a2a22'; x.fillRect(-k * 0.035, -k * 0.06, k * 0.028, k * 0.06); x.fillRect(k * 0.008, -k * 0.06, k * 0.028, k * 0.06);
-    // 身體
-    x.beginPath(); x.moveTo(-k * 0.055, -k * 0.055); x.lineTo(-k * 0.045, -k * 0.165); x.lineTo(k * 0.045, -k * 0.165); x.lineTo(k * 0.06, -k * 0.055); x.closePath();
-    fs(x, tunic, OUT, lw(u, 0.012));
-    x.fillStyle = '#5a3a1e'; x.fillRect(-k * 0.05, -k * 0.095, k * 0.105, k * 0.018);
+    const { k } = chibi(x, u, { c: look.tunic || '#3f8a4a', hat: look.hood ? 'hood' : 'cap', hc: look.hat || '#2f6b38', feather: look.hood ? null : (look.feather || '#e5484d'), cape: look.hood ? shade(look.hat || '#2f6b38', -0.1) : null, hair: '#8a5a2a' });
     // 箭袋
-    x.fillStyle = '#7a4a22'; x.fillRect(-k * 0.075, -k * 0.17, k * 0.03, k * 0.08);
-    x.fillStyle = '#e8e2d0'; x.fillRect(-k * 0.072, -k * 0.19, k * 0.008, k * 0.03); x.fillRect(-k * 0.062, -k * 0.195, k * 0.008, k * 0.03);
-    // 頭
-    circ(x, 0, -k * 0.205, k * 0.046, SKIN); x.strokeStyle = OUT; x.lineWidth = lw(u, 0.01); x.stroke();
-    circ(x, k * 0.018, -k * 0.208, k * 0.008, '#2a1a12');
-    if (look.hood) { x.beginPath(); x.arc(0, -k * 0.21, k * 0.054, Math.PI * 0.95, Math.PI * 2.15); x.lineTo(-k * 0.06, -k * 0.15); x.closePath(); fs(x, hat, OUT, lw(u, 0.01)); }
-    else {
-      x.beginPath(); x.moveTo(-k * 0.06, -k * 0.22); x.quadraticCurveTo(0, -k * 0.3, k * 0.055, -k * 0.225); x.lineTo(k * 0.065, -k * 0.215); x.lineTo(-k * 0.065, -k * 0.212); x.closePath(); fs(x, hat, OUT, lw(u, 0.01));
-      x.strokeStyle = look.feather || '#e5484d'; x.lineWidth = lw(u, 0.016); x.beginPath(); x.moveTo(-k * 0.03, -k * 0.255); x.quadraticCurveTo(-k * 0.08, -k * 0.3, -k * 0.11, -k * 0.27); x.stroke();
-    }
-    // 弓
-    const sx = k * 0.01, sy = -k * 0.15;
+    rrect(x, -k * 0.085, -k * 0.175, k * 0.03, k * 0.085, k * 0.008); fs(x, '#8a5a2a', OUT, lw(u, 0.01));
+    x.fillStyle = '#f2ece0'; x.fillRect(-k * 0.082, -k * 0.195, k * 0.008, k * 0.026); x.fillStyle = '#e5484d'; x.fillRect(-k * 0.071, -k * 0.2, k * 0.008, k * 0.03);
+    const sx = k * 0.01, sy = -k * 0.13;
     x.save(); x.translate(sx, sy); x.rotate(aim);
-    const br = k * (look.long ? 0.11 : 0.085), bx = k * 0.075;
-    x.strokeStyle = OUT; x.lineWidth = lw(u, 0.03); x.beginPath(); x.arc(bx - br * 0.55, 0, br, -1.05, 1.05); x.stroke();
-    x.strokeStyle = look.bow || '#8a5a2a'; x.lineWidth = lw(u, 0.018); x.stroke();
-    const ex = bx - br * 0.55 + Math.cos(1.05) * br, ey = Math.sin(1.05) * br, hx = bx - br * 0.55 + Math.cos(1.05) * br - pull * k * 0.07;
-    x.strokeStyle = 'rgba(255,255,255,.85)'; x.lineWidth = 1; x.beginPath(); x.moveTo(ex, -ey); x.lineTo(hx, 0); x.lineTo(ex, ey); x.stroke();
-    if (pull > 0.25) { x.strokeStyle = '#6b4a2a'; x.lineWidth = lw(u, 0.012); x.beginPath(); x.moveTo(hx, 0); x.lineTo(bx + k * 0.04, 0); x.stroke(); poly(x, [bx + k * 0.06, 0, bx + k * 0.035, -k * 0.012, bx + k * 0.035, k * 0.012], '#d8dde6'); }
-    // 手
+    const br = k * (look.long ? 0.11 : 0.088), bx = k * 0.075;
+    x.strokeStyle = OUT; x.lineWidth = lw(u, 0.032); x.beginPath(); x.arc(bx - br * 0.55, 0, br, -1.05, 1.05); x.stroke();
+    x.strokeStyle = look.bow || '#a86a32'; x.lineWidth = lw(u, 0.02); x.stroke();
+    x.strokeStyle = '#f2c14e'; x.lineWidth = lw(u, 0.012); x.beginPath(); x.arc(bx - br * 0.55, 0, br, -0.2, 0.2); x.stroke();
+    const ex = bx - br * 0.55 + Math.cos(1.05) * br, ey = Math.sin(1.05) * br, hx = ex - pull * k * 0.07;
+    x.strokeStyle = 'rgba(255,255,255,.9)'; x.lineWidth = 1; x.beginPath(); x.moveTo(ex, -ey); x.lineTo(hx, 0); x.lineTo(ex, ey); x.stroke();
+    if (pull > 0.25) { x.strokeStyle = '#6b4a2a'; x.lineWidth = lw(u, 0.012); x.beginPath(); x.moveTo(hx, 0); x.lineTo(bx + k * 0.04, 0); x.stroke(); poly(x, [bx + k * 0.06, 0, bx + k * 0.035, -k * 0.012, bx + k * 0.035, k * 0.012], '#e8eef8'); }
     circ(x, bx - br * 0.55 + br * 0.98, 0, k * 0.016, SKIN); circ(x, hx, 0, k * 0.016, SKIN);
     x.restore();
   }
   // 狙擊手
   function rifleman(x, u, aim, rec, look) {
-    const k = u * 1.15;
-    x.fillStyle = '#2a2a30'; x.fillRect(-k * 0.035, -k * 0.06, k * 0.028, k * 0.06); x.fillRect(k * 0.008, -k * 0.06, k * 0.028, k * 0.06);
-    x.beginPath(); x.moveTo(-k * 0.058, -k * 0.055); x.lineTo(-k * 0.05, -k * 0.17); x.lineTo(k * 0.05, -k * 0.17); x.lineTo(k * 0.06, -k * 0.055); x.closePath();
-    fs(x, look.coat, OUT, lw(u, 0.012));
-    x.fillStyle = shade(look.coat, -0.3); x.fillRect(-k * 0.05, -k * 0.1, k * 0.105, k * 0.016);
-    circ(x, 0, -k * 0.208, k * 0.046, SKIN); x.strokeStyle = OUT; x.lineWidth = lw(u, 0.01); x.stroke();
-    // 帽子
-    x.beginPath(); x.ellipse(0, -k * 0.232, k * 0.075, k * 0.018, 0, 0, TAU); fs(x, look.hat, OUT, lw(u, 0.01));
-    rrect(x, -k * 0.04, -k * 0.285, k * 0.08, k * 0.055, k * 0.02); fs(x, look.hat, OUT, lw(u, 0.01));
-    x.fillStyle = look.band || '#e5484d'; x.fillRect(-k * 0.04, -k * 0.252, k * 0.08, k * 0.012);
-    // 槍
-    x.save(); x.translate(k * 0.0, -k * 0.14); x.rotate(aim);
+    const { k } = chibi(x, u, { c: look.coat, hat: 'tophat', hc: look.hat, band: look.band || '#e5484d', belt: shade(look.coat, -0.4), hair: '#3a2a22' });
+    x.save(); x.translate(0, -k * 0.13); x.rotate(aim);
     const L = k * 0.26, back = rec * k * 0.04;
     x.translate(-back, 0);
-    rrect(x, -k * 0.06, -k * 0.016, k * 0.1, k * 0.036, k * 0.01); fs(x, '#7a4a22', OUT, lw(u, 0.01));
+    rrect(x, -k * 0.06, -k * 0.016, k * 0.1, k * 0.036, k * 0.01); fs(x, lgrad(x, 0, -k * 0.016, 0, k * 0.02, ['#a86a3a', '#7a4a22']), OUT, lw(u, 0.01));
     x.fillStyle = OUT; x.fillRect(k * 0.02, -k * 0.012, L, k * 0.022);
-    x.fillStyle = '#4b505a'; x.fillRect(k * 0.02, -k * 0.009, L - 1, k * 0.012);
+    x.fillStyle = lgrad(x, 0, -k * 0.01, 0, k * 0.008, ['#8a909a', '#4b505a']); x.fillRect(k * 0.02, -k * 0.009, L - 1, k * 0.014);
     rrect(x, k * 0.05, -k * 0.045, k * 0.09, k * 0.024, k * 0.01); fs(x, look.scope || '#2a2d33', OUT, lw(u, 0.008));
-    circ(x, k * 0.0, k * 0.0, k * 0.016, SKIN);
+    circ(x, k * 0.14, -k * 0.033, k * 0.009, '#9fe6ff');
+    circ(x, k * 0.0, k * 0.0, k * 0.016, SKIN); circ(x, k * 0.09, k * 0.005, k * 0.014, SKIN);
     x.restore();
   }
-
   // ───────── 防禦塔：靜態塔身 ─────────
   // part: 'back'（塔身＋後半部）或 'front'（前面的欄杆、城垛）
   function body(x, k, tier, sp, u, part) {
@@ -611,6 +618,16 @@ const Art = (() => {
           if (tier >= 2 || big) { x.fillStyle = big ? '#f2d080' : '#d9a83a'; x.fillRect(l * 0.4, -bw - 0.5, u * 0.035, bw * 2 + 1); }
           x.restore();
         };
+        // 砲手（Lv2 起）：戴頭盔、拿火把
+        if (tier >= 1) {
+          x.save(); x.translate(-face * u * 0.24, py + u * 0.02); x.scale(face, 1);
+          chibi(x, u * 0.85, { c: big ? '#8a5a2a' : '#5a6a8a', hat: 'helm', hc: big ? '#d8a84a' : '#a8b4c8', hair: '#3a2a22' });
+          const kk = u * 0.85 * 1.3;
+          x.strokeStyle = OUT; x.lineWidth = lw(u, 0.03); x.beginPath(); x.moveTo(kk * 0.03, -kk * 0.12); x.lineTo(kk * 0.1, -kk * 0.2); x.stroke();
+          x.strokeStyle = '#7a4a22'; x.lineWidth = lw(u, 0.018); x.stroke();
+          flame(x, kk * 0.105, -kk * 0.21, u * (0.035 + rec * 0.02), time * 1.5 + t.id);
+          x.restore();
+        }
         if (behind) drawBarrel();
         // 砲座圓頂
         const dr = u * (0.13 + tier * 0.015 + (big ? 0.04 : 0));
@@ -642,6 +659,16 @@ const Art = (() => {
         const py = -(T - 0.3 * u);
         const oy = -T + Math.sin(time * 2.4 + t.id) * u * 0.035;
         const pc = sp === 1 ? '#ff7ee0' : sp === 0 ? '#8fd0ff' : '#c08bff';
+        // 法師（Lv2 起）：舉起法杖對著水晶球施法
+        if (tier >= 1) {
+          x.save(); x.translate(-u * 0.2, py + u * 0.05);
+          chibi(x, u * 0.8, { c: sp === 1 ? '#a83a8a' : sp === 0 ? '#3a5ab8' : '#6a3ac8', hat: 'wizard', hc: sp === 1 ? '#6a1a5a' : sp === 0 ? '#1e2e7a' : '#3e1f84', robe: true, hair: '#e8e8f0' });
+          const kk = u * 0.8 * 1.3, lift = rec * kk * 0.03;
+          x.strokeStyle = OUT; x.lineWidth = lw(u, 0.025); x.beginPath(); x.moveTo(kk * 0.07, -kk * 0.02); x.lineTo(kk * 0.1, -kk * 0.3 - lift); x.stroke();
+          x.strokeStyle = '#8a5a32'; x.lineWidth = lw(u, 0.014); x.stroke();
+          circ(x, kk * 0.1, -kk * 0.31 - lift, kk * 0.02, pc); circ(x, kk * 0.06, -kk * 0.13, kk * 0.016, SKIN);
+          x.restore();
+        }
         // 符文環
         x.save(); x.strokeStyle = rgba(pc, 0.55); x.lineWidth = lw(u, 0.012);
         x.beginPath(); x.ellipse(0, oy + u * 0.02, u * 0.2, u * 0.06, 0, 0, TAU); x.stroke();
@@ -728,6 +755,20 @@ const Art = (() => {
           if (tw2 < 0.3) sparkle(x, u * 0.34, u * 0.04, u * 0.06 * Math.sin(tw2 / 0.3 * Math.PI));
           break;
         }
+        // 礦工：戴安全帽揮十字鎬
+        {
+          x.save(); x.translate(-u * 0.3, u * 0.08);
+          chibi(x, u * 0.85, { c: '#5a6aa8', hat: 'miner', hair: '#3a2a22', belt: '#3a2a1a' });
+          const kk = u * 0.85 * 1.3, sw = Math.sin(time * 5 + t.id) * 0.7 - 0.3;
+          x.save(); x.translate(kk * 0.03, -kk * 0.12); x.rotate(sw);
+          x.strokeStyle = OUT; x.lineWidth = lw(u, 0.026); x.beginPath(); x.moveTo(0, 0); x.lineTo(kk * 0.12, -kk * 0.08); x.stroke();
+          x.strokeStyle = '#9a6a3a'; x.lineWidth = lw(u, 0.015); x.stroke();
+          x.beginPath(); x.moveTo(kk * 0.08, -kk * 0.13); x.quadraticCurveTo(kk * 0.14, -kk * 0.1, kk * 0.16, -kk * 0.03); x.strokeStyle = OUT; x.lineWidth = lw(u, 0.026); x.stroke(); x.strokeStyle = '#b8c0cc'; x.lineWidth = lw(u, 0.014); x.stroke();
+          circ(x, 0, 0, kk * 0.016, SKIN);
+          x.restore();
+          if (Math.sin(time * 5 + t.id) > 0.92) sparkle(x, kk * 0.17, -kk * 0.02, u * 0.04);
+          x.restore();
+        }
         // 礦車進出
         const m = (Math.sin(time * 0.9 + t.id) + 1) / 2;
         const kx = lerp(-u * 0.02, u * 0.06, m), ky = lerp(u * 0.0, u * 0.16, m), ks = 0.8 + m * 0.25;
@@ -758,13 +799,7 @@ const Art = (() => {
     }
   }
   // 沒拿武器的小人（鼓手、哨兵）
-  function archerless(x, u, c) {
-    const k = u * 1.15;
-    x.fillStyle = '#3a2a22'; x.fillRect(-k * 0.035, -k * 0.06, k * 0.028, k * 0.06); x.fillRect(k * 0.008, -k * 0.06, k * 0.028, k * 0.06);
-    x.beginPath(); x.moveTo(-k * 0.055, -k * 0.055); x.lineTo(-k * 0.045, -k * 0.165); x.lineTo(k * 0.045, -k * 0.165); x.lineTo(k * 0.06, -k * 0.055); x.closePath(); fs(x, c, OUT, lw(u, 0.012));
-    circ(x, 0, -k * 0.205, k * 0.046, SKIN); x.strokeStyle = OUT; x.lineWidth = lw(u, 0.01); x.stroke();
-    x.beginPath(); x.arc(0, -k * 0.215, k * 0.05, Math.PI, 0); x.closePath(); fs(x, '#9aa0aa', OUT, lw(u, 0.01));
-  }
+  function archerless(x, u, c) { chibi(x, u, { c, hat: 'helm', hc: '#b8c0cc', hair: '#5a3a22' }); }
   function rocketRack(x, u, py, a, rec, time) {
     const ca = Math.cos(a), sa = Math.sin(a);
     const vis = Math.atan2(sa * 0.75, ca);

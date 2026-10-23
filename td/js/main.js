@@ -10,7 +10,7 @@ const App = {
   brief: { li: 0, diff: DIFFS[Store.data.diff] ? Store.data.diff : 'normal' },
   ui: null,
 };
-function newUi() { return { selTile: null, selTower: null, armed: null, pending: null, aiming: false, hover: null, ghost: null, banner: null, shake: 0, placing: false, preview: null, nextInfo: null }; }
+function newUi() { return { selTile: null, selTower: null, armed: null, pending: null, aiming: false, hover: null, ghost: null, banner: null, shake: 0, placing: false, preview: null, nextInfo: null, selHero: false }; }
 App.ui = newUi();
 
 // ───────── 掛勾 ─────────
@@ -19,6 +19,7 @@ Hook.sfx = n => { if (!quiet) Snd.sfx(n); };
 Hook.shake = a => { if (!quiet) App.ui.shake = Math.max(App.ui.shake, a); };
 Hook.fx = (n, g, a, b, c, d, e) => {
   FX.on(n, g, a, b, c, d, e);
+  if (n === 'storm' && g === App.game && !quiet) { if (a) { UI.say('<b>沙暴來襲！</b>所有塔的射程暫時變成八成。', 3); Snd.sfx('blizzard'); } else UI.say('沙暴過去了。', 1.5); }
   if (g === App.game && !quiet) Ach.event(n, g, a);
 };
 Hook.banner = (G, boss) => {
@@ -37,7 +38,7 @@ Hook.ended = G => {
 
 // ───────── 版面 ─────────
 function layout() {
-  const W = innerWidth, H = innerHeight, dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  const W = innerWidth, H = innerHeight, dpr = Math.min(window.devicePixelRatio || 1, [2.5, 1.75, 1.25][App.q || 0]);
   const ps = getComputedStyle($('probe'));
   const sa = { t: parseFloat(ps.paddingTop) || 0, r: parseFloat(ps.paddingRight) || 0, b: parseFloat(ps.paddingBottom) || 0, l: parseFloat(ps.paddingLeft) || 0 };
   const portrait = H > W * 1.02;
@@ -63,7 +64,7 @@ function layout() {
     Object.assign(panel, { left: (W - PW) + 'px', top: '0px', width: PW + 'px', height: H + 'px' });
   }
   App.Vplay = makeView(s, portrait, ox, oy);
-  Render.setLow(isTouch || W * H < 520000);
+  Render.setLow(isTouch || W * H < 520000 || App.q > 0, App.q || 0);
   // 標題畫面背景：地圖鋪滿整個螢幕
   const rot = portrait;
   const ds = Math.max(W / (rot ? ROWS : COLS), H / (rot ? COLS : ROWS));
@@ -78,7 +79,8 @@ addEventListener('orientationchange', () => setTimeout(layout, 150));
 // ───────── 遊戲流程 ─────────
 function startLevel(li, diff, endless, chal) {
   if (chal) { diff = chal === 'iron' ? 'easy' : 'normal'; endless = false; }
-  App.game = newGame(li, diff, { endless, chal });
+  const hid = HeroUI.current();
+  App.game = newGame(li, diff, { endless, chal, hero: { id: hid, xp: HeroUI.rec(hid).xp } });
   App.ui = newUi(); App.speed = 1; App.paused = false; App.acc = 0; App.bot = null;
   App.scene = 'play';
   if (!chal) Store.data.diff = diff;
@@ -97,7 +99,14 @@ function toScene(s) {
   if (s === 'levels') { UI.show('ovLevels'); UI.levels(); Snd.play(8, 0); }
   if (s === 'meta') { UI.meta(); UI.show('ovMeta'); }
 }
+function saveHero(G) {
+  const H = G && G.hero; if (!H) return;
+  Store.data.heroes[H.id] = Object.assign(HeroUI.rec(H.id), { xp: Math.max(HeroUI.rec(H.id).xp, H.xp) });
+  if (H.lv >= 5) Ach.give('hero5');
+  if (H.lv >= HERO_MAX) Ach.give('hero10');
+}
 function recordResult(G) {
+  saveHero(G);
   const out = { gained: 0, unlock: null, endlessNew: false, cleared: 0, newBest: false, chalNew: false };
   if (G.endless) {
     // 正在倒數下一波（這一波已經清光）時離開，這一波也算撐過
@@ -143,7 +152,7 @@ function setPaused(p) {
 }
 
 // ───────── 操作 ─────────
-function deselect() { const u = App.ui; u.selTile = null; u.selTower = null; u.pending = null; u.preview = null; }
+function deselect() { const u = App.ui; u.selTile = null; u.selTower = null; u.pending = null; u.preview = null; u.selHero = false; }
 function tryBuild(k, x, y) {
   const G = App.game;
   if (!G.towersAvail.includes(k)) return false;
@@ -183,6 +192,20 @@ function handleTap(sx, sy) {
     else ui.aiming = false;
     return;
   }
+  // 點英雄 = 選取／取消
+  const H = G.hero;
+  if (H && !H.dead) {
+    const [ha, hb] = V.P(H.x, H.y), s = V.s;
+    if (Math.abs(sx - ha) < s * 0.48 && sy > hb - s * 1.05 && sy < hb + s * 0.3) { toggleHero(); return; }
+  }
+  if (ui.selHero && H) {
+    const tx0 = Math.floor(wx), ty0 = Math.floor(wy);
+    if (inside && G.grid[ty0][tx0].tower) { selectTower(G.grid[ty0][tx0].tower); return; }
+    const mv = inside ? heroMove(G, wx, wy) : null;
+    if (mv) { ui.selHero = false; Snd.sfx('click'); }
+    else { Snd.sfx('deny'); UI.say('英雄只能走在<b>道路</b>上，點靠近道路的地方。'); }
+    return;
+  }
   // 點入口的骷髏 = 叫下一波
   if (ui.nextInfo && canCallWave(G)) {
     for (const ei of ui.nextInfo.ents) {
@@ -202,6 +225,16 @@ function handleTap(sx, sy) {
   }
   deselect(); ui.armed = null;
 }
+function toggleHero() {
+  const G = App.game, ui = App.ui; if (!G || !G.hero) return;
+  Snd.init();
+  if (G.hero.dead) { Snd.sfx('deny'); UI.say(`${G.hero.d.name}正在城堡休養，${Math.ceil(G.hero.respT)} 秒後回來。`); return; }
+  const was = ui.selHero;
+  deselect(); ui.armed = null; ui.aiming = false;
+  ui.selHero = !was;
+  Snd.sfx('click');
+}
+App.toggleHero = toggleHero;
 function doCallWave() {
   const G = App.game; if (!G) return;
   Snd.init();
@@ -264,6 +297,7 @@ $('info').addEventListener('click', e => {
   else if (a === 'up') doUpgrade(+b.dataset.spec);
   else if (a === 'sell') doSell();
   else if (a === 'mode') { const t = App.ui.selTower; if (t) { t.mode = b.dataset.mode; Snd.sfx('click'); } }
+  else if (a === 'hcast') { const G = App.game; if (G && heroCast(G, +b.dataset.i, false)) Snd.sfx('click'); else { Snd.sfx('deny'); UI.say('附近沒有可以打的敵人，或技能還在冷卻。'); } }
 });
 $('info').addEventListener('pointerover', e => {
   const b = e.target.closest('.up'); const t = App.ui.selTower;
@@ -283,6 +317,7 @@ $('bSpeed').addEventListener('click', () => { Snd.init(); App.speed = App.speed 
 $('bPause').addEventListener('click', () => { Snd.init(); Snd.sfx('click'); setPaused(true); });
 $('skMeteor').addEventListener('click', () => skill('meteor'));
 $('skFreeze').addEventListener('click', () => skill('freeze'));
+$('skHero').addEventListener('click', () => toggleHero());
 
 // 選單
 function bindClick(id, fn) { $(id).addEventListener('click', () => { Snd.init(); Snd.sfx('click'); fn(); }); }
@@ -299,10 +334,10 @@ bindClick('bGo', () => startLevel(App.brief.li, App.brief.diff, false));
 bindClick('bEndless', () => startLevel(App.brief.li, App.brief.diff, true));
 bindClick('bBack', () => { UI.show('ovLevels'); UI.levels(); });
 bindClick('pResume', () => setPaused(false));
-bindClick('pRestart', () => { const G = App.game; startLevel(G.li, G.diff, G.endless, G.chal); });
+bindClick('pRestart', () => { const G = App.game; saveHero(G); startLevel(G.li, G.diff, G.endless, G.chal); });
 bindClick('pQuit', () => {
   const G = App.game;
-  if (G && G.endless && G.wave >= 0) { G.state = 'lost'; recordResult(G); }
+  if (G && G.endless && G.wave >= 0) { G.state = 'lost'; recordResult(G); } else saveHero(G);
   toScene('levels');
 });
 bindClick('pHelp', () => UI.help(() => UI.show('ovPause')));
@@ -334,7 +369,7 @@ addEventListener('keydown', e => {
   if (ti >= 0) { App.shopTap(TOWER_ORDER[ti]); return; }
   switch (k) {
     case 'escape':
-      if (App.ui.aiming || App.ui.armed || App.ui.selTile || App.ui.selTower) { deselect(); App.ui.armed = null; App.ui.aiming = false; }
+      if (App.ui.aiming || App.ui.armed || App.ui.selTile || App.ui.selTower || App.ui.selHero) { deselect(); App.ui.armed = null; App.ui.aiming = false; }
       else setPaused(true);
       break;
     case ' ': case 'p': setPaused(true); e.preventDefault(); break;
@@ -346,6 +381,9 @@ addEventListener('keydown', e => {
     case 't': cycleMode(); break;
     case 'q': skill('meteor'); break;
     case 'w': skill('freeze'); break;
+    case 'h': toggleHero(); break;
+    case 'e': if (G.hero) heroCast(G, 0, false); break;
+    case 'r': if (G.hero) heroCast(G, 1, false); break;
     case 'm': {
       const on = !(Store.data.music || Store.data.sfx);
       Store.data.music = on; Store.data.sfx = on; Store.save(); Snd.setMusic(on); Snd.setSfx(on);
@@ -363,7 +401,7 @@ addEventListener('keydown', () => { const was = Snd.ready; Snd.init(); if (!was 
 // ───────── 標題畫面的示範戰鬥 ─────────
 function newDemo() {
   const li = Math.floor(Math.random() * LEVELS.length);
-  const G = newGame(li, 'easy', { meta: { gold: 3, cheap: 3, bounty: 3, range: 2 }, avail: 7, seed: (Math.random() * 1e6) | 0 });
+  const G = newGame(li, 'easy', { meta: { gold: 3, cheap: 3, bounty: 3, range: 2 }, avail: 7, seed: (Math.random() * 1e6) | 0, hero: { id: HERO_ORDER[Math.floor(Math.random() * 3)], xp: 2000 } });
   G.gold += 300;
   App.demo = G; App.demoBot = { strat: 'mix', seed: 1, meteor: true };
   App.demoT = 0;
@@ -407,6 +445,7 @@ const Ach = {
     if (G.lives >= G.maxLives) this.give('noleak');
     if (G.diff === 'hard') this.give('hard');
     if (Prog.cleared() >= 5) this.give('half');
+    if (Prog.cleared() >= 10) this.give('ten');
     if (Prog.cleared() >= LEVELS.length) this.give('all');
   },
   meta() { let n = 0; for (const k in Store.data.meta) n += Store.data.meta[k]; if (n >= 10) this.give('meta'); },
@@ -426,8 +465,19 @@ function markSeen(G, dt) {
 
 // ───────── 主迴圈 ─────────
 let lastT = performance.now() / 1000;
+// 自動畫質：連續一段時間掉到 40fps 以下，就降低解析度與特效（只降不升，避免忽高忽低）
+const Perf = { ema: 1 / 60, bad: 0, n: 0 };
+function perfWatch(raw) {
+  if (document.hidden || raw > 1.2 || App.scene !== 'play') return; // 太久沒畫（切到別的分頁）就不算
+  raw = Math.min(raw, 0.2);
+  Perf.ema += (raw - Perf.ema) * Math.min(0.5, raw * 3); Perf.n += raw;
+  if (Perf.n < 1.5) return; // 開頭 1.5 秒不算（載入、快取暖身）
+  if (Perf.ema > 1 / 40) Perf.bad += raw; else Perf.bad = Math.max(0, Perf.bad - raw * 0.5);
+  if (Perf.bad > 2.5 && (App.q || 0) < 2) { App.q = (App.q || 0) + 1; Perf.bad = 0; Perf.n = 0; Perf.ema = 1 / 60; layout(); }
+}
 function loop(now) {
-  const t = now / 1000; let dt = Math.min(0.05, t - lastT); lastT = t;
+  const t = now / 1000, raw = t - lastT; let dt = Math.min(0.05, raw); lastT = t;
+  perfWatch(raw);
   App.time += dt;
   ctx.setTransform(App.dpr, 0, 0, App.dpr, 0, 0);
   const ui = App.ui;
@@ -492,7 +542,8 @@ else boot();
 
 // ───────── 測試用掛勾 ─────────
 window.__td = {
-  get G() { return App.game; }, App, Store, Prog,
+  get G() { return App.game; }, App, Store, Prog, Perf,
+  quality(q) { App.q = q; layout(); },
   start(li, diff, endless, chal) { startLevel(li || 0, diff || 'normal', !!endless, chal); return App.game; },
   Ach: () => Ach,
   build(k, x, y) { return buildTower(App.game, k, x, y); },
@@ -500,7 +551,10 @@ window.__td = {
   sell(t) { return sellTower(App.game, t); },
   wave() { return callWave(App.game, true); },
   speed(n) { App.speed = n; },
-  bot(on) { App.bot = on ? { strat: 'mix', seed: 1, meteor: true } : null; },
+  bot(on, hero) { App.bot = on ? { strat: 'mix', seed: 1, meteor: true, hero: hero !== false } : null; },
+  heroMove(x, y) { return heroMove(App.game, x, y); },
+  heroCast(i) { return heroCast(App.game, i, false); },
+  selHero() { toggleHero(); },
   ff(sec) { const G = App.game; const n = Math.round(sec / STEP); for (let i = 0; i < n && G.state !== 'won' && G.state !== 'lost'; i++) { step(G, STEP); if (App.bot && i % 15 === 0) botThink(G, App.bot); } return G.state; },
   spots(k) { return botBestSpot(App.game, k || 'arrow'); },
   tap(wx, wy) { const [sx, sy] = App.Vplay.P(wx, wy); handleTap(sx, sy); },
