@@ -36,7 +36,7 @@ const UI = {
     $('tgtCancel').onclick = () => this.endTarget();
     for (const b of document.querySelectorAll('#dpad [data-d]')) {
       const [dx, dy] = b.dataset.d.split(',').map(Number);
-      b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); Snd.init(); this.stopAuto(); this.hold = [dx, dy]; this.doDir(dx, dy); this.holdT = now() + 0.32; });
+      b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); Snd.init(); this.stopAuto(); this.hold = [dx, dy]; this.holdKey = null; this.doDir(dx, dy); this.holdT = now() + this.HOLD_FIRST; });
       const up = () => { this.hold = null; };
       b.addEventListener('pointerup', up); b.addEventListener('pointerleave', up); b.addEventListener('pointercancel', up);
     }
@@ -55,6 +55,9 @@ const UI = {
     $('ovMap').onclick = () => this.closeOv();
     // 輸入
     addEventListener('keydown', e => this.onKey(e));
+    // 按住方向鍵：自己控制連續移動的節奏，不靠作業系統的按鍵重複（那個先停半秒、之後又太快）
+    addEventListener('keyup', e => { if (this.holdKey && e.code === this.holdKey) { this.hold = null; this.holdKey = null; } });
+    addEventListener('blur', () => { this.hold = null; this.holdKey = null; });
     cv.addEventListener('pointerdown', e => this.onPtrDown(e));
     cv.addEventListener('pointerup', e => this.onPtrUp(e));
     cv.addEventListener('pointermove', e => this.onPtrMove(e));
@@ -406,10 +409,15 @@ const UI = {
     this.resting = 30; this.restMin = G.P.hp >= G.P.mhp ? 10 : 0; G.interrupt = false;
     msg('你停下來休息並仔細搜尋四周……', 'm');
   },
-  doDir(dx, dy) {
+  // 走路節奏（秒／格）：單步、按住連走、點地圖自動走、自動探索
+  STEP_ONE: 0.12, STEP_HOLD: 0.14, STEP_TRAVEL: 0.09, STEP_EXPLORE: 0.08, HOLD_FIRST: 0.2,
+  // 下一拍：照固定節拍往後排（不受畫格時間誤差累積影響）；落後太多就從現在重新起算
+  nextBeat(prev, t, step) { const n = prev + step; return n < t || n > t + step ? t + step : n; },
+  doDir(dx, dy, cont) {
     if (!this.ready()) return;
     if (this.tgt) { this.moveTarget(dx, dy); return; }
     G.interrupt = false;
+    Render.setMove(cont ? this.STEP_HOLD : this.STEP_ONE, cont);
     Game.move(dx, dy);
   },
   travelTo(x, y) {
@@ -427,7 +435,13 @@ const UI = {
     if (t < this.stepT) return;
     const P = G.P;
     if (P.st.para > 0 || P.st.freeze > 0) { Game.wait(); this.stepT = t + 0.2; return; }
-    if (this.hold && t > this.holdT) { this.holdT = t + 0.13; this.doDir(this.hold[0], this.hold[1]); return; }
+    if (this.hold && t >= this.holdT) {
+      this.holdT = this.nextBeat(this.holdT, t, this.STEP_HOLD);
+      this.doDir(this.hold[0], this.hold[1], true);
+      // 發現敵人、踩到陷阱等狀況時停下，避免一路衝過去
+      if (G.interrupt) { this.hold = null; this.holdKey = null; }
+      return;
+    }
     if (this.resting > 0) {
       if (G.interrupt || Game.dangerNear()) { this.resting = 0; return; }
       Game.rest(); this.resting--;
@@ -439,10 +453,11 @@ const UI = {
     if (this.travel) {
       if (G.interrupt || Game.dangerNear() && this.travel.length > 1) { this.travel = null; return; }
       const [x, y] = this.travel.shift();
+      Render.setMove(this.STEP_TRAVEL, 1);
       const ok = Game.move(x - P.x, y - P.y, { auto: 1 });
       if (!ok || (G.P.x !== x || G.P.y !== y)) this.travel = null;
       if (this.travel && !this.travel.length) this.travel = null;
-      this.stepT = t + 0.07; return;
+      this.stepT = this.nextBeat(this.stepT, t, this.STEP_TRAVEL); return;
     }
     if (this.exploring) {
       if (G.interrupt || Game.dangerNear()) { this.exploring = false; if (Game.dangerNear()) msg('發現敵人！', 'w'); return; }
@@ -455,9 +470,10 @@ const UI = {
       const [x, y] = p[0];
       const bm = Game.monAt(x, y);
       if (bm && Game.monVisible(bm) && !bm.disg) { this.exploring = false; msg(MON[bm.k].n + '擋住了去路。', 'w'); return; }
+      Render.setMove(this.STEP_EXPLORE, 1);
       const ok = Game.move(x - P.x, y - P.y, { auto: 1 });
       if (!ok) this.exploring = false;
-      this.stepT = t + 0.06; return;
+      this.stepT = this.nextBeat(this.stepT, t, this.STEP_EXPLORE); return;
     }
   },
 
@@ -548,7 +564,11 @@ const UI = {
     }
     if (wasAuto && !KEYDIR[k]) return;
     Snd.init();
-    if (KEYDIR[k]) { this.doDir(...KEYDIR[k]); return; }
+    if (KEYDIR[k]) {
+      if (e.repeat) { if (!this.hold) { this.hold = KEYDIR[k]; this.holdKey = k; this.holdT = now(); } return; }
+      this.hold = KEYDIR[k]; this.holdKey = k; this.holdT = now() + this.HOLD_FIRST;
+      this.doDir(...KEYDIR[k]); return;
+    }
     switch (k) {
       case 'Space': case 'Period': case 'Numpad5': case 'NumpadDecimal': if (e.shiftKey && k === 'Period') this.action('ctx'); else this.action('wait'); break;
       case 'KeyR': this.action('rest'); break;

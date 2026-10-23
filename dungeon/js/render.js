@@ -32,7 +32,7 @@ const Render = {
   ps: 3, TS: 48, dpr: 1, W: 0, H: 0, cam: { x: 0, y: 0 }, _rs: new Map(), lm: null, lmx: null, inset: { t: 60, b: 120, l: 0, r: 0 }, miniT: 0, statue: null,
   rs(a) {
     let r = this._rs.get(a.id);
-    if (!r) { r = { x: a.x, y: a.y, flash: 0, bt: 0, bdx: 0, bdy: 0, seed: Math.random() * 10 }; this._rs.set(a.id, r); }
+    if (!r) { r = { x: a.x, y: a.y, tx: a.x, ty: a.y, fx: a.x, fy: a.y, mt0: -9, mdur: 0.1, mp: 1, lin: 0, face: 1, flash: 0, bt: 0, bdx: 0, bdy: 0, seed: Math.random() * 10 }; this._rs.set(a.id, r); }
     return r;
   },
   resize() {
@@ -43,6 +43,27 @@ const Render = {
     const base = Math.min(this.W, this.H - (this.inset.t + this.inset.b) * dpr * 0.6);
     this.ps = Math.max(2, Math.round(base / (16 * target)));
     this.TS = this.ps * 16;
+  },
+  // 移動補間：每一步用固定時間走完一格。連續移動（按住、自動走）用等速，單步用減速收尾。
+  // setMove 只影響下一次畫面更新時偵測到的移動，畫完就恢復成單步的預設值
+  moveDur: 0.12, moveLin: 0,
+  setMove(dur, lin) { this.moveDur = dur; this.moveLin = lin ? 1 : 0; },
+  stepActor(a, r, t) {
+    if (a.x !== r.tx || a.y !== r.ty) {
+      const d = Math.hypot(a.x - r.x, a.y - r.y);
+      if (d > 4.5) { r.x = r.fx = r.tx = a.x; r.y = r.fy = r.ty = a.y; r.mp = 1; return; }
+      const ddx = a.x - r.tx; if (ddx) r.face = ddx < 0 ? -1 : 1;
+      const lin = a.isP ? this.moveLin : (this.moveLin || d > 1.5 ? 1 : 0);
+      // 連續等速移動時，新的一步從上一步的終點和結束時間接下去，速度才不會一頓一頓
+      const prevEnd = r.mt0 + r.mdur;
+      if (lin && r.lin && r.mp > 0.5 && Math.abs(t - prevEnd) < 0.07 && Math.abs(a.x - r.tx) <= 1 && Math.abs(a.y - r.ty) <= 1) { r.fx = r.tx; r.fy = r.ty; r.mt0 = Math.min(prevEnd, t); }
+      else { r.fx = r.x; r.fy = r.y; r.mt0 = t; }
+      r.tx = a.x; r.ty = a.y; r.lin = lin;
+      r.mdur = this.moveDur * (d > 1.5 ? Math.min(1.8, d / 1.3) : 1);
+    }
+    const p = Math.min(1, Math.max(0, (t - r.mt0) / r.mdur));
+    const e = r.lin ? p : 1 - (1 - p) * (1 - p);
+    r.mp = p; r.x = lerp(r.fx, r.tx, e); r.y = lerp(r.fy, r.ty, e);
   },
   snapCam() { if (!G) return; this.cam.x = G.P.x; this.cam.y = G.P.y; this._rs.clear(); },
   // 畫面中心（扣掉上下的介面）
@@ -81,10 +102,12 @@ const Render = {
     ctx.imageSmoothingEnabled = false;
     // 角色位置補間
     const dt = Math.min(0.05, t - (this.lt || t)); this.lt = t;
-    for (const a of [P].concat(F.mons)) { const r = this.rs(a); const k = 1 - Math.pow(0.0005, dt); if (Math.abs(r.x - a.x) > 6 || Math.abs(r.y - a.y) > 6) { r.x = a.x; r.y = a.y; } r.x += (a.x - r.x) * k; r.y += (a.y - r.y) * k; }
+    for (const a of [P].concat(F.mons)) this.stepActor(a, this.rs(a), t);
+    this.moveDur = 0.12; this.moveLin = 0;
+    // 鏡頭直接鎖在主角的補間位置（對齊實體像素，避免抖動）；距離太遠時（傳送）才快速追上
     const pr = this.rs(P);
-    const ck = 1 - Math.pow(0.004, dt);
-    this.cam.x += (pr.x - this.cam.x) * ck; this.cam.y += (pr.y - this.cam.y) * ck;
+    if (Math.hypot(pr.x - this.cam.x, pr.y - this.cam.y) > 1.2) { const ck = 1 - Math.pow(0.00002, dt); this.cam.x += (pr.x - this.cam.x) * ck; this.cam.y += (pr.y - this.cam.y) * ck; }
+    else { this.cam.x = Math.round(pr.x * TS) / TS; this.cam.y = Math.round(pr.y * TS) / TS; }
     // 鏡頭晃動
     let sx = 0, sy = 0;
     if (FX.shakeAmt > 0.1) { sx = fx_rand(-1, 1) * FX.shakeAmt * this.dpr; sy = fx_rand(-1, 1) * FX.shakeAmt * this.dpr; FX.shakeAmt *= Math.pow(0.002, dt); } else FX.shakeAmt = 0;
@@ -179,15 +202,23 @@ const Render = {
     }
     if (a.isP && a.st.invis) alpha = 0.45;
     const asleep = !a.isP && (!a.awake || a.st.sleep > 0) && !a.disg;
-    const bob = a.disg ? 0 : asleep ? 0 : Math.round(Math.sin(t * 3.2 + r.seed) * 0.6) * ps;
-    const w = TS * scale, h = TS * scale;
-    const dx = Math.round(X + (TS - w) / 2), dy = Math.round(Y + TS - h) + bob;
-    // 影子
-    ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(X + TS / 2, Y + TS - ps * 1.5, w * 0.3, ps * 1.6 * scale, 0, 0, TAU); ctx.fill();
+    const moving = r.mp < 1;
+    // 走路：每一步小跳一下、落地時略壓扁；靜止時才有呼吸起伏
+    const hop = moving && !a.disg ? Math.sin(r.mp * Math.PI) : 0;
+    const bob = moving || a.disg || asleep ? 0 : Math.round(Math.sin(t * 3.2 + r.seed) * 0.6) * ps;
+    const land = moving && r.mp > 0.75 ? (r.mp - 0.75) / 0.25 : 0;
+    const sqx = 1 + Math.sin(land * Math.PI) * 0.06, sqy = 1 - Math.sin(land * Math.PI) * 0.06;
+    const w = Math.round(TS * scale * sqx), h = Math.round(TS * scale * sqy);
+    const dx = Math.round(X + (TS - w) / 2), dy = Math.round(Y + TS - h - hop * ps * 2.5) + bob;
+    // 影子（跳起來時變小）
+    ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(X + TS / 2, Y + TS - ps * 1.5, w * 0.3 * (1 - hop * 0.18), ps * 1.6 * scale * (1 - hop * 0.18), 0, 0, TAU); ctx.fill();
     ctx.globalAlpha = alpha;
-    if (a.isP && Game.tile(a.x, a.y) === T.WATER) { ctx.save(); ctx.beginPath(); ctx.rect(dx, dy, w, h - ps * 3); ctx.clip(); ctx.drawImage(spr.c, dx, dy, w, h); ctx.restore(); }
+    const flip = r.face < 0 && !a.disg;
+    if (flip) { ctx.save(); ctx.translate(dx * 2 + w, 0); ctx.scale(-1, 1); }
+    if (a.isP && Game.tile(a.x, a.y) === T.WATER && !moving) { ctx.save(); ctx.beginPath(); ctx.rect(dx, dy, w, h - ps * 3); ctx.clip(); ctx.drawImage(spr.c, dx, dy, w, h); ctx.restore(); }
     else ctx.drawImage(spr.c, dx, dy, w, h);
     if (t - r.flash < 0.12 && t >= r.flash) { ctx.globalAlpha = 0.85; ctx.drawImage(spr.w, dx, dy, w, h); }
+    if (flip) ctx.restore();
     ctx.globalAlpha = 1;
     const st = a.st || {};
     if (st.freeze > 0) { ctx.fillStyle = 'rgba(140,220,255,.35)'; ctx.fillRect(dx + ps * 2, dy + ps * 2, w - ps * 4, h - ps * 3); }
