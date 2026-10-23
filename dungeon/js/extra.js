@@ -133,6 +133,10 @@ const ACH = [
   { id: 'codex', n: '博物學家', d: '圖鑑收錄 20 種怪物', s: 10, chk: e => e.t === 'codex' && Meta.monCount() >= 20 },
   { id: 'allcls', n: '百變冒險者', d: '用全部五個職業各抵達第 5 層', s: 12, chk: e => e.t === 'depth' && e.v >= 5 && CLASS_ORDER.every(c => (Store.meta.clsDeep || {})[c] >= 5), reward: '解鎖祝福「老兵」' },
   { id: 'witch', n: '破冰者', d: '擊敗冰霜女巫', s: 20, chk: e => e.t === 'boss' && e.v === 'witch' },
+  { id: 'relic4', n: '收藏家', d: '在同一局擁有 4 件遺物', s: 8, chk: e => e.t === 'relic' && (G.P.relics || []).length >= 4 },
+  { id: 'rset', n: '遺物羈絆', d: '湊齊同一種羈絆的兩件遺物', s: 6, chk: e => e.t === 'relic' && Game.activeSets().length > 0 },
+  { id: 'npc5', n: '地牢之友', d: '累計和 5 位地牢裡的人物打交道', s: 6, chk: e => e.t === 'npc' && Meta.cnt('npcs') >= 5 },
+  { id: 'weekly8', n: '每週挑戰者', d: '在每週挑戰抵達第 8 層', s: 8, chk: e => e.t === 'depth' && e.v >= 8 && G.weekly },
   { id: 'win', n: '深淵征服者', d: '擊敗深淵之王', s: 50, chk: e => e.t === 'win' },
 ];
 
@@ -145,7 +149,7 @@ const Meta = {
   boonOk(k) { const B = BOONS[k]; return B && (!B.ach || this.has(B.ach)); },
   monCount() { return Object.keys(this.m().codex.m).length; },
   event(t, v) {
-    if (!G || G.demo) return;
+    if (!G || G.demo || G.dbgSkip) return;
     const M = this.m(), e = { t, v };
     if (t === 'depth') { M.clsDeep[G.cls] = Math.max(M.clsDeep[G.cls] || 0, v); }
     for (const A of ACH) {
@@ -220,8 +224,8 @@ Object.assign(Game, {
     Snd.play('chest'); Snd.play('gold');
     const d = G.depth, n = c.gold ? 3 : G.rng.int(1, 2);
     msg(c.gold ? '你打開了華麗的寶箱，金光四射！' : '你打開了寶箱。', 'y');
-    for (let i = 0; i < n; i++) {
-      const it = c.gold && i === 0 ? this.goodItem(d + 3) : this.randomItem(d + (c.gold ? 3 : 1));
+    for (let i = 0; i < n + (this.relic('coin') ? 1 : 0); i++) {
+      const it = c.gold && i === 0 ? (G.rng.chance(0.35) ? this.relicItem() : this.goodItem(d + 3)) : this.randomItem(d + (c.gold ? 3 : 1));
       if (it.cursed && G.rng.chance(c.gold ? 1 : 0.5)) { it.ench = Math.abs(it.ench) || 1; it.cursed = false; }
       this.dropItem(it, c.x, c.y);
     }
@@ -300,7 +304,7 @@ Object.assign(Game, {
     if (T0.ids.some(id => G.F.mons.some(m => m.id === id && m.hp > 0))) return;
     T0.done = 1;
     msg('試煉完成！祭壇獻上了獎賞。', 'y'); Snd.play('victory');
-    for (let i = 0; i < 2; i++) this.dropItem(this.goodItem(G.depth + 2), T0.x, T0.y);
+    for (let i = 0; i < 2; i++) this.dropItem(i === 0 && G.rng.chance(0.5) ? this.relicItem() : this.goodItem(G.depth + 2), T0.x, T0.y);
     this.dropItem(this.goldItem(G.depth, 4), T0.x, T0.y);
     if (typeof FX !== 'undefined') { FX.ring(T0.x, T0.y, 1.5, '#ffd75a'); FX.burst(T0.x, T0.y, '#ffd75a', 30); }
     G.stats.trials = (G.stats.trials || 0) + 1;

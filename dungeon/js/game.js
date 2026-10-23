@@ -19,6 +19,7 @@ const Game = {
 
   // ---------- 開新局 ----------
   newRun(cls, seedStr, daily, opt = {}) {
+    const weekly = !!opt.weekly;
     const seed = seedStr || randomSeedStr();
     const rng = new RNG('run:' + seed);
     const looks = {}, snames = {};
@@ -35,14 +36,14 @@ const Game = {
     }
     const C = CLASSES[cls], ups = Store.meta.ups || {};
     G = {
-      v: 1, seed, daily: !!daily, cls, asc: daily ? 0 : (opt.asc || 0), boon: daily ? 'none' : (opt.boon || 'none'), mod: daily ? Object.keys(DMODS)[hashStr(seed) % Object.keys(DMODS).length] : null, depth: 0, turn: 0, rng, looks, snames, known: {}, tried: {}, nid: 1, log: [],
+      v: 1, seed, daily: !!daily, weekly, cls, asc: daily ? 0 : weekly ? Weekly.info(seed).asc : (opt.asc || 0), boon: daily || weekly ? 'none' : (opt.boon || 'none'), mod: daily ? Object.keys(DMODS)[hashStr(seed) % Object.keys(DMODS).length] : weekly ? Weekly.info(seed).mod : null, depth: 0, turn: 0, rng, looks, snames, known: {}, tried: {}, nid: 1, log: [],
       stats: { kills: 0, bosses: 0, gold: 0, maxDepth: 1, dmg: 0, items: 0, potions: 0, scrolls: 0, elites: 0, chests: 0, altars: 0, trials: 0, floors: [] },
       F: null, P: null, over: false, cause: '', pendingPerks: 0, perkChoices: null, interrupt: false, vis: null, started: Date.now(),
     };
     const P = G.P = {
       id: 0, isP: 1, x: 0, y: 0, cls, lvl: 1, xp: 0, mhp: C.hp + (ups.hp || 0) * 4, hp: 0, str: C.str, energy: 100, st: {},
       hunger: 1500, gold: (ups.gold || 0) * 60, inv: [], eq: { w: null, a: null, r1: null, r2: null }, cds: {}, perks: {}, regen: 0, sneakNext: 0,
-      invMax: 22 + (ups.pack ? 4 : 0),
+      invMax: 22 + (ups.pack ? 4 : 0), relics: [],
     };
     if (G.mod === 'glass') P.mhp = Math.round(P.mhp * 0.7);
     P.hp = P.mhp;
@@ -69,12 +70,13 @@ const Game = {
     if (G.mod === 'arcane') for (const o of P.inv) if (o.c === 'wand') o.ch += 2;
     Store.meta.runs++; Store.saveMeta();
     this.enterFloor(1);
+    if (weekly) this.gainRelic(Weekly.info(seed).relic);
     if (G.boon === 'veteran') { G.pendingPerks++; this.rollPerks(); }
     msg('歡迎來到深淵地牢。往下走，擊敗深淵之王！', 'y');
     if (G.asc) msg('深淵等級 ' + G.asc + '：' + ASC.slice(1, G.asc + 1).map(a => a.d).join(' '), 'w');
     if (G.mod) msg('今日變化「' + DMODS[G.mod].n + '」：' + DMODS[G.mod].d, 'w');
     if (G.boon && G.boon !== 'none') msg('開局祝福「' + BOONS[G.boon].n + '」：' + BOONS[G.boon].d, 'i');
-    msg('種子：' + seed + (daily ? '（每日挑戰）' : ''), 'm');
+    msg('種子：' + seed + (daily ? '（每日挑戰）' : weekly ? '（每週挑戰）' : ''), 'm');
   },
 
   // ---------- 道具 ----------
@@ -115,6 +117,7 @@ const Game = {
       case 'scroll': s = kn ? K.n : '「' + G.snames[it.k] + '」卷軸'; break;
       case 'wand': s = kn ? K.n + (it.known ? ' [' + it.ch + ']' : '') : WAND_LOOKS[this.look(it.k)][0] + '魔杖'; break;
       case 'gold': s = it.n + ' 金幣'; return s;
+      case 'relic': return '遺物「' + (RELICS[it.relic] || { n: '？' }).n + '」' + (it.price && !plain ? '' : '');
       default: s = K.n;
     }
     if (!kn && G.tried[it.k] && !plain) s += '（用過）';
@@ -129,22 +132,25 @@ const Game = {
     if (K.c === 'armor') return (K.sneak ? '輕巧的斗篷，讓你更不容易被發現。' : K.fireRes ? '龍鱗做的鎧甲，燃燒傷害減半。' : '') + '護甲 ' + K.arm + (K.eva ? '，閃避 ' + K.eva : '') + (K.cdr ? '，技能冷卻較快' : '') + '。' + (it.known ? '' : ' 強化值未知，穿上後才知道。') + rn;
     if (K.c === 'throw') return '投擲傷害 ' + K.dmg[0] + '–' + K.dmg[1] + (K.poison ? '，帶毒。' : '。') + '丟出去後可以撿回來。';
     if (K.c === 'food') return '可以填飽肚子。';
+    if (K.c === 'relic') { const R = RELICS[it.relic] || {}; return R.d + ' 撿起來就會生效，不佔背包。（羈絆：' + (RSETS[R.tag] || {}).n + '）'; }
     if (!kn) return { potion: '不知道是什麼藥水。喝下去或丟出去就知道了。', scroll: '上面寫著看不懂的文字。讀了就知道。', ring: '不知道有什麼魔力。戴上就知道。', wand: '不知道是什麼魔杖。揮動看看。' }[K.c];
     return K.desc || '';
   },
   addInv(it, silent) {
     const P = G.P;
-    if (it.k === 'gold') { const n = Math.round(it.n * (P.perks.greed ? 1.5 : 1)); P.gold += n; G.stats.gold += n; if (!silent) { msg('撿到 ' + n + ' 金幣。', 'y'); Snd.play('gold'); } return true; }
+    if (it.k === 'relic') { this.gainRelic(it.relic); return true; }
+    if (it.k === 'gold') { const n = Math.round(it.n * (P.perks.greed ? 1.5 : 1) * (this.relic('coin') ? 1.3 : 1)); if (!silent && typeof FX !== 'undefined') FX.goldFly(P.x, P.y, n); P.gold += n; G.stats.gold += n; if (!silent) { msg('撿到 ' + n + ' 金幣。', 'y'); Snd.play('gold'); } return true; }
     const K = ITEMS[it.k];
     if (K.c === 'potion' || K.c === 'scroll' || K.c === 'throw' || K.c === 'food') {
       const same = P.inv.find(o => o.k === it.k);
-      if (same) { same.n += it.n; if (!silent) { msg('撿起了' + this.itemName(it) + '。', 'p'); Snd.play('pick'); } return true; }
+      if (same) { same.n += it.n; if (!silent) { msg('撿起了' + this.itemName(it) + '。', 'p'); Snd.play('pick', K.c); if (typeof FX !== 'undefined') FX.pickFly(it, P.x, P.y); } return true; }
     }
     if (it.k === 'gold' && G.mod === 'rich') it.n *= 2;
     if (P.inv.length >= P.invMax) { if (!silent) msg('背包滿了！', 'w'); return false; }
     if (this.isMageWand(it)) { G.known[it.k] = 1; it.known = true; }
+    if (K.c === 'wand' && this.relic('crystal') && !it.crys) { it.crys = 1; it.ch++; }
     P.inv.push(it);
-    if (!silent) { msg('撿起了' + this.itemName(it) + '。', 'p'); Snd.play('pick'); G.stats.items++; }
+    if (!silent) { msg('撿起了' + this.itemName(it) + '。', 'p'); Snd.play('pick', K.c); G.stats.items++; if (typeof FX !== 'undefined') FX.pickFly(it, P.x, P.y); }
     return true;
   },
   isMageWand(it) { return G.cls === 'mage' && ITEMS[it.k].c === 'wand'; },
@@ -165,16 +171,16 @@ const Game = {
     const P = G.P, C = CLASSES[P.cls], w = this.equipped('w'), a = this.equipped('a');
     const W = w ? ITEMS[w.k] : { dmg: [1, 3], acc: 0 }, A = a ? ITEMS[a.k] : { arm: 0, eva: 0 };
     const weak = P.hunger < 100 ? 2 : 0;
-    let bonus = P.str + (P.perks.str || 0) * 2 + this.ringEnch('r_str') + (w ? w.ench : 0) - weak;
+    let bonus = P.str + (P.perks.str || 0) * 2 + this.ringEnch('r_str') + (w ? w.ench : 0) - weak + (this.rset('war') ? 2 : 0);
     const furyOn = P.perks.fury && P.hp < P.mhp * 0.35;
     const st = {
       dmin: Math.max(1, W.dmg[0] + bonus), dmax: Math.max(1, W.dmg[1] + bonus),
       acc: C.acc + Math.floor(P.lvl / 2) + (W.acc || 0) + (w ? w.ench : 0) + (P.perks.acc || 0) * 3 - weak,
-      eva: C.eva + (A.eva || 0) + Math.floor(P.lvl / 3) + (P.perks.dodge || 0) * 3 + this.ringEnch('r_evade') * 2 + (this.runeOf('a') === 'swift' ? 3 : 0) + (this.reson() === 'rime' ? 2 : 0),
-      arm: Math.max(0, (A.arm || 0) + (a ? a.ench : 0) + this.ringEnch('r_prot') + (P.perks.tough || 0) + (P.cls === 'paladin' ? 1 : 0)),
+      eva: C.eva + (A.eva || 0) + Math.floor(P.lvl / 3) + (P.perks.dodge || 0) * 3 + this.ringEnch('r_evade') * 2 + (this.runeOf('a') === 'swift' ? 3 : 0) + (this.reson() === 'rime' ? 2 : 0) + (this.relic('boots') ? 2 : 0),
+      arm: Math.max(0, (A.arm || 0) + (a ? a.ench : 0) + this.ringEnch('r_prot') + (P.perks.tough || 0) + (P.cls === 'paladin' ? 1 : 0) + (this.relic('ward') ? 2 : 0)),
       crit: 0.05 + (P.perks.crit || 0) * 0.07 + (P.cls === 'rogue' ? 0.05 : 0) + (this.runeOf('w') === 'keen' ? 0.1 : 0) + (w && ITEMS[w.k].keen ? 0.1 : 0) + Math.max(0, this.ringEnch('r_crit')) * 0.05 + (this.reson() === 'hunt' ? 0.05 : 0),
       fury: furyOn ? 1.5 : 1,
-      sight: 8 + (P.perks.eye ? 2 : 0) + (P.cls === 'ranger' ? 1 : 0) - (G.mod === 'dark' ? 2 : 0),
+      sight: 8 + (P.perks.eye ? 2 : 0) + (P.cls === 'ranger' ? 1 : 0) - (G.mod === 'dark' ? 2 : 0) - (G.F && G.F.event === 'mist' ? 3 : 0),
       wname: w ? this.itemName(w, true) : '拳頭',
     };
     return st;
@@ -185,6 +191,8 @@ const Game = {
   // ---------- 樓層 ----------
   enterFloor(depth, how) {
     const prevDepth = G.depth;
+    // 測試用的跳層（直接進入更深的樓層）不算數：不給成就、不更新最深紀錄
+    if (depth > (prevDepth || 0) + 1 && !G.demo) G.dbgSkip = 1;
     G.depth = depth;
     const rng = new RNG('floor:' + G.seed + ':' + depth);
     const F = Gen.make(depth, rng, {});
@@ -197,15 +205,17 @@ const Game = {
     P.energy = 100;
     this.populate(F, depth);
     G.stats.maxDepth = Math.max(G.stats.maxDepth, depth);
-    if (depth > (Store.meta.deepest || 0)) { Store.meta.deepest = depth; }
-    if (depth >= 6 && !Store.meta.unlocked.ranger) { Store.meta.unlocked.ranger = true; G.newUnlock = 'ranger'; msg('解鎖了新職業：遊俠！', 'y'); }
+    if (!G.dbgSkip && depth > (Store.meta.deepest || 0)) { Store.meta.deepest = depth; }
+    if (!G.dbgSkip && depth >= 6 && !Store.meta.unlocked.ranger) { Store.meta.unlocked.ranger = true; G.newUnlock = 'ranger'; msg('解鎖了新職業：遊俠！', 'y'); }
     Store.saveMeta();
     const B = BIOMES[F.biome];
     if (prevDepth) msg('你來到了第 ' + depth + ' 層 · ' + B.n + '。', 'i');
     if (!prevDepth || biomeOf(prevDepth) !== F.biome) msg(B.flavor, 'm');
     if (BOSS_FLOOR[depth]) msg(depth === LAST_FLOOR ? '空氣凝重得讓人發抖……深淵之王就在這裡。' : '一股強大的氣息擋住了樓梯……這層有守層頭目！', 'w');
     if (F.shop) msg('這層好像有一間商店。', 'y');
-    if (G.boon === 'map' && F.stairs) { for (const [dx, dy] of [[0, 0]].concat(DIRS8)) { const x = F.stairs[0] + dx, y = F.stairs[1] + dy; if (x >= 0 && y >= 0 && x < F.w && y < F.h) F.seen[y * F.w + x] = 1; } msg('探路者的直覺告訴你樓梯的位置。', 'i'); }
+    if (F.event) { msg('【' + FEVENTS[F.event].n + '】' + FEVENTS[F.event].d, 'w'); if (typeof UI !== 'undefined' && !G.demo) setTimeout(() => UI.banner('樓層事件', FEVENTS[F.event].n, FEVENTS[F.event].d), 300); }
+    if (this.relic('boots')) P.st.haste = Math.max(P.st.haste || 0, 4);
+    if ((G.boon === 'map' || this.relic('chart')) && F.stairs) { for (const [dx, dy] of [[0, 0]].concat(DIRS8)) { const x = F.stairs[0] + dx, y = F.stairs[1] + dy; if (x >= 0 && y >= 0 && x < F.w && y < F.h) F.seen[y * F.w + x] = 1; } msg('探路者的直覺告訴你樓梯的位置。', 'i'); }
     G.stats.floors = G.stats.floors || []; if (!G.stats.floors.includes(depth)) G.stats.floors.push(depth);
     Art.buildTiles(F.biome);
     this.updateFov();
@@ -249,7 +259,7 @@ const Game = {
         const n = Math.min(tiles.length - 2, rng.int(6, 9));
         for (let i = 0; i < n; i++) {
           const [x, y] = tiles.pop(); used.add(y * F.w + x);
-          const it = i < goods.length ? this.makeItem(goods[i]) : this.randomItem(depth + 2);
+          const it = i < goods.length ? this.makeItem(goods[i]) : i === goods.length && depth >= 3 && rng.chance(0.45) ? this.relicItem() : this.randomItem(depth + 2);
           if (it.cursed && rng.chance(0.7)) { it.ench = Math.abs(it.ench); it.cursed = false; }
           it.price = this.price(it);
           F.items.push({ x, y, it });
@@ -307,6 +317,7 @@ const Game = {
     }
     // 寶箱與祭壇
     this.populateExtra(F, depth, rng, used);
+    this.populateMore(F, depth, used);
     // 一般道具
     if (!F.arena) {
       const ni = 5 + rng.int(0, 3) + (G.mod === 'famine' ? 1 : 0);
@@ -338,7 +349,7 @@ const Game = {
     const K = ITEMS[it.k]; let p = K.price || 10;
     if (it.ench > 0) p *= 1 + it.ench * 0.5;
     if (K.c === 'wand') p *= 0.6 + (it.ch || 1) * 0.15;
-    p *= it.n * (0.9 + G.depth * 0.03) * (asc(5) ? 1.3 : 1);
+    p *= it.n * (0.9 + G.depth * 0.03) * (asc(5) ? 1.3 : 1) * (this.rset('wealth') ? 0.8 : 1);
     return Math.max(2, Math.round(p / 5) * 5);
   },
   nearFree(x, y, used, r = 2) {
@@ -435,6 +446,9 @@ const Game = {
     const m = this.monAt(nx, ny);
     if (m) {
       const D = MON[m.k];
+      if (D.talk) return this.talkTo(m);
+      // 商人會讓路：和你交換位置
+      if (D.npc && m.k === 'keeper' && !(dx && dy && (!TP[this.tile(P.x + dx, P.y)].walk || !TP[this.tile(P.x, P.y + dy)].walk))) { m.x = P.x; m.y = P.y; P.x = nx; P.y = ny; if (!opts.auto) msg('商人側身讓你過去。', 'm'); if (typeof FX !== 'undefined') FX.step(P); this.onEnter(opts); this.endTurn(); return true; }
       if (D.npc) { msg(G.F.shop && this.inRoom(G.F.shop, P.x, P.y) ? '商人：「看上什麼就撿起來，錢會自動付清。也可以在背包裡賣東西給我。」' : '商人：「歡迎光臨！」', 'y'); return false; }
       if (m.disg) this.reveal(m);
       this.meleeAttack(m);
@@ -446,6 +460,7 @@ const Game = {
     if (v === T.CHEST) { const c = this.chestAt(nx, ny); if (c && !c.open) { if (typeof FX !== 'undefined') FX.bump(P, dx, dy); return this.openChest(c); } if (!opts.auto) msg('空空的寶箱。', 'm'); return false; }
     if (v === T.ALTAR) { const a = this.altarAt(nx, ny); if (!a) return false; if (a.used) { if (!opts.auto) msg(ALTARS[a.k].n + '的力量已經消失了。', 'm'); return false; } if (!opts.auto && typeof UI !== 'undefined') UI.askAltar(a); return false; }
     if (v === T.DRYFOUNT) { msg('泉水已經乾涸了。', 'm'); return false; }
+    if (v === T.PROP) { const pp = this.propAt(nx, ny); if (!pp || opts.auto) return false; if (typeof FX !== 'undefined') FX.bump(P, dx, dy); if (PROPS[pp.k].camp) return this.useCamp(pp); if (PROPS[pp.k].deco) { if (G.bumpT !== G.turn + ':' + nx) { G.bumpT = G.turn + ':' + nx; msg(PROPS[pp.k].n + '。' + PROPS[pp.k].d, 'm'); } return false; } if (PROPS[pp.k].boom && G.kegWarn !== nx + ',' + ny) { G.kegWarn = nx + ',' + ny; msg('那是火藥桶！在旁邊打破會被炸傷。再按一次才會打破（也可以從遠處丟東西引爆）。', 'w'); return false; } G.kegWarn = null; this.breakProp(pp); this.endTurn(); return true; }
     if (v === T.SECRET || !TP[v].walk) { if (!opts.auto && G.bumpT !== G.turn) { G.bumpT = G.turn; } return false; }
     if (v === T.DOOR) { this.setTile(nx, ny, T.ODOOR); Snd.play('door'); }
     if (v === T.LAVA && !opts.force) { if (G.lavaWarn !== nx + ',' + ny) { G.lavaWarn = nx + ',' + ny; msg('那是滾燙的岩漿！再按一次才會走進去。', 'w'); return false; } }
@@ -527,13 +542,13 @@ const Game = {
   sell(it) {
     if (!this.inShop() || this.isEquipped(it) && it.cursed) return false;
     const unit = Object.assign({}, it, { n: 1 });
-    const v = Math.max(1, Math.round(this.price(unit) * 0.4));
+    const v = this.sellValue(it);
     if (this.isEquipped(it)) { if (!this.unequip(it, true)) return false; }
     this.removeInv(it, 1);
     G.P.gold += v; msg('賣出了' + this.itemName(unit, true) + '，得到 ' + v + ' 金幣。', 'y'); Snd.play('gold');
     return true;
   },
-  sellValue(it) { return Math.max(1, Math.round(this.price(Object.assign({}, it, { n: 1 })) * 0.4)); },
+  sellValue(it) { return Math.max(1, Math.round(this.price(Object.assign({}, it, { n: 1 })) * 0.4 * (this.rset('wealth') ? 1.9 : 1))); },
 
   // ---------- 裝備 ----------
   equip(it) {
@@ -550,7 +565,8 @@ const Game = {
     else msg((K.c === 'weapon' ? '你拿起了' : '你穿上了') + this.itemName(it) + '。', 'n');
     if (it.cursed && !wasKnown) { msg('糟糕！它被詛咒了，黏在身上拿不下來！', 'b'); Snd.play('curse'); }
     else if (it.ench > 0 && !wasKnown) msg('你感覺到一股力量。', 'g');
-    Snd.play('equip');
+    Snd.play('equip', K.c);
+    if (typeof FX !== 'undefined') FX.equipFx(P, it.cursed ? '#b05cff' : it.rune && it.known ? RUNES[it.rune].col : K.c === 'ring' ? '#ffd75a' : '#e8f0ff', it.cursed);
     this.endTurn();
     return true;
   },
@@ -697,7 +713,7 @@ const Game = {
       P.mhp += g; P.hp += g;
       msg('升級了！你現在是 ' + P.lvl + ' 級。最大 HP +' + g + '。', 'y');
       Snd.play('level');
-      if (typeof FX !== 'undefined') { FX.burst(P.x, P.y, '#ffd75a', 26); FX.text(P.x, P.y, 'LEVEL UP', '#ffd75a'); }
+      if (typeof FX !== 'undefined') { FX.burst(P.x, P.y, '#ffd75a', 26); FX.text(P.x, P.y, 'LEVEL UP', '#ffd75a'); FX.pillar(P.x, P.y, '255,215,90', 0.9); }
       G.pendingPerks++;
     }
     if (G.pendingPerks && !G.perkChoices) this.rollPerks();
@@ -735,7 +751,7 @@ const Game = {
     const s = Store.loadRun(); if (!s || s.v !== 1) return false;
     try {
       s.rng = new RNG(s.rng);
-      const F = s.F; F.chests = F.chests || []; F.altars = F.altars || []; s.asc = s.asc || 0; s.boon = s.boon || 'none'; s.mod = s.mod || null; F.t = Uint8Array.from(F.t); F.deco = Uint8Array.from(F.deco); F.seen = Uint8Array.from(F.seen); if (F.corr) F.corr = Uint8Array.from(F.corr);
+      const F = s.F; F.chests = F.chests || []; F.altars = F.altars || []; F.props = F.props || []; s.P.relics = s.P.relics || []; s.asc = s.asc || 0; s.boon = s.boon || 'none'; s.mod = s.mod || null; F.t = Uint8Array.from(F.t); F.deco = Uint8Array.from(F.deco); F.seen = Uint8Array.from(F.seen); if (F.corr) F.corr = Uint8Array.from(F.corr);
       G = s; G.interrupt = false; G.seenMons = [];
       Art.buildTiles(F.biome);
       this.updateFov();
