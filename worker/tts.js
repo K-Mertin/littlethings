@@ -1,6 +1,7 @@
 // 大廳小幫手的朗讀：GET /api/tts?t=文字 → Azure Speech（Foundry Tools）神經語音 mp3
 // Secrets：AZURE_SPEECH_KEY、AZURE_SPEECH_REGION（例如 eastasia）
 // 只有本機測試會設：AZURE_TTS_URL（指到假伺服器）
+// 網址可加 &r=+5% 指定語速（-30%～+40%）。
 // 一般變數（可不設）：AZURE_TTS_VOICE（預設 zh-TW-YunJheNeural，和 ㄅㄆㄇ／123 小島同一個聲音）、AZURE_TTS_RATE（預設 +15%）
 // 同一句話合成一次就存進 Durable Object（workers.dev 網域不能用 Cloudflare 快取），之後直接回存檔，不再算 Azure 字數。
 // Azure 免費 F0 每月 50 萬字 ≈ 每天 1.6 萬字，所以全站每天最多合成 15,000 字，超過就回 429，前端改用瀏覽器內建語音。
@@ -36,7 +37,9 @@ export async function handleTts(request, env, allow) {
   const text = clean(new URL(request.url).searchParams.get('t')).slice(0, LIMITS.maxChars);
   if (!text) return fail(400, 'empty');
   const voice = (env.AZURE_TTS_VOICE || 'zh-TW-YunJheNeural').trim();
-  const rate = (env.AZURE_TTS_RATE || '+15%').trim();
+  // ?r=+5% 讓遊戲配合自己預錄語音的語速；只接受 -30%～+40%
+  const rq = new URL(request.url).searchParams.get('r');
+  const rate = rq && /^[+-]?\d{1,2}%$/.test(rq) && Math.abs(parseInt(rq)) <= 40 ? (rq[0] === '-' || rq[0] === '+' ? rq : '+' + rq) : (env.AZURE_TTS_RATE || '+15%').trim();
   const key = await sha([voice, rate, text].join('|'));
   const box = env.TTS_CACHE.get(env.TTS_CACHE.idFromName(key));
 
