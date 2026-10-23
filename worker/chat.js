@@ -93,12 +93,12 @@ const draftText = d => JSON.stringify([d.kind, d.game, d.title, d.body, d.ts]);
 export class ChatGuard {
   constructor(ctx) { this.ctx = ctx; }
   async fetch(request) {
-    const { key, limit, ttl } = await request.json();
+    const { key, limit, ttl, add = 1 } = await request.json();
     const now = Date.now();
     const rec = (await this.ctx.storage.get(key)) || { n: 0, exp: now + ttl };
     if (rec.exp < now) { rec.n = 0; rec.exp = now + ttl; }
-    if (rec.n >= limit) return json({ ok: false });
-    rec.n++;
+    if (rec.n + add > limit) return json({ ok: false });
+    rec.n += add;
     await this.ctx.storage.put(key, rec);
     if (!(await this.ctx.storage.getAlarm())) await this.ctx.storage.setAlarm(now + 6 * 3600e3);
     return json({ ok: true });
@@ -109,9 +109,9 @@ export class ChatGuard {
     if (all.size) await this.ctx.storage.setAlarm(now + 6 * 3600e3);
   }
 }
-async function allow(env, key, limit, ttl) {
+export async function allow(env, key, limit, ttl, add = 1) {
   const stub = env.CHAT_GUARD.get(env.CHAT_GUARD.idFromName('global'));
-  const r = await stub.fetch('https://guard/', { method: 'POST', body: JSON.stringify({ key, limit, ttl }) });
+  const r = await stub.fetch('https://guard/', { method: 'POST', body: JSON.stringify({ key, limit, ttl, add }) });
   return (await r.json()).ok;
 }
 const today = () => new Date().toISOString().slice(0, 10);

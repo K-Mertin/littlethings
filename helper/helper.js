@@ -75,12 +75,20 @@
   let busy = false;
 
   const add = (cls, text) => { const d = document.createElement('div'); d.className = 'm ' + cls; d.textContent = text; log.appendChild(d); log.scrollTop = log.scrollHeight; return d; };
-  // 語音輸出：用瀏覽器內建的語音合成朗讀回覆（zh-TW）；每則回覆有 🔊 按鈕，標題列可開「自動朗讀」（預設關閉）
+  // 語音輸出：先用伺服器的 Azure 神經語音（/api/tts，和 ㄅㄆㄇ／123 小島同一個聲音），失敗時才改用瀏覽器內建語音（zh-TW）。
+  // 每則回覆有 🔊 按鈕，標題列可開「自動朗讀」（預設關閉）
   const TTS = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window ? window.speechSynthesis : null;
+  const CAN_SPEAK = true;   // 伺服器語音任何瀏覽器都能播
   let autoRead = false;
-  try { autoRead = !!TTS && localStorage.getItem('mwh-auto') === '1'; } catch (e) { }
+  try { autoRead = localStorage.getItem('mwh-auto') === '1'; } catch (e) { }
+  let player = null, speakSeq = 0;
   const speakable = t => t.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\uFE0F\u200D]/gu, '').replace(/[*_`#>~]+/g, '').replace(/\s+/g, ' ').trim();
-  const stopSpeak = () => { if (TTS) { TTS.cancel(); log.querySelectorAll('.spk.on').forEach(b => b.classList.remove('on')); } };
+  const stopSpeak = () => {
+    speakSeq++;
+    if (player) { player.pause(); player = null; }
+    if (TTS) TTS.cancel();
+    log.querySelectorAll('.spk.on').forEach(b => b.classList.remove('on'));
+  };
   // 挑裝置上最自然的中文聲音：台灣 > 其他中文；神經／優化版本（Edge Natural、Google、Apple 優化）優先，粵語排除
   let voiceCache = null;
   const pickVoice = () => {
@@ -94,19 +102,31 @@
     return voiceCache;
   };
   if (TTS && 'onvoiceschanged' in TTS) TTS.addEventListener('voiceschanged', () => { voiceCache = null; });
-  const speak = (text, b) => {
-    if (!TTS) return;
-    stopSpeak();
-    const t = speakable(text); if (!t) return;
+  const speakBrowser = (t, b) => {
+    if (!TTS) { if (b) b.classList.remove('on'); return; }
     const u = new SpeechSynthesisUtterance(t); u.lang = 'zh-TW'; u.rate = 1.3;
     const v = pickVoice();
     if (v) { u.voice = v; u.lang = v.lang; }
-    if (b) { b.classList.add('on'); u.onend = u.onerror = () => b.classList.remove('on'); }
+    if (b) u.onend = u.onerror = () => b.classList.remove('on');
     TTS.speak(u);
+  };
+  const speak = (text, b) => {
+    stopSpeak();
+    const t = speakable(text).slice(0, 300); if (!t) return;
+    const my = speakSeq;
+    if (b) b.classList.add('on');
+    // 用 GET 網址：同一句話瀏覽器會快取，伺服器也存了檔，不會重複算 Azure 字數
+    const a = new Audio('/api/tts?t=' + encodeURIComponent(t));
+    player = a;
+    const done = () => { if (b && player === a) b.classList.remove('on'); if (player === a) player = null; };
+    const fallback = () => { if (my !== speakSeq || player !== a) return; player = null; speakBrowser(t, b); };   // onerror 和 play() 失敗只會各觸發一次，這裡只接第一次
+    a.onended = done;
+    a.onerror = fallback;
+    a.play().catch(e => { if (e && e.name === 'NotAllowedError') { if (b) b.classList.remove('on'); } else fallback(); });
   };
   const addBot = (text, auto) => {
     const d = add('bot', text);
-    if (TTS) {
+    if (CAN_SPEAK) {
       const b = document.createElement('button'); b.type = 'button'; b.className = 'spk'; b.textContent = '🔊'; b.title = '念給我聽'; b.setAttribute('aria-label', '朗讀這則回覆');
       b.onclick = () => { if (b.classList.contains('on')) stopSpeak(); else speak(text, b); };
       d.appendChild(b);
@@ -176,7 +196,7 @@
   chips.querySelectorAll('button').forEach(b => b.onclick = () => ask(b.textContent));
 
   const autoBtn = box.querySelector('.auto');
-  if (TTS && autoBtn) {
+  if (CAN_SPEAK && autoBtn) {
     autoBtn.hidden = false;
     const sync = () => { const l = '自動朗讀回覆：' + (autoRead ? '開' : '關'); autoBtn.textContent = autoRead ? '🔊' : '🔇'; autoBtn.classList.toggle('on', autoRead); autoBtn.title = l; autoBtn.setAttribute('aria-label', l); autoBtn.setAttribute('aria-pressed', autoRead); };
     sync();
