@@ -450,3 +450,66 @@ function battleSprites(id) {
   for (const k in o) if (k !== 'white' && k !== 'red') { o.white[k] = silhouette(o[k], '#ffffff'); }
   return (BattleSheets[id] = o);
 }
+
+// ───── 對話頭像（40×40，由外觀設定自動產生） ─────
+function makePortrait(L) {
+  const p = new PB(40, 40);
+  const S = shd(L.skin), H = shd(L.hair), T = shd(L.top), TR = L.trim || T.lo, hs = L.hs;
+  // 後面的長髮
+  if (hs === 'long' && L.hat !== 'helm') for (let y = 14; y < 40; y++) for (let x = 7; x <= 32; x++) { if (Math.abs(x - 19.5) < 12.5 - Math.max(0, y - 30) * 0.3) p.P(x, y, x < 12 ? H.hi : x > 28 ? H.lo : H.md); }
+  // 肩膀與衣服
+  for (let y = 31; y < 40; y++) { const w = 8 + (y - 31) * 1.6 + (L.big ? 3 : 0); for (let x = Math.round(19.5 - w); x <= Math.round(19.5 + w); x++) p.P(x, y, x < 19.5 - w + 3 ? T.hi : x > 19.5 + w - 4 ? T.lo : T.md); }
+  if (L.out === 'armor') { p.E(10, 34, 5, 3.5, T.hi); p.E(29, 34, 5, 3.5, T.lo); p.P(10, 32, '#ffffff'); }
+  p.R(15, 31, 10, 1, TR); for (let y = 31; y < 40; y++) { p.P(19, y, TR); p.P(20, y, TR); }
+  if (L.scarf) { p.R(13, 30, 14, 3, L.scarf); p.R(13, 32, 14, 1, darken(L.scarf, 0.3)); }
+  if (L.cape) { p.R(5, 33, 4, 7, L.cape); p.R(31, 33, 4, 7, darken(L.cape, 0.3)); }
+  // 脖子與頭
+  p.R(17, 26, 6, 6, S.lo);
+  p.E(19.5, 17.5, 10.5, 11.5, (x, y, nx, ny) => (nx > 0.62 || ny > 0.85 ? S.lo : S.md));
+  p.P(8, 19, S.lo); p.P(31, 19, S.lo); p.P(8, 20, S.md); p.P(31, 20, S.lo);
+  // 眼睛
+  const eyeShut = false;
+  for (const ex of [13, 24]) {
+    if (eyeShut) { p.R(ex, 20, 3, 1, '#1a1020'); continue; }
+    p.R(ex, 18, 3, 4, L.eye); p.R(ex, 18, 3, 1, '#1a1020'); p.R(ex + 1, 19, 1, 2, '#1a1020'); p.P(ex, 19, '#ffffff'); p.P(ex - 1, 18, '#1a1020'); p.P(ex + 3, 18, '#1a1020');
+    p.R(ex, 15, 3, 1, H.lo);
+  }
+  p.P(19, 22, S.lo); p.P(20, 23, S.lo);
+  p.R(18, 25, 4, 1, mix(S.md, '#a0302a', 0.45));
+  p.R(11, 22, 2, 1, mix(S.md, '#ff7a8a', 0.45)); p.R(27, 22, 2, 1, mix(S.md, '#ff7a8a', 0.45));
+  if (L.glasses) { p.R(11, 17, 6, 1, '#3a3a4a'); p.R(22, 17, 6, 1, '#3a3a4a'); p.R(11, 21, 6, 1, '#3a3a4a'); p.R(22, 21, 6, 1, '#3a3a4a'); p.R(17, 18, 5, 1, '#3a3a4a'); }
+  if (L.beard) { const B = shd(L.beard); p.E(19.5, 26, 9, 5.5, (x, y) => (y >= 23 ? (x > 24 ? B.lo : B.md) : null)); p.R(17, 24, 6, 1, B.lo); p.R(18, 25, 4, 1, '#5a2a2a'); }
+  if (L.mous) { p.R(15, 24, 10, 1, L.mous); p.P(14, 25, L.mous); p.P(25, 25, L.mous); }
+  // 頭髮
+  if (hs !== 'bald') {
+    p.E(19.5, 15, 11.6, 10.5, (x, y, nx, ny) => (y <= 12 ? (ny < -0.6 ? H.hi : nx > 0.5 ? H.lo : H.md) : null));
+    for (let x = 9; x <= 30; x++) { const d = hs === 'spiky' ? ((x % 4) < 2 ? 3 : 1) : hs === 'bob' || hs === 'long' ? 3 + (x % 3 === 0 ? 1 : 0) : 2 + ((x * 7) % 3 === 0 ? 1 : 0); for (let y = 13; y < 13 + d; y++) p.P(x, y, x > 26 ? H.lo : H.md); }
+    const side = hs === 'long' ? 30 : hs === 'bob' ? 24 : 19;
+    for (let y = 13; y <= side; y++) { p.R(7, y, 3, 1, H.md); p.R(30, y, 3, 1, H.lo); }
+    if (hs === 'spiky') for (const [x, y] of [[11, 4], [16, 2], [22, 2], [27, 4], [8, 9], [31, 9]]) { p.E(x, y + 2, 2, 2.5, H.hi); }
+    if (hs === 'bun') p.E(19.5, 4, 5, 4, H.hi);
+    if (hs === 'pony') { p.E(32, 18, 3, 7, H.lo); }
+    p.R(13, 6, 4, 1, lighten(L.hair, 0.5)); p.R(12, 7, 2, 1, lighten(L.hair, 0.5));
+  } else { p.R(7, 15, 3, 6, H.md); p.R(30, 15, 3, 6, H.lo); p.R(13, 8, 4, 2, S.hi); }
+  // 帽子
+  const C = L.hatc ? shd(L.hatc) : null;
+  switch (L.hat) {
+    case 'band': p.R(8, 11, 24, 3, C.md); p.R(8, 11, 24, 1, C.hi); p.R(31, 12, 4, 2, C.lo); p.R(33, 14, 3, 4, C.lo); break;
+    case 'hood': p.E(19.5, 15, 13.5, 13, (x, y, nx, ny) => ((y >= 13 && x >= 10 && x <= 29) ? null : y > 35 ? null : (ny < -0.5 ? C.hi : nx > 0.5 ? C.lo : C.md))); p.R(10, 12, 20, 1, L.trim); p.R(18, 3, 4, 4, L.trim); p.R(19, 2, 2, 6, L.trim); for (let y = 13; y < 34; y++) { p.R(6, y, 4, 1, C.md); p.R(30, y, 4, 1, C.lo); } break;
+    case 'witch': for (let y = 0; y < 10; y++) { const w = 1 + y * 1.1; p.R(Math.round(21 - w + (9 - y) * 0.5), y, Math.round(w * 2), 1, C.md); } p.R(1, 10, 38, 3, C.md); p.R(1, 10, 38, 1, C.hi); p.R(1, 12, 38, 1, C.lo); p.R(10, 8, 20, 2, L.trim); p.P(19, 8, '#fff7b0'); break;
+    case 'helm': p.E(19.5, 13, 12.5, 10, (x, y, nx, ny) => (y <= 14 ? (ny < -0.4 && nx < 0 ? C.hi : nx > 0.4 ? C.lo : C.md) : null)); p.R(7, 14, 26, 2, C.lo); p.R(18, 14, 4, 6, C.md); p.P(12, 6, '#ffffff'); if (L.big) p.R(17, 0, 6, 5, L.trim); break;
+    case 'cap': p.E(19.5, 10, 12, 7, (x, y) => (y <= 13 ? (y < 8 ? C.hi : C.md) : null)); p.R(8, 13, 24, 2, darken(L.hatc, 0.45)); p.R(16, 6, 8, 3, L.trim || C.lo); break;
+    case 'turban': p.E(19.5, 9, 13, 8, (x, y) => (y <= 14 ? (((x + y) % 4 === 0) ? C.lo : C.md) : null)); p.E(19.5, 9, 2, 2, '#d03a3a'); break;
+    case 'fur': p.E(19.5, 9, 13, 7, (x, y) => (y <= 14 ? (((x * 7 + y * 3) % 5 === 0) ? C.lo : C.md) : null)); p.R(5, 13, 4, 10, C.md); p.R(31, 13, 4, 10, C.lo); break;
+    case 'crown': for (const x of [11, 16, 23, 28]) p.R(x, 1, 2, 3, C.hi); p.R(11, 4, 18, 4, C.md); p.R(18, 5, 4, 2, '#e03050'); p.R(13, 5, 2, 2, '#3a7ad8'); p.R(25, 5, 2, 2, '#3a7ad8'); break;
+    case 'hat2': p.R(13, 0, 14, 11, C.md); p.R(13, 0, 2, 11, C.hi); p.R(25, 0, 2, 11, C.lo); p.R(18, 2, 4, 7, '#e8b84a'); p.R(17, 4, 6, 2, '#e8b84a'); break;
+    case 'wide': p.R(0, 10, 40, 3, C.md); p.R(0, 10, 40, 1, C.hi); p.R(9, 1, 22, 9, C.md); p.R(9, 1, 4, 9, C.hi); p.R(9, 8, 22, 2, L.scarf || '#d03a3a'); break;
+  }
+  p.selout();
+  return p.canvas();
+}
+const Portraits = {};
+function portrait(id) { if (Portraits[id] !== undefined) return Portraits[id]; return (Portraits[id] = LOOKS[id] ? makePortrait(LOOKS[id]) : null); }
+// 說話者名稱 → 頭像
+const SPEAKERS = { 洛恩: 'hero', 莉亞: 'lia', 米菈: 'mira', 巴爾克: 'balk', 托爾爺爺: 'grandpa', 娜菲莉: 'queen', 砂金女王娜菲莉: 'queen', 船長: 'captain', 葛雷: 'miner', 老礦工葛雷: 'miner', 小萌: 'girl', 學者賽門: 'scholar', 鐵匠: 'smith', 神父: 'priest', 村長: 'grandpa', 見習神官: 'lia', 紅髮女孩: 'mira', 高大的戰士: 'balk', 母親: 'desertw', 女孩: 'girl', 守衛: 'guard', 侍衛: 'guard', 門衛: 'guard', 水手: 'sailor', 漁夫: 'sailor', 樵夫: 'man2', 旅店老闆: 'man2', 吟遊詩人: 'bard', 賭場老闆: 'gambler', 星之收藏家: 'collector', 研究員: 'scholar' };
+const BOSS_SPEAK = { 毒霧蕈王: 'mushking', 嵐翼魔鳥: 'stormbird', 鐵甲魔像: 'irongolem', 沙之王: 'sandking', 霜牙龍: 'frostdragon', 加爾德: 'garde', 黯騎士: 'garde', 黯王諾克斯: 'nox1', 諾克斯: 'nox1' };

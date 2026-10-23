@@ -110,8 +110,21 @@ const UI = {
   },
 
   // ───── 對話框 ─────
+  // 解析「名字：「……」」→ 名字與頭像
+  speaker(text) {
+    const m = /^([^：「」\n]{1,8})：(「[\s\S]*)$/.exec(text);
+    if (!m) return null;
+    const name = m[1];
+    let img = null;
+    if (SPEAKERS[name]) img = portrait(SPEAKERS[name]);
+    else if (BOSS_SPEAK[name] && typeof MonArt !== 'undefined') img = MonArt.get(MONS[BOSS_SPEAK[name]]).img;
+    else if (UI.talkSpr && LOOKS[UI.talkSpr]) img = portrait(UI.talkSpr);
+    return { name, body: m[2], img };
+  },
   msg(text, o = {}) {
     return new Promise(res => {
+      const sp = this.speaker(text);
+      if (sp) text = sp.body;
       const lay = { modal: true, pages: null, pi: 0, shown: 0, done: false, wait: o.wait, t: 0 };
       lay.update = dt => {
         if (!lay.pages) return;
@@ -130,19 +143,33 @@ const UI = {
       lay.draw = g => {
         const V = L.V, pad = L.pad, fs = L.FS, lines = 3;
         const h = fs * 1.55 * lines + pad * 2.4, w = Math.min(V.w - pad * 2, fs * 34), x = V.x + (V.w - w) / 2;
-        const y = o.top ? V.y + pad : V.y + V.h - h - pad;
+        const y = o.top ? V.y + pad + (sp ? fs * 1.4 : 0) : V.y + V.h - h - pad;
+        const ps = sp && sp.img ? h - pad * 1.2 : 0, tx = x + pad * 1.6 + (ps ? ps + pad * 0.6 : 0);
         if (!lay.pages) {
-          const raw = UI.wrap(g, text, w - pad * 3.2);
+          const raw = UI.wrap(g, text, w - pad * 3.2 - (ps ? ps + pad * 0.6 : 0));
           lay.pages = []; for (let i = 0; i < raw.length; i += lines) lay.pages.push(raw.slice(i, i + lines));
         }
         UI.win(g, x, y, w, h);
+        if (sp) {
+          g.font = `700 ${fs * 0.9}px ${FONT}`; const nw = g.measureText(sp.name).width + pad * 2.4, nh = fs * 1.5;
+          UI.win(g, x + pad * 0.6, y - nh * 0.8, nw, nh, { border: '#ffd76a' });
+          UI.text(g, sp.name, x + pad * 0.6 + nw / 2, y - nh * 0.8 + nh / 2, '#ffe9a8', fs * 0.9, 'center', 'middle', 700);
+          if (ps) {
+            const px0 = x + pad * 0.8, py0 = y + pad * 0.6;
+            g.fillStyle = 'rgba(0,0,0,.35)'; rr(g, px0, py0, ps, ps, fs * 0.25); g.fill();
+            const gr = g.createLinearGradient(0, py0, 0, py0 + ps); gr.addColorStop(0, 'rgba(120,140,220,.35)'); gr.addColorStop(1, 'rgba(40,40,90,.2)'); g.fillStyle = gr; rr(g, px0, py0, ps, ps, fs * 0.25); g.fill();
+            g.imageSmoothingEnabled = false; const im = sp.img, sc = ps / Math.max(im.width, im.height) * (im.width > 60 ? 1.05 : 1);
+            g.save(); rr(g, px0, py0, ps, ps, fs * 0.25); g.clip(); g.drawImage(im, px0 + (ps - im.width * sc) / 2, py0 + ps - im.height * sc + (im.width > 60 ? im.height * sc * 0.08 : 0), im.width * sc, im.height * sc); g.restore();
+            g.strokeStyle = '#e8d6a0'; g.lineWidth = Math.max(1, fs * 0.08); rr(g, px0, py0, ps, ps, fs * 0.25); g.stroke();
+          }
+        }
         let left = Math.floor(lay.shown);
         lay.pages[lay.pi].forEach((ln, i) => {
           const s = ln.slice(0, Math.max(0, left)); left -= ln.length;
-          UI.text(g, s, x + pad * 1.6, y + pad * 1.2 + i * fs * 1.55, '#ffffff', fs);
+          UI.text(g, s, tx, y + pad * 1.2 + i * fs * 1.55, '#ffffff', fs);
         });
         const total = lay.pages[lay.pi].join('').length;
-        if (lay.shown >= total && !o.auto && Math.sin(UI.t * 8) > -0.3) { g.fillStyle = '#fff'; const cx = x + w - pad * 2, cy = y + h - pad * 1.4; g.beginPath(); g.moveTo(cx - fs * 0.35, cy - fs * 0.25); g.lineTo(cx + fs * 0.35, cy - fs * 0.25); g.lineTo(cx, cy + fs * 0.2); g.fill(); }
+        if (lay.shown >= total && !o.auto) { const cx = x + w - pad * 2, cy = y + h - pad * 1.5; UI.cursor(g, cx, cy, fs * 0.8, 'down'); }
         UI.hit(V.x, V.y, V.w, V.h, () => { lay.tapped = true; });
       };
       UI.push(lay);

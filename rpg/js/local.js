@@ -62,11 +62,12 @@ const LSpr = {
   },
   well() {
     return this.get('well', 18, 26, p => {
-      p.E(9, 20, 8, 4.5, '#6a6a7a'); p.E(9, 19.5, 6.5, 3.2, '#2a5aa0'); p.E(8, 19, 3, 1.2, '#5a8ad0');
-      for (let x = 1; x < 17; x++) p.P(x, 22 + Math.round(Math.sin(x / 16 * Math.PI) * 1.5), '#a8a8b8');
-      p.R(2, 6, 2, 15, '#6a4424'); p.R(14, 6, 2, 15, '#6a4424');
-      for (let i = 0; i < 5; i++) p.R(1 + i, 5 - i, 16 - i * 2, 1, i < 2 ? '#b8503a' : '#d8684a');
-      p.R(4, 9, 10, 1, '#8a5a30'); p.R(8, 10, 1, 5, '#c8c8d0'); p.R(7, 15, 3, 2, '#7a5a3a');
+      // 石砌的圓井：前面的石牆＋上面的井口＋小木架
+      for (let y = 17; y < 25; y++) for (let x = 1; x < 17; x++) { const row = (y - 17) >> 1, off = row % 2 ? 2 : 0; const edge = ((x + off) % 4 === 0) || ((y - 17) % 2 === 1); p.P(x, y, edge ? '#6a6a7a' : (x < 5 ? '#b8b8c8' : x > 13 ? '#7a7a8a' : '#9a9aaa')); }
+      p.E(9, 17, 8, 3.2, '#c8c8d8'); p.E(9, 17, 6, 2.2, '#1a2a4a'); p.E(8, 16.8, 3, 0.9, '#3a6ab0');
+      p.R(2, 5, 2, 13, '#6a4424'); p.R(14, 5, 2, 13, '#6a4424'); p.R(2, 5, 1, 13, '#8a5a30');
+      p.R(3, 7, 12, 1, '#8a5a30'); p.R(8, 8, 1, 6, '#c8c8d0'); p.R(7, 13, 3, 3, '#7a5a3a'); p.R(7, 13, 3, 1, '#a07a50');
+      for (let i = 0; i < 4; i++) p.R(1 + i * 2, 4 - i, 16 - i * 4, 1, i % 2 ? '#a8443a' : '#c8564a');
     });
   },
   statue() {
@@ -320,6 +321,8 @@ const LocalBake = {
         }
       }
     }
+    // 室內的光源記住所屬的建築（屋頂蓋住時不發光）
+    if (town) for (const l of res.lights) { const bx = Math.floor(l.x / 16), by = Math.floor(l.y / 16); if (bx >= 0 && by >= 0 && bx < TW && by < TH && inB[by * TW + bx] >= 0) l.b = inB[by * TW + bx]; }
     // ── 建築外觀（屋頂、正面牆）──
     if (town) res.builds.forEach((b, k) => { b.img = this.roof(f, th, b, k, T); b.key = b.y1 + 0.55; for (const l of b.lights) res.lights.push(l); });
     // ── 動畫層與合成 ──
@@ -410,7 +413,14 @@ const LocalBake = {
       const r = seeded(k * 9 + 1); for (let i = 0; i < w * 0.6; i++) px(g, ox + (r() * w) | 0, top + 3 + (r() * (bottom - top - 8)) | 0, r() < 0.5 ? R.hi : R.lo);
       px(g, ox - padS, top, R.hi, w + padS * 2, 2); px(g, ox - padS, bottom - 3, darken(roofC, 0.45), w + padS * 2, 3);
       if (isPalace || w > 7 * 16) { const cx = ox + w / 2, cy = top + (bottom - top) * 0.45, rr = Math.min(w * 0.18, (bottom - top) * 0.32); g.fillStyle = '#e8c060'; g.beginPath(); g.ellipse(cx, cy, rr, rr * 0.85, 0, Math.PI, 0); g.fill(); g.fillStyle = '#fff0b0'; g.fillRect(cx - rr * 0.5, cy - rr * 0.7, rr * 0.25, rr * 0.5); g.fillStyle = '#c89030'; g.fillRect(cx - rr, cy, rr * 2, 2); g.fillStyle = '#f2c14e'; g.fillRect(cx - 1, cy - rr * 0.85 - 6, 2, 6); }
-      else if (k % 2 === 0) { px(g, ox + w - 22, top + 6, '#c0a070', 8, 6); px(g, ox + w - 22, top + 6, '#e0c090', 8, 1); }
+      else {
+        // 屋頂上的雜物：陶壺、晾著的地毯
+        const r2 = seeded(k * 31 + 7);
+        for (let i = 0; i < 2; i++) { const px0 = ox + 6 + (r2() * (w - 20)) | 0, py0 = top + 6 + (r2() * Math.max(1, bottom - top - 18)) | 0; px(g, px0, py0, '#8a4a2a', 5, 6); px(g, px0 + 1, py0 - 1, '#6a3a1a', 3, 1); px(g, px0, py0, '#b0683a', 2, 6); }
+        if (w > 48) { const cy0 = top + 5, cx0 = ox + 10; px(g, cx0, cy0, '#6a4424', 1, 8); px(g, cx0 + w - 22, cy0, '#6a4424', 1, 8); px(g, cx0, cy0, '#d8d0c0', w - 21, 1); const cols = ['#c03a4a', '#3a8ac0', '#e8b040']; for (let i = 0; i < 3; i++) { const lx = cx0 + 4 + i * ((w - 30) / 3); px(g, lx, cy0 + 1, cols[(i + k) % 3], 7, 6); px(g, lx, cy0 + 3, '#fff0d0', 7, 1); } }
+      }
+      // 門上的條紋遮陽篷
+      for (let x = b.x0; x <= b.x1; x++) if (T(x, b.y1) === '+') { const X = ox + (x - b.x0) * 16; for (let i = 0; i < 6; i++) px(g, X - 1 + i * 3, fy - 2, i % 2 ? '#f4ecd8' : (k % 2 ? '#3a8ac0' : '#c03a4a'), 3, 4); px(g, X - 1, fy + 2, 'rgba(0,0,0,.25)', 18, 1); }
     } else {
       // 北坡
       for (let y = top; y < ridge; y++) { const t = (y - top) / Math.max(1, ridge - top); px(g, ox - padS, y, mix(R.hi, R.md, t * 0.6), w + padS * 2, 1); }

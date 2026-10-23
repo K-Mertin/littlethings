@@ -44,6 +44,8 @@ const FieldFx = {
         g.beginPath(); g.ellipse(X, Y, c.w * k, c.h * k, 0, 0, TAU); g.ellipse(X + c.w * 0.6 * k, Y + c.h * 0.3 * k, c.w * 0.6 * k, c.h * 0.7 * k, 0, 0, TAU); g.fill();
       }
     }
+    // 星之碎片的閃光
+    if (typeof SHARDS !== 'undefined') { const p = f.leader(); for (const s of SHARDS) { if (s[0] !== f.id || F(`s:${s[0]}:${s[1]},${s[2]}`)) continue; if (Math.abs(s[1] - p.x) > 4 || Math.abs(s[2] - p.y) > 4) continue; const ph = (f.t * 0.8 + s[1] * 0.37) % 1; if (ph > 0.35) continue; const a = Math.sin(ph / 0.35 * Math.PI), X = sx0 + (s[1] * 16 + 8) * k, Y = sy0 + (s[2] * 16 + 10) * k; g.globalCompositeOperation = 'lighter'; g.fillStyle = `rgba(255,240,180,${a})`; g.fillRect(X - k * 3 * a, Y - k * 0.5, k * 6 * a, k); g.fillRect(X - k * 0.5, Y - k * 3 * a, k, k * 6 * a); g.globalCompositeOperation = 'source-over'; } }
     for (const q of this.parts) {
       const X = sx0 + q.x * k, Y = sy0 + q.y * k, a = Math.min(1, q.t * 3, (q.life - q.t) * 1.5);
       g.globalAlpha = a;
@@ -69,7 +71,8 @@ const FieldFx = {
   drawLights(g, f, sx0, sy0, k, T, amb) {
     const V = L.V, t = f.t;
     // 火焰本體
-    for (const l of f.lights) if (l.flame) { const X = sx0 + l.x * k, Y = sy0 + l.y * k; if (X < V.x - 40 || X > V.x + V.w + 40 || Y < V.y - 40 || Y > V.y + V.h + 40) continue; this.flame(g, X, Y + 2 * k, k * (l.flame < 1 ? 0.5 : 1), t, l.x); }
+    const hid = l => l.b !== undefined && f.builds[l.b] && f.builds[l.b].alpha > 0.5;
+    for (const l of f.lights) if (l.flame && !hid(l)) { const X = sx0 + l.x * k, Y = sy0 + l.y * k; if (X < V.x - 40 || X > V.x + V.w + 40 || Y < V.y - 40 || Y > V.y + V.h + 40) continue; this.flame(g, X, Y + 2 * k, k * (l.flame < 1 ? 0.5 : 1), t, l.x); }
     const dark = f.def.dark;
     if (dark) {
       const s = 4, w = Math.ceil(V.w / s), h = Math.ceil(V.h / s);
@@ -88,6 +91,7 @@ const FieldFx = {
     g.globalCompositeOperation = 'lighter';
     for (const l of f.lights) {
       if (!dark && !amb && (l.win || l.lamp)) continue;
+      if (hid(l)) continue;
       const X = sx0 + l.x * k, Y = sy0 + l.y * k, r = l.r * k * (1 + (l.fl ? Math.sin(t * 9 + l.x) * 0.05 * l.fl : 0));
       if (X < V.x - r || X > V.x + V.w + r || Y < V.y - r || Y > V.y + V.h + r) continue;
       const a = dark ? 0.32 : amb ? 0.28 : 0.16;

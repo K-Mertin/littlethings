@@ -190,7 +190,7 @@ const Field = {
     this.enc = this.encReset();
     const Z = ZONES[z];
     if (G.repel > 0) { const avg = G.party.reduce((s, m) => s + m.lv, 0) / G.party.length; if (avg >= (Z.lv || 0) + 2) return; }
-    const ids = rollFormation(Z);
+    const ids = (window.rollFormationRare || rollFormation)(Z, z);
     this.run(async () => {
       Snd.play('encounter'); await Game.swirl();
       const r = await runBattle(ids, { bg: this.isWorld() && c === 'T' ? 'forest' : Z.bg });
@@ -204,7 +204,7 @@ const Field = {
     if (!n && this.tile(tx, ty) === '=') { n = this.npcAt(tx + dx, ty + dy); }
     if (n && n.d.talk) {
       if (!n.d.fixed && !n.d.mon) n.dir = OPP[p.dir];
-      this.run(async () => { await n.d.talk(n); this.refreshNpcs(); });
+      this.run(async () => { UI.talkSpr = n.d.spr; try { await n.d.talk(n); } finally { UI.talkSpr = null; } this.refreshNpcs(); });
       return;
     }
     const c = this.tile(tx, ty), key = tx + ',' + ty;
@@ -222,6 +222,7 @@ const Field = {
     this.busy = true;
     try { await fn(); } catch (e) { console.error(e); }
     this.busy = false;
+    if (typeof Extra !== 'undefined' && G) Extra.check();
     this.refreshNpcs();
     Input.consume();
   },

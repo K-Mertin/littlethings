@@ -44,7 +44,7 @@ async function fieldMenu() {
   const pp = partyPanel();
   let idx = 0;
   for (;;) {
-    const items = [{ t: '道具' }, { t: '法術' }, { t: '裝備' }, { t: '狀態' }, { t: '隊伍' }, { t: '筆記' }, { t: '設定' }];
+    const items = [{ t: '道具' }, { t: '法術' }, { t: '裝備' }, { t: '狀態' }, { t: '隊伍' }, { t: '手冊' }, { t: '設定' }];
     if (G.party.length < 2) items[4].dis = true;
     const i = await UI.menu({ items, pos: mpos(), index: idx, keep: true, keepCursor: true });
     if (i < 0) break;
@@ -55,7 +55,7 @@ async function fieldMenu() {
     if (i === 2) await equipMenu();
     if (i === 3) await statusMenu();
     if (i === 4) await orderMenu();
-    if (i === 5) await notebook();
+    if (i === 5) { const j = await UI.menu({ items: [{ t: '冒險筆記' }, { t: '怪物圖鑑', r: Extra.bookCount() + '' }, { t: '成就', r: Object.keys(G.ach).length + '/' + ACHS.length }], title: '冒險手冊', pos: mpos(L.FS * 5.5, L.FS * 4) }); if (j === 0) await notebook(); if (j === 1) await bookMenu(); if (j === 2) await achMenu(); }
     if (i === 6) { const r = await settingsMenu(); if (r === 'title') { UI.clearGhosts(); UI.remove(gp); Game.toTitle(); return; } }
     UI.clearGhosts();
     UI.push(pp);
@@ -88,7 +88,7 @@ async function itemMenu() {
     const a = await UI.menu({ items: [{ t: '使用', dis: !!it.nofield }, { t: '丟掉' }], pos: mpos(L.FS * 11, L.FS * 2) });
     if (a === 1) { if (await UI.yesno(`要把 ${it.name} 丟掉嗎？`)) { Bag.remove(id, Bag.count(id)); await UI.say(`丟掉了${it.name}。`); } continue; }
     if (a !== 0) continue;
-    await fieldUseItem(id);
+    await (window.fieldUseItemX || fieldUseItem)(id);
   }
 }
 async function fieldUseItem(id, user) {
@@ -201,7 +201,7 @@ async function statusMenu() {
       const m = G.party[k], s = Party.stats(m), C = CHARS[m.id], fs = L.FS, pad = L.pad;
       const w = Math.min(L.V.w - pad * 2, fs * 30), h = Math.min(L.V.h - pad * 2, fs * 19), x = L.V.x + (L.V.w - w) / 2, y = L.V.y + (L.V.h - h) / 2;
       UI.win(g, x, y, w, h);
-      const sz = fs * 3.2; g.imageSmoothingEnabled = false; g.drawImage(sheet(m.id), 0, 0, 16, 16, x + pad * 1.5, y + pad * 1.2, sz, sz);
+      const sz = fs * 3.2; g.imageSmoothingEnabled = false; g.fillStyle = 'rgba(0,0,0,.3)'; rr(g, x + pad * 1.5, y + pad * 1.2, sz, sz, fs * 0.2); g.fill(); g.drawImage(portrait(m.id), x + pad * 1.5, y + pad * 1.2, sz, sz);
       UI.text(g, C.name, x + pad * 2 + sz, y + pad * 1.3, '#fff', fs * 1.3, 'left', 'top', 700);
       UI.text(g, `${C.role}　Lv ${m.lv}`, x + pad * 2 + sz, y + pad * 1.3 + fs * 1.7, '#ffd76a', fs * 0.9);
       if (G.party.length > 1) UI.text(g, `◀ ${k + 1}/${G.party.length} ▶`, x + w - pad * 1.5, y + pad * 1.3, '#9aa6d8', fs * 0.85, 'right');
@@ -239,6 +239,7 @@ async function notebook() {
   const t = Math.floor(G.time), hh = Math.floor(t / 3600), mm = Math.floor(t / 60) % 60;
   lines.push(['冒險記錄', `遊戲時間 ${hh}:${String(mm).padStart(2, '0')}　戰鬥 ${G.battles} 次　難度 ${DIFFS[G.diff].name}`]);
   lines.push(['音石', `${countStones()} / 5`]);
+  lines.push(['收集', `怪物圖鑑 ${Extra.bookCount()} 種　星之碎片 ${Extra.shards()} / 12　成就 ${Object.keys(G.ach).length} / ${ACHS.length}` + (G.ng ? `　第 ${G.ng + 1} 周目` : '')]);
   return new Promise(res => {
     const lay = { modal: true, update() { if (Input.pressed.ok || Input.pressed.cancel || lay.tap) { UI.remove(lay); res(); } } };
     lay.draw = g => {

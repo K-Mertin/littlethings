@@ -117,6 +117,15 @@ const BBG = {
         anim = 'mist';
         break;
       }
+      case 'star': {
+        fastBand(sg, 0, H, '#05031a', '#2a1a5a'); stars(sg, 140, '#ffffff', H * 0.9); stars(sg, 40, '#ffe8a0', H * 0.9);
+        for (let i = 0; i < 3; i++) { const x = r() * W, y = r() * hz, rr2 = 30 + r() * 40; const gr = sg.createRadialGradient(x, y, 0, x, y, rr2); gr.addColorStop(0, pick(['rgba(160,90,255,.25)', 'rgba(80,160,255,.22)', 'rgba(255,120,200,.2)'])); gr.addColorStop(1, 'rgba(0,0,0,0)'); sg.fillStyle = gr; sg.fillRect(x - rr2, y - rr2, rr2 * 2, rr2 * 2); }
+        for (let i = 0; i < 10; i++) { const x = r() * W * 2, y = 10 + r() * hz, s2 = 3 + r() * 6; fgx.fillStyle = '#6a5ab0'; fgx.beginPath(); fgx.moveTo(x, y - s2); fgx.lineTo(x + s2 * 0.6, y); fgx.lineTo(x, y + s2); fgx.lineTo(x - s2 * 0.6, y); fgx.fill(); fgx.fillStyle = '#c8b8ff'; fgx.fillRect(x - 1, y - s2 * 0.6, 1, s2); }
+        mg.fillStyle = '#1a1440'; mg.beginPath(); mg.ellipse(W / 2, hz + 30, W * 0.62, 26, 0, 0, TAU); mg.fill();
+        floor(gg, hz + 12, '#3a3270', '#141030', '#5a4aa0', true, 0.2);
+        anim = 'sparkle';
+        break;
+      }
       case 'castle': case 'throne': {
         fastBand(sg, 0, H, kind === 'throne' ? '#0a0614' : '#140e20', kind === 'throne' ? '#3a1030' : '#3a2e50');
         if (kind === 'throne') { stars(sg, 50, '#ff80a0', hz); sg.fillStyle = 'rgba(200,30,70,.18)'; sg.beginPath(); sg.arc(W / 2, hz * 0.5, 60, 0, TAU); sg.fill(); sg.fillStyle = 'rgba(200,30,70,.25)'; sg.beginPath(); sg.arc(W / 2, hz * 0.5, 34, 0, TAU); sg.fill(); }

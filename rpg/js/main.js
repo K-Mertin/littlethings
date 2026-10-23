@@ -128,7 +128,7 @@ const Game = {
     for (const n of [1, 2, 3]) {
       const d = SaveIO.read(n), b = document.createElement('button');
       b.className = 'slot' + (d ? '' : ' empty');
-      b.innerHTML = `<b>記錄 ${n}${d && d.cleared ? ' ★' : ''}</b><span>${d ? `${CHARS.hero.name} Lv${d.party[0].lv}　${(MAPS[d.map] || {}).short || (MAPS[d.map] || {}).name || ''}<br>${slotInfo(d).split(' ').slice(-1)[0]}　${DIFFS[d.diff] ? DIFFS[d.diff].name : ''}` : '（空白）'}</span>`;
+      b.innerHTML = `<b>記錄 ${n}${d && d.cleared ? ' ★' : ''}${d && d.ng ? ' 二周目' + (d.ng > 1 ? '×' + d.ng : '') : ''}</b><span>${d ? `${CHARS.hero.name} Lv${d.party[0].lv}　${(MAPS[d.map] || {}).short || (MAPS[d.map] || {}).name || ''}<br>${slotInfo(d).split(' ').slice(-1)[0]}　${DIFFS[d.diff] ? DIFFS[d.diff].name : ''}` : '（空白）'}</span>`;
       if (mode === 'load' && !d) b.disabled = true;
       b.onclick = () => {
         Snd.play('ok');
@@ -150,7 +150,7 @@ const Game = {
     if (Input.pressed.cancel) { if (!document.getElementById('slots').hidden) document.getElementById('slotsBack').click(); else if (!document.getElementById('diffs').hidden) document.getElementById('diffBack').click(); }
   },
   async newGame(slot, diff) {
-    G = newGameState(diff); G.slot = slot;
+    G = Extra.migrate(newGameState(diff)); G.slot = slot;
     Store.data.lastSlot = slot; Store.save();
     this.enterGame();
     Field.load('maple', 4, 3, 'left', { quiet: true });
@@ -158,7 +158,7 @@ const Game = {
   },
   loadGame(n) {
     const d = SaveIO.read(n); if (!d) return;
-    G = d; G.slot = n; Store.data.lastSlot = n; Store.save();
+    G = Extra.migrate(d); G.slot = n; Store.data.lastSlot = n; Store.save();
     for (const m of G.party) { delete m.b; delete m.vhp; }
     this.enterGame();
     Field.load(G.map, G.x, G.y, G.dir || 'down');
@@ -301,7 +301,20 @@ const Game = {
     }
     if (this.flashWhite > 0) { g.fillStyle = `rgba(255,255,240,${Math.min(0.85, this.flashWhite)})`; g.fillRect(V.x, V.y, V.w, V.h); }
     if (this.flashRed > 0) { g.fillStyle = `rgba(255,40,40,${this.flashRed})`; g.fillRect(V.x, V.y, V.w, V.h); }
-    if (this.fadeA > 0) { g.fillStyle = `rgba(5,6,15,${this.fadeA})`; g.fillRect(0, 0, L.W, L.H); }
+    if (this.fadeA > 0) {
+      // 菱形格子的轉場
+      const a = this.fadeA;
+      if (a >= 0.999) { g.fillStyle = '#05060f'; g.fillRect(0, 0, L.W, L.H); }
+      else {
+        const c = Math.max(24, Math.round(L.FS * 2.6)); g.fillStyle = '#05060f';
+        g.beginPath();
+        for (let y = 0, j = 0; y < L.H + c; y += c / 2, j++) for (let x = (j % 2) * c / 2; x < L.W + c; x += c) {
+          const k = clamp(a * 1.6 - (y / L.H) * 0.6, 0, 1), r = k * c * 0.75;
+          if (r <= 0) continue; g.moveTo(x, y - r); g.lineTo(x + r, y); g.lineTo(x, y + r); g.lineTo(x - r, y); g.closePath();
+        }
+        g.fill();
+      }
+    }
   },
   drawTitleBg(g) {
     const img = this.titleBg && this.titleBg[Math.floor(this.titleT * 1.6) % 2];
