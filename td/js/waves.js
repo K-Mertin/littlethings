@@ -1,0 +1,87 @@
+'use strict';
+// 守塔奇兵：出怪表產生器。每關用固定亂數種子，所以每次玩到的波次都一樣。
+// 一波 = 幾個「隊伍」，每隊 = 同一種敵人連續出場。
+
+function groupGap(k) {
+  const d = ENEMIES[k];
+  if (d.boss) return 1;
+  if (k === 'ogre') return 2.4;
+  if (k === 'mini') return 0.3;
+  return clamp(0.95 / Math.sqrt(d.spd), 0.5, 1.2) * (d.cost >= 2.5 ? 1.35 : 1);
+}
+
+function makeGroup(k, n, entry, delay, hpMul) {
+  return { k, n, gap: groupGap(k), entry, delay, hp: hpMul };
+}
+
+function genWaves(L) {
+  const rng = mkRng(L.seed * 7919 + 1);
+  const out = [];
+  const N = L.waves, E = L.entries.length;
+  for (let w = 0; w < N; w++) {
+    const budget = L.b0 * Math.pow(L.bg, w);
+    const hpMul = L.hp0 * (1 + L.hpg * w);
+    const avail = L.pool.filter(p => p[1] <= w);
+    const fresh = L.pool.filter(p => p[1] === w && w > 0);
+    const groups = [];
+    let nG = 1 + (w >= 2 ? 1 : 0) + (w >= 7 && rng() < 0.55 ? 1 : 0);
+    if (E > 1 && w >= 1) nG = Math.max(nG, 2);
+    let delay = 0;
+    const picks = [];
+    if (fresh.length) picks.push(fresh[0][0]); // 新敵人登場那一波，一定有它
+    while (picks.length < nG) {
+      let tot = 0; for (const p of avail) tot += p[2];
+      let r = rng() * tot, pick = avail[0][0];
+      for (const p of avail) { r -= p[2]; if (r <= 0) { pick = p[0]; break; } }
+      if (picks.includes(pick) && avail.length > picks.length && rng() < 0.7) continue;
+      picks.push(pick);
+    }
+    picks.forEach((k, i) => {
+      const share = budget / picks.length * (fresh.length && i === 0 ? 0.8 : 1);
+      const n = clamp(Math.round(share / ENEMIES[k].cost), k === 'ogre' ? 1 : 2, 36);
+      const entry = E > 1 ? (i + w) % E : 0;
+      groups.push(makeGroup(k, n, entry, delay, hpMul));
+      // 下一隊稍微重疊出場
+      delay += n * groupGap(k) * (E > 1 ? 0.35 : 0.7) + 1;
+    });
+    if (L.midBoss && w === L.midBoss[0]) groups.push(makeGroup(L.midBoss[1], 1, 0, delay + 2, 1));
+    if (L.boss && w === N - 1) {
+      groups.push(makeGroup(L.boss, 1, 0, delay + 3, 1));
+      if (L.boss === 'bossLich' && E > 1) groups.push(makeGroup('bossGolem', 1, 1, delay + 10, 0.8));
+    }
+    out.push({ groups });
+  }
+  return out;
+}
+
+// 無盡模式：一波一波往上堆，每 10 波一個頭目
+function genEndlessWave(L, w) {
+  const rng = mkRng(L.seed * 104729 + w * 31);
+  const E = L.entries.length;
+  const all = ['slime', 'runner', 'beetle', 'bat', 'golem', 'healer', 'shield', 'splitter', 'gargoyle', 'ogre'];
+  const unlocked = all.slice(0, clamp(3 + w, 3, all.length));
+  const budget = 10 * Math.pow(1.13, Math.min(w, 40)) * (1 + Math.max(0, w - 40) * 0.08);
+  const hpMul = 1.2 * (1 + 0.075 * w) * (w > 15 ? Math.pow(1.1, w - 15) : 1);
+  const nG = clamp(2 + Math.floor(w / 8), 2, 4);
+  const groups = [];
+  let delay = 0;
+  for (let i = 0; i < nG; i++) {
+    const k = unlocked[Math.floor(rng() * unlocked.length)];
+    const n = clamp(Math.round(budget / nG / ENEMIES[k].cost), k === 'ogre' ? 1 : 3, 40);
+    const entry = E > 1 ? (i + w) % E : 0;
+    groups.push(makeGroup(k, n, entry, delay, hpMul));
+    delay += n * groupGap(k) * (E > 1 ? 0.35 : 0.6) + 1;
+  }
+  if ((w + 1) % 10 === 0) {
+    const bosses = ['bossGolem', 'bossDragon', 'bossLich'];
+    const b = bosses[Math.floor((w + 1) / 10 - 1) % 3];
+    groups.push(makeGroup(b, 1 + Math.floor(w / 30), 0, delay + 2, (1 + 0.06 * w) * 0.9));
+  }
+  return { groups };
+}
+
+function waveSummary(wave) {
+  const m = {};
+  for (const g of wave.groups) m[g.k] = (m[g.k] || 0) + g.n;
+  return m;
+}
