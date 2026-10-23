@@ -11,7 +11,9 @@ const Rig = (() => {
   const LX = -0.48, LY = -0.88;
   const BIG = new Path2D(); BIG.rect(-1e4, -1e4, 2e4, 2e4);
   const MT = (dx, dy) => new DOMMatrix([1, 0, 0, 1, dx, dy]);
-  function band(x, p, dx, dy) { const q = new Path2D(BIG); q.addPath(p, MT(dx, dy)); x.fill(q, 'evenodd'); }
+  // 在部位裡塗「自身形狀位移後蓋不到的那一圈」：外框用部位附近的小矩形（大矩形會讓點陣化變慢）
+  let BX = 0, BY = 0, BS = 1;
+  function band(x, p, dx, dy) { const q = new Path2D(); q.rect(BX - BS, BY - BS, BS * 2, BS * 2); q.addPath(p, MT(dx, dy)); x.fill(q, 'evenodd'); }
 
   // ───────── 材質 ─────────
   // 由一個本色推出整套色階；暗部偏冷紫、亮部偏暖黃，看起來比較有畫的感覺
@@ -29,8 +31,12 @@ const Rig = (() => {
       rim: rgba(o.rimc || '#d8f0ff', o.rima == null ? 0.58 : o.rima),
       line: o.line || OUT,
       gloss: o.gloss || 0,
-      lt: mix(c, '#fff8e4', 0.35), dk: mix(c, '#2a1638', 0.45), dd: mix(c, '#1a0c24', 0.68),
+      lt: mix(c, '#fff8e4', 0.35),
+      sh: null, aoc: null, dk: mix(c, '#2a1638', 0.45), dd: mix(c, '#1a0c24', 0.68),
     };
+    // 不用 multiply 混色（軟體點陣化時比較慢），直接算好「本色×暗部色」，用半透明蓋上去
+    const mul = (a, b) => { const A = Gfx.hex(a), B = Gfx.hex(b); return '#' + A.map((v, i) => Math.round(v * B[i] / 255).toString(16).padStart(2, '0')).join(''); };
+    m.sh = rgba(mul(c, m.shM), 0.9); m.aoc = rgba(mul(mul(c, m.shM), m.aoM), 0.85);
     mats.set(key, m);
     return m;
   }
@@ -78,21 +84,24 @@ const Rig = (() => {
     x.fillStyle = o.fill || m.c; x.fill(p);
     x.save(); x.clip(p);
     if (o.tex) o.tex(x);
+    BX = cx; BY = cy; BS = sz * 8;
     if (!o.flat) {
+      // 畫面上很小的部位（幾個像素）只做暗部和亮部，省掉看不出來的細節
+      const T = x.getTransform(), px = sz * Math.hypot(T.a, T.b), big = px > 7;
       // 柔和的整體光（左上亮、右下暗）
-      const g = x.createRadialGradient(cx + LX * sz * 0.55, cy + LY * sz * 0.55, sz * 0.1, cx, cy, sz * 1.7);
-      g.addColorStop(0, 'rgba(255,248,228,.2)'); g.addColorStop(0.5, 'rgba(255,248,228,0)'); g.addColorStop(1, 'rgba(36,14,54,.16)');
-      x.fillStyle = g; x.fillRect(cx - sz * 2, cy - sz * 2, sz * 4, sz * 4);
-      x.globalCompositeOperation = 'multiply';
+      if (big) {
+        const g = x.createRadialGradient(cx + LX * sz * 0.55, cy + LY * sz * 0.55, sz * 0.1, cx, cy, sz * 1.7);
+        g.addColorStop(0, 'rgba(255,248,228,.2)'); g.addColorStop(0.5, 'rgba(255,248,228,0)'); g.addColorStop(1, 'rgba(36,14,54,.16)');
+        x.fillStyle = g; x.fillRect(cx - sz * 2, cy - sz * 2, sz * 4, sz * 4);
+      }
       const d = sz * (o.sd || 0.36);
-      x.fillStyle = m.shM; band(x, p, LX * d, LY * d);
+      x.fillStyle = m.sh; band(x, p, LX * d, LY * d);
       // 底部的環境遮蔽
-      if (o.ao !== false) { x.fillStyle = m.aoM; band(x, p, 0, -sz * (o.aod || 0.13)); }
-      x.globalCompositeOperation = 'source-over';
+      if (big && o.ao !== false) { x.fillStyle = m.aoc; band(x, p, 0, -sz * (o.aod || 0.13)); }
       const h = sz * (o.hd || 0.2);
       x.fillStyle = m.hi; band(x, p, -LX * h, -LY * h);
       // 背光輪廓光（右側細細一條）
-      if (o.rim !== false) { const r = sz * (o.rd || 0.07); x.fillStyle = m.rim; band(x, p, -r, r * 0.35); }
+      if (big && o.rim !== false) { const r = sz * (o.rd || 0.07); x.fillStyle = m.rim; band(x, p, -r, r * 0.35); }
       const gl = o.gloss != null ? o.gloss : m.gloss;
       if (gl) {
         x.fillStyle = `rgba(255,255,255,${0.75 * gl})`;
@@ -129,23 +138,26 @@ const Rig = (() => {
   function rng(seed) { let s = seed >>> 0 || 1; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
   // 斑點（石頭、皮膚）
   function speckle(x, cx, cy, w, h, n, cols, rmin, rmax, seed) {
-    const r = rng(seed || 7);
-    for (let i = 0; i < n; i++) { x.fillStyle = cols[i % cols.length]; x.beginPath(); x.arc(cx + (r() - 0.5) * w, cy + (r() - 0.5) * h, rmin + r() * (rmax - rmin), 0, TAU); x.fill(); }
+    const r = rng(seed || 7), ps = cols.map(() => new Path2D());
+    for (let i = 0; i < n; i++) { const p = ps[i % cols.length], px = cx + (r() - 0.5) * w, py = cy + (r() - 0.5) * h, rr = rmin + r() * (rmax - rmin); p.moveTo(px + rr, py); p.arc(px, py, rr, 0, TAU); }
+    cols.forEach((c, i) => { x.fillStyle = c; x.fill(ps[i]); });
   }
   // 毛：一撮一撮的短弧線
   function fur(x, cx, cy, w, h, n, col, len, ang, lw, seed) {
     const r = rng(seed || 3);
-    x.strokeStyle = col; x.lineWidth = lw; x.lineCap = 'round';
+    x.strokeStyle = col; x.lineWidth = lw; x.lineCap = 'round'; x.beginPath();
     for (let i = 0; i < n; i++) {
       const px = cx + (r() - 0.5) * w, py = cy + (r() - 0.5) * h, a = ang + (r() - 0.5) * 0.6, l = len * (0.6 + r() * 0.6);
-      x.beginPath(); x.moveTo(px, py); x.quadraticCurveTo(px + Math.cos(a) * l * 0.5 + Math.sin(a) * l * 0.2, py + Math.sin(a) * l * 0.5, px + Math.cos(a) * l, py + Math.sin(a) * l); x.stroke();
+      x.moveTo(px, py); x.quadraticCurveTo(px + Math.cos(a) * l * 0.5 + Math.sin(a) * l * 0.2, py + Math.sin(a) * l * 0.5, px + Math.cos(a) * l, py + Math.sin(a) * l);
     }
+    x.stroke();
     x.lineCap = 'butt';
   }
   // 鱗片：一排排小弧
   function scales(x, x0, y0, w, h, s, col, lw) {
-    x.strokeStyle = col; x.lineWidth = lw;
-    for (let j = 0, y = y0; y < y0 + h; j++, y += s * 0.62) for (let xx = x0 + (j % 2) * s * 0.5; xx < x0 + w; xx += s) { x.beginPath(); x.arc(xx, y, s * 0.5, 0.15, Math.PI - 0.15); x.stroke(); }
+    x.strokeStyle = col; x.lineWidth = lw; x.beginPath();
+    for (let j = 0, y = y0; y < y0 + h; j++, y += s * 0.62) for (let xx = x0 + (j % 2) * s * 0.5; xx < x0 + w; xx += s) { x.moveTo(xx + Math.cos(0.15) * s * 0.5, y + Math.sin(0.15) * s * 0.5); x.arc(xx, y, s * 0.5, 0.15, Math.PI - 0.15); }
+    x.stroke();
   }
   // 金屬的條狀反光
   function sheen(x, x0, y0, x1, y1, w, a) {

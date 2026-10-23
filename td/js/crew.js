@@ -9,7 +9,7 @@ const Crew = (() => {
   const OUT = Rig.OUT, E = Rig.ease;
   const SKIN = mat('#ffd6b4', { sh: 0.3 });
   const lw = r => r * 0.075;
-  let dpr = 2, SS = 2;
+  let dpr = 2, SS = 1.4;
   function setDpr(d) { dpr = d; }
   function setSS(v) { SS = v; }
 
@@ -161,12 +161,12 @@ const Crew = (() => {
   const keyOf = L => L ? Object.values(L).join('|') : '';
   function bodySprite(kind, L, r, f) {
     const rq = Math.round(r * 8) / 8;
-    const ss = Math.max(1, Math.min(SS, 4.5 / dpr));
+    const ss = Math.max(1, Math.min(SS, 2.5 / dpr));
     return Gfx.sheet(`crew:${kind}:${keyOf(L)}:${rq}:${f}`, rq * 3.6, rq * 4.2, rq * 1.8, rq * 3.4, dpr, x => BODY[kind](x, rq, L, f), { ss, outline: Math.max(0.5, rq * 0.055), oc: 'rgba(30,18,40,.8)' });
   }
   function armSprite(kind, L, r, f) {
     const rq = Math.round(r * 8) / 8;
-    const ss = Math.max(1, Math.min(SS, 4.5 / dpr));
+    const ss = Math.max(1, Math.min(SS, 2.5 / dpr));
     return Gfx.sheet(`crewA:${kind}:${keyOf(L)}:${rq}:${f}`, rq * 3.2, rq * 2.6, rq * 0.8, rq * 1.3, dpr, x => ARMS[kind](x, rq, L, f / 3), { ss, outline: Math.max(0.5, rq * 0.055), oc: 'rgba(30,18,40,.8)' });
   }
   // u = 塔的單位；回傳小兵的體型單位

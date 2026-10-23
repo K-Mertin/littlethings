@@ -7,7 +7,7 @@
 const Beasts = (() => {
   const { TAU } = Gfx;
   const { mat, P, part, eye, mouth, blush } = Rig;
-  const N = { walk: 8, atk: 6, hit: 2, die: 6, idle: 6, cast: 6 };
+  const N = { walk: 8, atk: 6, hit: 1, die: 5, idle: 6, cast: 6 };
   const FR = N.walk, FA = N.atk;
   // w 寬、h 高、ay 原點離上緣、top 血條高度、vis 視覺放大；die：倒下時畫面層怎麼處理
   //   fall = 往後倒（畫面層轉）、bake = 動畫本身已經畫好、fly = 從空中旋轉掉下
@@ -226,7 +226,7 @@ const Beasts = (() => {
   });
 
   // ───────── 取得某一格動畫 ─────────
-  let SS = 2;
+  let SS = 1.4;
   function setSS(v) { SS = v; }
   function nOf(an) { return N[an] || 1; }
   function drawKind(x, k, R, an, f) {
@@ -253,7 +253,7 @@ const Beasts = (() => {
     else {
       const ex = an === 'die' ? 1.0 : 0;
       const W = (B.w + 0.9 + ex) * Rq, H = (B.h + 0.5 + ex * 0.4) * Rq;
-      const ss = Math.max(1, Math.min(SS, 4.5 / dpr));
+      const ss = Math.max(1, Math.min(SS, 2.5 / dpr));
       base = Gfx.sheet(key, W, H, W / 2, (B.ay + 0.5 + ex * 0.4) * Rq, dpr, x => drawKind(x, k, Rq, an, f), { ss, outline: Math.max(0.9, Rq * 0.06) });
       if (an === 'walk' && f === 0) last.set(k + ':' + Rq + ':' + dpr, base);
     }

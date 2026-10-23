@@ -41,7 +41,7 @@ const Render = (() => {
   }
   function view() { return V; }
   let qual = 0;
-  function setLow(l, q) { lowFx = l; qual = q || 0; FX.setLow(l); const ss = [2, 1.5, 1.2][qual] || 1.2; Beasts.setSS(ss); Crew.setSS(ss); }
+  function setLow(l, q) { lowFx = l; qual = q || 0; FX.setLow(l); const ss = [1.4, 1.2, 1][qual] || 1; Beasts.setSS(ss); Crew.setSS(ss); }
 
   // ───────── 背景快取 ─────────
   function ensureBg(G, W, H, d) {
@@ -71,17 +71,24 @@ const Render = (() => {
   // 精靈圖預先畫好：排進佇列，每幀用一點點時間慢慢畫，避免開場卡一下
   // 順序：英雄 → 第一波會出現的敵人走路 → 其他敵人走路 → 受擊 → 死亡 → 攻擊／頭目放招 → 塔上小兵
   // 畫面每幀只花幾毫秒慢慢畫，另外在瀏覽器閒置時（requestIdleCallback）多畫一些。
-  let warmQ = [];
-  function warmStep(ms) { const t0 = performance.now(); while (warmQ.length && performance.now() - t0 < ms) warmQ.shift()(); }
+  // 每張圖大概要畫多久（Gfx.stat.est）是估出來的：只有估計放得進剩下的時間才畫，避免一張大圖把一幀拖長
+  let warmQ = [], lastWarm = 0;
+  function warmStep(ms) {
+    const t0 = performance.now();
+    while (warmQ.length && performance.now() - t0 + Gfx.stat.est * 0.8 < ms) { warmQ.shift()(); lastWarm = t0; }
+    // 每一張都比預算大（很慢的機器）：至少每 0.08 秒畫一張，保證會畫完
+    if (warmQ.length && t0 - lastWarm > 80) { warmQ.shift()(); lastWarm = t0; }
+  }
   let idleOn = false;
   function idleWarm() {
     if (idleOn || !warmQ.length || typeof requestIdleCallback !== 'function') return;
     idleOn = true;
-    requestIdleCallback(dl => { idleOn = false; while (warmQ.length && dl.timeRemaining() > 4) warmQ.shift()(); idleWarm(); }, { timeout: 400 });
+    requestIdleCallback(dl => { idleOn = false; while (warmQ.length && dl.timeRemaining() > Gfx.stat.est + 1) { warmQ.shift()(); lastWarm = performance.now(); } idleWarm(); }, { timeout: 1000 });
   }
-  function want(k, R, an, f, dd) { warmQ.unshift(() => Beasts.frame(k, R, f, 0, dd, an)); }
+  const wanted = new Set();
+  function want(k, R, an, f, dd) { const key = k + R + an + f + dd; if (wanted.has(key)) return; wanted.add(key); warmQ.unshift(() => { wanted.delete(key); Beasts.frame(k, R, f, 0, dd, an); }); }
   function prewarm(G) {
-    warmQ = [];
+    warmQ = []; wanted.clear();
     const ks = new Set(), first = new Set();
     if (G.waves && G.waves[0]) for (const g of (G.waves[0].groups || G.waves[0])) if (g && g.k) first.add(g.k);
     if (G.L.pool) for (const p of G.L.pool) ks.add(p[0]);
@@ -92,7 +99,8 @@ const Render = (() => {
     const order = [...ks].sort((a, b) => (first.has(b) ? 1 : 0) - (first.has(a) ? 1 : 0));
     const Rof = k => { const d = ENEMIES[k]; return Beasts.visR(k, d.r, V.s) * (d.boss ? 0.85 : 1); };
     if (G.hero) { const id = G.hero.id, R = V.s * 0.33; for (const an of ['idle', 'walk', 'atk', 'cast']) for (let f = 0; f < HeroArt.FR[an]; f++) warmQ.push(() => HeroArt.frame(id, R, an, f, dd)); }
-    for (const k of order) for (let f = 0; f < Beasts.N.walk; f++) warmQ.push(() => { Beasts.frame(k, Rof(k), f, 0, dd); if (!f) Beasts.frame(k, Rof(k), f, 1, dd); });
+    for (const k of order) warmQ.push(() => { Beasts.frame(k, Rof(k), 0, 0, dd); Beasts.frame(k, Rof(k), 0, 1, dd); });
+    for (const k of order) for (let f = 1; f < Beasts.N.walk; f++) warmQ.push(() => Beasts.frame(k, Rof(k), f, 0, dd));
     for (const k of order) for (let f = 0; f < Beasts.N.hit; f++) warmQ.push(() => Beasts.frame(k, Rof(k), f, 0, dd, 'hit'));
     for (const k of order) for (let f = 0; f < Beasts.N.die; f++) warmQ.push(() => Beasts.frame(k, Rof(k), f, 0, dd, 'die'));
     for (const k of order) {
@@ -103,8 +111,9 @@ const Render = (() => {
     }
     // 塔上的小兵：把每種塔、每個等級的會動部分在暫存畫布上畫一次，快取就都建好了
     const scratch = Gfx.canvas(8, 8).getContext('2d');
-    for (const k of TOWER_ORDER) for (const [tier, sp] of [[0, -1], [1, -1], [2, -1], [3, 0], [3, 1]]) warmQ.push(() => {
-      for (const [rec, cd] of [[0, 0], [1, 0], [0.5, 0.5], [0, 9]]) for (let i = 0; i < 8; i++) { const t = { k, tier, spec: sp, id: i, recoil: rec, cd, st: { rate: 1 }, stunT: 0, pulse: 0 }; scratch.save(); Art.live(scratch, t, V.s, i / 6.5, -0.3, k, tier, sp); scratch.restore(); }
+    // 每個工作只畫一種姿勢（一兩張小圖），才不會一次卡太久
+    for (const [tier, sp] of [[0, -1], [1, -1], [2, -1], [3, 0], [3, 1]]) for (const k of (G.towersAvail || TOWER_ORDER)) for (const [rec, cd] of (k === 'mine' || k === 'banner' ? [[0, 0]] : [[0, 9], [0, 0.66], [0, 0.33], [0, 0], [1, 0]])) for (let i = 0; i < (k === 'mine' || k === 'banner' ? 8 : 1); i++) warmQ.push(() => {
+      const t = { k, tier, spec: sp, id: 0, recoil: rec, cd, st: { rate: 1 }, stunT: 0, pulse: 0 }; scratch.save(); Art.live(scratch, t, V.s, i / 6.5, -0.3, k, tier, sp); scratch.restore();
     });
     idleWarm();
   }
@@ -584,7 +593,7 @@ const Render = (() => {
     lastG = G;
     FX.update(dt, time);
     Gfx.frameStart(); Crew.setDpr(dpr);
-    if (warmQ.length) { warmStep(qual ? 3 : 4); idleWarm(); }
+    if (warmQ.length) { warmStep(qual ? 4 : 6); idleWarm(); }
     const s = V.s, HS = s * Art.HS, th = G.L.theme, PAL = Terrain.pal(th);
     budReset(W, H, s);
     const P = V.P;
@@ -1264,5 +1273,5 @@ const Render = (() => {
     ctx.restore();
   }
 
-  return { want, setView, view, ensureBg, invalidate, frame, thumb, icon, setLow, drawTowerAt: drawTower, fakeGame };
+  return { want, warmLeft: () => warmQ.length, setView, view, ensureBg, invalidate, frame, thumb, icon, setLow, drawTowerAt: drawTower, fakeGame };
 })();
