@@ -31,7 +31,7 @@ const Bot = {
     const cl = F.clouds.find(c => c.x === P.x && c.y === P.y);
     if (cl) { for (const [dx, dy] of DIRS8) { const x = P.x + dx, y = P.y + dy; if (Game.knownPass(x, y) && !Game.monAt(x, y) && !F.clouds.some(c => c.x === x && c.y === y)) return Game.move(dx, dy, { force: 1 }); } }
     const adj = Game.adjHostiles().filter(m => !m.disg);
-    const vis = Game.hostiles().filter(m => m.awake || cheb(m.x, m.y, P.x, P.y) <= 2);
+    const vis = Game.hostiles().filter(m => (m.awake || cheb(m.x, m.y, P.x, P.y) <= 2) && !((m.k === 'thief' || m.gold || m.st.fear > 0) && cheb(m.x, m.y, P.x, P.y) > 1)); // 不追逃跑的怪物（小偷精會一直跑）
     const hpF = P.hp / P.mhp;
     if (hpF < 0.4 && (adj.length || vis.length)) {
       const heal = P.inv.find(o => (o.k === 'p_heal' || o.k === 'p_xheal') && G.known[o.k]);

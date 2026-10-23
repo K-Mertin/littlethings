@@ -69,8 +69,8 @@ const Render = {
   watchPerf(dt) {
     if (!this.auto || this.q >= 3 || dt <= 0 || dt > 0.25 || document.hidden) return;
     const a = this.fts; a.push(dt);
-    if (a.length < 90) return;
-    a.sort((x, y) => x - y); const med = a[45]; a.length = 0;
+    if (a.length < 60) return;
+    a.sort((x, y) => x - y); const med = a[30]; a.length = 0;
     if (med > 0.024) { if (++this.slowN >= 2) { this.slowN = 0; this.q++; this.resize(); } } else this.slowN = 0;
   },
   resize() {
@@ -235,7 +235,7 @@ const Render = {
     return (this._lqm[k] = m);
   },
   drawAnimTiles(F, x0, y0, x1, y1, px, py, t) {
-    const TS = this.TS, ps = this.ps, A = TEX.t, vis = G.vis, hi = this.q < 2, pq = this.q < 2 ? 1 : 0.5;
+    const TS = this.TS, ps = this.ps, A = TEX.t, vis = G.vis, hi = this.q < 1, pq = this.q < 1 ? 1 : 0.5;
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
       const k = y * F.w + x; if (!F.seen[k]) continue;
       const v = F.t[k];
@@ -471,7 +471,7 @@ const Render = {
       if (X + rr < 0 || Y + rr < 0 || X - rr > W4 || Y - rr > H4) return;
       lx.globalAlpha = Math.min(1, a * 1.6); lx.drawImage(this.glowImg(col), X - rr, Y - rr, rr * 2, rr * 2);
     };
-    const maxL = this.q >= 2 ? 18 : 36;
+    const maxL = this.q >= 2 ? 14 : this.q >= 1 ? 24 : 36;
     if (src.length > maxL) { src.sort((p, q) => dist2(p[0], p[1], pr.x, pr.y) - dist2(q[0], q[1], pr.x, pr.y)); src.length = maxL; }
     for (const s of src) glow(s[0], s[1], s[2], s[3], s[4]);
     glow(pr.x, pr.y, 4.5, 'rgba(255,200,140,A)', 0.07);
@@ -512,7 +512,7 @@ const Render = {
   },
   ambient(F, x0, y0, x1, y1, ox, oy, t, dt) {
     const A = AMB[F.biome] || AMB[0], TS = this.TS, ps = this.ps, vis = G.vis, L = this.amb;
-    const n = Math.round(A.n * (UI && UI.touch ? 0.7 : 1) * (this.q >= 2 ? 0.5 : 1));
+    const n = Math.round(A.n * (UI && UI.touch ? 0.7 : 1) * (this.q >= 2 ? 0.4 : this.q >= 1 ? 0.7 : 1));
     while (L.length < n) L.push({ x: fx_rand(x0, x1 + 1), y: fx_rand(y0, y1 + 1), vx: fx_rand(A.vx[0], A.vx[1]), vy: fx_rand(A.vy[0], A.vy[1]), t0: t - fx_rand(0, 3), life: fx_rand(A.life[0], A.life[1]), sz: fx_rand(A.sz[0], A.sz[1]), col: A.cols[(Math.random() * A.cols.length) | 0], ph: Math.random() * TAU });
     if (A.glow) ctx.globalCompositeOperation = 'lighter';
     for (let i = L.length - 1; i >= 0; i--) {

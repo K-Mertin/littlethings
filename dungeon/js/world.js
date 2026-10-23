@@ -25,7 +25,7 @@ Object.assign(Game, {
     let dmg = G.rng.int(st.dmin, st.dmax), mult = (o.mult || 1) * st.fury;
     const crit = G.rng.chance(st.crit) || (sneak && this.rset('shadow'));
     let tag = '';
-    if (sneak) { const sm = (P.cls === 'rogue' ? 3 : 2) + (W && W.spr === 'dagger' ? 1 : 0) + (P.perks.assassin ? 1 : 0); mult *= sm * (this.reson() === 'hunt' ? 1.5 : 1) * (D.boss ? (P.cls === 'rogue' ? 0.75 : 0.5) : 1); tag = '偷襲！'; }
+    if (sneak) { const sm = (P.cls === 'rogue' ? 3 : 2) + (W && W.spr === 'dagger' ? 1 : 0) + (P.perks.assassin ? 1 : 0); mult *= sm * (this.reson() === 'hunt' ? 1.5 : 1) * (D.boss ? (P.cls === 'rogue' ? 0.6 : 0.5) : 1); tag = '偷襲！'; }
     if (this.runeOf('w') === 'slayer' && (D.boss || D.undead)) mult *= 1.5 * (this.reson() === 'holy' && D.boss ? 1.2 : 1);
     if (G.mod === 'glass') mult *= 1.5;
     if (crit) { mult *= 1.8; tag += '會心一擊！'; }
@@ -154,7 +154,7 @@ Object.assign(Game, {
     if (!G.rng.chance(hitCh(this.monAcc(m), st.eva))) {
       msg(D.n + '沒打中你。', 'm'); Snd.play('miss'); if (fxOn()) FX.text(P.x, P.y, 'MISS', '#9aa3b2');
       // 盜賊：閃過攻擊後有機會反擊
-      if (P.cls === 'rogue' && m.hp > 0 && G.rng.chance(0.35)) { msg('你閃過攻擊，順勢反擊！', 'g'); this.meleeAttack(m, { noSpecial: 1 }); }
+      if (P.cls === 'rogue' && m.hp > 0 && G.rng.chance(0.25)) { msg('你閃過攻擊，順勢反擊！', 'g'); this.meleeAttack(m, { noSpecial: 1 }); }
       return;
     }
     let dmg = Math.max(1, this.monDmg(m) - G.rng.int(0, st.arm));

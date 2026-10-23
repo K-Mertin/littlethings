@@ -44,7 +44,7 @@ const ABIL = {
   whirl: { n: '旋風斬', cd: 9, tgt: 'none', d: '攻擊身邊所有敵人，傷害 ×1.2。' },
   charge: { n: '衝鋒', cd: 13, tgt: 'enemy', range: 6, line: 1, d: '直線衝向 6 格內的敵人，重擊 ×1.5 並使其暈眩 2 回合。' },
   stealth: { n: '暗影潛行', cd: 15, tgt: 'none', d: '隱身 10 回合，怪物會失去你的蹤跡；下一擊必定偷襲。' },
-  step: { n: '暗影步', cd: 10, tgt: 'tile', range: 6, d: '瞬間移動到視線內 6 格以內的空地，下一擊必定偷襲。' },
+  step: { n: '暗影步', cd: 12, tgt: 'tile', range: 6, d: '瞬間移動到視線內 6 格以內的空地，下一擊必定偷襲。' },
   missile: { n: '魔法飛彈', cd: 2, tgt: 'enemy', range: 8, d: '射出必中的魔法飛彈，傷害隨等級成長。' },
   nova: { n: '冰霜新星', cd: 16, tgt: 'none', d: '冰凍 2 格內所有敵人 4 回合，並造成冰霜傷害。' },
   aim: { n: '精準射擊', cd: 2, tgt: 'enemy', range: 8, d: '用弓射擊遠方的敵人，命中很高。' },

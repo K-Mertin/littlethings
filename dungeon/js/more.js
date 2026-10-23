@@ -282,7 +282,7 @@ Object.assign(Game, {
     // 可破壞的物件：靠著北牆擺放，一次 1～3 個
     const kinds = PROP_BY_BIOME[F.biome] || PROP_BY_BIOME[0];
     const pass = v => TP[v].walk && v !== T.LAVA;
-    const groups = rng.int(3, 6);
+    const groups = (typeof window !== 'undefined' && window.__noProps) ? 0 : rng.int(3, 6);
     for (let gi = 0; gi < groups; gi++) {
       for (let tries = 0; tries < 40; tries++) {
         const x = rng.int(2, F.w - 3), y = rng.int(2, F.h - 3), k = y * F.w + x;
@@ -311,7 +311,7 @@ Object.assign(Game, {
       }
     }
     // 區域的大型擺設
-    const nd = F.biome === 4 ? 4 : rng.int(1, 3);
+    const nd = (typeof window !== 'undefined' && window.__noProps) ? 0 : F.biome === 4 ? 4 : rng.int(1, 3);
     for (let i = 0; i < nd; i++) {
       for (let tries = 0; tries < 60; tries++) {
         const r = rng.pick(F.rooms); if (!r || r.kind === 'vault' || r.kind === 'shop' || r.w < 5 || r.h < 5) continue;
@@ -335,7 +335,7 @@ Object.assign(Game, {
       }
     }
     // 樓層事件
-    if (!boss && depth >= 3 && rng.chance(0.22)) {
+    if (!boss && depth >= 3 && rng.chance(0.22) && !(typeof window !== 'undefined' && window.__noEv)) {
       let ev = rng.pick(Object.keys(FEVENTS)); if (ev === 'hunt' && depth < 5) ev = 'bounty'; F.event = ev;
       if (ev === 'mist') for (const m of F.mons) if (!MON[m.k].npc && !m.disg) { m.awake = false; m.mode = 'sleep'; }
       if (ev === 'gold') { for (const o of F.items) if (o.it.k === 'gold') o.it.n *= 2; for (let i = 0; i < 4; i++) { const p = this.randomFreeR(rng, used); if (p) F.items.push({ x: p[0], y: p[1], it: this.goldItem(depth, 1.5) }); } for (let i = 0; i < 2; i++) { const p = this.randomFreeR(rng, used); if (p) this.spawnAt('thief', p[0], p[1], false, used); } }
