@@ -40,55 +40,201 @@ const Art = {
   },
 
   // ---------- 人物 ----------
-  // look: { skin, hair, hs(髮型), shirt, pants, hat, apron, sign }
-  person(L, dir, fr, sit) {
-    const key = 'p' + L.key + dir + fr + (sit ? 's' : '');
-    return this.get(key, 10, 18, r => {
-      const S = L.skin, H = L.hair, sh = L.shirt, pa = L.pants, sk2 = shade(S, -0.12);
-      const by = 1; // 身體偏移
-      // 腿
-      if (!sit) {
-        if (fr === 0) { r(3, 14, 2, 2, pa); r(5 + 0, 14, 2, 2, pa); r(3, 16, 2, 1, '#3a2a2a'); r(5, 16, 2, 1, '#3a2a2a'); }
-        else if (fr === 1) { r(3, 14, 2, 1, pa); r(5, 14, 2, 2, pa); r(3, 15, 2, 1, '#3a2a2a'); r(5, 16, 2, 1, '#3a2a2a'); }
-        else { r(3, 14, 2, 2, pa); r(5, 14, 2, 1, pa); r(3, 16, 2, 1, '#3a2a2a'); r(5, 15, 2, 1, '#3a2a2a'); }
-      } else { r(3, 14, 4, 1, pa); }
-      // 身體
-      r(2, 10 + by - 1, 6, 4, sh); r(2, 13, 6, 1, pa);
-      if (L.skirt) r(2, 13, 6, 1, pa), r(1, 14, 8, 1, pa);
-      if (dir !== 2) { r(1, 10, 1, 3, sh); r(8, 10, 1, 3, sh); r(1, 13, 1, 1, S); r(8, 13, 1, 1, S); }
-      else { r(4, 11, 2, 2, shade(sh, -0.15)); r(5, 13, 1, 1, S); }
-      if (L.apron && dir !== 1) { r(3, 11, 4, 3, L.apron); r(3, 10, 1, 1, L.apron); r(6, 10, 1, 1, L.apron); }
-      if (L.sign && dir !== 1) { r(7, 7, 3, 3, '#ffe066'); r(8, 10, 1, 3, '#8a5a2b'); r(7, 8, 3, 1, '#e8473b'); }
-      // 頭
-      r(1, 3, 8, 7, S);
-      r(0, 5, 1, 2, S); r(9, 5, 1, 2, S);
-      // 頭髮
-      const hs = L.hs;
-      if (dir === 1) { r(1, 2, 8, 7, H); if (hs === 1 || hs === 5) r(1, 9, 8, 2, H); if (hs === 2) r(3, 0, 4, 3, H); }
-      else {
-        r(1, 2, 8, 2, H); r(1, 4, 1, 2, H); r(8, 4, 1, 2, H);
-        if (hs === 0) { r(2, 4, 3, 1, H); }
-        if (hs === 1) { r(1, 4, 1, 6, H); r(8, 4, 1, 6, H); r(2, 4, 6, 1, H); }
-        if (hs === 2) { r(3, 0, 4, 2, H); r(2, 4, 2, 1, H); }
-        if (hs === 3) { r(1, 1, 2, 1, H); r(4, 1, 2, 1, H); r(7, 1, 2, 1, H); r(5, 4, 3, 1, H); }
-        if (hs === 4) { r(1, 2, 8, 1, S); r(2, 2, 6, 1, sk2); }
-        if (hs === 5) { r(-1, 4, 2, 4, H); r(9, 4, 2, 4, H); r(2, 4, 6, 1, H); }
-        if (dir === 0) {
-          r(3, 6, 1, 2, '#2b1b26'); r(6, 6, 1, 2, '#2b1b26');
-          r(2, 8, 1, 1, '#ff9a9a'); r(7, 8, 1, 1, '#ff9a9a');
-          if (L.glasses) { r(2, 6, 3, 1, '#2b1b26'); r(5, 6, 3, 1, '#2b1b26'); }
-        } else {
-          r(1, 2, 4, 6, H); r(6, 6, 1, 2, '#2b1b26'); r(7, 8, 1, 1, '#ff9a9a');
+  // look: { skin, hair, hs(髮型 0-7), shirt, pants, top(衣服款式), inner, acc(配件), hat, capc, apron, sign, glasses, shoe }
+  // dir: 0 正面 / 1 背面 / 2 側面（向右）；fr: 0-3 走路；pose: '' 走路站立、sit 坐、eat 吃、cook 煮、carry 端盤、wipe 擦桌、call 叫賣
+  // face: '' / happy / sad / angry
+  PW: 12, PH: 21,
+  person(L, dir, fr, pose = '', face = '') {
+    if (pose === true) pose = 'sit';
+    const key = 'p' + L.key + dir + (fr & 3) + pose + face;
+    return this.get(key, 12, 21, r => {
+      const S = L.skin, H = L.hair, sh = L.shirt, pa = L.pants, shoe = L.shoe || '#3a2a2a';
+      const shD = shade(sh, -0.18), paD = shade(pa, -0.2), hD = shade(H, -0.25), sD = shade(S, -0.12);
+      const sit = pose === 'sit' || pose === 'eat';
+      const f = fr & 3, step = sit ? 0 : (f === 1 ? 1 : f === 3 ? -1 : 0);
+      const side = dir === 2, back = dir === 1;
+      // ---- 腿 ----
+      if (sit) {
+        r(3, 15, 6, 2, pa); r(3, 16, 6, 1, paD);
+        if (!back) { r(3, 17, 2, 2, pa); r(7, 17, 2, 2, pa); r(3, 19, 2, 1, shoe); r(7, 19, 2, 1, shoe); }
+      } else if (side) {
+        if (step === 0) { r(4, 15, 4, 4, pa); r(4, 15, 1, 4, paD); r(4, 19, 5, 1, shoe); }
+        else {
+          // 後腳（暗）、前腳
+          r(3, 15, 3, 2, paD); r(2, 17, 2, 2, paD); r(1, 19, 3, 1, shade(shoe, -0.2));
+          r(6, 15, 3, 2, pa); r(7, 17, 2, 2, pa); r(7, 19, 3, 1, shoe);
+        }
+      } else {
+        const lL = step === 1 ? 4 : step === -1 ? 3 : 4, rL = step === -1 ? 4 : step === 1 ? 3 : 4;
+        r(3, 15, 6, 1, pa);
+        r(3, 15, 2, lL, pa); r(7, 15, 2, rL, pa); r(5, 15, 2, 1, paD);
+        r(3, 15 + lL, 2, 1, shoe); r(7, 15 + rL, 2, 1, shoe);
+      }
+      // ---- 身體 ----
+      const top = L.top || 'tee';
+      const torso = (x, w) => {
+        r(x, 9, w, 5, sh); r(x, 13, w, 1, shD);
+        if (top === 'stripe') for (let y = 10; y < 14; y += 2) r(x, y, w, 1, L.inner || '#ffffff');
+        if (top === 'jacket' && !back) { r(x + (side ? 2 : 2), 9, side ? 1 : w - 4, 5, L.inner || '#ffffff'); }
+        if (top === 'suit' && !back) { r(x + (side ? 2 : 2), 9, side ? 1 : w - 4, 4, '#ffffff'); if (!side) r(x + w / 2 - 0.5 | 0, 10, 1, 3, L.inner || '#c8302a'); }
+        if (top === 'hoodie') { r(x, 9, w, 1, shD); if (back) r(x + 1, 9, w - 2, 2, shD); }
+        if (top === 'dress') { r(x - 1, 13, w + 2, side ? 3 : 3, sh); r(x - 1, 15, w + 2, 1, shD); }
+        if (top === 'polo' && !back) { r(x + 1, 9, w - 2, 1, '#ffffff'); }
+        r(x, 14, w, 1, top === 'dress' ? sh : pa);
+      };
+      if (side) torso(4, 5); else torso(3, 6);
+      if (L.apron && !back) {
+        if (side) { r(7, 10, 2, 5, L.apron); }
+        else { r(4, 10, 4, 5, L.apron); r(4, 9, 1, 1, L.apron); r(7, 9, 1, 1, L.apron); r(4, 12, 4, 1, shade(L.apron, -0.08)); }
+      }
+      if (L.acc === 'bag') {
+        if (back) { r(3, 9, 6, 5, L.capc || '#3a6ad8'); r(4, 10, 4, 2, shade(L.capc || '#3a6ad8', 0.2)); }
+        else if (side) { r(2, 9, 2, 5, L.capc || '#3a6ad8'); r(4, 9, 1, 3, shade(L.capc || '#3a6ad8', -0.2)); }
+        else { r(3, 9, 1, 4, shade(L.capc || '#3a6ad8', -0.1)); r(8, 9, 1, 4, shade(L.capc || '#3a6ad8', -0.1)); }
+      }
+      if (L.acc === 'camera' && !back) { r(side ? 7 : 5, 11, 2, 2, '#3a3a44'); r(side ? 8 : 6, 12, 1, 1, '#8ad0ff'); }
+      // ---- 手臂 ----
+      const hand = (x, y) => r(x, y, 1, 1, S);
+      const armF = (x, len) => { r(x, 9, 1, len, sh); hand(x, 9 + len); };
+      if (pose === 'cook') {
+        r(2, 9, 1, 2, sh); r(9, 9, 1, 2, sh); r(3, 10, 1, 1, sh); r(8, 10, 1, 1, sh); hand(3, 11); hand(8, 11);
+        if (f & 1) { r(9, 6, 1, 5, '#8a8a94'); r(8, 5, 3, 1, '#c8c8d0'); } else { r(10, 8, 1, 3, '#8a8a94'); r(10, 7, 2, 1, '#c8c8d0'); }
+      } else if (pose === 'carry') {
+        if (side) { r(6, 9, 2, 1, sh); r(8, 8, 1, 1, S); r(6, 7, 5, 1, '#c8ccd4'); r(7, 6, 2, 1, L.dishc || '#ffd84a'); r(9, 5, 1, 2, '#ffffff'); }
+        else { r(2, 9, 1, 3, sh); hand(2, 12); r(9, 7, 1, 3, sh); hand(9, 6); r(7, 5, 5, 1, '#c8ccd4'); r(8, 4, 2, 1, L.dishc || '#ffd84a'); r(10, 3, 1, 2, '#ffffff'); }
+      } else if (pose === 'wipe') {
+        armF(2, 3);
+        const cx = (f & 1) ? 9 : 7;
+        r(9, 9, 1, 2, sh); r(cx, 11, 3, 2, '#e8f4ff'); r(cx, 12, 3, 1, '#a8c8e0'); hand(cx + 1, 11);
+      } else if (pose === 'call') {
+        armF(2, 4);
+        if (f & 1) { r(9, 6, 1, 4, sh); hand(9, 5); r(10, 4, 1, 2, S); } else { r(9, 7, 2, 2, sh); r(10, 5, 1, 2, sh); hand(10, 4); }
+      } else if (sit) {
+        if (back) { r(2, 9, 1, 3, sh); r(9, 9, 1, 3, sh); }
+        else if (pose === 'eat') {
+          r(2, 10, 1, 2, sh); r(9, 10, 1, 2, sh); r(3, 12, 6, 2, '#ffffff'); r(3, 12, 6, 1, L.dishc || '#e8963a'); r(4, 14, 4, 1, '#d8d8e0');
+          if (f & 1) { hand(8, 8); r(8, 6, 1, 2, '#c89a5a'); r(9, 5, 1, 3, '#c89a5a'); } else { hand(8, 11); r(8, 9, 1, 2, '#c89a5a'); r(9, 9, 1, 2, '#c89a5a'); }
+        } else { armF(2, 3); armF(9, 3); }
+      } else if (side) {
+        const sw = step === 1 ? 1 : step === -1 ? -1 : 0;
+        r(6 + (sw > 0 ? 1 : sw < 0 ? -1 : 0), 9, 2, 3, shD); hand(6 + (sw > 0 ? 2 : sw < 0 ? -1 : 0), 12);
+        if (L.acc === 'brief') r(sw < 0 ? 3 : 7, 13, 3, 3, '#5a3a2a');
+      } else {
+        const a1 = step === 1 ? 3 : 4, a2 = step === -1 ? 3 : 4;
+        armF(2, a1); armF(9, a2);
+        if (L.acc === 'brief' && !back) { r(9, 9 + a2 + 1, 3, 3, '#5a3a2a'); r(10, 9 + a2, 1, 1, '#3a2418'); }
+        if (L.acc === 'phone' && !back) { r(9, 8, 1, 3, sh); r(9, 6, 2, 3, '#2a2a3a'); r(9, 7, 1, 1, '#8ad0ff'); }
+        if (L.acc === 'cane') { r(10, 12, 1, 8, '#8a5a2b'); r(10, 12, 2, 1, '#8a5a2b'); }
+        if (L.acc === 'book' && !back) { r(8, 11, 3, 3, '#ffffff'); r(8, 11, 3, 1, '#c8302a'); }
+      }
+      if (L.sign && pose === 'call') { r(-2, 4, 5, 5, '#ffe066'); r(-2, 4, 5, 1, '#e8473b'); r(-1, 6, 3, 1, '#e8473b'); r(-1, 8, 3, 1, '#e8473b'); r(0, 9, 1, 4, '#8a5a2b'); }
+      // ---- 頭 ----
+      r(2, 1, 8, 8, S); r(1, 2, 10, 6, S); r(3, 8, 6, 1, sD);
+      const hs = L.hs | 0;
+      if (back) {
+        r(2, 0, 8, 8, H); r(1, 1, 10, 6, H); r(2, 7, 8, 1, hD);
+        if (hs === 1 || hs === 7) { r(1, 7, 10, hs === 1 ? 4 : 2, H); }
+        if (hs === 2) { r(4, -2, 4, 3, H); r(5, -2, 2, 1, hD); }
+        if (hs === 5) { r(-1, 3, 2, 5, H); r(11, 3, 2, 5, H); }
+        if (hs === 6) { r(5, 7, 2, 5, H); r(5, 7, 2, 1, L.capc || '#ff6fa8'); }
+        if (hs === 4) { r(3, 0, 6, 3, sD); }
+      } else if (side) {
+        r(2, 0, 7, 2, H); r(1, 1, 5, 6, H); r(6, 1, 4, 2, H); r(9, 2, 1, 1, H); r(1, 6, 3, 2, hD);
+        if (hs === 1) r(1, 6, 4, 5, H);
+        if (hs === 2) { r(1, -2, 4, 3, H); }
+        if (hs === 3) { r(3, -1, 1, 1, H); r(6, -1, 1, 1, H); }
+        if (hs === 5) r(0, 4, 2, 5, H);
+        if (hs === 6) { r(-1, 3, 2, 6, H); r(0, 3, 1, 1, L.capc || '#ff6fa8'); }
+        if (hs === 7) r(1, 6, 5, 2, H);
+        if (hs === 4) { r(2, 0, 6, 2, sD); r(1, 3, 3, 3, H); }
+        // 臉
+        r(10, 4, 1, 2, S);
+        if (face === 'happy') r(7, 4, 2, 1, OUT); else if (face === 'angry') { r(7, 3, 2, 1, OUT); r(8, 4, 1, 2, OUT); } else r(8, 4, 1, 2, OUT);
+        r(8, 6, 1, 1, '#ff9a9a');
+        if (face === 'happy') r(9, 7, 1, 1, '#c0503a');
+        if (L.glasses) { r(7, 4, 3, 1, OUT); }
+      } else {
+        // 頭髮
+        r(2, 0, 8, 2, H); r(1, 1, 10, 2, H); r(1, 3, 1, 2, H); r(10, 3, 1, 2, H); r(2, 2, 8, 1, H);
+        if (hs === 0) { r(2, 3, 3, 1, H); r(7, 3, 1, 1, H); }
+        if (hs === 1) { r(1, 3, 1, 7, H); r(10, 3, 1, 7, H); r(0, 5, 1, 5, H); r(11, 5, 1, 5, H); r(2, 3, 2, 1, H); r(8, 3, 2, 1, H); }
+        if (hs === 2) { r(4, -2, 4, 3, H); r(5, -2, 2, 1, shade(H, 0.2)); r(2, 3, 2, 1, H); }
+        if (hs === 3) { r(2, -1, 1, 1, H); r(5, -1, 2, 1, H); r(9, -1, 1, 1, H); r(3, 3, 1, 1, H); r(6, 3, 2, 1, H); }
+        if (hs === 4) { r(2, 0, 8, 2, sD); r(3, 0, 6, 1, S); r(1, 2, 2, 3, H); r(9, 2, 2, 3, H); }
+        if (hs === 5) { r(-1, 2, 2, 6, H); r(11, 2, 2, 6, H); r(0, 2, 1, 1, L.capc || '#ff6fa8'); r(11, 2, 1, 1, L.capc || '#ff6fa8'); r(2, 3, 8, 1, H); }
+        if (hs === 6) { r(2, 3, 4, 1, H); r(10, 0, 2, 2, L.capc || '#ff6fa8'); }
+        if (hs === 7) { r(1, 3, 1, 5, H); r(10, 3, 1, 5, H); r(2, 3, 8, 1, H); r(1, 7, 2, 1, H); r(9, 7, 2, 1, H); }
+        r(1, 1, 1, 1, hD);
+        // 臉
+        if (!back) {
+          if (face === 'happy') { r(3, 5, 2, 1, OUT); r(7, 5, 2, 1, OUT); r(3, 4, 1, 1, OUT); r(8, 4, 1, 1, OUT); }
+          else if (face === 'sad') { r(3, 5, 2, 1, OUT); r(7, 5, 2, 1, OUT); r(10, 3, 1, 2, '#8ad0ff'); }
+          else if (face === 'angry') { r(3, 4, 2, 2, OUT); r(7, 4, 2, 2, OUT); r(3, 3, 1, 1, OUT); r(8, 3, 1, 1, OUT); }
+          else { r(3, 4, 2, 2, OUT); r(7, 4, 2, 2, OUT); r(3, 4, 1, 1, '#ffffff'); r(7, 4, 1, 1, '#ffffff'); }
+          r(2, 6, 1, 1, '#ff9a9a'); r(9, 6, 1, 1, '#ff9a9a');
+          if (face === 'happy' || pose === 'call') { r(5, 7, 2, 1, '#c0503a'); }
+          else if (face === 'angry' || face === 'sad') r(5, 7, 2, 1, shade(S, -0.35));
+          else if (pose === 'eat' && (f & 1)) r(5, 7, 2, 1, '#c0503a');
+          else r(5, 7, 2, 1, shade(S, -0.2));
+          if (L.glasses) { r(2, 4, 4, 1, OUT); r(6, 4, 4, 1, OUT); r(2, 4, 1, 2, OUT); r(9, 4, 1, 2, OUT); }
         }
       }
-      // 帽子
-      if (L.hat === 'chef') { r(2, -1, 6, 4, '#ffffff'); r(1, -2, 8, 2, '#ffffff'); r(2, 2, 6, 1, '#dfe4ea'); }
-      if (L.hat === 'cap') { r(1, 1, 8, 2, L.capc); if (dir === 0) r(1, 3, 8, 1, shade(L.capc, -0.3)); if (dir === 2) r(7, 3, 3, 1, shade(L.capc, -0.3)); }
-      if (L.hat === 'band') { r(1, 3, 8, 1, '#e8473b'); if (dir !== 0) r(0, 4, 2, 2, '#e8473b'); }
-      if (L.hat === 'bow') { r(6, 1, 3, 2, '#ff6fa8'); r(7, 1, 1, 2, '#c03a70'); }
+      // ---- 帽子 ----
+      const hat = L.hat;
+      if (hat === 'chef') { r(2, -2, 8, 4, '#ffffff'); r(1, -4, 10, 3, '#ffffff'); r(3, -5, 6, 1, '#ffffff'); r(2, 2, 8, 1, '#dfe4ea'); r(4, -3, 1, 4, '#eef2f6'); }
+      if (hat === 'cap') { r(1, 0, 10, 2, L.capc); r(2, -1, 8, 1, L.capc); if (dir === 0) r(1, 2, 10, 1, shade(L.capc, -0.3)); if (side) r(8, 2, 4, 1, shade(L.capc, -0.3)); }
+      if (hat === 'band') { r(1, 2, 10, 1, '#e8473b'); if (back || side) { r(side ? 0 : 5, 3, 2, 2, '#e8473b'); } }
+      if (hat === 'bow') { r(7, -1, 4, 2, '#ff6fa8'); r(8, -1, 1, 2, '#c03a70'); }
+      if (hat === 'straw') { r(-1, 1, 14, 1, '#e8c870'); r(2, -1, 8, 2, '#f0d890'); r(2, 0, 8, 1, '#c8302a'); }
+      if (hat === 'beanie') { r(1, -1, 10, 3, L.capc); r(1, 1, 10, 1, shade(L.capc, -0.25)); r(5, -2, 2, 1, '#ffffff'); }
+      if (hat === 'helmet') { r(1, -1, 10, 4, L.capc); r(2, -2, 8, 1, L.capc); r(2, -1, 3, 1, shade(L.capc, 0.4)); if (!back) r(1, 2, 10, 1, '#3a3a44'); }
     });
   },
-
+  // 大頭像（菜單、員工資料用）
+  portrait(L, face = '') {
+    const key = 'pt' + L.key + face;
+    return this.get(key, 22, 22, r => {
+      const S = L.skin, H = L.hair, sh = L.shirt, hD = shade(H, -0.25), sD = shade(S, -0.12);
+      // 肩膀
+      r(2, 17, 18, 5, sh); r(1, 19, 20, 3, sh); r(2, 21, 18, 1, shade(sh, -0.2));
+      if (L.top === 'suit' || L.top === 'jacket') { r(9, 17, 4, 5, L.top === 'suit' ? '#ffffff' : (L.inner || '#ffffff')); if (L.top === 'suit') r(10, 18, 2, 4, L.inner || '#c8302a'); }
+      if (L.top === 'stripe') { r(1, 19, 20, 1, L.inner || '#fff'); r(2, 17, 18, 1, L.inner || '#fff'); }
+      if (L.top === 'polo') r(8, 17, 6, 1, '#ffffff');
+      if (L.apron) { r(6, 18, 10, 4, L.apron); r(6, 17, 1, 1, L.apron); r(15, 17, 1, 1, L.apron); }
+      r(9, 15, 4, 2, sD);
+      // 臉
+      r(4, 3, 14, 12, S); r(3, 5, 16, 8, S); r(5, 15, 12, 1, S); r(6, 15, 10, 1, sD);
+      r(2, 8, 1, 3, S); r(19, 8, 1, 3, S);
+      // 頭髮
+      const hs = L.hs | 0;
+      r(4, 1, 14, 4, H); r(3, 2, 16, 3, H); r(2, 4, 2, 4, H); r(18, 4, 2, 4, H); r(4, 5, 4, 1, H); r(5, 0, 12, 1, H);
+      if (hs === 0) { r(8, 5, 3, 1, H); r(14, 5, 2, 1, H); }
+      if (hs === 1) { r(1, 6, 3, 13, H); r(18, 6, 3, 13, H); r(8, 5, 2, 1, H); r(14, 5, 3, 1, H); }
+      if (hs === 2) { r(7, -3, 8, 4, H); r(9, -3, 4, 1, shade(H, 0.2)); }
+      if (hs === 3) { r(4, -1, 2, 2, H); r(9, -2, 3, 2, H); r(15, -1, 2, 2, H); r(10, 5, 3, 1, H); }
+      if (hs === 4) { r(5, 0, 12, 3, sD); r(6, 0, 10, 2, S); r(2, 4, 3, 5, H); r(17, 4, 3, 5, H); }
+      if (hs === 5) { r(-1, 4, 3, 10, H); r(20, 4, 3, 10, H); r(0, 4, 2, 2, L.capc || '#ff6fa8'); r(20, 4, 2, 2, L.capc || '#ff6fa8'); r(8, 5, 6, 1, H); }
+      if (hs === 6) { r(17, 0, 4, 4, H); r(18, 0, 2, 2, L.capc || '#ff6fa8'); r(5, 5, 6, 1, H); }
+      if (hs === 7) { r(2, 6, 2, 8, H); r(18, 6, 2, 8, H); r(4, 5, 14, 1, H); }
+      r(4, 2, 2, 1, shade(H, 0.25)); r(3, 4, 1, 1, hD);
+      // 眼睛
+      if (face === 'happy') { r(6, 9, 3, 1, OUT); r(13, 9, 3, 1, OUT); r(6, 8, 1, 1, OUT); r(15, 8, 1, 1, OUT); }
+      else { r(6, 8, 3, 3, OUT); r(13, 8, 3, 3, OUT); r(6, 8, 1, 1, '#ffffff'); r(13, 8, 1, 1, '#ffffff'); r(8, 10, 1, 1, '#5a4a6a'); r(15, 10, 1, 1, '#5a4a6a'); }
+      if (hs !== 4) { r(6, 6, 3, 1, hD); r(13, 6, 3, 1, hD); }
+      if (L.glasses) { r(5, 7, 5, 1, OUT); r(12, 7, 5, 1, OUT); r(5, 7, 1, 4, OUT); r(16, 7, 1, 4, OUT); r(10, 8, 2, 1, OUT); r(5, 11, 5, 1, OUT); r(12, 11, 5, 1, OUT); }
+      r(4, 11, 2, 1, '#ff9a9a'); r(16, 11, 2, 1, '#ff9a9a');
+      r(10, 11, 1, 1, sD);
+      if (face === 'happy') { r(9, 12, 4, 2, '#c0503a'); r(10, 13, 2, 1, '#ff8a8a'); } else r(9, 13, 4, 1, shade(S, -0.35));
+      // 帽子
+      const hat = L.hat;
+      if (hat === 'chef') { r(4, -3, 14, 6, '#ffffff'); r(2, -6, 18, 4, '#ffffff'); r(5, -7, 12, 1, '#ffffff'); r(4, 3, 14, 1, '#dfe4ea'); r(8, -5, 1, 7, '#eef2f6'); r(13, -5, 1, 7, '#eef2f6'); }
+      if (hat === 'cap') { r(3, 0, 16, 4, L.capc); r(5, -1, 12, 1, L.capc); r(2, 4, 18, 1, shade(L.capc, -0.3)); }
+      if (hat === 'band') { r(3, 4, 16, 2, '#e8473b'); r(9, 4, 4, 2, '#ffffff'); }
+      if (hat === 'bow') { r(13, -1, 7, 4, '#ff6fa8'); r(16, -1, 1, 4, '#c03a70'); }
+      if (hat === 'straw') { r(-1, 3, 24, 2, '#e8c870'); r(4, -1, 14, 4, '#f0d890'); r(4, 2, 14, 1, '#c8302a'); }
+      if (hat === 'beanie') { r(3, -1, 16, 5, L.capc); r(3, 3, 16, 1, shade(L.capc, -0.25)); r(9, -3, 4, 2, '#ffffff'); }
+    });
+  },
   // ---------- 地板 ----------
   floor(id, v) {
     return this.get('fl' + id + (v & 3), 16, 16, r => {
@@ -125,7 +271,7 @@ const Art = {
   },
 
   // ---------- 設施 ----------
-  facH(id) { const f = F[id]; if (f.cat === 'station') return 26; return ({ lantern: 26, neon: 24, shrine: 22, plant: 16, flower: 14, trash: 14, fan: 20, sink: 18, tv: 20, cat: 16, mascot: 26, fountain: 16, stage: 24, pinball: 22, gacha: 20, goldfish: 12, ring: 16, claw: 24, balloon: 24, bench: 10, stool: 12, wood: 12, round: 13, booth: 16, tB: 18, tS: 18, tG: 20 })[id] || 16; },
+  facH(id) { const f = F[id]; if (f.cat === 'station') return 29; return ({ banner: 24, icebox: 12, vsign: 28, tree: 28, lion: 18, koi: 14, bingo: 22, fortune: 24, picnic: 14, bar: 16, lantern: 26, neon: 24, shrine: 22, plant: 16, flower: 14, trash: 14, fan: 20, sink: 18, tv: 20, cat: 16, mascot: 26, fountain: 16, stage: 24, pinball: 22, gacha: 20, goldfish: 12, ring: 16, claw: 24, balloon: 24, bench: 10, stool: 12, wood: 12, round: 13, booth: 16, tB: 18, tS: 18, tG: 20 })[id] || 16; },
   fac(id, fr = 0, lv = 1) {
     const h = this.facH(id);
     return this.get('f' + id + fr + lv, 16, h, r => {
@@ -229,6 +375,53 @@ const Art = {
           r(7 + (fr & 1) * 2, 3, 1, 4, '#8a8a8a'); r(6 + (fr & 1) * 2, 7, 3, 1, '#8a8a8a');
           r(3, 11, 3, 3, '#ffd84a'); r(7, 12, 3, 2, '#8ad0ff'); r(10, 11, 3, 3, '#ffb0e0'); r(4, 11, 1, 1, '#2b1b26');
           r(2, 16, 12, 6, '#e85aa8'); r(4, 18, 3, 2, '#2b1b26'); r(10, 18, 2, 2, '#ffd84a'); break;
+        case 'banner':
+          r(2, 0, 1, 24, '#8a6a4a'); r(1, 23, 3, 1, '#5a4a3a');
+          r(3, 1, 9, 15, '#e8302a'); r(3, 1, 9, 1, '#ff6a5a'); r(11, 1, 1, 15, '#b8201a');
+          r(3, 16, 2, 2, '#e8302a'); r(7, 16, 2, 2, '#e8302a'); r(10, 16, 2, 1 + (fr & 1), '#e8302a');
+          r(5, 3, 5, 5, '#ffe070'); r(5, 9, 5, 5, '#ffe070'); r(6, 4, 3, 3, '#e8302a'); r(6, 10, 3, 3, '#e8302a'); r(2, 0, 10, 1, '#ffd040'); break;
+        case 'icebox':
+          r(1, 3, 14, 9, '#3a8ad8'); r(1, 3, 14, 2, '#5aa8f0'); r(1, 11, 14, 1, '#2a6ab8'); r(3, 6, 10, 3, '#ffffff'); r(4, 7, 8, 1, '#e8473b');
+          r(3, 0, 2, 4, '#8ae0a0'); r(6, 1, 2, 3, '#ffd84a'); r(9, 0, 2, 4, '#8ad0ff'); r(12, 1, 2, 3, '#ff8ab0'); r(3, 0, 2, 1, '#ffffff'); r(9, 0, 2, 1, '#ffffff'); break;
+        case 'vsign':
+          r(7, 22, 2, 6, '#5a5a6a'); r(4, 27, 8, 1, '#3a3a44');
+          r(3, 0, 10, 22, '#2a2036'); r(4, 1, 8, 20, fr & 1 ? '#fff4c8' : '#ffe8a0'); r(3, 0, 10, 1, '#ff5ad0'); r(3, 21, 10, 1, '#ff5ad0');
+          r(3, 0, 1, 22, '#ff5ad0'); r(12, 0, 1, 22, '#ff5ad0'); break;
+        case 'tree':
+          r(7, 23, 2, 4, '#7a4a24'); r(4, 26, 8, 2, '#c8302a');
+          r(6, 2, 4, 4, '#2f8a3a'); r(5, 6, 6, 5, '#2f8a3a'); r(3, 11, 10, 6, '#2f8a3a'); r(1, 17, 14, 6, '#2f8a3a');
+          r(7, 3, 2, 3, '#4aa850'); r(5, 8, 3, 2, '#4aa850'); r(3, 13, 4, 2, '#4aa850'); r(2, 19, 5, 2, '#4aa850');
+          r(7, -1, 2, 2, '#ffd040'); r(6, 0, 4, 1, '#ffd040');
+          [[5, 8, '#ff4a3a'], [9, 10, '#5ad0ff'], [4, 14, '#ffd040'], [11, 15, '#ff6fa8'], [3, 20, '#5ad0ff'], [8, 18, '#ff4a3a'], [12, 21, '#ffd040'], [7, 13, '#ffffff']]
+            .forEach(([x, y, c], i) => r(x, y, 1, 1, (i + fr) % 3 ? c : '#fff8d0'));
+          r(4, 10, 8, 1, '#ffd040'); r(2, 16, 12, 1, '#ffd040'); break;
+        case 'lion':
+          r(2, 13, 12, 5, '#9a9aa8'); r(2, 13, 12, 1, '#c8c8d4');
+          r(3, 3, 10, 10, '#b8b8c4'); r(2, 4, 12, 7, '#b8b8c4'); r(4, 1, 8, 3, '#a8a8b4');
+          for (let i = 0; i < 5; i++) r(2 + i * 2.5 | 0, 2 + (i & 1), 2, 2, '#8a8a98');
+          r(5, 6, 2, 2, '#2b1b26'); r(9, 6, 2, 2, '#2b1b26'); r(5, 6, 1, 1, '#ffffff'); r(9, 6, 1, 1, '#ffffff');
+          r(6, 9, 4, 2, '#c8302a'); r(7, 9, 2, 1, '#ffffff'); r(10, 11, 3, 3, '#c8c8d4'); r(11, 12, 1, 1, '#8a8a98'); break;
+        case 'koi':
+          r(0, 3, 16, 11, '#8a8a94'); r(0, 3, 16, 1, '#b8b8c4'); r(1, 5, 14, 8, '#2a6aa8'); r(1, 5, 14, 1, '#4a8ac8');
+          r(3 + (fr & 1), 7, 3, 2, '#ffffff'); r(4 + (fr & 1), 7, 1, 1, '#ff4a2a'); r(10 - (fr & 1), 9, 3, 2, '#ff6a2a'); r(11 - (fr & 1), 10, 1, 1, '#ffffff');
+          r(7, 6, 3, 2, '#3fa64a'); r(8, 6, 1, 1, '#ff8ab0'); r(12, 11, 2, 1, '#8ad0ff'); break;
+        case 'bingo':
+          r(1, 2, 14, 20, '#3a8ad8'); r(1, 2, 14, 2, '#ffd040'); r(2, 5, 12, 12, '#1a2a4a');
+          for (let y = 0; y < 3; y++) for (let x = 0; x < 3; x++) { r(3 + x * 4, 6 + y * 4, 3, 3, ((x + y * 3 + fr) % 4) ? '#2a4a7a' : '#ffd040'); }
+          r(2, 18, 12, 3, '#2a6ab8'); r(6, 19, 4, 1, '#ffffff'); break;
+        case 'fortune':
+          r(0, 10, 16, 14, '#8a2a2a'); r(0, 10, 16, 2, '#c84a3a'); r(-1, 9, 18, 1, '#5a1a1a');
+          r(1, 0, 14, 10, '#c8302a'); r(1, 0, 14, 1, '#ffd040'); r(3, 2, 10, 6, '#fff4c8');
+          r(5, 13, 6, 8, '#c8904a'); r(5, 13, 6, 1, '#e0b070'); for (let i = 0; i < 4; i++) r(6 + i, 10 - (i + fr) % 2, 1, 4, '#e8d8a8');
+          r(13, 13, 2, 3, '#ffd040'); break;
+        case 'picnic':
+          r(0, 2, 16, 3, '#b8763e'); r(0, 2, 16, 1, '#d8965a');
+          r(1, 5, 14, 5, '#c88a52'); r(1, 5, 14, 1, '#e0a870'); r(2, 7, 12, 1, '#a8703e');
+          r(0, 11, 16, 2, '#b8763e'); r(0, 11, 16, 1, '#d8965a'); r(2, 10, 1, 4, '#7a4a24'); r(13, 10, 1, 4, '#7a4a24'); r(3, 13, 1, 1, '#7a4a24'); break;
+        case 'bar':
+          r(0, 2, 16, 6, '#7a4a2a'); r(0, 2, 16, 2, '#c8904a'); r(0, 2, 16, 1, '#e8b070'); r(1, 8, 14, 1, '#5a3418');
+          r(2, 11, 4, 2, '#e8473b'); r(10, 11, 4, 2, '#e8473b'); r(3, 13, 2, 3, '#8a8a94'); r(11, 13, 2, 3, '#8a8a94'); r(2, 15, 4, 1, '#5a5a64'); r(10, 15, 4, 1, '#5a5a64');
+          r(5, 0, 2, 2, '#ffd84a'); r(10, 0, 1, 2, '#ff8ab0'); break;
         case 'balloon':
           r(0, 0, 16, 22, '#f4e8c8'); r(0, 0, 16, 1, '#c8303a'); r(0, 21, 16, 3, '#a8703e');
           [[1, 2, '#ff4a3a'], [6, 2, '#ffd84a'], [11, 2, '#5ad0ff'], [3, 8, '#7affb0'], [8, 8, '#ff8ad0'], [12, 9, '#ff4a3a'], [1, 14, '#5ad0ff'], [6, 14, '#ffd84a'], [10, 15, '#ff8ad0']]
@@ -236,45 +429,70 @@ const Art = {
       }
     });
   },
+  STCOL: { griddle: ['#e8473b', '#fff4e8'], drink: ['#3a8ad8', '#e8f4ff'], fryer: ['#f0a020', '#fff4c8'], soup: ['#3a9a5a', '#eaffea'], ice: ['#ff6fa8', '#fff0f6'], steam: ['#a8703e', '#fff0d8'], grill: ['#8a2a2a', '#ffd8c8'] },
+  STCH: { griddle: '煎', drink: '茶', fryer: '炸', soup: '湯', ice: '冰', steam: '蒸', grill: '烤' },
   station(r, id, fr, lv) {
-    const aw = { griddle: ['#e8473b', '#fff4e8'], drink: ['#3a8ad8', '#e8f4ff'], fryer: ['#f0a020', '#fff4c8'], soup: ['#3a9a5a', '#eaffea'], ice: ['#ff6fa8', '#fff0f6'], steam: ['#a8703e', '#fff0d8'], grill: ['#8a2a2a', '#ffd8c8'] }[id];
-    // 棚子支架
-    r(1, 4, 1, 14, '#6a4a3a'); r(14, 4, 1, 14, '#6a4a3a');
-    // 遮陽棚（條紋）
-    for (let i = 0; i < 8; i++) r(i * 2, 1, 2, 4, i % 2 ? aw[1] : aw[0]);
-    r(0, 0, 16, 1, shade(aw[0], -0.25));
-    for (let i = 0; i < 8; i++) r(i * 2, 5, 2, 1, i % 2 ? aw[1] : aw[0]);
-    // 攤車本體
-    r(0, 16, 16, 10, shade(aw[0], -0.1)); r(0, 16, 16, 1, shade(aw[0], 0.3));
-    r(2, 18, 12, 5, '#fff4dc'); r(0, 25, 16, 1, shade(aw[0], -0.4));
-    r(2, 24, 2, 2, '#3a3a3a'); r(12, 24, 2, 2, '#3a3a3a');
-    // 檯面
-    r(0, 13, 16, 3, '#c8ccd4'); r(0, 13, 16, 1, '#e8ecf0');
-    // 等級星星
-    for (let i = 0; i < lv; i++) r(3 + i * 4, 20, 2, 2, '#ffc020');
+    const aw = this.STCOL[id], A = aw[0], B = aw[1], AD = shade(A, -0.3), gold = lv >= 4;
     const f2 = fr & 1;
+    if (gold) { r(-1, 1, 18, 1, '#ffd040'); r(7, -1, 2, 2, '#ffd040'); }
+    // 支架
+    r(1, 6, 1, 20, '#5a4a44'); r(14, 6, 1, 20, '#5a4a44'); r(1, 6, 1, 20, '#5a4a44');
+    // 遮陽棚：條紋＋波浪邊
+    r(-1, 2, 18, 1, AD);
+    for (let i = 0; i < 9; i++) { const c = i % 2 ? B : A; r(-1 + i * 2, 3, 2, 4, c); r(-1 + i * 2, 3, 2, 1, shade(c, 0.25)); }
+    for (let i = 0; i < 9; i++) { const c = i % 2 ? B : A; r(-1 + i * 2, 7, 2, 1, c); if (i % 2 === 0) r(-1 + i * 2, 8, 2, 1, shade(c, -0.15)); }
+    // 燈泡串
+    for (let x = 1; x < 16; x += 3) r(x, 9, 1, 1, (x + fr) % 2 ? '#fff0a0' : '#ffd060');
+    // 攤車本體
+    const body = gold ? '#e8b830' : shade(A, -0.08);
+    r(0, 18, 16, 9, body); r(0, 18, 16, 1, shade(body, 0.35)); r(0, 26, 16, 1, shade(body, -0.35));
+    // 正面的招牌板（字在 render 畫）
+    r(4, 19, 8, 6, shade(body, -0.35)); r(5, 19, 6, 5, gold ? '#fff4c0' : '#fff6e4'); r(5, 19, 6, 1, '#ffffff');
+    r(1, 19, 1, 7, shade(body, -0.15)); r(14, 19, 1, 7, shade(body, -0.15));
+    // 輪子
+    r(2, 26, 3, 3, '#2a2a30'); r(11, 26, 3, 3, '#2a2a30'); r(3, 27, 1, 1, '#9a9aa8'); r(12, 27, 1, 1, '#9a9aa8');
+    // 檯面
+    r(-1, 16, 18, 2, '#b8bcc6'); r(-1, 16, 18, 1, '#eef0f4');
+    // 等級徽章
+    for (let i = 0; i < Math.min(lv, 5); i++) { const c = i >= 3 ? '#ff6fa8' : '#ffd040'; r(i < 3 ? 1 : 13, 19 + (i % 3) * 2, 2, 1, c); }
     switch (id) {
       case 'griddle':
-        r(1, 11, 14, 3, '#5a5a64'); r(2, 11, 12, 1, '#7a7a84');
-        r(3, 10, 5, 2, '#f4c870'); r(4, 10, 3, 1, '#ffe0a0'); r(9, 10, 4, 2, f2 ? '#ffd84a' : '#f4c870'); r(10, 10, 1, 1, '#59c25a'); break;
+        r(0, 14, 16, 2, '#3a3a44'); r(1, 13, 14, 1, '#5a5a66');
+        r(2, 12, 5, 2, f2 ? '#ffd070' : '#f4c060'); r(3, 12, 3, 1, '#ffe8a8'); r(4, 13, 1, 1, '#59c25a');
+        r(9, 12, 4, 2, f2 ? '#f4c060' : '#ffd070'); r(10, 12, 2, 1, '#ffe8a8'); r(11, 13, 1, 1, '#ffd84a');
+        r(13, 10, 1, 4, '#8a8a94'); r(12, 10, 3, 1, '#c8c8d0');
+        r(6, 11, 3, 1, '#f8f0e0'); break;
       case 'drink':
-        r(2, 6, 5, 8, '#8a5a2b'); r(2, 6, 5, 1, '#a8703e'); r(3, 8, 3, 3, '#c8904a'); r(4, 12, 1, 1, '#3a3a3a');
-        r(8, 9, 2, 5, '#f8f0e0'); r(8, 9, 2, 1, '#c8904a'); r(11, 9, 2, 5, '#f8f0e0'); r(11, 10, 2, 3, '#8a5a2b'); r(12, 7, 1, 2, '#ff4a3a'); r(9, 7, 1, 2, '#3a8ad8'); break;
+        r(1, 9, 4, 7, '#c8904a'); r(1, 9, 4, 1, '#e8b070'); r(2, 11, 2, 3, '#8a5a2b'); r(2, 15, 1, 1, '#3a3a3a');
+        r(5, 9, 4, 7, '#f4ecdc'); r(5, 9, 4, 1, '#ffffff'); r(6, 11, 2, 3, '#e0d0b0'); r(6, 15, 1, 1, '#3a3a3a');
+        for (let i = 0; i < 3; i++) { r(10 + i * 2, 12, 2, 4, '#f8f0e0'); r(10 + i * 2, 13, 2, 2, ['#c8904a', '#8a5a2b', '#ffb070'][i]); r(10 + i * 2 + (i & 1), 10, 1, 2, ['#ff4a3a', '#3a8ad8', '#3fa64a'][i]); }
+        break;
       case 'fryer':
-        r(2, 9, 9, 5, '#8a8a94'); r(3, 9, 7, 2, f2 ? '#ffc040' : '#e8a020'); r(4, 9, 1, 1, '#fff0a0'); r(7, 10, 1, 1, '#fff0a0');
-        r(11, 6, 1, 6, '#5a5a64'); r(10, 10, 4, 3, '#c8c8d0'); r(11, 10, 2, 2, '#e8a020'); break;
+        r(1, 11, 9, 5, '#8a8a94'); r(1, 11, 9, 1, '#b8b8c4'); r(2, 12, 7, 2, f2 ? '#ffc040' : '#e8a020');
+        r(3, 12, 1, 1, '#fff0a0'); r(6, 13, 1, 1, '#fff0a0'); r(8, 12, 1, 1, f2 ? '#fff0a0' : '#ffc040');
+        r(4, 9, 1, 3, '#5a5a64'); r(3, 9, 3, 1, '#5a5a64');
+        r(11, 12, 4, 4, '#c8c8d0'); r(11, 12, 4, 1, '#e8e8f0'); r(11, 13, 2, 2, '#d8902a'); r(13, 13, 2, 1, '#e8a03a'); r(12, 15, 2, 1, '#c8801a');
+        break;
       case 'soup':
-        r(2, 7, 11, 7, '#8a8a94'); r(1, 7, 13, 2, '#a8a8b4'); r(3, 8, 9, 2, '#a8502a'); r(4, 8, 2, 1, '#e8a060');
-        r(0, 9, 1, 2, '#5a5a64'); r(14, 9, 1, 2, '#5a5a64'); r(10, 4, 1, 5, '#c8904a'); break;
+        r(1, 10, 11, 6, '#7a7a86'); r(0, 10, 13, 2, '#a8a8b4'); r(0, 10, 13, 1, '#d0d0dc'); r(2, 11, 9, 1, '#a8502a'); r(3, 11, 2, 1, '#e8a060');
+        r(-1, 12, 1, 2, '#5a5a64'); r(13, 12, 1, 2, '#5a5a64');
+        r(9, 6, 1, 6, '#c8904a'); r(8, 6, 3, 1, '#c8904a');
+        r(13, 13, 3, 3, '#f8f8ff'); r(13, 13, 3, 1, '#ffffff'); r(14, 14, 1, 1, '#a8502a');
+        break;
       case 'ice':
-        r(1, 8, 14, 6, '#bfe8ff'); r(1, 8, 14, 1, '#ffffff'); r(2, 9, 3, 3, '#ffd84a'); r(6, 9, 3, 3, '#ff8ab0'); r(10, 9, 3, 3, '#a8e8a0');
-        r(4, 6, 5, 3, '#ffffff'); r(5, 5, 3, 1, '#ffffff'); r(5, 6, 3, 1, '#ffb020'); break;
+        r(0, 11, 16, 5, '#bfe8ff'); r(0, 11, 16, 1, '#ffffff'); r(0, 15, 16, 1, '#8ac0e0');
+        r(1, 12, 3, 3, '#ffd84a'); r(5, 12, 3, 3, '#ff8ab0'); r(9, 12, 3, 3, '#a8e8a0'); r(13, 12, 2, 3, '#9a2a3a');
+        r(5, 7, 6, 4, '#e8eef4'); r(6, 6, 4, 1, '#c8d0dc'); r(7, 5, 2, 1, '#8a8a94'); r(6, 9, 4, 2, '#ffffff'); r(7, 8 + f2, 2, 1, '#ffb020');
+        break;
       case 'steam':
-        r(2, 10, 11, 4, '#c8a060'); r(2, 10, 11, 1, '#e0c080'); r(3, 6, 9, 4, '#c8a060'); r(3, 6, 9, 1, '#e0c080'); r(4, 3, 7, 3, '#d8b070'); r(4, 3, 7, 1, '#f0d090');
-        r(2, 12, 11, 1, '#a8804a'); r(3, 8, 9, 1, '#a8804a'); break;
+        for (let i = 0; i < 3; i++) { const y = 13 - i * 3; r(2, y, 12, 3, '#c8a060'); r(2, y, 12, 1, '#e8c888'); r(2, y + 2, 12, 1, '#a8804a'); }
+        r(3, 6, 10, 1, '#d8b070'); r(4, 5, 8, 1, '#f0d090'); r(7, 4, 2, 1, '#a8804a');
+        break;
       case 'grill':
-        r(1, 10, 14, 4, '#3a3a40'); r(2, 11, 12, 2, f2 ? '#ff6a2a' : '#e84a1a'); r(3, 11, 1, 1, '#ffd040'); r(9, 12, 1, 1, '#ffd040');
-        for (let i = 0; i < 4; i++) { r(2 + i * 3, 9, 1, 3, '#d8c8a0'); r(2 + i * 3, 8, 2, 2, i % 2 ? '#c8503a' : '#e8c040'); } break;
+        r(0, 12, 16, 4, '#3a3a40'); r(0, 12, 16, 1, '#5a5a64'); r(1, 13, 14, 2, f2 ? '#ff6a2a' : '#e84a1a');
+        r(2, 14, 1, 1, '#ffd040'); r(7, 13, 1, 1, '#ffd040'); r(11, 14, 1, 1, '#ffd040');
+        for (let i = 0; i < 5; i++) { r(1 + i * 3, 9, 1, 4, '#d8c8a0'); r(1 + i * 3, 9, 2, 3, ['#c8503a', '#e8c040', '#a8483a', '#ffd030', '#c8503a'][i]); r(1 + i * 3, 9, 1, 1, '#ffe0a0'); }
+        break;
     }
   },
   // 鄰居空地的小道具
@@ -329,6 +547,15 @@ const Art = {
         case 'broom': r(6, 0, 1, 5, '#a8703e'); r(4, 5, 5, 4, '#ffd84a'); r(4, 5, 5, 1, '#e8a020'); break;
         case 'angry': r(1, 1, 7, 7, '#ff4a3a'); r(2, 3, 2, 1, '#ffffff'); r(5, 3, 2, 1, '#ffffff'); r(3, 6, 3, 1, '#ffffff'); break;
         case 'wait': r(2, 0, 5, 1, '#a8703e'); r(2, 8, 5, 1, '#a8703e'); r(3, 1, 3, 2, '#ffd84a'); r(4, 3, 1, 3, '#ffd84a'); r(3, 6, 3, 2, '#ffd84a'); break;
+        case 'excl': r(3, 0, 3, 6, '#ff4a3a'); r(3, 7, 3, 2, '#ff4a3a'); r(4, 1, 1, 3, '#ff9a8a'); break;
+        case 'sweat': r(4, 0, 2, 2, '#8ad0ff'); r(3, 2, 4, 4, '#8ad0ff'); r(4, 6, 2, 1, '#5aa8e8'); r(4, 3, 1, 1, '#ffffff'); break;
+        case 'nocook': r(1, 1, 7, 4, '#ffffff'); r(0, 0, 3, 3, '#ffffff'); r(6, 0, 3, 3, '#ffffff'); r(2, 5, 5, 2, '#dfe4ea'); r(0, 7, 9, 1, '#e8473b'); r(4, 2, 1, 1, '#e8473b'); break;
+        case 'shop': r(0, 2, 9, 3, '#e8473b'); r(0, 2, 9, 1, '#ff7a6a'); r(1, 5, 7, 4, '#f4e0c0'); r(3, 6, 3, 3, '#8a5a2b'); r(1, 0, 7, 2, '#ffd040'); break;
+        case 'firework': r(4, 0, 1, 9, '#ffd040'); r(0, 4, 9, 1, '#ff6fa8'); r(1, 1, 1, 1, '#5ad0ff'); r(7, 1, 1, 1, '#5ad0ff'); r(1, 7, 1, 1, '#7affb0'); r(7, 7, 1, 1, '#7affb0'); r(3, 3, 3, 3, '#ffffff'); break;
+        case 'medal': r(2, 0, 2, 3, '#3a8ad8'); r(5, 0, 2, 3, '#e8473b'); r(1, 3, 7, 6, '#ffc020'); r(2, 2, 5, 1, '#ffc020'); r(3, 4, 3, 3, '#ffe070'); r(4, 5, 1, 1, '#e89a10'); break;
+        case 'book': r(0, 1, 9, 8, '#c8302a'); r(1, 1, 7, 7, '#fff4dc'); r(4, 1, 1, 8, '#a8201a'); r(2, 3, 2, 1, '#c8a080'); r(5, 3, 2, 1, '#c8a080'); r(2, 5, 2, 1, '#c8a080'); break;
+        case 'flask': r(3, 0, 3, 3, '#dfe4ea'); r(2, 0, 5, 1, '#a8b0bc'); r(1, 3, 7, 6, '#dfe4ea'); r(2, 5, 5, 3, '#7affb0'); r(3, 5, 1, 1, '#ffffff'); break;
+        case 'heart2': r(1, 1, 3, 3, '#ff6fa8'); r(5, 1, 3, 3, '#ff6fa8'); r(0, 2, 9, 3, '#ff6fa8'); r(1, 5, 7, 1, '#ff6fa8'); r(2, 6, 5, 1, '#ff6fa8'); r(3, 7, 3, 1, '#ff6fa8'); r(2, 2, 1, 1, '#ffffff'); break;
         case 'gear': r(2, 2, 5, 5, '#a8b0c0'); r(4, 0, 1, 9, '#a8b0c0'); r(0, 4, 9, 1, '#a8b0c0'); r(4, 4, 1, 1, '#4a4a5a'); break;
         case 'people': r(1, 1, 3, 3, '#f4c8a0'); r(0, 4, 5, 4, '#5a8ad8'); r(5, 0, 3, 3, '#f4c8a0'); r(4, 3, 5, 5, '#e8473b'); break;
       }
