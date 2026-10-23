@@ -277,7 +277,7 @@ Object.assign(Game, {
   populateMore(F, depth, used) {
     const rng = new RNG('more:' + G.seed + ':' + depth);
     F.props = F.props || [];
-    if (F.arena) return;
+    if (F.arena || (typeof window !== 'undefined' && window.__noMore)) return;
     const boss = !!BOSS_FLOOR[depth];
     // 可破壞的物件：靠著北牆擺放，一次 1～3 個
     const kinds = PROP_BY_BIOME[F.biome] || PROP_BY_BIOME[0];
