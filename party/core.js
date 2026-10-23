@@ -79,7 +79,7 @@ const SONGS = {
   action: { bpm: 150, roots: [48, 41, 48, 43], mel: [72,-1,76,79, 84,79,76,79, 77,-1,81,84, 81,77,74,77, 76,-1,79,84, 88,84,79,76, 74,77,79,83, 84,-1,84,-1] },
   farm: { bpm: 116, roots: [48, 43, 41, 48], mel: [79,76,79,76, 74,72,74,76, 77,74,77,81, 79,-1,-1,-1, 79,76,79,84, 83,81,79,77, 76,74,72,74, 72,-1,-1,-1] }
 };
-const TRACKS = { lobby: ['lobby', 0, 104], bumper: ['action', 0, 150], paint: ['action', 2, 138], fruit: ['action', 5, 144], sheep: ['farm', 0, 116], tag: ['action', 7, 152], snow: ['farm', 5, 126], fire: ['action', -3, 140], dodge: ['action', 3, 156], soccer: ['action', 2, 148], chairs: ['lobby', 5, 132], cake: ['farm', 3, 120], race: ['action', 9, 160] };
+const TRACKS = { lobby: ['lobby', 0, 104], bumper: ['action', 0, 150], paint: ['action', 2, 138], fruit: ['action', 5, 144], sheep: ['farm', 0, 116], tag: ['action', 7, 152], snow: ['farm', 5, 126], fire: ['action', -3, 140], dodge: ['action', 3, 156], soccer: ['action', 2, 148], chairs: ['lobby', 5, 132], cake: ['farm', 3, 120], race: ['action', 9, 160], quiz: ['lobby', 2, 112], draw: ['lobby', -2, 96], rhythm: ['action', 0, 120], board: ['farm', -3, 108] };
 const Music = {
   cur: null, step: 0, next: 0, timer: null, out: null,
   want() {
@@ -317,6 +317,10 @@ const Party = {
       case 'mode': if (p === this.leader() && (this.state === 'lobby' || this.state === 'result')) { this.setKid(!!d.kid); } break;
       case 'start': if (p === this.leader() && (this.state === 'lobby' || this.state === 'result')) this.begin(); break;
       case 'menu': if (p === this.leader() && this.state === 'result') this.toLobby(); break;
+      // games with other phone layouts (choices / drawing board)
+      case 'choose': if (this.state === 'play' && this.game && this.game.onChoose && p.inGame) this.game.onChoose(p, String(d.id).slice(0, 40)); break;
+      case 'draw': if (this.state === 'play' && this.game && this.game.onDraw && p.inGame && Array.isArray(d.p) && d.p.length <= 600) this.game.onDraw(p, { s: d.s | 0, c: clamp(d.c | 0, 0, 6), p: d.p.map(v => clamp(+v || 0, 0, 1)) }); break;
+      case 'drawClear': if (this.state === 'play' && this.game && this.game.onDrawClear && p.inGame) this.game.onDrawClear(p); break;
       case 'pause': if (p === this.leader() && (this.state === 'play' || this.state === 'intro')) this.togglePause(); break;
       case 'quit': if (p === this.leader() && this.state !== 'lobby') this.toLobby(); break;
     }
@@ -329,6 +333,8 @@ const Party = {
   },
   sync(p) { p.seen = p.inp.c.slice(); },
   pressed(p, k) { if (p.inp.c[k] > p.seen[k]) { p.seen[k] = p.inp.c[k]; return true; } return false; },
+  /* a game may switch a phone to another layout: null = joystick + button, {type:'tap'}, {type:'choices'}, {type:'draw'} */
+  layoutFor(p) { return this.game && this.game.padLayout ? this.game.padLayout(p) || null : null; },
   /* the raw stick with a dead zone; the live stick is rescaled so it starts from 0 just outside the dead zone (no sudden jump) */
   rawInput(p) {
     if (!p.online) return { x: 0, y: 0 };
@@ -377,7 +383,8 @@ const Party = {
       this.net.send(p.peer, { t: 'wait', ...base, msg: '大家正在玩「' + this.def.name + '」，這一局結束就換你加入！' });
     } else {
       const b = this.btnFor(p);
-      this.net.send(p.peer, { t: 'pad', ...base, name: this.def.name, icon: this.def.icon, gcol: this.def.col, btn: b, intro: this.state === 'intro', paused: this.paused, teamPlay: !!this.game.teams });
+      this.net.send(p.peer, { t: 'pad', ...base, name: this.def.name, icon: this.def.icon, gcol: this.def.col, btn: b, intro: this.state === 'intro', paused: this.paused, teamPlay: !!this.game.teams, L: this.layoutFor(p) });
+      p.layoutKey = JSON.stringify(this.layoutFor(p));
       p.hudKey = '';
     }
   },
@@ -466,6 +473,7 @@ const Party = {
     if (!this.game || !(this.state === 'play' || this.state === 'intro') || !this.net) return;
     for (const p of this.players) {
       if (!p.inGame || !p.peer || !p.online) continue;
+      const L = this.layoutFor(p), lk = JSON.stringify(L); if (lk !== p.layoutKey) { p.layoutKey = lk; this.net.send(p.peer, { t: 'layout', L }); }
       const s = this.state === 'intro' ? '準備…看大螢幕' : this.game.pad(p), r = this.state === 'play' && this.game.ready(p) ? 1 : 0, key = s + '|' + r;
       if (key !== p.hudKey) { p.hudKey = key; this.net.send(p.peer, { t: 'hud', s, r }); }
     }

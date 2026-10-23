@@ -107,6 +107,32 @@ input{background:#fff;border:3px solid var(--line);border-radius:16px;padding:10
 .handover{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:13px;color:var(--mute)}
 .handover #handList{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
 .handover button{padding:6px 12px;border-radius:12px;background:#fff;border:2px solid var(--line);font-weight:700;font-size:14px}
+/* other pad layouts a game can ask for: big choice buttons, a drawing board, or one giant tap button */
+.layer{position:absolute;left:0;right:0;top:calc(70px + env(safe-area-inset-top,0px));bottom:calc(10px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;align-items:center;gap:10px;padding:0 14px;touch-action:none}
+.lprompt{margin:0;font-weight:900;font-size:clamp(18px,5vmin,28px);text-align:center;color:var(--ink)}
+.lprompt:empty{display:none}
+.cgrid{flex:1;width:100%;max-width:900px;display:grid;grid-template-columns:repeat(var(--cols,2),1fr);gap:12px;align-content:stretch}
+.copt{border-radius:22px;background:var(--oc,#fff);color:#fff;font-weight:900;font-size:clamp(20px,6vmin,40px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  box-shadow:0 6px 0 rgba(0,0,0,.2);border:5px solid transparent;text-shadow:0 2px 0 rgba(0,0,0,.2);padding:6px;line-height:1.15;min-height:64px}
+.copt .ci{font-size:clamp(28px,9vmin,64px);line-height:1}
+.copt:active{transform:translateY(4px);box-shadow:0 2px 0 rgba(0,0,0,.2)}
+.copt.chosen{border-color:#fff;outline:5px solid var(--ink)}
+.copt.right{background:#22c26a!important;border-color:#fff}
+.copt.wrong{background:#9aa0ad!important;opacity:.7}
+.copt.off{opacity:.35}
+.cgrid.locked .copt:not(.chosen):not(.right){opacity:.45}
+.dwrap{flex:1;width:100%;display:flex;align-items:center;justify-content:center;min-height:0}
+#drawCv{background:#fff;border-radius:16px;box-shadow:0 0 0 4px var(--line);touch-action:none;max-width:100%;max-height:100%;aspect-ratio:4/3}
+.dtools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center}
+.dtools button{width:44px;height:44px;border-radius:50%;border:4px solid #fff;box-shadow:0 0 0 2px var(--line)}
+.dtools button[aria-pressed="true"]{box-shadow:0 0 0 4px var(--ink)}
+.dtools .clr{width:auto;border-radius:14px;padding:0 14px;background:#fff;font-weight:900}
+#pad.tapmode .stickZone,#pad.tapmode .hint{display:none}
+#pad.tapmode .bigBtn{left:50%;top:58%;width:min(68vmin,420px)}
+#pad.tapmode .bigBtn .ic{font-size:clamp(48px,16vmin,110px)}
+#pad.tapmode .bigBtn .lb{font-size:clamp(26px,7vmin,44px)}
+.tapPrompt{position:absolute;left:0;right:0;top:calc(68px + env(safe-area-inset-top,0px));text-align:center;margin:0;font-weight:900;font-size:clamp(16px,4.5vmin,24px);pointer-events:none}
+#pad.altmode .stickZone,#pad.altmode .bigBtn,#pad.altmode .hint{display:none}
 /* result */
 .rank{font-family:var(--round);font-weight:700;font-size:64px;line-height:1;margin:0}
 .rtitle{margin:0;font-weight:900;font-size:24px;text-align:center}
@@ -166,6 +192,13 @@ input{background:#fff;border:3px solid var(--line);border-radius:16px;padding:10
     <b>⏸ 暫停中</b>
     <div id="pauseLead"><button class="go" id="resumeBtn">繼續玩</button><button class="ghost" id="quitBtn">退出，回去選遊戲</button></div>
     <p id="pauseOther">等 👑 房主繼續…</p>
+  </div>
+  <p class="tapPrompt" id="tapPrompt" hidden></p>
+  <div class="layer" id="choiceBox" hidden><p class="lprompt" id="cPrompt"></p><div class="cgrid" id="cGrid"></div></div>
+  <div class="layer" id="drawBox" hidden>
+    <p class="lprompt" id="dPrompt"></p>
+    <div class="dwrap" id="dWrap"><canvas id="drawCv" width="800" height="600"></canvas></div>
+    <div class="dtools" id="dTools"></div>
   </div>
   <div class="introCover" id="introCover" hidden>看大螢幕，馬上開始！</div>
   <div class="hint" id="padHint">按住拖曳就能走路・大按鈕是特別動作</div>
@@ -279,8 +312,10 @@ function onMsg(d) {
       $('pauseBox').hidden = !d.paused; $('pauseLead').hidden = !d.you.lead; $('pauseOther').hidden = !!d.you.lead;
       if (d.paused) releaseAll();
       if (enter) { releaseAll(); vib(60); $('padHint').hidden = false; }
+      applyLayout(d.L || null);
       show('pad'); return;
     }
+    case 'layout': applyLayout(d.L); return;
     case 'hud': $('hudText').textContent = d.s; ready = !!d.r; $('bigBtn').classList.toggle('wait', !ready); if (d.s.indexOf('準備') < 0) $('introCover').hidden = true; return;
     case 'buzz': vib(d.ms); return;
     case 'result': {
@@ -344,6 +379,49 @@ function releaseAll() { endStick(); st.h = [0, 0, 0]; bb.classList.remove('on');
 $('pauseBtn').onclick = () => { Net.send({ t: 'pause' }); PadSfx.blip(500); };
 $('resumeBtn').onclick = () => { Net.send({ t: 'pause' }); PadSfx.blip(700); };
 $('quitBtn').onclick = () => { Net.send({ t: 'quit' }); PadSfx.blip(400); };
+
+/* ---------------- layouts the game can switch the phone to ---------------- */
+let layoutKey = '', drawId = null, drawCol = 0, drawing = false, strokeN = 0, pend = [];
+const DRAW_COLS = ['#2b2340', '#ff4f58', '#2f8cff', '#22c26a', '#ffbf1f', '#9b5cff', '#ffffff'];
+const dcv = $('drawCv'), dg = dcv.getContext('2d');
+function applyLayout(L) {
+  const key = JSON.stringify(L || null); if (key === layoutKey) return; layoutKey = key;
+  const type = L ? L.type : 'stick', pad = $('pad');
+  pad.classList.toggle('tapmode', type === 'tap'); pad.classList.toggle('altmode', type === 'choices' || type === 'draw');
+  $('choiceBox').hidden = type !== 'choices'; $('drawBox').hidden = type !== 'draw';
+  $('tapPrompt').hidden = type !== 'tap' || !L.prompt; if (type === 'tap') $('tapPrompt').textContent = L.prompt || '';
+  if (type !== 'stick') releaseAll();
+  if (type === 'tap' && L.btn) { $('bIc').textContent = L.btn.icon || ''; $('bLb').textContent = L.btn.label || ''; }
+  if (type === 'choices') {
+    $('cPrompt').textContent = L.prompt || '';
+    const grid = $('cGrid'); grid.style.setProperty('--cols', L.cols || (L.options.length > 4 ? 3 : 2)); grid.classList.toggle('locked', !!L.locked);
+    grid.innerHTML = L.options.map(o => `<button class="copt ${o.state || ''}" data-id="${esc(o.id)}" style="--oc:${o.col || '#5b5bd6'}">${o.icon ? `<span class="ci">${esc(o.icon)}</span>` : ''}<span>${esc(o.label || '')}</span></button>`).join('');
+    grid.querySelectorAll('.copt').forEach(b => b.addEventListener('pointerdown', e => {
+      e.preventDefault(); if (L.locked || b.classList.contains('off')) return;
+      grid.querySelectorAll('.copt').forEach(x => x.classList.toggle('chosen', x === b));
+      Net.send({ t: 'choose', id: b.dataset.id }); PadSfx.blip(720); vib(25);
+    }));
+  }
+  if (type === 'draw') {
+    $('dPrompt').textContent = L.prompt || '';
+    if (L.id !== drawId) { drawId = L.id; dg.fillStyle = '#fff'; dg.fillRect(0, 0, dcv.width, dcv.height); }
+    dcv.style.pointerEvents = L.canDraw ? 'auto' : 'none'; dcv.style.opacity = L.canDraw ? 1 : 0.5;
+    $('dTools').hidden = !L.canDraw;
+    $('dTools').innerHTML = DRAW_COLS.map((c, i) => `<button data-c="${i}" style="background:${c}" aria-pressed="${i === drawCol}" aria-label="顏色"></button>`).join('') + '<button class="clr" id="dClr">🧽 全部擦掉</button>';
+    $('dTools').querySelectorAll('[data-c]').forEach(b => b.onclick = () => { drawCol = +b.dataset.c; $('dTools').querySelectorAll('[data-c]').forEach(x => x.setAttribute('aria-pressed', x === b)); PadSfx.blip(600); });
+    $('dClr').onclick = () => { dg.fillStyle = '#fff'; dg.fillRect(0, 0, dcv.width, dcv.height); Net.send({ t: 'drawClear' }); vib(20); };
+  }
+}
+function dpos(e) { const r = dcv.getBoundingClientRect(); return [clamp01((e.clientX - r.left) / r.width), clamp01((e.clientY - r.top) / r.height)]; }
+function clamp01(v) { return Math.max(0, Math.min(1, +v.toFixed(3))); }
+let lastPt = null;
+function dline(a, b) { dg.strokeStyle = DRAW_COLS[drawCol]; dg.lineWidth = drawCol === 6 ? 40 : 12; dg.lineCap = dg.lineJoin = 'round'; dg.beginPath(); dg.moveTo(a[0] * dcv.width, a[1] * dcv.height); dg.lineTo(b[0] * dcv.width, b[1] * dcv.height); dg.stroke(); }
+dcv.addEventListener('pointerdown', e => { e.preventDefault(); dcv.setPointerCapture(e.pointerId); drawing = true; strokeN++; lastPt = dpos(e); pend = [lastPt[0], lastPt[1]]; dline(lastPt, lastPt); });
+dcv.addEventListener('pointermove', e => { if (!drawing) return; const p = dpos(e); dline(lastPt, p); lastPt = p; pend.push(p[0], p[1]); });
+const dEnd = () => { if (!drawing) return; drawing = false; flushDraw(); };
+dcv.addEventListener('pointerup', dEnd); dcv.addEventListener('pointercancel', dEnd);
+function flushDraw() { if (pend.length >= 2) { Net.send({ t: 'draw', s: strokeN, c: drawCol, p: pend }); pend = drawing ? pend.slice(-2) : []; } }
+setInterval(() => { if (drawing) flushDraw(); }, 50);
 
 /* ---------------- lobby buttons ---------------- */
 $('meCv').addEventListener('pointerdown', () => { Net.send({ t: 'say' }); PadSfx.say(me.animal); vib(20); const c = $('meCv'); c.classList.add('say'); setTimeout(() => c.classList.remove('say'), 160); });
