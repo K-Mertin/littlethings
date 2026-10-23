@@ -1,0 +1,647 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon.ico" sizes="any"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#14110e">
+<title>五子棋 · 棋牌桌遊</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@700;900&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="common.css">
+<style>
+.wrap{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:0}
+.bb{flex:1;min-height:0;min-width:0;width:100%;align-self:stretch;display:flex;align-items:center;justify-content:center}
+#cv{display:block;touch-action:manipulation;cursor:pointer;border-radius:6px;box-shadow:0 14px 40px rgba(0,0,0,.55),0 0 0 1px rgba(0,0,0,.4)}
+.info{display:flex;flex-direction:column;gap:8px;width:min(560px,100%);flex:none}
+.players{display:flex;gap:8px}
+.pl{flex:1;display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 12px;min-width:0;transition:border-color .2s,background .2s}
+.pl.on{border-color:var(--brass);background:rgba(217,168,91,.12)}
+.pl b{display:block;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl small{color:var(--mute);font-size:12px}
+.st{width:26px;height:26px;border-radius:50%;flex:none;box-shadow:1px 2px 4px rgba(0,0,0,.6)}
+.st.b{background:radial-gradient(circle at 35% 30%,#777,#141414 60%)}
+.st.w{background:radial-gradient(circle at 35% 30%,#fff,#d8d2c4 70%)}
+.meta{font-size:12px;color:var(--mute);text-align:center}
+@media (max-width:430px){.tb-title{display:none}}
+@media (min-aspect-ratio:1/1) and (min-width:720px){
+  .wrap{flex-direction:row;gap:22px;max-width:calc(100vh - var(--bar) + 230px);max-width:calc(100dvh - var(--bar) + 230px)}
+  .info{width:230px;order:2}
+  .players{flex-direction:column}
+  .meta{text-align:left}.info .tb-status{text-align:left}
+}
+</style>
+</head>
+<body class="tb">
+<header class="tb-bar">
+  <a class="tb-back" href="index.html">← 棋牌</a>
+  <h1 class="tb-title">五子棋</h1>
+  <span class="tb-sp"></span>
+  <button class="tb-btn" id="bNew">新局</button>
+  <button class="tb-btn" id="bUndo">悔棋</button>
+  <button class="tb-btn" id="bHint">提示</button>
+  <button class="tb-btn" id="bInfo">規則<span class="tb-hide-s">・戰績</span></button>
+  <button class="tb-btn icon" id="tb-mute"></button>
+</header>
+<main class="tb-main">
+  <div class="wrap">
+    <div class="info">
+      <div class="players">
+        <div class="pl" id="p1"><span class="st b"></span><div><b id="n1">你</b><small id="m1">黑・先手</small></div></div>
+        <div class="pl" id="p2"><span class="st w"></span><div><b id="n2">電腦</b><small id="m2">白</small></div></div>
+      </div>
+      <div class="tb-status" id="status"></div>
+      <div class="meta" id="meta"></div>
+    </div>
+    <div class="bb" id="bb"><canvas id="cv" aria-label="五子棋棋盤"></canvas></div>
+  </div>
+</main>
+<script src="common.js"></script>
+<script>
+'use strict';
+// ======================================================================
+// 規則與電腦。LOGIC 自成一體：主畫面用它判斷勝負與禁手，同一份程式也丟進 Web Worker 讓電腦思考。
+// 棋盤是長度 225 的陣列：index = y*15 + x，0 空、1 黑、2 白。
+// ======================================================================
+function LOGIC(self) {
+  const N = 15, NN = N * N;
+  const DIRS = [[1, 0], [0, 1], [1, 1], [1, -1]];
+  const at = (b, x, y) => (x < 0 || y < 0 || x >= N || y >= N) ? -1 : b[y * N + x];
+  function runLen(b, x, y, dx, dy, c) {
+    let n = 1, i;
+    for (i = 1; at(b, x + dx * i, y + dy * i) === c; i++) n++;
+    for (i = 1; at(b, x - dx * i, y - dy * i) === c; i++) n++;
+    return n;
+  }
+  // 剛下在 p 的子是否連成五（禁手規則下黑棋要剛好五子）；回傳連線上的點
+  function winLine(b, p, renju) {
+    const c = b[p], x = p % N, y = p / N | 0;
+    for (const [dx, dy] of DIRS) {
+      let s = 0, e = 0;
+      while (at(b, x - dx * (s + 1), y - dy * (s + 1)) === c) s++;
+      while (at(b, x + dx * (e + 1), y + dy * (e + 1)) === c) e++;
+      const n = s + e + 1;
+      if (n === 5 || (n > 5 && !(renju && c === 1))) {
+        const line = []; for (let i = -s; i <= e; i++) line.push((y + dy * i) * N + x + dx * i); return line;
+      }
+    }
+    return null;
+  }
+  // ---- 禁手（只限黑棋）：長連、四四、三三。五連優先。 ----
+  function fourQs(b, x, y, dx, dy) { // 黑子已在 (x,y)；沿此方向再下哪些點會剛好成五（且包含 (x,y)）
+    const qs = [];
+    for (let k = -4; k <= 4; k++) {
+      if (!k) continue;
+      const qx = x + dx * k, qy = y + dy * k;
+      if (at(b, qx, qy) !== 0) continue;
+      let ok = true; const sg = k > 0 ? 1 : -1;
+      for (let j = sg; j !== k; j += sg) if (at(b, x + dx * j, y + dy * j) !== 1) { ok = false; break; }
+      if (!ok) continue;
+      const q = qy * N + qx; b[q] = 1;
+      if (runLen(b, qx, qy, dx, dy, 1) === 5) qs.push(k);
+      b[q] = 0;
+    }
+    return qs;
+  }
+  function fourCount(b, x, y, dx, dy) {
+    const qs = fourQs(b, x, y, dx, dy);
+    if (qs.length === 2 && Math.abs(qs[0] - qs[1]) === 5) return 1; // 活四算一個四
+    return Math.min(qs.length, 2);
+  }
+  function straightFour(b, x, y, dx, dy) { const qs = fourQs(b, x, y, dx, dy); return qs.length === 2 && Math.abs(qs[0] - qs[1]) === 5; }
+  function openThree(b, x, y, dx, dy, depth) {
+    for (let k = -4; k <= 4; k++) {
+      if (!k) continue;
+      const qx = x + dx * k, qy = y + dy * k;
+      if (at(b, qx, qy) !== 0) continue;
+      const q = qy * N + qx;
+      b[q] = 1; const st = straightFour(b, x, y, dx, dy); b[q] = 0;
+      if (st && (depth >= 2 || !forbidden(b, q, depth + 1))) return true;
+    }
+    return false;
+  }
+  function forbidden(b, p, depth) {
+    depth = depth || 0;
+    if (b[p] !== 0) return false;
+    const x = p % N, y = p / N | 0;
+    b[p] = 1;
+    let five = false, over = false;
+    for (const [dx, dy] of DIRS) { const n = runLen(b, x, y, dx, dy, 1); if (n === 5) five = true; else if (n > 5) over = true; }
+    if (five) { b[p] = 0; return false; }
+    if (over) { b[p] = 0; return true; }
+    let fours = 0, threes = 0;
+    for (const [dx, dy] of DIRS) {
+      const f = fourCount(b, x, y, dx, dy); fours += f;
+      if (!f && openThree(b, x, y, dx, dy, depth)) threes++;
+    }
+    b[p] = 0;
+    return fours >= 2 || threes >= 2;
+  }
+
+  // ---- 棋形表：9 格的直線（中心是自己的子）編成 3 進位，預先算好棋形 ----
+  // 0 無 1 單子 2 眠二 3 活二 4 眠三 5 活三 6 沖四 7 活四 8 五連 9 長連
+  const TBL = new Uint8Array(19683);
+  (function build() {
+    const P = [
+      [9, ['111111']], [8, ['11111']], [7, ['011110']],
+      [6, ['11110', '01111', '10111', '11011', '11101']],
+      [5, ['011100', '001110', '011010', '010110']],
+      [4, ['11100', '00111', '11010', '01011', '10110', '01101', '10011', '11001', '10101', '01110']],
+      [3, ['001100', '011000', '000110', '010100', '001010', '010010']],
+      [2, ['11000', '00011', '10100', '00101', '01100', '00110', '10010', '01001', '10001', '01010']],
+      [1, ['10000', '01000', '00100', '00010', '00001']],
+    ];
+    const covers = (s, pat) => { let i = s.indexOf(pat); while (i >= 0) { if (i <= 4 && i + pat.length > 4) return true; i = s.indexOf(pat, i + 1); } return false; };
+    for (let code = 0; code < 19683; code++) {
+      let s = '', c = code;
+      for (let i = 0; i < 9; i++) { s += c % 3; c = c / 3 | 0; }
+      if (s[4] !== '1') continue;
+      let cat = 0;
+      for (const [k, pats] of P) { if (pats.some(p => covers(s, p))) { cat = k; break; } }
+      TBL[code] = cat;
+    }
+  })();
+  const CS = [0, 10, 60, 300, 700, 4000, 15000, 200000, 1e7, 1e7];
+  const POW = [1, 3, 9, 27, 81, 243, 729, 2187, 6561];
+  // 在空點 p 下 c 的價值（棋形分數）。禁手點回傳 -1。
+  function score(b, p, c, renju) {
+    const x = p % N, y = p / N | 0;
+    let c4 = 0, c5 = 0, c6 = 0, c7 = 0, c8 = 0, over = 0, s = 0;
+    for (const [dx, dy] of DIRS) {
+      let code = 0;
+      for (let i = -4; i <= 4; i++) {
+        let v;
+        if (i === 0) v = 1;
+        else { const t = at(b, x + dx * i, y + dy * i); v = t === c ? 1 : t === 0 ? 0 : 2; }
+        code += v * POW[i + 4];
+      }
+      let cat = TBL[code];
+      if (cat === 9) { if (renju && c === 1) { over++; cat = 0; } else cat = 8; }
+      s += CS[cat];
+      if (cat === 8) c8++; else if (cat === 7) c7++; else if (cat === 6) c6++; else if (cat === 5) c5++; else if (cat === 4) c4++;
+    }
+    if (c8) return 1e7;
+    if (renju && c === 1 && (over || c6 || c7 || c4 + c5 >= 2) && forbidden(b, p)) return -1;
+    if (c7 || c6 >= 2) s += 300000;
+    else if (c6 && c5) s += 100000;
+    else if (c5 >= 2) s += 40000;
+    return s;
+  }
+  function cands(b) {
+    const mark = new Uint8Array(NN); let any = false;
+    for (let p = 0; p < NN; p++) {
+      if (!b[p]) continue; any = true;
+      const x = p % N, y = p / N | 0;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+        const X = x + dx, Y = y + dy;
+        if (X >= 0 && Y >= 0 && X < N && Y < N && !b[Y * N + X]) mark[Y * N + X] = 1;
+      }
+    }
+    const out = [];
+    if (!any) { out.push(7 * N + 7); return out; }
+    for (let p = 0; p < NN; p++) if (mark[p]) out.push(p);
+    return out;
+  }
+  function fivePoints(b, c, renju) { const r = []; for (const p of cands(b)) if (score(b, p, c, renju) >= 1e7) r.push(p); return r; }
+  function fourMoves(b, c, renju) {
+    const r = [];
+    for (const p of cands(b)) { const s = score(b, p, c, renju); if (s >= 15000 && s < 1e7) r.push(p); }
+    return r;
+  }
+  // ---- 連續沖四取勝（VCF）----
+  let vcfNodes = 0, budget = Infinity;
+  function vcf(b, c, depth, renju) {
+    if (++vcfNodes > 30000 || ((vcfNodes & 63) === 0 && performance.now() > budget)) return -1;
+    const o = 3 - c;
+    const mine = fivePoints(b, c, renju); if (mine.length) return mine[0];
+    if (depth <= 0) return -1;
+    const theirs = fivePoints(b, o, renju);
+    let moves = fourMoves(b, c, renju);
+    if (theirs.length) { if (theirs.length > 1) return -1; moves = moves.filter(p => p === theirs[0]); }
+    for (const q of moves) {
+      b[q] = c;
+      const fp = fivePoints(b, c, renju);
+      let win = false;
+      if (fp.length >= 2) win = true;
+      else if (fp.length === 1) {
+        const blk = fp[0];
+        if (renju && o === 1 && forbidden(b, blk)) win = true;
+        else { b[blk] = o; if (vcf(b, c, depth - 1, renju) >= 0) win = true; b[blk] = 0; }
+      }
+      b[q] = 0;
+      if (win) return q;
+    }
+    return -1;
+  }
+  // ---- alpha-beta ----
+  let deadline = 0, aborted = false, nodes = 0;
+  function ordered(b, c, renju, K) {
+    const o = 3 - c, list = [];
+    for (const p of cands(b)) {
+      const a = score(b, p, c, renju); if (a < 0) continue;
+      let d = score(b, p, o, renju); if (d < 0) d = 0;
+      list.push({ p, a, d, k: a + d * 0.9 });
+    }
+    list.sort((u, v) => v.k - u.k);
+    return K ? list.slice(0, K) : list;
+  }
+  function search(b, c, depth, alpha, beta, K, renju) {
+    if ((++nodes & 255) === 0 && performance.now() > deadline) aborted = true;
+    if (aborted) return 0;
+    const list = ordered(b, c, renju, 0);
+    if (!list.length) return 0;
+    let bestA = 0, bestD = 0;
+    for (const m of list) { if (m.a > bestA) bestA = m.a; if (m.d > bestD) bestD = m.d; }
+    if (bestA >= 1e7) return 1e9 + depth;
+    if (depth === 0) {
+      if (bestD >= 1e7) return bestA >= 200000 ? -1e6 : -bestD * 0.5; // 對方有五連點，只能擋
+      return bestA - bestD * 0.75;
+    }
+    let moves = list;
+    if (bestD >= 1e7) moves = list.filter(m => m.d >= 1e7).slice(0, 1);
+    else moves = list.slice(0, K);
+    let best = -Infinity;
+    for (const m of moves) {
+      b[m.p] = c;
+      const v = -search(b, 3 - c, depth - 1, -beta, -alpha, K, renju);
+      b[m.p] = 0;
+      if (aborted) return 0;
+      if (v > best) best = v;
+      if (v > alpha) alpha = v;
+      if (alpha >= beta) break;
+    }
+    return best;
+  }
+  function rootSearch(b, c, maxDepth, K, ms, renju) {
+    deadline = performance.now() + ms;
+    const root = ordered(b, c, renju, K);
+    let bestP = root[0].p;
+    for (let d = 1; d <= maxDepth; d++) {
+      aborted = false; nodes = 0;
+      let alpha = -Infinity, bp = -1, bv = -Infinity;
+      for (const m of root) {
+        b[m.p] = c;
+        const v = -search(b, 3 - c, d, -Infinity, -alpha, K, renju);
+        b[m.p] = 0;
+        if (aborted) break;
+        if (v > bv) { bv = v; bp = m.p; }
+        if (v > alpha) alpha = v;
+      }
+      if (aborted) break;
+      bestP = bp;
+      // 把剛找到的最佳手排到最前面，下一層先搜
+      const i = root.findIndex(m => m.p === bp); if (i > 0) root.unshift(root.splice(i, 1)[0]);
+      if (bv >= 1e9) break;
+    }
+    return bestP;
+  }
+  function pick(b, c, level, renju) {
+    const m = pick0(b, c, level, renju);
+    if (m >= 0 && renju && c === 1 && forbidden(b, m)) { // 保險：黑棋絕不下禁手
+      const ok = ordered(b, c, renju, 0).find(x => !forbidden(b, x.p));
+      return ok ? ok.p : -1;
+    }
+    return m;
+  }
+  function pick0(b, c, level, renju) {
+    const o = 3 - c, R = Math.random, T0 = performance.now(), TOT = level === 3 ? 1800 : 900;
+    budget = T0 + TOT * 0.55;
+    const cs = cands(b);
+    if (cs.length === 1 && cs[0] === 7 * N + 7 && !b[7 * N + 7]) {
+      return level <= 1 ? (7 + ((R() * 3 | 0) - 1)) * N + 7 + ((R() * 3 | 0) - 1) : 7 * N + 7;
+    }
+    const mine = fivePoints(b, c, renju);
+    if (mine.length && (level > 0 || R() < 0.95)) return mine[0];
+    const theirs = fivePoints(b, o, renju);
+    if (theirs.length && (level > 0 || R() < 0.8)) return theirs[0];
+    const list = ordered(b, c, renju, 0);
+    if (!list.length) return -1;
+    if (level === 0) { // 簡單：攻多守少，從前幾名隨機挑
+      list.forEach(m => m.k = m.a + m.d * 0.55 + R() * 400);
+      list.sort((u, v) => v.k - u.k);
+      const top = list.slice(0, 5), w = [5, 3, 2, 1, 1];
+      let t = R() * w.slice(0, top.length).reduce((s, x) => s + x, 0);
+      for (let i = 0; i < top.length; i++) { t -= w[i]; if (t <= 0) return top[i].p; }
+      return top[0].p;
+    }
+    if (level >= 2) { vcfNodes = 0; const v = vcf(b, c, level === 3 ? 14 : 8, renju); if (v >= 0) return v; }
+    const four = list.find(m => m.a >= 200000 && m.a < 1e7); // 活四 / 雙四
+    if (four) return four.p;
+    if (level >= 2) {
+      vcfNodes = 0; const ov = vcf(b, o, level === 3 ? 12 : 8, renju);
+      if (ov >= 0) { // 對方有連續沖四，找一手能化解的
+        const tries = list.slice(0, level === 3 ? 16 : 10);
+        if (!tries.some(m => m.p === ov)) tries.push({ p: ov });
+        budget = T0 + TOT * 0.85;
+        for (const m of tries) {
+          if (performance.now() > budget) break;
+          b[m.p] = c; vcfNodes = 0; const still = vcf(b, o, 10, renju); b[m.p] = 0;
+          if (still < 0) return m.p;
+        }
+        return ov;
+      }
+    }
+    if (level === 1) {
+      const best = list[0].k, near = list.filter(m => m.k >= best * 0.97);
+      return near[R() * near.length | 0].p;
+    }
+    return rootSearch(b, c, level === 3 ? 6 : 2, level === 3 ? 8 : 9, Math.max(150, TOT - (performance.now() - T0)), renju);
+  }
+  self.api = { N, winLine, forbidden, pick, score, cands };
+  self.onmessage = e => { const m = e.data; return pick(Int8Array.from(m.b), m.c, m.level, m.renju); };
+}
+
+// ======================================================================
+// 畫面與操作
+// ======================================================================
+const S = {}; LOGIC(S);
+const R = S.api, N = R.N;
+const AI = TB.worker(LOGIC);
+const LEVELS = ['簡單', '普通', '困難', '高手'];
+const COLS = 'ABCDEFGHIJKLMNO';
+const coarse = matchMedia('(pointer:coarse)').matches;
+
+let set = Object.assign({ mode: 'cpu', level: 1, me: 1, rule: 'free' }, TB.store.get('gomoku:set', {}));
+let pref = Object.assign({ coords: false, confirm: coarse }, TB.store.get('gomoku:pref', {}));
+let G; // {moves:[], over:null|{w, line}}
+let board = new Int8Array(N * N);
+let token = 0, thinking = false, ghost = -1, hint = -1, banned = [], dropT = 0;
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d'), bb = document.getElementById('bb');
+let size = 300, cell = 20, pad = 20, dpr = 1, woodCv = null;
+
+const renju = () => set.rule === 'renju';
+const turn = () => (G.moves.length % 2) ? 2 : 1;
+const cpuTurn = () => set.mode === 'cpu' && !G.over && turn() !== set.me;
+
+function rebuild() { board.fill(0); G.moves.forEach((p, i) => board[p] = i % 2 ? 2 : 1); }
+function save() { TB.store.set('gomoku:game', { moves: G.moves, over: G.over, set }); }
+
+function newGame(s) {
+  if (s) { set = s; TB.store.set('gomoku:set', set); }
+  token++; AI.kill(); thinking = false;
+  G = { moves: [], over: null }; ghost = hint = -1;
+  rebuild(); save(); after();
+}
+function name(c) {
+  if (set.mode === 'pvp') return c === 1 ? '黑方' : '白方';
+  return c === set.me ? '你' : '電腦';
+}
+function ui() {
+  const t = turn();
+  document.getElementById('n1').textContent = set.mode === 'pvp' ? '黑方' : (set.me === 1 ? '你' : '電腦');
+  document.getElementById('n2').textContent = set.mode === 'pvp' ? '白方' : (set.me === 2 ? '你' : '電腦');
+  document.getElementById('m1').textContent = '黑・' + (set.mode === 'cpu' && set.me !== 1 ? LEVELS[set.level] : '先手');
+  document.getElementById('m2').textContent = '白' + (set.mode === 'cpu' && set.me !== 2 ? '・' + LEVELS[set.level] : '');
+  document.getElementById('p1').classList.toggle('on', !G.over && t === 1);
+  document.getElementById('p2').classList.toggle('on', !G.over && t === 2);
+  const st = document.getElementById('status');
+  if (G.over) st.innerHTML = G.over.w === 0 ? '<b>和局</b>' : '<b>' + (G.over.w === 1 ? '黑' : '白') + '勝</b>' + (G.over.why ? '・' + G.over.why : '');
+  else if (thinking) st.textContent = '電腦思考中…';
+  else st.innerHTML = '輪到 <b>' + name(t) + '</b>（' + (t === 1 ? '黑' : '白') + '）' + (pref.confirm ? '・點兩下落子' : '');
+  document.getElementById('meta').textContent = '第 ' + G.moves.length + ' 手・' + (renju() ? '黑棋禁手' : '一般規則') + (set.mode === 'cpu' ? '・' + LEVELS[set.level] : '・兩人對下');
+  document.getElementById('bUndo').disabled = !G.moves.length || (set.mode === 'cpu' && G.moves.length < (set.me === 2 ? 2 : 1));
+  document.getElementById('bHint').disabled = !!G.over || cpuTurn() || thinking;
+}
+function computeBanned() {
+  banned = [];
+  if (!renju() || G.over || turn() !== 1 || cpuTurn()) return;
+  for (const p of R.cands(board)) if (R.forbidden(board, p)) banned.push(p);
+}
+function after() {
+  ghost = -1; computeBanned(); ui(); draw();
+  if (cpuTurn()) cpu();
+}
+async function cpu() {
+  const my = ++token; thinking = true; ui();
+  const t0 = performance.now();
+  let p;
+  try { p = await AI.ask({ b: Array.from(board), c: turn(), level: +set.level, renju: renju() }); } catch (e) { p = -1; }
+  const wait = 380 - (performance.now() - t0); if (wait > 0) await new Promise(r => setTimeout(r, wait));
+  if (my !== token) return;
+  thinking = false;
+  if (p < 0 || board[p]) { const c = R.cands(board).find(q => !board[q]); p = c == null ? -1 : c; }
+  if (p >= 0) play(p);
+}
+function play(p) {
+  const c = turn();
+  G.moves.push(p); board[p] = c; hint = -1; dropT = performance.now();
+  const line = R.winLine(board, p, renju());
+  TB.sfx('place');
+  if (line) end(c, line);
+  else if (G.moves.length === N * N) end(0, null);
+  save(); after(); anim();
+}
+function end(w, line, why) {
+  G.over = { w, line, why };
+  const st = TB.bump('gomoku', 'played');
+  let title;
+  if (w === 0) { TB.bump('gomoku', 'draw'); title = '和局'; TB.sfx('draw'); }
+  else if (set.mode === 'cpu') {
+    if (w === set.me) { TB.bump('gomoku', 'won'); title = '你贏了！'; TB.sfx('win'); }
+    else { title = '電腦贏了'; TB.sfx('lose'); }
+  } else { title = (w === 1 ? '黑方' : '白方') + '獲勝！'; TB.sfx('win'); }
+  setTimeout(() => {
+    if (!G.over) return;
+    TB.dialog({ title, html: '<p>' + (why ? why + '。' : (w ? '連成五子。' : '棋盤下滿了。')) + '共 ' + G.moves.length + ' 手。</p>',
+      buttons: [{ label: '看棋盤', value: 0 }, { label: '再來一局', primary: true, value: 1 }] })
+      .then(v => { if (v === 1) newGame(); });
+  }, 650);
+}
+function undo() {
+  if (!G.moves.length) return;
+  token++; AI.kill(); thinking = false;
+  let n = 1;
+  if (set.mode === 'cpu') {
+    // 退回到輪到玩家
+    n = 0; do { n++; } while (G.moves.length - n > 0 && ((G.moves.length - n) % 2 ? 2 : 1) !== set.me);
+    if (((G.moves.length - n) % 2 ? 2 : 1) !== set.me) return;
+  }
+  G.moves.splice(G.moves.length - n, n); G.over = null; hint = -1;
+  rebuild(); save(); TB.sfx('flip'); after();
+}
+async function doHint() {
+  if (G.over || cpuTurn() || thinking) return;
+  const my = token;
+  document.getElementById('status').textContent = '想一想…';
+  const p = await AI.ask({ b: Array.from(board), c: turn(), level: 2, renju: renju() });
+  if (my !== token || p < 0) { ui(); return; }
+  hint = p; ui(); anim();
+}
+
+// ---- 繪圖 ----
+function fit() {
+  const r = bb.getBoundingClientRect();
+  const s = Math.max(200, Math.floor(Math.min(r.width, r.height)));
+  dpr = Math.min(3, window.devicePixelRatio || 1);
+  size = s; cv.style.width = cv.style.height = s + 'px'; cv.width = cv.height = Math.round(s * dpr);
+  const pf = pref.coords ? 1.3 : 0.72;
+  cell = s / (N - 1 + 2 * pf); pad = cell * pf;
+  woodCv = null; draw();
+}
+function wood() {
+  if (woodCv) return woodCv;
+  const c = document.createElement('canvas'); c.width = c.height = Math.round(size * dpr);
+  const g = c.getContext('2d'); g.scale(dpr, dpr);
+  const lg = g.createLinearGradient(0, 0, size, size);
+  lg.addColorStop(0, '#edc77f'); lg.addColorStop(.5, '#e0b46a'); lg.addColorStop(1, '#d2a058');
+  g.fillStyle = lg; g.fillRect(0, 0, size, size);
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  g.globalAlpha = .08;
+  for (let i = 0; i < 70; i++) {
+    g.strokeStyle = rnd() < .5 ? '#7a4f1d' : '#fff1cf'; g.lineWidth = .5 + rnd() * 1.6;
+    const y0 = rnd() * size; g.beginPath(); g.moveTo(0, y0);
+    for (let x = 0; x <= size; x += size / 12) g.lineTo(x, y0 + Math.sin(x / size * 6 + i) * 6 + (rnd() - .5) * 3);
+    g.stroke();
+  }
+  g.globalAlpha = 1;
+  return (woodCv = c);
+}
+const P = i => pad + i * cell;
+function stone(x, y, c, r, alpha) {
+  ctx.save(); ctx.globalAlpha = alpha == null ? 1 : alpha;
+  ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = r * .35; ctx.shadowOffsetX = r * .1; ctx.shadowOffsetY = r * .18;
+  const g = ctx.createRadialGradient(x - r * .35, y - r * .38, r * .1, x, y, r);
+  if (c === 1) { g.addColorStop(0, '#6e6e6e'); g.addColorStop(.45, '#262626'); g.addColorStop(1, '#0a0a0a'); }
+  else { g.addColorStop(0, '#ffffff'); g.addColorStop(.6, '#ece7dc'); g.addColorStop(1, '#c9c1b0'); }
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+  ctx.restore();
+}
+function draw() {
+  if (!G) return;
+  const now = performance.now();
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(wood(), 0, 0); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.strokeStyle = 'rgba(60,38,12,.85)';
+  for (let i = 0; i < N; i++) {
+    ctx.lineWidth = (i === 0 || i === N - 1) ? 1.8 : 1;
+    ctx.beginPath(); ctx.moveTo(P(0), P(i)); ctx.lineTo(P(N - 1), P(i)); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(P(i), P(0)); ctx.lineTo(P(i), P(N - 1)); ctx.stroke();
+  }
+  ctx.fillStyle = 'rgba(60,38,12,.9)';
+  for (const [x, y] of [[3, 3], [11, 3], [3, 11], [11, 11], [7, 7]]) { ctx.beginPath(); ctx.arc(P(x), P(y), Math.max(2, cell * .12), 0, 7); ctx.fill(); }
+  if (pref.coords) {
+    ctx.fillStyle = 'rgba(60,38,12,.8)'; ctx.font = '600 ' + Math.max(9, cell * .42) + 'px Noto Sans TC,sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (let i = 0; i < N; i++) {
+      ctx.fillText(COLS[i], P(i), P(N - 1) + pad * .55); ctx.fillText(COLS[i], P(i), pad * .45);
+      ctx.fillText(String(N - i), pad * .45, P(i)); ctx.fillText(String(N - i), P(N - 1) + pad * .55, P(i));
+    }
+  }
+  const r = cell * .46;
+  const last = G.moves[G.moves.length - 1];
+  for (let i = 0; i < G.moves.length; i++) {
+    const p = G.moves[i]; let rr = r;
+    if (p === last) { const t = Math.min(1, (now - dropT) / 140); rr = r * (1.18 - .18 * t); }
+    stone(P(p % N), P(p / N | 0), i % 2 ? 2 : 1, rr);
+  }
+  if (last != null && !G.over) {
+    ctx.fillStyle = '#e0452f'; ctx.beginPath(); ctx.arc(P(last % N), P(last / N | 0), r * .22, 0, 7); ctx.fill();
+  }
+  // 禁手點
+  ctx.strokeStyle = 'rgba(200,40,30,.8)'; ctx.lineWidth = 2.5;
+  for (const p of banned) {
+    const x = P(p % N), y = P(p / N | 0), k = r * .5;
+    ctx.beginPath(); ctx.moveTo(x - k, y - k); ctx.lineTo(x + k, y + k); ctx.moveTo(x + k, y - k); ctx.lineTo(x - k, y + k); ctx.stroke();
+  }
+  if (hint >= 0 && !board[hint]) {
+    const ph = (Math.sin(now / 220) + 1) / 2;
+    ctx.strokeStyle = 'rgba(40,140,230,' + (.55 + ph * .4) + ')'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(P(hint % N), P(hint / N | 0), r * (.85 + ph * .2), 0, 7); ctx.stroke();
+  }
+  if (ghost >= 0 && !board[ghost]) stone(P(ghost % N), P(ghost / N | 0), turn(), r, .55);
+  if (G.over && G.over.line) {
+    const L = G.over.line, a = L[0], b = L[L.length - 1];
+    ctx.strokeStyle = 'rgba(224,69,47,.9)'; ctx.lineWidth = Math.max(3, cell * .16); ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(P(a % N), P(a / N | 0)); ctx.lineTo(P(b % N), P(b / N | 0)); ctx.stroke();
+  }
+}
+let animOn = false;
+function anim() {
+  if (animOn) return; animOn = true;
+  const step = () => {
+    draw();
+    if (hint >= 0 || performance.now() - dropT < 160) requestAnimationFrame(step); else animOn = false;
+  };
+  requestAnimationFrame(step);
+}
+
+// ---- 點擊 ----
+function hit(e) {
+  const r = cv.getBoundingClientRect();
+  const x = Math.round((e.clientX - r.left - pad) / cell), y = Math.round((e.clientY - r.top - pad) / cell);
+  if (x < 0 || y < 0 || x >= N || y >= N) return -1;
+  const dx = e.clientX - r.left - P(x), dy = e.clientY - r.top - P(y);
+  if (dx * dx + dy * dy > cell * cell * .36) return -1;
+  return y * N + x;
+}
+cv.addEventListener('click', e => {
+  if (!G || G.over) { if (G && G.over) TB.toast('這局已結束，按「新局」再來'); return; }
+  if (thinking || cpuTurn()) return;
+  const p = hit(e); if (p < 0 || board[p]) return;
+  if (renju() && turn() === 1 && R.forbidden(board, p)) { TB.sfx('bad'); TB.toast('這裡是禁手點（' + why(p) + '），黑棋不能下'); return; }
+  if (pref.confirm && ghost !== p) { ghost = p; TB.sfx('select'); draw(); return; }
+  play(p);
+});
+cv.addEventListener('mousemove', e => {
+  if (pref.confirm || coarse || !G || G.over || thinking || cpuTurn()) return;
+  const p = hit(e); const g = p >= 0 && !board[p] ? p : -1;
+  if (g !== ghost) { ghost = g; draw(); }
+});
+cv.addEventListener('mouseleave', () => { if (!pref.confirm && ghost >= 0) { ghost = -1; draw(); } });
+function why(p) { // 給玩家看的禁手原因（粗略）
+  board[p] = 1; const x = p % N, y = p / N | 0; let over = false;
+  for (const [dx, dy] of [[1, 0], [0, 1], [1, 1], [1, -1]]) { let n = 1, i; for (i = 1; board[(y + dy * i) * N + x + dx * i] === 1 && x + dx * i < N && x + dx * i >= 0 && y + dy * i < N; i++) n++; for (i = 1; board[(y - dy * i) * N + x - dx * i] === 1 && x - dx * i >= 0 && x - dx * i < N && y - dy * i >= 0; i++) n++; if (n > 5) over = true; }
+  board[p] = 0;
+  return over ? '長連' : '三三或四四';
+}
+
+// ---- 按鈕 ----
+function newDialog() {
+  let pick = null;
+  return TB.dialog({ title: '新局',
+    html: TB.seg('對手', 'mode', [['cpu', '電腦'], ['pvp', '兩人同一台']], set.mode) +
+      TB.seg('電腦強度', 'level', LEVELS.map((l, i) => [i, l]), set.level) +
+      TB.seg('我執', 'me', [[1, '黑（先手）'], [2, '白（後手）']], set.me) +
+      TB.seg('規則', 'rule', [['free', '一般（五連以上都算贏）'], ['renju', '黑棋禁手']], set.rule),
+    buttons: [{ label: '取消', value: null }, { label: '開始', primary: true, value: 'go',
+      onClick: d => { pick = { mode: TB.segVal(d, 'mode'), level: +TB.segVal(d, 'level'), me: +TB.segVal(d, 'me'), rule: TB.segVal(d, 'rule') }; } }],
+  }).then(v => { if (v === 'go') newGame(pick); else after(); });
+}
+document.getElementById('bNew').onclick = () => newDialog();
+document.getElementById('bUndo').onclick = undo;
+document.getElementById('bHint').onclick = doHint;
+document.getElementById('bInfo').onclick = () => {
+  const s = TB.stats('gomoku');
+  TB.dialog({ title: '五子棋',
+    html: TB.statsHtml([['已玩', s.played || 0], ['贏電腦', s.won || 0], ['和局', s.draw || 0]]) +
+      TB.seg('座標', 'coords', [[1, '顯示'], [0, '隱藏']], pref.coords ? 1 : 0) +
+      TB.seg('落子方式', 'confirm', [[1, '點兩下確認'], [0, '點一下就下']], pref.confirm ? 1 : 0) +
+      '<div class="tb-rules"><h4>怎麼玩</h4><ul><li>黑棋先下，雙方輪流把棋子下在交叉點上。</li><li>橫、直、斜任一方向先連成五顆的人獲勝。</li><li>棋盤下滿還沒人連成五子就是和局。</li></ul>' +
+      '<h4>黑棋禁手規則</h4><ul><li>黑棋先下比較有利，所以限制黑棋不能下「禁手」：</li><li><b>三三</b>：一手同時做出兩個活三。</li><li><b>四四</b>：一手同時做出兩個四。</li><li><b>長連</b>：連成六顆以上。</li><li>如果同時連成五子，五連優先，不算禁手。白棋沒有任何限制，長連也算贏。</li><li>輪到黑棋時，禁手點會標上紅色 ✕，不能下在那裡。</li></ul>' +
+      '<h4>小技巧</h4><ul><li>「活四」兩頭都空，對手擋不住；「活三」不擋就會變活四。</li><li>一手做出「四三」（一個四加一個活三）通常就贏了。</li><li>點「提示」會標出建議的位置。</li></ul></div>',
+    buttons: [{ label: '好', primary: true, onClick: d => {
+      pref = { coords: TB.segVal(d, 'coords') === '1', confirm: TB.segVal(d, 'confirm') === '1' };
+      TB.store.set('gomoku:pref', pref); ghost = -1; fit(); ui();
+    } }],
+  });
+};
+addEventListener('keydown', e => {
+  if (e.target.closest && e.target.closest('input,textarea')) return;
+  if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); undo(); }
+});
+
+// ---- 開始 ----
+new ResizeObserver(fit).observe(bb);
+addEventListener('resize', fit);
+(function start() {
+  const sv = TB.store.get('gomoku:game', null);
+  if (sv && Array.isArray(sv.moves) && sv.moves.length && !sv.over) {
+    set = Object.assign(set, sv.set || {}); G = { moves: sv.moves.filter(p => p >= 0 && p < N * N), over: null };
+    rebuild(); fit(); after(); TB.toast('接續上一盤');
+  } else {
+    G = { moves: [], over: null }; rebuild(); fit(); ui(); newDialog();
+  }
+})();
+</script>
+</body>
+</html>
