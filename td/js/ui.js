@@ -384,7 +384,6 @@ const UI = (() => {
       for (const b of cb.querySelectorAll('.ch-b')) b.addEventListener('click', () => { Snd.init(); Snd.sfx('click'); App.startLevel(li, 'normal', false, b.dataset.c); });
     }
     syncDiff();
-    heroPick();
     show('ovLevels', 'ovBrief');
   }
   function heroPick() {
@@ -445,18 +444,14 @@ const UI = (() => {
       <li>隕石：點技能再點地圖。冰封：凍住全場。都有冷卻時間。</li>
       <li>過關剩越多生命，星星越多。星星可以到「天賦樹」換永久加成。</li>
       <li>過關之後可以挑戰「限定塔種」「無技能」「鐵人」，各多拿 1 顆星。無盡模式每 5 波會換一個詞綴。</li>
-      <li>「圖鑑」裡可以看所有的塔、英雄、遇過的敵人和成就。</li></ul>
-      <h3>英雄</h3>
-      <ul><li>每關帶一位英雄上場（出征前選）：<b>點英雄，再點道路</b>，英雄就會走過去。也可以按面板上的英雄頭像（鍵盤 <kbd>H</kbd>）。</li>
-      <li>英雄會自動攻擊、技能好了會自動施放，也可以在英雄面板手動按（鍵盤 <kbd>E</kbd>／<kbd>R</kbd>）。騎士雷歐會擋住路上的敵人。</li>
-      <li>英雄倒下後會在城堡休養一陣子再回來。打倒敵人和撐過每一波都會得到經驗，等級會一直保留（最高 10 級），第 3 級學會第二個技能。</li></ul>
+      <li>「圖鑑」裡可以看所有的塔、遇過的敵人和成就。</li></ul>
       <h3>特殊地形（第 11 關以後）</h3>
       <ul><li><b>傳送陣</b>：敵人踩上去會直接跳到另一頭。<b>水晶基座</b>：蓋在上面的塔傷害 +25%、射程 +10%。</li>
       <li><b>沙暴</b>：每隔一陣子所有塔射程暫時變短。<b>海流</b>：敵人經過會突然加速。</li></ul>
       <h3>防禦塔</h3><div class="hl">${tw}</div>
       <h3>敵人</h3><div class="hl">${en}</div>
       <h3 class="kb">鍵盤快捷鍵</h3>
-      <p class="kb"><kbd>1</kbd>–<kbd>7</kbd> 選塔　<kbd>U</kbd>/<kbd>I</kbd> 升級（左／右專精）　<kbd>S</kbd> 賣掉　<kbd>T</kbd> 換目標　<kbd>Q</kbd> 隕石　<kbd>W</kbd> 冰封　<kbd>H</kbd> 選英雄　<kbd>E</kbd>/<kbd>R</kbd> 英雄技能　<kbd>N</kbd> 下一波　<kbd>F</kbd> 速度　<kbd>空白</kbd> 暫停　<kbd>Esc</kbd> 取消　<kbd>M</kbd> 靜音</p>
+      <p class="kb"><kbd>1</kbd>–<kbd>7</kbd> 選塔　<kbd>U</kbd>/<kbd>I</kbd> 升級（左／右專精）　<kbd>S</kbd> 賣掉　<kbd>T</kbd> 換目標　<kbd>Q</kbd> 隕石　<kbd>W</kbd> 冰封　<kbd>N</kbd> 下一波　<kbd>F</kbd> 速度　<kbd>空白</kbd> 暫停　<kbd>Esc</kbd> 取消　<kbd>M</kbd> 靜音</p>
       <button class="big" id="hClose">知道了</button>`;
     $('hClose').addEventListener('click', () => { Snd.sfx('click'); $('ovHelp').hidden = true; if (back) back(); });
     $('ovHelp').hidden = false;

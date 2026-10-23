@@ -405,8 +405,6 @@ const ACHIEVEMENTS = [
   { id: 'iron', name: '鐵人', desc: '完成任何一關的鐵人挑戰' },
   { id: 'chal10', name: '挑戰大師', desc: '完成 10 個關卡挑戰' },
   { id: 'meta', name: '學以致用', desc: '在天賦樹學會 10 階天賦' },
-  { id: 'hero5', name: '英雄出師', desc: '任何一位英雄升到 5 級' },
-  { id: 'hero10', name: '傳奇英雄', desc: '任何一位英雄升到 10 級' },
 ];
 const ENDLESS_UNLOCK = 3; // 打贏第 4 關後解鎖無盡模式
 const WAVE_GAP = 14; // 一波出完之後到下一波的秒數
