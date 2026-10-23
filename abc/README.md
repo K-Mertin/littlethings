@@ -5,15 +5,24 @@
 平板優先（Android 平板橫放或直放都可以），手機和電腦也能玩。
 
 ## 活動
-| 首頁按鈕 | 內容 |
+首頁分成四區，往下滑可以看到全部活動，每個遊戲都一按就開始（沒有「Games」「Challenge」這種中間選單）：
+
+- 🔤 **Letters**：Write、Phonics、First Letter、Big & Small、ABC Order、What's Missing?
+- 🧩 **Words**：Things（19 組名詞，進去選一組）、Actions、Describing、Spell、Spell+ ⭐、Blends、Sight Words、Rhyme、Opposites
+- 📝 **Sentences**：a or an?、He / She / They、How?、What can it do?、Where is it?、Stories、Reading ⭐、Sentences ⭐、Listen ⭐
+- 🎉 **Play**：Talk、Memory、Simon Says、Stickers
+
+⭐ 是比較難的挑戰；玩過的格子右上角有 ✔。從遊戲回到首頁會停在原本滑到的位置。
+
+| 活動 | 內容 |
 |---|---|
 | ✏️ Write | 描 26 個小寫和 26 個大寫字母（格子最後一格切換 abc／ABC；🔊 會唸出字母名、字母音和例字）。每個字母三個階段：跟著虛線和箭頭描 → 只有淡淡的字 → 自己寫。有綠色起點和筆順，按 👀 可以看示範。每階段一顆星。每一筆在手指離開時整筆檢查（跟ㄅㄆㄇ 小島一樣）：起點、終點要對，中間依序經過筆畫上的點，偏離不超過 15%；寫對的那一筆留下孩子自己的線，寫錯的會消失、要重寫 |
 | 🔊 Phonics | 自然發音：點 26 個字母，聽「字母名＋字母音＋例字」（s says /s/, sun）。🎯 聽音找字母：Pip 發出 /m/，點出 m |
 | 🔗 Blends | 連音：**c·a·t** 一個音一個音唸、再唸快一點，連成單字後選出圖片；**sh ch th bl fl st sn fr tr** 九組組合音，每組有例字；🎯 聽單字選出開頭是哪組音 |
 | 🔤 First Letter | 看圖聽單字，找出開頭的字母（sun → s）。答錯會再示範一次，正確答案會發亮，並在這一輪稍後再考一次 |
 | 🧩 Spell | 看圖拼三個字母的單字（cat、dog、sun…），拼完會一個字母一個字母唸出來。格子裡有淡色提示字（可在家長區關閉） |
-| 🖼️ Words | 19 組單字（農場動物、野生動物、海洋、昆蟲、水果、蔬菜、食物、顏色、數字、形狀、身體、衣服、玩具、家裡、學校、交通工具、自然、職業、心情），每組 8～16 個字。一輪 8 題，交錯兩種題型：Pip 說一個字、點出對的圖；或看圖選出對的英文字（選錯會唸出選到的字）。看圖選字時，每張字卡右上角有 🔊，按了只唸那個字、不算作答。上方切換「More words」分頁：🏃 Actions（動詞 -ing，「Who is running?」）、🌶️ Describing（形容詞，「Which one is hot?」），以及填空句子遊戲：a / an、he / she / they、副詞 fast / slowly…、can / can't、介系詞 in / on / under / next to。Pip 唸句子和每個選項，選對整句再唸一次 |
-| 📖 Learn | 先教再玩。Words 每一組、More words 五組填空，和 Games 的 Rhyme、Opposites、Big & Small，進到遊戲後上方有「📖 Learn」按鈕（不會自動跳出）。上課照「我說、一起說、你來」：一次一張大圖＋字，Pip 唸出來，再說「Say it with me!」（點圖可以再聽，按 🎤 可以跟著唸，Pip 會回應）；每教 3～4 個，就用剛教的內容出 1～2 題小確認（答錯會唸出選到的是什麼，錯兩次提示答案）。教完按 ▶️ Play 直接進遊戲，🔁 再上一次。一次教 8 個，下次打開接著教後面的 |
+| 🖼️ Words | 19 組單字（農場動物、野生動物、海洋、昆蟲、水果、蔬菜、食物、顏色、數字、形狀、身體、衣服、玩具、家裡、學校、交通工具、自然、職業、心情），每組 8～16 個字。一輪 8 題，交錯兩種題型：Pip 說一個字、點出對的圖；或看圖選出對的英文字（選錯會唸出選到的字）。看圖選字時，每張字卡右上角有 🔊，按了只唸那個字、不算作答。另外在首頁有：🏃 Actions（動詞 -ing，「Who is running?」）、🌶️ Describing（形容詞，「Which one is hot?」），以及填空句子遊戲：a / an、he / she / they、副詞 fast / slowly…、can / can't、介系詞 in / on / under / next to。Pip 唸句子和每個選項，選對整句再唸一次 |
+| 📖 Learn | 先教再玩。Words 每一組（含 Actions、Describing）、Sentences 區的五組填空，和 Rhyme、Opposites、Big & Small，進到遊戲後上方有「📖 Learn」按鈕（不會自動跳出）。上課照「我說、一起說、你來」：一次一張大圖＋字，Pip 唸出來，再說「Say it with me!」（點圖可以再聽，按 🎤 可以跟著唸，Pip 會回應）；每教 3～4 個，就用剛教的內容出 1～2 題小確認（答錯會唸出選到的是什麼，錯兩次提示答案）。教完按 ▶️ Play 直接進遊戲，🔁 再上一次。一次教 8 個，下次打開接著教後面的 |
 | 🎲 Games | 小遊戲區（7 個）：🎵 Rhyme 押韻（22 組字族）、🃏 Memory 翻牌（任一組單字的 6 對圖）、🙋 Simon Says（聽指令點身體部位）、↔️ Opposites 相反詞（12 組）、❓ What's Missing?（看圖補字母，多半是中間的母音）、🔡 ABC Order（「a b _」接下一個字母）、🅰️ Big & Small（大寫配小寫，常混入 b/d/p/q 這類長得像的字母） |
 | 👀 Sight Words | 常見字（I、the、see、can、like…共 30 個）：先看字、聽 Pip 唸，再從三張字卡找出來；之後只聽不看再找一次。答對會聽到一句用到這個字的例句 |
 | 📚 Stories | 8 本原創小故事書（每本 6～7 頁）：Pip's Hat、The Big Red Bus、Little Duck、Bedtime for Pip、The Hungry Monkey、Rainy Day、Pip at the Farm、The Snowman。Pip 唸的時候字會一個個亮起來，點任何一個字可以聽那個字；讀完回答 3 題（選項順序隨機） |
