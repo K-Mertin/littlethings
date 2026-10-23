@@ -41,8 +41,9 @@ One player picks a faction (and, as host, the map size, map and starting resourc
 | Input | Action |
 |---|---|
 | Left-click a unit / drag a box | select. A box with soldiers in it leaves the workers out. Shift adds, double-click or Ctrl+click selects that type on screen |
-| Left-click or right-click the ground | soldiers attack-move there (they fight whatever they meet), workers walk |
-| Left-click or right-click an enemy / crystals | attack it / mine them. On a Blue building being built: help build. On a building: set its rally point |
+| Right-click the ground | go there no matter what: being shot at doesn't turn them around. Afterwards they hold that spot and only fight what comes into range |
+| Right-click an enemy / crystals | attack only that one until it's gone / mine them. On a Blue building being built: help build. With a building selected: set its rally point |
+| A, then click the ground | attack-move: walk there and fight anything met on the way |
 | Right-click your damaged building or machine (Blue workers) | repair it |
 | Esc or ✕ | deselect (Esc again pauses) |
 | M / S / H / A | move without fighting / stop / hold position / attack (then click) |
@@ -55,10 +56,10 @@ One player picks a faction (and, as host, the map size, map and starting resourc
 | Arrows, screen edge, mouse wheel, middle-drag, minimap | scroll and zoom (scrolling eases in and out) |
 | Esc / P | cancel, or pause |
 
-If you prefer classic StarCraft clicks (left-click only selects), turn off **Left-click / tap on the ground gives orders** in the pause menu. The panels at the bottom only appear when something is selected, so the map stays clear.
+Left-click only selects (clicking empty ground keeps the selection; Esc or ✕ clears it); right-click gives orders. **Swap mouse buttons** in the pause menu flips the two. The panels at the bottom only appear when something is selected, so the map stays clear.
 
 ### Phones and tablets
-Tap a unit or building to select it. With units selected, tap the ground to move (soldiers fight on the way) or an enemy to attack. Drag with one finger to scroll (it glides when you flick), pinch to zoom, and **press and hold, then drag** to box-select. **⚔** in the top bar selects every soldier. Landscape works best.
+Tap a unit or building to select it. With units selected, tap the ground to go there (they won't stop to fight) or an enemy to attack only that one. **Press and hold the ground** (a red ring appears) and let go to attack-move instead. Drag with one finger to scroll (it glides when you flick), pinch to zoom, and **press and hold, then drag** to box-select. **⚔** in the top bar selects every soldier. Landscape works best.
 
 On phones the HUD switches to a compact layout (tablets and computers keep the full one):
 - the production queue sits in a slim bar right above the buttons, so it is always visible; tap an item to cancel it
@@ -236,3 +237,10 @@ In test matches between two Normal computers, games last about 10–11 minutes o
 - The simulation is deterministic: it uses its own seeded random numbers (saved with the game), fog of war is worked out for both sides, and every player action goes through one command function, so online matches only exchange commands.
 - Teams sit on two sides, so 2 vs 2 uses the same rules as 1 vs 1. Each faction maps its buildings onto the same roles (main building, supply, gas, barracks, factory, air, tower, tech), which lets one computer player play any faction.
 - All art is drawn in code on a canvas, the HUD icons reuse the same drawing code, and sounds are synthesized with the Web Audio API. Autosaves are JSON in `localStorage`.
+
+## Look
+
+The ground is baked once per game with the same recipe as Buddy Battle and Cobble Keep: grey detail maps (grass blades, sand ripples, snow crust, rock, gravel) laid over the colours with the overlay blend, soft hills shaded from a height field, worn trails between the bases, wet sand, deeper water and foam, cliffs with a layered face and a shadow at their foot, shaded trees and small things lying around. Explosions leave lasting scorch marks.
+
+Units and buildings stand in soft contact shadows, get sunlight from the upper left with a soft dark edge, and Shard crystal catches a passing glint. **Detailed light and shading** in the pause menu turns that live part off; slow devices switch it off by themselves. `?mat=0` / `?mat=1` force it off or on.
+
