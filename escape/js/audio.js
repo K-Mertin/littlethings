@@ -85,8 +85,22 @@ const Snd = {
       case 'fanfare': [[60, 0], [64, 0.15], [67, 0.3], [72, 0.45], [67, 0.7], [72, 0.85], [76, 1]].forEach(([n, t]) => { this.bell(NOTE(n + 12), t, 0.1, 1.5); this.tone(NOTE(n), 0.4, 'triangle', 0.05, null, t); }); break;
       case 'objection': this.noise(0.25, 0.3, 3000, 200); [60, 63, 67, 72].forEach(n => this.tone(NOTE(n), 0.6, 'sawtooth', 0.04)); this.tone(NOTE(48), 0.7, 'square', 0.06); break;
       case 'hurt': this.tone(300, 0.3, 'sawtooth', 0.06, 90); this.noise(0.2, 0.15, 1200, 100); break;
-      case 'chime': this.bell(NOTE(76), 0, 0.12, 2); this.bell(NOTE(72), 0.5, 0.12, 2.4); break;
+      case 'hold': this.noise(0.2, 0.25, 2500, 300); [62, 66, 69].forEach(n => this.tone(NOTE(n), 0.45, 'sawtooth', 0.035)); this.tone(NOTE(50), 0.5, 'square', 0.05); break;
+      case 'note': [84, 88, 91, 96].forEach((n, i) => this.bell(NOTE(n), i * 0.07, 0.09, 1.2)); break;
+      case 'ach': [76, 79, 84].forEach((n, i) => this.bell(NOTE(n), i * 0.11, 0.1, 1.4)); this.tone(NOTE(60), 0.5, 'triangle', 0.05, null, 0.22); break;
+      case 'splash': this.noise(0.6, 0.25, 1800, 200); for (let i = 0; i < 5; i++) this.tone(400 + Math.random() * 600, 0.1, 'sine', 0.05, 200, 0.1 + i * 0.06); break;
+      case 'drip': this.tone(1400, 0.12, 'sine', 0.05, 700); break;
+      case 'match': this.noise(0.3, 0.2, 5000, 1500, 0, 'highpass'); this.noise(0.6, 0.06, 900, 300, 0.2); break;
+      case 'swoosh': this.noise(0.35, 0.12, 400, 2400, 0, 'bandpass'); break;
+      case 'chime':this.bell(NOTE(76), 0, 0.12, 2); this.bell(NOTE(72), 0.5, 0.12, 2.4); break;
     }
+  },
+  // 說話時的「嗶嗶」聲，每個角色音高不同（像對話小遊戲）
+  blip(who) {
+    if (!this.ctx) return;
+    let h = 0; for (const ch of String(who)) h = (h * 31 + ch.charCodeAt(0)) % 997;
+    const base = 420 + (h % 9) * 55;
+    for (let i = 0; i < 3; i++) this.tone(base * (1 + ((h >> i) % 3) * 0.06), 0.045, 'square', 0.018, null, i * 0.065);
   },
   melody(notes, step = 0.32) { notes.forEach((n, i) => n && this.bell(NOTE(n), i * step, 0.13, 1.6)); },
 };

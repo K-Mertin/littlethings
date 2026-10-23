@@ -5,7 +5,9 @@
   const GRID = ['....T.', '..M..#', '#.....', '.MS.M.', '...#..'];
   const COLS = 6, ROWS = 5;
   const FLOW = { 紅: '#e0504a', 橙: '#f08a3a', 黃: '#f2c232', 綠: '#5fae5a', 藍: '#4f8ad8', 紫: '#9a6ac8' };
-  const POTC = ['黃', '紅', '藍'];
+  const CANON = { potc: ['黃', '紅', '藍'] };
+  const V = s => (s && s.v) || CANON;
+  const butterfly = (x, y, c, d) => `<g class="fly" style="animation-duration:${d}s;${A.ad(d)}"><g transform="translate(${x} ${y})"><g class="flap"><path d="M0 0q-14-16-18-4q4 10 18 4zM0 0q14-16 18-4q-4 10-18 4z" fill="${c}" stroke="#4a3222" stroke-width="1.5"/><path d="M0 0q-10 10-12 2zM0 0q10 10 12 2z" fill="${shade(c, -0.15)}" stroke="#4a3222" stroke-width="1.2"/></g><path d="M0-6v10" stroke="#4a3222" stroke-width="2.4" stroke-linecap="round"/></g></g>`;
 
   Object.assign(ITEMS, {
     shears: { n: '園藝剪', d: '紅色握把的大剪刀，用來修剪植物。', ic: () => `<g transform="rotate(-35 50 50)"><path d="M50 50L52 8l6 2-2 40zM50 50L42 9l6-2 6 43z" fill="#d9dee4" ${SW2}/><circle cx="38" cy="72" r="14" fill="none" stroke="#4a3222" stroke-width="9"/><circle cx="38" cy="72" r="14" fill="none" stroke="#e0504a" stroke-width="5"/><circle cx="64" cy="72" r="14" fill="none" stroke="#4a3222" stroke-width="9"/><circle cx="64" cy="72" r="14" fill="none" stroke="#e0504a" stroke-width="5"/><circle cx="50" cy="52" r="4" fill="url(#brass)" ${SW2}/></g>` },
@@ -54,7 +56,7 @@
   const pot = (x, y, n, s) => {
     let o = A.sh(x, y + 2, 50, 9);
     if (s['pot' + n]) {
-      const c = FLOW[POTC[n - 1]];
+      const c = FLOW[V(s).potc[n - 1]];
       o += `<path d="M${x} ${y - 50}V${y - 150}" stroke="#4f8a4a" stroke-width="7"/><path d="M${x} ${y - 90}q-30-10-34-30q24 0 34 20M${x} ${y - 110}q30-8 34-28q-24 0-34 20" fill="#6fae5a" ${SW2}/>`;
       for (let i = 0; i < 6; i++) o += `<ellipse cx="${x}" cy="${y - 178}" rx="11" ry="20" fill="${c}" ${SW2} transform="rotate(${i * 60} ${x} ${y - 158})"/>`;
       o += `<circle cx="${x}" cy="${y - 158}" r="11" fill="#ffe27a" ${SW2}/>`;
@@ -71,6 +73,10 @@
   ROOMS.push({
     id: 'r3', no: 3, name: '溫室', en: 'THE GREENHOUSE', mood: 'green', par: 600, walls: ['n', 'e', 's', 'w'],
     init: () => ({ mir: { '2,1': '/', '1,3': '\\', '2,3': '/', '4,3': '\\' } }),
+    canon: CANON,
+    vary: r => { let p; do { p = shuffle(['紅', '橙', '黃', '綠', '藍', '紫'], r).slice(0, 3); } while (p.join() === '黃,紅,藍'); return { potc: p }; },
+    note: { v: 'e', x: 874, y: 146, s: 0.85 },
+    amb: v => { if (['n', 'e', 's', 'w'].includes(v)) { A.fx(butterfly(200, 200, '#f2c232', 9)); A.fx(butterfly(700, 120, '#e57aa8', 11)); } return ''; },
     intro: [
       '玻璃屋頂下，陽光暖洋洋的。到處都是爺爺種的花草，空氣裡有泥土的香味。',
       { w: 'mochi', t: '喵～', sfx: 'meow' },
@@ -108,7 +114,7 @@
       s: {
         draw: s => A.wall(WALL) + `<g filter="url(#ds)"><rect x="140" y="430" width="720" height="24" rx="6" fill="#a8703f" ${SW}/><path d="M170 454v30M830 454v30M500 454v30" stroke="#7a4a2a" stroke-width="12"/></g>` + pot(260, 430, 1, s) + pot(500, 430, 2, s) + pot(740, 430, 3, s) +
           `<g transform="translate(420 70)">${A.paper(0, 0, 160, 90, 2, '#fff8e0', 0)}${A.txt(80, 30, '爺爺特製', 16, '#8c3a1a')}${A.txt(80, 54, '魔法速生種子', 18, '#4a3222', 'middle', 900)}${A.txt(80, 78, '澆一次水就開花', 13, '#7a6250', 'middle', 500)}</g>` + A.light(),
-        hot: s => [1, 2, 3].map(n => ({ id: 'pot' + n, r: [180 + (n - 1) * 240, 220, 160, 230], on: () => G.toast(s['pot' + n] ? `${n} 號花盆開出了${POTC[n - 1]}色的花。` : `${n} 號花盆的土乾巴巴的，裡面好像埋了種子。`), use: { canFull: C => { if (s['pot' + n]) { G.toast('這盆已經開花了。'); return; } s['pot' + n] = 1; Snd.play('water'); setTimeout(() => Snd.play('light'), 300); G.toast(`澆了水……${n} 號花盆冒出芽，「啵」地開出一朵<b>${POTC[n - 1]}色</b>的花！`); }, can: () => G.toast('澆水壺是空的，要先裝水。') } })).concat([{ id: 'seed', r: [410, 60, 180, 110], t: '種子包裝：「爺爺特製・魔法速生種子・澆一次水就開花」。' }]),
+        hot: s => [1, 2, 3].map(n => ({ id: 'pot' + n, r: [180 + (n - 1) * 240, 220, 160, 230], on: () => G.toast(s['pot' + n] ? `${n} 號花盆開出了${V(s).potc[n - 1]}色的花。` : `${n} 號花盆的土乾巴巴的，裡面好像埋了種子。`), use: { canFull: C => { if (s['pot' + n]) { G.toast('這盆已經開花了。'); return; } s['pot' + n] = 1; Snd.play('water'); setTimeout(() => Snd.play('light'), 300); G.toast(`澆了水……${n} 號花盆冒出芽，「啵」地開出一朵<b>${V(s).potc[n - 1]}色</b>的花！`); }, can: () => G.toast('澆水壺是空的，要先裝水。') } })).concat([{ id: 'seed', r: [410, 60, 180, 110], t: '種子包裝：「爺爺特製・魔法速生種子・澆一次水就開花」。' }]),
       },
       w: {
         draw: s => A.wall(WALL) + `<g filter="url(#ds)"><rect x="380" y="120" width="240" height="350" rx="6" fill="#f4fbf6" ${SW}/><rect x="396" y="136" width="100" height="318" fill="${s.doorOpen ? '#fff4d6' : '#d6eef2'}" ${SW2}/><rect x="504" y="136" width="100" height="318" fill="${s.doorOpen ? '#fff4d6' : '#d6eef2'}" ${SW2}/><path d="M410 180l40-30M410 220l70-50" stroke="#fff" stroke-width="6" stroke-linecap="round"/></g>` +
@@ -118,7 +124,7 @@
           (s.vines && !s.mirrorTaken ? `<g transform="translate(200 330) scale(.7)">${ITEMS.mirror.ic()}</g>` : '') + A.plant(880, 480, 1.2, '#4f9e9a', '#4f8a4a') + A.light(),
         hot: s => [
           { id: 'door', r: [380, 120, 240, 350], on: C => { if (s.doorOpen) C.win(); else G.toast('玻璃門鎖住了。旁邊有一個花朵形狀的鎖。'); } },
-          { id: 'lock', r: [630, 250, 90, 140], on: C => W.wheels(C, { id: 'flowerLock', title: '花朵鎖', sub: '鎖上刻著：「讓花兒照著自己的號碼排好隊。」三個轉輪上面寫著 1、2、3。', wheels: [1, 2, 3].map(n => ({ label: `<b style="font-size:20px">${n}</b>`, vals: Object.keys(FLOW).map(k => `<svg viewBox="-20 -20 40 40">${A.sym(4, 0, 0, 1, FLOW[k])}</svg>`), kind: 'svg' })), check: i => i.map(k => Object.keys(FLOW)[k]).join('') === POTC.join(''), ok: C => { s.doorOpen = 1; Snd.play('door'); C.win(); }, okMsg: '叮鈴！' }) },
+          { id: 'lock', r: [630, 250, 90, 140], on: C => W.wheels(C, { id: 'flowerLock', title: '花朵鎖', sub: '鎖上刻著：「讓花兒照著自己的號碼排好隊。」三個轉輪上面寫著 1、2、3。', wheels: [1, 2, 3].map(n => ({ label: `<b style="font-size:20px">${n}</b>`, vals: Object.keys(FLOW).map(k => `<svg viewBox="-20 -20 40 40">${A.sym(4, 0, 0, 1, FLOW[k])}</svg>`), kind: 'svg' })), check: i => i.map(k => Object.keys(FLOW)[k]).join('') === V(s).potc.join(''), ok: C => { s.doorOpen = 1; Snd.play('door'); C.win(); }, okMsg: '叮鈴！' }) },
           { id: 'cab', r: [80, 240, 220, 240], on: C => { if (!s.vines) G.toast('一個小櫃子，被粗粗的藤蔓纏得緊緊的，打不開。'); else if (!s.mirrorTaken) { s.mirrorTaken = 1; C.give('mirror'); } else G.toast('櫃子裡空空的。'); }, use: { shears: C => { C.take('shears'); s.vines = 1; Snd.play('snip'); G.toast('喀嚓喀嚓！剪掉藤蔓，櫃門打開了。裡面有一面小鏡子。'); } } },
         ],
       },
@@ -129,14 +135,14 @@
       { goal: '把陽光引到向日葵花苞', done: s => s.lightOk, h: ['陽光導引台上有一個「空座」，可以插鏡子。點鏡子可以改變它的方向。', '先把小鏡子插進空座。光從左邊第二排射進來，要讓它往下、往右、再往上，到達最上面的目標。', '把第二排的鏡子轉成「\\」、空座的鏡子轉成「\\」、右下那面鏡子轉成「/」，左下那面不用管。'] },
       { goal: '拿到向日葵送的禮物', done: s => s.canTaken, h: ['向日葵開花了！', '點北邊開花的向日葵。', '點向日葵，拿到澆水壺和音符齒輪。'] },
       { goal: '讓種子開花', done: s => s.pot1 && s.pot2 && s.pot3, h: ['南邊的花盆裡有種子，種子包裝說澆水就會開花。澆水壺是空的。', '先拿空澆水壺點東邊的水槽裝水，再一盆一盆澆。', '裝滿水後，拿著澆水壺分別點 1、2、3 號花盆。'] },
-      { goal: '打開玻璃門', done: s => s.doorOpen, h: ['花朵鎖說：讓花兒照著自己的號碼排好隊。', '轉輪 1、2、3 對應南邊的 1、2、3 號花盆開出的花色。', '答案是：1 黃、2 紅、3 藍。'] },
+      { goal: '打開玻璃門', done: s => s.doorOpen, h: ['花朵鎖說：讓花兒照著自己的號碼排好隊。', '轉輪 1、2、3 對應南邊的 1、2、3 號花盆開出的花色。', s => `答案是：1 ${V(s).potc[0]}、2 ${V(s).potc[1]}、3 ${V(s).potc[2]}。`] },
     ],
   });
 
   function openBoard(C) {
     const s = C.s;
-    const draw = () => `<svg class="wsvg" viewBox="-100 -30 720 560">${board(s, true)}</svg>`;
-    const body = G.modal(`<h3>陽光導引台</h3><p class="sub">點鏡子可以轉動方向（／或＼）。讓左邊射進來的陽光照到最上面的花苞。${s.mirrorIn ? '' : '<br><b>有一個空座還沒有鏡子。</b>'}</p><div class="bd">${draw()}</div><p class="msg"></p>`, { w: 620 });
+    const draw = () => `<svg class="wsvg" viewBox="-96 -24 712 548">${board(s, true)}</svg>`;
+    const body = G.modal(`<h3>陽光導引台</h3><p class="sub">點鏡子轉動方向（／或＼），讓左邊射進來的陽光照到最上面的花苞。${s.mirrorIn ? '' : '<b>有一個空座還沒有鏡子。</b>'}</p><div class="bd">${draw()}</div><p class="msg"></p>`, { w: 760, cls: 'wide' });
     body.onclick = e => {
       const g = e.target.closest('[data-mc]'); if (!g || s.lightOk) return;
       const k = g.dataset.mc, [c, r] = k.split(',').map(Number);

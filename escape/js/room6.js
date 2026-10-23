@@ -3,7 +3,17 @@
 (() => {
   const WALL = { c: '#a9c8e8', pat: 'star', wain: '#f6dce6', trim: '#fffaf2', floor: 'wood', fc: ['#e0b88a', '#d0a878'] };
   const PL = { bear: '熊熊', rabbit: '兔兔', fox: '狐狸', penguin: '企鵝' };
-  const ANS = ['penguin', 'rabbit', 'fox', 'bear'];
+  // 排排坐規則（每一組都只有一種排法；工具檢查過）
+  const RULES = [
+    { t: ['企鵝怕熱，要坐在<b>最左邊</b>，靠窗戶的位置。', '兔兔不喜歡坐在<b>兩端</b>。', '熊熊要<b>緊緊挨著</b>坐在狐狸的<b>右邊</b>（從你看過去）。'], ans: ['penguin', 'rabbit', 'fox', 'bear'], h: '企鵝坐最左邊；兔兔不能在兩端，只能坐 2 或 3；熊熊要緊挨在狐狸右邊。如果狐狸坐 2、熊熊坐 3，兔兔就只能坐 4……' },
+    { t: ['熊熊最愛看窗外，要坐在<b>最右邊</b>。', '狐狸和熊熊吵架了，<b>不能坐在一起</b>。', '企鵝要<b>緊緊挨著</b>坐在兔兔的<b>右邊</b>（從你看過去）。'], ans: ['fox', 'rabbit', 'penguin', 'bear'], h: '熊熊坐 4；狐狸不能坐 3，只能坐 1 或 2；兔兔和企鵝要挨在一起（兔兔在左）。如果狐狸坐 2，剩下的 1 和 3 就挨不到一起了……' },
+    { t: ['兔兔要坐在<b>第 2 個</b>位置。', '企鵝<b>不坐兩端</b>。', '熊熊要坐在狐狸的<b>左邊</b>（不一定挨著）。'], ans: ['bear', 'rabbit', 'penguin', 'fox'], h: '兔兔坐 2，企鵝不坐兩端就只能坐 3；剩下 1 和 4 給熊熊和狐狸，熊熊在左邊。' },
+    { t: ['企鵝要坐在<b>最右邊</b>。', '熊熊要<b>緊緊挨著</b>坐在企鵝的<b>左邊</b>。', '兔兔<b>不坐最左邊</b>。'], ans: ['fox', 'rabbit', 'bear', 'penguin'], h: '企鵝坐 4、熊熊坐 3；兔兔不坐最左邊，只能坐 2；剩下的 1 給狐狸。' },
+  ];
+  const CANON = { rule: 0, start: [0, 5, 7] };
+  const V = s => (s && s.v) || CANON;
+  const RU = s => RULES[V(s).rule];
+  const POSN = ['左上角', '上排中間', '右上角', '中排最左邊', '正中間', '中排最右邊', '左下角', '最下排中間', '右下角'];
 
   const plush = (k, x, y, sc = 1) => {
     let o = `<g transform="translate(${x} ${y}) scale(${sc})">`;
@@ -30,8 +40,12 @@
     <rect x="-30" y="-130" width="60" height="40" rx="6" fill="#fff3d0" ${SW2}/>${A.txt(0, -104, 'TOYS', 16, '#c9683a', 'middle', 900)}</g>`;
 
   ROOMS.push({
-    id: 'r6', no: 6, name: '玩具房', en: 'THE TOY ROOM', mood: 'title', par: 600, walls: ['n', 'e', 's', 'w'],
+    id: 'r6', no: 6, name: '玩具房', en: 'THE TOY ROOM', mood: 'title', par: 660, walls: ['n', 'e', 's', 'w'],
     init: () => ({ slots: [null, null, null, null] }),
+    canon: CANON,
+    vary: r => { let st; do { st = shuffle([0, 1, 2, 3, 4, 5, 6, 7, 8], r).slice(0, 3).sort((a, b) => a - b); } while (st.join() === '0,5,7'); return { rule: rInt(r, 1, RULES.length - 1), start: st }; },
+    note: { v: 'w', x: 153, y: 372, s: 0.85 },
+    amb: (v, s) => v === 'e' ? `<g class="pend" style="animation-duration:5s;${A.ad(5)}"><path d="M330 0v70M270 70h120M270 70v40M330 70v60M390 70v34" stroke="#7a5a40" stroke-width="2.5" fill="none"/>${A.star(270, 118, 14, '#ffd84a', SW2)}${A.star(330, 140, 16, '#f6b0c0', SW2)}<circle cx="390" cy="114" r="11" fill="#9fd8ff" ${SW2}/><path d="M384 108a8 8 0 1 0 10 10" fill="#fff8d0"/></g>` : (v === 's' && s.robotOn ? `<circle class="glowp" cx="${820}" cy="${480 - 196}" r="12" fill="#ff8a7a" opacity=".6"/>` : ''),
     intro: [
       '玩具房的牆上畫滿了星星，到處都是積木、娃娃和小火車。這裡大概是爺爺小時候……不，是為你準備的房間。',
       { w: 'mochi', t: '喵喵喵！', sfx: 'meow' },
@@ -51,7 +65,7 @@
         hot: s => [
           { id: 'shelf', r: [220, 150, 560, 200], go: 'shelf' },
           { id: 'drawer', r: [300, 350, 400, 80], on: C => { if (!s.drawerOpen) G.toast('架子下的抽屜打不開。好像要先讓娃娃們乖乖坐好。'); else if (!s.batTaken) { s.batTaken = 1; C.give('battery'); } else G.toast('抽屜裡空了。'); } },
-          { id: 'rules', r: [800, 130, 170, 190], on: () => { s.readRules = 1; G.read('排排坐規則', '<b>四個好朋友要在架子上排排坐：</b>\n\n① 企鵝怕熱，要坐在<b>最左邊</b>，靠窗戶的位置。\n② 兔兔不喜歡坐在<b>兩端</b>。\n③ 熊熊要<b>緊緊挨著</b>坐在狐狸的<b>右邊</b>（從你看過去）。'); } },
+          { id: 'rules', r: [800, 130, 170, 190], on: () => { s.readRules = 1; G.read('排排坐規則', '<b>四個好朋友要在架子上排排坐（位置由左到右是 1～4）：</b>\n\n' + RU(s).t.map((x, i) => '①②③'[i] + ' ' + x).join('\n')); } },
         ],
       },
       shelf: {
@@ -76,7 +90,7 @@
           (s.has_penguin ? '' : plush('penguin', 160, 560, 1.3)) + A.frame(110, 110, 140, 110, `<rect width="100" height="100" fill="#fff"/><path d="M10 80l20-30 20 20 20-40 20 50z" fill="#9fd08a"/>${A.star(80, 24, 12, '#f2c232')}`) + A.light(),
         hot: s => {
           const h = [
-            { id: 'chest', r: [300, 280, 340, 210], on: C => { if (!s.robotOn) { G.toast('機器人擋在玩具箱前面，重得推不動。'); return; } if (s.chestOk) { if (!s.keyTaken) { s.keyTaken = 1; C.give('toyKey', true); C.give('g6', true); Snd.play('pick'); G.toast('玩具箱裡有「<b>星星鑰匙</b>」和「<b>音符齒輪 Ⅵ</b>」！'); } else G.toast('箱子裡都是積木。'); return; } W.lights(C, { id: 'toy', title: '星星箱蓋', sub: '箱蓋上刻著：「讓所有星星一起亮。」<br>點一顆星星，它和上下左右的星星都會一起亮或熄。', start: [0, 5, 7], ok: () => { s.chestOk = 1; G.toast('九顆星星全亮了！玩具箱的蓋子打開了。'); }, okMsg: '全部亮起來了！' }); } },
+            { id: 'chest', r: [300, 280, 340, 210], on: C => { if (!s.robotOn) { G.toast('機器人擋在玩具箱前面，重得推不動。'); return; } if (s.chestOk) { if (!s.keyTaken) { s.keyTaken = 1; C.give('toyKey', true); C.give('g6', true); Snd.play('pick'); G.toast('玩具箱裡有「<b>星星鑰匙</b>」和「<b>音符齒輪 Ⅵ</b>」！'); } else G.toast('箱子裡都是積木。'); return; } W.lights(C, { id: 'toy', title: '星星箱蓋', sub: '箱蓋上刻著：「讓所有星星一起亮。」<br>點一顆星星，它和上下左右的星星都會一起亮或熄。', start: V(s).start, ok: () => { s.chestOk = 1; G.toast('九顆星星全亮了！玩具箱的蓋子打開了。'); }, okMsg: '全部亮起來了！' }); } },
             { id: 'robot', r: s.robotOn ? [750, 280, 140, 210] : [400, 320, 140, 220], on: C => { if (!s.robotOn) G.toast('一個大大的玩具機器人，眼睛暗暗的。背後有一個星星形狀的電池盒，是空的。'); else { Snd.play('beep'); G.toast('機器人：「嗶嗶！X 在最高的地方等你喔！」'); } }, use: { battery: C => { C.take('battery'); s.robotOn = 1; Snd.play('beep'); G.memoAdd('m6'); G.dlg([{ t: '電池「喀」地裝進去，機器人的眼睛亮了起來！', sfx: 'beep' }, '「嗶嗶！電力充飽！我是看門機器人一號！」', '「X 交代我：如果有孩子來玩，就讓開路，讓他打開玩具箱。」', '「X 現在在最高的地方，看著你喔。嗶。」', '機器人喀啦喀啦地走到旁邊，讓出了玩具箱。'], () => C.render()); } } },
           ];
           if (!s.has_penguin) h.push({ id: 'penguin', r: [110, 470, 100, 110], on: C => { s.has_penguin = 1; C.give('penguin'); } });
@@ -96,10 +110,10 @@
     },
     steps: [
       { goal: '找齊四個娃娃', done: s => s.has_bear && s.has_rabbit && s.has_fox && s.has_penguin, h: ['北邊的架子空了四個位置，房間各處有娃娃。', '東邊床上有兩個、南邊地毯上一個、西邊椅子上一個。', '熊熊和兔兔在東邊的床上，企鵝在南邊的地毯，狐狸在西邊的椅子上。'] },
-      { goal: '讓娃娃照規則坐好', done: s => s.drawerOpen, h: ['北邊牆上貼著「排排坐規則」。', '企鵝坐最左邊；兔兔不能在兩端，只能坐 2 或 3；熊熊要緊挨在狐狸右邊。如果狐狸坐 2、熊熊坐 3，兔兔就只能坐 4……', '由左到右：企鵝、兔兔、狐狸、熊熊。'] },
+      { goal: '讓娃娃照規則坐好', done: s => s.drawerOpen, h: ['北邊牆上貼著「排排坐規則」。', s => RU(s).h, s => '由左到右：' + RU(s).ans.map(k => PL[k]).join('、') + '。'] },
       { goal: '拿到抽屜裡的東西', done: s => s.batTaken, h: ['娃娃坐好之後，架子下的抽屜打開了。', '點北邊架子下面的抽屜。', '點抽屜，拿到星星電池。'] },
       { goal: '讓機器人動起來', done: s => s.robotOn, h: ['南邊的機器人背後有一個空的電池盒。', '拿著星星電池點機器人。', '把星星電池裝進南邊的機器人。'] },
-      { goal: '打開玩具箱', done: s => s.keyTaken, h: ['機器人讓開了，玩具箱蓋上有九顆星星。', '點一顆星星，它和上下左右的星星都會切換。目標是九顆全亮。', '按「重新來過」回到一開始的樣子，然後依序點：左上角、中間那排最右邊、最下排中間，各點一次。'] },
+      { goal: '打開玩具箱', done: s => s.keyTaken, h: ['機器人讓開了，玩具箱蓋上有九顆星星。', '點一顆星星，它和上下左右的星星都會切換。目標是九顆全亮。暗掉的星星形狀其實是線索：剛好是「某幾顆被按過」的樣子。', s => `按「重新來過」回到一開始的樣子，然後點：${V(s).start.map(p => POSN[p]).join('、')}，各點一次。`] },
       { goal: '離開玩具房', done: s => s.doorOpen, h: ['西邊的門有星星形狀的鎖孔。', '玩具箱裡有星星鑰匙。', '拿星星鑰匙點西邊的門。'] },
     ],
   });
@@ -107,7 +121,7 @@
   function checkShelf(C) {
     const s = C.s;
     if (s.slots.some(k => !k)) return;
-    if (s.slots.join() === ANS.join()) { s.drawerOpen = 1; Snd.play('unlock'); G.toast('四個娃娃乖乖坐好了！架子下面傳來「喀噠」一聲──抽屜打開了。'); }
+    if (s.slots.join() === RU(s).ans.join()) { s.drawerOpen = 1; Snd.play('unlock'); G.toast('四個娃娃乖乖坐好了！架子下面傳來「喀噠」一聲──抽屜打開了。'); }
     else { Snd.play('wrong'); G.toast('娃娃們嘟著嘴，好像不滿意這樣坐。看看規則，再換換位置吧。'); }
   }
 })();

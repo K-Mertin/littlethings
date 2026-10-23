@@ -3,8 +3,11 @@
 (() => {
   const WALL = { c: '#4f7a5e', pat: 'stripe', wain: '#7a4a2a', trim: '#f3e2c4', floor: 'wood', fc: ['#a8703f', '#93602f'] };
   const POEM = ['山高見飛鷹', '窗前貓兒睡', '書中有黃金', '燈火照夜讀', '頭上滿天星'];
-  const BIRDS = ['#d9473a', '#4f9e5a', '#3f6fc4', '#f2c232'];
-  const NUMB = { '#d9473a': 7, '#4f9e5a': 2, '#3f6fc4': 9, '#f2c232': 5 };
+  const COL = ['#d9473a', '#4f9e5a', '#3f6fc4', '#f2c232'], CN = ['紅', '綠', '藍', '黃'];
+  // 標準答案：小鳥由左到右的顏色（索引）、四色書的數字
+  const CANON = { birds: [0, 1, 2, 3], num: [7, 2, 9, 5] };
+  const V = s => (s && s.v) || CANON;
+  const code = s => V(s).birds.map(k => V(s).num[k]).join('');
 
   Object.assign(ITEMS, {
     keyBow: { n: '鑰匙柄', d: '一把鑰匙的「握柄」部分，前端斷掉了，接口是一個小小的卡榫。', ic: () => `<circle cx="34" cy="50" r="20" fill="url(#brass)" ${SW}/><circle cx="34" cy="50" r="8" fill="#fbf1df" ${SW2}/><path d="M54 45h16v10H54z" fill="url(#brass)" ${SW}/><path d="M70 42l8 8-8 8z" fill="#c9a14a" ${SW2}/>` },
@@ -15,9 +18,9 @@
     m3: { t: '第二章 · 綠墨水鋼筆', d: '書桌抽屜裡有一支<b>綠墨水鋼筆</b>，筆桿刻著「鐘一鳴專用」。墨水瓶的標籤寫著：「爺爺特調薄荷綠──全世界只有這一瓶」。' },
   });
 
-  const birdsArt = () => {
+  const birdsArt = (st) => {
     let s = `<rect width="300" height="300" fill="#bfe6f2"/><circle cx="240" cy="60" r="34" fill="#fff3c0"/><path d="M0 230q80-30 150 0t150 0v70H0z" fill="#9fd08a"/><path d="M-10 175q160-40 320 10" stroke="#7a4a2a" stroke-width="12" fill="none" stroke-linecap="round"/><path d="M60 162q-10-30 10-40M210 172q20-30 0-50" stroke="#7a4a2a" stroke-width="5" fill="none"/><ellipse cx="70" cy="118" rx="16" ry="10" fill="#6fae5a"/><ellipse cx="212" cy="118" rx="14" ry="9" fill="#6fae5a"/>`;
-    BIRDS.forEach((c, i) => {
+    V(st).birds.map(k => COL[k]).forEach((c, i) => {
       const x = 45 + i * 70, y = 150 - (i % 2) * 6;
       s += `<g transform="translate(${x} ${y})"><path d="M-22 6q-6 18 10 20" fill="${shade(c, -0.2)}" ${SW2}/><ellipse cx="0" cy="0" rx="24" ry="20" fill="${c}" ${SW}/><circle cx="12" cy="-14" r="13" fill="${c}" ${SW}/><circle cx="16" cy="-16" r="3" fill="#2a1a10"/><path d="M24 -14l10 3-10 4z" fill="#f2a23a" ${SW2}/><path d="M-10 0q8 12 18 4" fill="none" stroke="${shade(c, -0.3)}" stroke-width="3"/><path d="M-4 18v8M6 18v8" ${SW2}/></g>`;
     });
@@ -40,14 +43,15 @@
     if (s.drawerOpen) { o += `<path d="M370 392h260l-20 40H390z" fill="#9a6038" ${SW}/>`; if (!s.bowTaken) o += `<g transform="translate(440 376) scale(.5)">${ITEMS.keyBow.ic()}</g>`; o += `<path d="M520 384l60-14" stroke="#2f7d4f" stroke-width="8" stroke-linecap="round"/>`; }
     else { o += `<rect x="440" y="342" width="120" height="32" rx="6" fill="#3b2a1f" ${SW2}/>${[0, 1, 2].map(i => `<rect x="${448 + i * 38}" y="347" width="30" height="22" rx="3" fill="#fbf1df"/>` + A.txt(463 + i * 38, 365, '？', 16, '#7a4a2a')).join('')}`; }
     o += `<rect x="248" y="330" width="44" height="40" rx="3" fill="#9a6038" ${SW2}/><rect x="708" y="330" width="44" height="40" rx="3" fill="#9a6038" ${SW2}/>`;
-    o += A.lamp(300, 276, '#e9a85a') + A.paper(520, 252, 80, 30, -6, '#fffdf3', 2) + A.sparkle(600, 250, 0.7);
+    o += A.pool(300, 286, 120, 26, 0.7) + A.lamp(300, 276, '#e9a85a') + A.paper(520, 252, 80, 30, -6, '#fffdf3', 2) + A.sparkle(600, 250, 0.7);
     o += `<rect x="640" y="250" width="70" height="26" rx="3" fill="#c9583c" ${SW2}/><rect x="650" y="228" width="60" height="22" rx="3" fill="#3f7f8f" ${SW2}/><path d="M410 276v-26h40v26" fill="#4f7a5e" ${SW2}/><path d="M418 250v-20M430 250v-28M442 250v-16" stroke="#2f7d4f" stroke-width="3"/>`;
     return o;
   };
   const shelfArt = (sc, s) => {
     let o = `<rect x="40" y="40" width="420" height="440" rx="6" fill="#7a4a2a" ${SW}/><rect x="56" y="56" width="388" height="408" fill="#5a3420"/>`;
     const muted = ['#b9956a', '#8c6a4a', '#a88a6a', '#c9a87f', '#9a7a5a', '#7a5a40'];
-    const rows = [[['#f2c232', 5], 3], [['#d9473a', 7], 6], [['#3f6fc4', 9], 1, ['#4f9e5a', 2]]];
+    const N = V(s).num;
+    const rows = [[['#f2c232', N[3]], 3], [['#d9473a', N[0]], 6], [['#3f6fc4', N[2]], 1, ['#4f9e5a', N[1]]]];
     for (let r = 0; r < 3; r++) {
       const y = 70 + r * 136;
       let x = 64, k = 0;
@@ -68,8 +72,11 @@
     <circle cx="0" cy="-200" r="82" fill="${s.globeOpen ? '#3b2a1f' : '#6fb6d8'}" ${SW}/>${s.globeOpen ? (s.bitTaken ? '' : `<circle cx="0" cy="-200" r="50" fill="url(#lampG)"/>` + A.gear(-20, -196, 22) + `<g transform="translate(-12 -230) scale(.5)">${ITEMS.keyBit.ic()}</g>`) + `<path d="M-82-200a82 82 0 0 1 164 0" fill="#6fb6d8" ${SW} transform="rotate(-50 -82 -200)"/>` : `<path d="M-50-250q30 10 40 40t-20 40q-30-10-26-40zM20-260q40 0 50 30t-10 50q-30 0-40-30z" fill="#8fc77a" ${SW2}/><path d="M-82-200h164" stroke="#fff" stroke-opacity=".5" stroke-width="2"/>`}</g>`;
 
   ROOMS.push({
-    id: 'r2', no: 2, name: '書房', en: 'THE STUDY', mood: 'warm', par: 600, walls: ['n', 'e', 's', 'w'],
-    init: () => ({}),
+    id: 'r2', no: 2, name: '書房', en: 'THE STUDY', mood: 'warm', par: 660, walls: ['n', 'e', 's', 'w'],
+    init: () => ({ slide_birds: W.slideRandom() }),
+    canon: CANON,
+    vary: r => { let b; do { b = shuffle([0, 1, 2, 3], r); } while (b.join() === '0,1,2,3'); return { birds: b, num: shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9], r).slice(0, 4) }; },
+    note: { v: 's', x: 150, y: 126, s: 0.85 },
     intro: [
       '書房裡堆滿了書，空氣裡有墨水和舊紙的味道。',
       { w: 'mochi', t: '喵嗚。', sfx: 'meow' },
@@ -92,11 +99,11 @@
       },
       e: {
         draw: s => A.wall(WALL) + `<g filter="url(#ds)">${`<g transform="translate(70 10)">` + shelfArt(1, s) + '</g>'}</g>` +
-          A.frame(640, 120, 220, 220, s.slide_birds_ok ? birdsArt() : (() => { const t = s.slide_birds || W.slideStart(36); let o = ''; t.forEach((v, p) => { if (v === 8) { o += `<rect x="${(p % 3) * 100}" y="${((p / 3) | 0) * 100}" width="100" height="100" fill="#3b2a1f"/>`; return; } o += `<svg x="${(p % 3) * 100}" y="${((p / 3) | 0) * 100}" width="100" height="100" viewBox="${(v % 3) * 100} ${((v / 3) | 0) * 100} 100 100">${birdsArt()}</svg><rect x="${(p % 3) * 100}" y="${((p / 3) | 0) * 100}" width="100" height="100" fill="none" stroke="#3b2a1f" stroke-width="3"/>`; }); return o; })(), { vw: 300, vh: 300 }) +
+          A.frame(640, 120, 220, 220, s.slide_birds_ok ? birdsArt(s) : (() => { const t = s.slide_birds || (s.slide_birds = W.slideRandom()); let o = ''; t.forEach((v, p) => { if (v === 8) { o += `<rect x="${(p % 3) * 100}" y="${((p / 3) | 0) * 100}" width="100" height="100" fill="#3b2a1f"/>`; return; } o += `<svg x="${(p % 3) * 100}" y="${((p / 3) | 0) * 100}" width="100" height="100" viewBox="${(v % 3) * 100} ${((v / 3) | 0) * 100} 100 100">${birdsArt(s)}</svg><rect x="${(p % 3) * 100}" y="${((p / 3) | 0) * 100}" width="100" height="100" fill="none" stroke="#3b2a1f" stroke-width="3"/>`; }); return o; })(), { vw: 300, vh: 300 }) +
           A.table(650, 400, 200, 74, '#8c5634') + `<path d="M690 388q-4-24 10-36h20q14 12 10 36z" fill="#e0a43a" ${SW}/>` + A.light(),
         hot: s => [
           { id: 'shelf', r: [100, 40, 440, 450], go: 'shelf' },
-          { id: 'paint', r: [626, 106, 248, 248], on: C => { if (s.slide_birds_ok) { G.toast('四隻小鳥排成一排：紅、綠、藍、黃。'); return; } W.slide(C, { id: 'birds', title: '亂掉的畫', sub: '這幅畫被切成了九塊。點空格旁邊的小方塊，把畫拼回原樣。', img: birdsArt, moves: 36, ok: () => G.toast('畫拼好了！枝頭上的四隻小鳥從左到右：紅、綠、藍、黃。'), okMsg: '拼好了！' }); } },
+          { id: 'paint', r: [626, 106, 248, 248], on: C => { const bs = V(s).birds.map(k => CN[k]).join('、'); if (s.slide_birds_ok) { G.toast(`四隻小鳥排成一排：${bs}。`); return; } W.slide(C, { id: 'birds', title: '亂掉的畫', sub: '這幅畫被切成了九塊。點空格旁邊的小方塊，把畫拼回原樣。', img: () => birdsArt(s), ok: () => G.toast(`畫拼好了！枝頭上的四隻小鳥從左到右：${bs}。`), okMsg: '拼好了！' }); } },
         ],
       },
       shelf: {
@@ -111,12 +118,12 @@
           `<g filter="url(#ds)"><path d="M610 480v-150q0-60 60-60h80q60 0 60 60v150z" fill="#c9583c" ${SW}/><rect x="590" y="380" width="60" height="100" rx="20" fill="#d9674c" ${SW}/><rect x="770" y="380" width="60" height="100" rx="20" fill="#d9674c" ${SW}/><rect x="640" y="400" width="140" height="56" rx="12" fill="#e07a5c" ${SW}/></g>` + A.cat(710, 400, 0.6, 'lie') +
           A.frame(640, 100, 140, 100, `<rect width="100" height="100" fill="#fbe8c0"/><path d="M10 80q20-40 40-20t40-30" stroke="#4f7a5e" stroke-width="6" fill="none"/>`) + `<path d="M150 230V470" stroke="#4a3222" stroke-width="6"/><ellipse cx="150" cy="472" rx="34" ry="9" fill="#7a4a2a" ${SW}/>` + A.lamp(150, 236, '#e9a85a') + A.light(),
         hot: s => [
-          { id: 'globe', r: [220, 190, 220, 340], on: C => { if (!s.globeOpen) W.wheels(C, { id: 'globe', title: '地球儀的密碼鎖', sub: '底座的小銅牌刻著：「枝頭上的小鳥，會告訴你讀書的順序。」', wheels: [0, 1, 2, 3].map(() => ({ vals: '0123456789'.split('') })), check: (i, v) => v.join('') === '7295', ok: () => { s.globeOpen = 1; G.toast('地球儀「啪」地打開成兩半！'); } }); else if (!s.bitTaken) { s.bitTaken = 1; C.give('keyBit', true); C.give('g2', true); Snd.play('pick'); G.toast('地球儀裡有「<b>鑰匙頭</b>」和「<b>音符齒輪 Ⅱ</b>」！'); } else G.toast('地球儀裡空空的。'); } },
+          { id: 'globe', r: [220, 190, 220, 340], on: C => { if (!s.globeOpen) W.wheels(C, { id: 'globe', title: '地球儀的密碼鎖', sub: '底座的小銅牌刻著：「枝頭上的小鳥，會告訴你讀書的順序。」', wheels: [0, 1, 2, 3].map(() => ({ vals: '0123456789'.split('') })), check: (i, v) => v.join('') === code(s), ok: () => { s.globeOpen = 1; G.toast('地球儀「啪」地打開成兩半！'); } }); else if (!s.bitTaken) { s.bitTaken = 1; C.give('keyBit', true); C.give('g2', true); Snd.play('pick'); G.toast('地球儀裡有「<b>鑰匙頭</b>」和「<b>音符齒輪 Ⅱ</b>」！'); } else G.toast('地球儀裡空空的。'); } },
           { id: 'chair', r: [590, 270, 240, 210], on: () => { Snd.play('meow'); G.toast('麻糬在扶手椅上睡得正香。'); } },
         ],
       },
       w: {
-        draw: s => A.wall(WALL) + `<g filter="url(#ds)">${grid(170, 140, 50, s)}</g>` + `<g filter="url(#ds)">${A.door(650, 140, 200, 330, '#6f4128', { keyhole: true, open: s.doorOpen })}</g>` + A.light(),
+        draw: s => A.wall(WALL) + `<g filter="url(#ds)">${grid(170, 140, 50, s)}</g>` + A.wallClock(545, 150, 32, '#7a4a2a') + `<g filter="url(#ds)">${A.door(650, 140, 200, 330, '#6f4128', { keyhole: true, open: s.doorOpen })}</g>` + A.light(),
         hot: s => [
           { id: 'grid', r: [120, 90, 300, 300], go: 'grid' },
           { id: 'door', r: [650, 140, 200, 330], on: C => { if (s.doorOpen) C.win(); else G.toast('門鎖著，鎖孔是一般鑰匙的形狀。'); }, use: { studyKey: C => { C.take('studyKey'); s.doorOpen = 1; Snd.play('door'); C.win(); } } },
@@ -134,7 +141,7 @@
       { goal: '打開書桌抽屜', done: s => s.drawerOpen, h: ['C2、A5、E1 像是座標。房間裡哪裡有字母和數字標示的格子？', '西邊牆的格子詩，上面是 A～E、左邊是 1～5。C2 就是 C 欄第 2 行的字。', '三個字是「貓」「頭」「鷹」，在抽屜鎖上轉出「貓頭鷹」。'] },
       { goal: '拿到抽屜裡的東西', done: s => s.bowTaken, h: ['抽屜打開了。', '再點一次打開的抽屜。', '點抽屜，拿到鑰匙柄。'] },
       { goal: '把亂掉的畫拼回去', done: s => s.slide_birds_ok, h: ['東邊牆的畫被切成九塊了。', '點畫打開拼圖，點空格旁的方塊就能移動。可以按「看完成的樣子」參考。', '先把最上面一排拼好，再拼左邊一欄，最後轉動右下角的四塊。'] },
-      { goal: '打開地球儀', done: s => s.globeOpen, h: ['地球儀的銅牌說：小鳥會告訴你讀書的順序。', '畫裡的小鳥從左到右是紅、綠、藍、黃；書架上的彩色書也各有一個數字。', '紅書 7、綠書 2、藍書 9、黃書 5，密碼是 7295。'] },
+      { goal: '打開地球儀', done: s => s.globeOpen, h: ['地球儀的銅牌說：小鳥會告訴你讀書的順序。', s => `畫裡的小鳥從左到右是${V(s).birds.map(k => CN[k]).join('、')}；書架上的彩色書也各有一個數字。`, s => `${V(s).birds.map(k => CN[k] + '書 ' + V(s).num[k]).join('、')}，密碼是 ${code(s)}。`] },
       { goal: '拿到地球儀裡的東西', done: s => s.bitTaken, h: ['地球儀打開了。', '再點一次地球儀。', '點打開的地球儀，拿到鑰匙頭和音符齒輪。'] },
       { goal: '離開書房', done: s => s.doorOpen, h: ['鑰匙柄和鑰匙頭好像能接起來。', '在道具欄點鑰匙柄拿在手上，再點鑰匙頭，就能組合。', '組合出書房鑰匙，拿著它點西邊的門。'] },
     ],

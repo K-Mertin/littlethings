@@ -2,6 +2,10 @@
 // 第 4 章：廚房
 (() => {
   const WALL = { c: '#fbe3b0', pat: 'dots', wain: '#f4f0e6', wy: 300, trim: '#fff8ea', floor: 'check', fc: ['#f4f0e6', '#6f9fb8'] };
+  const CANON = { a: 3, p: 5, c: 4, t: 180, m: 25 };
+  const V = s => (s && s.v) || CANON;
+  const T1 = s => [['apple', 'apple', 'apple'], ['w' + V(s).a * 3]], T2 = s => [['pear'], ['apple', 'w' + (V(s).p - V(s).a)]], T3 = s => [['pear', 'cherry'], ['apple', 'apple', 'apple']];
+  const steam = (x, y) => [0, 1, 2].map(i => A.fx(`<g class="steam" style="animation-duration:3.6s;animation-delay:-${(i * 1.2 + (performance.now() / 1000) % 3.6).toFixed(2)}s"><circle cx="${x + i * 6 - 6}" cy="${y}" r="${10 - i * 2}" fill="#fff" opacity=".7"/></g>`)).join('');
   const fruit = (k, x, y, s = 1) => {
     const g = b => `<g transform="translate(${x} ${y}) scale(${s})">${b}</g>`;
     if (k === 'apple') return g(`<path d="M0-14C-10-22-24-14-22 2C-20 18-8 22 0 18C8 22 20 18 22 2C24-14 10-22 0-14z" fill="#e0504a" ${SW2}/><path d="M0-14q2-8 6-12" ${SW2} fill="none"/><path d="M2-18q8-8 14-4q-6 6-14 4z" fill="#6fae5a" ${SW2}/><ellipse cx="-9" cy="-5" rx="4" ry="6" fill="#fff" opacity=".45"/>`);
@@ -41,8 +45,14 @@
     <rect x="30" y="76" width="240" height="150" rx="10" fill="${s.batterIn && !s.baked ? '#ffb46a' : '#3b2a1f'}" ${SW}/><rect x="40" y="86" width="220" height="16" rx="4" fill="#fff" opacity=".18"/>${s.batterIn && !s.baked ? `<g transform="translate(100 120) scale(1)">${ITEMS.batter.ic()}</g>` : ''}<rect x="60" y="64" width="180" height="10" rx="5" fill="#c9cfd6" ${SW2}/></g>`;
 
   ROOMS.push({
-    id: 'r4', no: 4, name: '廚房', en: 'THE KITCHEN', mood: 'warm', par: 660, walls: ['n', 'e', 's', 'w'],
+    id: 'r4', no: 4, name: '廚房', en: 'THE KITCHEN', mood: 'warm', par: 600, walls: ['n', 'e', 's', 'w'],
     init: () => ({}),
+    canon: CANON,
+    vary: r => {
+      for (;;) { const a = rInt(r, 2, 4), p = rInt(r, a + 1, 9), c = 3 * a - p; if (c >= 1 && c <= 9 && new Set([a, p, c]).size === 3 && !(a === 3 && p === 5)) return { a, p, c, t: [150, 160, 170, 190, 200, 210][rInt(r, 0, 5)], m: [15, 20, 30, 35, 40][rInt(r, 0, 4)] }; }
+    },
+    note: { v: 'n', x: 180, y: 132, s: 0.85 },
+    amb: (v, s) => (v === 'n' ? steam(405, 220) : '') + (v === 'e' && s.batterIn && !s.cakeOn ? steam(500, 220) : ''),
     intro: [
       '爺爺的廚房黃澄澄的，牆上貼著可愛的磁磚，到處都是鍋碗瓢盆。',
       { w: 'mochi', t: '喵、喵！', sfx: 'meow' },
@@ -61,7 +71,7 @@
           A.win(720, 100, 160, 120, { curtain: '#e98a8a' }) + `<path d="M380 290v-60h50v60" fill="#e9604a" ${SW2}/><path d="M770 296q0-20 20-20h40q20 0 20 20z" fill="#f2c232" ${SW2}/>` + A.light(),
         hot: s => [
           { id: 'fridgeDoor', r: [80, 150, 110, 330], on: C => { if (s.fridgeOpen) C.go('fridge'); else G.toast('冰箱門被一個水果鎖鎖住了。'); } },
-          { id: 'fridgeLock', r: [190, 290, 70, 100], on: C => { if (s.fridgeOpen) { C.go('fridge'); return; } W.wheels(C, { id: 'fridge', title: '冰箱的水果鎖', sub: '每個轉輪旁邊都畫著一種水果。', wheels: [['pear', '西洋梨'], ['apple', '蘋果'], ['cherry', '櫻桃']].map(([k, n]) => ({ label: `<svg viewBox="-30 -36 60 66">${fruit(k, 0, 0, 1.1)}</svg>`, vals: '0123456789'.split('') })), check: (i, v) => v.join('') === '534', ok: () => { s.fridgeOpen = 1; G.toast('冰箱打開了！冷氣好舒服。'); } }); } },
+          { id: 'fridgeLock', r: [190, 290, 70, 100], on: C => { if (s.fridgeOpen) { C.go('fridge'); return; } W.wheels(C, { id: 'fridge', title: '冰箱的水果鎖', sub: '每個轉輪旁邊都畫著一種水果。', wheels: [['pear', '西洋梨'], ['apple', '蘋果'], ['cherry', '櫻桃']].map(([k, n]) => ({ label: `<svg viewBox="-30 -36 60 66">${fruit(k, 0, 0, 1.1)}</svg>`, vals: '0123456789'.split('') })), check: (i, v) => v.join('') === `${V(s).p}${V(s).a}${V(s).c}`, ok: () => { s.fridgeOpen = 1; G.toast('冰箱打開了！冷氣好舒服。'); } }); } },
           { id: 'notes', r: [100, 160, 130, 100], on: () => { G.read('冰箱上的單子和便利貼', '<b>暖暖烘焙　訂購單</b>\n草莓生日蛋糕　一個\n訂購人：鐘一鳴\n取貨時間：今天下午\n\n──────\n<span style="color:#b07a1a">（黃色便利貼）\n王阿姨：備用鑰匙先放妳那邊，記得還我喔～ 一鳴</span>'); G.memoAdd('m4'); G.memoAdd('m5', true); } },
           { id: 'bowl', r: [460, 250, 200, 110], on: C => { if (s.batterMade) { G.toast('攪拌碗已經洗乾淨了。'); return; } const need = [!s.bEgg && '雞蛋', !s.bMilk && '牛奶', !s.bFlour && '麵粉'].filter(Boolean); G.toast('一個大攪拌碗。旁邊的小卡片寫著：「雞蛋＋牛奶＋麵粉，攪一攪就是蛋糕麵糊」。' + (need.length < 3 ? `<br>還缺：${need.join('、')}` : '')); },
             use: Object.fromEntries([['egg', 'bEgg'], ['milk', 'bMilk'], ['flour', 'bFlour']].map(([it, k]) => [it, C => { C.take(it); s[k] = 1; Snd.play('water'); if (s.bEgg && s.bMilk && s.bFlour) { s.batterMade = 1; C.give('batter', true); Snd.play('combine'); G.toast('攪呀攪……麵糊完成了！倒進烤模，得到「<b>麵糊烤模</b>」。'); } else G.toast(`把${ITEMS[it].n}倒進碗裡。`); }])) },
@@ -82,17 +92,17 @@
       },
       e: {
         draw: s => A.wall(WALL) + `<rect y="190" width="1000" height="110" fill="#6f9fb8" opacity=".5"/><rect y="190" width="1000" height="110" fill="url(#p-tile)"/>` + oven(350, 230, s) +
-          `<g transform="rotate(3 210 200)"><rect x="140" y="120" width="150" height="170" rx="4" fill="#fffdf3" ${SW}/>${A.pin(215, 128)}${A.txt(215, 160, '海綿蛋糕', 20, '#c4502c', 'middle', 900)}${A.txt(215, 192, '雞蛋＋牛奶＋麵粉', 14, '#4a3222', 'middle', 500)}${A.txt(215, 228, '烤箱 180 度', 20, '#4a3222', 'middle', 900)}${A.txt(215, 258, '烤 25 分鐘', 20, '#4a3222', 'middle', 900)}</g>` +
+          `<g transform="rotate(3 210 200)"><rect x="140" y="120" width="150" height="170" rx="4" fill="#fffdf3" ${SW}/>${A.pin(215, 128)}${A.txt(215, 160, '海綿蛋糕', 20, '#c4502c', 'middle', 900)}${A.txt(215, 192, '雞蛋＋牛奶＋麵粉', 14, '#4a3222', 'middle', 500)}${A.txt(215, 228, `烤箱 ${V(s).t} 度`, 20, '#4a3222', 'middle', 900)}${A.txt(215, 258, `烤 ${V(s).m} 分鐘`, 20, '#4a3222', 'middle', 900)}</g>` +
           `<path d="M700 110h220" stroke="#8c5634" stroke-width="8" stroke-linecap="round"/>${[730, 800, 870].map((x, i) => `<path d="M${x} 110v20" ${SW2}/><circle cx="${x}" cy="${170 + i * 6}" r="${34 - i * 4}" fill="${['#e9604a', '#6f9fb8', '#f2c232'][i]}" ${SW}/><path d="M${x} ${136 + i * 6}v-6" stroke="#4a3222" stroke-width="6"/>`).join('')}` +
           `<g filter="url(#ds)"><rect x="680" y="320" width="260" height="160" rx="6" fill="#f4f0e6" ${SW}/><rect x="670" y="300" width="280" height="24" rx="5" fill="#c9895a" ${SW}/></g>` + A.plant(780, 300, 0.6, '#6f9fb8') + A.light(),
         hot: s => [
-          { id: 'recipe', r: [130, 110, 170, 190], on: () => G.read('食譜卡', '<b style="color:#c4502c;font-size:20px">海綿蛋糕</b>\n\n材料：雞蛋＋牛奶＋麵粉，攪拌成麵糊。\n倒進烤模，送進烤箱：\n\n<b style="font-size:20px">溫度 180 度，烤 25 分鐘。</b>') },
-          { id: 'oven', r: [350, 230, 300, 250], on: C => { if (s.baked) { G.toast('烤箱裡空空的，還熱熱的。'); return; } if (!s.batterIn) { G.toast('一台紅色的小烤箱。上面有「溫度」和「時間」兩個旋鈕。'); return; } W.wheels(C, { id: 'oven', title: '設定烤箱', sub: '把兩個旋鈕轉到正確的設定，然後開始烤。', okText: '開始烤', wheels: [{ label: '溫度（度）', vals: [150, 160, 170, 180, 190, 200, 210, 220].map(String), kind: 'sm' }, { label: '時間（分）', vals: [10, 15, 20, 25, 30, 35, 40].map(String), kind: 'sm' }], check: (i, v) => v[0] === '180' && v[1] === '25', ok: C => { s.baked = 1; C.give('cake', true); Snd.play('chime'); G.toast('叮！香噴噴的「<b>海綿蛋糕</b>」出爐了！'); }, failMsg: '烤箱嗶嗶叫：這不是食譜上的設定喔。', okMsg: '烤呀烤……叮！' }); }, use: { batter: C => { C.take('batter'); s.batterIn = 1; Snd.play('open'); G.toast('把麵糊烤模放進烤箱。接下來要設定溫度和時間。'); } } },
+          { id: 'recipe', r: [130, 110, 170, 190], on: () => G.read('食譜卡', `<b style="color:#c4502c;font-size:20px">海綿蛋糕</b>\n\n材料：雞蛋＋牛奶＋麵粉，攪拌成麵糊。\n倒進烤模，送進烤箱：\n\n<b style="font-size:20px">溫度 ${V(s).t} 度，烤 ${V(s).m} 分鐘。</b>`) },
+          { id: 'oven', r: [350, 230, 300, 250], on: C => { if (s.baked) { G.toast('烤箱裡空空的，還熱熱的。'); return; } if (!s.batterIn) { G.toast('一台紅色的小烤箱。上面有「溫度」和「時間」兩個旋鈕。'); return; } W.wheels(C, { id: 'oven', title: '設定烤箱', sub: '把兩個旋鈕轉到正確的設定，然後開始烤。', okText: '開始烤', wheels: [{ label: '溫度（度）', vals: [150, 160, 170, 180, 190, 200, 210, 220].map(String), kind: 'sm' }, { label: '時間（分）', vals: [10, 15, 20, 25, 30, 35, 40].map(String), kind: 'sm' }], check: (i, v) => v[0] === String(V(s).t) && v[1] === String(V(s).m), ok: C => { s.baked = 1; C.give('cake', true); Snd.play('chime'); G.toast('叮！香噴噴的「<b>海綿蛋糕</b>」出爐了！'); }, failMsg: '烤箱嗶嗶叫：這不是食譜上的設定喔。', okMsg: '烤呀烤……叮！' }); }, use: { batter: C => { C.take('batter'); s.batterIn = 1; Snd.play('open'); G.toast('把麵糊烤模放進烤箱。接下來要設定溫度和時間。'); } } },
           { id: 'pans', r: [690, 110, 240, 120], t: '掛著三個平底鍋，擦得亮晶晶的。' },
         ],
       },
       s: {
-        draw: s => A.wall(WALL) + tile(110, 250, ['apple', 'apple', 'apple'], ['w9']) + tile(330, 250, ['pear'], ['apple', 'w2']) + tile(550, 250, ['pear', 'cherry'], ['apple', 'apple', 'apple']) +
+        draw: s => A.wall(WALL) + tile(110, 250, ...T1(s)) + tile(330, 250, ...T2(s)) + tile(550, 250, ...T3(s)) +
           A.txt(440, 230, '爺爺的水果天平', 20, '#8c5634', 'middle', 900) +
           `<g filter="url(#ds)"><rect x="760" y="60" width="200" height="150" rx="6" fill="#c9895a" ${SW}/><rect x="774" y="74" width="82" height="122" rx="4" fill="${s.cupOpen ? '#3b2a1f' : '#d9a070'}" ${SW2}/><rect x="864" y="74" width="82" height="122" rx="4" fill="#d9a070" ${SW2}/>${s.cupOpen && !s.flourTaken ? `<g transform="translate(770 100) scale(.9)">${ITEMS.flour.ic()}</g>` : ''}<circle cx="846" cy="140" r="5" fill="url(#brass)"/><circle cx="874" cy="140" r="5" fill="url(#brass)"/></g>` +
           (s.stoolOn ? `<g transform="translate(800 400) scale(1.2)">${ITEMS.stool.ic()}</g>` : '') + `<g filter="url(#ds)"><rect x="760" y="340" width="200" height="140" rx="6" fill="#f4f0e6" ${SW}/><rect x="750" y="320" width="220" height="24" rx="5" fill="#c9895a" ${SW}/></g>` + A.light(),
@@ -103,7 +113,7 @@
       },
       tiles: {
         back: 's', title: '水果天平',
-        draw: s => A.closeBg('#fbe3b0', 'dots') + tile(40, 170, ['apple', 'apple', 'apple'], ['w9'], 290) + tile(355, 170, ['pear'], ['apple', 'w2'], 290) + tile(670, 170, ['pear', 'cherry'], ['apple', 'apple', 'apple'], 290) + A.txt(500, 120, '三座天平都剛好平衡。砝碼上的數字是重量。', 26, '#8c5634', 'middle', 900) + A.light(),
+        draw: s => A.closeBg('#fbe3b0', 'dots') + tile(40, 170, ...T1(s), 290) + tile(355, 170, ...T2(s), 290) + tile(670, 170, ...T3(s), 290) + A.txt(500, 120, '三座天平都剛好平衡。砝碼上的數字是重量。', 26, '#8c5634', 'middle', 900) + A.light(),
         hot: s => [{ id: 't', r: [30, 160, 940, 310], t: '每個天平左右兩邊一樣重。同一種水果的重量都一樣。' }],
       },
       w: {
@@ -120,11 +130,11 @@
       },
     },
     steps: [
-      { goal: '打開冰箱', done: s => s.fridgeOpen, h: ['冰箱的鎖上畫著西洋梨、蘋果、櫻桃，各配一個數字轉輪。南邊牆上有三座水果天平。', '先從第一座天平算出蘋果有多重（三顆蘋果＝9），再算西洋梨（梨＝蘋果＋2），最後算櫻桃（梨＋櫻桃＝三顆蘋果）。', '蘋果 3、西洋梨 5、櫻桃 4。照鎖上的順序（梨、蘋果、櫻桃）是 534。'] },
+      { goal: '打開冰箱', done: s => s.fridgeOpen, h: ['冰箱的鎖上畫著西洋梨、蘋果、櫻桃，各配一個數字轉輪。南邊牆上有三座水果天平。', s => `先從第一座天平算出蘋果有多重（三顆蘋果＝${V(s).a * 3}），再算西洋梨（梨＝蘋果＋${V(s).p - V(s).a}），最後算櫻桃（梨＋櫻桃＝三顆蘋果）。`, s => `蘋果 ${V(s).a}、西洋梨 ${V(s).p}、櫻桃 ${V(s).c}。照鎖上的順序（梨、蘋果、櫻桃）是 ${V(s).p}${V(s).a}${V(s).c}。`] },
       { goal: '拿到做蛋糕的材料', done: s => s.eggTaken && s.milkTaken, h: ['冰箱開了，往裡面看看。', '點冰箱進去，拿雞蛋和牛奶。', '點冰箱裡的雞蛋和牛奶，兩樣都要拿。'] },
       { goal: '拿到高處的麵粉', done: s => s.flourTaken, h: ['南邊的吊櫃太高了，需要墊腳的東西。', '西邊餐桌旁有一張小板凳。', '拿小板凳點南邊的吊櫃，打開後拿到麵粉。'] },
       { goal: '做出蛋糕麵糊', done: s => s.batterMade, h: ['北邊料理台上有攪拌碗，旁邊的卡片說了材料。', '把雞蛋、牛奶、麵粉一樣一樣拿去點攪拌碗。', '三樣都倒進攪拌碗，就會得到「麵糊烤模」。'] },
-      { goal: '把蛋糕烤好', done: s => s.baked, h: ['東邊有烤箱，牆上貼著食譜卡。', '先把麵糊烤模放進烤箱，再點烤箱設定溫度和時間。', '溫度 180 度、時間 25 分鐘。'] },
+      { goal: '把蛋糕烤好', done: s => s.baked, h: ['東邊有烤箱，牆上貼著食譜卡。', '先把麵糊烤模放進烤箱，再點烤箱設定溫度和時間。', s => `溫度 ${V(s).t} 度、時間 ${V(s).m} 分鐘。`] },
       { goal: '把蛋糕放到該放的地方', done: s => s.keyTaken, h: ['西邊餐桌上有一個寫著字的盤子。', '盤子上寫著：把生日蛋糕放在這裡。', '拿海綿蛋糕點盤子，再點盤子拿到後門鑰匙和齒輪。'] },
       { goal: '從後門離開', done: s => s.doorOpen, h: ['西邊有一扇後門。', '後門鑰匙上有草莓吊飾，門上也畫著草莓。', '拿後門鑰匙點西邊的門。'] },
     ],
