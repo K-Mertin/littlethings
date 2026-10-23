@@ -7,24 +7,32 @@ const SHIRTS = ['#e8473b', '#3a8ad8', '#3fa64a', '#ffd84a', '#ff8ad0', '#8a6ad8'
 const PANTS = ['#2a3a6a', '#3a3a4a', '#6a4a2a', '#5a6a8a', '#2b1b26', '#8a8a9a'];
 function makeLook(seed, kind, job) {
   const h = i => hash(seed, i, 99);
+  const pk = (arr, i) => arr[(h(i) * arr.length) | 0];
   const L = {
-    skin: SKINS[(h(1) * SKINS.length) | 0], hair: HAIRS[(h(2) * 6) | 0], hs: (h(3) * 6) | 0,
-    shirt: SHIRTS[(h(4) * SHIRTS.length) | 0], pants: PANTS[(h(5) * PANTS.length) | 0], skirt: h(6) < 0.25,
+    skin: pk(SKINS, 1), hair: HAIRS[(h(2) * 6) | 0], hs: pk([0, 0, 1, 2, 3, 5, 6, 7], 3),
+    shirt: pk(SHIRTS, 4), pants: pk(PANTS, 5), top: pk(['tee', 'tee', 'stripe', 'hoodie', 'polo', 'jacket'], 6), inner: pk(['#ffffff', '#f4e8c8', '#3a3a4a', '#ffd84a'], 11),
+    shoe: pk(['#3a2a2a', '#ffffff', '#c8302a', '#3a3a4a', '#8a5a2b'], 12),
   };
-  if (L.hs === 4) L.hs = 0;
-  if (kind === 'elder') { L.hair = h(7) < .5 ? '#e8e0d8' : '#c8c8d0'; L.hs = h(8) < .5 ? 4 : 2; L.glasses = h(9) < .5; }
-  if (kind === 'kid') { L.hat = h(7) < .4 ? 'cap' : (h(7) < .7 ? 'bow' : null); L.capc = SHIRTS[(h(10) * 6) | 0]; }
-  if (kind === 'student' && h(7) < .3) { L.hat = 'cap'; L.capc = SHIRTS[(h(10) * 6) | 0]; }
-  if (kind === 'worker') { L.shirt = h(7) < .5 ? '#ffffff' : '#8ab0d8'; L.pants = '#2a2a3a'; L.glasses = h(8) < .3; }
-  if (kind === 'tourist') { L.hat = 'cap'; L.capc = '#f4e8c8'; L.shirt = pick(['#ff9a3a', '#5ad0c8', '#ffd84a']); L.hair = pick(HAIRS); }
-  if (kind === 'influencer') { L.shirt = '#ff5ad0'; L.hair = '#ffd84a'; L.hs = 1; }
-  if (kind === 'critic') { L.shirt = '#3a3a4a'; L.glasses = true; L.hair = '#5a5a5a'; L.hs = 0; }
-  if (job === 'cook') { L.hat = 'chef'; L.apron = '#ffffff'; }
-  if (job === 'serve') { L.apron = '#e8473b'; L.hat = null; }
-  if (job === 'tout') { L.hat = 'band'; L.sign = true; }
-  L.key = [L.skin, L.hair, L.hs, L.shirt, L.pants, L.skirt, L.hat, L.capc, L.apron, L.sign, L.glasses].join('|');
+  if (h(13) < 0.18) { L.top = 'dress'; }
+  if (kind === 'student') { L.acc = h(7) < .6 ? 'bag' : (h(7) < .8 ? 'phone' : null); L.capc = pk(['#3a6ad8', '#e8473b', '#3fa64a', '#ff8ad0', '#ffd84a'], 10); if (h(8) < .3) L.hat = 'cap'; L.top = pk(['tee', 'hoodie', 'stripe', 'polo'], 14); }
+  if (kind === 'worker') { L.top = h(7) < .55 ? 'suit' : 'polo'; L.shirt = L.top === 'suit' ? pk(['#3a3a4a', '#2a3a5a', '#4a4a5a'], 8) : pk(['#ffffff', '#8ab0d8', '#d8e4f0'], 8); L.inner = pk(['#c8302a', '#3a6ad8', '#ffd84a'], 10); L.pants = '#2a2a3a'; L.glasses = h(9) < .3; L.acc = h(15) < .5 ? 'brief' : 'phone'; L.hs = pk([0, 0, 3, 7, 6], 3); }
+  if (kind === 'couple') { L.top = pk(['tee', 'dress', 'jacket', 'stripe'], 7); L.shirt = pk(['#ff8ad0', '#ffffff', '#ff9a3a', '#5ad0c8', '#e8473b'], 8); L.acc = h(9) < .4 ? 'phone' : null; }
+  if (kind === 'elder') { L.hair = h(7) < .5 ? '#e8e0d8' : '#c8c8d0'; L.hs = pk([4, 2, 0, 7], 8); L.glasses = h(9) < .5; L.top = pk(['polo', 'jacket', 'tee'], 10); L.shirt = pk(['#8a6a5a', '#5a7a5a', '#c8a888', '#7a5a8a', '#e8d8c0'], 14); L.acc = h(15) < .4 ? 'cane' : null; L.pants = pk(['#5a4a3a', '#3a3a4a', '#6a6a7a'], 16); }
+  if (kind === 'kid') { L.hat = h(7) < .35 ? 'cap' : (h(7) < .65 ? 'bow' : null); L.capc = SHIRTS[(h(10) * 6) | 0]; L.acc = h(8) < .35 ? 'bag' : null; L.hs = pk([0, 5, 6, 3, 7], 9); L.top = pk(['tee', 'stripe', 'dress', 'hoodie'], 14); L.balloon = h(16) < .3 ? pk(['#ff4a3a', '#ffd84a', '#5ad0ff', '#ff8ad0'], 17) : null; }
+  if (kind === 'tourist') { L.hat = h(7) < .5 ? 'straw' : 'cap'; L.capc = '#f4e8c8'; L.shirt = pk(['#ff9a3a', '#5ad0c8', '#ffd84a', '#ff6fa8', '#8ad0ff'], 8); L.top = pk(['tee', 'stripe', 'polo'], 9); L.hair = pick(HAIRS); L.acc = 'camera'; L.inner = '#ffffff'; L.pants = pk(['#e8d8b0', '#5a6a8a', '#ffffff'], 10); }
+  if (kind === 'influencer') { L.shirt = '#ff5ad0'; L.hair = '#ffd84a'; L.hs = 1; L.top = 'jacket'; L.inner = '#ffffff'; L.acc = 'phone'; L.glasses = false; }
+  if (kind === 'critic') { L.shirt = '#3a3a4a'; L.top = 'suit'; L.inner = '#8a2a4a'; L.glasses = true; L.hair = '#5a5a5a'; L.hs = 0; L.acc = 'book'; }
+  if (kind === 'asker') { L.hat = null; }
+  if (kind === 'staff') { L.top = 'tee'; L.acc = null; L.balloon = null; L.shoe = '#3a2a2a'; }
+  if (kind === 'rider') { L.hat = 'helmet'; L.capc = pk(['#ffffff', '#e8473b', '#ffd84a', '#3a3a4a', '#5ad0ff', '#ff8ad0'], 8); L.acc = null; }
+  if (job === 'cook') { L.hat = 'chef'; L.apron = '#ffffff'; L.shirt = '#ffffff'; L.top = 'tee'; }
+  if (job === 'serve') { L.apron = '#e8473b'; L.hat = null; L.shirt = pk(['#f4e8c8', '#ffffff', '#3a3a4a'], 18); L.top = 'polo'; }
+  if (job === 'tout') { L.hat = 'band'; L.sign = true; L.shirt = '#e8473b'; L.top = 'tee'; }
+  L.key = [L.skin, L.hair, L.hs, L.shirt, L.pants, L.top, L.inner, L.acc, L.hat, L.capc, L.apron, L.sign, L.glasses, L.shoe].join('|');
   return L;
 }
+// 客人外觀數量有上限，避免像素圖快取無限長大
+const lookSeed = () => (Math.random() * 480) | 0;
 
 const Game = {
   S: null,
@@ -35,31 +43,53 @@ const Game = {
   ui: null, // 介面回呼
 
   // ---------- 開新遊戲 ----------
-  fresh(name) {
+  fresh(name, opt = {}) {
+    const scen = opt.scen || 'std', P = opt.perks || {};
     const S = {
-      v: 1, shop: name || '阿福小吃', money: 12000, pop: 5, idea: 12, week: 0, t: 0,
+      v: 2, shop: name || '阿福小吃', money: 12000, pop: 5, idea: 12, week: 0, t: 0,
       lv: 0, W: 6, H: 5, items: [], floor: {}, staff: [], dishes: {}, ings: {}, combos: {}, goals: {}, unlock: {},
-      st: { cust: 0, sales: 0, ysales: 0, msales: 0, mcost: 0, wsales: 0, wcust: 0, satS: 0, satN: 0, ysat: 0, yn: 0, hist: [], best: 99, wins: 0, research: 0 },
+      st: { cust: 0, sales: 0, ysales: 0, msales: 0, mcost: 0, wsales: 0, wcust: 0, satS: 0, satN: 0, ysat: 0, yn: 0, hist: [], best: 99, wins: 0, research: 0, dsold: {}, ctype: {}, five: 0, storm: 0, hosted: 0 },
       awards: [], ended: false, uid: 1, hire: [], ev: [], hints: {}, log: [], rank: 0, contestY: 0, festNote: 0, seed: (Math.random() * 1e9) | 0,
+      scen, gen: opt.gen || 1, tut: { step: opt.noTut ? -1 : 0 }, tech: {}, br: {}, ach: {}, q: null, qdone: 0, qcd: 2, hostCD: 0, fq: null, ptsGiven: 0,
     };
     for (const k in ING) if (!ING[k].buy) S.ings[k] = 1;
-    S.dishes.pancake = { lv: 1, price: DISH.pancake.p, on: true };
-    S.dishes.blacktea = { lv: 1, price: DISH.blacktea.p, on: true };
+    if (scen === 'sweet') {
+      S.dishes.eggcake = { lv: 1, price: DISH.eggcake.p, on: true };
+      S.dishes.blacktea = { lv: 1, price: DISH.blacktea.p, on: true };
+    } else {
+      S.dishes.pancake = { lv: 1, price: DISH.pancake.p, on: true };
+      S.dishes.blacktea = { lv: 1, price: DISH.blacktea.p, on: true };
+    }
+    if (scen === 'hard') { S.money = 5000; }
+    if (scen === 'sweet') S.ings.milk = 1;
+    S.money += (P.money || 0) * 5000; S.pop += (P.fans || 0) * 30; S.idea += (P.idea || 0) * 20;
+    // 祖傳秘方：多會幾道簡單的菜
+    const easy = ['eggcrepe', 'eggcake', 'milktea', 'teaegg', 'cutlet', 'popcorn'].filter(k => !S.dishes[k] && (scen !== 'sweet' || ['sweet', 'drink'].includes(DISH[k].cat)) && this.canUseIn(S, k));
+    for (let i = 0; i < (P.recipe || 0) && i < easy.length; i++) S.dishes[easy[i]] = { lv: 1, price: DISH[easy[i]].p, on: true };
     this.S = S;
     const add = (id, x, y) => S.items.push({ uid: S.uid++, id, x, y, lv: 1, dirty: 0 });
-    add('griddle', 1, 1); add('drink', 3, 1); add('stool', 1, 3); add('stool', 4, 3); add('lantern', 5, 0);
-    S.staff.push(this.newStaff({ name: '阿福', title: '老闆', cook: 8, serv: 5, charm: 5, job: 'cook', owner: true }));
-    S.staff.push(this.newStaff({ name: '阿珠', cook: 5, serv: 6, charm: 4, job: 'cook' }));
+    add(scen === 'sweet' ? 'griddle' : 'griddle', 1, 1); add('drink', 3, 1); add('stool', 1, 3); add('stool', 4, 3); add('lantern', 5, 0);
+    const ch = (P.chef || 0) * 3;
+    S.staff.push(this.newStaff({ name: '阿福', title: '老闆', cook: 8 + ch, serv: 5 + ch, charm: 5 + ch, job: 'cook', owner: true, trait: 'learner' }));
+    S.staff.push(this.newStaff({ name: '阿珠', cook: 5 + ch, serv: 6 + ch, charm: 4 + ch, job: 'cook', trait: 'smile' }));
     this.rollHire();
     this.boot();
   },
+  canUseIn(S, k) { const d = DISH[k]; const ok = x => S.ings[x] || S.dishes[x]; return ok(d.a) && ok(d.b); },
   newStaff(o) {
     const S = this.S, seed = (Math.random() * 1e9) | 0;
-    const s = Object.assign({ uid: S.uid++, name: '', title: '', lv: 1, exp: 0, cook: 5, serv: 5, charm: 5, job: 'cook', tr: 0, seed, sal: 0 }, o);
+    const s = Object.assign({ uid: S.uid++, name: '', title: '', lv: 1, exp: 0, cook: 5, serv: 5, charm: 5, job: 'cook', tr: 0, seed, sal: 0, trait: this.rollTrait() }, o);
     s.sal = s.owner ? 0 : this.salaryOf(s);
     return s;
   },
-  salaryOf(s) { return Math.round((600 + (s.cook + s.serv + s.charm) * 18 + s.lv * 60) / 10) * 10; },
+  salaryOf(s) { return Math.round((600 + (s.cook + s.serv + s.charm) * 18 + s.lv * 60) * (s.trait === 'slow' ? 0.8 : 1) / 10) * 10; },
+  rollTrait(rare) {
+    const ks = Object.keys(TRAITS).filter(k => !TRAITS[k].rare);
+    if (rare || Math.random() < 0.06) return pick(['genius', 'star']);
+    return Math.random() < 0.82 ? pick(ks) : '';
+  },
+  tr(s, k) { return s && s.trait === k; },
+  tech(k) { return (this.S.tech && this.S.tech[k]) || 0; },
   rollHire() {
     const S = this.S, y = this.year(), n = 3 + (S.lv >= 2 ? 1 : 0);
     S.hire = [];
@@ -72,6 +102,7 @@ const Game = {
       const best = ['cook', 'serv', 'charm'][irnd(0, 2)]; c[best] += irnd(2, 5);
       c.title = rare ? pick(['料理達人', '服務之星', '夜市老手', '傳說的新人', '天才少年', '歸國廚師']) : '';
       c.job = c.cook >= c.serv && c.cook >= c.charm ? 'cook' : (c.serv >= c.charm ? 'serve' : 'tout');
+      if (rare && Math.random() < 0.5) c.trait = this.rollTrait(true);
       const s = this.newStaff(c); S.uid--; delete s.uid;
       S.hire.push(s);
     }
@@ -83,6 +114,17 @@ const Game = {
     for (const it of S.items) if (!F[it.id]) it.dead = true;
     S.items = S.items.filter(i => !i.dead);
     for (const k in S.dishes) if (!DISH[k]) delete S.dishes[k];
+    // v1 → v2：新系統的欄位
+    if (!S.v || S.v < 2) {
+      S.tut = { step: S.week > 0 ? -1 : 0 };
+      for (const s of S.staff) if (s.trait === undefined) s.trait = s.owner ? 'learner' : this.rollTrait();
+    }
+    S.v = 2;
+    S.scen = S.scen || 'std'; S.gen = S.gen || 1; S.tut = S.tut || { step: -1 };
+    S.tech = S.tech || {}; S.br = S.br || {}; S.ach = S.ach || {}; S.q = S.q || null; S.qdone = S.qdone || 0; S.qcd = S.qcd ?? 2; S.hostCD = S.hostCD || 0; S.fq = S.fq || null; S.ptsGiven = S.ptsGiven || 0;
+    const st = S.st; st.dsold = st.dsold || {}; st.ctype = st.ctype || {}; st.five = st.five || 0; st.storm = st.storm || 0; st.hosted = st.hosted || 0;
+    for (const s of S.staff) if (s.trait === undefined) s.trait = '';
+    for (const s of S.hire || []) if (s.trait === undefined) s.trait = this.rollTrait();
   },
   boot() {
     this.cust = []; this.peds = []; this.rts = new Map(); this.srt = new Map(); this.fx = []; this.floats = []; this.cars = [];
@@ -137,9 +179,52 @@ const Game = {
       for (const c of rt.seats) if (c) { c.seat = null; }
       if (rt.cook) { const s = this.srt.get(rt.cook); if (s) s.st = null; }
     }
+    this.computeQueues();
     this.computeCombos();
     for (const a of this.cust) a.repath = true;
     for (const a of this.srt.values()) a.repath = true;
+  },
+  // 每個攤位的排隊格子：從攤位前面往外排成一條線，不同攤位的隊伍不會重疊
+  computeQueues() {
+    const S = this.S, used = new Set(), res = new Set(), K = (x, y) => x + ',' + y;
+    const sts = [...this.rts.values()].filter(rt => F[rt.it.id].cat === 'station');
+    for (const rt of sts) { if (rt.front) res.add(K(rt.front[0], rt.front[1])); if (rt.back) res.add(K(rt.back[0], rt.back[1])); }
+    // 座位旁邊的格子盡量不要排隊
+    const soft = new Set();
+    for (const rt of this.rts.values()) if (F[rt.it.id].cat === 'seat') for (const n of rt.nb) soft.add(K(n[0], n[1]));
+    const ok = (x, y, strict) => {
+      if (y > S.H || y < 0) return false;
+      if (y === S.H ? (x < -1 || x > S.W) : !this.inPlot(x, y)) return false;
+      if (!this.walkable(x, y)) return false;
+      const k = K(x, y); if (used.has(k) || res.has(k)) return false;
+      if (strict && soft.has(k)) return false;
+      return true;
+    };
+    sts.sort((a, b) => (a.it.y - b.it.y) || (a.it.x - b.it.x));
+    for (const rt of sts) {
+      rt.qt = []; rt.qs = [];
+      if (!rt.front) continue;
+      const tiles = [rt.front], dirs = [[rt.front[0] - rt.it.x, rt.front[1] - rt.it.y]];
+      used.add(K(rt.front[0], rt.front[1]));
+      while (tiles.length < 3) {
+        const [cx, cy] = tiles[tiles.length - 1], [dx, dy] = dirs[dirs.length - 1];
+        const cand = [[dx, dy], [0, 1], [dy, dx], [-dy, -dx], [1, 0], [-1, 0]];
+        let nxt = null;
+        for (const strict of [true, false]) { for (const [ex, ey] of cand) if (!(ex === -dx && ey === -dy) && ok(cx + ex, cy + ey, strict)) { nxt = [ex, ey]; break; } if (nxt) break; }
+        if (!nxt) break;
+        const t = [cx + nxt[0], cy + nxt[1]]; tiles.push(t); dirs.push(nxt); used.add(K(t[0], t[1]));
+      }
+      rt.qt = tiles;
+      for (let i = 0; i < 6; i++) {
+        let ti = i >> 1, extra = 0;
+        if (ti >= tiles.length) { extra = ti - tiles.length + 1; ti = tiles.length - 1; }
+        const [tx, ty] = tiles[ti], [dx, dy] = dirs[ti];
+        const cx = tx * TILE + 8, cy = ty * TILE + 10;
+        const along = (i & 1 ? 4 : -4) + extra * 2;
+        const side = extra ? (i & 1 ? 5 : -5) : 0;
+        rt.qs.push([cx + dx * along - dy * side, cy + dy * along * 0.8 + dx * side * 0.6]);
+      }
+    }
   },
   neighbors(x, y) {
     const out = [];
@@ -239,8 +324,9 @@ const Game = {
     const S = this.S;
     for (const { c, a, b } of this.combos) if (!S.combos[c.id]) {
       S.combos[c.id] = 1;
-      this.say('discover', { title: '發現擺設組合！', big: c.n, text: this.effText(c.eff), icon: 'star' });
-      this.sparkle((a.x + b.x) / 2 * TILE + 8, (a.y + b.y) / 2 * TILE + 4, 18);
+      this.say('discover', { title: '發現擺設組合！', big: c.n, text: this.effText(c.eff), icon: 'star', combo: c.id });
+      const cx = (a.x + b.x) / 2 * TILE + 8, cy = (a.y + b.y) / 2 * TILE + 4;
+      this.sparkle(cx, cy, 24); this.confetti(cx, cy - 6, 40); this.ring(cx, cy, '#ffe070'); this.flash = 1;
     }
   },
   effText(e) {
@@ -290,12 +376,13 @@ const Game = {
     if (sell && f.price) { const v = Math.floor(f.price * 0.5 * (1 + (it.lv - 1) * 0.5)); S.money += v; this.float(it.x * TILE + 8, it.y * TILE, '+' + money(v), '#ffe070'); }
     this.rebuild();
   },
-  upgradeCost(it) { return Math.round(F[it.id].price * 1.6 * it.lv); },
+  maxStLv() { return 3 + (this.S.lv >= 4 ? 1 : 0) + (this.S.lv >= 5 ? 1 : 0); },
+  upgradeCost(it) { return Math.round(F[it.id].price * 1.6 * it.lv * (it.lv >= 3 ? 6 : 1)); },
   upgrade(it) {
     const c = this.upgradeCost(it);
-    if (it.lv >= 3 || this.S.money < c) return false;
+    if (it.lv >= (F[it.id].cat === 'station' ? this.maxStLv() : 3) || this.S.money < c) return false;
     this.S.money -= c; this.S.st.mcost += c; it.lv++;
-    this.sparkle(it.x * TILE + 8, it.y * TILE, 10); Snd.play('level');
+    this.sparkle(it.x * TILE + 8, it.y * TILE, 14); this.ring(it.x * TILE + 8, it.y * TILE + 10, '#ffe070'); Snd.play('level');
     return true;
   },
 
@@ -306,7 +393,7 @@ const Game = {
     a.look = makeLook(s.seed, 'staff', s.job);
     this.srt.set(s.uid, a);
   },
-  maxStam(s) { return 70 + s.lv * 5; },
+  maxStam(s) { return 70 + s.lv * 5 + (s.trait === 'tough' ? 40 : 0) + this.tech('meal') * 10; },
   setJob(s, job) {
     s.job = job; const a = this.srt.get(s.uid);
     if (a) { this.releaseStaff(a); a.look = makeLook(s.seed, 'staff', job); }
@@ -348,7 +435,7 @@ const Game = {
     return '+' + g;
   },
   gainExp(s, n) {
-    s.exp += n;
+    s.exp += n * (s.trait === 'learner' ? 1.4 : 1) * (1 + this.tech('school') * 0.15);
     const need = this.expNeed(s);
     if (s.exp >= need && s.lv < 99) {
       s.exp -= need; s.lv++;
@@ -356,7 +443,7 @@ const Game = {
       s[main] += irnd(1, 3); for (const k of ['cook', 'serv', 'charm']) if (k !== main && Math.random() < .4) s[k]++;
       if (!s.owner) s.sal = this.salaryOf(s);
       const a = this.srt.get(s.uid);
-      if (a) { this.float(a.x, a.y - 22, 'Lv UP!', '#7affb0'); this.sparkle(a.x, a.y - 10, 8); }
+      if (a) { this.float(a.x, a.y - 24, 'Lv UP!', '#7affb0'); this.sparkle(a.x, a.y - 12, 10); this.ring(a.x, a.y - 10, '#7affb0'); }
       Snd.play('level');
       if (s.lv % 5 === 0) this.toast(`${s.name} 升到 ${s.lv} 級了！`);
       this.checkGoals();
@@ -379,7 +466,9 @@ const Game = {
     return s.includes(this.month()) ? 0.7 : 1.8;
   },
   ingMul() { let m = 1; for (const e of this.S.ev) if (e.ing) m *= e.ing; return m; },
-  menu() { return this.known().filter(k => this.S.dishes[k].on && this.hasStation(DISH[k].st)); },
+  menu() { return this.known().filter(k => this.S.dishes[k].on && this.hasStation(DISH[k].st) && this.sellable(k)); },
+  budgetMul() { return this.S.scen === 'sweet' ? 1.15 : 1; },
+  sellable(k) { return this.S.scen !== 'sweet' || DISH[k].cat === 'sweet' || DISH[k].cat === 'drink'; },
   ideaCost() { return Math.min(60, 10 + this.S.st.research * 2); },
   moneyCost() { return Math.min(12000, 200 + this.S.st.research * this.S.st.research * 12 + this.S.st.research * 60); },
   canUse(k) { return !!(this.S.ings[k] || this.S.dishes[k]); },
@@ -457,6 +546,7 @@ const Game = {
     this.rollHire();
     this.checkGoals();
     Snd.play('fanfare');
+    this.confetti(S.W * TILE / 2, S.H * TILE / 2, 70); this.flash = 1;
     this.say('expand', { title: '擴建完成！', big: n.n, text: `店面變成 ${n.W}×${n.H} 格，可以雇用 ${n.staff} 位員工，也解鎖了新的設施和食材。`, icon: 'star' });
     return true;
   },
@@ -465,8 +555,11 @@ const Game = {
   spawnRate() {
     const S = this.S;
     let tout = 0;
-    for (const a of this.srt.values()) if (a.s.job === 'tout' && a.atPost) tout += a.s.charm * (a.stam > 0 ? 1 : 0.5);
-    let r = 0.32 + 0.06 * Math.sqrt(S.pop) + this.appeal * 0.004 + tout * 0.012;
+    let star = 0;
+    for (const a of this.srt.values()) { if (a.s.job === 'tout' && a.atPost) tout += a.s.charm * (a.stam > 0 ? 1 : 0.5) * (a.s.trait === 'loud' ? 1.5 : 1); if (a.s.trait === 'star') star++; }
+    let r = 0.32 + 0.06 * Math.sqrt(S.pop) + this.appeal * 0.004 + tout * 0.012 + star * 0.05;
+    r *= 1 + this.tech('ad') * 0.06;
+    if (S.scen === 'sweet') r *= 1.15;
     const fest = FESTIVALS[this.month()]; if (fest) r *= fest.mul;
     for (const e of S.ev) if (e.mul) r *= e.mul;
     r *= 1 + this.effTot.cust / 100;
@@ -493,12 +586,14 @@ const Game = {
     const T = CTYPES[type];
     const left = Math.random() < 0.5, x0 = left ? -3 : S.W + 2;
     const c = {
-      kind: 'c', type, look: makeLook((Math.random() * 1e9) | 0, type), x: x0 * TILE + 8, y: S.H * TILE + 10, tile: [x0, S.H], path: [],
-      spd: rnd(34, 42) * (type === 'elder' ? 0.7 : type === 'kid' ? 1.2 : 1), dir: 2, anim: rnd(10), state: 'in', wait: 0, pat: 30 * T.pat, greet: false,
+      kind: 'c', type, look: makeLook(lookSeed(), type), x: x0 * TILE + 8, y: S.H * TILE + 10, tile: [x0, S.H], path: [], ox: 0, oy: 0,
+      spd: rnd(34, 42) * (type === 'elder' ? 0.7 : type === 'kid' ? 1.2 : 1), dir: 2, anim: rnd(10), state: 'in', wait: 0, pat: 30 * T.pat * (1 + this.tech('line') * 0.12), greet: false,
       want: null, dish: null, st: null, seat: null, sat: 0, bub: null, bubT: 0, repath: false, vip: T.vip || 0,
     };
     // 想吃什麼
-    const prefs = T.pref, wcat = Math.random() < 0.6 ? prefs[0] : pick(prefs);
+    const prefs = T.pref;
+    let wcat = Math.random() < 0.6 ? prefs[0] : pick(prefs);
+    if (S.scen === 'sweet' && wcat !== 'sweet' && wcat !== 'drink' && Math.random() < 0.75) wcat = Math.random() < 0.6 ? 'sweet' : 'drink';
     c.want = wcat;
     const menu = this.menu();
     if (!menu.length) return;
@@ -518,7 +613,7 @@ const Game = {
     let tot = ws.reduce((a, b) => a + b, 0), r = Math.random() * tot, dish = opts[0];
     for (let i = 0; i < opts.length; i++) { r -= ws[i]; if (r <= 0) { dish = opts[i]; break; } }
     c.dish = dish;
-    const price = S.dishes[dish].price, val = this.dishValue(dish) * T.b;
+    const price = S.dishes[dish].price, val = this.dishValue(dish) * T.b * this.budgetMul();
     c.price = price;
     c.qty = Math.max(1, Math.floor(T.qty + Math.random()));
     if (price > val * 1.9) { this.dbg.price++; if (this.peds.length < 8 + S.lv * 2 && Math.random() < 0.5) { c.state = 'pass'; c.refuse = true; c.x = (left ? -5 : S.W + 4) * TILE + 8; c.passDir = left ? 1 : -1; this.peds.push(c); } return; }
@@ -530,14 +625,15 @@ const Game = {
     if (rt.queue.length >= 6) { this.dbg.full++; if (this.peds.length < 8 + S.lv * 2 && Math.random() < 0.15) { c.state = 'pass'; c.full = true; c.x = (left ? -5 : S.W + 4) * TILE + 8; c.passDir = left ? 1 : -1; this.peds.push(c); } return; }
     c.st = rt.it.uid; rt.queue.push(c);
     c.state = 'walk';
-    c.path = this.path(c.tile[0], c.tile[1], rt.front[0], rt.front[1]) || [];
-    c.bub = wcat; c.bubT = 3;
+    const qt = this.queueTile(rt, rt.queue.length - 1);
+    c.path = this.path(c.tile[0], c.tile[1], qt[0], qt[1]) || [];
+    c.bub = wcat; c.bubT = 1.6;
     this.cust.push(c);
   },
   spawnPed() {
     const S = this.S, left = Math.random() < 0.5, x0 = left ? -5 : S.W + 4;
     const type = this.pickType();
-    const c = { kind: 'c', type, look: makeLook((Math.random() * 1e9) | 0, type), x: x0 * TILE + 8, y: S.H * TILE + 10 + rnd(-2, 3), tile: [x0, S.H], path: [], spd: rnd(22, 32), dir: 2, anim: rnd(10), state: 'pass', passDir: left ? 1 : -1 };
+    const c = { kind: 'c', type, look: makeLook(lookSeed(), type), x: x0 * TILE + 8, y: S.H * TILE + 10 + rnd(-2, 3), tile: [x0, S.H], path: [], spd: rnd(22, 32), dir: 2, anim: rnd(10), state: 'pass', passDir: left ? 1 : -1 };
     this.peds.push(c);
   },
   custLeave(c, dsat, why) {
@@ -548,7 +644,7 @@ const Game = {
     c.state = 'leave';
     if (dsat !== undefined) {
       this.S.pop = Math.max(0, this.S.pop + dsat * 0.05 * (c.vip ? c.vip : 1));
-      c.bub = 'angry'; c.bubT = 3;
+      c.bub = 'angry'; c.bubT = 2; c.face = 'angry';
       if (why && Math.random() < 0.35) this.review(c, 1, why);
     }
     const S = this.S, ex = c.x < (S.W / 2) * TILE ? -5 : S.W + 4;
@@ -561,7 +657,12 @@ const Game = {
     S.money += pay; S.st.sales += pay; S.st.ysales += pay; S.st.msales += pay; S.st.wsales += pay;
     const cost = this.costOf(c.dish) * c.qty; S.money -= cost; S.st.mcost += cost;
     S.st.cust++; S.st.wcust++;
-    this.float(c.x, c.y - 22, '+' + pay, '#ffe070');
+    S.st.dsold[c.dish] = (S.st.dsold[c.dish] || 0) + c.qty;
+    S.st.ctype[c.type] = (S.st.ctype[c.type] || 0) + 1;
+    if (S.ev.some(e => e.n === '颱風')) S.st.storm += c.qty;
+    const it = rt.it;
+    this.coin(it.x * TILE + 8, (it.y + 1) * TILE - 18, pay);
+    c.look = Object.assign({}, c.look, { dishc: CATCOL[d.cat] });
     Snd.play('coin');
     c.state = 'carry';
     // 找座位
@@ -586,11 +687,12 @@ const Game = {
     let sat = 46;
     sat += Math.min(32, this.dishQ(c.dish) * 2.6 * (1 + (c.cookSkill || 0) * 0.012));
     sat += c.match ? 6 : -8;
-    const val = this.dishValue(c.dish) * T.b, ratio = c.price / val;
+    const val = this.dishValue(c.dish) * T.b * this.budgetMul(), ratio = c.price / val;
     sat += clamp((1.1 - ratio) * 32, -28, 12);
     sat -= Math.max(0, c.wait - 10) * 1.1;
     if (c.greet) sat += 5;
-    if (c.takeout) sat -= c.type === 'elder' ? 9 : 4;
+    sat += this.tech('sauce') * 2.5;
+    if (c.takeout) sat -= (c.type === 'elder' ? 9 : 4) - this.tech('pack') * 3;
     else if (c.seat) {
       const it = this.rts.get(c.seat.uid)?.it;
       if (it) {
@@ -605,11 +707,15 @@ const Game = {
     sat = clamp(sat + rnd(-6, 6), 0, 100);
     c.sat = sat;
     const stars = sat >= 85 ? 5 : sat >= 70 ? 4 : sat >= 50 ? 3 : sat >= 30 ? 2 : 1;
-    c.bub = 'f' + stars; c.bubT = 3;
+    c.face = stars >= 4 ? 'happy' : stars <= 2 ? 'sad' : '';
+    this.emote(c.x, c.y - 22, stars >= 5 ? 'heart2' : stars >= 4 ? 'heart' : stars <= 1 ? 'angry' : stars <= 2 ? 'sweat' : 'note');
+    if (stars >= 5) { S.st.five++; if (c.type === 'critic') this.achFlag('critic'); }
+    if (c.vip) this.ring(c.x, c.y - 10, stars >= 4 ? '#ffe070' : '#ff6a6a');
     S.st.satS += sat; S.st.satN++; S.st.ysat += sat; S.st.yn++;
     const dp = (sat - 52) / 22 * (c.vip || 1);
     S.pop = Math.max(0, S.pop + dp);
-    if (sat >= 68 && (c.vip || Math.random() < 0.6)) S.idea += c.vip ? 6 : 1;
+    // 靈感存太多時，新的靈感會比較少（避免後期靈感多到沒意義）
+    if (sat >= 68 && (c.vip || Math.random() < 0.6 / (1 + S.idea / 1500))) S.idea += c.vip ? 6 : 1;
     if (c.vip || Math.random() < 0.06) this.review(c, stars);
     if (stars >= 4) Snd.play('happy'); else if (stars <= 2) Snd.play('sad');
     if (c.vip && stars >= 4) this.toast(`${CTYPES[c.type].n}大推！人氣 +${Math.round(dp)}`);
@@ -620,7 +726,7 @@ const Game = {
       if (srt) {
         srt.seats[c.seat.i] = null;
         const near = this.nearClean(srt.it);
-        if (Math.random() < 0.7 - near * 0.2) srt.it.dirty = Math.min(srt.seats.length, srt.it.dirty + 1);
+        if (Math.random() < (0.7 - near * 0.2) * (1 - this.tech('clean') * 0.12)) srt.it.dirty = Math.min(srt.seats.length, srt.it.dirty + 1);
       }
       c.seat = null;
     }
@@ -666,7 +772,7 @@ const Game = {
     this.pedAcc += dt * (0.35 + S.lv * 0.08);
     if (this.pedAcc >= 1) { this.pedAcc = 0; if (this.peds.length < 5 + S.lv * 2) this.spawnPed(); }
     this.carAcc += dt;
-    if (this.carAcc > 3.5) { this.carAcc = rnd(-3, 0); this.cars.push({ x: Math.random() < .5 ? -6 * TILE : (S.W + 6) * TILE, y: (S.H + 1) * TILE + 6, v: 0, col: pick(['#e8473b', '#3a8ad8', '#ffd84a', '#f4f4f4', '#3fa64a', '#ff8ad0']), rider: makeLook((Math.random() * 1e9) | 0, 'worker') }); const c = this.cars[this.cars.length - 1]; c.v = c.x < 0 ? rnd(50, 70) : -rnd(50, 70); c.y += c.v > 0 ? 8 : 0; }
+    if (this.carAcc > 3.5) { this.carAcc = rnd(-3, 0); this.cars.push({ x: Math.random() < .5 ? -6 * TILE : (S.W + 6) * TILE, y: (S.H + 1) * TILE + 6, v: 0, col: pick(['#e8473b', '#3a8ad8', '#ffd84a', '#f4f4f4', '#3fa64a', '#ff8ad0']), rider: makeLook(lookSeed(), 'rider') }); const c = this.cars[this.cars.length - 1]; c.v = c.x < 0 ? rnd(50, 70) : -rnd(50, 70); c.y += c.v > 0 ? 8 : 0; }
     for (const c of this.cars) c.x += c.v * dt;
     this.cars = this.cars.filter(c => c.x > -8 * TILE && c.x < (S.W + 8) * TILE);
     // 攤位
@@ -676,7 +782,12 @@ const Game = {
     for (const p of this.peds) this.stepPed(p, dt);
     this.peds = this.peds.filter(c => c.state !== 'gone');
     for (const a of this.srt.values()) this.stepStaff(a, dt);
-    for (const f of this.fx) { f.t += dt; f.x += f.vx * dt; f.y += f.vy * dt; f.vy += (f.g || 0) * dt; }
+    this.separate(dt);
+    for (const f of this.fx) {
+      f.t += dt; f.x += f.vx * dt; f.y += f.vy * dt; f.vy += (f.g || 0) * dt;
+      if (f.drag) { const k = Math.max(0, 1 - f.drag * dt); f.vx *= k; f.vy = f.vy * k + 0; }
+      if (f.coin && f.y > f.floor && f.vy > 0) { f.y = f.floor; f.vy *= -0.35; f.vx *= 0.6; }
+    }
     this.fx = this.fx.filter(f => f.t < f.life);
     for (const f of this.floats) f.t += dt;
     this.floats = this.floats.filter(f => f.t < 1.4);
@@ -686,7 +797,7 @@ const Game = {
     if (!a.path || !a.path.length) return true;
     const [tx, ty] = a.path[0];
     const gx = tx * TILE + 8, gy = ty * TILE + 10;
-    const dx = gx - a.x, dy = gy - a.y, d = Math.hypot(dx, dy), sp = a.spd * dt * (a.tired ? 0.7 : 1);
+    const dx = gx - a.x, dy = gy - a.y, d = Math.hypot(dx, dy), sp = a.spd * dt * (a.tired ? 0.7 : 1) * (a.s && a.s.trait === 'slow' ? 0.85 : 1);
     if (Math.abs(dx) > Math.abs(dy)) { a.dir = 2; a.flip = dx < 0; } else a.dir = dy < 0 ? 1 : 0;
     a.anim += dt * 8;
     if (d <= sp) { a.x = gx; a.y = gy; a.tile = [tx, ty]; a.path.shift(); return !a.path.length; }
@@ -703,28 +814,51 @@ const Game = {
     const ca = rt.cook ? this.srt.get(rt.cook) : null;
     if (!ca || !ca.atStation) return;
     const s = ca.s, d = DISH[head.dish];
-    let sp = (1 + s.cook * 0.03) * (1 + (it.lv - 1) * 0.3) * (1 + (this.spdMap.get(it.uid) || 0) / 100);
+    let sp = (1 + s.cook * 0.03) * (1 + (it.lv - 1) * 0.3) * (1 + (this.spdMap.get(it.uid) || 0) / 100) * (1 + this.tech('fast') * 0.08);
+    if (s.trait === 'quick') sp *= 1.2; else if (s.trait === 'slow') sp *= 0.85;
     if (ca.stam <= 0) sp *= 0.55;
     rt.prog += dt * sp / (d.t * 0.6 * (1 + 0.4 * (head.qty - 1)));
     rt.cooking = true;
     ca.stam -= dt * 2.2;
-    if (Math.random() < dt * 3) this.steam(it.x * TILE + 8 + rnd(-4, 4), it.y * TILE + 2);
+    if (Math.random() < dt * 4) this.steam(it.x * TILE + 8 + rnd(-5, 5), (it.y + 1) * TILE - 17, F[it.id].st);
     if (rt.prog >= 1) {
       rt.prog = 0;
-      head.cookSkill = s.cook;
+      head.cookSkill = s.cook * (s.trait === 'genius' ? 1.6 : 1) + (s.trait === 'genius' ? 8 : 0);
       this.gainExp(s, Math.ceil(d.q / 2));
       this.served(head, rt);
     }
   },
   queuePos(rt, i) {
-    const [fx, fy] = rt.front, it = rt.it;
-    const dx = fx - it.x, dy = fy - it.y;
-    const bx = fx * TILE + 8, by = fy * TILE + 10;
-    if (i === 0) return [bx, by];
-    // 排隊往外延伸，碰到牆就轉彎
-    const ox = dy !== 0 ? ((i % 2) ? 5 : -5) * Math.ceil(i / 2) * 0.6 : dx * 6 * i;
-    const oy = dy !== 0 ? dy * 4 * i : ((i % 2) ? 4 : -4) * Math.ceil(i / 2);
-    return [bx + ox, by + oy];
+    if (rt.qs && rt.qs.length) return rt.qs[Math.min(i, rt.qs.length - 1)];
+    const [fx, fy] = rt.front; return [fx * TILE + 8, fy * TILE + 10];
+  },
+  queueTile(rt, i) { return rt.qt && rt.qt.length ? rt.qt[Math.min(i >> 1, rt.qt.length - 1)] : rt.front; },
+  // 走路的人互相推開一點點（只影響畫面位置），不會疊在一起
+  separate(dt) {
+    const bins = new Map(), all = [];
+    const add = a => { const k = ((a.x / 12) | 0) + ',' + ((a.y / 10) | 0); let b = bins.get(k); if (!b) bins.set(k, b = []); b.push(a); all.push(a); };
+    for (const c of this.cust) if (!c.sitting) add(c);
+    for (const p of this.peds) add(p);
+    for (const a of this.srt.values()) add(a);
+    for (const a of all) {
+      if (a.ox === undefined) { a.ox = 0; a.oy = 0; }
+      if (a.state === 'queue' || a.atStation) { a.ox *= 0.8; a.oy *= 0.8; continue; }
+      let px = 0, py = 0;
+      const bx = (a.x / 12) | 0, by = (a.y / 10) | 0;
+      for (let yy = by - 1; yy <= by + 1; yy++) for (let xx = bx - 1; xx <= bx + 1; xx++) {
+        const b = bins.get(xx + ',' + yy); if (!b) continue;
+        for (const o of b) {
+          if (o === a) continue;
+          const dx = (a.x + a.ox) - (o.x + (o.ox || 0)), dy = ((a.y + a.oy) - (o.y + (o.oy || 0))) * 1.4, d = Math.hypot(dx, dy);
+          if (d < 9) { const k = (9 - d) / 9; if (d < 0.01) { px += (a.anim % 2 > 1 ? 1 : -1) * k; } else { px += dx / d * k; py += dy / d * k * 0.5; } }
+        }
+      }
+      const tx = clamp(px * 4, -5, 5), ty = clamp(py * 3, -3, 3), m = Math.min(1, dt * 5);
+      a.ox += (tx - a.ox) * m; a.oy += (ty - a.oy) * m;
+      // 推到東西上就算了
+      const S = this.S, gx = Math.floor((a.x + a.ox) / TILE), gy = Math.floor((a.y + a.oy - 4) / TILE);
+      if (gy >= 0 && gy < S.H && this.inPlot(gx, gy) && this.occ[gy * S.W + gx]) { a.ox *= 0.3; a.oy *= 0.3; }
+    }
   },
   stepCust(c, dt) {
     const S = this.S;
@@ -754,7 +888,7 @@ const Game = {
       if (d > 0.5) { const sp = Math.min(d, 20 * dt); c.x += dx / d * sp; c.y += dy / d * sp; c.anim += dt * 6; }
       // 面向攤位
       const it = rt.it; c.dir = it.y < rt.front[1] ? 1 : it.y > rt.front[1] ? 0 : 2; c.flip = it.x < rt.front[0];
-      if (c.wait > 8 && c.bubT <= 0 && Math.random() < dt * 0.3) { c.bub = 'wait'; c.bubT = 2; }
+      if (c.wait > 14 && c.bubT <= 0 && Math.random() < dt * 0.08) { c.bub = 'wait'; c.bubT = 1.5; }
     } else if (c.state === 'toSeat') {
       if (this.moveAgent(c, dt)) {
         const srt = this.rts.get(c.seat?.uid);
@@ -800,6 +934,7 @@ const Game = {
       if (a.st) { const rt = this.rts.get(a.st); if (!rt || !rt.back) this.releaseStaff(a); else if (a.atStation && (a.tile[0] !== rt.back[0] || a.tile[1] !== rt.back[1])) { a.atStation = false; a.path = this.path(a.tile[0], a.tile[1], rt.back[0], rt.back[1]) || []; } }
     }
     if (a.tired && a.bubT <= 0 && Math.random() < dt * 0.4) { a.bub = 'zzz'; a.bubT = 2; }
+    if (a.poseT > 0) { a.poseT -= dt; if (a.poseT <= 0) a.poseK = null; }
     const moving = a.path && a.path.length;
     if (moving) { this.moveAgent(a, dt); }
     if (s.job === 'cook') {
@@ -833,11 +968,11 @@ const Game = {
         if (!moving) {
           if (t.k === 'clean') {
             if (!this.rts.has(t.rt.it.uid)) { a.task = null; return; }
-            t.time -= dt * (1 + s.serv * 0.05) * (a.tired ? 0.6 : 1); a.anim += dt * 6;
+            t.time -= dt * (1 + s.serv * 0.05) * (a.tired ? 0.6 : 1) * (s.trait === 'neat' ? 1.7 : 1); a.anim += dt * 6; a.poseK = 'wipe'; a.poseT = 0.2;
             if (Math.random() < dt * 6) this.fx.push({ x: t.rt.it.x * TILE + 8 + rnd(-5, 5), y: t.rt.it.y * TILE + 6, vx: rnd(-8, 8), vy: -rnd(8, 18), t: 0, life: 0.5, col: '#dff4ff', s: 1 });
-            if (t.time <= 0) { t.rt.it.dirty = 0; t.rt.cleaner = null; a.task = null; this.gainExp(s, 2); a.stam -= 3; Snd.play('clean'); }
+            if (t.time <= 0) { t.rt.it.dirty = 0; t.rt.cleaner = null; a.task = null; this.gainExp(s, 2); a.stam -= 3; Snd.play('clean'); a.poseK = 'carry'; a.poseT = 3.5; a.look = Object.assign({}, a.look, { dishc: '#f8f8f8' }); this.sparkle(t.rt.it.x * TILE + 8, t.rt.it.y * TILE + 6, 5); }
           } else if (t.k === 'greet') {
-            if (t.c.state === 'queue' || t.c.state === 'walk') { t.c.greet = true; t.c.pat += 6; a.bub = 'note'; a.bubT = 1.2; this.gainExp(s, 1); a.stam -= 1; }
+            if (t.c.state === 'queue' || t.c.state === 'walk') { t.c.greet = true; t.c.pat += s.trait === 'smile' ? 12 : 6; a.bub = 'say'; a.say = pick(['歡迎光臨！', '馬上好喔～', '請稍等一下！', '謝謝等候！']); a.bubT = 1.4; a.poseT = 1.2; a.poseK = 'call'; this.emote(t.c.x, t.c.y - 22, 'note'); this.gainExp(s, 1); a.stam -= 1; }
             a.task = null;
           }
         }
@@ -890,7 +1025,10 @@ const Game = {
     // 遊戲攤、招財貓收入
     let inc = 0;
     for (const it of S.items) { const f = F[it.id]; if (f.inc) inc += f.inc * (1 + st.wcust / 30); if (f.fx === 'money') inc += 200 + S.pop * 0.25; }
+    const bi = this.branchInc(); inc += bi.inc; S.pop += bi.pop;
+    for (const s of S.staff) if (s.trait === 'star') S.pop += 2;
     if (inc) { inc = Math.round(inc); S.money += inc; st.msales += inc; st.ysales += inc; st.sales += inc; }
+    if (S.hostCD > 0) S.hostCD--;
     for (const a of this.srt.values()) a.stam = this.maxStam(a.s);
     S.ev = S.ev.filter(e => --e.w > 0);
     st.wsales = 0; st.wcust = 0;
@@ -902,13 +1040,15 @@ const Game = {
     // 小吃大賽：10 月第 2 週
     if (this.month() === 10 && this.wk() === 2 && S.contestY !== this.year() && this.menuAll().length) { S.contestY = this.year(); this.pending.push({ k: 'contest' }); }
     else if (Math.random() < 0.16 && S.week > 3) this.rollEvent();
+    this.weekQuest();
     this.checkGoals();
+    this.checkScenario();
     this.ui && this.ui.week && this.ui.week();
   },
   menuAll() { return this.known(); },
   endMonth() {
     const S = this.S, st = S.st;
-    const sal = S.staff.reduce((a, s) => a + s.sal, 0), rent = LEVELS[S.lv].rent;
+    const sal = S.staff.reduce((a, s) => a + s.sal, 0), rent = this.rent();
     S.money -= sal + rent;
     const profit = st.msales - st.mcost - sal - rent;
     st.hist.push({ s: Math.round(st.msales), p: Math.round(profit), sal, rent, c: Math.round(st.mcost) });
@@ -919,6 +1059,7 @@ const Game = {
     if (this.month() === 1) this.endYear();
     const f = FESTIVALS[this.month()];
     if (f) this.toast(`${this.month()} 月：${f.n}！${f.mul > 1.15 ? '人潮變多了' : ''}`, 'fest');
+    this.festQuest();
     if (S.money < 0) this.toast('現金是負的！快想辦法賺錢，或賣掉一些東西', 'bad');
     this.ui && this.ui.autosave && this.ui.autosave();
   },
@@ -940,11 +1081,12 @@ const Game = {
     const S = this.S, a = p.a;
     S.money += a.m; S.pop += a.p;
     if (a.u && !S.unlock[a.u]) { S.unlock[a.u] = 1; p.newU = F[a.u].n; }
-    if (!S.ended && (p.rank === 1 || p.y >= 10)) { S.ended = true; this.pending.push({ k: 'ending', y: p.y, rank: p.rank }); }
+    if (!S.ended && (p.rank === 1 || p.y >= 10)) { S.ended = true; this.pending.push({ k: 'ending', y: p.y, rank: p.rank }); if (!S.ptsGiven) { S.ptsGiven = 1; Legacy.add(5); Legacy.d.clear = 1; Legacy.save(); } }
+    else if (S.ended) { const pt = p.rank === 1 ? 2 : p.rank <= 3 ? 1 : 0; if (pt) { Legacy.add(pt); p.legacy = pt; } }
   },
   rivalScore(i, yf = this.yearF()) {
-    const b = RIVALS[i][1];
-    return b * (1 + 0.55 * yf) * (1 + hash(i, 3, this.S.seed) * 0.15 * Math.sin(yf * 3 + i));
+    const b = RIVALS[i][1], sc = this.S.scen, g = sc === 'hard' ? 0.7 : sc === 'rush' ? 0.62 : 0.55, m = sc === 'rush' ? 1.12 : 1;
+    return b * m * (1 + g * yf) * (1 + hash(i, 3, this.S.seed) * 0.15 * Math.sin(yf * 3 + i));
   },
   computeRank() {
     const S = this.S, me = S.pop;
@@ -1027,6 +1169,189 @@ const Game = {
       }
     }
   },
+  // ---------- 經營擴張：租金、分店、活動、秘方 ----------
+  rent() { return LEVELS[this.S.lv].rent * (this.S.scen === 'hard' ? 2 : 1); },
+  branchInc() {
+    let inc = 0, pop = 0;
+    const m = 0.8 + Math.min(0.6, this.S.pop / 30000);
+    for (const b of BRANCHES) { const lv = this.S.br[b.id] || 0; if (lv) { inc += b.inc * lv * m; pop += b.pop * lv; } }
+    return { inc, pop };
+  },
+  branchCost(b) { const lv = this.S.br[b.id] || 0; return lv ? Math.round(b.cost * 0.7 * lv / 1000) * 1000 : b.cost; },
+  buyBranch(id) {
+    const S = this.S, b = BRANCHES.find(b => b.id === id); if (!b) return '沒有這家店';
+    const lv = S.br[id] || 0;
+    if (S.lv < b.lv) return `要先擴建成「${LEVELS[b.lv].n}」`;
+    if (lv >= 5) return '已經是最高等級';
+    const c = this.branchCost(b);
+    if (S.money < c) return '錢不夠';
+    S.money -= c; S.st.mcost += c; S.br[id] = lv + 1;
+    Snd.play('fanfare');
+    this.toast(lv ? `${b.n} 升到 ${lv + 1} 級！` : `${b.n} 開幕了！`, 'good');
+    this.checkGoals();
+    return '';
+  },
+  hostCost(e) { return Math.round(e.cost * (1 + Math.max(0, this.year() - 5) * 0.08) / 1000) * 1000; },
+  host(id) {
+    const S = this.S, e = HOSTEV.find(e => e.id === id); if (!e) return '沒有這個活動';
+    if (S.lv < e.lv) return `要先擴建成「${LEVELS[e.lv].n}」`;
+    if (S.hostCD > 0) return `籌備中，還要 ${S.hostCD} 週才能再辦活動`;
+    if (S.ev.some(x => x.host)) return '活動正在進行中';
+    const c = this.hostCost(e);
+    if (S.money < c) return '錢不夠';
+    S.money -= c; S.st.mcost += c; S.hostCD = 6; S.st.hosted++;
+    S.ev.push({ w: e.w + 1, mul: e.mul, n: e.n, host: e.id });
+    S.pop += e.pop;
+    if (e.tour) this.burst = { type: 'tourist', n: e.tour, t: 0 };
+    if (e.vip) { this.burst = { type: 'tourist', n: 12, t: 0 }; this.spawnCustomer('critic'); this.spawnCustomer('influencer'); }
+    if (e.fx === 'fireworks') this.achFlag('fire');
+    this.achFlag('host');
+    this.confetti(S.W * TILE / 2, S.H * TILE / 2, 50); this.flash = 0.7;
+    Snd.play('fanfare');
+    return '';
+  },
+  techCost(t) { const lv = this.tech(t.id); return { idea: t.idea * (lv + 1) * (lv + 1), money: t.money * (lv + 1) * (lv + 1) }; },
+  techUp(id) {
+    const S = this.S, t = TECHS.find(t => t.id === id); if (!t) return '沒有這個秘方';
+    const lv = this.tech(id); if (lv >= 5) return '已經研究到最高等級';
+    const c = this.techCost(t);
+    if (S.idea < c.idea) return '靈感不夠';
+    if (S.money < c.money) return '錢不夠';
+    S.idea -= c.idea; S.money -= c.money; S.st.mcost += c.money; S.tech[id] = lv + 1;
+    if (id === 'meal' || id === 'school') for (const a of this.srt.values()) a.stam = Math.max(a.stam, 0);
+    Snd.play('level');
+    this.checkGoals();
+    return '';
+  },
+
+  // ---------- 客人委託 ----------
+  catSold(cat, st) { let n = 0; const d = this.S.st.dsold; for (const k in d) { const x = DISH[k]; if (x && (!cat || x.cat === cat) && (!st || x.st === st)) n += d[k]; } return n; },
+  weekQuest() {
+    const S = this.S;
+    if (S.q) { S.q.w--; if (S.q.w <= 0 && !this.questDone(S.q)) { this.toast(`委託「${S.q.title}」時間到了，沒有完成…`, 'bad'); S.q = null; S.qcd = irnd(1, 3); } return; }
+    if (S.tut && S.tut.step >= 0) return;
+    if (S.week < 4 || --S.qcd > 0) return;
+    if (Math.random() < 0.55) { const q = this.makeQuest(); if (q) { this.pending.push({ k: 'quest', q }); this.spawnAsker(q); } }
+    else S.qcd = 1;
+  },
+  makeQuest() {
+    const S = this.S, lv = S.lv, who = pick(ASKERS), seed = lookSeed();
+    const types = ['serve', 'sell', 'sat'];
+    const want = Object.keys(DISH).filter(k => this.sellable(k) && this.hasStation(DISH[k].st) && (!S.dishes[k] || !S.dishes[k].on) && this.canUse(DISH[k].a) && this.canUse(DISH[k].b));
+    if (want.length) types.push('dish', 'dish');
+    const decs = FAC.filter(f => (f.cat === 'decor' || f.cat === 'fun') && !f.unlock && f.lv <= lv && f.price <= Math.max(3000, S.money * 0.3));
+    if (decs.length) types.push('decor');
+    const k = pick(types), q = { k, who, seed, w: 6, r: {} };
+    const mBase = 1500 + lv * lv * 2500 + this.year() * 600;
+    if (k === 'dish') {
+      const d = pick(want); q.d = d; q.n = 6 + lv * 2; q.base = S.st.dsold[d] || 0; q.w = 8;
+      q.title = `想吃${DISH[d].n}`; q.txt = `「好想吃${DISH[d].n}喔…你們店可以賣嗎？」${S.dishes[d] ? '' : '（要先研發出來）'}`;
+      q.goal = `賣出 ${q.n} 份${DISH[d].n}`; q.r = { money: Math.round(mBase * 1.5 / 100) * 100, idea: 15 + lv * 6, pop: 10 + lv * 6 };
+    } else if (k === 'serve') {
+      const ts = Object.keys(CTYPES).filter(t => CTYPES[t].lv <= lv && !CTYPES[t].vip);
+      const t = pick(ts); q.t = t; q.n = 8 + lv * 5; q.base = S.st.ctype[t] || 0; q.w = 5;
+      q.title = `招待${CTYPES[t].n}`; q.txt = `「我們${CTYPES[t].n}最近都在找好吃的店，可以多照顧一下嗎？」`;
+      q.goal = `招待 ${q.n} 位${CTYPES[t].n}`; q.r = { money: Math.round(mBase / 100) * 100, idea: 10 + lv * 4, pop: 8 + lv * 4 };
+    } else if (k === 'sell') {
+      const cats = Object.keys(CAT).filter(c => this.menu().some(m => DISH[m].cat === c));
+      if (!cats.length) return null;
+      const c = pick(cats); q.cat = c; q.n = 20 + lv * 18; q.base = this.catSold(c); q.w = 5;
+      q.title = `${CAT[c]}大胃王`; q.txt = `「我們辦公室要團購${CAT[c]}東西，幫忙準備多一點！」`;
+      q.goal = `賣出 ${q.n} 份${CAT[c]}菜`; q.r = { money: Math.round(mBase * 1.2 / 100) * 100, idea: 12 + lv * 4 };
+    } else if (k === 'sat') {
+      q.n = 40 + lv * 10; q.need = Math.min(82, 70 + lv * 2); q.bs = S.st.satS; q.bn = S.st.satN; q.w = 5;
+      q.title = '口碑調查'; q.txt = `「我在寫美食部落格，接下來的客人如果都很滿意，我就幫你們寫一篇！」`;
+      q.goal = `接下來 ${q.n} 位客人平均滿意度 ${q.need} 以上`; q.r = { money: Math.round(mBase * 0.8 / 100) * 100, pop: 25 + lv * 12, idea: 10 };
+    } else if (k === 'decor') {
+      const f = pick(decs), have = S.items.filter(i => i.id === f.id).length; q.f = f.id; q.n = have + (f.price > 5000 ? 1 : 2); q.w = 6;
+      q.title = `想看${f.n}`; q.txt = `「如果店裡多放幾個${f.n}，我每天都會來！」`;
+      q.goal = `店裡擺出 ${q.n} 個${f.n}`; q.r = { money: Math.round((mBase * 0.6 + f.price * 1.2) / 100) * 100, pop: 10 + lv * 5 };
+    }
+    return q;
+  },
+  questProg(q) {
+    const S = this.S;
+    switch (q.k) {
+      case 'dish': return [(S.st.dsold[q.d] || 0) - q.base, q.n];
+      case 'serve': return [(S.st.ctype[q.t] || 0) - q.base, q.n];
+      case 'sell': return [this.catSold(q.cat) - q.base, q.n];
+      case 'decor': return [S.items.filter(i => i.id === q.f).length, q.n];
+      case 'sat': { const n = S.st.satN - q.bn; return [Math.min(n, q.n), q.n, n ? Math.round((S.st.satS - q.bs) / n) : 0]; }
+      case 'fest': return [(q.cat ? this.catSold(q.cat) : this.catSold(null, q.st)) - q.base, q.n];
+    }
+    return [0, 1];
+  },
+  questDone(q) { const p = this.questProg(q); return q.k === 'sat' ? (p[0] >= p[1] && p[2] >= q.need) : p[0] >= p[1]; },
+  checkQuest() {
+    const S = this.S;
+    if (S.q && S.q.acc) {
+      const q = S.q, p = this.questProg(q);
+      if (q.k === 'sat' && p[0] >= p[1] && p[2] < q.need) { this.toast(`委託「${q.title}」失敗了：平均只有 ${p[2]} 分`, 'bad'); S.q = null; S.qcd = irnd(2, 3); }
+      else if (this.questDone(q)) { this.giveReward(q.r); S.qdone++; this.toast(`完成委託「${q.title}」！ ${this.rewardText(q.r)}`, 'goal'); Snd.play('fanfare'); this.thanks(q); S.q = null; S.qcd = irnd(2, 4); }
+    }
+    if (S.fq && this.month() !== S.fq.m) { S.fq = null; }
+    if (S.fq && !S.fq.done && this.questDone(S.fq)) { S.fq.done = 1; this.giveReward(S.fq.r); this.toast(`節慶挑戰達成！ ${this.rewardText(S.fq.r)}`, 'goal'); Snd.play('fanfare'); this.confetti(S.W * TILE / 2, S.H * TILE * 0.4, 40); }
+  },
+  festQuest() {
+    const S = this.S, m = this.month(), f = FESTIVALS[m];
+    if (!f || !f.q || S.week < 4) { S.fq = null; return; }
+    const lv = S.lv, n = Math.round(f.q.n * (1 + lv * 0.7));
+    const fq = { k: 'fest', m, cat: f.q.cat, st: f.q.st, n, title: f.n + '限定挑戰' };
+    fq.base = fq.cat ? this.catSold(fq.cat) : this.catSold(null, fq.st);
+    fq.goal = `這個月賣出 ${n} 份${fq.cat ? CAT[fq.cat] + '菜' : STN[fq.st] + '的菜'}`;
+    fq.r = { money: Math.round(n * 60 * (1 + lv * 0.5) / 100) * 100, pop: 15 + lv * 10, idea: 10 + lv * 3 };
+    S.fq = fq;
+  },
+  giveReward(r) { const S = this.S; if (r.money) S.money += r.money; if (r.idea) S.idea += r.idea; if (r.pop) S.pop += r.pop; },
+  acceptQuest(q) { q.acc = 1; this.S.q = q; if (q.k === 'sat') { q.bs = this.S.st.satS; q.bn = this.S.st.satN; } },
+  spawnAsker(q) {
+    const S = this.S, left = Math.random() < 0.5, x0 = left ? -5 : S.W + 4;
+    const look = makeLook(q.seed, 'asker');
+    this.peds.push({ kind: 'c', type: 'asker', look, x: x0 * TILE + 8, y: S.H * TILE + 11, tile: [x0, S.H], path: [], spd: 22, dir: 2, anim: 0, state: 'pass', passDir: left ? 1 : -1, bub: 'excl', bubT: 99, asker: 1 });
+  },
+  thanks(q) {
+    const S = this.S, look = makeLook(q.seed, 'asker');
+    const x0 = Math.random() < 0.5 ? -4 : S.W + 3;
+    this.peds.push({ kind: 'c', type: 'asker', look, x: x0 * TILE + 8, y: S.H * TILE + 11, tile: [x0, S.H], path: [], spd: 20, dir: 2, anim: 0, state: 'pass', passDir: x0 < 0 ? 1 : -1, bub: 'heart2', bubT: 99, face: 'happy', asker: 1 });
+  },
+
+  // ---------- 模式 ----------
+  checkScenario() {
+    const S = this.S, y = this.year();
+    if (S.scen === 'rush' && !S.rushEnd) {
+      if (S.rank === 1) { S.rushEnd = 1; this.achFlag('rush'); this.say('event', { title: '限時挑戰成功！', big: `第 ${y} 年登上第 1 名`, text: '太厲害了！你在期限內成為夜市之王。（得到傳承點數）', icon: 'star' }); }
+      else if (y > 5) { S.rushEnd = 2; this.say('event', { title: '限時挑戰結束', big: `最後名次：第 ${S.rank} 名`, text: '5 年的期限到了。你可以繼續經營這家店，或是到選單「傳承」重新挑戰！', icon: 'cal' }); }
+    }
+    if (S.scen === 'sweet' && S.lv >= 3) this.achFlag('sweet');
+    if (S.scen === 'hard' && S.rank <= 10) this.achFlag('hard');
+  },
+
+  // ---------- 成就 ----------
+  achFlag(id) {
+    const S = this.S;
+    if (S.ach[id] || this.demoMode) return;
+    S.ach[id] = 1;
+    const a = ACHS.find(a => a.id === id); if (!a) return;
+    const isNew = Legacy.unlock(id, a.pt);
+    if (this.ui && this.ui.achToast) this.ui.achToast(a, isNew);
+  },
+  checkAch() {
+    const S = this.S, st = S.st, n = Object.keys(S.combos).length, d = this.known().length;
+    const C = (c, id) => { if (c && !S.ach[id]) this.achFlag(id); };
+    C(st.cust >= 1, 'first'); C(st.cust >= 1000, 'c1k'); C(st.cust >= 50000, 'c50k');
+    C(st.five >= 30, 'five'); C(n >= 10, 'combo10'); C(n >= COMBOS.length, 'comboall');
+    C(d >= 30, 'd30'); C(d >= Object.keys(DISH).length, 'dall'); C(S.rank === 1, 'king'); C(st.wins >= 3, 'cup3');
+    const nb = BRANCHES.filter(b => S.br[b.id]).length; C(nb >= 1, 'branch'); C(nb >= BRANCHES.length, 'branchall');
+    C(TECHS.some(t => this.tech(t.id) >= 5), 'tech'); C(S.qdone >= 10, 'quest10'); C(S.staff.length >= 16, 'staff16');
+    C(S.money >= 1e8, 'rich'); C(st.storm >= 20, 'storm'); C(S.lv >= 5, 'legend');
+    if (!S.ach.full) { let seats = 0, full = 0; for (const rt of this.rts.values()) if (rt.seats && rt.seats.length) { seats += rt.seats.length; full += rt.seats.filter(Boolean).length; } C(seats >= 8 && full >= seats, 'full'); }
+  },
+  // 傳承：把店交給下一代
+  retirePts() {
+    const S = this.S;
+    return 3 + (S.rank <= 1 ? 5 : S.rank <= 3 ? 3 : S.rank <= 10 ? 1 : 0) + Math.floor(this.known().length / 10) + S.lv + Math.min(5, Math.floor((this.year() - 1) / 3));
+  },
+
   // ---------- 目標 ----------
   goalVal(k) {
     const S = this.S;
@@ -1047,14 +1372,31 @@ const Game = {
       this.toast(`達成目標「${g.n}」！ ${this.rewardText(r)}`, 'goal');
       Snd.play('fanfare');
     }
+    this.checkQuest();
+    this.checkAch();
   },
   rewardText(r) { return [r.money ? money(r.money) : '', r.idea ? '靈感 +' + r.idea : '', r.pop ? '人氣 +' + r.pop : ''].filter(Boolean).join('、'); },
 
   // ---------- 特效 ----------
-  float(x, y, t, col) { this.floats.push({ x, y, t: 0, txt: t, col }); },
-  steam(x, y) { this.fx.push({ x, y, vx: rnd(-3, 3), vy: -rnd(10, 16), t: 0, life: 1.1, col: 'rgba(255,255,255,.7)', s: 2, steam: 1 }); },
+  float(x, y, t, col, big) { this.floats.push({ x, y, t: 0, txt: t, col, big }); if (this.floats.length > 40) this.floats.shift(); },
+  // 收錢：金幣跳出來，附近同時間的金額會合併
+  coin(x, y, v) {
+    for (let i = 0; i < Math.min(3, 1 + (v / 120 | 0)); i++) this.fx.push({ x: x + rnd(-2, 2), y, vx: rnd(-14, 14), vy: -rnd(38, 55), g: 150, t: 0, life: 0.75, coin: 1, s: 1, floor: y + 6 });
+    const f = this.floats.find(f => f.money && f.t < 0.35 && Math.abs(f.x - x) < 8 && Math.abs(f.y - y) < 8);
+    if (f) { f.v += v; f.txt = '+' + f.v; f.t = Math.min(f.t, 0.1); }
+    else this.floats.push({ x, y: y - 6, t: 0, txt: '+' + v, col: '#ffe070', money: 1, v });
+  },
+  emote(x, y, icon) { if (this.fx.length > 260) return; this.fx.push({ x, y, vx: rnd(-3, 3), vy: -16, t: 0, life: 1.1, emo: icon, s: 1 }); },
+  ring(x, y, col) { this.fx.push({ x, y, vx: 0, vy: 0, t: 0, life: 0.55, ring: 1, col, s: 1 }); },
+  steam(x, y, st) {
+    if (this.fx.length > 260) return;
+    const smoke = st === 'grill' || st === 'fryer';
+    this.fx.push({ x, y, vx: rnd(-3, 3), vy: -rnd(9, 15), t: 0, life: rnd(1.0, 1.5), col: smoke ? 'rgba(230,225,235,.55)' : 'rgba(255,255,255,.75)', s: 2, steam: 1 });
+    if (st === 'grill' && Math.random() < 0.4) this.fx.push({ x: x + rnd(-3, 3), y: y + 6, vx: rnd(-6, 6), vy: -rnd(14, 24), g: -4, t: 0, life: 0.6, col: pick(['#ffd040', '#ff8a2a']), s: 1, ember: 1 });
+  },
   sparkle(x, y, n) { for (let i = 0; i < n; i++) { const a = rnd(TAU), v = rnd(15, 45); this.fx.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 15, g: 40, t: 0, life: rnd(0.6, 1.1), col: pick(['#ffe070', '#ffffff', '#ff8ad0', '#7affb0']), s: 1, star: 1 }); } },
-  poof(x, y) { for (let i = 0; i < 10; i++) { const a = rnd(TAU), v = rnd(10, 30); this.fx.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.5, t: 0, life: 0.5, col: '#ffffff', s: 2 }); } },
+  confetti(x, y, n) { for (let i = 0; i < n; i++) { const a = rnd(-Math.PI * 0.9, -Math.PI * 0.1), v = rnd(40, 90); this.fx.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, g: 70, drag: 1.6, t: 0, life: rnd(1.3, 2.2), col: pick(['#ff4a6a', '#ffd040', '#5ad0ff', '#7affb0', '#ff8ad0', '#ffffff']), s: 2, conf: 1, rot: rnd(TAU) }); } },
+  poof(x, y) { for (let i = 0; i < 12; i++) { const a = rnd(TAU), v = rnd(10, 30); this.fx.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.5, t: 0, life: 0.55, col: '#ffffff', s: 3, puff: 1 }); } },
   toast(t, k) { this.ui && this.ui.toast ? this.ui.toast(t, k) : this.notes.push(t); },
   say(k, o) { this.pending.push(Object.assign({ k: 'msg', kind: k }, o)); },
 };
