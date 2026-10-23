@@ -1,0 +1,38 @@
+'use strict';
+// 介面小圖示（成就、獎牌、碼錶……）全部用 SVG 畫，不依賴表情符號字型
+const ICO = (() => {
+  const K = '#4a3222', st = `stroke="${K}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"`;
+  const G1 = '#f6d27a', G2 = '#e0a43a';
+  const wrap = (b, cls = '') => `<svg class="ico ${cls}" viewBox="0 0 48 48" aria-hidden="true">${b}</svg>`;
+  const shine = (x, y, r) => `<ellipse cx="${x}" cy="${y}" rx="${r}" ry="${r * 0.55}" fill="#fff" opacity=".45" transform="rotate(-30 ${x} ${y})"/>`;
+  const star = (cx, cy, r, f, o = '') => { let d = ''; for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.46 : r; d += (i ? 'L' : 'M') + (cx + Math.cos(a) * rr).toFixed(1) + ' ' + (cy + Math.sin(a) * rr).toFixed(1); } return `<path d="${d}z" fill="${f}" ${o}/>`; };
+  const medalC = { 1: ['#e6b07a', '#b5743c', '#8a5226'], 2: ['#eef2f6', '#b8c2cc', '#7a8694'], 3: ['#ffe9a0', '#f0c040', '#b07a14'] };
+  const I = {
+    door: () => `<rect x="11" y="6" width="26" height="36" rx="3" fill="#c4683f" ${st}/><rect x="15" y="10" width="18" height="12" rx="2" fill="#d98a5f" ${st}/><rect x="15" y="25" width="18" height="13" rx="2" fill="#d98a5f" ${st}/><circle cx="31" cy="24" r="2.4" fill="${G1}" ${st}/><path d="M8 42h32" ${st}/>`,
+    gift: () => `<rect x="9" y="20" width="30" height="21" rx="2" fill="#e0504a" ${st}/><rect x="7" y="14" width="34" height="8" rx="2" fill="#f06a5a" ${st}/><path d="M24 14v27" stroke="${G1}" stroke-width="5"/><path d="M24 14v27" ${st} fill="none" opacity=".4"/><path d="M24 14c-4-8-13-8-11-2 1 3 7 2 11 2zM24 14c4-8 13-8 11-2-1 3-7 2-11 2z" fill="${G1}" ${st}/>`,
+    candle: () => `<ellipse cx="24" cy="15" rx="9" ry="11" fill="#ffd36a" opacity=".35"/><path d="M24 6c5 6 4 11 0 12-4-1-5-6 0-12z" fill="#ffb84a" ${st}/><path d="M24 11c2 3 2 5 0 6-2-1-2-3 0-6z" fill="#fff6c8"/><rect x="17" y="19" width="14" height="19" rx="2" fill="#fbf1df" ${st}/><path d="M12 40h24l-3-4H15z" fill="${G2}" ${st}/>`,
+    lens: () => `<path d="M30 30l10 10" stroke="${K}" stroke-width="7" stroke-linecap="round"/><path d="M30 30l10 10" stroke="#a8703f" stroke-width="3.5" stroke-linecap="round"/><circle cx="20" cy="20" r="12" fill="#cfe8ff" fill-opacity=".55" stroke="${G2}" stroke-width="4"/><circle cx="20" cy="20" r="12" fill="none" ${st}/>${shine(16, 15, 4)}`,
+    bulb: () => `<path d="M24 6a12 12 0 0 0-7 21.6c1.4 1.2 2 2.6 2 4.4h10c0-1.8.6-3.2 2-4.4A12 12 0 0 0 24 6z" fill="#ffe27a" ${st}/><path d="M20 32h8M20.5 36h7M22 40h4" ${st}/><path d="M21 26q3-6 0-10M27 26q-3-6 0-10" stroke="${G2}" stroke-width="2" fill="none"/>${shine(19, 13, 3.5)}`,
+    star: () => star(24, 25, 18, '#ffd84a', st) + shine(19, 18, 3),
+    note: () => `<path d="M20 34V10l16 4v18" fill="none" stroke="${K}" stroke-width="3.2" stroke-linejoin="round"/><ellipse cx="15" cy="35" rx="7" ry="5.5" fill="${G2}" ${st} transform="rotate(-20 15 35)"/><ellipse cx="31" cy="32" rx="7" ry="5.5" fill="${G2}" ${st} transform="rotate(-20 31 32)"/><path d="M20 10l16 4v5l-16-4z" fill="${K}"/>`,
+    score: () => `<rect x="6" y="9" width="36" height="30" rx="3" fill="#fffaf0" ${st}/><path d="M10 17h28M10 22h28M10 27h28M10 32h28" stroke="#c9a87f" stroke-width="1.4"/><path d="M19 30V15l10 3v12" fill="none" stroke="${K}" stroke-width="2.4"/><ellipse cx="16" cy="31" rx="4" ry="3" fill="${K}"/><ellipse cx="26" cy="31" rx="4" ry="3" fill="${K}"/>`,
+    watch: () => `<rect x="20" y="3" width="8" height="5" rx="1.5" fill="${G2}" ${st}/><path d="M35 11l3-3" ${st}/><circle cx="24" cy="27" r="16" fill="${G1}" ${st}/><circle cx="24" cy="27" r="12" fill="#fffaf0" ${st}/><path d="M24 27V18M24 27l6 4" stroke="#c4502c" stroke-width="2.6" stroke-linecap="round"/><circle cx="24" cy="27" r="2" fill="${K}"/>`,
+    medal: (n = 3) => { const [a, b, c] = medalC[n] || medalC[3]; return `<path d="M14 4h8l4 14h-8zM34 4h-8l-4 14h8z" fill="${n === 3 ? '#e0504a' : n === 2 ? '#4f8ad8' : '#4f9e5a'}" ${st}/><circle cx="24" cy="30" r="14" fill="${b}" ${st}/><circle cx="24" cy="30" r="10" fill="${a}" stroke="${c}" stroke-width="2"/>` + star(24, 30.5, 6.5, b, `stroke="${c}" stroke-width="1.5" stroke-linejoin="round"`) + shine(19, 25, 3.5); },
+    bolt: () => `<path d="M27 4L10 27h12l-3 17 19-24H25z" fill="#ffd84a" ${st}/>${shine(21, 17, 3)}`,
+    cat: () => `<path d="M10 20l2-13 9 8M38 20l-2-13-9 8" fill="#fff8ee" ${st}/><path d="M13 12l1-4 4 4zM35 12l-1-4-4 4z" fill="#f4b8b0"/><ellipse cx="24" cy="26" rx="16" ry="14" fill="#fff8ee" ${st}/><path d="M18 14q6-4 12 0" stroke="#e8b46a" stroke-width="3" fill="none" stroke-linecap="round"/><ellipse cx="18" cy="25" rx="2" ry="2.6" fill="${K}"/><ellipse cx="30" cy="25" rx="2" ry="2.6" fill="${K}"/><path d="M22.5 29l1.5 1.5 1.5-1.5" fill="#f08a8a" ${st}/><path d="M24 30.5q-2 3-5 1.5M24 30.5q2 3 5 1.5" fill="none" stroke="${K}" stroke-width="1.6"/><circle cx="14" cy="30" r="2.5" fill="#f6b0a8" opacity=".6"/><circle cx="34" cy="30" r="2.5" fill="#f6b0a8" opacity=".6"/>`,
+    puzzle: () => `<path d="M8 14h9a4 4 0 1 1 8 0h9v9a4 4 0 1 0 0 8v9H25a4 4 0 1 0-8 0H8z" fill="#6fae5a" ${st}/><path d="M12 18h6" stroke="#fff" stroke-opacity=".5" stroke-width="3" stroke-linecap="round"/>`,
+    replay: () => `<path d="M36 18A13 13 0 1 0 37 30" fill="none" stroke="${K}" stroke-width="7" stroke-linecap="round"/><path d="M36 18A13 13 0 1 0 37 30" fill="none" stroke="#4f9e9a" stroke-width="3.5" stroke-linecap="round"/><path d="M29 17l9 2 1-9z" fill="#4f9e9a" ${st}/>`,
+    cal: () => `<rect x="7" y="10" width="34" height="31" rx="4" fill="#fffaf0" ${st}/><path d="M7 14a4 4 0 0 1 4-4h26a4 4 0 0 1 4 4v6H7z" fill="#e0504a" ${st}/><path d="M16 6v8M32 6v8" ${st}/><text x="24" y="37" font-size="15" font-weight="900" text-anchor="middle" fill="${K}" font-family="Fredoka,sans-serif">${new Date().getDate()}</text>`,
+    flame: () => `<path d="M24 4c3 8 13 12 12 24a12 12 0 0 1-24 0c0-7 4-9 5-15 3 3 3 6 3 6s5-6 4-15z" fill="#f08a3a" ${st}/><path d="M24 24c2 4 6 5 6 10a6 6 0 0 1-12 0c0-3 2-4 3-7 1 2 2 2 2 2s2-2 1-5z" fill="#ffe27a"/>`,
+    violin: () => `<g transform="rotate(35 24 24)"><path d="M20 10h8v6q4 2 4 6t-3 5q4 2 4 7a8 8 0 0 1-16 0q0-5 4-7-3-1-3-5t4-6z" fill="#c4683f" ${st}/><path d="M22 2h4v8h-4z" fill="#4a3222"/><path d="M24 10v26" stroke="#fff3dc" stroke-width="1.3"/><path d="M21 23q-1 2 0 4M27 23q1 2 0 4" stroke="${K}" stroke-width="1.6" fill="none"/></g>`,
+    trophy: () => `<path d="M14 7h20v10a10 10 0 0 1-20 0z" fill="${G1}" ${st}/><path d="M14 10H8q0 9 7 10M34 10h6q0 9-7 10" fill="none" ${st}/><path d="M21 27h6l1 7h-8z" fill="${G2}" ${st}/><rect x="14" y="34" width="20" height="7" rx="2" fill="#a8703f" ${st}/>${shine(19, 12, 3)}`,
+    key: () => `<circle cx="15" cy="24" r="9" fill="${G1}" ${st}/><circle cx="15" cy="24" r="3.5" fill="#fbf1df" ${st}/><path d="M23 21h19v6h-3v5h-5v-5h-3v4h-5v-4h-3z" fill="${G1}" ${st}/>`,
+    lock: () => `<path d="M16 21v-5a8 8 0 0 1 16 0v5" fill="none" stroke="${K}" stroke-width="4"/><rect x="11" y="20" width="26" height="21" rx="4" fill="${G2}" ${st}/><circle cx="24" cy="29" r="3" fill="${K}"/><path d="M24 31v5" stroke="${K}" stroke-width="2.5"/>`,
+    eye: () => `<path d="M4 24q20-22 40 0q-20 22-40 0z" fill="#fffaf0" ${st}/><circle cx="24" cy="24" r="8" fill="#5a7a4a" ${st}/><circle cx="24" cy="24" r="3.5" fill="${K}"/><circle cx="26.5" cy="21.5" r="2" fill="#fff"/>`,
+    sparkle: () => `<path d="M24 4l4 15 15 5-15 5-4 15-4-15-15-5 15-5z" fill="#fff3b8" stroke="${G2}" stroke-width="2.4" stroke-linejoin="round"/>`,
+  };
+  const f = (name, cls, ...a) => wrap((I[name] || I.star)(...a), cls);
+  f.raw = I;
+  f.medalName = ['', '銅牌', '銀牌', '金牌'];
+  return f;
+})();

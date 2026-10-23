@@ -6,33 +6,34 @@ const PEOPLE = {
   gp: { n: '鐘爺爺', skin: '#f6d2b0', hair: '#f4f1ea', style: 'gp', cloth: '#4f8a5a', cloth2: '#f4ead8', eye: '#5a7a4a', acc: ['roundGlasses', 'mustacheW', 'bow', 'vest'] },
   x: { n: '神秘人 X', sil: true },
   mochi: { n: '麻糬', cat: true },
-  wang: { n: '王阿姨', skin: '#f8d6b8', hair: '#7a4a2a', style: 'bun', cloth: '#f2a2a8', cloth2: '#fff6ee', eye: '#5a3a24', acc: ['apron', 'lash'] },
+  wang: { skirt: 1, n: '王阿姨', skin: '#f8d6b8', hair: '#7a4a2a', style: 'bun', cloth: '#f2a2a8', cloth2: '#fff6ee', eye: '#5a3a24', acc: ['apron', 'lash'] },
   lin: { n: '林先生', skin: '#f1cfae', hair: '#2e2a2a', style: 'part', cloth: '#3f4d75', cloth2: '#f4f0e6', eye: '#3a2a20', acc: ['squareGlasses', 'mustache', 'tie', 'suit'] },
   pang: { n: '小胖', skin: '#fbd9bc', hair: '#3b2a1f', style: 'short', cloth: '#f2b632', cloth2: '#fff', eye: '#4a2e1c', acc: ['cap', 'freckle', 'cream'], kid: true },
   zhe: { n: '阿哲', skin: '#f3d0ae', hair: '#5a3a24', style: 'short', cloth: '#fbf6ee', cloth2: '#e98a5a', eye: '#4a2e1c', acc: ['bandana', 'flour'] },
-  ye: { n: '葉館長', skin: '#f6d5b8', hair: '#6a6470', style: 'bob', cloth: '#8a5a9a', cloth2: '#f4ead8', eye: '#4a3a5a', acc: ['pearl', 'lash'] },
+  ye: { skirt: 1, n: '葉館長', skin: '#f6d5b8', hair: '#6a6470', style: 'bob', cloth: '#8a5a9a', cloth2: '#f4ead8', eye: '#4a3a5a', acc: ['pearl', 'lash'] },
   zhou: { n: '老周', skin: '#eac4a0', hair: '#8e8a86', style: 'short', cloth: '#3e5a7a', cloth2: '#d9e2ea', eye: '#3a3a3a', acc: ['guardCap', 'mustacheG', 'wrinkle'] },
   jin: { n: '金先生', skin: '#f5d3b0', hair: '#c79a3a', style: 'slick', cloth: '#d9a548', cloth2: '#fff6dc', eye: '#6a4a1a', acc: ['monocle', 'bowRed', 'suit'] },
-  lan: { n: '小蘭', skin: '#f6d4b4', hair: '#2f2a2e', style: 'pony', cloth: '#6fae7a', cloth2: '#f4f0e6', eye: '#3a2a20', acc: ['scarf', 'lash'] },
+  lan: { skirt: 1, n: '小蘭', skin: '#f6d4b4', hair: '#2f2a2e', style: 'pony', cloth: '#6fae7a', cloth2: '#f4f0e6', eye: '#3a2a20', acc: ['scarf', 'lash'] },
   li: { n: '郵差小李', skin: '#f3d0ae', hair: '#3b2a1f', style: 'short', cloth: '#3f7f5a', cloth2: '#f4ead8', eye: '#4a2e1c', acc: ['postCap', 'button'] },
-  mei: { n: '阿美', skin: '#f8d8bc', hair: '#c4502c', style: 'twin', cloth: '#4fa3d8', cloth2: '#fff', eye: '#5a3a24', acc: ['blush', 'lash'] },
+  mei: { skirt: 1, n: '阿美', skin: '#f8d8bc', hair: '#c4502c', style: 'twin', cloth: '#4fa3d8', cloth2: '#fff', eye: '#5a3a24', acc: ['blush', 'lash'] },
   wu: { n: '老吳', skin: '#efc9a6', hair: '#d9d4cc', style: 'bald', cloth: '#8c5634', cloth2: '#f4ead8', eye: '#4a3a2a', acc: ['beard', 'roundGlasses', 'wrinkle'] },
   mayor: { n: '鎮長', skin: '#f3cfab', hair: '#5a4a3a', style: 'short', cloth: '#3b3a4a', cloth2: '#fff', eye: '#3a2a20', acc: ['topHat', 'sash', 'mustache', 'suit'] },
   // 事件 4
   chen: { n: '陳站長', skin: '#eec8a4', hair: '#4a4a52', style: 'short', cloth: '#2e4a7a', cloth2: '#f4f0e6', eye: '#3a2a20', acc: ['stationCap', 'mustacheG', 'suit', 'wrinkle'] },
-  yu: { n: '魚老闆', skin: '#e9bf98', hair: '#2a2420', style: 'bald', cloth: '#4f9e9a', cloth2: '#f4f0e6', eye: '#3a2a20', acc: ['headband', 'apronB', 'beardS'] },
-  ning: { n: '寧寧', skin: '#fbe0c8', hair: '#5a3424', style: 'twin', cloth: '#f08ab0', cloth2: '#fff', eye: '#5a3a24', acc: ['blush', 'lash', 'ribbon'], kid: true },
-  bai: { n: '白小姐', skin: '#f9e0cc', hair: '#e8e0d4', style: 'bob', cloth: '#5a6aa8', cloth2: '#f4ead8', eye: '#4a5a8a', acc: ['lash', 'hatW', 'pearl'] },
-  gao: { n: '高同學', skin: '#f3cfae', hair: '#1e1a1a', style: 'short', cloth: '#d94a3a', cloth2: '#fff', eye: '#2a1a10', acc: ['squareGlasses', 'backpack'] },
+  yu: { shoe: '#2e4a5a', n: '魚老闆', skin: '#e9bf98', hair: '#2a2420', style: 'bald', cloth: '#4f9e9a', cloth2: '#f4f0e6', eye: '#3a2a20', acc: ['headband', 'apronB', 'beardS'] },
+  ning: { skirt: 1, shoe: '#f08ab0', n: '寧寧', skin: '#fbe0c8', hair: '#5a3424', style: 'twin', cloth: '#f08ab0', cloth2: '#fff', eye: '#5a3a24', acc: ['blush', 'lash', 'ribbon'], kid: true },
+  bai: { skirt: 1, n: '白小姐', skin: '#f9e0cc', hair: '#e8e0d4', style: 'bob', cloth: '#5a6aa8', cloth2: '#f4ead8', eye: '#4a5a8a', acc: ['lash', 'hatW', 'pearl'] },
+  gao: { shoe: '#f4f0e6', n: '高同學', skin: '#f3cfae', hair: '#1e1a1a', style: 'short', cloth: '#d94a3a', cloth2: '#fff', eye: '#2a1a10', acc: ['squareGlasses', 'backpack'] },
 };
 
 const Face = {
-  draw(who, e = 'n') {
+  draw(who, e = 'n', live) {
     const P = PEOPLE[who];
     if (!P) return '';
     if (P.cat) return `<svg viewBox="-110 -170 220 190">${A.cat(0, 0, 1.4, 'sit', true)}</svg>`;
     if (P.sil) return `<svg viewBox="0 0 200 240"><defs><radialGradient id="silG" cx="50%" cy="40%" r="60%"><stop offset="0" stop-color="#4a3a5a"/><stop offset="1" stop-color="#1e1626"/></radialGradient></defs><path d="M22 240q2-74 78-82q76 8 78 82z" fill="url(#silG)"/><path d="M40 112q-6-70 60-74q66 4 60 74q-4 50-60 54q-56-4-60-54z" fill="url(#silG)"/><path d="M30 76q70-40 140 0l-8 14q-62-30-124 0z" fill="#2a2032"/><ellipse cx="78" cy="104" rx="10" ry="5" fill="#9cf0b8" class="glowE"/><ellipse cx="122" cy="104" rx="10" ry="5" fill="#9cf0b8"/><text x="100" y="212" font-size="56" text-anchor="middle" fill="#9cf0b8" font-weight="900" opacity=".85">?</text></svg>`;
-    return `<svg viewBox="0 0 200 240">${this.body(P, e, true)}</svg>`;
+    const lid = live ? this.lids(P, e) : '';
+    return `<svg viewBox="0 0 200 240">${this.body(P, e)}</svg>` + (lid ? `<svg class="lidL" viewBox="0 0 200 240">${lid}</svg>` : '');
   },
   body(P, e, anim) {
     const s = SW, sk = P.skin, hr = P.hair, acc = P.acc || [], kid = P.kid;
@@ -140,4 +141,35 @@ const Face = {
     if (acc.includes('headband')) o += `<path d="M48 ${hy - 20}q52-26 104 0l-2 10q-50-22-100 0z" fill="#f4f0e6" ${s}/><path d="M146 ${hy - 18}l16 6-4 10z" fill="#f4f0e6" ${SW2}/>`;
     return o;
   },
+  // 全身（站著的小人）：腳、腿、手臂＋上半身。viewBox 0 0 200 330（小孩腿比較短，一樣的框）
+  fig(P, e = 'n') {
+    const s = SW, kid = P.kid, cl = P.cloth, clD = shade(cl, -0.3), pants = P.pants || (P.skirt ? shade(P.skin, -0.05) : shade(cl, -0.55)), sk = P.skin;
+    const legL = kid ? 44 : 64, top = 228, foot = top + legL + 12;
+    let o = `<ellipse cx="100" cy="${foot + 12}" rx="70" ry="9" fill="#1e0d04" opacity=".22"/>`;
+    // 腿
+    if (P.skirt) {
+      o += `<path d="M76 ${top}v${legL + 4}M124 ${top}v${legL + 4}" stroke="${K}" stroke-width="17" stroke-linecap="round"/><path d="M76 ${top}v${legL + 4}M124 ${top}v${legL + 4}" stroke="${shade(sk, -0.05)}" stroke-width="11" stroke-linecap="round"/>`;
+      o += `<path d="M76 ${top + legL * 0.55}v${legL * 0.45 + 4}M124 ${top + legL * 0.55}v${legL * 0.45 + 4}" stroke="#fffaf0" stroke-width="11" stroke-linecap="round" opacity=".9"/>`;
+    } else {
+      o += `<path d="M58 ${top - 8}h84l-4 ${legL + 10}h-30l-8-${legL - 8}-8 ${legL - 8}h-30z" fill="${pants}" ${s}/><path d="M100 ${top + 4}v14" stroke="${shade(pants, -0.3)}" stroke-width="2"/><path d="M66 ${top + 6}l-2 ${legL}" stroke="#fff" stroke-opacity=".12" stroke-width="5"/>`;
+    }
+    // 鞋子
+    const shoe = P.shoe || (P.skirt ? '#c4502c' : '#3a2a22');
+    o += `<path d="M${P.skirt ? 60 : 56} ${foot - 4}q0-12 16-12h8q4 0 4 12z" fill="${shoe}" ${s}/><path d="M${P.skirt ? 112 : 112} ${foot - 4}q0-12 8-12h8q16 0 16 12z" fill="${shoe}" ${s}/><path d="M66 ${foot - 12}h12M122 ${foot - 12}h12" stroke="#fff" stroke-opacity=".3" stroke-width="3" stroke-linecap="round"/>`;
+    // 裙子
+    if (P.skirt) o += `<path d="M44 ${top - 14}h112l14 ${legL * 0.5 + 8}q-70 14-140 0z" fill="${clD}" ${s}/><path d="M66 ${top - 8}l-6 ${legL * 0.5 + 8}M100 ${top - 8}v${legL * 0.5 + 12}M134 ${top - 8}l6 ${legL * 0.5 + 8}" stroke="${shade(clD, -0.25)}" stroke-width="2.5"/>`;
+    // 手臂（在身體兩側）
+    const arm = (x, d) => `<path d="M${x} 188q${d * 16} 18 ${d * 16} 64" stroke="${K}" stroke-width="25" stroke-linecap="round" fill="none"/><path d="M${x} 188q${d * 16} 18 ${d * 16} 64" stroke="${cl}" stroke-width="19" stroke-linecap="round" fill="none"/><path d="M${x + d * 6} 196q${d * 8} 14 ${d * 9} 46" stroke="#fff" stroke-opacity=".18" stroke-width="5" fill="none" stroke-linecap="round"/><circle cx="${x + d * 16}" cy="258" r="10.5" fill="${sk}" ${s}/>`;
+    o += `<svg width="200" height="240" viewBox="0 0 200 240" overflow="visible">${this.body(P, e)}</svg>`;
+    o += arm(40, -1) + arm(160, 1);
+    if (!P.skirt) o += `<path d="M30 ${top - 2}h140" stroke="${shade(cl, -0.4)}" stroke-width="5" opacity=".7"/>`;
+    return o;
+  },
+  // 閉上的眼皮（另一個圖層，用透明度眨眼，手機上很省）
+  lids(P, e = 'n') {
+    if (e === 'h' || e === 'c' || e === 's' || !P.skin) return '';
+    const hy = P.kid ? 112 : 100, ey = hy + 4, sk = P.skin;
+    return [78, 122].map(x => `<ellipse cx="${x}" cy="${ey}" rx="9.5" ry="10.5" fill="${sk}"/><path d="M${x - 8} ${ey + 2}q8 5 16 0" stroke="#2a1a10" stroke-width="3" fill="none" stroke-linecap="round"/>`).join('');
+  },
 };
+
