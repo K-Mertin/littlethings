@@ -47,9 +47,10 @@ function startStage(n) {
   G.enemies = []; G.eb = []; G.pb = []; G.items = []; G.fx = []; G.decals = []; G.beams = []; G.queue = [];
   G.phase = 'fight'; G.seqI = 0; G.nextWave = 2.6; G.boss = null; G.bombT = 0;
   G.stageKills = G.kills; G.stageMedals = G.medals; G.stageMiss = G.miss; G.bonusGiven = false; G.medalChain = 0;
-  G.speed = n === 4 ? 60 : 46;
+  G.speed = STAGES[n].speed || 46;
   G.banner = { t: 0, big: 'STAGE ' + (n + 1) + (G.round > 1 ? '-2' : ''), small: STAGES[n].name, en: STAGES[n].en };
-  if (n === 4) SkyClouds.init();
+  if (STAGES[n].clouds) SkyClouds.init();
+  G.amb = [];
   playerEnter(); P.inv = 1.6;
   Music.play('s' + n);
   if (n + 1 > Store.data.reached) { Store.data.reached = n + 1; Store.save(); }
@@ -116,7 +117,8 @@ function update(dt) {
     G.t += dt; G.st += dt;
     G.scroll += G.speed * dt; Terrain.ensure(G.scroll); Terrain.work(3);
     for (const s of Terrain.takeStatics(G.scroll)) spawn(s.type, s.x, s.y);
-    if (G.stage === 4) SkyClouds.update(dt, G.speed);
+    if (STAGES[G.stage].clouds) SkyClouds.update(dt, G.speed);
+    if (STAGES[G.stage].amb) ambUpdate(dt);
     runScript(dt);
     updatePlayer(dt); updatePB(dt); updateEnemies(dt); updateEB(dt); updateItems(dt);
     if (G.bombT > 0) bombTick(dt);
@@ -153,7 +155,7 @@ function draw() {
     drawDecals(ctx);
     drawEnemies(ctx, 'ground');
     drawFX(ctx, true);
-    if (G.stage === 4) SkyClouds.draw(ctx);
+    if (STAGES[G.stage].clouds) SkyClouds.draw(ctx);
     drawEnemyShadows(ctx);
     if (P.alive) Art.shadow(ctx, 'player', P.x, P.y, 0, 0.7);
     drawItems(ctx);
@@ -161,6 +163,7 @@ function draw() {
     drawPB(ctx);
     drawPlayer(ctx);
     drawFX(ctx, false);
+    if (STAGES[G.stage].amb) ambDraw(ctx);
     drawEB(ctx);
     drawPlayerHitbox(ctx);
     drawJetWarn(ctx);
