@@ -3,15 +3,20 @@
 (() => {
   const bust = (who, x, y, sc = 1, e = 'n') => `<svg x="${x}" y="${y}" width="${200 * sc}" height="${240 * sc}" viewBox="0 0 200 240">${Face.body(PEOPLE[who], e)}</svg>`;
   // 鞋底：kind = star 星星球鞋、heel 高跟、boot 雨鞋；len = 公分
+  // 所有鞋底用同一個比例尺畫（方便比大小）：viewBox 0 0 130 200，最大 27 公分
   const sole = (kind, len, dusty) => {
-    const h = len * 5.4, w = h * 0.38, x = 60, y = 150 - h / 2;
-    let o = `<path d="M${x} ${y}c${w * 0.7} 0 ${w * 0.62} ${h * 0.34} ${w * 0.5} ${h * 0.52}c-${w * 0.06} ${h * 0.14} ${w * 0.12} ${h * 0.44} -${w * 0.5} ${h * 0.48}c-${w * 0.62} -${h * 0.04} -${w * 0.44} -${h * 0.34} -${w * 0.5} -${h * 0.48}c-${w * 0.12} -${h * 0.18} -${w * 0.2} -${h * 0.52} ${w * 0.5} -${h * 0.52}z" fill="${dusty ? '#9a8a7a' : '#5a4a3e'}" opacity="${dusty ? 0.75 : 1}" ${dusty ? '' : SW2}/>`;
+    const h = len * 5.6, w = h * 0.38, x = 74, cy = 92, y = cy - h / 2;
+    let o = dusty ? `<rect width="130" height="200" rx="10" fill="#e8dcc4"/>` + [...Array(14)].map((_, i) => `<circle cx="${(i * 37) % 130}" cy="${(i * 53) % 200}" r="${1 + i % 3}" fill="#c9b89a" opacity=".6"/>`).join('') : '';
+    o += `<path d="M${x} ${y}c${w * 0.7} 0 ${w * 0.62} ${h * 0.34} ${w * 0.5} ${h * 0.52}c-${w * 0.06} ${h * 0.14} ${w * 0.12} ${h * 0.44} -${w * 0.5} ${h * 0.48}c-${w * 0.62} -${h * 0.04} -${w * 0.44} -${h * 0.34} -${w * 0.5} -${h * 0.48}c-${w * 0.12} -${h * 0.18} -${w * 0.2} -${h * 0.52} ${w * 0.5} -${h * 0.52}z" fill="${dusty ? '#9a8a7a' : '#5a4a3e'}" opacity="${dusty ? 0.8 : 1}" ${dusty ? '' : SW2}/>`;
     const pc = dusty ? '#efe4d0' : '#d8c8b0';
-    if (kind === 'star') { [[0, 0.2], [-0.25, 0.36], [0.22, 0.4], [0, 0.55], [0, 0.82]].forEach(([dx, dy]) => o += A.star(x + dx * w, y + dy * h, w * 0.16, pc)); }
+    if (kind === 'star') { [[0, 0.2], [-0.25, 0.36], [0.22, 0.4], [0, 0.55], [0, 0.82]].forEach(([dx, dy]) => o += A.star(x + dx * w, y + dy * h, w * 0.17, pc)); }
     if (kind === 'heel') { o += `<rect x="${x - w * 0.22}" y="${y + h * 0.78}" width="${w * 0.44}" height="${h * 0.16}" rx="4" fill="${pc}"/>`; for (let i = 0; i < 4; i++) o += `<circle cx="${x}" cy="${y + h * (0.2 + i * 0.1)}" r="${w * 0.08}" fill="${pc}"/>`; }
     if (kind === 'boot') for (let i = 0; i < 9; i++) o += `<path d="M${x - w * 0.36} ${y + h * (0.1 + i * 0.095)}h${w * 0.72}" stroke="${pc}" stroke-width="4"/>`;
-    o += `<path d="M14 ${150 - h / 2}v${h}" stroke="#7a5638" stroke-width="2"/><path d="M8 ${150 - h / 2}h12M8 ${150 + h / 2}h12" stroke="#7a5638" stroke-width="2"/>` + A.txt(16, 150 + h / 2 + 20, len + ' 公分', 14, '#7a5638', 'start', 900);
-    return `<svg viewBox="0 0 120 290">${o}</svg>`;
+    // 尺：每 5 公分一格
+    o += `<path d="M18 ${y}v${h}" stroke="#7a5638" stroke-width="2.5"/><path d="M11 ${y}h14M11 ${y + h}h14" stroke="#7a5638" stroke-width="2.5"/>`;
+    for (let c = 5; c < len; c += 5) o += `<path d="M14 ${y + h - c * 5.6}h8" stroke="#7a5638" stroke-width="1.5"/>`;
+    o += A.txt(65, 194, len + ' 公分', 17, '#7a5638', 'middle', 900);
+    return `<svg viewBox="0 0 130 200">${o}</svg>`;
   };
   const scene = s => {
     let o = `<rect width="1000" height="625" fill="#efe2c8"/><rect width="1000" height="625" fill="url(#p-noise)"/><rect width="1000" height="40" fill="#8c5634"/><rect y="40" width="1000" height="10" fill="#6b4a33"/>`;
@@ -23,13 +28,16 @@
     // 站長室
     o += `<rect x="40" y="110" width="260" height="360" fill="#d9c8a8" ${SW}/><rect x="40" y="110" width="260" height="360" fill="url(#p-wood)"/><rect x="200" y="250" width="80" height="220" fill="#8c5634" ${SW2}/><circle cx="268" cy="360" r="6" fill="url(#brass)"/>` + A.txt(170, 140, '站長室', 20, '#6b4a33', 'middle', 900) + `<rect x="80" y="160" width="90" height="60" fill="#cfeaf2" ${SW2}/><path d="M80 160l45-24 45 24" fill="none" ${SW2}/><rect x="80" y="160" width="90" height="60" fill="url(#glass)"/>`;
     // 被搬過去的長椅
-    o += `<g filter="url(#ds)"><rect x="60" y="300" width="140" height="18" rx="4" fill="#a8703f" ${SW}/><path d="M74 318v40M186 318v40" stroke="#6b4a33" stroke-width="10"/></g><g transform="translate(118 309) rotate(80) scale(.32)" opacity=".7"><svg x="-60" y="-145" width="120" height="290" viewBox="0 0 120 290">${sole('star', 23, 1).replace(/^<svg[^>]*>|<\/svg>$/g, '')}</svg></g><path d="M200 470l-60-110M60 470l10-110" stroke="#9a8a7a" stroke-width="3" stroke-dasharray="6 8" opacity=".6"/>`;
+    o += `<g filter="url(#ds)"><rect x="60" y="300" width="140" height="18" rx="4" fill="#a8703f" ${SW}/><path d="M74 318v40M186 318v40" stroke="#6b4a33" stroke-width="10"/></g><g transform="translate(118 309) rotate(80) scale(.32)" opacity=".7"><svg x="-65" y="-100" width="130" height="200" viewBox="0 0 130 200">${sole('star', 23, 1).replace(/^<svg[^>]*>|<\/svg>$/g, '')}</svg></g><path d="M200 470l-60-110M60 470l10-110" stroke="#9a8a7a" stroke-width="3" stroke-dasharray="6 8" opacity=".6"/>`;
     // 售票口
     o += `<rect x="330" y="300" width="250" height="170" fill="#a8703f" ${SW}/><rect x="350" y="320" width="100" height="70" rx="8" fill="#cfeaf2" ${SW2}/>` + A.txt(400, 412, '售票口', 16, '#fff3dc', 'middle', 900) + `<rect x="470" y="330" width="90" height="50" rx="3" fill="#fffaf0" ${SW2}/><path d="M480 345h70M480 358h56M480 370h62" stroke="#9aa" stroke-width="2"/>`;
     // 人物
-    o += bust('chen', 210, 230, 0.55) + bust('gao', 590, 300, 0.55) + bust('bai', 760, 300, 0.55) + bust('yu', 880, 280, 0.55) + bust('ning', 470, 360, 0.42);
-    o += `<g filter="url(#ds)"><rect x="740" y="420" width="130" height="60" rx="6" fill="#5a6aa8" ${SW}/><path d="M780 420v-12h50v12" fill="none" ${SW2}/></g><g filter="url(#ds)"><rect x="880" y="430" width="100" height="50" rx="6" fill="#e8f4f8" ${SW}/>${A.txt(930, 462, '冰', 22, '#4f8ad8', 'middle', 900)}</g>`;
-    o += `<g filter="url(#ds)"><rect x="640" y="420" width="70" height="56" rx="10" fill="#2a3a5a" ${SW}/><rect x="650" y="430" width="50" height="22" rx="4" fill="#c4502c" ${SW2}/></g>`;
+    const H = null;
+    A.person('chen', 196, 300, 0.55, { full: 1, hop: H === 'chen' });
+    A.person('ning', 476, 343, 0.45, { full: 1, e: 'h', hop: H === 'ning' });
+    A.person('gao', 576, 300, 0.55, { full: 1, hop: H === 'gao', front: `<g filter="url(#ds)"><rect x="640" y="420" width="70" height="56" rx="10" fill="#2a3a5a" ${SW}/><rect x="650" y="430" width="50" height="22" rx="4" fill="#c4502c" ${SW2}/><path d="M660 420q15-16 30 0" fill="none" stroke="#2a3a5a" stroke-width="6"/>${s.bagSeen ? '' : `<rect x="668" y="404" width="16" height="22" rx="3" fill="#b8a07a" ${SW2}/>`}</g>` });
+    A.person('bai', 748, 300, 0.55, { full: 1, hop: H === 'bai', front: `<g filter="url(#ds)"><rect x="740" y="420" width="130" height="60" rx="6" fill="#5a6aa8" ${SW}/><path d="M780 420v-12h50v12" fill="none" ${SW2}/><path d="M748 440h114" stroke="#fff" stroke-opacity=".25" stroke-width="4"/><circle cx="756" cy="482" r="5" fill="#2a2a32"/><circle cx="854" cy="482" r="5" fill="#2a2a32"/></g>` });
+    A.person('yu', 862, 296, 0.56, { full: 1, hop: H === 'yu', front: `<g filter="url(#ds)"><rect x="880" y="430" width="100" height="50" rx="6" fill="#e8f4f8" ${SW}/>${A.txt(930, 462, '冰', 22, '#4f8ad8', 'middle', 900)}<path d="M888 438h84" stroke="#fff" stroke-width="4"/></g>` });
     return o + A.light();
   };
   CASES.push({
@@ -40,7 +48,7 @@
       record: { n: '售票紀錄', d: '售票員的紀錄：「<b>10:22</b> 售出學生票一張，到海港市，10:45 發車。」今天早上只賣出這一張學生票。', ic: () => IC.paper('#fffaf0', '#4f8ad8', -4) },
       talk: { n: '站長的話', d: '「懷錶最近<b>每天慢五分鐘</b>，害我差點誤點。10:20 我去月台幫魚老闆搬冰塊，10:35 回來，錶就不見了。」', ic: () => `<circle cx="50" cy="50" r="30" fill="url(#brass)" ${SW}/><circle cx="50" cy="50" r="22" fill="#fffaf0" ${SW2}/><path d="M50 50V36M50 50l8 6" ${SW2}/><rect x="44" y="12" width="12" height="10" rx="3" fill="url(#brass)" ${SW2}/>` },
       bag: { n: '高同學的工具袋', d: '從背包露出來的帆布工具袋，繡著「老吳鐘錶行・學徒」。裡面有一組<b>修錶用的迷你螺絲起子</b>，最小的那把剛好能轉錶盒裡那種螺絲。', ic: () => `<rect x="18" y="30" width="64" height="48" rx="8" fill="#b8a07a" ${SW}/><path d="M30 30v-10M44 30v-14M58 30v-8M70 30v-12" stroke="#4a3222" stroke-width="4" stroke-linecap="round"/>${A.txt(50, 62, '學徒', 14, '#4a3222', 'middle', 900)}` },
-      shoe: { n: '鞋印比對結果', d: '長椅上的鞋印（星星花紋、23 公分），和<b>高同學的球鞋</b>一模一樣。', ic: () => `<svg x="25" y="5" width="50" height="90" viewBox="0 0 120 290">${sole('star', 23).replace(/^<svg[^>]*>|<\/svg>$/g, '')}</svg>` },
+      shoe: { n: '鞋印比對結果', d: '長椅上的鞋印（星星花紋、23 公分），和<b>高同學的球鞋</b>一模一樣。', ic: () => `<svg x="18" y="2" width="64" height="96" viewBox="0 0 130 200">${sole('star', 23).replace(/^<svg[^>]*>|<\/svg>$/g, '')}</svg>` },
     },
     intro: [
       { big: 1, t: '事件 4　車站的金懷錶' },
@@ -56,12 +64,12 @@
         { id: 'office', r: [40, 110, 260, 180], ev: 'box', t: '站長帶你進站長室。桌上的空錶盒裡，絨布上掉著一顆小小的螺絲──只有打開懷錶的背蓋才會掉出來。' },
         { id: 'bench', r: [55, 290, 150, 80], ev: 'bench', t: '長椅被搬到了小窗正下方，椅面上有一個灰灰的鞋印：星星花紋、23 公分。站上去，剛好搆得到小窗。' },
         { id: 'ticket', r: [330, 300, 250, 170], ev: 'record', t: '售票員翻開紀錄：「10:22 賣出一張到海港市的學生票。今天早上只賣出這一張學生票喔。」' },
-        { id: 'chen', r: [215, 232, 110, 130], ev: 'talk', t: '站長說：「懷錶最近每天慢五分鐘，害我差點誤點。10:20 我去月台幫魚老闆搬冰塊，10:35 回來，錶就不見了。」' },
+        { id: 'chen', r: [206, 302, 100, 170], ev: 'talk', t: '站長說：「懷錶最近每天慢五分鐘，害我差點誤點。10:20 我去月台幫魚老闆搬冰塊，10:35 回來，錶就不見了。」' },
         { id: 'bag', r: [636, 410, 80, 70], ev: 'bag', t: '高同學的背包口袋露出一個帆布工具袋，繡著「老吳鐘錶行・學徒」。裡面是一組修錶用的迷你螺絲起子。' },
-        { id: 'gao', r: [592, 300, 110, 110], talk: [{ w: 'gao', t: '「我要搭 10:45 的火車去海港市，參加少年鐘錶比賽。」' }, { w: 'gao', e: 'w', t: '「懷錶？我、我不知道啦。」' }] },
-        { id: 'bai', r: [762, 300, 110, 110], talk: [{ w: 'bai', t: '「我在看書等車，沒注意到什麼。只記得長椅一直被誰拖來拖去，好吵。」' }] },
-        { id: 'yu', r: [882, 282, 110, 120], talk: [{ w: 'yu', e: 'h', t: '「站長一直在月台幫我搬冰塊，十點二十到三十五，一步都沒離開！」' }, { w: 'yu', t: '「我穿的是雨鞋，可沒有什麼星星。」' }] },
-        { id: 'ning', r: [472, 362, 90, 100], talk: [{ w: 'ning', e: 'h', t: '「我的鞋子也有星星喔！可是我才 18 公分。」' }, { w: 'ning', t: '「剛剛有一個大哥哥站在椅子上，好像在偷看什麼。」' }] },
+        { id: 'gao', r: [588, 302, 96, 120], talk: [{ w: 'gao', t: '「我要搭 10:45 的火車去海港市，參加少年鐘錶比賽。」' }, { w: 'gao', e: 'w', t: '「懷錶？我、我不知道啦。」' }] },
+        { id: 'bai', r: [760, 302, 96, 118], talk: [{ w: 'bai', t: '「我在看書等車，沒注意到什麼。只記得長椅一直被誰拖來拖去，好吵。」' }] },
+        { id: 'yu', r: [872, 298, 96, 130], talk: [{ w: 'yu', e: 'h', t: '「站長一直在月台幫我搬冰塊，十點二十到三十五，一步都沒離開！」' }, { w: 'yu', t: '「我穿的是雨鞋，可沒有什麼星星。」' }] },
+        { id: 'ning', r: [478, 345, 84, 128], talk: [{ w: 'ning', e: 'h', t: '「我的鞋子也有星星喔！可是我才 18 公分。」' }, { w: 'ning', t: '「剛剛有一個大哥哥站在椅子上，好像在偷看什麼。」' }] },
         { id: 'clock', c: [500, 110, 46], t: '候車室的大鐘：10:40。再五分鐘火車就要來了。' },
         { id: 'board', r: [420, 170, 160, 110], t: '發車時刻表：10:15 往山城、10:45 往海港市。' },
       ],
@@ -69,7 +77,7 @@
     stages: [
       { type: 'inv', need: ['box', 'bench', 'record', 'talk', 'bag'], goal: '調查現場', h: ['站長室、長椅、售票口、站長本人、還有大家的行李都看看。要收集 5 件證物。', '高同學的背包口袋好像露出了什麼。', '五件證物：錶盒和小螺絲、被搬動的長椅、售票紀錄、站長的話、高同學的工具袋。'],
         after: ['長椅上那個星星鞋印，是誰的呢？先比對一下大家的鞋子吧。'] },
-      { type: 'pick', title: '比對鞋印', sub: '長椅上的鞋印：<b>星星花紋、23 公分</b>。大家把鞋子翻過來給你看，哪一雙最像？', goal: '比對鞋印', ref: sole('star', 23, 1), ans: 'gao', give: 'shoe',
+      { type: 'pick', title: '比對鞋印', sub: '長椅上的鞋印：<b>星星花紋、23 公分</b>。大家把鞋子翻過來給你看，哪一雙最像？', goal: '比對鞋印', ref: sole('star', 23, 1), refLbl: '長椅上的鞋印', ans: 'gao', give: 'shoe',
         opts: [{ id: 'ning', n: '寧寧', html: sole('star', 18) }, { id: 'gao', n: '高同學', html: sole('star', 23) }, { id: 'bai', n: '白小姐', html: sole('heel', 23) }, { id: 'yu', n: '魚老闆', html: sole('boot', 27) }],
         wrongMsg: '花紋或大小對不上，再仔細比比看。', okMsg: '一模一樣！',
         win: [{ w: 'gao', e: 's', t: '「欸？我、我只是站上去而已！」' }, { w: 'gao', e: 'w', t: '「聽我說！我真的什麼都沒做！」' }],

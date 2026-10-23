@@ -79,7 +79,7 @@
       return { seq: q.map(k => ['紅', '藍', '綠', '黃'][k]), lock, song: songs[rInt(r, 1, songs.length - 1)] };
     },
     note: { v: 's', x: 658, y: 126, s: 0.95 },
-    amb: (v, s) => { if (v === 's' && s.recOn) { A.fx(`<g transform="translate(410 282)"><g class="spin" style="animation-duration:1.8s"><ellipse rx="70" ry="13" fill="none" stroke="#fff" stroke-opacity=".25" stroke-width="3" stroke-dasharray="20 30"/></g></g>`); [0, 1, 2].forEach(i => A.fx(`<g class="steam" style="animation-duration:3s;animation-delay:-${i}s">${A.txt(640 + i * 30, 160, '♪', 30, '#ffe9a0')}</g>`)); } return ''; },
+    amb: (v, s) => { if (v === 's' && s.recOn) { A.fx(`<g class="spin" style="animation-duration:1.8s"><g transform="translate(410 282)"><ellipse rx="70" ry="13" fill="none" stroke="#fff" stroke-opacity=".25" stroke-width="3" stroke-dasharray="20 30"/></g></g>`); [0, 1, 2].forEach(i => A.fx(`<g class="steam" style="animation-duration:3s;animation-delay:-${i}s">${A.txt(640 + i * 30, 160, '♪', 30, '#ffe9a0')}</g>`)); } return ''; },
     intro: [
       '一走進音樂室，腳步聲就被厚厚的地毯吸走了。鋼琴、留聲機、牆上的小提琴……全都靜悄悄的。',
       { w: 'mochi', t: '喵？', sfx: 'meow' },

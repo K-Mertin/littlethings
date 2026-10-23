@@ -11,16 +11,16 @@
     // 價目牌
     o += `<rect x="740" y="50" width="200" height="120" rx="8" fill="#3b2a2a" ${SW}/>` + A.txt(840, 82, '今日蛋糕', 18, '#ffe9a0', 'middle', 900) + A.txt(840, 112, '6 吋草莓蛋糕', 17, '#fff', 'middle', 700) + A.txt(840, 140, '直徑 15 公分', 15, '#ffd0c0', 'middle', 500) + A.txt(840, 160, '★ 售完 ★', 13, '#f6a0a0', 'middle', 700);
     // 後廚房門口（阿哲）
-    o += `<rect x="40" y="170" width="150" height="300" rx="6" fill="#fff6ee" ${SW}/><rect x="54" y="184" width="122" height="286" fill="#e9dcc8" ${SW2}/>` + bust('zhe', 55, 230, 0.6) + `<rect x="40" y="380" width="150" height="90" fill="#c9895a" ${SW}/>`;
+    o += `<rect x="40" y="170" width="150" height="300" rx="6" fill="#fff6ee" ${SW}/><rect x="54" y="184" width="122" height="286" fill="#e9dcc8" ${SW2}/>` + A.person('zhe', 55, 230, 0.6, { front: `<rect x="40" y="380" width="150" height="90" fill="#c9895a" ${SW}/><rect x="40" y="380" width="150" height="14" fill="#e9b07a" ${SW2}/>` });
     // 櫃台與蛋糕玻璃罩
     o += `<g filter="url(#ds)"><rect x="230" y="300" width="360" height="170" rx="8" fill="#fff6ee" ${SW}/><rect x="246" y="316" width="328" height="70" rx="6" fill="#dff0f2" ${SW2}/>${[0, 1, 2, 3].map(i => `<circle cx="${280 + i * 80}" cy="352" r="22" fill="${['#e9b45a', '#d9774b', '#f6d08a', '#c9895a'][i]}" ${SW2}/>`).join('')}</g>`;
-    o += bust('wang', 420, 150, 0.62);
+    o += A.person('wang', 420, 150, 0.62);
     o += `<ellipse cx="320" cy="296" rx="64" ry="12" fill="#fff" ${SW}/><path d="M262 296q0-90 58-90t58 90" fill="#dff0f2" fill-opacity=".55" ${SW}/><path d="M290 290q8-6 16 0" stroke="#f6a0b0" stroke-width="5"/>${A.sparkle(372, 214, 0.6)}`;
     // 小胖的桌子
-    o += A.table(620, 380, 120, 90, '#c9895a') + bust('pang', 618, 250, 0.55) + `<g transform="rotate(-8 660 370)"><rect x="628" y="356" width="56" height="40" rx="2" fill="#fff" ${SW2}/><path d="M636 384l10-14 8 8 10-16 10 22" stroke="#4f8ad8" stroke-width="3" fill="none"/></g><rect x="696" y="362" width="30" height="20" rx="2" fill="#fffaf0" ${SW2}/>`;
+    o += A.table(620, 380, 120, 90, '#c9895a') + A.person('pang', 618, 250, 0.55, { front: `<g transform="rotate(-8 660 370)"><rect x="628" y="356" width="56" height="40" rx="2" fill="#fff" ${SW2}/><path d="M636 384l10-14 8 8 10-16 10 22" stroke="#4f8ad8" stroke-width="3" fill="none"/></g><rect x="696" y="362" width="30" height="20" rx="2" fill="#fffaf0" ${SW2}/>` });
     // 林先生的窗邊座位
     o += A.win(800, 220, 160, 120, { curtain: '#e98a8a' });
-    o += A.table(780, 400, 190, 72, '#c9895a') + bust('lin', 810, 268, 0.6) + `<rect x="790" y="376" width="80" height="26" rx="2" fill="#f4f0e6" ${SW2} transform="rotate(-4 830 388)"/><path d="M800 386h60M800 394h40" stroke="#9aa" stroke-width="2"/>`;
+    o += A.table(780, 400, 190, 72, '#c9895a') + A.person('lin', 810, 268, 0.6, { front: `<rect x="790" y="376" width="80" height="26" rx="2" fill="#f4f0e6" ${SW2} transform="rotate(-4 830 388)"/><path d="M800 386h60M800 394h40" stroke="#9aa" stroke-width="2"/>` });
     o += `<g filter="url(#ds)"><rect x="900" y="440" width="80" height="60" rx="6" fill="#6a4a3a" ${SW}/><rect x="926" y="432" width="28" height="12" rx="4" fill="none" ${SW2}/><rect x="930" y="460" width="20" height="10" rx="2" fill="url(#brass)" ${SW2}/><circle cx="950" cy="465" r="4" fill="#f6a0b0"/></g>`;
     return o + A.light();
   };

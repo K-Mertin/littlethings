@@ -16,6 +16,14 @@ const Main = {
     $('#bChapters').onclick = () => { Snd.init(); this.showChapters('rooms'); };
     $('#bCases').onclick = () => { Snd.init(); this.showChapters('cases'); };
     $('#bAlbum').onclick = () => { Snd.init(); this.showAlbum(); };
+    $('#bDaily').onclick = () => { Snd.init(); const p = Daily.pick(); if (p) this.startRoom(p.room.id, true, false, p.day); };
+    // 小祕密：連點標題畫面上的鐘樓五下
+    $('#titleArt').addEventListener('click', e => {
+      const r = $('#titleArt').getBoundingClientRect(), sc = Math.max(r.width / 1000, r.height / 625), x = (e.clientX - r.left - (r.width - 1000 * sc) / 2) / sc, y = (e.clientY - r.top - (r.height - 625 * sc) / 2) / sc, hx = this._taw ? 690 : 500;
+      if (Math.abs(x - (hx + 115)) > 60 || y < 60 || y > 340) { this._bell = 0; return; }
+      Snd.init(); this._bell = (this._bell || 0) + 1; Snd.bell(NOTE([72, 76, 79, 84, 88][(this._bell - 1) % 5]), 0, 0.12, 1);
+      if (this._bell >= 5) { this._bell = 0; [0, 1, 2, 3, 4, 5, 6].forEach((k, i) => setTimeout(() => Snd.bell(NOTE([79, 76, 76, 77, 74, 74, 72][k]), 0, 0.12, 1.2), 200 + i * 260)); if (!Store.data.ach.secret) setTimeout(() => G.ach('secret'), 2100); }
+    });
     $('#bChapBack').onclick = () => this.showTitle();
     $('#bAlbBack').onclick = () => this.showTitle();
     $$('#chapTabs button').forEach(b => b.onclick = () => this.showChapters(b.dataset.tab));
@@ -32,12 +40,15 @@ const Main = {
   },
   screen(id) { G.leave(); $$('.screen').forEach(e => e.hidden = true); $(id).hidden = false; Music.set('title'); },
   showTitle() {
-    this.screen('#title');
+    this.screen('#title'); Amb.set(G.ambRate()); G.fpsWatch();
     const tot = ROOMS.reduce((a, r) => a + ((Store.data.prog[r.id] || {}).stars || 0), 0) + CASES.reduce((a, c) => a + ((Store.data.cases[c.id] || {}).stars || 0), 0);
     const cur = Store.data.cur;
     $('#bStart').textContent = cur ? '繼續解謎' : (Store.data.prog.r1 ? '繼續冒險' : '開始解謎');
     const nn = Object.keys(Store.data.notes).length, na = Object.keys(Store.data.ach).length;
-    $('#tStars').innerHTML = tot ? `★ ${tot} / ${(ROOMS.length + CASES.length) * 3}　♪ ${nn} / ${ROOMS.length}　🏅 ${na} / ${ACH.length}` : '一棟會唱歌的房子，十個房間，四件小鎮怪事。';
+    const dp = Daily.pick(), dh = dp && Daily.rec().hist[dp.day];
+    $('#bDaily').hidden = !dp;
+    if (dp) $('#bDaily').innerHTML = `${ICO('cal', 'in')} 今日謎題${dh && dh.done ? ` <small>${ICO('medal', 'in', dh.medal)}${fmtTime(dh.time)}</small>` : `<small>${esc(dp.room.name)}</small>`}`;
+    $('#tStars').innerHTML = tot ? `★ ${tot} / ${(ROOMS.length + CASES.length) * 3}　♪ ${nn} / ${ROOMS.length}　${ICO('medal', 'in', 3)} ${na} / ${ACH.length}` : '一棟會唱歌的房子，十個房間，五件小鎮怪事。';
   },
   quickStart() {
     const cur = Store.data.cur;
@@ -48,7 +59,7 @@ const Main = {
   },
   thumb(r, tab) {
     let t = '';
-    try { if (tab === 'rooms') { const st = r.init(), vw = r.thumb || r.walls[0]; t = r.views[vw].draw(st, { s: st }); if (r.deco) t = t.replace('<!--DECO-->', r.deco(vw, st) || ''); } else t = r.thumb(); t += A.flush(); } catch (e) { A.flush(); t = ''; }
+    try { if (tab === 'rooms') { const st = r.init(), vw = r.thumb || r.walls[0]; t = r.views[vw].draw(st, { s: st }); if (r.deco) t = t.replace('<!--DECO-->', r.deco(vw, st) || ''); } else t = r.thumb(); t += A.still(); } catch (e) { A.flush(); t = ''; }
     return t;
   },
   showChapters(tab) {
@@ -61,8 +72,8 @@ const Main = {
       if (tab === 'rooms' && r.bonus && !L[i - 1].bonus) html += '<div class="chSec">番外篇　地底下的祕密</div>';
       const p = P[r.id] || {}, un = this.unlocked(tab, i), res = cur && cur.id === r.id;
       const ch = Store.data.chal[r.id];
-      const meta = tab === 'rooms' && un ? `<div class="meta"><span class="${Store.data.notes[r.id] ? 'on' : ''}">♪ ${Store.data.notes[r.id] ? '已找到' : '隱藏音符'}</span>${ch ? `<span class="on">${['', '🥉', '🥈', '🥇'][ch.medal]} 挑戰 ${fmtTime(ch.best)}</span>` : ''}</div>` : '';
-      const acts = tab === 'rooms' && p.done ? `<div class="acts"><span data-a="play">重玩（新謎題）</span><span class="chalB" data-a="chal">⏱ 挑戰</span></div>` : '';
+      const meta = tab === 'rooms' && un ? `<div class="meta"><span class="${Store.data.notes[r.id] ? 'on' : ''}">♪ ${Store.data.notes[r.id] ? '已找到' : '隱藏音符'}</span>${ch ? `<span class="on">${ICO('medal', 'in', ch.medal)} 挑戰 ${fmtTime(ch.best)}</span>` : ''}</div>` : '';
+      const acts = tab === 'rooms' && p.done ? `<div class="acts"><span data-a="play">重玩（新謎題）</span><span class="chalB" data-a="chal">${ICO('watch', 'in')} 挑戰</span></div>` : '';
       html += `<button class="ch${un ? '' : ' lock'}" data-id="${r.id}"><svg viewBox="0 0 1000 625">${un ? this.thumb(r, tab) : this.thumb(r, tab)}</svg><span class="cnum">${r.bonus ? '番' : r.no}</span>${res ? '<span class="resume">進行中</span>' : ''}
         <div class="cb"><div class="cn">${tab === 'rooms' ? (r.bonus ? 'EXTRA ' : 'CHAPTER ') + r.no : 'CASE ' + r.no}</div><h4>${un ? r.name : '？？？'}</h4>
         <div class="cs"><span class="stars">${p.done ? starStr(p.stars) : '<i>★★★</i>'}</span><span>${p.done ? '最佳 ' + fmtTime(p.time) + ' · 提示 ' + p.hints : (un ? '尚未破關' : '')}</span></div>${meta}${acts}</div>
@@ -82,17 +93,19 @@ const Main = {
     let h = `<h3 class="albH">隱藏音符　${Object.keys(N).length} / ${ROOMS.length}</h3><p class="sub" style="color:#c9b29a;margin:0 4px 8px;font-size:13px">每個房間都藏著一個小小的金色音符，仔細看看角落吧！</p><div class="notesRow">`;
     ROOMS.forEach(r => h += `<div class="noteC${N[r.id] ? ' on' : ''}"><b>${N[r.id] ? '♪' : '？'}</b>${this.unlocked('rooms', ROOMS.indexOf(r)) ? esc(r.name) : '？？？'}</div>`);
     h += `</div><h3 class="albH">成就　${Object.keys(AC).length} / ${ACH.length}</h3><div class="achGrid">`;
-    ACH.forEach(a => h += `<div class="achC${AC[a.id] ? ' on' : ''}"><i>${a.ic}</i><div><b>${esc(a.n)}</b><small>${esc(a.d)}</small></div></div>`);
+    ACH.forEach(a => { const hid = a.hide && !AC[a.id]; h += `<div class="achC${AC[a.id] ? ' on' : ''}"><i>${ICO(hid ? 'lock' : a.ic, '', a.ia)}</i><div><b>${hid ? '？？？' : esc(a.n)}</b><small>${hid ? '隱藏成就：好像跟標題畫面有關……' : esc(a.d)}</small></div></div>`; });
     const chal = Object.entries(Store.data.chal);
-    h += `</div><h3 class="albH">挑戰紀錄</h3><div class="statRow">${chal.length ? chal.map(([id, c]) => { const r = ROOMS.find(x => x.id === id); return r ? `<span>${['', '🥉', '🥈', '🥇'][c.medal]} ${esc(r.name)}　${fmtTime(c.best)}</span>` : ''; }).join('') : '<span>破關後，可以在章節選擇按「⏱ 挑戰」：不能看提示、謎題答案隨機。</span>'}</div>`;
+    h += `</div><h3 class="albH">挑戰紀錄</h3><div class="statRow">${chal.length ? chal.map(([id, c]) => { const r = ROOMS.find(x => x.id === id); return r ? `<span>${ICO('medal', 'in', c.medal)} ${esc(r.name)}　${fmtTime(c.best)}</span>` : ''; }).join('') : '<span>破關後，可以在章節選擇按「挑戰」：不能看提示、謎題答案隨機。</span>'}</div>`;
+    const DR = Daily.rec(), dd = Object.values(DR.hist).filter(x => x.done);
+    h += `<h3 class="albH">今日謎題</h3><div class="statRow">${dd.length ? `<span>${ICO('flame', 'in')} 連續 ${DR.last === Daily.today() || DR.last === Daily.shift(Daily.today(), -1) ? DR.streak : 0} 天</span><span>最長連續 ${DR.best || 0} 天</span><span>一共完成 ${dd.length} 天</span><span>${ICO('medal', 'in', 3)} 金牌 ${dd.filter(x => x.medal === 3).length} 次</span>` : '<span>破完第一章以後，標題畫面會出現「今日謎題」：每天換一間房間和一組答案，不能看提示。</span>'}</div>`;
     h += `<h3 class="albH">小統計</h3><div class="statRow"><span>摸了麻糬 ${st.cat || 0} 次</span><span>破關章節 ${ROOMS.filter(r => (Store.data.prog[r.id] || {}).done).length} / ${ROOMS.length}</span><span>破案 ${CASES.filter(c => (Store.data.cases[c.id] || {}).done).length} / ${CASES.length}</span></div>`;
     $('#albBody').innerHTML = h;
   },
-  startRoom(id, fresh, chal) {
+  startRoom(id, fresh, chal, daily) {
     const R = ROOMS.find(r => r.id === id); const cur = Store.data.cur;
     const resume = !fresh && cur && cur.kind === 'room' && cur.id === id ? cur : null;
     if (!resume && cur && (cur.id !== id || fresh)) Store.data.cur = null;
-    const C = new RoomCtrl(R, resume, { chal });
+    const C = new RoomCtrl(R, resume, { chal, daily });
     this.lastKind = 'room';
     if (R.prep) R.prep(C);
     G.enter(C); Music.set(R.mood || 'warm');
@@ -114,18 +127,19 @@ const Main = {
   showClear(r) {
     this.screen('#clear');
     const isRoom = r.kind === 'room', L = isRoom ? ROOMS : CASES, i = L.indexOf(r.def);
-    $('#cLbl').textContent = isRoom ? (r.chal ? 'CHALLENGE CLEAR' : 'CHAPTER CLEAR') : 'CASE CLOSED';
+    $('#cLbl').textContent = isRoom ? (r.daily ? 'DAILY PUZZLE CLEAR' : r.chal ? 'CHALLENGE CLEAR' : 'CHAPTER CLEAR') : 'CASE CLOSED';
     $('#cName').textContent = r.def.name;
     $('#clearArt').innerHTML = this.thumb(r.def, isRoom ? 'rooms' : 'cases');
     $('#cStars').innerHTML = [0, 1, 2].map(k => k < r.stars ? '<b>★</b>' : '<i>★</i>').join('');
     $('#cStats').innerHTML = `<span><b>${fmtTime(r.time)}</b>用時</span><span><b>${r.chal ? '—' : r.hints}</b>看過的提示</span>${isRoom ? '' : `<span><b>${r.miss}</b>出示錯誤</span>`}`;
-    $('#cExtra').innerHTML = isRoom ? `<span class="${Store.data.notes[r.def.id] ? 'on' : ''}">♪ 隱藏音符${Store.data.notes[r.def.id] ? '找到了！' : '還沒找到'}</span>${r.chal ? `<span class="on"><i class="medal">${['', '🥉', '🥈', '🥇'][r.medal]}</i> ${['', '銅牌', '銀牌', '金牌'][r.medal]}</span>` : ''}` : '';
+    $('#cExtra').innerHTML = isRoom ? `<span class="${Store.data.notes[r.def.id] ? 'on' : ''}">♪ 隱藏音符${Store.data.notes[r.def.id] ? '找到了！' : '還沒找到'}</span>${r.chal ? `<span class="on"><i class="medal">${ICO('medal', '', r.medal)}</i> ${ICO.medalName[r.medal]}</span>` : ''}` : '';
     const next = L[i + 1];
     let note = `三顆星：提示看 1 則以內、${Math.round(r.def.par / 60)} 分鐘內${isRoom ? '' : '、出示錯誤少於 3 次'}。`;
     if (r.chal) note = `挑戰模式：${fmtTime(Math.round(r.def.par * 0.6))} 內金牌、${fmtTime(r.def.par)} 內銀牌。`;
     if (isRoom && r.def.id === 'r8') note = '你解開了八音盒之家所有的謎題！番外篇「地底下的祕密」解鎖了，「小鎮推理事件簿」也還有怪事在等你。';
     if (isRoom && !next) note = '番外篇也全部破解！重玩任何一章，謎題的答案都會變得不一樣喔。';
     if (!isRoom && !next) note = '全部事件都破案了！小鎮又恢復了平靜。';
+    if (r.daily) note = `今日謎題完成！已經連續 ${r.daily.streak} 天。明天會換一間房間、一組新的答案喔。`;
     $('#cNote').textContent = note;
     const b = $('#bNextCh');
     if (next) { b.textContent = isRoom ? (next.bonus && !r.def.bonus ? '番外篇' : '下一章') : '下一件事件'; b.onclick = () => isRoom ? this.startRoom(next.id) : this.startCase(next.id); }
@@ -135,18 +149,19 @@ const Main = {
   gameMenu() {
     const C = G.ctrl; if (!C) return;
     const body = G.modal(`<h3>暫停</h3><p class="sub">${C.kind === 'room' ? (C.room.bonus ? '番外 · ' : '第 ' + C.room.no + ' 章 · ') + C.room.name : '事件 ' + C.def.no + ' · ' + C.def.name}　用時 ${fmtTime(C.time)}</p>
-      <div class="col"><button class="ok" data-m="go">繼續</button><button class="sec" data-m="restart">重新開始這一${C.kind === 'room' ? '章' : '件'}</button><button class="sec" data-m="chap">章節選擇</button><button class="sec" data-m="title">回標題</button><button class="sec" data-m="fx">環境動畫：${document.body.classList.contains('lowfx') ? '關（省電）' : '開'}</button><a class="sec" style="text-align:center;text-decoration:none" href="../index.html">← 回遊戲大廳</a></div>
+      <div class="col"><button class="ok" data-m="go">繼續</button><button class="sec" data-m="restart">重新開始這一${C.kind === 'room' ? '章' : '件'}</button><button class="sec" data-m="chap">章節選擇</button><button class="sec" data-m="title">回標題</button><button class="sec" data-m="fx">環境動畫：${this.fxLabel()}</button><a class="sec" style="text-align:center;text-decoration:none" href="../index.html">← 回遊戲大廳</a></div>
       <p class="sub" style="margin-top:10px">進度會自動存檔，下次可以從這裡繼續。</p>`, { w: 380 });
     body.onclick = e => {
       const b = e.target.closest('[data-m]'); if (!b) return;
       const m = b.dataset.m;
       if (m === 'go') G.closeModal();
-      if (m === 'restart') { $('#modal').hidden = true; Store.data.cur = null; Store.save(); const id = C.kind === 'room' ? C.room.id : C.def.id, ch = C.chal; G.active = false; G.ctrl = null; C.kind === 'room' ? this.startRoom(id, true, ch) : this.startCase(id, true); }
+      if (m === 'restart') { $('#modal').hidden = true; Store.data.cur = null; Store.save(); const id = C.kind === 'room' ? C.room.id : C.def.id, ch = C.chal && !C.daily, dl = C.daily; G.active = false; G.ctrl = null; C.kind === 'room' ? this.startRoom(id, true, ch, dl) : this.startCase(id, true); }
       if (m === 'chap') { $('#modal').hidden = true; this.showChapters(C.kind === 'room' ? 'rooms' : 'cases'); }
       if (m === 'title') { $('#modal').hidden = true; this.showTitle(); }
-      if (m === 'fx') { Store.data.fx = document.body.classList.contains('lowfx') ? 'hi' : 'lo'; Store.save(); G.applyFx(); b.textContent = '環境動畫：' + (document.body.classList.contains('lowfx') ? '關（省電）' : '開'); }
+      if (m === 'fx') { Store.data.fx = document.body.classList.contains('lowfx') ? 'hi' : 'lo'; Store.save(); G.applyFx(); b.textContent = '環境動畫：' + this.fxLabel(); }
     };
   },
+  fxLabel() { return document.body.classList.contains('lowfx') ? '關（省電）' : document.body.classList.contains('midfx') ? '精簡（自動省電）' : '開'; },
   titleArt(hx = 500) {
     let s = `<rect width="1000" height="625" fill="url(#skyEve)"/>`;
     for (let i = 0; i < 46; i++) { const x = (i * 137) % 1000, y = (i * 71) % 250; s += `<circle cx="${x}" cy="${y}" r="${1 + (i % 3) * 0.7}" fill="#fff8d8" opacity="${0.35 + (i % 4) * 0.15}"/>`; if (i % 9 === 0) A.twinkle(x, y, 2.4); }

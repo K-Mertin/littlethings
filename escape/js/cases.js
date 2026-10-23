@@ -23,6 +23,7 @@ function CaseCtrl(def, resume) {
     if (S.type === 'grid') setTimeout(() => C.openGrid(), 300);
     if (S.type === 'pick') setTimeout(() => C.openPick(), 300);
     if (S.type === 'accuse') setTimeout(() => C.openAccuse(), 300);
+    if (S.type === 'spot') setTimeout(() => C.openSpot(), 300);
   };
   C.next = () => { C.st++; if (C.st >= D.stages.length) { C.finish(); return; } C.enterStage(); };
 
@@ -42,7 +43,7 @@ function CaseCtrl(def, resume) {
       const got = S.need.filter(C.has).length;
       $('#invTip').textContent = `已找到 ${got} / ${S.need.length}`;
       const hs = D.scene.hot.map(h => Object.assign({}, h));
-      G.paint(D.scene.draw(C.s, C) + (D.scene.marks ? D.scene.marks(C) : C.marks()), hs);
+      G.paint(D.scene.draw(C.s, C) + (D.scene.marks ? D.scene.marks(C) : C.marks()), hs); G._hop = null;
       $('#tActs').hidden = true; $('#invInfo').hidden = false;
       $('#heldName').innerHTML = it ? `「<b>${esc(it.n)}</b>」：${it.d}` : '點現場的東西和人調查。找到的證物會記在這裡。';
       $('#bInspect').hidden = true;
@@ -51,11 +52,11 @@ function CaseCtrl(def, resume) {
       if (S.type === 'test') {
         const L = S.lines[C.line];
         A.flush();
-        const bg = D.scene.draw(C.s, C); A.flush();
+        const bg = D.scene.draw(C.s, C) + A.still();
         let svg = bg + `<rect width="1000" height="625" fill="#140a18" opacity=".66"/><ellipse cx="500" cy="300" rx="300" ry="260" fill="url(#spot)" opacity=".9"/>`;
         let rays = ''; for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2; rays += `M500 260L${500 + Math.cos(a) * 700} ${260 + Math.sin(a) * 700}L${500 + Math.cos(a + 0.09) * 700} ${260 + Math.sin(a + 0.09) * 700}z`; }
         svg += `<path d="${rays}" fill="#fff0d0" opacity=".05"/>`;
-        A.fx(`<g class="idle" style="${A.ad(4)}"><svg x="330" y="44" width="340" height="408" viewBox="0 0 200 240">${Face.body(PEOPLE[S.who], C.s.face || 'n', true)}</svg></g>`);
+        A.person(S.who, 330, 44, 1.7, { e: C.s.face || 'n', d: 4.2 });
         // 直向手機只看得到中間一段，證詞框就縮到看得到的範圍
         const vis = G.panMax ? Math.round(1000 * G.sw / G.vw) : 1000, X0 = 500 - vis / 2 + 14, BW = vis - 28;
         const narrow = vis < 900, fs = narrow ? 30 : 28, per = Math.floor((BW - 70) / fs), lines = wrapText('「' + L.t + '」', per), BH = Math.max(150, lines.length * (fs + 10) + 66), BY = 616 - BH;
@@ -68,7 +69,7 @@ function CaseCtrl(def, resume) {
         $('#tActs').hidden = false;
         $('#bPrev').disabled = C.line === 0; $('#bNext').textContent = C.line === S.lines.length - 1 ? '從頭 ↺' : '下一句 ›';
       } else {
-        G.paint(D.scene.draw(C.s, C) + `<rect width="1000" height="625" fill="#1a1020" opacity=".45"/>` + A.txt(500, 300, S.type === 'grid' ? '整理大家的行蹤……' : S.type === 'pick' ? '仔細比對看看……' : '真相只有一個……', 40, '#fff3dc', 'middle', 900) , [{ id: 'reopen', r: [0, 0, 1000, 625], on: () => S.type === 'grid' ? C.openGrid() : S.type === 'pick' ? C.openPick() : C.openAccuse() }]);
+        G.paint(D.scene.draw(C.s, C) + `<rect width="1000" height="625" fill="#1a1020" opacity=".45"/>` + A.txt(500, 300, S.type === 'grid' ? '整理大家的行蹤……' : S.type === 'pick' ? '仔細比對看看……' : S.type === 'spot' ? '仔細看看照片……' : '真相只有一個……', 40, '#fff3dc', 'middle', 900) , [{ id: 'reopen', r: [0, 0, 1000, 625], on: () => S.type === 'grid' ? C.openGrid() : S.type === 'pick' ? C.openPick() : S.type === 'spot' ? C.openSpot() : C.openAccuse() }]);
         $('#tActs').hidden = true;
       }
       $('#invInfo').hidden = false;
@@ -82,6 +83,7 @@ function CaseCtrl(def, resume) {
   // 已調查過的證物位置打個小勾
   C.marks = () => D.scene.hot.filter(h => h.ev && C.has(h.ev)).map(h => { const x = h.c ? h.c[0] + h.c[2] * 0.6 : h.r[0] + h.r[2] - 8, y = h.c ? h.c[1] - h.c[2] * 0.6 : h.r[1] + 8; return `<g transform="translate(${x} ${y})"><circle r="13" fill="#2f7d4f" stroke="#fff" stroke-width="3"/><path d="M-6 0l4 4 7-8" stroke="#fff" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>`; }).join('');
   C.hit = h => {
+    if (PEOPLE[h.id]) G._hop = h.id;
     if (h.ev) {
       if (!C.has(h.ev)) { C.addEv(h.ev, true); Snd.play('pick'); G.dlg([{ t: h.t + `\n<span class="g">▶ 證物「${D.ev[h.ev].n}」記進了證物簿。</span>` }], () => C.checkInv()); }
       else G.toast(h.t);
@@ -151,10 +153,21 @@ function CaseCtrl(def, resume) {
   // 比對（例如鞋印）：從幾張圖裡選出對的那一個
   C.openPick = () => {
     const S = stage();
-    const body = G.modal(`<h3>${S.title}</h3><p class="sub">${S.sub}</p>${S.ref ? `<div class="pickRef">${S.ref}</div>` : ''}<div class="choices pick4">${S.opts.map(o => `<button class="choice" data-k="${o.id}">${o.html}<span>${o.n}</span></button>`).join('')}</div><p class="msg"></p>`, { w: 640 });
+    const body = G.modal(`<h3>${S.title}</h3><p class="sub">${S.sub}</p><div class="pickWrap">${S.ref ? `<div class="pickRef">${S.ref}<small>${S.refLbl || '現場'}</small></div>` : ''}<div class="choices pick4">${S.opts.map(o => `<button class="choice" data-k="${o.id}">${o.html}<span>${o.n}</span></button>`).join('')}</div></div><p class="msg"></p>`, { w: 640 });
     body.onclick = e => {
       const b = e.target.closest('[data-k]'); if (!b) return;
       if (b.dataset.k !== S.ans) { C.miss++; W.fail(body, S.wrongMsg || '好像不一樣，再仔細比比看。'); return; }
+      W.success(C, body, S.okMsg || '找到了！', () => { C.addEv(S.give, true); G.dlg(S.win, () => C.next(), { stage: C.stageFn }); }, 900);
+    };
+  };
+  // 看照片找不對勁的地方（第 5 件）
+  C.openSpot = () => {
+    const S = stage();
+    const body = G.modal(`<h3>${S.title}</h3><p class="sub">${S.sub}</p><div class="spotPic"><svg class="wsvg" viewBox="0 0 600 400">${S.pic(true)}</svg></div><p class="msg"></p>`, { w: 680, cls: 'wide' });
+    body.onclick = e => {
+      const t = e.target.closest('[data-sp]'); if (!t) return;
+      if (t.dataset.sp !== S.ans) { C.miss++; W.fail(body, (S.no && S.no[t.dataset.sp]) || '好像沒什麼特別的……'); return; }
+      t.classList.add('hit');
       W.success(C, body, S.okMsg || '找到了！', () => { C.addEv(S.give, true); G.dlg(S.win, () => C.next(), { stage: C.stageFn }); }, 900);
     };
   };
@@ -194,6 +207,7 @@ function CaseCtrl(def, resume) {
     Store.data.cases[D.id] = { done: true, stars: Math.max(p.stars || 0, stars), time: p.time ? Math.min(p.time, C.time) : C.time, hints: p.done ? Math.min(p.hints, C.hc) : C.hc };
     Store.data.cur = null; Store.save();
     if (C.miss === 0) G.ach('perfectCase');
+    if (D.ach) G.ach(D.ach);
     if (C.hc === 0) G.ach('nohint');
     G.checkMeta();
     Snd.play('fanfare');

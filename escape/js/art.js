@@ -18,6 +18,7 @@ const A = {
   _fx: [],
   fx(m) { this._fx.push(m); return ''; },
   flush() { const s = this._fx.join(''); this._fx = []; return s; },
+  still() { const s = this.flush(); return s ? `<g class="still">${s}</g>` : ''; }, // 不會動的版本（縮圖、背景）
   ad(d) { return `animation-delay:-${((performance.now() / 1000) % d).toFixed(2)}s`; }, // 重畫時動畫不跳回開頭
   motes(x, y, w, h, n = 14, seed = 1, c = '#fff6d0') {
     let o = '';
@@ -162,7 +163,7 @@ const A = {
     let o = `<circle cx="${x + 3}" cy="${y + 5}" r="${r + 6}" fill="#1e0d04" opacity=".2"/><circle cx="${x}" cy="${y}" r="${r + 6}" fill="${c}" ${SW}/><circle cx="${x}" cy="${y}" r="${r}" fill="#fffaf0" ${SW2}/>`;
     for (let i = 0; i < 12; i++) { const a = i * Math.PI / 6; o += `<circle cx="${(x + Math.sin(a) * r * 0.8).toFixed(1)}" cy="${(y - Math.cos(a) * r * 0.8).toFixed(1)}" r="${i % 3 ? 1.5 : 2.6}" fill="#4a3222"/>`; }
     o += `<path d="M${x} ${y}l${r * 0.3} ${-r * 0.35}M${x} ${y}l${-r * 0.1} ${-r * 0.6}" ${SW}/><circle cx="${x}" cy="${y}" r="${r}" fill="url(#glass)"/>`;
-    this.fx(`<g transform="translate(${x} ${y})"><g class="tick" style="${this.ad(60)}"><path d="M0 4V${-r * 0.78}" stroke="#c4502c" stroke-width="1.6"/></g><circle r="2.6" fill="#c4502c"/></g>`);
+    this.fx(`<g class="tick" style="${this.ad(60)}"><g transform="translate(${x} ${y})"><circle r="${r * 0.8}" fill="none"/><path d="M0 4V${-r * 0.78}" stroke="#c4502c" stroke-width="1.6"/><circle r="2.6" fill="#c4502c"/></g></g>`);
     return o;
   },
   closeBg(c, pat, extra = '') { // 特寫背景：桌面般的質感＋聚光
@@ -292,12 +293,12 @@ const A = {
     return s + '</g>';
   },
   pin(x, y, c = '#e05a4a') { return `<circle cx="${x + 1}" cy="${y + 2}" r="6" fill="#1e0d04" opacity=".25"/><circle cx="${x}" cy="${y}" r="6" fill="${c}" ${SW2}/><circle cx="${x - 2}" cy="${y - 2}" r="2" fill="#fff" opacity=".7"/>`; },
-  sparkle(x, y, s = 1) { return this.fx(`<g transform="translate(${x} ${y}) scale(${s})"><g class="spk" style="${this.ad(2.4)}"><path d="M0-14L3-3 14 0 3 3 0 14-3 3-14 0-3-3z" fill="#fff6c8" stroke="#e0a43a" stroke-width="1.5"/></g></g>`); },
+  sparkle(x, y, s = 1) { return this.fx(`<g class="spk" style="${this.ad(2.4)}"><g transform="translate(${x} ${y}) scale(${s})"><path d="M0-14L3-3 14 0 3 3 0 14-3 3-14 0-3-3z" fill="#fff6c8" stroke="#e0a43a" stroke-width="1.5"/></g></g>`); },
   arrowHint(x, y) { return `<g opacity=".8"><circle cx="${x}" cy="${y}" r="16" fill="#fff6c8" stroke="#e0a43a" stroke-width="3"/><path d="M${x - 6} ${y}h12M${x} ${y - 6}v12" stroke="#c07a2a" stroke-width="3" stroke-linecap="round"/></g>`; },
   // 隱藏的小音符（收集品）
   hiddenNote(x, y, s = 1, found) {
     if (found) return '';
-    return this.fx(`<g transform="translate(${x} ${y}) scale(${s})"><g class="hnote" style="${this.ad(4)}"><circle r="15" fill="#fff6c8" opacity=".25"/><path d="M-3 7V-11l10 3v4l-7-2v13" fill="none" stroke="#c08a2a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><ellipse cx="-6" cy="8" rx="5" ry="4" fill="#e0a43a" stroke="#8a5a1a" stroke-width="1.5" transform="rotate(-20 -6 8)"/></g></g>`);
+    return this.fx(`<g class="hnote" style="${this.ad(4)}"><g transform="translate(${x} ${y}) scale(${s})"><circle r="15" fill="#fff6c8" opacity=".25"/><path d="M-3 7V-11l10 3v4l-7-2v13" fill="none" stroke="#c08a2a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><ellipse cx="-6" cy="8" rx="5" ry="4" fill="#e0a43a" stroke="#8a5a1a" stroke-width="1.5" transform="rotate(-20 -6 8)"/></g></g>`);
   },
 
   // 解碼轉盤與黑板上用的 10 個圖案
@@ -319,25 +320,48 @@ const A = {
       case 9: return g(`<path d="M-14 0C-8-9 6-9 10 0C6 9-8 9-14 0zM10 0l7-7v14z" fill="${f}" ${st}/><circle cx="-6" cy="-1" r="1.8" fill="#4a3222"/>`);
     }
   },
+  // 會動的人物（推理事件的現場）：身體一層（呼吸、晃動）、眼皮一層（眨眼），都只用 transform／opacity，手機上很省
+  // x,y 是左上角；o.full=全身（高 330）否則半身（高 240）；o.e 表情；o.hop 被點到時跳一下；o.front 畫在人物前面的東西（櫃台等）
+  person(who, x, y, sc = 1, o = {}) {
+    const P = PEOPLE[who]; if (!P) return '';
+    const H = o.full ? 330 : 240, e = o.e || 'n', d = (o.d || (3.4 + hash(who.length * 13 + x) * 1.8)).toFixed(2), bd = (3.6 + hash(x + y) * 2.4).toFixed(2);
+    const box = `<rect width="200" height="${H}" fill="none"/>`, svg = inner => `<svg x="${x}" y="${y}" width="${200 * sc}" height="${H * sc}" viewBox="0 0 200 ${H}" overflow="visible">${box}${inner}</svg>`;
+    const now = performance.now() / 1000, dl = k => `-${(now % k).toFixed(2)}s`;
+    const kind = o.full ? 'pidle' : 'pidleB', hop = (o.hop || (typeof G !== 'undefined' && G._hop === who)) ? ',phop .55s 1' : '';
+    this.fx(`<g class="${kind}" style="animation:${kind} ${d}s ease-in-out ${dl(d)} infinite${hop}">${svg(o.full ? Face.fig(P, e) : Face.body(P, e))}</g>`);
+    const lid = Face.lids(P, e);
+    if (lid) this.fx(`<g class="${kind} plid" style="animation:${kind} ${d}s ease-in-out ${dl(d)} infinite,plid ${bd}s step-end ${dl(bd)} infinite${hop}">${svg(lid)}</g>`);
+    if (o.front) this.fx(o.front);
+    return '';
+  },
   // 小貓「麻糬」：在場景裡會甩尾巴、眨眼睛（畫在動畫層）。inline=true 時直接回傳（頭像、標題）
   cat(x, y, s = 1, pose = 'sit', inline = false) {
     const c = '#fff8ee', c2 = '#efe2cf', st = SW, ad = this.ad(3.2), ad2 = this.ad(5.5);
-    let b = `<g transform="translate(${x} ${y}) scale(${s})">` + this.sh(0, 4, 46, 8, 0.28);
+    const T = inner => `<g transform="translate(${x} ${y}) scale(${s})">${inner}</g>`;
+    // 會動的部分各自一層（只動 transform），不會讓整隻貓每一格重畫
+    const parts = [];
+    const L = (cls, style, inner) => parts.push(inline ? `<g transform="translate(${x} ${y}) scale(${s})"><g class="${cls}" style="${style}">${inner}</g></g>` : `<g class="${cls}" style="${style}">${T(inner)}</g>`);
+    const S = inner => parts.push(T(inner));
     if (pose === 'sit') {
-      b += `<g class="tail" style="${ad}"><path d="M24 -2q34-4 26-38q-2-10 6-14" fill="none" stroke="#4a3222" stroke-width="15" stroke-linecap="round"/><path d="M24 -2q34-4 26-38q-2-10 6-14" fill="none" stroke="${c}" stroke-width="9" stroke-linecap="round"/><path d="M50 -44q-2-6 6-10" fill="none" stroke="#e8b46a" stroke-width="9" stroke-linecap="round"/></g>`;
-      b += `<path d="M-28 0q-6-40 10-54h36q16 14 10 54z" fill="${c}" ${st}/><path d="M-22-4q-4-30 6-44" stroke="${c2}" stroke-width="8" fill="none" stroke-linecap="round"/><path d="M-6-40q6 8 12 0" stroke="#f4d0c0" stroke-width="5" fill="none" opacity=".7"/>`;
-      b += `<g class="ear" style="${ad2}"><path d="M-30-62l4-30 18 16z" fill="${c}" ${st}/><path d="M-26-70l2-14 9 8z" fill="#f4b8b0"/></g><path d="M30-62l-4-30-18 16z" fill="${c}" ${st}/><path d="M26-70l-2-14-9 8z" fill="#f4b8b0"/>`;
+      S(this.sh(0, 4, 46, 8, 0.28));
+      L('tail', ad, `<path d="M24 -2q34-4 26-38q-2-10 6-14" fill="none" stroke="#4a3222" stroke-width="15" stroke-linecap="round"/><path d="M24 -2q34-4 26-38q-2-10 6-14" fill="none" stroke="${c}" stroke-width="9" stroke-linecap="round"/><path d="M50 -44q-2-6 6-10" fill="none" stroke="#e8b46a" stroke-width="9" stroke-linecap="round"/>`);
+      L('ear', ad2, `<path d="M-30-62l4-30 18 16z" fill="${c}" ${st}/><path d="M-26-70l2-14 9 8z" fill="#f4b8b0"/>`);
+      let b = `<path d="M-28 0q-6-40 10-54h36q16 14 10 54z" fill="${c}" ${st}/><path d="M-22-4q-4-30 6-44" stroke="${c2}" stroke-width="8" fill="none" stroke-linecap="round"/><path d="M-6-40q6 8 12 0" stroke="#f4d0c0" stroke-width="5" fill="none" opacity=".7"/>`;
+      b += `<path d="M30-62l-4-30-18 16z" fill="${c}" ${st}/><path d="M26-70l-2-14-9 8z" fill="#f4b8b0"/>`;
       b += `<ellipse cx="0" cy="-62" rx="34" ry="28" fill="${c}" ${st}/><ellipse cx="0" cy="-56" rx="28" ry="16" fill="#fff" opacity=".6"/><path d="M-12-88q12-8 24 0q-12 8-24 0" fill="#e8b46a" opacity=".9"/><path d="M14-84q8 2 10 10" stroke="#e8b46a" stroke-width="5" fill="none" stroke-linecap="round" opacity=".8"/>`;
-      b += `<g class="blinkc" style="${ad}"><ellipse cx="-12" cy="-64" rx="4.2" ry="5.5" fill="#3a2a1e"/><ellipse cx="12" cy="-64" rx="4.2" ry="5.5" fill="#3a2a1e"/><circle cx="-10.5" cy="-66" r="1.6" fill="#fff"/><circle cx="13.5" cy="-66" r="1.6" fill="#fff"/></g>`;
       b += `<path d="M-3-55l3 3 3-3z" fill="#f08a8a" ${SW2}/><path d="M0-52q-4 6-9 3M0-52q4 6 9 3" ${SW2} fill="none"/><path d="M-22-54h-14M-22-50l-13 4M22-54h14M22-50l13 4" stroke="#c9b8a4" stroke-width="1.6"/><circle cx="-20" cy="-54" r="5" fill="#f6b0a8" opacity=".55"/><circle cx="20" cy="-54" r="5" fill="#f6b0a8" opacity=".55"/>`;
       b += `<path d="M-16 0v-14M16 0v-14" ${SW2}/><ellipse cx="-14" cy="-2" rx="9" ry="5" fill="${c}" ${SW2}/><ellipse cx="14" cy="-2" rx="9" ry="5" fill="${c}" ${SW2}/>`;
+      S(b);
+      L('blinkc', ad, `<ellipse cx="-12" cy="-64" rx="4.2" ry="5.5" fill="#3a2a1e"/><ellipse cx="12" cy="-64" rx="4.2" ry="5.5" fill="#3a2a1e"/><circle cx="-10.5" cy="-66" r="1.6" fill="#fff"/><circle cx="13.5" cy="-66" r="1.6" fill="#fff"/>`);
     } else { // 趴著
-      b += `<g class="tail2" style="${ad}"><path d="M48-14q30 2 26 18" fill="none" stroke="#4a3222" stroke-width="13" stroke-linecap="round"/><path d="M48-14q30 2 26 18" fill="none" stroke="${c}" stroke-width="7" stroke-linecap="round"/></g>`;
-      b += `<g class="breathe" style="${ad2}"><ellipse cx="0" cy="-16" rx="52" ry="20" fill="${c}" ${st}/><path d="M-20-30q20-8 50 0" stroke="#e8b46a" stroke-width="7" fill="none" stroke-linecap="round" opacity=".7"/></g>`;
-      b += `<path d="M-60-38l2-24 16 14zM-24-38l-2-24-14 14z" fill="${c}" ${st}/><path d="M-56-44l1-12 8 7z" fill="#f4b8b0"/><ellipse cx="-42" cy="-28" rx="26" ry="21" fill="${c}" ${st}/><path d="M-54-30q4-3 8 0M-38-30q4-3 8 0" ${SW2} fill="none"/><path d="M-45-22l3 2 3-2" ${SW2}/><circle cx="-58" cy="-22" r="4" fill="#f6b0a8" opacity=".55"/><circle cx="-28" cy="-22" r="4" fill="#f6b0a8" opacity=".55"/>`;
-      b += this.fx('') + `<g class="zz" style="${this.ad(3)}">${this.txt(-20, -60, 'z', 14, '#8a7ab0', 'middle', 900)}</g>`;
+      S(this.sh(0, 4, 46, 8, 0.28));
+      L('tail2', ad, `<path d="M48-14q30 2 26 18" fill="none" stroke="#4a3222" stroke-width="13" stroke-linecap="round"/><path d="M48-14q30 2 26 18" fill="none" stroke="${c}" stroke-width="7" stroke-linecap="round"/>`);
+      L('breathe', ad2, `<ellipse cx="0" cy="-16" rx="52" ry="20" fill="${c}" ${st}/><path d="M-20-30q20-8 50 0" stroke="#e8b46a" stroke-width="7" fill="none" stroke-linecap="round" opacity=".7"/>`);
+      S(`<path d="M-60-38l2-24 16 14zM-24-38l-2-24-14 14z" fill="${c}" ${st}/><path d="M-56-44l1-12 8 7z" fill="#f4b8b0"/><ellipse cx="-42" cy="-28" rx="26" ry="21" fill="${c}" ${st}/><path d="M-54-30q4-3 8 0M-38-30q4-3 8 0" ${SW2} fill="none"/><path d="M-45-22l3 2 3-2" ${SW2}/><circle cx="-58" cy="-22" r="4" fill="#f6b0a8" opacity=".55"/><circle cx="-28" cy="-22" r="4" fill="#f6b0a8" opacity=".55"/>`);
+      L('zz', this.ad(3), this.txt(-20, -60, 'z', 14, '#8a7ab0', 'middle', 900));
     }
-    b += '</g>';
-    return inline ? b : this.fx(b);
+    if (inline) return parts.join('');
+    parts.forEach(p => this.fx(p));
+    return '';
   },
 };

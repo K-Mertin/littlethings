@@ -5,20 +5,24 @@ const VIEW_NAMES = { n: '北', e: '東', s: '南', w: '西' };
 
 // ---------- 成就 ----------
 const ACH = [
-  { id: 'r1', n: '第一扇門', d: '逃出玄關。', ic: '🚪' },
-  { id: 'r8', n: '八音盒的新主人', d: '解開八音盒之家的全部八章。', ic: '🎁' },
-  { id: 'bonus', n: '地底下的祕密', d: '破解番外篇的兩個房間。', ic: '🕯' },
-  { id: 'cases', n: '小鎮名偵探', d: '破解推理事件簿的全部事件。', ic: '🔍' },
-  { id: 'nohint', n: '自己想出來', d: '不看任何提示破一章。', ic: '💡' },
-  { id: 'allStars', n: '滿天星斗', d: '所有謎屋章節都拿到三顆星。', ic: '⭐' },
-  { id: 'notes5', n: '聽見音符了', d: '找到 5 個隱藏音符。', ic: '♪' },
-  { id: 'notesAll', n: '音符收藏家', d: '找到所有房間的隱藏音符。', ic: '🎼' },
-  { id: 'chal', n: '挑戰者', d: '完成一次挑戰模式。', ic: '⏱' },
-  { id: 'gold', n: '閃電解謎王', d: '在挑戰模式拿到金牌。', ic: '🥇' },
-  { id: 'perfectCase', n: '一針見血', d: '一次都沒出示錯誤就破案。', ic: '⚡' },
-  { id: 'cat', n: '麻糬的好朋友', d: '摸麻糬 15 次。', ic: '🐱' },
-  { id: 'slide', n: '拼圖高手', d: '用 60 步以內拼好書房的畫。', ic: '🧩' },
-  { id: 'replay', n: '換個謎題再來', d: '重玩一章（謎題的答案會改變）。', ic: '🔁' },
+  { id: 'r1', n: '第一扇門', d: '逃出玄關。', ic: 'door' },
+  { id: 'r8', n: '八音盒的新主人', d: '解開八音盒之家的全部八章。', ic: 'gift' },
+  { id: 'bonus', n: '地底下的祕密', d: '破解番外篇的兩個房間。', ic: 'candle' },
+  { id: 'cases', n: '小鎮名偵探', d: '破解推理事件簿的全部事件。', ic: 'lens' },
+  { id: 'nohint', n: '自己想出來', d: '不看任何提示破一章。', ic: 'bulb' },
+  { id: 'allStars', n: '滿天星斗', d: '所有謎屋章節都拿到三顆星。', ic: 'star' },
+  { id: 'notes5', n: '聽見音符了', d: '找到 5 個隱藏音符。', ic: 'note' },
+  { id: 'notesAll', n: '音符收藏家', d: '找到所有房間的隱藏音符。', ic: 'score' },
+  { id: 'chal', n: '挑戰者', d: '完成一次挑戰模式。', ic: 'watch' },
+  { id: 'gold', n: '閃電解謎王', d: '在挑戰模式拿到金牌。', ic: 'medal', ia: 3 },
+  { id: 'perfectCase', n: '一針見血', d: '一次都沒出示錯誤就破案。', ic: 'bolt' },
+  { id: 'cat', n: '麻糬的好朋友', d: '摸麻糬 15 次。', ic: 'cat' },
+  { id: 'slide', n: '拼圖高手', d: '用 60 步以內拼好書房的畫。', ic: 'puzzle' },
+  { id: 'replay', n: '換個謎題再來', d: '重玩一章（謎題的答案會改變）。', ic: 'replay' },
+  { id: 'daily', n: '今天也來解謎', d: '完成一次「今日謎題」。', ic: 'cal' },
+  { id: 'streak3', n: '三天打魚不曬網', d: '連續三天完成今日謎題。', ic: 'flame' },
+  { id: 'c5', n: '絕對音感', d: '破解「音樂會的走音事件」。', ic: 'violin' },
+  { id: 'secret', n: '鐘樓的祕密', d: '在標題畫面發現爺爺藏的小機關。', ic: 'sparkle', hide: 1 },
 ];
 
 const G = {
@@ -89,7 +93,7 @@ const G = {
     }
   },
   // 把動畫層的每個東西拆成各自的小 SVG（各自一層），動畫就不會讓整個場景重畫，手機上才順
-  LIFT: /^(mote|cloud|flick|twk|glowp|pend|sway|spin|spinr|steam|bob|fly|hnote|idle|metro)\b/,
+  LIFT: /^(mote|cloud|flick|twk|glowp|pend|sway|spin|spinr|steam|bob|fly|hnote|idle|metro|pidle|pidleB|tick|spk|tail|tail2|ear|blinkc|breathe|zz|flame|swing)\b/,
   lift() {
     const items = A._fx.filter(Boolean); A._fx = [];
     if (!items.length) return '';
@@ -110,14 +114,26 @@ const G = {
     m.innerHTML = '';
     return out;
   },
-  // 自動偵測：如果裝置太吃力（每秒不到 30 格），就把環境動畫關掉
+  // 自動偵測（分兩段）：有點吃力（每秒不到約 45 格）→ 先關掉灰塵、星光等小粒子（mid）；
+  // 還是很吃力（不到 25 格）→ 環境動畫全部停下（lo）。玩家在選單選「開」(hi) 就不再自動調整。
   fpsWatch() {
-    if (this._fw || Store.data.fx === 'hi') return; this._fw = 1;
+    const fx = Store.data.fx;
+    if (this._fw || fx === 'hi' || fx === 'lo' || document.hidden) return; this._fw = 1;
     const t = []; let last = performance.now();
-    const f = now => { t.push(now - last); last = now; if (t.length < 90) requestAnimationFrame(f); else { t.shift(); t.sort((a, b) => a - b); const med = t[t.length >> 1]; if (med > 40 && !document.hidden) { Store.data.fx = 'lo'; Store.save(); this.applyFx(); } this._fw = 0; } };
+    const f = now => {
+      t.push(now - last); last = now;
+      if (t.length < 90) { requestAnimationFrame(f); return; }
+      t.shift(); t.sort((a, b) => a - b); const med = t[t.length >> 1], p75 = t[(t.length * 0.75) | 0];
+      this._fw = 0; this.lastFps = Math.round(1000 / med);
+      if (document.hidden) return;
+      if (med > 40) { Store.data.fx = 'lo'; Store.save(); this.applyFx(); }
+      else if ((med > 22 || p75 > 30) && Store.data.fx !== 'mid') { Store.data.fx = 'mid'; Store.save(); this.applyFx(); setTimeout(() => this.fpsWatch(), 2500); }
+    };
     setTimeout(() => requestAnimationFrame(f), 1500);
   },
-  applyFx() { document.body.classList.toggle('lowfx', Store.data.fx === 'lo' || matchMedia('(prefers-reduced-motion: reduce)').matches); },
+  // 環境動畫的更新頻率：標題畫面固定 30 格；遊戲中「開」＝全速、自動＝30 格、精簡＝20 格
+  ambRate() { const fx = Store.data.fx; if (!$('#title').hidden) return 30; return fx === 'hi' ? 0 : fx === 'mid' ? 20 : 30; },
+  applyFx() { const fx = Store.data.fx; Amb.set(this.ambRate()); document.body.classList.toggle('lowfx', fx === 'lo' || matchMedia('(prefers-reduced-motion: reduce)').matches); document.body.classList.toggle('midfx', fx === 'mid'); },
   toast(t, ms = 3600) {
     const el = $('#toast'); el.innerHTML = t; el.hidden = false;
     const lg = $('#log'); if (lg) { const li = document.createElement('li'); li.innerHTML = t; lg.prepend(li); while (lg.children.length > 30) lg.lastChild.remove(); }
@@ -154,7 +170,7 @@ const G = {
       const pic = $('#dlgPic');
       const staged = P && opt.stage && opt.stage(L.w, L.e || 'n');
       if (P && !L.nopic && !staged) {
-        pic.innerHTML = Face.draw(L.w, L.e || 'n');
+        pic.innerHTML = Face.draw(L.w, L.e || 'n', true);
         pic.className = (lastW !== L.w ? 'in ' : 'talk ') + ((L.e === 's' || L.e === 'a' || L.e === 'c') ? 'jolt' : '');
         void pic.offsetWidth;
       } else { pic.innerHTML = ''; pic.className = ''; }
@@ -181,7 +197,7 @@ const G = {
   titleCard(R, cb) { // 章節開場卡
     const isCase = !R.walls;
     const no = isCase ? `CASE ${R.no}` : (R.bonus ? `EXTRA · ${R.no}` : `CHAPTER ${R.no}`);
-    this.overlay(`<div class="tcard"><div class="tc-line"></div><small>${no}</small><h2>${esc(R.name)}</h2><p>${esc(R.en || (isCase ? '小鎮推理事件簿' : ''))}</p><div class="tc-line"></div>${this.ctrl && this.ctrl.chal ? '<b class="tc-chal">⏱ 挑戰模式：不能看提示，謎題答案隨機</b>' : ''}</div>`, 1900, cb, 'tc');
+    this.overlay(`<div class="tcard"><div class="tc-line"></div><small>${no}</small><h2>${esc(R.name)}</h2><p>${esc(R.en || (isCase ? '小鎮推理事件簿' : ''))}</p><div class="tc-line"></div>${this.ctrl && this.ctrl.daily ? `<b class="tc-chal daily">${ICO('cal')} 今日謎題 ${this.ctrl.daily.slice(5).replace('-', '/')}：不能看提示，今天大家的答案都一樣</b>` : this.ctrl && this.ctrl.chal ? `<b class="tc-chal">${ICO('watch')} 挑戰模式：不能看提示，謎題答案隨機</b>` : ''}</div>`, 1900, cb, 'tc');
   },
   gearGet(n, cb) {
     Snd.play('solve');
@@ -221,7 +237,7 @@ const G = {
     this.ctrl = ctrl; this.held = null; this.active = true; this.pan = null;
     $$('.screen').forEach(e => e.hidden = true); $('#play').hidden = false;
     document.body.classList.toggle('chal', !!ctrl.chal);
-    this.layout(); ctrl.render(); this.fpsWatch();
+    this.layout(); ctrl.render(); Amb.set(this.ambRate()); this.fpsWatch();
   },
   leave() { if (this.ctrl) this.ctrl.save(); this.active = false; this.ctrl = null; this.held = null; $('#play').hidden = true; $('#modal').hidden = true; $('#dlg').hidden = true; $('#ovl').hidden = true; document.body.classList.remove('chal'); },
 
@@ -254,7 +270,7 @@ const G = {
   ach(id) {
     const A0 = ACH.find(a => a.id === id); if (!A0 || Store.data.ach[id]) return;
     Store.data.ach[id] = Date.now(); Store.save();
-    const el = $('#achT'); el.innerHTML = `<i>${A0.ic}</i><span><small>解鎖成就</small><b>${esc(A0.n)}</b></span>`;
+    const el = $('#achT'); el.innerHTML = `<i>${ICO(A0.ic, '', A0.ia)}</i><span><small>解鎖成就</small><b>${esc(A0.n)}</b></span>`;
     el.hidden = false; el.style.animation = 'none'; void el.offsetWidth; el.style.animation = '';
     clearTimeout(this._at); this._at = setTimeout(() => el.hidden = true, 3200);
     setTimeout(() => Snd.play('ach'), 120);
@@ -281,10 +297,10 @@ function RoomCtrl(room, resume, opt = {}) {
   if (resume) { Object.assign(C, clone(resume)); }
   else {
     C.s = R.init(); C.inv = []; C.view = R.walls[0]; C.time = 0; C.hl = {}; C.hc = 0; C.newI = {};
-    C.chal = !!opt.chal;
-    // 重玩或挑戰模式：謎題答案隨機變化（第一次玩是固定的標準答案）
+    C.chal = !!opt.chal || !!opt.daily; C.daily = opt.daily || null;
+    // 重玩或挑戰模式：謎題答案隨機變化（第一次玩是固定的標準答案）；每日謎題用日期當種子，大家同一天拿到一樣的題目
     const replay = !!(Store.data.prog[R.id] && Store.data.prog[R.id].done);
-    if (R.vary && (C.chal || replay)) { C.s.v = R.vary(makeRng((Math.random() * 1e9) | 0)); }
+    if (R.vary && (C.chal || replay)) { C.s.v = R.vary(makeRng(C.daily ? Daily.seed(C.daily, R.id) : (Math.random() * 1e9) | 0)); }
     C.replay = replay;
   }
   C.newI = C.newI || {};
@@ -292,7 +308,7 @@ function RoomCtrl(room, resume, opt = {}) {
 
   C.save = () => {
     if (C.fin) return;
-    Store.data.cur = { kind: 'room', id: R.id, s: C.s, inv: C.inv, view: C.view, time: C.time, hl: C.hl, hc: C.hc, newI: C.newI, chal: C.chal, replay: C.replay };
+    Store.data.cur = { kind: 'room', id: R.id, s: C.s, inv: C.inv, view: C.view, time: C.time, hl: C.hl, hc: C.hc, newI: C.newI, chal: C.chal, replay: C.replay, daily: C.daily };
     Store.save();
   };
   C.has = id => C.inv.includes(id);
@@ -325,7 +341,7 @@ function RoomCtrl(room, resume, opt = {}) {
     }
     if (R.amb) A.fx(R.amb(C.view, C.s) || '');
     G.paint(svg, hots);
-    $('#rNo').textContent = `${R.bonus ? '番外' : '第 ' + R.no + ' 章'} · ${R.en}${C.chal ? ' · 挑戰' : ''}`;
+    $('#rNo').textContent = `${R.bonus ? '番外' : '第 ' + R.no + ' 章'} · ${R.en}${C.daily ? ' · 今日謎題' : C.chal ? ' · 挑戰' : ''}`;
     $('#rName').textContent = R.name + (v.title ? '　' + v.title : '');
     $('#clock').textContent = fmtTime(C.time);
     $('#hintN').textContent = C.chal ? '✕' : C.hc;
@@ -386,7 +402,7 @@ function RoomCtrl(room, resume, opt = {}) {
   C.stepIdx = () => { const st = R.steps; for (let i = 0; i < st.length; i++) if (!st[i].done(C.s, C)) return i; return st.length; };
   C.checkStep = () => { };
   C.hint = () => {
-    if (C.chal) { G.modal('<h3>挑戰模式</h3><p class="paper">挑戰模式不能看提示喔！\n想看提示的話，可以從選單離開，用一般模式重玩這一章。</p>', { w: 440 }); return; }
+    if (C.chal) { G.modal(`<h3>${C.daily ? '今日謎題' : '挑戰模式'}</h3><p class="paper">${C.daily ? '今日謎題' : '挑戰模式'}不能看提示喔！\n想看提示的話，可以從選單離開，用一般模式重玩這一章。</p>`, { w: 440 }); return; }
     const k = C.stepIdx(), st = R.steps[k];
     if (!st) { G.modal('<h3>提示</h3><p class="paper">這一章的謎題都解開了！</p>'); return; }
     const draw = () => {
@@ -408,7 +424,16 @@ function RoomCtrl(room, resume, opt = {}) {
     const first = !p.done;
     Store.data.prog[R.id] = { done: true, stars: Math.max(p.stars || 0, stars), time: p.time ? Math.min(p.time, C.time) : C.time, hints: p.done ? Math.min(p.hints, C.hc) : C.hc };
     let medal = null;
-    if (C.chal) {
+    let daily = null;
+    if (C.daily) {
+      medal = C.time <= R.par * 0.6 ? 3 : C.time <= R.par ? 2 : 1;
+      const D = Daily.rec(), h = D.hist[C.daily] || {}, first = !h.done;
+      D.hist[C.daily] = { id: R.id, done: 1, time: h.time ? Math.min(h.time, C.time) : C.time, medal: Math.max(h.medal || 0, medal) };
+      if (first) { D.streak = D.last === Daily.shift(C.daily, -1) ? (D.streak || 0) + 1 : D.last === C.daily ? D.streak : 1; D.last = C.daily; D.best = Math.max(D.best || 0, D.streak); }
+      const keys = Object.keys(D.hist).sort(); while (keys.length > 60) delete D.hist[keys.shift()];
+      daily = { streak: D.streak, first };
+      G.ach('daily'); if (D.streak >= 3) G.ach('streak3');
+    } else if (C.chal) {
       medal = C.time <= R.par * 0.6 ? 3 : C.time <= R.par ? 2 : 1;
       const ch = Store.data.chal[R.id] || {};
       Store.data.chal[R.id] = { best: ch.best ? Math.min(ch.best, C.time) : C.time, medal: Math.max(ch.medal || 0, medal) };
@@ -419,7 +444,7 @@ function RoomCtrl(room, resume, opt = {}) {
     Store.data.cur = null; Store.save();
     G.checkMeta();
     Snd.play('fanfare');
-    G.dlg(first || !C.replay ? (R.outro || []) : (R.outro || []).slice(0, 2), () => Main.showClear({ kind: 'room', def: R, stars, time: C.time, hints: C.hc, first, chal: C.chal, medal }));
+    G.dlg(first || !C.replay ? (R.outro || []) : (R.outro || []).slice(0, 2), () => Main.showClear({ kind: 'room', def: R, stars, time: C.time, hints: C.hc, first, chal: C.chal, medal, daily }));
   };
   C.win = () => { setTimeout(() => C.finish(), 500); };
 }
