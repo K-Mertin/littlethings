@@ -17,6 +17,7 @@ MK 的瀏覽器遊戲合集，每個資料夾自成一體。線上遊玩：https
 | [小夥伴大作戰](https://k-mertin.github.io/littlethings/brawl/) | [`brawl/`](brawl/README.md) | 《小朋友齊打交》風格的橫向格鬥：7 位 Q 版角色各 3 招必殺技、台灣街景 4 關闖關打怪獸、5 個對戰場地、練習場；1–4 人（同一台 2 人，或手機當手把），支援觸控、鍵盤、手把 |
 | [棋牌桌遊](https://littleland.mwstudio.workers.dev/table/) | `table/` | 棋牌桌遊專區：象棋（5 級電腦）、五子棋（可選黑棋禁手）、黑白棋、圍棋（9／13 路 MCTS 電腦、19 路兩人、點目、SGF）、圍棋教室（14 課互動課程＋吃子遊戲）、撲克牌（新接龍、蜘蛛紙牌、大老二）、踩地雷（無猜模式）；悔棋、提示、戰績，支援觸控 |
 | [空戰](https://littleland.mwstudio.workers.dev/sky/) | `sky/` | 《雷電》風格的縱向捲軸射擊：8 關（河谷、海上艦隊、城市、沙漠基地、雲端、冰原、熔岩、太空）各有頭目，3D 預渲染機體、地形光影；紅藍紫三種主武器＋飛彈／追蹤飛彈、炸彈、獎章、補給箱、接關、第二輪；三種難度（簡單模式會自動放炸彈），支援觸控拖曳、鍵盤、手把，音樂音效即時合成 |
+| [守塔奇兵](https://littleland.mwstudio.workers.dev/td/) | [`td/`](td/README.md) | 塔防：8 張手工地圖、7 種塔（三級升級＋二選一專精）、15 種敵人與 3 個頭目、隕石／冰封技能、天賦樹、無盡模式、三種難度，支援手機直橫式、滑鼠、鍵盤 |
 | [捏臉工坊](https://k-mertin.github.io/littlethings/face/) | [`face/`](face/README.md) | 2D 捏臉：臉型、五官、髮型、瀏海、配件、衣服，即時預覽縮圖、隨機、復原、存檔、下載 PNG，支援手機 |
 | [寫實捏臉 3D](https://k-mertin.github.io/littlethings/face3d/) | [`face3d/`](face3d/README.md) | 寫實 3D 捏臉：MakeHuman CC0 人體、417 個變形滑桿、寫實皮膚、3D 髮型眉毛睫毛、表情、眼睛看游標，支援手機 |
 
@@ -43,6 +44,7 @@ minigames/        每款小遊戲一個 HTML，共用 mini.js / mini.css，無�
 brawl/            index.html＋js/（依序載入，無建置步驟）；controller.html 是手機手把，PeerJS 由 CDN 載入
 table/            每款一個 HTML，共用 common.js / common.css，無建置步驟，不需外部函式庫（電腦對手跑在 Web Worker）
 sky/              index.html＋js/（依序載入，無建置步驟）；Three.js 由 CDN 載入做 3D 預渲染，地形全部用程式畫
+td/               index.html＋js/（依序載入，無建置步驟，不需外部函式庫）
 face/             單一檔案，無建置步驟，不需任何外部函式庫（純 SVG）
 face3d/           index.html＋預先處理的 data/（Three.js 由 CDN 載入）；data/ 由 tools/build.py 從 MakeHuman 素材產生
 ```
