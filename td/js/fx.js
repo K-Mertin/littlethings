@@ -32,6 +32,8 @@ const FX = (() => {
   // ───────── 事件 ─────────
   function on(name, g, a, b, c, d, e) {
     if (g !== G) return;
+    // 頭目放招、祭司補血：畫面層播放 cast 動畫（只是畫面用的計時，不影響模擬）
+    if ((name === 'stomp' || name === 'ink' || name === 'summon' || name === 'dash' || name === 'burrow' || name === 'heal') && a && Beasts.BOX[a.k] && (Beasts.BOX[a.k].boss || Beasts.BOX[a.k].cast)) a._castT = 0.9;
     switch (name) {
       case 'boom': boom(a, b, c, d, e); break;
       case 'meteor': {
@@ -144,7 +146,7 @@ const FX = (() => {
   }
   function kill(e) {
     const face = e._face || 1;
-    deaths.push({ k: e.k, x: e.x, y: e.y, fly: e.fly, face, r: e.r, boss: e.boss, f: e._f || 0, t: 0, dur: e.boss ? 1.6 : e.fly ? 0.7 : 0.55 });
+    deaths.push({ k: e.k, x: e.x, y: e.y, fly: e.fly, face, r: e.r, boss: e.boss, f: e._f || 0, t: 0, dur: e.boss ? 1.6 : e.fly ? 0.75 : 0.7 });
     const col = enemyColor(e.k);
     const h = e.fly ? 0.75 : 0.25;
     for (let i = 0; i < (e.boss ? 12 : 3); i++) part('smoke', e.x + (R() - 0.5) * 0.3, e.y + (R() - 0.5) * 0.2, h, (R() - 0.5) * 0.5, (R() - 0.5) * 0.3, 0.4, 0.7 + R() * 0.4, (e.boss ? 0.4 : 0.18) + R() * 0.1, '#e8e2d8');

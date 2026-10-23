@@ -80,6 +80,45 @@ const Gfx = (() => {
     if (cacheCount > 6000) { cache.clear(); cacheCount = 0; }
     return sp;
   }
+  // 角色用的精靈：先在 ss 倍大的暫存畫布上畫（細節更清楚），再縮小存成快取，最後加外框。
+  // 縮小後的大小和一般精靈一樣，所以記憶體、每幀貼圖的成本都不變。
+  // 每幀畫新圖花的時間記在 stat.ms，呼叫端可以用 busy() 判斷這一幀是不是已經花太多時間，改用備用圖。
+  const stat = { ms: 0, n: 0 };
+  let scr = null;
+  function has(key, dpr) { return cache.has(key + '@' + dpr); }
+  function sheet(key, w, h, ax, ay, dpr, draw, o) {
+    const k = key + '@' + dpr;
+    let sp = cache.get(k);
+    if (sp) return sp;
+    const t0 = performance.now();
+    o = o || {};
+    const pad = o.outline ? Math.ceil(o.outline + 1) : 1;
+    const ss = o.ss || 1;
+    const W = Math.max(1, Math.ceil((w + pad * 2) * dpr)), H = Math.max(1, Math.ceil((h + pad * 2) * dpr));
+    let c = canvas(W, H);
+    const cx = c.getContext('2d');
+    if (ss > 1) {
+      const SW = Math.ceil(W * ss), SH = Math.ceil(H * ss);
+      if (!scr || scr.width < SW || scr.height < SH) { scr = canvas(Math.max(SW, scr ? scr.width : 0), Math.max(SH, scr ? scr.height : 0)); }
+      const sx = scr.getContext('2d');
+      sx.setTransform(1, 0, 0, 1, 0, 0); sx.globalAlpha = 1; sx.globalCompositeOperation = 'source-over'; sx.clearRect(0, 0, SW + 2, SH + 2);
+      sx.setTransform(dpr * ss, 0, 0, dpr * ss, (ax + pad) * dpr * ss, (ay + pad) * dpr * ss);
+      sx.save(); draw(sx); sx.restore();
+      cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = 'high';
+      cx.drawImage(scr, 0, 0, SW, SH, 0, 0, W, H);
+    } else {
+      cx.setTransform(dpr, 0, 0, dpr, (ax + pad) * dpr, (ay + pad) * dpr);
+      draw(cx);
+    }
+    if (o.outline) c = addOutline(c, o.outline * dpr, o.oc || 'rgba(26,14,32,.92)');
+    sp = { c, w: W / dpr, h: H / dpr, ax: ax + pad, ay: ay + pad, key: k };
+    cache.set(k, sp); cacheCount++;
+    if (cacheCount > 6000) { cache.clear(); cacheCount = 0; }
+    stat.ms += performance.now() - t0; stat.n++;
+    return sp;
+  }
+  function frameStart() { stat.ms = 0; stat.n = 0; }
+  function busy(lim) { return stat.ms > (lim || 6); }
   function drawSprite(ctx, sp, x, y, sc) {
     sc = sc || 1;
     ctx.drawImage(sp.c, x - sp.ax * sc, y - sp.ay * sc, sp.w * sc, sp.h * sc);
@@ -189,5 +228,5 @@ const Gfx = (() => {
     stops.forEach((c, i) => g.addColorStop(Array.isArray(c) ? c[0] : i / (stops.length - 1), Array.isArray(c) ? c[1] : c));
     return g;
   }
-  return { TAU, hex, mix, shade, rgba, vnoise, fbm, hash2, canvas, sprite, drawSprite, addOutline, bevel, tinted, glow, puff, ell, circ, rrect, poly, star, lgrad, rgrad, clear() { cache.clear(); cacheCount = 0; } };
+  return { TAU, hex, mix, shade, rgba, vnoise, fbm, hash2, canvas, sprite, sheet, has, stat, frameStart, busy, drawSprite, addOutline, bevel, tinted, glow, puff, ell, circ, rrect, poly, star, lgrad, rgrad, clear() { cache.clear(); cacheCount = 0; } };
 })();

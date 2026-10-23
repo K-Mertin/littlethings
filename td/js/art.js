@@ -588,7 +588,7 @@ const Art = (() => {
         const xs = tier === 0 ? [0] : (tier === 3 && sp === 0) ? [-0.15, 0, 0.15] : (tier === 3 && sp === 1) ? [0] : [-0.1, 0.1];
         for (let i = 0; i < xs.length; i++) {
           x.save(); x.translate(xs[i] * u, py - (i === 1 && xs.length === 3 ? u * 0.03 : 0)); x.scale(face, 1);
-          archer(x, u, aim + (xs.length === 3 ? (i - 1) * 0.12 : 0), rec > 0.75 ? 0 : pull, look);
+          Crew.archer(x, u, aim + (xs.length === 3 ? (i - 1) * 0.12 : 0), rec > 0.75 ? 0 : pull, { tunic: look.tunic, hat: look.hat, feather: look.feather || '', hood: !!look.hood, long: !!look.long, bow: look.bow || '' });
           x.restore();
         }
         if (tier === 0) {
@@ -621,11 +621,9 @@ const Art = (() => {
         // 砲手（Lv2 起）：戴頭盔、拿火把
         if (tier >= 1) {
           x.save(); x.translate(-face * u * 0.24, py + u * 0.02); x.scale(face, 1);
-          chibi(x, u * 0.85, { c: big ? '#8a5a2a' : '#5a6a8a', hat: 'helm', hc: big ? '#d8a84a' : '#a8b4c8', hair: '#3a2a22' });
-          const kk = u * 0.85 * 1.3;
-          x.strokeStyle = OUT; x.lineWidth = lw(u, 0.03); x.beginPath(); x.moveTo(kk * 0.03, -kk * 0.12); x.lineTo(kk * 0.1, -kk * 0.2); x.stroke();
-          x.strokeStyle = '#7a4a22'; x.lineWidth = lw(u, 0.018); x.stroke();
-          flame(x, kk * 0.105, -kk * 0.21, u * (0.035 + rec * 0.02), time * 1.5 + t.id);
+          const gf = rec > 0.3 ? 1 : 0, gr = Crew.rOf(u * 0.9), ga = 0.5 - gf * 0.35;
+          Crew.draw(x, 'gunner', { coat: big ? '#8a5a2a' : '#5a6a8a', helm: big ? '#d8a84a' : '#a8b4c8' }, u * 0.9, gf);
+          flame(x, gr * (0.6 + Math.sin(ga) * 0.62), -gr * (1.05 + gf * 0.35 + Math.cos(ga) * 0.62), u * (0.04 + rec * 0.02), time * 1.5 + t.id);
           x.restore();
         }
         if (behind) drawBarrel();
@@ -638,6 +636,8 @@ const Art = (() => {
       }
       case 'frost': {
         const py = -(T - 0.3 * u);
+        // 冰霜守衛：站在平台上對著冰晶施法
+        if (!(tier === 3 && sp === 1)) { x.save(); x.translate(-u * (tier >= 2 ? 0.2 : 0.15), py + u * 0.01); Crew.draw(x, 'frost', {}, u * 0.82, rec > 0.25 ? 2 : 0); x.restore(); }
         if (tier === 3 && sp === 0) {
           // 暴風雪：旋轉的雪霧
           x.save();
@@ -662,11 +662,7 @@ const Art = (() => {
         // 法師（Lv2 起）：舉起法杖對著水晶球施法
         if (tier >= 1) {
           x.save(); x.translate(-u * 0.2, py + u * 0.05);
-          chibi(x, u * 0.8, { c: sp === 1 ? '#a83a8a' : sp === 0 ? '#3a5ab8' : '#6a3ac8', hat: 'wizard', hc: sp === 1 ? '#6a1a5a' : sp === 0 ? '#1e2e7a' : '#3e1f84', robe: true, hair: '#e8e8f0' });
-          const kk = u * 0.8 * 1.3, lift = rec * kk * 0.03;
-          x.strokeStyle = OUT; x.lineWidth = lw(u, 0.025); x.beginPath(); x.moveTo(kk * 0.07, -kk * 0.02); x.lineTo(kk * 0.1, -kk * 0.3 - lift); x.stroke();
-          x.strokeStyle = '#8a5a32'; x.lineWidth = lw(u, 0.014); x.stroke();
-          circ(x, kk * 0.1, -kk * 0.31 - lift, kk * 0.02, pc); circ(x, kk * 0.06, -kk * 0.13, kk * 0.016, SKIN);
+          Crew.draw(x, 'wizard', { robe: sp === 1 ? '#a83a8a' : sp === 0 ? '#3a5ab8' : '#6a3ac8', hat: sp === 1 ? '#7a2a6a' : sp === 0 ? '#2a3e9a' : '#4e2a9a', orb: pc }, u * 0.85, rec > 0.3 ? 1 : 0);
           x.restore();
         }
         // 符文環
@@ -697,7 +693,7 @@ const Art = (() => {
         const py = -(T - 0.13 * u);
         const look = sp === 1 ? { coat: '#7a2a2a', hat: '#3a2420', band: '#e8dcc0', scope: '#5a1a1a' } : sp === 0 ? { coat: '#2f4f9a', hat: '#1e2a4a', band: '#f2c14e', scope: '#c9a040' } : tier >= 2 ? { coat: '#4f6a3a', hat: '#2f3a24', band: '#e5484d' } : { coat: '#5a7a4a', hat: '#3a4a2a', band: '#c94a3a' };
         x.save(); x.translate(0, py - u * 0.04); x.scale(face, 1);
-        rifleman(x, u, clamp(aim, -0.6, 0.7), rec, look);
+        Crew.rifleman(x, u, clamp(aim, -0.6, 0.7), rec, { coat: look.coat, hat: look.hat, band: look.band, scope: look.scope || '#2a2d33' });
         // 瞄準鏡閃光
         const gl = (time * 0.7 + t.id * 0.31) % 1;
         if (gl < 0.08) { const s2 = Math.sin(gl / 0.08 * Math.PI) * u * 0.07; x.save(); x.translate(0, -u * 0.16); x.rotate(clamp(aim, -0.6, 0.7)); x.translate(u * 0.1, -u * 0.04); x.fillStyle = '#ffffff'; x.beginPath(); x.moveTo(-s2, 0); x.lineTo(0, -s2 * 0.25); x.lineTo(s2, 0); x.lineTo(0, s2 * 0.25); x.closePath(); x.fill(); x.beginPath(); x.moveTo(0, -s2); x.lineTo(s2 * 0.25, 0); x.lineTo(0, s2); x.lineTo(-s2 * 0.25, 0); x.closePath(); x.fill(); x.restore(); }
@@ -731,18 +727,16 @@ const Art = (() => {
           // 鼓手
           const hit = Math.max(0, Math.sin(time * 9));
           x.save(); x.translate(-u * 0.24 - u * 0.14, u * 0.03);
-          archerless(x, u, '#b83a30');
-          x.strokeStyle = '#6b4a2a'; x.lineWidth = lw(u, 0.02);
-          x.beginPath(); x.moveTo(u * 0.04, -u * 0.13); x.lineTo(u * 0.13, -u * 0.18 + hit * u * 0.04); x.stroke();
+          void hit; Crew.draw(x, 'drummer', { c: '#b83a30' }, u, Math.floor(time * 6 + t.id) % 2);
           x.restore();
         }
         if (sp === 1) {
           // 拿望遠鏡的哨兵
           x.save(); x.translate(-u * 0.12, -u * 0.85); x.scale(face, 1);
-          archerless(x, u, '#3a6fb8');
-          rrect(x, u * 0.02, -u * 0.2, u * 0.12, u * 0.03, u * 0.01); fs(x, '#c9a040', OUT, lw(u, 0.01));
+          Crew.draw(x, 'sentry', { c: '#3a6fb8' }, u, 0);
           x.restore();
         }
+        if (sp < 0) { x.save(); x.translate(-u * 0.2, baseY + u * 0.02); Crew.draw(x, 'bearer', { c: tier >= 2 ? '#c8382e' : '#4f8a4a', hat: tier >= 2 ? '#7a1e1a' : '#2f5a2a', flag: '#ffd36b' }, u * 0.85, Math.floor(time * 5 + t.id) % 4); x.restore(); }
         // 火盆火焰
         if (tier >= 1 && sp !== 0 && sp !== 1) for (const sx of tier >= 2 ? [-1, 1] : [1]) flame(x, sx * u * 0.33, -u * 0.27, u * 0.07, time + sx);
         break;
@@ -758,15 +752,9 @@ const Art = (() => {
         // 礦工：戴安全帽揮十字鎬
         {
           x.save(); x.translate(-u * 0.3, u * 0.08);
-          chibi(x, u * 0.85, { c: '#5a6aa8', hat: 'miner', hair: '#3a2a22', belt: '#3a2a1a' });
-          const kk = u * 0.85 * 1.3, sw = Math.sin(time * 5 + t.id) * 0.7 - 0.3;
-          x.save(); x.translate(kk * 0.03, -kk * 0.12); x.rotate(sw);
-          x.strokeStyle = OUT; x.lineWidth = lw(u, 0.026); x.beginPath(); x.moveTo(0, 0); x.lineTo(kk * 0.12, -kk * 0.08); x.stroke();
-          x.strokeStyle = '#9a6a3a'; x.lineWidth = lw(u, 0.015); x.stroke();
-          x.beginPath(); x.moveTo(kk * 0.08, -kk * 0.13); x.quadraticCurveTo(kk * 0.14, -kk * 0.1, kk * 0.16, -kk * 0.03); x.strokeStyle = OUT; x.lineWidth = lw(u, 0.026); x.stroke(); x.strokeStyle = '#b8c0cc'; x.lineWidth = lw(u, 0.014); x.stroke();
-          circ(x, 0, 0, kk * 0.016, SKIN);
-          x.restore();
-          if (Math.sin(time * 5 + t.id) > 0.92) sparkle(x, kk * 0.17, -kk * 0.02, u * 0.04);
+          const mf = Math.floor(time * 6.5 + t.id * 3) % 8, mr = Crew.rOf(u * 0.9);
+          Crew.draw(x, 'miner', {}, u * 0.9, mf);
+          if (mf === 2 || mf === 3) sparkle(x, mr * 1.3, -mr * 0.2, u * 0.05);
           x.restore();
         }
         // 礦車進出
