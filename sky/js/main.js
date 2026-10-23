@@ -376,6 +376,7 @@ let last = 0;
 function frame(ts) {
   const dt = Math.min(0.034, (ts - last) / 1000 || 0.016); last = ts;
   update(dt);
+  if (G.state !== 'play' || G.paused) Snd.humAll(0);
   draw();
   if (G.state === 'play') $('bombN').textContent = G.bombs;
   Input.endFrame();
