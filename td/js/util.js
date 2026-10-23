@@ -21,20 +21,20 @@ function segDist2(px, py, ax, ay, bx, by) {
 }
 
 // 事件掛勾：模擬層只呼叫這些，畫面與音效層自己接上
-const Hook = { sfx() {}, shake() {}, banner() {}, ended() {}, unlocked() {} };
+const Hook = { sfx() {}, shake() {}, banner() {}, ended() {}, unlocked() {}, fx() {} }; // fx：只給畫面特效用，不影響邏輯
 
 // 存檔
 const Store = {
   KEY: 'td.keepers.save.v1',
   data: null,
   blank() {
-    return { v: 1, levels: {}, meta: {}, endless: {}, diff: 'normal', music: true, sfx: true, seenHelp: false, plays: 0 };
+    return { v: 1, levels: {}, meta: {}, endless: {}, seen: {}, diff: 'normal', music: true, sfx: true, seenHelp: false, plays: 0 };
   },
   load() {
     let d = null;
     try { const raw = localStorage.getItem(this.KEY); if (raw) d = JSON.parse(raw); } catch (e) { d = null; }
     this.data = Object.assign(this.blank(), d && typeof d === 'object' ? d : {});
-    for (const k of ['levels', 'meta', 'endless']) if (!this.data[k] || typeof this.data[k] !== 'object') this.data[k] = {};
+    for (const k of ['levels', 'meta', 'endless', 'seen']) if (!this.data[k] || typeof this.data[k] !== 'object') this.data[k] = {};
     return this.data;
   },
   save() {

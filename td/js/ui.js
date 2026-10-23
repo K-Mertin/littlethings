@@ -245,7 +245,7 @@ const UI = (() => {
   function resetPanel() { lastPanelKey = ''; lastPv = ''; lastTipHtml = ''; msg = null; lastLives = null; lastGold = null; }
 
   // ───────── 選單層 ─────────
-  const OVS = ['ovTitle', 'ovLevels', 'ovBrief', 'ovMeta', 'ovPause', 'ovResult', 'ovHelp'];
+  const OVS = ['ovTitle', 'ovLevels', 'ovBrief', 'ovMeta', 'ovPause', 'ovResult', 'ovHelp', 'ovCodex'];
   function show(...ids) { for (const o of OVS) $(o).hidden = !ids.includes(o); }
   function syncToggles() {
     for (const b of document.querySelectorAll('.tog')) {
@@ -255,26 +255,24 @@ const UI = (() => {
   }
   function starsHtml(n, max) { let h = ''; for (let i = 0; i < (max || 3); i++) h += `<span class="${i < n ? 'on' : ''}">★</span>`; return h; }
 
-  const thumbs = {};
   function levels() {
     $('lStars').textContent = `★ ${Prog.total()} / ${Prog.max()}`;
-    const g = $('lvGrid'); g.innerHTML = '';
+    const box = $('wmap'); box.innerHTML = '';
+    const w = Math.max(200, box.clientWidth), h = Math.max(200, box.clientHeight);
+    const m = WorldMap.draw(w, h);
+    box.appendChild(m.canvas);
+    let cur = LEVELS.findIndex((L, i) => Prog.unlocked(i) && !(Prog.rec(i) && Prog.rec(i).stars));
     LEVELS.forEach((L, i) => {
       const ok = Prog.unlocked(i), r = Prog.rec(i);
       const b = document.createElement('button');
-      b.className = 'lv' + (ok ? '' : ' locked');
-      if (!thumbs[i]) thumbs[i] = Render.thumb(i, 320, 200);
-      const cv = thumbs[i];
-      b.appendChild(cv);
-      const meta = document.createElement('div'); meta.className = 'meta';
-      const eb = Prog.endlessOk(i) ? `<span class="tag inf">無盡 ${Store.data.endless[i] || 0} 波</span>` : '';
-      meta.innerHTML = `<span class="num">${i + 1}</span><span class="nm"><b>${L.name}</b><small>${L.en}</small></span><span class="stars">${starsHtml(r ? r.stars : 0)}</span>`;
-      b.appendChild(meta);
-      const badges = document.createElement('div'); badges.className = 'badges';
-      badges.innerHTML = (r && r.hard ? '<span class="tag">困難通關</span>' : '') + eb;
-      b.appendChild(badges);
+      b.className = 'wnode' + (ok ? '' : ' locked') + (i === cur ? ' cur' : '') + (r && r.stars ? ' done' : '');
+      b.style.left = m.pts[i][0] + 'px'; b.style.top = m.pts[i][1] + 'px';
+      const eb = Prog.endlessOk(i) ? `<em class="inf">${Store.data.endless[i] ? '無盡 ' + Store.data.endless[i] + ' 波' : '無盡模式'}</em>` : '';
+      b.innerHTML = `<span class="wn-num">${ok ? i + 1 : '🔒'}</span><span class="wn-lbl"><b>${L.name}</b><span class="stars">${starsHtml(r ? r.stars : 0)}</span>${r && r.hard ? '<em>困難</em>' : ''}${eb}</span>${i === cur ? '<i class="wn-flag"></i>' : ''}`;
+      b.setAttribute('aria-label', `第 ${i + 1} 關 ${L.name}${ok ? '' : '（尚未解鎖）'}`);
       if (ok) b.addEventListener('click', () => { Snd.sfx('click'); brief(i); });
-      g.appendChild(b);
+      else b.addEventListener('click', () => Snd.sfx('deny'));
+      box.appendChild(b);
     });
   }
   function brief(li) {
@@ -359,7 +357,14 @@ const UI = (() => {
       spans.forEach((s, i) => setTimeout(() => { s.classList.add('show'); if (i < G.stars) { s.classList.add('on'); Snd.sfx('star'); } }, 500 + i * 380));
     }
     const mins = Math.floor(G.t / 60), secs = Math.floor(G.t % 60);
-    $('rStats').innerHTML = `<div><b>${G.stats.kills}</b>擊倒</div><div><b>${G.lives}/${G.maxLives}</b>剩下生命</div><div><b>${mins}:${String(secs).padStart(2, '0')}</b>遊戲時間</div>`;
+    $('rStats').innerHTML = `<div><b>${G.stats.kills}</b>擊倒</div><div><b>${G.lives}/${G.maxLives}</b>剩下生命</div><div><b>${mins}:${String(secs).padStart(2, '0')}</b>遊戲時間</div><div><b>${G.stats.built}</b>蓋塔</div><div><b>${Math.max(0, G.wave + 1)}</b>波次</div><div><b>${G.stats.earned}</b>額外收入</div>`;
+    const best = G.towers.filter(t => !TOWERS[t.k].support).sort((a, b) => b.dmgDone - a.dmgDone)[0];
+    const mvp = $('rMvp');
+    if (best && best.dmgDone > 0) { mvp.hidden = false; const nm = best.tier === 3 ? TOWERS[best.k].spec[best.spec].name : `${TOWERS[best.k].name} Lv${best.tier + 1}`; mvp.innerHTML = `<img alt="" src="${Render.icon('tower', best.k, best.tier, best.spec < 0 ? undefined : best.spec, 96)}"><div><small>最佳防禦塔</small><b>${esc(nm)}</b><span>造成 ${Math.round(best.dmgDone).toLocaleString()} 傷害 · 擊倒 ${best.kills}</span></div>`; }
+    else mvp.hidden = true;
+    $('rArt').src = Render.icon('castle', 'c', 0, undefined, 160);
+    $('ovResult').classList.toggle('lost', !won && !G.endless);
+    $('ovResult').classList.toggle('won', won);
     $('rReward').textContent = rec.gained > 0 ? `獲得 ★ ${rec.gained}！可以到天賦樹使用。` : (won || G.endless ? '' : '調整一下塔的位置再試一次吧！');
     const u = $('rUnlock');
     if (rec.unlock) {

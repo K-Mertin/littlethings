@@ -17,10 +17,11 @@ App.ui = newUi();
 let quiet = false;
 Hook.sfx = n => { if (!quiet) Snd.sfx(n); };
 Hook.shake = a => { if (!quiet) App.ui.shake = Math.max(App.ui.shake, a); };
+Hook.fx = (n, g, a, b, c, d, e) => FX.on(n, g, a, b, c, d, e);
 Hook.banner = (G, boss) => {
   if (G !== App.game) return;
   App.ui.banner = boss
-    ? { t: 0, big: '頭目來襲！', small: ENEMIES[boss].name, boss: true }
+    ? { t: 0, big: '頭目來襲！', small: ENEMIES[boss].name, boss: true, k: boss }
     : { t: 0, big: `第 ${G.wave + 1} 波`, small: G.endless ? '無盡模式' : (G.wave === G.nWaves - 1 ? '最後一波！' : `共 ${G.nWaves} 波`) };
   if (boss) Snd.play(9, 1);
 };
@@ -59,6 +60,7 @@ function layout() {
     Object.assign(panel, { left: (W - PW) + 'px', top: '0px', width: PW + 'px', height: H + 'px' });
   }
   App.Vplay = makeView(s, portrait, ox, oy);
+  Render.setLow(isTouch || W * H < 520000);
   // 標題畫面背景：地圖鋪滿整個螢幕
   const rot = portrait;
   const ds = Math.max(W / (rot ? ROWS : COLS), H / (rot ? COLS : ROWS));
@@ -67,7 +69,7 @@ function layout() {
   cv.style.width = W + 'px'; cv.style.height = H + 'px';
   Render.invalidate();
 }
-addEventListener('resize', layout);
+addEventListener('resize', () => { layout(); if (!$('ovLevels').hidden && App.scene === 'levels') UI.levels(); });
 addEventListener('orientationchange', () => setTimeout(layout, 150));
 
 // ───────── 遊戲流程 ─────────
@@ -79,14 +81,14 @@ function startLevel(li, diff, endless) {
   UI.resetPanel(); UI.show();
   app.classList.add('playing');
   Snd.play(THEMES[LEVELS[li].theme].music, 1);
-  App.ui.banner = { t: 0, big: LEVELS[li].name, small: endless ? '無盡模式 · 準備好就按開始' : `${DIFFS[diff].name} · 共 ${App.game.nWaves} 波` };
+  App.ui.banner = { t: 0, intro: true, li, en: LEVELS[li].en, big: LEVELS[li].name, small: endless ? '無盡模式 · 準備好就按開始' : `${DIFFS[diff].name}難度 · 共 ${App.game.nWaves} 波` };
 }
 function toScene(s) {
   App.scene = s;
   app.classList.toggle('playing', s === 'play');
   if (s !== 'play') { App.game = null; App.paused = false; }
   if (s === 'title') { $('tStars').textContent = `★ ${Prog.total()} / ${Prog.max()}`; UI.show('ovTitle'); Snd.play(8, 0); }
-  if (s === 'levels') { UI.levels(); UI.show('ovLevels'); Snd.play(8, 0); }
+  if (s === 'levels') { UI.show('ovLevels'); UI.levels(); Snd.play(8, 0); }
   if (s === 'meta') { UI.meta(); UI.show('ovMeta'); }
 }
 function recordResult(G) {
@@ -273,13 +275,15 @@ function bindClick(id, fn) { $(id).addEventListener('click', () => { Snd.init();
 bindClick('tPlay', () => toScene('levels'));
 bindClick('tMeta', () => { App.metaBack = 'title'; toScene('meta'); });
 bindClick('tHelp', () => UI.help());
+bindClick('tCodex', () => Codex.open(() => toScene('title')));
+bindClick('lCodex', () => Codex.open(() => { UI.show('ovLevels'); UI.levels(); }));
 for (const b of document.querySelectorAll('[data-go]')) b.addEventListener('click', () => { Snd.init(); Snd.sfx('click'); if (b.dataset.go === 'meta') App.metaBack = 'levels'; toScene(b.dataset.go); });
 bindClick('mBack', () => toScene(App.metaBack || 'title'));
 bindClick('mReset', () => { if (Prog.spent() === 0) return; if (confirm('要重置天賦樹，把星星全部退回嗎？')) { Store.data.meta = {}; Store.save(); UI.meta(); } });
 for (const b of $('bDiff').children) b.addEventListener('click', () => { Snd.init(); Snd.sfx('click'); App.brief.diff = b.dataset.d; UI.syncDiff(); });
 bindClick('bGo', () => startLevel(App.brief.li, App.brief.diff, false));
 bindClick('bEndless', () => startLevel(App.brief.li, App.brief.diff, true));
-bindClick('bBack', () => UI.show('ovLevels'));
+bindClick('bBack', () => { UI.show('ovLevels'); UI.levels(); });
 bindClick('pResume', () => setPaused(false));
 bindClick('pRestart', () => { const G = App.game; startLevel(G.li, G.diff, G.endless); });
 bindClick('pQuit', () => {
@@ -351,6 +355,16 @@ function newDemo() {
   App.demoT = 0;
 }
 
+// 圖鑑：記錄遇過的敵人
+let seenT = 0;
+function markSeen(G, dt) {
+  if ((seenT -= dt) > 0) return;
+  seenT = 0.5;
+  let ch = false;
+  for (const e of G.enemies) if (!Store.data.seen[e.k]) { Store.data.seen[e.k] = 1; ch = true; }
+  if (ch) Store.save();
+}
+
 // ───────── 主迴圈 ─────────
 let lastT = performance.now() / 1000;
 function loop(now) {
@@ -382,8 +396,9 @@ function loop(now) {
     ui.placing = !!(ui.armed || ui.selTile);
     Render.setView(App.Vplay);
     Render.ensureBg(G, App.W, App.H, App.dpr);
-    Render.frame(ctx, G, ui, App.time, App.W, App.H);
+    Render.frame(ctx, G, ui, App.time, App.W, App.H, App.paused ? 0 : dt * App.speed);
     UI.tick(G, dt);
+    markSeen(G, dt);
   } else {
     if (!App.demo || (App.demo.state !== 'run' && App.demo.state !== 'ready') && (App.demoT += dt) > 3) newDemo();
     const G = App.demo;
@@ -392,7 +407,7 @@ function loop(now) {
     quiet = false;
     Render.setView(App.Vdemo);
     Render.ensureBg(G, App.W, App.H, App.dpr);
-    Render.frame(ctx, G, { nextInfo: null, shake: 0 }, App.time, App.W, App.H);
+    Render.frame(ctx, G, { nextInfo: null, shake: 0 }, App.time, App.W, App.H, dt * 2);
     // 讓背景暗一點、不搶戲
     ctx.fillStyle = 'rgba(12,14,30,.12)'; ctx.fillRect(0, 0, App.W, App.H);
   }
@@ -403,6 +418,7 @@ function loop(now) {
 function boot() {
   layout();
   UI.buildShop();
+  Codex.init();
   $('skMeteor').querySelector('img').src = UI.skillIcon('meteor');
   $('skFreeze').querySelector('img').src = UI.skillIcon('freeze');
   UI.syncToggles();
