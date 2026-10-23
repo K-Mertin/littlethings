@@ -445,7 +445,7 @@ const Party = {
       } else r.title = r.title || '練習完成！';
     } else r.rows.forEach(row => { row.rank = 0; });
     Sfx.play(r.team ? (r.ok ? 'win' : 'end') : 'end');
-    Fx.pop(W / 2, H / 2, r.team ? (r.ok ? '成功！' : '時間到！') : '時間到！', this.def.col, 110);
+    Fx.pop(W / 2, H / 2, this.game.endText || (r.team ? (r.ok ? '成功！' : '時間到！') : (this.game.dur == null ? '結束！' : '時間到！')), this.def.col, 110);
   },
   showResult() {
     this.state = 'result'; renderResult(); Music.sync(); if (!this.res.team && this.res.rows.length > 1) Sfx.play('win');

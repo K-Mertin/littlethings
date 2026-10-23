@@ -525,7 +525,7 @@
       this.ribbon(e.p.name + ' 到達城堡！', PARTY_COLORS[e.p.col].d, 3.4, true, e);
       this.say('win'); this.ctx.buzz(e.p, 400);
       for (let k = 0; k < 90; k++) this.parts.push({ k: 'conf', x: rnd(0, PX0), y: rnd(-200, -10), vx: rnd(-40, 40), vy: rnd(120, 260), a: rnd(0, TAU), va: rnd(-6, 6), t: 0, life: 4, col: CONF[k % CONF.length] });
-      this.later(3.6, () => { this.over = true; });
+      this.endText = '到達城堡！'; this.later(3.6, () => { this.over = true; });
     }
     endGame() {
       this.phase = 'end'; this.status = '回合用完了！';
@@ -533,7 +533,7 @@
       this.winner = this.solo ? null : best;
       this.ribbon('回合用完了！走最遠的人贏', '#e11d48', 2.6, true);
       this.say('end');
-      this.later(2.8, () => { this.over = true; });
+      this.endText = '回合用完！'; this.later(2.8, () => { this.over = true; });
     }
 
     /* ---------------- update ---------------- */
