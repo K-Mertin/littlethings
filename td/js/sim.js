@@ -90,6 +90,12 @@ function newGame(li, diff, opts) {
     },
     stats: { kills: 0, leaks: 0, built: 0, earned: 0 }, bossOn: null, flash: 0,
   };
+  // 挑戰模式
+  G.chal = opts.chal || null;
+  if (G.chal === 'limit' && L.limit) G.towersAvail = G.towersAvail.filter(k => L.limit.includes(k));
+  if (G.chal === 'noskill') { G.skills.meteor.on = false; G.skills.freeze.on = false; }
+  if (G.chal === 'iron') G.lives = 1;
+  G.mod = null;
   G.maxLives = G.lives;
   G.waves = G.endless ? [] : genWaves(L);
   G.nWaves = G.endless ? Infinity : G.waves.length;
@@ -127,6 +133,7 @@ function buildTower(G, k, x, y) {
     buff: { dmg: 0, range: 0, rate: 0, air: false }, st: null,
   };
   G.towers.push(t); G.grid[y][x].tower = t; G.dirty = true; G.stats.built++;
+  Hook.fx('build', G, t);
   calcStats(G);
   burst(G, t.cx, t.cy, 0.1, 14, '#f4e3c0', 2.2, 0.5);
   Hook.sfx('build');
@@ -145,6 +152,7 @@ function upgradeTower(G, t, spec) {
   G.gold -= c; t.spent += c; t.tier++;
   if (t.tier === 3) t.spec = spec;
   t.bornT = G.t; G.dirty = true; calcStats(G);
+  Hook.fx('upgrade', G, t);
   burst(G, t.cx, t.cy, 0.5, 22, t.tier === 3 ? '#ffe27a' : '#ffffff', 2.6, 0.7);
   ring(G, t.cx, t.cy, 0.2, 0.9, 0.4, '#ffe27a');
   Hook.sfx(t.tier === 3 ? 'spec' : 'upgrade');
@@ -153,6 +161,7 @@ function upgradeTower(G, t, spec) {
 function sellValue(G, t) { return G.wave < 0 ? t.spent : Math.floor(t.spent * G.M.refund); }
 function sellTower(G, t) {
   const v = sellValue(G, t);
+  Hook.fx('sell', G, t);
   G.gold += v;
   G.towers = G.towers.filter(o => o !== t);
   G.grid[t.y][t.x].tower = null; G.dirty = true; calcStats(G);
@@ -219,6 +228,7 @@ function callWave(G, early) {
   G.wave++;
   if (G.endless) G.waves[G.wave] = genEndlessWave(G.L, G.wave);
   const W = G.waves[G.wave];
+  if (G.endless) G.mod = W.mod || null;
   let boss = null;
   for (const g of W.groups) {
     G.spawners.push({ k: g.k, left: g.n, gap: g.gap, delay: g.delay, timer: 0, entry: g.entry, hp: g.hp });
@@ -234,6 +244,7 @@ function callWave(G, early) {
     if (t.st.interest) g += Math.min(80, Math.floor(G.gold * t.st.interest));
     G.gold += g; G.stats.earned += g;
     addText(G, t.cx, t.cy - 0.4, '+' + g, '#ffd84a', 1.2);
+    Hook.fx('mine', G, t, g);
     burst(G, t.cx, t.cy, 0.5, 8, '#ffd84a', 1.8, 0.7);
     t.pulse = 1;
   }
@@ -267,9 +278,11 @@ function spawnEnemy(G, k, entry, hpMul, pi, at) {
     off: d.boss ? 0 : (G.rnd() - 0.5) * 0.34, x: 0, y: 0, dx: 1, dy: 0, alive: true, wob: G.rnd() * 6.28, r: d.r,
     lives: d.lives || 1, healFx: 0,
   };
+  if (G.mod === 'swift') e.spd *= 1.15;
+  if (G.mod === 'armored') e.armor = Math.min(0.85, e.armor + 0.2);
   placeEnemy(e);
   G.enemies.push(e);
-  if (e.boss) { G.bossOn = e; Hook.sfx('roar'); Hook.shake(0.5); }
+  if (e.boss) { G.bossOn = e; Hook.sfx('roar'); Hook.shake(0.5); Hook.fx('boss', G, e); }
   return e;
 }
 const _po = { x: 0, y: 0, dx: 0, dy: 0 };
@@ -298,7 +311,8 @@ function hurt(G, e, amt, type, src) {
 }
 function killEnemy(G, e, src) {
   e.alive = false;
-  const b = Math.max(1, Math.round(e.d.bounty * Math.pow(e.hpMul, 0.7) * G.D.bounty * G.M.bounty));
+  Hook.fx('kill', G, e);
+  const b = Math.max(1, Math.round(e.d.bounty * Math.pow(e.hpMul, 0.7) * G.D.bounty * G.M.bounty * (G.mod === 'rich' ? 1.3 : 1)));
   G.gold += b; G.stats.kills++;
   if (src && src.t) src.t.kills++;
   addText(G, e.x, e.y - 0.35 - (e.fly ? 0.5 : 0), '+' + b, '#ffd84a', e.boss ? 1.6 : 0.9);
@@ -347,7 +361,7 @@ function updateEnemies(G, dt) {
           if (dist2(o.x, o.y, e.x, e.y) > 1.7 * 1.7) continue;
           o.hp = Math.min(o.maxHp, o.hp + o.maxHp * d.heal); o.healFx = 0.6; n++;
         }
-        if (n) { ring(G, e.x, e.y, 0.2, 1.7, 0.5, '#7dffb0'); Hook.sfx('heal'); }
+        if (n) { ring(G, e.x, e.y, 0.2, 1.7, 0.5, '#7dffb0'); Hook.sfx('heal'); Hook.fx('heal', G, e); }
       }
     }
     if (e.shieldMax && e.shield < e.shieldMax && G.t - e.lastHit > 3) e.shield = Math.min(e.shieldMax, e.shield + e.shieldMax * 0.4 * dt);
@@ -357,7 +371,7 @@ function updateEnemies(G, dt) {
         e.abilT = d.stomp; let n = 0;
         for (const t of G.towers) if (dist2(t.cx, t.cy, e.x, e.y) < 2.0 * 2.0) { t.stunT = 2.5; n++; }
         ring(G, e.x, e.y, 0.3, 2.0, 0.6, '#d9b27a'); burst(G, e.x, e.y, 0, 20, '#a88a66', 3, 0.7);
-        Hook.shake(0.6); Hook.sfx('stomp');
+        Hook.shake(0.6); Hook.sfx('stomp'); Hook.fx('stomp', G, e);
       }
     }
     if (d.summon && e.frozenT <= 0) {
@@ -366,18 +380,20 @@ function updateEnemies(G, dt) {
         e.abilT = d.summon;
         const hm = 1 + 0.05 * Math.max(0, G.wave);
         for (let i = 0; i < 3; i++) { const c = spawnEnemy(G, 'skeleton', 0, hm, e.pi, Math.max(0, e.dist - 0.3 - i * 0.3)); c.off = (i - 1) * 0.22; placeEnemy(c); }
-        ring(G, e.x, e.y, 0.2, 1.5, 0.6, '#b38aff'); Hook.sfx('summon');
+        ring(G, e.x, e.y, 0.2, 1.5, 0.6, '#b38aff'); Hook.sfx('summon'); Hook.fx('summon', G, e);
       }
     }
     if (d.dash) {
       e.abilT -= dt;
-      if (e.abilT <= 0) { e.abilT = d.dash; e.dashT = 1.6; Hook.sfx('roar'); }
+      if (e.abilT <= 0) { e.abilT = d.dash; e.dashT = 1.6; Hook.sfx('roar'); Hook.fx('dash', G, e); }
     }
     if (e.healFx > 0) e.healFx -= dt;
+    if (G.mod === 'regen' && e.hp < e.maxHp) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * 0.02 * dt);
   }
 }
 function leak(G, e) {
   e.alive = false;
+  Hook.fx('leak', G, e);
   G.lives = Math.max(0, G.lives - e.lives); G.stats.leaks += e.lives;
   if (G.bossOn === e) G.bossOn = null;
   addText(G, G.exitPt.x, G.exitPt.y - 0.5, '-' + e.lives + ' ♥', '#ff5d6c', 1.3);
@@ -424,7 +440,7 @@ function updateTowers(G, dt) {
       for (const e of list) { hurt(G, e, st.dmg, 'magic', { t }); applySlow(G, e, st.slow, st.slowT); }
       ring(G, t.cx, t.cy, 0.3, st.range, 0.45, '#bfefff');
       if (!G.noFx) for (let i = 0; i < 4; i++) { const a = G.rnd() * 6.28, rr = G.rnd() * st.range; part(G, t.cx + Math.cos(a) * rr, t.cy + Math.sin(a) * rr, 0.3, 0, 0, 0.6, 0.9, '#ffffff', 0.06, 'snow'); }
-      Hook.sfx('blizzard');
+      Hook.sfx('blizzard'); Hook.fx('aura', G, t);
       t.recoil = 1;
       continue;
     }
@@ -435,6 +451,7 @@ function updateTowers(G, dt) {
     t.recoil = 1;
     aimAt(t, list[0]);
     fire(G, t, list);
+    Hook.fx('fire', G, t, list[0]);
   }
 }
 function applySlow(G, e, a, T) {
@@ -565,6 +582,7 @@ function updateProjs(G, dt) {
         } else {
           explode(G, p.tx, p.ty, p.r, p.dmg, 'true', null, { air: true });
           boom(G, p.tx, p.ty, p.r, true);
+          Hook.fx('meteor', G, p.tx, p.ty, p.r);
           Hook.shake(0.45); Hook.sfx('meteorhit');
         }
       }
@@ -607,6 +625,7 @@ function updateProjs(G, dt) {
             if (p.shred) tg.shred = Math.min(0.3, tg.shred + p.shred);
             const dealt = hurt(G, tg, p.dmg, 'phys', p.src);
             if (p.crit) addText(G, p.tx, p.ty - 0.6, '暴擊 ' + Math.round(dealt), '#ffb347', 0.9);
+            Hook.fx('hit', G, p, tg);
             spark(G, p.tx, p.ty, th, '#ffe7b0', 3);
           }
         } else if (p.k === 'shard') {
@@ -621,10 +640,12 @@ function updateProjs(G, dt) {
             if (p.freeze && G.rnd() < p.freeze) { const T = o.boss ? p.freezeT * 0.25 : p.freezeT; if (o.frozenT < T) { o.frozenT = T; o.brittle = true; } }
           }
           spark(G, p.tx, p.ty, th, '#c8f3ff', 7);
+          Hook.fx('hit', G, p, tg);
           if (p.splash) ring(G, p.tx, p.ty, 0.1, p.splash, 0.3, '#bdefff');
         } else {
           if (tg) hurt(G, tg, p.dmg, 'magic', p.src);
           spark(G, p.tx, p.ty, th, '#e2c8ff', 8);
+          Hook.fx('hit', G, p, tg);
         }
       } else {
         p.x += dx / l * mv; p.y += dy / l * mv; p.h = lerp(p.h, th, Math.min(1, dt * 4));
@@ -646,7 +667,7 @@ function castMeteor(G, x, y) {
     const tx = clamp(x + ox, 0, COLS), ty = clamp(y + oy, 0, ROWS);
     G.projs.push({ k: 'meteor', x0: tx + 1.5, y0: ty - 2.5, x: tx, y: ty, tx, ty, T: 0.7, tt: -i * 0.2, h: 7, dmg, r: SKILLS.meteor.r });
   });
-  Hook.sfx('meteor');
+  Hook.sfx('meteor'); Hook.fx('meteorCast', G, x, y);
   return true;
 }
 function castFreeze(G) {
@@ -661,7 +682,7 @@ function castFreeze(G) {
     if (!G.noFx) part(G, e.x, e.y, 0.4, 0, 0, 1.2, 0.8, '#e6fbff', 0.1, 'snow');
   }
   G.iceFlash = 0.8;
-  Hook.sfx('freeze');
+  Hook.sfx('freeze'); Hook.fx('freeze', G);
   return true;
 }
 
@@ -688,6 +709,7 @@ function ring(G, x, y, r0, r1, life, c) { if (!G.noFx) G.rings.push({ x, y, r0, 
 function boom(G, x, y, r, big, h) {
   if (G.noFx) return;
   h = h || 0;
+  Hook.fx('boom', G, x, y, r, big, h);
   ring(G, x, y, 0.1, r, 0.35, '#fff3c4');
   for (let i = 0; i < (big ? 26 : 12); i++) {
     const a = G.rnd() * 6.283, v = G.rnd() * r * 2.5;

@@ -130,6 +130,8 @@ const THEMES = {
   swamp: { g1: '#87a95a', g2: '#7d9e52', edge: '#4c6a35', path: '#b39a6b', pathE: '#6f5a3a', deco: ['mush', 'dead', 'bush', 'mush'], flower: ['#d7ff8a', '#b9a6ff'], bg: '#2f4228', music: 4, water: '#5f8f6a' },
   volcano: { g1: '#6b5a52', g2: '#63524b', edge: '#3a2c27', path: '#a58b74', pathE: '#55392b', deco: ['rock', 'dead', 'rock', 'crystal'], flower: ['#ff8a3a'], bg: '#2a1814', music: 5, water: '#ff7a2a', lava: true },
   coast: { g1: '#8fdc6a', g2: '#84d160', edge: '#5a9c41', path: '#f7e2ae', pathE: '#c9a462', deco: ['palm', 'tree', 'rock', 'palm'], flower: ['#ffffff', '#ffd1e6'], bg: '#1d6f9a', music: 6, water: '#3fb6e6' },
+  autumn: { g1: '#c8a24a', g2: '#bf9842', edge: '#8a6a2a', path: '#e2c690', pathE: '#a8824e', deco: ['tree', 'tree', 'bush', 'rock', 'mush', 'tree'], flower: ['#ff8a3a', '#ffd36b', '#ffffff'], bg: '#5a3a1e', music: 1, water: '#5ab8d0' },
+  canyon: { g1: '#d88a5a', g2: '#cf8050', edge: '#8a4a2a', path: '#f0c89a', pathE: '#b07848', deco: ['rock', 'cactus', 'dead', 'rock', 'crystal'], flower: ['#ffd36b'], bg: '#6a2e1a', music: 5, water: '#4cc7e8' },
   night: { g1: '#4b5a86', g2: '#45537d', edge: '#262e4f', path: '#8f8aa8', pathE: '#4c4766', deco: ['crystal', 'dead', 'rock', 'grave'], flower: ['#9ef0ff', '#d7a8ff'], bg: '#151a33', music: 7 },
 };
 
@@ -144,6 +146,7 @@ const LEVELS = [
     entries: [[0]],
     pool: [['slime', 0, 5], ['runner', 3, 2], ['beetle', 6, 2]],
     b0: 7, bg: 1.2, hp0: 1, hpg: 0.05, story: '史萊姆大軍從森林那頭冒出來了！在路邊蓋箭塔和砲塔，守住城堡。',
+    limit: ['arrow', 'cannon'],
   },
   {
     name: '迷霧森林', en: 'MISTY WOODS', theme: 'forest', seed: 23, waves: 12, gold: 270,
@@ -151,6 +154,7 @@ const LEVELS = [
     entries: [[0]],
     pool: [['slime', 0, 4], ['runner', 1, 3], ['bat', 3, 2], ['beetle', 5, 2]],
     b0: 8, bg: 1.19, hp0: 1.05, hpg: 0.055, story: '森林裡的路彎彎曲曲。新的冰霜塔可以讓跑很快的疾風狼慢下來。',
+    limit: ['arrow', 'frost'],
   },
   {
     name: '沙丘綠洲', en: 'DUNE OASIS', theme: 'desert', seed: 37, waves: 12, gold: 300,
@@ -162,6 +166,7 @@ const LEVELS = [
     water: [[7, 7, 3, 2]],
     pool: [['slime', 0, 3], ['runner', 0, 2], ['beetle', 1, 3], ['golem', 4, 2], ['healer', 6, 2], ['bat', 3, 1]],
     b0: 9, bg: 1.19, hp0: 1.1, hpg: 0.06, story: '兩個入口同時進攻！鐵甲蟲很硬，用新的法師塔打穿牠的殼。',
+    limit: ['cannon', 'frost', 'magic'],
   },
   {
     name: '冰封雪原', en: 'FROZEN FIELD', theme: 'snow', seed: 41, waves: 14, gold: 320,
@@ -170,6 +175,7 @@ const LEVELS = [
     pool: [['slime', 0, 3], ['runner', 0, 2], ['beetle', 1, 2], ['golem', 2, 2], ['bat', 2, 2], ['shield', 5, 3], ['healer', 6, 1], ['ogre', 8, 1]],
     boss: 'bossGolem',
     b0: 9, bg: 1.17, hp0: 1.15, hpg: 0.065, story: '道路在中間交叉，砲塔放在十字路口附近效果加倍。最後一波，岩石巨人王會來！',
+    limit: ['arrow', 'magic', 'sniper'],
   },
   {
     name: '沼澤濕地', en: 'MURKY SWAMP', theme: 'swamp', seed: 53, waves: 15, gold: 340,
@@ -181,6 +187,7 @@ const LEVELS = [
     water: [[0, 4, 2, 2], [12, 0, 2, 2]],
     pool: [['slime', 0, 2], ['runner', 0, 2], ['splitter', 1, 3], ['beetle', 2, 2], ['golem', 3, 2], ['bat', 2, 2], ['gargoyle', 6, 2], ['shield', 4, 2], ['healer', 5, 2], ['ogre', 9, 1]],
     b0: 10, bg: 1.17, hp0: 1.2, hpg: 0.065, story: '分裂膠被打爆會變成三隻小膠。戰旗可以讓附近的塔都變強。',
+    limit: ['cannon', 'magic', 'banner'],
   },
   {
     name: '熔岩火山', en: 'LAVA PEAK', theme: 'volcano', seed: 67, waves: 15, gold: 360,
@@ -193,6 +200,7 @@ const LEVELS = [
     pool: [['slime', 0, 2], ['runner', 0, 2], ['beetle', 0, 2], ['golem', 1, 2], ['bat', 1, 2], ['shield', 2, 2], ['splitter', 3, 2], ['healer', 4, 2], ['gargoyle', 5, 2], ['ogre', 6, 1]],
     boss: 'bossDragon',
     b0: 10, bg: 1.17, hp0: 1.3, hpg: 0.065, story: '路在火山口分成兩條，中間的島是兵家必爭之地。金礦能幫你存錢。炎龍在最後等著。',
+    limit: ['arrow', 'frost', 'sniper'],
   },
   {
     name: '海岸峭壁', en: 'CLIFF COAST', theme: 'coast', seed: 79, waves: 16, gold: 380,
@@ -205,6 +213,7 @@ const LEVELS = [
     pool: [['slime', 0, 2], ['runner', 0, 2], ['beetle', 0, 2], ['golem', 0, 2], ['bat', 1, 2], ['shield', 1, 2], ['splitter', 2, 2], ['healer', 3, 2], ['gargoyle', 3, 2], ['ogre', 5, 2]],
     boss: 'bossGolem',
     b0: 10, bg: 1.165, hp0: 1.4, hpg: 0.065, story: '敵人從海上登陸，兩路在中間會合。善用所有的塔！',
+    limit: ['cannon', 'magic', 'sniper'],
   },
   {
     name: '暗影城堡', en: 'SHADOW KEEP', theme: 'night', seed: 97, waves: 20, gold: 450,
@@ -214,8 +223,35 @@ const LEVELS = [
     ],
     entries: [[0], [1]],
     pool: [['slime', 0, 1], ['runner', 0, 2], ['beetle', 0, 2], ['golem', 0, 2], ['bat', 0, 2], ['shield', 1, 2], ['splitter', 1, 2], ['healer', 2, 2], ['gargoyle', 2, 2], ['ogre', 4, 2]],
-    boss: 'bossLich', midBoss: [11, 'bossDragon'],
-    b0: 9.5, bg: 1.15, hp0: 1.3, hpg: 0.06, story: '最後的決戰。兩條路交叉兩次，巫妖王會帶著骷髏大軍出現。',
+    boss: 'bossLich', midBoss: [14, 'bossDragon', 0.65],
+    b0: 9, bg: 1.14, hp0: 1.2, hpg: 0.058, story: '最後的決戰。兩條路交叉兩次，巫妖王會帶著骷髏大軍出現。',
+    limit: ['arrow', 'cannon', 'magic'],
+  },
+  {
+    name: '楓紅山谷', en: 'AUTUMN VALE', theme: 'autumn', seed: 113, waves: 18, gold: 480,
+    paths: [
+      [[-1, 4], [3, 4], [3, 1], [8, 1], [8, 8], [13, 8], [13, 3], [16, 3]],
+      [[-1, 4], [3, 4], [3, 8], [8, 8], [13, 8], [13, 3], [16, 3]],
+    ],
+    entries: [[0, 1]],
+    water: [[10, 4, 2, 2]],
+    pool: [['slime', 0, 1], ['runner', 0, 2], ['beetle', 0, 2], ['golem', 0, 2], ['bat', 0, 2], ['shield', 1, 2], ['splitter', 1, 2], ['healer', 2, 2], ['gargoyle', 2, 2], ['ogre', 3, 2], ['skeleton', 4, 2]],
+    boss: 'bossDragon', midBoss: [9, 'bossGolem', 0.6],
+    b0: 10, bg: 1.16, hp0: 1.6, hpg: 0.062, story: '秋天的山谷，岔路在山腳分開又會合。骷髏兵也來湊熱鬧，最後炎龍會飛越整座山谷。',
+    limit: ['arrow', 'magic', 'banner'],
+  },
+  {
+    name: '赤岩峽谷', en: 'RED CANYON', theme: 'canyon', seed: 131, waves: 22, gold: 520,
+    paths: [
+      [[-1, 2], [5, 2], [5, 7], [10, 7], [10, 2], [16, 2]],
+      [[7, 10], [7, 4], [13, 4], [13, 2], [16, 2]],
+    ],
+    entries: [[0], [1]],
+    water: [[1, 5, 2, 3]],
+    pool: [['slime', 0, 1], ['runner', 0, 2], ['beetle', 0, 2], ['golem', 0, 2], ['bat', 0, 2], ['shield', 0, 2], ['splitter', 1, 2], ['healer', 1, 2], ['gargoyle', 2, 2], ['ogre', 3, 2], ['skeleton', 3, 1]],
+    boss: 'bossLich', midBoss: [11, 'bossGolem', 0.7],
+    b0: 10, bg: 1.15, hp0: 1.5, hpg: 0.06, story: '峽谷裡兩條路交叉成井字，到處都是火力交會點。這是王國最後的防線！',
+    limit: ['cannon', 'frost', 'sniper'],
   },
 ];
 
@@ -257,5 +293,44 @@ const SKILLS = {
   meteor: { name: '隕石', cd: 40, dmg: 110, r: 1.15, unlock: 0, desc: '點地圖上的位置，召喚三顆隕石。' },
   freeze: { name: '冰封', cd: 60, dur: 2.5, unlock: 2, desc: '凍住全場敵人（頭目只會變慢）。' },
 };
+// 每關的挑戰（各得 1 顆星；限定塔種、無技能是普通難度，鐵人是簡單難度但只有 1 條命）
+const CHALLENGES = {
+  limit: { name: '限定塔種', desc: '只能使用指定的幾種塔' },
+  noskill: { name: '無技能', desc: '不能使用隕石和冰封' },
+  iron: { name: '鐵人', desc: '只有 1 條命（敵人強度同簡單）' },
+};
+const CHAL_ORDER = ['limit', 'noskill', 'iron'];
+// 無盡模式的詞綴：每 5 波換一次
+const ENDLESS_MODS = {
+  swift: { name: '疾風', desc: '敵人速度 +15%' },
+  armored: { name: '鐵壁', desc: '敵人護甲 +20%' },
+  regen: { name: '再生', desc: '敵人每秒回復 2% 生命' },
+  swarm: { name: '蜂群', desc: '敵人數量多五成、血量少三成' },
+  sky: { name: '天空之怒', desc: '每波多一隊飛行敵人' },
+  rich: { name: '豐收', desc: '擊倒金幣 +30%' },
+};
+// 成就
+const ACHIEVEMENTS = [
+  { id: 'win1', name: '初次勝利', desc: '打贏任何一關' },
+  { id: 'stars3', name: '完美防守', desc: '任何一關拿到 3 顆星' },
+  { id: 'noleak', name: '滴水不漏', desc: '一條命都沒掉就過關' },
+  { id: 'hard', name: '硬漢', desc: '用困難難度過關' },
+  { id: 'half', name: '王國英雄', desc: '打贏前 5 關' },
+  { id: 'all', name: '王國守護者', desc: '打贏所有關卡' },
+  { id: 'bossGolem', name: '撼動大地', desc: '擊倒岩石巨人王' },
+  { id: 'bossDragon', name: '屠龍者', desc: '擊倒炎龍' },
+  { id: 'bossLich', name: '驅散黑暗', desc: '擊倒巫妖王' },
+  { id: 'k1000', name: '千人斬', desc: '累計擊倒 1000 個敵人' },
+  { id: 'k10000', name: '萬夫莫敵', desc: '累計擊倒 10000 個敵人' },
+  { id: 'b100', name: '建築大師', desc: '累計蓋 100 座塔' },
+  { id: 'specs', name: '全能工匠', desc: '每一種專精塔都蓋過' },
+  { id: 'rich', name: '大富翁', desc: '同時擁有 2000 金幣' },
+  { id: 'e20', name: '無盡之路', desc: '無盡模式撐過 20 波' },
+  { id: 'e40', name: '永不陷落', desc: '無盡模式撐過 40 波' },
+  { id: 'chal1', name: '挑戰者', desc: '完成任何一個關卡挑戰' },
+  { id: 'iron', name: '鐵人', desc: '完成任何一關的鐵人挑戰' },
+  { id: 'chal10', name: '挑戰大師', desc: '完成 10 個關卡挑戰' },
+  { id: 'meta', name: '學以致用', desc: '在天賦樹學會 10 階天賦' },
+];
 const ENDLESS_UNLOCK = 3; // 打贏第 4 關後解鎖無盡模式
 const WAVE_GAP = 14; // 一波出完之後到下一波的秒數

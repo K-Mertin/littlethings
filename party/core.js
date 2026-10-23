@@ -13,7 +13,11 @@ const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const rnd = (a, b) => a + Math.random() * (b - a);
 const rint = n => Math.random() * n | 0;
 const hyp = Math.hypot;
-const GAMES = [];                       // each games/*.js pushes its definition here
+const GAMES = [];
+/* lobby categories: games may set cat; otherwise co-op games are 'coop' and the rest 'action' */
+const CATS = [{ id: 'action', n: '🏃 跑跑跳跳' }, { id: 'coop', n: '🤝 大家合作' }, { id: 'brain', n: '🧠 動腦派對' }];
+const BRAIN = ['quiz', 'draw', 'rhythm', 'board'];
+function catOf(g) { return g.cat || (BRAIN.includes(g.id) ? 'brain' : g.kind === 'team' ? 'coop' : 'action'); }                       // each games/*.js pushes its definition here
 const NET_CDN = { peer: 'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js' };
 const store = {
   get(k, d) { try { const v = localStorage.getItem('mwparty.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
@@ -79,7 +83,7 @@ const SONGS = {
   action: { bpm: 150, roots: [48, 41, 48, 43], mel: [72,-1,76,79, 84,79,76,79, 77,-1,81,84, 81,77,74,77, 76,-1,79,84, 88,84,79,76, 74,77,79,83, 84,-1,84,-1] },
   farm: { bpm: 116, roots: [48, 43, 41, 48], mel: [79,76,79,76, 74,72,74,76, 77,74,77,81, 79,-1,-1,-1, 79,76,79,84, 83,81,79,77, 76,74,72,74, 72,-1,-1,-1] }
 };
-const TRACKS = { lobby: ['lobby', 0, 104], bumper: ['action', 0, 150], paint: ['action', 2, 138], fruit: ['action', 5, 144], sheep: ['farm', 0, 116], tag: ['action', 7, 152], snow: ['farm', 5, 126], fire: ['action', -3, 140], dodge: ['action', 3, 156], soccer: ['action', 2, 148], chairs: ['lobby', 5, 132], cake: ['farm', 3, 120], race: ['action', 9, 160] };
+const TRACKS = { lobby: ['lobby', 0, 104], bumper: ['action', 0, 150], paint: ['action', 2, 138], fruit: ['action', 5, 144], sheep: ['farm', 0, 116], tag: ['action', 7, 152], snow: ['farm', 5, 126], fire: ['action', -3, 140], dodge: ['action', 3, 156], soccer: ['action', 2, 148], chairs: ['lobby', 5, 132], cake: ['farm', 3, 120], race: ['action', 9, 160], quiz: ['lobby', 2, 112], draw: ['lobby', -2, 96], rhythm: ['action', 0, 120], board: ['farm', -3, 108] };
 const Music = {
   cur: null, step: 0, next: 0, timer: null, out: null,
   want() {
@@ -317,6 +321,10 @@ const Party = {
       case 'mode': if (p === this.leader() && (this.state === 'lobby' || this.state === 'result')) { this.setKid(!!d.kid); } break;
       case 'start': if (p === this.leader() && (this.state === 'lobby' || this.state === 'result')) this.begin(); break;
       case 'menu': if (p === this.leader() && this.state === 'result') this.toLobby(); break;
+      // games with other phone layouts (choices / drawing board)
+      case 'choose': if (this.state === 'play' && this.game && this.game.onChoose && p.inGame) this.game.onChoose(p, String(d.id).slice(0, 40)); break;
+      case 'draw': if (this.state === 'play' && this.game && this.game.onDraw && p.inGame && Array.isArray(d.p) && d.p.length <= 600) this.game.onDraw(p, { s: d.s | 0, c: clamp(d.c | 0, 0, 6), p: d.p.map(v => clamp(+v || 0, 0, 1)) }); break;
+      case 'drawClear': if (this.state === 'play' && this.game && this.game.onDrawClear && p.inGame) this.game.onDrawClear(p); break;
       case 'pause': if (p === this.leader() && (this.state === 'play' || this.state === 'intro')) this.togglePause(); break;
       case 'quit': if (p === this.leader() && this.state !== 'lobby') this.toLobby(); break;
     }
@@ -329,6 +337,8 @@ const Party = {
   },
   sync(p) { p.seen = p.inp.c.slice(); },
   pressed(p, k) { if (p.inp.c[k] > p.seen[k]) { p.seen[k] = p.inp.c[k]; return true; } return false; },
+  /* a game may switch a phone to another layout: null = joystick + button, {type:'tap'}, {type:'choices'}, {type:'draw'} */
+  layoutFor(p) { return this.game && this.game.padLayout ? this.game.padLayout(p) || null : null; },
   /* the raw stick with a dead zone; the live stick is rescaled so it starts from 0 just outside the dead zone (no sudden jump) */
   rawInput(p) {
     if (!p.online) return { x: 0, y: 0 };
@@ -369,7 +379,7 @@ const Party = {
     if (!this.net || !p.peer || p.local) return;
     const you = this.you(p), L = this.leader(), base = { you, kid: this.kid, game: this.gameId, leadName: L ? L.name : '', teams: this.teams };
     if (this.state === 'lobby' || (this.state === 'result' && !p.inGame)) {
-      this.net.send(p.peer, { t: 'lobby', ...base, games: GAMES.map(g => ({ id: g.id, name: g.name, icon: g.icon, col: g.col, blurb: g.blurb, team: g.kind === 'team', teams: !!g.teams })), players: this.players.map(q => ({ name: q.name, col: q.col, animal: q.animal, online: q.online, trophies: q.trophies, team: q.team, lead: q === L })) });
+      this.net.send(p.peer, { t: 'lobby', ...base, games: GAMES.map(g => ({ id: g.id, name: g.name, icon: g.icon, col: g.col, blurb: g.blurb, team: g.kind === 'team', teams: !!g.teams, cat: catOf(g) })), cats: CATS, players: this.players.map(q => ({ name: q.name, col: q.col, animal: q.animal, online: q.online, trophies: q.trophies, team: q.team, lead: q === L })) });
     } else if (this.state === 'result') {
       const row = this.res.rows.find(r => r.p === p);
       this.net.send(p.peer, { t: 'result', ...base, title: this.res.title, sub: this.res.sub || '', stars: this.res.stars, team: !!this.res.team, rank: row ? row.rank : 0, n: this.res.rows.length, line: row ? row.line : '', win: this.res.winTeam === undefined ? -9 : this.res.winTeam });
@@ -377,7 +387,8 @@ const Party = {
       this.net.send(p.peer, { t: 'wait', ...base, msg: '大家正在玩「' + this.def.name + '」，這一局結束就換你加入！' });
     } else {
       const b = this.btnFor(p);
-      this.net.send(p.peer, { t: 'pad', ...base, name: this.def.name, icon: this.def.icon, gcol: this.def.col, btn: b, intro: this.state === 'intro', paused: this.paused, teamPlay: !!this.game.teams });
+      this.net.send(p.peer, { t: 'pad', ...base, name: this.def.name, icon: this.def.icon, gcol: this.def.col, btn: b, intro: this.state === 'intro', paused: this.paused, teamPlay: !!this.game.teams, L: this.layoutFor(p) });
+      p.layoutKey = JSON.stringify(this.layoutFor(p));
       p.hudKey = '';
     }
   },
@@ -434,7 +445,7 @@ const Party = {
       } else r.title = r.title || '練習完成！';
     } else r.rows.forEach(row => { row.rank = 0; });
     Sfx.play(r.team ? (r.ok ? 'win' : 'end') : 'end');
-    Fx.pop(W / 2, H / 2, r.team ? (r.ok ? '成功！' : '時間到！') : '時間到！', this.def.col, 110);
+    Fx.pop(W / 2, H / 2, this.game.endText || (r.team ? (r.ok ? '成功！' : '時間到！') : (this.game.dur == null ? '結束！' : '時間到！')), this.def.col, 110);
   },
   showResult() {
     this.state = 'result'; renderResult(); Music.sync(); if (!this.res.team && this.res.rows.length > 1) Sfx.play('win');
@@ -466,6 +477,7 @@ const Party = {
     if (!this.game || !(this.state === 'play' || this.state === 'intro') || !this.net) return;
     for (const p of this.players) {
       if (!p.inGame || !p.peer || !p.online) continue;
+      const L = this.layoutFor(p), lk = JSON.stringify(L); if (lk !== p.layoutKey) { p.layoutKey = lk; this.net.send(p.peer, { t: 'layout', L }); }
       const s = this.state === 'intro' ? '準備…看大螢幕' : this.game.pad(p), r = this.state === 'play' && this.game.ready(p) ? 1 : 0, key = s + '|' + r;
       if (key !== p.hudKey) { p.hudKey = key; this.net.send(p.peer, { t: 'hud', s, r }); }
     }
@@ -576,6 +588,14 @@ function renderLobby() {
   $('teamNote').textContent = sel.forceTeams ? '「' + sel.name + '」一定是兩隊比，會自動分好隊' : Party.teams ? (sel.teams ? (Party.teamsOn(sel) ? '分隊比：☀️ 太陽隊 對 🌙 月亮隊，在手機上可以換隊' : '兩隊都要有人才能分隊，現在先各自比') : '「' + sel.name + '」不分隊' + (sel.kind === 'team' ? '，本來就是大家一起合作' : '，這款各自比')) : '';
   $('modeNote').textContent = Party.kid ? '小朋友模式：慢一點、不會被淘汰、掉下去會回來。' : '大人模式：速度快、有淘汰、炸彈和大野狼。';
   const box = $('cards');
+  if (!$('cats').childElementCount) {
+    $('cats').innerHTML = CATS.map(c => `<button data-cat="${c.id}">${c.n} <small>${GAMES.filter(g => catOf(g) === c.id).length}</small></button>`).join('');
+    $('cats').querySelectorAll('button').forEach(b => b.onclick = () => { Sfx.ensure(); Party.viewCat = b.dataset.cat; Sfx.play('pop'); renderLobby(); });
+  }
+  const selCat = catOf(Party.def_(Party.gameId));
+  if (Party.lastSelCat !== selCat) { Party.lastSelCat = selCat; Party.viewCat = selCat; }   // a pick from a phone jumps to its tab
+  const vc = Party.viewCat || selCat;
+  $('cats').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.cat === vc));
   if (!box.childElementCount) {
     GAMES.forEach((g, i) => {
       const b = document.createElement('button'); b.className = 'card'; b.dataset.id = g.id; b.style.setProperty('--gc', g.col);
@@ -586,7 +606,7 @@ function renderLobby() {
       if (g.thumb) g.thumb(b.querySelector('canvas').getContext('2d'));
     });
   }
-  box.querySelectorAll('.card').forEach(b => b.setAttribute('aria-pressed', b.dataset.id === Party.gameId));
+  box.querySelectorAll('.card').forEach(b => { b.setAttribute('aria-pressed', b.dataset.id === Party.gameId); b.hidden = catOf(Party.def_(b.dataset.id)) !== vc; });
   const d = Party.def_(Party.gameId);
   $('startName').textContent = d.icon + ' ' + d.name;
   $('start').style.setProperty('--gc', d.col);

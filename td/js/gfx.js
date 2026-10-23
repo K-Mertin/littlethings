@@ -1,0 +1,160 @@
+'use strict';
+// 守塔奇兵：繪圖基礎工具——顏色、雜訊、離屏畫布快取、外框、柔光貼圖。
+// 所有美術都用程式畫，沒有任何圖檔；畫好的東西會快取成離屏畫布，每幀只要 drawImage。
+
+const Gfx = (() => {
+  const TAU = Math.PI * 2;
+  // ───────── 顏色 ─────────
+  const _hex = {};
+  function hex(c) {
+    if (_hex[c]) return _hex[c];
+    let h = c.replace('#', '');
+    if (h.length === 3) h = h.split('').map(x => x + x).join('');
+    const n = parseInt(h, 16);
+    return (_hex[c] = [n >> 16 & 255, n >> 8 & 255, n & 255]);
+  }
+  const _mix = new Map();
+  function mix(a, b, t) {
+    const key = a + b + Math.round(t * 40);
+    let r = _mix.get(key);
+    if (r) return r;
+    const A = hex(a), B = hex(b);
+    const q = Math.round(t * 40) / 40;
+    r = '#' + A.map((v, i) => Math.round(v + (B[i] - v) * q).toString(16).padStart(2, '0')).join('');
+    _mix.set(key, r);
+    return r;
+  }
+  const shade = (c, t) => t > 0 ? mix(c, '#ffffff', t) : mix(c, '#000000', -t);
+  const _rgba = new Map();
+  function rgba(c, a) {
+    const key = c + '|' + Math.round(a * 100);
+    let r = _rgba.get(key);
+    if (r) return r;
+    const A = hex(c);
+    r = `rgba(${A[0]},${A[1]},${A[2]},${Math.round(a * 100) / 100})`;
+    _rgba.set(key, r);
+    return r;
+  }
+
+  // ───────── 雜訊 ─────────
+  function hash2(x, y, seed) {
+    let h = (x * 374761393 + y * 668265263 + seed * 2246822519) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  }
+  function vnoise(x, y, seed) {
+    const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+    const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    const a = hash2(xi, yi, seed), b = hash2(xi + 1, yi, seed), c = hash2(xi, yi + 1, seed), d = hash2(xi + 1, yi + 1, seed);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  }
+  function fbm(x, y, seed, oct) {
+    let s = 0, amp = 0.5, f = 1, n = 0;
+    for (let i = 0; i < (oct || 4); i++) { s += vnoise(x * f, y * f, seed + i * 17) * amp; n += amp; amp *= 0.5; f *= 2.03; }
+    return s / n;
+  }
+
+  // ───────── 畫布 ─────────
+  function canvas(w, h) {
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.ceil(w)); c.height = Math.max(1, Math.ceil(h));
+    return c;
+  }
+  // 快取精靈：w,h 是 CSS 像素，ax,ay 是錨點（通常是腳底中心），draw(ctx) 以錨點為原點作畫
+  const cache = new Map();
+  let cacheCount = 0;
+  function sprite(key, w, h, ax, ay, dpr, draw, outline) {
+    const k = key + '@' + dpr;
+    let sp = cache.get(k);
+    if (sp) return sp;
+    const pad = outline ? Math.ceil(outline + 1) : 0;
+    const c = canvas((w + pad * 2) * dpr, (h + pad * 2) * dpr);
+    const x = c.getContext('2d');
+    x.scale(dpr, dpr); x.translate(ax + pad, ay + pad);
+    draw(x);
+    let out = c;
+    if (outline) out = addOutline(c, outline * dpr, 'rgba(28,18,36,.82)');
+    sp = { c: out, w: w + pad * 2, h: h + pad * 2, ax: ax + pad, ay: ay + pad };
+    cache.set(k, sp); cacheCount++;
+    if (cacheCount > 6000) { cache.clear(); cacheCount = 0; }
+    return sp;
+  }
+  function drawSprite(ctx, sp, x, y, sc) {
+    sc = sc || 1;
+    ctx.drawImage(sp.c, x - sp.ax * sc, y - sp.ay * sc, sp.w * sc, sp.h * sc);
+  }
+  // 幫畫好的圖加一圈深色外框（漫畫風）
+  function addOutline(src, px, color) {
+    const w = src.width, h = src.height;
+    const sil = canvas(w, h), sx = sil.getContext('2d');
+    sx.drawImage(src, 0, 0); sx.globalCompositeOperation = 'source-in'; sx.fillStyle = color; sx.fillRect(0, 0, w, h);
+    const out = canvas(w, h), o = out.getContext('2d');
+    const n = px > 2.5 ? 12 : 8;
+    for (let i = 0; i < n; i++) { const a = i / n * TAU; o.drawImage(sil, Math.cos(a) * px, Math.sin(a) * px); }
+    o.drawImage(src, 0, 0);
+    return out;
+  }
+  // 把精靈染成單色（受傷閃白、冰凍染藍）
+  function tinted(sp, key, color, alpha) {
+    const k = key;
+    let t = cache.get(k);
+    if (t) return t;
+    const c = canvas(sp.c.width, sp.c.height), x = c.getContext('2d');
+    x.drawImage(sp.c, 0, 0);
+    x.globalCompositeOperation = 'source-atop'; x.globalAlpha = alpha; x.fillStyle = color; x.fillRect(0, 0, c.width, c.height);
+    t = { c, w: sp.w, h: sp.h, ax: sp.ax, ay: sp.ay };
+    cache.set(k, t); cacheCount++;
+    return t;
+  }
+  // 柔光圓點（給煙、光暈、火焰用），依顏色快取
+  const glows = {};
+  function glow(color, hard) {
+    const k = color + (hard ? 'h' : '');
+    if (glows[k]) return glows[k];
+    const S = 64, c = canvas(S, S), x = c.getContext('2d');
+    const g = x.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+    const A = hex(color);
+    const cs = (a) => `rgba(${A[0]},${A[1]},${A[2]},${a})`;
+    if (hard) { g.addColorStop(0, cs(1)); g.addColorStop(0.55, cs(0.9)); g.addColorStop(0.8, cs(0.35)); g.addColorStop(1, cs(0)); }
+    else { g.addColorStop(0, cs(1)); g.addColorStop(0.25, cs(0.7)); g.addColorStop(0.6, cs(0.2)); g.addColorStop(1, cs(0)); }
+    x.fillStyle = g; x.fillRect(0, 0, S, S);
+    return (glows[k] = c);
+  }
+  // 軟煙團（不規則的雲狀）
+  const puffs = {};
+  function puff(color) {
+    if (puffs[color]) return puffs[color];
+    const S = 64, c = canvas(S, S), x = c.getContext('2d');
+    const r = mkRng(color.length * 31 + 7);
+    for (let i = 0; i < 7; i++) {
+      const px = S / 2 + (r() - 0.5) * S * 0.36, py = S / 2 + (r() - 0.5) * S * 0.3, rr = S * (0.16 + r() * 0.12);
+      const g = x.createRadialGradient(px - rr * 0.3, py - rr * 0.3, 0, px, py, rr);
+      g.addColorStop(0, shade(color, 0.25)); g.addColorStop(0.7, color); g.addColorStop(1, rgba(color, 0));
+      x.fillStyle = g; x.beginPath(); x.arc(px, py, rr, 0, TAU); x.fill();
+    }
+    return (puffs[color] = c);
+  }
+
+  // ───────── 小工具 ─────────
+  function ell(ctx, x, y, rx, ry, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.ellipse(x, y, Math.max(0.1, rx), Math.max(0.1, ry), 0, 0, TAU); ctx.fill(); }
+  function circ(ctx, x, y, r, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, Math.max(0.1, r), 0, TAU); ctx.fill(); }
+  function rrect(ctx, x, y, w, h, r) { ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h); }
+  function poly(ctx, pts, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]); ctx.closePath(); ctx.fill(); }
+  function star(ctx, x, y, r, c, line) {
+    ctx.fillStyle = c; ctx.beginPath();
+    for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.45 : r; ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); }
+    ctx.closePath(); ctx.fill();
+    if (line !== false) { ctx.strokeStyle = 'rgba(80,50,0,.55)'; ctx.lineWidth = Math.max(1, r * 0.12); ctx.stroke(); }
+  }
+  function lgrad(ctx, x0, y0, x1, y1, stops) {
+    const g = ctx.createLinearGradient(x0, y0, x1, y1);
+    stops.forEach((c, i) => g.addColorStop(Array.isArray(c) ? c[0] : i / (stops.length - 1), Array.isArray(c) ? c[1] : c));
+    return g;
+  }
+  function rgrad(ctx, x, y, r0, r1, stops, ox, oy) {
+    const g = ctx.createRadialGradient(x + (ox || 0), y + (oy || 0), r0, x, y, r1);
+    stops.forEach((c, i) => g.addColorStop(Array.isArray(c) ? c[0] : i / (stops.length - 1), Array.isArray(c) ? c[1] : c));
+    return g;
+  }
+  return { TAU, hex, mix, shade, rgba, vnoise, fbm, hash2, canvas, sprite, drawSprite, addOutline, tinted, glow, puff, ell, circ, rrect, poly, star, lgrad, rgrad, clear() { cache.clear(); cacheCount = 0; } };
+})();
