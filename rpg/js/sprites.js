@@ -348,3 +348,105 @@ function drawWalker(g, id, dir, phase, x, y, T, alpha = 1) {
   g.globalAlpha = 1;
   return true;
 }
+
+// ───── 戰鬥側身圖（面向左，28×28，含武器） ─────
+const BWEAP = { hero: 'sword', lia: 'rod', mira: 'staff', balk: 'axe' };
+const BPOSES = {
+  idle0: { arm: 'down', legs: 'stand' }, idle1: { arm: 'down', legs: 'stand', breath: 1 },
+  ready: { arm: 'fwd', legs: 'lunge', lean: -1 },
+  atk0: { arm: 'back', legs: 'lunge', lean: 1 }, atk1: { arm: 'fwdDown', legs: 'lunge', lean: -1 }, atk2: { arm: 'down2', legs: 'lunge', lean: -1 },
+  cast0: { arm: 'up', legs: 'stand', arm2: 'up' }, cast1: { arm: 'high', legs: 'stand', arm2: 'up' },
+  hurt: { arm: 'down', legs: 'stand', lean: 1, eyes: 'shut' }, guard: { arm: 'guard', legs: 'stand' },
+  kneel: { arm: 'down', legs: 'kneel', eyes: 'tired' }, win0: { arm: 'high', legs: 'stand' }, win1: { arm: 'high', legs: 'stand', jump: 1 },
+  item: { arm: 'up', legs: 'stand', item: 1 }, sleep: { arm: 'down', legs: 'kneel', eyes: 'shut' },
+};
+const ARMS = {
+  down: [[0, 1], [0, 2], [0, 3]], down2: [[-1, 2], [-2, 3], [-3, 4]], fwd: [[-1, 1], [-2, 1], [-3, 1]], fwdDown: [[-1, 1], [-2, 2], [-3, 3]],
+  up: [[-1, 0], [-2, -1], [-3, -2]], high: [[0, 0], [0, -1], [0, -2]], back: [[1, 0], [2, -1], [3, -2]], guard: [[-1, 1], [-2, 1], [-2, 0]],
+};
+const WANG = { sword: { down: -70, down2: -30, fwd: 5, fwdDown: -25, up: 60, high: 90, back: 140, guard: 85 }, rod: { down: 95, down2: 60, fwd: 60, fwdDown: 45, up: 75, high: 90, back: 120, guard: 90 }, axe: { down: -70, down2: -20, fwd: 10, fwdDown: -20, up: 60, high: 90, back: 135, guard: 90 } };
+WANG.staff = WANG.rod;
+function drawWeapon(p, kind, hx, hy, deg) {
+  const a = deg * Math.PI / 180, dx = -Math.cos(a), dy = -Math.sin(a);
+  const seg = (s, e, col) => { for (let t = s; t <= e; t += 0.5) p.P(hx + dx * t, hy + dy * t, col); };
+  if (kind === 'sword') {
+    seg(-2, -0.5, '#6a3a1a');
+    for (let t = 1; t <= 9; t += 0.5) { p.P(hx + dx * t, hy + dy * t, '#e8eef8'); p.P(hx + dx * t + dy * 0.9, hy + dy * t - dx * 0.9, '#9aa6bc'); }
+    p.P(hx + dx * 10, hy + dy * 10, '#ffffff');
+    for (let t = -1.5; t <= 1.5; t += 0.5) p.P(hx + dx * 0.6 - dy * t, hy + dy * 0.6 + dx * t, '#f2c14e');
+  } else if (kind === 'axe') {
+    seg(-2, 9, '#7a5030'); for (let t = -2; t <= 9; t += 0.5) p.P(hx + dx * t - dy * 0.9, hy + dy * t + dx * 0.9, '#4a2e18');
+    for (let t = 6; t <= 9.5; t += 0.5) for (let s = 0.5; s <= 3.5; s += 0.5) p.P(hx + dx * t + dy * s, hy + dy * t - dx * s, s > 2.8 ? '#ffffff' : '#b8c0d0');
+  } else {
+    seg(-3, 9, kind === 'rod' ? '#e8c060' : '#7a5030'); for (let t = -3; t <= 9; t += 0.5) p.P(hx + dx * t + dy * 0.9, hy + dy * t - dx * 0.9, kind === 'rod' ? '#a8802a' : '#4a2e18');
+    const ox = hx + dx * 10.5, oy = hy + dy * 10.5;
+    if (kind === 'rod') { for (const [x, y] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) p.P(ox + x, oy + y, '#f2c14e'); p.P(ox, oy, '#fff8d0'); p.P(ox + dx * 1.8, oy + dy * 1.8, '#f2c14e'); }
+    else { p.R(Math.round(ox) - 1, Math.round(oy) - 1, 3, 3, '#e8403a'); p.P(Math.round(ox) - 1, Math.round(oy) - 1, '#ffb0a0'); p.P(ox - dy * 2, oy + dx * 2, '#f2c14e'); p.P(ox + dy * 2, oy - dx * 2, '#f2c14e'); }
+  }
+}
+function battleFrame(L, id, poseName) {
+  const pose = BPOSES[poseName];
+  const OX = 6, OY = 4;
+  const kneel = pose.legs === 'kneel', oy = (kneel ? 3 : 0) + (pose.breath ? 1 : 0);
+  const body = new PB(16, 24), head = new PB(16, 24);
+  const T = shd(L.top), P2 = shd(L.pants), SH = shd(L.shoes), SK = shd(L.skin), TR = L.trim || T.lo;
+  const big = L.big ? 1 : 0, robe = L.out === 'robe', dress = L.out === 'dress', armor = L.out === 'armor';
+  const by = 14 + oy;
+  // 披風
+  if (L.cape) { const C = shd(L.cape); for (let y = by; y <= 21 + (kneel ? 1 : 0); y++) for (let x = 9; x <= 12 + (y > 17 ? 1 : 0) + (pose.legs === 'lunge' && y > 18 ? 1 : 0); x++) body.P(x, y, x > 10 ? C.lo : C.md); }
+  // 腳
+  if (kneel) {
+    body.R(3, 23, 4, 1, SH.md); body.R(5, 21, 2, 2, P2.md); body.R(4, 20, 3, 1, P2.md);
+    body.R(8, 23, 4, 1, P2.lo); body.R(11, 23, 2, 1, SH.lo); body.R(8, 21, 2, 2, P2.lo);
+  } else if (!robe) {
+    const legs = pose.legs === 'lunge' ? [[4, -1, P2.md], [9, 1, P2.lo]] : [[6, 0, P2.md], [8, 0, P2.lo]];
+    for (const [lx, d, col] of legs) {
+      for (let y = 20; y < 23; y++) { const xx = lx + (d !== 0 ? Math.round(d * (y - 20) * 0.4) : 0); body.P(xx, y, col); body.P(xx + 1, y, darken(col, 0.12)); }
+      const fx = lx + (d !== 0 ? Math.round(d * 1.2) : 0); body.P(fx - 1, 23, col === P2.md ? SH.md : SH.lo); body.P(fx, 23, col === P2.md ? SH.md : SH.lo); body.P(fx + 1, 23, SH.lo);
+    }
+  } else { body.R(pose.legs === 'lunge' ? 3 : 4, 23, 3, 1, SH.md); if (pose.legs === 'lunge') body.R(9, 23, 2, 1, SH.lo); }
+  // 軀幹
+  const bottom = kneel ? 22 : robe ? 22 : dress ? 21 : 19;
+  for (let y = by; y <= bottom; y++) {
+    let a = 5 - big, b = 10 + big;
+    if ((robe || kneel) && y > by + 4) { a -= 1; b += 1; }
+    if (dress && y >= 18) { a -= Math.min(2, y - 17); b += Math.min(1, y - 17); }
+    for (let x = a; x <= b; x++) body.P(x, y, x === a ? T.hi : x >= b ? T.lo : T.md);
+  }
+  if (robe) body.R(3, 22, 9, 1, L.robe2 || T.lo);
+  if (dress && !kneel) body.R(2, 21, 10, 1, TR);
+  if (armor) { body.R(5, by, 4, 2, T.hi); body.R(5 - big, by + 4, 6 + big * 2, 1, TR); }
+  if (!robe && !armor) body.R(5 - big, 18 + oy, 6 + big * 2, 1, L.belt);
+  if (L.scarf) { body.R(5, by, 5, 1, L.scarf); body.P(10, by + 1, L.scarf); body.P(11, by + 2, darken(L.scarf, 0.3)); body.P(12, by + 2, darken(L.scarf, 0.3)); }
+  // 頭
+  drawHead(head, L, 'side', oy);
+  if (pose.eyes === 'shut' || pose.eyes === 'tired') { const sk = L.skin; for (const [x, y] of [[3, 9], [4, 9], [3, 10], [4, 10]]) head.P(x, y + oy, sk); head.P(3, 10 + oy, '#1a1020'); head.P(4, pose.eyes === 'shut' ? 9 + oy : 10 + oy, '#1a1020'); }
+  // 合成到 28×28
+  const p = new PB(28, 28), hx0 = OX + (pose.lean || 0);
+  const blitPB = (src, dx, dy) => { for (let y = 0; y < src.h; y++) for (let x = 0; x < src.w; x++) { const v = src.d[y * src.w + x]; if (v) p.P(x + dx, y + dy, v); } };
+  const jump = pose.jump ? -2 : 0;
+  const kind = BWEAP[id] || 'sword';
+  const arm = ARMS[pose.arm] || ARMS.down, sx = OX + 7, sy = OY + by + 1 + jump;
+  const hand = arm[2], hxp = sx + hand[0], hyp = sy + hand[1] + 1;
+  const behind = pose.arm === 'back' || pose.arm === 'high';
+  // 後面的手（施法時）
+  if (pose.arm2) { const a2 = ARMS[pose.arm2]; for (const [x, y] of a2) { p.P(sx + 1 + x, sy + y, T.lo); } const h2 = a2[2]; p.P(sx + 1 + h2[0], sy + h2[1] + 1, SK.lo); }
+  if (behind) drawWeapon(p, kind, hxp, hyp, (WANG[kind] || WANG.sword)[pose.arm]);
+  blitPB(body, OX, OY + jump);
+  blitPB(head, hx0, OY + jump);
+  for (const [x, y] of arm) { p.P(sx + x, sy + y, T.md); p.P(sx + x + 1, sy + y, T.dk); p.P(sx + x, sy + y + 1, p.G(sx + x, sy + y + 1) && !arm.some(([ax, ay]) => ax === x && ay === y + 1) ? T.dk : p.G(sx + x, sy + y + 1)); }
+  p.P(hxp, hyp, SK.md); p.P(hxp + 1, hyp, SK.lo);
+  if (!behind && !pose.item) drawWeapon(p, kind, hxp, hyp, (WANG[kind] || WANG.sword)[pose.arm]);
+  if (pose.item) { p.R(hxp - 1, hyp - 4, 3, 4, '#5ad08a'); p.R(hxp - 1, hyp - 4, 1, 4, '#b0ffd0'); p.R(hxp, hyp - 5, 1, 1, '#c8a060'); }
+  p.selout();
+  return p.canvas();
+}
+const BattleSheets = {};
+function battleSprites(id) {
+  if (BattleSheets[id]) return BattleSheets[id];
+  const L = LOOKS[id] || LOOKS.hero, o = {};
+  for (const k in BPOSES) o[k] = battleFrame(L, id, k);
+  o.white = {}; o.red = {};
+  for (const k in o) if (k !== 'white' && k !== 'red') { o.white[k] = silhouette(o[k], '#ffffff'); }
+  return (BattleSheets[id] = o);
+}

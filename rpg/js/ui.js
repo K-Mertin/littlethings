@@ -29,18 +29,28 @@ const UI = {
     }
   },
   toast(text, dur = 2.2) { this.toasts.push({ text, t: 0, dur }); },
-  // 視窗外觀：深藍底、白色雙框（向經典 RPG 致敬）
+  // 視窗外觀：深藍漸層底、金色雙框與四角裝飾
   win(g, x, y, w, h, o = {}) {
-    const r = Math.max(4, L.FS * 0.35), b = Math.max(2, Math.round(L.FS * 0.14));
+    const fs = L.FS, r = Math.max(4, fs * 0.38), b = Math.max(1.5, Math.round(fs * 0.11));
+    x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
     g.save();
-    g.globalAlpha *= o.alpha ?? 0.94;
-    g.fillStyle = o.bg || '#0b1030';
-    rr(g, x, y, w, h, r); g.fill();
-    g.globalAlpha = (o.alpha ?? 0.94) === 0.94 ? g.globalAlpha / 0.94 : g.globalAlpha;
-    g.lineWidth = b; g.strokeStyle = o.border || '#f4f2ff';
-    rr(g, x + b * 1.2, y + b * 1.2, w - b * 2.4, h - b * 2.4, r * 0.7); g.stroke();
-    g.lineWidth = Math.max(1, b / 2); g.strokeStyle = 'rgba(120,140,220,.45)';
-    rr(g, x + b * 2.6, y + b * 2.6, w - b * 5.2, h - b * 5.2, r * 0.5); g.stroke();
+    const al = o.alpha ?? 0.95;
+    g.globalAlpha *= al;
+    g.fillStyle = 'rgba(0,0,0,.35)'; rr(g, x + b * 1.5, y + b * 2, w, h, r); g.fill();
+    const gr = g.createLinearGradient(0, y, 0, y + h);
+    if (o.bg) { gr.addColorStop(0, o.bg); gr.addColorStop(1, o.bg); } else { gr.addColorStop(0, '#24306e'); gr.addColorStop(0.5, '#141c4a'); gr.addColorStop(1, '#0b1030'); }
+    g.fillStyle = gr; rr(g, x, y, w, h, r); g.fill();
+    g.globalAlpha = Math.min(1, g.globalAlpha / al * (al < 0.9 ? al + 0.1 : 1));
+    // 外框
+    g.lineWidth = b; g.strokeStyle = '#0a0a1a'; rr(g, x, y, w, h, r); g.stroke();
+    g.strokeStyle = o.border || '#e8d6a0'; rr(g, x + b * 1.2, y + b * 1.2, w - b * 2.4, h - b * 2.4, r * 0.75); g.stroke();
+    g.lineWidth = Math.max(1, b * 0.5); g.strokeStyle = 'rgba(150,170,255,.35)'; rr(g, x + b * 2.8, y + b * 2.8, w - b * 5.6, h - b * 5.6, r * 0.5); g.stroke();
+    g.fillStyle = 'rgba(255,255,255,.07)'; g.fillRect(x + r, y + b * 2.6, w - r * 2, Math.max(1, h * 0.12));
+    // 四角的菱形
+    const d = Math.max(2, fs * 0.2), col = o.border || '#f2dfa8';
+    g.fillStyle = col;
+    for (const [cx, cy] of [[x + b * 1.2, y + b * 1.2], [x + w - b * 1.2, y + b * 1.2], [x + b * 1.2, y + h - b * 1.2], [x + w - b * 1.2, y + h - b * 1.2]]) { g.beginPath(); g.moveTo(cx, cy - d); g.lineTo(cx + d, cy); g.lineTo(cx, cy + d); g.lineTo(cx - d, cy); g.closePath(); g.fill(); }
+    if (o.glow) { g.globalCompositeOperation = 'lighter'; const gg = g.createRadialGradient(x + w / 2, y, 0, x + w / 2, y, w * 0.6); gg.addColorStop(0, 'rgba(255,220,140,.18)'); gg.addColorStop(1, 'rgba(255,220,140,0)'); g.fillStyle = gg; g.fillRect(x, y, w, h); }
     g.restore();
   },
   // 地名用的緞帶標題
@@ -79,9 +89,16 @@ const UI = {
     }
     return out;
   },
-  cursor(g, x, y, size) {
-    const s = size * 0.42, bob = Math.sin(this.t * 10) > 0 ? 0 : size * 0.06;
-    g.fillStyle = '#fff'; g.beginPath(); g.moveTo(x + bob, y - s); g.lineTo(x + s * 1.3 + bob, y); g.lineTo(x + bob, y + s); g.fill();
+  cursor(g, x, y, size, dir) {
+    const s = size * 0.4, bob = Math.sin(this.t * 10) * size * 0.07;
+    g.save();
+    g.lineJoin = 'round'; g.lineWidth = Math.max(1.5, size * 0.1); g.strokeStyle = '#1a1020';
+    const gr = g.createLinearGradient(0, y - s, 0, y + s); gr.addColorStop(0, '#fff6c8'); gr.addColorStop(1, '#f0b040');
+    g.fillStyle = gr; g.beginPath();
+    if (dir === 'down') { g.moveTo(x - s, y - s * 1.3 + bob); g.lineTo(x + s, y - s * 1.3 + bob); g.lineTo(x, y + bob); }
+    else { g.moveTo(x + bob, y - s); g.lineTo(x + s * 1.35 + bob, y); g.lineTo(x + bob, y + s); }
+    g.closePath(); g.stroke(); g.fill();
+    g.restore();
   },
   hit(x, y, w, h, fn) { this.hits.push({ x, y, w, h, fn }); },
   // 點擊處理：由上而下找第一個命中區域
