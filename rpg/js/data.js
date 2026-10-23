@@ -1,0 +1,232 @@
+'use strict';
+// 曉鐘傳說：角色、法術、道具、裝備、怪物、遇敵表、商店
+const MAXLV = 50;
+// 升級所需經驗（累計）
+const EXP_TABLE = (() => { const t = [0, 0]; for (let L = 1; L < MAXLV; L++) t[L + 1] = t[L] + Math.round(7.5 * Math.pow(L, 1.95) + 6 * L); return t; })();
+
+const CHARS = {
+  hero: { name: '洛恩', role: '見習鐘守', base: { hp: 32, mp: 6, str: 10, def: 6, agi: 7, int: 5 }, gr: { hp: 7.2, mp: 2.2, str: 2.4, def: 1.6, agi: 1.6, int: 1.4 }, eqMask: 'H', magic: '法術',
+    learn: [[3, 'heal'], [6, 'return'], [9, 'zap'], [14, 'heal2'], [19, 'thunder'], [26, 'holyslash']] },
+  lia: { name: '莉亞', role: '神官', base: { hp: 26, mp: 12, str: 7, def: 5, agi: 6, int: 9 }, gr: { hp: 5.8, mp: 3.2, str: 1.5, def: 1.4, agi: 1.5, int: 2 }, eqMask: 'L', magic: '法術',
+    learn: [[1, 'heal'], [3, 'antidote'], [6, 'guard'], [9, 'seal'], [11, 'heal2'], [15, 'holy'], [17, 'revive'], [21, 'healall'], [24, 'bless'], [28, 'fullheal']] },
+  mira: { name: '米菈', role: '魔法師', base: { hp: 22, mp: 16, str: 5, def: 4, agi: 9, int: 12 }, gr: { hp: 4.8, mp: 3.8, str: 1.0, def: 1.1, agi: 1.9, int: 2.6 }, eqMask: 'M', magic: '法術',
+    learn: [[1, 'fire'], [3, 'sleep'], [6, 'ice'], [10, 'firestorm'], [13, 'weaken'], [16, 'blizzard'], [19, 'haste'], [23, 'inferno'], [29, 'meteor']] },
+  balk: { name: '巴爾克', role: '戰士', base: { hp: 44, mp: 5, str: 13, def: 9, agi: 4, int: 3 }, gr: { hp: 9.2, mp: 1.2, str: 2.8, def: 2.0, agi: 1.15, int: 0.6 }, eqMask: 'B', magic: '特技',
+    learn: [[1, 'smash'], [5, 'warcry'], [10, 'whirl'], [14, 'cover'], [19, 'armorbreak'], [25, 'mighty']] },
+};
+const PARTY_ORDER = ['hero', 'lia', 'mira', 'balk'];
+
+// tgt: ally / allies / dead / enemy / enemies / self / none
+const SPELLS = {
+  heal: { name: '治癒', mp: 3, tgt: 'ally', kind: 'heal', pow: [32, 40], field: 1, desc: '回復一名夥伴的 HP。' },
+  heal2: { name: '強治癒', mp: 7, tgt: 'ally', kind: 'heal', pow: [90, 105], field: 1, desc: '大幅回復一名夥伴的 HP。' },
+  healall: { name: '全體治癒', mp: 16, tgt: 'allies', kind: 'heal', pow: [90, 110], field: 1, desc: '回復全體夥伴的 HP。' },
+  fullheal: { name: '完全治癒', mp: 12, tgt: 'ally', kind: 'heal', pow: [999, 999], field: 1, desc: '一名夥伴的 HP 全滿。' },
+  antidote: { name: '解毒', mp: 2, tgt: 'ally', kind: 'cure', field: 1, desc: '解除中毒與睡眠。' },
+  revive: { name: '復活', mp: 18, tgt: 'dead', kind: 'revive', field: 1, desc: '讓倒下的夥伴復活（HP 一半）。' },
+  return: { name: '回歸', mp: 6, tgt: 'none', kind: 'warp', field: 1, nobattle: 1, desc: '瞬間回到去過的城鎮。' },
+  zap: { name: '雷擊', mp: 5, tgt: 'enemy', kind: 'dmg', el: 'thunder', pow: [34, 44], desc: '雷電打擊一個敵人。' },
+  thunder: { name: '雷鳴', mp: 12, tgt: 'enemies', kind: 'dmg', el: 'thunder', pow: [62, 78], desc: '落雷打擊全部敵人。' },
+  holyslash: { name: '聖光斬', mp: 14, tgt: 'enemy', kind: 'dmg', el: 'holy', pow: [170, 200], desc: '以曉鐘之光斬向一個敵人。' },
+  guard: { name: '守護', mp: 4, tgt: 'allies', kind: 'buff', stat: 'def', desc: '提升全體防禦。' },
+  bless: { name: '祝福', mp: 8, tgt: 'allies', kind: 'buff', stat: 'atk', desc: '提升全體攻擊力。' },
+  haste: { name: '加速', mp: 6, tgt: 'allies', kind: 'buff', stat: 'agi', desc: '提升全體速度。' },
+  seal: { name: '封印', mp: 3, tgt: 'enemies', kind: 'status', st: 'seal', rate: 0.55, desc: '讓敵人無法使用法術。' },
+  sleep: { name: '沉睡', mp: 3, tgt: 'enemies', kind: 'status', st: 'sleep', rate: 0.55, desc: '讓敵人睡著。' },
+  weaken: { name: '破甲', mp: 4, tgt: 'enemies', kind: 'debuff', stat: 'def', desc: '降低全部敵人的防禦。' },
+  holy: { name: '聖光', mp: 9, tgt: 'enemies', kind: 'dmg', el: 'holy', pow: [36, 46], desc: '聖光照射全部敵人，對不死怪物特別有效。' },
+  fire: { name: '火球', mp: 2, tgt: 'enemy', kind: 'dmg', el: 'fire', pow: [14, 18], desc: '火球攻擊一個敵人。' },
+  ice: { name: '冰刃', mp: 4, tgt: 'enemy', kind: 'dmg', el: 'ice', pow: [30, 38], desc: '冰刃攻擊一個敵人。' },
+  firestorm: { name: '火焰風暴', mp: 7, tgt: 'enemies', kind: 'dmg', el: 'fire', pow: [26, 34], desc: '火焰燒向全部敵人。' },
+  blizzard: { name: '冰暴', mp: 12, tgt: 'enemies', kind: 'dmg', el: 'ice', pow: [52, 64], desc: '暴風雪攻擊全部敵人。' },
+  inferno: { name: '爆炎', mp: 18, tgt: 'enemies', kind: 'dmg', el: 'fire', pow: [90, 110], desc: '巨大的爆炎吞沒全部敵人。' },
+  meteor: { name: '隕星', mp: 28, tgt: 'enemies', kind: 'dmg', el: 'none', pow: [150, 180], desc: '召喚流星雨，無視屬性。' },
+  smash: { name: '重擊', mp: 2, tgt: 'enemy', kind: 'phys', mult: 1.6, acc: 0.9, desc: '用全身力量砍一刀。' },
+  warcry: { name: '戰吼', mp: 3, tgt: 'self', kind: 'buff', stat: 'atk', desc: '大吼一聲提升自己的攻擊。' },
+  whirl: { name: '迴旋斬', mp: 5, tgt: 'enemies', kind: 'phys', mult: 0.8, acc: 0.95, desc: '旋轉斧頭砍向全部敵人。' },
+  cover: { name: '挺身守護', mp: 3, tgt: 'self', kind: 'cover', desc: '這回合替夥伴擋下攻擊。' },
+  armorbreak: { name: '破甲擊', mp: 4, tgt: 'enemy', kind: 'phys', mult: 1.25, acc: 0.95, debuff: 'def', desc: '攻擊並降低敵人防禦。' },
+  mighty: { name: '奮力一擊', mp: 6, tgt: 'enemy', kind: 'phys', mult: 2.7, acc: 0.78, desc: '孤注一擲的強力一擊。' },
+};
+// 怪物用的法術（威力固定）
+const ESPELLS = {
+  fire: { name: '火球', el: 'fire', tgt: 'one', pow: [10, 14], anim: 'fire' },
+  fire2: { name: '火球', el: 'fire', tgt: 'one', pow: [26, 34], anim: 'fire' },
+  firestorm: { name: '火焰風暴', el: 'fire', tgt: 'all', pow: [30, 40], anim: 'fire' },
+  inferno: { name: '爆炎', el: 'fire', tgt: 'all', pow: [64, 78], anim: 'fire' },
+  ice: { name: '冰刃', el: 'ice', tgt: 'one', pow: [34, 44], anim: 'ice' },
+  blizzard: { name: '冰暴', el: 'ice', tgt: 'all', pow: [44, 56], anim: 'ice' },
+  zap: { name: '雷擊', el: 'thunder', tgt: 'one', pow: [50, 62], anim: 'bolt' },
+  thunder: { name: '雷鳴', el: 'thunder', tgt: 'all', pow: [52, 66], anim: 'bolt' },
+  darkstorm: { name: '黯黑風暴', el: 'dark', tgt: 'all', pow: [56, 68], anim: 'dark' },
+  sleep: { name: '沉睡', st: 'sleep', tgt: 'all', rate: 0.32, anim: 'sleep' },
+  seal: { name: '封印', st: 'seal', tgt: 'all', rate: 0.35, anim: 'seal' },
+  heal: { name: '治癒', heal: [40, 50], tgt: 'self' },
+  heal2: { name: '強治癒', heal: [110, 130], tgt: 'ally' },
+};
+
+// 道具：kind heal/mp/cure/revive/warp/repel/smoke/full/key
+const ITEMS = {
+  herb: { name: '藥草', kind: 'heal', pow: [30, 40], price: 8, tgt: 'ally', desc: '回復約 35 HP。' },
+  herb2: { name: '上藥草', kind: 'heal', pow: [90, 110], price: 40, tgt: 'ally', desc: '回復約 100 HP。' },
+  herb3: { name: '特級藥草', kind: 'heal', pow: [220, 260], price: 160, tgt: 'ally', desc: '回復約 240 HP。' },
+  elixir: { name: '萬能藥', kind: 'full', price: 0, sell: 300, tgt: 'ally', desc: 'HP 全滿並治好異常狀態。' },
+  ether: { name: '魔力水', kind: 'mp', pow: [30, 40], price: 180, tgt: 'ally', desc: '回復約 35 MP。' },
+  antidote: { name: '解毒草', kind: 'cure', price: 10, tgt: 'ally', desc: '解除中毒。' },
+  feather: { name: '復活之羽', kind: 'revive', price: 300, tgt: 'dead', desc: '讓倒下的夥伴復活。' },
+  wing: { name: '傳送之翼', kind: 'warp', price: 25, tgt: 'none', nobattle: 1, desc: '飛回去過的城鎮。' },
+  incense: { name: '驅魔香', kind: 'repel', price: 40, tgt: 'none', nobattle: 1, desc: '一段時間內弱小的魔物不會靠近。' },
+  smoke: { name: '煙霧彈', kind: 'smoke', price: 30, tgt: 'none', nofield: 1, desc: '戰鬥中使用，一定能逃跑（頭目除外）。' },
+  // 重要物品
+  stone1: { name: '晨之音石', kind: 'key', desc: '曉鐘的第一顆音石，透著淡金色的光。' },
+  stone2: { name: '風之音石', kind: 'key', desc: '曉鐘的第二顆音石，摸起來涼涼的。' },
+  stone3: { name: '砂之音石', kind: 'key', desc: '曉鐘的第三顆音石，像沙漏一樣閃爍。' },
+  stone4: { name: '霜之音石', kind: 'key', desc: '曉鐘的第四顆音石，晶瑩剔透。' },
+  stone5: { name: '夜之音石', kind: 'key', desc: '最後一顆音石，深藍色裡藏著星光。' },
+  cat: { name: '小花（貓）', kind: 'key', desc: '在洞窟裡找到的橘貓，正在打呼嚕。' },
+  watch: { name: '老懷錶', kind: 'key', desc: '刻著「給葛雷」的舊懷錶。' },
+  stariron: { name: '星鐵礦', kind: 'key', desc: '從天上掉下來的金屬，沉甸甸的。' },
+  moonherb: { name: '月光草', kind: 'key', desc: '只在古王陵墓深處生長的藥草。' },
+  tombkey: { name: '王陵之鑰', kind: 'key', desc: '打開古王陵墓深處大門的鑰匙。' },
+  pass: { name: '通行證', kind: 'key', desc: '砂金女王蓋了章的通行證，可以通過北方關卡。' },
+};
+
+// 裝備：slot w/a/s/h/x，who 可裝備的人（H 洛恩 L 莉亞 M 米菈 B 巴爾克）
+const EQUIP = {
+  club: { name: '木棍', slot: 'w', atk: 3, price: 10, who: 'HLMB' },
+  copper: { name: '銅劍', slot: 'w', atk: 9, price: 90, who: 'HB' },
+  oakstaff: { name: '橡木杖', slot: 'w', atk: 5, int: 3, price: 70, who: 'LM' },
+  iron: { name: '鐵劍', slot: 'w', atk: 17, price: 420, who: 'HB' },
+  mace: { name: '神官錘', slot: 'w', atk: 13, price: 380, who: 'L' },
+  magestaff: { name: '魔導杖', slot: 'w', atk: 9, int: 8, price: 760, who: 'LM' },
+  steel: { name: '鋼劍', slot: 'w', atk: 29, price: 1500, who: 'HB' },
+  axe: { name: '戰斧', slot: 'w', atk: 26, price: 1200, who: 'B' },
+  moonstaff: { name: '月輪杖', slot: 'w', atk: 18, int: 12, price: 2000, who: 'LM' },
+  silvermace: { name: '聖銀錘', slot: 'w', atk: 34, price: 3600, who: 'L' },
+  icesword: { name: '冰晶劍', slot: 'w', atk: 44, price: 4400, who: 'H' },
+  giantaxe: { name: '巨人斧', slot: 'w', atk: 46, price: 4200, who: 'B' },
+  starstaff: { name: '星辰杖', slot: 'w', atk: 24, int: 20, price: 4800, who: 'M' },
+  fangaxe: { name: '龍牙斧', slot: 'w', atk: 60, price: 7600, who: 'B' },
+  dawnsword: { name: '曉光之劍', slot: 'w', atk: 72, int: 8, price: 0, sell: 5000, who: 'H' },
+  meteoraxe: { name: '隕鐵大斧', slot: 'w', atk: 70, price: 0, sell: 4000, who: 'B' },
+  sagestaff: { name: '賢者之杖', slot: 'w', atk: 30, int: 30, price: 0, sell: 4000, who: 'LM' },
+  cloth: { name: '布衣', slot: 'a', def: 2, price: 10, who: 'HLMB' },
+  leather: { name: '皮甲', slot: 'a', def: 6, price: 70, who: 'HLMB' },
+  robe: { name: '法袍', slot: 'a', def: 5, int: 2, price: 110, who: 'LM' },
+  chain: { name: '鎖子甲', slot: 'a', def: 13, price: 380, who: 'HB' },
+  priestrobe: { name: '神官袍', slot: 'a', def: 11, price: 460, who: 'L' },
+  magerobe: { name: '魔法袍', slot: 'a', def: 10, int: 5, price: 640, who: 'LM' },
+  ironarmor: { name: '鐵甲', slot: 'a', def: 22, price: 1150, who: 'HB' },
+  elfrobe: { name: '精靈法衣', slot: 'a', def: 19, int: 4, price: 2100, who: 'LM' },
+  silverarmor: { name: '銀甲', slot: 'a', def: 33, price: 3000, who: 'HB' },
+  frostrobe: { name: '霜之袍', slot: 'a', def: 28, int: 7, price: 3800, who: 'LM' },
+  dragonarmor: { name: '龍鱗甲', slot: 'a', def: 46, price: 6800, who: 'HB' },
+  lightarmor: { name: '光之鎧', slot: 'a', def: 58, price: 0, sell: 5000, who: 'H' },
+  woodshield: { name: '木盾', slot: 's', def: 3, price: 40, who: 'HLB' },
+  bronzeshield: { name: '青銅盾', slot: 's', def: 7, price: 260, who: 'HLB' },
+  ironshield: { name: '鐵盾', slot: 's', def: 13, price: 900, who: 'HB' },
+  silvershield: { name: '銀盾', slot: 's', def: 19, price: 2400, who: 'HLB' },
+  dragonshield: { name: '龍盾', slot: 's', def: 27, price: 5200, who: 'HB' },
+  cap: { name: '皮帽', slot: 'h', def: 2, price: 30, who: 'HLMB' },
+  pointhat: { name: '尖頂帽', slot: 'h', def: 4, int: 4, price: 320, who: 'M' },
+  ironhelm: { name: '鐵盔', slot: 'h', def: 7, price: 520, who: 'HB' },
+  hood: { name: '祝福頭巾', slot: 'h', def: 6, price: 560, who: 'LM' },
+  silverhelm: { name: '銀盔', slot: 'h', def: 13, price: 2200, who: 'HB' },
+  wisecrown: { name: '智慧之冠', slot: 'h', def: 9, int: 10, price: 0, sell: 1500, who: 'HLMB' },
+  dragonhelm: { name: '龍盔', slot: 'h', def: 19, price: 5000, who: 'HB' },
+  luckcharm: { name: '幸運護符', slot: 'x', agi: 8, def: 2, price: 0, sell: 200, who: 'HLMB' },
+  powerband: { name: '力量手環', slot: 'x', atk: 10, price: 0, sell: 600, who: 'HLMB' },
+  windboots: { name: '疾風之靴', slot: 'x', agi: 18, price: 0, sell: 1200, who: 'HLMB' },
+  guardring: { name: '守護戒指', slot: 'x', def: 10, price: 3000, who: 'HLMB' },
+  magicear: { name: '魔力耳環', slot: 'x', int: 12, price: 2600, who: 'HLMB' },
+};
+const SLOTS = { w: '武器', a: '盔甲', s: '盾牌', h: '頭盔', x: '飾品' };
+function itemInfo(id) { return ITEMS[id] || EQUIP[id]; }
+
+// ───── 怪物 ─────
+// acts：[動作, 權重, ...]；動作字串 atk / atk2 / spell:x / breath:屬性:最小:最大 / poison:機率 / sleepgas:機率 / call:id / heal / drain / flee / charge / steal / defend / multi / roar / dispel
+const MONS = {
+  mush: { name: '蹦蹦菇', tpl: 'mushroom', pal: { a: '#e0503a', b: '#f6e6c6' }, hp: 9, atk: 10, def: 4, agi: 4, exp: 3, gold: 3, acts: ['atk', 1] },
+  rat: { name: '尖嘴鼠', tpl: 'rat', pal: { a: '#a07a5a', b: '#ead0b0', c: '#ff9ab0' }, hp: 8, atk: 10, def: 3, agi: 10, exp: 3, gold: 2, acts: ['atk', 1] },
+  bat: { name: '藍翅蝠', tpl: 'bat', pal: { a: '#4a6ae0', b: '#6a8af4' }, hp: 10, atk: 11, def: 4, agi: 15, exp: 4, gold: 3, acts: ['atk', 6, 'flee', 1] },
+  vine: { name: '藤牙花', tpl: 'plant', pal: { a: '#3aa050', b: '#2a7a3a', c: '#ff7aa0' }, hp: 17, atk: 14, def: 6, agi: 3, exp: 6, gold: 5, acts: ['atk', 4, 'poison:0.35', 2] },
+  grub: { name: '苔岩蟲', tpl: 'grub', pal: { a: '#8a8a72', b: '#9aa08a', c: '#7ab048' }, hp: 24, atk: 22, def: 26, agi: 3, exp: 11, gold: 9, acts: ['atk', 4, 'defend', 1] },
+  pmush: { name: '毒孢菇', tpl: 'mushroom', pal: { a: '#9a4ad0', b: '#e8dcf6', c: '#d8ff8a' }, hp: 20, atk: 21, def: 10, agi: 6, exp: 9, gold: 7, acts: ['atk', 5, 'poison:0.5', 3, 'sleepgas:0.2', 1] },
+  cbat: { name: '洞窟蝠', tpl: 'bat', pal: { a: '#6a4a3a', b: '#8a6a5a' }, hp: 16, atk: 20, def: 8, agi: 20, exp: 8, gold: 6, acts: ['atk', 5, 'drain', 1] },
+  crab: { name: '鉗鉗蟹', tpl: 'crab', pal: { a: '#f07a3a', b: '#ffd0a0' }, hp: 30, atk: 31, def: 38, agi: 5, exp: 20, gold: 14, acts: ['atk', 4, 'defend', 1], res: { thunder: 1.5 } },
+  imp: { name: '搗蛋小鬼', tpl: 'imp', pal: { a: '#d83a3a', b: '#8a1a2a' }, hp: 25, atk: 27, def: 14, agi: 16, exp: 19, gold: 26, acts: ['atk', 3, 'spell:fire', 3, 'steal', 1] },
+  wolf: { name: '灰牙狼', tpl: 'wolf', pal: { a: '#8a8a9a', b: '#d8d8e0' }, hp: 36, atk: 35, def: 16, agi: 18, exp: 24, gold: 12, acts: ['atk', 1], twice: 0.25 },
+  lantern: { name: '幽靈燈籠', tpl: 'lantern', pal: { a: '#5a4a3a', b: '#3a2e24', c: '#ffd84a' }, hp: 28, atk: 26, def: 18, agi: 11, exp: 22, gold: 18, acts: ['atk', 2, 'sleepgas:0.3', 2, 'spell:fire', 2], undead: 1, res: { holy: 2 } },
+  wisp: { name: '風精靈', tpl: 'wisp', pal: { a: '#6ad8ff', b: '#c8f4ff' }, hp: 32, atk: 33, def: 22, agi: 24, exp: 30, gold: 20, acts: ['atk', 2, 'breath:wind:12:17', 2], res: { thunder: 0.5 } },
+  garg: { name: '石像鬼', tpl: 'gargoyle', pal: { a: '#8a8a8a', b: '#6a6a6a' }, hp: 50, atk: 43, def: 40, agi: 9, exp: 40, gold: 30, acts: ['atk', 4, 'atk2', 1, 'defend', 1], res: { thunder: 0.5, ice: 0.5 } },
+  skel: { name: '骷髏兵', tpl: 'skeleton', pal: { a: '#e8e4d4', c: '#6a5a8a' }, hp: 44, atk: 41, def: 24, agi: 12, exp: 36, gold: 26, acts: ['atk', 3, 'atk2', 1], undead: 1, res: { holy: 2, fire: 1.5 } },
+  gull: { name: '暴風海鷗', tpl: 'bird', pal: { a: '#e8eef8', b: '#a8b8d0', c: '#ffffff', d: '#f2c14e' }, hp: 34, atk: 38, def: 18, agi: 30, exp: 30, gold: 18, acts: ['atk', 1], twice: 0.3 },
+  rgolem: { name: '岩石魔像', tpl: 'golem', pal: { a: '#9a6a3a', b: '#7a5a3a', c: '#ffd84a' }, hp: 72, atk: 50, def: 46, agi: 4, exp: 56, gold: 42, acts: ['atk', 4, 'charge', 1], res: { thunder: 0.5 } },
+  cmole: { name: '水晶鼴', tpl: 'mole', pal: { a: '#8a6a9a', b: '#c8a8d8', c: '#c8f0ff' }, hp: 5, atk: 30, def: 999, agi: 70, exp: 520, gold: 30, acts: ['atk', 1, 'flee', 3, 'spell:fire', 1], metal: 1 },
+  mskel: { name: '礦坑骷髏', tpl: 'skeleton', pal: { a: '#d8c8a8', e: '#ffd040', c: '#8a6a3a' }, hp: 58, atk: 48, def: 30, agi: 14, exp: 48, gold: 34, acts: ['atk', 3, 'atk2', 1], undead: 1, res: { holy: 2, fire: 1.5 } },
+  scorp: { name: '沙蠍', tpl: 'scorpion', pal: { a: '#c89a5a', c: '#d03030' }, hp: 65, atk: 54, def: 40, agi: 14, exp: 60, gold: 34, acts: ['atk', 3, 'poison:0.45', 2] },
+  cactus: { name: '仙人掌兵', tpl: 'cactus', pal: { a: '#4aa050', c: '#ff6a9a' }, hp: 75, atk: 52, def: 30, agi: 8, exp: 56, gold: 30, acts: ['atk', 3, 'multi', 1], res: { fire: 1.5 } },
+  snake: { name: '金冠蛇', tpl: 'snake', pal: { a: '#d8b040', b: '#f8e8a0' }, hp: 62, atk: 55, def: 28, agi: 24, exp: 58, gold: 30, acts: ['atk', 3, 'poison:0.4', 1, 'sleepgas:0.25', 1] },
+  scarab: { name: '黃金甲蟲', tpl: 'scarab', pal: { a: '#3a8a5a', b: '#2a6a4a' }, hp: 67, atk: 52, def: 62, agi: 16, exp: 72, gold: 80, acts: ['atk', 3, 'defend', 1, 'flee', 1], res: { fire: 0.5 } },
+  sandwolf: { name: '沙狼', tpl: 'wolf', pal: { a: '#c8985a', b: '#f0dcb0' }, hp: 78, atk: 58, def: 30, agi: 30, exp: 62, gold: 28, acts: ['atk', 1], twice: 0.3 },
+  mummy: { name: '木乃伊', tpl: 'mummy', pal: { a: '#e8dcc0', e: '#ff3020' }, hp: 104, atk: 62, def: 36, agi: 10, exp: 82, gold: 40, acts: ['atk', 3, 'atk2', 1, 'poison:0.3', 1], undead: 1, res: { holy: 2, fire: 1.5 } },
+  tbat: { name: '墓穴蝠', tpl: 'bat', pal: { a: '#7a3a9a', b: '#9a5ab8', e: '#ffd040' }, hp: 65, atk: 56, def: 30, agi: 34, exp: 64, gold: 32, acts: ['atk', 2, 'drain', 2] },
+  urn: { name: '詛咒陶壺', tpl: 'lantern', pal: { a: '#b8803a', b: '#7a4a1a', c: '#a050d0' }, hp: 70, atk: 48, def: 50, agi: 16, exp: 76, gold: 60, acts: ['atk', 1, 'spell:seal', 1, 'spell:fire2', 2], undead: 1 },
+  swolf: { name: '雪原狼', tpl: 'wolf', pal: { a: '#e8eef8', b: '#ffffff', e: '#2a6ad8' }, hp: 160, atk: 76, def: 44, agi: 36, exp: 118, gold: 60, acts: ['atk', 1], twice: 0.35 },
+  icesp: { name: '冰精靈', tpl: 'wisp', pal: { a: '#8ac8f0', b: '#d8f0ff' }, hp: 136, atk: 66, def: 50, agi: 30, exp: 126, gold: 70, acts: ['atk', 1, 'spell:ice', 2, 'breath:ice:26:34', 1], res: { ice: 0, fire: 1.5 } },
+  yeti: { name: '雪怪', tpl: 'yeti', pal: { a: '#f0f4ff', b: '#7aa0d8' }, hp: 237, atk: 84, def: 50, agi: 12, exp: 150, gold: 72, acts: ['atk', 3, 'atk2', 2], res: { ice: 0.5, fire: 1.5 } },
+  igolem: { name: '冰晶魔像', tpl: 'golem', pal: { a: '#8ac8f0', b: '#5a9ad0', c: '#ffffff' }, art: { spikes: 1 }, hp: 204, atk: 80, def: 82, agi: 8, exp: 170, gold: 90, acts: ['atk', 3, 'charge', 1, 'defend', 1], res: { ice: 0, fire: 1.5 } },
+  wyvern: { name: '寒霜飛龍', tpl: 'dragon', pal: { a: '#7ab8e8', b: '#4a7ab8', c: '#d8f0ff' }, hp: 242, atk: 88, def: 56, agi: 34, exp: 190, gold: 90, acts: ['atk', 3, 'breath:ice:38:48', 2], res: { ice: 0, fire: 1.5 } },
+  image: { name: '冰魔導士', tpl: 'mage', pal: { a: '#3a6ad8', b: '#2a4aa0', c: '#c8f0ff', e: '#c8f0ff' }, hp: 176, atk: 60, def: 46, agi: 30, exp: 180, gold: 110, acts: ['atk', 1, 'spell:ice', 3, 'heal', 1, 'spell:sleep', 1], res: { ice: 0 } },
+  dknight: { name: '黯騎士兵', tpl: 'knight', pal: { a: '#4a3a6a', b: '#3a2e50', c: '#c02040' }, hp: 291, atk: 106, def: 80, agi: 26, exp: 280, gold: 130, acts: ['atk', 3, 'atk2', 1, 'defend', 1] },
+  hound: { name: '地獄犬', tpl: 'wolf', pal: { a: '#3a2a3a', b: '#6a4a4a', e: '#ff4020' }, art: { fire: 1 }, hp: 254, atk: 100, def: 60, agi: 44, exp: 260, gold: 110, acts: ['atk', 3, 'breath:fire:40:52', 2], res: { fire: 0 } },
+  eye: { name: '魔眼', tpl: 'eye', pal: { a: '#c02060', b: '#5a2a6a' }, hp: 208, atk: 80, def: 54, agi: 40, exp: 270, gold: 140, acts: ['atk', 2, 'spell:sleep', 1, 'spell:seal', 1, 'spell:zap', 2] },
+  nimp: { name: '夜行魔', tpl: 'imp', pal: { a: '#6a3a9a', b: '#3a1a5a', c: '#ffd040' }, hp: 200, atk: 92, def: 50, agi: 50, exp: 240, gold: 160, acts: ['atk', 2, 'spell:firestorm', 2, 'steal', 1] },
+  dmage: { name: '惡魔導士', tpl: 'mage', pal: { a: '#8a1a3a', b: '#4a0a1a', c: '#ff6040', e: '#ff6040' }, hp: 270, atk: 80, def: 60, agi: 36, exp: 340, gold: 200, acts: ['atk', 1, 'spell:firestorm', 3, 'spell:inferno', 1, 'heal', 1] },
+  bdragon: { name: '骸骨龍', tpl: 'dragon', pal: { a: '#e8e4d4', b: '#8a8070', c: '#c8c0a8', e: '#ff3040' }, art: { bone: 1 }, hp: 507, atk: 122, def: 76, agi: 22, exp: 480, gold: 200, acts: ['atk', 3, 'breath:poison:40:54', 2], undead: 1, res: { holy: 2, fire: 1.5 } },
+  shade: { name: '影魔', tpl: 'shadow', pal: { a: '#3a1a4a', b: '#5a2a6a' }, hp: 312, atk: 110, def: 70, agi: 48, exp: 380, gold: 160, acts: ['atk', 2, 'drain', 2, 'spell:sleep', 1], res: { holy: 2, ice: 0.5, fire: 0.5 } },
+  // ── 頭目 ──
+  mushking: { name: '毒霧蕈王', tpl: 'mushroom', boss: 1, pal: { a: '#8a3ad0', b: '#f0e0f8', c: '#d8ff8a' }, art: { crown: 1, angry: 1 }, hp: 110, atk: 24, def: 8, agi: 7, exp: 140, gold: 180, acts: ['atk', 4, 'breath:poison:5:8', 2, 'call:pmush', 1, 'heal', 1], twice: 0 },
+  stormbird: { name: '嵐翼魔鳥', tpl: 'bird', boss: 1, pal: { a: '#4a6ad8', b: '#7a9af0', c: '#ffe0a0', d: '#ffd040' }, hp: 440, atk: 48, def: 28, agi: 32, exp: 700, gold: 600, acts: ['atk', 4, 'breath:wind:18:24', 2, 'atk2', 1], twice: 0.3 },
+  irongolem: { name: '鐵甲魔像', tpl: 'golem', boss: 1, pal: { a: '#7a8090', b: '#5a6070', c: '#ff5050', e: '#ff3030' }, art: { spikes: 1 }, hp: 850, atk: 70, def: 64, agi: 8, exp: 1300, gold: 900, acts: ['atk', 3, 'atk2', 2, 'charge', 1], res: { thunder: 1.5 }, twice: 0.2 },
+  sandking: { name: '沙之王 安赫特', tpl: 'pharaoh', boss: 1, pal: { a: '#c8a060', e: '#40d0ff' }, hp: 1100, atk: 66, def: 44, agi: 22, exp: 2200, gold: 1600, acts: ['atk', 3, 'breath:sand:26:33', 2, 'heal', 1, 'call:mummy', 1, 'spell:seal', 1], undead: 1, res: { holy: 1.5 }, twice: 0.25 },
+  frostdragon: { name: '霜牙龍', tpl: 'dragon', boss: 1, pal: { a: '#9ad4f4', b: '#5a8ac8', c: '#ffffff', d: '#c8ecff', e: '#2a6ad8' }, hp: 2200, atk: 92, def: 62, agi: 30, exp: 4200, gold: 3200, acts: ['atk', 3, 'breath:ice:36:46', 3, 'atk2', 1], res: { ice: 0, fire: 1.5 }, twice: 0.35 },
+  garde: { name: '黯騎士 加爾德', tpl: 'knight', boss: 1, pal: { a: '#2a2040', b: '#4a3a6a', c: '#c02040' }, art: { cape: 1 }, hp: 4000, atk: 132, def: 88, agi: 48, exp: 8000, gold: 4000, acts: ['atk', 4, 'atk2', 2, 'spell:thunder', 2, 'heal', 1], twice: 0.5 },
+  nox1: { name: '黯王 諾克斯', tpl: 'demonlord', boss: 1, pal: { a: '#3a2a5a', b: '#2a1a3a', c: '#6a1030' }, hp: 3200, atk: 130, def: 92, agi: 50, exp: 0, gold: 0, acts: ['atk', 3, 'spell:inferno', 2, 'spell:blizzard', 1, 'dispel', 1, 'spell:sleep', 1], twice: 0.45 },
+  nox2: { name: '黯王 真身', tpl: 'demonbeast', boss: 1, pal: { a: '#4a2a6a', b: '#2a1a3a', c: '#ff3050' }, hp: 4600, atk: 138, def: 98, agi: 54, exp: 30000, gold: 0, acts: ['atk', 3, 'breath:dark:52:64', 2, 'atk2', 2, 'spell:darkstorm', 1, 'roar', 1], twice: 0.6 },
+};
+for (const k in MONS) MONS[k].id = k;
+const BOSS_HEAL = { mushking: 40, sandking: 160, garde: 320, nox1: 400, imp: 0 };
+
+// 遊戲區域遇敵表：mons 怪物、w 權重、n 隻數範圍、bg 背景、rate 步數範圍
+const ZONES = {
+  z1: { lv: 1, mons: ['mush', 'rat', 'bat', 'vine'], w: [4, 4, 3, 2], n: [1, 3], bg: 'field' },
+  d1: { lv: 4, mons: ['grub', 'pmush', 'cbat', 'vine', 'rat'], w: [3, 3, 3, 2, 1], n: [1, 4], bg: 'cave' },
+  z2: { lv: 6, mons: ['crab', 'imp', 'wolf', 'lantern', 'vine', 'gull'], w: [3, 3, 3, 2, 1, 2], n: [1, 4], bg: 'field' },
+  z2s: { lv: 7, mons: ['crab', 'gull', 'imp', 'wolf'], w: [3, 3, 2, 2], n: [1, 4], bg: 'shore' },
+  d2: { lv: 9, mons: ['wisp', 'garg', 'skel', 'lantern', 'gull'], w: [3, 3, 3, 2, 2], n: [1, 4], bg: 'tower' },
+  mine: { lv: 11, mons: ['rgolem', 'mskel', 'cbat', 'cmole'], w: [3, 3, 2, 1], n: [1, 3], bg: 'mine' },
+  z3: { lv: 12, mons: ['scorp', 'cactus', 'snake', 'scarab', 'sandwolf'], w: [3, 3, 3, 2, 3], n: [1, 4], bg: 'desert' },
+  d3: { lv: 15, mons: ['mummy', 'tbat', 'scarab', 'snake', 'urn'], w: [3, 3, 2, 2, 2], n: [1, 4], bg: 'tomb' },
+  z4: { lv: 18, mons: ['swolf', 'icesp', 'yeti', 'igolem'], w: [3, 3, 3, 2], n: [1, 4], bg: 'snow' },
+  d4: { lv: 21, mons: ['wyvern', 'image', 'icesp', 'igolem', 'swolf'], w: [3, 3, 2, 2, 1], n: [1, 3], bg: 'ice' },
+  z5: { lv: 24, mons: ['dknight', 'hound', 'eye', 'nimp'], w: [3, 3, 3, 2], n: [1, 3], bg: 'island' },
+  d5: { lv: 26, mons: ['dknight', 'eye', 'dmage', 'bdragon', 'shade', 'hound'], w: [3, 2, 3, 2, 3, 1], n: [1, 3], bg: 'castle' },
+};
+
+// 商店
+const SHOPS = {
+  maple_w: ['club', 'copper', 'oakstaff', 'cloth', 'leather', 'woodshield', 'cap'],
+  maple_i: ['herb', 'antidote', 'wing', 'incense'],
+  port_w: ['iron', 'mace', 'magestaff', 'chain', 'priestrobe', 'robe', 'bronzeshield', 'ironhelm', 'hood'],
+  port_i: ['herb', 'herb2', 'antidote', 'wing', 'incense', 'smoke', 'feather'],
+  sand_w: ['steel', 'axe', 'moonstaff', 'ironarmor', 'magerobe', 'elfrobe', 'ironshield', 'pointhat', 'silverhelm'],
+  sand_i: ['herb', 'herb2', 'antidote', 'wing', 'incense', 'smoke', 'feather', 'ether'],
+  snow_w: ['icesword', 'giantaxe', 'silvermace', 'starstaff', 'fangaxe', 'silverarmor', 'frostrobe', 'dragonarmor', 'silvershield', 'dragonshield', 'dragonhelm', 'guardring', 'magicear'],
+  snow_i: ['herb2', 'herb3', 'antidote', 'wing', 'incense', 'smoke', 'feather', 'ether'],
+};
+const DIFFS = {
+  easy: { name: '簡單', note: '敵人比較弱，經驗值與金錢較多。適合想輕鬆看故事的人。', ehp: 0.8, edmg: 0.75, exp: 1.35, gold: 1.3, enc: 1.25 },
+  normal: { name: '普通', note: '原汁原味的經典難度，偶爾需要練功。', ehp: 1, edmg: 1, exp: 1, gold: 1, enc: 1 },
+  hard: { name: '困難', note: '敵人更強更耐打。需要好好規劃裝備與法術。', ehp: 1.25, edmg: 1.2, exp: 0.9, gold: 0.9, enc: 0.9 },
+};
