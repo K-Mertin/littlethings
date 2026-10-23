@@ -915,8 +915,9 @@
       drawCritter(g, 160, 152, 16, 0, 0, { happy: true, hop: 4, noShadow: true, still: true });
       drawCritter(g, 216, 152, 16, 1, 1, { noShadow: true, still: true });
       for (const x of [160, 216]) { g.fillStyle = '#2a1f5a'; g.fillRect(x - 22, 160, 44, 20); g.fillStyle = x === 160 ? '#22c55e' : '#fde047'; g.fillRect(x - 24, 158, 48, 5); }
-      g.strokeStyle = '#38bdf8'; g.lineWidth = 6; g.beginPath(); g.arc(282, 128, 20, -Math.PI / 2, Math.PI * 0.9); g.stroke();
-      text(g, '7', 282, 130, 22, '#fff', { f: NUMF });
+      g.fillStyle = '#0b1435'; g.beginPath(); g.arc(286, 150, 20, 0, TAU); g.fill();
+      g.strokeStyle = '#22c55e'; g.lineWidth = 5; g.beginPath(); g.arc(286, 150, 18, -Math.PI / 2, Math.PI * 0.9); g.stroke();
+      text(g, '7', 286, 152, 20, '#fff', { f: NUMF });
     },
     create: ctx => new Quiz(ctx)
   });
