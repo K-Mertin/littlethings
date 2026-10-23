@@ -60,6 +60,8 @@ const Gfx = (() => {
     c.width = Math.max(1, Math.ceil(w)); c.height = Math.max(1, Math.ceil(h));
     return c;
   }
+  // 在 CPU 上畫的畫布（willReadFrequently）：做外框時要讀像素，用這種就不必從顯示卡拷回來，快很多
+  function cpu(w, h) { return canvas(w, h); }
   // 快取精靈：w,h 是 CSS 像素，ax,ay 是錨點（通常是腳底中心），draw(ctx) 以錨點為原點作畫
   const cache = new Map();
   let cacheCount = 0;
@@ -80,14 +82,55 @@ const Gfx = (() => {
     if (cacheCount > 6000) { cache.clear(); cacheCount = 0; }
     return sp;
   }
+  // 角色用的精靈：先在 ss 倍大的暫存畫布上畫（細節更清楚），再縮小存成快取，最後加外框。
+  // 縮小後的大小和一般精靈一樣，所以記憶體、每幀貼圖的成本都不變。
+  // 每幀畫新圖花的時間記在 stat.ms，呼叫端可以用 busy() 判斷這一幀是不是已經花太多時間，改用備用圖。
+  const stat = { ms: 0, n: 0, est: 8 };
+  let scr = null;
+  function has(key, dpr) { return cache.has(key + '@' + dpr); }
+  function sheet(key, w, h, ax, ay, dpr, draw, o) {
+    const k = key + '@' + dpr;
+    let sp = cache.get(k);
+    if (sp) return sp;
+    const t0 = performance.now();
+    o = o || {};
+    const pad = o.outline ? Math.ceil(o.outline + 1) : 1;
+    const ss = o.ss || 1;
+    const W = Math.max(1, Math.ceil((w + pad * 2) * dpr)), H = Math.max(1, Math.ceil((h + pad * 2) * dpr));
+    let c = cpu(W, H);
+    const cx = c.getContext('2d');
+    if (ss > 1) {
+      const SW = Math.ceil(W * ss), SH = Math.ceil(H * ss);
+      // 每張圖用剛好大小的暫存畫布（重複用一張大畫布反而會讓瀏覽器每次都整張複製）
+      scr = cpu(SW, SH);
+      const sx = scr.getContext('2d');
+      sx.setTransform(1, 0, 0, 1, 0, 0); sx.globalAlpha = 1; sx.globalCompositeOperation = 'source-over'; sx.clearRect(0, 0, SW + 2, SH + 2);
+      sx.setTransform(dpr * ss, 0, 0, dpr * ss, (ax + pad) * dpr * ss, (ay + pad) * dpr * ss);
+      sx.save(); draw(sx); sx.restore();
+      cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = 'low';
+      cx.drawImage(scr, 0, 0, SW, SH, 0, 0, W, H); scr = null;
+    } else {
+      cx.setTransform(dpr, 0, 0, dpr, (ax + pad) * dpr, (ay + pad) * dpr);
+      draw(cx);
+    }
+    if (o.outline) c = addOutline(c, o.outline * dpr, o.oc || 'rgba(26,14,32,.92)');
+    sp = { c, w: W / dpr, h: H / dpr, ax: ax + pad, ay: ay + pad, key: k };
+    cache.set(k, sp); cacheCount++;
+    if (cacheCount > 6000) { cache.clear(); cacheCount = 0; }
+    const dt = performance.now() - t0; stat.ms += dt; stat.n++; stat.est += (dt - stat.est) * 0.25;
+    return sp;
+  }
+  function frameStart() { stat.ms = 0; stat.n = 0; }
+  function busy(lim) { return stat.ms > (lim || 6); }
   function drawSprite(ctx, sp, x, y, sc) {
     sc = sc || 1;
     ctx.drawImage(sp.c, x - sp.ax * sc, y - sp.ay * sc, sp.w * sc, sp.h * sc);
   }
   // 幫畫好的圖加一圈深色外框（漫畫風）
-  function addOutline(src, px, color) {
+  function addOutline(src, px, color, onCpu) {
     const w = src.width, h = src.height;
-    const sil = canvas(w, h), sx = sil.getContext('2d');
+    const mk = onCpu ? cpu : canvas;
+    const sil = mk(w, h), sx = sil.getContext('2d');
     sx.drawImage(src, 0, 0); sx.globalCompositeOperation = 'source-in'; sx.fillStyle = color; sx.fillRect(0, 0, w, h);
     // 半透明的光暈不要描邊（只描實心的部分）
     try {
@@ -95,7 +138,7 @@ const Gfx = (() => {
       for (let i = 3; i < d.length; i += 4) d[i] = d[i] < 110 ? 0 : 255;
       sx.putImageData(im, 0, 0);
     } catch (e) { /* 讀不到像素就照舊 */ }
-    const out = canvas(w, h), o = out.getContext('2d');
+    const out = mk(w, h), o = out.getContext('2d');
     const n = px > 2.5 ? 12 : 8;
     for (let i = 0; i < n; i++) { const a = i / n * TAU; o.drawImage(sil, Math.cos(a) * px, Math.sin(a) * px); }
     o.drawImage(src, 0, 0);
@@ -189,5 +232,5 @@ const Gfx = (() => {
     stops.forEach((c, i) => g.addColorStop(Array.isArray(c) ? c[0] : i / (stops.length - 1), Array.isArray(c) ? c[1] : c));
     return g;
   }
-  return { TAU, hex, mix, shade, rgba, vnoise, fbm, hash2, canvas, sprite, drawSprite, addOutline, bevel, tinted, glow, puff, ell, circ, rrect, poly, star, lgrad, rgrad, clear() { cache.clear(); cacheCount = 0; } };
+  return { TAU, hex, mix, shade, rgba, vnoise, fbm, hash2, canvas, sprite, sheet, has, stat, frameStart, busy, drawSprite, addOutline, bevel, tinted, glow, puff, ell, circ, rrect, poly, star, lgrad, rgrad, clear() { cache.clear(); cacheCount = 0; } };
 })();

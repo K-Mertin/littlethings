@@ -41,7 +41,7 @@ const Render = (() => {
   }
   function view() { return V; }
   let qual = 0;
-  function setLow(l, q) { lowFx = l; qual = q || 0; FX.setLow(l); }
+  function setLow(l, q) { lowFx = l; qual = q || 0; FX.setLow(l); const ss = [1.4, 1.2, 1][qual] || 1; Beasts.setSS(ss); Crew.setSS(ss); }
 
   // ───────── 背景快取 ─────────
   function ensureBg(G, W, H, d) {
@@ -69,23 +69,53 @@ const Render = (() => {
     });
   }
   // 精靈圖預先畫好：排進佇列，每幀用一點點時間慢慢畫，避免開場卡一下
-  let warmQ = [];
-  function warmStep(ms) { const t0 = performance.now(); while (warmQ.length && performance.now() - t0 < ms) warmQ.shift()(); }
+  // 順序：英雄 → 第一波會出現的敵人走路 → 其他敵人走路 → 受擊 → 死亡 → 攻擊／頭目放招 → 塔上小兵
+  // 畫面每幀只花幾毫秒慢慢畫，另外在瀏覽器閒置時（requestIdleCallback）多畫一些。
+  // 每張圖大概要畫多久（Gfx.stat.est）是估出來的：只有估計放得進剩下的時間才畫，避免一張大圖把一幀拖長
+  let warmQ = [], lastWarm = 0;
+  function warmStep(ms) {
+    const t0 = performance.now();
+    while (warmQ.length && performance.now() - t0 + Gfx.stat.est * 0.8 < ms) { warmQ.shift()(); lastWarm = t0; }
+    // 每一張都比預算大（很慢的機器）：至少每 0.08 秒畫一張，保證會畫完
+    if (warmQ.length && t0 - lastWarm > 80) { warmQ.shift()(); lastWarm = t0; }
+  }
+  let idleOn = false;
+  function idleWarm() {
+    if (idleOn || !warmQ.length || typeof requestIdleCallback !== 'function') return;
+    idleOn = true;
+    requestIdleCallback(dl => { idleOn = false; while (warmQ.length && dl.timeRemaining() > Gfx.stat.est + 1) { warmQ.shift()(); lastWarm = performance.now(); } idleWarm(); }, { timeout: 1000 });
+  }
+  const wanted = new Set();
+  function want(k, R, an, f, dd) { const key = k + R + an + f + dd; if (wanted.has(key)) return; wanted.add(key); warmQ.unshift(() => { wanted.delete(key); Beasts.frame(k, R, f, 0, dd, an); }); }
   function prewarm(G) {
-    warmQ = [];
-    const ks = new Set();
+    warmQ = []; wanted.clear();
+    const ks = new Set(), first = new Set();
+    if (G.waves && G.waves[0]) for (const g of (G.waves[0].groups || G.waves[0])) if (g && g.k) first.add(g.k);
     if (G.L.pool) for (const p of G.L.pool) ks.add(p[0]);
     if (G.L.boss) ks.add(G.L.boss);
     if (G.L.midBoss) ks.add(G.L.midBoss[1]);
-    for (const k of [...ks]) { const d = ENEMIES[k]; if (d.split) ks.add(d.split); if (d.summon) ks.add(d.summonK || 'skeleton'); }
-    const knight = G.hero && G.hero.d.block;
-    for (const k of ks) {
-      const d = ENEMIES[k], R = Beasts.visR(k, d.r, V.s) * (d.boss ? 0.85 : 1);
-      const dd = dpr;
-      for (let f = 0; f < Beasts.FR; f++) warmQ.push(() => { Beasts.frame(k, R, f, 0, dd); Beasts.frame(k, R, f, 1, dd); });
-      if (knight && !d.fly && !d.boss) for (let f = 0; f < Beasts.FA; f++) warmQ.push(() => Beasts.frame(k, R, f, 0, dd, true));
+    for (const k of [...ks, ...first]) { const d = ENEMIES[k]; ks.add(k); if (d.split) ks.add(d.split); if (d.summon) ks.add(d.summonK || 'skeleton'); }
+    const knight = G.hero && G.hero.d.block, dd = dpr;
+    const order = [...ks].sort((a, b) => (first.has(b) ? 1 : 0) - (first.has(a) ? 1 : 0));
+    const Rof = k => { const d = ENEMIES[k]; return Beasts.visR(k, d.r, V.s) * (d.boss ? 0.85 : 1); };
+    if (G.hero) { const id = G.hero.id, R = V.s * 0.33; for (const an of ['idle', 'walk', 'atk', 'cast']) for (let f = 0; f < HeroArt.FR[an]; f++) warmQ.push(() => HeroArt.frame(id, R, an, f, dd)); }
+    for (const k of order) warmQ.push(() => { Beasts.frame(k, Rof(k), 0, 0, dd); Beasts.frame(k, Rof(k), 0, 1, dd); });
+    for (const k of order) for (let f = 1; f < Beasts.N.walk; f++) warmQ.push(() => Beasts.frame(k, Rof(k), f, 0, dd));
+    for (const k of order) for (let f = 0; f < Beasts.N.hit; f++) warmQ.push(() => Beasts.frame(k, Rof(k), f, 0, dd, 'hit'));
+    for (const k of order) for (let f = 0; f < Beasts.N.die; f++) warmQ.push(() => Beasts.frame(k, Rof(k), f, 0, dd, 'die'));
+    for (const k of order) {
+      const d = ENEMIES[k], B = Beasts.BOX[k];
+      if (knight && !d.fly && !d.boss) for (let f = 0; f < Beasts.N.atk; f++) warmQ.push(() => Beasts.frame(k, Rof(k), f, 0, dd, 'atk'));
+      if (B.boss || B.cast) for (let f = 0; f < Beasts.N.cast; f++) warmQ.push(() => Beasts.frame(k, Rof(k), f, 0, dd, 'cast'));
+      if (B.boss) for (let f = 0; f < Beasts.N.idle; f++) warmQ.push(() => Beasts.frame(k, Rof(k), f, 0, dd, 'idle'));
     }
-    if (G.hero) { const dd = dpr, id = G.hero.id, R = V.s * 0.33; for (const an of ['idle', 'walk', 'atk', 'cast']) for (let f = 0; f < HeroArt.FR[an]; f++) warmQ.unshift(() => HeroArt.frame(id, R, an, f, dd)); }
+    // 塔上的小兵：把每種塔、每個等級的會動部分在暫存畫布上畫一次，快取就都建好了
+    const scratch = Gfx.canvas(8, 8).getContext('2d');
+    // 每個工作只畫一種姿勢（一兩張小圖），才不會一次卡太久
+    for (const [tier, sp] of [[0, -1], [1, -1], [2, -1], [3, 0], [3, 1]]) for (const k of (G.towersAvail || TOWER_ORDER)) for (const [rec, cd] of (k === 'mine' || k === 'banner' ? [[0, 0]] : [[0, 9], [0, 0.66], [0, 0.33], [0, 0], [1, 0]])) for (let i = 0; i < (k === 'mine' || k === 'banner' ? 8 : 1); i++) warmQ.push(() => {
+      const t = { k, tier, spec: sp, id: 0, recoil: rec, cd, st: { rate: 1 }, stunT: 0, pulse: 0 }; scratch.save(); Art.live(scratch, t, V.s, i / 6.5, -0.3, k, tier, sp); scratch.restore();
+    });
+    idleWarm();
   }
 
   // ───────── 塔 ─────────
@@ -174,8 +204,15 @@ const Render = (() => {
     const y0 = e.fly ? gy - s * 0.68 + Math.sin(e.wob * 0.5) * s * 0.05 : gy;
     ctx.globalAlpha = fade;
     if (!e.fly) ell(ctx, a, gy, R * (e.boss ? 1.1 : 0.85), R * 0.3, 'rgba(20,10,20,.3)');
-    const atk = !!e.held;
-    const fa = atk ? (Math.floor(time * 9 + e.id) % Beasts.FA) : f;
+    // 動作：放招 > 受擊 > 被擋住時攻擊 > 走路
+    if (e.flash > 0.05 && !(e._hcd > 0)) { e._hitT = 0.16; e._hcd = 0.55; }
+    if (e._hcd > 0) e._hcd -= dt; if (e._hitT > 0) e._hitT -= dt;
+    let an = 'walk', fa = f;
+    if (e._castT > 0) { e._castT -= dt; an = 'cast'; fa = Math.min(5, Math.floor((1 - e._castT / 0.9) * 6)); }
+    else if (e._hitT > 0 && !e.frozenT) { an = 'hit'; fa = e._hitT > 0.08 ? 0 : 1; }
+    else if (e.held) { an = 'atk'; fa = Math.floor(time * 9 + e.id) % Beasts.FA; }
+    else if (e.boss && e.frozenT > 0) { an = 'idle'; fa = Math.floor(time * 6) % Beasts.N.idle; }
+    const atk = an;
     const sp = Beasts.frame(e.k, R, fa, 0, dpr, atk);
     const flip = face < 0;
     if (flip) { ctx.save(); ctx.translate(a, 0); ctx.scale(-1, 1); a = 0; }
@@ -261,17 +298,21 @@ const Render = (() => {
   function drawDeath(ctx, d, s, time) {
     const [a, b] = V.P(d.x, d.y), u = d.t / d.dur;
     const R = Beasts.visR(d.k, d.r, s) * (d.boss ? 0.85 : 1);
-    const sp = Beasts.frame(d.k, R, d.f, u < 0.12 ? 1 : 0, dpr);
+    const st = (Beasts.BOX[d.k] || {}).die;
+    const df = Math.min(Beasts.N.die - 1, Math.floor(Math.min(1, u / 0.8) * Beasts.N.die));
+    const sp = Beasts.frame(d.k, R, df, u < 0.08 ? 1 : 0, dpr, 'die');
     const gy = b + s * 0.08;
     ctx.save();
-    if (d.fly) {
+    if (st === 'bake') {
+      // 倒下動畫已經畫在圖裡（翻肚、散架、崩塌、化成水）
+      ctx.translate(a, d.fly ? gy - s * 0.68 + u * s * 0.2 : gy); ctx.scale(d.face, 1);
+      ctx.globalAlpha = 1 - Math.max(0, (u - 0.72) / 0.28);
+      Gfx.drawSprite(ctx, sp, 0, 0);
+      if (d.boss && Math.random() < 0.3) { const ex = d.x + (Math.random() - 0.5) * 1.2, ey = d.y + (Math.random() - 0.5) * 0.8; FX.part('fire', ex, ey, 0.4 + Math.random(), 0, 0, 0.5, 0.4, 0.4, '#ffb347'); FX.part('flash', ex, ey, 0.6, 0, 0, 0, 0.12, 0.6, '#fff4c8'); }
+    } else if (d.fly) {
       const y = gy - s * 0.68 * (1 - u * u);
       ctx.translate(a, y); ctx.rotate(d.face * u * 2.5); ctx.scale(d.face, 1);
       ctx.globalAlpha = 1 - Math.max(0, (u - 0.7) / 0.3);
-      Gfx.drawSprite(ctx, sp, 0, 0);
-    } else if (d.k === 'slime' || d.k === 'mini' || d.k === 'splitter') {
-      ctx.translate(a, gy); ctx.scale(d.face * (1 + u * 0.8), Math.max(0.05, 1 - u));
-      ctx.globalAlpha = 1 - u * u;
       Gfx.drawSprite(ctx, sp, 0, 0);
     } else if (d.boss) {
       const sh = (1 - u) * s * 0.05;
@@ -280,7 +321,7 @@ const Render = (() => {
       Gfx.drawSprite(ctx, sp, 0, 0);
       if (Math.random() < 0.35) { const ex = d.x + (Math.random() - 0.5) * 1.2, ey = d.y + (Math.random() - 0.5) * 0.8; FX.part('fire', ex, ey, 0.4 + Math.random(), 0, 0, 0.5, 0.4, 0.4, '#ffb347'); FX.part('flash', ex, ey, 0.6, 0, 0, 0, 0.12, 0.6, '#fff4c8'); }
     } else {
-      ctx.translate(a, gy); ctx.rotate(-d.face * Math.min(1, u * 2.2) * 1.45); ctx.scale(d.face, 1);
+      ctx.translate(a, gy); ctx.rotate(-d.face * Rig.ease(Math.min(1, u * 1.9)) * 1.45); ctx.scale(d.face, 1);
       ctx.globalAlpha = 1 - Math.max(0, (u - 0.45) / 0.55);
       Gfx.drawSprite(ctx, sp, 0, 0);
     }
@@ -509,6 +550,7 @@ const Render = (() => {
     const c = Gfx.canvas(S, S), x = c.getContext('2d');
     // 先畫在大一點的暫存畫布，再裁切成剛好的大小（矮的塔也不會顯得太小）
     const T = Gfx.canvas(S * 2, S * 2), tx = T.getContext('2d');
+    Crew.setDpr(1);
     if (kind === 'tower') {
       const u = S * 0.6, t = { k, tier: tier || 0, spec: spec === undefined ? -1 : spec, id: 3, recoil: 0, stunT: 0, pulse: 0, cd: 0, ang: -Math.PI / 4 };
       tx.translate(S, S * 1.7);
@@ -520,7 +562,7 @@ const Render = (() => {
     } else {
       const B = Beasts.BOX[k];
       const R = Math.min(S * 1.6 / B.w, S * 1.6 / B.h);
-      const sp = Beasts.frame(k, R, 2, 0, 1);
+      const sp = Beasts.frame(k, R, B.boss ? 1 : 1, 0, 1, B.boss ? 'idle' : 'walk');
       tx.drawImage(sp.c, S - sp.ax, S * 1.8 - sp.ay);
     }
     const id = tx.getImageData(0, 0, T.width, T.height).data;
@@ -531,6 +573,7 @@ const Render = (() => {
       const dw = bw * f, dh = bh * f;
       x.drawImage(T, x0, y0, bw, bh, (S - dw) / 2, S - pad - dh, dw, dh);
     }
+    Crew.setDpr(dpr);
     return (iconCache[key] = c.toDataURL());
   }
 
@@ -549,7 +592,8 @@ const Render = (() => {
     if (G !== FX.G) FX.reset(G);
     lastG = G;
     FX.update(dt, time);
-    if (warmQ.length) warmStep(qual ? 3 : 5);
+    Gfx.frameStart(); Crew.setDpr(dpr);
+    if (warmQ.length) { warmStep(qual ? 4 : 6); idleWarm(); }
     const s = V.s, HS = s * Art.HS, th = G.L.theme, PAL = Terrain.pal(th);
     budReset(W, H, s);
     const P = V.P;
@@ -1229,5 +1273,5 @@ const Render = (() => {
     ctx.restore();
   }
 
-  return { setView, view, ensureBg, invalidate, frame, thumb, icon, setLow, drawTowerAt: drawTower, fakeGame };
+  return { want, warmLeft: () => warmQ.length, setView, view, ensureBg, invalidate, frame, thumb, icon, setLow, drawTowerAt: drawTower, fakeGame };
 })();
