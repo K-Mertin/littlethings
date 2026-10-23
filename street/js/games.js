@@ -36,7 +36,7 @@ export const STREET = [
     desc: '像素風的機器人戰棋，有必殺技演出：15 章、三條路線、五種結局。', tags: ['15 章', '5 種結局', '自動存檔'],
     shop: { bg: '#1c2b6b', fg: '#7fe0ff', awn: ['#1c2b6b', '#c8d4ff'], wall: '#cfd8f2' } },
   { id: 'sky', path: 'sky/index.html', title: '空戰', genre: '飛行射擊', en: 'SKY SHOOTER',
-    desc: '雷電風格的縱向射擊：飛過河谷、大海、城市、沙漠和雲端，打倒五個大頭目。', tags: ['5 關', '換武器升級', '手機拖曳'],
+    desc: '雷電風格的縱向射擊：從河谷、大海、城市一路打到冰原、熔岩和太空，八個大頭目。', tags: ['8 關', '換武器升級', '手機拖曳'],
     shop: { bg: '#0d2a4a', fg: '#ffb347', awn: ['#0d2a4a', '#ffd9a0'], wall: '#d6e4f2' } },
   { id: 'outpost', path: 'outpost/index.html', title: 'Crystal Outpost', genre: '即時戰略', en: 'STRATEGY',
     desc: '星海爭霸風格的即時戰略：三個陣營、六關任務，還能和朋友線上對戰。', tags: ['3 個陣營', '1v1 · 2v2', '線上對戰'],
