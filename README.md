@@ -19,6 +19,7 @@ MK 的瀏覽器遊戲合集，每個資料夾自成一體。線上遊玩：https
 | [空戰](https://littleland.mwstudio.workers.dev/sky/) | `sky/` | 《雷電》風格的縱向捲軸射擊：8 關（河谷、海上艦隊、城市、沙漠基地、雲端、冰原、熔岩、太空）各有頭目，3D 預渲染機體、地形光影；紅藍紫三種主武器＋飛彈／追蹤飛彈、炸彈、獎章、補給箱、接關、第二輪；三種難度（簡單模式會自動放炸彈），支援觸控拖曳、鍵盤、手把，音樂音效即時合成 |
 | [守塔奇兵](https://littleland.mwstudio.workers.dev/td/) | [`td/`](td/README.md) | 塔防：8 張手工地圖、7 種塔（三級升級＋二選一專精）、15 種敵人與 3 個頭目、隕石／冰封技能、天賦樹、無盡模式、三種難度，支援手機直橫式、滑鼠、鍵盤 |
 | [夜市小吃王](https://littleland.mwstudio.workers.dev/shop/) | [`shop/`](shop/README.md) | 開羅風模擬經營：從夜市小攤車做到傳說夜市，擺設相鄰組合、員工培訓、食材兩兩組合研發 42 道台灣小吃、節慶與隨機事件、小吃大賽與年度頒獎、28 家對手排行、三格自動存檔，支援觸控與滑鼠 |
+| [八音盒謎屋](https://littleland.mwstudio.workers.dev/escape/) | [`escape/`](escape/README.md) | 密室逃脫＋推理：8 間謎屋（四面牆、特寫、道具組合，17 種謎題）、3 件推理事件（證詞矛盾、出示證物、指認犯人）、每步三層提示、星星評分、自動存檔，支援觸控與滑鼠 |
 | [捏臉工坊](https://k-mertin.github.io/littlethings/face/) | [`face/`](face/README.md) | 2D 捏臉：臉型、五官、髮型、瀏海、配件、衣服，即時預覽縮圖、隨機、復原、存檔、下載 PNG，支援手機 |
 | [寫實捏臉 3D](https://k-mertin.github.io/littlethings/face3d/) | [`face3d/`](face3d/README.md) | 寫實 3D 捏臉：MakeHuman CC0 人體、417 個變形滑桿、寫實皮膚、3D 髮型眉毛睫毛、表情、眼睛看游標，支援手機 |
 
@@ -47,6 +48,7 @@ table/            每款一個 HTML，共用 common.js / common.css，無建置�
 sky/              index.html＋js/（依序載入，無建置步驟）；Three.js 由 CDN 載入做 3D 預渲染，地形全部用程式畫
 td/               index.html＋js/（依序載入，無建置步驟，不需外部函式庫）
 shop/             index.html＋js/（依序載入，無建置步驟，不需外部函式庫）
+escape/           index.html＋css/＋js/（依序載入，無建置步驟，不需外部函式庫，美術全用 SVG）
 face/             單一檔案，無建置步驟，不需任何外部函式庫（純 SVG）
 face3d/           index.html＋預先處理的 data/（Three.js 由 CDN 載入）；data/ 由 tools/build.py 從 MakeHuman 素材產生
 ```
