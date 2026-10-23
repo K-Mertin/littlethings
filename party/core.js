@@ -13,7 +13,11 @@ const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const rnd = (a, b) => a + Math.random() * (b - a);
 const rint = n => Math.random() * n | 0;
 const hyp = Math.hypot;
-const GAMES = [];                       // each games/*.js pushes its definition here
+const GAMES = [];
+/* lobby categories: games may set cat; otherwise co-op games are 'coop' and the rest 'action' */
+const CATS = [{ id: 'action', n: '🏃 跑跑跳跳' }, { id: 'coop', n: '🤝 大家合作' }, { id: 'brain', n: '🧠 動腦派對' }];
+const BRAIN = ['quiz', 'draw', 'rhythm', 'board'];
+function catOf(g) { return g.cat || (BRAIN.includes(g.id) ? 'brain' : g.kind === 'team' ? 'coop' : 'action'); }                       // each games/*.js pushes its definition here
 const NET_CDN = { peer: 'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js' };
 const store = {
   get(k, d) { try { const v = localStorage.getItem('mwparty.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
@@ -375,7 +379,7 @@ const Party = {
     if (!this.net || !p.peer || p.local) return;
     const you = this.you(p), L = this.leader(), base = { you, kid: this.kid, game: this.gameId, leadName: L ? L.name : '', teams: this.teams };
     if (this.state === 'lobby' || (this.state === 'result' && !p.inGame)) {
-      this.net.send(p.peer, { t: 'lobby', ...base, games: GAMES.map(g => ({ id: g.id, name: g.name, icon: g.icon, col: g.col, blurb: g.blurb, team: g.kind === 'team', teams: !!g.teams })), players: this.players.map(q => ({ name: q.name, col: q.col, animal: q.animal, online: q.online, trophies: q.trophies, team: q.team, lead: q === L })) });
+      this.net.send(p.peer, { t: 'lobby', ...base, games: GAMES.map(g => ({ id: g.id, name: g.name, icon: g.icon, col: g.col, blurb: g.blurb, team: g.kind === 'team', teams: !!g.teams, cat: catOf(g) })), cats: CATS, players: this.players.map(q => ({ name: q.name, col: q.col, animal: q.animal, online: q.online, trophies: q.trophies, team: q.team, lead: q === L })) });
     } else if (this.state === 'result') {
       const row = this.res.rows.find(r => r.p === p);
       this.net.send(p.peer, { t: 'result', ...base, title: this.res.title, sub: this.res.sub || '', stars: this.res.stars, team: !!this.res.team, rank: row ? row.rank : 0, n: this.res.rows.length, line: row ? row.line : '', win: this.res.winTeam === undefined ? -9 : this.res.winTeam });
@@ -584,6 +588,14 @@ function renderLobby() {
   $('teamNote').textContent = sel.forceTeams ? '「' + sel.name + '」一定是兩隊比，會自動分好隊' : Party.teams ? (sel.teams ? (Party.teamsOn(sel) ? '分隊比：☀️ 太陽隊 對 🌙 月亮隊，在手機上可以換隊' : '兩隊都要有人才能分隊，現在先各自比') : '「' + sel.name + '」不分隊' + (sel.kind === 'team' ? '，本來就是大家一起合作' : '，這款各自比')) : '';
   $('modeNote').textContent = Party.kid ? '小朋友模式：慢一點、不會被淘汰、掉下去會回來。' : '大人模式：速度快、有淘汰、炸彈和大野狼。';
   const box = $('cards');
+  if (!$('cats').childElementCount) {
+    $('cats').innerHTML = CATS.map(c => `<button data-cat="${c.id}">${c.n} <small>${GAMES.filter(g => catOf(g) === c.id).length}</small></button>`).join('');
+    $('cats').querySelectorAll('button').forEach(b => b.onclick = () => { Sfx.ensure(); Party.viewCat = b.dataset.cat; Sfx.play('pop'); renderLobby(); });
+  }
+  const selCat = catOf(Party.def_(Party.gameId));
+  if (Party.lastSelCat !== selCat) { Party.lastSelCat = selCat; Party.viewCat = selCat; }   // a pick from a phone jumps to its tab
+  const vc = Party.viewCat || selCat;
+  $('cats').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.cat === vc));
   if (!box.childElementCount) {
     GAMES.forEach((g, i) => {
       const b = document.createElement('button'); b.className = 'card'; b.dataset.id = g.id; b.style.setProperty('--gc', g.col);
@@ -594,7 +606,7 @@ function renderLobby() {
       if (g.thumb) g.thumb(b.querySelector('canvas').getContext('2d'));
     });
   }
-  box.querySelectorAll('.card').forEach(b => b.setAttribute('aria-pressed', b.dataset.id === Party.gameId));
+  box.querySelectorAll('.card').forEach(b => { b.setAttribute('aria-pressed', b.dataset.id === Party.gameId); b.hidden = catOf(Party.def_(b.dataset.id)) !== vc; });
   const d = Party.def_(Party.gameId);
   $('startName').textContent = d.icon + ' ' + d.name;
   $('start').style.setProperty('--gc', d.col);
