@@ -4,6 +4,7 @@ Object.assign(Game, {
   knownPass(x, y) {
     const F = G.F, k = y * F.w + x; if (!F.seen[k]) return false;
     const v = F.t[k]; if (!TP[v].walk || v === T.LAVA) return false;
+    if (F.mons.some(m => m.x === x && m.y === y && m.hp > 0 && MON[m.k].talk)) return false;
     if (!this._trapOk) { const tr = this.trapAt(x, y); if (tr && !tr.hid) return false; }
     return true;
   },
@@ -23,7 +24,7 @@ Object.assign(Game, {
     return FOV.path(F, P.x, P.y, tx, ty, (x, y, goal) => {
       if (goal) { const v = this.tile(x, y); return TP[v].walk || v === T.FOUNTAIN; }
       if (!this.knownPass(x, y)) return false;
-      const m = this.monAt(x, y); if (m && this.monVisible(m) && !m.disg) return false;
+      const m = this.monAt(x, y); if (m && this.monVisible(m) && !m.disg && m.k !== 'keeper') return false;
       return true;
     });
   },
@@ -76,6 +77,7 @@ Object.assign(Game, {
     for (const o of F.items) if (o.x === x && o.y === y && (o.seen || F.detect)) out.push(this.itemName(o.it) + (o.it.price ? '（' + o.it.price + ' 金幣）' : ''));
     const tr = this.trapAt(x, y); if (tr && !tr.hid) out.push(TRAPS[tr.k].n);
     const c = F.clouds.find(o => o.x === x && o.y === y); if (c && this.inView(x, y)) out.push({ poison: '毒霧', conf: '混亂迷霧', para: '麻痺氣體', fire: '火焰' }[c.k]);
+    const pp = F.t[k] === T.PROP && this.propAt(x, y); if (pp) { out.push(PROPS[pp.k].n + (PROPS[pp.k].deco ? ' · ' + PROPS[pp.k].d : pp.k === 'fire' ? (pp.used ? '（已熄滅）' : '（走過去可以休息一次）') : PROPS[pp.k].boom ? '（打破或用東西丟它會爆炸！）' : '（可以打破）')); return out.join('，'); }
     out.push(TP[F.t[k]].n + (F.t[k] === T.STAIRS && F.locked ? '（被封印）' : ''));
     return out.join('，');
   },

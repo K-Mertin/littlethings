@@ -45,14 +45,22 @@ const Snd = {
     s.start(t, Math.random() * 0.5); s.stop(t + dur + 0.05);
   },
   arp(notes, gap, type = 'square', g = 0.06, dur = 0.12) { notes.forEach((f, i) => this.tone(f, dur, type, g, null, i * gap)); },
-  play(name) {
+  play(name, v) {
     if (!this.ctx || !Store.set.sfx) return;
-    const now = this.ctx.currentTime, gap = { hit: 0.05, miss: 0.05, hurt: 0.06, mdie: 0.05, pick: 0.06, gold: 0.08, step: 0.05, zap: 0.05, warn: 0.5 }[name] || 0.02;
+    const now = this.ctx.currentTime, gap = { hit: 0.05, miss: 0.05, hurt: 0.06, mdie: 0.05, pick: 0.06, gold: 0.08, step: 0.06, zap: 0.05, warn: 0.5, bite: 0.05, claw: 0.05, smash: 0.08, cast: 0.08 }[name] || 0.02;
     if (this.last[name] && now - this.last[name] < gap) return;
     this.last[name] = now;
     const r = 1 + (Math.random() - 0.5) * 0.12;
     switch (name) {
-      case 'step': this.noise(0.05, 0.03, 900, 300, 0, 'bandpass'); break;
+      case 'step': {
+        // 依地面材質不同的腳步聲（很小聲）
+        if (v === 'water') { this.noise(0.12, 0.05, 1800 * r, 500, 0, 'bandpass', null, 1.5); this.tone(500 * r, 0.06, 'sine', 0.015, 300); }
+        else if (v === 1) this.noise(0.07, 0.035, 500 * r, 200, 0, 'lowpass');
+        else if (v === 3) { this.noise(0.05, 0.03, 4000 * r, 2500, 0, 'highpass'); }
+        else if (v === 'grass') this.noise(0.09, 0.03, 3000 * r, 1200, 0, 'bandpass', null, 0.7);
+        else this.noise(0.04, 0.03, 1200 * r, 400, 0, 'bandpass', null, 2);
+        break;
+      }
       case 'chest': this.noise(0.18, 0.12, 600, 200, 0, 'lowpass'); this.arp([523, 659, 784, 1047], 0.06, 'triangle', 0.07, 0.18); break;
       case 'hit': this.noise(0.09, 0.22, 2600 * r, 500, 0, 'bandpass', null, 1.2); this.tone(180 * r, 0.08, 'square', 0.06, 70); break;
       case 'crit': this.noise(0.16, 0.3, 4000, 300, 0, 'bandpass'); this.tone(320, 0.18, 'sawtooth', 0.08, 60); this.tone(1200, 0.08, 'square', 0.04, 1800, 0.02); break;
@@ -62,11 +70,32 @@ const Snd = {
       case 'bigdie': this.noise(1.2, 0.4, 1600, 50); this.tone(110, 1.0, 'sawtooth', 0.2, 30); this.arp([392, 330, 262, 196], 0.12, 'square', 0.05, 0.3); break;
       case 'death': this.tone(392, 0.4, 'triangle', 0.12, null, 0); this.tone(330, 0.4, 'triangle', 0.12, null, 0.35); this.tone(262, 0.5, 'triangle', 0.12, null, 0.7); this.tone(196, 1.4, 'triangle', 0.14, 98, 1.05); this.noise(1.0, 0.2, 800, 60); break;
       case 'victory': this.arp([523, 659, 784, 1047, 784, 1047, 1319, 1568], 0.12, 'square', 0.07, 0.3); this.tone(262, 1.6, 'triangle', 0.12, null, 0.96); break;
-      case 'pick': this.tone(880 * r, 0.06, 'square', 0.04); this.tone(1320 * r, 0.08, 'square', 0.035, null, 0.05); break;
+      case 'pick':
+        if (v === 'potion') { this.tone(1400 * r, 0.05, 'sine', 0.05); this.tone(1900 * r, 0.07, 'sine', 0.04, null, 0.04); this.noise(0.05, 0.04, 6000, 3000, 0.02, 'highpass'); }
+        else if (v === 'scroll') { this.noise(0.14, 0.07, 3500, 1500, 0, 'bandpass', null, 0.8); this.tone(990 * r, 0.06, 'triangle', 0.03, null, 0.06); }
+        else if (v === 'weapon' || v === 'armor') { this.noise(0.08, 0.1, 4500, 2000, 0, 'bandpass', null, 3); this.tone(660 * r, 0.12, 'triangle', 0.05, 640); this.tone(1320 * r, 0.1, 'sine', 0.03, null, 0.03); }
+        else if (v === 'ring' || v === 'wand') { this.arp([1175 * r, 1568 * r, 2093 * r], 0.04, 'sine', 0.04, 0.18); }
+        else { this.tone(880 * r, 0.06, 'square', 0.04); this.tone(1320 * r, 0.08, 'square', 0.035, null, 0.05); }
+        break;
+      case 'relic': this.arp([523, 784, 1047, 1319, 1568, 2093], 0.06, 'triangle', 0.06, 0.4); this.tone(262, 1.2, 'sine', 0.08, null, 0.1); this.noise(0.8, 0.05, 9000, 4000, 0.1, 'highpass'); break;
+      case 'boom': this.noise(0.9, 0.5, 900, 40, 0, 'lowpass'); this.tone(70, 0.7, 'sine', 0.3, 30); this.noise(0.25, 0.25, 4000, 600, 0, 'bandpass'); break;
+      case 'wood': this.noise(0.16, 0.22, 900 * r, 200, 0, 'lowpass'); this.tone(170 * r, 0.1, 'triangle', 0.08, 90); for (let i = 1; i < 3; i++) this.noise(0.05, 0.08, 1500, 400, i * 0.06, 'bandpass'); break;
+      case 'pot': for (let i = 0; i < 4; i++) this.tone(1800 + Math.random() * 2200, 0.07, 'triangle', 0.035, null, i * 0.03); this.noise(0.15, 0.12, 5000, 1500, 0, 'highpass'); break;
+      case 'squish': this.noise(0.25, 0.18, 600, 150, 0, 'lowpass', null, 4); this.tone(220, 0.2, 'sine', 0.08, 90); break;
+      case 'anvil': for (let i = 0; i < 3; i++) { this.tone(1200 * r, 0.25, 'triangle', 0.06, null, i * 0.18); this.tone(2650 * r, 0.18, 'sine', 0.03, null, i * 0.18); this.noise(0.04, 0.12, 5000, 3000, i * 0.18, 'highpass'); } break;
+      case 'bite': this.noise(0.08, 0.2, 1800 * r, 600, 0, 'bandpass', null, 2); this.tone(140 * r, 0.06, 'square', 0.06, 80, 0.03); break;
+      case 'claw': for (let i = 0; i < 3; i++) this.noise(0.06, 0.12, 5000 * r, 2500, i * 0.035, 'highpass'); break;
+      case 'smash': this.noise(0.3, 0.32, 500, 60, 0, 'lowpass'); this.tone(80 * r, 0.25, 'sine', 0.2, 40); break;
+      case 'cast': this.tone(300 * r, 0.22, 'sine', 0.05, 900); this.noise(0.22, 0.05, 2000, 6000, 0, 'bandpass', null, 3); break;
+      case 'fire2': this.noise(0.5, 0.12, 700, 300, 0, 'lowpass'); break;
       case 'gold': this.tone(1568, 0.07, 'square', 0.035); this.tone(2093, 0.12, 'square', 0.03, null, 0.06); break;
       case 'drink': for (let i = 0; i < 4; i++) this.tone(300 + i * 90 + Math.random() * 40, 0.07, 'sine', 0.08, 500 + i * 100, i * 0.07); break;
       case 'read': this.noise(0.25, 0.08, 6000, 2000, 0, 'highpass'); this.arp([660, 990, 1320], 0.07, 'triangle', 0.05, 0.25); break;
-      case 'equip': this.noise(0.08, 0.12, 3000, 800, 0, 'bandpass'); this.tone(520, 0.1, 'square', 0.04, null, 0.04); break;
+      case 'equip':
+        if (v === 'weapon') { this.noise(0.25, 0.1, 3000, 9000, 0, 'bandpass', null, 4); this.tone(1500, 0.3, 'sine', 0.04, 1800, 0.05); }
+        else if (v === 'armor') { for (let i = 0; i < 3; i++) this.noise(0.07, 0.14, 2200, 700, i * 0.07, 'bandpass', null, 2); this.tone(330, 0.12, 'triangle', 0.05, null, 0.14); }
+        else { this.noise(0.08, 0.12, 3000, 800, 0, 'bandpass'); this.tone(520, 0.1, 'square', 0.04, null, 0.04); this.arp([1047, 1568], 0.05, 'sine', 0.03, 0.2); }
+        break;
       case 'curse': this.tone(180, 0.6, 'sawtooth', 0.09, 90); this.tone(190, 0.6, 'sawtooth', 0.07, 85); break;
       case 'eat': for (let i = 0; i < 3; i++) this.noise(0.06, 0.12, 1200, 400, i * 0.12, 'bandpass'); break;
       case 'door': this.noise(0.18, 0.12, 500, 120, 0, 'lowpass'); this.tone(140, 0.12, 'triangle', 0.06, 90); break;
@@ -121,6 +150,7 @@ const Music = {
   stop() { this.cur = null; this.song = null; },
   tick() {
     const c = Snd.ctx; if (!c || !this.song || !Store.set.music) return;
+    this.amb(c);
     const S = this.song, spb = 60 / S.bpm / 2;
     if (this.next < c.currentTime) this.next = c.currentTime + 0.05;
     while (this.next < c.currentTime + 0.3) { this.sched(S, this.step, this.next); this.next += spb; this.step++; }
@@ -161,6 +191,16 @@ const Music = {
       const g = this.voice(f, t, 1.6, 'sine', 0.05, 5000, 0.004); g.connect(Snd.wet);
       const g2 = this.voice(f * 2.01, t, 0.8, 'sine', 0.012, 6000, 0.004); g2.connect(Snd.wet);
     }
+  },
+  // 各區域的環境聲：水滴、岩漿冒泡、風聲、孢子嗡嗡、深淵低語（隨機零星出現）
+  amb(c) {
+    if (!G || !G.F || this.cur === 'title' || this.cur === 'boss' || Math.random() > 0.035) return;
+    const b = G.F.biome, t = c.currentTime + 0.05, S = Snd;
+    if (b === 0) { const f = 1400 + Math.random() * 900; S.tone(f, 0.12, 'sine', 0.03, f * 0.55, 0.05, Snd.musG); if (Math.random() < 0.4) S.tone(f * 0.8, 0.1, 'sine', 0.015, f * 0.4, 0.4, Snd.musG); }
+    else if (b === 1) { S.tone(110 + Math.random() * 30, 1.2, 'sine', 0.025, 120, 0, Snd.musG, 0.4); S.tone(880 + Math.random() * 300, 0.5, 'sine', 0.01, null, 0.2, Snd.musG, 0.1); }
+    else if (b === 2) { for (let i = 0; i < 3; i++) S.noise(0.08, 0.05, 400 + Math.random() * 300, 120, i * 0.09 + Math.random() * 0.05, 'lowpass', Snd.musG, 3); }
+    else if (b === 3) S.noise(1.6, 0.04, 900 + Math.random() * 600, 2400, 0, 'bandpass', Snd.musG, 6);
+    else S.tone(55 + Math.random() * 10, 1.6, 'sawtooth', 0.02, 45, 0, Snd.musG, 0.6);
   },
   noiseAt(t, dur, g, f, type = 'bandpass') {
     const c = Snd.ctx, s = c.createBufferSource(), fl = c.createBiquadFilter(), a = c.createGain();

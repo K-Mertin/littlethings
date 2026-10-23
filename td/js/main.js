@@ -79,8 +79,8 @@ addEventListener('orientationchange', () => setTimeout(layout, 150));
 // ───────── 遊戲流程 ─────────
 function startLevel(li, diff, endless, chal) {
   if (chal) { diff = chal === 'iron' ? 'easy' : 'normal'; endless = false; }
-  const hid = HeroUI.current();
-  App.game = newGame(li, diff, { endless, chal, hero: { id: hid, xp: HeroUI.rec(hid).xp } });
+  // 英雄已移除（MK 2026-10-23：有英雄後難度降太多）。英雄相關程式保留但不再上場。
+  App.game = newGame(li, diff, { endless, chal });
   App.ui = newUi(); App.speed = 1; App.paused = false; App.acc = 0; App.bot = null;
   App.scene = 'play';
   if (!chal) Store.data.diff = diff;
@@ -401,7 +401,7 @@ addEventListener('keydown', () => { const was = Snd.ready; Snd.init(); if (!was 
 // ───────── 標題畫面的示範戰鬥 ─────────
 function newDemo() {
   const li = Math.floor(Math.random() * LEVELS.length);
-  const G = newGame(li, 'easy', { meta: { gold: 3, cheap: 3, bounty: 3, range: 2 }, avail: 7, seed: (Math.random() * 1e6) | 0, hero: { id: HERO_ORDER[Math.floor(Math.random() * 3)], xp: 2000 } });
+  const G = newGame(li, 'easy', { meta: { gold: 3, cheap: 3, bounty: 3, range: 2 }, avail: 7, seed: (Math.random() * 1e6) | 0 });
   G.gold += 300;
   App.demo = G; App.demoBot = { strat: 'mix', seed: 1, meteor: true };
   App.demoT = 0;

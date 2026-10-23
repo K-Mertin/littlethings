@@ -9,18 +9,59 @@ const R = {
   init(cv) {
     this.cv = cv; this.g = cv.getContext('2d');
     this.lc = $('#lt'); this.bc = $('#bl'); this.fc = $('#fxc'); this.fg = this.fc.getContext('2d');
+    // 字型載入後，文字貼圖要重畫
+    try { document.fonts.ready.then(() => { this._tc = null; }); document.fonts.addEventListener('loadingdone', () => { this._tc = null; }); } catch (e) { }
   },
+  // 畫質：0 高（dpr 最多 2）、1 中（1.5、少一點粒子）、2 低（1、關掉光暈層和路人影子）
+  q: 0, DPRQ: [2, 1.5, 1],
   resize() {
-    const dpr = this.dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    const dpr = this.dpr = Math.min(window.devicePixelRatio || 1, this.DPRQ[this.q]);
     this.W = innerWidth; this.H = innerHeight;
     this.cv.width = Math.round(this.W * dpr); this.cv.height = Math.round(this.H * dpr);
     this.cv.style.width = this.W + 'px'; this.cv.style.height = this.H + 'px';
     this.fc.width = this.cv.width; this.fc.height = this.cv.height; this.fc.style.width = this.W + 'px'; this.fc.style.height = this.H + 'px';
-    this.wx = []; this._skyKey = '';
+    this.wx = []; this._skyKey = ''; this._tc = null;
+    this.bc.style.display = this.q >= 2 ? 'none' : '';
+  },
+  setQ(q) { q = clamp(q | 0, 0, 2); if (q === this.q) return; this.q = q; this.resize(); },
+  // 自動畫質：連續兩段（各 2 秒）平均每格超過 26ms 就降一級
+  perfTick(dt) {
+    if (Prefs.d.q !== undefined && Prefs.d.q !== 'auto') { if (this.q !== +Prefs.d.q) this.setQ(+Prefs.d.q); return; }
+    const p = this._pf || (this._pf = { t: 0, n: 0, bad: 0, skip: 1 });
+    if (document.hidden || dt > 0.5 || Main.state !== 'play' || UI.modal) { p.t = 0; p.n = 0; p.skip = 1; return; }
+    p.t += dt; p.n++;
+    if (p.t < 2) return;
+    const avg = p.t / p.n * 1000; p.t = 0; p.n = 0;
+    if (p.skip) { p.skip = 0; return; }
+    if (avg > 26 && this.q < 2) { if (++p.bad >= 2) { p.bad = 0; this.setQ(this.q + 1); p.skip = 1; } }
+    else p.bad = 0;
+  },
+  // 文字貼圖：每段字依目前縮放畫一次就快取（fillText 很貴，每格畫好幾十次會拖慢手機）
+  txt(g, t, x, y, s, col, wt = 900, out = null, sc = 1) {
+    const z = this.z;
+    let m = this._tc; if (!m || this._tcz !== z) { m = this._tc = new Map(); this._tcz = z; }
+    const key = t + '|' + s + col + wt + (out || '');
+    let c = m.get(key);
+    if (!c) {
+      const px = s * z, pad = Math.ceil(px * 0.2) + (out ? Math.ceil(z) : 0);
+      const font = `${wt} ${px}px "Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif`;
+      const mc = this._mc || (this._mc = document.createElement('canvas').getContext('2d'));
+      mc.font = font;
+      c = document.createElement('canvas'); c.width = Math.ceil(mc.measureText(t).width) + pad * 2; c.height = Math.ceil(px * 1.25) + pad * 2;
+      const q = c.getContext('2d'); q.font = font; q.textAlign = 'center'; q.textBaseline = 'middle';
+      const cx = c.width / 2, cy = c.height / 2 + px * 0.04;
+      if (out) { q.fillStyle = out; const o = Math.max(1, z * 0.6); for (const [ox, oy] of [[-o, 0], [o, 0], [0, -o], [0, o], [o, o], [-o, o]]) q.fillText(t, cx + ox, cy + oy); }
+      q.fillStyle = col; q.fillText(t, cx, cy);
+      if (m.size > 600) m.clear();
+      m.set(key, c);
+    }
+    const w = c.width / z * sc, h = c.height / z * sc;
+    g.drawImage(c, x - w / 2, y - h / 2, w, h);
+    return c.width / z;
   },
   bounds() {
     const S = Game.S, m = this.W < this.H ? 0.6 : 1.5, short = this.H < 520;
-    return { x0: -m * TILE, x1: (S.W + m) * TILE, y0: short ? -40 : -54, y1: (S.H + (short ? 2.2 : 3)) * TILE + 2 };
+    return { x0: -m * TILE, x1: (S.W + m) * TILE, y0: -(this.fh() + (short ? 10 : 22)), y1: (S.H + (short ? 2.2 : 3)) * TILE + 2 };
   },
   fitZ() {
     const b = this.bounds(), aw = this.W - this.left - this.right - 12, ah = this.H - this.top - this.bottom - 8;
@@ -43,7 +84,7 @@ const R = {
   toWorld(sx, sy) { return [sx * this.dpr / this.z + this.cam.x, sy * this.dpr / this.z + this.cam.y]; },
   toScreen(wx, wy) { return [(wx - this.cam.x) * this.z / this.dpr, (wy - this.cam.y) * this.z / this.dpr]; },
   night() { const p = Game.S.t / WEEK_LEN; return 0.5 - 0.5 * Math.cos(Math.min(1, p * 1.25) * Math.PI); },
-  fh() { return [30, 36, 46, 50, 54, 58][Game.S.lv]; },
+  fh() { return [44, 48, 54, 58, 62, 66][Game.S.lv]; },
   weather() {
     const S = Game.S;
     if (S.ev.some(e => e.n === '颱風')) return 'storm';
@@ -101,11 +142,13 @@ const R = {
     if (sk !== this._skyKey) { this._skyKey = sk; this.cv.style.background = `linear-gradient(${top},${mid} 33%,${bot} 60%,${bot})`; }
     if (n > 0.3 && !gray) {
       const s = Math.max(1, Math.round(this.dpr));
-      for (let i = 0; i < 70; i++) {
+      g.fillStyle = '#ffffe6';
+      for (let i = 0, ns = this.q ? 40 : 70; i < ns; i++) {
         const x = hash(i, 1, 5) * this.cv.width, y = hash(i, 2, 5) * this.cv.height * 0.4, tw = Math.sin(this.t * (1 + hash(i, 3, 5) * 2) + i);
-        g.fillStyle = `rgba(255,255,230,${(n - 0.3) * (0.6 + tw * 0.4)})`;
+        g.globalAlpha = Math.max(0, (n - 0.3) * (0.6 + tw * 0.4));
         g.fillRect(x | 0, y | 0, s * (i % 9 === 0 ? 2 : 1), s * (i % 9 === 0 ? 2 : 1));
       }
+      g.globalAlpha = 1;
       // 月亮（中秋是大大的滿月）
       const full = Game.month() === 9, mx = this.cv.width * 0.84, my = this.cv.height * 0.11, r = (full ? 22 : 12) * this.dpr;
       const hg = g.createRadialGradient(mx, my, r * 0.5, mx, my, r * 3);
@@ -172,7 +215,7 @@ const R = {
           const wx = bx + 7 + w2 * 22, wy = -hh + 10;
           R2(wx - 1, wy - 1, 14, 14, shade(wall, -0.3)); R2(wx, wy, 12, 12, '#2a3048');
           const lit = hash(i * 7 + w2, side, 11) < 0.6;
-          if (lit) { R2(wx, wy, 12, 12, hash(i, w2, 13) < 0.5 ? '#ffd890' : '#ffe8b8'); lights.push([wx + 6, wy + 6, 18, 'rgba(255,210,140,A)', 0.5]); }
+          if (lit) { R2(wx, wy, 12, 12, hash(i, w2, 13) < 0.5 ? '#ffd890' : '#ffe8b8'); lights.push([wx + 6, wy + 6, 16, 'rgba(255,210,140,A)', 0.3]); }
           R2(wx + 6, wy, 1, 12, '#3a3a44'); R2(wx, wy + 6, 12, 1, '#3a3a44');
           for (let gx = wx; gx < wx + 12; gx += 3) R2(gx, wy, 1, 12, 'rgba(40,40,50,.5)');
           if (hash(i, w2, 21) < 0.5) { R2(wx + 1, wy + 14, 10, 6, '#e8e8ec'); R2(wx + 1, wy + 14, 10, 1, '#ffffff'); R2(wx + 3, wy + 16, 6, 3, '#a8a8b4'); }
@@ -184,19 +227,19 @@ const R = {
         for (let s2 = 0; s2 < 4; s2++) { R2(bx + 6 + s2 * 10, -16, 7, 10, ['#e8705a', '#5aa8e8', '#ffd84a', '#7ad890'][(s2 + i) % 4]); R2(bx + 6 + s2 * 10, -16, 7, 1, '#ffffff'); }
         R2(bx + 4, -8, bw - 8, 2, '#a87848');
         for (let y = -30; y < -22; y += 2) R2(bx + 2, y, bw - 4, 1, y % 4 ? '#8a8a94' : '#a8a8b4');
-        lights.push([bx + bw / 2, -12, 40, 'rgba(255,200,130,A)', 0.75]);
+        lights.push([bx + bw / 2, -12, 36, 'rgba(255,200,130,A)', 0.42]);
         // 招牌橫條
         const sc = ['#e8302a', '#2a6ad8', '#2f9a4a', '#f0a020', '#c03ab0', '#1a8a8a'][(i * 5 + (side > 0 ? 3 : 0)) % 6];
         R2(bx + 1, -40, bw - 2, 10, shade(sc, -0.35)); R2(bx + 2, -39, bw - 4, 8, sc); R2(bx + 2, -39, bw - 4, 1, shade(sc, 0.35));
-        texts.push({ x: bx + bw / 2, y: -35, t: NB_SHOPS[(k * 7 + 3) % NB_SHOPS.length], c: '#ffffff', s: 5.5 });
-        lights.push([bx + bw / 2, -35, 26, hexA(sc), 0.55]);
+        texts.push({ x: bx + bw / 2, y: -35, t: NB_SHOPS[(k * 7 + 3) % NB_SHOPS.length], c: '#d8d2e0', s: 5.5 });
+        lights.push([bx + bw / 2, -35, 24, hexA(sc), 0.32]);
         // 直式招牌
         if (hash(i, side, 31) < 0.7) {
           const vx = side < 0 ? bx + 2 : bx + bw - 12, vy = -hh + 8, vc = ['#ff4a6a', '#ffd040', '#5ad0ff', '#7affb0', '#ff8ad0'][(i + k) % 5];
           R2(vx, vy, 10, 32, '#2a2036'); R2(vx + 1, vy + 1, 8, 30, '#fff6dc'); R2(vx, vy, 10, 1, vc); R2(vx, vy + 31, 10, 1, vc); R2(vx, vy, 1, 32, vc); R2(vx + 9, vy, 1, 32, vc);
           R2(side < 0 ? vx + 10 : vx - 2, vy + 4, 2, 2, '#5a5a64'); R2(side < 0 ? vx + 10 : vx - 2, vy + 26, 2, 2, '#5a5a64');
-          texts.push({ x: vx + 5, y: vy + 16, t: NB_VSIGN[(k * 3 + 1) % NB_VSIGN.length], c: '#c8302a', s: 6, v: 1 });
-          lights.push([vx + 5, vy + 16, 34, hexA(vc), 0.6]);
+          texts.push({ x: vx + 5, y: vy + 16, t: NB_VSIGN[(k * 3 + 1) % NB_VSIGN.length], c: '#a84a48', s: 6, v: 1 });
+          lights.push([vx + 5, vy + 16, 28, hexA(vc), 0.34]);
         }
       }
     }
@@ -220,23 +263,25 @@ const R = {
       if (what === 'stall') {
         const [st, ch] = NB_STALL[v % NB_STALL.length], h = Art.facH(st);
         stalls.push({ x, y: y + TILE - h, st, ch, lv: 1 + v % 2 });
-        lights.push([x + 8, y + TILE - h + 9, 30, 'rgba(255,214,140,A)', 0.7]);
-        Art.blit(q, Art.person(makeLook(900 + v * 13 + (side > 0 ? 7 : 0), 'staff', 'cook'), 0, 1, 'cook'), x + 2, y - 21);
+        lights.push([x + 8, y + TILE - h + 9, 26, 'rgba(255,214,140,A)', 0.4]);
+        if (v % 3 !== 0) Art.blit(q, Art.person(makeLook(900 + v * 13 + (side > 0 ? 7 : 0), 'staff', 'cook'), 0, 1, 'cook'), x + 2, y - 21);
         Art.blit(q, Art.fac(st, v & 1, 1 + v % 2), x, y + TILE - h);
       } else if (what === 'table') { Art.blit(q, Art.fac(v % 2 ? 'stool' : 'wood', 0, 1), x, y + TILE - Art.facH(v % 2 ? 'stool' : 'wood')); }
       else Art.blit(q, Art.prop(v), x, y);
     };
     for (const side of [-1, 1]) {
       const o = side < 0 ? 0 : 3;
-      lot(side, 2, 1, 'stall', 0 + o); lot(side, 6, 1, 'stall', 2 + o); lot(side, 10, 1, 'stall', 4 + o);
-      lot(side, 2, 3, 'table', 1); lot(side, 4, 3, 'table', 0 + o); lot(side, 7, 3, 'table', 1);
+      lot(side, 2, 1, 'prop', 2); lot(side, 5, 1, 'stall', 0 + o); lot(side, 9, 1, 'stall', 2 + o); lot(side, 12, 1, 'stall', 4 + o);
+      lot(side, 4, 3, 'table', 0 + o); lot(side, 7, 3, 'table', 1);
       lot(side, 9, 3, 'prop', 0); lot(side, 0, 2, 'prop', 2 + (o ? 2 : 0)); lot(side, 8, 2, 'prop', 3);
       lot(side, 12, 2, 'prop', 1); lot(side, 13, 3, 'prop', 0); lot(side, 14, 1, 'stall', 6 + o);
       if (S.H >= 6) { lot(side, 3, 5, 'prop', 1); lot(side, 8, 5, 'table', 0); lot(side, 5, 5, 'prop', 4); }
       if (S.H >= 8) { lot(side, 2, 7, 'stall', 1 + o); lot(side, 6, 7, 'table', 1); lot(side, 10, 6, 'prop', 0); }
-      // 鄰居那邊暗一點，讓自己的店比較顯眼
-      const lx = side < 0 ? -22 * TILE : W;
-      R2(lx, -100, 22 * TILE, Hh + 100, 'rgba(26,18,48,.26)');
+      // 鄰居那邊暗一點、灰一點，越遠越暗，讓自己的店是畫面的主角
+      const lx = side < 0 ? -22 * TILE : W, gw = 22 * TILE;
+      const gr = q.createLinearGradient(side < 0 ? 0 : W, 0, side < 0 ? -gw : W + gw, 0);
+      gr.addColorStop(0, 'rgba(30,22,54,.34)'); gr.addColorStop(0.12, 'rgba(30,22,54,.46)'); gr.addColorStop(1, 'rgba(22,16,42,.62)');
+      q.fillStyle = gr; q.fillRect(lx, -100, gw, Hh + 100);
       // 自己店面的邊界：矮矮的花圃欄杆
       const ex = side < 0 ? -3 : W;
       for (let y = 4; y < Hh; y += 6) { R2(ex, y, 3, 4, '#7a5a3a'); R2(ex, y, 3, 1, '#a8804a'); }
@@ -289,63 +334,120 @@ const R = {
     if (!this._st || this._st.key !== this.streetKey()) this.buildStreet();
     const st = this._st;
     g.drawImage(st.c, st.X0, st.Y0);
-    g.textAlign = 'center'; g.textBaseline = 'middle';
+    const vx0 = this.cam.x - 30, vx1 = this.cam.x + this.cv.width / this.z + 30;
     for (const t of st.texts) {
-      g.font = `900 ${t.s}px "Noto Sans TC","PingFang TC",sans-serif`; g.fillStyle = t.c;
-      if (t.v) { const ch = [...t.t]; ch.forEach((c, i) => g.fillText(c, t.x, t.y + (i - (ch.length - 1) / 2) * 7.2)); }
-      else g.fillText(t.t, t.x, t.y + 0.5);
+      if (t.x < vx0 || t.x > vx1) continue;
+      if (t.v) { const ch = [...t.t]; ch.forEach((c, i) => this.txt(g, c, t.x, t.y + (i - (ch.length - 1) / 2) * 7.2, t.s, t.c)); }
+      else this.txt(g, t.t, t.x, t.y + 0.5, t.s, t.c);
     }
-    g.font = '900 5px "Noto Sans TC",sans-serif'; g.fillStyle = 'rgba(160,30,26,.85)';
-    for (const s2 of st.stalls) { g.fillText(s2.ch, s2.x + 8, s2.y + 21.7); if (Math.random() < 0.03) Game.steam(s2.x + 8 + rnd(-4, 4), s2.y + 12, s2.st); }
-    for (const L of st.lights) this.lightsList.push(L);
+    const q = this.q;
+    for (const s2 of st.stalls) {
+      if (s2.x < vx0 || s2.x > vx1) continue;
+      this.txt(g, s2.ch, s2.x + 8, s2.y + 21.7, 5, 'rgba(150,40,36,.8)');
+      if (Math.random() < (q ? 0.012 : 0.025)) Game.steam(s2.x + 8 + rnd(-4, 4), s2.y + 12, s2.st);
+    }
   },
   // ---------- 自己的店面 ----------
-  facade(g) {
-    const S = Game.S, W = S.W * TILE, lv = S.lv, n = this.night(), fh = this.fh();
-    const wall = ['#c8a888', '#e8d0a8', '#f4e0c0', '#e8c8a0', '#d8b090', '#c89878'][lv];
-    g.fillStyle = wall; g.fillRect(0, -fh, W, fh);
-    g.fillStyle = shade(wall, -0.22); g.fillRect(0, -3, W, 3); g.fillRect(W - 1, -fh, 1, fh);
-    g.fillStyle = shade(wall, 0.15); g.fillRect(0, -fh, W, 1);
-    // 屋簷瓦片
-    if (lv >= 1) { g.fillStyle = '#8a3a2a'; g.fillRect(-2, -fh - 2, W + 4, 4); for (let x = -2; x < W + 2; x += 4) { g.fillStyle = '#a84a3a'; g.fillRect(x, -fh + 2, 3, 2); } }
-    // 二樓窗戶
-    if (lv >= 2) for (let x = 8; x < W - 14; x += 24) {
-      g.fillStyle = shade(wall, -0.3); g.fillRect(x - 1, -fh + 7, 14, 12);
-      g.fillStyle = n > .35 ? '#ffe0a0' : '#a8d0e8'; g.fillRect(x, -fh + 8, 12, 10);
-      g.fillStyle = '#7a5a3a'; g.fillRect(x + 6, -fh + 8, 1, 10); g.fillRect(x, -fh + 13, 12, 1);
-      g.fillStyle = '#c8302a'; g.fillRect(x - 2, -fh + 18, 16, 2);
-      if (n > .35) this.lightsList.push([x + 6, -fh + 13, 18, 'rgba(255,214,150,A)', 0.6]);
+  // 店面：牆、屋頂、窗戶、招牌底板先畫好快取；招牌字、跑馬燈、燈籠每格畫
+  signBox() {
+    const S = Game.S, W = S.W * TILE, lv = S.lv, fh = this.fh();
+    const sw = Math.min(W - 8, 40 + [...S.shop].length * 11 + lv * 6), shh = lv >= 3 ? 16 : 15;
+    return { sw, shh, sx: Math.round((W - sw) / 2), sy: -fh + (lv >= 2 ? 21 : lv === 1 ? 10 : 7) };
+  },
+  buildFacade() {
+    const S = Game.S, W = S.W * TILE, lv = S.lv, fh = this.fh(), lit = this.night() > 0.35;
+    const c = this._fc?.c || document.createElement('canvas');
+    c.width = W + 16; c.height = fh + 16;
+    const q = c.getContext('2d'); q.clearRect(0, 0, c.width, c.height);
+    q.save(); q.translate(8, fh + 8);
+    const R2 = (x, y, w, h, col) => { q.fillStyle = col; q.fillRect(x, y, w, h); };
+    const { sw, shh, sx, sy } = this.signBox();
+    if (lv === 0) {
+      // 路邊小攤：鐵皮牆＋浪板屋頂
+      for (let x = 0; x < W; x += 2) R2(x, -fh + 4, 2, fh - 4, (x / 2) & 1 ? '#8e9ca8' : '#a4b0ba');
+      for (let i = 0; i < 18; i++) R2((hash(i, 1, 5) * W) | 0, -fh + 6 + ((hash(i, 2, 5) * (fh - 12)) | 0), 2, 1, '#b07a56');
+      for (let x = -3; x < W + 3; x += 4) { R2(x, -fh - 1, 4, 3, '#c8d0d8'); R2(x + 2, -fh + 1, 2, 3, '#7a8894'); }
+      R2(-3, -fh + 3, W + 6, 1, '#5a6470');
+      // 兩根木柱
+      R2(0, -fh + 4, 3, fh - 4, '#8a5a34'); R2(W - 3, -fh + 4, 3, fh - 4, '#8a5a34'); R2(0, -fh + 4, 1, fh - 4, '#b07a4a'); R2(W - 3, -fh + 4, 1, fh - 4, '#b07a4a');
+      // 手寫價目表
+      const mw = Math.min(W - 16, 66), mx = Math.round((W - mw) / 2), my = sy + shh + 4;
+      R2(mx - 1, my - 1, mw + 2, 10, '#3a2a20'); R2(mx, my, mw, 8, '#2f4a3a');
+      for (let x = mx + 3; x < mx + mw - 4; x += 9) { R2(x, my + 2, 5, 1, '#f4f0e0'); R2(x + 1, my + 4, 3, 1, '#ffd84a'); }
+    } else {
+      const wall = ['', '#e8d0a8', '#f4e0c0', '#e8c8a0', '#d8b090', '#c89878'][lv];
+      R2(0, -fh, W, fh, wall);
+      for (let i = 0; i < W * fh / 40; i++) R2((hash(i, 3, 9) * W) | 0, -fh + ((hash(i, 4, 9) * fh) | 0), 2, 1, shade(wall, hash(i, 5, 9) < 0.5 ? -0.06 : 0.06));
+      if (lv >= 3) { // 二樓紅磚
+        for (let y = -fh + 4; y < sy - 2; y += 4) for (let x = ((y / 4) & 1) * 4; x < W; x += 8) { R2(x, y, 7, 3, hash(x, y, 7) < 0.5 ? '#b8564a' : '#a84e44'); }
+      }
+      R2(0, -3, W, 3, shade(wall, -0.22)); R2(W - 1, -fh, 1, fh, shade(wall, -0.22)); R2(0, -fh, W, 1, shade(wall, 0.15));
+      // 屋簷瓦片（傳說夜市是金黃琉璃瓦、翹起來的屋角）
+      const tile = lv >= 5 ? ['#e8a020', '#ffd060'] : ['#8a3a2a', '#a84a3a'];
+      R2(-3, -fh - 3, W + 6, 5, tile[0]); for (let x = -3; x < W + 3; x += 4) { R2(x, -fh + 2, 3, 2, tile[1]); R2(x + 1, -fh - 3, 1, 4, shade(tile[0], 0.2)); }
+      if (lv >= 5) { R2(-7, -fh - 7, 6, 3, tile[0]); R2(-9, -fh - 9, 3, 3, tile[1]); R2(W + 1, -fh - 7, 6, 3, tile[0]); R2(W + 6, -fh - 9, 3, 3, tile[1]); R2(W / 2 - 6, -fh - 8, 12, 5, '#c8302a'); R2(W / 2 - 3, -fh - 11, 6, 3, '#ffd040'); }
+      // 二樓窗戶
+      if (lv >= 2) for (let x = 8; x < W - 14; x += 24) {
+        if (x + 6 > sx - 4 && x + 6 < sx + sw + 4 && sy < -fh + 20) continue;
+        R2(x - 1, -fh + 6, 14, 12, shade(wall, -0.3)); R2(x, -fh + 7, 12, 10, lit ? '#ffe0a0' : '#a8d0e8');
+        if (lit) { R2(x + 1, -fh + 8, 4, 8, '#ffcf80'); R2(x + 8, -fh + 9, 3, 3, '#fff0c8'); }
+        R2(x + 6, -fh + 7, 1, 10, '#7a5a3a'); R2(x, -fh + 12, 12, 1, '#7a5a3a');
+        R2(x - 2, -fh + 17, 16, 2, '#c8302a'); R2(x - 1, -fh + 15, 3, 2, '#3fa64a'); R2(x + 9, -fh + 15, 3, 2, '#3fa64a'); R2(x + 2, -fh + 15, 1, 1, '#ff6fa8');
+      }
+      // 一樓：明亮的店內（招牌下面）
+      const iy = sy + shh + 3;
+      if (iy < -10) { R2(2, iy, W - 4, -9 - iy, '#5a3a2a'); R2(4, iy + 1, W - 8, -10 - iy, lit ? '#ffe2a0' : '#f4d8a8'); for (let x = 6; x < W - 8; x += 8) R2(x, iy + 2, 5, 2, ['#e8705a', '#5aa8e8', '#ffd84a', '#7ad890'][(x / 8) & 3]); }
+      if (lv >= 4) { R2(0, -fh, 2, fh, '#ffd040'); R2(W - 2, -fh, 2, fh, '#ffd040'); }
     }
-    // 招牌（周圍有跑馬燈）
-    const sw = Math.min(W - 8, 34 + S.shop.length * 10 + lv * 6), sx = Math.round((W - sw) / 2), sy = -fh + (lv >= 2 ? 22 : 6), shh = 14;
-    g.fillStyle = '#5a2a1a'; g.fillRect(sx - 2, sy - 2, sw + 4, shh + 4);
-    g.fillStyle = lv >= 3 ? '#c8202a' : '#d84a2a'; g.fillRect(sx, sy, sw, shh);
-    g.fillStyle = shade(lv >= 3 ? '#c8202a' : '#d84a2a', 0.2); g.fillRect(sx, sy, sw, 2);
-    if (lv >= 4) { g.fillStyle = '#ffd040'; g.fillRect(sx, sy, sw, 1); g.fillRect(sx, sy + shh - 1, sw, 1); }
-    const ph = Math.floor(this.t * 6);
-    for (let x = sx - 1, i = 0; x < sx + sw + 1; x += 3, i++) { const on = (i + ph) % 3 === 0; g.fillStyle = on ? '#fff6b0' : '#c89a40'; g.fillRect(x, sy - 2, 1, 1); g.fillRect(x, sy + shh + 1, 1, 1); }
-    g.font = '900 9.5px "Noto Sans TC","PingFang TC",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillStyle = '#5a1a0a'; g.fillText(S.shop, W / 2 + 0.6, sy + shh / 2 + 1.6);
-    g.fillStyle = '#fff4c0'; g.fillText(S.shop, W / 2, sy + shh / 2 + 1);
-    this.lightsList.push([W / 2, sy + shh / 2, 48 + sw * 0.4, 'rgba(255,110,70,A)', 0.75]);
+    // 招牌底板（字在 facade 每格畫）
+    const sc = lv === 0 ? '#ffe7a0' : lv >= 5 ? '#b8181e' : lv >= 3 ? '#c8202a' : '#d84a2a';
+    R2(sx - 3, sy - 3, sw + 6, shh + 6, lv === 0 ? '#7a4a24' : '#5a2a1a');
+    R2(sx - 2, sy - 2, sw + 4, 1, lv === 0 ? '#a8703e' : '#8a4a2a');
+    R2(sx, sy, sw, shh, sc); R2(sx, sy, sw, 2, shade(sc, 0.22)); R2(sx, sy + shh - 1, sw, 1, shade(sc, -0.2));
+    if (lv >= 4) { R2(sx, sy, sw, 1, '#ffd040'); R2(sx, sy + shh - 1, sw, 1, '#ffd040'); R2(sx - 3, sy - 3, 3, 3, '#ffd040'); R2(sx + sw, sy - 3, 3, 3, '#ffd040'); R2(sx - 3, sy + shh, 3, 3, '#ffd040'); R2(sx + sw, sy + shh, 3, 3, '#ffd040'); }
+    if (lv === 0) { R2(sx + 2, sy - 7, 1, 4, '#5a3a2a'); R2(sx + sw - 3, sy - 7, 1, 4, '#5a3a2a'); }
     // 雨棚
     const ay = -9;
-    for (let x = 0; x < W; x += 8) { g.fillStyle = (x / 8) & 1 ? '#fff4e8' : '#e8473b'; g.fillRect(x, ay, 8, 6); g.fillStyle = (x / 8) & 1 ? '#f0e0d0' : '#c8302a'; g.fillRect(x, ay + 6, 8, 1); g.fillRect(x + 2, ay + 7, 4, 1); }
-    g.fillStyle = '#a8302a'; g.fillRect(0, ay - 1, W, 1);
+    for (let x = 0; x < W; x += 8) { const a2 = (x / 8) & 1; R2(x, ay, 8, 6, a2 ? '#fff4e8' : '#e8473b'); R2(x, ay, 8, 1, a2 ? '#ffffff' : '#ff6a5a'); R2(x, ay + 6, 8, 1, a2 ? '#f0e0d0' : '#c8302a'); R2(x + 2, ay + 7, 4, 1, a2 ? '#f0e0d0' : '#c8302a'); }
+    R2(0, ay - 1, W, 1, '#a8302a');
+    q.restore();
+    return c;
+  },
+  facade(g) {
+    const S = Game.S, W = S.W * TILE, lv = S.lv, n = this.night(), fh = this.fh();
+    const key = [W, lv, fh, n > 0.35 ? 1 : 0, S.shop].join(':');
+    if (!this._fc || this._fc.key !== key) this._fc = { key, c: this.buildFacade() };
+    g.drawImage(this._fc.c, -8, -fh - 8);
+    const { sw, shh, sx, sy } = this.signBox();
+    // 招牌周圍的跑馬燈
+    const ph = Math.floor(this.t * 6);
+    for (let x = sx - 2, i = 0; x < sx + sw + 2; x += 3, i++) { const on = (i + ph) % 3 === 0; g.fillStyle = on ? '#fff6b0' : '#b08a40'; g.fillRect(x, sy - 2, 1, 1); g.fillRect(x, sy + shh + 1, 1, 1); }
+    const fs = lv === 0 ? 10 : 10.5;
+    this.txt(g, S.shop, W / 2, sy + shh / 2 + 0.5, fs, lv === 0 ? '#c8302a' : '#fff4c0', 900, lv === 0 ? '#fff8e0' : '#5a1a0a');
+    if (lv === 0) this.txt(g, '現做・好吃', W / 2, sy + shh + 8.5, 4, '#fff4c0', 700);
+    const L = this.lightsList;
+    L.push([W / 2, sy + shh / 2, 52 + sw * 0.45, lv === 0 ? 'rgba(255,200,110,A)' : 'rgba(255,110,70,A)', 0.85]);
+    if (lv >= 2 && n > .35) for (let x = 8; x < W - 14; x += 24) L.push([x + 6, -fh + 12, 18, 'rgba(255,214,150,A)', 0.6]);
     // 燈籠串
-    const ly = -fh - 6, sag = (x) => Math.sin((x + 40) / (W + 80) * Math.PI * 3) * 2.5;
+    const ly = -fh - 7, sag = (x) => Math.sin((x + 40) / (W + 80) * Math.PI * 3) * 2.5;
     g.strokeStyle = '#2a1a2a'; g.lineWidth = 0.6; g.beginPath(); g.moveTo(-40, ly + 3);
     for (let x = -40; x <= W + 40; x += 4) g.lineTo(x, ly + sag(x) + 3);
     g.stroke();
-    const fest = Game.month() === 2 || Game.month() === 12;
+    const m = Game.month(), xmas = m === 12;
     for (let x = -36, i = 0; x <= W + 36; x += 13, i++) {
-      const y = ly + sag(x) + 4, sw2 = Math.sin(this.t * 1.6 + i) * 0.6;
-      const col = fest && Game.month() === 12 ? ['#ff4a3a', '#3fc05a', '#ffd040', '#5ad0ff'][i % 4] : ['#ff4a3a', '#ffb020', '#ff4a3a', '#ff6fa8'][i % 4];
-      g.fillStyle = col; g.fillRect(x - 2 + sw2, y, 5, 5); g.fillRect(x - 3 + sw2, y + 1, 7, 3);
-      g.fillStyle = shade(col, 0.4); g.fillRect(x - 1 + sw2, y + 1, 1, 3);
-      g.fillStyle = '#ffd040'; g.fillRect(x - 1 + sw2, y - 1, 3, 1); g.fillRect(x - 1 + sw2, y + 5, 3, 1); g.fillRect(x + sw2, y + 6, 1, 2);
-      this.lightsList.push([x + sw2 + 0.5, y + 2.5, 14, col === '#3fc05a' ? 'rgba(120,255,140,A)' : 'rgba(255,140,80,A)', 0.8]);
+      const y = ly + sag(x) + 4, sw2 = Math.sin(this.t * 1.6 + i) * 0.6, xx = x + sw2;
+      const col = xmas ? ['#ff4a3a', '#3fc05a', '#ffd040', '#5ad0ff'][i % 4] : ['#ff4a3a', '#ffb020', '#ff4a3a', '#ff6fa8'][i % 4];
+      g.drawImage(this.lanternSpr(col), Math.round(xx * 4) / 4 - 3, y - 1);
+      if (x >= -8 && x <= W + 8) L.push([xx + 0.5, y + 2.5, 14, col === '#3fc05a' ? 'rgba(120,255,140,A)' : 'rgba(255,140,80,A)', 0.8]);
     }
+  },
+  lanternSpr(col) {
+    const m = this._lsp || (this._lsp = {});
+    if (m[col]) return m[col];
+    const c = m[col] = document.createElement('canvas'); c.width = 7; c.height = 9; const q = c.getContext('2d');
+    const R2 = (x, y, w, h, cc) => { q.fillStyle = cc; q.fillRect(x, y, w, h); };
+    R2(1, 1, 5, 5, col); R2(0, 2, 7, 3, col); R2(2, 2, 1, 3, shade(col, 0.4)); R2(2, 0, 3, 1, '#ffd040'); R2(2, 6, 3, 1, '#ffd040'); R2(3, 7, 1, 2, '#ffd040');
+    return c;
   },
   // ---------- 店裡的地板 ----------
   floor(g) {
@@ -359,11 +461,13 @@ const R = {
         Art.blit(q, Art.floor(f, (hash(x, y, 1) * 4) | 0), x * TILE, y * TILE);
       }
       for (let i = 0; i < 5; i++) { q.fillStyle = `rgba(20,10,30,${0.22 - i * 0.04})`; q.fillRect(0, i, W * TILE, 1); }
+      // 店門口一條暖色的門檻，讓店面和人行道分得清楚
+      q.fillStyle = '#c8904a'; q.fillRect(0, H * TILE - 2, W * TILE, 1); q.fillStyle = '#f0c070'; q.fillRect(0, H * TILE - 1, W * TILE, 1);
       this._fl = { key: fk, c };
     }
     g.drawImage(this._fl.c, 0, 0);
-    // 店裡頭頂的燈泡串：晚上整間店暖暖的
-    for (let y = 1; y < H; y += 3) for (let x = 1; x < W; x += 3) this.lightsList.push([x * TILE + 8, y * TILE + 4, 40, 'rgba(255,200,140,A)', 0.3]);
+    // 晚上整間店有一大片暖光（燈泡串的光在靜態燈光圖裡）
+    this.lightsList.push([W * TILE / 2, H * TILE * 0.45, Math.max(W, H) * TILE * 0.75, 'rgba(255,196,130,A)', 0.42]);
     g.fillStyle = '#6a4a3a'; g.fillRect(-1, 0, 1, H * TILE); g.fillRect(W * TILE, 0, 1, H * TILE);
   },
   gridLines(g) {
@@ -377,57 +481,86 @@ const R = {
     g.drawImage(this._shc, x - w / 2, y - w * 0.18, w, w * 0.375);
   },
   // ---------- 物件（設施、人物、車）依 y 排序 ----------
+  // 清單用物件池重複使用，避免每格產生幾百個小物件
+  _ycmp(p, q) { return p.y - q.y; },
   objects(g) {
-    const S = Game.S, list = [], fr = Math.floor(this.t * 3), st = this._st, n = this.night();
-    for (const it of S.items) if (!(UI.carry && UI.carry.it === it)) list.push({ y: (it.y + 1) * TILE - 0.1, it });
-    for (const c of Game.cust) list.push({ y: c.y + (c.oy || 0), a: c });
-    for (const c of Game.peds) list.push({ y: c.y + (c.oy || 0), a: c });
-    for (const a of Game.srt.values()) list.push({ y: a.y + 0.05 + (a.oy || 0), a });
-    for (const c of Game.cars) list.push({ y: c.y + 6, car: c });
-    for (const lx of st.lamps) list.push({ y: (S.H + 1) * TILE - 1, lamp: lx });
-    list.sort((p, q) => p.y - q.y);
+    const S = Game.S, fr = Math.floor(this.t * 3), st = this._st, n = this.night(), lowQ = this.q >= 2;
+    const list = this._ol || (this._ol = []), pool = this._op || (this._op = []);
+    let k = 0;
+    // 畫面外的人不用畫
+    const cx0 = this.cam.x - 16, cx1 = this.cam.x + this.cv.width / this.z + 16, cy1 = this.cam.y + this.cv.height / this.z + 30;
+    const P = (y, t, o) => {
+      if (t === 2 || t === 3) { const x = o.x; if (x < cx0 || x > cx1 || o.y > cy1) return; } let e = pool[k]; if (!e) e = pool[k] = { y: 0, t: 0, o: null }; e.y = y; e.t = t; e.o = o; list[k++] = e; };
+    for (const it of S.items) if (!(UI.carry && UI.carry.it === it)) P((it.y + 1) * TILE - 0.1, 1, it);
+    for (const c of Game.cust) P(c.y + (c.oy || 0), 2, c);
+    for (const c of Game.peds) P(c.y + (c.oy || 0), 3, c);
+    for (const a of Game.srt.values()) P(a.y + 0.05 + (a.oy || 0), 2, a);
+    for (const c of Game.cars) P(c.y + 6, 4, c);
+    for (const lx of st.lamps) P((S.H + 1) * TILE - 1, 5, lx);
+    list.length = k;
+    list.sort(this._ycmp);
     // 影子先畫
-    for (const o of list) {
-      if (o.it) { const f = F[o.it.id]; this.shadow(g, o.it.x * TILE + 8, (o.it.y + 1) * TILE - 1, f.cat === 'floor' ? 0 : 18); }
-      else if (o.a && !o.a.sitting) this.shadow(g, o.a.x + (o.a.ox || 0), o.a.y + (o.a.oy || 0), 11);
-      else if (o.car) this.shadow(g, o.car.x, o.car.y + 6, 22);
+    for (let i = 0; i < k; i++) {
+      const e = list[i], o = e.o;
+      if (e.t === 1) { if (F[o.id].cat !== 'floor') this.shadow(g, o.x * TILE + 8, (o.y + 1) * TILE - 1, 18); }
+      else if (e.t === 2) { if (!o.sitting && (!lowQ || o.kind === 's')) this.shadow(g, o.x + (o.ox || 0), o.y + (o.oy || 0), 11); }
+      else if (e.t === 3) { if (!lowQ) this.shadow(g, o.x + (o.ox || 0), o.y + (o.oy || 0), 10); }
+      else if (e.t === 4) this.shadow(g, o.x, o.y + 6, 22);
     }
-    g.textAlign = 'center'; g.textBaseline = 'middle';
-    for (const o of list) {
-      if (o.it) {
-        const it = o.it, f = F[it.id], h = Art.facH(it.id);
-        const cooking = f.cat === 'station' && Game.rts.get(it.uid)?.cooking;
-        const c = Art.fac(it.id, f.cat === 'station' ? (cooking ? fr : (fr & 2 ? 2 : 0)) : fr, it.lv);
-        const top = (it.y + 1) * TILE - h;
-        Art.blit(g, c, it.x * TILE, top);
-        if (it.dirty) { Art.blit(g, Art.dirt(), it.x * TILE + 2, it.y * TILE + (it.id === 'bench' ? 4 : 2)); if (it.dirty > 1) Art.blit(g, Art.dirt(), it.x * TILE + 5, it.y * TILE + 5); }
-        if (f.cat === 'station') {
-          g.font = '900 5px "Noto Sans TC","PingFang TC",sans-serif'; g.fillStyle = '#b8201a';
-          g.fillText(Art.STCH[f.st], it.x * TILE + 8, top + 21.7);
-          this.lightsList.push([it.x * TILE + 8, top + 10, 34, 'rgba(255,214,140,A)', 0.9]);
-          const rt = Game.rts.get(it.uid);
-          if (rt && rt.prog > 0) { g.fillStyle = '#2b1b26'; g.fillRect(it.x * TILE + 1, top + 11, 14, 3); g.fillStyle = '#7affb0'; g.fillRect(it.x * TILE + 2, top + 12, 12 * rt.prog, 1); }
-          if (rt && rt.queue.length && !rt.cook) this.bubbleAt(g, it.x * TILE + 8, top - 6, 'nocook', 1);
-          else if (rt && !rt.front) this.bubbleAt(g, it.x * TILE + 8, top - 6, 'angry', 1);
-        } else this.itemLight(it);
-        if (it.id === 'vsign') { g.font = '900 5.5px "Noto Sans TC","PingFang TC",sans-serif'; g.fillStyle = '#c8302a'; const ch = [...S.shop.slice(0, 3)]; ch.forEach((cc, i) => g.fillText(cc, it.x * TILE + 8, top + 5 + i * 6.2)); }
-        if (it.id === 'banner') { g.font = '900 5px "Noto Sans TC",sans-serif'; g.fillStyle = '#c8302a'; g.fillText('好', it.x * TILE + 7.5, top + 5.5); g.fillText('吃', it.x * TILE + 7.5, top + 11.5); }
-      } else if (o.stall) {
-        const s2 = o.stall, cook = Math.floor(this.t * 2 + s2.x) & 1;
-        Art.blit(g, Art.fac(s2.st, cook ? 1 : 0, s2.lv), s2.x, s2.y);
-        g.font = '900 5px "Noto Sans TC",sans-serif'; g.fillStyle = '#b8201a'; g.fillText(s2.ch, s2.x + 8, s2.y - 2.2);
-        if (Math.random() < 0.04) Game.steam(s2.x + 8 + rnd(-4, 4), s2.y + 12, s2.st);
-      } else if (o.npc) {
-        const p = o.npc, f2 = Math.floor(this.t * 3 + p.ph) & 3;
-        Art.blit(g, Art.person(p.look, 0, f2, 'cook'), p.x - 6, p.y - 20);
-      } else if (o.lamp) {
-        const x = o.lamp, by = (S.H + 1) * TILE - 1;
+    for (let i = 0; i < k; i++) {
+      const e = list[i], o = e.o;
+      if (e.t === 1) this.drawItem(g, o, fr);
+      else if (e.t === 2) this.drawAgent(g, o);
+      else if (e.t === 3) this.drawAgent(g, o, true);
+      else if (e.t === 4) this.drawCar(g, o, n);
+      else {
+        const x = o, by = (S.H + 1) * TILE - 1;
         g.fillStyle = '#3a3a48'; g.fillRect(x - 1, by - 46, 2, 46); g.fillRect(x - 2, by - 3, 4, 3);
         g.fillStyle = '#4a4a5a'; g.fillRect(x - 1, by - 46, 8, 2); g.fillStyle = n > 0.2 ? '#fff8d8' : '#c8c8d0'; g.fillRect(x + 4, by - 44, 4, 2);
-        this.lightsList.push([x + 6, by - 40, 70, 'rgba(255,236,190,A)', 0.6]);
-        this.lightsList.push([x + 6, by - 4, 46, 'rgba(255,230,180,A)', 0.55]);
-      } else if (o.car) this.drawCar(g, o.car, n);
-      else this.drawAgent(g, o.a);
+      }
+    }
+  },
+  drawItem(g, it, fr) {
+    const S = Game.S, f = F[it.id], h = Art.facH(it.id), x0 = it.x * TILE, top = (it.y + 1) * TILE - h;
+    if (f.cat === 'station') {
+      const rt = Game.rts.get(it.uid), cooking = rt && rt.cooking;
+      Art.blit(g, Art.fac(it.id, cooking ? 4 + (Math.floor(this.t * 6) & 3) : (fr & 2 ? 2 : 0), it.lv), x0, top);
+      this.txt(g, Art.STCH[f.st], x0 + 8, top + 21.7, 5, '#b8201a');
+      this.lightsList.push([x0 + 8, top + 10, 34, 'rgba(255,214,140,A)', cooking ? 1 : 0.8]);
+      if (cooking) this.cookFx(it, f.st, x0, top);
+      if (rt && rt.prog > 0) { g.fillStyle = '#2b1b26'; g.fillRect(x0 + 1, top + 11, 14, 3); g.fillStyle = '#7affb0'; g.fillRect(x0 + 2, top + 12, 12 * rt.prog, 1); }
+      if (rt && rt.queue.length && !rt.cook) this.bubbleAt(g, x0 + 8, top - 4, 'nocook');
+      else if (rt && !rt.front) this.bubbleAt(g, x0 + 8, top - 4, 'angry');
+      return;
+    }
+    Art.blit(g, Art.fac(it.id, fr & 3, it.lv), x0, top);
+    if (it.dirty) { Art.blit(g, Art.dirt(), x0 + 2, it.y * TILE + (it.id === 'bench' ? 4 : 2)); if (it.dirty > 1) Art.blit(g, Art.dirt(), x0 + 5, it.y * TILE + 5); }
+    if (f.cat === 'seat') {
+      // 桌上的菜：吃的時候慢慢變少，熱的還會冒煙
+      const rt = Game.rts.get(it.uid);
+      if (rt) for (let i = 0; i < rt.seats.length; i++) {
+        const c = rt.seats[i]; if (!c || c.state !== 'eat') continue;
+        const d = DISH[c.dish], stage = c.eatT > c.eat0 * 0.6 ? 0 : c.eatT > c.eat0 * 0.25 ? 1 : 2;
+        const sp = Art.minidish(d.st, stage, CATCOL[d.cat]);
+        const tx = x0 + (rt.seats.length === 2 ? (i ? 9 : 3) : [2, 10, 6, 6][i]), ty = it.y * TILE + (rt.seats.length === 2 ? 3 : [4, 4, 1, 6][i]) + (it.id === 'bench' || it.id === 'picnic' ? 2 : 0);
+        g.drawImage(sp, tx - 1, ty - 1);
+        if (stage < 2 && (d.st === 'soup' || d.st === 'steam' || d.st === 'griddle') && Math.random() < 0.02) Game.steam(tx + 3, ty, 'x');
+      }
+    } else this.itemLight(it);
+    if (it.id === 'vsign') { const ch = [...S.shop.slice(0, 3)]; ch.forEach((cc, i) => this.txt(g, cc, x0 + 8, top + 5 + i * 6.2, 5.5, '#c8302a')); }
+    else if (it.id === 'banner') { this.txt(g, '好', x0 + 7.5, top + 5.5, 5, '#c8302a'); this.txt(g, '吃', x0 + 7.5, top + 11.5, 5, '#c8302a'); }
+  },
+  // 每種攤位煮東西時自己的小動畫粒子
+  cookFx(it, st, x0, top) {
+    const r = Math.random(), q = this.q ? 0.5 : 1, cx = x0 + 8, cy = top + 13;
+    switch (st) {
+      case 'fryer': if (r < 0.12 * q) Game.fx.push({ x: cx - 3 + rnd(-3, 3), y: cy, vx: rnd(-10, 10), vy: -rnd(14, 24), g: 60, t: 0, life: 0.4, col: '#fff0a0', s: 1, ember: 1 }); break;
+      case 'griddle': if (r < 0.08 * q) Game.fx.push({ x: cx + rnd(-5, 5), y: cy - 1, vx: rnd(-6, 6), vy: -rnd(6, 12), g: 20, t: 0, life: 0.45, col: '#ffe8a8', s: 1, ember: 1 }); break;
+      case 'ice': if (r < 0.15 * q) Game.fx.push({ x: cx + rnd(-3, 3), y: top + 7, vx: rnd(-4, 4), vy: rnd(4, 9), t: 0, life: 0.7, col: '#ffffff', s: 1, ember: 1 }); break;
+      case 'drink': if (r < 0.05 * q) Game.fx.push({ x: cx + rnd(-4, 4), y: top + 8, vx: 0, vy: -rnd(4, 8), t: 0, life: 0.6, col: 'rgba(200,240,255,.9)', s: 1, puff: 1 }); break;
+      case 'soup': if (r < 0.08 * q) Game.fx.push({ x: cx + rnd(-4, 3), y: top + 11, vx: 0, vy: -rnd(3, 6), t: 0, life: 0.5, col: 'rgba(255,240,210,.9)', s: 1, puff: 1 }); break;
+      case 'grill': if (r < 0.1 * q) Game.fx.push({ x: cx + rnd(-6, 6), y: top + 14, vx: rnd(-3, 3), vy: -rnd(12, 22), g: -6, t: 0, life: 0.55, col: pick(['#ffd040', '#ff8a2a', '#ff5a1a']), s: 1, ember: 1 }); break;
+      case 'steam': if (r < 0.07 * q) Game.steam(cx + rnd(-4, 4), top + 6, 'steam'); break;
     }
   },
   itemLight(it) {
@@ -449,16 +582,7 @@ const R = {
     const fl = c.v < 0, x = Math.round(c.x), y = Math.round(c.y);
     // 騎士
     Art.blit(g, Art.person(c.rider, 2, 0, 'sit'), x - 7, y - 19, fl);
-    g.save(); g.translate(x, y); if (fl) g.scale(-1, 1);
-    g.fillStyle = OUT; g.fillRect(-10, -2, 21, 4); g.fillRect(-9, 0, 6, 6); g.fillRect(4, 0, 6, 6);
-    g.fillStyle = '#2a2a30'; g.fillRect(-8, 1, 4, 4); g.fillRect(5, 1, 4, 4); g.fillStyle = '#9a9aa8'; g.fillRect(-7, 2, 2, 2); g.fillRect(6, 2, 2, 2);
-    g.fillStyle = c.col; g.fillRect(-8, -4, 9, 4); g.fillRect(3, -8, 5, 7); g.fillRect(1, -2, 8, 2);
-    g.fillStyle = shade(c.col, 0.3); g.fillRect(-8, -4, 9, 1); g.fillRect(3, -8, 5, 1);
-    g.fillStyle = shade(c.col, -0.3); g.fillRect(-8, -1, 17, 1);
-    g.fillStyle = '#3a3a44'; g.fillRect(-7, -5, 7, 1); g.fillRect(6, -10, 1, 2); g.fillRect(5, -10, 3, 1);
-    g.fillStyle = n > 0.3 ? '#fff8c0' : '#e8e0a0'; g.fillRect(8, -7, 2, 2);
-    g.fillStyle = '#ff4a3a'; g.fillRect(-9, -3, 1, 2);
-    g.restore();
+    Art.blit(g, Art.scooter(c.col, n > 0.3), x - 10, y - 6, fl);
     if (n > 0.2) {
       const hx = fl ? x - 10 : x + 10;
       this.lightsList.push([hx + (fl ? -10 : 10), y - 2, 26, 'rgba(255,250,210,A)', 0.8]);
@@ -468,24 +592,31 @@ const R = {
   poseOf(a) {
     const moving = (a.path && a.path.length) || a.state === 'pass' || (a.state === 'queue' && a._mv);
     let pose = '', fr = moving ? Math.floor(a.anim) & 3 : 0, face = a.face || '';
+    const out = this._po || (this._po = { pose: '', fr: 0, face: '', moving: false });
     if (a.kind === 's') {
       const job = a.s.job;
-      if (job === 'cook' && a.atStation) { pose = 'cook'; fr = Game.rts.get(a.st)?.cooking ? Math.floor(a.anim) & 3 : 0; }
-      else if (a.poseK) { pose = a.poseK; if (pose !== 'carry' || !moving) fr = Math.floor(a.anim * (pose === 'carry' ? 1 : 1)) & 3; }
+      if (job === 'cook' && a.atStation) { const rt = Game.rts.get(a.st); pose = rt ? Art.COOKPOSE[rt.st] || 'cook' : 'cook'; fr = rt && rt.cooking ? Math.floor(a.anim) & 3 : 0; }
+      else if (a.poseK) { pose = a.poseK; if (pose !== 'carry' || !moving) fr = Math.floor(a.anim) & 3; }
       else if (job === 'tout' && a.atPost) { pose = 'call'; fr = Math.floor(a.anim) & 3; }
+      if (a.jumpT > 0) face = 'happy';
       if (a.tired && !pose) face = 'sad';
       if (pose === 'carry' && !moving) fr = 0;
-    } else if (a.sitting) { pose = 'eat'; fr = Math.floor(a.anim * 1.2) & 3; }
+    } else if (a.sitting) { pose = a.sip ? 'sip' : 'eat'; fr = Math.floor(a.anim * 1.2) & 3; if (a.eatT < 1.2 && a.eatT > 0) face = a.yum || 'happy'; }
     else if (a.state === 'toSeat') pose = 'carry';
     if (a.state === 'queue' && a.wait > 14 && !face) face = 'sad';
-    return { pose, fr, face, moving };
+    out.pose = pose; out.fr = fr; out.face = face; out.moving = !!moving;
+    return out;
   },
-  drawAgent(g, a) {
+  drawAgent(g, a, dim) {
     const { pose, fr, face, moving } = this.poseOf(a);
-    const x = a.x + (a.ox || 0), y = a.y + (a.oy || 0);
+    const x = a.x + (a.ox || 0);
+    let y = a.y + (a.oy || 0);
+    if (a.jumpT > 0) y -= Math.abs(Math.sin(a.jumpT * 9)) * 4;
     let dir = a.dir;
     if (pose === 'carry' && !moving && dir === 1) dir = 0;
-    const p = Art.person(a.look, dir, fr, pose, face);
+    let p = Art.person(a.look, dir, fr, pose, face);
+    // 路人（不是客人）畫暗一點，讓畫面的層次分得出來
+    if (dim && !a.asker) p = Art.dimmed(p);
     const bob = moving && (fr & 1) ? -1 : 0;
     const flip = dir === 2 && a.flip;
     if (a.sitting) Art.blit(g, p, x - 6, y - 19 + (Math.sin(a.anim * 2) > 0.7 ? 1 : 0), flip);
@@ -499,6 +630,10 @@ const R = {
       const sx = Math.round(x), sy = Math.round(y - 27 + Math.sin(this.t * 4) * 0.8);
       g.fillStyle = '#ffd040'; g.fillRect(sx - 3, sy + 1, 7, 2); g.fillRect(sx - 3, sy - 1, 1, 2); g.fillRect(sx, sy - 2, 1, 3); g.fillRect(sx + 3, sy - 1, 1, 2);
       this.lightsList.push([x, y - 12, 18, 'rgba(255,220,120,A)', 0.6]);
+    }
+    if (a.spicy > 0) { // 吃到辣的：頭上冒火
+      const fx = Math.round(x), fy = Math.round(y - 24 - (1 - a.spicy) * 4);
+      g.globalAlpha = Math.min(1, a.spicy * 2); g.fillStyle = '#ff5a1a'; g.fillRect(fx - 2, fy, 5, 3); g.fillRect(fx - 1, fy - 2, 3, 2); g.fillStyle = '#ffd040'; g.fillRect(fx - 1, fy + 1, 3, 2); g.globalAlpha = 1;
     }
   },
 
@@ -583,35 +718,70 @@ const R = {
     }
     return c;
   },
+  // 不會動的燈（鄰居、路燈、帳篷、店裡燈泡串）先合成一張低解析度的燈光圖，每格只要貼一次
+  staticLights() {
+    const st = this._st, S = Game.S;
+    if (st.lm) return st.lm;
+    const L = st.lights.slice(), by = (S.H + 1) * TILE - 1;
+    for (const lx of st.lamps) { L.push([lx + 6, by - 40, 70, 'rgba(255,236,190,A)', 0.6]); L.push([lx + 6, by - 4, 46, 'rgba(255,230,180,A)', 0.55]); }
+    for (let y = 1; y < S.H; y += 3) for (let x = 1; x < S.W; x += 3) L.push([x * TILE + 8, y * TILE + 4, 40, 'rgba(255,200,140,A)', 0.3]);
+    const k = 0.5, w = Math.ceil(st.c.width * k), h = Math.ceil(st.c.height * k);
+    const m = document.createElement('canvas'), b = document.createElement('canvas');
+    m.width = b.width = w; m.height = b.height = h;
+    const q = m.getContext('2d'), bq = b.getContext('2d');
+    q.setTransform(k, 0, 0, k, -st.X0 * k, -st.Y0 * k); bq.setTransform(k, 0, 0, k, -st.X0 * k, -st.Y0 * k); bq.globalCompositeOperation = 'lighter';
+    for (const [x, y, r, col, a] of L) {
+      const sp = this.glowSprite(col);
+      q.globalAlpha = Math.min(1, a * 0.72); q.drawImage(sp, x - r, y - r, r * 2, r * 2);
+      if (r <= 60) { bq.globalAlpha = Math.min(1, a * 0.34); bq.drawImage(sp, x - r * 0.5, y - r * 0.5, r, r); }
+    }
+    return (st.lm = { m, b });
+  },
   lighting(g) {
     const n = this.night(), wt = this.weather(), dim = wt === 'rain' || wt === 'storm' ? 0.18 : 0;
     const dark = Math.min(1, n + dim);
-    const lc = this.lc, bc = this.bc;
+    const lc = this.lc, bc = this.bc, bloom = this.q < 2;
     if (dark < 0.04) { if (!lc.hidden) { lc.hidden = true; bc.hidden = true; } return; }
-    lc.hidden = false; bc.hidden = false;
+    lc.hidden = false; bc.hidden = !bloom;
     const D = 3 * this.dpr, lw = Math.ceil(this.cv.width / D), lh = Math.ceil(this.cv.height / D);
     if (lc.width !== lw || lc.height !== lh) {
       for (const c of [lc, bc]) { c.width = lw; c.height = lh; c.style.width = (lw * D / this.dpr) + 'px'; c.style.height = (lh * D / this.dpr) + 'px'; }
     }
-    const q = lc.getContext('2d'), b = bc.getContext('2d');
+    const q = lc.getContext('2d'), b = bc.getContext('2d'), st = this._st, S = Game.S;
     q.setTransform(1, 0, 0, 1, 0, 0); q.globalCompositeOperation = 'source-over'; q.globalAlpha = 1;
     q.clearRect(0, 0, lw, lh);
     q.fillStyle = `rgba(14,10,44,${0.72 * dark})`; q.fillRect(0, 0, lw, lh);
     const z = this.z / D;
     q.setTransform(z, 0, 0, z, -this.cam.x * z, -this.cam.y * z);
+    // 鄰居那邊再暗一層（邊緣柔和），自己的店像打了聚光燈
+    const W = S.W * TILE;
+    if (!this._nbg || this._nbg.W !== W) {
+      const gl = q.createLinearGradient(-40, 0, 0, 0); gl.addColorStop(0, 'rgba(6,2,22,1)'); gl.addColorStop(1, 'rgba(6,2,22,0)');
+      const gr = q.createLinearGradient(W, 0, W + 40, 0); gr.addColorStop(0, 'rgba(6,2,22,0)'); gr.addColorStop(1, 'rgba(6,2,22,1)');
+      this._nbg = { W, gl, gr };
+    }
     // 天空不調暗
     q.clearRect(this.cam.x - 50, this.cam.y - 400, 9999, -this.cam.y + 400 - 104);
     q.globalCompositeOperation = 'destination-out';
-    b.setTransform(1, 0, 0, 1, 0, 0); b.globalAlpha = 1; b.globalCompositeOperation = 'source-over'; b.clearRect(0, 0, lw, lh);
-    b.setTransform(z, 0, 0, z, -this.cam.x * z, -this.cam.y * z); b.globalCompositeOperation = 'lighter';
+    const lm = this.staticLights();
+    q.drawImage(lm.m, st.X0, st.Y0, st.c.width, st.c.height);
+    q.globalCompositeOperation = 'source-over'; q.globalAlpha = 0.42 * dark;
+    q.fillStyle = 'rgba(6,2,22,1)'; q.fillRect(st.X0, -110, -40 - st.X0, 900); q.fillRect(W + 40, -110, st.X0 + st.c.width - W - 40, 900);
+    q.fillStyle = this._nbg.gl; q.fillRect(-40, -110, 40, 900); q.fillStyle = this._nbg.gr; q.fillRect(W, -110, 40, 900);
+    q.globalAlpha = 1; q.globalCompositeOperation = 'destination-out';
+    if (bloom) {
+      b.setTransform(1, 0, 0, 1, 0, 0); b.globalAlpha = 1; b.globalCompositeOperation = 'source-over'; b.clearRect(0, 0, lw, lh);
+      b.setTransform(z, 0, 0, z, -this.cam.x * z, -this.cam.y * z); b.globalCompositeOperation = 'lighter';
+      b.globalAlpha = dark; b.drawImage(lm.b, st.X0, st.Y0, st.c.width, st.c.height);
+    }
     const vx0 = this.cam.x, vy0 = this.cam.y, vx1 = vx0 + this.cv.width / this.z, vy1 = vy0 + this.cv.height / this.z;
     for (const L of this.lightsList) {
-      const [x, y, r, col, a] = L;
+      const x = L[0], y = L[1], r = L[2], a = L[4];
       if (x + r < vx0 || y + r < vy0 || x - r > vx1 || y - r > vy1) continue;
-      const sp = this.glowSprite(col);
+      const sp = this.glowSprite(L[3]);
       q.globalAlpha = Math.min(1, a * 0.72);
       q.drawImage(sp, x - r, y - r, r * 2, r * 2);
-      if (r <= 60) { b.globalAlpha = Math.min(1, a * dark * 0.34); b.drawImage(sp, x - r * 0.5, y - r * 0.5, r, r); }
+      if (bloom && r <= 60) { b.globalAlpha = Math.min(1, a * dark * 0.34); b.drawImage(sp, x - r * 0.5, y - r * 0.5, r, r); }
     }
   },
 
@@ -658,49 +828,53 @@ const R = {
         g.fillStyle = '#fff8c0'; g.fillRect(x - s, y, s * 2 + 1, 1); g.fillRect(x, y - s, 1, s * 2 + 1);
       }
     }
-    g.textAlign = 'center'; g.textBaseline = 'middle';
     for (const f of Game.floats) {
       const k = f.t / 1.4, y = f.y - 12 * Math.min(1, f.t * 2);
       const sc = f.t < 0.12 ? 0.7 + f.t / 0.12 * 0.5 : f.t < 0.25 ? 1.2 - (f.t - 0.12) / 0.13 * 0.2 : 1;
       g.globalAlpha = k > 0.7 ? (1 - k) / 0.3 : 1;
-      g.font = `700 ${(f.big ? 8 : 6.5) * sc}px "Silkscreen","Noto Sans TC",monospace`;
-      g.fillStyle = '#2b1b26'; for (const [ox, oy] of [[-0.6, 0], [0.6, 0], [0, -0.6], [0, 0.7]]) g.fillText(f.txt, f.x + ox, y + oy);
-      g.fillStyle = f.col; g.fillText(f.txt, f.x, y);
+      this.txt(g, f.txt, f.x, y, f.big ? 8 : 6.5, f.col, 900, '#2b1b26', sc);
     }
     g.globalAlpha = 1;
   },
-  bubbleAt(g, x, y, icon, small) {
-    x = Math.round(x); y = Math.round(y);
-    g.fillStyle = OUT; g.fillRect(x - 6, y - 12, 13, 11); g.fillRect(x - 7, y - 11, 15, 9); g.fillRect(x - 1, y - 1, 3, 2);
-    g.fillStyle = '#ffffff'; g.fillRect(x - 5, y - 11, 11, 9); g.fillRect(x - 6, y - 10, 13, 7); g.fillRect(x, y - 2, 1, 1);
-    const ic = Art.icon(icon);
-    Art.blit(g, ic, x - 4, y - 10);
+  bubbleAt(g, x, y, icon) {
+    const c = Art.bubble(icon);
+    g.drawImage(c, Math.round(x) - 11, Math.round(y) - 21);
   },
+  // 頭上的泡泡：重要的先畫、互相重疊的就不畫，畫面才不會一團亂
   bubbles(g) {
-    const list = [];
+    const list = this._bl || (this._bl = []); list.length = 0;
     for (const a of Game.cust) if (a.bub && a.bubT > 0) list.push(a);
     for (const a of Game.peds) if (a.bub && a.bubT > 0) list.push(a);
     for (const a of Game.srt.values()) if (a.bub && a.bubT > 0) list.push(a);
-    // 太多泡泡會很亂：只畫最重要的一些
-    list.sort((p, q) => (q.asker ? 9 : q.kind === 's' ? 2 : 0) - (p.asker ? 9 : p.kind === 's' ? 2 : 0));
+    const pr = a => a.asker ? 9 : a.vip ? 7 : a.react ? 6 : a.bub === 'angry' || a.bub === 'nocook' ? 5 : a.kind === 's' ? (a.bub === 'say' ? 3 : 4) : a.bub === 'say' ? 2 : 1;
+    list.sort((p, q) => pr(q) - pr(p) || q.bubT - p.bubT);
+    const rects = this._br || (this._br = []); rects.length = 0;
+    const max = this.q ? 6 : 9;
     let shown = 0;
     for (const a of list) {
-      if (shown++ > 16) break;
-      const x = a.x + (a.ox || 0), y = a.y + (a.oy || 0) - (a.sitting ? 18 : 22);
+      if (shown >= max) break;
+      const x = Math.round(a.x + (a.ox || 0)), y = Math.round(a.y + (a.oy || 0) - (a.sitting ? 18 : 22) + (a.asker ? Math.sin(this.t * 5) * 1.5 : 0));
+      let w = 18, h = 16;
+      if (a.bub === 'say') w = Math.ceil(this.txtW(a.say, 6)) + 8;
+      const rx = x - w / 2, ry = y - h;
+      let hit = false;
+      for (let i = 0; i < rects.length; i += 4) if (rx < rects[i] + rects[i + 2] && rx + w > rects[i] && ry < rects[i + 1] + rects[i + 3] && ry + h > rects[i + 1]) { hit = true; break; }
+      if (hit) continue;
+      rects.push(rx, ry, w, h); shown++;
       g.globalAlpha = Math.min(1, a.bubT * 4);
       if (a.bub === 'say') {
-        g.font = '700 6px "Noto Sans TC",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-        const w = Math.ceil(g.measureText(a.say).width) + 6, xx = Math.round(x), yy = Math.round(y);
-        g.fillStyle = OUT; g.fillRect(xx - w / 2 - 1, yy - 11, w + 2, 10); g.fillRect(xx - w / 2, yy - 12, w, 12); g.fillStyle = '#fff6c0'; g.fillRect(xx - w / 2, yy - 11, w, 8); g.fillRect(xx - 1, yy - 3, 2, 2);
-        g.fillStyle = '#c8302a'; g.fillText(a.say, xx, yy - 6.5);
-      } else this.bubbleAt(g, x, y + (a.asker ? Math.sin(this.t * 5) * 1.5 : 0), a.bub);
+        const xx = Math.round(rx), yy = y - 13;
+        g.fillStyle = 'rgba(20,10,30,.35)'; g.fillRect(xx + 1, yy + 2, w, 11);
+        g.fillStyle = OUT; g.fillRect(xx, yy + 1, w, 9); g.fillRect(xx + 1, yy, w - 2, 11);
+        g.fillStyle = a.kind === 's' ? '#fff6c0' : '#ffffff'; g.fillRect(xx + 1, yy + 1, w - 2, 9); g.fillRect(xx + 2, yy + 1, w - 4, 9);
+        g.fillStyle = OUT; g.fillRect(x - 1, yy + 11, 3, 2); g.fillStyle = a.kind === 's' ? '#fff6c0' : '#ffffff'; g.fillRect(x, yy + 10, 1, 2);
+        this.txt(g, a.say, x, yy + 5.5, 6, a.react ? '#d8401a' : '#a8281f', 900);
+      } else this.bubbleAt(g, x, y + 2, a.bub);
     }
     g.globalAlpha = 1;
-    for (const c of Game.cust) if (c.vip && c.state !== 'eat') {
-      g.font = '700 5px "Noto Sans TC",sans-serif'; g.textAlign = 'center';
-      g.fillStyle = '#2b1b26'; g.fillText(CTYPES[c.type].n, c.x + 0.4, c.y + 5.4); g.fillStyle = '#ffe070'; g.fillText(CTYPES[c.type].n, c.x, c.y + 5);
-    }
+    for (const c of Game.cust) if (c.vip && c.state !== 'eat') this.txt(g, CTYPES[c.type].n, c.x, c.y + 5, 5, '#ffe070', 700, '#2b1b26');
   },
+  txtW(t, s) { const mc = this._mc || (this._mc = document.createElement('canvas').getContext('2d')); const k = t + s; const m = this._tw || (this._tw = new Map()); let w = m.get(k); if (w === undefined) { mc.font = `900 ${s * 4}px "Noto Sans TC",sans-serif`; w = mc.measureText(t).width / 4; if (m.size > 300) m.clear(); m.set(k, w); } return w; },
   ghostDraw(g) {
     const gh = this.ghost; if (!gh) return;
     const id = gh.id, f = F[id];
@@ -717,7 +891,7 @@ const R = {
       for (const o of Game.S.items) {
         if (Math.abs(o.x - gh.x) > 1 || Math.abs(o.y - gh.y) > 1) continue;
         const c = COMBOS.find(c => (c.a === id && c.b === o.id) || (c.b === id && c.a === o.id));
-        if (c && Game.S.combos[c.id]) { g.fillStyle = '#ffe070'; g.font = '700 6px "Noto Sans TC",sans-serif'; g.textAlign = 'center'; g.fillText('★' + c.n, gh.x * TILE + 8, gh.y * TILE - h + 10); break; }
+        if (c && Game.S.combos[c.id]) { this.txt(g, '★' + c.n, gh.x * TILE + 8, gh.y * TILE - h + 6, 6, '#ffe070', 900, '#2b1b26'); break; }
       }
     }
   },

@@ -32,7 +32,7 @@ function makeLook(seed, kind, job) {
   return L;
 }
 // 客人外觀數量有上限，避免像素圖快取無限長大
-const lookSeed = () => (Math.random() * 480) | 0;
+const lookSeed = () => (Math.random() * 160) | 0;
 
 const Game = {
   S: null,
@@ -179,6 +179,9 @@ const Game = {
       for (const c of rt.seats) if (c) { c.seat = null; }
       if (rt.cook) { const s = this.srt.get(rt.cook); if (s) s.st = null; }
     }
+    // 攤位、座位的清單（每一步都要用，先排好）
+    this.stList = []; this.seatList = [];
+    for (const rt of this.rts.values()) { rt.cat = F[rt.it.id].cat; (rt.cat === 'station' ? this.stList : this.seatList).push(rt); rt.st = F[rt.it.id].st; }
     this.computeQueues();
     this.computeCombos();
     for (const a of this.cust) a.repath = true;
@@ -443,9 +446,9 @@ const Game = {
       s[main] += irnd(1, 3); for (const k of ['cook', 'serv', 'charm']) if (k !== main && Math.random() < .4) s[k]++;
       if (!s.owner) s.sal = this.salaryOf(s);
       const a = this.srt.get(s.uid);
-      if (a) { this.float(a.x, a.y - 24, 'Lv UP!', '#7affb0'); this.sparkle(a.x, a.y - 12, 10); this.ring(a.x, a.y - 10, '#7affb0'); }
+      if (a) { this.float(a.x, a.y - 26, 'LV UP!', '#7affb0', true); this.sparkle(a.x, a.y - 12, 14); this.ring(a.x, a.y - 10, '#7affb0'); this.confetti(a.x, a.y - 18, 16); a.jumpT = 1.1; a.bub = 'say'; a.say = pick(['升級了！', '我變強了！', '耶～！', '交給我吧！']); a.bubT = 1.6; }
       Snd.play('level');
-      if (s.lv % 5 === 0) this.toast(`${s.name} 升到 ${s.lv} 級了！`);
+      if (this.ui && this.ui.lvCard && !this.demoMode) this.ui.lvCard(s, main, a);
       this.checkGoals();
     }
   },
@@ -453,6 +456,7 @@ const Game = {
 
   // ---------- 菜單 ----------
   known() { return Object.keys(this.S.dishes); },
+  nKnown() { let n = 0; for (const k in this.S.dishes) if (DISH[k] && !DISH[k].lim) n++; return n; },
   hasStation(st) { return this.S.items.some(i => F[i.id].st === st); },
   dishQ(id) { const d = DISH[id], o = this.S.dishes[id]; return d.q * (1 + 0.15 * ((o ? o.lv : 1) - 1)); },
   dishValue(id) { const d = DISH[id], o = this.S.dishes[id]; return d.p * (1 + 0.12 * ((o ? o.lv : 1) - 1)); },
@@ -466,9 +470,14 @@ const Game = {
     return s.includes(this.month()) ? 0.7 : 1.8;
   },
   ingMul() { let m = 1; for (const e of this.S.ev) if (e.ing) m *= e.ing; return m; },
-  menu() { return this.known().filter(k => this.S.dishes[k].on && this.hasStation(DISH[k].st) && this.sellable(k)); },
-  budgetMul() { return this.S.scen === 'sweet' ? 1.15 : 1; },
-  sellable(k) { return this.S.scen !== 'sweet' || DISH[k].cat === 'sweet' || DISH[k].cat === 'drink'; },
+  menu() {
+    if (this._menu && this._menuS === this.S) return this._menu;
+    const has = {}; for (const i of this.S.items) { const st = F[i.id].st; if (st) has[st] = 1; }
+    this._menuS = this.S;
+    return (this._menu = this.known().filter(k => this.S.dishes[k].on && has[DISH[k].st] && this.sellable(k) && (!DISH[k].lim || this.limOn(k))));
+  },
+  budgetMul() { const s = this.S.scen; return s === 'sweet' ? 1.15 : s === 'tour' ? 1.2 : s === 'veg' ? 1.05 : 1; },
+  sellable(k) { const s = this.S.scen; return s === 'sweet' ? DISH[k].cat === 'sweet' || DISH[k].cat === 'drink' : s === 'veg' ? isVeg(k) : true; },
   ideaCost() { return Math.min(60, 10 + this.S.st.research * 2); },
   moneyCost() { return Math.min(12000, 200 + this.S.st.research * this.S.st.research * 12 + this.S.st.research * 60); },
   canUse(k) { return !!(this.S.ings[k] || this.S.dishes[k]); },
@@ -476,7 +485,7 @@ const Game = {
     const S = this.S;
     if (!a || !b) return { err: '請選兩樣材料' };
     if (a === b) return { err: '要選兩種不同的材料' };
-    const hit = Object.keys(DISH).find(k => (DISH[k].a === a && DISH[k].b === b) || (DISH[k].a === b && DISH[k].b === a));
+    const hit = DISH_ALL.find(k => (DISH[k].a === a && DISH[k].b === b) || (DISH[k].a === b && DISH[k].b === a));
     if (hit && S.dishes[hit]) return { err: '這個組合已經研發過「' + DISH[hit].n + '」了' };
     const ic = this.ideaCost(), mc = this.moneyCost();
     if (S.idea < ic) return { err: '靈感不夠（需要 ' + ic + '）' };
@@ -491,7 +500,7 @@ const Game = {
     }
     S.idea -= Math.ceil(ic / 2);
     // 失敗時給一點方向
-    const cand = Object.keys(DISH).filter(k => !S.dishes[k] && (DISH[k].a === a || DISH[k].b === a || DISH[k].a === b || DISH[k].b === b));
+    const cand = DISH_ALL.filter(k => !S.dishes[k] && (DISH[k].a === a || DISH[k].b === a || DISH[k].a === b || DISH[k].b === b));
     let hint = '';
     if (cand.length) {
       const k = pick(cand), d = DISH[k], ok = this.canUse(d.a) && this.canUse(d.b);
@@ -517,6 +526,7 @@ const Game = {
   buyIng(k) {
     const S = this.S, g = ING[k];
     if (S.ings[k]) return '已經有了';
+    if (S.scen === 'veg' && MEAT.includes(k)) return '素食小館不用肉和海鮮';
     if (g.lv > S.lv) return '店舖等級不夠';
     if (S.money < g.buy) return '錢不夠';
     S.money -= g.buy; S.st.mcost += g.buy; S.ings[k] = 1;
@@ -559,7 +569,7 @@ const Game = {
     for (const a of this.srt.values()) { if (a.s.job === 'tout' && a.atPost) tout += a.s.charm * (a.stam > 0 ? 1 : 0.5) * (a.s.trait === 'loud' ? 1.5 : 1); if (a.s.trait === 'star') star++; }
     let r = 0.32 + 0.06 * Math.sqrt(S.pop) + this.appeal * 0.004 + tout * 0.012 + star * 0.05;
     r *= 1 + this.tech('ad') * 0.06;
-    if (S.scen === 'sweet') r *= 1.15;
+    if (S.scen === 'sweet') r *= 1.15; else if (S.scen === 'veg') r *= 1.1;
     const fest = FESTIVALS[this.month()]; if (fest) r *= fest.mul;
     for (const e of S.ev) if (e.mul) r *= e.mul;
     r *= 1 + this.effTot.cust / 100;
@@ -574,8 +584,8 @@ const Game = {
   },
   pickType() {
     const S = this.S, fest = FESTIVALS[this.month()];
-    const list = Object.entries(CTYPES).filter(([, t]) => t.lv <= S.lv);
-    let tot = 0; const ws = list.map(([k, t]) => { let w = t.w; if (k === 'tourist' && fest && fest.tourist) w *= fest.tourist; tot += w; return w; });
+    const sc = S.scen, list = Object.entries(CTYPES).filter(([k, t]) => t.lv <= S.lv || (sc === 'tour' && k === 'tourist'));
+    let tot = 0; const ws = list.map(([k, t]) => { let w = t.w; if (k === 'tourist' && fest && fest.tourist) w *= fest.tourist; if (sc === 'tour' && k === 'tourist') w *= 3; if (sc === 'veg' && (k === 'elder' || k === 'worker')) w *= k === 'elder' ? 1.8 : 1.3; tot += w; return w; });
     let r = Math.random() * tot;
     for (let i = 0; i < list.length; i++) { r -= ws[i]; if (r <= 0) return list[i][0]; }
     return 'student';
@@ -608,6 +618,7 @@ const Game = {
       const bst = fest && fest.boost && fest.boost[DISH[k].st]; if (bst) w *= bst;
       for (const e of S.ev) if (e.boost && e.boost[DISH[k].st]) w *= e.boost[DISH[k].st];
       if (type === 'tourist' || c.vip) w *= 1 + o.lv * 0.3;
+      if (DISH[k].lim) w *= 1.8;
       return w;
     });
     let tot = ws.reduce((a, b) => a + b, 0), r = Math.random() * tot, dish = opts[0];
@@ -616,13 +627,13 @@ const Game = {
     const price = S.dishes[dish].price, val = this.dishValue(dish) * T.b * this.budgetMul();
     c.price = price;
     c.qty = Math.max(1, Math.floor(T.qty + Math.random()));
-    if (price > val * 1.9) { this.dbg.price++; if (this.peds.length < 8 + S.lv * 2 && Math.random() < 0.5) { c.state = 'pass'; c.refuse = true; c.x = (left ? -5 : S.W + 4) * TILE + 8; c.passDir = left ? 1 : -1; this.peds.push(c); } return; }
+    if (price > val * 1.9) { this.dbg.price++; if (this.peds.length < this.pedCap() + 2 && Math.random() < 0.5) { c.state = 'pass'; c.refuse = true; c.x = (left ? -5 : S.W + 4) * TILE + 8; c.passDir = left ? 1 : -1; this.peds.push(c); } return; }
     // 選人最少的攤位
-    const sts = [...this.rts.values()].filter(rt => F[rt.it.id].st === DISH[dish].st && rt.front);
+    const want = DISH[dish].st, sts = this.stList.filter(rt => rt.st === want && rt.front);
     if (!sts.length) return;
     sts.sort((a, b) => a.queue.length - b.queue.length);
     const rt = sts[0];
-    if (rt.queue.length >= 6) { this.dbg.full++; if (this.peds.length < 8 + S.lv * 2 && Math.random() < 0.15) { c.state = 'pass'; c.full = true; c.x = (left ? -5 : S.W + 4) * TILE + 8; c.passDir = left ? 1 : -1; this.peds.push(c); } return; }
+    if (rt.queue.length >= 6) { this.dbg.full++; if (this.peds.length < this.pedCap() + 2 && Math.random() < 0.15) { c.state = 'pass'; c.full = true; c.x = (left ? -5 : S.W + 4) * TILE + 8; c.passDir = left ? 1 : -1; this.peds.push(c); } return; }
     c.st = rt.it.uid; rt.queue.push(c);
     c.state = 'walk';
     const qt = this.queueTile(rt, rt.queue.length - 1);
@@ -630,6 +641,8 @@ const Game = {
     c.bub = wcat; c.bubT = 1.6;
     this.cust.push(c);
   },
+  // 人行道上的路人上限：店越大可以越多，但店裡客人很多時就少放一點，畫面才不會擠成一團
+  pedCap() { const S = this.S; return Math.max(3, Math.min(4 + S.lv * 2, Math.round(S.W * 0.9)) - (this.cust.length > 40 ? 3 : this.cust.length > 20 ? 1 : 0)); },
   spawnPed() {
     const S = this.S, left = Math.random() < 0.5, x0 = left ? -5 : S.W + 4;
     const type = this.pickType();
@@ -658,17 +671,17 @@ const Game = {
     const cost = this.costOf(c.dish) * c.qty; S.money -= cost; S.st.mcost += cost;
     S.st.cust++; S.st.wcust++;
     S.st.dsold[c.dish] = (S.st.dsold[c.dish] || 0) + c.qty;
+    if (DISH[c.dish].lim && !S.ach.season && DISH_LIM.filter(k => S.st.dsold[k]).length >= 5) this.achFlag('season');
     S.st.ctype[c.type] = (S.st.ctype[c.type] || 0) + 1;
     if (S.ev.some(e => e.n === '颱風')) S.st.storm += c.qty;
     const it = rt.it;
     this.coin(it.x * TILE + 8, (it.y + 1) * TILE - 18, pay);
-    c.look = Object.assign({}, c.look, { dishc: CATCOL[d.cat] });
+    c.look = this.withDish(c.look, CATCOL[d.cat]);
     Snd.play('coin');
     c.state = 'carry';
     // 找座位
     let best = null, bd = 1e9;
-    for (const s of this.rts.values()) {
-      if (F[s.it.id].cat !== 'seat') continue;
+    for (const s of this.seatList) {
       const fi = s.seats.indexOf(null); if (fi < 0) continue;
       if (s.it.dirty >= s.seats.length) continue;
       const dd = Math.abs(s.it.x - c.tile[0]) + Math.abs(s.it.y - c.tile[1]) + (s.it.dirty ? 3 : 0);
@@ -733,6 +746,19 @@ const Game = {
     c.state = 'done';
     this.custLeaveQuiet(c);
   },
+  // 菜色的反應：依攤位和口味不同
+  tasteReact(c) {
+    const d = DISH[c.dish]; if (!d) return;
+    const T = { griddle: ['酥酥脆脆！', '好香的蛋～'], fryer: ['外酥內嫩！', '卡滋卡滋！'], soup: ['湯頭好濃！', '暖到心裡～'], ice: ['透心涼～', '冰冰涼涼！'], drink: ['好解渴！', 'Q彈好喝！'], steam: ['爆汁了！', '皮好Q！'], grill: ['炭香十足！', '好香啊！'] }[d.st];
+    let say = pick(T), emo = 'heart';
+    if (d.cat === 'spicy') { say = pick(['好辣！！', '辣得過癮！', '嘶～哈～']); c.spicy = 1; emo = 'sweat'; }
+    else if (d.cat === 'sweet') emo = 'heart2';
+    else if (d.st === 'ice') emo = 'note';
+    if (DISH[c.dish].lim) say = pick(['季節限定的！', '這個月才吃得到！']);
+    c.yum = d.cat === 'spicy' ? 'wow' : 'happy';
+    if (Math.random() < 0.5 || c.vip || d.lim) { c.bub = 'say'; c.say = say; c.bubT = 1.5; c.react = 1; }
+    else this.emote(c.x, c.y - 20, emo);
+  },
   nearClean(it) {
     let n = 0;
     for (const o of this.S.items) if (F[o.id].fx === 'clean' && Math.abs(o.x - it.x) <= 2 && Math.abs(o.y - it.y) <= 2) n++;
@@ -761,6 +787,7 @@ const Game = {
   step(dt) {
     const S = this.S;
     if (this.pending.length) return;
+    this._menu = null;
     S.t += dt;
     if (S.t >= WEEK_LEN) { S.t -= WEEK_LEN; this.endWeek(); }
     // 生客人
@@ -770,19 +797,20 @@ const Game = {
     this.spawnAcc += this.spawnRate() * dt;
     while (this.spawnAcc >= 1) { this.spawnAcc -= 1; this.dbg.spawn++; if (this.inside < cap) { this.spawnCustomer(); this.inside++; } else this.dbg.cap++; }
     this.pedAcc += dt * (0.35 + S.lv * 0.08);
-    if (this.pedAcc >= 1) { this.pedAcc = 0; if (this.peds.length < 5 + S.lv * 2) this.spawnPed(); }
+    if (this.pedAcc >= 1) { this.pedAcc = 0; if (this.peds.length < this.pedCap()) this.spawnPed(); }
     this.carAcc += dt;
     if (this.carAcc > 3.5) { this.carAcc = rnd(-3, 0); this.cars.push({ x: Math.random() < .5 ? -6 * TILE : (S.W + 6) * TILE, y: (S.H + 1) * TILE + 6, v: 0, col: pick(['#e8473b', '#3a8ad8', '#ffd84a', '#f4f4f4', '#3fa64a', '#ff8ad0']), rider: makeLook(lookSeed(), 'rider') }); const c = this.cars[this.cars.length - 1]; c.v = c.x < 0 ? rnd(50, 70) : -rnd(50, 70); c.y += c.v > 0 ? 8 : 0; }
     for (const c of this.cars) c.x += c.v * dt;
     this.cars = this.cars.filter(c => c.x > -8 * TILE && c.x < (S.W + 8) * TILE);
     // 攤位
-    for (const rt of this.rts.values()) if (F[rt.it.id].cat === 'station') this.stepStation(rt, dt);
+    for (const rt of this.stList) this.stepStation(rt, dt);
     for (const c of this.cust) this.stepCust(c, dt);
     this.cust = this.cust.filter(c => c.state !== 'gone');
     for (const p of this.peds) this.stepPed(p, dt);
     this.peds = this.peds.filter(c => c.state !== 'gone');
     for (const a of this.srt.values()) this.stepStaff(a, dt);
-    this.separate(dt);
+    // 人群互推每兩步算一次就夠了
+    if ((this._sepN = (this._sepN || 0) + 1) & 1) this.separate(dt * 2);
     for (const f of this.fx) {
       f.t += dt; f.x += f.vx * dt; f.y += f.vy * dt; f.vy += (f.g || 0) * dt;
       if (f.drag) { const k = Math.max(0, 1 - f.drag * dt); f.vx *= k; f.vy = f.vy * k + 0; }
@@ -797,7 +825,7 @@ const Game = {
     if (!a.path || !a.path.length) return true;
     const [tx, ty] = a.path[0];
     const gx = tx * TILE + 8, gy = ty * TILE + 10;
-    const dx = gx - a.x, dy = gy - a.y, d = Math.hypot(dx, dy), sp = a.spd * dt * (a.tired ? 0.7 : 1) * (a.s && a.s.trait === 'slow' ? 0.85 : 1);
+    const dx = gx - a.x, dy = gy - a.y, d = Math.sqrt(dx * dx + dy * dy), sp = a.spd * dt * (a.tired ? 0.7 : 1) * (a.s && a.s.trait === 'slow' ? 0.85 : 1);
     if (Math.abs(dx) > Math.abs(dy)) { a.dir = 2; a.flip = dx < 0; } else a.dir = dy < 0 ? 1 : 0;
     a.anim += dt * 8;
     if (d <= sp) { a.x = gx; a.y = gy; a.tile = [tx, ty]; a.path.shift(); return !a.path.length; }
@@ -835,34 +863,39 @@ const Game = {
   queueTile(rt, i) { return rt.qt && rt.qt.length ? rt.qt[Math.min(i >> 1, rt.qt.length - 1)] : rt.front; },
   // 走路的人互相推開一點點（只影響畫面位置），不會疊在一起
   separate(dt) {
-    const bins = new Map(), all = [];
-    const add = a => { const k = ((a.x / 12) | 0) + ',' + ((a.y / 10) | 0); let b = bins.get(k); if (!b) bins.set(k, b = []); b.push(a); all.push(a); };
+    // 數字當格子的 key、重複使用同一個 Map，避免每一步產生大量字串
+    const bins = this._bins || (this._bins = new Map()), all = this._all || (this._all = []);
+    for (const b of bins.values()) b.length = 0;
+    all.length = 0;
+    const add = a => { const k = ((a.x / 12) | 0) * 4096 + ((a.y / 10) | 0) + 2048; let b = bins.get(k); if (!b) bins.set(k, b = []); b.push(a); all.push(a); };
     for (const c of this.cust) if (!c.sitting) add(c);
     for (const p of this.peds) add(p);
     for (const a of this.srt.values()) add(a);
+    const S = this.S, m = Math.min(1, dt * 5);
     for (const a of all) {
       if (a.ox === undefined) { a.ox = 0; a.oy = 0; }
       if (a.state === 'queue' || a.atStation) { a.ox *= 0.8; a.oy *= 0.8; continue; }
       let px = 0, py = 0;
-      const bx = (a.x / 12) | 0, by = (a.y / 10) | 0;
-      for (let yy = by - 1; yy <= by + 1; yy++) for (let xx = bx - 1; xx <= bx + 1; xx++) {
-        const b = bins.get(xx + ',' + yy); if (!b) continue;
-        for (const o of b) {
-          if (o === a) continue;
-          const dx = (a.x + a.ox) - (o.x + (o.ox || 0)), dy = ((a.y + a.oy) - (o.y + (o.oy || 0))) * 1.4, d = Math.hypot(dx, dy);
-          if (d < 9) { const k = (9 - d) / 9; if (d < 0.01) { px += (a.anim % 2 > 1 ? 1 : -1) * k; } else { px += dx / d * k; py += dy / d * k * 0.5; } }
+      const bx = (a.x / 12) | 0, by = (a.y / 10) | 0, ax = a.x + a.ox, ay = a.y + a.oy;
+      for (let xx = bx - 1; xx <= bx + 1; xx++) for (let yy = by - 1; yy <= by + 1; yy++) {
+        const b = bins.get(xx * 4096 + yy + 2048); if (!b || !b.length) continue;
+        for (let i = 0; i < b.length; i++) {
+          const o = b[i]; if (o === a) continue;
+          const dx = ax - (o.x + (o.ox || 0)), dy = (ay - (o.y + (o.oy || 0))) * 1.4, d2 = dx * dx + dy * dy;
+          if (d2 < 81) { const d = Math.sqrt(d2), k = (9 - d) / 9; if (d < 0.01) { px += (a.anim % 2 > 1 ? 1 : -1) * k; } else { px += dx / d * k; py += dy / d * k * 0.5; } }
         }
       }
-      const tx = clamp(px * 4, -5, 5), ty = clamp(py * 3, -3, 3), m = Math.min(1, dt * 5);
+      const tx = clamp(px * 4, -5, 5), ty = clamp(py * 3, -3, 3);
       a.ox += (tx - a.ox) * m; a.oy += (ty - a.oy) * m;
       // 推到東西上就算了
-      const S = this.S, gx = Math.floor((a.x + a.ox) / TILE), gy = Math.floor((a.y + a.oy - 4) / TILE);
-      if (gy >= 0 && gy < S.H && this.inPlot(gx, gy) && this.occ[gy * S.W + gx]) { a.ox *= 0.3; a.oy *= 0.3; }
+      const gx = Math.floor((a.x + a.ox) / TILE), gy = Math.floor((a.y + a.oy - 4) / TILE);
+      if (gy >= 0 && gy < S.H && gx >= 0 && gx < S.W && this.occ[gy * S.W + gx]) { a.ox *= 0.3; a.oy *= 0.3; }
     }
   },
   stepCust(c, dt) {
     const S = this.S;
-    if (c.bubT > 0) c.bubT -= dt;
+    if (c.bubT > 0) { c.bubT -= dt; if (c.bubT <= 0) c.react = 0; }
+    if (c.spicy > 0) c.spicy -= dt * 0.5;
     if (c.repath && c.path && c.path.length) {
       c.repath = false;
       const dest = c.path[c.path.length - 1];
@@ -883,7 +916,7 @@ const Game = {
       if (!rt || !rt.front) { this.custLeave(c); return; }
       const i = rt.queue.indexOf(c);
       const [qx, qy] = this.queuePos(rt, i);
-      const dx = qx - c.x, dy = qy - c.y, d = Math.hypot(dx, dy);
+      const dx = qx - c.x, dy = qy - c.y, d = Math.sqrt(dx * dx + dy * dy);
       c._mv = d > 0.5;
       if (d > 0.5) { const sp = Math.min(d, 20 * dt); c.x += dx / d * sp; c.y += dy / d * sp; c.anim += dt * 6; }
       // 面向攤位
@@ -893,7 +926,7 @@ const Game = {
       if (this.moveAgent(c, dt)) {
         const srt = this.rts.get(c.seat?.uid);
         if (!srt) { c.takeout = true; this.finishEat(c); return; }
-        c.state = 'eat'; c.eatT = rnd(4, 6.5);
+        c.state = 'eat'; c.eatT = c.eat0 = rnd(4, 6.5); c.sip = DISH[c.dish].cat === 'drink';
         c.dirtySeat = srt.it.dirty > 0;
         const it = srt.it, n = srt.seats.length;
         // 座位的位置
@@ -905,6 +938,8 @@ const Game = {
       }
     } else if (c.state === 'eat') {
       c.eatT -= dt; c.anim += dt * 3;
+      // 吃到一半的小反應：辣的會冒火、冰的會發抖、好吃的會「哇」
+      if (!c.reacted && c.eatT < c.eat0 * 0.55) { c.reacted = 1; this.tasteReact(c); }
       if (c.eatT <= 0) {
         c.sitting = false;
         const srt = this.rts.get(c.seat?.uid);
@@ -927,6 +962,7 @@ const Game = {
   stepStaff(a, dt) {
     const S = this.S, s = a.s;
     if (a.bubT > 0) a.bubT -= dt;
+    if (a.jumpT > 0) a.jumpT -= dt;
     a.tired = a.stam <= 0;
     if (a.repath) {
       a.repath = false;
@@ -949,12 +985,12 @@ const Game = {
         // 這攤沒人了，別攤在排隊又沒廚師 → 換過去
         if (rt.idle > 4 || rt.queue.length <= 1) {
           const need = rt.idle > 4 ? 1 : 3;
-          const other = [...this.rts.values()].find(o => F[o.it.id].cat === 'station' && !o.cook && o.queue.filter(c => c.state === 'queue').length >= need && o.back);
+          const other = this.stList.find(o => !o.cook && o.back && o.queue.length >= need && o.queue.filter(c => c.state === 'queue').length >= need);
           if (other && !rt.cooking) { this.releaseStaff(a); a.atStation = false; }
         }
       } else {
         a.atStation = false;
-        const free = [...this.rts.values()].filter(o => F[o.it.id].cat === 'station' && !o.cook && o.back);
+        const free = this.stList.filter(o => !o.cook && o.back);
         if (free.length) {
           free.sort((p, q) => (q.queue.length - p.queue.length) || (Math.abs(p.it.x - a.tile[0]) + Math.abs(p.it.y - a.tile[1]) - Math.abs(q.it.x - a.tile[0]) - Math.abs(q.it.y - a.tile[1])));
           const rt = free[0];
@@ -970,7 +1006,7 @@ const Game = {
             if (!this.rts.has(t.rt.it.uid)) { a.task = null; return; }
             t.time -= dt * (1 + s.serv * 0.05) * (a.tired ? 0.6 : 1) * (s.trait === 'neat' ? 1.7 : 1); a.anim += dt * 6; a.poseK = 'wipe'; a.poseT = 0.2;
             if (Math.random() < dt * 6) this.fx.push({ x: t.rt.it.x * TILE + 8 + rnd(-5, 5), y: t.rt.it.y * TILE + 6, vx: rnd(-8, 8), vy: -rnd(8, 18), t: 0, life: 0.5, col: '#dff4ff', s: 1 });
-            if (t.time <= 0) { t.rt.it.dirty = 0; t.rt.cleaner = null; a.task = null; this.gainExp(s, 2); a.stam -= 3; Snd.play('clean'); a.poseK = 'carry'; a.poseT = 3.5; a.look = Object.assign({}, a.look, { dishc: '#f8f8f8' }); this.sparkle(t.rt.it.x * TILE + 8, t.rt.it.y * TILE + 6, 5); }
+            if (t.time <= 0) { t.rt.it.dirty = 0; t.rt.cleaner = null; a.task = null; this.gainExp(s, 2); a.stam -= 3; Snd.play('clean'); a.poseK = 'carry'; a.poseT = 3.5; a.look = this.withDish(a.look, '#f8f8f8'); this.sparkle(t.rt.it.x * TILE + 8, t.rt.it.y * TILE + 6, 5); }
           } else if (t.k === 'greet') {
             if (t.c.state === 'queue' || t.c.state === 'walk') { t.c.greet = true; t.c.pat += s.trait === 'smile' ? 12 : 6; a.bub = 'say'; a.say = pick(['歡迎光臨！', '馬上好喔～', '請稍等一下！', '謝謝等候！']); a.bubT = 1.4; a.poseT = 1.2; a.poseK = 'call'; this.emote(t.c.x, t.c.y - 22, 'note'); this.gainExp(s, 1); a.stam -= 1; }
             a.task = null;
@@ -1031,7 +1067,11 @@ const Game = {
     if (S.hostCD > 0) S.hostCD--;
     for (const a of this.srt.values()) a.stam = this.maxStam(a.s);
     S.ev = S.ev.filter(e => --e.w > 0);
+    // 最近四週的成績（對手挑戰書用來定目標）
+    st.wk = st.wk || []; st.wk.push({ c: st.wcust, s: Math.round(st.wsales) }); if (st.wk.length > 4) st.wk.shift();
     st.wsales = 0; st.wcust = 0;
+    if (S.rhit) for (const k in S.rhit) { S.rhit[k] = Math.min(1, S.rhit[k] + 0.01); if (S.rhit[k] >= 1) delete S.rhit[k]; }
+    this.duelWeek();
     const wasMonthEnd = this.wk() === 4;
     S.week++;
     this.computeRank();
@@ -1040,12 +1080,16 @@ const Game = {
     // 小吃大賽：10 月第 2 週
     if (this.month() === 10 && this.wk() === 2 && S.contestY !== this.year() && this.menuAll().length) { S.contestY = this.year(); this.pending.push({ k: 'contest' }); }
     else if (Math.random() < 0.16 && S.week > 3) this.rollEvent();
+    else if (!S.duel && S.lv >= 1 && S.week > 16 && S.week >= (S.duelCD || 0) && !(S.tut && S.tut.step >= 0) && Math.random() < 0.1) this.offerDuel();
     this.weekQuest();
     this.checkGoals();
     this.checkScenario();
     this.ui && this.ui.week && this.ui.week();
   },
   menuAll() { return this.known(); },
+  // 端著／吃著的菜換顏色：外觀的 key 也要跟著變，圖才不會用錯
+  withDish(L, col) { const base = L.key.split('~')[0]; return Object.assign({}, L, { dishc: col, key: base + '~' + col, _spr: null, _sk: null }); },
+  limOn(k) { const d = DISH[k]; return !!(d && d.lim && d.lim.includes(this.month())); },
   endMonth() {
     const S = this.S, st = S.st;
     const sal = S.staff.reduce((a, s) => a + s.sal, 0), rent = this.rent();
@@ -1057,6 +1101,7 @@ const Game = {
     st.msales = 0; st.mcost = 0;
     this.rollHire();
     if (this.month() === 1) this.endYear();
+    this.seasonCheck();
     const f = FESTIVALS[this.month()];
     if (f) this.toast(`${this.month()} 月：${f.n}！${f.mul > 1.15 ? '人潮變多了' : ''}`, 'fest');
     this.festQuest();
@@ -1076,6 +1121,95 @@ const Game = {
     S.awards.push({ y, rank, t: a.t, sales: S.st.ysales, sat });
     this.pending.push({ k: 'award', y, rank, a, sales: S.st.ysales, sat });
     S.st.ysales = 0; S.st.ysat = 0; S.st.yn = 0;
+    // 年度故事：阿德伯的一段話＋今年的目標
+    const prev = S.yg, done = prev && this.ygDone(prev);
+    if (done) { this.giveReward(prev.r); S.ygN = (S.ygN || 0) + 1; if (S.ygN >= 5) this.achFlag('story'); }
+    S.yg = this.makeYearGoal();
+    if (!this.demoMode) this.pending.push({ k: 'story', y: y + 1, prev, done, g: S.yg });
+  },
+  // ---------- 年度目標 ----------
+  makeYearGoal() {
+    const S = this.S, y = this.year(), lv = S.lv, opts = [];
+    const wk = S.st.wk || [], lastC = S.st.yc0 !== undefined ? S.st.cust - S.st.yc0 : wk.length ? wk.reduce((a, w) => a + w.c, 0) / wk.length * 48 : 0;
+    S.st.yc0 = S.st.cust;
+    opts.push({ k: 'cust', n: Math.max(300, Math.round(lastC * 1.15 / 50) * 50), t: '今年招待 {n} 位客人' });
+    if (S.rank > 1) opts.push({ k: 'rank', n: Math.max(1, S.rank - (S.rank > 10 ? 4 : 2)), t: '年底排行榜第 {n} 名以內' });
+    const left = DISH_ALL.filter(k => !S.dishes[k] && this.sellable(k)).length;
+    if (left >= 3) opts.push({ k: 'dish', n: Math.min(left, 3 + (y % 3)), base: this.nKnown(), t: '今年研發 {n} 道新菜' });
+    const cl = COMBOS.length - Object.keys(S.combos).length;
+    if (cl >= 2) opts.push({ k: 'combo', n: 2, base: Object.keys(S.combos).length, t: '今年發現 {n} 個新的擺設組合' });
+    opts.push({ k: 'contest', n: 3, t: '今年的小吃大賽拿到前 {n} 名' });
+    if (LEVELS[lv + 1] && S.pop > LEVELS[lv + 1].pop * 0.5) opts.push({ k: 'lv', n: lv + 1, t: '今年擴建成「' + LEVELS[lv + 1].n + '」' });
+    const g = opts[(S.seed + y * 7) % opts.length];
+    g.title = g.t.replace('{n}', num(g.n)); g.y = y;
+    const m = Math.round((3000 + lv * lv * 6000 + y * 2500) / 100) * 100;
+    g.r = { money: m, pop: 15 + lv * 12, idea: 10 + lv * 5 };
+    return g;
+  },
+  ygProg(g) {
+    const S = this.S;
+    switch (g.k) {
+      case 'cust': return [S.st.cust - (S.st.yc0 || 0), g.n];
+      case 'rank': return [S.rank <= g.n ? 1 : 0, 1];
+      case 'dish': return [this.nKnown() - g.base, g.n];
+      case 'combo': return [Object.keys(S.combos).length - g.base, g.n];
+      case 'contest': return [S.st.cy === g.y && S.st.cplace <= g.n ? 1 : 0, 1];
+      case 'lv': return [S.lv >= g.n ? 1 : 0, 1];
+    }
+    return [0, 1];
+  },
+  ygDone(g) { const p = this.ygProg(g); return p[0] >= p[1]; },
+  // ---------- 對手的挑戰書 ----------
+  offerDuel() {
+    const S = this.S, L = this.ladder(), mi = L.findIndex(r => r.me);
+    const tgt = L[mi > 0 ? mi - 1 : mi + 1]; if (!tgt) return;
+    const i = RIVALS.findIndex(r => r[0] === tgt.n); if (i < 0) return;
+    const wk = S.st.wk || [], avgC = wk.length ? wk.reduce((a, w) => a + w.c, 0) / wk.length : 20, avgS = wk.length ? wk.reduce((a, w) => a + w.s, 0) / wk.length : 2000;
+    const kind = pick(['cust', 'sales', 'cat']);
+    const d = { i, n: tgt.n, k: kind, w: 2 };
+    if (kind === 'cust') { d.goal = Math.max(20, Math.round(avgC * 2 * 1.12 / 5) * 5); d.base = S.st.cust; d.title = `兩週內招待 ${num(d.goal)} 位客人`; }
+    else if (kind === 'sales') { d.goal = Math.max(2000, Math.round(avgS * 2 * 1.12 / 100) * 100); d.base = S.st.sales; d.title = `兩週內營業額 ${money(d.goal)}`; }
+    else {
+      const cats = Object.keys(CAT).filter(c => this.menu().some(m => DISH[m].cat === c)); if (!cats.length) return;
+      d.cat = pick(cats); const share = Math.max(0.15, this.menu().filter(m => DISH[m].cat === d.cat).length / Math.max(1, this.menu().length));
+      d.goal = Math.max(10, Math.round(avgC * 2 * share * 1.2 / 5) * 5); d.base = this.catSold(d.cat); d.title = `兩週內賣出 ${num(d.goal)} 份${CAT[d.cat]}菜`;
+    }
+    d.bet = clamp(Math.round(S.money * 0.08 / 1000) * 1000, 2000, 500000);
+    d.pop = Math.round(10 + S.pop * 0.025);
+    this.pending.push({ k: 'duel', d });
+  },
+  acceptDuel(d) {
+    const S = this.S;
+    if (S.money < d.bet) return '錢不夠下注';
+    S.money -= d.bet; S.duel = d; d.acc = 1;
+    if (d.k === 'cust') d.base = S.st.cust; else if (d.k === 'sales') d.base = S.st.sales; else d.base = this.catSold(d.cat);
+    return '';
+  },
+  declineDuel(d) { const S = this.S, p = Math.round(S.pop * 0.01); S.pop -= p; S.duelCD = S.week + 8; this.toast(`拒絕了${d.n}的挑戰…街坊有點議論，人氣 -${p}`, 'bad'); },
+  duelProg(d) { const S = this.S; return [d.k === 'cust' ? S.st.cust - d.base : d.k === 'sales' ? Math.round(S.st.sales - d.base) : this.catSold(d.cat) - d.base, d.goal]; },
+  duelWeek() {
+    const S = this.S, d = S.duel; if (!d) return;
+    if (--d.w > 0) return;
+    const p = this.duelProg(d), win = p[0] >= p[1];
+    S.duel = null; S.duelCD = S.week + irnd(14, 22);
+    if (win) {
+      S.money += d.bet * 2; S.pop += d.pop; S.rhit = S.rhit || {}; S.rhit[d.i] = 0.85; S.st.duelW = (S.st.duelW || 0) + 1;
+      if (S.st.duelW >= 3) this.achFlag('duel3');
+      Snd.play('fanfare'); this.confetti(S.W * TILE / 2, S.H * TILE * 0.4, 50); this.flash = 0.6;
+    } else { S.pop = Math.max(0, S.pop - Math.round(d.pop * 0.7)); Snd.play('fail'); }
+    this.computeRank();
+    this.pending.push({ k: 'duelEnd', d, win, p });
+  },
+  // ---------- 季節限定菜色 ----------
+  seasonCheck() {
+    const S = this.S; if (this.demoMode || S.week < 2) return;
+    const got = [];
+    for (const k of DISH_LIM) {
+      const d = DISH[k];
+      if (!this.limOn(k) || S.dishes[k] || S.lv < d.lv || !this.sellable(k)) continue;
+      S.dishes[k] = { lv: 1, price: d.p, on: true }; got.push(k);
+    }
+    if (got.length) this.say('season', { title: '季節限定菜單上架！', big: got.map(k => DISH[k].n).join('、'), text: `只有這個月才賣，客人會特別想吃！${got.some(k => !this.hasStation(DISH[k].st)) ? '<br>（要有「' + got.filter(k => !this.hasStation(DISH[k].st)).map(k => FAC.find(f => f.st === DISH[k].st).n).join('、') + '」才能賣）' : ''}`, icon: 'star', dishes: got });
   },
   applyAward(p) {
     const S = this.S, a = p.a;
@@ -1085,8 +1219,9 @@ const Game = {
     else if (S.ended) { const pt = p.rank === 1 ? 2 : p.rank <= 3 ? 1 : 0; if (pt) { Legacy.add(pt); p.legacy = pt; } }
   },
   rivalScore(i, yf = this.yearF()) {
-    const b = RIVALS[i][1], sc = this.S.scen, g = sc === 'hard' ? 0.7 : sc === 'rush' ? 0.62 : 0.55, m = sc === 'rush' ? 1.12 : 1;
-    return b * m * (1 + g * yf) * (1 + hash(i, 3, this.S.seed) * 0.15 * Math.sin(yf * 3 + i));
+    const b = RIVALS[i][1], sc = this.S.scen, g = sc === 'hard' ? 0.7 : sc === 'rush' ? 0.62 : sc === 'tour' ? 0.66 : 0.55, m = sc === 'rush' ? 1.12 : sc === 'tour' ? 1.1 : 1;
+    const hit = this.S.rhit && this.S.rhit[i] ? this.S.rhit[i] : 1;
+    return b * m * hit * (1 + g * yf) * (1 + hash(i, 3, this.S.seed) * 0.15 * Math.sin(yf * 3 + i));
   },
   computeRank() {
     const S = this.S, me = S.pop;
@@ -1123,6 +1258,7 @@ const Game = {
     const pop = [0, 60 + y * 25, 25 + y * 10, 10 + y * 4][place] || 3;
     S.money += prize; S.pop += pop;
     let unlock = '';
+    S.st.cplace = place; S.st.cy = y;
     if (place === 1) { S.st.wins++; if (!S.unlock.tB) { S.unlock.tB = 1; unlock = F.tB.n; } }
     this.checkGoals();
     return { rows, place, prize, pop, unlock };
@@ -1159,7 +1295,7 @@ const Game = {
         break;
       }
       case 'elder': {
-        const cand = Object.keys(DISH).filter(k => !S.dishes[k] && !S.hints[k] && this.canUse(DISH[k].a) && this.canUse(DISH[k].b));
+        const cand = DISH_ALL.filter(k => !S.dishes[k] && !S.hints[k] && this.canUse(DISH[k].a) && this.canUse(DISH[k].b));
         if (cand.length) {
           const d = pick(cand); S.hints[d] = 1;
           const nm = x => ING[x] ? ING[x].n : DISH[x].n;
@@ -1170,7 +1306,7 @@ const Game = {
     }
   },
   // ---------- 經營擴張：租金、分店、活動、秘方 ----------
-  rent() { return LEVELS[this.S.lv].rent * (this.S.scen === 'hard' ? 2 : 1); },
+  rent() { const s = this.S.scen; return LEVELS[this.S.lv].rent * (s === 'hard' ? 2 : s === 'tour' ? 1.5 : 1); },
   branchInc() {
     let inc = 0, pop = 0;
     const m = 0.8 + Math.min(0.6, this.S.pop / 30000);
@@ -1237,7 +1373,7 @@ const Game = {
   makeQuest() {
     const S = this.S, lv = S.lv, who = pick(ASKERS), seed = lookSeed();
     const types = ['serve', 'sell', 'sat'];
-    const want = Object.keys(DISH).filter(k => this.sellable(k) && this.hasStation(DISH[k].st) && (!S.dishes[k] || !S.dishes[k].on) && this.canUse(DISH[k].a) && this.canUse(DISH[k].b));
+    const want = DISH_ALL.filter(k => this.sellable(k) && this.hasStation(DISH[k].st) && (!S.dishes[k] || !S.dishes[k].on) && this.canUse(DISH[k].a) && this.canUse(DISH[k].b));
     if (want.length) types.push('dish', 'dish');
     const decs = FAC.filter(f => (f.cat === 'decor' || f.cat === 'fun') && !f.unlock && f.lv <= lv && f.price <= Math.max(3000, S.money * 0.3));
     if (decs.length) types.push('decor');
@@ -1324,6 +1460,8 @@ const Game = {
     }
     if (S.scen === 'sweet' && S.lv >= 3) this.achFlag('sweet');
     if (S.scen === 'hard' && S.rank <= 10) this.achFlag('hard');
+    if (S.scen === 'veg' && S.lv >= 2) this.achFlag('veg');
+    if (S.scen === 'tour' && S.rank <= 3) this.achFlag('tour');
   },
 
   // ---------- 成就 ----------
@@ -1336,11 +1474,11 @@ const Game = {
     if (this.ui && this.ui.achToast) this.ui.achToast(a, isNew);
   },
   checkAch() {
-    const S = this.S, st = S.st, n = Object.keys(S.combos).length, d = this.known().length;
+    const S = this.S, st = S.st, n = Object.keys(S.combos).length, d = this.nKnown();
     const C = (c, id) => { if (c && !S.ach[id]) this.achFlag(id); };
     C(st.cust >= 1, 'first'); C(st.cust >= 1000, 'c1k'); C(st.cust >= 50000, 'c50k');
     C(st.five >= 30, 'five'); C(n >= 10, 'combo10'); C(n >= COMBOS.length, 'comboall');
-    C(d >= 30, 'd30'); C(d >= Object.keys(DISH).length, 'dall'); C(S.rank === 1, 'king'); C(st.wins >= 3, 'cup3');
+    C(d >= 30, 'd30'); C(d >= DISH_ALL.length, 'dall'); C(S.rank === 1, 'king'); C(st.wins >= 3, 'cup3');
     const nb = BRANCHES.filter(b => S.br[b.id]).length; C(nb >= 1, 'branch'); C(nb >= BRANCHES.length, 'branchall');
     C(TECHS.some(t => this.tech(t.id) >= 5), 'tech'); C(S.qdone >= 10, 'quest10'); C(S.staff.length >= 16, 'staff16');
     C(S.money >= 1e8, 'rich'); C(st.storm >= 20, 'storm'); C(S.lv >= 5, 'legend');
@@ -1356,7 +1494,7 @@ const Game = {
   goalVal(k) {
     const S = this.S;
     switch (k) {
-      case 'cust': return S.st.cust; case 'dishes': return this.known().length; case 'combos': return Object.keys(S.combos).length;
+      case 'cust': return S.st.cust; case 'dishes': return this.nKnown(); case 'combos': return Object.keys(S.combos).length;
       case 'staff': return S.staff.length; case 'lv': return S.lv; case 'sales': return S.st.sales; case 'rank': return S.rank;
       case 'slv': return Math.max(...S.staff.map(s => s.lv)); case 'contest': return S.st.wins; case 'year': return this.year();
     }
