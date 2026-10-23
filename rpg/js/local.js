@@ -195,8 +195,12 @@ const LocalBake = {
       res.builds.forEach((b, k) => { for (let y = b.y0; y <= b.y1; y++) for (let x = b.x0; x <= b.x1; x++) if (x >= 0 && y >= 0 && x < TW && y < TH) inB[y * TW + x] = k; });
     }
     // ── 地面（城鎮室外以逐像素處理，讓道路與水岸圓滑） ──
-    const N = W * H, ground = new Uint8ClampedArray(N * 4), waterPx = [], dWarr = new Uint8Array(N).fill(99);
-    if (town) {
+    const N = W * H;
+    const GC = this.gcache || (this.gcache = {});
+    const cached = GC[f.id];
+    const ground = cached ? cached.ground : new Uint8ClampedArray(N * 4), waterPx = cached ? cached.waterPx : [], dWarr = cached ? cached.dWarr : new Uint8Array(N).fill(99);
+    if (town && !cached) GC[f.id] = { ground, waterPx, dWarr };
+    if (town && !cached) {
       const gname = th.ground;
       const P = { grass: ['#5cb446', '#4a9a3a', '#74c858', '#3f8a32'], cobble: ['#a8a4a0', '#8e8a86', '#bcb8b2', '#7a7672'], sand: ['#e6cc8a', '#d2b472', '#f2e0a6', '#c4a466'], snow: ['#e8f0fa', '#ccd8ec', '#ffffff', '#b8c8e0'] }[gname].map(RGB);
       const road = gname === 'snow' ? ['#c8d0dc', '#aab4c4'] : gname === 'sand' ? ['#d4b070', '#b8945a'] : ['#c89c64', '#9e7a4c'];
@@ -207,18 +211,19 @@ const LocalBake = {
       const integ = a => { const I = new Float32Array((W + 1) * (H + 1)); for (let y = 0; y < H; y++) { let row = 0; for (let x = 0; x < W; x++) { row += a[y * W + x]; I[(y + 1) * (W + 1) + x + 1] = I[y * (W + 1) + x + 1] + row; } } return I; };
       const box = (I, x, y, r) => { const x0 = Math.max(0, x - r), y0 = Math.max(0, y - r), x1 = Math.min(W, x + r + 1), y1 = Math.min(H, y + r + 1); return (I[y1 * (W + 1) + x1] - I[y0 * (W + 1) + x1] - I[y1 * (W + 1) + x0] + I[y0 * (W + 1) + x0]) / ((x1 - x0) * (y1 - y0)); };
       const IR = integ(mask), IW = integ(wmask);
+      const nP = noiseGrid(W, H, 4, (x, y) => fbm(x / 22, y / 22, 5));
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
         const i = y * W + x, o = i * 4, tx = x >> 4, ty = y >> 4, c = T(tx, ty);
-        const n = fbm(x / 22, y / 22, 5), h = hash2(x, y, 3);
+        const n = nP(x, y), h = hash2(x, y, 3);
         let col = n > 0.62 ? P[2] : n < 0.36 ? P[1] : P[0];
         if (h < 0.05) col = P[1]; else if (h > 0.96) col = P[2];
         if (gname === 'grass' && h > 0.988) col = P[3];
         if (gname === 'cobble') { const sx = (x + ((y >> 2) & 1) * 3) % 6, sy = y % 4; col = sx === 0 || sy === 0 ? COB[3] : sx === 1 && sy === 1 ? COB[2] : (hash2((x + ((y >> 2) & 1) * 3) / 6 | 0, y >> 2, 1) < 0.3 ? COB[1] : COB[0]); }
         if (c === '_' && gname !== 'cobble') { const sx = (x + ((y >> 2) & 1) * 3) % 6, sy = y % 4; col = sx === 0 || sy === 0 ? COB[3] : (sx === 1 && sy === 1) ? COB[2] : COB[0]; }
         if (c === ':' && gname !== 'sand') col = SANDC; if (c === '*' && gname !== 'snow') col = SNOWC;
-        const rv = box(IR, x, y, 3) + (fbm(x / 5, y / 5, 8) - 0.5) * 0.3;
-        if (rv > 0.6) col = h < 0.08 ? R1 : R0; else if (rv > 0.48) col = R1;
-        const wv = box(IW, x, y, 4) + (fbm(x / 7, y / 7, 2) - 0.5) * 0.2;
+        const rb = box(IR, x, y, 3);
+        if (rb > 0.3) { const rv = rb + (fbm(x / 5, y / 5, 8) - 0.5) * 0.3; if (rv > 0.6) col = h < 0.08 ? R1 : R0; else if (rv > 0.48) col = R1; }
+        const wb = box(IW, x, y, 4), wv = wb > 0.35 ? wb + (fbm(x / 7, y / 7, 2) - 0.5) * 0.2 : 0;
         if (wv > 0.5 && (isWater(tx, ty) || box(IW, x, y, 1) > 0.3)) { waterPx.push(i); dWarr[i] = Math.round((1 - wv) * 0 + Math.min(9, (wv - 0.5) * 20)); }
         ground[o] = col[0]; ground[o + 1] = col[1]; ground[o + 2] = col[2]; ground[o + 3] = 255;
       }

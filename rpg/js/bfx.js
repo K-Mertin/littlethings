@@ -4,7 +4,7 @@ const BFX = {
   effs: [], parts: [], u: 4,
   reset() { this.effs = []; this.parts = []; },
   busy() { return this.effs.length > 0; },
-  P(o) { if (this.parts.length < 900) this.parts.push(Object.assign({ t: 0, vx: 0, vy: 0, ax: 0, ay: 0, drag: 0, size: 1, size2: null, add: true, shape: 'sq', rot: 0, vr: 0 }, o)); },
+  P(o) { if (this.parts.length < (Game.lowFx ? 300 : 900)) this.parts.push(Object.assign({ t: 0, vx: 0, vy: 0, ax: 0, ay: 0, drag: 0, size: 1, size2: null, add: true, shape: 'sq', rot: 0, vr: 0 }, o)); },
   E(dur, draw, back) { this.effs.push({ t: 0, dur, draw, back }); return dur; },
   update(dt) {
     for (const e of this.effs) e.t += dt;

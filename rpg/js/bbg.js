@@ -140,7 +140,10 @@ const BBG = {
       }
       default: fastBand(sg, 0, H, '#000', '#222');
     }
-    return (this.cache[key] = { W, H, hz, sky, far, mid, ground, fg, anim });
+    // 靜態的圖層先合成成一張，減少每格的繪圖量
+    const back = mk(), bg2 = back.getContext('2d');
+    bg2.drawImage(sky, 0, 0); bg2.drawImage(far, W / 2, 0, W, H, 0, 0, W, H); bg2.drawImage(ground, 0, 0); bg2.drawImage(mid, 0, 0);
+    return (this.cache[key] = { W, H, hz, back, fg, anim });
   },
   // 畫到戰鬥舞台
   draw(g, kind, rect, t) {
@@ -148,17 +151,14 @@ const BBG = {
     const s = Math.max(rect.w / b.W, rect.h / b.H);
     const ox = rect.x + (rect.w - b.W * s) / 2, oy = rect.y + (rect.h - b.H * s) / 2;
     g.imageSmoothingEnabled = false;
-    g.drawImage(b.sky, ox, oy, b.W * s, b.H * s);
-    const scroll = (Math.sin(t * 0.04) * 0.5 + 0.5) * b.W;
-    g.drawImage(b.far, scroll, 0, b.W, b.H, ox, oy, b.W * s, b.H * s);
-    g.drawImage(b.ground, ox, oy, b.W * s, b.H * s);
-    g.drawImage(b.mid, ox, oy, b.W * s, b.H * s);
+    g.drawImage(b.back, ox, oy, b.W * s, b.H * s);
     return { ox, oy, s, b };
   },
   drawFg(g, info, rect, t) {
     const { ox, oy, s, b } = info;
     g.drawImage(b.fg, ox, oy, b.W * s, b.H * s);
     // 環境動畫
+    if (Game.lowFx) return;
     const R = (i, k) => hash2(i, k, 5);
     switch (b.anim) {
       case 'snow': g.fillStyle = 'rgba(255,255,255,.85)'; for (let i = 0; i < 60; i++) { const x = ((R(i, 1) * b.W + t * (8 + R(i, 2) * 10) + Math.sin(t + i) * 6) % b.W), y = (R(i, 3) * b.H + t * (14 + R(i, 4) * 14)) % b.H; g.fillRect(ox + x * s, oy + y * s, s * (R(i, 5) < 0.3 ? 2 : 1), s * (R(i, 5) < 0.3 ? 2 : 1)); } break;

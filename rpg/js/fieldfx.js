@@ -10,7 +10,7 @@ const FieldFx = {
     const k = L.k, T = 16, vw = L.V.w / k, vh = L.V.h / k;
     const cx = (p.x + 0.5) * T, cy = (p.y + 0.5) * T;
     const rand = (a, b) => a + Math.random() * (b - a);
-    const add = o => { if (this.parts.length < 260) this.parts.push(o); };
+    const add = o => { if (this.parts.length < (Game.lowFx ? 70 : 260)) this.parts.push(o); };
     const th = f.def.theme, world = f.isWorld();
     const snowy = th === 'snow' || th === 'ice' || (world && p.x >= 40 && p.y < 23);
     const sandy = th === 'sand' || th === 'tomb' || (world && p.x >= 40 && p.y >= 23);
@@ -62,6 +62,13 @@ const FieldFx = {
     }
     g.globalAlpha = 1;
   },
+  glows: {},
+  glowSpr(col) {
+    if (this.glows[col]) return this.glows[col];
+    const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
+    const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, `rgba(${col},1)`); gr.addColorStop(1, `rgba(${col},0)`); g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    return (this.glows[col] = c);
+  },
   flame(g, X, Y, k, t, seed) {
     const f1 = Math.sin(t * 13 + seed) * 0.5 + Math.sin(t * 21 + seed * 2) * 0.5;
     g.fillStyle = '#ff6a20'; g.fillRect(X - 2 * k, Y - (3 + f1) * k, 4 * k, (4 + f1) * k);
@@ -87,16 +94,25 @@ const FieldFx = {
       for (const l of f.lights) hole(sx0 + l.x * k, sy0 + l.y * k, l.r * k * 1.5 * (1 + (l.fl ? Math.sin(t * 9 + l.x) * 0.06 * l.fl : 0)), 0.9);
       g.imageSmoothingEnabled = true; g.drawImage(this.lm, V.x, V.y, w * s, h * s); g.imageSmoothingEnabled = false;
     }
-    // 光暈（加色）
+    if (Game.lowFx && !dark) return;
+    // 光暈（加色）：不會閃爍的光源先烘焙成一張光圖
     g.globalCompositeOperation = 'lighter';
+    if (!f.lightLayer) {
+      const c = document.createElement('canvas'), W = f.w * 16, H = f.h * 16, s = 4; c.width = Math.ceil(W / s); c.height = Math.ceil(H / s);
+      const lg = c.getContext('2d'); let n = 0;
+      for (const l of f.lights) { if (l.fl > 0.25 || l.b !== undefined) continue; l.baked = 1; n++; const r = l.r / s; lg.globalAlpha = l.win || l.lamp ? 0.28 : 0.22; lg.drawImage(this.glowSpr(l.col), l.x / s - r, l.y / s - r, r * 2, r * 2); }
+      f.lightLayer = { c, s, n, dimOnly: true };
+    }
+    const LL = f.lightLayer;
+    if (LL.n && (dark || amb)) { g.imageSmoothingEnabled = true; g.drawImage(LL.c, sx0, sy0, LL.c.width * LL.s * k, LL.c.height * LL.s * k); g.imageSmoothingEnabled = false; }
     for (const l of f.lights) {
+      if (l.baked && (dark || amb)) continue;
       if (!dark && !amb && (l.win || l.lamp)) continue;
       if (hid(l)) continue;
       const X = sx0 + l.x * k, Y = sy0 + l.y * k, r = l.r * k * (1 + (l.fl ? Math.sin(t * 9 + l.x) * 0.05 * l.fl : 0));
       if (X < V.x - r || X > V.x + V.w + r || Y < V.y - r || Y > V.y + V.h + r) continue;
       const a = dark ? 0.32 : amb ? 0.28 : 0.16;
-      const gr = g.createRadialGradient(X, Y, 0, X, Y, r); gr.addColorStop(0, `rgba(${l.col},${a})`); gr.addColorStop(1, `rgba(${l.col},0)`);
-      g.fillStyle = gr; g.fillRect(X - r, Y - r, r * 2, r * 2);
+      g.globalAlpha = a; g.drawImage(this.glowSpr(l.col), X - r, Y - r, r * 2, r * 2); g.globalAlpha = 1;
     }
     g.globalCompositeOperation = 'source-over';
   },

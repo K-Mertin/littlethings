@@ -63,7 +63,7 @@ const Field = {
     return 'grass';
   },
   bake() {
-    this.props = []; this.builds = []; this.lights = []; this.spots = [];
+    this.props = []; this.builds = []; this.lights = []; this.spots = []; this.lightLayer = null;
     if (this.isWorld()) { this.baked = WorldBake.get(this); return; }
     const r = LocalBake.bake(this);
     // 保留屋頂淡出的狀態

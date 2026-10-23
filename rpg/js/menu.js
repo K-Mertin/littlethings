@@ -13,7 +13,7 @@ function partyPanel(o = {}) {
   return UI.panel(g => {
     const fs = L.FS, pad = L.pad, n = G.party.length;
     const w = Math.min(fs * 11, L.V.w * 0.5), rh = fs * 3.1, h = rh * n + pad * 1.6;
-    const x = L.V.x + L.V.w - w - pad, y = L.V.y + pad;
+    const x = L.V.x + L.V.w - w - pad, y = L.V.y + pad + 34 * L.dpr;
     UI.win(g, x, y, w, h);
     G.party.forEach((m, i) => {
       const s = Party.stats(m), yy = y + pad * 0.8 + i * rh;

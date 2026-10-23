@@ -10,6 +10,12 @@ function vnoise(x, y, seed) {
 }
 function fbm(x, y, seed) { return vnoise(x, y, seed) * 0.58 + vnoise(x * 2.07, y * 2.07, seed + 7) * 0.29 + vnoise(x * 4.3, y * 4.3, seed + 13) * 0.13; }
 const RGB = h => hexToRgb(h);
+// 低解析度的雜訊格，雙線性內插取值（烘焙加速用）
+function noiseGrid(W, H, step, fn) {
+  const gw = Math.ceil(W / step) + 2, gh = Math.ceil(H / step) + 2, a = new Float32Array(gw * gh);
+  for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) a[j * gw + i] = fn(i * step, j * step);
+  return (x, y) => { const fx = x / step, fy = y / step, i = fx | 0, j = fy | 0, u = fx - i, v = fy - j, k = j * gw + i; return (a[k] * (1 - u) + a[k + 1] * u) * (1 - v) + (a[k + gw] * (1 - u) + a[k + gw + 1] * u) * v; };
+}
 
 // ───── 大地圖上的物件小圖（像素畫，快取） ─────
 const WSpr = {
@@ -186,8 +192,10 @@ const WorldBake = {
     const box = (I, x, y, r) => { const x0 = Math.max(0, x - r), y0 = Math.max(0, y - r), x1 = Math.min(W, x + r + 1), y1 = Math.min(H, y + r + 1); return (I[y1 * (W + 1) + x1] - I[y0 * (W + 1) + x1] - I[y1 * (W + 1) + x0] + I[y0 * (W + 1) + x0]) / ((x1 - x0) * (y1 - y0)); };
     const IL = integ(raw);
     const land = new Uint8Array(N);
+    const nLand = noiseGrid(W, H, 3, (x, y) => fbm(x / 9, y / 9, 3)), nGx = noiseGrid(W, H, 4, (x, y) => vnoise(x / 11, y / 11, 21)), nGy = noiseGrid(W, H, 4, (x, y) => vnoise(x / 11, y / 11, 37));
+    const nPatch = noiseGrid(W, H, 4, (x, y) => fbm(x / 26, y / 26, 5)), nRip = noiseGrid(W, H, 4, (x, y) => fbm(x / 20, y / 20, 2)), nRoad = noiseGrid(W, H, 2, (x, y) => fbm(x / 6, y / 6, 8)), nDeep = noiseGrid(W, H, 6, (x, y) => fbm(x / 30, y / 30, 1));
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const i = y * W + x, n = (fbm(x / 9, y / 9, 3) - 0.5) * 0.36;
+      const i = y * W + x, n = (nLand(x, y) - 0.5) * 0.36;
       land[i] = box(IL, x, y, 5) + n > 0.5 ? 1 : 0;
       // 角色可以站的格子中心一定是陸地
       const tx = x >> 4, ty = y >> 4, lx = x & 15, ly = y & 15;
@@ -218,38 +226,42 @@ const WorldBake = {
       wither: [RGB('#665a7c'), RGB('#54486a'), RGB('#7a6c90'), RGB('#463c58')],
     };
     const BEACH = RGB('#efd8a0'), WET = RGB('#c8b07a'), ROAD = RGB('#c89c64'), ROADL = RGB('#dab47c'), ROADE = RGB('#9e7a4c');
+    const gArr = []; for (let ty = 0; ty < TH; ty++) for (let tx = 0; tx < TW; tx++) gArr.push(isWaterC(f.tile(tx, ty)) ? null : f.groundAt(tx, ty));
     const gtype = (x, y) => {
-      const nx = (vnoise(x / 11, y / 11, 21) - 0.5) * 14, ny = (vnoise(x / 11, y / 11, 37) - 0.5) * 14;
-      const tx = Math.floor((x + nx) / 16), ty = Math.floor((y + ny) / 16);
-      let c = tileAt(tx, ty);
-      if (isWaterC(c)) { return f.groundAt(x >> 4, y >> 4); }
-      return f.groundAt(clamp(tx, 0, TW - 1), clamp(ty, 0, TH - 1));
+      const nx = (nGx(x, y) - 0.5) * 14, ny = (nGy(x, y) - 0.5) * 14;
+      const tx = clamp(Math.floor((x + nx) / 16), 0, TW - 1), ty = clamp(Math.floor((y + ny) / 16), 0, TH - 1);
+      return gArr[ty * TW + tx] || f.groundAt(x >> 4, y >> 4);
     };
+    const BLACK = [0, 0, 0], SNR = [RGB('#c8d0dc'), RGB('#aab4c4')], SDR = [RGB('#d4b070'), RGB('#b8945a')];
     const base = new Uint8ClampedArray(N * 4);
     const waterIdx = [];
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    for (let by = 0; by < H; by += 2) for (let bx = 0; bx < W; bx += 2) {
+      // 每 2×2 像素共用一次地形類型與斑塊雜訊
+      const gB = gtype(bx, by), nB = nPatch(bx, by);
+      for (let y = by; y < by + 2; y++) for (let x = bx; x < bx + 2; x++) {
       const i = y * W + x, o = i * 4;
       let col;
       if (land[i]) {
-        const g = gtype(x, y), P = PAL[g] || PAL.grass;
-        const n = fbm(x / 26, y / 26, 5), n2 = hash2(x, y, 11);
+        const g = gB, P = PAL[g] || PAL.grass;
+        const n = nB, n2 = hash2(x, y, 11);
         col = n > 0.62 ? P[2] : n < 0.36 ? P[1] : P[0];
         if (n2 < 0.06) col = P[1]; else if (n2 > 0.95) col = P[2];
         if (g === 'grass' && n2 > 0.985) col = P[3];
-        if (g === 'sand' && Math.sin(x * 0.35 + y * 0.9 + fbm(x / 20, y / 20, 2) * 6) > 0.86) col = P[1];
+        if (g === 'sand' && Math.sin(x * 0.35 + y * 0.9 + nRip(x, y) * 6) > 0.86) col = P[1];
         // 沙灘
         const dw = dL[i];
         if (dw <= 3 && g !== 'snow' && g !== 'wither') col = dw <= 1 ? WET : BEACH;
         if (dw <= 2 && g === 'snow') col = PAL.snow[1];
         if (dw <= 1 && g === 'wither') col = PAL.wither[3];
         // 道路
-        const rv = box(IR, x, y, 4) + (fbm(x / 6, y / 6, 8) - 0.5) * 0.25;
+        const rb = box(IR, x, y, 4), rv = rb > 0.3 ? rb + (nRoad(x, y) - 0.5) * 0.25 : 0;
         if (rv > 0.62) col = hash2(x, y, 4) < 0.1 ? ROADL : ROAD;
         else if (rv > 0.5) col = ROADE;
-        if (g === 'snow' && rv > 0.5) col = rv > 0.62 ? RGB('#c8d0dc') : RGB('#aab4c4');
-        if (g === 'sand' && rv > 0.5) col = rv > 0.62 ? RGB('#d4b070') : RGB('#b8945a');
-      } else { waterIdx.push(i); col = [0, 0, 0]; }
+        if (g === 'snow' && rv > 0.5) col = rv > 0.62 ? SNR[0] : SNR[1];
+        if (g === 'sand' && rv > 0.5) col = rv > 0.62 ? SDR[0] : SDR[1];
+      } else { waterIdx.push(i); col = BLACK; }
       base[o] = col[0]; base[o + 1] = col[1]; base[o + 2] = col[2]; base[o + 3] = 255;
+      }
     }
     // 5. 物件層
     const obj = document.createElement('canvas'); obj.width = W; obj.height = H;
@@ -297,25 +309,22 @@ const WorldBake = {
     }
     // 6. 水面（四格動畫）
     const DEEP = RGB('#1f5cb4'), MID = RGB('#2f78d4'), SHAL = RGB('#4aa0e6'), SHAL2 = RGB('#74c0ee'), FOAM = RGB('#e8f8ff'), SPARK = RGB('#c8ecff');
+    const MIDL = [MID[0] + 30, MID[1] + 40, MID[2] + 30];
+    // 靜態水色先寫進底圖，只把會動的像素記下來
+    const foam = [], wave = [];
+    for (const i of waterIdx) {
+      const x = i % W, y = (i / W) | 0, d = dW[i], o = i * 4;
+      const col = d <= 2 ? SHAL2 : d <= 5 ? SHAL : d <= 9 ? ((d === 6 || d === 7) && hash2(x, y, 2) < 0.5 ? SHAL : MID) : (nDeep(x, y) > 0.55 ? MID : DEEP);
+      base[o] = col[0]; base[o + 1] = col[1]; base[o + 2] = col[2];
+      if (d <= 2) foam.push(i);
+      else if (d > 3 && (y & 3) < 2 && hash2(x >> 2, y, 1) < 0.75) wave.push(i);
+    }
     const frames = [];
     for (let fr = 0; fr < 4; fr++) {
       const data = new Uint8ClampedArray(base);
       const ph = fr / 4 * TAU;
-      for (const i of waterIdx) {
-        const x = i % W, y = (i / W) | 0, d = dW[i], o = i * 4;
-        let col;
-        const n = fbm(x / 30, y / 30, 1);
-        if (d <= 1) col = Math.sin(ph + (x + y) * 0.35) > -0.2 ? FOAM : SHAL2;
-        else if (d <= 2) col = Math.sin(ph + (x - y) * 0.3) > 0.5 ? FOAM : SHAL2;
-        else if (d <= 5) col = SHAL;
-        else if (d <= 9) col = (d === 6 || d === 7) && hash2(x, y, 2) < 0.5 ? SHAL : MID;
-        else col = n > 0.55 ? MID : DEEP;
-        if (d > 3) {
-          const w = Math.sin(x * 0.42 + Math.sin(y * 0.21 + ph) * 2 + ph * 1) + Math.sin(y * 0.9 + x * 0.1 - ph);
-          if (w > 1.72 && ((y & 3) === 0 || (y & 3) === 1) && hash2(x >> 2, y, 1) < 0.75) col = d > 9 ? MID.map((v, k) => v + [30, 40, 30][k]) : SPARK;
-        }
-        data[o] = col[0]; data[o + 1] = col[1]; data[o + 2] = col[2];
-      }
+      for (const i of foam) { const x = i % W, y = (i / W) | 0, d = dW[i]; if (d <= 1 ? Math.sin(ph + (x + y) * 0.35) > -0.2 : Math.sin(ph + (x - y) * 0.3) > 0.5) { const o = i * 4; data[o] = FOAM[0]; data[o + 1] = FOAM[1]; data[o + 2] = FOAM[2]; } }
+      for (const i of wave) { const x = i % W, y = (i / W) | 0; if (Math.sin(x * 0.42 + Math.sin(y * 0.21 + ph) * 2 + ph) + Math.sin(y * 0.9 + x * 0.1 - ph) > 1.72) { const o = i * 4, col = dW[i] > 9 ? MIDL : SPARK; data[o] = col[0]; data[o + 1] = col[1]; data[o + 2] = col[2]; } }
       const c = document.createElement('canvas'); c.width = W; c.height = H;
       const g = c.getContext('2d');
       g.putImageData(new ImageData(data, W, H), 0, 0);

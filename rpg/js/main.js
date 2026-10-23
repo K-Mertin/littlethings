@@ -118,7 +118,7 @@ const Game = {
     document.getElementById('btnContinue').style.display = any ? '' : 'none';
     document.getElementById('btnNew').className = any ? 'btn2' : 'big';
     this.showOv('title');
-    if (!this.titleBg) { const keep = G; G = newGameState('normal'); Field.load('world', 9, 8, 'down', { quiet: true }); this.titleBg = Field.baked; G = keep; }
+    if (!this.titleBg) setTimeout(() => { if (this.titleBg || this.scene !== 'title') return; const keep = G; G = newGameState('normal'); Field.load('world', 9, 8, 'down', { quiet: true }); this.titleBg = Field.baked; G = keep; Music.play('title'); }, 60);
     Music.play('title');
   },
   openSlots(mode) {
@@ -266,7 +266,9 @@ const Game = {
 
   // ───── 主迴圈 ─────
   loop(ts) {
-    const dt = Math.min(0.05, (ts - (this.last || ts)) / 1000); this.last = ts;
+    const raw = (ts - (this.last || ts)) / 1000, dt = Math.min(0.05, raw); this.last = ts;
+    // 效能不足時自動降低特效（光暈、粒子）
+    if (raw > 0 && raw < 0.5) { this.avgDt = lerp(this.avgDt || 0.016, raw, 0.03); this.slowT = this.avgDt > 1 / 36 ? (this.slowT || 0) + raw : 0; if (this.slowT > 4 && !this.lowFx) this.lowFx = true; }
     Input.frame(dt);
     if (this.scene === 'title') { this.titleInput(); this.titleT = (this.titleT || 0) + dt; }
     UI.handleTaps();

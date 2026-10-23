@@ -438,7 +438,7 @@ const BScene = {
       msg = { x: V.x + pad, y: V.y + V.h - ph - pad, w: mw, h: ph };
       status = { x: msg.x + mw + pad, y: msg.y, w: V.w - pad * 3 - mw, h: ph };
     } else {
-      const sh = fs * 2.75 * 2 + pad * 1.6, mh = fs * 1.6 * 3 + fs * 1.5 + pad * 1.9;
+      const sh = fs * 3.3 * 2 + pad * 1.6, mh = fs * 1.6 * 3 + fs * 1.5 + pad * 1.9;
       status = { x: V.x + pad, y: V.y + V.h - sh - pad, w: V.w - pad * 2, h: sh };
       msg = { x: V.x + pad, y: status.y - mh - pad * 0.6, w: V.w - pad * 2, h: mh };
     }
@@ -714,7 +714,7 @@ const BScene = {
         g.font = `700 ${sm}px ${FONT}`; const nwid = g.measureText(Party.name(m)).width;
         UI.text(g, tag, x + pad * 0.9 + nwid, y + rh * 0.26, tag.startsWith('Lv') ? '#9aa6d8' : '#ffb0c0', sm * 0.7, 'left', 'middle');
         const gw = cw - pad * 1.4;
-        this.gauge(g, x + pad * 0.5, y + rh * 0.56, gw, 'HP', hp, s.mhp, sm * 0.9, hp < s.mhp / 4 ? ['#ff8a5a', '#d8402a'] : ['#7aff9a', '#2aa850']);
+        this.gauge(g, x + pad * 0.5, y + rh * 0.53, gw, 'HP', hp, s.mhp, sm * 0.9, hp < s.mhp / 4 ? ['#ff8a5a', '#d8402a'] : ['#7aff9a', '#2aa850']);
         this.gauge(g, x + pad * 0.5, y + rh * 0.84, gw, 'MP', m.mp, s.mmp, sm * 0.9, ['#8ac8ff', '#3a6ad8']);
       }
       if (this.selectingAlly && (this.allyList || []).includes(m)) UI.hit(x, y, cw, rh, () => { const k = this.allyList.indexOf(m); if (this.ref.pick) this.ref.pick(k); });
