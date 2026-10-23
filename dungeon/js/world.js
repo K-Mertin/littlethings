@@ -8,15 +8,15 @@ const fxOn = () => typeof FX !== 'undefined';
 Object.assign(Game, {
   mname(m) { return MON[m.k].n; },
   monAcc(m) { return MON[m.k].acc + Math.floor(m.lv * 0.4); },
-  monDmg(m) { const D = MON[m.k]; let d = G.rng.int(D.atk[0], D.atk[1]) + Math.floor(m.lv * 0.5); if (m.st.berserk) d = Math.round(d * 1.5); if (m.enraged) d = Math.round(d * 1.2); return d; },
+  monDmg(m) { const D = MON[m.k]; let d = G.rng.int(D.atk[0], D.atk[1]) + Math.floor(m.lv * 0.5); if (m.st.berserk) d = Math.round(d * 1.5); if (m.enraged) d = Math.round(d * 1.2); if (m.elite === 'rage') d = Math.round(d * 1.4); if (G.asc) d = Math.round(d * this.ascMult('mdmg')); return d; },
   unaware(m) { return !m.awake || m.st.sleep > 0 || m.st.para > 0 || m.st.freeze > 0 || G.P.sneakNext > 0 || G.P.st.invis > 0; },
-  spellMult() { const P = G.P, w = this.equipped('w'); return (P.cls === 'mage' ? 1.5 : 1) * (P.perks.arcane ? 1.4 : 1) * (w && ITEMS[w.k].magic ? 1.25 : 1); },
+  spellMult() { const P = G.P, w = this.equipped('w'); return (P.cls === 'mage' ? 1.5 : 1) * (P.perks.arcane ? 1.4 : 1) * (w && ITEMS[w.k].magic ? 1.25 : 1) * (G.mod === 'arcane' ? 1.3 : 1); },
 
   // ---------- 玩家近戰 ----------
   meleeAttack(m, o = {}) {
     const P = G.P, st = this.stats(), D = MON[m.k], w = this.equipped('w'), W = w ? ITEMS[w.k] : null;
-    if (fxOn()) FX.bump(P, m.x - P.x, m.y - P.y);
-    const sneak = this.unaware(m) && !D.boss;
+    if (fxOn()) { FX.bump(P, m.x - P.x, m.y - P.y); FX.slash(m.x, m.y, m.x - P.x, m.y - P.y, '#ffe8c0', W && (W.spr === 'greatsword' || W.spr === 'axe' || W.sweep)); }
+    const sneak = this.unaware(m) && (!D.boss || (P.cls === 'rogue' && (P.st.invis > 0 || P.sneakNext > 0)));
     if (!o.sure && !sneak && !G.rng.chance(hitCh(st.acc, D.eva))) {
       msg('你沒打中' + D.n + '。', 'm'); Snd.play('miss'); if (fxOn()) FX.text(m.x, m.y, 'MISS', '#9aa3b2');
       this.noise(m.x, m.y, 4); return false;
@@ -24,7 +24,9 @@ Object.assign(Game, {
     let dmg = G.rng.int(st.dmin, st.dmax), mult = (o.mult || 1) * st.fury;
     const crit = G.rng.chance(st.crit);
     let tag = '';
-    if (sneak) { const sm = (P.cls === 'rogue' ? 3 : 2) + (W && W.spr === 'dagger' ? 1 : 0) + (P.perks.assassin ? 1 : 0); mult *= sm; tag = '偷襲！'; }
+    if (sneak) { const sm = (P.cls === 'rogue' ? 3 : 2) + (W && W.spr === 'dagger' ? 1 : 0) + (P.perks.assassin ? 1 : 0); mult *= sm * (this.reson() === 'hunt' ? 1.5 : 1) * (D.boss ? 0.5 : 1); tag = '偷襲！'; }
+    if (this.runeOf('w') === 'slayer' && (D.boss || D.undead)) mult *= 1.5 * (this.reson() === 'holy' && D.boss ? 1.2 : 1);
+    if (G.mod === 'glass') mult *= 1.5;
     if (crit) { mult *= 1.8; tag += '會心一擊！'; }
     if (P.cls === 'paladin' && D.undead) mult *= 1.5;
     dmg = Math.round(dmg * mult);
@@ -34,8 +36,11 @@ Object.assign(Game, {
     Snd.play(crit || sneak ? 'crit' : 'hit');
     if (P.st.invis || P.sneakNext) { if (P.st.invis) msg('你從暗影中現身。', 'm'); P.st.invis = 0; P.sneakNext = 0; }
     this.damageMon(m, dmg, { melee: 1, crit: crit || sneak });
+    if (fxOn()) FX.spark(m.x, m.y, crit || sneak ? '#ffd75a' : '#fff6d0', crit || sneak ? 10 : 6);
+    this.weaponProc(m, dmg);
     // 武器特性
     if (W && !o.noSpecial) {
+      if (W.sweep) for (const b of this.adjHostiles().filter(x => x !== m && x.hp > 0)) this.damageMon(b, Math.max(1, Math.round(dmg * 0.5)), { melee: 1 });
       if (W.pierce) { const bx = m.x + Math.sign(m.x - P.x), by = m.y + Math.sign(m.y - P.y), b = this.monAt(bx, by); if (b && !MON[b.k].npc) { this.damageMon(b, Math.max(1, Math.round(dmg * 0.6)), { melee: 1 }); msg('長槍刺穿到後面的' + MON[b.k].n + '！', 'n'); } }
       if (W.cleave) { const adj = this.adjHostiles().filter(x => x !== m && x.hp > 0); if (adj.length) { const b = G.rng.pick(adj); this.damageMon(b, Math.max(1, Math.round(dmg * 0.5)), { melee: 1 }); } }
       if (W.stun && m.hp > 0 && G.rng.chance(0.15)) { m.st.stun = 2; msg(D.n + '被打暈了！', 'g'); }
@@ -51,6 +56,7 @@ Object.assign(Game, {
     if (m.hp <= 0) return;
     const D = MON[m.k];
     if (D.npc) return;
+    if (m.elite === 'tough') n = Math.max(1, n - 2);
     m.hp -= n; G.stats.dmg += n;
     if (m.disg) this.reveal(m);
     if (fxOn()) { FX.num(m.x, m.y, String(n), o.crit ? '#ffd75a' : '#ffffff', o.crit); FX.flash(m); FX.burst(m.x, m.y, D.undead ? '#d8d0c0' : D.k === 'slime' ? '#5fd06a' : '#ff5a5a', o.crit ? 10 : 5); if (o.crit) FX.shake(4); }
@@ -64,22 +70,30 @@ Object.assign(Game, {
     }
     if (D.berserk && !m.st.berserk && m.hp < m.mhp * 0.5) { m.st.berserk = 999; msg(D.n + '陷入狂暴！', 'w'); Snd.play('roar'); }
     if (D.spores && o.melee && cheb(m.x, m.y, G.P.x, G.P.y) <= 1 && G.rng.chance(0.3)) { G.P.st.conf = Math.max(G.P.st.conf || 0, 3); msg(D.n + '噴出孢子，你頭昏眼花！', 'b'); if (fxOn()) FX.burst(m.x, m.y, '#e0a0ff', 14); }
-    if (D.final && !m.enraged && m.hp < m.mhp * 0.5) { m.enraged = 1; msg('深淵之王發出震天怒吼，黑暗變得更加狂暴！', 'w'); Snd.play('roar'); if (fxOn()) FX.shake(10); }
+    if (D.boss && !m.enraged && m.hp < m.mhp * 0.5) { m.enraged = 1; msg(D.final ? '深淵之王發出震天怒吼，黑暗變得更加狂暴！' : D.n + '陷入狂怒！攻擊變得更加猛烈！', 'w'); Snd.play('roar'); if (fxOn()) { FX.shake(10); FX.screen('255,40,90', 0.35); FX.ring(m.x, m.y, 2, '#ff4a8a'); } if (typeof UI !== 'undefined') UI.bossPhase(m); }
   },
   killMon(m, o = {}) {
     const D = MON[m.k], P = G.P;
     m.hp = 0;
-    msg((o.melee ? '你打倒了' : '') + D.n + (o.melee ? '！' : '倒下了。'), 'g');
+    msg((o.melee ? '你打倒了' : '') + this.monName(m) + (o.melee ? '！' : '倒下了。'), 'g');
+    Meta.killMon(m.k);
     Snd.play(D.boss ? 'bigdie' : 'mdie');
-    if (fxOn()) { FX.burst(m.x, m.y, D.boss ? '#ffd75a' : '#ff6a5a', D.boss ? 40 : 14); if (D.boss) FX.shake(12); FX.corpse(m); }
+    if (fxOn()) { FX.die(m); FX.burst(m.x, m.y, D.boss ? '#ffd75a' : D.undead ? '#e8e0d0' : '#ff6a5a', D.boss ? 40 : 14); if (D.boss) { FX.shake(12); FX.screen('255,240,200', 0.5); } FX.corpse(m); }
     G.stats.kills++;
-    const xp = Math.round(D.xp * (1 + m.lv * 0.08) * Math.pow(0.5, m.gen || 0));
+    const xp = Math.round(D.xp * (1 + m.lv * 0.08) * Math.pow(0.5, m.gen || 0) * (m.elite ? 2.5 : 1));
+    if (m.elite) {
+      G.stats.elites = (G.stats.elites || 0) + 1; Meta.inc('elites'); Meta.event('elite');
+      const nd = 1 + (G.boon === 'hunter' ? 1 : 0) + (G.mod === 'elite' && G.rng.chance(0.5) ? 1 : 0);
+      for (let i = 0; i < nd; i++) this.dropItem(G.rng.chance(0.6) ? this.goodItem(G.depth) : this.randomItem(G.depth + 2), m.x, m.y);
+    }
     if (P.perks.vamp) this.healP(3 + Math.floor(P.lvl / 3));
     if (m.gold) { this.dropItem({ id: G.nid++, k: 'gold', c: 'gold', n: m.gold }, m.x, m.y); }
     else if (!D.boss && m.k !== 'sporeling' && m.k !== 'skeleton' && G.rng.chance(0.1)) this.dropItem(G.rng.chance(0.4) ? this.goldItem(G.depth, 1) : this.randomItem(G.depth), m.x, m.y);
     if (m.k === 'mimic') { for (let i = 0; i < 2; i++) this.dropItem(this.randomItem(G.depth + 2), m.x, m.y); this.dropItem(this.goldItem(G.depth, 2), m.x, m.y); }
     if (D.boss) {
       G.stats.bosses++;
+      Meta.event('boss', m.k);
+      if ((G.asc || 0) >= (Store.meta.ascMax || 0) && (G.asc || 0) < ASC.length - 1 && !G.daily) { Store.meta.ascMax = (G.asc || 0) + 1; msg('解鎖了深淵等級 ' + Store.meta.ascMax + '！在開新冒險時可以選擇。', 'y'); }
       Store.meta.bossKills = (Store.meta.bossKills || 0) + 1;
       if (!D.final) {
         for (let i = 0; i < 3; i++) { const it = i === 0 ? this.makeItem(G.rng.pick(['p_life', 'p_str', 'p_xheal'])) : this.randomItem(G.depth + 3); if (it.ench < 0) { it.ench = 1; it.cursed = false; } this.dropItem(it, m.x, m.y); }
@@ -91,6 +105,7 @@ Object.assign(Game, {
       // 召喚出來的小怪一起消失
       for (const o2 of G.F.mons) if (o2.summoner === m.id && o2.hp > 0) { o2.hp = 0; if (fxOn()) FX.burst(o2.x, o2.y, '#b48cff', 8); }
     }
+    if (m.trial) this.checkTrial();
     this.gainXp(xp);
     if (D.final) this.win();
   },
@@ -118,9 +133,13 @@ Object.assign(Game, {
     if (P.st.invis && G.rng.chance(0.5)) { msg(D.n + '朝空氣亂揮了一下。', 'm'); return; }
     if (!G.rng.chance(hitCh(this.monAcc(m), st.eva))) { msg(D.n + '沒打中你。', 'm'); Snd.play('miss'); if (fxOn()) FX.text(P.x, P.y, 'MISS', '#9aa3b2'); return; }
     let dmg = Math.max(1, this.monDmg(m) - G.rng.int(0, st.arm));
-    msg(D.n + D.verb + '了你。', 'b');
+    msg(this.monName(m) + D.verb + '了你。', 'b');
+    if (fxOn()) FX.slash(P.x, P.y, P.x - m.x, P.y - m.y, '#ff8a7a');
     const cause = '被' + D.n + (D.verb.length > 1 ? D.verb + '致死' : D.verb + '死');
     if (P.perks.thorns) { const r = Math.max(1, Math.round(dmg * 0.4)); this.damageMon(m, r, {}); }
+    if (this.runeOf('a') === 'thorn' && m.hp > 0) { const r = Math.max(1, Math.round(dmg * 0.3 * (this.reson() === 'holy' ? 2 : 1))); this.damageMon(m, r, {}); }
+    if (m.elite === 'vamp' && m.hp > 0) { m.hp = Math.min(m.mhp, m.hp + Math.ceil(dmg * 0.6)); if (fxOn()) FX.burst(m.x, m.y, '#ff4a8a', 6); }
+    if (m.elite === 'flame' && G.rng.chance(0.5)) this.igniteP(this.monName(m));
     this.hurtP(dmg, cause);
     if (G.over) return;
     if (D.poison && !P.perks.resist && G.rng.chance(0.5)) { P.st.poison = (P.st.poison || 0) + D.poison; P.poisonSrc = D.n; msg('你中毒了！', 'b'); }
@@ -130,8 +149,9 @@ Object.assign(Game, {
       msg(D.n + '偷走了 ' + amt + ' 金幣！', 'b'); Snd.play('gold');
     }
   },
-  igniteP(src) { const P = G.P; if (this.tile(P.x, P.y) === T.WATER) return; if (!P.st.burn) msg('你著火了！', 'b'); P.st.burn = 3 + G.rng.int(0, 2); P.burnSrc = src; },
-  lavaBurn(P) { const n = G.rng.int(8, 14); msg('滾燙的岩漿燒傷了你！', 'b'); this.igniteP('岩漿'); this.hurtP(n, '在岩漿中被燒死'); },
+  burnRes() { const a = this.equipped('a'); return (this.runeOf('a') === 'fireward' || (a && ITEMS[a.k].fireRes)) ? 0.5 : 1; },
+  igniteP(src) { const P = G.P; if (this.tile(P.x, P.y) === T.WATER || this.reson() === 'blaze') return; if (!P.st.burn) msg('你著火了！', 'b'); P.st.burn = 3 + G.rng.int(0, 2); P.burnSrc = src; },
+  lavaBurn(P) { const n = Math.max(1, Math.round(G.rng.int(8, 14) * this.burnRes())); msg('滾燙的岩漿燒傷了你！', 'b'); this.igniteP('岩漿'); this.hurtP(n, '在岩漿中被燒死'); },
 
   // ---------- 投射物 ----------
   // 從 (x0,y0) 往 (tx,ty) 飛，回傳 { path, hit(生物), end:[x,y] }
@@ -392,25 +412,26 @@ Object.assign(Game, {
     if (G.over) return;
     for (const id in P.cds) if (P.cds[id] > 0) P.cds[id]--;
     this.updateFov();
+    if (G.turn % 5 === 0) { if (Meta.knowItems()) Meta.event('id'); if (G.P.gold >= 500) Meta.event('gold', G.P.gold); if (this.reson()) Meta.event('reson'); }
     if (G.turn - (G.lastSave || 0) >= 20) { G.lastSave = G.turn; this.save(); }
   },
   tick() {
     const P = G.P, F = G.F;
     G.turn++;
     // 飢餓
-    const hr = (this.hasRing('r_sust') ? 0.5 : 1) * (P.perks.belly ? 0.65 : 1);
+    const hr = (this.hasRing('r_sust') ? 0.5 : 1) * (P.perks.belly ? 0.65 : 1) * (asc(3) ? 1.2 : 1);
     const oldH = P.hunger; P.hunger -= hr;
     if (oldH >= 300 && P.hunger < 300) { msg('你肚子餓了。', 'w'); Snd.play('warn'); }
     if (oldH >= 100 && P.hunger < 100) { msg('你餓得頭暈眼花，快點吃東西！', 'b'); Snd.play('warn'); }
     if (P.hunger <= 0) { P.hunger = 0; if (G.turn % 4 === 0) this.hurtP(1, '餓死'); }
     // 回復
     if (P.hunger > 0 && !P.st.poison) {
-      P.regen += P.mhp / 240 * (1 + 0.5 * (P.perks.regen || 0)) * (1 + Math.max(0, this.ringEnch('r_regen')) * 0.9);
+      P.regen += P.mhp / 240 * (1 + 0.5 * (P.perks.regen || 0)) * (1 + Math.max(0, this.ringEnch('r_regen')) * 0.9) * (this.runeOf('a') === 'regen' ? 1.6 : 1);
       if (P.regen >= 1) { const n = Math.floor(P.regen); P.regen -= n; P.hp = Math.min(P.mhp, P.hp + n); }
     }
     if (P.st.poison > 0) { if (P.perks.resist) P.st.poison = 0; else this.hurtP(1, '因' + (P.poisonSrc || '毒') + '的毒素身亡'); }
     if (G.over) return;
-    if (P.st.burn > 0) { if (this.tile(P.x, P.y) === T.WATER) P.st.burn = 0; else this.hurtP(P.perks.resist ? 1 : G.rng.int(1, 3), '被' + (P.burnSrc || '火焰') + '燒死'); }
+    if (P.st.burn > 0) { if (this.tile(P.x, P.y) === T.WATER) P.st.burn = 0; else this.hurtP(P.perks.resist || this.burnRes() < 1 ? 1 : G.rng.int(1, 3), '被' + (P.burnSrc || '火焰') + '燒死'); }
     if (G.over) return;
     if (this.tile(P.x, P.y) === T.LAVA) { this.lavaBurn(P); if (G.over) return; }
     for (const k in P.st) if (P.st[k] > 0 && k !== 'poison' && k !== 'burn') {
@@ -436,7 +457,7 @@ Object.assign(Game, {
       this.monStatus(m);
       if (m.hp <= 0) continue;
       const D = MON[m.k];
-      let sp = D.spd; if (m.st.haste) sp *= 2; if (m.st.slow) sp /= 2; if (m.enraged) sp *= 1.5;
+      let sp = D.spd; if (m.st.haste) sp *= 2; if (m.st.slow) sp /= 2; if (m.enraged && D.final) sp *= 1.5; if (m.elite === 'fast') sp *= 1.5;
       m.energy += sp;
       let g = 0;
       while (m.energy >= 100 && m.hp > 0 && !G.over && G.F === F && g++ < 4) { m.energy -= 100; this.monAct(m); }
@@ -478,6 +499,7 @@ Object.assign(Game, {
     if (m.st.poison > 0) { this.damageMon(m, 1, {}); m.st.poison--; if (m.hp <= 0) return; }
     if (m.st.burn > 0) { if (D.fireImm || this.tile(m.x, m.y) === T.WATER) m.st.burn = 0; else { this.damageMon(m, G.rng.int(1, 3), {}); m.st.burn--; if (m.hp <= 0) return; } }
     if (this.tile(m.x, m.y) === T.LAVA && !(D.lavaWalk || D.fly || D.fireImm)) { this.damageMon(m, G.rng.int(8, 14), {}); if (m.hp <= 0) return; }
+    if (m.elite === 'regen' && m.hp < m.mhp) m.hp = Math.min(m.mhp, m.hp + Math.max(1, Math.round(m.mhp * 0.03)));
     for (const k of ['haste', 'slow', 'conf', 'para', 'freeze', 'stun', 'sleep', 'fear', 'revealed']) if (m.st[k] > 0) m.st[k]--;
     for (const k in m.cd) if (m.cd[k] > 0) m.cd[k]--;
   },
@@ -488,6 +510,8 @@ Object.assign(Game, {
     if (P.cls === 'rogue') s *= 0.5;
     const e = this.ringEnch('r_stealth'); if (e > 0) s *= Math.pow(0.55, e); else if (e < 0) s *= 1.5;
     if (P.st.invis) s *= 0.1;
+    if (this.runeOf('a') === 'shadow') s *= 0.6;
+    const a = this.equipped('a'); if (a && ITEMS[a.k].sneak) s *= 0.7;
     return s;
   },
   monAct(m) {
@@ -579,7 +603,8 @@ Object.assign(Game, {
     if (sure && !D.boss && G.rng.chance(clamp(0.05 + st.eva * 0.02, 0.05, 0.3))) { msg(D.n + R.v + '，你閃開了！', 'm'); return; }
     let dmg = G.rng.int(R.dmg[0], R.dmg[1]) + Math.floor(m.lv * 0.4);
     if (R.k === 'arrow') dmg = Math.max(1, dmg - G.rng.int(0, st.arm));
-    else dmg = Math.max(1, dmg - G.rng.int(0, st.arm >> 1));
+    else dmg = Math.max(1, Math.round((dmg - G.rng.int(0, st.arm >> 1)) * (this.runeOf('a') === 'ward' ? 0.65 : 1)));
+    if (R.k === 'fire') dmg = Math.max(1, Math.round(dmg * (this.burnRes() < 1 ? 0.75 : 1)));
     msg(D.n + R.v + '，擊中了你！', 'b');
     this.hurtP(dmg, '被' + D.n + (RANGED_DEATH[R.k] || '殺死'));
     if (G.over) return;
@@ -644,7 +669,7 @@ Object.assign(Game, {
   // ---------- 結束 ----------
   score() {
     const s = G.stats, P = G.P;
-    return G.depth * 100 + P.lvl * 25 + s.kills * 3 + Math.floor((P.gold + s.gold) / 6) + s.bosses * 300 + (G.over === 'win' ? 5000 : 0);
+    return Math.round((G.depth * 100 + P.lvl * 25 + s.kills * 3 + (s.elites || 0) * 15 + Math.floor((P.gold + s.gold) / 6) + s.bosses * 300 + (G.over === 'win' ? 5000 : 0)) * (1 + (G.asc || 0) * 0.1));
   },
   die(cause) {
     if (G.over) return;
@@ -660,20 +685,24 @@ Object.assign(Game, {
     msg('深淵之王化為塵土……你征服了深淵地牢！', 'y');
     Snd.play('victory');
     Store.meta.wins = (Store.meta.wins || 0) + 1;
+    Meta.event('win');
     this.finishRun();
   },
   finishRun() {
     Store.clearRun();
     const M = Store.meta, s = G.stats, P = G.P;
     const score = this.score();
-    const souls = G.depth * 2 + Math.floor(s.kills / 4) + s.bosses * 8 + (G.over === 'win' ? 40 : 0);
+    Meta.knowItems();
+    const soulBase = G.depth * 2 + Math.floor(s.kills / 4) + s.bosses * 8 + (s.elites || 0) + (G.over === 'win' ? 40 : 0);
+    const souls = Math.round(soulBase * (1 + (G.asc || 0) * 0.2));
     M.souls = (M.souls || 0) + souls; M.totalSouls = (M.totalSouls || 0) + souls;
     M.kills = (M.kills || 0) + s.kills;
-    const rec = { cls: P.cls, lvl: P.lvl, depth: G.depth, score, cause: G.cause, win: G.over === 'win', seed: G.seed, daily: G.daily, date: new Date().toISOString().slice(0, 10), turns: G.turn, kills: s.kills, gold: P.gold };
+    const killer = Object.keys(MON).filter(k => G.cause.includes(MON[k].n)).sort((a, b) => MON[b].n.length - MON[a].n.length)[0] || null;
+    const rec = { cls: P.cls, lvl: P.lvl, depth: G.depth, score, cause: G.cause, win: G.over === 'win', seed: G.seed, daily: G.daily, date: new Date().toISOString().slice(0, 10), turns: G.turn, kills: s.kills, gold: P.gold, asc: G.asc || 0, killer };
     M.records = (M.records || []).concat([rec]).sort((a, b) => b.score - a.score).slice(0, 40);
     if (G.daily) { const d = todayStr(); if (!M.daily[d] || M.daily[d].score < score) M.daily[d] = rec; }
     Store.saveMeta();
-    G.summary = Object.assign({ souls, rank: M.records.indexOf(M.records.find(r => r === rec)) + 1 }, rec);
+    G.summary = Object.assign({ souls, soulBase, elites: s.elites || 0, chests: s.chests || 0, altars: s.altars || 0, ach: (G.newAch || []).slice(), rank: M.records.indexOf(M.records.find(r => r === rec)) + 1 }, rec);
     if (typeof UI !== 'undefined') setTimeout(() => UI.showEnd(), G.over === 'win' ? 1600 : 1300);
   },
 });
