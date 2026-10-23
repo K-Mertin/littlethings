@@ -262,6 +262,12 @@ function updateEB(dt) {
   const hr = G.d.hit;
   for (const b of G.eb) {
     b.t += dt;
+    if (b.split && b.t > b.split) {
+      b.dead = true; const a0 = Math.atan2(b.vy, b.vx);
+      for (const k of [-0.38, 0, 0.38]) eShot(b.x, b.y, a0 + k, 150, 's');
+      fxP({ k: 'r', x: b.x, y: b.y, r: 2, R: 12, life: 0, max: 0.2 });
+      continue;
+    }
     if (b.kind === 'm' && b.t < 1.5 && P.alive) {
       const sp = Math.hypot(b.vx, b.vy), a = turnTo(Math.atan2(b.vy, b.vx), aim(b.x, b.y), 2.0 * dt);
       b.vx = Math.cos(a) * sp; b.vy = Math.sin(a) * sp;
@@ -283,19 +289,21 @@ function drawEB(ctx) {
   for (const bm of G.beams) {
     if (bm.t < bm.warn) {
       const a = 0.35 + 0.35 * Math.sin(bm.t * 30);
-      ctx.fillStyle = `rgba(255,60,60,${a})`; ctx.fillRect(bm.x - 1, bm.y, 2, H - bm.y);
-      ctx.strokeStyle = `rgba(255,80,80,${a * 0.6})`; ctx.setLineDash([6, 6]); ctx.strokeRect(bm.x - bm.w / 2, bm.y, bm.w, H - bm.y); ctx.setLineDash([]);
+      const C = bm.col === 'o' ? [255, 150, 30] : [255, 60, 60];
+      ctx.fillStyle = `rgba(${C[0]},${C[1]},${C[2]},${a})`; ctx.fillRect(bm.x - 1, bm.y, 2, H - bm.y);
+      ctx.strokeStyle = `rgba(${C[0]},${C[1] + 20},${C[2] + 20},${a * 0.6})`; ctx.setLineDash([6, 6]); ctx.strokeRect(bm.x - bm.w / 2, bm.y, bm.w, H - bm.y); ctx.setLineDash([]);
     } else {
       const k = bm.t - bm.warn, w = bm.w * Math.min(1, k * 8) * (1 - Math.max(0, (k - bm.life + 0.15) / 0.15));
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      ctx.fillStyle = 'rgba(255,60,90,.35)'; ctx.fillRect(bm.x - w / 2 - 6, bm.y, w + 12, H - bm.y);
-      ctx.fillStyle = 'rgba(255,140,170,.85)'; ctx.fillRect(bm.x - w / 2, bm.y, w, H - bm.y);
+      ctx.fillStyle = bm.col === 'o' ? 'rgba(255,110,20,.4)' : 'rgba(255,60,90,.35)'; ctx.fillRect(bm.x - w / 2 - 6, bm.y, w + 12, H - bm.y);
+      ctx.fillStyle = bm.col === 'o' ? 'rgba(255,190,80,.9)' : 'rgba(255,140,170,.85)'; ctx.fillRect(bm.x - w / 2, bm.y, w, H - bm.y);
       ctx.fillStyle = '#fff'; ctx.fillRect(bm.x - w / 6, bm.y, w / 3, H - bm.y);
       ctx.restore();
     }
   }
   for (const b of G.eb) {
-    if (b.kind === 'b') Art.draw(ctx, 'ebB', b.x, b.y);
+    if (b.split) Art.draw(ctx, 'ebI', b.x, b.y, b.t * 6);
+    else if (b.kind === 'b') Art.draw(ctx, 'ebB', b.x, b.y);
     else if (b.kind === 'm') Art.draw(ctx, 'emis', b.x, b.y, Math.atan2(b.vy, b.vx) - Math.PI / 2);
     else Art.draw(ctx, 'eb', b.x, b.y);
   }

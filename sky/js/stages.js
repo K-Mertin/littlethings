@@ -9,7 +9,7 @@ const STAGES = [
     seq: ['droneW', 'tanks3', 'fDown', 'carrierP', 'jetsUp', 'chop2', 'trucks', 'fSwoopL', 'fSwoopR', 'tanks3', 'carrierS', 'chop3', 'jetsUp', 'fDive', 'bomber', 'carrierP', 'fSine', 'tanks3', 'droneW', 'carrierB', 'jetsUp', 'chop3', 'fDown'] },
   { name: '黃沙要塞', en: 'SAND FORTRESS', boss: 'boss4',
     seq: ['fDown', 'tanks3', 'chop2', 'carrierP', 'fSwoopL', 'fSwoopR', 'tanks3', 'jetsUp', 'bomber', 'carrierS', 'droneW', 'fDive', 'tanks3', 'chop3', 'carrierP', 'fSine', 'jetsUp', 'tanks3', 'carrierB', 'bomber', 'fDown', 'chop3'] },
-  { name: '雲端決戰', en: 'ABOVE THE CLOUDS', boss: 'boss5',
+  { name: '雲端決戰', en: 'ABOVE THE CLOUDS', boss: 'boss5', speed: 60, clouds: true,
     seq: ['droneW', 'fDown', 'fSwoopL', 'fSwoopR', 'carrierP', 'chop3', 'jetsUp', 'fDive', 'bomber', 'carrierS', 'droneW', 'fSine', 'fDown', 'chop3', 'carrierP', 'jetsUp', 'fSwoopL', 'fSwoopR', 'bomber', 'carrierB', 'fDive', 'droneW'] },
 ];
 
