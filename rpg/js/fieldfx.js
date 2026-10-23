@@ -82,7 +82,7 @@ const FieldFx = {
     for (const l of f.lights) if (l.flame && !hid(l)) { const X = sx0 + l.x * k, Y = sy0 + l.y * k; if (X < V.x - 40 || X > V.x + V.w + 40 || Y < V.y - 40 || Y > V.y + V.h + 40) continue; this.flame(g, X, Y + 2 * k, k * (l.flame < 1 ? 0.5 : 1), t, l.x); }
     const dark = f.def.dark;
     if (dark) {
-      const s = 4, w = Math.ceil(V.w / s), h = Math.ceil(V.h / s);
+      const s = 2, w = Math.ceil(V.w / s), h = Math.ceil(V.h / s);
       if (!this.lm || this.lm.width !== w || this.lm.height !== h) { this.lm = document.createElement('canvas'); this.lm.width = w; this.lm.height = h; }
       const lg = this.lm.getContext('2d');
       lg.globalCompositeOperation = 'source-over'; lg.clearRect(0, 0, w, h);
@@ -94,7 +94,7 @@ const FieldFx = {
       for (const l of f.lights) hole(sx0 + l.x * k, sy0 + l.y * k, l.r * k * 1.5 * (1 + (l.fl ? Math.sin(t * 9 + l.x) * 0.06 * l.fl : 0)), 0.9);
       g.imageSmoothingEnabled = true; g.drawImage(this.lm, V.x, V.y, w * s, h * s); g.imageSmoothingEnabled = false;
     }
-    if (Game.lowFx && !dark) return;
+    // 小畫布上的光暈很便宜，低畫質時也保留
     // 光暈（加色）：不會閃爍的光源先烘焙成一張光圖
     g.globalCompositeOperation = 'lighter';
     if (!f.lightLayer) {

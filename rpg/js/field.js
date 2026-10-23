@@ -242,7 +242,76 @@ const Field = {
     if (!F('nox')) return { col: '40,24,90', a: this.isWorld() ? 0.16 : 0.2, dim: 1 };
     return null;
   },
+  // 地圖先畫在「原生解析度」（1 圖塊 = 16 像素）的小畫布上，色調、光暈、黑暗都在小畫布上合成，
+  // 最後只做一次放大貼圖：手機上全螢幕的混色次數從 5～6 次降到 1 次
   draw(g) {
+    const V0 = L.V, k0 = L.k, w = Math.ceil(V0.w / k0), h = Math.ceil(V0.h / k0);
+    if (!this.fb || this.fb.width !== w || this.fb.height !== h) { this.fb = document.createElement('canvas'); this.fb.width = w; this.fb.height = h; this.fbg = this.fb.getContext('2d'); }
+    const fg = this.fbg;
+    fg.setTransform(1, 0, 0, 1, 0, 0); fg.globalAlpha = 1; fg.globalCompositeOperation = 'source-over'; fg.imageSmoothingEnabled = false;
+    L.V = { x: 0, y: 0, w, h }; L.k = 1;
+    try { this.drawScene(fg); } finally { L.V = V0; L.k = k0; }
+    g.save(); g.beginPath(); g.rect(V0.x, V0.y, V0.w, V0.h); g.clip();
+    let shx = 0, shy = 0;
+    if (this.shakeT > 0) { this.shakeT = Math.max(0, this.shakeT - 1 / 60); const a = Math.min(1, this.shakeT / 0.3) * k0 * 1.5; shx = Math.round(Math.sin(this.t * 83) * a); shy = Math.round(Math.cos(this.t * 61) * a * 0.6); }
+    g.imageSmoothingEnabled = false; g.drawImage(this.fb, V0.x + shx, V0.y + shy, w * k0, h * k0);
+    this.drawOverlay(g);
+    g.restore();
+    // 地名
+    if (this.banner) {
+      const b = this.banner, a = Math.min(1, b.t * 3, (2.6 - b.t) * 2), fs = L.FS;
+      g.globalAlpha = Math.max(0, a);
+      UI.banner(g, b.text, V0.x + V0.w / 2, V0.y + fs * 2.4, fs);
+      g.globalAlpha = 1;
+    }
+  },
+  // ───── 演出：表情泡泡、電影黑邊、震動 ─────
+  emotes: [], cine: 0, cineT: 0,
+  ring(x, y, col = '255,230,150', r = 9, dur = 1.6) { (this.rings || (this.rings = [])).push({ x, y, col, r, dur, t: 0 }); },
+  shake(t = 0.4) { this.shakeT = Math.max(this.shakeT || 0, t); },
+  emote(who, ch, dur = 1.4) { this.emotes = this.emotes.filter(e => e.who !== who); this.emotes.push({ who, ch, t: 0, dur }); },
+  emotePos(who) {
+    if (who === 'leader' || typeof who === 'number') { const p = this.party[who === 'leader' ? 0 : who]; if (!p) return null; return { x: lerp(p.fx, p.x, p.t), y: lerp(p.fy, p.y, p.t) }; }
+    if (who && who.d) { if (who.hidden) return null; const big = who.d.mon ? (MONS[who.d.mon].boss ? 1.2 : 0.4) : 0; return { x: who.mv ? lerp(who.x, who.mv.tx, who.mv.t) : who.x, y: (who.mv ? lerp(who.y, who.mv.ty, who.mv.t) : who.y) - big }; }
+    return null;
+  },
+  drawOverlay(g) {
+    const V = L.V, fs = L.FS, dt = 1 / 60;
+    // 電影黑邊
+    this.cine = lerp(this.cine, this.cineT, 0.12); if (Math.abs(this.cine - this.cineT) < 0.01) this.cine = this.cineT;
+    if (this.cine > 0.01) { const bh = Math.round(V.h * 0.085 * this.cine); g.fillStyle = '#05060f'; g.fillRect(V.x, V.y, V.w, bh); g.fillRect(V.x, V.y + V.h - bh, V.w, bh); }
+    // 表情泡泡
+    for (const e of this.emotes) {
+      e.t += dt * (window.__speed || 1);
+      const p = this.emotePos(e.who); if (!p) continue;
+      const sp = this.toScreen(p.x, p.y), T = sp.T, pop = e.t < 0.18 ? e.t / 0.18 : 1, fade = Math.min(1, (e.dur - e.t) * 4);
+      if (fade <= 0) continue;
+      const s = fs * 1.5 * (0.6 + 0.4 * pop) * (pop < 1 ? 1 : 1 + Math.max(0, 0.12 - (e.t - 0.18)) * 1.2), x = sp.x + T * 0.5, y = sp.y - T * 0.55 - s * 0.55 + Math.sin(e.t * 6) * fs * 0.06;
+      g.globalAlpha = fade;
+      g.fillStyle = 'rgba(0,0,0,.3)'; rr(g, x - s / 2 + 2, y - s / 2 + 3, s, s * 0.9, s * 0.3); g.fill();
+      g.fillStyle = '#fffaf0'; rr(g, x - s / 2, y - s / 2, s, s * 0.9, s * 0.3); g.fill();
+      g.beginPath(); g.moveTo(x - s * 0.15, y + s * 0.38); g.lineTo(x + s * 0.02, y + s * 0.62); g.lineTo(x + s * 0.18, y + s * 0.38); g.fill();
+      g.strokeStyle = '#2a1a3a'; g.lineWidth = Math.max(1.5, fs * 0.09); rr(g, x - s / 2, y - s / 2, s, s * 0.9, s * 0.3); g.stroke();
+      const col = { '！': '#e0303a', '？': '#3a6ad8', '♪': '#2a9a5a', '♥': '#e04a7a', '…': '#4a4060' }[e.ch] || '#2a1a3a';
+      UI.text(g, e.ch, x, y - s * 0.04, col, s * 0.62, 'center', 'middle', 900);
+      g.globalAlpha = 1;
+    }
+    this.emotes = this.emotes.filter(e => e.t < e.dur);
+    // 鐘聲的光環
+    for (const r of this.rings || []) {
+      r.t += dt * (window.__speed || 1);
+      const sp = this.toScreen(r.x, r.y), k = r.t / r.dur, rad = (0.5 + k * r.r) * sp.T;
+      g.globalCompositeOperation = 'lighter';
+      g.strokeStyle = `rgba(${r.col},${(1 - k) * 0.8})`; g.lineWidth = Math.max(2, sp.T * 0.18 * (1 - k));
+      g.beginPath(); g.ellipse(sp.x + sp.T / 2, sp.y + sp.T / 2, rad, rad * 0.62, 0, 0, TAU); g.stroke();
+      g.globalCompositeOperation = 'source-over';
+    }
+    if (this.rings) this.rings = this.rings.filter(r => r.t < r.dur);
+    if (this.overlayHook) this.overlayHook(g);
+  },
+  // 地圖上一點在螢幕上的位置（給對話泡泡、表情符號用）
+  toScreen(x, y) { const { cx, cy, T } = this.cam(), k = L.k; return { x: L.V.x + (x * T - cx), y: L.V.y + (y * T - cy), T }; },
+  drawScene(g) {
     const V = L.V, k = L.k;
     const { cx, cy, T } = this.cam();
     const sx0 = V.x - cx, sy0 = V.y - cy; // 地圖原點在螢幕上的位置
@@ -262,7 +331,9 @@ const Field = {
       if (!vis(px, py)) continue;
       ents.push({ y: py, draw: () => this.drawNpc(g, n, sx0 + px * T, sy0 + py * T, T) });
     }
+    for (const v of this.vehicles || []) { const vy = v.y; if (vis(v.x, vy)) ents.push({ y: vy + 0.3, draw: () => v.draw(g, sx0 + v.x * T, sy0 + vy * T, T) }); }
     for (let i = this.party.length - 1; i >= 0; i--) {
+      if (this.hideParty) break;
       const p = this.party[i];
       if (i > 0 && p.x === this.leader().x && p.y === this.leader().y && p.t >= 1) continue;
       if (i > 0 && this.party.slice(0, i).some(q => q.x === p.x && q.y === p.y && q.t >= 1 && p.t >= 1)) continue;
@@ -289,13 +360,16 @@ const Field = {
     if (this.def.tint) { g.fillStyle = this.def.tint; g.fillRect(V.x, V.y, V.w, V.h); }
     FieldFx.drawLights(g, this, sx0, sy0, k, T, amb);
     g.restore();
-    // 地名
-    if (this.banner) {
-      const b = this.banner, a = Math.min(1, b.t * 3, (2.6 - b.t) * 2), fs = L.FS;
-      g.globalAlpha = Math.max(0, a);
-      UI.banner(g, b.text, V.x + V.w / 2, V.y + fs * 2.4, fs);
-      g.globalAlpha = 1;
-    }
+  },
+  // 大張的怪物圖縮小成地圖用的尺寸（平滑縮小後再加外框，避免最近鄰縮小的破碎感）
+  smallArt(art, n) {
+    const key = 's' + n; if (art[key]) return art[key];
+    const c = document.createElement('canvas'); c.width = c.height = n; const g = c.getContext('2d');
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; g.drawImage(art.img, 0, 0, n, n);
+    const d = g.getImageData(0, 0, n, n), a = d.data;
+    for (let i = 3; i < a.length; i += 4) a[i] = a[i] > 110 ? 255 : 0;
+    g.putImageData(d, 0, 0);
+    return (art[key] = c);
   },
   walkPhase(o, t) { return t < 1 ? (((o.n || 0) & 1) * 2 + (t < 0.5 ? 1 : 2)) & 3 : 0; },
   drawChar(g, id, dir, walking, x, y, T, p, dead) {
@@ -317,7 +391,7 @@ const Field = {
       const art = MonArt.get(MONS[n.d.mon]), s = (n.d.scale || (MONS[n.d.mon].boss ? 1.9 : 1.15)) * T;
       const bob = Math.sin(this.t * 3 + n.x) * T * 0.05;
       g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.ellipse(x + T / 2, y + T * 0.92, s * 0.3, s * 0.08, 0, 0, TAU); g.fill();
-      g.drawImage(art.img, x + T / 2 - s / 2, y + T - s + bob, s, s);
+      g.drawImage(this.smallArt(art, Math.round(s)), Math.round(x + T / 2 - s / 2), Math.round(y + T - s + bob), Math.round(s), Math.round(s));
       return;
     }
     if (LOOKS[n.d.spr]) {

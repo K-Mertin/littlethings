@@ -205,6 +205,12 @@ async function statusMenu() {
       UI.text(g, C.name, x + pad * 2 + sz, y + pad * 1.3, '#fff', fs * 1.3, 'left', 'top', 700);
       UI.text(g, `${C.role}　Lv ${m.lv}`, x + pad * 2 + sz, y + pad * 1.3 + fs * 1.7, '#ffd76a', fs * 0.9);
       if (G.party.length > 1) UI.text(g, `◀ ${k + 1}/${G.party.length} ▶`, x + w - pad * 1.5, y + pad * 1.3, '#9aa6d8', fs * 0.85, 'right');
+      // 戰鬥時的模樣（會呼吸、偶爾揮動武器）
+      { const bs = battleSprites(m.id), ph = UI.t % 4, pose = m.hp <= 0 ? 'kneel' : ph > 3.4 ? (ph > 3.7 ? 'win1' : 'win0') : Math.floor(UI.t * 1.7) % 2 ? 'idle1' : 'idle0';
+        const wide = w > fs * 22, bz = wide ? Math.min(fs * 6.4, h * 0.42) : fs * 3.6;
+        const bx = wide ? x + w - pad * 1.2 - bz : x + w - pad * 1.2 - bz - (G.party.length > 1 ? fs * 4.6 : 0), by = wide ? y + h - pad * 0.6 - bz : y + pad * 0.5;
+        g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.ellipse(bx + bz * 0.5, by + bz * 0.94, bz * 0.26, bz * 0.05, 0, 0, TAU); g.fill();
+        g.imageSmoothingEnabled = false; g.drawImage(bs[pose], bx, by, bz, bz); }
       const rows = [['HP', `${m.hp} / ${s.mhp}`], ['MP', `${m.mp} / ${s.mmp}`], ['力量', s.str], ['攻擊力', s.atk], ['防禦力', s.def], ['速度', s.agi], ['智力', s.int], ['經驗值', m.exp], ['下一級', Party.toNext(m)]];
       const c1 = x + pad * 1.5, top = y + pad * 2 + sz;
       const two = w > fs * 22;

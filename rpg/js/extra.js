@@ -202,7 +202,7 @@ function bookMenu() {
       const ax = x + pad * 1.5, ay = y + fs * 2.2;
       g.fillStyle = 'rgba(0,0,0,.3)'; rr(g, ax, ay, as, as, fs * 0.3); g.fill();
       g.imageSmoothingEnabled = false;
-      g.save(); if (!known) g.filter = 'brightness(0)'; g.globalAlpha = known ? 1 : 0.5; g.drawImage(art.img, ax + as * 0.06, ay + as * 0.06, as * 0.88, as * 0.88); g.restore();
+      g.save(); g.globalAlpha = known ? 1 : 0.5; g.drawImage(known ? art.img : tinted(art.img, 'black'), ax + as * 0.06, ay + as * 0.06, as * 0.88, as * 0.88); g.restore();
       const side = w > fs * 22, tx = side ? ax + as + pad * 1.5 : ax, ty = side ? ay : ay + as + pad;
       UI.text(g, known ? m.name : '？？？', tx, ty, m.boss ? '#ff9a9a' : m.rare ? '#ffe070' : '#fff', fs * 1.15, 'left', 'top', 900);
       if (known) {

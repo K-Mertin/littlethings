@@ -330,6 +330,26 @@ const LocalBake = {
     if (town) for (const l of res.lights) { const bx = Math.floor(l.x / 16), by = Math.floor(l.y / 16); if (bx >= 0 && by >= 0 && bx < TW && by < TH && inB[by * TW + bx] >= 0) l.b = inB[by * TW + bx]; }
     // ── 建築外觀（屋頂、正面牆）──
     if (town) res.builds.forEach((b, k) => { b.img = this.roof(f, th, b, k, T); b.key = b.y1 + 0.55; for (const l of b.lights) res.lights.push(l); });
+    // 後門、側門外的石階與門墊（畫在地面上，從外面就看得出這裡有入口）
+    if (town) res.builds.forEach(b => {
+      for (let y = b.y0; y < b.y1; y++) for (let x = b.x0; x <= b.x1; x++) {
+        if (T(x, y) !== '+') continue;
+        const north = y === b.y0, left = x === b.x0;
+        const sx = north ? x : left ? x - 1 : x + 1, sy = north ? y - 1 : y, X = sx * 16, Y = sy * 16;
+        g.fillStyle = 'rgba(20,12,30,.28)';
+        if (north) {
+          g.fillRect(X + 1, Y + 3, 14, 6);
+          px(g, X + 2, Y + 2, '#6e6a72', 12, 6); px(g, X + 2, Y + 2, '#a8a4ac', 12, 1); px(g, X + 3, Y + 3, '#8e8a92', 10, 4); px(g, X + 7, Y + 3, '#6e6a72', 1, 4);
+          px(g, X + 4, Y - 3, '#8a3a3a', 8, 4); px(g, X + 4, Y - 3, '#b85a4a', 8, 1); px(g, X + 5, Y - 2, '#e0b060', 6, 1);
+          for (const dx of [0, 14]) { px(g, X + dx, Y + 1, '#3a2414', 2, 6); px(g, X + dx, Y + 1, '#c8803a', 2, 2); }
+        } else {
+          const ex = left ? X + 7 : X;
+          g.fillRect(ex, Y + 3, 9, 12);
+          px(g, ex + (left ? 1 : 0), Y + 3, '#6e6a72', 8, 11); px(g, ex + (left ? 1 : 0), Y + 3, '#a8a4ac', 8, 1); px(g, ex + (left ? 2 : 1), Y + 4, '#8e8a92', 6, 9); px(g, ex + (left ? 2 : 1), Y + 8, '#6e6a72', 6, 1);
+          px(g, left ? X + 2 : X + 9, Y + 5, '#8a3a3a', 5, 8); px(g, left ? X + 2 : X + 9, Y + 5, '#b85a4a', 5, 1);
+        }
+      }
+    });
     // ── 動畫層與合成 ──
     const frames = [];
     const L = LIQ[liquid] || LIQ.water;
@@ -385,12 +405,12 @@ const LocalBake = {
   },
   // 建築外觀：屋頂 + 正面牆
   roof(f, th, b, k, T) {
-    const w = (b.x1 - b.x0 + 1) * 16, hRoof = (b.y1 - b.y0) * 16, padT = 10, padS = 3;
-    const c = document.createElement('canvas'); c.width = w + padS * 2; c.height = hRoof + 16 + padT + 2;
+    const w = (b.x1 - b.x0 + 1) * 16, hRoof = (b.y1 - b.y0) * 16, padT = 10, padS = 3, padC = 10;
+    const c = document.createElement('canvas'); c.width = w + padC * 2; c.height = hRoof + 16 + padT + 2;
     const g = c.getContext('2d');
     b.lights = [];
-    const ox = padS, oy = padT; // 建築左上角
-    b.ox = b.x0 * 16 - padS; b.oy = b.y0 * 16 - padT;
+    const ox = padC, oy = padT; // 建築左上角
+    b.ox = b.x0 * 16 - padC; b.oy = b.y0 * 16 - padT;
     const roofC = th.roofs[(b.x0 * 7 + b.y0 * 3) % th.roofs.length];
     const R = shd(roofC);
     const isChurch = b.kinds.has('Y'), isInn = b.kinds.has('b') && b.kinds.has('='), isShop = b.kinds.has('=') && !isInn, isSmith = b.kinds.has('K'), isBell = b.kinds.has('Q'), isPalace = b.kinds.has('Z');
@@ -465,8 +485,27 @@ const LocalBake = {
     for (let y = b.y0; y < b.y1; y++) for (let x = b.x0; x <= b.x1; x++) {
       if (T(x, y) !== '+') continue;
       const X = ox + (x - b.x0) * 16, Y = oy + (y - b.y0) * 16;
-      if (y === b.y0) { px(g, X + 2, Y - 9, '#3a2414', 12, 13); px(g, X + 3, Y - 8, '#8a5a30', 10, 11); px(g, X + 3, Y - 8, '#c8945a', 10, 1); px(g, X + 7, Y - 7, '#5a3a20', 2, 10); px(g, X + 1, Y + 3, '#2a1a10', 14, 2); }
-      else { const left = x === b.x0; px(g, X + (left ? -3 : 7), Y + 1, '#3a2414', 12, 14); px(g, X + (left ? -2 : 8), Y + 2, '#8a5a30', 10, 12); px(g, X + (left ? -2 : 8), Y + 2, '#c8945a', 10, 1); px(g, X + (left ? 3 : 13), Y + 8, '#f2c14e'); }
+      const RC = th.flat ? shd(roofC) : R;
+      if (y === b.y0) {
+        // 後門：屋簷上伸出一個小門廊屋頂（門本身在建築背面，看不到），掛一盞小燈
+        const t0 = oy - 10;
+        for (let i = 0; i < 8; i++) px(g, X - 1 + i, t0 + 7 - i, RC.hi, 18 - i * 2, 1);
+        px(g, X - 2, t0 + 7, RC.lo, 20, 3); px(g, X - 2, t0 + 10, RC.dk || darken(roofC, 0.5), 20, 1);
+        for (let yy = t0 + 2; yy < t0 + 7; yy += 2) px(g, X + 3 + (yy - t0) % 4, yy, RC.md, 10 - (yy - t0), 1);
+        px(g, X + 7, t0, lighten(roofC, 0.5), 2, 1);
+        px(g, X + 1, t0 + 7, '#2a1a10', 1, 4); px(g, X + 14, t0 + 7, '#2a1a10', 1, 4);
+        px(g, X + 7, t0 + 11, '#3a2414', 3, 4); px(g, X + 8, t0 + 12, '#ffd98a', 1, 2);
+        b.lights.push({ x: b.ox + X + 8.5, y: b.oy + t0 + 13, r: 26, col: '255,200,110', fl: 0.3, lamp: 1 });
+      } else {
+        // 側門：從山牆伸出小雨遮與半開的門板
+        const left = x === b.x0, ex = left ? X - padS + 1 : X + 16 + padS - 6;
+        px(g, ex - 1, Y + 1, '#2a1a10', 7, 15);
+        px(g, ex, Y + 2, '#5a3a20', 5, 13); px(g, left ? ex : ex + 1, Y + 2, '#8a5a30', 4, 13); px(g, left ? ex : ex + 1, Y + 2, '#c8945a', 4, 1);
+        px(g, left ? ex + 1 : ex + 3, Y + 9, '#f2c14e');
+        for (let i = 0; i < 3; i++) px(g, left ? ex - 2 + i : ex - 1, Y - 1 + i, RC.lo, 8 - i, 1);
+        px(g, ex - 2, Y - 2, RC.hi, 9, 1);
+        b.lights.push({ x: b.ox + ex + 2.5, y: b.oy + Y + 4, r: 22, col: '255,200,110', fl: 0.3, lamp: 1 });
+      }
     }
     return c;
   },

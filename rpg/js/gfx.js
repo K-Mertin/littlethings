@@ -96,6 +96,27 @@ function silhouette(src, col) {
   const g = c.getContext('2d'); g.drawImage(src, 0, 0); g.globalCompositeOperation = 'source-in'; g.fillStyle = col; g.fillRect(0, 0, c.width, c.height); return c;
 }
 
+// 狀態色調（不用 ctx.filter：Safari 不支援）：逐像素算好一次後快取
+const TINTS = {
+  gray: (r, g, b) => { const l = (r * 0.3 + g * 0.59 + b * 0.11); return [lerp(r, l, 0.75) * 0.8, lerp(g, l, 0.75) * 0.8, lerp(b, l, 0.75) * 0.85]; },
+  poison: (r, g, b) => [r * 0.78 + 30, g * 0.62 + 10, b * 0.7 + 70],
+  sleep: (r, g, b) => { const l = (r * 0.3 + g * 0.59 + b * 0.11); return [lerp(r, l, 0.5) * 0.82, lerp(g, l, 0.5) * 0.85, lerp(b, l, 0.5) * 0.95 + 12]; },
+  seal: (r, g, b) => [r * 0.7 + 10, g * 0.7 + 10, b * 0.75 + 40],
+  charge: (r, g, b) => [r * 0.85 + 50, g * 0.8, b * 0.8],
+  black: () => [10, 8, 20],
+};
+const TintCache = new WeakMap();
+function tinted(src, kind) {
+  let m = TintCache.get(src); if (!m) { m = {}; TintCache.set(src, m); }
+  if (m[kind]) return m[kind];
+  const c = document.createElement('canvas'); c.width = src.width; c.height = src.height;
+  const g = c.getContext('2d'); g.drawImage(src, 0, 0);
+  const im = g.getImageData(0, 0, c.width, c.height), d = im.data, f = TINTS[kind];
+  for (let i = 0; i < d.length; i += 4) { if (!d[i + 3]) continue; const v = f(d[i], d[i + 1], d[i + 2]); d[i] = clamp(v[0], 0, 255); d[i + 1] = clamp(v[1], 0, 255); d[i + 2] = clamp(v[2], 0, 255); }
+  g.putImageData(im, 0, 0);
+  return (m[kind] = c);
+}
+
 // ───── 人物小圖（16×16，四方向×兩步） ─────
 const SPR_DOWN = [
   '................',

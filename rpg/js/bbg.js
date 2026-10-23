@@ -143,7 +143,11 @@ const BBG = {
     // 靜態的圖層先合成成一張，減少每格的繪圖量
     const back = mk(), bg2 = back.getContext('2d');
     bg2.drawImage(sky, 0, 0); bg2.drawImage(far, W / 2, 0, W, H, 0, 0, W, H); bg2.drawImage(ground, 0, 0); bg2.drawImage(mid, 0, 0);
-    return (this.cache[key] = { W, H, hz, back, fg, anim });
+    // 前景大多是透明的：只記下有東西的列範圍，繪製時只貼那一段
+    let fy0 = H, fy1 = 0; { const d = fgg.getImageData(0, 0, W, H).data; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (d[(y * W + x) * 4 + 3]) { if (y < fy0) fy0 = y; fy1 = y + 1; break; } }
+    // 火把的暖光也先烘焙在背景上，閃爍只用一張小光圖
+    if (anim === 'torch') { const gr = bg2.createRadialGradient(W / 2, H * 0.3, 0, W / 2, H * 0.3, W * 0.6); gr.addColorStop(0, 'rgba(255,170,80,.06)'); gr.addColorStop(1, 'rgba(255,170,80,0)'); bg2.fillStyle = gr; bg2.fillRect(0, 0, W, H); }
+    return (this.cache[key] = { W, H, hz, back, fg, anim, fy0, fy1 });
   },
   // 畫到戰鬥舞台
   draw(g, kind, rect, t) {
@@ -156,7 +160,7 @@ const BBG = {
   },
   drawFg(g, info, rect, t) {
     const { ox, oy, s, b } = info;
-    g.drawImage(b.fg, ox, oy, b.W * s, b.H * s);
+    if (b.fy1 > b.fy0) g.drawImage(b.fg, 0, b.fy0, b.W, b.fy1 - b.fy0, ox, oy + b.fy0 * s, b.W * s, (b.fy1 - b.fy0) * s);
     // 環境動畫
     if (Game.lowFx) return;
     const R = (i, k) => hash2(i, k, 5);
@@ -168,7 +172,7 @@ const BBG = {
       case 'waves': g.fillStyle = 'rgba(255,255,255,.7)'; for (let i = 0; i < 14; i++) { const x = (R(i, 1) * b.W + t * 6) % b.W, y = b.hz - 12 + R(i, 2) * 24; if (Math.sin(t * 2 + i) > 0.3) g.fillRect(ox + x * s, oy + y * s, s * 6, s); } break;
       case 'heat': g.fillStyle = 'rgba(255,240,200,.35)'; for (let i = 0; i < 20; i++) { const x = (R(i, 1) * b.W + t * 30) % b.W, y = b.hz + R(i, 2) * (b.H - b.hz); g.fillRect(ox + x * s, oy + y * s, s * 8, s); } break;
       case 'wind': g.fillStyle = 'rgba(230,240,255,.35)'; for (let i = 0; i < 12; i++) { const x = (R(i, 1) * b.W + t * 60) % (b.W + 60) - 30, y = R(i, 2) * b.H; g.fillRect(ox + x * s, oy + y * s, s * 18, s); } break;
-      case 'torch': { const f = 0.5 + Math.sin(t * 9) * 0.1 + Math.sin(t * 23) * 0.05; const gr = g.createRadialGradient(rect.x + rect.w / 2, rect.y + rect.h * 0.3, 0, rect.x + rect.w / 2, rect.y + rect.h * 0.3, rect.w * 0.6); gr.addColorStop(0, `rgba(255,170,80,${0.12 * f})`); gr.addColorStop(1, 'rgba(255,170,80,0)'); g.fillStyle = gr; g.fillRect(rect.x, rect.y, rect.w, rect.h); break; }
+      case 'torch': { const f = Math.sin(t * 9) * 0.5 + Math.sin(t * 23) * 0.3; if (f > 0.2) { const r = rect.w * 0.3; g.globalAlpha = (f - 0.2) * 0.08; g.drawImage(FieldFx.glowSpr('255,170,80'), rect.x + rect.w / 2 - r, rect.y + rect.h * 0.3 - r, r * 2, r * 2); g.globalAlpha = 1; } break; }
     }
   },
 };

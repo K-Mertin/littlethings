@@ -30,9 +30,24 @@ const UI = {
   },
   toast(text, dur = 2.2) { this.toasts.push({ text, t: 0, dur }); },
   // 視窗外觀：深藍漸層底、金色雙框與四角裝飾
+  // 視窗畫好後快取成小畫布（圓角、漸層、多重外框每格重畫很貴，手機上尤其明顯）
+  winCache: new Map(),
   win(g, x, y, w, h, o = {}) {
-    const fs = L.FS, r = Math.max(4, fs * 0.38), b = Math.max(1.5, Math.round(fs * 0.11));
     x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+    if (w < 4 || h < 4) return;
+    const key = w + ',' + h + ',' + L.FS + ',' + (o.alpha ?? '') + ',' + (o.bg || '') + ',' + (o.border || '') + ',' + (o.glow ? 1 : 0);
+    let c = this.winCache.get(key);
+    if (!c) {
+      if (this.winCache.size > 80) this.winCache.clear();
+      const b = Math.max(1.5, Math.round(L.FS * 0.11)), pad = Math.ceil(b * 3) + 2;
+      c = document.createElement('canvas'); c.width = w + pad * 2; c.height = h + pad * 2; c.pad = pad;
+      this.winRaw(c.getContext('2d'), pad, pad, w, h, o);
+      this.winCache.set(key, c);
+    }
+    g.drawImage(c, x - c.pad, y - c.pad);
+  },
+  winRaw(g, x, y, w, h, o = {}) {
+    const fs = L.FS, r = Math.max(4, fs * 0.38), b = Math.max(1.5, Math.round(fs * 0.11));
     g.save();
     const al = o.alpha ?? 0.95;
     g.globalAlpha *= al;
