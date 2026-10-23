@@ -51,6 +51,7 @@ const Bot = {
       if (id === 'nova' && adj.length >= 1) return Game.useAbility(id);
       if (A.tgt === 'enemy' && id !== 'charge') { const c = Game.abilityTargets(id).filter(m => m.awake || A.range === 1); if (c.length) return Game.useAbility(id, c[0].x, c[0].y); }
       if (id === 'haste' && vis.length >= 2) return Game.useAbility(id);
+      if (id === 'stealth' && (adj.some(m => MON[m.k].boss) || (adj.length && hpF < 0.5))) return Game.useAbility(id);
     }
     if (adj.length) { const m = adj.sort((a, b) => a.hp - b.hp)[0]; return Game.move(m.x - P.x, m.y - P.y); }
     if (vis.length) {
@@ -70,9 +71,11 @@ const Bot = {
     const sc = P.inv.find(o => o.c === 'scroll' && (!G.known[o.k] || ['s_ew', 's_ea', 's_uncurse', 's_map', 's_charge'].includes(o.k)));
     if (sc) return Game.read(sc);
     if (hpF < 0.6) return Game.rest();
+    // 寶箱
+    const ch = Game.adjChest(); if (ch) return Game.move(ch.x - P.x, ch.y - P.y);
     // 探索
     const ep = Game.explorePath();
-    if (ep && ep.length) return Game.move(ep[0][0] - P.x, ep[0][1] - P.y, { auto: 1 });
+    if (ep && ep.length) return Game.move(ep[0][0] - P.x, ep[0][1] - P.y, { auto: 1, force: !!Game.trapAt(ep[0][0], ep[0][1]) });
     if (F.locked && F.bossId) {
       const b = F.mons.find(m => m.id === F.bossId);
       if (b) { const p = FOV.path(F, P.x, P.y, b.x, b.y, (x, y, g) => g || TP[Game.tile(x, y)].walk && Game.tile(x, y) !== T.LAVA && !(Game.monAt(x, y) && MON[Game.monAt(x, y).k].npc)); if (p && p.length) return Game.move(p[0][0] - P.x, p[0][1] - P.y, { force: 1 }); }

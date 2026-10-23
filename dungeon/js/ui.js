@@ -22,6 +22,12 @@ const UI = {
     $('tAltar').onclick = () => this.openAltar();
     $('tRecords').onclick = () => this.openRecords();
     $('tHelp').onclick = () => this.show('ovHelp');
+    $('tCodex').onclick = () => this.openCodex('m');
+    $('tAch').onclick = () => this.openAch();
+    $('cxMon').onclick = () => this.openCodex('m');
+    $('cxItem').onclick = () => this.openCodex('i');
+    $('ascDn').onclick = () => { this.asc = Math.max(0, (this.asc || 0) - 1); Snd.play('select'); this.renderOpts(); };
+    $('ascUp').onclick = () => { this.asc = Math.min(Store.meta.ascMax || 0, (this.asc || 0) + 1); Snd.play('select'); this.renderOpts(); };
     for (const b of document.querySelectorAll('[data-back]')) b.onclick = () => { Snd.play('click'); this.back(b.dataset.back); };
     for (const b of document.querySelectorAll('.tog[data-opt]')) b.onclick = () => this.toggle(b.dataset.opt);
     $('newStart').onclick = () => this.startRun();
@@ -106,6 +112,129 @@ const UI = {
   confirm(text, fn, okText = '確定') { $('dlgText').textContent = text; $('dlgOk').textContent = okText; this.dlgFn = fn; $('ovDlg').hidden = false; this.dlgOpen = true; },
   hideDlg() { $('ovDlg').hidden = true; this.dlgOpen = false; this.dlgFn = null; },
 
+
+  // ---------- 精靈圖畫到小畫布上 ----------
+  drawSpr(cv, s, scale = 1) {
+    const x = cv.getContext('2d'); x.clearRect(0, 0, cv.width, cv.height); x.imageSmoothingEnabled = false;
+    const S = scale, ax = cv.width / 2, ay = cv.height - 2;
+    x.drawImage(s.c, Math.round(ax - s.ax * S), Math.round(ay - s.ay * S), s.c.width * S, s.c.height * S);
+  },
+  drawSil(cv, s, col = '#2a2438') {
+    this.drawSpr(cv, s); const x = cv.getContext('2d'); x.globalCompositeOperation = 'source-in'; x.fillStyle = col; x.fillRect(0, 0, cv.width, cv.height); x.globalCompositeOperation = 'source-over';
+  },
+  heroGear(cls) { const C = CLASSES[cls], w = C.start.find(s => ITEMS[s[0]] && ITEMS[s[0]].c === 'weapon'), a = C.start.find(s => ITEMS[s[0]] && ITEMS[s[0]].c === 'armor'); return { w: w ? WPN_LOOK[w[0]] : 'fist', a: a ? a[0] : 'none', t: a ? ITEMS[a[0]].tint : '' }; },
+  // 選職業畫面的動態頭像
+  animCls(t) {
+    if (this.ov === 'ovTitle') {
+      if (t - (this.luT || 0) < 0.1) return; this.luT = t;
+      const cv = $('lineup'), x = cv.getContext('2d'); x.clearRect(0, 0, cv.width, cv.height); x.imageSmoothingEnabled = false;
+      x.save(); x.translate(100, 33); x.scale(1, 0.12); const g = x.createRadialGradient(0, 0, 4, 0, 0, 100); g.addColorStop(0, 'rgba(255,170,80,.35)'); g.addColorStop(1, 'rgba(255,170,80,0)'); x.fillStyle = g; x.fillRect(-100, -100, 200, 200); x.restore();
+      CLASS_ORDER.forEach((k, i) => {
+        const ph = ((t * 1.6 + i * 0.37) | 0) % 2, swing = ((t * 0.5 + i * 0.9) % 6) < 0.35;
+        const s = Spr.hero(k, swing ? (((t * 10) | 0) % 2 ? FR.atk1 : FR.atk0) : ph ? FR.idle1 : FR.idle0, this.heroGear(k));
+        const X = 20 + i * 40, Y = 34;
+        x.fillStyle = 'rgba(0,0,0,.45)'; x.beginPath(); x.ellipse(X, Y - 1, 7, 2, 0, 0, TAU); x.fill();
+        x.save(); if (i > 2) { x.translate(X * 2, 0); x.scale(-1, 1); }
+        if (Store.meta.unlocked[k]) x.drawImage(s.c, X - s.ax, Y - s.ay); else { const c = document.createElement('canvas'); c.width = s.c.width; c.height = s.c.height; this.drawSil(c, { c: s.c, ax: s.c.width / 2, ay: s.c.height - 2 }, '#120e1c'); x.drawImage(c, X - s.ax, Y - s.ay); }
+        x.restore();
+      });
+      return;
+    }
+    if (this.ov !== 'ovNew') return;
+    if (t - (this.clsT || 0) < 0.12) return; this.clsT = t;
+    const seq = [FR.idle0, FR.idle1, FR.idle0, FR.idle1, FR.walk0, FR.walk1, FR.walk0, FR.walk1, FR.atk0, FR.atk1, FR.atk1, FR.idle0];
+    for (const cv of document.querySelectorAll('#clsList canvas')) {
+      const k = cv.dataset.c, un = !!Store.meta.unlocked[k], on = k === this.selCls;
+      const f = on ? seq[((t / 0.16) | 0) % seq.length] : (((t * 1.5 + k.length) | 0) % 2 ? FR.idle1 : FR.idle0);
+      const s = Spr.hero(k, f, this.heroGear(k));
+      if (un) this.drawSpr(cv, s); else this.drawSil(cv, s, '#14101e');
+    }
+  },
+  // ---------- 成就通知、頭目橫幅 ----------
+  toast(head, name, desc) {
+    const box = $('toasts'); while (box.children.length >= 2) box.firstChild.remove();
+    const el = document.createElement('div'); el.className = 'toast';
+    el.innerHTML = '<span class="ic">★</span><div><small>' + esc(head) + '</small><b>' + esc(name) + '</b>' + (desc ? '<p>' + esc(desc) + '</p>' : '') + '</div>';
+    $('toasts').appendChild(el); setTimeout(() => el.remove(), 4000);
+  },
+  banner(sub, name, desc, rage) {
+    const b = $('banner'); b.hidden = true; b.classList.toggle('rage', !!rage);
+    $('banSub').textContent = sub; $('banName').textContent = name; $('banDesc').textContent = desc || '';
+    void b.offsetWidth; b.hidden = false;
+    clearTimeout(this.banT); this.banT = setTimeout(() => { b.hidden = true; }, 2800);
+  },
+  bossIntro(m) { const D = MON[m.k]; this.stopAuto(); this.banner(D.final ? 'FINAL BOSS' : '守層頭目 · BOSS', D.n, D.d2); if (typeof FX !== 'undefined') FX.shake(6); },
+  bossPhase(m) { const D = MON[m.k]; this.banner('第二階段', D.n + '・狂怒', D.final ? '黑暗變得更加狂暴！' : '攻擊變得更加猛烈！', 1); },
+  askAltar(a) {
+    const A = ALTARS[a.k], c = Game.altarCost(a);
+    const cost = a.k === 'blood' ? '（需要 ' + c + ' HP，你有 ' + G.P.hp + '）' : a.k === 'gold' ? '（需要 ' + c + ' 金幣，你有 ' + G.P.gold + '）' : '';
+    this.stopAuto();
+    this.confirm(A.n + '：' + A.d + cost, () => Game.useAltar(a), a.k === 'trial' ? '開始試煉' : '獻祭');
+  },
+  // ---------- 深淵等級與開局祝福 ----------
+  renderOpts() {
+    const M = Store.meta, mx = M.ascMax || 0, daily = this.newMode === 'daily';
+    $('ascBox').hidden = daily || mx <= 0; $('boonBox').hidden = daily;
+    this.asc = clamp(this.asc == null ? (M.ascSel || 0) : this.asc, 0, mx);
+    $('ascN').textContent = ASC[this.asc].n;
+    $('ascD').textContent = this.asc ? ASC.slice(1, this.asc + 1).map(a => a.d).join(' ') : '原本的深淵。打倒任一守層頭目後解鎖下一級。';
+    $('ascBonus').textContent = this.asc ? '靈魂石 +' + this.asc * 20 + '%' : '';
+    $('ascDn').disabled = this.asc <= 0; $('ascUp').disabled = this.asc >= mx;
+    const el = $('boonList'); el.innerHTML = '';
+    if (!Meta.boonOk(this.boon || 'none')) this.boon = 'none';
+    for (const k in BOONS) {
+      const B = BOONS[k], ok = Meta.boonOk(k), b = document.createElement('button');
+      b.className = 'boon' + (k === (this.boon || 'none') ? ' on' : '') + (ok ? '' : ' locked');
+      b.textContent = (ok ? '' : '◇ ') + B.n;
+      b.onclick = () => { if (!ok) { $('boonDesc').textContent = '未解鎖：' + (ACH.find(a => a.id === B.ach) || {}).n + '（' + (ACH.find(a => a.id === B.ach) || {}).d + '）'; Snd.play('warn'); return; } this.boon = k; Snd.play('select'); this.renderOpts(); };
+      el.appendChild(b);
+    }
+    $('boonDesc').textContent = BOONS[this.boon || 'none'].d;
+  },
+  // ---------- 圖鑑 ----------
+  openCodex(tab) {
+    this.cxTab = tab || this.cxTab || 'm';
+    $('cxMon').classList.toggle('on', this.cxTab === 'm'); $('cxItem').classList.toggle('on', this.cxTab === 'i');
+    const C = Meta.m().codex, el = $('codexList'); el.innerHTML = '';
+    if (this.cxTab === 'm') {
+      const ks = Object.keys(MON).filter(k => !MON[k].npc);
+      $('codexCnt').textContent = Object.keys(C.m).filter(k => MON[k]).length + ' / ' + ks.length;
+      for (const k of ks) {
+        const D = MON[k], e = C.m[k], d = document.createElement('div');
+        d.className = 'cx' + (e ? '' : ' unk') + (D.boss ? ' boss' : '');
+        d.innerHTML = '<canvas width="40" height="36"></canvas><div><b>' + (e ? D.n : '？？？') + '</b><small>' + (e ? esc(D.d2 || '') + '<br>擊敗 ' + (e.k || 0) + ' 次' : (D.boss ? '守層頭目' : '尚未遇見')) + '</small></div>';
+        const s = Spr.mon(k, FR.idle0), cv = d.querySelector('canvas'), sc = D.boss ? 0.8 : 1;
+        if (D.boss) { cv.width = 56; cv.height = 50; }
+        if (e) this.drawSpr(cv, s, sc); else this.drawSil(cv, s);
+        el.appendChild(d);
+      }
+    } else {
+      const ks = Object.keys(ITEMS).filter(k => ITEMS[k].c !== 'gold');
+      const known = k => C.i[k] || !(['potion', 'scroll', 'ring', 'wand'].includes(ITEMS[k].c)) && C.i[k];
+      $('codexCnt').textContent = ks.filter(k => C.i[k]).length + ' / ' + ks.length;
+      for (const k of ks) {
+        const K = ITEMS[k], e = known(k), d = document.createElement('div'), lock = K.lock && !Meta.has(K.lock);
+        d.className = 'cx' + (e ? '' : ' unk');
+        d.innerHTML = '<canvas width="32" height="32"></canvas><div><b>' + (e ? K.n : lock ? '◇ ？？？' : '？？？') + '</b><small>' + CAT_NAME[K.c] + (e && K.desc ? '・' + esc(K.desc) : lock ? '・需要成就「' + (ACH.find(a => a.id === K.lock) || {}).n + '」' : '') + '</small></div>';
+        const cv = d.querySelector('canvas'), x = cv.getContext('2d'); x.imageSmoothingEnabled = false;
+        const s = Art.itemSprite({ k, c: K.c, n: 1 });
+        if (e) x.drawImage(s.c, 0, 0, 32, 32); else { x.drawImage(s.c, 0, 0, 32, 32); x.globalCompositeOperation = 'source-in'; x.fillStyle = '#2a2438'; x.fillRect(0, 0, 32, 32); }
+        el.appendChild(d);
+      }
+    }
+    if (this.ov !== 'ovCodex') this.show('ovCodex');
+  },
+  openAch() {
+    const M = Meta.m(), el = $('achList'); el.innerHTML = '';
+    $('achCnt').textContent = Object.keys(M.ach).filter(k => ACH.some(a => a.id === k)).length + ' / ' + ACH.length;
+    for (const A of ACH) {
+      const on = !!M.ach[A.id], d = document.createElement('div'); d.className = 'ach' + (on ? ' on' : '');
+      d.innerHTML = '<span class="ic">' + (on ? '★' : '☆') + '</span><div><b>' + A.n + '</b><p>' + A.d + (on ? '　<small>' + M.ach[A.id] + '</small>' : '') + '</p>' + (A.reward ? '<em>獎勵：' + A.reward + '</em>' : '') + '</div><span class="sv"><span class="soul"></span>' + A.s + '</span>';
+      el.appendChild(d);
+    }
+    this.show('ovAch');
+  },
+
   // ---------- 標題背景：自動走動的英雄 ----------
   makeDemo() {
     const depth = 1 + ((Math.random() * 16) | 0);
@@ -140,7 +269,9 @@ const UI = {
     const d = todayStr();
     $('dailyInfo').hidden = mode !== 'daily';
     $('seedRow').hidden = mode === 'daily';
-    if (mode === 'daily') { const best = Store.meta.daily[d]; $('dailyInfo').innerHTML = '今天的種子：<b>D' + d + '</b>。今天每個人走進的都是同一座地牢。' + (best ? '<br>你今天的最佳紀錄：' + best.score + ' 分（第 ' + best.depth + ' 層）' : ''); }
+    if (mode === 'daily') { const best = Store.meta.daily[d], mk = Object.keys(DMODS)[hashStr('D' + d) % Object.keys(DMODS).length]; $('dailyInfo').innerHTML = '今天的種子：<b>D' + d + '</b>。今天每個人走進的都是同一座地牢。<br>今日變化「' + DMODS[mk].n + '」：' + DMODS[mk].d + (best ? '<br>你今天的最佳紀錄：' + best.score + ' 分（第 ' + best.depth + ' 層）' : ''); }
+    this.asc = null; this.boon = Store.meta.boonSel || 'none';
+    this.renderOpts();
     if (!Store.meta.unlocked[this.selCls]) this.selCls = 'warrior';
     this.renderClasses();
     this.show('ovNew', this.state === 'title' ? null : null);
@@ -150,14 +281,13 @@ const UI = {
     for (const k of CLASS_ORDER) {
       const C = CLASSES[k], un = !!Store.meta.unlocked[k];
       const b = document.createElement('button'); b.className = 'cls' + (k === this.selCls ? ' on' : '') + (un ? '' : ' locked');
-      b.innerHTML = '<canvas width="16" height="16"></canvas><div><b>' + C.n + '</b><small>' + C.en + '</small><p>' + (un ? C.d : '未解鎖：' + C.lock) + '</p>' +
+      b.innerHTML = '<canvas width="36" height="30" data-c="' + k + '"></canvas><div><b>' + C.n + '</b><small>' + C.en + '</small><p>' + (un ? C.d : '未解鎖：' + C.lock) + '</p>' +
         (un ? '<em>HP ' + C.hp + ' · 技能：' + C.abil.map(a => ABIL[a].n).join('、') + '</em>' : '') + '</div>';
-      b.querySelector('canvas').getContext('2d').drawImage(Art.sprite(C.spr).c, 0, 0);
-      if (!un) b.querySelector('canvas').style.filter = 'brightness(0)';
       b.onclick = () => { if (!un) { Snd.play('warn'); return; } this.selCls = k; Snd.play('select'); this.renderClasses(); };
       el.appendChild(b);
     }
     const C = CLASSES[this.selCls];
+    this.clsT = 0; this.animCls(now());
     $('clsInfo').innerHTML = '<b>' + C.n + '</b>　' + C.tip + '<br>' + C.abil.map(a => '<span class="ab">' + ABIL[a].n + '</span>' + ABIL[a].d).join('<br>');
   },
   startRun() {
@@ -166,7 +296,8 @@ const UI = {
     const go = () => {
       Store.clearRun();
       this.state = 'play'; document.body.classList.add('playing');
-      Game.newRun(this.selCls, seed || null, this.newMode === 'daily');
+      Store.meta.ascSel = this.asc || 0; Store.meta.boonSel = this.boon || 'none'; Store.saveMeta();
+      Game.newRun(this.selCls, seed || null, this.newMode === 'daily', { asc: this.asc || 0, boon: this.boon || 'none' });
       Snd.play('start');
       this.closeOv(); this.layout(); Render.snapCam();
       this.dirtyLog = true;
@@ -202,8 +333,8 @@ const UI = {
     $('recStats').innerHTML = [['冒險次數', M.runs || 0], ['勝利', M.wins || 0], ['最深', (M.deepest || 0) + ' 層'], ['總擊殺', M.kills || 0], ['頭目', M.bossKills || 0]].map(([a, b]) => '<div><small>' + a + '</small><b>' + b + '</b></div>').join('');
     const el = $('recList');
     if (!M.records || !M.records.length) el.innerHTML = '<p class="empty">還沒有任何紀錄。去地牢裡留下你的名字吧！</p>';
-    else el.innerHTML = M.records.slice(0, 30).map((r, i) => '<div class="rec' + (r.win ? ' win' : '') + '"><span class="rk">' + (i + 1) + '</span><canvas data-c="' + r.cls + '" width="16" height="16"></canvas><div class="rb"><b>' + r.score + ' 分</b> · ' + CLASSES[r.cls].n + ' Lv' + r.lvl + ' · 第 ' + r.depth + ' 層' + (r.daily ? ' <span class="tag">每日</span>' : '') + '<p>' + esc(r.cause) + '</p><small>' + r.date + ' · ' + r.turns + ' 回合 · 種子 <button class="seed" data-s="' + esc(r.seed) + '">' + esc(r.seed) + '</button></small></div></div>').join('');
-    for (const c of el.querySelectorAll('canvas')) c.getContext('2d').drawImage(Art.sprite(CLASSES[c.dataset.c].spr).c, 0, 0);
+    else el.innerHTML = M.records.slice(0, 30).map((r, i) => '<div class="rec' + (r.win ? ' win' : '') + '"><span class="rk">' + (i + 1) + '</span><canvas data-c="' + r.cls + '" width="36" height="30"></canvas><div class="rb"><b>' + r.score + ' 分</b> · ' + CLASSES[r.cls].n + ' Lv' + r.lvl + ' · 第 ' + r.depth + ' 層' + (r.daily ? ' <span class="tag">每日</span>' : '') + (r.asc ? ' <span class="tag" style="color:#ff9ac8;background:rgba(255,90,170,.15)">深淵 ' + r.asc + '</span>' : '') + '<p>' + esc(r.cause) + '</p><small>' + r.date + ' · ' + r.turns + ' 回合 · 種子 <button class="seed" data-s="' + esc(r.seed) + '">' + esc(r.seed) + '</button></small></div></div>').join('');
+    for (const c of el.querySelectorAll('canvas')) this.drawSpr(c, Spr.hero(c.dataset.c, FR.idle0, this.heroGear(c.dataset.c)));
     for (const b of el.querySelectorAll('.seed')) b.onclick = () => { this.openNew('normal'); $('seedIn').value = b.dataset.s.startsWith('D') ? '' : b.dataset.s; if (b.dataset.s.startsWith('D')) $('seedIn').value = b.dataset.s; };
     this.show('ovRecords', from);
   },
@@ -267,7 +398,8 @@ const UI = {
     list.forEach((it, i) => {
       if (it.c !== lastC) { lastC = it.c; const h = document.createElement('h4'); h.textContent = CAT_NAME[it.c]; el.appendChild(h); }
       const b = document.createElement('button'); b.className = 'it' + (this.invSel === it.id ? ' on' : '') + (Game.isEquipped(it) ? ' eq' : '');
-      b.innerHTML = '<kbd>' + String.fromCharCode(97 + i) + '</kbd><canvas width="16" height="16"></canvas><span>' + esc(Game.itemName(it)) + '</span>' + (Game.isEquipped(it) ? '<em>裝備中</em>' : '');
+      const nc = it.known && it.cursed ? 'nmc' : it.known && it.rune ? 'nmu' : it.known && it.ench > 0 ? 'nmr' : '';
+      b.innerHTML = '<kbd>' + String.fromCharCode(97 + i) + '</kbd><canvas width="16" height="16"></canvas><span class="' + nc + '">' + esc(Game.itemName(it)) + '</span>' + (Game.isEquipped(it) ? '<em>裝備中</em>' : '');
       b.querySelector('canvas').getContext('2d').drawImage(Art.itemSprite(it).c, 0, 0);
       b.onclick = () => this.selectItem(it);
       el.appendChild(b);
@@ -298,7 +430,20 @@ const UI = {
     let cmp = '';
     if (K.c === 'weapon' || K.c === 'armor') {
       const cur = Game.equipped(K.c === 'weapon' ? 'w' : 'a');
-      if (cur && cur !== it) cmp = '<small class="cmp">目前裝備：' + esc(Game.itemName(cur)) + '（' + (K.c === 'weapon' ? '傷害 ' + ITEMS[cur.k].dmg.join('–') : '護甲 ' + ITEMS[cur.k].arm) + '）</small>';
+      const en = o => o && o.known ? o.ench : 0;
+      const row = (n, a, b, fmt = v => v) => { const d = a - b; return '<span>' + n + '</span><b>' + fmt(a) + (cur && cur !== it && d ? ' <i class="' + (d > 0 ? 'up' : 'dn') + '">' + (d > 0 ? '▲' : '▼') + Math.abs(Math.round(d * 10) / 10) + '</i>' : '') + '</b><small>' + (cur && cur !== it ? '目前 ' + fmt(b) : '') + '</small>'; };
+      if (K.c === 'weapon') {
+        const C = cur ? ITEMS[cur.k] : { dmg: [1, 3], acc: 0 };
+        cmp = '<div class="cmpT">' + row('平均傷害', (K.dmg[0] + K.dmg[1]) / 2 + en(it), (C.dmg[0] + C.dmg[1]) / 2 + en(cur)) + row('命中', (K.acc || 0) + en(it), (C.acc || 0) + en(cur)) + '</div>';
+      } else {
+        const C = cur ? ITEMS[cur.k] : { arm: 0, eva: 0 };
+        cmp = '<div class="cmpT">' + row('護甲', K.arm + en(it), C.arm + en(cur)) + row('閃避', K.eva || 0, C.eva || 0) + '</div>';
+      }
+      if (it.known && it.rune) {
+        const R = RUNES[it.rune], other = Game.runeOf(K.c === 'weapon' ? 'a' : 'w');
+        const rk = Object.keys(RESON).find(k => RESON[k][K.c === 'weapon' ? 'w' : 'a'] === it.rune && RESON[k][K.c === 'weapon' ? 'a' : 'w'] === other);
+        cmp = (rk ? ' <span class="rn" style="color:#ffd75a">' + (Game.isEquipped(it) ? '共鳴中：' : '裝備後觸發：') + RESON[rk].n + '——' + RESON[rk].d + '</span>' : '') + cmp;
+      }
     }
     el.innerHTML = '<div class="dh"><canvas width="16" height="16"></canvas><b>' + esc(Game.itemName(it)) + '</b></div><p>' + esc(Game.itemDesc(it)) + '</p>' + cmp + '<div class="acts"></div>';
     el.querySelector('canvas').getContext('2d').drawImage(Art.itemSprite(it).c, 0, 0);
@@ -426,6 +571,7 @@ const UI = {
     this.travel = p; G.interrupt = false;
   },
   update(t) {
+    this.animCls(t);
     if (this.state === 'title') { this.demoStep(t); return; }
     if (!G || G.demo || G.over) return;
     this.hud();
@@ -454,13 +600,15 @@ const UI = {
       if (G.interrupt || Game.dangerNear() && this.travel.length > 1) { this.travel = null; return; }
       const [x, y] = this.travel.shift();
       Render.setMove(this.STEP_TRAVEL, 1);
-      const ok = Game.move(x - P.x, y - P.y, { auto: 1 });
+      const ok = Game.move(x - P.x, y - P.y, { auto: 1, force: !!Game.trapAt(x, y) && Game.tile(x, y) !== T.LAVA });
       if (!ok || (G.P.x !== x || G.P.y !== y)) this.travel = null;
       if (this.travel && !this.travel.length) this.travel = null;
       this.stepT = this.nextBeat(this.stepT, t, this.STEP_TRAVEL); return;
     }
     if (this.exploring) {
       if (G.interrupt || Game.dangerNear()) { this.exploring = false; if (Game.dangerNear()) msg('發現敵人！', 'w'); return; }
+      const ch = Game.adjChest();
+      if (ch) { Render.setMove(this.STEP_ONE, 0); Game.move(ch.x - P.x, ch.y - P.y); this.stepT = t + 0.25; return; }
       let p = Game.explorePath();
       if (!p) {
         const F = G.F;
@@ -471,7 +619,8 @@ const UI = {
       const bm = Game.monAt(x, y);
       if (bm && Game.monVisible(bm) && !bm.disg) { this.exploring = false; msg(MON[bm.k].n + '擋住了去路。', 'w'); return; }
       Render.setMove(this.STEP_EXPLORE, 1);
-      const ok = Game.move(x - P.x, y - P.y, { auto: 1 });
+      // 唯一的路經過已知的陷阱時，直接小心跨過去，不用再按一次
+      const ok = Game.move(x - P.x, y - P.y, { auto: 1, force: !!Game.trapAt(x, y) && Game.tile(x, y) !== T.LAVA });
       if (!ok) this.exploring = false;
       this.stepT = this.nextBeat(this.stepT, t, this.STEP_EXPLORE); return;
     }
@@ -494,6 +643,9 @@ const UI = {
     if (S.invis) chips.push(['i', '隱形 ' + S.invis]);
     if (G.F.detect) chips.push(['i', '透視']);
     if (G.F.locked) chips.push(['h', '樓梯封印']);
+    const rs = Game.reson(); if (rs) chips.push(['r', RESON[rs].n]);
+    if (G.asc) chips.push(['c', '深淵 ' + G.asc]);
+    if (G.mod) chips.push(['h', DMODS[G.mod].n]);
     const here = Game.tile(P.x, P.y) === T.STAIRS ? 'stairs' : Game.itemsAt(P.x, P.y).length ? (Game.itemsAt(P.x, P.y)[0].it.price ? 'buy' : 'pick') : 'rest';
     const sig = [P.hp, P.mhp, P.xp, P.lvl, P.gold, G.depth, chips.join(), P.cds[abil[0]], P.cds[abil[1]], here, st.arm, st.dmin, st.dmax].join('|');
     if (sig !== this.hudSig) {
@@ -520,6 +672,14 @@ const UI = {
       cb.classList.toggle('lock', here === 'stairs' && !!G.F.locked);
       this.miniDirty = true;
     }
+    // 頭像（每 0.3 秒換一格待機動作）
+    const pt = (now() * 3.3) | 0;
+    if (pt !== this.ptT || sig !== this.ptSig) { this.ptT = pt; this.ptSig = sig; this.drawSpr($('portrait'), Spr.hero(P.cls, pt % 2 ? FR.idle1 : FR.idle0, Spr.gearOf(P))); $('portrait').style.borderColor = CLASSES[P.cls].col; }
+    // 頭目血條
+    const boss = G.F.mons.find(m => m.hp > 0 && MON[m.k].boss && Game.monVisible(m));
+    const bb = $('bossBar');
+    if (boss) { if (bb.hidden) bb.hidden = false; const nm = MON[boss.k].n + (boss.enraged ? '・狂怒' : ''); if ($('bossName').dataset.n !== nm) { $('bossName').dataset.n = nm; $('bossName').innerHTML = esc(nm) + '<small>' + boss.hp + '</small>'; } $('bossName').querySelector('small').textContent = Math.max(0, boss.hp) + ' / ' + boss.mhp; $('bossFill').style.width = clamp(boss.hp / boss.mhp * 100, 0, 100) + '%'; bb.classList.toggle('rage', !!boss.enraged); }
+    else if (!bb.hidden) bb.hidden = true;
     if (this.dirtyLog) {
       this.dirtyLog = false;
       const L = G.log.slice(-5), el = $('log');
@@ -535,11 +695,19 @@ const UI = {
     $('endTitle2').textContent = win ? '征服深淵！' : '冒險結束';
     $('ovEnd').classList.toggle('win', win);
     $('endCause').textContent = G.cause;
-    $('endStats').innerHTML = [['職業', CLASSES[S.cls].n + ' Lv' + S.lvl], ['深度', '第 ' + S.depth + ' 層'], ['回合', S.turns], ['擊殺', S.kills], ['金幣', S.gold], ['分數', S.score]].map(([a, b]) => '<div><small>' + a + '</small><b>' + b + '</b></div>').join('');
+    this.drawSpr($('endHero'), Spr.hero(S.cls, win ? FR.atk1 : FR.idle0, Spr.gearOf(G.P)));
+    const kc = $('endKiller'); kc.hidden = $('endVs').hidden = !S.killer;
+    if (S.killer) { const D = MON[S.killer]; if (D.boss) { kc.width = 56; kc.height = 50; } else { kc.width = 36; kc.height = 30; } const s = Spr.mon(S.killer, FR.atk1); const x = kc.getContext('2d'); this.drawSpr(kc, s, D.boss ? 0.8 : 1); x.save(); x.translate(kc.width, 0); x.scale(-1, 1); const tmp = document.createElement('canvas'); tmp.width = kc.width; tmp.height = kc.height; tmp.getContext('2d').drawImage(kc, 0, 0); x.clearRect(0, 0, kc.width, kc.height); x.drawImage(tmp, 0, 0); x.restore(); }
+    // 深度條
+    const bcol = ['#6aa85a', '#b98cff', '#ff7a3a', '#8fe8ff', '#d05cff'];
+    $('endDepth').innerHTML = Array.from({ length: LAST_FLOOR }, (_, i) => { const d = i + 1; return '<i class="' + (d <= S.depth ? 'on' : '') + (d === S.depth ? ' at' : '') + (BOSS_FLOOR[d] ? ' boss' : '') + '" style="background:' + bcol[biomeOf(d)] + ';color:' + bcol[biomeOf(d)] + '" title="第 ' + d + ' 層"></i>'; }).join('');
+    $('endStats').innerHTML = [['職業', CLASSES[S.cls].n + ' Lv' + S.lvl], ['深度', '第 ' + S.depth + ' 層'], ['回合', S.turns], ['擊殺', S.kills], ['精英', S.elites], ['寶箱', S.chests], ['金幣', S.gold], ['分數', S.score]].map(([a, b]) => '<div><small>' + a + '</small><b>' + b + '</b></div>').join('');
     $('endSouls').innerHTML = '獲得靈魂石 <span class="soul"></span><b>' + S.souls + '</b>　·　排行第 ' + S.rank + ' 名　·　種子 <b>' + esc(S.seed) + '</b>';
+    $('endSoulDet').textContent = (S.asc ? '基本 ' + S.soulBase + ' × 深淵 ' + S.asc + ' 加成 +' + S.asc * 20 + '%' : '') + (G.mod ? (S.asc ? '　·　' : '') + '今日變化：' + DMODS[G.mod].n : '');
     $('endUnlock').hidden = !G.newUnlock;
     if (G.newUnlock) $('endUnlock').textContent = '★ 解鎖新職業：' + CLASSES[G.newUnlock].n + '！';
-    $('endLog').innerHTML = G.log.slice(-6).map(l => '<p style="color:' + COL[l.c] + '">' + esc(l.t) + '</p>').join('');
+    $('endAch').innerHTML = (S.ach || []).map(id => { const A = ACH.find(a => a.id === id); return '<div class="ach on"><span class="ic">★</span><div><b>' + A.n + '</b><p>' + A.d + (A.reward ? '　<em>' + A.reward + '</em>' : '') + '</p></div><span class="sv"><span class="soul"></span>' + A.s + '</span></div>'; }).join('');
+    $('endLog').innerHTML = G.log.slice(-5).map(l => '<p style="color:' + COL[l.c] + '">' + esc(l.t) + '</p>').join('');
     this.show('ovEnd');
     Music.play(win ? 'title' : 'b4');
   },

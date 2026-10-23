@@ -53,6 +53,7 @@ const Snd = {
     const r = 1 + (Math.random() - 0.5) * 0.12;
     switch (name) {
       case 'step': this.noise(0.05, 0.03, 900, 300, 0, 'bandpass'); break;
+      case 'chest': this.noise(0.18, 0.12, 600, 200, 0, 'lowpass'); this.arp([523, 659, 784, 1047], 0.06, 'triangle', 0.07, 0.18); break;
       case 'hit': this.noise(0.09, 0.22, 2600 * r, 500, 0, 'bandpass', null, 1.2); this.tone(180 * r, 0.08, 'square', 0.06, 70); break;
       case 'crit': this.noise(0.16, 0.3, 4000, 300, 0, 'bandpass'); this.tone(320, 0.18, 'sawtooth', 0.08, 60); this.tone(1200, 0.08, 'square', 0.04, 1800, 0.02); break;
       case 'miss': this.noise(0.12, 0.08, 1800 * r, 4000, 0, 'bandpass', null, 2); break;

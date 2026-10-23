@@ -36,6 +36,7 @@ Object.assign(Game, {
       const x = k % W, y = (k / W) | 0;
       if (F.items.some(o => o.x === x && o.y === y && o.seen && !o.it.price && !o.skip)) return true;
       if (F.mons.some(m => m.disg === 1 && m.k === 'mimic' && m.x === x && m.y === y && F.seen[k])) return true;
+      if (F.chests && F.chests.some(c => !c.open && cheb(c.x, c.y, x, y) === 1 && F.seen[c.y * W + c.x])) return true;
       for (const [dx, dy] of DIRS8) { const nx = x + dx, ny = y + dy; if (nx >= 0 && ny >= 0 && nx < W && ny < F.h && !F.seen[ny * W + nx]) return true; }
       return false;
     };
@@ -59,6 +60,8 @@ Object.assign(Game, {
     G.exGoal = [first % W, (first / W) | 0];
     const out = []; let c = first; while (c !== s) { out.push([c % W, (c / W) | 0]); c = prev[c]; } return out.reverse();
   },
+  // 身邊有還沒打開、看得到的寶箱
+  adjChest() { const P = G.P, F = G.F; return (F.chests || []).find(c => !c.open && cheb(c.x, c.y, P.x, P.y) === 1 && F.seen[c.y * F.w + c.x]); },
   dangerNear() { const P = G.P; return this.hostiles().some(m => m.awake && !MON[m.k].npc && cheb(m.x, m.y, P.x, P.y) <= 7 && !(m.st.sleep > 0)); },
   describe(x, y) {
     const F = G.F; if (x < 0 || y < 0 || x >= F.w || y >= F.h) return '';
