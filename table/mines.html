@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon.ico" sizes="any"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14110e">
+<title>踩地雷 · 棋牌桌遊</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@700;900&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="common.css">
+<style>
+.tb-main{flex-direction:column;gap:10px;padding:10px 8px calc(10px + env(safe-area-inset-bottom))}
+.hud{display:flex;align-items:center;gap:10px;flex:none;flex-wrap:wrap;justify-content:center}
+.lcd{font-variant-numeric:tabular-nums;font-weight:700;font-size:20px;background:#0d0b09;border:1px solid var(--line);border-radius:8px;padding:4px 12px;min-width:84px;text-align:center;color:var(--brass2)}
+.lcd small{font-size:12px;color:var(--mute);font-weight:400;margin-right:6px}
+.mode{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.mode button{appearance:none;border:0;background:var(--panel);padding:6px 14px;font-size:18px;cursor:pointer;min-height:38px}
+.mode button[aria-pressed=true]{background:rgba(217,168,91,.25)}
+.wrap{flex:1;min-height:0;width:100%;overflow:auto;display:flex;touch-action:pan-x pan-y}
+.board{margin:auto;display:grid;gap:2px;padding:8px;background:#151a1f;border:1px solid var(--line);border-radius:10px;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.c{width:var(--cs);height:var(--cs);border-radius:calc(var(--cs)*.16);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:calc(var(--cs)*.58);line-height:1;cursor:pointer;
+  background:linear-gradient(#4a5563,#3c4652);box-shadow:inset 0 1px 0 rgba(255,255,255,.12),inset 0 -2px 0 rgba(0,0,0,.25)}
+.c:hover{filter:brightness(1.15)}
+.c.o{background:#262c33;box-shadow:none;cursor:default}
+.c.o:hover{filter:none}
+.c.f::after{content:"";width:46%;height:52%;background:
+  linear-gradient(var(--red),var(--red)) 0 0/100% 58% no-repeat,
+  linear-gradient(#ddd,#ddd) 0 0/12% 100% no-repeat;clip-path:polygon(0 0,100% 29%,12% 58%,12% 100%,0 100%)}
+.c.q::after{content:"?";color:var(--brass2)}
+.c.m{background:#3a2a2a}
+.c.m.hit{background:#a33}
+.c.m::after{content:"";width:48%;height:48%;border-radius:50%;background:radial-gradient(circle at 35% 30%,#888,#111 60%);box-shadow:0 0 0 calc(var(--cs)*.06) #111}
+.c.wrong{background:#3a2a2a}
+.c.wrong::before{content:"✕";position:absolute;color:#ff7a6a;font-size:calc(var(--cs)*.7)}
+.c{position:relative}
+.c.pr{background:#2e353d;box-shadow:none}
+.n1{color:#7fb8e6}.n2{color:#6fd08b}.n3{color:#ff7a6a}.n4{color:#b49cff}.n5{color:#f0a35b}.n6{color:#5fd6d0}.n7{color:#eee}.n8{color:#aaa}
+.board.over .c:not(.o){cursor:default}
+</style>
+</head>
+<body class="tb">
+<header class="tb-bar">
+  <a class="tb-back" href="index.html">← 棋牌</a>
+  <h1 class="tb-title">踩地雷</h1>
+  <span class="tb-sp"></span>
+  <button class="tb-btn" id="bNew">新局</button>
+  <button class="tb-btn" id="bLevel">難度</button>
+  <button class="tb-btn" id="bInfo">規則</button>
+  <button class="tb-btn icon" id="tb-mute"></button>
+</header>
+<main class="tb-main">
+  <div class="hud">
+    <div class="lcd" id="left"><small>地雷</small>10</div>
+    <div class="mode" id="mode" title="手機：切換點一下是「挖開」還是「插旗」">
+      <button data-m="dig" aria-pressed="true" aria-label="挖開">⛏️</button><button data-m="flag" aria-pressed="false" aria-label="插旗">🚩</button>
+    </div>
+    <div class="lcd" id="time"><small>時間</small>0</div>
+  </div>
+  <div class="wrap" id="wrap"><div class="board" id="board"></div></div>
+  <div class="tb-status" id="status">點任一格開始。電腦：左鍵挖開、右鍵插旗。手機：長按插旗。</div>
+</main>
+<script src="common.js"></script>
+<script>
+'use strict';
+const LEVELS = {
+  easy: { name: '初級', w: 9, h: 9, n: 10 },
+  mid: { name: '中級', w: 16, h: 16, n: 40 },
+  hard: { name: '高級', w: 30, h: 16, n: 99 },
+};
+let cfg = TB.store.get('mines:cfg', { level: 'easy', noguess: '1', cw: 20, ch: 12, cn: 40, q: '0' });
+let W, H, N, mines, open, flag, started, over, t0, timer, mode = 'dig', flagsUsed, opened;
+const $ = id => document.getElementById(id);
+const board = $('board');
+
+function levelOf() {
+  if (cfg.level === 'custom') return { name: '自訂', w: +cfg.cw, h: +cfg.ch, n: +cfg.cn };
+  return LEVELS[cfg.level];
+}
+function nb(i, f) {
+  const x = i % W, y = (i / W) | 0;
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    if (!dx && !dy) continue;
+    const nx = x + dx, ny = y + dy;
+    if (nx >= 0 && ny >= 0 && nx < W && ny < H) f(ny * W + nx);
+  }
+}
+function count(i) { let c = 0; nb(i, j => { if (mines[j]) c++; }); return c; }
+
+function newGame() {
+  const L = levelOf();
+  // 直向手機：寬盤轉成直的
+  const portrait = innerHeight > innerWidth * 1.15;
+  W = L.w; H = L.h; N = L.n;
+  if (portrait && W > H) { const t = W; W = H; H = t; }
+  mines = new Uint8Array(W * H); open = new Uint8Array(W * H); flag = new Uint8Array(W * H);
+  started = false; over = false; flagsUsed = 0; opened = 0;
+  clearInterval(timer); timer = 0;
+  board.classList.remove('over');
+  board.style.gridTemplateColumns = 'repeat(' + W + ',var(--cs))';
+  let h = '';
+  for (let i = 0; i < W * H; i++) h += '<div class="c" data-i="' + i + '"></div>';
+  board.innerHTML = h;
+  fit(); hud();
+  $('time').innerHTML = '<small>時間</small>0';
+  $('status').textContent = L.name + '：' + L.w + '×' + L.h + '，' + N + ' 顆地雷。' + (cfg.noguess === '1' ? '無猜模式：只靠推理就能解開。' : '');
+}
+function fit() {
+  const wrap = $('wrap');
+  const aw = wrap.clientWidth - 22, ah = wrap.clientHeight - 22;
+  let cs = Math.floor(Math.min((aw - (W - 1) * 2) / W, (ah - (H - 1) * 2) / H));
+  cs = Math.max(26, Math.min(44, cs)); // 太小就讓棋盤可捲動
+  board.style.setProperty('--cs', cs + 'px');
+}
+addEventListener('resize', fit);
+function hud() { $('left').innerHTML = '<small>地雷</small>' + (N - flagsUsed); }
+
+// ---- 產生地雷（第一下保證是空白區；無猜模式用推理器確認可解）----
+function place(first) {
+  const safe = new Set([first]); nb(first, j => safe.add(j));
+  const cells = []; for (let i = 0; i < W * H; i++) if (!safe.has(i)) cells.push(i);
+  const lay = () => {
+    mines.fill(0);
+    // 小盤地雷太密時，安全區只保留第一格
+    const pool = cells.length >= N ? cells : (() => { const a = []; for (let i = 0; i < W * H; i++) if (i !== first) a.push(i); return a; })();
+    for (let k = 0; k < N; k++) { const r = k + Math.floor(Math.random() * (pool.length - k)); [pool[k], pool[r]] = [pool[r], pool[k]]; mines[pool[k]] = 1; }
+  };
+  if (cfg.noguess !== '1') { lay(); return; }
+  const deadline = performance.now() + 1500;
+  do { lay(); if (solvable(first)) return; } while (performance.now() < deadline);
+  TB.toast('這個盤面太難保證無猜，改成一般盤面', 2500);
+}
+// 簡單推理器：單點規則 + 子集規則；能全部推出來才算可解
+function solvable(first) {
+  const op = new Uint8Array(W * H), fl = new Uint8Array(W * H), num = new Int8Array(W * H);
+  for (let i = 0; i < W * H; i++) num[i] = mines[i] ? -1 : count(i);
+  let left = W * H - N;
+  const stack = [first];
+  const reveal = () => { while (stack.length) { const i = stack.pop(); if (op[i] || fl[i]) continue; if (mines[i]) return false; op[i] = 1; left--; if (num[i] === 0) nb(i, j => { if (!op[j]) stack.push(j); }); } return true; };
+  if (!reveal()) return false;
+  let progress = true;
+  while (left > 0 && progress) {
+    progress = false;
+    const cons = [];
+    for (let i = 0; i < W * H; i++) {
+      if (!op[i] || num[i] <= 0) continue;
+      const unk = []; let f = 0;
+      nb(i, j => { if (fl[j]) f++; else if (!op[j]) unk.push(j); });
+      if (!unk.length) continue;
+      const need = num[i] - f;
+      if (need === 0) { unk.forEach(j => stack.push(j)); progress = true; }
+      else if (need === unk.length) { unk.forEach(j => { if (!fl[j]) { fl[j] = 1; progress = true; } }); }
+      else cons.push({ s: unk, n: need });
+    }
+    if (progress) { if (!reveal()) return false; continue; }
+    // 子集規則
+    for (let a = 0; a < cons.length && !progress; a++) for (let b = 0; b < cons.length && !progress; b++) {
+      if (a === b) continue;
+      const A = cons[a], B = cons[b];
+      if (A.s.length >= B.s.length) continue;
+      if (!A.s.every(x => B.s.includes(x))) continue;
+      const rest = B.s.filter(x => !A.s.includes(x)), dn = B.n - A.n;
+      if (dn === 0) { rest.forEach(j => stack.push(j)); progress = true; }
+      else if (dn === rest.length) { rest.forEach(j => fl[j] = 1); progress = true; }
+    }
+    if (progress && !reveal()) return false;
+    // 全局：剩下的雷數 = 未知格數
+    if (!progress) {
+      let unk = 0, f = 0; for (let i = 0; i < W * H; i++) { if (fl[i]) f++; else if (!op[i]) unk++; }
+      if (N - f === 0 && unk) { for (let i = 0; i < W * H; i++) if (!op[i] && !fl[i]) stack.push(i); progress = true; reveal(); }
+      else if (N - f === unk && unk) { return true; }
+    }
+  }
+  return left === 0;
+}
+
+// ---- 操作 ----
+function cell(i) { return board.children[i]; }
+function paint(i) {
+  const el = cell(i);
+  el.className = 'c';
+  if (open[i]) { el.classList.add('o'); const c = count(i); el.textContent = c || ''; if (c) el.classList.add('n' + c); }
+  else if (flag[i] === 1) el.classList.add('f');
+  else if (flag[i] === 2) el.classList.add('q');
+}
+function reveal(i) {
+  if (over || open[i] || flag[i] === 1) return;
+  if (!started) {
+    started = true; place(i); t0 = Date.now();
+    timer = setInterval(() => { $('time').innerHTML = '<small>時間</small>' + Math.floor((Date.now() - t0) / 1000); }, 250);
+  }
+  if (mines[i]) return lose(i);
+  const st = [i]; let n = 0;
+  while (st.length) {
+    const k = st.pop(); if (open[k] || flag[k] === 1) continue;
+    open[k] = 1; if (flag[k]) flag[k] = 0; opened++; n++; paint(k);
+    if (count(k) === 0) nb(k, j => { if (!open[j]) st.push(j); });
+  }
+  TB.sfx(n > 1 ? 'flip' : 'click');
+  if (opened === W * H - N) win();
+}
+function chord(i) {
+  if (!open[i]) return;
+  let f = 0; nb(i, j => { if (flag[j] === 1) f++; });
+  if (f !== count(i)) { // 旗子數不對：輕微提示一下周圍
+    nb(i, j => { if (!open[j] && !flag[j]) { const el = cell(j); el.classList.add('pr'); setTimeout(() => el.classList.remove('pr'), 140); } });
+    return;
+  }
+  nb(i, j => { if (!open[j] && flag[j] !== 1) reveal(j); });
+}
+function toggleFlag(i) {
+  if (over || open[i]) return;
+  const useQ = cfg.q === '1';
+  flag[i] = flag[i] === 0 ? 1 : (flag[i] === 1 && useQ ? 2 : 0);
+  flagsUsed = 0; for (let k = 0; k < flag.length; k++) if (flag[k] === 1) flagsUsed++;
+  paint(i); hud(); TB.sfx('select');
+}
+function endTimer() { clearInterval(timer); timer = 0; const s = (Date.now() - t0) / 1000; $('time').innerHTML = '<small>時間</small>' + Math.floor(s); return s; }
+function lose(hit) {
+  over = true; endTimer(); board.classList.add('over');
+  for (let i = 0; i < W * H; i++) {
+    const el = cell(i);
+    if (mines[i] && flag[i] !== 1) { el.className = 'c m' + (i === hit ? ' hit' : ''); el.textContent = ''; }
+    else if (!mines[i] && flag[i] === 1) { el.className = 'c wrong'; }
+  }
+  TB.sfx('boom');
+  TB.bump('mines', 'played'); TB.bump('mines:' + cfg.level, 'played');
+  $('status').textContent = '踩到地雷了！再來一局吧。';
+  setTimeout(() => TB.dialog({ title: '💥 踩到地雷', html: '<p>別氣餒，數字是你最好的朋友。</p>', buttons: [{ label: '看盤面' }, { label: '再來一局', primary: true, onClick: () => { newGame(); } }] }), 700);
+}
+function win() {
+  over = true; const sec = endTimer(); board.classList.add('over');
+  for (let i = 0; i < W * H; i++) if (mines[i] && flag[i] !== 1) { flag[i] = 1; paint(i); }
+  flagsUsed = N; hud();
+  TB.sfx('win');
+  TB.bump('mines', 'played'); TB.bump('mines', 'won');
+  const lv = cfg.level, s = TB.bump('mines:' + lv, 'played'); TB.bump('mines:' + lv, 'won');
+  const bestKey = 'mines:best:' + lv + (lv === 'custom' ? ':' + cfg.cw + 'x' + cfg.ch + 'x' + cfg.cn : '');
+  const best = TB.store.get(bestKey, null), rec = best == null || sec < best;
+  if (rec) TB.store.set(bestKey, sec);
+  $('status').textContent = '過關！用了 ' + sec.toFixed(1) + ' 秒。';
+  TB.dialog({ title: rec ? '🏆 新紀錄！' : '🎉 過關！', html:
+    TB.statsHtml([['這局秒數', sec.toFixed(1)], ['最佳紀錄', (rec ? sec : best).toFixed(1)], [levelOf().name + '勝場', (TB.stats('mines:' + lv).won || 0)]]),
+    buttons: [{ label: '看盤面' }, { label: '再來一局', primary: true, onClick: () => { newGame(); } }] });
+}
+
+// ---- 輸入：滑鼠 / 觸控（長按插旗）----
+let pressT = 0, pressI = -1, longDone = false, startXY = null;
+board.addEventListener('contextmenu', e => e.preventDefault());
+board.addEventListener('pointerdown', e => {
+  const el = e.target.closest('.c'); if (!el || over) return;
+  const i = +el.dataset.i;
+  if (e.pointerType === 'mouse') {
+    if (e.button === 2) { open[i] ? chord(i) : toggleFlag(i); return; }
+    if (e.button === 1) { chord(i); e.preventDefault(); return; }
+    if (e.button !== 0) return;
+    pressI = i; if (!open[i]) el.classList.add('pr'); return;
+  }
+  pressI = i; longDone = false; startXY = [e.clientX, e.clientY];
+  clearTimeout(pressT);
+  pressT = setTimeout(() => {
+    longDone = true;
+    if (navigator.vibrate) try { navigator.vibrate(25); } catch (_) {}
+    if (open[i]) chord(i); else if (mode === 'dig') toggleFlag(i); else reveal(i);
+  }, 380);
+});
+board.addEventListener('pointermove', e => {
+  if (startXY && Math.hypot(e.clientX - startXY[0], e.clientY - startXY[1]) > 10) { clearTimeout(pressT); pressI = -1; startXY = null; }
+});
+board.addEventListener('pointerup', e => {
+  clearTimeout(pressT);
+  board.querySelectorAll('.pr').forEach(x => x.classList.remove('pr'));
+  const el = e.target.closest('.c'); if (!el) { pressI = -1; return; }
+  const i = +el.dataset.i;
+  if (i !== pressI || over) { pressI = -1; return; }
+  pressI = -1;
+  if (e.pointerType === 'mouse') { if (e.button !== 0) return; open[i] ? chord(i) : reveal(i); return; }
+  startXY = null;
+  if (longDone) return;
+  if (open[i]) chord(i); else if (mode === 'dig') reveal(i); else toggleFlag(i);
+});
+board.addEventListener('pointercancel', () => { clearTimeout(pressT); pressI = -1; });
+$('mode').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  mode = b.dataset.m; $('mode').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); TB.sfx('click');
+});
+addEventListener('keydown', e => { if (e.key === 'f' || e.key === 'F') $('mode').querySelector('[data-m=' + (mode === 'dig' ? 'flag' : 'dig') + ']').click(); if (e.key === 'n' || e.key === 'F2') newGame(); });
+
+// ---- 對話框 ----
+function levelDialog() {
+  TB.dialog({ title: '選難度', html:
+    TB.seg('難度', 'level', [['easy', '初級 9×9'], ['mid', '中級 16×16'], ['hard', '高級 30×16'], ['custom', '自訂']], cfg.level) +
+    '<div class="tb-field" id="cust"><label>自訂（寬 × 高 × 地雷）</label><div style="display:flex;gap:6px;align-items:center">' +
+    ['cw', 'ch', 'cn'].map(k => '<input type="number" inputmode="numeric" data-k="' + k + '" value="' + cfg[k] + '" style="width:30%;background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px;font-size:15px">').join('×') + '</div></div>' +
+    TB.seg('無猜模式（保證不用賭運氣）', 'noguess', [['1', '開'], ['0', '關']], cfg.noguess) +
+    TB.seg('旗子可以標問號', 'q', [['0', '不用'], ['1', '要']], cfg.q),
+    buttons: [{ label: '取消' }, { label: '開始', primary: true, onClick: d => {
+      cfg.level = TB.segVal(d, 'level'); cfg.noguess = TB.segVal(d, 'noguess'); cfg.q = TB.segVal(d, 'q');
+      d.querySelectorAll('#cust input').forEach(inp => cfg[inp.dataset.k] = inp.value);
+      cfg.cw = Math.max(5, Math.min(40, +cfg.cw | 0)); cfg.ch = Math.max(5, Math.min(30, +cfg.ch | 0));
+      cfg.cn = Math.max(1, Math.min(cfg.cw * cfg.ch - 9, +cfg.cn | 0));
+      TB.store.set('mines:cfg', cfg); newGame();
+    } }] });
+}
+$('bLevel').onclick = levelDialog;
+$('bNew').onclick = () => { TB.sfx('click'); newGame(); };
+$('bInfo').onclick = () => {
+  const s = TB.stats('mines'), b = k => { const v = TB.store.get('mines:best:' + k, null); return v == null ? '—' : v.toFixed(1); };
+  TB.dialog({ title: '踩地雷', html: TB.statsHtml([['總局數', s.played || 0], ['過關', s.won || 0], ['初級最佳', b('easy')], ['中級最佳', b('mid')], ['高級最佳', b('hard')]]) +
+    '<div class="tb-rules"><h4>怎麼玩</h4><ul><li>把所有沒有地雷的格子都挖開就過關。</li><li>挖開的數字表示「周圍 8 格裡有幾顆地雷」。</li><li>確定是地雷的格子插上旗子，避免誤挖。</li><li>第一下一定安全，而且會打開一片。</li></ul>' +
+    '<h4>操作</h4><ul><li>電腦：左鍵挖開、右鍵插旗；在數字上按（左鍵、右鍵或中鍵）＝周圍旗子數對了就一次挖開其他格。F 切換挖開/插旗，N 新局。</li><li>手機：點一下挖開、長按插旗；也可以切到 🚩 模式，點一下就插旗。點數字＝一次挖開周圍。</li></ul>' +
+    '<h4>無猜模式</h4><p>開啟時，盤面保證只靠推理就能全部解開，不會遇到要靠運氣二選一的情況。</p></div>',
+    buttons: [{ label: '關閉', primary: true }] });
+};
+newGame();
+</script>
+</body>
+</html>

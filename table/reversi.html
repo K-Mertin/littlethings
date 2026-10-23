@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon.ico" sizes="any"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#14110e">
+<title>黑白棋 · 棋牌桌遊</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@700;900&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="common.css">
+<style>
+.wrap{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:0}
+.bb{flex:1;min-height:0;min-width:0;width:100%;align-self:stretch;display:flex;align-items:center;justify-content:center}
+#cv{display:block;touch-action:manipulation;cursor:pointer;border-radius:10px;box-shadow:0 14px 40px rgba(0,0,0,.55)}
+.info{display:flex;flex-direction:column;gap:8px;width:min(560px,100%);flex:none}
+.players{display:flex;gap:8px}
+.pl{flex:1;display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 12px;min-width:0;transition:border-color .2s,background .2s}
+.pl.on{border-color:var(--brass);background:rgba(217,168,91,.12)}
+.pl div{flex:1;min-width:0}
+.pl b{display:block;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl small{color:var(--mute);font-size:12px}
+.pl .n{font-family:var(--serif);font-weight:900;font-size:28px;color:var(--brass2);min-width:1.4em;text-align:right;line-height:1}
+.st{width:26px;height:26px;border-radius:50%;flex:none;box-shadow:1px 2px 4px rgba(0,0,0,.6)}
+.st.b{background:radial-gradient(circle at 35% 30%,#777,#141414 60%)}
+.st.w{background:radial-gradient(circle at 35% 30%,#fff,#d8d2c4 70%)}
+.meta{font-size:12px;color:var(--mute);text-align:center}
+@media (max-width:430px){.tb-title{display:none}}
+@media (min-aspect-ratio:1/1) and (min-width:720px){
+  .wrap{flex-direction:row;gap:22px;max-width:calc(100vh - var(--bar) + 230px);max-width:calc(100dvh - var(--bar) + 230px)}
+  .info{width:230px;order:2}
+  .players{flex-direction:column}
+  .meta{text-align:left}.info .tb-status{text-align:left}
+}
+</style>
+</head>
+<body class="tb">
+<header class="tb-bar">
+  <a class="tb-back" href="index.html">← 棋牌</a>
+  <h1 class="tb-title">黑白棋</h1>
+  <span class="tb-sp"></span>
+  <button class="tb-btn" id="bNew">新局</button>
+  <button class="tb-btn" id="bUndo">悔棋</button>
+  <button class="tb-btn" id="bHint">提示</button>
+  <button class="tb-btn" id="bInfo">規則<span class="tb-hide-s">・戰績</span></button>
+  <button class="tb-btn icon" id="tb-mute"></button>
+</header>
+<main class="tb-main">
+  <div class="wrap">
+    <div class="info">
+      <div class="players">
+        <div class="pl" id="p1"><span class="st b"></span><div><b id="n1">你</b><small id="m1">黑・先手</small></div><span class="n" id="s1">2</span></div>
+        <div class="pl" id="p2"><span class="st w"></span><div><b id="n2">電腦</b><small id="m2">白</small></div><span class="n" id="s2">2</span></div>
+      </div>
+      <div class="tb-status" id="status"></div>
+      <div class="meta" id="meta"></div>
+    </div>
+    <div class="bb" id="bb"><canvas id="cv" aria-label="黑白棋棋盤"></canvas></div>
+  </div>
+</main>
+<script src="common.js"></script>
+<script>
+'use strict';
+// ======================================================================
+// 規則與電腦（同一份程式也在 Web Worker 裡跑）。棋盤長度 64：index = y*8+x，0 空、1 黑、2 白。
+// ======================================================================
+function LOGIC(self) {
+  const D = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+  // 每個格子往 8 個方向的射線，先算好
+  const RAYS = [];
+  for (let p = 0; p < 64; p++) {
+    const x = p % 8, y = p >> 3, rs = [];
+    for (const [dx, dy] of D) {
+      const r = []; let X = x + dx, Y = y + dy;
+      while (X >= 0 && Y >= 0 && X < 8 && Y < 8) { r.push(Y * 8 + X); X += dx; Y += dy; }
+      if (r.length >= 2) rs.push(r);
+    }
+    RAYS.push(rs);
+  }
+  function flips(b, p, c) {
+    if (b[p]) return null;
+    const o = 3 - c; let out = null;
+    for (const r of RAYS[p]) {
+      if (b[r[0]] !== o) continue;
+      let i = 1; while (i < r.length && b[r[i]] === o) i++;
+      if (i < r.length && b[r[i]] === c) { if (!out) out = []; for (let j = 0; j < i; j++) out.push(r[j]); }
+    }
+    return out;
+  }
+  function canMove(b, p, c) {
+    if (b[p]) return false;
+    const o = 3 - c;
+    for (const r of RAYS[p]) {
+      if (b[r[0]] !== o) continue;
+      let i = 1; while (i < r.length && b[r[i]] === o) i++;
+      if (i < r.length && b[r[i]] === c) return true;
+    }
+    return false;
+  }
+  function moves(b, c) { const m = []; for (let p = 0; p < 64; p++) if (canMove(b, p, c)) m.push(p); return m; }
+  function count(b) { let k = 0, w = 0; for (let p = 0; p < 64; p++) { if (b[p] === 1) k++; else if (b[p] === 2) w++; } return [k, w]; }
+  function start() { const b = new Int8Array(64); b[27] = b[36] = 2; b[28] = b[35] = 1; return b; }
+
+  // ---- 評估 ----
+  const W = [
+    100, -25, 10, 5, 5, 10, -25, 100,
+    -25, -45, -2, -2, -2, -2, -45, -25,
+    10, -2, 2, 1, 1, 2, -2, 10,
+    5, -2, 1, 0, 0, 1, -2, 5,
+    5, -2, 1, 0, 0, 1, -2, 5,
+    10, -2, 2, 1, 1, 2, -2, 10,
+    -25, -45, -2, -2, -2, -2, -45, -25,
+    100, -25, 10, 5, 5, 10, -25, 100];
+  const CORN = [[0, 1, 8, 9], [7, 6, 15, 14], [56, 57, 48, 49], [63, 62, 55, 54]];
+  function stableEdges(b, c) { // 從角落沿邊連續的同色子（一定不會被翻）
+    let s = 0;
+    const lines = [[0, 1], [0, 8], [7, -1], [7, 8], [56, 1], [56, -8], [63, -1], [63, -8]];
+    for (const [st, d] of lines) { if (b[st] !== c) continue; let p = st, n = 0; while (n < 7 && b[p] === c) { n++; p += d; } s += n; }
+    return s;
+  }
+  function evaluate(b, c) {
+    const o = 3 - c; let pos = 0, empt = 0;
+    for (let p = 0; p < 64; p++) {
+      const v = b[p]; if (!v) { empt++; continue; }
+      let w = W[p];
+      if (w < 0) { // 角落已經有子時，旁邊的 X、C 位不再危險
+        for (const k of CORN) if (k.indexOf(p) > 0 && b[k[0]]) { w = 4; break; }
+      }
+      pos += v === c ? w : -w;
+    }
+    const mc = moves(b, c).length, mo = moves(b, o).length;
+    const mob = (mc + mo) ? 100 * (mc - mo) / (mc + mo + 2) : 0;
+    const stab = stableEdges(b, c) - stableEdges(b, o);
+    const [k, w] = count(b); const disc = c === 1 ? k - w : w - k;
+    const late = empt < 16;
+    return pos * 1.0 + mob * (late ? 0.6 : 1.2) + stab * 12 + (late ? disc * 1.5 : 0);
+  }
+  // ---- 搜尋 ----
+  let deadline = 0, aborted = false, nodes = 0;
+  function play(b, p, c) { const f = flips(b, p, c); b[p] = c; for (const q of f) b[q] = c; return f; }
+  function unplay(b, p, c, f) { b[p] = 0; const o = 3 - c; for (const q of f) b[q] = o; }
+  function order(b, ms) { return ms.sort((u, v) => W[v] - W[u]); }
+  function ab(b, c, depth, alpha, beta, exact) {
+    if ((++nodes & 1023) === 0 && performance.now() > deadline) aborted = true;
+    if (aborted) return 0;
+    const o = 3 - c;
+    const ms = moves(b, c);
+    if (!ms.length) {
+      if (!moves(b, o).length) { const [k, w] = count(b); const d = c === 1 ? k - w : w - k; return d * 10000 + (d > 0 ? 1e6 : d < 0 ? -1e6 : 0); }
+      return -ab(b, o, depth, -beta, -alpha, exact);
+    }
+    if (depth <= 0 && !exact) return evaluate(b, c);
+    if (exact && ms.length > 1) { // 殘局：先下讓對手可走步數最少的
+      const sc = ms.map(p => { const f = play(b, p, c); const n = moves(b, o).length; unplay(b, p, c, f); return [n * 100 - W[p], p]; });
+      sc.sort((u, v) => u[0] - v[0]); for (let i = 0; i < ms.length; i++) ms[i] = sc[i][1];
+    } else order(b, ms);
+    let best = -Infinity;
+    for (const p of ms) {
+      const f = play(b, p, c);
+      const v = -ab(b, o, depth - 1, -beta, -alpha, exact);
+      unplay(b, p, c, f);
+      if (aborted) return 0;
+      if (v > best) best = v;
+      if (v > alpha) alpha = v;
+      if (alpha >= beta) break;
+    }
+    return best;
+  }
+  function root(b, c, depth, exact, ms) {
+    let bp = ms[0], bv = -Infinity, alpha = -Infinity;
+    for (const p of ms) {
+      const f = play(b, p, c);
+      const v = -ab(b, 3 - c, depth - 1, -Infinity, -alpha, exact);
+      unplay(b, p, c, f);
+      if (aborted) return null;
+      if (v > bv) { bv = v; bp = p; }
+      if (v > alpha) alpha = v;
+    }
+    return { p: bp, v: bv };
+  }
+  function pick(b, c, level) {
+    const ms = moves(b, c); if (!ms.length) return -1;
+    if (ms.length === 1) return ms[0];
+    const R = Math.random;
+    let empt = 0; for (let p = 0; p < 64; p++) if (!b[p]) empt++;
+    if (level === 0) { // 簡單：常常亂下，偏好翻得多的
+      if (R() < 0.45) return ms[R() * ms.length | 0];
+      const sc = ms.map(p => [flips(b, p, c).length + W[p] * 0.05 + R() * 3, p]); sc.sort((u, v) => v[0] - u[0]);
+      return sc[0][1];
+    }
+    if (level === 1) { // 普通：看兩步，加一點隨機
+      deadline = performance.now() + 500; aborted = false;
+      const sc = ms.map(p => { const f = play(b, p, c); const v = -ab(b, 3 - c, 1, -Infinity, Infinity, false); unplay(b, p, c, f); return [v + R() * 18, p]; });
+      sc.sort((u, v) => v[0] - u[0]); return sc[0][1];
+    }
+    const T = level === 3 ? 1800 : 900, EX = level === 3 ? 13 : 9, MAXD = level === 3 ? 12 : 6;
+    const T0 = performance.now();
+    order(b, ms);
+    let best = ms[0];
+    if (empt <= EX) { // 殘局讀到底
+      deadline = T0 + T * 0.7; aborted = false; nodes = 0;
+      const r = root(b, c, 64, true, ms.slice());
+      if (r) return r.p;
+    }
+    deadline = T0 + T;
+    for (let d = 1; d <= MAXD; d++) {
+      aborted = false; nodes = 0;
+      const r = root(b, c, d, false, ms);
+      if (!r) break;
+      best = r.p;
+      const i = ms.indexOf(best); if (i > 0) { ms.splice(i, 1); ms.unshift(best); }
+      if (performance.now() > T0 + T * 0.45) break; // 下一層大概來不及
+    }
+    return best;
+  }
+  self.api = { flips, moves, count, start, pick };
+  self.onmessage = e => pick(Int8Array.from(e.data.b), e.data.c, e.data.level);
+}
+
+// ======================================================================
+// 畫面與操作
+// ======================================================================
+const S = {}; LOGIC(S);
+const R = S.api;
+const AI = TB.worker(LOGIC);
+const LEVELS = ['簡單', '普通', '困難', '高手'];
+
+let set = Object.assign({ mode: 'cpu', level: 1, me: 1 }, TB.store.get('reversi:set', {}));
+let pref = Object.assign({ dots: true }, TB.store.get('reversi:pref', {}));
+let G; // {hist:[{b:[],t,last}], over}
+let token = 0, thinking = false, hint = -1, anims = {}, legal = [];
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d'), bb = document.getElementById('bb');
+let size = 300, cell = 30, pad = 10, dpr = 1;
+
+const cur = () => G.hist[G.hist.length - 1];
+const board = () => cur().b;
+const cpuTurn = () => set.mode === 'cpu' && !G.over && cur().t !== set.me;
+function save() { TB.store.set('reversi:game', { hist: G.hist.map(h => ({ b: Array.from(h.b), t: h.t, last: h.last })), over: G.over, set }); }
+
+function newGame(s) {
+  if (s) { set = s; TB.store.set('reversi:set', set); }
+  token++; AI.kill(); thinking = false; hint = -1; anims = {};
+  G = { hist: [{ b: R.start(), t: 1, last: -1 }], over: null };
+  save(); after();
+}
+function name(c) { return set.mode === 'pvp' ? (c === 1 ? '黑方' : '白方') : (c === set.me ? '你' : '電腦'); }
+function ui() {
+  const h = cur(), [k, w] = R.count(h.b);
+  document.getElementById('s1').textContent = k; document.getElementById('s2').textContent = w;
+  document.getElementById('n1').textContent = set.mode === 'pvp' ? '黑方' : (set.me === 1 ? '你' : '電腦');
+  document.getElementById('n2').textContent = set.mode === 'pvp' ? '白方' : (set.me === 2 ? '你' : '電腦');
+  document.getElementById('m1').textContent = '黑・' + (set.mode === 'cpu' && set.me !== 1 ? LEVELS[set.level] : '先手');
+  document.getElementById('m2').textContent = '白' + (set.mode === 'cpu' && set.me !== 2 ? '・' + LEVELS[set.level] : '');
+  document.getElementById('p1').classList.toggle('on', !G.over && h.t === 1);
+  document.getElementById('p2').classList.toggle('on', !G.over && h.t === 2);
+  const st = document.getElementById('status');
+  if (G.over) st.innerHTML = k === w ? '<b>和局</b>' : '<b>' + (k > w ? '黑' : '白') + '勝</b>・' + Math.max(k, w) + ' 比 ' + Math.min(k, w);
+  else if (thinking) st.textContent = '電腦思考中…';
+  else st.innerHTML = '輪到 <b>' + name(h.t) + '</b>（' + (h.t === 1 ? '黑' : '白') + '）';
+  document.getElementById('meta').textContent = '空格 ' + (64 - k - w) + '・' + (set.mode === 'cpu' ? '對電腦・' + LEVELS[set.level] : '兩人對下');
+  const canUndo = set.mode === 'cpu' ? G.hist.slice(0, -1).some(x => x.t === set.me) : G.hist.length > 1;
+  document.getElementById('bUndo').disabled = !canUndo;
+  document.getElementById('bHint').disabled = !!G.over || cpuTurn() || thinking;
+}
+function after() {
+  legal = G.over ? [] : R.moves(board(), cur().t);
+  ui(); draw();
+  if (cpuTurn()) cpu();
+}
+async function cpu() {
+  const my = ++token; thinking = true; ui();
+  const t0 = performance.now();
+  let p;
+  try { p = await AI.ask({ b: Array.from(board()), c: cur().t, level: +set.level }); } catch (e) { p = -1; }
+  const wait = 450 - (performance.now() - t0); if (wait > 0) await new Promise(r => setTimeout(r, wait));
+  if (my !== token) return;
+  thinking = false;
+  const ms = R.moves(board(), cur().t);
+  if (!ms.includes(p)) p = ms[0];
+  if (p != null && p >= 0) play(p);
+}
+function play(p) {
+  const h = cur(), c = h.t, b = Int8Array.from(h.b);
+  const f = R.flips(b, p, c); if (!f) return;
+  b[p] = c; const now = performance.now();
+  anims = { [p]: { t0: now, drop: true } };
+  f.forEach((q, i) => { b[q] = c; anims[q] = { t0: now + 90 + i * 35, from: 3 - c }; });
+  TB.sfx('place'); f.forEach((q, i) => setTimeout(() => TB.sfx('flip'), 90 + i * 35));
+  let t = 3 - c, passed = false;
+  if (!R.moves(b, t).length) {
+    if (R.moves(b, c).length) { passed = true; t = c; }
+    else t = 0;
+  }
+  hint = -1;
+  G.hist.push({ b, t: t || c, last: p });
+  if (!t) end(b);
+  else if (passed) TB.toast((name(3 - c)) + '沒有地方可以下，換' + name(c) + '繼續', 2400);
+  save(); after(); anim();
+}
+function end(b) {
+  const [k, w] = R.count(b);
+  const win = k === w ? 0 : (k > w ? 1 : 2);
+  G.over = { win };
+  TB.bump('reversi', 'played');
+  let title;
+  if (!win) { TB.bump('reversi', 'draw'); title = '和局'; setTimeout(() => TB.sfx('draw'), 500); }
+  else if (set.mode === 'cpu') {
+    if (win === set.me) { TB.bump('reversi', 'won'); title = '你贏了！'; setTimeout(() => TB.sfx('win'), 500); }
+    else { title = '電腦贏了'; setTimeout(() => TB.sfx('lose'), 500); }
+  } else { title = (win === 1 ? '黑方' : '白方') + '獲勝！'; setTimeout(() => TB.sfx('win'), 500); }
+  setTimeout(() => {
+    if (!G.over) return;
+    TB.dialog({ title, html: '<p>黑 ' + k + ' 比 白 ' + w + '。</p>',
+      buttons: [{ label: '看棋盤', value: 0 }, { label: '再來一局', primary: true, value: 1 }] })
+      .then(v => { if (v === 1) newGame(); });
+  }, 1100);
+}
+function undo() {
+  token++; AI.kill(); thinking = false; hint = -1; anims = {};
+  if (G.hist.length <= 1) return;
+  if (set.mode === 'cpu') {
+    let i = G.hist.length - 2; while (i >= 0 && G.hist[i].t !== set.me) i--;
+    if (i < 0) { after(); return; }
+    G.hist.length = i + 1;
+  } else G.hist.pop();
+  G.over = null; save(); TB.sfx('flip'); after();
+}
+async function doHint() {
+  if (G.over || cpuTurn() || thinking) return;
+  const my = token;
+  document.getElementById('status').textContent = '想一想…';
+  const p = await AI.ask({ b: Array.from(board()), c: cur().t, level: 2 });
+  if (my !== token || p < 0) { ui(); return; }
+  hint = p; ui(); anim();
+}
+
+// ---- 繪圖 ----
+function fit() {
+  const r = bb.getBoundingClientRect();
+  const s = Math.max(200, Math.floor(Math.min(r.width, r.height)));
+  dpr = Math.min(3, window.devicePixelRatio || 1);
+  size = s; cv.style.width = cv.style.height = s + 'px'; cv.width = cv.height = Math.round(s * dpr);
+  pad = Math.max(8, s * .035); cell = (s - pad * 2) / 8;
+  draw();
+}
+function disc(x, y, r, c, sx) {
+  ctx.save();
+  ctx.translate(x, y); ctx.scale(Math.max(.04, sx), 1);
+  ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = r * .3; ctx.shadowOffsetY = r * .15;
+  const g = ctx.createRadialGradient(-r * .35, -r * .38, r * .1, 0, 0, r);
+  if (c === 1) { g.addColorStop(0, '#707070'); g.addColorStop(.5, '#242424'); g.addColorStop(1, '#090909'); }
+  else { g.addColorStop(0, '#ffffff'); g.addColorStop(.6, '#ece7dc'); g.addColorStop(1, '#c4bca9'); }
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fill();
+  ctx.restore();
+}
+function draw() {
+  if (!G) return;
+  const now = performance.now(), h = cur(), b = h.b;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // 木框＋絨布
+  const fr = ctx.createLinearGradient(0, 0, size, size); fr.addColorStop(0, '#5a3a1e'); fr.addColorStop(1, '#3a2412');
+  ctx.fillStyle = fr; ctx.fillRect(0, 0, size, size);
+  const fg = ctx.createRadialGradient(size / 2, size * .4, size * .1, size / 2, size / 2, size * .75);
+  fg.addColorStop(0, '#24704d'); fg.addColorStop(1, '#174a33');
+  ctx.fillStyle = fg; ctx.fillRect(pad, pad, cell * 8, cell * 8);
+  ctx.strokeStyle = 'rgba(5,25,15,.85)'; ctx.lineWidth = 1.5;
+  for (let i = 0; i <= 8; i++) {
+    ctx.beginPath(); ctx.moveTo(pad, pad + i * cell); ctx.lineTo(pad + 8 * cell, pad + i * cell); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(pad + i * cell, pad); ctx.lineTo(pad + i * cell, pad + 8 * cell); ctx.stroke();
+  }
+  ctx.fillStyle = 'rgba(5,25,15,.9)';
+  for (const [x, y] of [[2, 2], [6, 2], [2, 6], [6, 6]]) { ctx.beginPath(); ctx.arc(pad + x * cell, pad + y * cell, Math.max(2, cell * .06), 0, 7); ctx.fill(); }
+  const r = cell * .42;
+  let busy = false;
+  for (let p = 0; p < 64; p++) {
+    const v = b[p]; if (!v) continue;
+    const x = pad + (p % 8 + .5) * cell, y = pad + ((p >> 3) + .5) * cell;
+    const a = anims[p];
+    if (a) {
+      const t = (now - a.t0) / (a.drop ? 160 : 300);
+      if (t < 1) busy = true;
+      if (a.drop) { const k = Math.min(1, Math.max(0, t)); disc(x, y, r * (1.2 - .2 * k), v, 1); continue; }
+      if (t < 0) { disc(x, y, r, a.from, 1); continue; }
+      if (t < 1) { disc(x, y, r, t < .5 ? a.from : v, Math.abs(Math.cos(Math.PI * t))); continue; }
+    }
+    disc(x, y, r, v, 1);
+  }
+  if (h.last >= 0) {
+    ctx.fillStyle = '#e0452f'; ctx.beginPath();
+    ctx.arc(pad + (h.last % 8 + .5) * cell, pad + ((h.last >> 3) + .5) * cell, r * .16, 0, 7); ctx.fill();
+  }
+  const humanTurn = !G.over && !thinking && !cpuTurn();
+  if (humanTurn && pref.dots) {
+    ctx.fillStyle = h.t === 1 ? 'rgba(0,0,0,.35)' : 'rgba(255,255,255,.4)';
+    for (const p of legal) { ctx.beginPath(); ctx.arc(pad + (p % 8 + .5) * cell, pad + ((p >> 3) + .5) * cell, r * .26, 0, 7); ctx.fill(); }
+  }
+  if (hint >= 0 && !b[hint]) {
+    const ph = (Math.sin(now / 220) + 1) / 2;
+    ctx.strokeStyle = 'rgba(240,201,131,' + (.6 + ph * .4) + ')'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(pad + (hint % 8 + .5) * cell, pad + ((hint >> 3) + .5) * cell, r * (.8 + ph * .15), 0, 7); ctx.stroke();
+    busy = true;
+  }
+  return busy;
+}
+let animOn = false;
+function anim() {
+  if (animOn) return; animOn = true;
+  const step = () => { if (draw()) requestAnimationFrame(step); else { animOn = false; } };
+  requestAnimationFrame(step);
+}
+
+cv.addEventListener('click', e => {
+  if (!G) return;
+  if (G.over) { TB.toast('這局已結束，按「新局」再來'); return; }
+  if (thinking || cpuTurn()) return;
+  const rc = cv.getBoundingClientRect();
+  const x = Math.floor((e.clientX - rc.left - pad) / cell), y = Math.floor((e.clientY - rc.top - pad) / cell);
+  if (x < 0 || y < 0 || x > 7 || y > 7) return;
+  const p = y * 8 + x;
+  if (!legal.includes(p)) { if (!board()[p]) { TB.sfx('bad'); TB.toast('這裡不能下：要夾住對方的棋子才行'); } return; }
+  play(p);
+});
+
+function newDialog() {
+  let pick = null;
+  return TB.dialog({ title: '新局',
+    html: TB.seg('對手', 'mode', [['cpu', '電腦'], ['pvp', '兩人同一台']], set.mode) +
+      TB.seg('電腦強度', 'level', LEVELS.map((l, i) => [i, l]), set.level) +
+      TB.seg('我執', 'me', [[1, '黑（先手）'], [2, '白（後手）']], set.me),
+    buttons: [{ label: '取消', value: null }, { label: '開始', primary: true, value: 'go',
+      onClick: d => { pick = { mode: TB.segVal(d, 'mode'), level: +TB.segVal(d, 'level'), me: +TB.segVal(d, 'me') }; } }],
+  }).then(v => { if (v === 'go') newGame(pick); else after(); });
+}
+document.getElementById('bNew').onclick = () => newDialog();
+document.getElementById('bUndo').onclick = undo;
+document.getElementById('bHint').onclick = doHint;
+document.getElementById('bInfo').onclick = () => {
+  const s = TB.stats('reversi');
+  TB.dialog({ title: '黑白棋',
+    html: TB.statsHtml([['已玩', s.played || 0], ['贏電腦', s.won || 0], ['和局', s.draw || 0]]) +
+      TB.seg('可以下的位置', 'dots', [[1, '顯示小點'], [0, '不顯示']], pref.dots ? 1 : 0) +
+      '<div class="tb-rules"><h4>怎麼玩</h4><ul><li>黑棋先下。新的棋子必須和自己的另一顆棋子，在橫、直或斜線上<b>夾住</b>對方一顆以上的棋子。</li><li>被夾住的棋子全部翻成自己的顏色。一手可以同時夾好幾個方向。</li><li>沒有地方可以下時就換對方下（不能故意不下）。</li><li>雙方都不能下時遊戲結束，棋子多的人贏。</li></ul>' +
+      '<h4>小技巧</h4><ul><li><b>角落</b>最重要：角落的棋子永遠不會被翻。</li><li>角落旁邊的斜角格（X 位）通常很危險，會把角落送給對手。</li><li>前期不用急著吃很多子，讓對手「沒地方好下」比較厲害。</li><li>點「提示」會標出建議的位置。</li></ul></div>',
+    buttons: [{ label: '好', primary: true, onClick: d => { pref = { dots: TB.segVal(d, 'dots') === '1' }; TB.store.set('reversi:pref', pref); draw(); } }],
+  });
+};
+addEventListener('keydown', e => { if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); undo(); } });
+
+new ResizeObserver(fit).observe(bb);
+addEventListener('resize', fit);
+(function start() {
+  const sv = TB.store.get('reversi:game', null);
+  if (sv && Array.isArray(sv.hist) && sv.hist.length > 1 && !sv.over) {
+    set = Object.assign(set, sv.set || {});
+    G = { hist: sv.hist.map(h => ({ b: Int8Array.from(h.b), t: h.t, last: h.last })), over: null };
+    fit(); after(); TB.toast('接續上一盤');
+  } else {
+    G = { hist: [{ b: R.start(), t: 1, last: -1 }], over: null };
+    fit(); legal = R.moves(board(), 1); ui(); draw(); newDialog();
+  }
+})();
+</script>
+</body>
+</html>
