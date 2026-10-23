@@ -46,7 +46,7 @@ function updatePlayer(dt) {
   // 射擊
   const firing = Store.data.auto || k.KeyZ || k.KeyJ || k.Space || pad.fire || Input.ptr;
   P.ft -= dt; P.st -= dt;
-  if (firing && G.phase !== 'clear' && G.phase !== 'down') { firePrimary(dt); fireSub(); } else P.plasma.length = 0;
+  if (firing && G.phase !== 'clear' && G.phase !== 'down') { firePrimary(dt); fireSub(); }
   if (Input.hit('KeyX') || Input.hit('KeyK') || Input.bombTap || pad.bombEdge) useBomb();
 }
 
@@ -362,7 +362,7 @@ function drawEnemyShadows(ctx) {
 }
 function spr(ctx, e, name, ang = e.ang, sx = 1, sy = 1) {
   Art.draw(ctx, name, e.x, e.y, ang, 1, sx, sy);
-  if (e.flash > 0) Art.draw(ctx, name, e.x, e.y, ang, 1, sx, sy, 'w');
+  if (e.flash > 0) Art.draw(ctx, name, e.x, e.y, ang, 0.5, sx, sy, 'w');
 }
 function rotor(ctx, x, y, r, t, n = 2) {
   ctx.save(); ctx.translate(x, y);
@@ -878,6 +878,7 @@ function updateFX(dt) {
   for (const d of G.decals) d.y += G.speed * dt;
   G.decals = G.decals.filter(d => d.y < H + 40).slice(-60);
 }
+const SPARK = { y: [255, 200, 120, 90], b: [140, 230, 60, 255], p: [220, 150, 60, 255], r: [255, 160, 100, 100], g: [120, 255, 80, 160] };
 function drawDecals(ctx) {
   for (const d of G.decals) {
     ctx.fillStyle = rad(ctx, d.x, d.y, d.r * 1.4, ['rgba(20,12,6,.7)', 'rgba(40,25,10,.45)', 'rgba(40,25,10,0)']);
@@ -896,10 +897,11 @@ function drawFX(ctx, ground) {
     const t = p.life / p.max;
     if (p.k === 'f') {
       const r = p.r * (0.6 + t * 1.3);
-      const hue = 52 - t * 45, light = 92 - t * 50;
+      const hue = p.c === 'b' ? 200 - t * 20 : 52 - t * 45, light = 92 - t * 50;
       ctx.fillStyle = `hsla(${hue},100%,${light}%,${1 - t})`; ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, TAU); ctx.fill();
     } else if (p.k === 'k') {
-      ctx.strokeStyle = `rgba(255,${200 - t * 120 | 0},90,${1 - t})`; ctx.lineWidth = 1.6;
+      const sc = SPARK[p.c] || SPARK.y;
+      ctx.strokeStyle = `rgba(${sc[0]},${sc[1] - t * sc[2] | 0},${sc[3]},${1 - t})`; ctx.lineWidth = 1.6;
       ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - p.vx * 0.04, p.y - p.vy * 0.04); ctx.stroke();
     } else if (p.k === 'r') {
       ctx.strokeStyle = `rgba(255,220,160,${0.8 * (1 - t)})`; ctx.lineWidth = 3 * (1 - t) + 0.5;
@@ -922,7 +924,7 @@ function drawFX(ctx, ground) {
 
 
 // ---------- 頭目的 3D 預渲染畫法（沒有預渲染圖時沿用上面的 2D 畫法）----------
-function bFlash(ctx, name, e, x = e.x, y = e.y, ang = 0, sc = 1) { if (e.flash > 0) Art.draw(ctx, name, x, y, ang, 0.65, sc, sc, 'w'); }
+function bFlash(ctx, name, e, x = e.x, y = e.y, ang = 0, sc = 1) { if (e.flash > 0) Art.draw(ctx, name, x, y, ang, 0.35, sc, sc, 'w'); }
 function treadAnim(ctx, rects) {
   const off = (G.scroll * 1.6 + G.t * 30) % 6.4;
   ctx.fillStyle = 'rgba(0,0,0,.26)';
