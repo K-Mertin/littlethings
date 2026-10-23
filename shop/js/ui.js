@@ -31,6 +31,7 @@ const UI = {
     const qs = [];
     if (S.q && S.q.acc) { const p = Game.questProg(S.q); qs.push(`委託：${S.q.title} ${Math.max(0, Math.min(p[0], p[1]))}/${p[1]}`); }
     if (S.fq && !S.fq.done) { const p = Game.questProg(S.fq); qs.push(`${S.fq.title} ${Math.max(0, Math.min(p[0], p[1]))}/${p[1]}`); }
+    if (S.duel) { const p = Game.duelProg(S.duel); qs.push(`⚔ 對決${S.duel.n} ${S.duel.k === 'sales' ? money(Math.max(0, p[0])) + '/' + money(p[1]) : Math.max(0, p[0]) + '/' + p[1]}`); }
     $('#hudEv').innerHTML = [[f ? f.n : '', ...ev].filter(Boolean).join('・'), ...qs.map(q => `<span class="hq">${esc(q)}</span>`)].filter(Boolean).join(' ');
     document.querySelectorAll('#speed button').forEach(b => b.classList.toggle('on', +b.dataset.v === this.speed));
     $('#btnMute').classList.toggle('off', !Prefs.d.music && !Prefs.d.sfx);
@@ -79,6 +80,7 @@ const UI = {
       case 'hint': { const [a2, b2] = v.split(':'); this.rA = a2; this.rB = b2; this.renderPanel(); break; }
       case 'save': this.save(+v, true); this.renderPanel(); break;
       case 'load': if (confirm('讀取這個存檔？目前沒存的進度會不見。')) { this.loadSlot(+v); } break;
+      case 'qual': Prefs.d.q = v === 'auto' ? 'auto' : +v; Prefs.save(); if (v !== 'auto') R.setQ(+v); else if (R._pf) R._pf.bad = 0; Snd.play('click'); this.renderPanel(); break;
       case 'opt': Prefs.d[v] = !Prefs.d[v]; Prefs.save(); Snd.applyVol(); this.renderPanel(); this.refreshHud(); break;
       case 'toTitle': this.save(this.slot, false); Main.toTitle(); break;
       case 'ok': this.nextModal(); break;
@@ -92,9 +94,12 @@ const UI = {
       case 'tutskip': Snd.play('click'); Tut.skip(); break;
       case 'tutre': Snd.play('click'); this.closePanel(); Tut.restart(); break;
       case 'qacc': { const q = this.modal && this.modal.q; if (q) { Game.acceptQuest(q); this.toast(`接下委託「${q.title}」`, 'good'); } this.nextModal(); break; }
+      case 'dacc': { const d = this.modal && this.modal.d; if (d) { const r = Game.acceptDuel(d); if (r) { Snd.play('bad'); this.toast(r, 'bad'); } else { this.toast(`接受挑戰！賭注 ${money(d.bet)}`, 'goal'); Snd.play('drum'); } } this.nextModal(); break; }
+      case 'ddec': { const d = this.modal && this.modal.d; if (d) Game.declineDuel(d); this.nextModal(); break; }
+      case 'branchv': this.branchView(v); break;
       case 'qdec': { Game.S.qcd = irnd(1, 3); this.nextModal(); break; }
       case 'qdrop': { if (confirm('放棄這個委託？')) { Game.S.q = null; Game.S.qcd = 2; this.renderPanel(); } break; }
-      case 'branch': { const r = Game.buyBranch(v); if (r) { Snd.play('bad'); this.toast(r, 'bad'); } this.renderPanel(); break; }
+      case 'branch': { const r = Game.buyBranch(v); if (r) { Snd.play('bad'); this.toast(r, 'bad'); } if (this.modal && this.modal.k === 'branch') { if (!r) { this.branchView(v); Game.confetti(Game.S.W * TILE / 2, Game.S.H * TILE / 2, 30); } } this.renderPanel(); break; }
       case 'hostev': { const e = HOSTEV.find(e => e.id === v); if (!e) break; if (!confirm(`舉辦「${e.n}」要花 ${money(Game.hostCost(e))}，確定嗎？`)) break; const r = Game.host(v); if (r) { Snd.play('bad'); this.toast(r, 'bad'); } else { this.toast(`${e.n}開始了！`, 'goal'); this.closePanel(); } break; }
       case 'tech': { const r = Game.techUp(v); if (r) { Snd.play('bad'); this.toast(r, 'bad'); } else this.toast(`${TECHS.find(t => t.id === v).n} 升到 ${Game.tech(v)} 級！`, 'good'); this.renderPanel(); break; }
       case 'retire': this.retire(); break;
@@ -199,7 +204,7 @@ const UI = {
         const ratio = o.price / val, pc = ratio > 1.35 ? 'bad' : ratio < 0.85 ? 'cheap' : 'ok';
         h += `<div class="dish ${o.on ? '' : 'off'}"><div class="pic">${this.img(Art.dish(k), 3)}</div><div class="di">
           <b>${d.n} <span class="lv">Lv${o.lv}</span> <i class="cat" style="background:${CATCOL[d.cat]}">${CAT[d.cat]}</i></b>
-          <small>${STN[d.st]}${has ? '' : ' <span class="bad">（還沒有這種攤位）</span>'}${Game.sellable(k) ? '' : ' <span class="bad">（甜點專賣店不能賣）</span>'}・美味 ${this.stars(Game.dishQ(k))}・成本約 ${money(Game.costOf(k))}</small>
+          <small>${d.lim ? `<span class="${Game.limOn(k) ? 'good' : 'bad'}">季節限定 ${d.lim.join('、')} 月${Game.limOn(k) ? '・販售中' : '・下次再見'}</span>・` : ''}${STN[d.st]}${has ? '' : ' <span class="bad">（還沒有這種攤位）</span>'}${Game.sellable(k) ? '' : ' <span class="bad">（甜點專賣店不能賣）</span>'}・美味 ${this.stars(Game.dishQ(k))}・成本約 ${money(Game.costOf(k))}</small>
           <div class="price"><button data-a="price" data-v="${k}:-1">－</button><span class="${pc}">${money(o.price)}</span><button data-a="price" data-v="${k}:1">＋</button><small>建議 ${money(val)}</small></div>
           <div class="jobs"><button class="${o.on ? 'on' : ''}" data-a="toggle" data-v="${k}">${o.on ? '販售中' : '休息中'}</button>
           ${o.lv < 10 ? `<button data-a="dup" data-v="${k}">改良 💡${uc.idea}・${money(uc.money)}</button>` : '<button disabled>已達最高等級</button>'}</div>
@@ -235,12 +240,17 @@ const UI = {
       const hs = Object.keys(S.hints).filter(k => !S.dishes[k]);
       if (hs.length) { h += '<p class="lbl">老饕的建議</p><div class="chips">'; for (const k of hs) h += `<button class="chip hint" data-a="hint" data-v="${DISH[k].a}:${DISH[k].b}">${this.nm(DISH[k].a)} ＋ ${this.nm(DISH[k].b)}</button>`; h += '</div>'; }
     } else {
-      const all = Object.keys(DISH), got = all.filter(k => S.dishes[k]).length;
+      const all = DISH_ALL, got = all.filter(k => S.dishes[k]).length;
       h += `<p class="sum">已研發 ${got} / ${all.length} 道。灰色的是還沒發現的菜，看看提示猜猜看要用什麼做！</p><div class="book">`;
       for (const k of all) {
         const d = DISH[k], o = S.dishes[k];
         if (o) h += `<div class="bk got">${this.img(Art.dish(k), 3)}<div><b>${d.n}</b><small>${this.nm(d.a)} ＋ ${this.nm(d.b)}・${STN[d.st]}・賣出 ${num(S.st.dsold[k] || 0)} 份</small></div></div>`;
         else h += `<div class="bk">${this.img(Art.dish(k), 3, 'sil')}<div><b>？？？</b><small>${STN[d.st]}・${CAT[d.cat]}　「${d.h}」</small></div></div>`;
+      }
+      h += '</div><p class="lbl">季節限定（到了那個月自動上架）</p><div class="book">';
+      for (const k of DISH_LIM) {
+        const d = DISH[k], o = S.dishes[k], on = Game.limOn(k);
+        h += `<div class="bk ${o ? 'got' : ''} lim">${this.img(Art.dish(k), 3, o ? '' : 'sil')}<div><b>${o ? d.n : '？？？'} ${on ? '<i class="cat" style="background:#ff6fa8">販售中</i>' : ''}</b><small>${d.lim.join('、')} 月・${STN[d.st]}・${LEVELS[d.lv].n}以上${o ? '・賣出 ' + num(S.st.dsold[k] || 0) + ' 份' : '　「' + d.h + '」'}${Game.sellable(k) ? '' : '・<span class="bad">這個模式不能賣</span>'}</small></div></div>`;
       }
       h += '</div>';
     }
@@ -311,6 +321,14 @@ const UI = {
         const q = S.q, p = Game.questProg(q), pr = Math.max(0, Math.min(1, p[0] / p[1]));
         h += `<div class="quest"><div class="pic pt">${this.img(Art.portrait(makeLook(q.seed, 'asker'), 'happy'), 2)}</div><div><b>${esc(q.title)}</b><small>${esc(q.who)}：${esc(q.txt)}</small><small>目標：${q.goal}${q.k === 'sat' && p[0] ? `（目前平均 ${p[2]}）` : ''}・剩 ${q.w} 週</small><small class="good">獎勵：${Game.rewardText(q.r)}</small><i class="bar"><b style="width:${pr * 100}%"></b></i><button class="btn" data-a="qdrop">放棄</button></div></div>`;
       } else h += '<p class="tip">目前沒有委託。過幾週會有人來找你。</p>';
+      if (S.yg) {
+        const g = S.yg, p = Game.ygProg(g), pr = Math.max(0, Math.min(1, p[0] / p[1]));
+        h += `<p class="lbl">第 ${g.y} 年的目標</p><div class="quest yg"><div class="pic pt">${this.img(Art.portrait(Tut.look(), 'happy'), 2)}</div><div><b>${esc(g.title)}</b><small>年底的頒獎典禮會檢查，達成可以拿到獎勵。</small><small class="good">獎勵：${Game.rewardText(g.r)}</small>${p[0] >= p[1] ? '<small class="good">✔ 已達成！</small>' : `<i class="bar"><b style="width:${pr * 100}%"></b></i>${p[1] > 1 ? `<small>${num(Math.max(0, p[0]))} / ${num(p[1])}</small>` : ''}`}</div></div>`;
+      }
+      if (S.duel) {
+        const d = S.duel, p = Game.duelProg(d), pr = Math.max(0, Math.min(1, p[0] / p[1]));
+        h += `<p class="lbl">對手的挑戰書</p><div class="quest duel"><div class="pic">${this.img(Art.icon('sword'), 4)}</div><div><b>vs ${esc(d.n)}</b><small>${esc(d.title)}・剩 ${d.w} 週・賭注 ${money(d.bet)}</small><small class="good">贏了：拿回 ${money(d.bet * 2)}・人氣 +${d.pop}・對手人氣下滑</small><i class="bar"><b style="width:${pr * 100}%"></b></i></div></div>`;
+      }
       if (S.fq) {
         const q = S.fq, p = Game.questProg(q), pr = Math.max(0, Math.min(1, p[0] / p[1]));
         h += `<p class="lbl">節慶限定挑戰</p><div class="quest fest"><div class="pic pt">${this.img(Art.icon('firework'), 4)}</div><div><b>${q.title}</b><small>${q.goal}</small><small class="good">獎勵：${Game.rewardText(q.r)}</small>${q.done ? '<small class="good">✔ 已完成！</small>' : `<i class="bar"><b style="width:${pr * 100}%"></b></i><small>${Math.max(0, p[0])} / ${p[1]}</small>`}</div></div>`;
@@ -334,11 +352,23 @@ const UI = {
       h += `<p class="sum">到其他夜市開分店，每週帶來收入和人氣。店舖擴建到「美食廣場」後才能開。目前分店每週收入 ${money(bi.inc)}・人氣 +${bi.pop}</p>`;
       for (const b of BRANCHES) {
         const lv = S.br[b.id] || 0, lock = S.lv < b.lv, c = Game.branchCost(b);
-        h += `<div class="biz ${lock ? 'lock' : ''} ${lv ? 'own' : ''}"><div class="pic">${this.img(Art.icon('shop'), 4)}</div><div><b>${b.n} ${lv ? `<span class="lv">Lv${lv}</span>` : ''}</b><small>每級每週 ${money(b.inc)}・人氣 +${b.pop}</small>${lv ? `<span class="pips">${[0, 1, 2, 3, 4].map(i => `<i class="${i < lv ? 'on' : ''}"></i>`).join('')}</span>` : ''}</div>
+        h += `<div class="biz br ${lock ? 'lock' : ''} ${lv ? 'own' : ''}"><button class="pic scene" data-a="branchv" data-v="${b.id}">${this.img(Art.branchScene(b.id, lv), 1)}</button><div><b>${b.n} ${lv ? `<span class="lv">Lv${lv}</span>` : ''}</b><small>每級每週 ${money(b.inc)}・人氣 +${b.pop}</small>${lv ? `<span class="pips">${[0, 1, 2, 3, 4].map(i => `<i class="${i < lv ? 'on' : ''}"></i>`).join('')}</span>` : ''}</div>
           <button class="btn ${lock || lv >= 5 || S.money < c ? 'dis' : 'go'}" data-a="branch" data-v="${b.id}">${lock ? '🔒 ' + LEVELS[b.lv].n : lv >= 5 ? '已滿級' : (lv ? '升級 ' : '開店 ') + money(c)}</button></div>`;
       }
     }
     return h;
+  },
+  // 分店巡視：大張的風景＋資料
+  branchView(id) {
+    const b = BRANCHES.find(b => b.id === id); if (!b) return;
+    const S = Game.S, lv = S.br[id] || 0, c = Game.branchCost(b), lock = S.lv < b.lv;
+    Snd.play('tab');
+    this.mdl.hidden = false; this.modal = { k: 'branch' };
+    const m = 0.8 + Math.min(0.6, S.pop / 30000);
+    this.mdl.innerHTML = `<div class="mc brv"><p class="lbl">${lv ? '分店巡視' : '分店預定地'}</p><div class="bscene">${this.img(Art.branchScene(id, lv), 3)}</div><h2>${b.n}${lv ? ` <span class="lv">Lv${lv}</span>` : ''}</h2>
+      <p>${BRANCH_TXT[id] || ''}</p>
+      ${lv ? `<p class="good">每週收入 ${money(b.inc * lv * m)}・人氣 +${b.pop * lv}</p>` : `<p class="mute">開店後每級每週 ${money(b.inc)}・人氣 +${b.pop}</p>`}
+      <div class="row c"><button class="btn" data-a="ok">關閉</button>${lv < 5 ? `<button class="btn ${lock || S.money < c ? 'dis' : 'go'}" data-a="branch" data-v="${id}">${lock ? '🔒 ' + LEVELS[b.lv].n : (lv ? '升級 ' : '開店 ') + money(c)}</button>` : ''}</div></div>`;
   },
   retire() {
     const S = Game.S;
@@ -369,6 +399,8 @@ const UI = {
         <button class="btn go" data-a="save" data-v="${i}">存檔</button><button class="btn" data-a="load" data-v="${i}" ${m ? '' : 'disabled'}>讀取</button></div>`;
     }
     h += `<p class="lbl">設定</p><div class="row"><button class="btn ${Prefs.d.music ? 'go' : ''}" data-a="opt" data-v="music">音樂 ${Prefs.d.music ? '開' : '關'}</button><button class="btn ${Prefs.d.sfx ? 'go' : ''}" data-a="opt" data-v="sfx">音效 ${Prefs.d.sfx ? '開' : '關'}</button></div>`;
+    const qv = Prefs.d.q === undefined ? 'auto' : String(Prefs.d.q);
+    h += `<p class="lbl">畫質（手機比較慢可以調低）</p><div class="row">${[['auto', '自動'], ['0', '高'], ['1', '中'], ['2', '省電']].map(([v, n]) => `<button class="btn ${qv === v ? 'go' : ''}" data-a="qual" data-v="${v}">${n}</button>`).join('')}<small class="mute">目前：${['高', '中', '省電'][R.q]}</small></div>`;
     const S = Game.S, sc = SCENARIOS.find(x => x.id === S.scen);
     h += `<p class="lbl">傳承（第 ${S.gen} 代・${sc ? sc.n : ''}）</p><div class="row"><button class="btn ${S.ended || Game.year() >= 6 ? 'go' : 'dis'}" data-a="retire">傳承給下一代</button><small class="mute">${S.ended || Game.year() >= 6 ? `可以得到 ${Game.retirePts()} 點傳承點數` : '經營滿 5 年或看到結局後開放'}</small></div>`;
     h += `<div class="row"><button class="btn" data-a="tutre">重看新手教學</button></div>`;
@@ -496,11 +528,34 @@ const UI = {
         <div class="row c"><button class="btn" data-a="qdec">不好意思…</button><button class="btn go big" data-a="qacc">交給我吧！</button></div></div>`;
       return;
     }
+    if (p.k === 'duel') {
+      Snd.play('event');
+      const d = p.d, L = makeLook(4000 + d.i * 37, 'worker');
+      this.mdl.innerHTML = `<div class="mc duelm"><p class="lbl">挑戰書</p><div class="vs"><div>${this.img(Art.portrait(L, 'angry'), 3)}<b>${esc(d.n)}</b></div><span>VS</span><div>${this.img(Art.portrait(Game.srt.size ? [...Game.srt.values()][0].look : makeLook(1, 'staff', 'cook'), 'happy'), 3)}<b>${esc(Game.S.shop)}</b></div></div>
+        <p>「聽說你們最近很紅嘛？來比一場！」</p><div class="qbox"><b>${esc(d.title)}</b><small>賭注 ${money(d.bet)}（先付）</small><small class="good">贏了：拿回 ${money(d.bet * 2)}・人氣 +${d.pop}・${esc(d.n)}的人氣會下滑一陣子</small><small class="bad">輸了：賭注沒了・人氣 -${Math.round(d.pop * 0.7)}</small></div>
+        <div class="row c"><button class="btn" data-a="ddec">不跟你比</button><button class="btn go big" data-a="dacc">放馬過來！</button></div></div>`;
+      return;
+    }
+    if (p.k === 'duelEnd') {
+      const d = p.d;
+      Snd.play(p.win ? 'fanfare' : 'fail');
+      this.mdl.innerHTML = `<div class="mc ${p.win ? 'award' : ''}"><p class="lbl">對決結果</p><div class="bigpic ${p.win ? 'glow' : ''}">${this.img(Art.icon(p.win ? 'medal' : 'f2'), 6)}</div><h2>${p.win ? '挑戰成功！' : '可惜輸了…'}</h2><p>${esc(d.title)}：${d.k === 'sales' ? money(p.p[0]) + ' / ' + money(p.p[1]) : num(p.p[0]) + ' / ' + num(p.p[1])}</p>
+        <p class="${p.win ? 'good' : 'bad'}">${p.win ? `拿回 ${money(d.bet * 2)}・人氣 +${d.pop}<br>${esc(d.n)}被比下去，人氣暫時下滑！` : `賭注 ${money(d.bet)} 沒了・人氣 -${Math.round(d.pop * 0.7)}`}</p><button class="btn go big" data-a="ok">${p.win ? '太爽了！' : '下次再來！'}</button></div>`;
+      return;
+    }
+    if (p.k === 'story') {
+      Snd.play('event');
+      const g = p.g, txt = STORY[Math.min(p.y, STORY.length) - 2] || pick(STORY_LATE);
+      this.mdl.innerHTML = `<div class="mc story"><p class="lbl">第 ${p.y} 年・夜市故事</p><div class="sp">${this.img(Art.portrait(Tut.look(), 'happy'), 4)}<div class="say"><b>阿德伯</b><p>${txt}</p></div></div>
+        ${p.prev ? `<p class="${p.done ? 'good' : 'mute'}">去年的目標「${esc(p.prev.title)}」${p.done ? '達成！ ' + Game.rewardText(p.prev.r) : '沒有達成…'}</p>` : ''}
+        <div class="qbox"><small>第 ${p.y} 年的目標</small><b>${esc(g.title)}</b><small class="good">獎勵：${Game.rewardText(g.r)}</small></div><button class="btn go big" data-a="ok">今年也要加油！</button></div>`;
+      return;
+    }
     if (p.k === 'msg') {
       Snd.play(p.kind === 'discover' ? 'discover' : p.kind === 'expand' ? 'fanfare' : 'event');
       const cb = p.combo && COMBOS.find(c => c.id === p.combo);
       const pic = id => F[id].cat === 'floor' ? Art.floor(id, 0) : Art.fac(id);
-      const ic = p.kind === 'discover' ? `<div class="bigpic glow combo">${cb ? `${this.img(pic(cb.a), 4)}<span>＋</span>${this.img(pic(cb.b), 4)}` : this.img(Art.icon('star'), 7)}</div><div class="rays"></div>` : `<div class="bigpic">${this.img(Art.icon(p.icon || 'cal'), 6)}</div>`;
+      const ic = p.kind === 'season' ? `<div class="bigpic glow combo">${(p.dishes || []).slice(0, 3).map(k => this.img(Art.dish(k), 5)).join('')}</div>` : p.kind === 'discover' ? `<div class="bigpic glow combo">${cb ? `${this.img(pic(cb.a), 4)}<span>＋</span>${this.img(pic(cb.b), 4)}` : this.img(Art.icon('star'), 7)}</div><div class="rays"></div>` : `<div class="bigpic">${this.img(Art.icon(p.icon || 'cal'), 6)}</div>`;
       this.mdl.innerHTML = `<div class="mc ${p.kind}"><p class="lbl">${p.title}</p>${ic}${p.big ? `<h2>${p.big}</h2>` : ''}<p>${p.text || ''}</p><button class="btn go big" data-a="ok">好！</button></div>`;
     } else if (p.k === 'contest') {
       Music.play('contest');
@@ -519,7 +574,7 @@ const UI = {
       const S = Game.S;
       this.mdl.innerHTML = `<div class="mc ending"><p class="lbl">${p.rank === 1 ? 'CONGRATULATIONS' : 'TEN YEARS'}</p><h2>${p.rank === 1 ? '夜市之王誕生！' : '十年有成'}</h2>
         <p>${p.rank === 1 ? `從一台小小的攤車開始，「${esc(S.shop)}」終於站上了夜市排行榜的第一名！` : `「${esc(S.shop)}」在夜市裡奮鬥了整整十年，成為大家心中的老味道。`}</p>
-        <table class="kv"><tr><td>經營年數</td><td>${p.y} 年</td></tr><tr><td>累積客人</td><td>${num(S.st.cust)} 位</td></tr><tr><td>累積營業額</td><td>${money(S.st.sales)}</td></tr><tr><td>研發菜色</td><td>${Game.known().length} / ${Object.keys(DISH).length}</td></tr><tr><td>擺設組合</td><td>${Object.keys(S.combos).length} / ${COMBOS.length}</td></tr><tr><td>目標達成</td><td>${Object.keys(S.goals).length} / ${GOALS.length}</td></tr></table>
+        <table class="kv"><tr><td>經營年數</td><td>${p.y} 年</td></tr><tr><td>累積客人</td><td>${num(S.st.cust)} 位</td></tr><tr><td>累積營業額</td><td>${money(S.st.sales)}</td></tr><tr><td>研發菜色</td><td>${Game.nKnown()} / ${DISH_ALL.length}</td></tr><tr><td>擺設組合</td><td>${Object.keys(S.combos).length} / ${COMBOS.length}</td></tr><tr><td>目標達成</td><td>${Object.keys(S.goals).length} / ${GOALS.length}</td></tr></table>
         <p>故事還沒結束，夜市的燈每天晚上都會亮起來。<br>接下來可以開<b>分店</b>、辦<b>煙火晚會</b>、研究<b>秘方</b>，或是到選單把店<b>傳承</b>給下一代。</p><p class="good">得到傳承點數 +5！標題畫面可以解鎖新的挑戰模式。</p><button class="btn go big" data-a="ok">繼續經營</button></div>`;
     }
   },
@@ -552,6 +607,15 @@ const UI = {
     const el = $('#review');
     el.innerHTML = `${this.img(Art.icon('f' + r.s), 2)}<span><b>${r.t}</b>「${esc(r.txt)}」</span>`;
     el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+  },
+  // 員工升級的小卡片（左下角，跟評論同一區，會蓋過舊的）
+  lvCard(s, stat, a) {
+    if (Main.state !== 'play') return;
+    const now = performance.now(); if (now - (this._lvT || 0) < 1200) return; this._lvT = now;
+    const el = $('#lvcard'), L = a ? a.look : makeLook(s.seed, 'staff', s.job), nm = { cook: '廚藝', serv: '服務', charm: '魅力' }[stat];
+    el.innerHTML = `<div class="pt">${this.img(Art.portrait(L, 'happy'), 2)}</div><span><small>員工升級</small><b>${esc(s.name)} <i class="lv">Lv${s.lv}</i></b><em>${nm} ${s[stat]}・${s.lv % 5 === 0 ? '里程碑！' : '繼續加油！'}</em></span>`;
+    el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+    if (s.lv % 5 === 0) { Snd.play('fanfare'); Game.flash = 0.35; }
   },
   week() { if (this.panel && this.panel !== 'sys' && this.panel !== 'lab') this.renderPanel(); },
   autosave() { this.save(this.slot, false); },

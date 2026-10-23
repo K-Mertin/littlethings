@@ -8,10 +8,26 @@ const Art = {
     let c = this.cache.get(key);
     if (c) return c;
     c = this.mk(w + 4, h + 8);
-    const g = c.getContext('2d');
-    const r = (x, y, ww, hh, col) => { g.fillStyle = col; g.fillRect(x + 2, y + 7, ww, hh); };
+    const g = c.getContext('2d'), CW = c.width, CH = c.height;
+    // 畫的時候順便記住哪些格子有顏色，描邊直接用這張表算，不用讀回像素（手機上讀像素很慢）
+    const m = line ? new Uint8Array(CW * CH) : null;
+    const r = (x, y, ww, hh, col) => {
+      g.fillStyle = col; g.fillRect(x + 2, y + 7, ww, hh);
+      if (!m || (col[0] === 'r' && parseFloat(col.slice(col.lastIndexOf(',') + 1)) < 0.2)) return;
+      const x0 = Math.max(0, Math.round(x + 2)), y0 = Math.max(0, Math.round(y + 7)), x1 = Math.min(CW, Math.round(x + 2 + ww)), y1 = Math.min(CH, Math.round(y + 7 + hh));
+      for (let yy = y0; yy < y1; yy++) m.fill(1, yy * CW + x0, yy * CW + x1);
+    };
     fn(r, g);
-    if (line) this.outline(c);
+    if (line) {
+      g.fillStyle = OUT;
+      for (let y = 0; y < CH; y++) for (let x = 0; x < CW; x++) {
+        const i = y * CW + x;
+        if (m[i]) continue;
+        if ((x > 0 && m[i - 1]) || (x < CW - 1 && m[i + 1]) || (y > 0 && m[i - CW]) || (y < CH - 1 && m[i + CW])) g.fillRect(x, y, 1, 1);
+      }
+    }
+    // 快取太大就整個清掉（正在用的圖還留在各自的外觀上，不會閃）
+    if (this.cache.size > 3000) this.cache.clear();
     this.cache.set(key, c);
     return c;
   },
@@ -44,13 +60,23 @@ const Art = {
   // dir: 0 正面 / 1 背面 / 2 側面（向右）；fr: 0-3 走路；pose: '' 走路站立、sit 坐、eat 吃、cook 煮、carry 端盤、wipe 擦桌、call 叫賣
   // face: '' / happy / sad / angry
   PW: 12, PH: 21,
+  POSES: { '': 0, sit: 1, eat: 2, cook: 3, carry: 4, wipe: 5, call: 6, sip: 7, stir: 8, shake: 9 },
+  COOKPOSE: { griddle: 'cook', fryer: 'cook', grill: 'cook', soup: 'stir', steam: 'stir', drink: 'shake', ice: 'shake' },
+  FACES: { '': 0, happy: 1, sad: 2, angry: 3, wow: 4 },
   person(L, dir, fr, pose = '', face = '') {
     if (pose === true) pose = 'sit';
+    // 每個外觀自己記住畫好的圖（用數字索引），不用每格都組長長的字串去查表
+    const idx = ((this.POSES[pose] * 5 + this.FACES[face]) * 3 + dir) * 4 + (fr & 3);
+    const sp = L._spr || (L._spr = []);
+    if (L._sk !== L.key) { L._sk = L.key; sp.length = 0; }
+    return sp[idx] || (sp[idx] = this.personDraw(L, dir, fr, pose, face));
+  },
+  personDraw(L, dir, fr, pose, face) {
     const key = 'p' + L.key + dir + (fr & 3) + pose + face;
     return this.get(key, 12, 21, r => {
       const S = L.skin, H = L.hair, sh = L.shirt, pa = L.pants, shoe = L.shoe || '#3a2a2a';
       const shD = shade(sh, -0.18), paD = shade(pa, -0.2), hD = shade(H, -0.25), sD = shade(S, -0.12);
-      const sit = pose === 'sit' || pose === 'eat';
+      const sit = pose === 'sit' || pose === 'eat' || pose === 'sip';
       const f = fr & 3, step = sit ? 0 : (f === 1 ? 1 : f === 3 ? -1 : 0);
       const side = dir === 2, back = dir === 1;
       // ---- 腿 ----
@@ -99,6 +125,15 @@ const Art = {
       if (pose === 'cook') {
         r(2, 9, 1, 2, sh); r(9, 9, 1, 2, sh); r(3, 10, 1, 1, sh); r(8, 10, 1, 1, sh); hand(3, 11); hand(8, 11);
         if (f & 1) { r(9, 6, 1, 5, '#8a8a94'); r(8, 5, 3, 1, '#c8c8d0'); } else { r(10, 8, 1, 3, '#8a8a94'); r(10, 7, 2, 1, '#c8c8d0'); }
+      } else if (pose === 'stir') { // 湯鍋、蒸籠：雙手拿大湯杓攪
+        r(2, 9, 1, 2, sh); r(9, 9, 1, 2, sh); r(3, 10, 1, 1, sh); r(8, 10, 1, 1, sh);
+        const lx = [5, 6, 7, 6][f]; hand(lx - 1, 11); hand(lx + 1, 11);
+        r(lx, 4 + (f & 1), 1, 8, '#a8703e'); r(lx - 1, 3 + (f & 1), 3, 1, '#c8904a');
+      } else if (pose === 'shake') { // 飲料、冰品：搖雪克杯
+        const up = f & 1;
+        r(2, 9, 1, 3, sh); hand(2, 12);
+        r(8, 8 - up, 2, 3, sh); hand(9, 7 - up); r(9, 3 - up * 2, 2, 4, '#d8dce4'); r(9, 3 - up * 2, 2, 1, '#ffffff'); r(10, 4 - up * 2, 1, 2, '#a8b0bc');
+        if (up) { r(11, 1, 1, 1, '#8ad0ff'); r(8, 2, 1, 1, '#8ad0ff'); }
       } else if (pose === 'carry') {
         if (side) { r(6, 9, 2, 1, sh); r(8, 8, 1, 1, S); r(6, 7, 5, 1, '#c8ccd4'); r(7, 6, 2, 1, L.dishc || '#ffd84a'); r(9, 5, 1, 2, '#ffffff'); }
         else { r(2, 9, 1, 3, sh); hand(2, 12); r(9, 7, 1, 3, sh); hand(9, 6); r(7, 5, 5, 1, '#c8ccd4'); r(8, 4, 2, 1, L.dishc || '#ffd84a'); r(10, 3, 1, 2, '#ffffff'); }
@@ -114,6 +149,10 @@ const Art = {
         else if (pose === 'eat') {
           r(2, 10, 1, 2, sh); r(9, 10, 1, 2, sh); r(3, 12, 6, 2, '#ffffff'); r(3, 12, 6, 1, L.dishc || '#e8963a'); r(4, 14, 4, 1, '#d8d8e0');
           if (f & 1) { hand(8, 8); r(8, 6, 1, 2, '#c89a5a'); r(9, 5, 1, 3, '#c89a5a'); } else { hand(8, 11); r(8, 9, 1, 2, '#c89a5a'); r(9, 9, 1, 2, '#c89a5a'); }
+        } else if (pose === 'sip') { // 喝飲料：杯子拿到嘴邊
+          r(2, 10, 1, 2, sh); hand(2, 12);
+          if (f & 2) { r(8, 7, 1, 3, sh); r(7, 4, 3, 4, L.dishc || '#c8904a'); r(7, 4, 3, 1, '#ffffff'); r(8, 2, 1, 2, '#ff4a3a'); hand(8, 8); }
+          else { r(9, 10, 1, 2, sh); r(8, 9, 3, 4, L.dishc || '#c8904a'); r(8, 9, 3, 1, '#ffffff'); r(9, 7, 1, 2, '#ff4a3a'); }
         } else { armF(2, 3); armF(9, 3); }
       } else if (side) {
         const sw = step === 1 ? 1 : step === -1 ? -1 : 0;
@@ -149,7 +188,7 @@ const Art = {
         if (hs === 4) { r(2, 0, 6, 2, sD); r(1, 3, 3, 3, H); }
         // 臉
         r(10, 4, 1, 2, S);
-        if (face === 'happy') r(7, 4, 2, 1, OUT); else if (face === 'angry') { r(7, 3, 2, 1, OUT); r(8, 4, 1, 2, OUT); } else r(8, 4, 1, 2, OUT);
+        if (face === 'happy' || face === 'wow') r(7, 4, 2, 1, OUT); else if (face === 'angry') { r(7, 3, 2, 1, OUT); r(8, 4, 1, 2, OUT); } else r(8, 4, 1, 2, OUT);
         r(8, 6, 1, 1, '#ff9a9a');
         if (face === 'happy') r(9, 7, 1, 1, '#c0503a');
         if (L.glasses) { r(7, 4, 3, 1, OUT); }
@@ -167,12 +206,13 @@ const Art = {
         r(1, 1, 1, 1, hD);
         // 臉
         if (!back) {
-          if (face === 'happy') { r(3, 5, 2, 1, OUT); r(7, 5, 2, 1, OUT); r(3, 4, 1, 1, OUT); r(8, 4, 1, 1, OUT); }
+          if (face === 'happy' || face === 'wow') { r(3, 5, 2, 1, OUT); r(7, 5, 2, 1, OUT); r(3, 4, 1, 1, OUT); r(8, 4, 1, 1, OUT); }
           else if (face === 'sad') { r(3, 5, 2, 1, OUT); r(7, 5, 2, 1, OUT); r(10, 3, 1, 2, '#8ad0ff'); }
           else if (face === 'angry') { r(3, 4, 2, 2, OUT); r(7, 4, 2, 2, OUT); r(3, 3, 1, 1, OUT); r(8, 3, 1, 1, OUT); }
           else { r(3, 4, 2, 2, OUT); r(7, 4, 2, 2, OUT); r(3, 4, 1, 1, '#ffffff'); r(7, 4, 1, 1, '#ffffff'); }
           r(2, 6, 1, 1, '#ff9a9a'); r(9, 6, 1, 1, '#ff9a9a');
-          if (face === 'happy' || pose === 'call') { r(5, 7, 2, 1, '#c0503a'); }
+          if (face === 'wow') { r(5, 7, 2, 2, '#c0503a'); r(2, 6, 1, 1, '#ff6a6a'); r(9, 6, 1, 1, '#ff6a6a'); }
+          else if (face === 'happy' || pose === 'call') { r(5, 7, 2, 1, '#c0503a'); }
           else if (face === 'angry' || face === 'sad') r(5, 7, 2, 1, shade(S, -0.35));
           else if (pose === 'eat' && (f & 1)) r(5, 7, 2, 1, '#c0503a');
           else r(5, 7, 2, 1, shade(S, -0.2));
@@ -433,67 +473,118 @@ const Art = {
   STCH: { griddle: '煎', drink: '茶', fryer: '炸', soup: '湯', ice: '冰', steam: '蒸', grill: '烤' },
   station(r, id, fr, lv) {
     const aw = this.STCOL[id], A = aw[0], B = aw[1], AD = shade(A, -0.3), gold = lv >= 4;
-    const f2 = fr & 1;
+    // fr 0～3：沒在煮（燈泡閃）；4～7：正在煮的動畫格
+    const ck = fr >= 4, cf = fr & 3, f2 = cf & 1;
     if (gold) { r(-1, 1, 18, 1, '#ffd040'); r(7, -1, 2, 2, '#ffd040'); }
     // 支架
-    r(1, 6, 1, 20, '#5a4a44'); r(14, 6, 1, 20, '#5a4a44'); r(1, 6, 1, 20, '#5a4a44');
+    r(1, 6, 1, 20, '#5a4a44'); r(14, 6, 1, 20, '#5a4a44');
     // 遮陽棚：條紋＋波浪邊
     r(-1, 2, 18, 1, AD);
     for (let i = 0; i < 9; i++) { const c = i % 2 ? B : A; r(-1 + i * 2, 3, 2, 4, c); r(-1 + i * 2, 3, 2, 1, shade(c, 0.25)); }
     for (let i = 0; i < 9; i++) { const c = i % 2 ? B : A; r(-1 + i * 2, 7, 2, 1, c); if (i % 2 === 0) r(-1 + i * 2, 8, 2, 1, shade(c, -0.15)); }
     // 燈泡串
-    for (let x = 1; x < 16; x += 3) r(x, 9, 1, 1, (x + fr) % 2 ? '#fff0a0' : '#ffd060');
+    for (let x = 1; x < 16; x += 3) r(x, 9, 1, 1, (x + cf) % 2 ? '#fff0a0' : '#ffd060');
     // 攤車本體
     const body = gold ? '#e8b830' : shade(A, -0.08);
     r(0, 18, 16, 9, body); r(0, 18, 16, 1, shade(body, 0.35)); r(0, 26, 16, 1, shade(body, -0.35));
-    // 正面的招牌板（字在 render 畫）
     r(4, 19, 8, 6, shade(body, -0.35)); r(5, 19, 6, 5, gold ? '#fff4c0' : '#fff6e4'); r(5, 19, 6, 1, '#ffffff');
     r(1, 19, 1, 7, shade(body, -0.15)); r(14, 19, 1, 7, shade(body, -0.15));
-    // 輪子
     r(2, 26, 3, 3, '#2a2a30'); r(11, 26, 3, 3, '#2a2a30'); r(3, 27, 1, 1, '#9a9aa8'); r(12, 27, 1, 1, '#9a9aa8');
-    // 檯面
     r(-1, 16, 18, 2, '#b8bcc6'); r(-1, 16, 18, 1, '#eef0f4');
-    // 等級徽章
     for (let i = 0; i < Math.min(lv, 5); i++) { const c = i >= 3 ? '#ff6fa8' : '#ffd040'; r(i < 3 ? 1 : 13, 19 + (i % 3) * 2, 2, 1, c); }
     switch (id) {
-      case 'griddle':
-        r(0, 14, 16, 2, '#3a3a44'); r(1, 13, 14, 1, '#5a5a66');
-        r(2, 12, 5, 2, f2 ? '#ffd070' : '#f4c060'); r(3, 12, 3, 1, '#ffe8a8'); r(4, 13, 1, 1, '#59c25a');
-        r(9, 12, 4, 2, f2 ? '#f4c060' : '#ffd070'); r(10, 12, 2, 1, '#ffe8a8'); r(11, 13, 1, 1, '#ffd84a');
-        r(13, 10, 1, 4, '#8a8a94'); r(12, 10, 3, 1, '#c8c8d0');
+      case 'griddle': { // 鐵板：餅會翻面、跳起來
+        r(0, 14, 16, 2, '#3a3a44'); r(1, 13, 14, 1, ck ? '#7a6a66' : '#5a5a66');
+        const jump = ck ? [0, 2, 3, 1][cf] : 0, flip = ck && (cf === 1 || cf === 2);
+        r(2, 12 - jump, 5, flip ? 1 : 2, flip ? '#e8a850' : '#f4c060'); if (!flip) { r(3, 12, 3, 1, '#ffe8a8'); r(4, 13, 1, 1, '#59c25a'); }
+        r(9, 12, 4, 2, ck && cf > 1 ? '#e8b050' : '#ffd070'); r(10, 12, 2, 1, '#ffe8a8'); r(11, 13, 1, 1, '#ffd84a');
+        if (ck) { r(8 + (cf & 1), 10 - (cf & 1), 1, 3, '#8a8a94'); r(7 + (cf & 1), 10 - (cf & 1), 3, 1, '#c8c8d0'); } else { r(13, 10, 1, 4, '#8a8a94'); r(12, 10, 3, 1, '#c8c8d0'); }
+        if (ck && cf & 1) { r(1, 11, 1, 1, '#fff6d0'); r(14, 11, 1, 1, '#fff6d0'); }
         r(6, 11, 3, 1, '#f8f0e0'); break;
-      case 'drink':
+      }
+      case 'drink': { // 飲料吧：倒茶的水柱、杯子一杯一杯滿起來
         r(1, 9, 4, 7, '#c8904a'); r(1, 9, 4, 1, '#e8b070'); r(2, 11, 2, 3, '#8a5a2b'); r(2, 15, 1, 1, '#3a3a3a');
         r(5, 9, 4, 7, '#f4ecdc'); r(5, 9, 4, 1, '#ffffff'); r(6, 11, 2, 3, '#e0d0b0'); r(6, 15, 1, 1, '#3a3a3a');
-        for (let i = 0; i < 3; i++) { r(10 + i * 2, 12, 2, 4, '#f8f0e0'); r(10 + i * 2, 13, 2, 2, ['#c8904a', '#8a5a2b', '#ffb070'][i]); r(10 + i * 2 + (i & 1), 10, 1, 2, ['#ff4a3a', '#3a8ad8', '#3fa64a'][i]); }
+        for (let i = 0; i < 3; i++) {
+          const fill = ck ? Math.min(3, Math.max(0, cf - i + 1)) : 2;
+          r(10 + i * 2, 12, 2, 4, '#f8f0e0'); r(10 + i * 2, 16 - fill - 1, 2, fill + 1, ['#c8904a', '#8a5a2b', '#ffb070'][i]); r(10 + i * 2 + (i & 1), 10, 1, 2, ['#ff4a3a', '#3a8ad8', '#3fa64a'][i]);
+        }
+        if (ck) { r(2 + (cf & 1) * 4, 15, 1, 1, '#c8904a'); r(10 + (cf % 3) * 2, 9, 1, 3, '#d8a060'); }
         break;
-      case 'fryer':
-        r(1, 11, 9, 5, '#8a8a94'); r(1, 11, 9, 1, '#b8b8c4'); r(2, 12, 7, 2, f2 ? '#ffc040' : '#e8a020');
-        r(3, 12, 1, 1, '#fff0a0'); r(6, 13, 1, 1, '#fff0a0'); r(8, 12, 1, 1, f2 ? '#fff0a0' : '#ffc040');
-        r(4, 9, 1, 3, '#5a5a64'); r(3, 9, 3, 1, '#5a5a64');
+      }
+      case 'fryer': { // 炸鍋：油泡泡、炸籃上下
+        r(1, 11, 9, 5, '#8a8a94'); r(1, 11, 9, 1, '#b8b8c4'); r(2, 12, 7, 2, ck ? (f2 ? '#ffd050' : '#ffb830') : '#e8a020');
+        const bub = ck ? [[3, 12], [6, 13], [8, 12], [4, 13]][cf] : [3, 12];
+        r(bub[0], bub[1], 1, 1, '#fff0a0'); if (ck) r(bub[0] + 2 > 8 ? 2 : bub[0] + 2, 12 + (cf & 1), 1, 1, '#fff8c8');
+        const by = ck && cf >= 2 ? 8 : 9;
+        r(4, by, 1, 3, '#5a5a64'); r(3, by, 3, 1, '#5a5a64'); if (by === 8) { r(3, 11, 3, 1, '#d8902a'); }
         r(11, 12, 4, 4, '#c8c8d0'); r(11, 12, 4, 1, '#e8e8f0'); r(11, 13, 2, 2, '#d8902a'); r(13, 13, 2, 1, '#e8a03a'); r(12, 15, 2, 1, '#c8801a');
         break;
-      case 'soup':
+      }
+      case 'soup': { // 湯鍋：湯滾、湯杓轉圈
         r(1, 10, 11, 6, '#7a7a86'); r(0, 10, 13, 2, '#a8a8b4'); r(0, 10, 13, 1, '#d0d0dc'); r(2, 11, 9, 1, '#a8502a'); r(3, 11, 2, 1, '#e8a060');
+        if (ck) { r([3, 6, 8, 5][cf], 10, 2, 1, '#e8a060'); r([7, 4, 3, 8][cf], 10, 1, 1, '#ffd8a0'); }
         r(-1, 12, 1, 2, '#5a5a64'); r(13, 12, 1, 2, '#5a5a64');
-        r(9, 6, 1, 6, '#c8904a'); r(8, 6, 3, 1, '#c8904a');
+        const lx = ck ? [9, 7, 4, 6][cf] : 9;
+        r(lx, 6, 1, 6, '#c8904a'); r(lx - 1, 6, 3, 1, '#c8904a');
         r(13, 13, 3, 3, '#f8f8ff'); r(13, 13, 3, 1, '#ffffff'); r(14, 14, 1, 1, '#a8502a');
         break;
-      case 'ice':
+      }
+      case 'ice': { // 冰品：刨冰機轉輪、冰山長高
         r(0, 11, 16, 5, '#bfe8ff'); r(0, 11, 16, 1, '#ffffff'); r(0, 15, 16, 1, '#8ac0e0');
         r(1, 12, 3, 3, '#ffd84a'); r(5, 12, 3, 3, '#ff8ab0'); r(9, 12, 3, 3, '#a8e8a0'); r(13, 12, 2, 3, '#9a2a3a');
-        r(5, 7, 6, 4, '#e8eef4'); r(6, 6, 4, 1, '#c8d0dc'); r(7, 5, 2, 1, '#8a8a94'); r(6, 9, 4, 2, '#ffffff'); r(7, 8 + f2, 2, 1, '#ffb020');
+        r(5, 7, 6, 4, '#e8eef4'); r(6, 6, 4, 1, '#c8d0dc'); r(7, 5, 2, 1, '#8a8a94'); r(6, 9, 4, 2, '#ffffff');
+        const wh = ck ? [[11, 6], [12, 7], [11, 8], [10, 7]][cf] : [11, 7];
+        r(10, 6, 3, 3, '#a8b0bc'); r(wh[0], wh[1], 1, 1, '#ff4a3a');
+        if (ck) { r(7, 10 - (cf >> 1), 2, 1 + (cf >> 1), '#ffffff'); r(7, 8 + f2, 2, 1, '#ffb020'); } else r(7, 8, 2, 1, '#ffb020');
         break;
-      case 'steam':
+      }
+      case 'steam': { // 蒸籠：蓋子被蒸氣頂起來
         for (let i = 0; i < 3; i++) { const y = 13 - i * 3; r(2, y, 12, 3, '#c8a060'); r(2, y, 12, 1, '#e8c888'); r(2, y + 2, 12, 1, '#a8804a'); }
-        r(3, 6, 10, 1, '#d8b070'); r(4, 5, 8, 1, '#f0d090'); r(7, 4, 2, 1, '#a8804a');
+        const lift = ck ? [0, 1, 2, 1][cf] : 0;
+        r(3, 6 - lift, 10, 1, '#d8b070'); r(4, 5 - lift, 8, 1, '#f0d090'); r(7, 4 - lift, 2, 1, '#a8804a');
+        if (lift) { r(3, 7 - lift + 1, 10, lift, 'rgba(255,255,255,.85)'); }
         break;
-      case 'grill':
-        r(0, 12, 16, 4, '#3a3a40'); r(0, 12, 16, 1, '#5a5a64'); r(1, 13, 14, 2, f2 ? '#ff6a2a' : '#e84a1a');
-        r(2, 14, 1, 1, '#ffd040'); r(7, 13, 1, 1, '#ffd040'); r(11, 14, 1, 1, '#ffd040');
-        for (let i = 0; i < 5; i++) { r(1 + i * 3, 9, 1, 4, '#d8c8a0'); r(1 + i * 3, 9, 2, 3, ['#c8503a', '#e8c040', '#a8483a', '#ffd030', '#c8503a'][i]); r(1 + i * 3, 9, 1, 1, '#ffe0a0'); }
+      }
+      case 'grill': { // 炭烤：火光跳動、串燒翻面
+        r(0, 12, 16, 4, '#3a3a40'); r(0, 12, 16, 1, '#5a5a64');
+        r(1, 13, 14, 2, ck ? ['#ff6a2a', '#ff8a3a', '#ff5a1a', '#ff7a2a'][cf] : (fr & 2 ? '#e84a1a' : '#d8401a'));
+        r(2 + (ck ? cf : 0), 14, 1, 1, '#ffd040'); r(7, 13, 1, 1, '#ffd040'); r(11 - (ck ? cf : 0), 14, 1, 1, '#ffd040');
+        if (ck) { r(4 + cf * 2, 11, 1, 1, '#ffb030'); r(12 - cf, 10, 1, 2, '#ff8a2a'); }
+        for (let i = 0; i < 5; i++) { const t = ck && ((i + cf) & 3) === 0; r(1 + i * 3, 9, 1, 4, '#d8c8a0'); r(1 + i * 3, 9, 2, 3, t ? '#8a3a2a' : ['#c8503a', '#e8c040', '#a8483a', '#ffd030', '#c8503a'][i]); r(1 + i * 3, 9, 1, 1, '#ffe0a0'); }
         break;
+      }
     }
+  },
+  // 桌上的小盤子：stage 0 滿、1 吃一半、2 吃光
+  minidish(st, stage, col) {
+    return this.get('md' + st + stage + col, 6, 5, r => {
+      const full = stage === 0, half = stage === 1;
+      if (st === 'drink') { r(1, 0, 3, 5, '#e8f4ff'); r(1, full ? 1 : half ? 3 : 4, 3, full ? 4 : half ? 2 : 1, col); r(2, -2, 1, 2, '#ff4a3a'); return; }
+      if (st === 'soup' || st === 'ice') { r(0, 2, 6, 3, st === 'ice' ? '#bfe8ff' : '#ffffff'); r(1, 4, 4, 1, '#d8d8e0'); if (!stage || half) { r(1, full ? 0 : 1, 4, full ? 2 : 1, col); if (full) r(2, 0, 1, 1, '#ffffff'); } return; }
+      if (st === 'steam') { r(0, 2, 6, 3, '#c8a060'); r(0, 2, 6, 1, '#e0c080'); if (full) { r(1, 1, 2, 2, '#fff4e8'); r(3, 1, 2, 2, '#fff4e8'); } else if (half) r(2, 1, 2, 2, '#fff4e8'); return; }
+      if (st === 'grill') { r(0, 3, 6, 2, '#ffffff'); if (full) { r(1, 1, 4, 2, col); r(0, 2, 1, 1, '#d8c8a0'); } else if (half) r(2, 2, 2, 1, col); else r(1, 3, 3, 1, '#d8c8a0'); return; }
+      r(0, 3, 6, 2, '#ffffff'); r(1, 4, 4, 1, '#d8d8e0');
+      if (full) { r(1, 1, 4, 2, col); r(2, 1, 1, 1, shade(col, 0.4)); } else if (half) r(2, 2, 2, 1, col);
+    });
+  },
+  // 路人用的暗色版
+  dimmed(c) {
+    if (c._dim) return c._dim;
+    const d = this.mk(c.width, c.height), q = d.getContext('2d');
+    q.drawImage(c, 0, 0); q.globalCompositeOperation = 'source-atop'; q.fillStyle = 'rgba(34,26,60,.38)'; q.fillRect(0, 0, d.width, d.height);
+    return (c._dim = d);
+  },
+  scooter(col, lit) {
+    return this.get('sc' + col + (lit ? 1 : 0), 22, 14, r => {
+      const R0 = (x, y, w, h, c) => r(x + 1, y + 3, w, h, c);
+      R0(-1, 1, 21, 4, OUT); R0(0, 3, 6, 6, OUT); R0(13, 3, 6, 6, OUT);
+      R0(1, 4, 4, 4, '#2a2a30'); R0(14, 4, 4, 4, '#2a2a30'); R0(2, 5, 2, 2, '#9a9aa8'); R0(15, 5, 2, 2, '#9a9aa8');
+      R0(1, -1, 9, 4, col); R0(12, -5, 5, 7, col); R0(10, 1, 8, 2, col);
+      R0(1, -1, 9, 1, shade(col, 0.3)); R0(12, -5, 5, 1, shade(col, 0.3)); R0(1, 2, 17, 1, shade(col, -0.3));
+      R0(2, -2, 7, 1, '#3a3a44'); R0(15, -7, 1, 2, '#3a3a44'); R0(14, -7, 3, 1, '#3a3a44');
+      R0(17, -4, 2, 2, lit ? '#fff8c0' : '#e8e0a0'); R0(0, 0, 1, 2, '#ff4a3a');
+    }, false);
   },
   // 鄰居空地的小道具
   prop(k) {
@@ -557,11 +648,80 @@ const Art = {
         case 'flask': r(3, 0, 3, 3, '#dfe4ea'); r(2, 0, 5, 1, '#a8b0bc'); r(1, 3, 7, 6, '#dfe4ea'); r(2, 5, 5, 3, '#7affb0'); r(3, 5, 1, 1, '#ffffff'); break;
         case 'heart2': r(1, 1, 3, 3, '#ff6fa8'); r(5, 1, 3, 3, '#ff6fa8'); r(0, 2, 9, 3, '#ff6fa8'); r(1, 5, 7, 1, '#ff6fa8'); r(2, 6, 5, 1, '#ff6fa8'); r(3, 7, 3, 1, '#ff6fa8'); r(2, 2, 1, 1, '#ffffff'); break;
         case 'gear': r(2, 2, 5, 5, '#a8b0c0'); r(4, 0, 1, 9, '#a8b0c0'); r(0, 4, 9, 1, '#a8b0c0'); r(4, 4, 1, 1, '#4a4a5a'); break;
+        case 'sword': r(0, 0, 2, 2, '#e8eef4'); r(2, 2, 2, 2, '#e8eef4'); r(4, 4, 1, 1, '#c8d0dc'); r(7, 0, 2, 2, '#e8eef4'); r(5, 2, 2, 2, '#e8eef4'); r(1, 6, 3, 1, '#ffd040'); r(5, 6, 3, 1, '#ffd040'); r(2, 7, 1, 2, '#a8703e'); r(6, 7, 1, 2, '#a8703e'); r(3, 5, 1, 1, '#c8d0dc'); r(5, 5, 1, 1, '#c8d0dc'); break;
         case 'people': r(1, 1, 3, 3, '#f4c8a0'); r(0, 4, 5, 4, '#5a8ad8'); r(5, 0, 3, 3, '#f4c8a0'); r(4, 3, 5, 5, '#e8473b'); break;
       }
     });
   },
 
+  // 分店的小風景（每家分店有自己的地標），lv = 分店等級，0 = 還沒開
+  branchScene(id, lv) {
+    const key = 'br' + id + lv;
+    let c = this.cache.get(key); if (c) return c;
+    const W = 128, H = 64; c = this.mk(W, H);
+    const g = c.getContext('2d'), R2 = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
+    const seed = id.length * 31 + id.charCodeAt(0), hv = (i, j) => hash(i, j, seed);
+    const sky = { tokyo: ['#141a3a', '#3a2a5a'], liuhe: ['#0e1a3a', '#4a2a5a'], luodong: ['#0a1a2a', '#2a3a5a'] }[id] || ['#10102e', '#3a2450'];
+    for (let y = 0; y < 44; y++) R2(0, y, W, 1, mixHex(sky[0], sky[1], y / 44));
+    for (let i = 0; i < 26; i++) R2((hv(i, 1) * W) | 0, (hv(i, 2) * 26) | 0, 1, 1, i % 5 ? '#c8c8f0' : '#ffffe0');
+    // 遠方建築
+    for (let x = 0, i = 0; x < W; i++) { const w = 8 + ((hv(i, 3) * 4) | 0) * 3, h = 10 + ((hv(i, 4) * 6) | 0) * 3; R2(x, 44 - h, w, h, '#1c1838'); for (let wy = 46 - h; wy < 42; wy += 3) for (let wx = x + 1; wx < x + w - 1; wx += 2) if (hv(wx, wy) < 0.3) R2(wx, wy, 1, 1, '#ffd890'); x += w; }
+    // 地標
+    if (id === 'shilin') { // 大牌樓
+      R2(38, 14, 4, 30, '#b8202a'); R2(86, 14, 4, 30, '#b8202a'); R2(34, 10, 60, 5, '#e8302a'); R2(32, 8, 64, 3, '#2a6a4a'); R2(30, 7, 4, 2, '#2a6a4a'); R2(94, 7, 4, 2, '#2a6a4a');
+      R2(52, 15, 24, 7, '#ffd040'); R2(54, 17, 20, 3, '#c8302a'); R2(38, 24, 52, 2, '#e8302a');
+    } else if (id === 'raohe') { // 廟宇
+      R2(44, 22, 40, 22, '#a8302a'); R2(38, 18, 52, 5, '#2a5a4a'); R2(34, 16, 6, 3, '#2a5a4a'); R2(88, 16, 6, 3, '#2a5a4a'); R2(32, 14, 4, 3, '#ffd040'); R2(92, 14, 4, 3, '#ffd040');
+      R2(48, 12, 32, 5, '#2a5a4a'); R2(60, 8, 8, 4, '#ffd040'); R2(58, 30, 12, 14, '#3a1a1a'); R2(60, 32, 8, 2, '#ffd040'); for (let x = 46; x < 82; x += 8) R2(x, 24, 4, 4, '#ffcf60');
+    } else if (id === 'fengjia') { // 霓虹看板牆
+      for (let i = 0; i < 9; i++) { const x = 6 + i * 13, h = 14 + ((hv(i, 7) * 4) | 0) * 4, col = ['#ff5ad0', '#5affff', '#ffe040', '#7affb0', '#ff8a3d'][i % 5]; R2(x, 42 - h, 9, h, '#2a2040'); R2(x + 1, 43 - h, 7, 1, col); R2(x + 1, 41, 7, 1, col); R2(x + 1, 43 - h, 1, h - 1, col); R2(x + 7, 43 - h, 1, h - 1, col); R2(x + 3, 46 - h, 3, 3, col); R2(x + 3, 52 - h, 3, 2, col); }
+    } else if (id === 'liuhe') { // 高塔和椰子樹
+      R2(92, 4, 3, 40, '#2a2a4a'); R2(84, 18, 18, 26, '#24244a'); R2(88, 26, 3, 18, sky[0]); R2(96, 26, 3, 18, sky[0]); R2(93, 0, 1, 5, '#ff4a3a'); for (let y = 20; y < 42; y += 3) { R2(85, y, 1, 1, '#ffd890'); R2(100, y, 1, 1, '#ffd890'); }
+      for (const tx of [12, 40, 116]) { R2(tx, 22, 2, 22, '#5a3a24'); R2(tx - 6, 20, 14, 2, '#2f8a3a'); R2(tx - 4, 18, 10, 2, '#3fa64a'); R2(tx - 7, 22, 3, 2, '#2f8a3a'); R2(tx + 5, 22, 3, 2, '#2f8a3a'); }
+    } else if (id === 'luodong') { // 公園的水池和涼亭
+      R2(24, 38, 80, 6, '#1a3a5a'); R2(28, 38, 72, 1, '#4a8ac8'); for (let x = 30; x < 100; x += 9) R2(x, 40, 4, 1, '#ffd890');
+      R2(52, 22, 24, 3, '#b8302a'); R2(48, 20, 32, 3, '#2a5a4a'); R2(62, 16, 4, 4, '#ffd040'); R2(54, 25, 2, 13, '#b8302a'); R2(72, 25, 2, 13, '#b8302a');
+      for (const tx of [10, 100, 118]) { R2(tx, 28, 3, 16, '#4a3020'); R2(tx - 6, 18, 15, 11, '#1f5a2a'); R2(tx - 3, 15, 9, 4, '#2a7a3a'); }
+    } else if (id === 'tokyo') { // 紅白電波塔＋紙燈籠
+      R2(94, 2, 1, 6, '#ffffff'); R2(92, 8, 5, 6, '#e8473b'); R2(90, 14, 9, 8, '#ffffff'); R2(88, 22, 13, 8, '#e8473b'); R2(85, 30, 19, 8, '#ffffff'); R2(82, 38, 25, 6, '#e8473b'); R2(92, 26, 5, 18, sky[1]);
+      for (let x = 6; x < 76; x += 10) { R2(x + 1, 20, 1, 4, '#3a2a2a'); R2(x - 1, 24, 6, 7, x % 20 ? '#fff4e0' : '#e8473b'); R2(x - 1, 24, 6, 1, '#3a2a2a'); R2(x - 1, 30, 6, 1, '#3a2a2a'); }
+      R2(0, 21, 80, 1, '#3a2a2a');
+    }
+    // 街道
+    R2(0, 44, W, 20, '#3a3446'); R2(0, 44, W, 1, '#6a6478');
+    // 攤位一排（等級越高越多）
+    const n = lv ? 2 + lv : 3, cols = ['#e8473b', '#3a8ad8', '#f0a020', '#3a9a5a', '#ff6fa8', '#8a5ac8', '#e8473b'];
+    for (let i = 0; i < n; i++) {
+      const x = 4 + i * Math.floor((W - 16) / n), col = lv ? cols[(i + seed) % cols.length] : '#4a4458';
+      for (let k = 0; k < 10; k += 2) R2(x + k, 46, 2, 3, (k / 2) & 1 ? (lv ? '#fff4e8' : '#5a5468') : col);
+      R2(x, 49, 10, 6, lv ? shade(col, -0.2) : '#3a3448'); R2(x + 3, 50, 4, 3, lv ? '#fff6e4' : '#4a4458');
+      if (lv) R2(x + 1, 49, 8, 1, '#ffe8a0');
+    }
+    // 自家分店的招牌
+    if (lv) {
+      R2(W / 2 - 18, 52, 36, 9, '#5a2a1a'); R2(W / 2 - 17, 53, 34, 7, lv >= 4 ? '#ffd040' : '#c8202a'); R2(W / 2 - 14, 55, 28, 3, lv >= 4 ? '#c8202a' : '#fff4c0');
+      for (let x = W / 2 - 17; x < W / 2 + 17; x += 3) R2(x, 51, 1, 1, '#fff6b0');
+      // 人潮
+      for (let i = 0; i < 6 + lv * 5; i++) { const x = (hv(i, 9) * (W - 4)) | 0, y = 56 + ((hv(i, 10) * 6) | 0); R2(x, y - 3, 2, 2, ['#f4c8a0', '#e8b088', '#f8d8b8'][i % 3]); R2(x, y - 4, 2, 1, ['#2b1b16', '#5a3a24', '#1a1a2a'][i % 3]); R2(x, y - 1, 2, 3, SHIRTS[i % SHIRTS.length]); }
+      // 燈籠串
+      for (let x = 2; x < W; x += 6) R2(x, 44 + Math.round(Math.sin(x / 9) * 1.5) - 2, 2, 2, ['#ff4a3a', '#ffb020', '#ff6fa8'][(x / 6) % 3 | 0]);
+    } else { g.fillStyle = 'rgba(10,8,24,.45)'; g.fillRect(0, 0, W, H); }
+    this.cache.set(key, c);
+    return c;
+  },
+  // 頭上的對話泡泡（圓角、尾巴、陰影，圖示在中間）
+  bubble(icon) {
+    return this.get('bb' + icon, 18, 16, (r, g) => {
+      const warn = icon === 'angry' || icon === 'nocook' || icon === 'excl';
+      const bg = warn ? '#fff0ec' : '#ffffff', edge = warn ? '#a8281f' : OUT;
+      r(2, 13, 14, 1, 'rgba(20,10,30,.3)'); r(16, 3, 1, 10, 'rgba(20,10,30,.3)');
+      r(2, 0, 13, 1, edge); r(2, 12, 13, 1, edge); r(0, 2, 1, 9, edge); r(16, 2, 1, 9, edge);
+      r(1, 1, 1, 1, edge); r(15, 1, 1, 1, edge); r(1, 11, 1, 1, edge); r(15, 11, 1, 1, edge);
+      r(2, 1, 13, 11, bg); r(1, 2, 15, 9, bg); r(2, 10, 13, 1, warn ? '#ffd8d0' : '#ece6f4');
+      r(7, 12, 3, 1, bg); r(8, 13, 1, 1, bg); r(6, 12, 1, 1, edge); r(10, 12, 1, 1, edge); r(7, 13, 1, 1, edge); r(9, 13, 1, 1, edge); r(8, 14, 1, 1, edge);
+      g.drawImage(this.icon(icon), 4, 2);
+    }, false);
+  },
   // 菜色小圖（依攤位種類畫容器）
   dish(id) {
     const d = DISH[id];
