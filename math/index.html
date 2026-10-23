@@ -345,7 +345,7 @@ $('#bear').innerHTML = BEAR; $('#startBear').innerHTML = BEAR;
 /* ---------- 進度 ---------- */
 const KEY = 'math-v1';
 const today = () => new Date().toISOString().slice(0, 10);
-const fresh = () => ({ rounds: {}, score: {}, stickers: [], day: today(), sec: 0, rest: 15 });
+const fresh = () => ({ rounds: {}, score: {}, stickers: [], day: today(), sec: 0, rest: 15, ai: true });
 let S;
 try { S = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { S = {}; }
 S = Object.assign(fresh(), S);
@@ -367,7 +367,10 @@ let cur = null, token = 0;
 function ctx() { if (!AC) { const C = window.AudioContext || window.webkitAudioContext; if (C) AC = new C(); } return AC; }
 function load(text) {
   const id = hash(text);
-  if (!bufs.has(id)) bufs.set(id, fetch('audio/' + id + '.mp3').then(r => r.ok ? r.arrayBuffer() : null)
+  // 先找預錄音檔；沒有的句子（例如 AI 提示）請伺服器用同一個 Azure 雲哲聲音、同樣 +5% 語速即時合成
+  const get = url => fetch(url).then(r => r.ok && /audio/.test(r.headers.get('content-type') || '') ? r.arrayBuffer() : null).catch(() => null);
+  if (!bufs.has(id)) bufs.set(id, get('audio/' + id + '.mp3')
+    .then(ab => ab || get('/api/tts?r=' + encodeURIComponent('+5%') + '&t=' + encodeURIComponent(text)))
     .then(ab => ab && ctx() ? new Promise((ok, no) => ctx().decodeAudioData(ab, ok, no)) : null).catch(() => null));
   return bufs.get(id);
 }
@@ -539,10 +542,23 @@ function counter(objs, o = {}) {
   };
 }
 const praise = () => pick(P.praise);
+// AI 家教提示：答錯時把「題目、正確答案、孩子選的」交給 /api/tutor，回一句針對這次錯誤的短提示。
+// 家長區可關（S.ai）。沒網路、超過額度或 4 秒內沒回來就不說，原本的示範照常。
+const btnLabel = b => (b.dataset.v || b.getAttribute('aria-label') || [...b.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('') || b.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 30);
+function aiHint(lines, right, picked) {
+  if (!S.ai || !navigator.onLine || !right || !picked) return Promise.resolve(null);
+  const r = btnLabel(right), p = btnLabel(picked);
+  if (!r || !p || r === p) return Promise.resolve(null);
+  const body = { game: 'math', lesson: $('#ltag').textContent.trim(), question: lines.join(' '), right: r, picked: p };
+  const ask = fetch('/api/tutor', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+    .then(res => res.ok ? res.json() : null).then(j => (j && j.line) || null).catch(() => null)
+    .then(line => { if (line) load(line); return line; });   // 拿到就先去合成語音，播的時候不用等
+  return Promise.race([ask, sleep(4000).then(() => null)]);
+}
 const T = {};   // 測試用：目前的正確／錯誤答案
 // 選答案：答對回傳 true（第一次就對）或 false（錯了以後再點發亮的答案）
 async function choose(my, btns, isRight, onWrong, onRight) {
-  let firstTry = true;
+  let firstTry = true, answered = false;
   T.right = () => btns.find(isRight); T.wrong = () => btns.find(b => !isRight(b));
   return new Promise((resolve, reject) => {
     let busy = false;
@@ -550,7 +566,7 @@ async function choose(my, btns, isRight, onWrong, onRight) {
       if (busy) return;
       try {
         if (isRight(b)) {
-          busy = true; chime(true); b.classList.remove('glow'); b.classList.add('ok');
+          busy = true; answered = true; chime(true); b.classList.remove('glow'); b.classList.add('ok');
           btns.forEach(x => { if (x !== b) x.classList.add('dim'); });
           if (onRight) await W(my, onRight(b)); else await W(my, say(praise()));
           resolve(firstTry);
@@ -558,10 +574,12 @@ async function choose(my, btns, isRight, onWrong, onRight) {
           if (!firstTry) { b.classList.remove('no'); void b.offsetWidth; b.classList.add('no'); return; }
           busy = true; firstTry = false; chime(false); b.classList.add('no');
           btns.forEach(x => x.style.pointerEvents = 'none');
-          await W(my, onWrong(b));
           const right = btns.find(isRight);
+          const hint = aiHint(lastLines, right, b);   // 和示範同時去問，示範完通常已經回來了
+          await W(my, onWrong(b));
           btns.forEach(x => { x.style.pointerEvents = ''; if (x !== right) x.classList.add('dim'); });
           right.classList.add('glow'); busy = false;
+          hint.then(line => { if (line && !answered && my === sess) say(line); });
         }
       } catch (e) { if (e !== STOP) console.error(e); reject(e); }
     });
@@ -1234,12 +1252,15 @@ function parentPanel() {
     </div>
     <div class="panel"><h2>設定</h2>
       <div class="row">休息提醒：${[0, 10, 15, 20, 30].map(m => `<button class="chip ${S.rest === m ? 'on' : ''}" data-rest="${m}">${m ? m + ' 分鐘' : '關閉'}</button>`).join('')}</div>
+      <div class="row">小黑 AI 提示：<button class="chip ${S.ai ? 'on' : ''}" data-ai="1">開</button><button class="chip ${S.ai ? '' : 'on'}" data-ai="0">關</button></div>
+      <p class="note">答錯時，小黑示範完會再說一句針對這次錯誤的提示（由 Claude AI 產生，需要網路）。送出的只有題目和選的答案，不含任何個人資料。</p>
       <div class="row"><button class="chip" data-a="fs">全螢幕</button><button class="chip" data-a="reset">清除進度</button><a class="chip" href="../index.html" style="text-decoration:none;color:inherit">回遊戲大廳</a></div>
-      <p class="note">聲音：微軟台灣中文神經語音（雲哲 YunJhe）預錄。進度只存在這台裝置的瀏覽器裡。</p>
+      <p class="note">聲音：微軟台灣中文神經語音（雲哲 YunJhe）預錄；AI 提示用同一個聲音即時合成。進度只存在這台裝置的瀏覽器裡。</p>
     </div>
     <button class="say" data-a="close">✔ 回到遊戲</button></div>`);
   document.body.appendChild(o);
   o.querySelectorAll('[data-rest]').forEach(b => b.onclick = () => { S.rest = +b.dataset.rest; save(); o.remove(); parentPanel(); });
+  o.querySelectorAll('[data-ai]').forEach(b => b.onclick = () => { S.ai = b.dataset.ai === '1'; save(); o.remove(); parentPanel(); });
   o.querySelector('[data-a=fs]').onclick = () => fullscreen();
   o.querySelector('[data-a=reset]').onclick = e => {
     if (e.target.dataset.sure) { const r = S.rest; S = fresh(); S.rest = r; save(); updStars(); o.remove(); go('home'); }
