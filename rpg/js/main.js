@@ -5,8 +5,11 @@ let G = null;
 
 const Game = {
   scene: 'title', fadeA: 0, fading: false, flashWhite: 0, flashRed: 0, overlay: null, last: 0, newDiff: 'normal', slotMode: 'load', titleSel: 0, dawn: undefined, dawnTarget: 0,
+  QUAL: [2, 1.5, 1.25, 1],
   init() {
     Store.load(); Input.init();
+    // 上次自動降過的畫質先沿用（最多從第 1 級開始，給一次往回升的機會）
+    this.qual = Math.min(1, Store.data.qual | 0);
     if (matchMedia('(pointer:coarse)').matches || ('ontouchstart' in window && navigator.maxTouchPoints > 0)) Input.setTouch(true);
     addEventListener('resize', () => this.resize());
     addEventListener('orientationchange', () => setTimeout(() => this.resize(), 200));
@@ -25,7 +28,8 @@ const Game = {
     requestAnimationFrame(t => this.loop(t));
   },
   resize() {
-    const W = innerWidth, H = innerHeight, dpr = Math.min(3, window.devicePixelRatio || 1);
+    // 畫布解析度上限：像素畫不需要 3 倍解析度；效能不足時再往下調（見 loop 的自動畫質）
+    const W = innerWidth, H = innerHeight, dpr = Math.min(Game.QUAL[this.qual || 0], window.devicePixelRatio || 1);
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
     L.W = cv.width; L.H = cv.height; L.dpr = dpr;
     let vx = 0, vy = 0, vw = W, vh = H;
@@ -268,7 +272,16 @@ const Game = {
   loop(ts) {
     const raw = (ts - (this.last || ts)) / 1000, dt = Math.min(0.05, raw); this.last = ts;
     // 效能不足時自動降低特效（光暈、粒子）
-    if (raw > 0 && raw < 0.5) { this.avgDt = lerp(this.avgDt || 0.016, raw, 0.03); this.slowT = this.avgDt > 1 / 36 ? (this.slowT || 0) + raw : 0; if (this.slowT > 4 && !this.lowFx) this.lowFx = true; }
+    // 分級：先關掉光暈與粒子，再降低畫布解析度（2 → 1.5 → 1.25 → 1）
+    if (raw > 0 && raw < 0.25 && !document.hidden && !this.fading && !(this.scene === 'title')) {
+      this.avgDt = lerp(this.avgDt || 0.016, raw, 0.05);
+      this.slowT = this.avgDt > 1 / 42 ? (this.slowT || 0) + raw : Math.max(0, (this.slowT || 0) - raw * 0.5);
+      if (this.slowT > 2.5) {
+        this.slowT = 0; this.avgDt = 0.016;
+        if (!this.lowFx) this.lowFx = true;
+        else if ((this.qual || 0) < Game.QUAL.length - 1 && Math.min(3, devicePixelRatio || 1) > Game.QUAL[(this.qual || 0) + 1]) { this.qual = (this.qual || 0) + 1; Store.data.qual = this.qual; Store.save(); this.resize(); }
+      }
+    }
     Input.frame(dt);
     if (this.scene === 'title') { this.titleInput(); this.titleT = (this.titleT || 0) + dt; }
     UI.handleTaps();

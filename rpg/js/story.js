@@ -418,8 +418,9 @@ async function altarEvent() {
   if (!F('d4')) return UI.say('古老的石造祭壇，上面有四個圓形的凹槽。', '石碑上寫著：「集齊四聲之石，星之橋將引領鐘守。」');
   await UI.say('四顆音石在背包裡發出共鳴……', '把音石放到了祭壇的凹槽上。');
   Game.flashWhite = 1; Snd.play('holy');
+  for (let j = 0; j < 4; j++) setTimeout(() => Field.ring(43, 8, ['255,140,140', '255,230,140', '140,255,180', '160,180,255'][j], 12, 2), j * 200);
   await sleep(600);
-  G.flags.bridge = true; Field.rebake();
+  G.flags.bridge = true; Field.rebake(); Field.shake(0.6);
   Snd.play('bell');
   await UI.say('祭壇射出七彩的光，一座彩虹橋出現在海面上！', '橋的另一端，是籠罩在黑霧裡的黯王島。', '米菈：「最後一顆音石，就在黯王身上……」', '莉亞：「大家，一起走吧。」');
   await UI.say('（音石自動回到了背包裡。）');
@@ -461,7 +462,7 @@ async function endingEvent() {
   Field.party.forEach((p, i) => { p.x = [13, 12, 14, 13][i]; p.y = [3, 4, 4, 5][i]; p.fx = p.x; p.fy = p.y; p.dir = 'up'; p.t = 1; });
   Game.dawn = 0;
   await UI.say('托爾爺爺：「五顆音石都回來了……洛恩，敲吧。」', '洛恩把五顆音石嵌進了曉鐘，然後用盡全身的力氣拉動了鐘繩——');
-  for (let i = 0; i < 3; i++) { Snd.play('bell'); Game.flashWhite = 0.6; await sleep(1600); }
+  for (let i = 0; i < 3; i++) { Snd.play('bell'); Game.flashWhite = 0.6; Field.shake(0.25); for (let j = 0; j < 3; j++) setTimeout(() => Field.ring(13, 1.5, j ? '255,200,120' : '255,245,200', 10 + i * 3, 1.8), j * 260); await sleep(1600); }
   Game.dawnTarget = 1;
   await sleep(1800);
   await UI.say('噹——噹——噹——', '曉鐘的聲音越過山脈，越過大海，傳遍了整個世界。', '東方的天空，一點一點地亮了起來。', '太陽，終於升起來了。');

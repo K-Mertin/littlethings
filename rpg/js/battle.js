@@ -451,36 +451,52 @@ const BScene = {
   heroScale() { const st = this.stage; return Math.max(1, Math.round(Math.min(st.h * 0.27 / 24, st.w * 0.115 / 16) * 2) / 2); },
   heroPos(m) {
     const st = this.stage, n = this.B.party.length, i = this.B.party.indexOf(m), s = this.heroScale();
-    const tall = st.h > st.w * 0.8;
-    const span = Math.min(st.h * (tall ? 0.42 : 0.4), s * 24 * (tall ? 0.8 : 0.55) * Math.max(1, n - 1));
-    const y = st.y + st.h * (tall ? 0.86 : 0.94) - span + (n > 1 ? i * span / (n - 1) : span * 0.5);
-    const x = st.x + st.w * (st.w > st.h ? 0.74 : 0.66) + i * st.w * (st.w > st.h ? 0.035 : 0.045) - s * 6;
+    const tall = st.h > st.w * 0.8, short = st.h < st.w * 0.62;
+    let x, y;
+    if (short && n > 2) {
+      // 矮舞台（橫向手機、桌機）：兩列交錯的隊形，前後排錯開不互相遮住
+      const H = s * 24, span = Math.min(st.h * 0.44, H * 0.52 * (n - 1));
+      y = st.y + st.h * 0.95 - span + i * span / (n - 1);
+      x = st.x + st.w * 0.715 + i * st.w * 0.022 + (i % 2 ? s * 9.5 : 0) - s * 6;
+    } else {
+      const span = Math.min(st.h * (tall ? 0.42 : 0.4), s * 24 * (tall ? 0.8 : 0.55) * Math.max(1, n - 1));
+      y = st.y + st.h * (tall ? 0.86 : 0.94) - span + (n > 1 ? i * span / (n - 1) : span * 0.5);
+      x = st.x + st.w * (st.w > st.h ? 0.74 : 0.68) + i * st.w * (st.w > st.h ? 0.035 : 0.045) - s * 6;
+    }
     const h = this.hs.get(m) || {};
     return { x: x + (h.dx || 0), y, s, w: 28 * s, h: 28 * s, cx: x + (h.dx || 0) + 14 * s, cy: y - 14 * s };
   },
   hstate(m) { let h = this.hs.get(m); if (!h) { h = { dx: 0, tdx: 0, pose: null, hurt: 0, flash: 0, ph: Math.random() * 6, dead: m.hp <= 0 ? 1 : 0 }; this.hs.set(m, h); } return h; },
+  // 怪物站位：3 隻以下排一列；4 隻以上前後兩排交錯（後排站在前排的縫隙裡，露出上半身）
   placeEnemies() {
     const B = this.B, st = this.stage, list = B.enemies.filter(e => !e.gone);
     if (!list.length) return;
-    const arts = list.map(e => MonArt.get(e.m));
+    const arts = list.map(e => MonArt.get(e.m)), n = list.length;
     const hasBoss = list.some(e => e.m.boss);
-    const tall = st.h > st.w * 0.8, aw = st.w * (st.w > st.h ? 0.66 : 0.64), ax = st.x + st.w * 0.03, base = st.y + st.h * (tall ? 0.8 : 0.88);
-    const two = !hasBoss && list.length >= 4;
-    let s = Math.min(st.h * (hasBoss ? 0.82 : 0.5) / (hasBoss ? 84 : 48), L.k * (hasBoss ? 1.8 : 1.5));
-    const gap = L.FS * 0.3;
-    const row = list.map((e, i) => (two && i % 2 === 1 ? 1 : 0));
-    const widthOf = r => list.reduce((t, e, i) => t + (row[i] === r ? arts[i].w : 0), 0);
-    const cnt = r => row.filter(x => x === r).length;
-    const tw = Math.max(widthOf(0), widthOf(1) * 0.85);
-    s = Math.min(s, (aw * 0.96 - gap * (Math.max(cnt(0), cnt(1)) - 1)) / Math.max(1, tw));
-    s = Math.max(0.5, Math.floor(s * 4) / 4);
-    for (const r of [1, 0]) {
-      const rs = r ? s * 0.85 : s, ids = list.map((e, i) => i).filter(i => row[i] === r);
-      const w = ids.reduce((t, i) => t + arts[i].w * rs, 0) + gap * (ids.length - 1);
-      let x = ax + (aw - w) / 2 + (r ? aw * 0.08 : 0);
-      const b = r ? base - st.h * (tall ? 0.2 : 0.16) : base;
-      for (const i of ids) { const e = list[i], a = arts[i]; e.px = x; e.pw = a.w * rs; e.ph = a.h * rs; e.py = b - e.ph; e.cx = x + e.pw / 2; e.cy = e.py + e.ph * 0.5; e.row = r; x += a.w * rs + gap; }
+    const tall = st.h > st.w * 0.8, aw = st.w * (tall ? 0.6 : 0.64), ax = st.x + st.w * 0.03, base = st.y + st.h * (tall ? 0.74 : 0.9);
+    const stag = !hasBoss && (n >= 4 || (tall && n === 3)), OV = tall ? 0.5 : 0.6, BACK = 0.86;
+    const row = list.map((e, i) => (stag && (n - 1 - i) % 2 === 1 ? 1 : 0));
+    const sc = i => row[i] ? BACK : 1;
+    const gapU = stag ? 0 : 3;
+    // 以 1 倍大小算出總寬度
+    let cx = 0; const cu = [];
+    for (let i = 0; i < n; i++) {
+      if (i === 0) cx = arts[0].w * sc(0) / 2;
+      else cx += (stag ? (arts[i - 1].w * sc(i - 1) + arts[i].w * sc(i)) / 2 * OV : (arts[i - 1].w * sc(i - 1) + arts[i].w * sc(i)) / 2 + gapU);
+      cu.push(cx);
     }
+    const totalU = cx + arts[n - 1].w * sc(n - 1) / 2;
+    const maxH = Math.max(...arts.map(a => a.h));
+    const riseU = stag ? maxH * (tall ? 0.62 : 0.42) : 0;
+    let s = Math.min(st.h * (hasBoss ? 0.82 : stag ? 0.5 : 0.5) / (hasBoss ? 84 : 48), L.k * (hasBoss ? 1.8 : 1.5));
+    s = Math.min(s, aw * 0.96 / totalU, (base - st.y - st.h * 0.04) / (maxH + riseU));
+    s = Math.max(0.5, Math.floor(s * 4) / 4);
+    const x0 = ax + (aw - totalU * s) / 2;
+    list.forEach((e, i) => {
+      const a = arts[i], rs = s * sc(i), w = a.w * rs, h = a.h * rs, ccx = x0 + cu[i] * s;
+      e.px = ccx - w / 2; e.pw = w; e.ph = h; e.row = row[i];
+      e.py = (row[i] ? base - riseU * s : base) - h; e.cx = ccx; e.cy = e.py + h * 0.5;
+    });
   },
   memberBox(m) { const p = this.heroPos(m); return { x: p.x + p.w * 0.15, y: p.y - p.h * 0.85, w: p.w * 0.7, h: p.h * 0.85 }; },
   say(text) { this.lines.push(text); if (this.lines.length > 4) this.lines.shift(); },
@@ -609,7 +625,7 @@ const BScene = {
     // 頭目背後的光暈
     const boss = B.enemies.find(e => e.m.boss && (e.vis || e.fx.die > 0));
     this.placeEnemies();
-    if (boss) { const a = 0.35 + Math.sin(t * 2) * 0.1; const gr = g.createRadialGradient(boss.cx, boss.cy, 0, boss.cx, boss.cy, boss.pw * 0.8); const c = boss.m.pal.c && boss.m.pal.c.length === 7 ? hexToRgb(boss.m.pal.c).join(',') : '120,40,160'; gr.addColorStop(0, `rgba(${c},${a})`); gr.addColorStop(1, `rgba(${c},0)`); g.fillStyle = gr; g.fillRect(boss.cx - boss.pw, boss.cy - boss.pw, boss.pw * 2, boss.pw * 2); if (Math.random() < 0.5 && boss.vis) BFX.P({ x: boss.px + Math.random() * boss.pw, y: boss.py + boss.ph * (0.5 + Math.random() * 0.5), vy: -30 * BFX.u / 4, life: 1.2, size: 1, col: `rgb(${c})`, add: true }); }
+    if (boss) { const a = 0.35 + Math.sin(t * 2) * 0.1; const c = boss.m.pal.c && boss.m.pal.c.length === 7 ? hexToRgb(boss.m.pal.c).join(',') : '120,40,160'; g.globalAlpha = a; g.drawImage(FieldFx.glowSpr(c), boss.cx - boss.pw * 0.8, boss.cy - boss.pw * 0.8, boss.pw * 1.6, boss.pw * 1.6); g.globalAlpha = 1; if (Math.random() < 0.5 && boss.vis) BFX.P({ x: boss.px + Math.random() * boss.pw, y: boss.py + boss.ph * (0.5 + Math.random() * 0.5), vy: -30 * BFX.u / 4, life: 1.2, size: 1, col: `rgb(${c})`, add: true }); }
     BFX.draw(g, true);
     // 影子
     for (const e of B.enemies) if (e.vis || e.fx.die > 0) { const fly = FLYERS.has(e.m.tpl); g.fillStyle = `rgba(0,0,0,${fly ? 0.18 : 0.3})`; g.beginPath(); g.ellipse(e.cx, e.py + e.ph * 0.98 + (fly ? e.ph * 0.06 : 0), e.pw * (fly ? 0.28 : 0.38), e.pw * 0.07, 0, 0, TAU); g.fill(); }
@@ -625,10 +641,10 @@ const BScene = {
       g.save();
       if (!e.vis) { g.globalAlpha = f.flee ? f.die : f.die * f.die; if (f.flee) x += (1 - f.die) * w * 0.8; }
       if (f.appear > 0) { g.globalAlpha = 1 - f.appear; }
-      if (e.sleep) g.filter = 'saturate(.5) brightness(.85)';
-      if (e.charged) { g.globalAlpha *= 1; const gr = g.createRadialGradient(x + w / 2, y + h / 2, 0, x + w / 2, y + h / 2, w * 0.7); gr.addColorStop(0, `rgba(255,60,40,${0.3 + Math.sin(t * 8) * 0.15})`); gr.addColorStop(1, 'rgba(255,60,40,0)'); g.fillStyle = gr; g.fillRect(x - w * 0.2, y - h * 0.2, w * 1.4, h * 1.4); }
+
+      if (e.charged) { const a0 = g.globalAlpha; g.globalAlpha = a0 * (0.3 + Math.sin(t * 8) * 0.15); g.drawImage(FieldFx.glowSpr('255,60,40'), x + w / 2 - w * 0.7, y + h / 2 - w * 0.7, w * 1.4, w * 1.4); g.globalAlpha = a0; }
       const blink = f.flash > 0 && Math.floor(f.flash * 30) % 2 === 0;
-      g.drawImage(blink ? art.white : art.img, x, y, w, h);
+      g.drawImage(blink ? art.white : e.sleep ? tinted(art.img, 'sleep') : art.img, x, y, w, h);
       if (!e.vis && f.die > 0 && !f.flee) { g.globalAlpha = f.die * f.die * 0.45; g.drawImage(art.red, x, y, w, h); }
       g.restore();
       if (e.sleep && e.alive) UI.text(g, 'Zz', e.px + e.pw * 0.8, e.py + Math.sin(t * 3) * fs * 0.2, '#cfe6ff', fs, 'left', 'top', 700);
@@ -643,14 +659,14 @@ const BScene = {
       const img = (h.flash > 0 && Math.floor(h.flash * 30) % 2 === 0) ? spr.white[pose] : spr[pose];
       let x = p.x + (h.hurt > 0 ? Math.sin(h.hurt * 40) * p.s * 0.8 + p.s * 2 : 0), y = p.y - p.h;
       g.fillStyle = 'rgba(0,0,0,.3)'; g.beginPath(); g.ellipse(p.x + p.w * 0.5, p.y - p.s * 0.5, p.w * 0.3, p.s * 1.6, 0, 0, TAU); g.fill();
-      if (this.actor === m) { const gr = g.createRadialGradient(p.cx, p.y - p.s, 0, p.cx, p.y - p.s, p.w * 0.55); gr.addColorStop(0, 'rgba(255,215,106,.45)'); gr.addColorStop(1, 'rgba(255,215,106,0)'); g.fillStyle = gr; g.fillRect(p.x, p.y - p.w * 0.5, p.w, p.w * 0.6); }
+      if (this.actor === m) { g.globalAlpha = 0.45; g.drawImage(FieldFx.glowSpr('255,215,106'), p.cx - p.w * 0.55, p.y - p.s - p.w * 0.3, p.w * 1.1, p.w * 0.6); g.globalAlpha = 1; }
       g.save();
       if (m.hp <= 0) {
-        g.globalAlpha = 0.75; g.filter = 'grayscale(.7) brightness(.8)';
-        g.translate(p.x + p.w / 2, p.y - p.s * 5); g.rotate(-Math.PI / 2 * h.dead); g.drawImage(img, -p.w / 2, -p.h / 2 + p.s * 5 * (1 - h.dead), p.w, p.h);
+        g.globalAlpha = 0.75;
+        g.translate(p.x + p.w / 2, p.y - p.s * 5); g.rotate(-Math.PI / 2 * h.dead); g.drawImage(tinted(img, 'gray'), -p.w / 2, -p.h / 2 + p.s * 5 * (1 - h.dead), p.w, p.h);
       } else {
-        if (m.st.poison) g.filter = 'hue-rotate(40deg) saturate(1.2)';
-        g.drawImage(img, x, y, p.w, p.h);
+        const tk = h.flash > 0 ? null : m.st.poison ? 'poison' : (m.b && m.b.sleep) ? 'sleep' : (m.b && m.b.seal) ? 'seal' : null;
+        g.drawImage(tk ? tinted(img, tk) : img, x, y, p.w, p.h);
       }
       g.restore();
       if (m.b && m.b.sleep && m.hp > 0) UI.text(g, 'Zz', p.x + p.w * 0.7, y + Math.sin(t * 3) * fs * 0.2, '#cfe6ff', fs * 0.9, 'left', 'top', 700);
@@ -691,7 +707,29 @@ const BScene = {
     if (this.victory) this.drawVictory(g, lay);
     g.restore();
   },
+  // 隊伍狀態欄：內容沒變就直接貼上次畫好的畫布
   drawStatus(g, lay) {
+    const st = lay.status, B = this.B;
+    const key = [Math.round(st.x), Math.round(st.y), Math.round(st.w), Math.round(st.h), L.FS, lay.wide, this.actor && this.actor.id].concat(B.party.map(m => [m.id, m.lv, Math.round(m.vhpD ?? m.hp), m.hp, m.mp, m.st.poison ? 1 : 0, m.b && m.b.sleep ? 1 : 0, m.b && m.b.seal ? 1 : 0].join('.'))).join('|');
+    const m0 = Math.ceil(L.FS * 0.6);
+    if (!this.stC || this.stC.key !== key) {
+      const c = this.stC && this.stC.width === Math.ceil(st.w) + m0 * 2 && this.stC.height === Math.ceil(st.h) + m0 * 2 ? this.stC : document.createElement('canvas');
+      c.width = Math.ceil(st.w) + m0 * 2; c.height = Math.ceil(st.h) + m0 * 2;
+      const cg = c.getContext('2d'); cg.clearRect(0, 0, c.width, c.height);
+      cg.translate(m0 - Math.round(st.x), m0 - Math.round(st.y));
+      this.drawStatusRaw(cg, lay);
+      c.key = key; this.stC = c;
+    }
+    g.drawImage(this.stC, Math.round(st.x) - m0, Math.round(st.y) - m0);
+    if (this.selectingAlly) {
+      const fs = L.FS, pad = L.pad, cols = lay.wide ? 1 : 2, rows = lay.wide ? 4 : 2, cw = (st.w - pad * 1.6) / cols, rh = (st.h - pad * 1.2) / rows;
+      B.party.forEach((m, i) => {
+        const c = lay.wide ? 0 : i % 2, r = lay.wide ? i : (i / 2) | 0, x = st.x + pad * 0.8 + c * cw, y = st.y + pad * 0.6 + r * rh;
+        if ((this.allyList || []).includes(m)) UI.hit(x, y, cw, rh, () => { const k = this.allyList.indexOf(m); if (this.ref.pick) this.ref.pick(k); });
+      });
+    }
+  },
+  drawStatusRaw(g, lay) {
     const st = lay.status, fs = L.FS, pad = L.pad, B = this.B, n = B.party.length;
     UI.win(g, st.x, st.y, st.w, st.h);
     const cols = lay.wide ? 1 : 2, rows = lay.wide ? 4 : 2;
@@ -717,7 +755,6 @@ const BScene = {
         this.gauge(g, x + pad * 0.5, y + rh * 0.53, gw, 'HP', hp, s.mhp, sm * 0.9, hp < s.mhp / 4 ? ['#ff8a5a', '#d8402a'] : ['#7aff9a', '#2aa850']);
         this.gauge(g, x + pad * 0.5, y + rh * 0.84, gw, 'MP', m.mp, s.mmp, sm * 0.9, ['#8ac8ff', '#3a6ad8']);
       }
-      if (this.selectingAlly && (this.allyList || []).includes(m)) UI.hit(x, y, cw, rh, () => { const k = this.allyList.indexOf(m); if (this.ref.pick) this.ref.pick(k); });
     });
   },
   gauge(g, x, cy, w, lab, v, max, sm, cols) {
@@ -865,7 +902,7 @@ async function commandMenu(B, m, canBack) {
   const C = CHARS[m.id];
   const items = [{ t: '攻擊' }, { t: C.magic }, { t: '道具' }, { t: '防禦' }, { t: '逃跑', dis: B.noRun }, { t: '自動' }];
   if (!Party.spells(m).filter(s => !SPELLS[s].nobattle).length) items[1].dis = true;
-  const pos = () => ({ x: lay.msg.x, y: lay.msg.y });
+  const pos = () => { const l = S.layout(); return { x: l.msg.x, y: l.msg.y }; };
   S.cmdIndex = S.cmdIndex || {};
   const sel = await UI.menu({ items, pos, title: Party.name(m), cols: 2, index: S.cmdIndex[m.id] || 0, keep: true, keepCursor: true, allowDis: false });
   if (sel < 0) { UI.clearGhosts(); return canBack ? 'back' : 'stay'; }
@@ -880,8 +917,8 @@ async function commandMenu(B, m, canBack) {
       const list = Party.spells(m).filter(s => !SPELLS[s].nobattle);
       const its = list.map(s => ({ t: SPELLS[s].name, r: String(SPELLS[s].mp), dis: SPELLS[s].mp > m.mp }));
       let desc = '';
-      const pl = UI.panel(g => { if (!desc) return; const w = Math.min(L.V.w - pad * 2, fs * 24), h = fs * 2.2, x = L.V.x + L.V.w - w - pad, y = lay.area.y + pad * 0.3; UI.win(g, x, y, w, h, { alpha: 0.9 }); UI.text(g, desc, x + pad, y + h / 2, '#dfe6ff', fs * 0.85, 'left', 'middle'); });
-      const si = await UI.menu({ items: its, title: `${C.magic}（MP ${m.mp}）`, cols: list.length > 4 && L.V.w > fs * 22 ? 2 : 1, pos: () => ({ right: lay.msg.x + lay.msg.w, y: lay.msg.y }), onMove: i => { desc = SPELLS[list[i]].desc; } });
+      const pl = UI.panel(g => { if (!desc) return; const w = Math.min(L.V.w - pad * 2, fs * 24), h = fs * 2.2, x = L.V.x + L.V.w - w - pad, y = S.layout().area.y + pad * 0.3; UI.win(g, x, y, w, h, { alpha: 0.9 }); UI.text(g, desc, x + pad, y + h / 2, '#dfe6ff', fs * 0.85, 'left', 'middle'); });
+      const si = await UI.menu({ items: its, title: `${C.magic}（MP ${m.mp}）`, cols: list.length > 4 && L.V.w > fs * 22 ? 2 : 1, pos: () => { const l = S.layout(); return { right: l.msg.x + l.msg.w, y: l.msg.y }; }, onMove: i => { desc = SPELLS[list[i]].desc; } });
       UI.remove(pl);
       if (si < 0) return null;
       const sid = list[si], sp = SPELLS[sid];
@@ -893,7 +930,7 @@ async function commandMenu(B, m, canBack) {
     if (cmd === '道具') {
       const list = Bag.list(id => ITEMS[id] && ITEMS[id].kind !== 'key' && !ITEMS[id].nobattle);
       if (!list.length) { S.say('沒有可以使用的道具。'); await S.waitMs(500); return null; }
-      const ii = await UI.menu({ items: list.map(id => ({ t: ITEMS[id].name, r: '×' + Bag.count(id) })), title: '道具', pos: () => ({ right: lay.msg.x + lay.msg.w, y: lay.msg.y }) });
+      const ii = await UI.menu({ items: list.map(id => ({ t: ITEMS[id].name, r: '×' + Bag.count(id) })), title: '道具', pos: () => { const l = S.layout(); return { right: l.msg.x + l.msg.w, y: l.msg.y }; } });
       if (ii < 0) return null;
       const id = list[ii], it = ITEMS[id];
       if (it.tgt === 'ally') { const t = await pickAlly(B, false, true); return t ? { type: 'item', id, target: t } : null; }
@@ -910,7 +947,7 @@ async function pickEnemy(B) {
   const S = BScene, list = Battle.liveE(B);
   S.selList = list; S.selecting = true; S.ref = {};
   const lay = S.layout();
-  const i = await UI.menu({ items: list.map(e => ({ t: e.name })), title: '攻擊目標', ref: S.ref, onMove: k => { S.sel = list[k]; }, pos: () => ({ right: lay.msg.x + lay.msg.w, y: lay.msg.y }) });
+  const i = await UI.menu({ items: list.map(e => ({ t: e.name })), title: '攻擊目標', ref: S.ref, onMove: k => { S.sel = list[k]; }, pos: () => { const l = S.layout(); return { right: l.msg.x + l.msg.w, y: l.msg.y }; } });
   S.sel = null; S.selecting = false;
   return i < 0 ? null : list[i];
 }
@@ -919,7 +956,7 @@ async function pickAlly(B, dead, any) {
   if (!list.length) { S.say(dead ? '沒有倒下的夥伴。' : '沒有目標。'); await S.waitMs(400); return null; }
   S.allyList = list; S.selectingAlly = true; S.ref = {};
   const lay = S.layout();
-  const i = await UI.menu({ items: list.map(m => ({ t: Party.name(m), r: m.hp + '/' + Party.stats(m).mhp })), title: '對誰使用？', ref: S.ref, onMove: k => { S.actorHint = list[k]; }, pos: () => ({ right: lay.msg.x + lay.msg.w, y: lay.msg.y }) });
+  const i = await UI.menu({ items: list.map(m => ({ t: Party.name(m), r: m.hp + '/' + Party.stats(m).mhp })), title: '對誰使用？', ref: S.ref, onMove: k => { S.actorHint = list[k]; }, pos: () => { const l = S.layout(); return { right: l.msg.x + l.msg.w, y: l.msg.y }; } });
   S.selectingAlly = false;
   return i < 0 ? null : list[i];
 }
