@@ -453,5 +453,5 @@ function bakeList() {
   for (let i = 1; i <= 3; i++) {
     L.splice(1, 0, ['player_r' + i, 38, 44, MODELS.player, { roll: -0.28 * i }], ['player_l' + i, 38, 44, MODELS.player, { roll: 0.28 * i }]);
   }
-  return L;
+  return typeof EXTRA_BAKES !== 'undefined' ? L.concat(EXTRA_BAKES) : L;
 }

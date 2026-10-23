@@ -178,6 +178,7 @@ function updatePB(dt) {
   G.pb = G.pb.filter(b => !b.dead);
 }
 function hitCircles(e) {
+  if (e.segs) return e.segs.map(s => [s[0], s[1], s[2]]);
   const T = ET[e.type];
   return T.hb ? T.hb.map(h => [e.x + h[0], e.y + h[1], h[2]]) : [[e.x, e.y, e.r]];
 }

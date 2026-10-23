@@ -78,7 +78,7 @@ function runScript(dt) {
     if (G.seqI < S.seq.length && G.st >= G.nextWave) {
       const base = G.st, name = S.seq[G.seqI++];
       const d = WAVES[name]((t, fn) => G.queue.push({ t: base + t, fn }));
-      G.nextWave = base + d + 0.5;
+      G.nextWave = base + d + 0.3;
     } else if (G.seqI >= S.seq.length && G.st >= G.nextWave) {
       const left = G.enemies.some(e => !e.boss && e.layer === 'air' && e.y > -40);
       if (!left || G.st > G.nextWave + 6) { G.phase = 'warn'; G.warnT = 0; Terrain.statics = false; Music.stop(); Snd.play('warn'); }
