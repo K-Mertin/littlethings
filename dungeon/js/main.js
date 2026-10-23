@@ -1,6 +1,7 @@
 'use strict';
 // 深淵地牢：啟動、主迴圈、存檔時機、除錯介面
 Store.load();
+Render.initQ();
 UI.init();
 UI.layout();
 addEventListener('resize', () => UI.layout());
@@ -24,6 +25,7 @@ const Bot = {
     if (!G || G.over) return false;
     const P = G.P, F = G.F;
     if (G.perkChoices) { Game.choosePerk(G.perkChoices[0]); return true; }
+    if (G.relicChoices) { Game.chooseRelic(G.relicChoices[0]); return true; }
     if (G.pendingId) { const u = P.inv.find(o => Game.needsId(o)); Game.finishIdentify(u || null); return true; }
     if (P.st.para > 0 || P.st.freeze > 0) { Game.wait(); return true; }
     const cl = F.clouds.find(c => c.x === P.x && c.y === P.y);
@@ -40,8 +42,17 @@ const Bot = {
       if (unk) return Game.quaff(unk);
       const tele = P.inv.find(o => o.k === 's_tele' && G.known[o.k]);
       if (tele && hpF < 0.25) return Game.read(tele);
+      // 盜賊：用暗影步拉開距離
+      if (P.cls === 'rogue' && !P.cds.step && adj.length && hpF < 0.3) { const t = this.stepSpot(vis, true); if (t) return Game.useAbility('step', t[0], t[1]); }
     }
     if (P.hunger < 250) { const f = P.inv.find(o => o.c === 'food'); if (f) return Game.eat(f); }
+    // 盜賊：潛行、暗影步偷襲
+    if (P.cls === 'rogue') {
+      const boss = vis.find(m => MON[m.k].boss && m.awake);
+      if (!P.cds.stealth && !P.st.invis && ((boss && cheb(boss.x, boss.y, P.x, P.y) <= 3) || adj.length >= 2 || (adj.length && hpF < 0.5))) return Game.useAbility('stealth');
+      if ((P.st.invis || P.sneakNext) && adj.length) { const m = adj.find(o => MON[o.k].boss) || adj.sort((a, b) => b.hp - a.hp)[0]; return Game.move(m.x - P.x, m.y - P.y); }
+      if (!P.cds.step && hpF > 0.45 && !adj.length) { const t = this.stepSpot(vis, false); if (t) return Game.useAbility('step', t[0], t[1]); }
+    }
     // 技能
     const ab = CLASSES[P.cls].abil;
     for (const id of ab) {
@@ -78,16 +89,29 @@ const Bot = {
     if (ep && ep.length) return Game.move(ep[0][0] - P.x, ep[0][1] - P.y, { auto: 1, force: !!Game.trapAt(ep[0][0], ep[0][1]) });
     if (F.locked && F.bossId) {
       const b = F.mons.find(m => m.id === F.bossId);
-      if (b) { const p = FOV.path(F, P.x, P.y, b.x, b.y, (x, y, g) => g || TP[Game.tile(x, y)].walk && Game.tile(x, y) !== T.LAVA && !(Game.monAt(x, y) && MON[Game.monAt(x, y).k].npc)); if (p && p.length) return Game.move(p[0][0] - P.x, p[0][1] - P.y, { force: 1 }); }
+      if (b) { const p = FOV.path(F, P.x, P.y, b.x, b.y, (x, y, g) => g || TP[Game.tile(x, y)].walk && Game.tile(x, y) !== T.LAVA && !(Game.monAt(x, y) && MON[Game.monAt(x, y).k].talk)); if (p && p.length) return Game.move(p[0][0] - P.x, p[0][1] - P.y, { force: 1 }); }
     }
     if (F.stairs) {
       if (P.x === F.stairs[0] && P.y === F.stairs[1]) return Game.descend();
-      const p = FOV.path(F, P.x, P.y, F.stairs[0], F.stairs[1], (x, y, g) => g || TP[Game.tile(x, y)].walk && Game.tile(x, y) !== T.LAVA && !(Game.monAt(x, y) && MON[Game.monAt(x, y).k].npc));
+      const p = FOV.path(F, P.x, P.y, F.stairs[0], F.stairs[1], (x, y, g) => g || TP[Game.tile(x, y)].walk && Game.tile(x, y) !== T.LAVA && !(Game.monAt(x, y) && MON[Game.monAt(x, y).k].talk));
       if (p && p.length) return Game.move(p[0][0] - P.x, p[0][1] - P.y, { force: 1 });
     }
-    if (F.arena) { const b = F.mons.find(m => MON[m.k].final); if (b) { const p = FOV.path(F, P.x, P.y, b.x, b.y, (x, y, g) => g || TP[Game.tile(x, y)].walk && Game.tile(x, y) !== T.LAVA && !(Game.monAt(x, y) && MON[Game.monAt(x, y).k].npc)); if (p && p.length) return Game.move(p[0][0] - P.x, p[0][1] - P.y, { force: 1 }); } }
+    if (F.arena) { const b = F.mons.find(m => MON[m.k].final); if (b) { const p = FOV.path(F, P.x, P.y, b.x, b.y, (x, y, g) => g || TP[Game.tile(x, y)].walk && Game.tile(x, y) !== T.LAVA && !(Game.monAt(x, y) && MON[Game.monAt(x, y).k].talk)); if (p && p.length) return Game.move(p[0][0] - P.x, p[0][1] - P.y, { force: 1 }); } }
     Game.rest();
     return true;
+  },
+  // 暗影步的落點：flee=true 時找離敵人最遠的空地，否則找最強敵人旁邊的空地
+  stepSpot(vis, flee) {
+    const P = G.P, ok = (x, y) => { const v = Game.tile(x, y); return Game.inView(x, y) && TP[v].walk && v !== T.LAVA && !Game.monAt(x, y) && !Game.trapAt(x, y) && cheb(x, y, P.x, P.y) <= 6 && cheb(x, y, P.x, P.y) > 0; };
+    if (flee) {
+      let best = null, bd = 2;
+      for (let j = -6; j <= 6; j++) for (let i = -6; i <= 6; i++) { const x = P.x + i, y = P.y + j; if (!ok(x, y)) continue; const d = Math.min(...vis.map(m => cheb(m.x, m.y, x, y))); if (d > bd) { bd = d; best = [x, y]; } }
+      return best;
+    }
+    const tg = vis.filter(m => m.awake && !MON[m.k].npc && cheb(m.x, m.y, P.x, P.y) >= 2 && cheb(m.x, m.y, P.x, P.y) <= 7).sort((a, b) => (MON[b.k].boss ? 99 : 0) + b.hp - (MON[a.k].boss ? 99 : 0) - a.hp)[0];
+    if (!tg) return null;
+    for (const [dx, dy] of DIRS8) { const x = tg.x + dx, y = tg.y + dy; if (ok(x, y)) return [x, y]; }
+    return null;
   },
   run(n, god) {
     let i = 0;

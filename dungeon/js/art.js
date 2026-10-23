@@ -194,6 +194,7 @@ const Art = {
       case 'wand': { const w = WAND_LOOKS[Game.look(it.k)][1]; return this.sprite('wand', { w }); }
       case 'scroll': return this.sprite('scroll', { s: ['#c03a3a', '#3a6ad0', '#3aa05a', '#a040c0', '#d09020'][Game.look(it.k) % 5] });
       case 'armor': if (K.spr === 'armor') return this.sprite('armor', { A: K.tint, a: shade(K.tint, -0.4) }); return this.sprite(K.spr);
+      case 'relic': { const R = (typeof RELICS !== 'undefined' && RELICS[it.relic]) || { col: '#ff4a6a' }; return this.sprite('relic', { g: R.col, G: shade(R.col, 0.6), C: shade(R.col, -0.45) }); }
       default: return this.sprite(K.spr || 'gold');
     }
   },

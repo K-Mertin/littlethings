@@ -5,10 +5,13 @@ const now = () => performance.now() / 1000;
 const FR = { idle0: { fr: 'idle', i: 0 }, idle1: { fr: 'idle', i: 1 }, walk0: { fr: 'walk', i: 0 }, walk1: { fr: 'walk', i: 1 }, atk0: { fr: 'atk', i: 0 }, atk1: { fr: 'atk', i: 1 } };
 
 const FX = {
-  parts: [], nums: [], projs: [], rings: [], decals: [], slashes: [], dying: [], pops: new Map(), shakeAmt: 0, hurtT: 0, pd: 0, flashT: 0, flashCol: '255,255,255',
+  parts: [], nums: [], projs: [], rings: [], decals: [], slashes: [], dying: [], lights: [], pops: new Map(), shakeAmt: 0, hurtT: 0, pd: 0, flashT: 0, flashCol: '255,255,255',
   _d() { return this.pd; },
   delayNext(d) { this.pd = Math.max(this.pd, d); if (!this._q) { this._q = 1; Promise.resolve().then(() => { this.pd = 0; this._q = 0; }); } },
+  // 短暫的動態光源（法術、爆炸）：格子座標、半徑（格）、'r,g,b'、強度、持續秒數
+  light(x, y, r, rgb, a = 0.5, dur = 0.4, grow) { if (this.lights.length < 24) this.lights.push({ x, y, r, col: 'rgba(' + rgb + ',A)', a, dur, grow, t0: now() + this._d() }); },
   burst(x, y, col, n = 8) {
+    if (Render.q >= 2) n = Math.ceil(n / 2);
     const t0 = now() + this._d();
     for (let i = 0; i < n && this.parts.length < 500; i++) { const a = Math.random() * TAU, s = fx_rand(1.5, 5); this.parts.push({ x: x + 0.5, y: y + 0.5, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 1.5, t0, life: fx_rand(0.3, 0.7), col, sz: fx_rand(1, 2.4), g: 9 }); }
   },
@@ -50,6 +53,7 @@ const AMB = [
   { n: 36, cols: ['#d05cff', '#ff6fb0', '#8a5aff'], vx: [-0.15, 0.15], vy: [-0.5, -0.15], sz: [0.6, 1.3], life: [2.5, 5], glow: 1, a: 0.9 }, // 虛空微光
 ];
 
+const PROJ_RGB = { bolt: '150,230,255', fire: '255,130,40', frost: '150,230,255', void: '210,90,255', spore: '170,224,90', magic: '190,160,255', slow: '160,160,255', tele: '210,160,255', sleep: '190,210,255', dig: '230,210,170' };
 const Render = {
   ps: 3, TS: 48, dpr: 1, W: 0, H: 0, cam: { x: 0, y: 0 }, _rs: new Map(), lm: null, lmx: null, inset: { t: 60, b: 120, l: 0, r: 0 }, miniT: 0, amb: [], vig: null,
   rs(a) {
@@ -57,18 +61,29 @@ const Render = {
     if (!r) { r = { x: a.x, y: a.y, tx: a.x, ty: a.y, fx: a.x, fy: a.y, mt0: -9, mdur: 0.1, mp: 1, lin: 0, face: 1, flash: 0, bt: -9, bdx: 0, bdy: 0, seed: Math.random() * 10, stepN: 0 }; this._rs.set(a.id, r); }
     return r;
   },
+  // 畫質：0 高、1 中、2 低、3 最低。畫布解析度取裝置像素比的整數分之一（放大倍率是整數，像素畫才不會歪）
+  q: 0, QCAP: [2, 1.5, 1.05, 0.55], fts: [], slowN: 0,
+  initQ() { const g = Store.set.gfx || 'auto'; this.q = g === 'low' ? 2 : 0; this.auto = g === 'auto'; },
+  forceQ(q) { this.q = q; this.auto = false; this.resize(); },
+  // 自動降畫質：連續兩段（各約 1.5 秒）的畫格時間中位數都太長，就降一級
+  watchPerf(dt) {
+    if (!this.auto || this.q >= 3 || dt <= 0 || dt > 0.25 || document.hidden) return;
+    const a = this.fts; a.push(dt);
+    if (a.length < 90) return;
+    a.sort((x, y) => x - y); const med = a[45]; a.length = 0;
+    if (med > 0.024) { if (++this.slowN >= 2) { this.slowN = 0; this.q++; this.resize(); } } else this.slowN = 0;
+  },
   resize() {
-    const dpr = this.dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    const dev = window.devicePixelRatio || 1, cap = this.QCAP[this.q | 0];
+    let k = 1; while (dev / k > cap + 1e-6 && k < 6) k++;
+    const dpr = this.dpr = dev / k;
     this.W = cv.width = Math.round(innerWidth * dpr); this.H = cv.height = Math.round(innerHeight * dpr);
     cv.style.width = innerWidth + 'px'; cv.style.height = innerHeight + 'px';
+    this.lblC = new Map();
     const target = [17, 13.5, 10.5][clamp((Store.set.zoom | 0) + 1, 0, 2)] * (document.body.classList.contains('land') ? 0.8 : 1);
     const base = Math.min(this.W, this.H - (this.inset.t + this.inset.b) * dpr * 0.6);
     this.ps = Math.max(2, Math.round(base / (16 * target)));
     this.TS = this.ps * 16;
-    // 暗角
-    const v = this.vig = document.createElement('canvas'); v.width = 256; v.height = 256; const x = v.getContext('2d');
-    const g = x.createRadialGradient(128, 128, 60, 128, 128, 182); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.55)');
-    x.fillStyle = g; x.fillRect(0, 0, 256, 256);
   },
   // 移動補間：每一步用固定時間走完一格。連續移動（按住、自動走）用等速，單步用減速收尾。
   // setMove 只影響下一次畫面更新時偵測到的移動，畫完就恢復成單步的預設值
@@ -115,7 +130,8 @@ const Render = {
     ctx.fillStyle = BIOMES[F.biome].pal.bg; ctx.fillRect(0, 0, this.W, this.H);
     ctx.imageSmoothingEnabled = false;
     // 角色位置補間
-    const dt = Math.min(0.05, t - (this.lt || t)); this.lt = t;
+    const rdt = t - (this.lt || t), dt = Math.min(0.05, rdt); this.lt = t;
+    this.watchPerf(rdt);
     for (const a of [P].concat(F.mons)) this.stepActor(a, this.rs(a), t);
     this.moveDur = 0.12; this.moveLin = 0;
     // 鏡頭直接鎖在主角的補間位置（對齊實體像素，避免抖動）；距離太遠時（傳送）才快速追上
@@ -157,7 +173,9 @@ const Render = {
       const X = Math.round(ox + ix * TS), Y = Math.round(oy + iy * TS);
       ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(X + TS / 2, Y + TS - ps * 3, TS * 0.28 * (1 - lift / TS * 0.4), ps * 1.4, 0, 0, TAU); ctx.fill();
       const it = o.it, rare = it.known && (it.rune || it.ench >= 2) && !it.cursed;
-      if (rare && vis[k]) { const g = ctx.createRadialGradient(X + TS / 2, Y + TS / 2, 0, X + TS / 2, Y + TS / 2, TS * 0.6); const c = it.rune ? (RUNES[it.rune] || {}).rgb || '120,200,255' : '120,200,255'; g.addColorStop(0, 'rgba(' + c + ',' + (0.35 + 0.15 * Math.sin(t * 3)) + ')'); g.addColorStop(1, 'rgba(' + c + ',0)'); ctx.fillStyle = g; ctx.fillRect(X - TS * 0.1, Y - TS * 0.1, TS * 1.2, TS * 1.2); }
+      if (rare && vis[k]) { const c = it.rune ? (RUNES[it.rune] || {}).rgb || '120,200,255' : '120,200,255'; this.glowAt(X + TS / 2, Y + TS / 2, TS * 0.6, c, 0.35 + 0.15 * Math.sin(t * 3)); }
+      if (vis[k] && !it.price && (it.k === 'relic' || rare)) this.lootBeam(X, Y, it.k === 'relic' ? '255,200,90' : it.rune ? (RUNES[it.rune] || {}).rgb || '120,200,255' : '120,200,255', t, o.x * 3 + o.y);
+      if (it.k === 'relic' && vis[k]) this.glowAt(X + TS / 2, Y + TS / 2, TS * 0.7, '255,210,120', 0.4 + 0.15 * Math.sin(t * 4));
       ctx.drawImage(Art.itemSprite(it).c, X, Math.round(Y + bob - ps - lift), TS, TS);
       if (it.price && vis[k]) { this.label(it.price + '$', X + TS / 2, Y + TS - ps, '#ffd75a', 4.2); }
       else if (vis[k] && hash2(o.x, o.y, (t * 1.5) | 0) < 0.12) { ctx.fillStyle = '#fff'; ctx.fillRect(X + (4 + hash2(o.y, o.x, 3) * 8 | 0) * ps, Y + (4 + hash2(o.x, 7, o.y) * 6 | 0) * ps, ps, ps); }
@@ -166,13 +184,11 @@ const Render = {
     for (const c of F.clouds) {
       if (!vis[c.y * F.w + c.x]) continue;
       const col = { poison: '120,230,80', conf: '220,140,255', para: '255,230,120', fire: '255,120,40' }[c.k];
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < (this.q >= 2 ? 2 : 3); i++) {
         const a = t * (1 + i * 0.3) + c.x * 2 + i * 2, r = TS * (0.32 + 0.08 * Math.sin(a * 1.7));
-        const g = ctx.createRadialGradient(px(c.x) + TS / 2 + Math.cos(a) * TS * 0.15, py(c.y) + TS / 2 + Math.sin(a) * TS * 0.15, 0, px(c.x) + TS / 2, py(c.y) + TS / 2, r * 1.6);
-        g.addColorStop(0, 'rgba(' + col + ',' + (c.k === 'fire' ? 0.7 : 0.38) + ')'); g.addColorStop(1, 'rgba(' + col + ',0)');
-        ctx.fillStyle = g; ctx.fillRect(px(c.x) - TS * 0.3, py(c.y) - TS * 0.3, TS * 1.6, TS * 1.6);
+        this.glowAt(px(c.x) + TS / 2 + Math.cos(a) * TS * 0.15, py(c.y) + TS / 2 + Math.sin(a) * TS * 0.15, r * 1.6, col, c.k === 'fire' ? 0.75 : 0.45);
       }
-      if (c.k === 'fire' && Math.random() < 0.3) FX.parts.push({ x: c.x + Math.random(), y: c.y + 0.8, vx: fx_rand(-0.3, 0.3), vy: -fx_rand(1, 2.5), t0: t, life: 0.5, col: Math.random() < 0.5 ? '#ffd040' : '#ff6a2a', sz: 1.5, g: -1 });
+      if (c.k === 'fire' && Math.random() < 0.3 * (this.q >= 2 ? 0.5 : 1)) FX.parts.push({ x: c.x + Math.random(), y: c.y + 0.8, vx: fx_rand(-0.3, 0.3), vy: -fx_rand(1, 2.5), t0: t, life: 0.5, col: Math.random() < 0.5 ? '#ffd040' : '#ff6a2a', sz: 1.5, g: -1 });
     }
     // 角色與物件（依 y 排序）
     const list = [];
@@ -180,6 +196,7 @@ const Render = {
     list.push({ y: pr.y + 0.01, a: P });
     for (const c of F.chests || []) if (F.seen[c.y * F.w + c.x]) list.push({ y: c.y - 0.01, o: c, kind: 'chest' });
     for (const c of F.altars || []) if (F.seen[c.y * F.w + c.x]) list.push({ y: c.y - 0.01, o: c, kind: 'altar' });
+    for (const c of F.props || []) if (F.seen[c.y * F.w + c.x]) list.push({ y: c.y - 0.02, o: c, kind: 'prop' });
     list.sort((a, b) => a.y - b.y);
     for (const e of list) { if (e.a) this.drawActor(e.a, px, py, t); else this.drawObj(e.o, e.kind, px, py, t); }
     this.drawDying(ox, oy, t);
@@ -188,10 +205,11 @@ const Render = {
     // 環境粒子、投射物與粒子
     this.ambient(F, x0, y0, x1, y1, ox, oy, t, dt);
     this.drawFx(ox, oy, t, dt);
+    FX.drawExtra(ox, oy, t, dt);
     // 目標指示
     if (typeof UI !== 'undefined') this.drawUiMarks(px, py, t);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    if (this.vig) ctx.drawImage(this.vig, 0, 0, this.W, this.H);
+    FX.drawFlies(t);
     // 全畫面閃光
     const fk = t - FX.flashT;
     if (fk >= 0 && fk < 0.35) { ctx.fillStyle = 'rgba(' + FX.flashCol + ',' + ((FX.flashA || 0.35) * (1 - fk / 0.35)) + ')'; ctx.fillRect(0, 0, this.W, this.H); }
@@ -199,36 +217,39 @@ const Render = {
     const low = P.hp < P.mhp * 0.3 && !G.over ? 0.25 + 0.12 * Math.sin(t * 5) : 0;
     if (FX.hurtT > 0 || low > 0) {
       const a = Math.max(low, Math.min(0.6, FX.hurtT));
-      const g = ctx.createRadialGradient(this.W / 2, this.H / 2, Math.min(this.W, this.H) * 0.35, this.W / 2, this.H / 2, Math.max(this.W, this.H) * 0.75);
-      g.addColorStop(0, 'rgba(180,0,20,0)'); g.addColorStop(1, 'rgba(180,0,20,' + a + ')');
-      ctx.fillStyle = g; ctx.fillRect(0, 0, this.W, this.H);
+      if (!this.hurtC) { const c = this.hurtC = document.createElement('canvas'); c.width = c.height = 192; const x = c.getContext("2d"); const g = x.createRadialGradient(96, 96, 45, 96, 96, 138); g.addColorStop(0, 'rgba(180,0,20,0)'); g.addColorStop(1, 'rgba(180,0,20,1)'); x.fillStyle = g; x.fillRect(0, 0, 192, 192); }
+      ctx.globalAlpha = a; ctx.drawImage(this.hurtC, 0, 0, this.W, this.H); ctx.globalAlpha = 1;
       FX.hurtT = Math.max(0, FX.hurtT - dt * 1.5);
     }
     if (t - this.miniT > 0.25 || UI.miniDirty) { this.miniT = t; UI.miniDirty = false; this.minimap(document.getElementById('mini'), 3); }
   },
   // 水、岩漿、火把火焰、泉水等每格動畫
+  // 液體格子四周的岸邊遮罩（每層樓算一次）：1 北 2 東 4 南 8 西，16/32/64/128 為東北/東南/西南/西北的內角
+  liqMask(F, x, y) {
+    if (this._lqF !== F) { this._lqF = F; this._lqm = new Int16Array(F.w * F.h).fill(-1); }
+    const k = y * F.w + x; let m = this._lqm[k];
+    if (m >= 0) return m;
+    const v = F.t[k], g = (dx, dy) => { const q = Gen.get(F, x + dx, y + dy); return q !== v && q !== T.BRIDGE; };
+    m = (g(0, -1) ? 1 : 0) | (g(1, 0) ? 2 : 0) | (g(0, 1) ? 4 : 0) | (g(-1, 0) ? 8 : 0);
+    if (!(m & 3) && g(1, -1)) m |= 16; if (!(m & 6) && g(1, 1)) m |= 32; if (!(m & 12) && g(-1, 1)) m |= 64; if (!(m & 9) && g(-1, -1)) m |= 128;
+    return (this._lqm[k] = m);
+  },
   drawAnimTiles(F, x0, y0, x1, y1, px, py, t) {
-    const TS = this.TS, ps = this.ps, A = TEX.t, vis = G.vis;
+    const TS = this.TS, ps = this.ps, A = TEX.t, vis = G.vis, hi = this.q < 2, pq = this.q < 2 ? 1 : 0.5;
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
       const k = y * F.w + x; if (!F.seen[k]) continue;
       const v = F.t[k];
       if (v === T.WATER || v === T.LAVA) {
         const X = px(x), Y = py(y), lava = v === T.LAVA;
-        const fr = lava ? A.lava[((t * 4 + hash2(x, y, 9) * 6) | 0) % 6] : A.water[((t * 5 + (x + y) * 0.7) | 0) % 6];
-        ctx.drawImage(fr, X, Y, TS, TS);
-        const n = Gen.get(F, x, y - 1), e = Gen.get(F, x + 1, y), s = Gen.get(F, x, y + 1), w = Gen.get(F, x - 1, y);
-        const edge = q => q !== v && q !== T.BRIDGE;
-        if (lava) {
-          ctx.fillStyle = '#3a0c06';
-          if (edge(n)) ctx.fillRect(X, Y, TS, ps * 2); if (edge(s)) ctx.fillRect(X, Y + TS - ps, TS, ps); if (edge(w)) ctx.fillRect(X, Y, ps, TS); if (edge(e)) ctx.fillRect(X + TS - ps, Y, ps, TS);
-          ctx.fillStyle = 'rgba(255,230,140,' + (0.5 + 0.3 * Math.sin(t * 3 + x)) + ')';
-          if (edge(n)) ctx.fillRect(X, Y + ps * 2, TS, ps); if (edge(w)) ctx.fillRect(X + ps, Y, ps, TS); if (edge(e)) ctx.fillRect(X + TS - ps * 2, Y, ps, TS);
-          if (vis[k] && Math.random() < 0.012) FX.parts.push({ x: x + Math.random(), y: y + Math.random(), vx: 0, vy: -0.6, t0: t, life: 0.6, col: '#ffe08a', sz: 1.6, g: -0.5, glow: 1 });
-        } else {
-          ctx.fillStyle = 'rgba(0,0,0,.35)'; if (edge(n)) ctx.fillRect(X, Y, TS, ps * 3);
-          ctx.fillStyle = 'rgba(220,240,255,' + (0.35 + 0.2 * Math.sin(t * 2.4 + x * 1.3 + y)) + ')';
-          if (edge(s)) ctx.fillRect(X, Y + TS - ps, TS, ps); if (edge(w)) ctx.fillRect(X, Y, ps, TS); if (edge(e)) ctx.fillRect(X + TS - ps, Y, ps, TS); if (edge(n)) ctx.fillRect(X, Y + ps * 3, TS, ps);
+        // 無縫材質：每格取 32×32 影格中對應的四分之一，相鄰格的花紋自然相連
+        const fr = lava ? A.lava[((t * 3.2) | 0) % 8] : A.water[((t * 4) | 0) % 8];
+        ctx.drawImage(fr, (x & 1) << 4, (y & 1) << 4, 16, 16, X, Y, TS, TS);
+        const m = this.liqMask(F, x, y);
+        if (m) {
+          ctx.drawImage(A.liqEdge(lava ? 1 : 0, m), X, Y, TS, TS);
+          if (lava && hi) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.25 + 0.2 * Math.sin(t * 3 + x * 0.7 + y); ctx.drawImage(A.liqEdge(1, m), X, Y, TS, TS); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
         }
+        if (lava && vis[k] && Math.random() < 0.012 * pq) FX.parts.push({ x: x + Math.random(), y: y + Math.random(), vx: 0, vy: -0.6, t0: t, life: 0.6, col: '#ffe08a', sz: 1.6, g: -0.5, glow: 1 });
       } else if (v === T.FOUNTAIN) {
         const X = px(x), Y = py(y);
         ctx.fillStyle = '#3f8fd0'; ctx.fillRect(X + 3 * ps, Y + 7 * ps, 10 * ps, 6 * ps);
@@ -253,9 +274,20 @@ const Render = {
       if (G.vis[y * F.w + x] && Math.random() < 0.06) FX.parts.push({ x: x + 0.5 + fx_rand(-0.1, 0.1), y: y + 0.25, vx: fx_rand(-0.2, 0.2), vy: -1.2, t0: t, life: 0.6, col: '#ffc060', sz: 0.8, g: 0, glow: 1 });
     }
   },
+  // 文字標籤（傷害數字、Z、！）：每種文字＋顏色＋大小只描邊繪製一次，之後直接貼圖
   label(s, x, y, col, size = 5) {
-    ctx.font = (size * this.ps) + 'px Silkscreen, monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.lineWidth = this.ps * 1.2; ctx.strokeStyle = 'rgba(10,6,16,.9)'; ctx.strokeText(s, x, y); ctx.fillStyle = col; ctx.fillText(s, x, y);
+    const fs = Math.round(size * this.ps * 2) / 2, key = s + '|' + col + '|' + fs;
+    const C = this.lblC || (this.lblC = new Map());
+    let c = C.get(key);
+    if (!c) {
+      if (C.size > 400) C.clear();
+      c = document.createElement('canvas'); const g = c.getContext('2d'), f = fs + 'px Silkscreen, monospace';
+      g.font = f; const w = Math.ceil(g.measureText(s).width + this.ps * 3), h = Math.ceil(fs * 1.4 + this.ps * 2);
+      c.width = w; c.height = h; g.font = f; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.lineWidth = this.ps * 1.2; g.lineJoin = 'round'; g.strokeStyle = 'rgba(10,6,16,.9)'; g.strokeText(s, w / 2, h / 2); g.fillStyle = col; g.fillText(s, w / 2, h / 2);
+      C.set(key, c);
+    }
+    ctx.drawImage(c, Math.round(x - c.width / 2), Math.round(y - c.height / 2));
   },
   // 畫一張以腳底為錨點的精靈圖
   blit(s, img, X, Y, flip, sx = 1, sy = 1) {
@@ -277,7 +309,7 @@ const Render = {
       if (D.invis && !a.st.revealed && !Game.canSeeInvis()) alpha = 0.45 + 0.15 * Math.sin(t * 6);
     }
     if (a.isP && a.st.invis) alpha = 0.45;
-    const asleep = !a.isP && (!a.awake || a.st.sleep > 0) && !a.disg;
+    const asleep = !a.isP && (!a.awake || a.st.sleep > 0) && !a.disg && !D.npc;
     const moving = r.mp < 1;
     // 走路：每一步小跳一下、落地時略壓扁
     const hop = moving && !a.disg ? Math.sin(r.mp * Math.PI) : 0;
@@ -291,9 +323,7 @@ const Render = {
     // 精英／頭目光環
     if (a.elite || (a.enraged && D && D.boss)) {
       const E = a.elite ? ELITES[a.elite] : { rgb: '255,60,90' }, pulse = 0.5 + 0.5 * Math.sin(t * 4 + r.seed);
-      const g = ctx.createRadialGradient(FX0, FY, 0, FX0, FY, sw * 1.9);
-      g.addColorStop(0, 'rgba(' + E.rgb + ',' + (0.35 + 0.25 * pulse) + ')'); g.addColorStop(1, 'rgba(' + E.rgb + ',0)');
-      ctx.fillStyle = g; ctx.fillRect(FX0 - sw * 2, FY - sw * 1.2, sw * 4, sw * 2.2);
+      ctx.save(); ctx.translate(FX0, FY); ctx.scale(1, 0.55); this.glowAt(0, 0, sw * 1.9, E.rgb, 0.35 + 0.25 * pulse); ctx.restore();
       ctx.strokeStyle = 'rgba(' + E.rgb + ',' + (0.5 + 0.4 * pulse) + ')'; ctx.lineWidth = ps * 0.8; ctx.beginPath(); ctx.ellipse(FX0, FY, sw * 1.15, ps * 2.4, 0, 0, TAU); ctx.stroke();
       if (Math.random() < 0.15) FX.parts.push({ x: r.x + 0.5 + fx_rand(-0.35, 0.35), y: r.y + 0.9, vx: 0, vy: -1.4, t0: t, life: 0.6, col: 'rgb(' + E.rgb + ')', sz: 1, g: 0, glow: 1 });
     }
@@ -314,6 +344,8 @@ const Render = {
     if (asleep) this.label('z', FX0 + TS * 0.3 + Math.sin(t * 2) * ps, top - (t * 4 % 4) * ps * 0.5, '#cfe6ff', 4);
     if (st.conf > 0) this.label('?', FX0 + TS * 0.3, top, '#e0a0ff', 5);
     if (st.stun > 0 || st.para > 0) { for (let i = 0; i < 3; i++) { const a2 = t * 5 + i * TAU / 3; this.label('*', FX0 + Math.cos(a2) * TS * 0.25, top + Math.sin(a2) * ps * 1.5, '#ffe08a', 4); } }
+    if (D && D.talk && !a.used) { const bb = Math.round(Math.sin(t * 4) * ps); ctx.fillStyle = 'rgba(20,14,30,.85)'; ctx.fillRect(FX0 - ps * 3, top - ps * 9 + bb, ps * 6, ps * 6); ctx.fillStyle = '#ffd75a'; ctx.fillRect(FX0 - ps * 2, top - ps * 8 + bb, ps * 4, ps * 4); this.label('!', FX0, top - ps * 6 + bb, '#2a1a10', 4); }
+    if (a.isP && st.haste > 0 && moving) { ctx.fillStyle = 'rgba(255,240,200,.55)'; for (let i = 0; i < 3; i++) { const yy = top + ps * (5 + i * 5) + ((t * 40 + i * 7) % 4) * ps * 0.3; ctx.fillRect(FX0 - r.face * TS * (0.35 + i * 0.08), yy, -r.face * TS * 0.3, ps * 0.8); } }
     // HP 條
     if (!a.isP && !a.disg && (a.hp < a.mhp || a.elite) && !D.npc && !D.boss) {
       const bw = TS * 0.75, bx = FX0 - bw / 2, by = top - ps * 2.5;
@@ -326,6 +358,14 @@ const Render = {
   drawObj(o, kind, px, py, t) {
     const TS = this.TS, ps = this.ps, X = px(o.x) + TS / 2, Y = py(o.y) + TS - ps * 2;
     ctx.fillStyle = 'rgba(0,0,0,.38)'; ctx.beginPath(); ctx.ellipse(X, Y, TS * 0.36, ps * 2, 0, 0, TAU); ctx.fill();
+    if (kind === 'prop') {
+      const fire = o.k === 'fire' || o.k === 'furnace' || o.k === 'brazier', s = Spr.mon('p_' + o.k, fire && !o.used ? (((t * 6) | 0) % 2 ? FR.idle1 : FR.idle0) : ((t * 1.3 + o.x) | 0) % 2 ? FR.idle1 : FR.idle0);
+      this.blit(s, s.c, X, Y + ps, false);
+      if (o.k === 'shroom' && Math.random() < 0.05) FX.parts.push({ x: o.x + 0.5 + fx_rand(-0.4, 0.4), y: o.y - 0.4, vx: fx_rand(-0.2, 0.2), vy: -0.4, t0: t, life: 1.5, col: '#e0b8ff', sz: 1, g: 0, glow: 1 });
+      if (o.k === 'fire' && !o.used) { this.glowAt(X, Y - 5 * ps, TS * 0.6, '255,150,60', 0.45 + 0.1 * Math.sin(t * 11)); if (Math.random() < 0.15) FX.parts.push({ x: o.x + 0.5 + fx_rand(-0.1, 0.1), y: o.y + 0.4, vx: fx_rand(-0.2, 0.2), vy: -1.4, t0: t, life: 0.7, col: '#ffc060', sz: 0.9, g: 0, glow: 1 }); }
+      if (o.k === 'keg' && G.vis[o.y * G.F.w + o.x] && ((t * 3 + o.x) | 0) % 5 === 0) { ctx.fillStyle = '#ffd040'; ctx.fillRect(X + 2 * ps, Y - 21 * ps + ((t * 8) % 2 | 0) * ps, ps, ps); }
+      return;
+    }
     if (kind === 'chest') {
       const s = Spr.mon('chest', FR.idle0, { gold: o.gold, open: o.open });
       this.blit(s, s.c, X, Y + ps, false);
@@ -336,7 +376,7 @@ const Render = {
       if (!o.used) {
         const A = ALTARS[o.k], fl = Math.sin(t * 9 + o.x) * 0.5 + Math.sin(t * 5.3) * 0.5;
         const fx = X, fy = Y - 13 * ps;
-        const g = ctx.createRadialGradient(fx, fy, 0, fx, fy, TS * 0.5); g.addColorStop(0, 'rgba(' + A.rgb + ',.6)'); g.addColorStop(1, 'rgba(' + A.rgb + ',0)'); ctx.fillStyle = g; ctx.fillRect(fx - TS / 2, fy - TS / 2, TS, TS);
+        this.glowAt(fx, fy, TS * 0.5, A.rgb, 0.6);
         ctx.fillStyle = 'rgb(' + A.rgb + ')'; ctx.fillRect(fx - 2 * ps, fy - (3 + fl) * ps, 4 * ps, (4 + fl) * ps);
         ctx.fillStyle = '#ffffff'; ctx.fillRect(fx - ps, fy - (1 + fl * 0.5) * ps, 2 * ps, 2 * ps);
         if (Math.random() < 0.1) FX.parts.push({ x: o.x + 0.5 + fx_rand(-0.15, 0.15), y: o.y + 0.1, vx: 0, vy: -1, t0: t, life: 0.7, col: 'rgb(' + A.rgb + ')', sz: 1, g: 0, glow: 1 });
@@ -359,7 +399,11 @@ const Render = {
   },
   lighting(F, x0, y0, x1, y1, ox, oy, t) {
     const vw = x1 - x0 + 1, vh = y1 - y0 + 1, TS = this.TS;
-    if (!this.lm || this.lm.width !== vw || this.lm.height !== vh) { this.lm = document.createElement('canvas'); this.lm.width = vw; this.lm.height = vh; this.lmx = this.lm.getContext('2d'); this.lmd = this.lmx.createImageData(vw, vh); this.lit = new Float32Array(vw * vh); }
+    if (!this.lm || this.lm.width !== vw || this.lm.height !== vh) {
+      // 光照遮罩都放在 CPU 端的小畫布（willReadFrequently），在小畫布上先平滑放大，最後用最近鄰貼到畫面（像素風的階梯光影，手機上也很省）
+      this.lm = document.createElement('canvas'); this.lm.width = vw; this.lm.height = vh; this.lmx = this.lm.getContext('2d', { willReadFrequently: true }); this.lmd = this.lmx.createImageData(vw, vh); this.lit = new Float32Array(vw * vh);
+      this.lm4 = document.createElement('canvas'); this.lm4.width = vw * this.LS; this.lm4.height = vh * this.LS; this.lm4x = this.lm4.getContext('2d', { willReadFrequently: true });
+    }
     const d = this.lmd.data, P = G.P, R = Game.stats().sight + 1, vis = G.vis, lit = this.lit;
     const dark = F.biome === 1 || F.biome === 4 ? 0.66 : 0.58;
     lit.fill(0);
@@ -382,45 +426,87 @@ const Render = {
       else if (F.biome === 2 && F.deco[k] === 1 && v === T.FLOOR) { add(x, y, 1.4, 0.25); src.push([x, y, 1.2, 'rgba(255,110,40,A)', 0.1]); }
     }
     for (const a of F.altars || []) if (!a.used && vis[a.y * F.w + a.x]) { add(a.x, a.y, 3, 0.6); src.push([a.x, a.y - 0.4, 2.4, 'rgba(' + ALTARS[a.k].rgb + ',A)', 0.18 * flick]); }
+    for (const p of F.props || []) if (PROPS[p.k].light && F.seen[p.y * F.w + p.x]) { add(p.x, p.y, 3, 0.55); src.push([p.x, p.y - 0.6, 2.4, 'rgba(' + PROPS[p.k].light + ',A)', 0.2 * (p.k === 'furnace' ? flick : 0.9 + 0.1 * Math.sin(t * 2 + p.x))]); }
+    for (const p of F.props || []) if (p.k === 'fire' && !p.used && F.seen[p.y * F.w + p.x]) { add(p.x, p.y, 4.2, 0.8 * flick); src.push([p.x, p.y - 0.2, 3, 'rgba(255,150,60,A)', 0.22 * flick]); }
     for (const c of F.chests || []) if (!c.open && c.gold && vis[c.y * F.w + c.x]) src.push([c.x, c.y, 1.8, 'rgba(255,215,90,A)', 0.12]);
     for (const m of F.mons) if (m.hp > 0 && Game.monVisible(m)) {
       const r = this.rs(m), L = { wisp: '90,170,255', imp: '255,120,40', forge: '255,120,40', lord: '220,80,255', salamander: '255,120,40', witch: '140,220,255', necro: '120,255,120', golem: '120,220,255', mother: '200,120,255' }[m.k] || (m.elite ? ELITES[m.elite].rgb : null);
       if (L) { add(r.x, r.y, 2.8, 0.5); src.push([r.x, r.y, MON[m.k].boss ? 3.2 : 2.2, 'rgba(' + L + ',A)', 0.18]); }
     }
     for (const p of FX.projs) { const k = (t - p.t0) / p.dur; if (k >= 0 && k <= 1 && p.kind !== 'arrow' && p.kind !== 'knife' && p.kind !== 'potion') { const x = lerp(p.x0, p.x1, k) - 0.5, y = lerp(p.y0, p.y1, k) - 0.5; add(x, y, 2.4, 0.6); } }
-    for (let j = 0; j < vh; j++) for (let i = 0; i < vw; i++) {
-      const x = x0 + i, y = y0 + j, o = (j * vw + i) * 4;
-      let a = 255, r = 5, g = 6, b = 16;
-      if (x >= 0 && y >= 0 && x < F.w && y < F.h) {
-        const k = y * F.w + x;
-        if (vis[k]) { const dd = Math.sqrt(dist2(x, y, pr.x, pr.y)) / R; const L = Math.min(1, Math.max(1 - dd * dd * 1.05, 0) + lit[j * vw + i]); a = dark * (1 - L) * 255; }
-        else if (F.seen[k]) { a = 178; r = 8; g = 10; b = 30; }
+    FX.lights = FX.lights.filter(L => t - L.t0 < L.dur);
+    for (const L of FX.lights) { const k = (t - L.t0) / L.dur; if (k >= 0) add(L.x, L.y, L.r + 1, L.a * 1.5 * (1 - k)); }
+    // 暗部＋暗角合成在同一張低解析度遮罩裡，一次畫滿整個畫面
+    const hw = this.W / 2, hh = this.H / 2;
+    for (let j = 0; j < vh; j++) {
+      const y = y0 + j, sy = (oy + (y + 0.5) * TS - hh) / hh;
+      for (let i = 0; i < vw; i++) {
+        const x = x0 + i, o = (j * vw + i) * 4;
+        let a = 1, r = 5, g = 6, b = 16;
+        if (x >= 0 && y >= 0 && x < F.w && y < F.h) {
+          const k = y * F.w + x;
+          if (vis[k]) { const dd = Math.sqrt(dist2(x, y, pr.x, pr.y)) / R; const L = Math.min(1, Math.max(1 - dd * dd * 1.05, 0) + lit[j * vw + i]); a = dark * (1 - L); }
+          else if (F.seen[k]) { a = 0.7; r = 8; g = 10; b = 30; }
+        }
+        if (a < 1) { const sx = (ox + (x + 0.5) * TS - hw) / hw, v = Math.min(1, Math.max(0, (Math.sqrt(sx * sx + sy * sy) - 0.5) / 0.9)) * 0.55; a = 1 - (1 - a) * (1 - v); }
+        d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = a * 255;
       }
-      d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = a;
     }
     this.lmx.putImageData(this.lmd, 0, 0);
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(this.lm, Math.round(ox + x0 * TS), Math.round(oy + y0 * TS), vw * TS, vh * TS);
-    ctx.imageSmoothingEnabled = false;
-    // 有顏色的光（加亮）
-    ctx.globalCompositeOperation = 'lighter';
-    // 光暈：每種顏色預先畫一張漸層小圖，再縮放貼上（比每格建立漸層快很多）
-    const GC = this.glowCache || (this.glowCache = new Map());
+    // 1) 暗部遮罩在 CPU 小畫布上平滑放大成每格 4×4
+    const LS = this.LS, W4 = vw * LS, H4 = vh * LS, l4 = this.lm4x;
+    l4.globalCompositeOperation = 'copy'; l4.imageSmoothingEnabled = true; l4.drawImage(this.lm, 0, 0, W4, H4); l4.globalCompositeOperation = 'source-over';
+    // 2) 有顏色的光疊在同樣大小的小畫布上
+    if (!this.cl || this.cl.width !== W4 || this.cl.height !== H4) { this.cl = document.createElement('canvas'); this.cl.width = W4; this.cl.height = H4; this.clx = this.cl.getContext('2d', { willReadFrequently: true }); }
+    const lx = this.clx;
+    lx.globalCompositeOperation = 'source-over'; lx.globalAlpha = 1; lx.clearRect(0, 0, W4, H4); lx.globalCompositeOperation = 'lighter';
     const glow = (x, y, r, col, a) => {
-      let img = GC.get(col);
-      if (!img) { img = document.createElement('canvas'); img.width = img.height = 64; const gx = img.getContext('2d'); const g = gx.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, col.replace('A', 1)); g.addColorStop(0.5, col.replace('A', 0.4)); g.addColorStop(1, col.replace('A', 0)); gx.fillStyle = g; gx.fillRect(0, 0, 64, 64); GC.set(col, img); }
-      const X = ox + (x + 0.5) * TS, Y = oy + (y + 0.5) * TS, rr = r * TS;
-      ctx.globalAlpha = Math.min(1, a * 1.6); ctx.drawImage(img, X - rr, Y - rr, rr * 2, rr * 2);
+      const X = (x - x0 + 0.5) * LS, Y = (y - y0 + 0.5) * LS, rr = r * LS;
+      if (X + rr < 0 || Y + rr < 0 || X - rr > W4 || Y - rr > H4) return;
+      lx.globalAlpha = Math.min(1, a * 1.6); lx.drawImage(this.glowImg(col), X - rr, Y - rr, rr * 2, rr * 2);
     };
-    if (src.length > 36) { src.sort((p, q) => dist2(p[0], p[1], pr.x, pr.y) - dist2(q[0], q[1], pr.x, pr.y)); src.length = 36; }
+    const maxL = this.q >= 2 ? 18 : 36;
+    if (src.length > maxL) { src.sort((p, q) => dist2(p[0], p[1], pr.x, pr.y) - dist2(q[0], q[1], pr.x, pr.y)); src.length = maxL; }
     for (const s of src) glow(s[0], s[1], s[2], s[3], s[4]);
-    ctx.globalAlpha = 1;
     glow(pr.x, pr.y, 4.5, 'rgba(255,200,140,A)', 0.07);
-    ctx.globalCompositeOperation = 'source-over';
+    for (const L of FX.lights) { const k = (t - L.t0) / L.dur; if (k >= 0 && k < 1) glow(L.x, L.y, L.r * (L.grow ? 0.5 + k : 1), L.col, L.a * (1 - k)); }
+    // 3) 合成成一張「半透明遮罩」：暗的地方蓋黑、有色光的地方往光的顏色混，畫面只要貼一次（加一點點有序抖動，減少色階）
+    const DI = l4.getImageData(0, 0, W4, H4), dd = DI.data, gd = lx.getImageData(0, 0, W4, H4).data, BY = Render.BAYER;
+    for (let j = 0, o = 0; j < H4; j++) for (let i = 0; i < W4; i++, o += 4) {
+      let A = dd[o + 3] + BY[(j & 3) * 4 + (i & 3)];
+      const ga = gd[o + 3] / 255, gr = gd[o] * ga, gg = gd[o + 1] * ga, gb = gd[o + 2] * ga, m = gr > gg ? (gr > gb ? gr : gb) : (gg > gb ? gg : gb);
+      if (m > 2) {
+        const a = A / 255, nA = Math.max(a, m / 255 * 0.85);
+        dd[o] = (gr + a * dd[o]) / nA; dd[o + 1] = (gg + a * dd[o + 1]) / nA; dd[o + 2] = (gb + a * dd[o + 2]) / nA; A = nA * 255;
+      }
+      dd[o + 3] = A;
+    }
+    l4.putImageData(DI, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(this.lm4, Math.round(ox + x0 * TS), Math.round(oy + y0 * TS), vw * TS, vh * TS);
+  },
+  LS: 8,
+  BAYER: [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v - 7.5) * 0.9),
+  // 預先畫好的放射狀光暈（依顏色快取）。col 可以是 'rgba(r,g,b,A)' 或 'r,g,b'
+  glowImg(col) {
+    const GC = this.glowCache || (this.glowCache = new Map());
+    let img = GC.get(col);
+    if (!img) {
+      const c = col.indexOf('A') >= 0 ? col : 'rgba(' + col + ',A)';
+      img = document.createElement('canvas'); img.width = img.height = 64; const gx = img.getContext('2d'); const g = gx.createRadialGradient(32, 32, 0, 32, 32, 32);
+      g.addColorStop(0, c.replace('A', 1)); g.addColorStop(0.5, c.replace('A', 0.4)); g.addColorStop(1, c.replace('A', 0)); gx.fillStyle = g; gx.fillRect(0, 0, 64, 64); GC.set(col, img);
+    }
+    return img;
+  },
+  // 在畫面上畫一個光暈（以格子座標為中心，r 為半徑格數）
+  glowAt(X, Y, rr, col, a, add) {
+    if (add) ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = Math.max(0, Math.min(1, a)); ctx.drawImage(this.glowImg(col), X - rr, Y - rr, rr * 2, rr * 2);
+    ctx.globalAlpha = 1; if (add) ctx.globalCompositeOperation = 'source-over';
   },
   ambient(F, x0, y0, x1, y1, ox, oy, t, dt) {
     const A = AMB[F.biome] || AMB[0], TS = this.TS, ps = this.ps, vis = G.vis, L = this.amb;
-    const n = Math.round(A.n * (UI && UI.touch ? 0.7 : 1));
+    const n = Math.round(A.n * (UI && UI.touch ? 0.7 : 1) * (this.q >= 2 ? 0.5 : 1));
     while (L.length < n) L.push({ x: fx_rand(x0, x1 + 1), y: fx_rand(y0, y1 + 1), vx: fx_rand(A.vx[0], A.vx[1]), vy: fx_rand(A.vy[0], A.vy[1]), t0: t - fx_rand(0, 3), life: fx_rand(A.life[0], A.life[1]), sz: fx_rand(A.sz[0], A.sz[1]), col: A.cols[(Math.random() * A.cols.length) | 0], ph: Math.random() * TAU });
     if (A.glow) ctx.globalCompositeOperation = 'lighter';
     for (let i = L.length - 1; i >= 0; i--) {
@@ -464,8 +550,7 @@ const Render = {
       else if (p.kind === 'potion') { ctx.rotate(t * 12); ctx.fillStyle = col; ctx.fillRect(-ps * 2, -ps * 2, ps * 4, ps * 4); ctx.fillStyle = '#e8f4ff'; ctx.fillRect(-ps, -ps * 3, ps * 2, ps); }
       else {
         ctx.globalCompositeOperation = 'lighter';
-        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, ps * 8); g.addColorStop(0, '#fff'); g.addColorStop(0.25, col); g.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = g; ctx.fillRect(-ps * 8, -ps * 8, ps * 16, ps * 16);
+        this.glowAt(0, 0, ps * 9, PROJ_RGB[p.kind] || '255,255,255', 1); this.glowAt(0, 0, ps * 3.5, '255,255,255', 0.9);
         ctx.globalCompositeOperation = 'source-over';
         for (let i = 0; i < 2; i++) FX.parts.push({ x, y, vx: fx_rand(-0.6, 0.6) - Math.cos(ang) * 1.5, vy: fx_rand(-0.6, 0.6) - Math.sin(ang) * 1.5, t0: t, life: 0.35, col, sz: 1.5, g: 0, glow: 1 });
       }

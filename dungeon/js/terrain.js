@@ -152,17 +152,55 @@ const TEX = {
       x.fillStyle = '#8a90a4'; x.fillRect(7, 1, 2, 7); x.fillStyle = '#b8c0d0'; x.fillRect(6, 1, 4, 1);
     });
     t.dryfount = this.mk((x, px) => { x.drawImage(t.floor[5], 0, 0); x.fillStyle = 'rgba(0,0,0,.35)'; x.fillRect(1, 13, 15, 3); x.fillStyle = '#5a5e6e'; x.fillRect(1, 5, 14, 10); x.fillStyle = '#7a8090'; x.fillRect(1, 5, 14, 2); x.fillStyle = '#2a2a34'; x.fillRect(3, 7, 10, 6); x.fillStyle = '#3a3a44'; x.fillRect(4, 11, 3, 1); x.fillStyle = '#7a8090'; x.fillRect(7, 1, 2, 7); });
-    // ---- 液體（動畫影格） ----
-    const liquid = (f, cols, hi, n) => this.mk((x, px) => {
-      for (let j = 0; j < 16; j++) for (let i = 0; i < 16; i++) {
-        const a = Math.sin((i + f * 16 / n) * 0.78 + j * 0.42) + Math.sin(j * 0.9 - f * TAU / n + i * 0.33) * 0.8 + Math.sin((i - j) * 0.5 + f * TAU / n) * 0.4;
-        px(i, j, a > 1.25 ? cols[3] : a > 0.35 ? cols[2] : a > -0.7 ? cols[1] : cols[0]);
+    // ---- 液體（動畫影格）：32×32 無縫循環材質，相鄰格子的花紋會接起來 ----
+    const liquid = (f, n, cols, hi, lava) => this.mk((x, px) => {
+      const p = f / n * TAU, K = TAU / 32;
+      for (let j = 0; j < 32; j++) for (let i = 0; i < 32; i++) {
+        // 座標扭曲讓花紋像流動的液體（扭曲量本身也是 32 格循環，所以仍然無縫）
+        const wi = i + 2.2 * Math.sin(j * K * 2 + p) + 1.2 * Math.sin(j * K * 5 - p * 2), wj = j + 2.2 * Math.sin(i * K * 3 - p) + 1.0 * Math.sin(i * K * 1 + p);
+        let a = Math.sin(wi * K * 2 + wj * K + p) + 0.8 * Math.sin(wj * K * 3 - wi * K - p) + 0.4 * Math.sin((wi - wj) * K * 4 + p * 2) + 0.35 * Math.sin((i + 2 * j) * K * 1 - p);
+        a += ((i + j) & 1) ? 0.07 : -0.07;
+        px(i, j, a > 1.45 ? cols[4] : a > 0.75 ? cols[3] : a > 0.05 ? cols[2] : a > -0.85 ? cols[1] : cols[0]);
       }
-      x.fillStyle = hi; for (let k = 0; k < 3; k++) { const yy = (k * 5 + Math.round(f * 16 / n)) % 16; x.fillRect((k * 7 + f * 2) % 13, yy, 3, 1); }
-    });
+      // 浪花／岩漿泡：沿著水流方向移動的小亮點（位置也循環）
+      x.fillStyle = hi;
+      for (let k = 0; k < 5; k++) {
+        const bx = (k * 13 + f * 4) % 32, by = (k * 7 + (k % 2 ? f * 2 : 32 - f * 2)) % 32;
+        if (lava) { const r = (f + k * 3) % n; if (r < 3) { x.fillRect(bx, by, 1 + (r > 0), 1 + (r > 0)); if (r === 2) { x.fillStyle = cols[0]; x.fillRect(bx, by, 1, 1); x.fillStyle = hi; } } }
+        else { x.fillRect(bx, by, 3, 1); x.fillRect(bx + 1, by - 1 < 0 ? 31 : by - 1, 1, 1); }
+      }
+    }, 32, 32);
     const W = P.water;
-    t.water = [0, 1, 2, 3, 4, 5].map(f => liquid(f, [shade(W, -0.35), shade(W, -0.15), W, shade(W, 0.18)], 'rgba(220,240,255,.55)', 6));
-    t.lava = [0, 1, 2, 3, 4, 5].map(f => liquid(f, ['#8a1a0a', '#d8401a', '#ff7a2a', '#ffc04a'], '#fff0a0', 6));
+    t.water = [0, 1, 2, 3, 4, 5, 6, 7].map(f => liquid(f, 8, [shade(W, -0.38), shade(W, -0.2), shade(W, -0.04), shade(W, 0.12), shade(W, 0.3)], 'rgba(225,245,255,.7)', 0));
+    t.lava = [0, 1, 2, 3, 4, 5, 6, 7].map(f => liquid(f, 8, ['#4a0e06', '#a8260c', '#e8501a', '#ff8a2a', '#ffc85a'], '#fff2b0', 1));
+    // 液體邊緣：依照四周哪些格子不是液體，畫出彎曲的岸邊（北岸看得到岸壁，其他三邊是岸線）
+    const LE = new Map(), pal = P;
+    t.liqEdge = (lava, m) => {
+      const key = lava * 256 + m; let c = LE.get(key); if (c) return c;
+      const pr = (i, s) => Math.round(0.9 * Math.sin(i * TAU / 16 + s) + 0.5 * Math.sin(i * TAU / 8 + s * 1.7));
+      const N = m & 1, E = m & 2, S = m & 4, Wd = m & 8;
+      const face = lava ? '#2a100a' : shade(pal.floor2, -0.42), faceHi = lava ? '#4a2014' : shade(pal.floor, -0.12), faceLo = lava ? '#1a0806' : shade(pal.floor2, -0.55);
+      const shore = lava ? '#331410' : shade(pal.floor2, -0.18);
+      const seam = lava ? '#ffe08a' : 'rgba(225,245,255,.85)', seam2 = lava ? '#ff8a2a' : 'rgba(0,0,0,.28)';
+      c = this.mk((x, px) => {
+        for (let j = 0; j < 16; j++) for (let i = 0; i < 16; i++) {
+          const dN = N ? 3 + pr(i, 1) : -9, dS = S ? 1 + pr(i, 2.3) : -9, dW = Wd ? 1 + pr(j, 4.1) : -9, dE = E ? 1 + pr(j, 5.2) : -9;
+          // 和岸邊的距離（負數＝岸上）
+          let d = 99;
+          if (N) d = Math.min(d, j - dN); if (S) d = Math.min(d, (15 - j) - dS); if (Wd) d = Math.min(d, i - dW); if (E) d = Math.min(d, (15 - i) - dE);
+          if (N && Wd) d = Math.min(d, (i - dW) + (j - dN) - 2); if (N && E) d = Math.min(d, (15 - i - dE) + (j - dN) - 2);
+          if (S && Wd) d = Math.min(d, (i - dW) + (15 - j - dS) - 2); if (S && E) d = Math.min(d, (15 - i - dE) + (15 - j - dS) - 2);
+          if (m & 128) d = Math.min(d, i + j - 3); if (m & 16) d = Math.min(d, (15 - i) + j - 3);
+          if (m & 32) d = Math.min(d, (15 - i) + (15 - j) - 3); if (m & 64) d = Math.min(d, i + (15 - j) - 3);
+          if (d >= 2) continue;
+          const north = N && j < dN;
+          if (d < 0) px(i, j, north ? (j === 0 ? faceHi : j >= dN - 1 ? faceLo : face) : shore);
+          else if (d === 0) px(i, j, seam);
+          else px(i, j, seam2);
+        }
+      });
+      LE.set(key, c); return c;
+    };
     // ---- 地面裝飾（透明底） ----
     const DECO = [
       [ // 地窖：骨頭、青苔、水窪
