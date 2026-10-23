@@ -43,6 +43,21 @@ const UI = {
     rr(g, x + b * 2.6, y + b * 2.6, w - b * 5.2, h - b * 5.2, r * 0.5); g.stroke();
     g.restore();
   },
+  // 地名用的緞帶標題
+  banner(g, text, cx, cy, fs) {
+    g.font = `700 ${fs * 1.15}px ${FONT}`;
+    const w = g.measureText(text).width + fs * 4, h = fs * 2.1, x = cx - w / 2, y = cy - h / 2;
+    g.save();
+    g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(x + fs * 0.2, y + fs * 0.25, w, h);
+    const gr = g.createLinearGradient(0, y, 0, y + h); gr.addColorStop(0, '#2a2458'); gr.addColorStop(1, '#14102e');
+    g.fillStyle = gr;
+    g.beginPath(); g.moveTo(x - fs * 0.8, y + h / 2); g.lineTo(x, y); g.lineTo(x + w, y); g.lineTo(x + w + fs * 0.8, y + h / 2); g.lineTo(x + w, y + h); g.lineTo(x, y + h); g.closePath(); g.fill();
+    g.strokeStyle = '#e8c070'; g.lineWidth = Math.max(1, fs * 0.1); g.stroke();
+    g.strokeStyle = 'rgba(232,192,112,.35)'; g.beginPath(); g.moveTo(x + fs * 0.4, y + fs * 0.3); g.lineTo(x + w - fs * 0.4, y + fs * 0.3); g.moveTo(x + fs * 0.4, y + h - fs * 0.3); g.lineTo(x + w - fs * 0.4, y + h - fs * 0.3); g.stroke();
+    g.fillStyle = '#e8c070'; for (const dx of [-1, 1]) { const px = cx + dx * (w / 2 - fs * 0.9); g.beginPath(); g.moveTo(px, cy - fs * 0.3); g.lineTo(px + fs * 0.3, cy); g.lineTo(px, cy + fs * 0.3); g.lineTo(px - fs * 0.3, cy); g.fill(); }
+    g.restore();
+    this.text(g, text, cx, cy + fs * 0.05, '#ffeec0', fs * 1.15, 'center', 'middle', 700);
+  },
   text(g, s, x, y, col = '#fff', size = L.FS, align = 'left', base = 'top', weight = 500) {
     g.font = `${weight} ${size}px ${FONT}`; g.textAlign = align; g.textBaseline = base;
     g.fillStyle = 'rgba(0,0,0,.55)'; g.fillText(s, x + Math.max(1, size / 14), y + Math.max(1, size / 14));

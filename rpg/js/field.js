@@ -20,7 +20,7 @@ const Field = {
     this.refreshNpcs();
     const n = G.party.length;
     this.party = G.party.map(() => ({ x, y, fx: x, fy: y, dir, t: 1 }));
-    this.bake();
+    this.bake(); FieldFx.reset();
     G.map = id; G.x = x; G.y = y; G.dir = dir;
     this.enc = this.encReset();
     this.slideDir = null;
@@ -62,79 +62,18 @@ const Field = {
     if (x >= 28 && x < 40 && y < 16) return 'wither';
     return 'grass';
   },
-  waterMask(x, y, liquidSet) {
-    const land = (xx, yy) => { if (xx < 0 || yy < 0 || xx >= this.w || yy >= this.h) return false; const c = this.tile(xx, yy); return !liquidSet.includes(c) && !(c === 'b' && this.isWorld()); };
-    return (land(x, y - 1) ? 1 : 0) | (land(x + 1, y) ? 2 : 0) | (land(x, y + 1) ? 4 : 0) | (land(x - 1, y) ? 8 : 0);
-  },
-  cellCanvas(x, y, fr) {
-    const c = this.tile(x, y), v = (hash2(x, y, 7) * 4) | 0, seed = v + 1;
-    if (this.isWorld()) {
-      const ground = this.groundAt(x, y);
-      let kind, info = { seed, ground, frame: fr };
-      switch (c) {
-        case '.': kind = ground; break; case ',': kind = 'flowers'; break; case 'T': kind = 'forest'; break; case 'h': kind = 'hills'; break;
-        case ':': kind = 'sand'; break; case '*': kind = 'snow'; break; case 'A': kind = 'pines'; info.ground = 'snow'; break; case 'M': kind = 'snowmtn'; break;
-        case '^': kind = 'mountain'; break; case 'C': kind = 'cactus'; break; case ';': kind = 'road'; break; case 'w': kind = 'wither'; break;
-        case '~': kind = 'water'; info.mask = this.waterMask(x, y, '~db'); info.seed = 0; break;
-        case 'b': if (F('bridge')) { kind = 'rainbow'; info.seed = 0; } else { kind = 'water'; info.mask = this.waterMask(x, y, '~db'); info.seed = 0; } break;
-        case 'V': kind = 'town'; info.roof = '#d84a3a'; break; case 'P': kind = 'town'; info.roof = '#3a6ad8'; break; case 'S': kind = 'town'; info.roof = '#e0902a'; info.wallc = '#f8e8c0'; break; case 'F': kind = 'town'; info.roof = '#8a4ac8'; info.wallc = '#e8e0f0'; break;
-        case 'c': case 'm': kind = 'cave'; break; case 'L': kind = 'lighthouse'; info.lit = F('d2'); break; case 'p': kind = 'pyramid'; break; case 'i': kind = 'tower'; break;
-        case 'K': kind = 'castle'; break; case 'a': kind = 'altar'; info.lit = F('bridge'); break; case 'd': kind = 'dock'; info.seed = 0; break;
-        case 'Y': kind = F('d1') ? 'road' : 'log'; break; case 'G': kind = 'gate'; info.open = F('gate'); break;
-        default: kind = ground;
-      }
-      const key = ['W', kind, info.ground, info.seed, info.mask || 0, info.roof || '', info.lit ? 1 : 0, info.open ? 1 : 0, (kind === 'water' || kind === 'rainbow' || kind === 'dock') ? fr : 0].join('|');
-      return tileCanvas(key, g => drawTileKind(g, kind, info));
-    }
-    const th = THEMES[this.def.theme];
-    const town = this.def.kind === 'town';
-    const outdoorGround = th.ground;
-    const key = (k, extra = '') => ['L', this.def.theme, k, seed, extra].join('|');
-    const groundFn = g => town ? drawGround(g, outdoorGround, seed) : drawFloor(g, th, seed);
-    const indoor = () => { for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) { const n = this.tile(x + dx, y + dy); if (n === 'o' || n === 'R') return true; } return false; };
-    switch (c) {
-      case '.': return tileCanvas(key('.'), groundFn);
-      case ',': return tileCanvas(key(','), g => drawTileKind(g, 'flowers', { seed, ground: outdoorGround }));
-      case ';': return tileCanvas(key(';'), g => drawTileKind(g, 'road', { seed, ground: outdoorGround === 'cobble' ? 'grass' : outdoorGround }));
-      case '_': return tileCanvas(key('_'), g => drawGround(g, 'cobble', seed));
-      case ':': return tileCanvas(key(':'), g => drawGround(g, 'sand', seed));
-      case '*': return tileCanvas(key('*'), g => drawGround(g, 'snow', seed));
-      case 'o': return tileCanvas(key('o'), g => drawFloor(g, th, seed, 'wood'));
-      case '#': case '!': {
-        const below = this.tile(x, y + 1), face = !WALLISH.has(below) && y + 1 < this.h;
-        if (c === '!' && face) return tileCanvas(key('!'), g => drawObj(g, 'torch', th, { seed }));
-        const edgeS = !face && !WALLISH.has(below);
-        return tileCanvas(key('#', (face ? 'f' : 't') + (edgeS ? 's' : '')), g => drawWall(g, th, face, seed, { edgeS }));
-      }
-      case 'k': return tileCanvas(key('k'), g => drawObj(g, 'shelf', th, { seed }));
-      case '~': { const m = this.waterMask(x, y, '~'); return tileCanvas(key('~', m + ':' + fr), g => drawWater(g, fr, m, th.liquid)); }
-      case 'D':
-        if (town) return tileCanvas(key('Dk', fr), g => drawTileKind(g, 'dock', { frame: fr }));
-        if (F('door:' + this.id + ':' + x + ',' + y)) return tileCanvas(key('.'), groundFn);
-        return tileCanvas(key('D'), g => drawObj(g, 'lockdoor', th, { seed }));
-      case 'C': { const open = this.chestOpen(x, y); return tileCanvas(key('C', open ? 1 : 0), g => drawObj(g, 'chest', th, { seed, open, wood: town })); }
-      case '%': return tileCanvas(key('%', fr), g => drawObj(g, 'swamp', th, { seed, frame: fr }));
-      case 'H': return tileCanvas(key('H', fr), g => drawObj(g, 'spring', th, { seed, frame: fr }));
-      case 'Z': { const carpet = this.tile(x, y + 1) === 'R'; return tileCanvas(key('Z', carpet ? 1 : 0), g => drawObj(g, 'throne', th, { seed, carpet, wood: town })); }
-      default: {
-        const map = { '+': 'door', '=': 'counter', b: 'bed', t: 'table', B: 'barrel', p: 'pot', X: 'crate', R: 'carpet', Y: 'altarT', Q: 'bell', w: 'well', f: 'fence', s: 'sign', T: 'tree', P: 'palm', A: 'pine', h: 'bush', F: 'fountain', L: 'lamp', K: 'anvil', G: 'grave', '<': 'stairsUp', '>': 'stairsDown', E: 'exit', S: 'statue', O: 'pillar', i: 'ice', r: 'rock', c: 'crystal', n: 'coffin', j: 'rail' };
-        const kind = map[c];
-        if (!kind) return tileCanvas(key('.'), groundFn);
-        if (kind === 'tree' || kind === 'palm' || kind === 'pine') return tileCanvas(key(c), g => drawTileKind(g, kind, { seed, ground: outdoorGround === 'cobble' ? 'grass' : outdoorGround }));
-        const wood = town && (c === '+' || indoor());
-        return tileCanvas(key(c, wood ? 'w' : ''), g => drawObj(g, kind, town && !wood ? Object.assign({}, th, { floor: GROUND[outdoorGround] ? [GROUND[outdoorGround][0], ...GROUND[outdoorGround][1]] : th.floor }) : th, { seed, wood }));
-      }
-    }
-  },
   bake() {
-    const W = this.w * TS, H = this.h * TS;
-    this.baked = [0, 1].map(fr => {
-      const c = document.createElement('canvas'); c.width = W; c.height = H;
-      const g = c.getContext('2d');
-      for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) g.drawImage(this.cellCanvas(x, y, fr), x * TS, y * TS);
-      return c;
-    });
+    this.props = []; this.builds = []; this.lights = []; this.spots = [];
+    if (this.isWorld()) { this.baked = WorldBake.get(this); return; }
+    const r = LocalBake.bake(this);
+    // 保留屋頂淡出的狀態
+    const old = this.buildsPrev && this.buildsPrevId === this.id ? this.buildsPrev : null;
+    this.baked = r.frames; this.props = r.props; this.builds = r.builds; this.lights = r.lights; this.spots = r.fx;
+    if (old) this.builds.forEach((b, i) => { if (old[i]) b.alpha = old[i].alpha; });
+    else { const p = this.leader && this.leader(); if (p) for (const b of this.builds) b.alpha = this.inBuild(b, p.x, p.y) ? 0 : 1; }
+    this.buildsPrev = this.builds; this.buildsPrevId = this.id;
   },
+  inBuild(b, x, y) { return x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; },
   rebake() { this.bake(); },
 
   // ───── 移動 ─────
@@ -161,9 +100,9 @@ const Field = {
       const f = this.party[i], prev = this.party[i - 1];
       f.fx = f.x; f.fy = f.y;
       if (prev.x !== f.x || prev.y !== f.y) { f.dir = prev.x > f.x ? 'right' : prev.x < f.x ? 'left' : prev.y > f.y ? 'down' : 'up'; }
-      f.x = prev.x; f.y = prev.y; f.t = 0;
+      f.x = prev.x; f.y = prev.y; f.t = 0; f.n = (f.n || 0) + 1;
     }
-    p.fx = p.x; p.fy = p.y; p.x = nx; p.y = ny; p.t = 0;
+    p.fx = p.x; p.fy = p.y; p.x = nx; p.y = ny; p.t = 0; p.n = (p.n || 0) + 1;
     this.stepCount = (this.stepCount || 0) + 1;
     return true;
   },
@@ -175,6 +114,7 @@ const Field = {
     let arrived = false;
     for (const p of this.party) if (p.t < 1) { p.t = Math.min(1, p.t + dt * spd); if (p === this.leader() && p.t >= 1) arrived = true; }
     this.updateNpcs(dt);
+    FieldFx.update(dt, this);
     if (arrived) { this.onStep(); return; }
     if (this.busy || UI.busy() || this.moving() || Game.fading) return;
     if (this.slideDir) { const d = this.slideDir; this.slideDir = null; if (this.tryMove(d)) { this.sliding = true; return; } }
@@ -187,7 +127,7 @@ const Field = {
   updateNpcs(dt) {
     for (const n of this.npcs) {
       if (n.hidden) continue;
-      if (n.mv) { n.mv.t += dt * 3.2; if (n.mv.t >= 1) { n.x = n.mv.tx; n.y = n.mv.ty; n.mv = null; } continue; }
+      if (n.mv) { n.mv.t += dt * 3.2; if (n.mv.t >= 1) { n.x = n.mv.tx; n.y = n.mv.ty; n.mv = null; n.n = (n.n || 0) + 1; } continue; }
       if (!n.d.wander || this.busy || UI.busy()) continue;
       n.wt -= dt;
       if (n.wt <= 0) {
@@ -295,53 +235,74 @@ const Field = {
     let cy = MH <= V.h ? (MH - V.h) / 2 : clamp(ly - V.h / 2, 0, MH - V.h);
     return { cx: Math.round(cx / k) * k, cy: Math.round(cy / k) * k, T };
   },
+  // 環境光：黯王被打倒前天色昏暗
+  ambient() {
+    if (this.def.kind === 'dungeon') return null;
+    if (!F('nox')) return { col: '40,24,90', a: this.isWorld() ? 0.16 : 0.2, dim: 1 };
+    return null;
+  },
   draw(g) {
     const V = L.V, k = L.k;
     const { cx, cy, T } = this.cam();
-    g.fillStyle = this.isWorld() ? '#1a3a7a' : '#06040c'; g.fillRect(V.x, V.y, V.w, V.h);
+    const sx0 = V.x - cx, sy0 = V.y - cy; // 地圖原點在螢幕上的位置
+    g.fillStyle = this.isWorld() ? '#1f5cb4' : '#06040c'; g.fillRect(V.x, V.y, V.w, V.h);
     g.save(); g.beginPath(); g.rect(V.x, V.y, V.w, V.h); g.clip();
     g.imageSmoothingEnabled = false;
-    const fr = Math.floor(this.t * 1.6) % 2, img = this.baked[fr];
-    // 只畫看得到的部分
+    const nf = this.baked.length, fr = Math.floor(this.t * (nf > 2 ? 3.2 : 1.6)) % nf, img = this.baked[fr];
     const sx = Math.max(0, cx / k), sy = Math.max(0, cy / k), sw = Math.min(img.width - sx, V.w / k), sh = Math.min(img.height - sy, V.h / k);
     g.drawImage(img, sx, sy, sw, sh, V.x + (sx * k - cx), V.y + (sy * k - cy), sw * k, sh * k);
-    // 角色（依 y 排序）
+    // 寶箱閃光
+    for (const s of this.spots) if (s.kind === 'glint') { const ph = (this.t * 0.7 + s.x * 0.013) % 1; if (ph < 0.25) { const a = Math.sin(ph / 0.25 * Math.PI); g.fillStyle = `rgba(255,255,230,${a})`; const x = sx0 + (s.x + ph * 24) * k, y = sy0 + s.y * k; g.fillRect(x, y, k, k * 3 * a); g.fillRect(x - k, y + k, k * 3 * a, k); } }
+    // 依 y 排序繪製：角色、立體物件、建築外觀
     const ents = [];
+    const vis = (x, y) => { const X = sx0 + x * T, Y = sy0 + y * T; return X > -T * 3 && Y > -T * 3 && X < V.x + V.w + T * 3 && Y < V.y + V.h + T * 3; };
     for (const n of this.npcs) if (!n.hidden) {
       const px = n.mv ? lerp(n.x, n.mv.tx, n.mv.t) : n.x, py = n.mv ? lerp(n.y, n.mv.ty, n.mv.t) : n.y;
-      ents.push({ y: py, draw: () => this.drawNpc(g, n, V.x + px * T - cx, V.y + py * T - cy, T) });
+      if (!vis(px, py)) continue;
+      ents.push({ y: py, draw: () => this.drawNpc(g, n, sx0 + px * T, sy0 + py * T, T) });
     }
     for (let i = this.party.length - 1; i >= 0; i--) {
       const p = this.party[i];
       if (i > 0 && p.x === this.leader().x && p.y === this.leader().y && p.t >= 1) continue;
       if (i > 0 && this.party.slice(0, i).some(q => q.x === p.x && q.y === p.y && q.t >= 1 && p.t >= 1)) continue;
       const px = lerp(p.fx, p.x, p.t), py = lerp(p.fy, p.y, p.t);
-      ents.push({ y: py - i * 0.001, draw: () => this.drawChar(g, CHARS[G.party[i].id] ? G.party[i].id : 'hero', p.dir, p.t < 1 || (this.t * 2 % 1 < 0.5 && false), V.x + px * T - cx, V.y + py * T - cy, T, p, G.party[i].hp <= 0) });
+      ents.push({ y: py - i * 0.001, draw: () => this.drawChar(g, CHARS[G.party[i].id] ? G.party[i].id : 'hero', p.dir, p.t < 1, sx0 + px * T, sy0 + py * T, T, p, G.party[i].hp <= 0) });
+    }
+    for (const pr of this.props) if (vis(pr.x, pr.y)) ents.push({ y: pr.y + 0.02, draw: () => g.drawImage(pr.img, sx0 + pr.ox * k, sy0 + pr.oy * k, pr.img.width * k, pr.img.height * k) });
+    const L0 = this.leader();
+    for (const b of this.builds) {
+      const inside = this.inBuild(b, L0.x, L0.y) || (L0.t < 1 && this.inBuild(b, L0.fx, L0.fy) && this.inBuild(b, L0.x, L0.y));
+      b.alpha = clamp(b.alpha + (inside ? -1 : 1) * 0.12 * (window.__speed || 1), 0, 1);
+      if (b.alpha <= 0.01) continue;
+      ents.push({ y: b.key, draw: () => { g.globalAlpha = b.alpha; g.drawImage(b.img, sx0 + b.ox * k, sy0 + b.oy * k, b.img.width * k, b.img.height * k); g.globalAlpha = 1; } });
     }
     ents.sort((a, b) => a.y - b.y).forEach(e => e.draw());
-    // 迷宮的黑暗
-    if (this.def.dark) {
-      const p = this.leader(), lx = V.x + (lerp(p.fx, p.x, p.t) + 0.5) * T - cx, ly = V.y + (lerp(p.fy, p.y, p.t) + 0.5) * T - cy;
-      const r = T * (this.def.dark === 2 ? 4.2 : 5.5);
-      const gr = g.createRadialGradient(lx, ly, r * 0.35, lx, ly, r);
-      gr.addColorStop(0, 'rgba(6,4,14,0)'); gr.addColorStop(1, 'rgba(6,4,14,.82)');
-      g.fillStyle = gr; g.fillRect(V.x, V.y, V.w, V.h);
-    }
-    if (this.isWorld() && !F('nox')) { g.fillStyle = 'rgba(40,24,90,.13)'; g.fillRect(V.x, V.y, V.w, V.h); }
+    // 室內時把外面調暗
+    const inB = this.builds.find(b => b.alpha < 0.5);
+    if (inB) { const a = 0.5 * (1 - inB.alpha); g.fillStyle = `rgba(8,6,20,${a})`; const bx = sx0 + inB.x0 * T, by = sy0 + inB.y0 * T, bw = (inB.x1 - inB.x0 + 1) * T, bh = (inB.y1 - inB.y0 + 1) * T; g.fillRect(V.x, V.y, V.w, by - V.y); g.fillRect(V.x, by + bh, V.w, V.y + V.h - by - bh); g.fillRect(V.x, by, bx - V.x, bh); g.fillRect(bx + bw, by, V.x + V.w - bx - bw, bh); }
+    FieldFx.drawWorldFx(g, this, sx0, sy0, k, T);
+    // 環境光
+    const amb = this.ambient();
+    if (amb) { g.fillStyle = `rgba(${amb.col},${amb.a})`; g.fillRect(V.x, V.y, V.w, V.h); }
     if (Game.dawn !== undefined && this.id === 'maple') { const d = Game.dawn; g.fillStyle = `rgba(${Math.round(lerp(20, 255, d))},${Math.round(lerp(20, 170, d))},${Math.round(lerp(70, 80, d))},${lerp(0.55, 0.12, d)})`; g.fillRect(V.x, V.y, V.w, V.h); }
     if (this.def.tint) { g.fillStyle = this.def.tint; g.fillRect(V.x, V.y, V.w, V.h); }
+    FieldFx.drawLights(g, this, sx0, sy0, k, T, amb);
     g.restore();
     // 地名
     if (this.banner) {
       const b = this.banner, a = Math.min(1, b.t * 3, (2.6 - b.t) * 2), fs = L.FS;
       g.globalAlpha = Math.max(0, a);
-      g.font = `700 ${fs * 1.2}px ${FONT}`; const w = g.measureText(b.text).width + fs * 3, h = fs * 2.3;
-      const x = V.x + (V.w - w) / 2, y = V.y + fs * 1.2;
-      UI.win(g, x, y, w, h, { alpha: 0.8 }); UI.text(g, b.text, x + w / 2, y + h / 2, '#ffe9a8', fs * 1.2, 'center', 'middle', 700);
+      UI.banner(g, b.text, V.x + V.w / 2, V.y + fs * 2.4, fs);
       g.globalAlpha = 1;
     }
   },
+  walkPhase(o, t) { return t < 1 ? (((o.n || 0) & 1) * 2 + (t < 0.5 ? 1 : 2)) & 3 : 0; },
   drawChar(g, id, dir, walking, x, y, T, p, dead) {
+    if (LOOKS[id]) {
+      g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.ellipse(x + T / 2, y + T * 0.94, T * 0.32, T * 0.1, 0, 0, TAU); g.fill();
+      drawWalker(g, id, dir, this.walkPhase(p, p.t), x, y - T * 0.06, T, dead ? 0.45 : 1);
+      return;
+    }
     const sh = sheet(SPRITES[id] ? id : 'hero');
     const row = { down: 0, up: 1, left: 2, right: 3 }[dir] || 0;
     const step = Math.floor(this.t * 4) % 2;
@@ -356,6 +317,11 @@ const Field = {
       const bob = Math.sin(this.t * 3 + n.x) * T * 0.05;
       g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.ellipse(x + T / 2, y + T * 0.92, s * 0.3, s * 0.08, 0, 0, TAU); g.fill();
       g.drawImage(art.img, x + T / 2 - s / 2, y + T - s + bob, s, s);
+      return;
+    }
+    if (LOOKS[n.d.spr]) {
+      g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.ellipse(x + T / 2, y + T * 0.94, T * 0.32, T * 0.1, 0, 0, TAU); g.fill();
+      drawWalker(g, n.d.spr, n.dir, this.walkPhase(n, n.mv ? n.mv.t : 1), x, y - T * 0.06, T, LOOKS[n.d.spr].alpha || 1);
       return;
     }
     const sh = sheet(n.d.spr);
