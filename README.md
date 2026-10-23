@@ -21,7 +21,7 @@ MK 的瀏覽器遊戲合集，每個資料夾自成一體。線上遊玩：https
 | [夜市小吃王](https://littleland.mwstudio.workers.dev/shop/) | [`shop/`](shop/README.md) | 開羅風模擬經營：從夜市小攤車做到傳說夜市，夜市街景與燈光、會排隊端盤的像素小人、54 道台灣小吃、34 種擺設組合、員工特質、客人委託與節慶挑戰、分店／活動／秘方、傳承二代目、4 種模式、26 個成就、新手教學、三格自動存檔，支援觸控與滑鼠 |
 | [八音盒謎屋](https://littleland.mwstudio.workers.dev/escape/) | [`escape/`](escape/README.md) | 密室逃脫＋推理：10 間謎屋（8 章本篇＋2 章番外，四面牆、特寫、道具組合）、4 件推理事件（證詞矛盾、出示證物、比對鞋印）、重玩時謎題答案隨機、無提示挑戰模式與獎牌、隱藏音符與 14 個成就、每步三層提示、自動存檔，支援觸控與滑鼠 |
 | [深淵地牢](https://littleland.mwstudio.workers.dev/dungeon/) | [`dungeon/`](dungeon/README.md) | 回合制 Roguelike：17 層隨機地牢（5 個生態區、彩色動態光影）、5 職業、主角換裝外觀、22 種怪物＋精英怪＋5 頭目（登場演出、狂怒階段）、未鑑定道具、符文與共鳴、寶箱／祭壇／試煉、深淵等級 0–10、20 個成就、圖鑑、每日挑戰、靈魂石永久強化、永久死亡＋自動存檔，支援點擊移動與鍵盤 |
-| [曉鐘傳說](https://littleland.mwstudio.workers.dev/rpg/) | [`rpg/`](rpg/README.md) | 經典回合制 RPG（原創劇情）：逐像素繪製的大陸、會掀屋頂的城鎮、側面戰鬥與各法術特效、4 人隊伍、57 種怪物圖鑑、20 個成就、星之碎片收集、懸賞、賭場拉霸、通關後星之迴廊與 2 隻隱藏頭目、二周目、3 個記錄欄位、三種難度，支援觸控與鍵盤 |
+| [曉鐘傳說](https://littleland.mwstudio.workers.dev/rpg/) | [`rpg/`](rpg/README.md) | 經典回合制 RPG（原創劇情）：逐像素繪製的大陸與渡船、會掀屋頂的城鎮、側面戰鬥與各法術特效、劇情演出、4 人隊伍、57 種怪物圖鑑、24 個成就、星之碎片、懸賞、賭場、砂金城大鬥技場、秘傳之書、交換之旅、通關後星之迴廊與 2 隻隱藏頭目、二周目、3 個記錄欄位、三種難度，支援觸控與鍵盤 |
 | [捏臉工坊](https://k-mertin.github.io/littlethings/face/) | [`face/`](face/README.md) | 2D 捏臉：臉型、五官、髮型、瀏海、配件、衣服，即時預覽縮圖、隨機、復原、存檔、下載 PNG，支援手機 |
 | [寫實捏臉 3D](https://k-mertin.github.io/littlethings/face3d/) | [`face3d/`](face3d/README.md) | 寫實 3D 捏臉：MakeHuman CC0 人體、417 個變形滑桿、寫實皮膚、3D 髮型眉毛睫毛、表情、眼睛看游標，支援手機 |
 
