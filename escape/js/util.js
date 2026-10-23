@@ -6,16 +6,24 @@ const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmtTime = t => { t = Math.floor(t); const m = Math.floor(t / 60), s = t % 60; return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s; };
 const clone = o => JSON.parse(JSON.stringify(o));
+// 可重現的亂數（重玩時的謎題變化用）
+function makeRng(seed) { let a = (seed >>> 0) || 1; return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const rInt = (r, a, b) => a + Math.floor(r() * (b - a + 1));
+function shuffle(arr, r = Math.random) { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+const hv = (h, s) => typeof h === 'function' ? h(s) : h; // 提示可以是固定文字或依謎題變化的函式
 
 const Store = {
   KEY: 'mw-escape-v1',
-  data: { prog: {}, cases: {}, cur: null, memo: [], mute: false, seenIntro: false },
+  data: { prog: {}, cases: {}, cur: null, memo: [], mute: false, seenIntro: false, notes: {}, ach: {}, chal: {}, stat: {}, ver: 2 },
   load() {
     try {
       const d = JSON.parse(localStorage.getItem(this.KEY) || 'null');
       if (d && typeof d === 'object') Object.assign(this.data, d);
     } catch (e) { /* 無痕模式等情況：不存檔也能玩 */ }
-    this.data.prog = this.data.prog || {}; this.data.cases = this.data.cases || {}; this.data.memo = this.data.memo || [];
+    const D = this.data;
+    ['prog', 'cases', 'notes', 'ach', 'chal', 'stat'].forEach(k => { if (!D[k] || typeof D[k] !== 'object' || Array.isArray(D[k])) D[k] = {}; });
+    if (!Array.isArray(D.memo)) D.memo = [];
+    D.ver = 2;
   },
   save() { try { localStorage.setItem(this.KEY, JSON.stringify(this.data)); } catch (e) { } },
 };

@@ -12,6 +12,11 @@
     { pts: [[50, 12], [50, 50], [50, 86], [20, 44], [80, 48]], lines: [[0, 1], [1, 2], [3, 1], [1, 4]], dir: '西', el: 20 },
   ];
   const SUS = ['wang', 'li', 'mochi', 'gp'];
+  const DESC = ['有<b>七顆星</b>，排起來像一把<b>大杓子</b>', '有<b>五顆星</b>，排起來像一個歪歪的 <b>W</b> 字', '只有<b>三顆星</b>，排成一個<b>三角形</b>', '有<b>五顆星</b>，排成一個<b>十字</b>'];
+  const CNAME = ['北斗七星', 'W 字形的星座', '三角形的星座', '十字形的星座'];
+  const CANON = { t: 0 };
+  const V = s => (s && s.v) || CANON;
+  const TG = s => CONS[V(s).t];
 
   Object.assign(ITEMS, Object.fromEntries(Object.entries(PLAN).map(([k, [n, c]]) => [k, { n: n + '球', d: `${c === '#a8a8b0' ? '灰色' : c === '#f2c232' ? '黃色' : '紅色'}的小球，底下寫著「${n}」。看起來是太陽系模型的零件。`, ic: () => IC.ball(c) }])));
   Object.assign(ITEMS, {
@@ -20,7 +25,7 @@
   });
 
   const telescope = (x, y, sc, s) => `<g transform="translate(${x} ${y}) scale(${sc})">${A.sh(0, 0, 110, 14)}<path d="M0-120L-80 0M0-120L80 0M0-120V0" stroke="#5a3a24" stroke-width="10" stroke-linecap="round"/><g transform="rotate(${s.aimed ? -40 : -25} 0 -130)"><rect x="-150" y="-152" width="300" height="44" rx="18" fill="url(#brass)" ${SW}/><rect x="110" y="-160" width="60" height="60" rx="12" fill="#c9a14a" ${SW}/><circle cx="170" cy="-130" r="22" fill="${s.lensOn ? '#cfeaf2' : '#3b2a1f'}" ${SW2}/><rect x="-170" y="-142" width="30" height="24" rx="6" fill="#a8742a" ${SW2}/><path d="M-100-152v44M40-152v44" stroke="#a8742a" stroke-width="4"/></g><circle cx="0" cy="-130" r="14" fill="#5a3a24" ${SW2}/></g>`;
-  const dome = s => `<path d="M0 0H1000V200Q500 -60 0 200z" fill="#1f2a50"/><path d="M380 30Q500 -10 620 30V250H380z" fill="${s.aimed ? 'url(#skyNight)' : '#4a5a8a'}" ${SW}/>` + (s.aimed ? [...Array(14)].map((_, i) => `<circle cx="${392 + (i * 53) % 220}" cy="${50 + (i * 37) % 190}" r="${1.5 + (i % 3)}" fill="#fff8d0"/>`).join('') + CONS[0].pts.map(([a, b]) => `<circle cx="${420 + a * 1.6}" cy="${80 + b * 1.6}" r="11" fill="#fff6b0" opacity=".3"/><circle cx="${420 + a * 1.6}" cy="${80 + b * 1.6}" r="5" fill="#fff6b0"/>`).join('') : `<path d="M500 20V250M380 140H620" stroke="#2f3a6a" stroke-width="6"/>${A.txt(500, 150, '天窗', 22, '#c9d4ee')}`);
+  const dome = s => `<path d="M0 0H1000V200Q500 -60 0 200z" fill="#1f2a50"/><path d="M380 30Q500 -10 620 30V250H380z" fill="${s.aimed ? 'url(#skyNight)' : '#4a5a8a'}" ${SW}/>` + (s.aimed ? [...Array(14)].map((_, i) => `<circle cx="${392 + (i * 53) % 220}" cy="${50 + (i * 37) % 190}" r="${1.5 + (i % 3)}" fill="#fff8d0"/>`).join('') + TG(s).pts.map(([a, b]) => `<circle cx="${420 + a * 1.6}" cy="${80 + b * 1.6}" r="11" fill="#fff6b0" opacity=".3"/><circle cx="${420 + a * 1.6}" cy="${80 + b * 1.6}" r="5" fill="#fff6b0"/>`).join('') : `<path d="M500 20V250M380 140H620" stroke="#2f3a6a" stroke-width="6"/>${A.txt(500, 150, '天窗', 22, '#c9d4ee')}`);
   const orrery = (x, y, sc, s, big) => {
     let o = `<g transform="translate(${x} ${y}) scale(${sc})">${A.sh(0, 120, 200, 20)}<path d="M-80 120h160l-30-60h-100z" fill="#7a4a2a" ${SW}/><rect x="-50" y="70" width="100" height="40" rx="6" fill="${s.orreryOk ? '#2a1a10' : '#a8703f'}" ${SW2}/>${s.orreryOk && !s.lensTaken ? `<g transform="translate(-24 64) scale(.5)">${ITEMS.lens.ic()}</g>` : ''}<path d="M0 60V0" stroke="#c9a14a" stroke-width="8"/>`;
     [1, 2, 3, 4].forEach(r => { o += `<ellipse cx="0" cy="0" rx="${r * 52}" ry="${r * 18}" fill="none" stroke="#d9b56a" stroke-width="3" opacity=".8"/>`; });
@@ -54,6 +59,10 @@
   ROOMS.push({
     id: 'r8', no: 8, name: '星空閣樓', en: 'THE STARRY ATTIC', mood: 'night', par: 720, walls: ['n', 'e', 's', 'w'],
     init: () => ({ orb: {}, boxG: [0, 0, 0, 0, 0, 0, 0, 0] }),
+    canon: CANON,
+    vary: r => ({ t: rInt(r, 1, 3) }),
+    note: { v: 'e', x: 600, y: 118, s: 0.9 },
+    amb: v => ['n', 'e', 's', 'w'].includes(v) ? [[60, 90], [250, 60], [700, 150], [930, 80], [880, 260], [130, 300], [610, 330]].map(([x, y]) => { A.twinkle(x, y, 3); return ''; }).join('') : '',
     prep: C => { if (!C.s.prepped) { C.s.prepped = 1; C.give('pouch', true); } ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8'].forEach(id => G.memoAdd(id, true)); },
     intro: [
       '旋轉樓梯的盡頭，是一間圓圓的閣樓。圓頂上有一扇天窗，房間中央架著一座黃銅望遠鏡。',
@@ -75,14 +84,14 @@
       { w: 'mochi', t: '喵～！', sfx: 'meow' },
       '大八音盒叮叮咚咚唱起了生日快樂歌。天窗外，北斗七星在夜空裡閃閃發亮。',
       { big: 1, t: '～ 全劇終 ～' },
-      '謝謝你玩到最後！「小鎮推理事件簿」裡還有三件怪事在等著你喔。',
+      '謝謝你玩到這裡！不過……爺爺說，地下室好像還藏著一個祕密。「番外篇」和「小鎮推理事件簿」都在等你喔。',
     ],
     views: {
       n: {
         draw: s => A.wall(WALL) + dome(s) + `<g filter="url(#ds)">${telescope(500, 480, 1.1, s)}</g>` + (s.aimed ? `<path d="M420 250L200 620H560L600 250z" fill="url(#beam)" opacity=".6"/>` : '') +
           `<g filter="url(#ds)"><rect x="790" y="390" width="90" height="90" rx="8" fill="#a8703f" ${SW}/></g>` + (s.has_mercury ? '' : `<g transform="translate(800 330) scale(.7)">${ITEMS.mercury.ic()}</g>`) + A.light(),
         hot: s => {
-          const h = [{ id: 'scope', r: [300, 260, 420, 230], on: C => { if (s.aimed) { G.toast('望遠鏡對準了北斗七星。'); return; } if (!s.lensOn) { G.toast('望遠鏡前端的鏡片不見了，什麼都看不到。'); return; } W.wheels(C, { id: 'scope', title: '調整望遠鏡', sub: '轉動底座的兩個刻度盤，把望遠鏡對準想看的星座。', okText: '看看', wheels: [{ label: '方位', vals: DIRS, kind: 'txt' }, { label: '仰角', vals: [10, 20, 30, 40, 50, 60, 70, 80].map(v => v + '°'), kind: 'sm' }], check: (i, v) => v[0] === '北' && v[1] === '40°', failMsg: '望遠鏡裡只看到一片星星，不是爺爺說的那個星座。', okMsg: '看到了！七顆星的大杓子！', ok: C => { s.aimed = 1; C.give('g8', true); Snd.play('light'); G.dlg(['望遠鏡裡，七顆星星排成一把大杓子──是北斗七星！', { t: '「喀啦喀啦」，圓頂的天窗緩緩打開，星光灑進閣樓，照亮了西邊角落那個蓋著布的大東西。', sfx: 'open' }, { t: '望遠鏡的鏡筒裡，滑出了最後一枚「<b>音符齒輪 Ⅷ</b>」！', sfx: 'pick' }], () => C.render()); } }); }, use: { lens: C => { C.take('lens'); s.lensOn = 1; Snd.play('click'); G.toast('把鏡片裝回望遠鏡前端。現在看得清楚了！'); } } }];
+          const h = [{ id: 'scope', r: [300, 260, 420, 230], on: C => { if (s.aimed) { G.toast('望遠鏡對準了北斗七星。'); return; } if (!s.lensOn) { G.toast('望遠鏡前端的鏡片不見了，什麼都看不到。'); return; } W.wheels(C, { id: 'scope', title: '調整望遠鏡', sub: '轉動底座的兩個刻度盤，把望遠鏡對準想看的星座。', okText: '看看', wheels: [{ label: '方位', vals: DIRS, kind: 'txt' }, { label: '仰角', vals: [10, 20, 30, 40, 50, 60, 70, 80].map(v => v + '°'), kind: 'sm' }], check: (i, v) => v[0] === TG(s).dir && v[1] === TG(s).el + '°', failMsg: '望遠鏡裡只看到一片星星，不是爺爺說的那個星座。', okMsg: '看到了！就是爺爺最喜歡的星座！', ok: C => { s.aimed = 1; C.give('g8', true); Snd.play('light'); G.dlg([`望遠鏡裡，找到了爺爺日記裡寫的星座──${CNAME[V(s).t]}！`, { t: '「喀啦喀啦」，圓頂的天窗緩緩打開，星光灑進閣樓，照亮了西邊角落那個蓋著布的大東西。', sfx: 'open' }, { t: '望遠鏡的鏡筒裡，滑出了最後一枚「<b>音符齒輪 Ⅷ</b>」！', sfx: 'pick' }], () => C.render()); } }); }, use: { lens: C => { C.take('lens'); s.lensOn = 1; Snd.play('click'); G.toast('把鏡片裝回望遠鏡前端。現在看得清楚了！'); } } }];
           if (!s.has_mercury) h.push({ id: 'mercury', r: [790, 320, 90, 90], on: C => { s.has_mercury = 1; C.give('mercury'); } });
           h.push({ id: 'dome', r: [380, 30, 240, 210], t: s.aimed ? '天窗打開了，滿天星斗。' : '圓頂上的天窗關著。' });
           return h;
@@ -93,7 +102,7 @@
         hot: s => {
           const h = [
             { id: 'chart', r: [70, 70, 480, 320], go: 'chart' },
-            { id: 'diary', r: [640, 320, 150, 70], on: () => { s.readDiary = 1; G.read('爺爺的觀星日記', '我最喜歡的星座，有<b>七顆星</b>，排起來像一把<b>大杓子</b>。\n小時候，我的爺爺也是這樣抱著我，一起找它。\n\n孩子，用望遠鏡找到它吧。\n星光會告訴你最後一枚齒輪在哪裡。', 'green'); } },
+            { id: 'diary', r: [640, 320, 150, 70], on: () => { s.readDiary = 1; G.read('爺爺的觀星日記', `我最喜歡的星座，${DESC[V(s).t]}。\n小時候，我的爺爺也是這樣抱著我，一起找它。\n\n孩子，用望遠鏡找到它吧。\n星光會告訴你最後一枚齒輪在哪裡。`, 'green'); } },
           ];
           if (!s.has_venus) h.push({ id: 'venus', r: [770, 300, 80, 80], on: C => { s.has_venus = 1; C.give('venus'); } });
           return h;
@@ -137,7 +146,7 @@
       { goal: '找齊三顆行星球', done: s => s.has_mercury && s.has_venus && s.has_mars, h: ['閣樓裡散落著幾顆彩色的小球。', '北邊木箱上、東邊桌上、西邊帽盒上各有一顆。', '灰色水星在北邊、黃色金星在東邊桌上、紅色火星在西邊帽盒上。'] },
       { goal: '把太陽系模型排好', done: s => s.orreryOk, h: ['南邊的太陽系模型缺了三顆行星，牆上有海報。', '海報說離太陽由近到遠是水星、金星、地球、火星。地球已經在第 3 圈。', '第 1 圈放水星（灰）、第 2 圈放金星（黃）、第 4 圈放火星（紅）。'] },
       { goal: '修好望遠鏡', done: s => s.lensOn, h: ['太陽系模型的底座打開了。', '點底座的小抽屜拿到鏡片。', '拿望遠鏡鏡片點北邊的望遠鏡。'] },
-      { goal: '用望遠鏡找到爺爺最喜歡的星座', done: s => s.aimed, h: ['東邊桌上有爺爺的觀星日記，牆上有星空觀測表。', '日記說那個星座有七顆星，像一把大杓子。在觀測表上找出七顆星的那一個。', '把望遠鏡轉到方位「北」、仰角「40°」。'] },
+      { goal: '用望遠鏡找到爺爺最喜歡的星座', done: s => s.aimed, h: ['東邊桌上有爺爺的觀星日記，牆上有星空觀測表。', s => `日記說那個星座${DESC[V(s).t].replace(/<\/?b>/g, '')}。在觀測表上找出形狀一樣的那一個。`, s => `把望遠鏡轉到方位「${TG(s).dir}」、仰角「${TG(s).el}°」。`] },
       { goal: '把八枚齒輪裝進八音盒', done: s => s.boxG.every(Boolean), h: ['天窗打開後，西邊角落的大八音盒露出來了。', '拿齒輪袋點八音盒，再拿齒輪 Ⅷ 點八音盒。', '齒輪袋和音符齒輪 Ⅷ 都要用在西邊的八音盒上。'] },
       { goal: '轉動八音盒', done: s => s.played, h: ['八音盒旁邊有一個紅色的搖桿。', '八枚齒輪都裝好了，點一下八音盒試試看。', '點西邊的八音盒，轉動搖桿讓它唱歌。'] },
       { goal: '說出 X 的真面目', done: s => s.solved, h: ['打開右上角的手帳，看看關於 X 的線索。X 的字條是用什麼寫的？', '手帳裡有一條線索說，那種墨水全世界只有一個人有。', 'X 就是鐘爺爺。出示「綠墨水鋼筆」那條線索。'] },

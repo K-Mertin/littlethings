@@ -11,7 +11,7 @@ function CaseCtrl(def, resume) {
   C.newI = C.newI || {};
   const stage = () => D.stages[C.st];
 
-  C.save = () => { Store.data.cur = { kind: 'case', id: D.id, st: C.st, ev: C.ev, line: C.line, hearts: C.hearts, time: C.time, hl: C.hl, hc: C.hc, miss: C.miss, s: C.s, newI: C.newI }; Store.save(); };
+  C.save = () => { if (C.fin) return; Store.data.cur = { kind: 'case', id: D.id, st: C.st, ev: C.ev, line: C.line, hearts: C.hearts, time: C.time, hl: C.hl, hc: C.hc, miss: C.miss, s: C.s, newI: C.newI }; Store.save(); };
   C.has = id => C.ev.includes(id);
   C.addEv = (id, quiet) => { if (C.has(id)) return; C.ev.push(id); C.newI[id] = 1; if (!quiet) { Snd.play('pick'); G.toast(`證物「<b>${D.ev[id].n}</b>」記進了證物簿。`); } };
   C.begin = () => G.dlg(D.intro, () => { C.enterStage(); });
@@ -21,6 +21,7 @@ function CaseCtrl(def, resume) {
     if (S.type === 'test') { Music.set('tense'); G.dlg([{ big: 1, t: '〜 證詞 〜' }, { t: `<b>${S.title}</b>\n找出證詞和證物互相矛盾的地方，選好證物後按「出示證物」。\n不確定的時候，可以按「追問」多問一點。` }], () => C.render()); }
     else Music.set('case');
     if (S.type === 'grid') setTimeout(() => C.openGrid(), 300);
+    if (S.type === 'pick') setTimeout(() => C.openPick(), 300);
     if (S.type === 'accuse') setTimeout(() => C.openAccuse(), 300);
   };
   C.next = () => { C.st++; if (C.st >= D.stages.length) { C.finish(); return; } C.enterStage(); };
@@ -40,7 +41,8 @@ function CaseCtrl(def, resume) {
     if (S.type === 'inv') {
       const got = S.need.filter(C.has).length;
       $('#invTip').textContent = `已找到 ${got} / ${S.need.length}`;
-      G.paint(D.scene.draw(C.s, C), D.scene.hot.map(h => Object.assign({}, h)));
+      const hs = D.scene.hot.map(h => Object.assign({}, h));
+      G.paint(D.scene.draw(C.s, C) + (D.scene.marks ? D.scene.marks(C) : C.marks()), hs);
       $('#tActs').hidden = true; $('#invInfo').hidden = false;
       $('#heldName').innerHTML = it ? `「<b>${esc(it.n)}</b>」：${it.d}` : '點現場的東西和人調查。找到的證物會記在這裡。';
       $('#bInspect').hidden = true;
@@ -48,15 +50,25 @@ function CaseCtrl(def, resume) {
       $('#invTip').textContent = '';
       if (S.type === 'test') {
         const L = S.lines[C.line];
-        let svg = D.scene.draw(C.s, C) + `<rect width="1000" height="625" fill="#1a1020" opacity=".62"/>` + `<svg x="330" y="50" width="340" height="408" viewBox="0 0 200 240">${Face.body(PEOPLE[S.who], C.s.face || 'n')}</svg>`;
-        svg += `<rect x="40" y="30" width="250" height="44" rx="22" fill="#c4502c" ${SW}/>` + A.txt(165, 60, '證詞 ' + (C.line + 1) + ' / ' + S.lines.length, 20, '#fff3dc', 'middle', 900);
-        svg += `<rect x="40" y="452" width="920" height="150" rx="18" fill="#fffaf0" stroke="#7a5638" stroke-width="5"/><rect x="60" y="432" width="${PEOPLE[S.who].n.length * 26 + 40}" height="40" rx="20" fill="#7a5638"/>` + A.txt(80, 460, PEOPLE[S.who].n, 22, '#fff3dc', 'start', 900);
-        wrapText('「' + L.t + '」', 30).forEach((ln, i) => svg += A.txt(80, 512 + i * 40, esc(ln), 28, '#2f7d4f', 'start', 700));
-        G.paint(svg, [{ id: 'stmt', r: [40, 452, 920, 150], on: () => C.press() }]);
+        A.flush();
+        const bg = D.scene.draw(C.s, C); A.flush();
+        let svg = bg + `<rect width="1000" height="625" fill="#140a18" opacity=".66"/><ellipse cx="500" cy="300" rx="300" ry="260" fill="url(#spot)" opacity=".9"/>`;
+        let rays = ''; for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2; rays += `M500 260L${500 + Math.cos(a) * 700} ${260 + Math.sin(a) * 700}L${500 + Math.cos(a + 0.09) * 700} ${260 + Math.sin(a + 0.09) * 700}z`; }
+        svg += `<path d="${rays}" fill="#fff0d0" opacity=".05"/>`;
+        A.fx(`<g class="idle" style="${A.ad(4)}"><svg x="330" y="44" width="340" height="408" viewBox="0 0 200 240">${Face.body(PEOPLE[S.who], C.s.face || 'n', true)}</svg></g>`);
+        // 直向手機只看得到中間一段，證詞框就縮到看得到的範圍
+        const vis = G.panMax ? Math.round(1000 * G.sw / G.vw) : 1000, X0 = 500 - vis / 2 + 14, BW = vis - 28;
+        const narrow = vis < 900, fs = narrow ? 30 : 28, per = Math.floor((BW - 70) / fs), lines = wrapText('「' + L.t + '」', per), BH = Math.max(150, lines.length * (fs + 10) + 66), BY = 616 - BH;
+        svg += `<rect x="${X0}" y="26" width="${narrow ? 200 : 270}" height="48" rx="24" fill="#c4502c" ${SW}/><rect x="${X0}" y="26" width="${narrow ? 200 : 270}" height="48" rx="24" fill="url(#bevel)"/>` + A.txt(X0 + (narrow ? 100 : 135), 58, (narrow ? '' : '〜 ') + '證詞 ' + (C.line + 1) + ' / ' + S.lines.length + (narrow ? '' : ' 〜'), 20, '#fff3dc', 'middle', 900);
+        if (!narrow) svg += `<rect x="726" y="30" width="234" height="40" rx="20" fill="#1e1026" opacity=".7"/>` + A.txt(843, 57, esc(S.title.split('：')[1] || ''), 17, '#f2c46b', 'middle', 700);
+        svg += `<rect x="${X0 + 4}" y="${BY + 6}" width="${BW}" height="${BH}" rx="18" fill="#1e0d04" opacity=".35"/><rect x="${X0}" y="${BY}" width="${BW}" height="${BH}" rx="18" fill="#fffaf0" stroke="#7a5638" stroke-width="5"/><rect x="${X0 + 8}" y="${BY + 8}" width="${BW - 16}" height="${BH - 16}" rx="13" fill="none" stroke="#7a5638" stroke-opacity=".25" stroke-width="2"/><rect x="${X0 + 20}" y="${BY - 20}" width="${PEOPLE[S.who].n.length * 26 + 40}" height="40" rx="20" fill="#7a5638"/>` + A.txt(X0 + 40, BY + 8, PEOPLE[S.who].n, 22, '#fff3dc', 'start', 900);
+        lines.forEach((ln, i) => svg += A.txt(X0 + 40, BY + 60 + i * (fs + 10), esc(ln), fs, '#2f7d4f', 'start', 700));
+        svg += `<g opacity=".8">${S.lines.map((_, i) => `<circle cx="${X0 + BW - 30 - (S.lines.length - 1 - i) * 22}" cy="${BY + BH - 18}" r="6" fill="${i === C.line ? '#c4502c' : '#e4d2b0'}"/>`).join('')}</g>`;
+        G.paint(svg, [{ id: 'stmt', r: [X0, BY, BW, BH], on: () => C.press() }]);
         $('#tActs').hidden = false;
         $('#bPrev').disabled = C.line === 0; $('#bNext').textContent = C.line === S.lines.length - 1 ? '從頭 ↺' : '下一句 ›';
       } else {
-        G.paint(D.scene.draw(C.s, C) + `<rect width="1000" height="625" fill="#1a1020" opacity=".45"/>` + A.txt(500, 300, S.type === 'grid' ? '整理大家的行蹤……' : '真相只有一個……', 40, '#fff3dc', 'middle', 900) , [{ id: 'reopen', r: [0, 0, 1000, 625], on: () => S.type === 'grid' ? C.openGrid() : C.openAccuse() }]);
+        G.paint(D.scene.draw(C.s, C) + `<rect width="1000" height="625" fill="#1a1020" opacity=".45"/>` + A.txt(500, 300, S.type === 'grid' ? '整理大家的行蹤……' : S.type === 'pick' ? '仔細比對看看……' : '真相只有一個……', 40, '#fff3dc', 'middle', 900) , [{ id: 'reopen', r: [0, 0, 1000, 625], on: () => S.type === 'grid' ? C.openGrid() : S.type === 'pick' ? C.openPick() : C.openAccuse() }]);
         $('#tActs').hidden = true;
       }
       $('#invInfo').hidden = false;
@@ -67,6 +79,8 @@ function CaseCtrl(def, resume) {
     document.body.classList.remove('held');
   };
   C.nav = () => { };
+  // 已調查過的證物位置打個小勾
+  C.marks = () => D.scene.hot.filter(h => h.ev && C.has(h.ev)).map(h => { const x = h.c ? h.c[0] + h.c[2] * 0.6 : h.r[0] + h.r[2] - 8, y = h.c ? h.c[1] - h.c[2] * 0.6 : h.r[1] + 8; return `<g transform="translate(${x} ${y})"><circle r="13" fill="#2f7d4f" stroke="#fff" stroke-width="3"/><path d="M-6 0l4 4 7-8" stroke="#fff" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>`; }).join('');
   C.hit = h => {
     if (h.ev) {
       if (!C.has(h.ev)) { C.addEv(h.ev, true); Snd.play('pick'); G.dlg([{ t: h.t + `\n<span class="g">▶ 證物「${D.ev[h.ev].n}」記進了證物簿。</span>` }], () => C.checkInv()); }
@@ -92,23 +106,30 @@ function CaseCtrl(def, resume) {
   C.press = () => {
     const S = stage(); if (S.type !== 'test') return;
     const L = S.lines[C.line];
-    Snd.play('objection');
-    G.dlg([{ big: 1, t: '請等一下！' }, ...(L.press || [{ w: S.who, t: '「……就是這樣，沒什麼好說的。」' }])], () => { if (L.pressFx) L.pressFx(C); C.render(); });
+    G.dlg([{ bang: '請等一下！', kind: 'blue' }, ...(L.press || [{ w: S.who, t: '「……就是這樣，沒什麼好說的。」' }])], () => { if (L.pressFx) L.pressFx(C); C.render(); }, { stage: C.stageFn });
   };
   C.present = () => {
     const S = stage(); if (S.type !== 'test') return;
     if (!G.held) { G.toast('先在下方的證物簿點一個證物，再按「出示證物」。'); return; }
     const ev = G.held; G.held = null;
     if (C.line === S.hit[0] && ev === S.hit[1]) {
-      Snd.play('objection'); C.s.face = 's';
-      G.dlg([{ big: 1, t: '矛盾！' }, ...S.win], () => { C.s.face = 'n'; C.hearts = Math.min(5, C.hearts + 1); C.next(); });
+      C.s.face = 's';
+      G.dlg([{ bang: '矛盾！' }, ...S.win], () => { C.s.face = 'n'; C.hearts = Math.min(5, C.hearts + 1); C.next(); }, { stage: C.stageFn });
     } else {
-      C.miss++; C.hearts--; Snd.play('hurt');
+      C.miss++; C.hearts--; Snd.play('hurt'); C.s.face = 't';
+      document.body.classList.remove('shake'); void document.body.offsetWidth; document.body.classList.add('shake'); setTimeout(() => document.body.classList.remove('shake'), 500);
       const bad = [{ w: S.who, e: 'a', t: S.wrong || '「這個東西，跟我剛剛說的話有什麼關係？」' }, `出示「${D.ev[ev].n}」好像不對……`];
       if (C.hearts <= 0) { C.hearts = 5; C.line = 0; bad.push('信用用光了！整理一下思緒，從頭再聽一次證詞吧。'); }
-      G.dlg(bad, () => C.render());
+      G.dlg(bad, () => C.render(), { stage: C.stageFn });
     }
     C.save();
+  };
+  // 證詞階段：證人說話時，直接換場景裡的大頭像表情，不另外跳出頭像
+  C.stageFn = (w, e) => {
+    const S = stage(); if (!S || S.type !== 'test') return false;
+    if (w === S.who) { C.s.face = e; C.render(); return true; }
+    if (w === null) { C.s.face = 'n'; }
+    return false;
   };
   // 指認
   C.openAccuse = () => {
@@ -122,9 +143,19 @@ function CaseCtrl(def, resume) {
       b2.onclick = e2 => {
         const c = e2.target.closest('[data-e]'); if (!c) return;
         if (c.dataset.e !== S.ev) { C.miss++; W.fail(b2, '這個證物還不夠決定性……'); return; }
-        $('#modal').hidden = true; G.onClose = null; Snd.play('objection');
-        G.dlg([{ big: 1, t: '真相大白！' }, ...S.win], () => C.next());
+        $('#modal').hidden = true; G.onClose = null;
+        G.dlg([{ bang: '真相大白！', kind: 'gold' }, ...S.win], () => C.next());
       };
+    };
+  };
+  // 比對（例如鞋印）：從幾張圖裡選出對的那一個
+  C.openPick = () => {
+    const S = stage();
+    const body = G.modal(`<h3>${S.title}</h3><p class="sub">${S.sub}</p>${S.ref ? `<div class="pickRef">${S.ref}</div>` : ''}<div class="choices pick4">${S.opts.map(o => `<button class="choice" data-k="${o.id}">${o.html}<span>${o.n}</span></button>`).join('')}</div><p class="msg"></p>`, { w: 640 });
+    body.onclick = e => {
+      const b = e.target.closest('[data-k]'); if (!b) return;
+      if (b.dataset.k !== S.ans) { C.miss++; W.fail(body, S.wrongMsg || '好像不一樣，再仔細比比看。'); return; }
+      W.success(C, body, S.okMsg || '找到了！', () => { C.addEv(S.give, true); G.dlg(S.win, () => C.next(), { stage: C.stageFn }); }, 900);
     };
   };
   // 推理表格（只有第 3 件用到）
@@ -162,6 +193,9 @@ function CaseCtrl(def, resume) {
     const stars = starsFor(C.time, C.hc, D.par, C.miss);
     Store.data.cases[D.id] = { done: true, stars: Math.max(p.stars || 0, stars), time: p.time ? Math.min(p.time, C.time) : C.time, hints: p.done ? Math.min(p.hints, C.hc) : C.hc };
     Store.data.cur = null; Store.save();
+    if (C.miss === 0) G.ach('perfectCase');
+    if (C.hc === 0) G.ach('nohint');
+    G.checkMeta();
     Snd.play('fanfare');
     G.dlg(D.outro || [], () => Main.showClear({ kind: 'case', def: D, stars, time: C.time, hints: C.hc, miss: C.miss }));
   };
