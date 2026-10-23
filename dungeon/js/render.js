@@ -399,10 +399,16 @@ const Render = {
   },
   lighting(F, x0, y0, x1, y1, ox, oy, t) {
     const vw = x1 - x0 + 1, vh = y1 - y0 + 1, TS = this.TS;
-    if (!this.lm || this.lm.width !== vw || this.lm.height !== vh) {
+    // 低畫質：光照遮罩每格 4 像素、隔一幀才重算一次（中間那幀直接沿用上一張）
+    const LSq = this.q >= 2 ? 4 : this.LS;
+    if (this.q >= 2 && this.lm4 && this.lm4.width === vw * LSq && this.lm4.height === vh * LSq && this._lx0 === x0 && this._ly0 === y0 && (this._lf = (this._lf | 0) + 1) % 2) {
+      ctx.imageSmoothingEnabled = false; ctx.drawImage(this.lm4, Math.round(ox + x0 * TS), Math.round(oy + y0 * TS), vw * TS, vh * TS); return;
+    }
+    this._lx0 = x0; this._ly0 = y0;
+    if (!this.lm || this.lm.width !== vw || this.lm.height !== vh || this.lm4.width !== vw * LSq) {
       // 光照遮罩都放在 CPU 端的小畫布（willReadFrequently），在小畫布上先平滑放大，最後用最近鄰貼到畫面（像素風的階梯光影，手機上也很省）
       this.lm = document.createElement('canvas'); this.lm.width = vw; this.lm.height = vh; this.lmx = this.lm.getContext('2d', { willReadFrequently: true }); this.lmd = this.lmx.createImageData(vw, vh); this.lit = new Float32Array(vw * vh);
-      this.lm4 = document.createElement('canvas'); this.lm4.width = vw * this.LS; this.lm4.height = vh * this.LS; this.lm4x = this.lm4.getContext('2d', { willReadFrequently: true });
+      this.lm4 = document.createElement('canvas'); this.lm4.width = vw * LSq; this.lm4.height = vh * LSq; this.lm4x = this.lm4.getContext('2d', { willReadFrequently: true });
     }
     const d = this.lmd.data, P = G.P, R = Game.stats().sight + 1, vis = G.vis, lit = this.lit;
     const dark = F.biome === 1 || F.biome === 4 ? 0.66 : 0.58;
@@ -454,7 +460,7 @@ const Render = {
     }
     this.lmx.putImageData(this.lmd, 0, 0);
     // 1) 暗部遮罩在 CPU 小畫布上平滑放大成每格 4×4
-    const LS = this.LS, W4 = vw * LS, H4 = vh * LS, l4 = this.lm4x;
+    const LS = LSq, W4 = vw * LS, H4 = vh * LS, l4 = this.lm4x;
     l4.globalCompositeOperation = 'copy'; l4.imageSmoothingEnabled = true; l4.drawImage(this.lm, 0, 0, W4, H4); l4.globalCompositeOperation = 'source-over';
     // 2) 有顏色的光疊在同樣大小的小畫布上
     if (!this.cl || this.cl.width !== W4 || this.cl.height !== H4) { this.cl = document.createElement('canvas'); this.cl.width = W4; this.cl.height = H4; this.clx = this.cl.getContext('2d', { willReadFrequently: true }); }

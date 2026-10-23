@@ -82,6 +82,14 @@ const Bot = {
     const sc = P.inv.find(o => o.c === 'scroll' && (!G.known[o.k] || ['s_ew', 's_ea', 's_uncurse', 's_map', 's_charge'].includes(o.k)));
     if (sc) return Game.read(sc);
     if (hpF < 0.6) return Game.rest();
+    // 商店：食物不夠時買乾糧／蘋果
+    if (F.shop && P.inv.filter(o => o.c === 'food').reduce((n, o) => n + o.n, 0) < 2) {
+      const fo = F.items.find(o => o.it.price && o.it.c === 'food' && o.it.price <= P.gold && F.seen[o.y * F.w + o.x]);
+      if (fo) {
+        if (P.x === fo.x && P.y === fo.y) { const r = Game.pickup(true); if (r.ok) return true; }
+        else { const p = FOV.path(F, P.x, P.y, fo.x, fo.y, (x, y, g) => g || Game.knownPass(x, y) && !(Game.monAt(x, y) && MON[Game.monAt(x, y).k].talk)); if (p && p.length) return Game.move(p[0][0] - P.x, p[0][1] - P.y, { auto: 1 }); }
+      }
+    }
     // 寶箱
     const ch = Game.adjChest(); if (ch) return Game.move(ch.x - P.x, ch.y - P.y);
     // 探索
