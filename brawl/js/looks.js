@@ -144,3 +144,31 @@ const LOOK2 = {
   bobo: { pack: '#3fa9ff', goggles: '#bff0ff', stripe: '#5fd0ff' }
 };
 for (const id in LOOK2) if (CHARS[id]) Object.assign(CHARS[id].look, LOOK2[id]);
+
+/* ------------------------------ line weight ------------------------------
+   Character outlines: LINE_K scales every ink line drawn on a fighter, LINE_COL
+   draws them in a darker shade of the colour they outline instead of near-black
+   (softer, less "thick frame"). Done by wrapping stroke() while a fighter is drawn. */
+let LINE_K = 0.85, LINE_COL = true, LINE_DK = 0.3;          // 2026-10-24: option E — lines a bit darker than the colour beside them
+const LINE_SH = new Map(); const lineCol = fs => { let v = LINE_SH.get(fs + LINE_DK); if (!v) { v = shade(fs, -LINE_DK); LINE_SH.set(fs + LINE_DK, v); } return v; };
+const INK_N = '#1c1a2e';
+function withLines(c, fn) {
+  if ((LINE_K === 1 && !LINE_COL) || c.__lines) return fn();
+  const st = c.stroke, sr = c.strokeRect; c.__lines = true;
+  const wrap = orig => function (...a) {
+    if (this.strokeStyle !== INK_N || this.__face) return orig.apply(this, a);
+    const lw = this.lineWidth; this.lineWidth = lw * LINE_K;
+    if (LINE_COL) { const fs = this.fillStyle; this.strokeStyle = typeof fs === 'string' && fs[0] === '#' && fs !== INK_N ? lineCol(fs) : '#3a3350'; }
+    orig.apply(this, a); this.lineWidth = lw; this.strokeStyle = INK_N;
+  };
+  c.stroke = wrap(st); c.strokeRect = wrap(sr);
+  try { return fn(); } finally { delete c.stroke; delete c.strokeRect; c.__lines = false; }
+}
+/* eyes, brows and mouth keep their dark ink so faces stay crisp */
+const _drawFaceL = drawFace;
+drawFace = function (c, L, P) { c.__face = true; try { return _drawFaceL(c, L, P); } finally { c.__face = false; } };
+const _drawBodyL = drawBody;
+drawBody = function (c, L, P, f) { return withLines(c, () => _drawBodyL(c, L, P, f)); };
+const _drawPortraitL = drawPortrait;
+drawPortrait = function (c, ...a) { return withLines(c, () => _drawPortraitL(c, ...a)); };
+for (const k in DRAWERS) { const d = DRAWERS[k]; DRAWERS[k] = (c, f) => withLines(c, () => d(c, f)); }

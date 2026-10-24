@@ -10,6 +10,7 @@ function shade(hex, k) {
   return '#' + ((1 << 24) | (f(r) << 16) | (f(g) << 8) | f(b)).toString(16).slice(1);
 }
 function seg(c, pts, w, col) {
+  c.fillStyle = col;
   c.beginPath(); c.moveTo(pts[0].x, pts[0].y); for (let i = 1; i < pts.length; i++) c.lineTo(pts[i].x, pts[i].y);
   c.strokeStyle = INK; c.lineWidth = w + 3.6; c.stroke();
   c.strokeStyle = col; c.lineWidth = w; c.stroke();
@@ -361,7 +362,7 @@ function drawBody(c, L, P, f) {
   }
   if (L.vmark) { c.fillStyle = '#fff6e6'; c.beginPath(); c.moveTo(-6, -th + 2); c.lineTo(4, -th * 0.45); c.lineTo(14, -th + 2); c.lineTo(12, -th + 1); c.lineTo(4, -th * 0.62); c.lineTo(-3, -th + 1); c.closePath(); c.fill(); }
   softShade(c, 0, -th / 2, tw, th / 2 + 4);
-  c.restore(); rimLight(c, 0, -th / 2, tw, th / 2 + 4, 0, 2.2); egg(); c.lineWidth = 2.6; c.strokeStyle = INK; c.stroke(); c.restore();
+  c.restore(); rimLight(c, 0, -th / 2, tw, th / 2 + 4, 0, 2.2); egg(); c.fillStyle = L.shirt; c.lineWidth = 2.6; c.strokeStyle = INK; c.stroke(); c.restore();
   drawNeck(c, L, top);
   foot(P.lr, 1, false);
   c.save(); c.translate(head.x, head.y); c.rotate(ha);
