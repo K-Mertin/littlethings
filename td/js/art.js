@@ -5,13 +5,14 @@
 
 const Art = (() => {
   const { TAU, shade, mix, rgba, ell, circ, rrect, poly, lgrad, rgrad } = Gfx;
-  const OUT = 'rgba(30,20,32,.85)';
+  const OUT = 'rgba(52,30,46,.6)';
   // 每種塔「發射點」的高度（跟模擬的 TOP_H 對齊，畫面高度比例 0.9）
   const HS = 0.9;
   const topH = (k, tier) => TOP_H[k] * (1 + tier * 0.08) * HS;
+  const L2 = (a, b, t) => a + (b - a) * t;
 
   // ───────── 共用零件 ─────────
-  function lw(u, f) { return Math.max(1, u * (f || 0.018)); }
+  function lw(u, f) { return Math.max(0.6, u * (f || 0.018) * 0.65); }
   function fs(ctx, fill, stroke, w) { ctx.fillStyle = fill; ctx.fill(); if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = w; ctx.stroke(); } }
   // 建地：Lv1 夯土、Lv2 石圈、Lv3+ 切石平台加金邊
   function plot(x, u, tier, tint) {
@@ -232,6 +233,7 @@ const Art = (() => {
   // ───────── 防禦塔：靜態塔身 ─────────
   // part: 'back'（塔身＋後半部）或 'front'（前面的欄杆、城垛）
   function body(x, k, tier, sp, u, part) {
+    if (typeof Towers !== 'undefined') return Towers.body(x, k, tier, sp, u, part);
     const B = part === 'back';
     const T = topH(k, tier) * u;
     switch (k) {
@@ -649,9 +651,23 @@ const Art = (() => {
             floatCrystal(x, cx, cy, u * 0.07, time * 2 + i, u, '#d9f6ff', 0.7 + 0.3 * Math.sin(aa));
           }
           floatCrystal(x, 0, py - u * 0.26 + Math.sin(time * 2) * u * 0.02, u * 0.09, time * 1.4, u, '#ffffff', 1);
+          // 頭上的暴風雪雲
+          const cl = Gfx.puff('#c8d6e6'), cs = u * 0.36;
+          for (let i = 0; i < 4; i++) { const dx = (i - 1.5) * u * 0.13 + Math.sin(time * 0.8 + i) * u * 0.02; x.globalAlpha = 0.85; x.drawImage(cl, dx - cs / 2, py - u * 0.62 - (i % 2) * u * 0.04 - cs / 2, cs, cs * 0.7); }
+          x.globalAlpha = 1;
+          x.fillStyle = 'rgba(255,255,255,.9)';
+          for (let i = 0; i < 7; i++) { const f = ((time * 0.6 + i * 0.37) % 1), px = ((i * 0.29) % 1 - 0.5) * u * 0.55 + Math.sin(time * 2 + i) * u * 0.02; x.globalAlpha = Math.sin(f * Math.PI); x.fillRect(px, py - u * 0.55 + f * u * 0.5, u * 0.018, u * 0.018); }
+          x.globalAlpha = 1;
+        } else if (tier === 3 && sp === 1) {
+          // 冰晶尖塔：晶柱內部的脈動光核
+          const pr = u * (0.32 + 0.04 * Math.sin(time * 3 + t.id) + rec * 0.15), cy = py * 0.55 - u * 0.42;
+          x.save(); x.globalCompositeOperation = 'lighter'; x.globalAlpha = 0.55 + rec * 0.4;
+          x.drawImage(Gfx.glow('#9fe6ff'), -pr / 2, cy - pr / 2, pr, pr);
+          x.globalAlpha = 0.6; const pr2 = pr * 0.4; x.drawImage(Gfx.glow('#ffffff'), -pr2 / 2, cy - pr2 / 2, pr2, pr2);
+          x.restore();
         } else {
-          const r = u * (0.08 + tier * 0.015 + (sp === 1 ? 0.03 : 0));
-          floatCrystal(x, 0, py - u * 0.24 + Math.sin(time * 2 + t.id) * u * 0.035, r, time * 1.3 + t.id, u, tier === 3 ? '#e8fbff' : '#c8f2ff', 1 + rec * 0.4);
+          const r = u * (0.08 + tier * 0.015);
+          floatCrystal(x, 0, py - u * 0.24 + Math.sin(time * 2 + t.id) * u * 0.035, r, time * 1.3 + t.id, u, '#c8f2ff', 1 + rec * 0.4);
         }
         break;
       }
@@ -664,6 +680,22 @@ const Art = (() => {
           x.save(); x.translate(-u * 0.2, py + u * 0.05);
           Crew.draw(x, 'wizard', { robe: sp === 1 ? '#a83a8a' : sp === 0 ? '#3a5ab8' : '#6a3ac8', hat: sp === 1 ? '#7a2a6a' : sp === 0 ? '#2a3e9a' : '#4e2a9a', orb: pc }, u * 0.85, rec > 0.3 ? 1 : 0);
           x.restore();
+        }
+        // 繞著塔身的浮空符環（只畫前半圈，後半圈被塔擋住）
+        if (tier >= 1 && sp !== 1) {
+          const ry0 = L2(-u * 0.06, py, 0.5) + Math.sin(time * 1.5 + t.id) * u * 0.015, rr = u * 0.34;
+          x.save(); x.strokeStyle = rgba(pc, 0.45); x.lineWidth = lw(u, 0.016); x.beginPath(); x.ellipse(0, ry0, rr, rr * 0.3, 0, 0.05, Math.PI - 0.05); x.stroke();
+          for (let i = 0; i < 9; i++) { const aa = -time * 0.9 + i * TAU / 9, sn = Math.sin(aa); if (sn < 0.05) continue; const gx = Math.cos(aa) * rr, gy = ry0 + sn * rr * 0.3; x.globalAlpha = 0.4 + sn * 0.6; x.fillStyle = '#fff4c8'; x.fillRect(gx - u * 0.01, gy - u * 0.016, u * 0.02, u * 0.032); }
+          x.restore();
+        }
+        if (tier === 2 && sp < 0) for (let i = 0; i < 3; i++) { const aa = time * 1.1 + i * TAU / 3, gx = Math.cos(aa) * u * 0.26, gy = oy + u * 0.1 + Math.sin(aa) * u * 0.07; x.beginPath(); x.moveTo(gx - u * 0.03, gy); x.lineTo(gx - u * 0.015, gy - u * 0.025); x.lineTo(gx + u * 0.025, gy - u * 0.02); x.lineTo(gx + u * 0.03, gy + u * 0.01); x.lineTo(gx, gy + u * 0.03); x.closePath(); fs(x, Math.sin(aa) > 0 ? '#a99cc4' : '#7a6e98', OUT, lw(u, 0.01)); }
+        if (sp === 1) for (let i = 0; i < 4; i++) {
+          // 稜鏡塔：繞塔飛的鏡片
+          const aa = time * 0.8 + i * TAU / 4, sn = Math.sin(aa), gx = Math.cos(aa) * u * 0.32, gy = L2(-u * 0.06, py, 0.45) + sn * u * 0.1;
+          if (sn < -0.2) continue;
+          const sw = u * 0.05 * (0.4 + 0.6 * Math.abs(Math.sin(aa + time))), sh = u * 0.08;
+          x.beginPath(); x.moveTo(gx, gy - sh / 2); x.lineTo(gx + sw / 2, gy); x.lineTo(gx, gy + sh / 2); x.lineTo(gx - sw / 2, gy); x.closePath(); fs(x, rgba('#ffe0f8', 0.9), OUT, lw(u, 0.01));
+          x.fillStyle = 'rgba(255,255,255,.7)'; x.fillRect(gx - sw * 0.15, gy - sh * 0.3, sw * 0.2, sh * 0.4);
         }
         // 符文環
         x.save(); x.strokeStyle = rgba(pc, 0.55); x.lineWidth = lw(u, 0.012);
@@ -750,37 +782,43 @@ const Art = (() => {
           break;
         }
         // 礦工：戴安全帽揮十字鎬
+        const gem = tier === 3 && sp === 1, hh = u * (0.36 + tier * 0.05);
+        if (tier >= 1 && !gem) {
+          // 井架上的滑輪（轉動）
+          const wx = u * 0.06, wy = -hh * 1.42, wr = u * (tier >= 2 ? 0.065 : 0.05);
+          circ(x, wx, wy, wr, '#7a5532'); x.strokeStyle = OUT; x.lineWidth = lw(u, 0.012); x.stroke();
+          circ(x, wx, wy, wr * 0.72, '#5a3a22');
+          x.strokeStyle = '#d8b07a'; x.lineWidth = lw(u, 0.014);
+          for (let i = 0; i < 3; i++) { const aa = time * 2.4 + i * Math.PI / 3; x.beginPath(); x.moveTo(wx + Math.cos(aa) * wr * 0.9, wy + Math.sin(aa) * wr * 0.9); x.lineTo(wx - Math.cos(aa) * wr * 0.9, wy - Math.sin(aa) * wr * 0.9); x.stroke(); }
+          circ(x, wx, wy, wr * 0.22, '#c8ccd4');
+          // 吊繩與礦斗（上下移動）
+          const by = lerp(-u * 0.2, wy + u * 0.12, (Math.sin(time * 1.2 + t.id) + 1) / 2);
+          x.strokeStyle = '#2a2a2a'; x.lineWidth = lw(u, 0.008); x.beginPath(); x.moveTo(wx + wr, wy); x.lineTo(wx + wr, by); x.stroke();
+          rrect(x, wx + wr - u * 0.03, by, u * 0.06, u * 0.045, u * 0.008); fs(x, '#6b5a48', OUT, lw(u, 0.01));
+          circ(x, wx + wr - u * 0.012, by, u * 0.012, '#ffd84a'); circ(x, wx + wr + u * 0.012, by + u * 0.002, u * 0.011, '#f2b632');
+        }
         {
-          x.save(); x.translate(-u * 0.3, u * 0.08);
+          x.save(); x.translate(-u * 0.31, u * 0.1);
           const mf = Math.floor(time * 6.5 + t.id * 3) % 8, mr = Crew.rOf(u * 0.9);
           Crew.draw(x, 'miner', {}, u * 0.9, mf);
           if (mf === 2 || mf === 3) sparkle(x, mr * 1.3, -mr * 0.2, u * 0.05);
           x.restore();
         }
-        // 礦車進出
+        // 礦車沿軌道進出坑口
         const m = (Math.sin(time * 0.9 + t.id) + 1) / 2;
-        const kx = lerp(-u * 0.02, u * 0.06, m), ky = lerp(u * 0.0, u * 0.16, m), ks = 0.8 + m * 0.25;
+        const kx = lerp(0, u * 0.04, m), ky = lerp(u * 0.04, u * 0.2, m), ks = 0.72 + m * 0.3;
         x.save(); x.translate(kx, ky); x.scale(ks, ks);
-        rrect(x, -u * 0.11, -u * 0.1, u * 0.22, u * 0.1, u * 0.015); fs(x, '#6b5a48', OUT, lw(u, 0.012));
-        x.fillStyle = '#4a3a2a'; x.fillRect(-u * 0.11, -u * 0.06, u * 0.22, u * 0.015);
-        const gem = sp === 1 ? ['#ff5d8f', '#5ad1ff', '#7dffb0'] : ['#ffd84a', '#ffe98a', '#f2b632'];
-        for (let i = 0; i < 3; i++) circ(x, -u * 0.06 + i * u * 0.06, -u * 0.11, u * 0.04, gem[i]);
+        rrect(x, -u * 0.11, -u * 0.1, u * 0.22, u * 0.1, u * 0.015); fs(x, gem ? '#5a4a6a' : '#6b5a48', OUT, lw(u, 0.012));
+        x.fillStyle = gem ? '#3a2a4a' : '#4a3a2a'; x.fillRect(-u * 0.11, -u * 0.06, u * 0.22, u * 0.015);
+        const gc = gem ? ['#ff5d8f', '#5ad1ff', '#7dffb0'] : ['#ffd84a', '#ffe98a', '#f2b632'];
+        for (let i = 0; i < 3; i++) circ(x, -u * 0.06 + i * u * 0.06, -u * 0.11, u * 0.04, gc[i]);
+        circ(x, -u * 0.04, -u * 0.125, u * 0.012, 'rgba(255,255,255,.8)');
         circ(x, -u * 0.065, u * 0.005, u * 0.026, '#2a2d33'); circ(x, u * 0.065, u * 0.005, u * 0.026, '#2a2d33');
         x.restore();
-        if (tier >= 2 && sp !== 1) {
-          // 吊架上的輪子
-          const hh = u * (0.3 + tier * 0.06), wx = -u * 0.06, wy = -hh * 1.35;
-          circ(x, wx, wy, u * 0.06, '#7a5532'); x.strokeStyle = OUT; x.lineWidth = lw(u, 0.012); x.stroke();
-          x.strokeStyle = '#d8b07a'; x.lineWidth = lw(u, 0.012);
-          for (let i = 0; i < 3; i++) { const aa = time * 2 + i * Math.PI / 3; x.beginPath(); x.moveTo(wx + Math.cos(aa) * u * 0.055, wy + Math.sin(aa) * u * 0.055); x.lineTo(wx - Math.cos(aa) * u * 0.055, wy - Math.sin(aa) * u * 0.055); x.stroke(); }
-          x.strokeStyle = '#3a3a3a'; x.beginPath(); x.moveTo(wx + u * 0.06, wy); x.lineTo(wx + u * 0.06, -u * 0.2); x.stroke();
-        }
-        if (tier >= 1) { // 燈籠
-          const lx = u * 0.2, ly = -u * 0.28;
-          rrect(x, lx - u * 0.03, ly, u * 0.06, u * 0.07, u * 0.01); fs(x, '#ffd36b', OUT, lw(u, 0.01));
-        }
+        if (tier >= 1 && !gem) { const lx = u * 0.17, ly = -u * 0.1; x.strokeStyle = '#3a3a40'; x.lineWidth = lw(u, 0.01); x.beginPath(); x.moveTo(lx, ly - u * 0.06); x.lineTo(lx, ly); x.stroke(); rrect(x, lx - u * 0.025, ly, u * 0.05, u * 0.06, u * 0.01); fs(x, '#ffd36b', OUT, lw(u, 0.01)); const fl = 0.75 + 0.25 * Math.sin(time * 9 + t.id); x.globalAlpha = fl; circ(x, lx, ly + u * 0.03, u * 0.014, '#fffbe0'); x.globalAlpha = 1; }
+        if (gem) { for (let i = 0; i < 3; i++) { const tw = (time * 0.8 + i * 0.33 + t.id * 0.2) % 1; if (tw < 0.3) { const p = [[-0.3, -0.18], [0.22, -0.28], [0.02, -0.62]][i]; sparkle(x, p[0] * u, p[1] * u, u * 0.07 * Math.sin(tw / 0.3 * Math.PI)); } } }
         const tw = (time * 1.1 + t.id * 0.37) % 1;
-        if (tw < 0.25) sparkle(x, u * 0.08, -u * 0.22, u * 0.07 * Math.sin(tw / 0.25 * Math.PI));
+        if (tw < 0.25 && !gem) sparkle(x, u * 0.08, -u * 0.06, u * 0.07 * Math.sin(tw / 0.25 * Math.PI));
         if (t.pulse > 0) { x.globalAlpha = t.pulse * 0.8; circ(x, 0, -u * 0.1, u * 0.45 * (1.6 - t.pulse), rgba('#ffd84a', 0.35)); x.globalAlpha = 1; }
         break;
       }

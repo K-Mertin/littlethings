@@ -838,9 +838,10 @@ function collect(it) {
   const k = itemLook(it);
   if (it.kind === 'P') {
     if (k === P.w) {
-      if (P.lvl >= 8) { addScore(10000); popText(P.x, P.y - 26, '10000', '#ffd23f'); }
-      else { P.lvl++; popText(P.x, P.y - 26, P.lvl >= 8 ? '火力全滿！' : '火力 UP', '#fff'); }
-    } else { P.w = k; P.lvl = Math.min(8, P.lvl + 1); popText(P.x, P.y - 26, WNAME[k] + '！', ITEM_COL[k][0]); }
+      const cap = wCap();
+      if (P.lvl >= cap) { addScore(cap < 8 ? 3000 : 10000); popText(P.x, P.y - 26, cap < 8 ? '本關上限 Lv' + cap + '（+3000）' : '10000', '#ffd23f'); }
+      else { P.lvl++; popText(P.x, P.y - 26, P.lvl >= 8 ? '火力全滿！' : '火力 UP  Lv' + P.lvl, '#fff'); }
+    } else { P.w = k; P.lvl = Math.min(wCap(), P.lvl + 1); popText(P.x, P.y - 26, WNAME[k] + '！', ITEM_COL[k][0]); }
     Snd.play('power');
   } else if (it.kind === 'S') {
     if (P.sub === k) { if (P.sl >= 4) addScore(5000); P.sl = Math.min(4, P.sl + 1); } else { P.sub = k; P.sl = Math.min(4, Math.max(1, P.sl + 1)); }

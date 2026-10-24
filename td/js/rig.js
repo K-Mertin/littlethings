@@ -7,6 +7,8 @@
 const Rig = (() => {
   const { TAU, shade, mix, rgba } = Gfx;
   const OUT = '#1d1024';
+  // 角色身上「描邊型」的深色底線（棍子、弓、骨頭外圈）：半透明的深紫，不再是實心黑
+  const EDGE = 'rgba(44,22,52,.55)';
   // 光從左上方來（指向光源的方向）
   const LX = -0.48, LY = -0.88;
   const BIG = new Path2D(); BIG.rect(-1e4, -1e4, 2e4, 2e4);
@@ -30,6 +32,7 @@ const Rig = (() => {
       hi: rgba(mix(c, o.hic || '#fff8e4', 0.66), o.hia || 0.72),
       rim: rgba(o.rimc || '#d8f0ff', o.rima == null ? 0.58 : o.rima),
       line: o.line || OUT,
+      edge: o.line || rgba(mix(c, '#24102e', 0.6), 0.72),
       gloss: o.gloss || 0,
       lt: mix(c, '#fff8e4', 0.35),
       sh: null, aoc: null, dk: mix(c, '#2a1638', 0.45), dd: mix(c, '#1a0c24', 0.68),
@@ -111,7 +114,21 @@ const Rig = (() => {
     }
     if (o.post) o.post(x);
     x.restore();
-    if (!o.noLine) { x.lineJoin = 'round'; x.strokeStyle = o.lc || m.line; x.lineWidth = o.lw || sz * 0.09; x.stroke(p); }
+    if (!o.noLine) {
+      // 部位之間的分界線：細、用本色壓暗的半透明線（不是黑線），整體剪影的外框由快取時的 softEdge 統一加
+      x.lineJoin = 'round'; x.strokeStyle = o.lc || m.edge;
+      x.lineWidth = thin(x, (o.lw || sz * 0.09) * 0.5, o.lc ? 0.8 : 0.55);
+      x.stroke(p);
+    }
+  }
+  // 依照最後顯示的大小限制線寬：最多 maxCss 個 CSS 像素、最少 0.3 個（不在快取繪製中就照原本寬度）
+  function thin(x, w, maxCss) {
+    const ds = Gfx.drawScale;
+    if (!ds) return w;
+    const T = x.getTransform(), k = Math.hypot(T.a, T.b) / ds;  // 1 個本地單位 = k 個 CSS 像素
+    if (k <= 0) return w;
+    const css = w * k;
+    return Math.max(0.3, Math.min(maxCss || 0.6, css)) / k;
   }
   // 只描線（細節線、皺褶）
   function line(x, p, c, w, cap) { x.lineCap = cap || 'round'; x.lineJoin = 'round'; x.strokeStyle = c; x.lineWidth = w; x.stroke(p); x.lineCap = 'butt'; }
@@ -268,5 +285,5 @@ const Rig = (() => {
     };
   }
 
-  return { OUT, LX, LY, mat, P, part, line, seg, ao, glow, halo, rng, speckle, fur, scales, sheen, eye, mouth, blush, sweat, ease, clamp01, swing, leg, biped };
+  return { OUT, EDGE, thin, LX, LY, mat, P, part, line, seg, ao, glow, halo, rng, speckle, fur, scales, sheen, eye, mouth, blush, sweat, ease, clamp01, swing, leg, biped };
 })();

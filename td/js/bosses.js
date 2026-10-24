@@ -4,7 +4,7 @@
   const { TAU, mix, rgba } = Gfx;
   const { mat, P, part, eye, mouth, seg, glow, halo } = Rig;
   const { limb2, foot, crystal, lw, gait } = Beasts.lib;
-  const def = Beasts.def, OUT = Rig.OUT, E = Rig.ease;
+  const def = Beasts.def, OUT = Rig.EDGE, E = Rig.ease;
   // 放招的強度：cast 動畫或攻擊動畫的出手
   const power = s => Math.max(s.cast, s.sw > 0 ? s.sw : 0);
   const windup = s => s.sw < 0 ? -s.sw : (s.an === 'cast' && s.t < 0.35 ? s.t / 0.35 : 0);

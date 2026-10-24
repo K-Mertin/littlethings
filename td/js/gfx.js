@@ -69,14 +69,15 @@ const Gfx = (() => {
     const k = key + '@' + dpr;
     let sp = cache.get(k);
     if (sp) return sp;
-    const pad = outline ? Math.ceil(outline + 1) : 0;
+    const pad = outline ? Math.ceil(Math.abs(outline) + 1) : 0;
     const c = canvas((w + pad * 2) * dpr, (h + pad * 2) * dpr);
     const x = c.getContext('2d');
     x.scale(dpr, dpr); x.translate(ax + pad, ay + pad);
-    draw(x);
+    drawScale = dpr; draw(x); drawScale = 0;
     let out = c;
     if (bev) out = bevel(c, Math.max(1, bev * dpr));
-    if (outline) out = addOutline(out, outline * dpr, 'rgba(28,18,36,.82)');
+    if (outline < 0) out = softEdge(out, -outline * dpr, { k: 0.38, a: 0.85 });
+    else if (outline) out = addOutline(out, outline * dpr, 'rgba(28,18,36,.82)');
     sp = { c: out, w: w + pad * 2, h: h + pad * 2, ax: ax + pad, ay: ay + pad };
     cache.set(k, sp); cacheCount++;
     if (cacheCount > 6000) { cache.clear(); cacheCount = 0; }
@@ -86,6 +87,9 @@ const Gfx = (() => {
   // 縮小後的大小和一般精靈一樣，所以記憶體、每幀貼圖的成本都不變。
   // 每幀畫新圖花的時間記在 stat.ms，呼叫端可以用 busy() 判斷這一幀是不是已經花太多時間，改用備用圖。
   const stat = { ms: 0, n: 0, est: 8 };
+  // 正在畫的快取圖「每個 CSS 像素 = 幾個暫存畫布像素」（dpr × 超取樣倍率）；不在快取繪製中時是 0。
+  // 讓描線可以依照「最後顯示在畫面上幾個像素」決定粗細，而不是跟著角色尺寸一起變粗。
+  let drawScale = 0;
   let scr = null;
   function has(key, dpr) { return cache.has(key + '@' + dpr); }
   function sheet(key, w, h, ax, ay, dpr, draw, o) {
@@ -106,14 +110,14 @@ const Gfx = (() => {
       const sx = scr.getContext('2d');
       sx.setTransform(1, 0, 0, 1, 0, 0); sx.globalAlpha = 1; sx.globalCompositeOperation = 'source-over'; sx.clearRect(0, 0, SW + 2, SH + 2);
       sx.setTransform(dpr * ss, 0, 0, dpr * ss, (ax + pad) * dpr * ss, (ay + pad) * dpr * ss);
-      sx.save(); draw(sx); sx.restore();
+      drawScale = dpr * ss; sx.save(); draw(sx); sx.restore(); drawScale = 0;
       cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = 'low';
       cx.drawImage(scr, 0, 0, SW, SH, 0, 0, W, H); scr = null;
     } else {
       cx.setTransform(dpr, 0, 0, dpr, (ax + pad) * dpr, (ay + pad) * dpr);
-      draw(cx);
+      drawScale = dpr; draw(cx); drawScale = 0;
     }
-    if (o.outline) c = addOutline(c, o.outline * dpr, o.oc || 'rgba(26,14,32,.92)');
+    if (o.outline) c = softEdge(c, o.outline * dpr, o.edge);
     sp = { c, w: W / dpr, h: H / dpr, ax: ax + pad, ay: ay + pad, key: k };
     cache.set(k, sp); cacheCount++;
     if (cacheCount > 6000) { cache.clear(); cacheCount = 0; }
@@ -142,6 +146,32 @@ const Gfx = (() => {
     const n = px > 2.5 ? 12 : 8;
     for (let i = 0; i < n; i++) { const a = i / n * TAU; o.drawImage(sil, Math.cos(a) * px, Math.sin(a) * px); }
     o.drawImage(src, 0, 0);
+    return out;
+  }
+  // 柔和外框：只描整體剪影的最外圈，顏色取「該處本身顏色壓暗」（紅衣服描深紅、綠皮膚描深綠），
+  // 不再是一圈接近黑色的粗框；半透明邊緣保留反鋸齒，光暈類的淡色不描。
+  // px：外框寬度（暫存畫布像素，約等於畫面上 1 個 CSS 像素）；o.k 保留本色的比例（越小越暗）、o.a 外框不透明度
+  const EDGE_T = [34, 18, 44];
+  function softEdge(src, px, o) {
+    o = o || {};
+    const w = src.width, h = src.height, k = o.k == null ? 0.33 : o.k, ea = o.a == null ? 0.92 : o.a;
+    const sil = cpu(w, h), sx = sil.getContext('2d');
+    sx.drawImage(src, 0, 0);
+    try {
+      const im = sx.getImageData(0, 0, w, h), d = im.data, k1 = 1 - k;
+      const tr = EDGE_T[0] * k1, tg = EDGE_T[1] * k1, tb = EDGE_T[2] * k1;
+      for (let i = 0; i < d.length; i += 4) {
+        const a = d[i + 3];
+        if (a < 40) { d[i + 3] = 0; continue; }
+        d[i] = d[i] * k + tr; d[i + 1] = d[i + 1] * k + tg; d[i + 2] = d[i + 2] * k + tb;
+        d[i + 3] = a > 150 ? 255 * ea : (a - 40) / 110 * 255 * ea;
+      }
+      sx.putImageData(im, 0, 0);
+    } catch (e) { sx.globalCompositeOperation = 'source-in'; sx.fillStyle = 'rgba(40,22,48,.85)'; sx.fillRect(0, 0, w, h); }
+    const out = cpu(w, h), q = out.getContext('2d');
+    const n = px > 2.2 ? 12 : 8;
+    for (let i = 0; i < n; i++) { const a = i / n * TAU; q.drawImage(sil, Math.cos(a) * px, Math.sin(a) * px); }
+    q.drawImage(src, 0, 0);
     return out;
   }
   // 立體感：用自身輪廓位移做出「左上亮邊、右下暗邊」＋由上往下的明暗，讓所有角色都有一致的三階光影
@@ -232,5 +262,5 @@ const Gfx = (() => {
     stops.forEach((c, i) => g.addColorStop(Array.isArray(c) ? c[0] : i / (stops.length - 1), Array.isArray(c) ? c[1] : c));
     return g;
   }
-  return { TAU, hex, mix, shade, rgba, vnoise, fbm, hash2, canvas, sprite, sheet, has, stat, frameStart, busy, drawSprite, addOutline, bevel, tinted, glow, puff, ell, circ, rrect, poly, star, lgrad, rgrad, clear() { cache.clear(); cacheCount = 0; } };
+  return { TAU, hex, mix, shade, rgba, vnoise, fbm, hash2, canvas, sprite, sheet, has, stat, frameStart, busy, drawSprite, addOutline, softEdge, get drawScale() { return drawScale; }, bevel, tinted, glow, puff, ell, circ, rrect, poly, star, lgrad, rgrad, clear() { cache.clear(); cacheCount = 0; } };
 })();
