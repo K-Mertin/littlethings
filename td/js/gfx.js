@@ -69,14 +69,15 @@ const Gfx = (() => {
     const k = key + '@' + dpr;
     let sp = cache.get(k);
     if (sp) return sp;
-    const pad = outline ? Math.ceil(outline + 1) : 0;
+    const pad = outline ? Math.ceil(Math.abs(outline) + 1) : 0;
     const c = canvas((w + pad * 2) * dpr, (h + pad * 2) * dpr);
     const x = c.getContext('2d');
     x.scale(dpr, dpr); x.translate(ax + pad, ay + pad);
     drawScale = dpr; draw(x); drawScale = 0;
     let out = c;
     if (bev) out = bevel(c, Math.max(1, bev * dpr));
-    if (outline) out = addOutline(out, outline * dpr, 'rgba(28,18,36,.82)');
+    if (outline < 0) out = softEdge(out, -outline * dpr, { k: 0.38, a: 0.85 });
+    else if (outline) out = addOutline(out, outline * dpr, 'rgba(28,18,36,.82)');
     sp = { c: out, w: w + pad * 2, h: h + pad * 2, ax: ax + pad, ay: ay + pad };
     cache.set(k, sp); cacheCount++;
     if (cacheCount > 6000) { cache.clear(); cacheCount = 0; }

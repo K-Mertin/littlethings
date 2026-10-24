@@ -814,8 +814,8 @@ const Towers = (() => {
     if (tier === 0) {
       // Lv1：覆雪的冰岩堆，平頂站人，裂縫裡長出冰晶
       mound(x, u, 0, u * 0.08, u * 0.8, u * 0.24, rk, { flat: u * 0.34, cap: snow, cd: u * 0.07, seed: 4, rocks: 6 });
-      drum(x, u, -u * 0.1, u * 0.17, -u * 0.1 - py, '#9aacbe', { r1: u * 0.15, tex: 'stone', rh: u * 0.075, seed: 44, jit: 0.2 });
-      disk(x, u, py, u * 0.19, snow, u * 0.025);
+      mound(x, u, 0, -u * 0.04, u * 0.44, -u * 0.04 - py + u * 0.01, '#9aacbe', { flat: u * 0.36, cap: snow, cd: u * 0.05, seed: 44, rocks: 5 });
+      disk(x, u, py, u * 0.18, snow, u * 0.02);
       icicles(x, u, -u * 0.17, u * 0.17, py + u * 0.025, 6, 2);
       ice(x, u, -u * 0.2, u * 0.0, u * 0.04, u * 0.17, '#bfefff', -0.35);
       ice(x, u, -u * 0.27, u * 0.05, u * 0.025, u * 0.09, '#d6f6ff', -0.6);
@@ -1218,7 +1218,7 @@ const Towers = (() => {
     ell(x, u * 0.03, u * 0.1, u * 0.5, u * 0.19, 'rgba(20,10,20,.22)');
     // 岩山
     const hill = gem ? '#7a6a8a' : tier >= 2 ? '#8f7a68' : '#a08a6a';
-    mound(x, u, 0, u * 0.1, u * 0.98, hh, hill, { peak: -0.2, cap: gem ? null : '#5f9e3c', cd: u * 0.08, seed: 31 + tier, rocks: 9 });
+    mound(x, u, -u * 0.02, u * 0.1, u * 0.94, hh * 1.25, hill, { peak: -0.1, cap: gem ? null : '#5f9e3c', cd: u * 0.08, seed: 31 + tier, rocks: 9 });
     // 坑口（木框）
     const ew = u * 0.15, eh = u * 0.22, ey = u * 0.07;
     x.beginPath(); x.moveTo(-ew, ey); x.lineTo(-ew, ey - eh + ew * 0.5); x.quadraticCurveTo(0, ey - eh - ew * 0.3, ew, ey - eh + ew * 0.5); x.lineTo(ew, ey); x.closePath();
@@ -1236,7 +1236,7 @@ const Towers = (() => {
     line(x, -u * 0.07, ey - u * 0.02, -u * 0.12, u * 0.25, '#8a8f99', lw(x, u, 0.014)); line(x, u * 0.07, ey - u * 0.02, u * 0.12, u * 0.25, '#8a8f99', lw(x, u, 0.014));
     if (gem) {
       // 寶石礦坑：洞口四周長滿發光的彩色寶石
-      for (const [px, pyy, w, h, c, t] of [[-0.3, -0.04, 0.05, 0.2, '#ff5d8f', -0.4], [-0.2, -0.14, 0.04, 0.16, '#c49bff', -0.2], [0.22, -0.12, 0.05, 0.22, '#5ad1ff', 0.3], [0.33, 0.02, 0.04, 0.15, '#7dffb0', 0.5], [0.0, -hh * 0.95 / u, 0.06, 0.24, '#ffd36b', 0.05], [-0.1, -hh * 0.75 / u, 0.035, 0.13, '#5ad1ff', -0.35], [0.12, -hh * 0.8 / u, 0.035, 0.12, '#ff5d8f', 0.4]]) { x.save(); x.shadowColor = c; x.shadowBlur = u * 0.1; ice(x, u, px * u, pyy * u, w * u, h * u, c, t, { dk: shade(c, -0.5), ec: shade(c, -0.55), core: 0.6 }); x.restore(); }
+      for (const [px, pyy, w, h, c, t] of [[-0.3, -0.04, 0.05, 0.2, '#ff5d8f', -0.4], [-0.2, -0.14, 0.04, 0.16, '#c49bff', -0.2], [0.22, -0.12, 0.05, 0.22, '#5ad1ff', 0.3], [0.33, 0.02, 0.04, 0.15, '#7dffb0', 0.5], [0.0, -hh * 0.7 / u, 0.06, 0.24, '#ffd36b', 0.05], [-0.13, -hh * 0.6 / u, 0.035, 0.13, '#5ad1ff', -0.35], [0.13, -hh * 0.62 / u, 0.035, 0.12, '#ff5d8f', 0.4]]) { x.save(); x.shadowColor = c; x.shadowBlur = u * 0.1; ice(x, u, px * u, pyy * u, w * u, h * u, c, t, { dk: shade(c, -0.5), ec: shade(c, -0.55), core: 0.6 }); x.restore(); }
       return;
     }
     // 礦石堆、十字鎬
