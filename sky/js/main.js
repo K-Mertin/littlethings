@@ -36,7 +36,7 @@ function newGame(from = 0) {
   G.round = 1; G.d = computeDiff();
   G.score = 0; G.lives = G.d.lives; G.bombs = G.d.bombs; G.cont = 0; G.kills = 0; G.medals = 0; G.medalChain = 0; G.miss = 0; G.extNext = G.d.ext;
   P.w = 'red'; P.lvl = 1; P.sub = null; P.sl = 0; P.inv = 0;
-  if (from > 0) { P.lvl = Math.min(8, 1 + from * 2); P.sub = 'M'; P.sl = Math.min(4, from); }
+  if (from > 0) { P.lvl = Math.min(LV_CAP[from] ?? 8, 1 + from * 2); P.sub = 'M'; P.sl = Math.min(4, from); }
   G.startFrom = from;
   G.state = 'play'; G.paused = false;
   showOv(null); document.body.classList.add('playing');
@@ -48,7 +48,7 @@ function startStage(n) {
   G.phase = 'fight'; G.seqI = 0; G.nextWave = 2.6; G.boss = null; G.bombT = 0;
   G.stageKills = G.kills; G.stageMedals = G.medals; G.stageMiss = G.miss; G.bonusGiven = false; G.medalChain = 0;
   G.speed = STAGES[n].speed || 46;
-  G.banner = { t: 0, big: 'STAGE ' + (n + 1) + (G.round > 1 ? '-2' : ''), small: STAGES[n].name, en: STAGES[n].en };
+  G.banner = { t: 0, big: 'STAGE ' + (n + 1) + (G.round > 1 ? '-2' : ''), small: STAGES[n].name, en: STAGES[n].en, extra: G.round === 1 && n > 0 && LV_CAP[n] > LV_CAP[n - 1] ? '武器等級上限提升到 Lv' + LV_CAP[n] : '' };
   if (STAGES[n].clouds) SkyClouds.init();
   G.amb = [];
   playerEnter(); P.inv = 1.6;
@@ -225,7 +225,8 @@ function drawHUD(c) {
   // 武器
   const col = ITEM_COL[P.w][0];
   c.fillStyle = col; c.beginPath(); c.arc(12, H - 50, 5, 0, TAU); c.fill();
-  for (let i = 0; i < 8; i++) { c.fillStyle = i < P.lvl ? col : 'rgba(255,255,255,.18)'; c.fillRect(21 + i * 6, H - 53, 4.5, 6); }
+  const cap = wCap();
+  for (let i = 0; i < 8; i++) { c.fillStyle = i < P.lvl ? col : i < cap ? 'rgba(255,255,255,.22)' : 'rgba(255,255,255,.06)'; c.fillRect(21 + i * 6, H - 53, 4.5, 6); if (i >= cap) { c.fillStyle = 'rgba(0,0,0,.5)'; c.fillRect(21 + i * 6, H - 50.5, 4.5, 1); } }
   if (P.sub) txt(c, P.sub + P.sl, 74, H - 50, 9, ITEM_COL[P.sub][0]);
   if (G.round > 1) txt(c, '第二輪', W - 8, 26, 9, '#ff8a6a', 'right', CJK, 700);
   // 標題橫幅
@@ -237,6 +238,7 @@ function drawHUD(c) {
     txt(c, bn.big, W / 2, 256, 22, '#ffd23f', 'center');
     txt(c, bn.small, W / 2, 288, 22, '#fff', 'center', CJK, 900);
     txt(c, bn.en, W / 2, 312, 9, '#9fc4e8', 'center');
+    if (bn.extra) txt(c, bn.extra, W / 2, 342, 13, '#7dffb0', 'center', CJK, 700);
     c.globalAlpha = 1;
   }
   if (G.phase === 'warn') {
