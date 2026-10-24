@@ -36,7 +36,7 @@ const Beasts = (() => {
     return s;
   }
   // ───────── 共用小零件 ─────────
-  const OUT = Rig.OUT;
+  const OUT = Rig.EDGE;
   const lw = R => R * 0.075;
   // 兩段式的四肢（大腿＋小腿），回傳末端座標
   function limb2(x, hx, hy, a1, a2, l1, l2, r0, r1, m, o) {
@@ -254,7 +254,7 @@ const Beasts = (() => {
       const ex = an === 'die' ? 1.0 : 0;
       const W = (B.w + 0.9 + ex) * Rq, H = (B.h + 0.5 + ex * 0.4) * Rq;
       const ss = Math.max(1, Math.min(SS, 2.5 / dpr));
-      base = Gfx.sheet(key, W, H, W / 2, (B.ay + 0.5 + ex * 0.4) * Rq, dpr, x => drawKind(x, k, Rq, an, f), { ss, outline: Math.max(0.9, Rq * 0.06) });
+      base = Gfx.sheet(key, W, H, W / 2, (B.ay + 0.5 + ex * 0.4) * Rq, dpr, x => drawKind(x, k, Rq, an, f), { ss, outline: Math.min(1.15, Math.max(0.75, Rq * 0.032)) });
       if (an === 'walk' && f === 0) last.set(k + ':' + Rq + ':' + dpr, base);
     }
     if (!v) return base;

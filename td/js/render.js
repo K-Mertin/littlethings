@@ -121,8 +121,10 @@ const Render = (() => {
   // ───────── 塔 ─────────
   function towerSprites(k, tier, sp, u) {
     const uq = Math.round(u * 4) / 4, W = 1.8 * uq, H = 2.8 * uq;
-    const b = Gfx.sprite(`tw:${k}:${tier}:${sp}:b:${uq}`, W, H, W / 2, 2.3 * uq, dpr, x => Art.body(x, k, tier, sp, uq, 'back'));
-    const f = Gfx.sprite(`tw:${k}:${tier}:${sp}:f:${uq}`, W, H, W / 2, 2.3 * uq, dpr, x => Art.body(x, k, tier, sp, uq, 'front'));
+    // 塔身外圈加一道柔和的本色外框（約 0.8 個 CSS 像素），不是黑框
+    const ol = -Math.min(0.9, Math.max(0.6, uq * 0.014));
+    const b = Gfx.sprite(`tw2:${k}:${tier}:${sp}:b:${uq}`, W, H, W / 2, 2.3 * uq, dpr, x => Art.body(x, k, tier, sp, uq, 'back'), ol);
+    const f = Gfx.sprite(`tw2:${k}:${tier}:${sp}:f:${uq}`, W, H, W / 2, 2.3 * uq, dpr, x => Art.body(x, k, tier, sp, uq, 'front'), ol);
     return [b, f];
   }
   function drawTower(ctx, t, a, b, s, time, ang, ghost) {
@@ -565,6 +567,7 @@ const Render = (() => {
       const sp = Beasts.frame(k, R, B.boss ? 1 : 1, 0, 1, B.boss ? 'idle' : 'walk');
       tx.drawImage(sp.c, S - sp.ax, S * 1.8 - sp.ay);
     }
+    if (kind === 'tower') { const e = Gfx.softEdge(T, Math.max(0.8, S / 110), { k: 0.38, a: 0.85 }); tx.setTransform(1, 0, 0, 1, 0, 0); tx.clearRect(0, 0, T.width, T.height); tx.drawImage(e, 0, 0); }
     const id = tx.getImageData(0, 0, T.width, T.height).data;
     let x0 = T.width, y0 = T.height, x1 = 0, y1 = 0;
     for (let yy = 0; yy < T.height; yy += 2) for (let xx = 0; xx < T.width; xx += 2) if (id[(yy * T.width + xx) * 4 + 3] > 20) { if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (yy < y0) y0 = yy; if (yy > y1) y1 = yy; }

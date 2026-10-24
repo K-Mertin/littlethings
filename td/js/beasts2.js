@@ -4,7 +4,7 @@
   const { TAU, mix, rgba } = Gfx;
   const { mat, P, part, eye, mouth, blush, seg, glow, halo } = Rig;
   const { limb2, foot, crystal, lw } = Beasts.lib;
-  const def = Beasts.def, OUT = Rig.OUT;
+  const def = Beasts.def, OUT = Rig.EDGE;
   const E = Rig.ease;
 
   // 雙足角色的共同動作：回傳腳的角度、身體起伏、手臂擺動、往前衝的距離、身體前傾
