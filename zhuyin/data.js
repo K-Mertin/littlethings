@@ -391,7 +391,9 @@
   // ---- 台詞（小藍說的話）----
   const symOf = s => SYMBOLS.find(x => x.s === s);
   const P = {
-    hello: '嗨！我是小企鵝小藍，我們一起來玩注音！',
+    hello: '嗨！我們一起來玩注音！',
+    palIntro: '選一個陪你玩的好朋友。',
+    palHi: n => `我是${n}，我們一起玩！`,
     pickOne: '你想玩什麼？點一個圖案。',
     // 認識注音
     learnIntro: '點一個注音，聽聽看它怎麼念。',
@@ -527,6 +529,7 @@
     add(P.spT.intro); P.spT.ex.forEach(e => add(e[2])); add(P.spT.you); add(P.spT.youAns);
     ['ㄧ', 'ㄨ', 'ㄩ'].forEach(m => add(P.ctIntro(m))); add(P.twIntro);
     P.wwT.forEach(add); P.rdT.forEach(add);
+    ['企鵝', '藍鵲', '兔兔', '狗狗', '貓貓'].forEach(n => add(P.palHi(n)));
     LESSONS.forEach((L, i) => { add(P.lessonIntro(L, i + 1)); add(P.lessonDone(i + 1)); });
     for (const x of SYMBOLS) add(P.lessonWrite(x.s));
     for (const w of WORDS) add(w.w);
