@@ -2,7 +2,7 @@
 'use strict';
 const MG = (() => {
   // 版號：每次合併更新時一起改（修正 → 第三碼 +1；新遊戲／新功能 → 第二碼 +1）
-  const VERSION = '1.23.0', BUILT = '2026/10/19';
+  const VERSION = '1.23.1', BUILT = '2026/10/24';
   const LS = 'puputown.';
   const store = {
     get(k, d) { try { const v = localStorage.getItem(LS + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -126,6 +126,8 @@ const MG = (() => {
     sync(); row.insertAdjacentHTML('beforeend', `<span class="mg-ver">v${VERSION}</span>`); return row;
   }
   function panel({ title, html = '', buttons = [], keys = '' }) {
+    // a fresh overlay every time it reopens: some tablets (iPad Safari) keep a stale, unscrollable layer for an overlay that was hidden and shown again
+    if (over && over.hidden) { over.remove(); over = null; }
     if (!over) { over = document.createElement('div'); over.className = 'mg-over'; document.body.append(over); }
     over.innerHTML = `<div class="mg-card" role="dialog" aria-modal="true"><h2></h2><div class="mg-body">${heroText(html)}</div><div class="mg-btns"></div>` +
       (keys ? `<div class="mg-keys">${keys}</div>` : '') + `</div>`;
@@ -143,6 +145,28 @@ const MG = (() => {
   }
   function hide() { if (over) over.hidden = true; paused = null; }
   const panelOpen = () => over && !over.hidden;
+
+  // ---------- finger scrolling fallback for the menu ----------
+  // after a game some tablets stop scrolling the menu natively (the game's touch handling / pointer capture leaves the page "locked").
+  // We watch one-finger drags on the overlay; if the browser didn't move it, we move it ourselves.
+  {
+    let ts = null;
+    const opt = { passive: true, capture: true };
+    addEventListener('touchstart', e => {
+      const o = e.target.closest && e.target.closest('.mg-over');
+      ts = o && e.touches.length === 1 ? { o, y: e.touches[0].clientY, st: o.scrollTop, on: false } : null;
+    }, opt);
+    addEventListener('touchmove', e => {
+      if (!ts || e.touches.length !== 1) { ts = null; return; }
+      const dy = e.touches[0].clientY - ts.y;
+      if (!ts.on && Math.abs(dy) < 8) return;
+      ts.on = true;
+      const o = ts.o, max = Math.max(0, o.scrollHeight - o.clientHeight), want = Math.max(0, Math.min(max, ts.st - dy));
+      requestAnimationFrame(() => { if (ts && ts.o === o && Math.abs(o.scrollTop - want) > 24) o.scrollTop = want; });
+    }, opt);
+    const end = () => { ts = null; };
+    addEventListener('touchend', end, opt); addEventListener('touchcancel', end, opt);
+  }
 
   // ---------- taps on menu buttons while another finger rests on the screen ----------
   // touch screens make no 'click' when a second finger is down (a kid's other hand on the piano, the board…),
