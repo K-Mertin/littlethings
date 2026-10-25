@@ -157,7 +157,7 @@ function draw() {
     if (STAGES[G.stage].under) STAGES[G.stage].under(ctx);
     if (STAGES[G.stage].clouds) SkyClouds.draw(ctx);
     drawEnemyShadows(ctx);
-    if (P.alive) Art.shadow(ctx, 'player', P.x, P.y, 0, 0.7);
+    if (P.alive) Art.shadow(ctx, P.spr || 'player', P.x, P.y, 0, 0.7);
     drawItems(ctx);
     drawEnemies(ctx, 'air');
     drawPB(ctx);
@@ -220,8 +220,12 @@ function drawHUD(c) {
   const col = ITEM_COL[P.w][0];
   c.fillStyle = col; c.beginPath(); c.arc(12, H - 50, 5, 0, TAU); c.fill();
   const cap = wCap();
-  for (let i = 0; i < 8; i++) { c.fillStyle = i < P.lvl ? col : i < cap ? 'rgba(255,255,255,.22)' : 'rgba(255,255,255,.06)'; c.fillRect(21 + i * 6, H - 53, 4.5, 6); if (i >= cap) { c.fillStyle = 'rgba(0,0,0,.5)'; c.fillRect(21 + i * 6, H - 50.5, 4.5, 1); } }
-  if (P.sub) txt(c, P.sub + P.sl, 74, H - 50, 9, ITEM_COL[P.sub][0]);
+  const odc = window.odCap ? odCap() : 0, np = 8 + odc;
+  for (let i = 0; i < np; i++) {
+    if (i >= 8) { c.fillStyle = i - 8 < (P.od || 0) ? '#ffd84a' : 'rgba(255,216,74,.28)'; c.beginPath(); c.moveTo(23 + i * 6, H - 54); c.lineTo(26 + i * 6, H - 50); c.lineTo(23 + i * 6, H - 46); c.lineTo(20 + i * 6, H - 50); c.fill(); continue; }
+    c.fillStyle = i < P.lvl ? col : i < cap ? 'rgba(255,255,255,.22)' : 'rgba(255,255,255,.06)'; c.fillRect(21 + i * 6, H - 53, 4.5, 6); if (i >= cap) { c.fillStyle = 'rgba(0,0,0,.5)'; c.fillRect(21 + i * 6, H - 50.5, 4.5, 1); }
+  }
+  if (P.sub) txt(c, P.sub + P.sl, 26 + np * 6, H - 50, 9, ITEM_COL[P.sub][0]);
   if (G.round > 1) txt(c, '第二輪', W - 8, 26, 9, '#ff8a6a', 'right', CJK, 700);
   // 標題橫幅
   const bn = G.banner;
