@@ -3,12 +3,14 @@
 //   /api/tts?t=…           →  小幫手朗讀，Azure 神經語音 (worker/tts.js)
 //   /api/tutor             →  學習遊戲答錯時的 AI 家教提示 (worker/tutor.js)
 //   /api/outpost/room/ABCD?role=host|guest  →  Crystal Outpost 1 vs 1 relay (one Durable Object per room)
+//   /api/link/room/ABCDE?role=host|guest&id=…  →  連線一起玩 room relay (worker/link.js)
 // Only /api/* reaches this script (assets.run_worker_first); every other path is a plain static file.
 
 import { handleChat, ChatGuard, allow } from './chat.js';
 import { handleTts, TtsCache } from './tts.js';
 import { handleTutor } from './tutor.js';
-export { ChatGuard, TtsCache };
+import { LinkRoom } from './link.js';
+export { ChatGuard, TtsCache, LinkRoom };
 
 export class OutpostRoom {
   constructor(ctx, env) { this.ctx = ctx; }
@@ -54,6 +56,8 @@ export default {
     const url = new URL(request.url);
     const m = url.pathname.match(/^\/api\/outpost\/room\/([A-Z]{4})$/);
     if (m) return env.OUTPOST_ROOMS.get(env.OUTPOST_ROOMS.idFromName(m[1])).fetch(request);
+    const lk = url.pathname.match(/^\/api\/link\/room\/([A-Z0-9]{5})$/);
+    if (lk) return env.LINK_ROOMS.get(env.LINK_ROOMS.idFromName(lk[1])).fetch(request);
     if (url.pathname === '/api/chat' || url.pathname === '/api/issue') return handleChat(request, env, url.pathname);
     if (url.pathname === '/api/tts') return handleTts(request, env, (k, l, t, a) => allow(env, k, l, t, a));
     if (url.pathname === '/api/tutor') return handleTutor(request, env, (k, l, t, a) => allow(env, k, l, t, a));
