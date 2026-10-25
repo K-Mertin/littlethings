@@ -151,6 +151,15 @@ button:focus-visible{outline:4px solid var(--sun);outline-offset:3px}
 .combogrid{grid-template-columns:repeat(auto-fill,minmax(110px,1fr))}
 .combo .syl .col i{font-size:44px}.optc .syl .col i{font-size:58px}
 
+/* 練習島 */
+.maptabs{position:relative;z-index:2}
+.pracgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px;max-width:960px;margin:0 auto}
+.pcard{position:relative;background:var(--card);border-radius:22px;padding:16px 10px;display:flex;flex-direction:column;align-items:center;gap:6px;box-shadow:0 4px 0 #b7d5bd;min-height:130px;justify-content:center;border:3px solid transparent}
+.pcard .pe{font-family:var(--kai);font-size:40px;font-weight:700;line-height:1.1}.pcard .pt{font-weight:900;font-size:19px}
+.pcard.done{border-color:var(--good);background:#f2fbf4}.pcard .pd{position:absolute;top:6px;right:10px;font-size:15px;font-weight:900}
+.pcard.lock{opacity:.5}
+@media (max-width:520px){.pracgrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.pcard .pe{font-size:32px}.pcard .pt{font-size:16px}}
+
 /* 課程 */
 #ltag{font-weight:900;font-size:18px;background:var(--card);border-radius:30px;padding:8px 14px;box-shadow:0 3px 0 #b7d5bd;display:flex;gap:6px;align-items:center;white-space:nowrap;overflow:hidden}
 #ltag span{opacity:.35;font-size:20px}#ltag span.d{opacity:1}#ltag span.c{opacity:1;transform:scale(1.25)}
@@ -414,7 +423,7 @@ button:focus-visible{outline:4px solid var(--sun);outline-offset:3px}
 <script src="data.js"></script>
 <script>
 'use strict';
-const { TIPS, teachWords, SYMBOLS, GROUPS, ONE, TWO, WORDS, COMBOS, SENTS, PASSAGES, LESSONS, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, strokesOf, TONE_SETS, TONE_NAMES, TONE_MARKS, CONFUSE, P, parseSyl, syllables, hash, symOf } = ZY;
+const { PRACTICE, THEMES, themeWords, TIPS, teachWords, SYMBOLS, GROUPS, ONE, TWO, WORDS, COMBOS, SENTS, PASSAGES, LESSONS, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, strokesOf, TONE_SETS, TONE_NAMES, TONE_MARKS, CONFUSE, P, parseSyl, syllables, hash, symOf } = ZY;
 const $ = (s, el = document) => el.querySelector(s);
 const view = $('#view');
 const rand = n => Math.floor(Math.random() * n);
@@ -969,7 +978,7 @@ SCREENS.writeOne = (s, o = {}) => {
   const STAGES = o.stages || 3;
   S.write = S.write || {};
   const strokes = strokesOf(s).map(densePts);
-  let stage = o.done ? 0 : (S.write[s] || 0) % 3, cur = 0, miss = 0, drawing = null, demoT = 0;
+  let stage = o.done ? (o.start || 0) : (S.write[s] || 0) % 3, cur = 0, miss = 0, drawing = null, demoT = 0;
   const idx = SYMBOLS.findIndex(x => x.s === s);
   view.innerHTML = `<div class="center writewrap">
     <div class="writeside"><div class="wstars" id="wstars"></div>
@@ -1164,13 +1173,43 @@ function buildSteps(n) {
   if (L.k === 'read2') return [['read', { two: true, N: 5 }]];
   return [['storyRead', L.i, {}]];
 }
+function buildPracSteps(L) {
+  const learned = learnedUpTo(LESSONS.length);
+  if (L.k === 'rev') {
+    const syms = Array.from(L.s);
+    const steps = [['listen', { pool: syms, focus: syms, N: 8 }]];
+    const fw = WORDS.filter(w => syms.includes(syllables(w.z)[0].parts[0]));
+    const sw = ONE.filter(w => parseSyl(w.z).parts.some(x => syms.includes(x)));
+    if (fw.length >= 4) steps.push(['first', { words: fw, pool: syms, N: 6 }]);
+    else steps.push(['spell', { words: sw, N: 5 }]);
+    steps.push(['writeOne', pick(syms), { start: 1, stages: 2 }]);
+    return steps;
+  }
+  if (L.k === 'wch') return shuffle(learned).slice(0, 4).map(x => ['writeOne', x, { start: 2, stages: 3 }]);
+  if (L.k === 'tone2') return [['toneQ', { N: 8, sets: TONE_SETS.slice(4) }]];
+  if (L.k === 'theme') {
+    const ws = themeWords(L.th), one = ws.filter(w => !w.z.includes(' ') && parseSyl(w.z).parts.length >= 2);
+    const steps = [['first', { words: ws, N: 6 }]];
+    if (one.length >= 3) steps.push(['spell', { words: one, N: 4 }]);
+    steps.push(['read', { words: ws, N: 5 }]);
+    return steps;
+  }
+  if (L.k === 'comboRev') return [['comboQ', { N: 10 }]];
+  if (L.k === 'read2p') return [['read', { two: true, N: 6 }]];
+  return [['readS', { N: 6 }]];
+}
 const STEP_ICON = { teachSym: '🧑‍🏫', teachTone: '🧑‍🏫', teachSpell: '🧑‍🏫', teachCombo: '🧑‍🏫', teachTwo: '🧑‍🏫', teachWW: '🧑‍🏫', teachRead: '🧑‍🏫', lessonLearn: '👀', listen: '👂', writeOne: '✏️', first: '🍉', spell: '🧩', toneL: '🎵', toneQ: '🎵', comboL: '👀', comboQ: '👂', storyRead: '📚', read: '📖', writeWord: '✏️', readS: '📖', readP: '📖' };
-function startLesson(n) { LES = { n, L: LESSONS[n - 1], steps: buildSteps(n), i: 0 }; keepLesson = true; go('lessonIntro'); }
+function startLesson(n, track = 'main') {
+  const L = track === 'prac' ? PRACTICE[n - 1] : LESSONS[n - 1];
+  LES = { n, track, L, steps: track === 'prac' ? buildPracSteps(L) : buildSteps(n), i: 0 }; keepLesson = true; go('lessonIntro');
+}
+let mapTrack = 'main';
+const pracOpen = L => lessonsDone() >= L.after;
 function updTag() {
   const t = $('#ltag');
   if (!LES || screen === 'map') { t.classList.add('hide'); return; }
   t.classList.remove('hide');
-  t.innerHTML = `第${LES.n}課 ${LES.steps.map((st, k) => `<span class="${k < LES.i ? 'd' : k === LES.i ? 'c' : ''}">${STEP_ICON[st[0]]}</span>`).join('')}`;
+  t.innerHTML = `${LES.track === 'prac' ? '🌿 練習' : `第${LES.n}課`} ${LES.steps.map((st, k) => `<span class="${k < LES.i ? 'd' : k === LES.i ? 'c' : ''}">${STEP_ICON[st[0]]}</span>`).join('')}`;
 }
 function runStep() {
   const [name, ...args] = LES.steps[LES.i];
@@ -1186,25 +1225,27 @@ async function stepDone() {
   const ok = await say(P.lessonNext); if (ok && LES) runStep();
 }
 async function lessonComplete() {
-  const n = LES.n; S.lessons = Math.max(lessonsDone(), n); save();
+  const n = LES.n, prac = LES.track === 'prac';
+  if (prac) { (S.prac || (S.prac = {}))[n] = (S.prac[n] || 0) + 1; save(); }
+  else { S.lessons = Math.max(lessonsDone(), n); save(); }
   const left = STICKERS.filter(x => !S.stickers.includes(x));
   const st = left.length ? pick(left) : pick(STICKERS);
   S.stickers.push(st); save(); updStars(); updTag();
-  const r = h(`<div id="reward"><div class="card"><div class="stk got">${st}</div><p class="rtitle">第 ${n} 課完成！</p>
-    <div class="row">${n < LESSONS.length ? '<button class="say" data-a="next">下一課 ▶</button>' : ''}<button class="say alt" data-a="map">🗺️ 地圖</button></div></div></div>`);
+  const r = h(`<div id="reward"><div class="card"><div class="stk got">${st}</div><p class="rtitle">${prac ? '練習完成！' : `第 ${n} 課完成！`}</p>
+    <div class="row">${!prac && n < LESSONS.length ? '<button class="say" data-a="next">下一課 ▶</button>' : ''}<button class="say alt" data-a="map">🗺️ 地圖</button></div></div></div>`);
   document.body.appendChild(r);
   const nb = r.querySelector('[data-a=next]'); if (nb) nb.onclick = () => { r.remove(); startLesson(n + 1); };
-  r.querySelector('[data-a=map]').onclick = () => { r.remove(); LES = null; go('map'); };
-  say(P.lessonDone(n));
+  r.querySelector('[data-a=map]').onclick = () => { r.remove(); mapTrack = prac ? 'prac' : 'main'; LES = null; go('map'); };
+  say(prac ? P.pracDone : P.lessonDone(n));
 }
 SCREENS.lessonIntro = () => {
-  const { n, L, steps } = LES;
-  view.innerHTML = `<div class="center"><div class="lcard"><div class="lnum">第 ${n} 課</div>
+  const { n, L, steps } = LES; const prac = LES.track === 'prac';
+  view.innerHTML = `<div class="center"><div class="lcard"><div class="lnum">${prac ? '🌿 練習島' : `第 ${n} 課`}</div>
     <div class="ltitle">${L.k === 'combo' ? `結合韻 ${L.s}` : lessonTitle(L, n)}</div>
     <div class="lsteps">${steps.map(st => `<span>${STEP_ICON[st[0]]}</span>`).join('<i>›</i>')}</div></div>
     <button class="say" id="lgo">▶ 開始</button></div>`;
   $('#lgo').onclick = () => runStep();
-  say(P.lessonIntro(L, n)).then(ok => ok && screen === 'lessonIntro' && runStep());
+  say(prac ? P.pracIntro(L) : P.lessonIntro(L, n)).then(ok => ok && screen === 'lessonIntro' && runStep());
 };
 SCREENS.lessonLearn = (o) => {
   view.innerHTML = `<div class="center"><div class="opts">${o.syms.map(s => `<button class="zg opt lsym" data-s="${s}">${s}</button>`).join('')}</div>
@@ -1216,9 +1257,19 @@ SCREENS.lessonLearn = (o) => {
   $('#lnext').onclick = () => { closeSheet(); o.done(); };
   say(P.lessonTapAll);
 };
-SCREENS.map = () => {
+SCREENS.map = (fromTab) => {
   const done = lessonsDone();
-  view.innerHTML = `<div class="lmap" id="lmap"><svg class="lpath" id="lpath"></svg></div>`;
+  const tabs = `<div class="tabs maptabs"><button class="tab ${mapTrack === 'main' ? 'on' : ''}" data-t="main">🌱 基礎課程</button><button class="tab ${mapTrack === 'prac' ? 'on' : ''}" data-t="prac">🌿 練習島</button></div>`;
+  const bindTabs = () => view.querySelectorAll('.maptabs .tab').forEach(b => b.onclick = () => { mapTrack = b.dataset.t; window.scrollTo(0, 0); SCREENS.map(true); });
+  if (mapTrack === 'prac') {
+    S.prac = S.prac || {};
+    view.innerHTML = tabs + `<div class="pracgrid">${PRACTICE.map((L, k) => { const open = pracOpen(L), d = S.prac[k + 1];
+      return `<button class="pcard ${open ? '' : 'lock'} ${d ? 'done' : ''}" data-n="${k + 1}"><span class="pe">${open ? (L.k === 'theme' ? THEMES[L.th].e : L.k === 'rev' ? L.s.slice(0, 3) : { wch: '✏️', tone2: 'ˊˇˋ', comboRev: 'ㄧㄚ', read2p: '📖', rsp: '📖' }[L.k]) : '🔒'}</span><span class="pt">${L.t}</span>${d ? `<span class="pd">⭐${d > 1 ? '×' + d : ''}</span>` : ''}</button>`; }).join('')}</div>`;
+    bindTabs();
+    view.querySelectorAll('.pcard').forEach(b => b.onclick = () => { const L = PRACTICE[+b.dataset.n - 1]; pracOpen(L) ? startLesson(+b.dataset.n, 'prac') : say(P.trackLocked); });
+    say(P.trackPrac); return;
+  }
+  view.innerHTML = tabs + `<div class="lmap" id="lmap"><svg class="lpath" id="lpath"></svg></div>`; bindTabs();
   const box = $('#lmap'); const W = box.clientWidth; const cols = W < 560 ? 3 : W < 900 ? 4 : 5;
   const rowH = W < 560 ? 130 : 150, pad = W < 560 ? 54 : 70;
   const pts = [];
@@ -1235,14 +1286,14 @@ SCREENS.map = () => {
   for (let k = 1; k < pts.length; k++) { const [x0, y0] = pts[k - 1], [x1, y1] = pts[k]; d += y0 === y1 ? ` L${x1} ${y1}` : ` C${x0 + (x0 > W / 2 ? 60 : -60)} ${y0} ${x1 + (x1 > W / 2 ? 60 : -60)} ${y1} ${x1} ${y1}`; }
   const svg = $('#lpath'); svg.setAttribute('width', W); svg.setAttribute('height', box.style.height.replace('px', ''));
   svg.innerHTML = `<path d="${d}" fill="none" stroke="#fff" stroke-width="22" stroke-linecap="round"/><path d="${d}" fill="none" stroke="#b7d5bd" stroke-width="5" stroke-dasharray="2 14" stroke-linecap="round"/>`;
-  const curN = box.querySelector('.lnode.cur'); if (curN) setTimeout(() => curN.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
-  say(P.mapIntro);
+  const curN = box.querySelector('.lnode.cur'); if (curN && !fromTab) setTimeout(() => curN.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
+  say(fromTab ? P.trackMain : P.mapIntro);
 };
 
 /* 看注音找圖片（只看注音、不念題目） */
 SCREENS.read = (o = {}) => {
   const done = o.done || finishRound;
-  const pool = o.two ? TWO : o.one ? ONE : null;
+  const pool = o.words || (o.two ? TWO : o.one ? ONE : null);
   const N = o.N || 6; let i = 0; const used = new Set();
   const body = o.into ? $(o.into) : view;
   const next = () => {
@@ -1738,8 +1789,9 @@ function toneQuiz(o = {}) {
   const N = o.N || 6; let i = 0; let lastSet = -1; const done = o.done || finishRound;
   const next = () => {
     if (i >= N) return done();
-    let si; do { si = rand(TONE_SETS.length); } while (si === lastSet); lastSet = si;
-    const set = TONE_SETS[si]; const n = rand(4); const c = set.ch[n]; let first = true;
+    const SETS = o.sets || TONE_SETS;
+    let si; do { si = rand(SETS.length); } while (si === lastSet && SETS.length > 1); lastSet = si;
+    const set = SETS[si]; const n = rand(4); const c = set.ch[n]; let first = true;
     $('#tbody').innerHTML = `<div class="center">${dotsHTML(N, i)}<button class="say" id="again">🔊 再聽一次</button>${toneCards(set)}</div>`;
     $('#again').onclick = () => say(P.toneQ(c));
     $('#tbody').querySelectorAll('.tonecard').forEach(b => b.onclick = async () => {
