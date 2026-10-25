@@ -229,6 +229,10 @@
       qs: [{ q: '我們做了什麼？', a: 0, o: [['🍪', '餅乾'], ['🎂', '蛋糕'], ['🍕', '披薩']] }, { q: '誰跟我一起做？', a: 0, o: [['👨', '爸爸'], ['👩', '媽媽'], ['👵', '奶奶']] }] },
     { title: '小貓和老鼠', e: '🐱🐭', t: '小貓ㄒㄧㄠˇ ㄇㄠ|看到ㄎㄢˋ ㄉㄠˋ|一ㄧ|隻ㄓ|老鼠ㄌㄠˇ ㄕㄨˇ|。||老鼠ㄌㄠˇ ㄕㄨˇ|跑進ㄆㄠˇ ㄐㄧㄣˋ|洞ㄉㄨㄥˋ|裡ㄌㄧˇ|。||小貓ㄒㄧㄠˇ ㄇㄠ|找不到ㄓㄠˇ ㄅㄨˋ ㄉㄠˋ|牠ㄊㄚ|。',
       qs: [{ q: '小貓看到誰？', a: 0, o: [['🐭', '老鼠'], ['🐶', '小狗'], ['🐰', '兔子']] }, { q: '老鼠跑去哪裡？', a: 0, o: [['🕳️', '洞裡'], ['🌳', '樹上'], ['🏠', '房子裡']] }] },
+    { title: '小藍去海邊', e: '🐧🌊', t: '小藍ㄒㄧㄠˇ ㄌㄢˊ|跟ㄍㄣ|爸爸ㄅㄚˋ ㄅㄚ˙|去ㄑㄩˋ|海邊ㄏㄞˇ ㄅㄧㄢ|玩ㄨㄢˊ|。||牠們ㄊㄚ ㄇㄣ˙|在ㄗㄞˋ|沙灘ㄕㄚ ㄊㄢ|上ㄕㄤˋ|堆ㄉㄨㄟ|城堡ㄔㄥˊ ㄅㄠˇ|。||大浪ㄉㄚˋ ㄌㄤˋ|打ㄉㄚˇ|過來ㄍㄨㄛˋ ㄌㄞˊ|，|城堡ㄔㄥˊ ㄅㄠˇ|不見了ㄅㄨˋ ㄐㄧㄢˋ ㄌㄜ˙|！||小藍ㄒㄧㄠˇ ㄌㄢˊ|哈哈ㄏㄚ ㄏㄚ|大笑ㄉㄚˋ ㄒㄧㄠˋ|：「|我們ㄨㄛˇ ㄇㄣ˙|再ㄗㄞˋ|堆ㄉㄨㄟ|！」',
+      qs: [{ q: '小藍去哪裡玩？', a: 0, o: [['🌊', '海邊'], ['🌳', '公園'], ['🏫', '學校']] }, { q: '城堡怎麼了？', a: 0, o: [['💨', '不見了'], ['🏰', '還在'], ['🎁', '變大了']] }] },
+    { title: '種豆子', e: '🌱', t: '我ㄨㄛˇ|在ㄗㄞˋ|花盆ㄏㄨㄚ ㄆㄣˊ|裡ㄌㄧˇ|種ㄓㄨㄥˋ|了ㄌㄜ˙|豆子ㄉㄡˋ ㄗ˙|。||每天ㄇㄟˇ ㄊㄧㄢ|我ㄨㄛˇ|都ㄉㄡ|給ㄍㄟˇ|它ㄊㄚ|喝水ㄏㄜ ㄕㄨㄟˇ|。||過了ㄍㄨㄛˋ ㄌㄜ˙|幾天ㄐㄧˇ ㄊㄧㄢ|，|長出ㄓㄤˇ ㄔㄨ|綠綠ㄌㄩˋ ㄌㄩˋ|的ㄉㄜ˙|小芽ㄒㄧㄠˇ ㄧㄚˊ|。||我ㄨㄛˇ|好ㄏㄠˇ|高興ㄍㄠ ㄒㄧㄥˋ|！',
+      qs: [{ q: '我種了什麼？', a: 0, o: [['🫘', '豆子'], ['🌻', '向日葵'], ['🍎', '蘋果']] }, { q: '過了幾天，長出了什麼？', a: 0, o: [['🌱', '小芽'], ['🍓', '草莓'], ['🍄', '香菇']] }] },
   ];
   // 把 '早安ㄗㄠˇ ㄢ' 拆成 { w:'早安', z:'ㄗㄠˇ ㄢ' }；標點 z 是空字串
   const ZY_RE = /[ㄅ-ㄩˊˇˋ˙]/;
@@ -298,7 +302,13 @@
     { k: 'pair', s: ['ㄈㄏ', 'ㄋㄌ'], t: 'ㄈㄏ、ㄋㄌ' },
     { k: 'neutral', t: '輕聲' },
     { k: 'three', t: '三拼' },
+    { k: 'blind', t: '聽音拼字' },
+    { k: 'hz', t: '看注音找國字' },
+    { k: 'order', t: '句子排排看' },
+    { k: 'rp', i: 6, t: '小藍去海邊' },
+    { k: 'rp', i: 7, t: '種豆子' },
   ];
+  const ORDER_SENTS = () => SENTS.filter(x => { const n = parseLine(x.t).filter(y => y.z).length; return n >= 3 && n <= 5; });
   const NEUTRAL_WORDS = () => TWO.filter(w => w.z.split(' ')[1].endsWith('˙'));
   const CN = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'].concat(Array.from({ length: 30 }, (_, i) => ((i + 11) >= 20 ? ['', '', '二', '三', '四'][Math.floor((i + 11) / 10)] : '') + '十' + ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'][(i + 11) % 10]));
   const lessonTitle = (L, n) => L.k === 'sym' ? L.s : L.k === 'story' ? STORIES[L.i].title : L.k === 'rp' ? PASSAGES[L.i].title : L.t;
@@ -538,6 +548,11 @@
     ntTeach: ['有些字要念得又短又輕，叫做輕聲。輕聲的符號是一個小點點，寫在注音的上面。', '像媽媽，第二個媽就念得很輕。', '兔子的子，也是輕聲。', '換你聽聽看，第二個字是第幾聲。'],
     ntQ: w => `${w}。第二個字是第幾聲？`,
     ntA: (w, n) => `${w}，第二個字是${n === 4 ? '輕聲' : TONE_NAMES[n]}。`,
+    blindIntro: '這次沒有圖片，仔細聽小藍念，再拼出來。',
+    hzIntro: '看注音，找出是哪一個字。',
+    hzIntro2: '看注音，找出是哪一個詞。',
+    orderIntro: '聽小藍念一句話，再把詞語照順序排好。',
+    orderTap: '照順序點詞語。',
     thTeach: ['有些字有三個注音，叫做三拼。中間的ㄧ、ㄨ、ㄩ要念得快快的。', '三拼：ㄐ，ㄧ，ㄠ，腳。', '三拼：ㄒ，ㄩ，ㄥ，熊。'],
     // 練習島
     pracIntro: L => `練習島：${L.t}。`,
@@ -600,7 +615,7 @@
     for (const pr in PAIRS) { add(PAIRS[pr]); const [a, b] = Array.from(pr); add(P.pairListen(a, b));
       for (const w of WORDS) { const f = w.z.split(' ')[0]; const has = [a, b].filter(x => f.includes(x)); if (has.length === 1) { add(P.pairQ(w.w, a, b)); add(P.pairA(w.w, has[0])); } } }
     P.ntTeach.forEach(add); for (const w of TWO) { const t = parseSyl(w.z.split(' ')[1]).tone; add(P.ntQ(w.w)); add(P.ntA(w.w, t)); }
-    P.thTeach.forEach(add);
+    P.thTeach.forEach(add); add(P.blindIntro); add(P.hzIntro); add(P.hzIntro2); add(P.orderIntro); add(P.orderTap);
     PRACTICE.forEach(L => add(P.pracIntro(L))); add(P.pracDone); add(P.trackMain); add(P.trackPrac); add(P.trackLocked);
     LESSONS.forEach((L, i) => { add(P.lessonIntro(L, i + 1)); add(P.lessonDone(i + 1)); });
     for (const x of SYMBOLS) add(P.lessonWrite(x.s));
@@ -634,7 +649,7 @@
     return h.toString(16).padStart(8, '0');
   }
 
-  const ZY = { SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, SENTS, PASSAGES, LESSONS, PRACTICE, ADVANCED, ADV_AFTER, PAIRS, NEUTRAL_WORDS, THEMES, themeWords, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
+  const ZY = { SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, SENTS, PASSAGES, LESSONS, PRACTICE, ADVANCED, ADV_AFTER, PAIRS, NEUTRAL_WORDS, ORDER_SENTS, THEMES, themeWords, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
     TONE_NAMES, TONE_MARKS, parseSyl, syllables, P, allLines, hash, symOf, spoken, TIPS, teachWords, strokeCount };
   if (typeof module !== 'undefined' && module.exports) module.exports = ZY;
   else root.ZY = ZY;
