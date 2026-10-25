@@ -32,10 +32,7 @@
     return o;
   };
   const scene = s => {
-    let o = `<rect width="1000" height="625" fill="#6a2a34"/><rect width="1000" height="360" fill="url(#p-diamond)"/><rect width="1000" height="625" fill="url(#p-noise)"/>`;
-    o += `<rect y="0" width="1000" height="30" fill="#2a1a10"/><rect y="30" width="1000" height="8" fill="#c9a14a"/><rect y="340" width="1000" height="140" fill="#5a3420"/><rect y="340" width="1000" height="140" fill="url(#p-wood)"/><rect y="334" width="1000" height="10" fill="#c9a14a"/>`;
-    for (let x = 20; x < 1000; x += 120) o += `<rect x="${x}" y="356" width="100" height="104" rx="3" fill="none" stroke="#3a2010" stroke-width="3"/><path d="M${x + 3} ${457}V${359}H${x + 97}" stroke="#fff" stroke-opacity=".12" stroke-width="2" fill="none"/>`;
-    o += A.floor('wood', ['#8a5a34', '#7a4a2a'], 476);
+    let o = A.wall({ c: '#6a2a34', pat: 'diamond', trim: '#c9a14a', wain: '#5a3420', wy: 344, floor: 'wood', fc: ['#8a5a34', '#7a4a2a'], fy: 476 }).replace('<!--DECO-->', '');
     // 舞台布幕與燈光控制台
     o += `<path d="M0 30h130q-20 120 0 240t-10 210H0z" fill="#a8222e" ${SW}/>${[20, 50, 80, 108].map(x => `<path d="M${x} 40q${x % 3 ? 10 : -8} 200 0 430" stroke="#7a1820" stroke-width="5" fill="none"/>`).join('')}<path d="M0 30h130" stroke="#e0b048" stroke-width="10"/><path d="M4 40q50 30 120 0" stroke="#e0b048" stroke-width="4" fill="none"/>`;
     A.fx(`<g class="flick" style="${A.ad(3.3)}"><path d="M60 0L150 0L360 480L-60 480z" fill="url(#shaftG)" opacity=".12"/></g>`);
