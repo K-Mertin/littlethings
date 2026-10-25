@@ -254,6 +254,32 @@
     { k: 'ww', t: '寫字的注音' }, { k: 'rs', t: '讀短句' }, { k: 'ww2', t: '寫詞的注音' },
     { k: 'rp', i: 0, t: '讀短文' }, { k: 'rp', i: 1, t: '讀短文' }, { k: 'rp', i: 2, t: '讀短文' }, { k: 'rp', i: 3, t: '讀短文' }, { k: 'rp', i: 4, t: '讀短文' }, { k: 'rp', i: 5, t: '讀短文' },
   ];
+
+  // 主題詞（練習島用）
+  const THEMES = {
+    animal: { t: '動物', e: '🐶', w: '貓 狗 牛 雞 豬 魚 馬 鵝 鴨 蛙 熊 龍 鳥 羊 蝦 蛇 兔子 老虎 恐龍 烏龜 猴子 獅子 蝴蝶 企鵝 鯨魚 螃蟹 松鼠 蜜蜂 刺蝟 公雞 大象 小雞 蜘蛛' },
+    food: { t: '好吃的', e: '🍎', w: '蛋 糖 茶 肉 米 桃 梨 餅 菜 水 西瓜 葡萄 包子 蘋果 香蕉 草莓 熱狗 蛋糕 牛奶 披薩 麵包 橘子 桃子 冰塊' },
+    body: { t: '身體和衣服', e: '👕', w: '手 腳 嘴 牙 嘴巴 鼻子 耳朵 衣服 襪子 鞋 帽 眼鏡 外套 口罩 褲子 刷牙' },
+    home: { t: '家裡和交通', e: '🚗', w: '車 船 床 門 燈 書 杯 碗 筆 傘 鼓 球 紙 椅子 窗戶 電視 電話 飛機 汽車 火車 拖鞋 鉛筆 筷子 浴缸 房子 氣球 足球 杯子 雨傘' },
+  };
+  const themeWords = th => THEMES[th].w.split(' ').map(w => WORDS.find(x => x.w === w)).filter(Boolean);
+  // 練習島：跟著基礎課的進度解鎖（after = 基礎課完成到第幾課），可以任意順序玩
+  const PRACTICE = [
+    { k: 'rev', s: 'ㄅㄆㄇㄈㄉㄊㄋㄌ', t: '複習 ㄅ到ㄌ', after: 2 },
+    { k: 'rev', s: 'ㄍㄎㄏㄐㄑㄒ', t: '複習 ㄍ到ㄒ', after: 4 },
+    { k: 'rev', s: 'ㄓㄔㄕㄖㄗㄘㄙ', t: '複習 ㄓ到ㄙ', after: 6 },
+    { k: 'rev', s: 'ㄧㄨㄩㄚㄛㄜㄝ', t: '複習 ㄧ到ㄝ', after: 8 },
+    { k: 'rev', s: 'ㄞㄟㄠㄡㄢㄣㄤㄥㄦ', t: '複習 ㄞ到ㄦ', after: 10 },
+    { k: 'wch', t: '默寫挑戰', after: 10 },
+    { k: 'tone2', t: '四聲練習', after: 11 },
+    { k: 'theme', th: 'animal', t: '動物', after: 12 },
+    { k: 'theme', th: 'food', t: '好吃的', after: 12 },
+    { k: 'theme', th: 'body', t: '身體和衣服', after: 12 },
+    { k: 'theme', th: 'home', t: '家裡和交通', after: 12 },
+    { k: 'comboRev', t: '結合韻總複習', after: 15 },
+    { k: 'read2p', t: '看注音讀詞', after: 22 },
+    { k: 'rsp', t: '讀短句練習', after: 30 },
+  ];
   const CN = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'].concat(Array.from({ length: 30 }, (_, i) => ((i + 11) >= 20 ? ['', '', '二', '三', '四'][Math.floor((i + 11) / 10)] : '') + '十' + ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'][(i + 11) % 10]));
   const lessonTitle = (L, n) => L.k === 'sym' ? L.s : L.k === 'story' ? STORIES[L.i].title : L.k === 'rp' ? PASSAGES[L.i].title : L.t;
 
@@ -481,6 +507,12 @@
     // 教一教：寫字的注音、讀注音
     wwT: ['寫字的注音，要先把字拆開來聽。貓：ㄇ，ㄠ。', '先寫ㄇ，再寫ㄠ，從上面寫到下面。', '最後想想是第幾聲。貓是一聲，不用標符號。', '換你寫寫看！'],
     rdT: ['只看注音的時候，先念出每一個音，再拼起來。', 'ㄇ，ㄠ，拼起來：貓。', '一句話，就一個字一個字讀：魚，在，水，裡，游。', '再讀快一點：魚在水裡游。', '換你讀讀看！'],
+    // 練習島
+    pracIntro: L => `練習島：${L.t}。`,
+    pracDone: '練習完成了！好棒！',
+    trackMain: '這是基礎課程，一課一課往前走。',
+    trackPrac: '這是練習島。學過的東西，可以在這裡多練習。',
+    trackLocked: '這一關還沒打開，先把基礎課程上到那裡喔。',
     // 課程
     mapIntro: '這是注音地圖。一課一課往前走吧！',
     mapLocked: '先把前面的課上完喔。',
@@ -532,6 +564,7 @@
     ['ㄧ', 'ㄨ', 'ㄩ'].forEach(m => add(P.ctIntro(m))); add(P.twIntro);
     P.wwT.forEach(add); P.rdT.forEach(add);
     ['企鵝', '藍鵲', '兔兔', '狗狗', '貓貓'].forEach(n => add(P.palHi(n)));
+    PRACTICE.forEach(L => add(P.pracIntro(L))); add(P.pracDone); add(P.trackMain); add(P.trackPrac); add(P.trackLocked);
     LESSONS.forEach((L, i) => { add(P.lessonIntro(L, i + 1)); add(P.lessonDone(i + 1)); });
     for (const x of SYMBOLS) add(P.lessonWrite(x.s));
     for (const w of WORDS) add(w.w);
@@ -564,7 +597,7 @@
     return h.toString(16).padStart(8, '0');
   }
 
-  const ZY = { SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, SENTS, PASSAGES, LESSONS, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
+  const ZY = { SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, SENTS, PASSAGES, LESSONS, PRACTICE, THEMES, themeWords, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
     TONE_NAMES, TONE_MARKS, parseSyl, syllables, P, allLines, hash, symOf, spoken, TIPS, teachWords, strokeCount };
   if (typeof module !== 'undefined' && module.exports) module.exports = ZY;
   else root.ZY = ZY;
