@@ -45,6 +45,10 @@ Each stage is generated from a fixed seed (the same layout every time), about th
 - **Inside a zone:** indoor halls and outdoor yards, joined by corridors with extra loops so there is more than one way round. Some halls are L-shaped or have pillars; some yards have pools.
 - **Secrets:** every zone hides a closet behind a wall that opens when you press Use on it.
 - **Checked:** the generator walks each map like a player (picking up keys, opening doors) and only keeps a layout where the seal, every key, monster and pickup can be reached.
+- **Treasure chests:** one or two per zone (some in secret closets). Press Use in front of one to open it: it spills two or three good items (big hearts, wards, elixirs, ammo) and counts as treasure.
+- **Barrels and powder kegs:** barrels stand along walls and break when hit, sometimes dropping supplies. Red powder kegs explode when hit, hurting monsters (and you, if you stand too close) and setting off kegs nearby.
+- **Spike traps:** after the first zone, some corridors are crossed by spike plates that rise every few seconds. Watch for the click and time your run.
+- **Champions:** about one monster in ten is a champion: bigger, three times the health, harder hits and a golden glow. Defeating one drops a big heart, a ward or an elixir.
 - The generator is `genLevel()` in `index.html`; sizes, key counts and monster mixes per stage are in `GEN`.
 
 ## Play
