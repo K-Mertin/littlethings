@@ -35,7 +35,7 @@
     rules: kid => kid ? [
       '每個人都有一座小島 🏝️，先偷偷把 🍪💎👑 藏好（別讓別人看到！）',
       '輪到你時，選一座別人的島，點一格挖下去 ⛏️',
-      '🌊 沒東西　✨ 挖到寶藏就得分！',
+      '🌊 沒東西　🔥 好近喔！寶藏就在旁邊　✨ 挖到寶藏就得分！',
       '寶藏最後才被找到的人是「最會藏寶」🏆'
     ] : [
       '藏寶：在 6×6 小島藏 1 個寶箱（3 格）、1 袋金幣（2 格）、2 顆寶石，再埋 1 個 💣 陷阱（40 秒）',
@@ -47,7 +47,7 @@
     host(ctx) {
       const kid = ctx.kid, ids = ctx.players.map(p => p.id), n = ids.length, now = () => ctx.now();
       const G = kid ? 4 : 6, NC = G * G, PC = kid ? PK : PA;
-      const HIDE = 40, TURN = kid ? 30 : 20, REV = kid ? 2.1 : 1.7, RMAX = kid ? 6 : 10, MAXDIG = 3;
+      const HIDE = 40, TURN = kid ? 30 : 20, REV = kid ? 2.1 : 1.7, RMAX = kid ? (n <= 3 ? 8 : 6) : 10, MAXDIG = 3;
       const S = {};
       ids.forEach(id => S[id] = { pl: PC.map(() => null), lay: Array(NC).fill('.'), dug: Array(NC).fill('.'), rdy: false, pts: 0, found: 0, cells: 0, traps: 0, probe: null, best: false });
       let ph = 'hide', st = '', T = now() + HIDE, tm = HIDE, over = false, hide0 = now();
@@ -95,7 +95,16 @@
         if (!s || t === id || !isOpen(t) || !(c >= 0 && c < NC) || s.dug[c] !== '.') return false;
         const L = s.lay[c];
         let r = 'miss', full = false, gain = 0;
-        if (L === '.') s.dug[c] = 'o';
+        if (L === '.') {
+          // kid mode: a miss right next to a hidden treasure says 「好近喔！」
+          const r0 = c / G | 0, q0 = c % G;
+          let near = false;
+          if (kid) for (let dr = -1; dr <= 1; dr++) for (let dq = -1; dq <= 1; dq++) {
+            const rr = r0 + dr, qq = q0 + dq; if (rr < 0 || qq < 0 || rr >= G || qq >= G) continue;
+            const j = rr * G + qq; if (s.lay[j] !== '.' && s.lay[j] !== 'T' && s.dug[j] === '.') near = true;
+          }
+          s.dug[c] = near ? 'n' : 'o'; if (near) r = 'near';
+        }
         else if (L === 'T') { s.dug[c] = 'x'; r = 'trap'; m.traps++; gain = m.pts > 0 ? -1 : 0; m.pts += gain; skip.add(id); }
         else {
           const k = PC.findIndex(p => p.L === L), cells = s.pl[k].cells;
@@ -261,6 +270,7 @@
               let cls = 'tr-c ', h = '';
               if (ds === '.') cls += L !== '.' ? 'u own' : 'u';
               else if (ds === 'o') { cls += 'm'; h = '<span class="tr-e">🌊</span>'; }
+              else if (ds === 'n') { cls += 'm nr'; h = '<span class="tr-e">🔥</span>'; }
               else if (ds === '*') { cls += 'h'; h = lay ? '' : '<span class="tr-e">✨</span>'; }
               else if (ds === 'x') { cls += 'x'; h = '<span class="tr-e">💥</span>'; }
               else cls += 'f';
@@ -304,7 +314,7 @@
                 if (!I.curK || I.curK.split('|')[0] !== cu.p) cur.innerHTML = `${av(cu.p, 96)}<span>⛏️</span>`;
                 I.curK = ck; cur.hidden = false;
                 if (cu.c >= 0) { const c = cells[cu.c]; cur.style.left = (c.offsetLeft + c.offsetWidth * 0.5) + 'px'; cur.style.top = (c.offsetTop + c.offsetHeight * 0.45) + 'px'; cur.classList.remove('think'); }
-                else { cur.style.left = '50%'; cur.style.top = '0px'; cur.classList.add('think'); }
+                else { cur.style.left = '50%'; cur.style.top = '50%'; cur.classList.add('think'); }
               }
             }
           },
@@ -316,7 +326,7 @@
             let h = '';
             const nP = tv ? 16 : 11;
             for (let k = 0; k < nP; k++) { const a = k / nP * 6.283 + Math.random() * 0.5, dd = 0.55 + Math.random() * 0.7; h += `<i style="--dx:${(Math.cos(a) * dd).toFixed(2)};--dy:${(Math.sin(a) * dd - 0.35).toFixed(2)}"></i>`; }
-            h += `<b>${r === 'miss' ? '🌊' : r === 'trap' ? '💥' : L ? ico(L) : '✨'}</b>`;
+            h += `<b>${r === 'near' ? '🔥' : r === 'miss' ? '🌊' : r === 'trap' ? '💥' : L ? ico(L) : '✨'}</b>`;
             b.innerHTML = h; grid.appendChild(b);
             cur.classList.remove('dig'); void cur.offsetWidth; cur.classList.add('dig');
             setTimeout(() => b.remove(), 1500);
@@ -328,6 +338,7 @@
       const resultText = (L0, short) => {
         if (!L0) return '';
         if (L0.r === 'miss') return kid ? '🌊 什麼都沒有～' : '🌊 沒東西';
+        if (L0.r === 'near') return '🔥 好近喔！寶藏就在旁邊';
         if (L0.r === 'trap') return '💥 踩到陷阱！';
         if (L0.full) return kid ? `🎉 找到 ${EMO[L0.L] || ''} 了！` : L0.L === 'C' ? '🎉 挖到整個寶箱！' : `🎉 挖出整個${NAME[L0.L]}！`;
         return short ? '✨ 挖到寶藏！' : '✨ 挖到寶藏的一部分！';
@@ -353,14 +364,15 @@
         if (w2 !== wide) { wide = w2; wrap.classList.toggle('tr-wide', wide); }
         if (mode === 'pub') {
           const list = V.order, n = list.length, oc = elBody.querySelector('.tr-ocean'); if (!oc) return;
-          const headH = tv ? 70 : 44, avH = elBody.clientHeight - 8, avW = elBody.clientWidth - 8;
+          const headH = tv ? 76 : 46, avH = elBody.clientHeight - (tv ? 120 : 84), avW = elBody.clientWidth - 16;
+          const f = 1 + 2 * (kid ? 0.24 : 0.2) / G;   // land padding around the grid
           let best = 0, bc = 1;
           for (let cols = 1; cols <= n; cols++) {
-            const rows = Math.ceil(n / cols), w = avW / cols - (tv ? 70 : 34), h = avH / rows - headH - (tv ? 60 : 30), s = Math.min(w, h);
+            const rows = Math.ceil(n / cols), w = (avW / cols - 34 - 30) / f, h = (avH / rows - headH - 30 - (rows - 1) * 16) / f, s = Math.min(w, h);
             if (s > best) { best = s; bc = cols; }
           }
           best = Math.min(best, tv ? 600 : 420);
-          if (!me && !tv && W < 560) { bc = Math.min(2, n); best = Math.min(best, W / bc - 40); }
+          if (!tv && W < 560) { bc = Math.min(2, n); best = Math.min(Math.max(best, 120), (W - 16) / bc / f - 50); }
           oc.style.gridTemplateColumns = `repeat(${bc},auto)`;
           list.forEach(id => isl[id] && isl[id].size(best));
           return;
@@ -651,7 +663,7 @@
         let nk, nh;
         if (v.st === 'go') { nk = 'go'; nh = `<div class="tr-msg big">⛏️ 開挖！<small>大家輪流去挖別人的島</small></div>`; }
         else if (v.st === 'skip') { nk = 'sk' + v.cur + v.rd; nh = `<div class="tr-who">${av(v.cur, 96)}<div><b>${nm(v.cur)}${v.cur === me ? '（你）' : ''}</b><span>😵 踩到陷阱，這回合休息</span></div></div>`; }
-        else if (v.st === 'rev' && v.last) { const L0 = v.last; nk = 'rv' + L0.seq; nh = `<div class="tr-who tr-res ${L0.r}${L0.full ? ' full' : ''}">${av(L0.by, 96)}<div><b>${nm(L0.by)}${L0.by === me ? '（你）' : ''}${L0.auto ? '<small>自動挖</small>' : ''}</b><span>${resultText(L0)} ${L0.g ? `<i>${gainTxt(L0.g)}</i>` : ''}</span>${L0.t === me && L0.r !== 'miss' ? `<span class="warn">${L0.r === 'trap' ? '踩到你的陷阱了！😆' : '😱 你的寶藏被挖到了！'}</span>` : ''}</div></div>`; }
+        else if (v.st === 'rev' && v.last) { const L0 = v.last; nk = 'rv' + L0.seq; nh = `<div class="tr-who tr-res ${L0.r}${L0.full ? ' full' : ''}">${av(L0.by, 96)}<div><b>${nm(L0.by)}${L0.by === me ? '（你）' : ''}${L0.auto ? '<small>自動挖</small>' : ''}</b><span>${resultText(L0)} ${L0.g ? `<i>${gainTxt(L0.g)}</i>` : ''}</span>${L0.t === me && (L0.r === 'hit' || L0.r === 'trap') ? `<span class="warn">${L0.r === 'trap' ? '踩到你的陷阱了！😆' : '😱 你的寶藏被挖到了！'}</span>` : ''}</div></div>`; }
         else if (my) { nk = 'my' + v.dg + kid; nh = `<div class="tr-ys">${v.dg > 0 ? '✨ 挖到了！可以再挖一次・' : ''}${kid ? '選一座島，點一格挖下去！' : '選島 → 點格子瞄準 → 再點一次或按「挖！」'}</div>`; }
         else if (v.st === 'pick') {
           const t = v.aim && v.aim.t;
@@ -717,7 +729,7 @@
             // burst on whichever island shows that cell
             Object.keys(isl).forEach(k => { const I = isl[k]; if (I && I.owner === L0.t) I.burst(L0.c, L0.r, L0.L); });
             if (mineI && L0.t === me && !elBody.querySelector('.tr-mine').hidden) mineI.burst(L0.c, L0.r, L0.L);
-            api.sfx(L0.r === 'miss' ? 'pop' : L0.r === 'trap' ? 'boom' : L0.full ? 'star' : 'coin');
+            api.sfx(L0.r === 'near' ? 'right' : L0.r === 'miss' ? 'pop' : L0.r === 'trap' ? 'boom' : L0.full ? 'star' : 'coin');
             if (me && L0.by === me) {
               if (L0.r === 'trap') { api.vibrate([200, 80, 200]); ov(`<div class="tr-ovi">💥</div><div class="tr-ovt">踩到陷阱！</div><div class="tr-ovs">${L0.g ? '-1⭐・' : ''}下回合休息</div>`, 1700, 'bad'); }
               else if (L0.full) { api.vibrate([60, 40, 160]); ov(`<div class="tr-ovi">${ico(L0.L)}</div><div class="tr-ovt">${kid ? `找到${NAME[L0.L]}了！` : L0.L === 'C' ? '挖到整個寶箱！' : `挖出整個${NAME[L0.L]}！`}</div><div class="tr-ovs">${gainTxt(L0.g)}</div>`, 1700, 'gold'); }
@@ -869,6 +881,11 @@
 .tr-c.tap:active{transform:scale(.9)}
 .tr-c.m{background:radial-gradient(circle at 50% 45%,#8e6326,#b88a45 70%);box-shadow:inset 0 5px 10px rgba(60,30,0,.5)}
 .tr-c.m .tr-e{font-size:calc(var(--cs)*.34);opacity:.7}
+.tr-c.m.nr{background:radial-gradient(circle at 50% 45%,#c2561b,#d98a3c 75%);box-shadow:inset 0 5px 10px rgba(90,20,0,.45),0 0 10px rgba(255,140,40,.6)}
+.tr-c.m.nr .tr-e{opacity:1;font-size:calc(var(--cs)*.45);animation:tr-twinkle 1.4s ease-in-out infinite}
+.tr-burst.near i{background:#ff8a2a}
+.tr-news .r.near{color:#e0570b}
+.tr-who.tr-res.near{background:#fff0e0}
 .tr-c.h{background:radial-gradient(circle,#fff8c8,#ffd23f);box-shadow:0 0 12px rgba(255,220,80,.9),inset 0 -3px 0 rgba(200,140,0,.4)}
 .tr-c.h .tr-e{animation:tr-twinkle 1.1s ease-in-out infinite}
 .tr-c.x{background:radial-gradient(circle,#ffb199,#ff5f4a);box-shadow:inset 0 4px 8px rgba(120,0,0,.35)}
@@ -919,7 +936,7 @@
   transition:left .35s cubic-bezier(.3,1.3,.5,1),top .35s cubic-bezier(.3,1.3,.5,1)}
 .tr-cur img{width:100%;height:100%;filter:drop-shadow(0 4px 3px rgba(0,0,0,.35));animation:tr-bob 1s ease-in-out infinite}
 .tr-cur span{position:absolute;right:-38%;bottom:-18%;font-size:calc(var(--cs)*.55);transform-origin:20% 80%;animation:tr-shovel .9s ease-in-out infinite}
-.tr-cur.think{transform:translate(-50%,-100%)}
+.tr-cur.think{transform:translate(-50%,-50%);width:calc(var(--cs)*1.1);height:calc(var(--cs)*1.1)}
 .tr-cur.think span{animation:none;opacity:.8}
 .tr-cur.dig span{animation:tr-dig .35s ease-in-out 3}
 .tr-burst{position:absolute;z-index:4;width:0;height:0;pointer-events:none}
@@ -990,7 +1007,7 @@
 .tr-kid .tr-tab img{width:48px;height:48px}
 .tr-pbtn.on{background:#2f7de1;color:#fff;border-color:#2f7de1;box-shadow:0 4px 0 #1b56a8}
 .tr-dbtn{font-size:22px!important}
-.tr-mine{background:rgba(255,255,255,.16);border-radius:20px;padding:6px 8px 4px}
+.tr-mine{background:rgba(255,255,255,.16);border-radius:20px;padding:6px 22px 4px;align-self:center}
 .tr-ml{color:#fff;font-weight:900;font-size:14px;text-align:center;text-shadow:0 1px 0 rgba(0,40,80,.4)}
 .tr-ml b{font-family:var(--round);color:#fff36b}
 .tr-isl.mine-big .tr-ih .tr-hn{color:#fff36b}

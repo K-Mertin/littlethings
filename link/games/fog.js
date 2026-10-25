@@ -514,7 +514,7 @@
       const ghostNext = G => {
         const cx = G.tx, cy = G.ty;
         let tgt = null, td = 7;
-        for (const e of P) { if (e.off || e.inv > 0) continue; const d = Math.hypot(e.x - G.x, e.y - G.y); if (d < td) { td = d; tgt = e; } }
+        if (G.calm <= 0) for (const e of P) { if (e.off || e.inv > 0) continue; const d = Math.hypot(e.x - G.x, e.y - G.y); if (d < td) { td = d; tgt = e; } }
         let nx = null, ny = null;
         G.chase = false;
         if (tgt && Math.random() < 0.8) {
@@ -630,6 +630,7 @@
           }
           // ghosts
           for (const G of ghosts) {
+            G.calm = Math.max(0, (G.calm || 0) - dt);
             if (G.pause > 0) { G.pause -= dt; continue; }
             const tx = G.tx + 0.5, ty = G.ty + 0.5, dx = tx - G.x, dy = ty - G.y, d = Math.hypot(dx, dy), sp = (G.chase ? 2.9 : 2.2) * dt;
             if (d <= sp) { G.x = tx; G.y = ty; ghostNext(G); } else { G.x += dx / d * sp; G.y += dy / d * sp; }
@@ -641,7 +642,7 @@
               dropKey(e);
               ev(3, e.x, e.y, e.i, lose, 0);
               ctx.sound(e.id, 'buzz');
-              G.pause = 1.4; const px = G.ptx, py = G.pty; G.ptx = G.tx; G.pty = G.ty; G.tx = px; G.ty = py; G.chase = false;
+              G.pause = 1.4; const px = G.ptx, py = G.pty; G.ptx = G.tx; G.pty = G.ty; G.tx = px; G.ty = py; G.chase = false; G.calm = 6;
             }
           }
           // bumps (adult)
@@ -767,7 +768,7 @@
       const el = {};
       if (pub) {
         hud.innerHTML = `<div class="fg-side" hidden><h3>🔦 迷霧尋寶</h3><div class="tm">0:00</div><div class="md">${kid ? '🧒 小朋友模式 · 撿寶石' : '🧑 大人模式 · 小心鬼魂 👻'}</div><div class="rows"></div>
-          <div class="leg"><span><img alt="" src="${SP.gem[0].toDataURL()}">1 分</span><span><img alt="" src="${SP.gem[1].toDataURL()}">2 分</span><span><img alt="" src="${SP.gem[2].toDataURL()}">5 分</span><span>🧰 寶箱 ${kid ? 10 : 25} 分</span>${kid ? '' : '<span>🔑 開寶箱</span><span>👻 掉一半</span>'}</div></div>
+          <div class="leg"><span><img alt="" src="${SP.gem[0].toDataURL()}">1 分</span><span><img alt="" src="${SP.gem[1].toDataURL()}">2 分</span><span><img alt="" src="${SP.gem[2].toDataURL()}">5 分</span><span><img alt="" src="${SP.chest[0].toDataURL()}">寶箱 ${kid ? 10 : 25} 分</span>${kid ? '' : '<span>🔑 開寶箱</span><span>👻 掉一半</span>'}</div></div>
           <div class="fg-chip fg-pubtop" hidden></div><div class="fg-bw"></div>`;
         el.side = hud.querySelector('.fg-side'); el.tm = hud.querySelector('.tm'); el.rows = hud.querySelector('.rows'); el.top = hud.querySelector('.fg-pubtop'); el.bw = hud.querySelector('.fg-bw');
       } else {
@@ -1012,6 +1013,7 @@
           const name = (p ? p.name : '?') + (e.fl & 8 ? ' 💤' : '');
           g.lineWidth = 4 / z; g.strokeStyle = 'rgba(20,12,30,.85)'; g.lineJoin = 'round'; g.strokeText(name, x, yy);
           g.fillStyle = mixCol(PARTY_COLORS[col % 6].c, 0.45); g.fillText(name, x, yy);
+          if (e.crown) { g.font = `${fs * 1.6}px sans-serif`; g.fillText('👑', x, yy - fs * 1.05); }
         }
       };
       const drawEnts = (rect, now, minS) => {
@@ -1142,7 +1144,7 @@
           for (const e of S.P) { const s = (e.fl & 1 ? 3.6 : 2.6) * 2 * U; g.drawImage(SP.glow, e.x * U - s / 2, e.y * U - s / 2, s, s); }
         }
         g.globalCompositeOperation = 'source-over';
-        const minS = pub ? 18 / zz : 0;
+        const minS = pub ? 44 / zz : 0;
         drawEnts(rect, now, minS);
         const list = S.P.filter(e => e.i !== meI);
         list.sort((a, b) => a.y - b.y);
@@ -1152,7 +1154,7 @@
         if (pub && v.ids.length > 1) {
           let bi = -1, bl = 0; for (let i = 0; i < v.ids.length; i++) if (v.lb[i * 3] > bl) { bl = v.lb[i * 3]; bi = i; }
           const e = S.P.find(q => q.i === bi);
-          if (e) { g.font = `${34}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'bottom'; g.fillText('👑', e.x * U, e.y * U - 0.37 * U * 2.3 - 8); }
+          if (e) { e.crown = true; drawExplorer(e, zz, now, false); }
         }
         if (!pub && myE) {
           // darkness: one radial gradient — warm lantern tint inside, dim memory outside, soft edge

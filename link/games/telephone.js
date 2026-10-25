@@ -328,6 +328,7 @@
         if (scr && scr.resize) scr.resize();
       });
       ro.observe(root);
+      const ro2 = new ResizeObserver(() => { if (scr && scr.resize) scr.resize(); });
 
       /* ---------- shared pieces ---------- */
       function stopAnim() { cancelAnimationFrame(raf); raf = 0; }
@@ -657,7 +658,7 @@
       function drawTop(v) {
         const kn = { write: kid ? '🖼️ 選一個題目' : '✍️ 出題時間', draw: '🎨 畫畫時間', guess: kid ? '💬 這是什麼？' : '💬 猜猜看' };
         if (v.ph === 'step' || v.ph === 'pass') { elPill.textContent = `第 ${v.k + 1}/${v.S} 步`; elPh.textContent = v.ph === 'pass' ? '📨 傳給下一位' : kn[v.kind]; }
-        else if (v.ph === 'reveal') { elPill.textContent = `第 ${v.rc + 1}/${v.n} 串`; elPh.textContent = '🎬 揭曉時間'; }
+        else if (v.ph === 'reveal') { elPill.textContent = `第 ${v.rc + 1}/${v.n} 串`; elPh.textContent = `🎬 ${P(v.own).name} 的接龍`; }
         else { elPill.textContent = '結束'; elPh.textContent = '🎉 大家的讚'; }
       }
 
@@ -680,7 +681,11 @@
       function render() {
         const v = V; if (!v) return;
         const key = screenKey(v);
-        if (!scr || scr.key !== key) { scr = build(key, v) || {}; scr.key = key; body.className = 'tp-body tp-s-' + key.replace(/\d+/g, ''); }
+        if (!scr || scr.key !== key) {
+          ro2.disconnect();
+          scr = build(key, v) || {}; scr.key = key; body.className = 'tp-body tp-s-' + key.replace(/\d+/g, '');
+          body.querySelectorAll('.tp-cwrap,.tp-stage,.tp-cbox').forEach(el => ro2.observe(el));
+        }
         if (scr.upd) scr.upd(v);
       }
       function moments(prev, v) {
@@ -727,7 +732,7 @@
           wrap.classList.toggle('tp-rvmode', v.ph === 'reveal' || v.ph === 'award');
           drawTop(v); render(); moments(prev, v);
         },
-        destroy() { clearInterval(timer); clearTimeout(ovT); stopAnim(); ro.disconnect(); }
+        destroy() { clearInterval(timer); clearTimeout(ovT); stopAnim(); ro.disconnect(); ro2.disconnect(); }
       };
     },
 
@@ -817,8 +822,15 @@
 .tp-land .tp-dmain,.tp-land .tp-gmain{flex-direction:row}
 .tp-land .tp-tools,.tp-land .tp-gside{width:min(46%,420px);justify-content:center}
 .tp-land .tp-cols{grid-template-columns:repeat(5,1fr)}
-.tp-land.tp-kid .tp-cols{grid-template-columns:repeat(4,1fr)}
-.tp-land .tp-tl2{grid-template-columns:repeat(3,1fr)}
+.tp-land .tp-cols{grid-template-columns:repeat(5,34px);justify-content:center;gap:8px 12px}
+.tp-land.tp-kid .tp-cols{grid-template-columns:repeat(4,40px)}
+.tp-land .tp-col,.tp-land.tp-kid .tp-col{min-height:0}
+.tp-land:not(.tp-tv) .tp-rvh{display:none}
+.tp-land:not(.tp-tv) .tp-rv{flex-direction:row}
+.tp-land:not(.tp-tv) .tp-rvm{flex:1}
+.tp-land:not(.tp-tv) .tp-rvf{flex-direction:column;width:150px;justify-content:center}
+.tp-land:not(.tp-tv) .tp-rvf>*{width:100%;flex:none}
+.tp-land:not(.tp-tv) .tp-heart{justify-content:center}
 /* waiting */
 .tp-wait{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:10px}
 .tp-wbig{font-size:84px;line-height:1.1;height:96px}
