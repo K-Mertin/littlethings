@@ -12,10 +12,36 @@
   const cab = s => [3, 4, 5, 6, 7].filter(n => n !== V(s).wb && n !== V(s).east);
   // 依照答案算出每根軸的位置（相鄰兩軸的距離＝兩個齒輪半徑和）
   function layout(s) {
-    const ch = V(s).chain, sizes = [MS, ...ch, MS], pts = [[0, 330]];
-    for (let i = 1; i < sizes.length; i++) { const d = (sizes[i - 1] + sizes[i]) * U, a = (i % 2 ? -1 : 1) * 0.42; pts.push([pts[i - 1][0] + d * Math.cos(a), pts[i - 1][1] + d * Math.sin(a)]); }
-    const off = 376 - pts[pts.length - 1][0] / 2; pts.forEach(p => p[0] += off);
-    return { pts, dist: sizes.slice(1).map((n, i) => sizes[i] + n) };
+    // 齒輪上下交錯排列；如果隔一個的齒輪會碰到（隨機答案時可能發生），就把角度拉大，直到彼此留有空隙
+    const ch = V(s).chain, sizes = [MS, ...ch, MS], pts = [[0, 330]], R = n => n * U * 1.06;
+    for (let i = 1; i < sizes.length; i++) {
+      const d = (sizes[i - 1] + sizes[i]) * U, sg = i % 2 ? -1 : 1, [px, py] = pts[i - 1];
+      let pick = null;
+      for (let a = 0.42; a <= 1.3 && !pick; a += 0.04) {
+        const q = [px + d * Math.cos(a * sg), py + d * Math.sin(a * sg)];
+        if (q[1] < 200 || q[1] > 460) continue;
+        if (pts.slice(0, i - 1).every((o, j) => Math.hypot(q[0] - o[0], q[1] - o[1]) >= R(sizes[i]) + R(sizes[j]) + 10)) pick = q;
+      }
+      pts.push(pick || [px + d * Math.cos(0.42 * sg), py + d * Math.sin(0.42 * sg)]);
+    }
+    const off = 376 - (pts[0][0] + pts[pts.length - 1][0]) / 2; pts.forEach(p => p[0] += off);
+    return { pts, sizes, R, dist: sizes.slice(1).map((n, i) => sizes[i] + n) };
+  }
+  // 標籤（間距牌、發條／時鐘）放在不會壓到齒輪、也不會互相重疊的地方
+  function labels(L) {
+    const P = L.pts, boxes = [], gearHit = (b) => P.some((p, k) => { const r = L.R(L.sizes[k]) + 3, cx = Math.max(b[0], Math.min(p[0], b[0] + b[2])), cy = Math.max(b[1], Math.min(p[1], b[1] + b[3])); return Math.hypot(cx - p[0], cy - p[1]) < r; });
+    const free = b => b[0] >= 60 && b[0] + b[2] <= 692 && b[1] >= 154 && b[1] + b[3] <= 486 && !gearHit(b) && !boxes.some(o => b[0] < o[0] + o[2] + 4 && o[0] < b[0] + b[2] + 4 && b[1] < o[1] + o[3] + 4 && o[1] < b[1] + b[3] + 4);
+    const put = (cands, w, h) => { const c = cands.find(([x, y]) => free([x - w / 2, y - h / 2, w, h])) || cands[0]; boxes.push([c[0] - w / 2, c[1] - h / 2, w, h]); return c; };
+    P.slice(1, -1).forEach(p => boxes.push([p[0] - 22, p[1] + 30, 44, 20])); // 空軸下方的「軸 n」字
+    const ends = [0, P.length - 1].map(i => { const p = P[i], r = L.R(L.sizes[i]); return put([[p[0], p[1] + r + 18], [p[0], p[1] - r - 18], [p[0] + (i ? 1 : -1) * (r + 26), p[1]], [p[0], p[1] + r + 40]], 44, 22); });
+    const plates = [];
+    for (let i = 0; i < P.length - 1; i++) {
+      const mx = (P[i][0] + P[i + 1][0]) / 2, my = (P[i][1] + P[i + 1][1]) / 2, sg = i % 2 ? 1 : -1, c = [];
+      for (const k of [78, 100, 122, 58, 144]) c.push([mx, my + sg * k], [mx, my - sg * k]);
+      for (const dx of [-30, 30, -55, 55]) c.push([mx + dx, my + sg * 100], [mx + dx, my - sg * 100]);
+      plates.push(put(c, 62, 30));
+    }
+    return { ends, plates };
   }
 
   Object.assign(ITEMS, {
@@ -41,14 +67,14 @@
   const mech = (s, run, T) => {
     const L = layout(s), P = L.pts, ch = chain(s);
     let o = `<rect x="56" y="150" width="640" height="340" rx="16" fill="#3b2a1f" ${SW}/><rect x="56" y="150" width="640" height="340" rx="16" fill="url(#p-gear)" opacity=".5"/>`;
-    let lab = '';
-    for (let i = 0; i < P.length - 1; i++) { const mx = (P[i][0] + P[i + 1][0]) / 2, my = (P[i][1] + P[i + 1][1]) / 2 + (i % 2 ? 78 : -78); o += `<path d="M${P[i][0]} ${P[i][1]}L${P[i + 1][0]} ${P[i + 1][1]}" stroke="#f0dcb8" stroke-opacity=".25" stroke-width="2" stroke-dasharray="4 6"/>`; lab += `<path d="M${mx} ${my + (i % 2 ? -14 : 12)}L${(P[i][0] + P[i + 1][0]) / 2} ${(P[i][1] + P[i + 1][1]) / 2}" stroke="#f0dcb8" stroke-width="2" stroke-dasharray="3 4"/><rect x="${mx - 30}" y="${my - 15}" width="60" height="28" rx="6" fill="#f0dcb8" ${SW2}/>` + A.txt(mx, my + 5, '間距 ' + L.dist[i], 13, '#4a3222', 'middle', 900); }
+    let lab = ''; const LB = labels(L);
+    for (let i = 0; i < P.length - 1; i++) { const [mx, my] = LB.plates[i], cy = (P[i][1] + P[i + 1][1]) / 2; o += `<path d="M${P[i][0]} ${P[i][1]}L${P[i + 1][0]} ${P[i + 1][1]}" stroke="#f0dcb8" stroke-opacity=".25" stroke-width="2" stroke-dasharray="4 6"/>`; lab += `<path d="M${mx} ${my + (my > cy ? -14 : 12)}L${(P[i][0] + P[i + 1][0]) / 2} ${cy}" stroke="#f0dcb8" stroke-width="2" stroke-dasharray="3 4"/><rect x="${mx - 30}" y="${my - 15}" width="60" height="28" rx="6" fill="#f0dcb8" ${SW2}/>` + A.txt(mx, my + 5, '間距 ' + L.dist[i], 13, '#4a3222', 'middle', 900); }
     const fx = [];
     P.forEach((p, i) => {
       const end = i === 0 || i === P.length - 1, n = end ? MS : s.peg[i - 1];
       if (n) { const g = gearG(p[0], p[1], n, end ? '#9aa6b0' : GC[n], n); if (run) { o += `<circle cx="${p[0]}" cy="${p[1]}" r="8" fill="#4a3222"/>`; fx.push(gearG(p[0], p[1], n, end ? '#9aa6b0' : GC[n], n, i % 2 ? 'spinr' : 'spin')); } else o += g; }
       else o += `<circle cx="${p[0]}" cy="${p[1]}" r="22" fill="none" stroke="#f0dcb8" stroke-width="3" stroke-dasharray="5 5"/><circle cx="${p[0]}" cy="${p[1]}" r="7" fill="#c9cfd6" ${SW2}/>` + A.txt(p[0], p[1] + 44, '軸 ' + i, 13, '#f0dcb8', 'middle', 700);
-      if (end) o += A.txt(p[0], p[1] + (i ? -62 : 70), i ? '時鐘' : '發條', 16, '#f0dcb8', 'middle', 900);
+      if (end) { const [tx, ty] = LB.ends[i ? 1 : 0]; o += A.txt(tx, ty + 6, i ? '時鐘' : '發條', 16, '#f0dcb8', 'middle', 900); }
     });
     o += lab;
     if (ch.full && !ch.ok && !run) ch.bad.forEach(i => { const mx = (P[i][0] + P[i + 1][0]) / 2, my = (P[i][1] + P[i + 1][1]) / 2; o += `<g transform="translate(${mx} ${my})"><circle r="13" fill="#e0432d" stroke="#fff" stroke-width="3"/><path d="M-5-5l10 10M5-5l-10 10" stroke="#fff" stroke-width="3.5" stroke-linecap="round"/></g>`; });
