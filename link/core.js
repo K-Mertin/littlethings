@@ -299,6 +299,7 @@ const App = {
     const saved = tabStore.get('seat', null);
     const qRoom = (Q.get('room') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
     if (saved && (!qRoom || qRoom === saved.room)) {
+      if (saved.prof && saved.prof.name) this.prof = saved.prof;
       if (saved.role === 'host') this.create(saved.table, saved.room);
       else this.join(saved.room, saved.table);
       return;
@@ -330,7 +331,7 @@ const App = {
 
   create(table, room) {
     this.role = 'host'; this.table = !!table; this.room = room || makeCode(5);
-    tabStore.set('seat', { role: 'host', room: this.room, table: this.table });
+    tabStore.set('seat', { role: 'host', room: this.room, table: this.table, prof: this.prof });
     this.setURL();
     document.body.classList.toggle('table', this.table);
     Wake.on();
@@ -339,7 +340,7 @@ const App = {
   },
   join(room, table) {
     this.role = 'guest'; this.room = room; this.table = !!table;
-    tabStore.set('seat', { role: 'guest', room, table: this.table });
+    tabStore.set('seat', { role: 'guest', room, table: this.table, prof: this.prof });
     this.setURL();
     document.body.classList.toggle('table', this.table);
     Wake.on();
