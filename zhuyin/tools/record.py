@@ -30,7 +30,7 @@ async def one(i, t, sem):
         tmp = tempfile.mktemp(suffix='.mp3')
         for k in range(4):
             try:
-                await edge_tts.Communicate(t, voice, rate=rate).save(tmp)
+                await asyncio.wait_for(edge_tts.Communicate(t, voice, rate=rate).save(tmp), 40)
                 if os.path.getsize(tmp) > 0:
                     trim(tmp, os.path.join(outdir, i + '.mp3')); os.remove(tmp); return
             except Exception as e:
@@ -39,7 +39,7 @@ async def one(i, t, sem):
         print('失敗', i, t)
 
 async def main():
-    sem = asyncio.Semaphore(6)
+    sem = asyncio.Semaphore(3)
     await asyncio.gather(*(one(i, t, sem) for i, t in todo))
 
 asyncio.run(main())
