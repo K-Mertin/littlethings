@@ -124,9 +124,9 @@
 
   /* ---------------- styles ---------------- */
   const CSS = `
-.rk{position:absolute;inset:0;display:flex;flex-direction:column;container:rk/size;overflow:hidden;
+.rk-root{position:absolute;inset:0;display:flex;flex-direction:column;container:rk/size;overflow:hidden;
   background:radial-gradient(700px 400px at 0% 0%,#fff 0,transparent 70%),radial-gradient(700px 500px at 100% 100%,#ffeede 0,transparent 70%),#eef4ff}
-.rk *{box-sizing:border-box}
+.rk-root *{box-sizing:border-box}
 .rk-top{flex:none;display:flex;align-items:center;gap:10px;padding:8px 12px 6px}
 .rk-rd{font-family:var(--round);font-weight:700;font-size:15px;color:var(--mute);white-space:nowrap}
 .rk-ty{display:inline-flex;align-items:center;gap:6px;font-weight:900;font-size:16px;color:#fff;background:var(--tc,#5b5bf7);padding:4px 12px 4px 8px;border-radius:999px;white-space:nowrap;box-shadow:0 3px 0 rgba(0,0,0,.12)}
@@ -262,17 +262,17 @@
 .rk-row.me .nm{color:var(--pri)}
 .rk-row .gn.neg{color:#b91c1c}
 .rk-row .gn small{color:var(--mute);font-size:11px}
-.rk.tv .rk-row .gn small{font-size:17px}
+.rk-root.tv .rk-row .gn small{font-size:17px}
 .rk-nx{text-align:center;font-size:13px;font-weight:900;color:var(--mute)}
 
 /* landscape phone: challenge left, answer pad right */
 @container rk (aspect-ratio > 1.25) {
-  .rk.me .rk-body{display:grid;grid-template-columns:1fr minmax(260px,44%);grid-template-rows:auto 1fr auto;column-gap:14px}
-  .rk.me .rk-q{grid-column:1;grid-row:1}
-  .rk.me .rk-ch{grid-column:1;grid-row:2 / 4}
-  .rk.me .rk-in{grid-column:2;grid-row:1 / 3;justify-content:center}
-  .rk.me .rk-st{grid-column:2;grid-row:3}
-  .rk.me .rk-body:has(.rk-in:empty){display:flex;flex-direction:column}
+  .rk-root.me .rk-body{display:grid;grid-template-columns:1fr minmax(260px,44%);grid-template-rows:auto 1fr auto;column-gap:14px}
+  .rk-root.me .rk-q{grid-column:1;grid-row:1}
+  .rk-root.me .rk-ch{grid-column:1;grid-row:2 / 4}
+  .rk-root.me .rk-in{grid-column:2;grid-row:1 / 3;justify-content:center}
+  .rk-root.me .rk-st{grid-column:2;grid-row:3}
+  .rk-root.me .rk-body:has(.rk-in:empty){display:flex;flex-direction:column}
   .rk-rev{width:min(100%,820px);display:grid;grid-template-columns:1fr 1.2fr;align-items:start}
   .rk-rev .rk-sb{grid-column:2;grid-row:1 / 5}
   .rk-rev .rk-nx{grid-column:1 / 3}
@@ -292,7 +292,7 @@
 }
 
 /* public view (big screen / watchers) */
-.rk.pub .rk-side{display:flex;flex-direction:column;gap:8px;width:clamp(240px,23cqw,380px);flex:none}
+.rk-root.pub .rk-side{display:flex;flex-direction:column;gap:8px;width:clamp(240px,23cqw,380px);flex:none}
 .rk-side .ps{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;background:#fff;border-radius:18px;padding:8px 12px;box-shadow:0 3px 0 var(--line);transition:transform .3s,background .3s}
 .rk-side .ps img{width:48px;height:48px}
 .rk-side .ps .nm{font-weight:900;font-size:19px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -303,47 +303,47 @@
 .rk-side .ps.off{opacity:.45}
 .rk-side .hd{font-weight:900;color:var(--mute);font-size:15px;padding:0 4px}
 @container rk (aspect-ratio < 1) {
-  .rk.pub .rk-mid{flex-direction:column}
-  .rk.pub .rk-side{width:auto;flex-direction:row;flex-wrap:wrap}
-  .rk.pub .rk-side .hd{display:none}
-  .rk.pub .rk-side .ps{padding:4px 8px;gap:6px}
-  .rk.pub .rk-side .ps img{width:30px;height:30px}
-  .rk.pub .rk-side .ps .nm{font-size:14px}.rk.pub .rk-side .ps .sv{font-size:16px}.rk.pub .rk-side .ps .sub2{display:none}
+  .rk-root.pub .rk-mid{flex-direction:column}
+  .rk-root.pub .rk-side{width:auto;flex-direction:row;flex-wrap:wrap}
+  .rk-root.pub .rk-side .hd{display:none}
+  .rk-root.pub .rk-side .ps{padding:4px 8px;gap:6px}
+  .rk-root.pub .rk-side .ps img{width:30px;height:30px}
+  .rk-root.pub .rk-side .ps .nm{font-size:14px}.rk-root.pub .rk-side .ps .sv{font-size:16px}.rk-root.pub .rk-side .ps .sub2{display:none}
 }
-.rk.tv .rk-top{padding:16px 24px 10px;gap:18px}
-.rk.tv .rk-rd{font-size:26px}
-.rk.tv .rk-ty{font-size:28px;padding:6px 20px 6px 14px}
-.rk.tv .rk-bar{height:22px}
-.rk.tv .rk-sec{font-size:36px;min-width:52px}
-.rk.tv .rk-mid{padding:0 24px 12px;gap:22px}
-.rk.tv .rk-q{font-size:38px}
-.rk.tv .rk-who{min-height:84px;padding:0 24px 16px;gap:12px}
-.rk.tv .rk-who .lb{font-size:22px}
-.rk.tv .rk-av{width:64px;height:64px}
-.rk.tv .rk-av b{font-size:16px;min-width:26px;height:26px;border-radius:13px}
-.rk.tv .rk-ready{padding:40px 60px;gap:14px}
-.rk.tv .rk-rno{font-size:28px}
-.rk.tv .rk-rhint{font-size:30px;max-width:900px}
-.rk.tv .rk-rev{width:min(96%,1300px);padding:28px;gap:16px}
-.rk.tv .rk-ans .lb{font-size:22px}
-.rk.tv .rk-ansv{font-size:72px;gap:18px}
-.rk.tv .rk-ansv .vs{font-size:30px}
-.rk.tv .rk-ansv .sw{width:70px;height:70px;border-radius:18px}
-.rk.tv .rk-ansv .tk{min-width:84px;height:84px;border-radius:18px}
-.rk.tv .rk-fast{font-size:30px}
-.rk.tv .rk-fast img{width:64px;height:64px}
-.rk.tv .rk-row{grid-template-columns:34px 60px minmax(80px,auto) 1fr minmax(130px,auto) auto;font-size:28px;gap:14px}
-.rk.tv .rk-row img{width:60px;height:60px}
-.rk.tv .rk-row .trk{height:36px;border-radius:18px}
-.rk.tv .rk-row .trk i{border-radius:18px}
-.rk.tv .rk-row .gn{font-size:20px}
-.rk.tv .rk-row .sv{min-width:80px}
-.rk.tv .rk-nx{font-size:22px}
-.rk.tv .rk-react{font-size:80px}
+.rk-root.tv .rk-top{padding:16px 24px 10px;gap:18px}
+.rk-root.tv .rk-rd{font-size:26px}
+.rk-root.tv .rk-ty{font-size:28px;padding:6px 20px 6px 14px}
+.rk-root.tv .rk-bar{height:22px}
+.rk-root.tv .rk-sec{font-size:36px;min-width:52px}
+.rk-root.tv .rk-mid{padding:0 24px 12px;gap:22px}
+.rk-root.tv .rk-q{font-size:38px}
+.rk-root.tv .rk-who{min-height:84px;padding:0 24px 16px;gap:12px}
+.rk-root.tv .rk-who .lb{font-size:22px}
+.rk-root.tv .rk-av{width:64px;height:64px}
+.rk-root.tv .rk-av b{font-size:16px;min-width:26px;height:26px;border-radius:13px}
+.rk-root.tv .rk-ready{padding:40px 60px;gap:14px}
+.rk-root.tv .rk-rno{font-size:28px}
+.rk-root.tv .rk-rhint{font-size:30px;max-width:900px}
+.rk-root.tv .rk-rev{width:min(96%,1300px);padding:28px;gap:16px}
+.rk-root.tv .rk-ans .lb{font-size:22px}
+.rk-root.tv .rk-ansv{font-size:72px;gap:18px}
+.rk-root.tv .rk-ansv .vs{font-size:30px}
+.rk-root.tv .rk-ansv .sw{width:70px;height:70px;border-radius:18px}
+.rk-root.tv .rk-ansv .tk{min-width:84px;height:84px;border-radius:18px}
+.rk-root.tv .rk-fast{font-size:30px}
+.rk-root.tv .rk-fast img{width:64px;height:64px}
+.rk-root.tv .rk-row{grid-template-columns:34px 60px minmax(80px,auto) 1fr minmax(130px,auto) auto;font-size:28px;gap:14px}
+.rk-root.tv .rk-row img{width:60px;height:60px}
+.rk-root.tv .rk-row .trk{height:36px;border-radius:18px}
+.rk-root.tv .rk-row .trk i{border-radius:18px}
+.rk-root.tv .rk-row .gn{font-size:20px}
+.rk-root.tv .rk-row .sv{min-width:80px}
+.rk-root.tv .rk-nx{font-size:22px}
+.rk-root.tv .rk-react{font-size:80px}
 
 /* kid mode: rounder, bigger */
-.rk.kid .rk-nums button{border-radius:22px}
-.rk.kid .rk-st{font-size:22px}
+.rk-root.kid .rk-nums button{border-radius:22px}
+.rk-root.kid .rk-st{font-size:22px}
 
 @keyframes rkPop{0%{transform:scale(.3);opacity:0}100%{transform:scale(1);opacity:1}}
 .rk-it,.rk-dot,.rk-grid button{animation-name:rkPopC}
@@ -504,7 +504,7 @@
     client(root, api) {
       injectCSS();
       const pub = api.me == null, kid = api.kid, tv = api.isTable;
-      root.innerHTML = `<div class="rk ${pub ? 'pub' : 'me'} ${tv ? 'tv' : ''} ${kid ? 'kid' : ''}">
+      root.innerHTML = `<div class="rk-root ${pub ? 'pub' : 'me'} ${tv ? 'tv' : ''} ${kid ? 'kid' : ''}">
         <div class="rk-top"><span class="rk-rd"></span><span class="rk-ty"></span><div class="rk-bar"><i></i></div><span class="rk-sec"></span></div>
         <div class="rk-mid"><div class="rk-body"><div class="rk-q"></div><div class="rk-ch"></div><div class="rk-in"></div>${pub ? '' : '<div class="rk-st"></div>'}</div>${pub ? '<div class="rk-side"></div>' : ''}</div>
         <div class="rk-who"></div>
@@ -654,7 +654,7 @@
             break;
           }
           case 'big': {
-            const side = n => c.k === 'n' ? `<span class="bn">${n}</span><span class="bd">${'●'.repeat(n)}</span>` : `<span class="bd" style="font-size:min(${n > 6 ? 9 : 12}cqw,14cqh,64px)">${c.e.repeat(n)}</span>`;
+            const side = n => c.k === 'n' ? `<span class="bn">${n}</span><span class="bd">${'●'.repeat(n)}</span>` : `<span class="bd" style="font-size:min(${n > 6 ? 9 : 12}cqw,${n > 4 ? 16 : 24}cqh,72px)">${c.e.repeat(n)}</span>`;
             E.qq.innerHTML = c.k === 'n' ? (kid ? '👆 哪個數字比較大？' : '哪個比較大？') : '👆 哪一邊比較多？';
             E.ch.innerHTML = `<div class="rk-two"><button data-s="0">${side(c.L)}</button><button data-s="1">${side(c.R)}</button></div>`;
             if (me) E.ch.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { if (!canAct()) return; local.picked = b; submit(+b.dataset.s); });

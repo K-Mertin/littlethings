@@ -79,7 +79,7 @@
   background:linear-gradient(90deg,#ff8095,#ffd84a,#6ef0a5,#7fb6ff);-webkit-background-clip:text;background-clip:text;color:transparent}
 .cd-mini .cd-bov b{display:none}
 /* ---- shared bits ---- */
-.cd-colchip{display:inline-flex;align-items:center;gap:6px;padding:6px 14px 6px 8px;border-radius:999px;font-weight:900;font-size:15px;
+.cd-colchip{white-space:nowrap;display:inline-flex;align-items:center;gap:6px;padding:6px 14px 6px 8px;border-radius:999px;font-weight:900;font-size:15px;
   background:var(--cc);box-shadow:0 3px 0 var(--cd),0 0 0 3px rgba(255,255,255,.85);color:#fff;text-shadow:0 1px 0 rgba(0,0,0,.25);transition:background .3s}
 .cd-colchip .e{width:26px;height:26px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:16px;color:var(--cd);text-shadow:none}
 .cd-disc{position:relative;width:1em;height:1.5em;font-size:var(--pw,100px)}
@@ -231,6 +231,8 @@
   min-width:calc(var(--u)*170);box-shadow:0 calc(var(--u)*6) 0 rgba(0,0,0,.2);transition:box-shadow .3s,transform .3s}
 .cd-seat.on{box-shadow:0 0 0 calc(var(--u)*6) #ffd84d,0 0 calc(var(--u)*40) rgba(255,216,77,.95);transform:translate(-50%,-50%) scale(1.08)}
 .cd-seat.off{opacity:.6}
+.cd-seat.hop{animation:cdHop .5s cubic-bezier(.2,.9,.3,1.4)}
+@keyframes cdHop{0%{transform:translate(-50%,-50%) scale(1)}40%{transform:translate(-50%,-62%) scale(1.14)}100%{transform:translate(-50%,-50%) scale(1.08)}}
 .cd-seat .av{position:relative;width:calc(var(--u)*84);height:calc(var(--u)*84)}
 .cd-seat .av img{width:100%;height:100%;display:block}
 .cd-seat .av .cd-ring circle{stroke-width:3}
@@ -699,21 +701,20 @@
       /* ----------------------------------------------------------- BIG SCREEN ----------------------------------------------------------- */
       R.innerHTML = `<div class="cd-felt"></div><div class="cd-seats"></div>
         <div class="cd-tc"><div class="cd-tpiles"><div class="cd-dring"></div><div class="cd-dpile"></div><div class="cd-disc"></div><span class="cd-cc"></span></div>
-          <div class="cd-ttxt"></div><div class="cd-tturn"></div></div>
-        <div class="cd-yt"><img alt=""><b></b></div>`;
+          <div class="cd-ttxt"></div><div class="cd-tturn"></div></div>`;
       const q = s => R.querySelector(s);
       const felt = q('.cd-felt'), seatsEl = q('.cd-seats'), dpEl = q('.cd-dpile'), discEl = q('.cd-disc'), ccEl = q('.cd-cc'), txtEl = q('.cd-ttxt'),
-        turnEl = q('.cd-tturn'), ringEl = q('.cd-dring'), ytEl = q('.cd-yt');
+        turnEl = q('.cd-tturn'), ringEl = q('.cd-dring');
       let seatKey = '', discKey = '', lastTxt = '';
       const seatEl = id => seatsEl.querySelector(`[data-id="${CSS.escape(id)}"]`);
       function layout() {
-        const W = R.clientWidth, H = R.clientHeight, u = Math.min(W / 1600, H / 900);
+        const W = R.clientWidth, H = R.clientHeight, u = Math.min(W / (W < H ? 760 : 1600), H / (W < H ? 1100 : 900));
         R.style.setProperty('--u', u + 'px');
         R.style.setProperty('--pw', (kid ? 170 : 160) * u + 'px'); R.style.setProperty('--dw', 120 * u + 'px');
         felt.style.width = W * 0.7 + 'px'; felt.style.height = H * 0.6 + 'px';
         const ringW = Math.min(560 * u, W * 0.6); ringEl.style.width = ringW + 'px'; ringEl.style.marginLeft = -ringW / 2 + 'px';
         if (!V) return;
-        const n = V.ps.length, rx = W * 0.41, ry = H * 0.37, cx = W / 2, cy = H * 0.52;
+        const n = V.ps.length, rx = W * (W < H ? 0.33 : 0.41), ry = H * 0.37, cx = W / 2, cy = H * 0.52;
         V.ps.forEach((p, i) => {
           const el = seatEl(p.id); if (!el) return;
           const a = Math.PI / 2 + i * Math.PI * 2 / n;
@@ -785,11 +786,9 @@
           drawSeats(v); drawCenter(v);
           if (first) layout();
           fl.forEach(f => f());
-          if (api.isTable && v.turn !== prevTurn && v.ph !== 'end') {
-            ytEl.querySelector('img').src = api.avatar(pl(v.turn), 128);
-            ytEl.querySelector('b').textContent = `輪到 ${pl(v.turn).name}！`;
-            ytEl.classList.remove('go'); void ytEl.offsetWidth; ytEl.classList.add('go');
-            api.sfx('turn');
+          if (v.turn !== prevTurn && v.ph !== 'end') {
+            const se = seatEl(v.turn);
+            if (se) { se.classList.remove('hop'); void se.offsetWidth; se.classList.add('hop'); }
           }
           prevTurn = v.ph === 'end' ? null : v.turn;
           if (v.win) showWin(v);
