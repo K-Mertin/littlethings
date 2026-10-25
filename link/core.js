@@ -10,7 +10,7 @@
                      view(null) is the public view (big screen / watchers) and must never contain secrets.
        client(root, api) → runs on every screen in the game: { view(v), destroy?() }
        bot?(view, api)   → optional: plays one random-but-legal move (used by the tests) }
-   host ctx: { kid, players:[{id,name,animal,col}], hasTable, push(), sound(to,name), toast(to,text), online(id), now() }
+   host ctx: { kid, players:[{id,name,animal,col}], hasTable, push(), sound(to,name), toast(to,text), online(id), leader() → id, now() }
              push(): views changed, send them. Games with `rate` (Hz) are sent that often automatically.
    client api: { me (id or null), isTable, spectator, kid, players(), player(id), send(d), sfx(name),
                  vibrate(ms), avatar(p,size) → img url, color(p) → {c,d}, toast(text) } */
@@ -197,6 +197,7 @@ const Host = {
       sound: (to, name, arg) => this.fx(to, 'sfx', name, arg),
       toast: (to, text) => this.fx(to, 'toast', text),
       online: id => { const p = this.byId(id); return !!(p && p.online); },
+      leader: () => { const l = this.leader(); return l ? l.id : null; },
       now: () => performance.now() / 1000
     };
     try { this.game = this.def.host(ctx); } catch (e) { console.error(e); this.toLobby(); return; }

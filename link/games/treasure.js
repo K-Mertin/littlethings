@@ -364,14 +364,14 @@
         if (w2 !== wide) { wide = w2; wrap.classList.toggle('tr-wide', wide); }
         if (mode === 'pub') {
           const list = V.order, n = list.length, oc = elBody.querySelector('.tr-ocean'); if (!oc) return;
-          const headH = tv ? 76 : 46, avH = elBody.clientHeight - (tv ? 120 : 84), avW = elBody.clientWidth - 16;
+          const headH = tv ? 62 : 40, avH = elBody.clientHeight - (tv ? 100 : 70), avW = elBody.clientWidth - 16;
           const f = 1 + 2 * (kid ? 0.24 : 0.2) / G;   // land padding around the grid
           let best = 0, bc = 1;
           for (let cols = 1; cols <= n; cols++) {
-            const rows = Math.ceil(n / cols), w = (avW / cols - 34 - 30) / f, h = (avH / rows - headH - 30 - (rows - 1) * 16) / f, s = Math.min(w, h);
+            const rows = Math.ceil(n / cols), w = (avW / cols - 34 - 30) / f, h = (avH / rows - headH - 20 - (rows - 1) * 12) / f, s = Math.min(w, h);
             if (s > best) { best = s; bc = cols; }
           }
-          best = Math.min(best, tv ? 600 : 420);
+          best = Math.min(best, tv ? 560 : 420);
           if (!tv && W < 560) { bc = Math.min(2, n); best = Math.min(Math.max(best, 120), (W - 16) / bc / f - 50); }
           oc.style.gridTemplateColumns = `repeat(${bc},auto)`;
           list.forEach(id => isl[id] && isl[id].size(best));
@@ -459,11 +459,12 @@
           I.el.classList.toggle('closed', v.ph === 'dig' && iv.l === 0);
           I.el.classList.toggle('turn', v.ph === 'dig' && v.cur === id);
           let status = '';
+          let pill = '';
           if (v.ph === 'hide') status = v.ready.includes(id) ? '<em class="ok">✔ 藏好了</em>' : '<em>🤫 藏寶中</em>';
-          else if (v.ph === 'end') status = best ? '<em class="best">🏆 最會藏寶</em>' : dots(iv.l);
-          else status = (v.sk.includes(id) ? '<em>😵 休息</em>' : '') + (iv.l === 0 ? '<em>挖光了</em>' : dots(iv.l)) ;
+          else if (v.ph === 'end') status = best ? '<em class="best">🏆 最會藏寶</em>' : '';
+          else { status = (v.sk.includes(id) ? '<em>😵 休息</em>' : '') + (iv.l === 0 ? '<em>挖光了</em>' : ''); if (iv.l) pill = dots(iv.l); }
           set(I.head, JSON.stringify([v.sc[id], status, P(id).name, v.cur === id, P(id).online]),
-            `<span class="tr-hav ${P(id).online === false ? 'off' : ''}">${av(id, tv ? 128 : 96)}</span><span class="tr-hn">${esc(P(id).name)}${id === me ? '（你）' : ''}</span><span class="tr-hs">⭐${v.sc[id]}</span>${status}`);
+            `<span class="tr-hav ${P(id).online === false ? 'off' : ''}">${av(id, tv ? 128 : 96)}</span><span class="tr-hn">${esc(P(id).name)}${id === me ? '（你）' : ''}</span><span class="tr-hs">⭐${v.sc[id]}${pill}</span>${status}`);
           const probes = [];
           if (v.lp && v.lp.t === id && performance.now() < lpUntil) probes.push({ c: v.lp.c, y: v.pr && v.lp.by === me ? v.pr.y : -1 });
           if (v.pr && v.pr.t === id && !probes.length) probes.push(v.pr);
@@ -867,7 +868,9 @@
 .tr-hav{width:30px;height:30px;display:grid;place-items:center;background:#fff;border-radius:50%;box-shadow:0 2px 0 rgba(0,40,80,.25)}
 .tr-hav img{width:100%;height:100%}
 .tr-hav.off{opacity:.45}
-.tr-hs{font-family:var(--round);background:#fff;color:#e08600;border-radius:999px;padding:0 9px;text-shadow:none}
+.tr-hs{font-family:var(--round);background:#fff;color:#e08600;border-radius:999px;padding:0 9px;text-shadow:none;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.tr-hs .tr-dots{font-size:.6em}
+.tr-ih{flex-wrap:nowrap!important;white-space:nowrap}
 .tr-hl{font-size:12px;background:rgba(255,255,255,.9);color:var(--ink);text-shadow:none;border-radius:999px;padding:1px 8px}
 .tr-land{position:relative;padding:calc(var(--cs)*.2);border-radius:calc(var(--cs)*.55);background:radial-gradient(circle at 30% 20%,#ffeab0,#eec36a 70%,#d9a64b);
   box-shadow:0 0 0 5px rgba(255,255,255,.75),0 0 0 13px rgba(255,255,255,.22),0 14px 28px rgba(0,40,90,.35);transition:box-shadow .3s,transform .3s}
@@ -904,8 +907,9 @@
 .tr-pco.rv{background:rgba(255,255,255,.5);border:3px dashed #ff7a45;animation:tr-popin .5s backwards}
 .tr-pco.f,.tr-pco.lost{background:linear-gradient(160deg,#fff6c4,#ffcf3f);box-shadow:0 0 0 2px #fff,0 0 18px rgba(255,210,60,.95);animation:tr-popin .55s cubic-bezier(.3,1.6,.5,1)}
 .tr-pco.lost{filter:saturate(.75) brightness(.97)}
-.tr-pco.n3 .tr-chest{width:calc(var(--cs)*1.5)}
-.tr-pco.n3.v .tr-chest{width:calc(var(--cs)*.92)}
+.tr-pco .tr-chest{width:auto;height:calc(var(--cs)*.72)}
+.tr-pco.n3 .tr-chest{height:calc(var(--cs)*.9)}
+.tr-pco.n3.v .tr-chest{width:calc(var(--cs)*.92);height:auto}
 .tr-pco.n2 .tr-e{font-size:calc(var(--cs)*.8)}
 .tr-pco .tr-e{font-size:calc(var(--cs)*.62)}
 .tr-tag{position:absolute;top:-9px;right:-6px;background:#ff5a5a;color:#fff;font-size:11px;font-style:normal;font-weight:900;border-radius:999px;padding:1px 6px;white-space:nowrap;box-shadow:0 2px 4px rgba(0,0,0,.2)}
@@ -1022,7 +1026,7 @@
 .tr-wide .tr-dig>.tr-sc{grid-area:sc}.tr-wide .tr-dig>.tr-now{grid-area:now}.tr-wide .tr-dig>.tr-tabs{grid-area:tabs}.tr-wide .tr-dig>.tr-acts{grid-area:acts}.tr-wide .tr-dig>.tr-mine{grid-area:mine;justify-self:center}
 .tr-wide .tr-gbox.main{padding:16px 8px 8px 18px}
 /* public ocean map */
-.tr-ocean{display:grid;justify-content:center;align-content:center;gap:16px 34px;min-height:100%;padding:18px 8px 64px}
+.tr-ocean{display:grid;justify-content:center;align-content:center;gap:12px 34px;min-height:100%;padding:18px 8px 64px}
 .tr-ocean .tr-isl{animation:tr-float 5s ease-in-out infinite}
 .tr-ocean .tr-isl:nth-child(2n){animation-delay:-2.5s}
 .tr-ocean .tr-isl:nth-child(3n){animation-delay:-1.2s}

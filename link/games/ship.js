@@ -169,7 +169,7 @@
 .sp-nm{font-weight:900;font-size:13px;line-height:1.15;text-align:center;color:#fff;max-width:100%;padding:0 2px;flex:none;word-break:break-all}
 .sp-kid .sp-nm{color:#1f2346;font-size:14px}
 .sp-ctl{flex:1;min-height:0;width:100%;display:flex;align-items:center;justify-content:center;position:relative}
-.sp-btn{width:min(100cqh - 46px,76cqw,104px);margin-bottom:9px;aspect-ratio:1;border-radius:50%;display:grid;place-items:center;font-size:min(30cqh,44px);line-height:1;
+.sp-btn{width:min(100cqh - 38px,76cqw,104px);margin-bottom:8px;aspect-ratio:1;border-radius:50%;display:grid;place-items:center;font-size:min(30cqh,44px);line-height:1;
   background:radial-gradient(circle at 35% 30%,color-mix(in srgb,var(--cc) 45%,#fff),var(--cc) 58%,color-mix(in srgb,var(--cc) 70%,#000));
   box-shadow:0 0 0 5px #1b2038,0 0 0 7px #596291,0 7px 0 5px #11152b,inset 0 -5px 0 rgba(0,0,0,.18);transition:transform .07s,box-shadow .07s}
 .sp-kid .sp-btn{box-shadow:0 0 0 5px #fff,0 0 0 8px color-mix(in srgb,var(--cc) 60%,#000),0 8px 0 7px rgba(0,0,0,.18),inset 0 -6px 0 rgba(0,0,0,.18)}
@@ -928,15 +928,17 @@
       body(); g.fillStyle = bgr; g.fill();
       g.save(); body(); g.clip();
       g.fillStyle = '#ff5d73'; g.beginPath(); g.arc(1.32 * s, 0, 0.36 * s, 0, 7); g.fill();
-      g.fillStyle = '#5b5bf7'; g.fillRect(-1 * s, 0.24 * s, 2.4 * s, 0.08 * s);
+      g.fillStyle = '#5b5bf7'; g.fillRect(-1 * s, 0.3 * s, 2.4 * s, 0.07 * s);
       if (hull < 60) { g.strokeStyle = 'rgba(60,40,60,.7)'; g.lineWidth = 0.025 * s; g.beginPath(); g.moveTo(-0.3 * s, -0.5 * s); g.lineTo(-0.2 * s, -0.3 * s); g.lineTo(-0.28 * s, -0.2 * s); g.lineTo(-0.15 * s, -0.05 * s); g.stroke(); }
       if (hull < 30) { g.beginPath(); g.moveTo(0.6 * s, 0.45 * s); g.lineTo(0.5 * s, 0.3 * s); g.lineTo(0.62 * s, 0.22 * s); g.stroke(); }
       g.restore();
       body(); g.strokeStyle = '#3a4266'; g.lineWidth = 0.04 * s; g.stroke();
       // portholes with the crew
-      const ids = V ? V.ids : [], n = Math.max(1, ids.length), r = n > 4 ? 0.15 * s : 0.18 * s;
+      const ids = V ? V.ids : [], n = Math.max(1, ids.length), two = n > 4, top = two ? Math.ceil(n / 2) : n, r = two ? 0.135 * s : 0.18 * s;
       for (let i = 0; i < n; i++) {
-        const px = (n === 1 ? 0.1 : -0.6 + 1.3 * i / (n - 1)) * s, py = -0.06 * s;
+        const row = i < top ? 0 : 1, m = row ? n - top : top, j = row ? i - top : i;
+        const x0 = two ? (row ? -0.42 : -0.55) : -0.6, x1 = two ? (row ? 0.42 : 0.6) : 0.7;
+        const px = (m === 1 ? 0.1 : x0 + (x1 - x0) * j / (m - 1)) * s, py = (two ? (row ? 0.08 : -0.24) : -0.06) * s;
         const p = api.player(ids[i]), off = V && V.pl && V.pl[i] && V.pl[i].off;
         g.beginPath(); g.arc(px, py, r * 1.22, 0, 7); g.fillStyle = '#3a4266'; g.fill();
         g.save(); g.beginPath(); g.arc(px, py, r, 0, 7); g.clip();
