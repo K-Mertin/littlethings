@@ -122,6 +122,7 @@ const R = {
     this.effects(f);
     this.bubbles(f);
     f.save(); f.setTransform(1, 0, 0, 1, 0, 0); this.fireworks(f, dt); f.restore();
+    if (UI.mode === 'build') { const ht = Guide.tile(); if (ht) this.hintTile(f, ht); }
     if (UI.mode === 'build' || UI.mode === 'move') this.ghostDraw(f);
     // 發現組合等等的閃光
     if (Game.flash) { this.flashA = Math.max(this.flashA, Game.flash); Game.flash = 0; }
@@ -875,6 +876,16 @@ const R = {
     for (const c of Game.cust) if (c.vip && c.state !== 'eat') this.txt(g, CTYPES[c.type].n, c.x, c.y + 5, 5, '#ffe070', 700, '#2b1b26');
   },
   txtW(t, s) { const mc = this._mc || (this._mc = document.createElement('canvas').getContext('2d')); const k = t + s; const m = this._tw || (this._tw = new Map()); let w = m.get(k); if (w === undefined) { mc.font = `900 ${s * 4}px "Noto Sans TC",sans-serif`; w = mc.measureText(t).width / 4; if (m.size > 300) m.clear(); m.set(k, w); } return w; },
+  // 新手引導建議的格子：一閃一閃＋上面有箭頭
+  hintTile(g, [x, y]) {
+    const k = (Math.sin(performance.now() / 180) + 1) / 2, X = x * TILE, Y = y * TILE;
+    g.fillStyle = `rgba(255,214,64,${0.25 + k * 0.3})`; g.fillRect(X, Y, TILE, TILE);
+    g.strokeStyle = '#ffd040'; g.lineWidth = 1; g.strokeRect(X + 0.5, Y + 0.5, TILE - 1, TILE - 1);
+    const ay = Y - 10 - k * 3;
+    g.fillStyle = '#5a1a0a'; g.fillRect(X + 5, ay - 1, 6, 5); g.fillRect(X + 3, ay + 3, 10, 2); g.fillRect(X + 5, ay + 5, 6, 2); g.fillRect(X + 7, ay + 7, 2, 1);
+    g.fillStyle = '#ffd040'; g.fillRect(X + 6, ay, 4, 4); g.fillRect(X + 4, ay + 4, 8, 1); g.fillRect(X + 6, ay + 5, 4, 1); g.fillRect(X + 7, ay + 6, 2, 1);
+    this.txt(g, '放這裡', X + 8, ay - 5, 5.5, '#fff4c0', 900, '#5a1a0a');
+  },
   ghostDraw(g) {
     const gh = this.ghost; if (!gh) return;
     const id = gh.id, f = F[id];

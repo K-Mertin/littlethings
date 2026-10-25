@@ -50,7 +50,7 @@ const Game = {
       lv: 0, W: 6, H: 5, items: [], floor: {}, staff: [], dishes: {}, ings: {}, combos: {}, goals: {}, unlock: {},
       st: { cust: 0, sales: 0, ysales: 0, msales: 0, mcost: 0, wsales: 0, wcust: 0, satS: 0, satN: 0, ysat: 0, yn: 0, hist: [], best: 99, wins: 0, research: 0, dsold: {}, ctype: {}, five: 0, storm: 0, hosted: 0 },
       awards: [], ended: false, uid: 1, hire: [], ev: [], hints: {}, log: [], rank: 0, contestY: 0, festNote: 0, seed: (Math.random() * 1e9) | 0,
-      scen, gen: opt.gen || 1, tut: { step: opt.noTut ? -1 : 0 }, tech: {}, br: {}, ach: {}, q: null, qdone: 0, qcd: 2, hostCD: 0, fq: null, ptsGiven: 0,
+      scen, gen: opt.gen || 1, ob: opt.guide ? { ch: 0, u: {}, g: {}, f: {}, b: 0, story: 0, chef: (P.chef || 0) * 3 } : null, tech: {}, br: {}, ach: {}, q: null, qdone: 0, qcd: 2, hostCD: 0, fq: null, ptsGiven: 0,
     };
     for (const k in ING) if (!ING[k].buy) S.ings[k] = 1;
     if (scen === 'sweet') {
@@ -68,10 +68,12 @@ const Game = {
     for (let i = 0; i < (P.recipe || 0) && i < easy.length; i++) S.dishes[easy[i]] = { lv: 1, price: DISH[easy[i]].p, on: true };
     this.S = S;
     const add = (id, x, y) => S.items.push({ uid: S.uid++, id, x, y, lv: 1, dirty: 0 });
-    add(scen === 'sweet' ? 'griddle' : 'griddle', 1, 1); add('drink', 3, 1); add('stool', 1, 3); add('stool', 4, 3); add('lantern', 5, 0);
+    // 新手引導：一開始只有阿嬤的煎台、一組桌椅和老闆自己；飲料吧和阿珠在第 2 課才加入
     const ch = (P.chef || 0) * 3;
+    if (opt.guide) { add('griddle', 1, 1); add('stool', 1, 3); add('lantern', 5, 0); }
+    else { add('griddle', 1, 1); add('drink', 3, 1); add('stool', 1, 3); add('stool', 4, 3); add('lantern', 5, 0); }
     S.staff.push(this.newStaff({ name: '阿福', title: '老闆', cook: 8 + ch, serv: 5 + ch, charm: 5 + ch, job: 'cook', owner: true, trait: 'learner' }));
-    S.staff.push(this.newStaff({ name: '阿珠', cook: 5 + ch, serv: 6 + ch, charm: 4 + ch, job: 'cook', trait: 'smile' }));
+    if (!opt.guide) S.staff.push(this.newStaff({ name: '阿珠', cook: 5 + ch, serv: 6 + ch, charm: 4 + ch, job: 'cook', trait: 'smile' }));
     this.rollHire();
     this.boot();
   },
@@ -116,16 +118,19 @@ const Game = {
     for (const k in S.dishes) if (!DISH[k]) delete S.dishes[k];
     // v1 → v2：新系統的欄位
     if (!S.v || S.v < 2) {
-      S.tut = { step: S.week > 0 ? -1 : 0 };
       for (const s of S.staff) if (s.trait === undefined) s.trait = s.owner ? 'learner' : this.rollTrait();
     }
     S.v = 2;
-    S.scen = S.scen || 'std'; S.gen = S.gen || 1; S.tut = S.tut || { step: -1 };
+    S.scen = S.scen || 'std'; S.gen = S.gen || 1; delete S.tut;
+    // 新手引導：舊存檔（沒有這個欄位）一律當作已經完成
+    if (S.ob === undefined) S.ob = null;
     S.tech = S.tech || {}; S.br = S.br || {}; S.ach = S.ach || {}; S.q = S.q || null; S.qdone = S.qdone || 0; S.qcd = S.qcd ?? 2; S.hostCD = S.hostCD || 0; S.fq = S.fq || null; S.ptsGiven = S.ptsGiven || 0;
     const st = S.st; st.dsold = st.dsold || {}; st.ctype = st.ctype || {}; st.five = st.five || 0; st.storm = st.storm || 0; st.hosted = st.hosted || 0;
     for (const s of S.staff) if (s.trait === undefined) s.trait = '';
     for (const s of S.hire || []) if (s.trait === undefined) s.trait = this.rollTrait();
   },
+  // 新手引導進行到第幾課（沒有引導或已完成 = 99）。章節之間的空檔算下一課
+  gch() { const o = this.S.ob; if (!o || o.ch === -1) return 99; return o.ch >= 0 ? o.ch : -1 - o.ch; },
   boot() {
     this.cust = []; this.peds = []; this.rts = new Map(); this.srt = new Map(); this.fx = []; this.floats = []; this.cars = [];
     this.rebuild();
@@ -692,7 +697,7 @@ const Game = {
       const n = best.s.nb[best.fi % best.s.nb.length];
       c.state = 'toSeat'; c.path = this.path(c.tile[0], c.tile[1], n[0], n[1]) || [];
     } else {
-      c.takeout = true; this.finishEat(c);
+      c.takeout = true; this.dbg.takeout = (this.dbg.takeout || 0) + 1; this.finishEat(c);
     }
   },
   finishEat(c) {
@@ -925,7 +930,7 @@ const Game = {
     } else if (c.state === 'toSeat') {
       if (this.moveAgent(c, dt)) {
         const srt = this.rts.get(c.seat?.uid);
-        if (!srt) { c.takeout = true; this.finishEat(c); return; }
+        if (!srt) { c.takeout = true; this.dbg.takeout = (this.dbg.takeout || 0) + 1; this.finishEat(c); return; }
         c.state = 'eat'; c.eatT = c.eat0 = rnd(4, 6.5); c.sip = DISH[c.dish].cat === 'drink';
         c.dirtySeat = srt.it.dirty > 0;
         const it = srt.it, n = srt.seats.length;
@@ -1079,8 +1084,8 @@ const Game = {
     if (this.wk() === 1 && this.month() === 1 && S.week > 0) { /* 新年 */ }
     // 小吃大賽：10 月第 2 週
     if (this.month() === 10 && this.wk() === 2 && S.contestY !== this.year() && this.menuAll().length) { S.contestY = this.year(); this.pending.push({ k: 'contest' }); }
-    else if (Math.random() < 0.16 && S.week > 3) this.rollEvent();
-    else if (!S.duel && S.lv >= 1 && S.week > 16 && S.week >= (S.duelCD || 0) && !(S.tut && S.tut.step >= 0) && Math.random() < 0.1) this.offerDuel();
+    else if (Math.random() < 0.16 && S.week > 3 && this.gch() >= 7) this.rollEvent();
+    else if (!S.duel && S.lv >= 1 && S.week > 16 && S.week >= (S.duelCD || 0) && this.gch() >= 9 && Math.random() < 0.1) this.offerDuel();
     this.weekQuest();
     this.checkGoals();
     this.checkScenario();
@@ -1365,7 +1370,7 @@ const Game = {
   weekQuest() {
     const S = this.S;
     if (S.q) { S.q.w--; if (S.q.w <= 0 && !this.questDone(S.q)) { this.toast(`委託「${S.q.title}」時間到了，沒有完成…`, 'bad'); S.q = null; S.qcd = irnd(1, 3); } return; }
-    if (S.tut && S.tut.step >= 0) return;
+    if (this.gch() < 8) return;
     if (S.week < 4 || --S.qcd > 0) return;
     if (Math.random() < 0.55) { const q = this.makeQuest(); if (q) { this.pending.push({ k: 'quest', q }); this.spawnAsker(q); } }
     else S.qcd = 1;
