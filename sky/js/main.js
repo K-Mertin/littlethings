@@ -154,6 +154,7 @@ function draw() {
     drawDecals(ctx);
     drawEnemies(ctx, 'ground');
     drawFX(ctx, true);
+    if (STAGES[G.stage].under) STAGES[G.stage].under(ctx);
     if (STAGES[G.stage].clouds) SkyClouds.draw(ctx);
     drawEnemyShadows(ctx);
     if (P.alive) Art.shadow(ctx, 'player', P.x, P.y, 0, 0.7);

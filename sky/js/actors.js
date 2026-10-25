@@ -258,6 +258,7 @@ function ring(x, y, n, spd, off = 0, kind) {
   for (let i = 0; i < n; i++) eShot(x, y, off + i * TAU / n, spd, kind);
   Snd.play('eshot');
 }
+const BEAM_COL = {}, EB_SPR = {};
 function updateEB(dt) {
   const hr = G.d.hit;
   for (const b of G.eb) {
@@ -273,14 +274,17 @@ function updateEB(dt) {
       b.vx = Math.cos(a) * sp; b.vy = Math.sin(a) * sp;
       if (G.t % 0.06 < dt) fxP({ k: 's', x: b.x, y: b.y, vx: 0, vy: 0, r: 2, life: 0, max: 0.3, a: 0.2 });
     }
+    if (b.av) { const c = Math.cos(b.av * dt), s = Math.sin(b.av * dt), vx = b.vx; b.vx = vx * c - b.vy * s; b.vy = vx * s + b.vy * c; }
+    if (b.acc) { const sp = Math.hypot(b.vx, b.vy), ns = Math.max(20, Math.min(b.vmax || 400, sp + b.acc * dt)); b.vx *= ns / sp; b.vy *= ns / sp; }
     b.x += b.vx * dt; b.y += b.vy * dt;
-    if (b.x < -20 || b.x > W + 20 || b.y < -30 || b.y > H + 20) { b.dead = true; continue; }
+    if (b.x < -20 || b.x > W + 20 || b.y < -30 || b.y > H + 20) { if (!(b.keep && b.t < b.keep)) { b.dead = true; continue; } }
     if (P.alive && d2(b.x, b.y, P.x, P.y) < (b.r + hr) * (b.r + hr)) { b.dead = true; playerHit(); }
   }
   G.eb = G.eb.filter(b => !b.dead);
   // 頭目的雷射光柱
   for (const bm of G.beams) {
     bm.t += dt;
+    if (bm.vx && bm.t > bm.warn * 0.6) { bm.x += bm.vx * dt; if (bm.x < 16 || bm.x > W - 16) bm.vx = -bm.vx; }
     if (bm.t > bm.warn && bm.t < bm.warn + bm.life && P.alive && Math.abs(P.x - bm.x) < bm.w / 2 - 3 && P.y > bm.y) playerHit();
   }
   G.beams = G.beams.filter(b => b.t < b.warn + b.life);
@@ -289,14 +293,15 @@ function drawEB(ctx) {
   for (const bm of G.beams) {
     if (bm.t < bm.warn) {
       const a = 0.35 + 0.35 * Math.sin(bm.t * 30);
-      const C = bm.col === 'o' ? [255, 150, 30] : [255, 60, 60];
+      const C = BEAM_COL[bm.col] ? BEAM_COL[bm.col][0] : bm.col === 'o' ? [255, 150, 30] : [255, 60, 60];
       ctx.fillStyle = `rgba(${C[0]},${C[1]},${C[2]},${a})`; ctx.fillRect(bm.x - 1, bm.y, 2, H - bm.y);
       ctx.strokeStyle = `rgba(${C[0]},${C[1] + 20},${C[2] + 20},${a * 0.6})`; ctx.setLineDash([6, 6]); ctx.strokeRect(bm.x - bm.w / 2, bm.y, bm.w, H - bm.y); ctx.setLineDash([]);
     } else {
       const k = bm.t - bm.warn, w = bm.w * Math.min(1, k * 8) * (1 - Math.max(0, (k - bm.life + 0.15) / 0.15));
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      ctx.fillStyle = bm.col === 'o' ? 'rgba(255,110,20,.4)' : 'rgba(255,60,90,.35)'; ctx.fillRect(bm.x - w / 2 - 6, bm.y, w + 12, H - bm.y);
-      ctx.fillStyle = bm.col === 'o' ? 'rgba(255,190,80,.9)' : 'rgba(255,140,170,.85)'; ctx.fillRect(bm.x - w / 2, bm.y, w, H - bm.y);
+      const BC = BEAM_COL[bm.col];
+      ctx.fillStyle = BC ? BC[1] : bm.col === 'o' ? 'rgba(255,110,20,.4)' : 'rgba(255,60,90,.35)'; ctx.fillRect(bm.x - w / 2 - 6, bm.y, w + 12, H - bm.y);
+      ctx.fillStyle = BC ? BC[2] : bm.col === 'o' ? 'rgba(255,190,80,.9)' : 'rgba(255,140,170,.85)'; ctx.fillRect(bm.x - w / 2, bm.y, w, H - bm.y);
       ctx.fillStyle = '#fff'; ctx.fillRect(bm.x - w / 6, bm.y, w / 3, H - bm.y);
       ctx.restore();
     }
@@ -305,6 +310,7 @@ function drawEB(ctx) {
     if (b.split) Art.draw(ctx, 'ebI', b.x, b.y, b.t * 6);
     else if (b.kind === 'b') Art.draw(ctx, 'ebB', b.x, b.y);
     else if (b.kind === 'm') Art.draw(ctx, 'emis', b.x, b.y, Math.atan2(b.vy, b.vx) - Math.PI / 2);
+    else if (EB_SPR[b.kind]) Art.draw(ctx, EB_SPR[b.kind], b.x, b.y, EB_SPR[b.kind + 'r'] ? Math.atan2(b.vy, b.vx) - Math.PI / 2 : 0);
     else Art.draw(ctx, 'eb', b.x, b.y);
   }
 }

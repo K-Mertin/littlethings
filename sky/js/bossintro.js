@@ -11,8 +11,10 @@ const BOSS_INFO = {
   boss6: { img: 'nb6', cls: '六足冰甲機甲', threat: 4, col: '#7fe0ff' },
   boss7: { img: 'nb7', cls: '地心鑽掘母艦', threat: 4, col: '#ff7a2a' },
   boss8: { img: 'nb8', cls: '異星新月母艦', threat: 5, col: '#d080ff' },
+  boss9: { img: 'k9body', cls: '生化機械頭足類', threat: 5, col: '#5ff0ff' },
+  boss10: { img: 'b10', cls: '要塞動力核心', threat: 5, col: '#ff8a3a' },
 };
-const MID_INFO = { bomber: '重型轟炸機', heavy: '重裝砲艇' };
+const MID_INFO = { bomber: '重型轟炸機', heavy: '重裝砲艇', sub9: '深淵潛艇', guard10: '核心守衛' };
 
 const BossIntro = {
   sil: Object.create(null),
