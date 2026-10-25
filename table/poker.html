@@ -213,9 +213,9 @@ const K = {
   key: 'klondike', title: '新接龍', vert: true, st: null, hist: [],
   cards: std52,
   opt() { return TB.store.get('poker:opt:klondike', { draw: 1 }); },
-  fresh(opt) {
-    const deck = shuffle(range(52));
-    const s = { draw: +opt.draw === 3 ? 3 : 1, stock: [], waste: [], found: [[], [], [], []], tab: [[], [], [], [], [], [], []], up: Array(52).fill(false), moves: 0, time: 0, counted: false, done: false };
+  fresh(opt, deck0) {
+    const deck = deck0 && deck0.length === 52 ? deck0.slice() : shuffle(range(52));
+    const s = { deck: deck.slice(), draw: +opt.draw === 3 ? 3 : 1, stock: [], waste: [], found: [[], [], [], []], tab: [[], [], [], [], [], [], []], up: Array(52).fill(false), moves: 0, time: 0, counted: false, done: false };
     let k = 0; this.dealOrder = [];
     for (let i = 0; i < 7; i++) for (let j = i; j < 7; j++) { s.tab[j].push(deck[k]); this.dealOrder.push(deck[k]); k++; }
     for (let i = 0; i < 7; i++) s.up[s.tab[i][s.tab[i].length - 1]] = true;
@@ -322,7 +322,7 @@ const K = {
     const s = this.st; if (s.done) return; s.done = true; this.save();
     TB.bump('poker', 'won'); TB.bump('poker-klondike', 'won');
     const best = TB.store.get('poker:best:klondike', 0); if (!best || s.time < best) TB.store.set('poker:best:klondike', s.time);
-    winDance(() => TB.dialog({ title: '過關！', html: `<p>新接龍完成了，共 ${s.moves} 步，用時 ${fmtTime(s.time)}。</p>`, buttons: [{ label: '再玩一局', primary: true, onClick: () => { setTimeout(() => newGame(), 0); } }] }));
+    winDance(() => TB.dialog({ title: '過關！', html: `<p>新接龍完成了，共 ${s.moves} 步，用時 ${fmtTime(s.time)}。</p>`, buttons: [{ label: '重玩這一局', onClick: () => { setTimeout(() => this.replay(), 0); } }, { label: '再玩一局', primary: true, onClick: () => { setTimeout(() => newGame(), 0); } }] }));
   },
   click(id) {
     const s = this.st, loc = this.locate(id); if (!loc || s.done) return;
@@ -405,15 +405,18 @@ const K = {
     const o = this.opt();
     return TB.dialog({
       title: '新接龍 · 新局', html: '<p>把所有的牌依花色從 A 排到 K，送進右上角四個回收區。</p>' + TB.seg('每次翻牌', 'draw', [[1, '翻一張（簡單）'], [3, '翻三張（經典）']], o.draw),
-      buttons: [{ label: '取消', value: null }, { label: '開始', primary: true, onClick: d => { const v = { draw: +TB.segVal(d, 'draw') }; TB.store.set('poker:opt:klondike', v); setTimeout(() => this.start(v), 0); } }]
+      buttons: [{ label: '取消', value: null }].concat(this.canReplay() ? [{ label: '重玩這一局', value: 'replay', onClick: () => { setTimeout(() => this.replay(), 0); } }] : [], [{ label: '開始新的一局', primary: true, onClick: d => { const v = { draw: +TB.segVal(d, 'draw') }; TB.store.set('poker:opt:klondike', v); setTimeout(() => this.start(v), 0); } }])
     });
   },
-  start(opt) { this.fresh(opt); this.save(); this.layout(); dealAnim(this.g.x[0], this.g.top, this.dealOrder); },
+  start(opt, deck) { this.fresh(opt, deck); this.save(); this.layout(); dealAnim(this.g.x[0], this.g.top, this.dealOrder); },
+  // 用同一副牌、同樣的翻牌設定從頭再玩一次
+  canReplay() { return !!(this.st && Array.isArray(this.st.deck) && this.st.deck.length === 52); },
+  replay() { if (!this.canReplay()) return; const s = this.st; TB.sfx('click'); this.start({ draw: s.draw }, s.deck); TB.toast('重新發同一局的牌'); },
   resume() { const v = loadSave('poker:klondike'); if (v && this.valid(v)) { this.st = v; this.hist = []; return true; } return false; },
   rules: `<h4>目標</h4><p>把 52 張牌依花色從 A 排到 K，全部送進右上角的四個回收區。</p>
     <h4>怎麼玩</h4><ul><li>下面七疊牌：可以把牌接在<b>顏色不同、點數大一</b>的牌下面（例如黑 9 接在紅 10 下面）。整串翻開的牌可以一起移動。</li>
     <li>空出來的位置只能放 K（或以 K 開頭的一串）。</li><li>左上角的牌堆點一下就翻牌；翻完了再點一下重新翻。</li>
-    <li>用拖曳的方式移動牌：把牌拖到想放的位置再放開。</li><li>點兩下一張牌，可以直接把它收到上面的回收區（能收的話）。</li><li>所有牌都翻開後，會問你要不要自動收完。</li></ul>
+    <li>用拖曳的方式移動牌：把牌拖到想放的位置再放開。</li><li>點兩下一張牌，可以直接把它收到上面的回收區（能收的話）。</li><li>按「新局」可以選「重玩這一局」，用同一副牌從頭再來一次。</li><li>所有牌都翻開後，會問你要不要自動收完。</li></ul>
     <h4>翻一張 / 翻三張</h4><p>翻三張比較難：每次翻三張，只能用最上面那一張。</p>`,
 };
 
