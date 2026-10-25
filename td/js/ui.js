@@ -11,13 +11,47 @@ const Prog = {
   levelStars(i) { const r = this.rec(i); return r ? (r.stars || 0) + (r.hard ? 2 : 0) : 0; },
   chalStars(i) { const c = Store.data.chal[i]; return c ? CHAL_ORDER.filter(k => c[k]).length : 0; },
   endlessStars(i) { return Math.min(5, Math.floor((Store.data.endless[i] || 0) / 10)); },
-  total() { let n = 0; for (let i = 0; i < LEVELS.length; i++) n += this.levelStars(i) + this.endlessStars(i) + this.chalStars(i); return n; },
-  max() { return LEVELS.length * 13; },
+  heroicStars(i) { return Store.data.heroic[i] ? 2 : 0; },
+  total() { let n = 0; for (let i = 0; i < LEVELS.length; i++) n += this.levelStars(i) + this.endlessStars(i) + this.chalStars(i) + this.heroicStars(i); return n; },
+  max() { return LEVELS.length * 15; },
+  actOf(i) { return LEVELS[i].act || 0; },
+  actOpen(a) { return a === 0 || this.cleared() >= 14; },
   spent() { let n = 0; for (const m of META) { const r = Store.data.meta[m.id] || 0; for (let i = 0; i < r; i++) n += m.cost[i]; } return n; },
   avail() { return this.total() - this.spent(); },
   cleared() { let c = 0; for (let i = 0; i < LEVELS.length; i++) if (this.rec(i) && this.rec(i).stars) c = i + 1; return c; },
   unlocked(i) { return i === 0 || !!(this.rec(i - 1) && this.rec(i - 1).stars); },
   endlessOk(i) { return this.cleared() > ENDLESS_UNLOCK && !!(this.rec(i) && this.rec(i).stars); },
+};
+
+// ───────── 每週挑戰 ─────────
+// 每週一（台灣時間 08:00 = UTC 00:00）換一次：地圖、可用的塔、兩個詞綴都由週數決定，大家玩到的一樣
+const Weekly = {
+  EPOCH: Date.UTC(2026, 0, 5),
+  week(t) { return Math.floor(((t || Date.now()) - this.EPOCH) / 6048e5); },
+  rules(w) {
+    w = w === undefined ? this.week() : w;
+    const r = mkRng(w * 7919 + 13), li = Math.floor(r() * LEVELS.length);
+    const aa = ['arrow', 'magic', 'sniper', 'frost'], out = [aa[Math.floor(r() * aa.length)]];
+    const pool = TOWER_ORDER.filter(k => k !== out[0] && k !== 'mine');
+    while (out.length < WEEKLY.towers) out.push(pool.splice(Math.floor(r() * pool.length), 1)[0]);
+    out.sort((a, b) => TOWER_ORDER.indexOf(a) - TOWER_ORDER.indexOf(b));
+    const mp = ['swift', 'armored', 'warded', 'regen', 'horde', 'shielded'], mods = [];
+    while (mods.length < WEEKLY.mods) { const k = mp[Math.floor(r() * mp.length)]; if (!mods.includes(k)) mods.push(k); }
+    return { w, li, towers: out, mods };
+  },
+  endsIn() { return this.EPOCH + (this.week() + 1) * 6048e5 - Date.now(); },
+  open() { return Prog.cleared() >= WEEKLY.unlock; },
+  score(G, cleared) { return cleared * 1000 + G.stats.kills * 5 + Math.max(0, G.lives) * 20; },
+  rec(w) { const D = Store.data.weekly[w === undefined ? this.week() : w]; return D && Array.isArray(D.best) ? D : { best: [], plays: 0 }; },
+  record(score, cleared) {
+    const w = this.week(), D = Store.data.weekly, rec = D[w] = this.rec(w), d = Date.now();
+    rec.plays = (rec.plays || 0) + 1;
+    rec.best.push({ s: score, w: cleared, d });
+    rec.best.sort((a, b) => b.s - a.s); rec.best = rec.best.slice(0, 5);
+    // 只留最近 8 週
+    for (const k of Object.keys(D)) if (+k < w - 8) delete D[k];
+    return rec.best.findIndex(b => b.d === d);
+  },
 };
 
 // ───────── 英雄（存檔、選擇） ─────────
@@ -117,6 +151,19 @@ const UI = (() => {
   // ───────── 塔資訊 ─────────
   function statList(G, t, st) {
     const k = t.k, out = [];
+    if (k === 'barracks') {
+      out.push(['士兵', st.n + ' 名']); out.push(['生命', Math.round(st.hp)]); out.push(['傷害', fmt(st.dmg)]); out.push(['護甲', pct(st.armor)]); out.push(['重生', st.resp + '秒']);
+      if (st.leech) out.push(['吸血', pct(st.leech)]);
+      out.push(['集結範圍', st.range.toFixed(1)]);
+      return out;
+    }
+    if (k === 'alchemy') {
+      out.push(['每秒毒傷', fmt(st.dmg)]); out.push(['毒池', st.pool.toFixed(1) + ' 格']); out.push(['持續', st.poolT.toFixed(1) + '秒']); out.push(['射程', st.range.toFixed(1)]);
+      if (st.corrode) out.push(['腐蝕護甲', '-' + pct(st.corrode)]);
+      if (st.spread) out.push(['毒霧擴散', '']);
+      out.push(['無視護甲', '']); out.push(['只打地面', '']);
+      return out;
+    }
     if (k === 'banner') {
       out.push(['傷害加成', '+' + pct(st.buffDmg + G.M.banner)]);
       if (st.buffRange) out.push(['射程加成', '+' + pct(st.buffRange)]);
@@ -155,6 +202,8 @@ const UI = (() => {
     if (nst.slow && cur.slow && nst.slow !== cur.slow) parts.push(`減速 ${pct(cur.slow)}→${pct(nst.slow)}`);
     if (nst.buffDmg !== undefined) parts.push(`加成 ${pct(cur.buffDmg + M.banner)}→${pct(nst.buffDmg + M.banner)}`);
     if (nst.gold) parts.push(`每波 ${Math.round(cur.gold * M.mine)}→${Math.round(nst.gold * M.mine)}`);
+    if (k === 'barracks') { if (nst.n && nst.n !== cur.n) parts.push(`士兵 ${cur.n}→${nst.n}`); if (nst.hp) parts.push(`生命 ${Math.round(cur.hp)}→${Math.round(nst.hp * M.troopHp)}`); }
+    if (k === 'alchemy' && nst.pool && nst.pool !== cur.pool) parts.push(`毒池 ${cur.pool.toFixed(1)}→${nst.pool.toFixed(1)}`);
     if (nst.splash && cur.splash && nst.splash !== cur.splash && k === 'cannon') parts.push(`爆炸 ${cur.splash.toFixed(1)}→${(nst.splash * M.splash).toFixed(1)}`);
     return parts.join('、');
   }
@@ -176,7 +225,8 @@ const UI = (() => {
       h += `<div class="ti-ups"><div class="maxed">${esc(d.spec[t.spec].desc)}<br>已經是最強的型態了</div></div>`;
     }
     h += '<div class="ti-row">';
-    if (!d.support) h += '<div class="modes">' + TARGET_MODES.map(([m, n]) => `<button data-act="mode" data-mode="${m}" class="${t.mode === m ? 'on' : ''}">${n}</button>`).join('') + '</div>';
+    if (d.troops) h += `<div class="ti-note" style="flex:1">點<b>道路</b>移動集結點（${t.st.range.toFixed(1)} 格內）</div>`;
+    else if (!d.support) h += '<div class="modes">' + TARGET_MODES.map(([m, n]) => `<button data-act="mode" data-mode="${m}" class="${t.mode === m ? 'on' : ''}">${n}</button>`).join('') + '</div>';
     else h += `<div class="ti-note" style="flex:1">${esc(d.desc)}</div>`;
     h += `<button class="sell" data-act="sell">賣出 <b>+${sellValue(G, t)}</b></button></div>`;
     if (!d.support) h += `<div class="ti-note">${esc(d.desc)}</div>`;
@@ -272,6 +322,8 @@ const UI = (() => {
       for (const k of Object.keys(info.sum)) if (!seenBefore(G, k, info.n)) return `<b>新敵人 · ${ENEMIES[k].name}</b>：${esc(ENEMIES[k].desc)}`;
     }
     if (G.endless && G.mod) return `<b>詞綴 · ${ENDLESS_MODS[G.mod].name}</b>：${ENDLESS_MODS[G.mod].desc}`;
+    if (G.weekly && G.wave < 1) return `<b>每週挑戰</b>：${G.weekly.mods.map(k => HEROIC_MODS[k].name + '（' + HEROIC_MODS[k].desc + '）').join('、')}`;
+    if (G.heroic && G.wave < 1) return `<b>菁英模式</b>：${G.L.heroic.map(k => HEROIC_MODS[k].name + '（' + HEROIC_MODS[k].desc + '）').join('、')}`;
     if (G.chal && G.wave < 1) return `<b>挑戰 · ${CHALLENGES[G.chal].name}</b>：${G.chal === 'limit' ? '只能用 ' + G.L.limit.map(k => TOWERS[k].name).join('、') : CHALLENGES[G.chal].desc}`;
     if (G.state === 'run' && G.nextT !== null && G.wave < G.nWaves - 1) return `提早叫下一波可以多拿 <b>${earlyBonus(G)}</b> 金幣。`;
     return '點塔可以升級、換目標或賣掉。';
@@ -329,7 +381,7 @@ const UI = (() => {
   function resetPanel() { lastPanelKey = ''; lastPv = ''; lastTipHtml = ''; msg = null; lastLives = null; lastGold = null; }
 
   // ───────── 選單層 ─────────
-  const OVS = ['ovTitle', 'ovLevels', 'ovBrief', 'ovMeta', 'ovPause', 'ovResult', 'ovHelp', 'ovCodex'];
+  const OVS = ['ovTitle', 'ovLevels', 'ovBrief', 'ovMeta', 'ovPause', 'ovResult', 'ovHelp', 'ovCodex', 'ovWeekly'];
   function show(...ids) { for (const o of OVS) $(o).hidden = !ids.includes(o); }
   function syncToggles() {
     for (const b of document.querySelectorAll('.tog')) {
@@ -341,24 +393,47 @@ const UI = (() => {
 
   function levels() {
     $('lStars').textContent = `★ ${Prog.total()} / ${Prog.max()}`;
+    if (App.act === undefined) App.act = Prog.cleared() >= 14 ? 1 : 0;
+    const act = App.act;
+    for (const b of $('lActs').children) { const a = +b.dataset.a; b.classList.toggle('on', a === act); b.classList.toggle('lock', !Prog.actOpen(a)); }
+    $('lWeekly').classList.toggle('lock', !Weekly.open()); $('lWeekly').classList.toggle('fresh', Weekly.open() && !Weekly.rec().plays);
     const box = $('wmap'); box.innerHTML = '';
     const w = Math.max(200, box.clientWidth), h = Math.max(200, box.clientHeight);
-    const m = WorldMap.draw(w, h);
+    const m = WorldMap.draw(w, h, act);
     box.appendChild(m.canvas);
+    const idx = LEVELS.map((L, i) => i).filter(i => Prog.actOf(i) === act);
     let cur = LEVELS.findIndex((L, i) => Prog.unlocked(i) && !(Prog.rec(i) && Prog.rec(i).stars));
-    LEVELS.forEach((L, i) => {
+    idx.forEach((i, j) => {
+      const L = LEVELS[i];
       const ok = Prog.unlocked(i), r = Prog.rec(i);
       const b = document.createElement('button');
-      b.className = 'wnode' + (ok ? '' : ' locked') + (i === cur ? ' cur' : '') + (r && r.stars ? ' done' : '');
-      b.style.left = m.pts[i][0] + 'px'; b.style.top = m.pts[i][1] + 'px';
+      b.className = 'wnode' + (ok ? '' : ' locked') + (i === cur ? ' cur' : '') + (r && r.stars ? ' done' : '') + (Store.data.heroic[i] ? ' hero' : '');
+      b.style.left = m.pts[j][0] + 'px'; b.style.top = m.pts[j][1] + 'px';
       const eb = Prog.endlessOk(i) ? `<em class="inf">${Store.data.endless[i] ? '無盡 ' + Store.data.endless[i] + ' 波' : '無盡模式'}</em>` : '';
-      b.innerHTML = `<span class="wn-num">${ok ? i + 1 : '🔒'}</span><span class="wn-lbl"><b>${L.name}</b><span class="stars">${starsHtml(r ? r.stars : 0)}</span>${r && r.hard ? '<em>困難</em>' : ''}${Prog.chalStars(i) ? `<em class="ch">挑戰 ${Prog.chalStars(i)}/3</em>` : ''}${eb}</span>${i === cur ? '<i class="wn-flag"></i>' : ''}`;
+      b.innerHTML = `<span class="wn-num">${ok ? i + 1 : '🔒'}</span><span class="wn-lbl"><b>${L.name}</b><span class="stars">${starsHtml(r ? r.stars : 0)}</span>${r && r.hard ? '<em>困難</em>' : ''}${Store.data.heroic[i] ? '<em class="hr">英雄</em>' : ''}${Prog.chalStars(i) ? `<em class="ch">挑戰 ${Prog.chalStars(i)}/3</em>` : ''}${eb}</span>${i === cur ? '<i class="wn-flag"></i>' : ''}`;
       b.setAttribute('aria-label', `第 ${i + 1} 關 ${L.name}${ok ? '' : '（尚未解鎖）'}`);
       if (ok) b.addEventListener('click', () => { Snd.sfx('click'); brief(i); });
       else b.addEventListener('click', () => Snd.sfx('deny'));
       box.appendChild(b);
       if (i === cur) requestAnimationFrame(() => { try { const ov = $('ovLevels'); if (ov.scrollHeight > ov.clientHeight + 20) b.scrollIntoView({ block: 'center' }); } catch (e) { /* 舊瀏覽器 */ } });
     });
+    if (!Prog.actOpen(act)) { const d = document.createElement('div'); d.className = 'actlock'; d.innerHTML = '<b>第二章 · 東境遠征</b><span>打贏第 14 關「海底神殿」之後開啟</span>'; box.appendChild(d); }
+  }
+  function setAct(a) { App.act = a; levels(); }
+  // ───────── 每週挑戰 ─────────
+  function weekly() {
+    const R = Weekly.rules(), L = LEVELS[R.li], rec = Weekly.rec();
+    const left = Weekly.endsIn(), dd = Math.floor(left / 864e5), hh = Math.floor(left % 864e5 / 36e5);
+    $('wWeek').textContent = `第 ${R.w + 1} 週 · 還剩 ${dd > 0 ? dd + ' 天 ' : ''}${hh} 小時換新`;
+    const th = $('wThumb'); th.innerHTML = ''; th.appendChild(Render.thumb(R.li, 480, 260));
+    $('wDesc').innerHTML = `這週的戰場是 <b>${R.li + 1}. ${esc(L.name)}</b>。用固定的塔撐越多波越好，分數只跟自己比。`;
+    const tw = R.towers.map(k => `<span class="wk-t"><img alt="" src="${Render.icon('tower', k, 1)}"><b>${TOWERS[k].name}</b></span>`).join('');
+    const md = R.mods.map(k => `<span class="wk-m"><b>${HEROIC_MODS[k].name}</b>${HEROIC_MODS[k].desc}</span>`).join('');
+    $('wRules').innerHTML = `<p class="lbl">可用的塔</p><div class="wk-ts">${tw}</div><p class="lbl">本週詞綴</p><div class="wk-ms">${md}</div><p class="sub wk-note">無盡模式 · 20 條命 · 不套用天賦 · 分數＝撐過的波數×1000＋擊倒×5＋剩下生命×20</p>`;
+    $('wBest').innerHTML = `<p class="lbl">本週最佳紀錄（${rec.plays || 0} 次挑戰）</p>` + (rec.best.length ? '<ol>' + rec.best.map((b, i) => `<li${i === 0 ? ' class="top"' : ''}><b>${b.s.toLocaleString()}</b><span>${b.w} 波</span><small>${new Date(b.d).toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' })}</small></li>`).join('') + '</ol>' : '<p class="sub">還沒有紀錄，來當第一名吧！</p>');
+    const ok = Weekly.open();
+    $('wGo').disabled = !ok; $('wGo').textContent = ok ? '開始挑戰' : `打贏前 ${WEEKLY.unlock} 關後開放`;
+    show('ovLevels', 'ovWeekly');
   }
   function brief(li) {
     App.brief.li = li;
@@ -368,9 +443,13 @@ const UI = (() => {
     $('bEn').textContent = L.en;
     $('bStory').textContent = L.story;
     const foes = [...new Set(L.pool.map(p => p[0]).concat(L.boss ? [L.boss] : []).concat(L.midBoss ? [L.midBoss[1]] : []))];
-    $('bInfo').textContent = `${L.waves} 波 · ${L.entries.length > 1 ? L.entries.length + ' 個入口' : L.paths.length > 1 ? '岔路' : '單一路線'}${L.boss ? ' · 有頭目' : ''}${L.tp ? ' · 傳送陣' : ''}${L.pads ? ' · 水晶基座' : ''}${L.storm ? ' · 沙暴' : ''}${L.current ? ' · 海流' : ''}${r ? ' · 最佳 ' + '★'.repeat(r.stars) : ''}`;
+    $('bInfo').textContent = `${L.waves} 波 · ${L.entries.length > 1 ? L.entries.length + ' 個入口' : L.paths.length > 1 ? '岔路' : '單一路線'}${L.boss ? ' · 有頭目' : ''}${L.tp ? ' · 傳送陣' : ''}${L.pads ? ' · 水晶基座' : ''}${L.storm ? ' · 沙暴' : ''}${L.current ? ' · 海流' : ''}${L.bridges ? ' · 吊橋' : ''}${L.fog ? ' · 夜霧' : ''}${L.river ? ' · 河道' : ''}${L.weather ? ' · 天氣變化' : ''}${L.tunnel ? ' · 地道' : ''}${L.rotor ? ' · 旋轉祭壇' : ''}${r ? ' · 最佳 ' + '★'.repeat(r.stars) : ''}`;
     $('bFoes').innerHTML = foes.map(k => `<img alt="${ENEMIES[k].name}" title="${ENEMIES[k].name}" src="${Render.icon('enemy', k)}">`).join('');
     const e = Prog.endlessOk(li);
+    const hb = $('bHeroic'), hd = !!Store.data.heroic[li];
+    hb.hidden = !(r && r.stars);
+    if (L.heroic) hb.innerHTML = `<b>菁英模式</b><small>${L.heroic.map(k => HEROIC_MODS[k].name).join('＋')} · ${L.heroic.map(k => HEROIC_MODS[k].desc).join('、')} · 只有 ${HEROIC_LIVES} 條命</small><i>${hd ? '✓' : '★2'}</i>`;
+    hb.classList.toggle('done', hd);
     $('bEndless').hidden = !e;
     if (e) $('bEndless').textContent = `無盡模式（最佳 ${Store.data.endless[li] || 0} 波）`;
     // 挑戰
@@ -434,11 +513,11 @@ const UI = (() => {
 
   function help(back) {
     const tw = TOWER_ORDER.map(k => `<div><img alt="" src="${Render.icon('tower', k, 1)}"><span><b>${TOWERS[k].name}</b>${esc(TOWERS[k].desc)}</span></div>`).join('');
-    const en = ['slime', 'runner', 'beetle', 'bat', 'golem', 'healer', 'shield', 'splitter', 'ogre', 'gargoyle', 'wisp', 'crawler', 'mummy', 'crab', 'bossGolem', 'bossDragon', 'bossLich', 'bossRoc', 'bossWorm', 'bossPharaoh', 'bossKraken'].map(k => `<div><img alt="" src="${Render.icon('enemy', k)}"><span><b>${ENEMIES[k].name}</b>${esc(ENEMIES[k].desc)}</span></div>`).join('');
+    const en = ['slime', 'runner', 'beetle', 'bat', 'golem', 'healer', 'shield', 'splitter', 'ogre', 'gargoyle', 'wisp', 'crawler', 'mummy', 'crab', 'goblin', 'balloon', 'paladin', 'raven', 'brute', 'shaman', 'shade', 'mole', 'bossGolem', 'bossDragon', 'bossLich', 'bossRoc', 'bossWorm', 'bossPharaoh', 'bossKraken', 'bossTortoise', 'bossRaijin', 'bossEclipse'].map(k => `<div><img alt="" src="${Render.icon('enemy', k)}"><span><b>${ENEMIES[k].name}</b>${esc(ENEMIES[k].desc)}</span></div>`).join('');
     $('helpBody').innerHTML = `<h2>怎麼玩</h2>
       <p>敵人會沿著道路走向你的城堡，漏掉一隻就扣生命。在路旁的空地蓋塔擋住牠們，撐過所有波次就過關。</p>
       <h3>基本操作</h3>
-      <ul><li>點空地 → 選一座塔 → 再點一次確認建造。（電腦上也可以先按 <kbd>1</kbd>–<kbd>7</kbd> 再點地圖）</li>
+      <ul><li>點空地 → 選一座塔 → 再點一次確認建造。（電腦上也可以先按 <kbd>1</kbd>–<kbd>9</kbd> 再點地圖）</li>
       <li>點已經蓋好的塔：升級、選攻擊目標（最前／最後／最強／最近）或賣掉。Lv3 之後可以選兩種專精之一。</li>
       <li>一波出完之後會倒數，提早叫下一波能多拿金幣。右上角可以切換 1×／2×／3× 速度。</li>
       <li>隕石：點技能再點地圖。冰封：凍住全場。都有冷卻時間。</li>
@@ -448,10 +527,17 @@ const UI = (() => {
       <h3>特殊地形（第 11 關以後）</h3>
       <ul><li><b>傳送陣</b>：敵人踩上去會直接跳到另一頭。<b>水晶基座</b>：蓋在上面的塔傷害 +25%、射程 +10%。</li>
       <li><b>沙暴</b>：每隔一陣子所有塔射程暫時變短。<b>海流</b>：敵人經過會突然加速。</li></ul>
+      <h3>第二章 · 東境遠征（第 15–20 關）</h3>
+      <ul><li><b>吊橋</b>：兩座橋輪流放下，收起時敵人在橋頭排隊；走到岔路口會選放下的那座。</li>
+      <li><b>夜霧</b>：只有路燈下和塔附近 2 格看得到敵人，被打中的會現形一下。毒池不用看也打得到。</li>
+      <li><b>河道</b>：敵人坐船順流而下，速度 ×1.5；士兵擋不住、毒池會被沖走。</li>
+      <li><b>天氣</b>：暴雨讓塔變慢、狂風讓飛行敵人加速、雷暴劈中敵人而且法師塔 +35%。</li>
+      <li><b>地道</b>：敵人在地底下走，看不到也打不到，上面可以蓋塔。<b>旋轉祭壇</b>：每隔幾秒轉向，決定敵人走哪條路。</li>
+      <li><b>兵營</b>：點兵營再點道路可以移動集結點。<b>菁英模式</b>：過關後解鎖，每關兩個固定詞綴，過關得 2 顆星。<b>每週挑戰</b>：每週一換地圖與規則，看你能撐幾波。</li></ul>
       <h3>防禦塔</h3><div class="hl">${tw}</div>
       <h3>敵人</h3><div class="hl">${en}</div>
       <h3 class="kb">鍵盤快捷鍵</h3>
-      <p class="kb"><kbd>1</kbd>–<kbd>7</kbd> 選塔　<kbd>U</kbd>/<kbd>I</kbd> 升級（左／右專精）　<kbd>S</kbd> 賣掉　<kbd>T</kbd> 換目標　<kbd>Q</kbd> 隕石　<kbd>W</kbd> 冰封　<kbd>N</kbd> 下一波　<kbd>F</kbd> 速度　<kbd>空白</kbd> 暫停　<kbd>Esc</kbd> 取消　<kbd>M</kbd> 靜音</p>
+      <p class="kb"><kbd>1</kbd>–<kbd>9</kbd> 選塔　<kbd>U</kbd>/<kbd>I</kbd> 升級（左／右專精）　<kbd>S</kbd> 賣掉　<kbd>T</kbd> 換目標　<kbd>Q</kbd> 隕石　<kbd>W</kbd> 冰封　<kbd>N</kbd> 下一波　<kbd>F</kbd> 速度　<kbd>空白</kbd> 暫停　<kbd>Esc</kbd> 取消　<kbd>M</kbd> 靜音</p>
       <button class="big" id="hClose">知道了</button>`;
     $('hClose').addEventListener('click', () => { Snd.sfx('click'); $('ovHelp').hidden = true; if (back) back(); });
     $('ovHelp').hidden = false;
@@ -459,8 +545,8 @@ const UI = (() => {
 
   function showResult(G, rec) {
     const won = G.state === 'won';
-    $('rTitle').textContent = G.endless ? '無盡模式結束' : won ? '勝利！' : '城堡失守…';
-    $('rSub').textContent = G.endless ? `${G.L.name} · 撐過 ${rec.cleared} 波${rec.newBest ? '　新紀錄！' : ''}` : `${G.L.name} · ${DIFFS[G.diff].name}`;
+    $('rTitle').textContent = G.weekly ? '每週挑戰結束' : G.endless ? '無盡模式結束' : won ? (G.heroic ? '菁英勝利！' : '勝利！') : '城堡失守…';
+    $('rSub').textContent = G.weekly ? `${G.L.name} · 撐過 ${rec.cleared} 波 · 分數 ${rec.score.toLocaleString()}${rec.rank === 0 ? '　本週最佳！' : rec.rank > 0 ? `　本週第 ${rec.rank + 1} 名` : ''}` : G.endless ? `${G.L.name} · 撐過 ${rec.cleared} 波${rec.newBest ? '　新紀錄！' : ''}` : `${G.L.name} · ${G.heroic ? '菁英模式' : DIFFS[G.diff].name}`;
     const stars = $('rStars');
     stars.hidden = G.endless || !won;
     const spans = [...stars.children];
@@ -477,7 +563,7 @@ const UI = (() => {
     $('rArt').src = Render.icon('castle', 'c', 0, undefined, 160);
     $('ovResult').classList.toggle('lost', !won && !G.endless);
     $('ovResult').classList.toggle('won', won);
-    $('rReward').textContent = rec.chalNew ? `挑戰「${CHALLENGES[G.chal].name}」完成！獲得 ★ 1` : rec.gained > 0 ? `獲得 ★ ${rec.gained}！可以到天賦樹使用。` : (won || G.endless ? (G.chal && won ? '這個挑戰已經完成過了。' : '') : '調整一下塔的位置再試一次吧！');
+    $('rReward').textContent = rec.heroicNew ? '菁英模式完成！獲得 ★ 2' : G.weekly ? '下週一會換新的戰場和規則。' : rec.chalNew ? `挑戰「${CHALLENGES[G.chal].name}」完成！獲得 ★ 1` : rec.gained > 0 ? `獲得 ★ ${rec.gained}！可以到天賦樹使用。` : (won || G.endless ? (G.chal && won ? '這個挑戰已經完成過了。' : '') : '調整一下塔的位置再試一次吧！');
     if (G.chal) { $('rTitle').textContent = won ? '挑戰成功！' : '挑戰失敗…'; $('rSub').textContent = `${G.L.name} · 挑戰「${CHALLENGES[G.chal].name}」`; }
     const u = $('rUnlock');
     if (rec.unlock) {
@@ -486,7 +572,7 @@ const UI = (() => {
     } else if (rec.endlessNew) {
       u.hidden = false; u.innerHTML = '<div><b>無盡模式解鎖！</b><br><small>已過關的地圖都可以挑戰無盡模式，每撐過 10 波得 1 顆星。</small></div>';
     } else u.hidden = true;
-    const hasNext = won && !G.endless && G.li + 1 < LEVELS.length;
+    const hasNext = won && !G.endless && !G.heroic && G.li + 1 < LEVELS.length;
     $('rNext').hidden = !hasNext;
     $('rNext').textContent = '下一關';
     show('ovResult');
@@ -505,5 +591,5 @@ const UI = (() => {
     el.hidden = false; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
     clearTimeout(achT); achT = setTimeout(() => { el.hidden = true; }, inPlay ? 2800 : 3600);
   }
-  return { achToast, buildShop, tick, resetPanel, show, syncToggles, levels, brief, syncDiff, meta, help, showResult, say, skillIcon, starsHtml };
+  return { achToast, buildShop, tick, resetPanel, show, syncToggles, levels, setAct, weekly, brief, syncDiff, meta, help, showResult, say, skillIcon, starsHtml };
 })();

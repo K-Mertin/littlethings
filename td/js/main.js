@@ -20,6 +20,12 @@ Hook.shake = a => { if (!quiet) App.ui.shake = Math.max(App.ui.shake, a); };
 Hook.fx = (n, g, a, b, c, d, e) => {
   FX.on(n, g, a, b, c, d, e);
   if (n === 'storm' && g === App.game && !quiet) { if (a) { UI.say('<b>沙暴來襲！</b>所有塔的射程暫時變成八成。', 3); Snd.sfx('blizzard'); } else UI.say('沙暴過去了。', 1.5); }
+  if (g === App.game && !quiet) {
+    if (n === 'weather') { const W = { clear: '天氣轉晴。', rain: '<b>暴雨！</b>塔的攻速變慢，冰霜塔更冷，毒池會被沖淡。', wind: '<b>狂風！</b>飛行敵人加速，箭塔、狙擊塔射程變短。', thunder: '<b>雷暴！</b>雷電會隨機劈中敵人，法師塔傷害 +35%。' }[a]; UI.say(W, 3); Snd.sfx(a === 'thunder' ? 'zap' : a === 'clear' ? 'click' : 'blizzard'); }
+    if (n === 'phase') { App.ui.banner = { t: 0, big: a.phase >= 2 ? '最終形態！' : '第二形態！', small: a.d.name + ({ bossTortoise: ' · 龜殼碎了！', bossRaijin: a.phase === 1 ? ' · 乘雲飛起（只有能打空中的塔打得到）' : ' · 狂雷讓所有敵人加速！', bossEclipse: a.phase === 1 ? ' · 日蝕降臨，天色暗了下來' : ' · 狂暴！小心黑暗脈衝' }[a.k] || ''), boss: true, k: Beasts.BOX[a.k + (a.phase + 1)] ? a.k + (a.phase + 1) : Beasts.BOX[a.k + '2'] ? a.k + '2' : a.k }; Snd.play(9, 1); }
+    if (n === 'bridge' && b === false && g.bridges.every(x => !x.open)) UI.say('吊橋都收起來了，敵人在橋頭排隊！', 2);
+    if (n === 'dawn') UI.say('<b>黑夜散去了！</b>', 2.5);
+  }
   if (g === App.game && !quiet) Ach.event(n, g, a);
 };
 Hook.banner = (G, boss) => {
@@ -77,18 +83,22 @@ addEventListener('resize', () => { layout(); if (!$('ovLevels').hidden && App.sc
 addEventListener('orientationchange', () => setTimeout(layout, 150));
 
 // ───────── 遊戲流程 ─────────
-function startLevel(li, diff, endless, chal) {
+function startLevel(li, diff, endless, chal, mode) {
   if (chal) { diff = chal === 'iron' ? 'easy' : 'normal'; endless = false; }
+  const heroic = mode === 'heroic', weekly = mode === 'weekly' ? Weekly.rules() : null;
+  if (heroic) { diff = 'normal'; endless = false; chal = null; }
+  if (weekly) { li = weekly.li; diff = 'normal'; endless = true; chal = null; }
   // 英雄已移除（MK 2026-10-23：有英雄後難度降太多）。英雄相關程式保留但不再上場。
-  App.game = newGame(li, diff, { endless, chal });
+  App.game = newGame(li, diff, { endless, chal, heroic, weekly });
   App.ui = newUi(); App.speed = 1; App.paused = false; App.acc = 0; App.bot = null;
   App.scene = 'play';
-  if (!chal) Store.data.diff = diff;
+  if (!chal && !heroic && !weekly) Store.data.diff = diff;
   Store.data.plays = (Store.data.plays || 0) + 1; Store.save();
   UI.resetPanel(); UI.show();
   app.classList.add('playing');
   Snd.play(THEMES[LEVELS[li].theme].music, 1);
-  App.ui.banner = { t: 0, intro: true, li, en: LEVELS[li].en, big: LEVELS[li].name, small: chal ? `挑戰 · ${CHALLENGES[chal].name}（${CHALLENGES[chal].desc}）` : endless ? '無盡模式 · 準備好就按開始' : `${DIFFS[diff].name}難度 · 共 ${App.game.nWaves} 波` };
+  const modTxt = m => m.map(k => HEROIC_MODS[k].name).join('＋');
+  App.ui.banner = { t: 0, intro: true, li, en: LEVELS[li].en, big: LEVELS[li].name, small: weekly ? `每週挑戰 · ${modTxt(weekly.mods)} · 撐越久分數越高` : heroic ? `菁英模式 · ${modTxt(LEVELS[li].heroic)} · 共 ${App.game.nWaves} 波` : chal ? `挑戰 · ${CHALLENGES[chal].name}（${CHALLENGES[chal].desc}）` : endless ? '無盡模式 · 準備好就按開始' : `${DIFFS[diff].name}難度 · 共 ${App.game.nWaves} 波` };
 }
 App.startLevel = (...a) => startLevel(...a);
 function toScene(s) {
@@ -107,8 +117,15 @@ function saveHero(G) {
 }
 function recordResult(G) {
   saveHero(G);
-  const out = { gained: 0, unlock: null, endlessNew: false, cleared: 0, newBest: false, chalNew: false };
-  if (G.endless) {
+  const out = { gained: 0, unlock: null, endlessNew: false, cleared: 0, newBest: false, chalNew: false, heroicNew: false, score: 0, rank: -1 };
+  if (G.weekly) {
+    const allClear = G.wave >= 0 && !G.spawners.length && !G.enemies.some(e => e.alive) && G.lives > 0;
+    out.cleared = Math.max(0, G.wave + (allClear ? 1 : 0));
+    out.score = Weekly.score(G, out.cleared);
+    out.rank = Weekly.record(out.score, out.cleared);
+  } else if (G.heroic) {
+    if (G.state === 'won') { if (!Store.data.heroic[G.li]) { Store.data.heroic[G.li] = 1; out.gained = 2; out.heroicNew = true; } }
+  } else if (G.endless) {
     // 正在倒數下一波（這一波已經清光）時離開，這一波也算撐過
     const allClear = G.wave >= 0 && !G.spawners.length && !G.enemies.some(e => e.alive) && G.lives > 0;
     const cleared = Math.max(0, G.wave + (allClear ? 1 : 0));
@@ -216,6 +233,12 @@ function handleTap(sx, sy) {
   const tx = Math.floor(wx), ty = Math.floor(wy);
   if (!inside) { deselect(); ui.armed = null; return; }
   const cell = G.grid[ty][tx];
+  // 選著兵營時點道路＝移動集結點
+  if (ui.selTower && TOWERS[ui.selTower.k].troops && cell.path) {
+    const t = ui.selTower;
+    if (dist2(wx, wy, t.cx, t.cy) <= (t.st.range + 0.3) ** 2 && setRally(G, t, wx, wy)) { Snd.sfx('click'); UI.say('士兵往新的集結點移動。', 1.5); return; }
+    Snd.sfx('deny'); UI.say(`集結點要在兵營 <b>${t.st.range.toFixed(1)} 格</b>以內的道路上（河道、地道不行）。`); return;
+  }
   if (cell.tower) { selectTower(cell.tower); return; }
   if (canBuild(G, tx, ty)) {
     if (ui.armed) { tryBuild(ui.armed, tx, ty); return; }
@@ -332,17 +355,24 @@ bindClick('mReset', () => { if (Prog.spent() === 0) return; if (confirm('要重�
 for (const b of $('bDiff').children) b.addEventListener('click', () => { Snd.init(); Snd.sfx('click'); App.brief.diff = b.dataset.d; UI.syncDiff(); });
 bindClick('bGo', () => startLevel(App.brief.li, App.brief.diff, false));
 bindClick('bEndless', () => startLevel(App.brief.li, App.brief.diff, true));
+bindClick('bHeroic', () => startLevel(App.brief.li, 'normal', false, null, 'heroic'));
+bindClick('lWeekly', () => UI.weekly());
+for (const b of $('lActs').children) b.addEventListener('click', () => { Snd.init(); const a = +b.dataset.a; if (!Prog.actOpen(a)) { Snd.sfx('deny'); } else Snd.sfx('click'); UI.setAct(a); });
+bindClick('wGo', () => startLevel(0, 'normal', true, null, 'weekly'));
+bindClick('wBack', () => { UI.show('ovLevels'); UI.levels(); });
 bindClick('bBack', () => { UI.show('ovLevels'); UI.levels(); });
 bindClick('pResume', () => setPaused(false));
-bindClick('pRestart', () => { const G = App.game; saveHero(G); startLevel(G.li, G.diff, G.endless, G.chal); });
+const modeOf = G => G.weekly ? 'weekly' : G.heroic ? 'heroic' : undefined;
+bindClick('pRestart', () => { const G = App.game; saveHero(G); startLevel(G.li, G.diff, G.endless, G.chal, modeOf(G)); });
 bindClick('pQuit', () => {
   const G = App.game;
   if (G && G.endless && G.wave >= 0) { G.state = 'lost'; recordResult(G); } else saveHero(G);
+  if (G && G.weekly) { toScene('levels'); UI.weekly(); return; }
   toScene('levels');
 });
 bindClick('pHelp', () => UI.help(() => UI.show('ovPause')));
-bindClick('rRetry', () => { const G = App.game; startLevel(G.li, G.diff, G.endless, G.chal); });
-bindClick('rLevels', () => toScene('levels'));
+bindClick('rRetry', () => { const G = App.game; startLevel(G.li, G.diff, G.endless, G.chal, modeOf(G)); });
+bindClick('rLevels', () => { const G = App.game; toScene('levels'); if (G && G.weekly) UI.weekly(); });
 bindClick('rNext', () => { const G = App.game; toScene('levels'); UI.brief(G.li + 1); });
 for (const b of document.querySelectorAll('.tog')) b.addEventListener('click', () => {
   Snd.init();
@@ -401,9 +431,9 @@ addEventListener('keydown', () => { const was = Snd.ready; Snd.init(); if (!was 
 // ───────── 標題畫面的示範戰鬥 ─────────
 function newDemo() {
   const li = Math.floor(Math.random() * LEVELS.length);
-  const G = newGame(li, 'easy', { meta: { gold: 3, cheap: 3, bounty: 3, range: 2 }, avail: 7, seed: (Math.random() * 1e6) | 0 });
+  const G = newGame(li, 'easy', { meta: { gold: 3, cheap: 3, bounty: 3, range: 2 }, avail: LEVELS[li].act ? 19 : 7, seed: (Math.random() * 1e6) | 0 });
   G.gold += 300;
-  App.demo = G; App.demoBot = { strat: 'mix', seed: 1, meteor: true };
+  App.demo = G; App.demoBot = { strat: LEVELS[li].act ? 'mix2' : 'mix', seed: 1, meteor: true };
   App.demoT = 0;
 }
 
@@ -417,7 +447,8 @@ const Ach = {
   },
   event(n, G, a) {
     const T = Store.data.tot;
-    if (n === 'kill') { T.kills = (T.kills || 0) + 1; this.dirty = true; if (a.boss) this.give(a.k); }
+    if (n === 'kill') { T.kills = (T.kills || 0) + 1; this.dirty = true; if (a.boss) this.give(a.k); if (a._pk) { T.pk = (T.pk || 0) + 1; if (T.pk >= 300) this.give('plague'); } }
+    else if (n === 'block') { T.blocks = (T.blocks || 0) + 1; this.dirty = true; if (T.blocks >= 300) this.give('hold300'); }
     else if (n === 'build') { T.built = (T.built || 0) + 1; this.dirty = true; }
     else if (n === 'upgrade' && a.tier === 3) { Store.data.specs[a.k + a.spec] = 1; this.dirty = true; }
   },
@@ -428,13 +459,15 @@ const Ach = {
     if ((T.kills || 0) >= 10000) this.give('k10000');
     if ((T.built || 0) >= 100) this.give('b100');
     if (Object.keys(Store.data.specs).length >= TOWER_ORDER.length * 2) this.give('specs');
-    if (G.endless && G.wave >= 20 && G.nextT !== null) this.give('e20');
-    if (G.endless && G.wave >= 40 && G.nextT !== null) this.give('e40');
+    if (G.endless && !G.weekly && G.wave >= 20 && G.nextT !== null) this.give('e20');
+    if (G.endless && !G.weekly && G.wave >= 40 && G.nextT !== null) this.give('e40');
   },
   ended(G, out) {
+    if (G.weekly) { if (out.cleared >= 10) this.give('weekly10'); if (out.cleared >= 30) this.give('weekly30'); return; }
     if (G.endless) { if (out.cleared >= 20) this.give('e20'); if (out.cleared >= 40) this.give('e40'); return; }
     if (G.state !== 'won') return;
     this.give('win1');
+    if (G.heroic) { this.give('heroic1'); if (Object.keys(Store.data.heroic).length >= 10) this.give('heroic10'); return; }
     if (G.chal) {
       this.give('chal1'); if (G.chal === 'iron') this.give('iron');
       let n = 0; for (const k in Store.data.chal) n += Object.keys(Store.data.chal[k]).length;
@@ -446,7 +479,10 @@ const Ach = {
     if (G.diff === 'hard') this.give('hard');
     if (Prog.cleared() >= 5) this.give('half');
     if (Prog.cleared() >= 10) this.give('ten');
-    if (Prog.cleared() >= LEVELS.length) this.give('all');
+    if (Prog.cleared() >= 14) this.give('all');
+    if (Prog.cleared() >= 15) this.give('act2');
+    if (Prog.cleared() >= LEVELS.length) this.give('all20');
+    if (G.L.fog && G.lives >= G.maxLives) this.give('dawn');
   },
   meta() { let n = 0; for (const k in Store.data.meta) n += Store.data.meta[k]; if (n >= 10) this.give('meta'); },
 };
@@ -544,14 +580,16 @@ else boot();
 window.__td = {
   get G() { return App.game; }, App, Store, Prog, Perf,
   quality(q) { App.q = q; layout(); },
-  start(li, diff, endless, chal) { startLevel(li || 0, diff || 'normal', !!endless, chal); return App.game; },
+  start(li, diff, endless, chal, mode) { startLevel(li || 0, diff || 'normal', !!endless, chal, mode); return App.game; },
+  weekly() { return Weekly.rules(); },
+  rally(t, x, y) { return setRally(App.game, t, x, y); },
   Ach: () => Ach,
   build(k, x, y) { return buildTower(App.game, k, x, y); },
   upgrade(t, spec) { return upgradeTower(App.game, t, spec); },
   sell(t) { return sellTower(App.game, t); },
   wave() { return callWave(App.game, true); },
   speed(n) { App.speed = n; },
-  bot(on, hero) { App.bot = on ? { strat: 'mix', seed: 1, meteor: true, hero: hero !== false } : null; },
+  bot(on, hero) { App.bot = on ? { strat: App.game && App.game.L.act ? 'mix2' : 'mix', seed: 1, meteor: true, hero: hero !== false } : null; },
   heroMove(x, y) { return heroMove(App.game, x, y); },
   heroCast(i) { return heroCast(App.game, i, false); },
   selHero() { toggleHero(); },

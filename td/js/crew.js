@@ -132,9 +132,82 @@ const Crew = (() => {
       x.restore();
       arm(x, r, r * 0.05, -r * 1.2, r * 0.2 + Math.sin(-1.4 + (sw + 1) * 1.1) * -r * 0.0, -r * 1.15, '#5a6aa8');
     },
+      // 煉金師：護目鏡、皮圍裙、頭巾；f：0 拿著藥瓶、1 舉手準備丟、2 丟出去
+    alchemist(x, r, L, f) {
+      legs(x, r, '#4a3a2a');
+      torso(x, r, L.robe || '#6a8a4a', { belt: '#5a3a1e' });
+      // 皮圍裙
+      part(x, P.fn(q => { q.moveTo(-r * 0.3, -r * 1.25); q.lineTo(r * 0.36, -r * 1.25); q.lineTo(r * 0.46, -r * 0.12); q.quadraticCurveTo(0, -r * 0.02, -r * 0.4, -r * 0.12); q.closePath(); }), mat('#8a5a32', { sh: 0.4 }), 0, -r * 0.7, r * 0.4, { lw: lw(r) * 0.8, tex: q => { q.fillStyle = '#6a4024'; q.fillRect(-r * 0.1, -r * 0.7, r * 0.3, r * 0.18); q.fillStyle = L.liq || '#7ad04a'; q.beginPath(); q.arc(r * 0.05, -r * 0.5, r * 0.05, 0, TAU); q.fill(); } });
+      head(x, r, { iris: '#3a5a2a', hairBack: '#7a4a2a', mood: f === 2 ? 'happy' : 'n', mouth: f === 2 ? 'open' : 'smile', hat: (q, rr) => {
+        part(q, P.fn(z => { z.arc(rr * 0.05, -rr * 0.02, rr * 0.6, Math.PI * 0.98, Math.PI * 2.02); z.closePath(); }), mat(L.hood || '#4a6a3a'), 0, -rr * 0.3, rr * 0.55, { lw: lw(rr) });
+        // 護目鏡
+        q.fillStyle = '#5a3a1e'; q.fillRect(-rr * 0.55, -rr * 0.2, rr * 1.2, rr * 0.12);
+        for (const gx of [rr * 0.2, rr * 0.48]) { part(q, P.circ(gx, -rr * 0.16, rr * 0.13), mat('#c89a3a', { gloss: 0.8 }), gx, -rr * 0.16, rr * 0.13, { lw: lw(rr) * 0.6 }); Gfx.circ(q, gx, -rr * 0.16, rr * 0.08, 'rgba(200,255,170,.85)'); Gfx.circ(q, gx - rr * 0.03, -rr * 0.19, rr * 0.03, '#ffffff'); }
+      } });
+      const hx = f === 1 ? -r * 0.2 : f === 2 ? r * 0.75 : r * 0.42, hy = f === 1 ? -r * 2.0 : f === 2 ? -r * 1.45 : -r * 1.0;
+      arm(x, r, r * 0.12, -r * 1.25, hx, hy, L.robe || '#6a8a4a');
+      if (f !== 2) {
+        // 手上的藥瓶
+        part(x, P.fn(q => { q.moveTo(hx - r * 0.05, hy - r * 0.32); q.lineTo(hx + r * 0.05, hy - r * 0.32); q.lineTo(hx + r * 0.05, hy - r * 0.2); q.quadraticCurveTo(hx + r * 0.2, hy - r * 0.12, hx + r * 0.16, hy + r * 0.02); q.quadraticCurveTo(hx, hy + r * 0.08, hx - r * 0.16, hy + r * 0.02); q.quadraticCurveTo(hx - r * 0.2, hy - r * 0.12, hx - r * 0.05, hy - r * 0.2); q.closePath(); }), mat(L.liq || '#7ad04a', { gloss: 1 }), hx, hy - r * 0.1, r * 0.16, { lw: lw(r) * 0.6 });
+        glow(x, () => Gfx.circ(x, hx, hy - r * 0.06, r * 0.08, '#e8ffd0'), L.liq || '#7ad04a', r * 0.4);
+      }
+    },
+    // 營門衛兵：拿長矛站崗
+    guard(x, r, L) {
+      legs(x, r, '#4a4a5a'); torso(x, r, L.c || '#3a6fb8', { belt: '#5a3a1e', trim: '#f2c14e' });
+      head(x, r, { iris: '#3a3a5a', hat: HATS.helm(L.helm || '#c8d0dc', L.plume || '#e5484d'), mood: 'n' });
+      part(x, P.rr(r * 0.48, -r * 2.6, r * 0.08, r * 2.6, r * 0.03), mat('#7a5232'), r * 0.52, -r * 1.3, r * 0.1, { lw: lw(r) * 0.6 });
+      part(x, P.poly([r * 0.52, -r * 2.95, r * 0.42, -r * 2.58, r * 0.62, -r * 2.58]), mat('#d8dee8', { gloss: 0.9 }), r * 0.52, -r * 2.7, r * 0.12, { lw: lw(r) * 0.6 });
+      arm(x, r, r * 0.12, -r * 1.25, r * 0.5, -r * 1.2, L.c || '#3a6fb8');
+    },
+    // 兵營的士兵（站著／走路）：L.kind = foot 步兵、knight 騎士、berserk 狂戰士；f 0~3 走路格
+    soldier(x, r, L, f) {
+      const k = L.kind, step = f ? f * Math.PI / 2 : 0;
+      const pal = k === 'knight' ? { leg: '#7a8494', body: '#c8d0dc', tab: '#2f56b8' } : k === 'berserk' ? { leg: '#5a3a2a', body: '#c8945a', tab: '#8a2a1e' } : { leg: '#4a4a5a', body: '#9aa2b0', tab: L.tab || '#c8382e' };
+      // 背後的披風（騎士）／毛皮（狂戰士）
+      if (k === 'knight') part(x, P.fn(q => { q.moveTo(-r * 0.32, -r * 1.42); q.quadraticCurveTo(-r * 0.75, -r * 0.7, -r * 0.62, -r * 0.1); q.lineTo(-r * 0.1, -r * 0.35); q.closePath(); }), mat('#2a4a9a'), -r * 0.45, -r * 0.8, r * 0.4, { lw: lw(r) });
+      legs(x, r, pal.leg, step);
+      torso(x, r, pal.body, { belt: '#5a3a1e' });
+      if (k !== 'berserk') part(x, P.fn(q => { q.moveTo(-r * 0.22, -r * 1.38); q.lineTo(r * 0.3, -r * 1.38); q.lineTo(r * 0.26, -r * 0.5); q.lineTo(r * 0.04, -r * 0.36); q.lineTo(-r * 0.18, -r * 0.5); q.closePath(); }), mat(pal.tab), r * 0.04, -r * 0.9, r * 0.3, { lw: lw(r) * 0.7, tex: q => { if (k === 'knight') Gfx.star(q, r * 0.04, -r * 1.0, r * 0.14, '#ffd36b', false); else { q.fillStyle = '#f2c14e'; q.fillRect(-r * 0.02, -r * 1.3, r * 0.08, r * 0.8); } } });
+      else part(x, P.fn(q => { q.moveTo(-r * 0.45, -r * 1.45); q.quadraticCurveTo(0, -r * 1.65, r * 0.45, -r * 1.45); q.lineTo(r * 0.38, -r * 1.2); q.quadraticCurveTo(0, -r * 1.3, -r * 0.38, -r * 1.2); q.closePath(); }), mat('#e8dcc4'), 0, -r * 1.4, r * 0.4, { lw: lw(r) * 0.8, tex: q => Rig.fur(q, 0, -r * 1.38, r * 0.8, r * 0.18, 8, 'rgba(120,90,60,.5)', r * 0.1, 1.7, r * 0.03, 3) });
+      const hat = k === 'knight' ? (q, rr) => {
+        part(q, P.fn(z => { z.arc(rr * 0.05, -rr * 0.02, rr * 0.64, Math.PI * 0.95, Math.PI * 2.05); z.lineTo(rr * 0.72, rr * 0.3); z.lineTo(rr * 0.35, rr * 0.3); z.lineTo(rr * 0.35, rr * 0.0); z.lineTo(-rr * 0.6, rr * 0.05); z.closePath(); }), mat('#d8dee8', { gloss: 0.9 }), 0, -rr * 0.2, rr * 0.6, { lw: lw(rr) });
+        q.fillStyle = '#2a2a3a'; q.fillRect(rr * 0.35, -rr * 0.05, rr * 0.4, rr * 0.06);
+        part(q, P.fn(z => { z.moveTo(-rr * 0.1, -rr * 0.6); z.quadraticCurveTo(-rr * 0.6, -rr * 1.1, -rr * 0.9, -rr * 0.5); z.quadraticCurveTo(-rr * 0.5, -rr * 0.75, -rr * 0.05, -rr * 0.45); z.closePath(); }), mat('#e5484d'), -rr * 0.4, -rr * 0.7, rr * 0.4, { lw: lw(rr) * 0.8 });
+      } : k === 'berserk' ? (q, rr) => {
+        part(q, P.fn(z => { z.arc(rr * 0.05, -rr * 0.02, rr * 0.6, Math.PI, 0); z.lineTo(rr * 0.72, 0); z.lineTo(-rr * 0.62, 0.02); z.closePath(); }), mat('#8a8e98', { gloss: 0.7 }), 0, -rr * 0.3, rr * 0.55, { lw: lw(rr) });
+        for (const sd of [-1, 1]) part(q, P.fn(z => { z.moveTo(rr * 0.05 + sd * rr * 0.45, -rr * 0.35); z.quadraticCurveTo(rr * 0.05 + sd * rr * 0.95, -rr * 0.5, rr * 0.05 + sd * rr * 0.85, -rr * 1.05); z.quadraticCurveTo(rr * 0.05 + sd * rr * 0.7, -rr * 0.6, rr * 0.05 + sd * rr * 0.3, -rr * 0.5); z.closePath(); }), mat('#f0e6d0'), rr * 0.05 + sd * rr * 0.6, -rr * 0.6, rr * 0.3, { lw: lw(rr) * 0.8 });
+      } : HATS.helm('#b8c0cc', pal.tab);
+      head(x, r, { iris: '#3a3a5a', hairBack: k === 'berserk' ? '#c8642a' : null, hat, mood: L.mad ? 'angry' : 'n', mouth: L.mad ? 'open' : 'flat' });
+      if (k === 'berserk') { Rig.fur(x, r * 0.25, -r * 1.55, r * 0.35, r * 0.25, 5, '#c8642a', r * 0.18, 1.6, r * 0.06, 6); }
+      // 前手：盾（步兵圓盾、騎士鳶盾）或副手斧
+      if (k === 'berserk') {
+        x.save(); x.translate(r * 0.42, -r * 0.95); x.rotate(0.4);
+        part(x, P.rr(-r * 0.04, -r * 0.7, r * 0.08, r * 0.8, r * 0.03), mat('#6a4424'), 0, -r * 0.3, r * 0.1, { lw: lw(r) * 0.6 });
+        part(x, P.fn(q => { q.moveTo(0, -r * 0.68); q.quadraticCurveTo(r * 0.38, -r * 0.8, r * 0.34, -r * 0.42); q.lineTo(0, -r * 0.48); q.closePath(); }), mat('#c8ccd4', { gloss: 0.9 }), r * 0.18, -r * 0.6, r * 0.2, { lw: lw(r) * 0.7 });
+        x.restore();
+      } else if (k === 'knight') {
+        part(x, P.fn(q => { q.moveTo(r * 0.2, -r * 1.35); q.lineTo(r * 0.75, -r * 1.35); q.lineTo(r * 0.72, -r * 0.75); q.quadraticCurveTo(r * 0.6, -r * 0.35, r * 0.47, -r * 0.2); q.quadraticCurveTo(r * 0.3, -r * 0.4, r * 0.22, -r * 0.75); q.closePath(); }), mat('#2f56b8', { gloss: 0.5 }), r * 0.47, -r * 0.8, r * 0.35, { lw: lw(r), tex: q => { q.strokeStyle = '#ffd36b'; q.lineWidth = r * 0.05; q.beginPath(); q.moveTo(r * 0.47, -r * 1.3); q.lineTo(r * 0.47, -r * 0.3); q.moveTo(r * 0.26, -r * 1.0); q.lineTo(r * 0.7, -r * 1.0); q.stroke(); } });
+      } else {
+        part(x, P.circ(r * 0.48, -r * 0.92, r * 0.3), mat(L.shield || '#8a5a32'), r * 0.48, -r * 0.92, r * 0.3, { lw: lw(r), tex: q => { q.strokeStyle = '#c8ccd4'; q.lineWidth = r * 0.05; q.beginPath(); q.arc(r * 0.48, -r * 0.92, r * 0.24, 0, TAU); q.stroke(); Gfx.circ(q, r * 0.48, -r * 0.92, r * 0.07, '#d8dee8'); } });
+      }
+    },
   };
   // 手＋武器（會在貼圖時旋轉）：原點 = 肩膀
   const ARMS = {
+    // 士兵的武器手：原點 = 肩膀，往右為 0
+    blade(x, r, L) {
+      const k = L.kind, c = k === 'knight' ? '#c8d0dc' : k === 'berserk' ? '#c8945a' : '#9aa2b0';
+      arm(x, r, 0, 0, r * 0.42, r * 0.05, c);
+      if (k === 'berserk') {
+        part(x, P.rr(r * 0.38, -r * 0.05, r * 0.85, r * 0.09, r * 0.03), mat('#6a4424'), r * 0.8, 0, r * 0.15, { lw: lw(r) * 0.6 });
+        part(x, P.fn(q => { q.moveTo(r * 1.0, -r * 0.02); q.quadraticCurveTo(r * 1.12, -r * 0.45, r * 1.45, -r * 0.42); q.quadraticCurveTo(r * 1.32, -r * 0.1, r * 1.42, r * 0.22); q.quadraticCurveTo(r * 1.12, r * 0.18, r * 1.0, r * 0.08); q.closePath(); }), mat('#d8dee8', { gloss: 0.9 }), r * 1.2, -r * 0.05, r * 0.3, { lw: lw(r) * 0.7 });
+      } else {
+        const len = k === 'knight' ? 1.25 : 0.95;
+        part(x, P.rr(r * 0.36, -r * 0.16, r * 0.08, r * 0.32, r * 0.03), mat('#f2c14e', { gloss: 0.8 }), r * 0.4, 0, r * 0.1, { lw: lw(r) * 0.6 });
+        part(x, P.fn(q => { q.moveTo(r * 0.44, -r * 0.07); q.lineTo(r * (0.44 + len), -r * 0.05); q.lineTo(r * (0.56 + len), 0); q.lineTo(r * (0.44 + len), r * 0.05); q.lineTo(r * 0.44, r * 0.07); q.closePath(); }), mat('#e8eef8', { gloss: 1 }), r * (0.5 + len / 2), 0, r * 0.2, { lw: lw(r) * 0.6, tex: q => { q.strokeStyle = 'rgba(120,130,150,.6)'; q.lineWidth = r * 0.02; q.beginPath(); q.moveTo(r * 0.48, 0); q.lineTo(r * (0.4 + len), 0); q.stroke(); } });
+      }
+    },
     bow(x, r, L, pull) {
       const br = r * (L.long ? 1.0 : 0.82), bx = r * 0.62;
       const hx2 = bx - br * 0.62 + Math.cos(1.0) * br - r * 0.06 - pull * r * 0.45;
@@ -188,5 +261,13 @@ const Crew = (() => {
     Gfx.drawSprite(x, armSprite('rifle', L, r, 0), 0, 0);
     x.restore();
   }
-  return { draw, archer, rifleman, setDpr, setSS, rOf, BODY };
+  // 兵營士兵：swing = 揮劍角度（0 = 舉著、正值往前砍）；u = 格子大小
+  const sOf = u => u * 0.19;
+  function soldier(x, u, L, f, swing) {
+    const r = sOf(u);
+    if (L.kind === 'berserk') { x.save(); x.translate(r * 0.1, -r * 1.2); x.rotate(-1.4 + swing * 1.3); Gfx.drawSprite(x, armSprite('blade', L, r, 0), 0, 0); x.restore(); }
+    Gfx.drawSprite(x, bodySprite('soldier', L, r, f), 0, 0);
+    if (L.kind !== 'berserk') { x.save(); x.translate(r * 0.05, -r * 1.22); x.rotate(-1.75 + swing * 1.6); Gfx.drawSprite(x, armSprite('blade', L, r, 0), 0, 0); x.restore(); }
+  }
+  return { draw, archer, rifleman, soldier, sOf, setDpr, setSS, rOf, BODY };
 })();

@@ -7,19 +7,23 @@ const WorldMap = (() => {
   // 14 關：橫式是蛇形的兩排（下排往右、上排往左），直式由下往上之字形
   const NL = Array.from({ length: 14 }, (_, i) => i < 7 ? [0.07 + i * 0.143, 0.82 - (i % 2) * 0.15] : [0.93 - (i - 7) * 0.143, 0.4 - (i % 2) * 0.15]);
   const NP = Array.from({ length: 14 }, (_, i) => [i % 2 ? 0.72 : 0.28, 0.955 - i * 0.07]);
+  // 第二章：東境群島，六關沿著一條 S 形航線
+  const NL2 = [[0.1, 0.76], [0.29, 0.5], [0.47, 0.78], [0.62, 0.48], [0.46, 0.2], [0.82, 0.3]];
+  const NP2 = [[0.3, 0.92], [0.7, 0.77], [0.32, 0.61], [0.7, 0.45], [0.3, 0.29], [0.66, 0.11]];
   let cache = null;
-  const ICON = { autumn: 'tree', canyon: 'rock', meadow: 'tree', forest: 'pine', desert: 'cactus', snow: 'spine', swamp: 'mush', volcano: 'crystal', coast: 'palm', night: 'grave', sky: 'tree', cave: 'crystal', ruins: 'pillar', deep: 'coral' };
-  function positions(w, h) { const P = h > w * 1.05 ? NP : NL; return P.map(([x, y]) => [x * w, y * h]); }
-  function draw(w, h) {
+  const ICON = { autumn: 'tree', canyon: 'rock', meadow: 'tree', forest: 'pine', desert: 'cactus', snow: 'spine', swamp: 'mush', volcano: 'crystal', coast: 'palm', night: 'grave', sky: 'tree', cave: 'crystal', ruins: 'pillar', deep: 'coral', bamboo: 'bamboo', harbor: 'mast', river: 'tree', plateau: 'obelisk', amber: 'crystal', spire: 'obelisk' };
+  function positions(w, h, act) { const P = act ? (h > w * 1.05 ? NP2 : NL2) : (h > w * 1.05 ? NP : NL); return P.map(([x, y]) => [x * w, y * h]); }
+  function draw(w, h, act) {
+    act = act || 0;
     const d = Math.min(2, window.devicePixelRatio || 1);
-    const key = w + 'x' + h + '@' + d;
+    const key = w + 'x' + h + '@' + d + ':' + act;
     if (cache && cache.key === key) return cache;
     const c = Gfx.canvas(w * d, h * d); c.style.width = w + 'px'; c.style.height = h + 'px';
     const x = c.getContext('2d'); x.scale(d, d);
-    const pts = positions(w, h);
-    const themes = LEVELS.map(L => L.theme);
-    // 海
-    x.fillStyle = lgrad(x, 0, 0, 0, h, ['#2a8ec4', '#1a6a9e']); x.fillRect(0, 0, w, h);
+    const pts = positions(w, h, act);
+    const themes = LEVELS.filter(L => (L.act || 0) === act).map(L => L.theme);
+    // 海（第二章是暮色的東方海域）
+    x.fillStyle = lgrad(x, 0, 0, 0, h, act ? ['#3a3a8a', '#24467e', '#1a5a7e'] : ['#2a8ec4', '#1a6a9e']); x.fillRect(0, 0, w, h);
     const r = mkRng(9);
     x.strokeStyle = 'rgba(255,255,255,.14)'; x.lineWidth = 1.5; x.lineCap = 'round';
     for (let i = 0; i < w * h / 2500; i++) { const px = r() * w, py = r() * h, ww = 6 + r() * 10; x.beginPath(); x.moveTo(px - ww, py); x.quadraticCurveTo(px, py - 4, px + ww, py); x.stroke(); }
@@ -88,10 +92,17 @@ const WorldMap = (() => {
       const k = v < 0.7 ? ICON[th] : (th === 'volcano' || th === 'snow' || th === 'desert' ? 'rock' : th === 'night' ? 'dead' : 'bush');
       x.save(); x.translate(px, py); Terrain.propDraw(x, k, u * 0.9, v, th); x.restore();
     }
+    // 第二章：天邊的日蝕、王座尖塔
+    if (act) {
+      const mx = w * 0.9, my = h * 0.12, mr = Math.min(w, h) * 0.06;
+      x.save(); x.shadowColor = '#ffb03a'; x.shadowBlur = mr * 0.8; circ(x, mx, my, mr, '#ffd36b'); x.restore(); circ(x, mx + mr * 0.25, my - mr * 0.1, mr * 0.92, '#2a2456');
+      const si = themes.indexOf('spire');
+      if (si >= 0) { const [sx, sy] = pts[si]; x.save(); x.translate(sx + u * 1.3, sy + u * 0.5); for (const [ox, hh, ww] of [[0, 2.2, 0.32], [-0.45, 1.4, 0.22], [0.45, 1.5, 0.22]]) { x.fillStyle = lgrad(x, ox * u - ww * u, 0, ox * u + ww * u, 0, ['#8a7ab8', '#4a3a7a', '#2a1e4a']); x.beginPath(); x.moveTo(ox * u - ww * u, 0); x.lineTo(ox * u - ww * u * 0.6, -hh * u); x.lineTo(ox * u, -hh * u - ww * u * 1.6); x.lineTo(ox * u + ww * u * 0.6, -hh * u); x.lineTo(ox * u + ww * u, 0); x.closePath(); x.fill(); x.fillStyle = '#ffd36b'; x.fillRect(ox * u - ww * u * 0.15, -hh * u * 0.6, ww * u * 0.3, ww * u * 0.4); } x.restore(); }
+    }
     // 火山與城堡
-    const vi = themes.indexOf('volcano');
+    const vi = act ? -1 : themes.indexOf('volcano');
     if (vi >= 0) { const [vx, vy] = pts[vi]; volcano(x, vx + u * 1.4, vy - u * 0.5, u * 1.3); }
-    const ni = themes.indexOf('night');
+    const ni = act ? -1 : themes.indexOf('night');
     if (ni >= 0) { const [nx, ny] = pts[ni]; x.save(); x.translate(nx + u * 1.4, ny + u * 0.5); Art.castle(x, u * 0.6, 'back'); x.restore(); }
     // 雲
     for (let i = 0; i < 4; i++) { const px = r() * w, py = r() * h * 0.9, cw = 90 + r() * 90; x.globalAlpha = 0.55; x.drawImage(Gfx.puff('#ffffff'), px - cw / 2, py - cw * 0.3, cw, cw * 0.6); x.globalAlpha = 1; }
@@ -149,10 +160,10 @@ const Codex = (() => {
           <div class="cx-info"><b>${esc(nm)}</b><small>${d.en}</small><p>${esc(desc)}</p><div class="cx-stats">${stats}</div><div class="cx-chips">${chips}</div></div></div>`;
       }).join('');
     } else {
-      const order = ['slime', 'runner', 'beetle', 'bat', 'golem', 'healer', 'shield', 'splitter', 'mini', 'ogre', 'gargoyle', 'skeleton', 'wisp', 'crawler', 'mummy', 'crab', 'bossGolem', 'bossDragon', 'bossLich', 'bossRoc', 'bossWorm', 'bossPharaoh', 'bossKraken'];
+      const order = ['slime', 'runner', 'beetle', 'bat', 'golem', 'healer', 'shield', 'splitter', 'mini', 'ogre', 'gargoyle', 'skeleton', 'wisp', 'crawler', 'mummy', 'crab', 'goblin', 'balloon', 'paladin', 'raven', 'brute', 'shaman', 'shade', 'mole', 'bossGolem', 'bossDragon', 'bossLich', 'bossRoc', 'bossWorm', 'bossPharaoh', 'bossKraken', 'bossTortoise', 'bossRaijin', 'bossEclipse'];
       box.innerHTML = order.map(k => {
         const d = ENEMIES[k], ok = !!Store.data.seen[k];
-        const stats = ok ? [['生命', d.hp], ['速度', d.spd], d.armor ? ['護甲', Math.round(d.armor * 100) + '%'] : null, d.mres ? ['抗魔', Math.round(d.mres * 100) + '%'] : null, ['金幣', d.bounty], d.lives > 1 ? ['扣命', d.lives] : null, d.fly ? ['飛行', ''] : null, d.revive ? ['會復活', ''] : null].filter(Boolean).map(([a, b]) => `<span>${a}${b !== '' ? ' <b>' + b + '</b>' : ''}</span>`).join('') : '';
+        const stats = ok ? [['生命', d.hp], ['速度', d.spd], d.armor ? ['護甲', Math.round(d.armor * 100) + '%'] : null, d.mres ? ['抗魔', Math.round(d.mres * 100) + '%'] : null, ['金幣', d.bounty], d.lives > 1 ? ['扣命', d.lives] : null, d.fly ? ['飛行', ''] : null, d.revive ? ['會復活', ''] : null, d.cap ? ['每下最多', Math.round(d.cap * 100) + '%'] : null, d.evade ? ['閃避', Math.round(d.evade * 100) + '%'] : null, d.stealth ? ['隱身', ''] : null, d.ward ? ['守護光環', ''] : null, d.phases ? ['形態', d.phases.length + 1] : null].filter(Boolean).map(([a, b]) => `<span>${a}${b !== '' ? ' <b>' + b + '</b>' : ''}</span>`).join('') : '';
         return `<div class="cx-card${ok ? '' : ' locked'}${d.boss ? ' boss' : ''}"><div class="cx-art"><img alt="" src="${Render.icon('enemy', k, 0, undefined, 160)}"></div>
           <div class="cx-info"><b>${ok ? esc(d.name) : '？？？'}</b>${d.boss ? '<small class="bt">頭目</small>' : ''}<p>${ok ? esc(d.desc || '分裂膠被打爆之後跑出來的小膠。') : '還沒遇見過。在戰場上遇到之後就會記錄下來。'}</p><div class="cx-stats">${stats}</div></div></div>`;
       }).join('');
@@ -172,6 +183,8 @@ const Codex = (() => {
     if (st.slow) out.push(['減速', Math.round(st.slow * 100) + '%']);
     if (st.buffDmg) out.push(['加成', '+' + Math.round(st.buffDmg * 100) + '%']);
     if (st.gold) out.push(['每波', '+' + st.gold]);
+    if (st.n) { out.length = 0; out.push(['士兵', st.n]); out.push(['生命', st.hp]); out.push(['傷害', st.dmg]); out.push(['護甲', Math.round(st.armor * 100) + '%']); }
+    if (st.pool) { out.length = 0; out.push(['每秒毒傷', st.dmg]); out.push(['毒池', st.pool]); out.push(['射程', st.range]); }
     out.push(['花費', st.cost]);
     return out.map(([a, b]) => `<span>${a} <b>${b}</b></span>`).join('');
   }

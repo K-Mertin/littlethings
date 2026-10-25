@@ -38,7 +38,7 @@ const Snd = (() => {
     const g = ac.createGain(); env(g, t, 0.003, vol, dur);
     n.connect(f); f.connect(g); g.connect(bus || sfxBus); n.start(t, Math.random() * 0.5); n.stop(t + dur + 0.05);
   }
-  const GAP = { arrow: 0.05, pop: 0.035, boom: 0.06, cannon: 0.06, frost: 0.06, magic: 0.06, zap: 0.06, snipe: 0.05, coin: 0.05, heal: 0.15, blizzard: 0.12, missile: 0.08, leak: 0.12 };
+  const GAP = { flask: 0.08, splash: 0.08, clang: 0.12, arrow: 0.05, pop: 0.035, boom: 0.06, cannon: 0.06, frost: 0.06, magic: 0.06, zap: 0.06, snipe: 0.05, coin: 0.05, heal: 0.15, blizzard: 0.12, missile: 0.08, leak: 0.12 };
   function sfx(name) {
     if (!ac || !sfxOn) return;
     const now = ac.currentTime;
@@ -80,6 +80,9 @@ const Snd = (() => {
       case 'win': [523, 659, 784, 1046, 784, 1046].forEach((f, i) => tone('triangle', f, f, i === 5 ? 0.6 : 0.18, 0.16, null, now + i * 0.12)); break;
       case 'lose': [392, 349, 311, 262].forEach((f, i) => tone('triangle', f, f * 0.98, 0.35, 0.15, null, now + i * 0.25)); break;
       case 'star': tone('triangle', 1046, 1046, 0.15, 0.14); tone('sine', 2093, 2093, 0.3, 0.06, null, now + 0.05); break;
+      case 'flask': tone('triangle', 700 * r(), 1100, 0.08, 0.06); noise(0.06, 0.12, 'bandpass', 2400, 1200); break;
+      case 'splash': noise(0.18, 0.22, 'bandpass', 900 * r(), 400, null, 0, 1.2); tone('sine', 300 * r(), 120, 0.15, 0.08); break;
+      case 'clang': tone('square', 1400 * r(), 1300, 0.05, 0.05); noise(0.05, 0.15, 'highpass', 3000, 2500); break;
     }
   }
 
@@ -95,6 +98,8 @@ const Snd = (() => {
     { bpm: 116, root: 53, scale: 'min', prog: [0, 8, 10, 7], drums: 2 },  // 城堡
     { bpm: 84, root: 60, scale: 'maj', prog: [0, 9, 5, 7], drums: 0 },    // 選單
     { bpm: 132, root: 50, scale: 'min', prog: [0, 1, 8, 7], drums: 2 },   // 頭目
+    { bpm: 100, root: 57, scale: 'maj', prog: [0, 5, 9, 4], drums: 1 },   // 東境（竹林、大河）
+    { bpm: 112, root: 50, scale: 'min', prog: [0, 10, 8, 3], drums: 2 },  // 暮光王座
   ];
   const SC = { maj: [0, 2, 4, 5, 7, 9, 11], min: [0, 2, 3, 5, 7, 8, 10] };
   let cur = -1, timer = null, nextT = 0, stepI = 0, song = null, intensity = 0;
