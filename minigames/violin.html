@@ -1,0 +1,1458 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon.ico" sizes="any"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>噗噗拉提琴</title>
+<link rel="stylesheet" href="mini.css">
+<style>
+.mg-stage{padding:6px}.vl-stars{font-size:42px;letter-spacing:.1em;margin:2px 0 4px}
+.mg-over{align-items:flex-start}.mg-card{margin:auto}
+</style>
+</head>
+<body>
+<main class="mg-stage" id="stage"><canvas id="cv" aria-label="遊戲畫面"></canvas></main>
+<script src="mini.js"></script>
+<script>
+'use strict';
+MG.init({ id: 'violin', title: '噗噗拉提琴', stats: ['a', 'b'] });
+const cv = document.getElementById('cv'), x = cv.getContext('2d');
+const FONT = '"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif';
+const EMOJI = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, k) => a + (b - a) * k;
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let q = Math.imul(a ^ a >>> 15, 1 | a); q = q + Math.imul(q ^ q >>> 7, 61 | q) ^ q; return ((q ^ q >>> 14) >>> 0) / 4294967296; }; }
+
+// =====================================================================
+// the violin: 4 strings, coloured finger tapes (open + fingers 1 2 3)
+// =====================================================================
+const STR = [
+  { nm: 'G', open: 55, bead: '#9a72f0', beadD: '#4f2f9a', w: 4.8, c1: '#f3dca6', c2: '#a07a36' },
+  { nm: 'D', open: 62, bead: '#3cb85a', beadD: '#1f6e35', w: 3.9, c1: '#f4f6fa', c2: '#8c95a6' },
+  { nm: 'A', open: 69, bead: '#ff8c3a', beadD: '#a04510', w: 3.1, c1: '#f4f6fa', c2: '#8c95a6' },
+  { nm: 'E', open: 76, bead: '#3fc8e0', beadD: '#16788a', w: 2.4, c1: '#fff3c8', c2: '#b8902e' },
+];
+// finger colours [light, main, dark] — like the stickers on a real kid's violin
+const FCOL = { 1: ['#ffd6de', '#ff5d7a', '#b0264a'], 2: ['#fff3c2', '#ffc531', '#a37200'], low: ['#ffe1c4', '#ff9a3c', '#a5530c'], 3: ['#d8ecff', '#4c9cf0', '#1d4f9e'] };
+// semitones above the open string for open / 1 / 2 / 3 ; the second finger sits high or low depending on the key
+const TAPES = { D: [[0, 2, 4, 5], [0, 2, 4, 5], [0, 2, 4, 5], [0, 2, 3, 5]], G: [[0, 2, 4, 5], [0, 2, 4, 5], [0, 2, 3, 5], [0, 2, 3, 5]] };
+let KEY = 'D', SPOTS = [];
+function buildSpots() { SPOTS = []; TAPES[KEY].forEach((tp, s) => tp.forEach((semi, f) => SPOTS.push({ i: SPOTS.length, s, f, semi, m: STR[s].open + semi, low: f === 2 && semi === 3 }))); }
+buildSpots();
+const spotOf = m => SPOTS.find(p => p.m === m) || null;
+const fcolOf = p => p.f === 0 ? null : FCOL[p.low ? 'low' : p.f];
+
+// =====================================================================
+// songs: public-domain folk / kids / classical tunes (D major unless noted)
+// token = note+octave, *beats ; (…) = slurred under one bow ; R = rest
+// =====================================================================
+const PCN = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+function parseSong(str) {
+  let tb = 0, dir = -1, inS = false; const out = [];
+  for (let tok of str.trim().split(/\s+/)) {
+    let op = false, cl = false;
+    if (tok[0] === '(') { op = true; tok = tok.slice(1); }
+    if (tok.endsWith(')')) { cl = true; tok = tok.slice(0, -1); }
+    const [nm, d0] = tok.split('*'), d = d0 ? parseFloat(d0) : 1;
+    if (nm === 'R') { tb += d; continue; }
+    const mt = /^([A-G])(#?)(\d)$/.exec(nm); if (!mt) throw new Error('bad note ' + tok);
+    const m = 12 * (+mt[3] + 1) + PCN[mt[1]] + (mt[2] ? 1 : 0);
+    const cont = inS && !op;
+    if (!cont) dir = -dir;
+    out.push({ m, d, t: tb, dir, slur: op ? 1 : cont ? (cl ? 3 : 2) : 0 });
+    if (op) inS = true; if (cl) inS = false;
+    tb += d;
+  }
+  return out;
+}
+const SONG = {
+  buns: 'F#4 E4 D4*2 F#4 E4 D4*2 D4*.5 D4*.5 D4*.5 D4*.5 E4*.5 E4*.5 E4*.5 E4*.5 F#4 E4 D4*2',
+  mary: 'F#4 E4 D4 E4 F#4 F#4 F#4*2 E4 E4 E4*2 F#4 A4 A4*2 F#4 E4 D4 E4 F#4 F#4 F#4 F#4 E4 E4 F#4 E4 D4*4',
+  tw1: 'D4 D4 A4 A4 B4 B4 A4*2 G4 G4 F#4 F#4 E4 E4 D4*2',
+  tw: 'D4 D4 A4 A4 B4 B4 A4*2 G4 G4 F#4 F#4 E4 E4 D4*2 A4 A4 G4 G4 F#4 F#4 E4*2 A4 A4 G4 G4 F#4 F#4 E4*2 D4 D4 A4 A4 B4 B4 A4*2 G4 G4 F#4 F#4 E4 E4 D4*2',
+  row: 'A4 F#4 F#4*2 G4 E4 E4*2 D4 E4 F#4 G4 A4 A4 A4*2 A4 F#4 F#4*2 G4 E4 E4*2 D4 F#4 A4 A4 F#4*4',
+  slur: '(D4 E4) (F#4 G4) (A4 G4) (F#4 E4) (D4 E4) (F#4 E4) D4*2 (A4 B4) (A4 G4) (F#4 G4) (A4*2) (A4 G4 F#4) (E4 F#4 E4) D4*2',
+  ode1: 'F#4 F#4 G4 A4 A4 G4 F#4 E4 D4 D4 E4 F#4 F#4*1.5 E4*.5 E4*2 F#4 F#4 G4 A4 A4 G4 F#4 E4 D4 D4 E4 F#4 E4*1.5 D4*.5 D4*2',
+  fj: 'D4 E4 F#4 D4 D4 E4 F#4 D4 F#4 G4 A4*2 F#4 G4 A4*2 A4*.5 B4*.5 A4*.5 G4*.5 F#4 D4 A4*.5 B4*.5 A4*.5 G4*.5 F#4 D4 D4 A3 D4*2 D4 A3 D4*2',
+  ladder: 'G3 A3 D4 E4 A4 B4 E5 F#5 E5*2 F#5 E5 B4 A4 E4 D4 A3 G3*2 D4 A4 E5 A4 D4 G3*2',
+  rhody: 'F#4*1.5 F#4*.5 (E4 D4) D4*2 E4 E4 (G4 F#4) (E4 D4*2) A4*1.5 A4*.5 (G4 F#4) F#4*2 (E4 D4) (E4 F#4) D4*4',
+  min1: 'D5 (G4*.5 A4*.5 B4*.5 C5*.5) D5 G4 G4 E5 (C5*.5 D5*.5 E5*.5 F#5*.5) G5 G4 G4 C5 (D5*.5 C5*.5 B4*.5 A4*.5) B4 (C5*.5 B4*.5 A4*.5 G4*.5) F#4 (G4*.5 A4*.5 B4*.5 G4*.5) A4*3',
+  canon1: 'F#5*2 E5*2 D5*2 C#5*2 B4*2 A4*2 B4*2 C#5*2 D5*2 C#5*2 B4*2 A4*2 G4*2 F#4*2 G4*2 E4*2',
+  wind: 'D4 E4 F#4 G4 A4 A4 A4*2 B4 G4 D5 B4 A4*4 B4 G4 D5 B4 A4*4 G4 G4 G4 G4 F#4 F#4 F#4 F#4 E4 E4 E4 E4 D4*4',
+  grace: 'A3 D4*2 (F#4*.5 D4*.5) F#4*2 E4 D4*2 B3 A3*2 A3 D4*2 (F#4*.5 D4*.5) F#4*2 E4 A4*3 A4*2 F#4 A4*2 (F#4*.5 D4*.5) F#4*2 E4 D4*2 B3 A3*2 A3 D4*2 (F#4*.5 D4*.5) F#4*2 E4 D4*3',
+  canon: 'F#5*2 E5*2 D5*2 C#5*2 B4*2 A4*2 B4*2 C#5*2 D5*2 C#5*2 B4*2 A4*2 G4*2 F#4*2 G4*2 E4*2 D4 F#4 A4 G4 F#4 D4 F#4 E4 D4 B3 D4 A4 G4 B4 A4 G4 F#4 D4 E4 A4 D4*4',
+};
+
+// =====================================================================
+// levels — append only (stars are saved by number)
+// =====================================================================
+const L_ = (type, name, theme, o = {}) => ({ type, name, theme, ...o });
+const LEVELS = [
+  L_('follow', '空弦 D 和 A', 'hall', { song: 'D4*2 A4*2 D4*2 A4*2 D4 D4 A4 A4 D4*4', bpm: 72, news: 'follow' }),
+  L_('follow', '下弓上弓', 'garden', { mk: '↕️', song: 'A4*2 A4*2 A4*2 A4*2 A4 A4 A4 A4 A4*4', bpm: 72, bowOnly: true, news: 'bow' }),
+  L_('pbub', '撥弦泡泡', 'night', { need: 8, pool: 'open', news: 'pbub' }),
+  L_('follow', '四條弦 G D A E', 'hall', { song: 'G3*2 D4*2 A4*2 E5*2 E5*2 A4*2 D4*2 G3*2 D4 A4 D4 A4 G3*4', bpm: 72, news: 'four' }),
+  L_('long', '吹大氣球', 'garden', { v: 'steady', m: 62, goal: 4, news: 'long' }),
+  L_('follow', '第一根手指', 'night', { mk: '☝️', song: 'D4 E4 D4 E4 D4 E4 D4*2 A4 B4 A4 B4 A4 B4 A4*2', bpm: 76, news: 'finger' }),
+  L_('pecho', '跟我撥', 'hall', { pool: 'open', rounds: [2, 2, 3, 3], news: 'pecho' }),
+  L_('follow', '熱十字麵包', 'garden', { song: SONG.buns, bpm: 84 }),
+  L_('follow', '換弦下弓上弓', 'night', { mk: '↕️', song: 'D4 D4 A4 A4 D4 A4 D4 A4 D4 D4 A4 A4 D4*4', bpm: 76, bowOnly: true }),
+  L_('follow', '瑪莉有隻小綿羊', 'hall', { song: SONG.mary, bpm: 92 }),
+  L_('long', '全弓開花', 'garden', { mk: '🌸', v: 'whole', m: 69, goal: 4, news: 'whole' }),
+  L_('pbub', '手指泡泡', 'night', { need: 10, pool: 'DA' }),
+  L_('follow', '小星星（上半）', 'hall', { song: SONG.tw1, bpm: 84 }),
+  L_('follow', '輕輕划小船', 'garden', { song: SONG.row, bpm: 92 }),
+  L_('follow', '連弓練習', 'night', { mk: '〰️', song: SONG.slur, bpm: 76, news: 'slur' }),
+  L_('follow', '歡樂頌', 'hall', { song: SONG.ode1, bpm: 92 }),
+  L_('long', '彩虹音階', 'garden', { mk: '🌈', v: 'scale', seq: [62, 64, 66, 67, 69], goal: 1.6, news: 'scale' }),
+  L_('pecho', '跟我撥：手指', 'night', { pool: 'DA', rounds: [3, 3, 4, 4] }),
+  L_('follow', '兩隻老虎', 'hall', { song: SONG.fj, bpm: 96 }),
+  L_('follow', '手指爬樓梯', 'garden', { mk: '🪜', song: SONG.ladder, bpm: 80, news: 'cross' }),
+  L_('follow', '小星星（完整）', 'night', { song: SONG.tw, bpm: 88 }),
+  L_('follow', '羅迪阿姨', 'hall', { mk: '〰️', song: SONG.rhody, bpm: 88 }),
+  L_('long', '大聲小聲', 'garden', { mk: '☀️', v: 'dyn', m: 62, seq: ['f', 'p', 'f', 'p'], goal: 2.2, news: 'dyn' }),
+  L_('follow', '小步舞曲', 'night', { song: SONG.min1, bpm: 92, key: 'G', news: 'low2' }),
+  L_('pbub', '飄飄泡泡', 'hall', { need: 12, pool: 'all', drift: true, news: 'drift' }),
+  L_('follow', '卡農（慢慢拉）', 'garden', { song: SONG.canon1, bpm: 84 }),
+  L_('follow', '風之歌', 'night', { song: SONG.wind, bpm: 96 }),
+  L_('pecho', '跟我撥：四條弦', 'hall', { pool: 'all', rounds: [4, 4, 5] }),
+  L_('follow', '奇異恩典', 'garden', { mk: '〰️', song: SONG.grace, bpm: 84 }),
+  L_('follow', '音樂會：卡農', 'night', { mk: '🎉', song: SONG.canon, bpm: 84 }),
+];
+const MK = { follow: '🎶', long: '🎈', pbub: '🫧', pecho: '🔁' };
+const mkOf = lv => lv.mk || MK[lv.type];
+const THEME_E = { hall: '🎭', garden: '🌷', night: '🌙' };
+const NEWS = {
+  follow: ['🎶 跟著拉', '發光的圓點就是要按的地方！按一下圓點，再用另一隻手在琴身上<b>拖弓</b>，小提琴就會唱歌。選「🤖 自動拉弓」的話，按住圓點就會自己拉 ^_^'],
+  bow: ['↕️ 下弓、上弓', '這關不用按圓點，只要跟著箭頭在琴身上拖弓：往箭頭的方向拉一下，再換另一個方向。這關一定要自己拉弓喔！'],
+  pbub: ['🫧 撥弦泡泡', '泡泡停在琴弦的圓點上，用手指點一下那個圓點「撥」它，泡泡就會啵一聲破掉！'],
+  four: ['🎻 四條弦', '小提琴有四條弦：紫色 G、綠色 D、橘色 A、藍色 E。最粗的 G 聲音最低，最細的 E 聲音最高。'],
+  long: ['🎈 拉長音', '慢慢、穩穩地拖弓，讓指針停在綠色的 🌟 那一格，氣球就會越吹越大！太慢 🐢 或太快 🐇 都不行喔。拉到底就換方向繼續拉。'],
+  finger: ['☝️ 第一根手指', '紅色的點是第一根手指（食指）的位置，按住它再拉弓，聲音就變高了！'],
+  pecho: ['🔁 跟我撥', '先聽噗噗撥一次（圓點會發光），換你照一樣的順序點圓點！'],
+  whole: ['🌸 全弓', '從琴身的一邊一直拉到另一邊，中間不要停，就是「全弓」！每拉好一次，花就開一片。'],
+  slur: ['〰️ 連弓', '彎彎的線連在一起的音，要在<b>同一個方向</b>的弓裡拉完：弓不要停，手指換圓點就好。'],
+  scale: ['🌈 彩虹音階', '噗噗幫你按好手指，你只要穩穩地拉，每拉好一個音，彩虹就多一道顏色！'],
+  cross: ['🪜 跳弦', '這關會爬過四條弦，最低的紫色 G 弦和最高的藍色 E 弦都要拉到喔！'],
+  dyn: ['☀️🌙 大聲小聲', '☀️ 太陽出來要大聲：弓拉<b>快</b>一點！🌙 月亮出來要小聲：弓拉<b>慢</b>一點。'],
+  low2: ['🟠 低二指', '小步舞曲會用到橘色虛線的圓點：第二根手指往後靠近第一根手指，聲音會低一點點。'],
+  drift: ['🫧 飄飄泡泡', '泡泡會沿著琴弦慢慢飄，點泡泡停的地方就能撥到它！'],
+  beat: ['🥁 跟節拍', '音符會一個一個往左走，走到白線的時候拉那個音！來不及也沒關係，繼續拉下一個。'],
+};
+
+// =====================================================================
+// sound: a bowed-string voice (two saws + body resonances + delayed vibrato) and Karplus-Strong pizzicato
+// =====================================================================
+let ac = null, master = null, revIn = null, VC = null;
+const AU = { plucks: 0, events: 0, maxAmp: 0, built: 0 };
+const isMuted = () => !!MG.store.get('muted', false);
+function audio() {
+  if (isMuted()) return null;
+  if (!ac) {
+    try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch { return null; }
+    const comp = ac.createDynamicsCompressor();
+    comp.threshold.value = -16; comp.knee.value = 10; comp.ratio.value = 3.5; comp.attack.value = 0.005; comp.release.value = 0.2;
+    master = ac.createGain(); master.gain.value = 0.9; master.connect(comp); comp.connect(ac.destination);
+    const len = Math.round(ac.sampleRate * 1.8), ir = ac.createBuffer(2, len, ac.sampleRate);
+    for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) { const k = i / len; d[i] = (Math.random() * 2 - 1) * Math.pow(1 - k, 3.4) * (i < 300 ? i / 300 : 1); } }
+    const conv = ac.createConvolver(); conv.buffer = ir;
+    revIn = ac.createGain(); revIn.gain.value = REV[theme] || 0.3; revIn.connect(conv); conv.connect(master);
+  }
+  if (ac.state !== 'running') { try { ac.resume(); } catch {} }
+  return ac;
+}
+const REV = { hall: 0.42, garden: 0.16, night: 0.3 };
+function unlockAudio() { if (!isMuted()) audio(); }
+addEventListener('pointerdown', unlockAudio, true);
+addEventListener('keydown', unlockAudio, true);
+function bq(type, f, q, gain = 0) { const b = ac.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = q; b.gain.value = gain; return b; }
+function makeVoice() {
+  const a = ac; AU.built++;
+  const o1 = a.createOscillator(), o2 = a.createOscillator(), o3 = a.createOscillator();
+  o1.type = 'sawtooth'; o2.type = 'sawtooth'; o3.type = 'triangle'; o2.detune.value = 6; o3.detune.value = -5;
+  const g1 = a.createGain(), g2 = a.createGain(), g3 = a.createGain(); g1.gain.value = 0.5; g2.gain.value = 0.32; g3.gain.value = 0.3;
+  const hp = bq('highpass', 160, 0.7), lp = bq('lowpass', 3000, 0.8), b1 = bq('peaking', 470, 1.3, 4), b2 = bq('peaking', 1300, 1.8, -3), b3 = bq('peaking', 2900, 1.5, 6), b4 = bq('peaking', 5400, 1, -7);
+  const vca = a.createGain(); vca.gain.value = 0;
+  const lfo = a.createOscillator(), lfoG = a.createGain(); lfo.frequency.value = 5.6; lfoG.gain.value = 0;
+  lfo.connect(lfoG); lfoG.connect(o1.frequency); lfoG.connect(o2.frequency); lfoG.connect(o3.frequency);
+  // bow hiss: a little filtered noise that follows the bow
+  const nb = a.createBuffer(1, a.sampleRate * 2, a.sampleRate), nd = nb.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  const ns = a.createBufferSource(); ns.buffer = nb; ns.loop = true;
+  const nbp = bq('bandpass', 3200, 0.7), ng = a.createGain(); ng.gain.value = 0;
+  o1.connect(g1); o2.connect(g2); o3.connect(g3);
+  for (const g of [g1, g2, g3]) g.connect(hp);
+  hp.connect(lp); lp.connect(b1); b1.connect(b2); b2.connect(b3); b3.connect(b4); b4.connect(vca);
+  ns.connect(nbp); nbp.connect(ng); ng.connect(vca);
+  const send = a.createGain(); send.gain.value = 0.8;
+  vca.connect(master); vca.connect(send); send.connect(revIn);
+  const t = a.currentTime;
+  for (const o of [o1, o2, o3]) o.frequency.setValueAtTime(293.7, t);
+  o1.start(t); o2.start(t); o3.start(t); lfo.start(t); ns.start(t);
+  return { o1, o2, o3, lp, vca, lfoG, ng };
+}
+let vm = -1, vAmp = 0, vLp = 0, vNs = 0;
+function voiceUpdate(m, amp, scratch) {
+  if (!ac) return;
+  if (isMuted()) { if (VC && vAmp > 0) { VC.vca.gain.setTargetAtTime(0, ac.currentTime, 0.03); vAmp = 0; } return; }
+  if (amp <= 0 && !VC) return;
+  if (ac.state !== 'running') return;
+  if (!VC) VC = makeVoice();
+  const t = ac.currentTime;
+  if (m >= 0 && m !== vm) {
+    const f = mtof(m);
+    for (const o of [VC.o1, VC.o2, VC.o3]) { if (vAmp < 0.03) { o.frequency.cancelScheduledValues(t); o.frequency.setValueAtTime(f, t); } else o.frequency.setTargetAtTime(f, t, 0.014); }
+    VC.lfoG.gain.cancelScheduledValues(t); VC.lfoG.gain.setValueAtTime(0, t); VC.lfoG.gain.setTargetAtTime(f * 0.0062, t + 0.3, 0.28);
+    vm = m;
+  }
+  const target = m >= 0 ? amp : 0;
+  if (Math.abs(target - vAmp) > 0.008 || (target === 0 && vAmp !== 0)) { VC.vca.gain.setTargetAtTime(target * 0.3, t, target > vAmp ? 0.028 : 0.07); vAmp = target; }
+  AU.maxAmp = Math.max(AU.maxAmp, target);
+  if (vm >= 0) {
+    const lpF = Math.min(9500, mtof(vm) * (2.2 + amp * 5) + 700);
+    if (Math.abs(lpF - vLp) > 40) { VC.lp.frequency.setTargetAtTime(lpF, t, 0.05); vLp = lpF; }
+  }
+  const nsT = target * 0.05 + scratch * 0.16;
+  if (Math.abs(nsT - vNs) > 0.004) { VC.ng.gain.setTargetAtTime(nsT, t, 0.04); vNs = nsT; }
+}
+const ksCache = new Map();
+function ksBuf(m) {
+  let b = ksCache.get(m); if (b) return b;
+  const sr = ac.sampleRate, f = mtof(m), N = Math.max(2, Math.round(sr / f)), len = Math.round(sr * 1.2);
+  b = ac.createBuffer(1, len, sr); const d = b.getChannelData(0);
+  let lp = 0; for (let i = 0; i < N; i++) { lp += ((Math.random() * 2 - 1) - lp) * 0.55; d[i] = lp; }
+  const dec = f > 600 ? 0.988 : 0.993;
+  for (let i = N; i < len; i++) d[i] = dec * 0.5 * (d[i - N] + d[i - N + (i - N - 1 >= 0 ? -1 : 0)]);
+  let pk = 0; for (let i = 0; i < len; i++) pk = Math.max(pk, Math.abs(d[i]));
+  const k = pk > 0 ? 0.9 / pk : 1; for (let i = 0; i < len; i++) d[i] *= k * (i > len * 0.85 ? (len - i) / (len * 0.15) : 1);
+  ksCache.set(m, b); return b;
+}
+function pluckSound(m, vel = 1) {
+  const a = audio(); if (!a) return; AU.plucks++;
+  const s = a.createBufferSource(); s.buffer = ksBuf(m);
+  const g = a.createGain(); g.gain.value = 0.62 * vel;
+  const body = bq('peaking', 420, 1.2, 5), send = a.createGain(); send.gain.value = 0.7;
+  s.connect(body); body.connect(g); g.connect(master); g.connect(send); send.connect(revIn);
+  s.start(a.currentTime + 0.003);
+}
+const juiceT = {};
+function juice(name, n) { const q = performance.now(); if (q - (juiceT[name] || 0) < 70) return; juiceT[name] = q; MG.sfx(name, n); }
+
+// =====================================================================
+// state
+// =====================================================================
+let W = 900, H = 560, land = true, U = 1, TOP = 260;
+let state = 'menu', kind = 'free', level = 1, LV = null, pace = 'wait', bowPick = 'auto', theme = MG.store.get('violin.stage', 'hall');
+if (!REV[theme]) theme = 'hall';
+let freeAuto = MG.store.get('violin.freeAuto', true), freePizz = false;
+let t = 0, frameN = 0;
+// instrument geometry (instrument space: u along the strings from the scroll, v across them)
+let IX = 10, IY = 260, IL = 880, IB = 290, nutU = 58, fbEnd = 560, gap = 100, SR = 30, bowU = 700, bridgeU = 846, bzU0 = 564;
+let HERO = { x: 100, y: 180, r: 50 }, STRIP = { x: 0, y: 0, w: 10, h: 10 }, TITLE = null, btns = [];
+// playing state
+const fingers = new Map();           // pointerId → spot (left hand)
+let bowPtr = null;                   // { id, v, lastV }
+let sel = SPOTS.find(p => p.m === 62);  // the note chosen last (stays chosen after the finger lifts)
+let bowPos = 0.5, bowDir = 1, bowS = 0, bowAcc = 0, dirAcc = 0, lastBowMove = -9;
+let autoA = 0, autoHoldT = 0, autoDir = 1, kbdHeld = new Map(), kbdBow = 0;
+let soundOn = false, strokeOn = false, strokeDir = 0, silentT = 9, lastSoundM = -1, curAmp = 0, scratch = 0;
+let ov = null;                       // voice override from demo / playback
+let floats = [], hop = 0, mood = 'happy', moodT = 0, idleT = 0, pressedBtn = null, pressT = 0;
+let wob = [0, 0, 0, 0];               // string wobble amount (pizz)
+let litSpots = new Map();             // spot.i → glow time (demo / echo)
+// follow
+let notes = [], fi = 0, wrong = 0, dirMiss = 0, perfect = 0, good = 0, missed = 0, scrollF = 0, finT = -1, oopsT = -9, streak = 0;
+let st = 0, bi = 0, demo = null, beatTick = 0;
+const PERF = 0.16, GOOD = 0.36;
+// long
+let LG = null;
+// pizz games
+let bubbles = [], popped = 0, bubMiss = 0, EC = null;
+// free: record / playback / trail
+const rec = { on: false, t0: 0, ev: [], last: null };
+let recSaved = MG.store.get('violin.rec', []) || [];
+let pb = null, trail = [];
+const spb = () => 60 / (LV && LV.bpm || 90);
+const forceHand = () => !!(LV && kind !== 'free' && (LV.bowOnly || LV.type === 'long'));
+const handBow = () => kind === 'free' ? !freeAuto : (forceHand() || bowPick === 'hand');
+const pizzMode = () => kind === 'free' ? freePizz : (kind === 'pbub' || kind === 'pecho');
+const isTouch = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || navigator.maxTouchPoints > 0;
+
+// =====================================================================
+// layout
+// =====================================================================
+function strV(s) { return land ? IB * (3 - s + 0.5) / 4 : IB * (s + 0.5) / 4; }
+function uOfSemi(semi) { return nutU + (semi === 0 ? 0.42 : semi - 0.8) * gap; }
+function I2S(u, v) { return land ? [IX + u, IY + v] : [IX + v, IY + u]; }
+function S2I(px, py) { return land ? [px - IX, py - IY] : [py - IY, px - IX]; }
+function iT(g) { if (land) g.transform(1, 0, 0, 1, IX, IY); else g.transform(0, 1, 1, 0, IX, IY); }
+const spotXY = p => I2S(uOfSemi(p.semi), strV(p.s));
+function layout() {
+  W = cv.lw; H = cv.lh; land = W > H;
+  const cssK = Math.max(0.1, (parseFloat(cv.style.width) || W) / W); U = clamp(0.75 / cssK, 1, 1.4);
+  const M = 10;
+  if (land) { TOP = Math.round(H * 0.47); IX = M; IY = TOP; IL = W - 2 * M; IB = H - TOP - M; nutU = 60; fbEnd = Math.round(IL * 0.63); bridgeU = IL - 36; }
+  else { TOP = Math.round(H * 0.37); IX = M; IY = TOP; IB = W - 2 * M; IL = H - TOP - M; nutU = 52; fbEnd = Math.round(IL * 0.66); bridgeU = IL - 32; }
+  gap = (fbEnd - nutU) / 4.85;
+  SR = Math.min(gap * 0.4, IB / 4 * 0.37, 38);
+  bzU0 = fbEnd + 2; bowU = Math.round(fbEnd + (bridgeU - fbEnd) * 0.42);
+  // buttons
+  const ids = kind === 'free' ? ['rec', 'play', 'pizz', 'auto', 'stage'] : kind === 'follow' ? ['demo', 'again'] : kind === 'pecho' ? ['listen', 'again'] : ['again'];
+  const bh = Math.round(58 * U), gp = 8;
+  let bw = Math.round(76 * U);
+  if (!land) bw = Math.min(bw, Math.floor((W - 24 - gp * 4) / 5));
+  btns = ids.map((id, i) => ({ id, x: W - 12 - (ids.length - i) * (bw + gp) + gp, y: 10, w: bw, h: bh }));
+  const bx0 = btns.length ? btns[0].x : W - 12;
+  if (land) {
+    const heroW = clamp(W * 0.21, 170, 270);
+    HERO = { x: 14 + heroW / 2, r: clamp((TOP - 80) * 0.36, 38, 72) }; HERO.y = TOP - 16 - HERO.r;
+    STRIP = { x: heroW + 26, y: 10 + bh + 12, w: W - heroW - 26 - 12, h: TOP - (10 + bh + 12) - 14 };
+    TITLE = bx0 - 10 - (heroW + 26) > 130 ? { x: heroW + 26, y: 10, w: bx0 - 10 - (heroW + 26), h: bh } : null;
+  } else {
+    const sh = clamp(TOP * 0.3, 96, 128);
+    STRIP = { x: 12, y: TOP - 10 - sh, w: W - 24, h: sh };
+    const room = STRIP.y - (10 + bh) - 8;
+    HERO = { x: Math.round(W * 0.27), r: clamp(room * 0.4, 28, 66) }; HERO.y = STRIP.y - 8 - HERO.r;
+    TITLE = bx0 - 22 > 120 ? { x: 12, y: 10, w: bx0 - 22, h: bh } : null;
+  }
+}
+function relayout() { layout(); bgKey = ''; }
+
+// =====================================================================
+// painting helpers
+// =====================================================================
+function rr(g, x0, y0, w, h, r) { g.beginPath(); g.roundRect(x0, y0, w, h, r); }
+function dot(g, cx, cy, r) { g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill(); }
+function star5(g, cx, cy, R0, r0, rot = 0) { g.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + rot + i * Math.PI / 5, q = i % 2 ? r0 : R0; g.lineTo(cx + Math.cos(a) * q, cy + Math.sin(a) * q); } g.closePath(); }
+function txt(s, px, py, size, col = '#fff', align = 'center', weight = 900, stroke = null, sw = 4, g = x) {
+  g.font = `${weight} ${size}px ${FONT}`; g.textAlign = align; g.textBaseline = 'middle';
+  if (stroke) { g.lineJoin = 'round'; g.lineWidth = sw; g.strokeStyle = stroke; g.strokeText(s, px, py); }
+  g.fillStyle = col; g.fillText(s, px, py);
+}
+function fitTxt(s, px, py, maxW, size, col, weight = 900, g = x, align = 'center') {
+  g.font = `${weight} ${size}px ${FONT}`;
+  const w0 = g.measureText(s).width, sz = w0 > maxW ? Math.max(10, size * maxW / w0) : size;
+  txt(s, px, py, sz, col, align, weight, null, 4, g);
+}
+const emoCache = new Map();
+function emo(s, px, py, size, g = x) {
+  const sc = cv._mgScale || 1, k = `${s}|${Math.round(size)}|${sc}`;
+  let c = emoCache.get(k);
+  if (!c) {
+    c = document.createElement('canvas'); const S = Math.ceil(size * 1.4 * sc); c.width = S; c.height = S;
+    const e = c.getContext('2d'); e.scale(sc, sc); e.font = `${size}px ${EMOJI}`; e.textAlign = 'center'; e.textBaseline = 'middle'; e.fillText(s, size * 0.7, size * 0.74);
+    emoCache.set(k, c); if (emoCache.size > 200) emoCache.delete(emoCache.keys().next().value);
+  }
+  g.drawImage(c, px - size * 0.7, py - size * 0.7, size * 1.4, size * 1.4);
+}
+// an arrow pointing the way the bow must move on screen (down/up in landscape, right/left in portrait)
+function bowArrow(g, cx, cy, s, dir, col = '#fff', edge = '#2b6cc4') {
+  g.save(); g.translate(cx, cy); g.rotate((land ? Math.PI / 2 : 0) + (dir > 0 ? 0 : Math.PI));
+  g.beginPath(); g.moveTo(s * 0.62, 0); g.lineTo(s * 0.02, -s * 0.5); g.lineTo(s * 0.02, -s * 0.2); g.lineTo(-s * 0.6, -s * 0.2); g.lineTo(-s * 0.6, s * 0.2); g.lineTo(s * 0.02, s * 0.2); g.lineTo(s * 0.02, s * 0.5); g.closePath();
+  g.lineJoin = 'round'; g.fillStyle = col; g.fill(); g.strokeStyle = edge; g.lineWidth = Math.max(1.5, s * 0.1); g.stroke();
+  g.restore();
+}
+
+// =====================================================================
+// static layer: stage scene + the violin (redrawn only on resize / theme change)
+// =====================================================================
+let bgL = null, bgKey = '';
+function ensureLayer() {
+  const k = [W, H, theme, KEY, land, cv.width, kind].join();
+  if (k === bgKey && bgL) return;
+  bgKey = k; if (!bgL) bgL = document.createElement('canvas');
+  bgL.width = cv.width; bgL.height = cv.height;
+  const g = bgL.getContext('2d'), px = cv.width / W; g.setTransform(px, 0, 0, px, 0, 0);
+  paintScene(g); paintViolin(g);
+}
+function paintScene(g) {
+  const R = mulberry(theme.length * 77 + 3);
+  const floorY = TOP - 22;
+  if (theme === 'hall') {
+    const wall = g.createLinearGradient(0, 0, 0, TOP); wall.addColorStop(0, '#4a1a46'); wall.addColorStop(1, '#7c2c55');
+    g.fillStyle = wall; g.fillRect(0, 0, W, H);
+    // back wall arches
+    g.fillStyle = 'rgba(255,210,150,.07)';
+    for (let i = 0; i < 7; i++) { const ax = W * (i + 0.5) / 7, aw = W / 7 * 0.6; g.beginPath(); g.moveTo(ax - aw / 2, floorY); g.lineTo(ax - aw / 2, TOP * 0.42); g.arc(ax, TOP * 0.42, aw / 2, Math.PI, 0); g.lineTo(ax + aw / 2, floorY); g.fill(); }
+    // spotlight on the hero
+    const sp = g.createRadialGradient(HERO.x, HERO.y, 10, HERO.x, HERO.y, HERO.r * 3.4); sp.addColorStop(0, 'rgba(255,240,190,.55)'); sp.addColorStop(1, 'rgba(255,240,190,0)');
+    g.fillStyle = sp; g.fillRect(0, 0, W, TOP);
+    g.fillStyle = 'rgba(255,245,200,.12)'; g.beginPath(); g.moveTo(HERO.x - 30, 0); g.lineTo(HERO.x + 30, 0); g.lineTo(HERO.x + HERO.r * 1.9, floorY); g.lineTo(HERO.x - HERO.r * 1.9, floorY); g.fill();
+    // floor
+    const fl = g.createLinearGradient(0, floorY, 0, H); fl.addColorStop(0, '#d39350'); fl.addColorStop(1, '#8c5426');
+    g.fillStyle = fl; g.fillRect(0, floorY, W, H - floorY);
+    g.strokeStyle = 'rgba(110,60,20,.35)'; g.lineWidth = 1.5; for (let i = 1; i < 6; i++) { g.beginPath(); g.moveTo(0, floorY + i * 9); g.lineTo(W, floorY + i * 9); g.stroke(); }
+    g.fillStyle = '#ffd98a'; g.fillRect(0, floorY - 3, W, 4);
+    // curtains
+    for (const sd of [-1, 1]) {
+      const cw = Math.min(110, W * 0.1), x0 = sd < 0 ? 0 : W - cw;
+      const cg = g.createLinearGradient(x0, 0, x0 + cw, 0);
+      for (let i = 0; i <= 6; i++) cg.addColorStop(i / 6, i % 2 ? '#a3203c' : '#d8384f');
+      g.fillStyle = cg; g.beginPath();
+      if (sd < 0) { g.moveTo(0, 0); g.lineTo(cw, 0); g.quadraticCurveTo(cw * 0.55, floorY * 0.6, cw * 0.9, floorY); g.lineTo(0, floorY); }
+      else { g.moveTo(W, 0); g.lineTo(W - cw, 0); g.quadraticCurveTo(W - cw * 0.55, floorY * 0.6, W - cw * 0.9, floorY); g.lineTo(W, floorY); }
+      g.fill(); g.fillStyle = '#ffcc3a'; dot(g, sd < 0 ? cw * 0.62 : W - cw * 0.62, floorY * 0.58, 5);
+    }
+    // valance with gold fringe
+    g.fillStyle = '#c42a45'; g.beginPath(); g.moveTo(0, 0); g.lineTo(W, 0); g.lineTo(W, 22);
+    const nS = Math.max(6, Math.round(W / 90)); for (let i = nS; i > 0; i--) { const x1 = W * (i - 1) / nS; g.quadraticCurveTo(W * (i - 0.5) / nS, 44, x1, 22); }
+    g.closePath(); g.fill(); g.strokeStyle = '#ffcc3a'; g.lineWidth = 3; g.stroke();
+    // twinkly lamps
+    for (let i = 0; i < 14; i++) { g.fillStyle = `rgba(255,220,140,${0.15 + R() * 0.25})`; dot(g, R() * W, 50 + R() * (TOP * 0.4), 2 + R() * 3); }
+  } else if (theme === 'garden') {
+    const sky = g.createLinearGradient(0, 0, 0, TOP); sky.addColorStop(0, '#7fcbff'); sky.addColorStop(1, '#e6f7ff');
+    g.fillStyle = sky; g.fillRect(0, 0, W, H);
+    const sx = W - 70, sy = 46; g.fillStyle = 'rgba(255,240,150,.4)'; dot(g, sx, sy, 38); g.fillStyle = '#ffd84a'; dot(g, sx, sy, 26); g.strokeStyle = '#f0a020'; g.lineWidth = 3; g.beginPath(); g.arc(sx, sy, 26, 0, 7); g.stroke();
+    for (let i = 0; i < 4; i++) { const cx = W * (0.15 + i * 0.24) + R() * 40, cy = 34 + R() * 40, s = 0.8 + R() * 0.6; g.fillStyle = 'rgba(255,255,255,.92)'; for (const [dx, dy, r] of [[-22, 6, 16], [0, -4, 22], [24, 6, 16], [8, 10, 18]]) dot(g, cx + dx * s, cy + dy * s, r * s); }
+    // hills
+    g.fillStyle = '#a8e08e'; g.beginPath(); g.moveTo(0, floorY - 30); for (let i = 0; i <= 8; i++) g.quadraticCurveTo(W * (i + 0.5) / 8, floorY - 70 - (i % 2) * 22, W * (i + 1) / 8, floorY - 30); g.lineTo(W, floorY); g.lineTo(0, floorY); g.fill();
+    g.fillStyle = '#86cf6c'; g.beginPath(); g.moveTo(0, floorY - 6); for (let i = 0; i <= 5; i++) g.quadraticCurveTo(W * (i + 0.5) / 5, floorY - 40, W * (i + 1) / 5, floorY - 6); g.lineTo(W, floorY); g.lineTo(0, floorY); g.fill();
+    // gazebo behind the hero
+    const gx = HERO.x, gw = HERO.r * 3.2, gt = Math.max(20, HERO.y - HERO.r * 2.2);
+    g.fillStyle = 'rgba(255,255,255,.95)'; g.strokeStyle = '#c99ab0'; g.lineWidth = 2.5;
+    for (const sd of [-1, 1]) { rr(g, gx + sd * gw / 2 - 6, gt + 26, 12, floorY - gt - 26, 4); g.fill(); g.stroke(); }
+    g.fillStyle = '#ff9fbf'; g.beginPath(); g.moveTo(gx - gw / 2 - 18, gt + 30); g.quadraticCurveTo(gx, gt - 26, gx + gw / 2 + 18, gt + 30); g.closePath(); g.fill(); g.strokeStyle = '#c4507a'; g.stroke();
+    g.fillStyle = '#fff'; for (let i = 0; i < 7; i++) dot(g, gx - gw / 2 - 12 + i * (gw + 24) / 6, gt + 31, 4);
+    g.strokeStyle = 'rgba(255,255,255,.95)'; g.lineWidth = 5; g.beginPath(); g.arc(gx, gt + 70, gw / 2 - 2, Math.PI * 1.05, Math.PI * 1.95); g.stroke();
+    // lawn + flowers
+    const fl = g.createLinearGradient(0, floorY, 0, H); fl.addColorStop(0, '#7fd46a'); fl.addColorStop(1, '#4fa94a');
+    g.fillStyle = fl; g.fillRect(0, floorY, W, H - floorY);
+    const fc = ['#ff7b9c', '#ffd23f', '#ffffff', '#b98cff', '#ff9f43'];
+    for (let i = 0; i < 26; i++) { const fx = R() * W, fy = floorY - 4 - R() * 26; if (Math.abs(fx - HERO.x) < HERO.r * 1.6) continue; g.strokeStyle = '#3f9a45'; g.lineWidth = 2; g.beginPath(); g.moveTo(fx, fy); g.lineTo(fx, floorY + 4); g.stroke(); g.fillStyle = fc[i % 5]; for (let k = 0; k < 5; k++) { const a = k * 1.256; dot(g, fx + Math.cos(a) * 4, fy + Math.sin(a) * 4, 3.4); } g.fillStyle = '#ffcc33'; dot(g, fx, fy, 2.4); }
+  } else {
+    const sky = g.createLinearGradient(0, 0, 0, TOP); sky.addColorStop(0, '#141a45'); sky.addColorStop(1, '#3c3f86');
+    g.fillStyle = sky; g.fillRect(0, 0, W, H);
+    for (let i = 0; i < 60; i++) { g.fillStyle = `rgba(255,255,230,${0.3 + R() * 0.6})`; dot(g, R() * W, R() * TOP * 0.75, 0.6 + R() * 1.6); }
+    const mx = W - 80, my = 54; g.fillStyle = 'rgba(255,250,210,.18)'; dot(g, mx, my, 46); g.fillStyle = '#fff6c8'; dot(g, mx, my, 28); g.fillStyle = '#3c3f86'; dot(g, mx + 12, my - 8, 24);
+    g.fillStyle = '#262a60'; g.beginPath(); g.moveTo(0, floorY - 20); for (let i = 0; i <= 6; i++) g.quadraticCurveTo(W * (i + 0.5) / 6, floorY - 60 - (i % 2) * 20, W * (i + 1) / 6, floorY - 20); g.lineTo(W, floorY); g.lineTo(0, floorY); g.fill();
+    // string lights
+    const ly0 = 16, sag = 36; g.strokeStyle = 'rgba(30,30,50,.8)'; g.lineWidth = 1.5;
+    const segs = Math.max(3, Math.round(W / 260));
+    for (let k = 0; k < segs; k++) {
+      const x0 = W * k / segs, x1 = W * (k + 1) / segs;
+      g.beginPath(); g.moveTo(x0, ly0); g.quadraticCurveTo((x0 + x1) / 2, ly0 + sag * 2, x1, ly0); g.stroke();
+      for (let j = 1; j < 8; j++) { const q = j / 8, bx = lerp(x0, x1, q), by = ly0 + sag * 4 * q * (1 - q); const col = ['#ffd23f', '#ff8fbf', '#8fe3ff', '#a8f0a0'][(j + k) % 4]; g.fillStyle = col + '55'; dot(g, bx, by + 5, 8); g.fillStyle = col; dot(g, bx, by + 5, 4); }
+    }
+    const fl = g.createLinearGradient(0, floorY, 0, H); fl.addColorStop(0, '#6b4a3a'); fl.addColorStop(1, '#3a281f');
+    g.fillStyle = fl; g.fillRect(0, floorY, W, H - floorY); g.fillStyle = '#ffcf7a55'; g.fillRect(0, floorY - 2, W, 3);
+    const sp = g.createRadialGradient(HERO.x, HERO.y + HERO.r, 4, HERO.x, HERO.y + HERO.r, HERO.r * 2.6); sp.addColorStop(0, 'rgba(255,220,150,.45)'); sp.addColorStop(1, 'rgba(255,220,150,0)');
+    g.fillStyle = sp; g.fillRect(0, 0, W, TOP);
+    // lanterns
+    for (const lx of [HERO.x - HERO.r * 2.1, HERO.x + HERO.r * 2.1]) { if (lx < 10 || lx > W - 10) continue; const ly = floorY - 26; g.fillStyle = 'rgba(255,190,90,.35)'; dot(g, lx, ly, 18); g.fillStyle = '#ff9f43'; rr(g, lx - 9, ly - 12, 18, 24, 7); g.fill(); g.strokeStyle = '#a8560a'; g.lineWidth = 2; g.stroke(); g.fillStyle = '#ffe9a0'; rr(g, lx - 4, ly - 7, 8, 14, 4); g.fill(); }
+  }
+}
+function paintViolin(g) {
+  g.save(); iT(g);
+  const L = IL, B = IB;
+  // soft shadow
+  g.fillStyle = 'rgba(40,20,10,.28)'; rr(g, 6, 8, L - 4, B - 2, 26); g.fill();
+  // body (under the fingerboard), with c-bout curves at the edges
+  const b0 = fbEnd - 60;
+  const bodyPath = () => { g.beginPath(); g.moveTo(b0 + 30, 0); g.lineTo(L - 30, 0); g.quadraticCurveTo(L, 0, L, 30); g.lineTo(L, B - 30); g.quadraticCurveTo(L, B, L - 30, B); g.lineTo(b0 + 30, B); g.quadraticCurveTo(b0, B, b0, B - 30); g.lineTo(b0, 30); g.quadraticCurveTo(b0, 0, b0 + 30, 0); g.closePath(); };
+  const wood = g.createLinearGradient(b0, 0, L, B); wood.addColorStop(0, '#f6b062'); wood.addColorStop(0.5, '#de7a2c'); wood.addColorStop(1, '#a24c14');
+  g.fillStyle = wood; bodyPath(); g.fill();
+  g.save(); bodyPath(); g.clip();
+  g.strokeStyle = 'rgba(120,50,10,.16)'; g.lineWidth = 2;
+  for (let i = 0; i < 14; i++) { const v0 = B * (i + 0.5) / 14; g.beginPath(); g.moveTo(b0, v0); g.bezierCurveTo(b0 + (L - b0) * 0.3, v0 + 6, b0 + (L - b0) * 0.6, v0 - 6, L, v0 + 3); g.stroke(); }
+  const hl = g.createRadialGradient(b0 + (L - b0) * 0.3, B * 0.25, 4, b0 + (L - b0) * 0.3, B * 0.25, (L - b0) * 0.8); hl.addColorStop(0, 'rgba(255,240,200,.45)'); hl.addColorStop(1, 'rgba(255,240,200,0)');
+  g.fillStyle = hl; g.fillRect(b0, 0, L - b0, B);
+  g.restore();
+  g.strokeStyle = '#7a3410'; g.lineWidth = 3; bodyPath(); g.stroke();
+  g.strokeStyle = 'rgba(60,25,8,.55)'; g.lineWidth = 1.5; g.beginPath(); g.roundRect(b0 + 8, 8, L - b0 - 16, B - 16, 24); g.stroke();   // purfling
+  // f-holes
+  g.strokeStyle = '#3a1a08'; g.lineWidth = 4.5; g.lineCap = 'round';
+  for (const sd of [0, 1]) {
+    const vf = sd ? B * 0.9 : B * 0.1, uf = bridgeU - 6, k = sd ? -1 : 1;
+    g.beginPath(); g.moveTo(uf - 46, vf - k * 3); g.bezierCurveTo(uf - 20, vf + k * 8, uf + 6, vf - k * 8, uf + 26, vf + k * 2); g.stroke();
+    g.fillStyle = '#3a1a08'; dot(g, uf - 46, vf - k * 3, 4); dot(g, uf + 26, vf + k * 2, 4);
+  }
+  // tailpiece
+  g.fillStyle = '#251a22'; rr(g, bridgeU + 12, B * 0.2, L - bridgeU - 14, B * 0.6, 10); g.fill();
+  // scroll + pegbox: four coloured pegs, one per string
+  const pg = g.createLinearGradient(0, 0, nutU, B); pg.addColorStop(0, '#e09550'); pg.addColorStop(1, '#8c4416');
+  g.fillStyle = pg; rr(g, 4, B * 0.06, nutU - 2, B * 0.88, 22); g.fill(); g.strokeStyle = '#6a2c0c'; g.lineWidth = 2.5; g.stroke();
+  g.fillStyle = 'rgba(255,230,190,.35)'; rr(g, 9, B * 0.09, nutU * 0.35, B * 0.82, 14); g.fill();
+  for (let s = 0; s < 4; s++) {
+    const pv = strV(s), pu = nutU * 0.45;
+    g.strokeStyle = 'rgba(60,25,8,.5)'; g.lineWidth = STR[s].w; g.beginPath(); g.moveTo(pu, pv); g.lineTo(nutU, pv); g.stroke();
+    g.fillStyle = 'rgba(0,0,0,.25)'; dot(g, pu + 1.5, pv + 2.5, 11);
+    const kg = g.createRadialGradient(pu - 3, pv - 4, 1, pu, pv, 11); kg.addColorStop(0, '#fff'); kg.addColorStop(0.35, STR[s].bead); kg.addColorStop(1, STR[s].beadD);
+    g.fillStyle = kg; dot(g, pu, pv, 10); g.strokeStyle = STR[s].beadD; g.lineWidth = 2; g.beginPath(); g.arc(pu, pv, 10, 0, 7); g.stroke();
+  }
+  // fingerboard (ebony)
+  const fb = g.createLinearGradient(0, 0, 0, B); fb.addColorStop(0, '#463a4e'); fb.addColorStop(0.15, '#2c2333'); fb.addColorStop(1, '#17111b');
+  g.fillStyle = fb; rr(g, nutU - 4, B * 0.03, fbEnd - nutU + 4, B * 0.94, [4, 22, 22, 4]); g.fill();
+  g.strokeStyle = 'rgba(255,255,255,.12)'; g.lineWidth = 2; g.beginPath(); g.moveTo(nutU, B * 0.045); g.lineTo(fbEnd - 20, B * 0.045); g.stroke();
+  // nut
+  g.fillStyle = '#f6ecd2'; rr(g, nutU - 8, B * 0.03, 8, B * 0.94, 3); g.fill();
+  // tapes across the fingerboard (finger 1, high 2, 3) — low-2 strings get their own little orange tape
+  for (const [semi, col] of [[2, FCOL[1][1]], [4, FCOL[2][1]], [5, FCOL[3][1]]]) { g.fillStyle = col; g.globalAlpha = 0.55; g.fillRect(uOfSemi(semi) - 3, B * 0.035, 6, B * 0.93); g.globalAlpha = 1; }
+  // bridge
+  g.fillStyle = '#f2d9a6'; g.strokeStyle = '#a77a3a'; g.lineWidth = 2;
+  g.beginPath(); g.moveTo(bridgeU - 5, B * 0.06); g.quadraticCurveTo(bridgeU - 10, B / 2, bridgeU - 5, B * 0.94); g.lineTo(bridgeU + 7, B * 0.94); g.quadraticCurveTo(bridgeU + 2, B / 2, bridgeU + 7, B * 0.06); g.closePath(); g.fill(); g.stroke();
+  // the bowing lane: a soft pale band where the bow goes
+  const lane = g.createLinearGradient(bowU - 70, 0, bowU + 70, 0); lane.addColorStop(0, 'rgba(255,255,255,0)'); lane.addColorStop(0.5, 'rgba(255,250,230,.22)'); lane.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = lane; g.fillRect(bowU - 70, 6, 140, B - 12);
+  g.restore();
+}
+function paintSpot(g, p, st) {   // st: 0 normal, 1 pressed, 2 lit
+  const [cx, cy] = spotXY(p), r = SR * (st === 1 ? 1.08 : 1), fc = fcolOf(p);
+  if (p.f === 0) {
+    g.fillStyle = 'rgba(0,0,0,.25)'; dot(g, cx + 1, cy + 2, r * 0.82);
+    g.lineWidth = Math.max(3, r * 0.22); g.strokeStyle = STR[p.s].bead; g.beginPath(); g.arc(cx, cy, r * 0.72, 0, 7); g.stroke();
+    g.fillStyle = st ? STR[p.s].bead : 'rgba(255,255,255,.14)'; dot(g, cx, cy, r * 0.5);
+    g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = Math.max(1.2, r * 0.07); g.beginPath(); g.arc(cx, cy, r * 0.72, Math.PI * 1.1, Math.PI * 1.6); g.stroke();
+    return;
+  }
+  g.fillStyle = 'rgba(0,0,0,.3)'; dot(g, cx + 1.5, cy + 2.5, r * 0.8);
+  const gr = g.createRadialGradient(cx - r * 0.3, cy - r * 0.35, r * 0.1, cx, cy, r * 0.82); gr.addColorStop(0, fc[0]); gr.addColorStop(0.55, fc[1]); gr.addColorStop(1, fc[2]);
+  g.fillStyle = gr; dot(g, cx, cy, r * 0.78);
+  g.lineWidth = Math.max(1.5, r * 0.08); g.strokeStyle = fc[2];
+  g.beginPath(); g.arc(cx, cy, r * 0.78, 0, 7); g.stroke();
+  if (p.low) { g.setLineDash([r * 0.2, r * 0.16]); g.strokeStyle = '#ffd9a8'; g.lineWidth = Math.max(1.5, r * 0.09); g.beginPath(); g.arc(cx, cy, r * 0.97, 0, 7); g.stroke(); g.setLineDash([]); }
+  g.fillStyle = 'rgba(255,255,255,.7)'; g.beginPath(); g.ellipse(cx - r * 0.3, cy - r * 0.36, r * 0.22, r * 0.12, -0.6, 0, 7); g.fill();
+  txt(String(p.f), cx, cy + r * 0.04, r * 0.8, '#fff', 'center', 900, fc[2], Math.max(2, r * 0.14), g);
+}
+
+// =====================================================================
+// the hero: 噗噗 / 牛牛 playing a little violin on stage
+// =====================================================================
+function miniViolin(g, L) {
+  const half = (sgn) => { g.moveTo(-L * 0.42, 0); g.bezierCurveTo(-L * 0.43, sgn * L * 0.23, -L * 0.2, sgn * L * 0.25, -L * 0.09, sgn * L * 0.16); g.bezierCurveTo(-L * 0.03, sgn * L * 0.11, L * 0.02, sgn * L * 0.11, L * 0.06, sgn * L * 0.15); g.bezierCurveTo(L * 0.14, sgn * L * 0.21, L * 0.25, sgn * L * 0.17, L * 0.25, 0); };
+  // neck + scroll
+  g.fillStyle = '#c66a28'; g.strokeStyle = '#6a2c0c'; g.lineWidth = Math.max(1, L * 0.022);
+  rr(g, L * 0.2, -L * 0.035, L * 0.44, L * 0.07, L * 0.03); g.fill(); g.stroke();
+  g.beginPath(); g.arc(L * 0.68, 0, L * 0.06, 0, 7); g.fill(); g.stroke();
+  const bd = g.createLinearGradient(-L * 0.4, -L * 0.2, L * 0.2, L * 0.2); bd.addColorStop(0, '#f8b464'); bd.addColorStop(1, '#b4561a');
+  g.fillStyle = bd; g.beginPath(); half(1); g.closePath(); g.fill(); g.beginPath(); half(-1); g.closePath(); g.fill();
+  g.beginPath(); half(1); half(-1); g.stroke();
+  g.fillStyle = '#2a2030'; rr(g, -L * 0.06, -L * 0.04, L * 0.66, L * 0.08, L * 0.03); g.fill();   // fingerboard
+  g.fillStyle = '#2a2030'; g.beginPath(); g.ellipse(-L * 0.35, L * 0.06, L * 0.06, L * 0.08, 0, 0, 7); g.fill();   // chin rest
+  g.strokeStyle = '#3a1a08'; g.lineWidth = Math.max(1, L * 0.02);
+  for (const s of [-1, 1]) { g.beginPath(); g.moveTo(-L * 0.24, s * L * 0.1); g.quadraticCurveTo(-L * 0.17, s * L * 0.06, -L * 0.1, s * L * 0.1); g.stroke(); }
+  g.fillStyle = '#f2d9a6'; rr(g, -L * 0.18, -L * 0.07, L * 0.025, L * 0.14, 1); g.fill();   // bridge
+  g.strokeStyle = 'rgba(255,255,255,.8)'; g.lineWidth = Math.max(0.6, L * 0.006);
+  for (const s of [-1.5, -0.5, 0.5, 1.5]) { g.beginPath(); g.moveTo(-L * 0.3, s * L * 0.018); g.lineTo(L * 0.62, s * L * 0.018); g.stroke(); }
+  g.fillStyle = 'rgba(255,255,255,.4)'; g.beginPath(); g.ellipse(-L * 0.28, -L * 0.1, L * 0.07, L * 0.03, -0.4, 0, 7); g.fill();
+}
+function drawHero() {
+  const { x: hx, r } = HERO, playing = curAmp > 0.05 || state === 'over';
+  const sway = playing ? Math.sin(t * 5) * 0.035 : 0;
+  hop = Math.max(0, hop - 1 / 60 * 3);
+  const jump = Math.sin(hop * Math.PI) * r * 0.35, hy = HERO.y - jump;
+  let md = mood;
+  if (moodT <= 0) md = state === 'over' ? 'wink' : (kind === 'free' && idleT > 12 ? 'sleep' : 'happy');
+  const niu = MG.hero === 'niu';
+  x.save(); x.translate(hx, hy + r); x.rotate(sway); x.translate(-hx, -(hy + r));
+  MG.puPu(x, hx, hy, r, md, playing ? Math.sin(t * 8) * 0.025 : 0, { look: 0.5 });
+  if (!niu) {   // a concert bow tie
+    const by = hy + r * 0.6; x.fillStyle = '#e8364f'; x.strokeStyle = '#8e1a2c'; x.lineWidth = Math.max(1, r * 0.04);
+    x.beginPath(); x.moveTo(hx, by); x.lineTo(hx - r * 0.22, by - r * 0.12); x.lineTo(hx - r * 0.22, by + r * 0.12); x.closePath(); x.fill(); x.stroke();
+    x.beginPath(); x.moveTo(hx, by); x.lineTo(hx + r * 0.22, by - r * 0.12); x.lineTo(hx + r * 0.22, by + r * 0.12); x.closePath(); x.fill(); x.stroke();
+    x.fillStyle = '#ff6b80'; dot(x, hx, by, r * 0.06);
+  }
+  // violin on the hero's shoulder (viewer's right); the bow crosses it from the hero's bow hand (viewer's left)
+  const vx = hx + r * 0.6, vy = hy + r * 0.5, ang = -0.5, L = r * 1.3;
+  const hand = niu ? ['#fffbf3', '#6b4a35'] : ['#6fdc83', '#1f6e35'];
+  x.save(); x.translate(vx, vy); x.rotate(ang); miniViolin(x, L);
+  x.fillStyle = hand[0]; x.strokeStyle = hand[1]; x.lineWidth = Math.max(1, r * 0.06); x.beginPath(); x.ellipse(L * 0.44, L * 0.05, r * 0.15, r * 0.12, 0, 0, 7); x.fill(); x.stroke();   // left hand on the neck
+  x.restore();
+  const bx0 = vx + Math.cos(ang) * -L * 0.18, by0 = vy + Math.sin(ang) * -L * 0.18, a2 = 0.12, cs = Math.cos(a2), sn = Math.sin(a2);
+  const off = ((ov && ov.bp != null ? ov.bp : bowPos) - 0.5) * r * 0.9, BL = r * 1.9;
+  const e0 = -BL * 0.68 + off, e1 = BL * 0.32 + off, P = k => [bx0 + cs * k, by0 + sn * k];
+  x.lineCap = 'round';
+  x.strokeStyle = '#7a4a1e'; x.lineWidth = Math.max(1.5, r * 0.06); x.beginPath(); x.moveTo(...P(e0).map((q, i) => q - (i ? r * 0.07 : 0))); x.lineTo(...P(e1).map((q, i) => q - (i ? r * 0.07 : 0))); x.stroke();
+  x.strokeStyle = '#fff6dc'; x.lineWidth = Math.max(1, r * 0.035); x.beginPath(); x.moveTo(...P(e0 + r * 0.1)); x.lineTo(...P(e1)); x.stroke();
+  const [fx, fy] = P(e0 + r * 0.08);
+  x.fillStyle = '#2a2030'; rr(x, fx - r * 0.06, fy - r * 0.11, r * 0.16, r * 0.13, 3); x.fill();
+  x.fillStyle = hand[0]; x.strokeStyle = hand[1]; x.lineWidth = Math.max(1, r * 0.06); x.beginPath(); x.ellipse(fx, fy - r * 0.02, r * 0.15, r * 0.13, 0, 0, 7); x.fill(); x.stroke();   // bow hand
+  x.restore();
+}
+// floating notes around the hero while something sounds
+let noteSpawn = 0;
+function spawnNoteFloat(col) {
+  floats.push({ kind: 'note', ch: Math.random() < 0.5 ? '♪' : '♫', x: HERO.x + HERO.r * (0.8 + Math.random() * 0.7), y: HERO.y - HERO.r * 0.3, vx: 18 + Math.random() * 20, vy: -40 - Math.random() * 20, life: 1.4, max: 1.4, col, s: 18 + Math.random() * 8 });
+}
+function floatText(text, px, py, col = '#fff') { const hw = text.length * 6 + 12; floats.push({ kind: 'text', ch: text, x: clamp(px, hw, W - hw), y: clamp(py, 30, H - 20), vx: 0, vy: -46, life: 1.1, max: 1.1, col, s: 22 * U }); }
+
+// =====================================================================
+// input: left hand on the fingerboard, right hand drags the bow
+// =====================================================================
+function spotAt(u, v) {
+  let s = 0, bd = 1e9;
+  for (let k = 0; k < 4; k++) { const d = Math.abs(strV(k) - v); if (d < bd) { bd = d; s = k; } }
+  let best = null, bu = 1e9;
+  for (const p of SPOTS) if (p.s === s) { const d = Math.abs(uOfSemi(p.semi) - u); if (d < bu) { bu = d; best = p; } }
+  return best;
+}
+function inRect(p, r) { return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h; }
+function zoneOf(px, py) {
+  const [u, v] = S2I(px, py);
+  if (v < -14 || v > IB + 14 || u < -10 || u > IL + 10) return null;
+  return u < bzU0 ? { z: 'f', u, v } : { z: 'b', u, v };
+}
+function heldSpot() { let last = null; for (const p of fingers.values()) last = p; return last; }
+function curSpot() { return heldSpot() || sel; }
+function pressSpot(p, how = 'touch') {
+  const before = curSpot();
+  sel = p; idleT = 0;
+  if (kind === 'long' && LG) return;   // the helper holds the fingers in long-tone levels
+  if (pizzMode()) { pluck(p); return; }
+  if (!handBow()) {   // auto bow: pressing = playing
+    const restart = autoA < 0.05 || how === 'tap' || !before || before.i === p.i;
+    autoHoldT = Math.max(autoHoldT, 0.32);
+    if (restart || before.i !== p.i) {
+      const tg = kind === 'follow' && notes[fi] ? notes[fi] : null;
+      const slurOn = tg && tg.slur >= 2 && autoA > 0.05;
+      if (!slurOn) autoDir = tg ? tg.dir : -autoDir;
+      noteEvent(p.m, autoDir, 'auto');
+    }
+  } else if (soundOn && before && before.i !== p.i) {
+    noteEvent(p.m, bowDir, 'bow');   // a slur: finger changes while the bow keeps going
+  }
+}
+function pluck(p, fromHero = false) {
+  pluckSound(p.m, fromHero ? 0.8 : 1);
+  wob[p.s] = 1; litSpots.set(p.i, 0.35);
+  if (!fromHero) noteEvent(p.m, 0, 'pluck', p);
+  if (rec.on) rec.ev.push([+(t - rec.t0).toFixed(2), -2, p.m]);
+}
+cv.addEventListener('pointerdown', e => {
+  if (MG.panelOpen()) return;
+  e.preventDefault();
+  const p = cv.logical(e);
+  const b = btns.find(q => inRect(p, { x: q.x - 4, y: q.y - 4, w: q.w + 8, h: q.h + 8 }));
+  if (b) { pressBtn(b); return; }
+  if (state !== 'play') return;
+  if (demo || pb) { stopDemo(); stopPb(); }
+  const z = zoneOf(p.x, p.y); if (!z) return;
+  if (kind === 'pbub' && tryPop(p)) return;
+  if (z.z === 'f') {
+    const sp = spotAt(z.u, z.v); if (!sp) return;
+    fingers.set(e.pointerId, sp);
+    try { cv.setPointerCapture(e.pointerId); } catch {}
+    pressSpot(sp, 'tap');
+  } else {
+    if (pizzMode()) {   // pluck near the bridge: the string under the finger, stopped by a held finger on that string
+      let s = 0, bd = 1e9; for (let k = 0; k < 4; k++) { const d = Math.abs(strV(k) - z.v); if (d < bd) { bd = d; s = k; } }
+      let sp = null; for (const q of fingers.values()) if (q.s === s) sp = q;
+      if (!sp) sp = SPOTS.find(q => q.s === s && q.f === 0);
+      if (kind === 'pbub' && tryPop(p)) return;
+      pluck(sp); return;
+    }
+    if (!handBow() && kind !== 'long') {   // auto mode: a tap on the body plays the chosen note too
+      autoHoldT = 0.6; const sp = curSpot(); if (sp) { const tg = kind === 'follow' && notes[fi]; autoDir = tg ? tg.dir : -autoDir; noteEvent(sp.m, autoDir, 'auto'); }
+      fingers.set(e.pointerId, curSpot());
+      return;
+    }
+    bowPtr = { id: e.pointerId, v: z.v, t: performance.now() };
+    bowPos = clamp(z.v / IB, 0, 1);
+    try { cv.setPointerCapture(e.pointerId); } catch {}
+  }
+}, { passive: false });
+cv.addEventListener('pointermove', e => {
+  if (state !== 'play') return;
+  const p = cv.logical(e);
+  if (bowPtr && bowPtr.id === e.pointerId) {
+    const [, v] = S2I(p.x, p.y), dv = v - bowPtr.v;
+    bowPtr.v = v; bowAcc += dv; bowPos = clamp(v / IB, 0, 1); lastBowMove = t; idleT = 0;
+    return;
+  }
+  if (fingers.has(e.pointerId)) {
+    const z = zoneOf(p.x, p.y); if (!z || z.z !== 'f') return;
+    const sp = spotAt(z.u, z.v), cur = fingers.get(e.pointerId);
+    if (sp && cur && sp.i !== cur.i) { fingers.set(e.pointerId, sp); if (!pizzMode()) pressSpot(sp, 'slide'); else sel = sp; }
+  }
+});
+function ptrUp(e) {
+  if (bowPtr && bowPtr.id === e.pointerId) bowPtr = null;
+  fingers.delete(e.pointerId);
+}
+cv.addEventListener('pointerup', ptrUp); cv.addEventListener('pointercancel', ptrUp); cv.addEventListener('lostpointercapture', ptrUp);
+addEventListener('pointerup', ptrUp); addEventListener('pointercancel', ptrUp);
+cv.addEventListener('contextmenu', e => e.preventDefault());
+// keyboard: rows = strings (Z X C V = G string, A S D F = D, Q W E R = A, 1 2 3 4 = E), ↓ ↑ bow
+const KROW = { G: ['KeyZ', 'KeyX', 'KeyC', 'KeyV'], D: ['KeyA', 'KeyS', 'KeyD', 'KeyF'], A: ['KeyQ', 'KeyW', 'KeyE', 'KeyR'], E: ['Digit1', 'Digit2', 'Digit3', 'Digit4'] };
+function keySpot(code) { for (let s = 0; s < 4; s++) { const f = KROW[STR[s].nm].indexOf(code); if (f >= 0) return SPOTS.find(p => p.s === s && p.f === f); } return null; }
+addEventListener('keydown', e => {
+  if (MG.panelOpen() || state !== 'play' || e.repeat) return;
+  if (e.code === 'ArrowDown' || e.code === 'ArrowUp' || e.code === 'ArrowRight' || e.code === 'ArrowLeft') { kbdBow = (e.code === 'ArrowDown' || e.code === 'ArrowRight') ? 1 : -1; e.preventDefault(); return; }
+  const sp = keySpot(e.code); if (!sp) return;
+  e.preventDefault(); if (demo || pb) { stopDemo(); stopPb(); }
+  if (kind === 'pbub') { const bIdx = bubbles.findIndex(q => !q.pop && q.spot.i === sp.i); if (bIdx >= 0) { popBubble(bubbles[bIdx]); return; } }
+  kbdHeld.set(e.code, sp); pressSpot(sp, 'tap');
+});
+addEventListener('keyup', e => {
+  if ((e.code === 'ArrowDown' && kbdBow > 0) || (e.code === 'ArrowRight' && kbdBow > 0) || (e.code === 'ArrowUp' && kbdBow < 0) || (e.code === 'ArrowLeft' && kbdBow < 0)) kbdBow = 0;
+  kbdHeld.delete(e.code);
+});
+addEventListener('blur', () => { kbdHeld.clear(); kbdBow = 0; fingers.clear(); bowPtr = null; });
+
+// =====================================================================
+// bowing → sound, and note events
+// =====================================================================
+function updateBow(dt) {
+  // keyboard bow: a steady stroke
+  if (kbdBow && handBow()) { const dv = kbdBow * IB * 0.5 * dt; bowAcc += dv; bowPos += dv / IB; if (bowPos > 1 || bowPos < 0) { bowPos = clamp(bowPos, 0, 1); } lastBowMove = t; }
+  const inst = Math.abs(bowAcc) / IB / Math.max(dt, 1e-3);
+  bowS += (inst - bowS) * Math.min(1, dt * 16);
+  if (t - lastBowMove > 0.09) bowS *= Math.pow(0.002, dt);
+  // direction with a little hysteresis
+  if (bowAcc !== 0) {
+    if (Math.sign(bowAcc) === bowDir) dirAcc = 0;
+    else { dirAcc += Math.abs(bowAcc); if (dirAcc > IB * 0.03) { bowDir = -bowDir; dirAcc = 0; } }
+  }
+  bowAcc = 0;
+}
+function userVoice(dt) {
+  const sp = curSpot();
+  if (pizzMode() || !sp) { autoA = 0; return { m: -1, amp: 0, sc: 0 }; }
+  if (!handBow()) {
+    const held = fingers.size > 0 || kbdHeld.size > 0 || autoHoldT > 0;
+    autoHoldT = Math.max(0, autoHoldT - dt);
+    autoA += ((held ? 0.82 : 0) - autoA) * Math.min(1, dt * (held ? 14 : 9));
+    if (autoA > 0.02) { bowPos += autoDir * 0.42 * dt; if (bowPos > 0.97) { bowPos = 0.97; autoDir = -1; } if (bowPos < 0.03) { bowPos = 0.03; autoDir = 1; } bowDir = autoDir; }
+    return { m: sp.m, amp: autoA < 0.01 ? 0 : autoA, sc: 0 };
+  }
+  autoA = 0;
+  const s = bowS, amp = s < 0.035 ? 0 : clamp(Math.pow((s - 0.03) / 0.55, 0.6), 0, 1);
+  const sc = clamp((s - 1.5) / 1.5, 0, 1);
+  return { m: sp.m, amp, sc };
+}
+const EVLOG = [];
+function noteEvent(m, dir, how, spot) {
+  AU.events++; idleT = 0; EVLOG.push([m, dir, how, +t.toFixed(2), state === 'play' && kind === 'follow' && notes[fi] ? notes[fi].dir : 0]); if (EVLOG.length > 200) EVLOG.shift();
+  const p = spot || spotOf(m);
+  if (p) litSpots.set(p.i, Math.max(litSpots.get(p.i) || 0, 0.25));
+  spawnNoteFloat(p ? (p.f ? fcolOf(p)[1] : STR[p.s].bead) : '#fff');
+  if (kind === 'free') { trail.push({ m, dir, how, t }); if (trail.length > 40) trail.shift(); }
+  if (state !== 'play') return;
+  if (kind === 'follow') followEvent(m, dir, how);
+  else if (kind === 'pecho') echoEvent(p);
+}
+
+// =====================================================================
+// 🎶 follow: wait (🐢) or on the beat (🥁)
+// =====================================================================
+function startFollow() {
+  notes = parseSong(LV.song).map(n => ({ ...n, res: null }));
+  fi = 0; wrong = 0; dirMiss = 0; perfect = 0; good = 0; missed = 0; scrollF = 0; finT = -1; streak = 0; bi = 0; beatTick = -1;
+  st = -4 * spb() - 0.6;
+  if (LV.bowOnly) sel = spotOf(notes[0].m);
+}
+function judge(j, grade) {
+  const n = notes[j]; n.res = grade;
+  if (grade === 'perfect') perfect++; else if (grade === 'good') good++; else missed++;
+  const sp = spotOf(n.m), [sx, sy] = sp ? spotXY(sp) : [W / 2, TOP];
+  if (grade === 'miss') { floatText(MG.WORDS.miss, sx, sy - SR * 1.6, '#cfe0ff'); streak = 0; return; }
+  streak++;
+  floatText(grade === 'perfect' ? (streak >= 4 && streak % 4 === 0 ? MG.praise(Math.min(5, 2 + streak / 4)) : MG.WORDS.perfect) : MG.WORDS.good, sx, sy - SR * 1.6, grade === 'perfect' ? '#fff6a8' : '#ffffff');
+  MG.fx.burst(sx, sy, { n: grade === 'perfect' ? 12 : 6, colors: ['#ffd23f', '#ff8ac2', '#8fd0ff', '#fff'], shape: 'star', speed: 150, up: 60, size: 5, life: 0.6 });
+  if (streak > 1 && streak % 5 === 0) juice('combo', streak / 5 + 1);
+  if (grade === 'perfect') { mood = 'wow'; moodT = 0.35; }
+}
+function followEvent(m, dir, how) {
+  if (demo || finT >= 0) return;
+  if (pace === 'wait') {
+    if (fi >= notes.length) return;
+    const tg = notes[fi];
+    if (LV.bowOnly) {
+      if (how !== 'bow') return;
+      if (dir === tg.dir) { judge(fi, 'perfect'); advance(); }
+      else oops(tg);
+      return;
+    }
+    if (m === tg.m) { const ok = how !== 'bow' || dir === tg.dir; if (!ok) dirMiss++; judge(fi, ok ? 'perfect' : 'good'); advance(); }
+    else oops(tg);
+  } else {
+    let best = -1, bd = 9;
+    for (let j = bi; j < notes.length; j++) {
+      const tj = notes[j].t * spb(); if (tj - st > GOOD) break;
+      if (notes[j].res) continue;
+      const d = Math.abs(tj - st);
+      if (d <= GOOD && (LV.bowOnly || notes[j].m === m) && d < bd) { best = j; bd = d; }
+    }
+    if (best >= 0) { const okDir = how !== 'bow' || dir === notes[best].dir; judge(best, bd <= PERF && okDir ? 'perfect' : 'good'); }
+  }
+}
+function advance() {
+  fi++;
+  if (LV.bowOnly && fi < notes.length) sel = spotOf(notes[fi].m);
+  if (fi >= notes.length) finT = 0;
+}
+function oops(tg) {
+  if (t - oopsT < 0.7) return; oopsT = t; wrong++; streak = 0;
+  const sp = spotOf(tg.m); if (!sp) return; const [sx, sy] = spotXY(sp);
+  floatText(LV.bowOnly ? 'Other way! 🔁' : MG.WORDS.oops, sx, sy - SR * 1.8, '#ffe0ea');
+  litSpots.set(sp.i, 0.8);
+}
+function updateFollow(dt) {
+  if (demo) { updateDemo(dt); return; }
+  if (finT >= 0) { finT += dt; if (finT > 0.9) finishFollow(); return; }
+  if (pace === 'beat') {
+    const prev = st; st += dt;
+    const b = Math.floor(st / spb());
+    if (st < 0 && b !== beatTick) { beatTick = b; juice('tick'); }
+    for (let j = bi; j < notes.length; j++) {
+      const tj = notes[j].t * spb();
+      if (tj + GOOD < st) { if (!notes[j].res) judge(j, 'miss'); if (j === bi) bi++; }
+      else break;
+    }
+    while (bi < notes.length && notes[bi].res) bi++;
+    fi = notes.findIndex(n => !n.res); if (fi < 0) fi = notes.length;
+    if (LV.bowOnly) { const nx = notes.find(n => n.t * spb() + GOOD >= st); if (nx) sel = spotOf(nx.m); }
+    const endT = notes[notes.length - 1].t * spb() + notes[notes.length - 1].d * spb();
+    if (prev <= endT + 0.8 && st > endT + 0.8 && finT < 0) finT = 0.5;
+  }
+  scrollF += (fi - scrollF) * Math.min(1, dt * 9);
+}
+function finishFollow() {
+  const n = notes.length;
+  let stars;
+  if (pace === 'beat') { const sc = (perfect + good * 0.6) / n; stars = sc >= 0.8 ? 3 : sc >= 0.5 ? 2 : 1; }
+  else { const err = (wrong + dirMiss * 0.5) / n; stars = err <= 0.12 ? 3 : err <= 0.4 ? 2 : 1; }
+  win(stars, pace === 'beat' ? `🌟 ${perfect}　👍 ${good}　💨 ${missed}` : (wrong ? `拉對了 ${n} 個音（按錯 ${wrong} 次也沒關係）` : `${n} 個音全部拉對！`));
+}
+// ♪ demo: the hero plays the song once
+function startDemo() {
+  if (kind !== 'follow' || state !== 'play') return;
+  demo = { st: -0.5, i: -1 }; finT = -1; MG.sfx('pop');
+}
+function stopDemo() { if (!demo) return; demo = null; ov = null; if (pace === 'beat') { startFollow(); } }
+function updateDemo(dt) {
+  demo.st += dt; const S = spb();
+  let i = -1; for (let j = 0; j < notes.length; j++) if (notes[j].t * S <= demo.st) i = j; else break;
+  const n = i >= 0 ? notes[i] : null;
+  if (!n) { ov = { m: -1, amp: 0 }; return; }
+  const end = (n.t + n.d) * S, nx = notes[i + 1];
+  if (demo.st > end + 0.6 && !nx) { demo = null; ov = null; if (pace === 'beat') startFollow(); return; }
+  const left = end - demo.st, lifted = !(nx && nx.slur >= 2) && left < 0.07;
+  if (i !== demo.i) { demo.i = i; const sp = spotOf(n.m); if (sp) litSpots.set(sp.i, Math.max(0.3, n.d * S - 0.05)); spawnNoteFloat(sp && sp.f ? fcolOf(sp)[1] : '#fff'); }
+  const into = demo.st - n.t * S, bp = n.dir > 0 ? clamp(0.15 + into / (n.d * S) * 0.7, 0, 1) : clamp(0.85 - into / (n.d * S) * 0.7, 0, 1);
+  ov = { m: n.m, amp: demo.st > end ? 0 : lifted ? 0.15 : 0.78, bp };
+}
+
+// =====================================================================
+// 🎈 long tones: keep the bow speed in the 🌟 band
+// =====================================================================
+function bandOf() { if (LV.v === 'dyn') return LG.seq[LG.k] === 'f' ? [0.62, 2.2] : [0.06, 0.34]; return [0.13, 1.0]; }
+function startLong() {
+  const seq = LV.v === 'dyn' ? LV.seq.slice() : LV.v === 'scale' ? LV.seq.slice() : [LV.m];
+  LG = { k: 0, seq, prog: 0, inBand: 0, bowing: 0, strokes: 0, run: null, lastIn: -9, done: false, bloom: [] };
+  setLongNote();
+}
+function setLongNote() { const m = LV.v === 'scale' ? LG.seq[LG.k] : LV.m; sel = spotOf(m); }
+function updateLong(dt) {
+  if (LG.done) return;
+  const s = bowS, [lo, hi] = bandOf(), bowing = s > 0.04;
+  if (bowing) LG.bowing += dt;
+  const inB = s >= lo && s <= hi;
+  if (inB) { LG.inBand += dt; LG.lastIn = t; }
+  if (LV.v === 'whole') {
+    // a stroke = one direction run covering most of the bow lane
+    if (!LG.run || LG.run.dir !== bowDir) LG.run = { dir: bowDir, a: bowPos, b: bowPos, counted: false, t0: t };
+    LG.run.a = Math.min(LG.run.a, bowPos); LG.run.b = Math.max(LG.run.b, bowPos);
+    if (!LG.run.counted && LG.run.b - LG.run.a > 0.68 && t - LG.run.t0 > 0.35) {
+      LG.run.counted = true; LG.strokes++; LG.bloom.push(t);
+      MG.sfx('match', LG.strokes); floatText(MG.praise(Math.min(5, LG.strokes)), HERO.x + HERO.r * 2, HERO.y - HERO.r, '#fff6a8');
+      if (LG.strokes >= LV.goal) longDone();
+    }
+    return;
+  }
+  if (inB && bowing) {
+    LG.prog += dt;
+    if (Math.floor(LG.prog * 2) !== Math.floor((LG.prog - dt) * 2)) juice('tick');
+    if (LG.prog >= LV.goal) {
+      LG.k++; LG.prog = 0; LG.bloom.push(t);
+      MG.sfx('match', LG.k + 1); floatText(MG.praise(Math.min(5, LG.k + 1)), HERO.x + HERO.r * 2, HERO.y - HERO.r, '#fff6a8');
+      if (LG.k >= LG.seq.length) longDone(); else setLongNote();
+    }
+  }
+}
+function longDone() {
+  LG.done = true; const ratio = LG.bowing > 0 ? LG.inBand / LG.bowing : 1;
+  const stars = ratio >= 0.72 ? 3 : ratio >= 0.45 ? 2 : 1;
+  setTimeout(() => { if (state === 'play' && kind === 'long') win(stars, `穩穩地拉了 ${Math.round(ratio * 100)}% 的時間`); }, 500);
+}
+
+// =====================================================================
+// 🫧 pizzicato bubbles and 🔁 echo
+// =====================================================================
+function poolSpots(pool) { return pool === 'open' ? SPOTS.filter(p => p.f === 0) : pool === 'DA' ? SPOTS.filter(p => p.s === 1 || p.s === 2) : SPOTS.slice(); }
+const FRUIT = ['🍓', '🍊', '🍋', '🍇', '🫐', '🍏', '🍑', '🍒'];
+function startBub() { bubbles = []; popped = 0; bubMiss = 0; for (let i = 0; i < (LV.need >= 10 ? 2 : 1); i++) spawnBubble(); }
+function spawnBubble() {
+  if (popped + bubbles.filter(b => !b.pop).length >= LV.need) return;
+  const pool = poolSpots(LV.pool).filter(p => !bubbles.some(b => !b.pop && b.spot.s === p.s && Math.abs(b.spot.semi - p.semi) < 3));
+  if (!pool.length) return;
+  const sp = MG.pick(pool);
+  bubbles.push({ spot: sp, u: uOfSemi(sp.semi), born: t, pop: 0, fr: MG.pick(FRUIT), ph: Math.random() * 6, dir: Math.random() < 0.5 ? -1 : 1 });
+}
+function bubXY(b) { return I2S(b.u, strV(b.spot.s)); }
+function tryPop(p) {
+  let best = null, bd = 1e9;
+  for (const b of bubbles) { if (b.pop) continue; const [bx, by] = bubXY(b), d = Math.hypot(bx - p.x, by - p.y); if (d < SR * 1.7 && d < bd) { bd = d; best = b; } }
+  if (!best) return false;
+  popBubble(best); return true;
+}
+function popBubble(b) {
+  if (LV.drift) { const sp = spotAt(b.u, strV(b.spot.s)); if (sp) b.spot = sp; }
+  pluck(b.spot); b.pop = t; popped++;
+  const [bx, by] = bubXY(b);
+  MG.fx.burst(bx, by, { n: 16, colors: ['#bfe9ff', '#ffffff', '#ffd6f0'], speed: 190, up: 40, size: 4, life: 0.5 });
+  juice('pop'); floatText(popped >= LV.need ? MG.WORDS.clear : MG.praise(Math.min(5, 1 + Math.floor(popped / 3))), bx, by - SR * 1.5, '#fff6a8');
+  if (popped >= LV.need) { setTimeout(() => { if (state === 'play' && kind === 'pbub') win(bubMiss === 0 ? 3 : bubMiss <= 3 ? 2 : 1, `撥破了 ${LV.need} 個泡泡！`); }, 600); }
+  else setTimeout(() => { if (state === 'play' && kind === 'pbub') spawnBubble(); }, 350);
+}
+function updateBub(dt) {
+  for (const b of bubbles) {
+    if (b.pop) continue;
+    if (LV.drift) {
+      b.u += b.dir * gap * 0.32 * dt;
+      const u0 = uOfSemi(0), u1 = uOfSemi(5);
+      if (b.u > u1) { b.u = u1; b.dir = -1; } if (b.u < u0) { b.u = u0; b.dir = 1; }
+    }
+    if (pace === 'beat' && t - b.born > 5.5) {   // flew away: comes back somewhere else
+      b.pop = t; b.away = true; bubMiss++;
+      setTimeout(() => { if (state === 'play' && kind === 'pbub') spawnBubble(); }, 300);
+    }
+  }
+  bubbles = bubbles.filter(b => !b.pop || t - b.pop < 0.4);
+}
+function startEcho() { EC = { round: 0, pat: [], i: 0, phase: 'wait', tt: 0.8, mistakes: 0, roundErr: 0 }; newRound(); }
+function newRound() {
+  const pool = poolSpots(LV.pool), len = LV.rounds[EC.round];
+  EC.pat = []; for (let i = 0; i < len; i++) { let p; do { p = MG.pick(pool); } while (EC.pat.length && p.i === EC.pat[EC.pat.length - 1].i && pool.length > 1); EC.pat.push(p); }
+  EC.roundErr = 0; showPattern(0.9);
+}
+function showPattern(delay = 0.5) { EC.phase = 'show'; EC.i = 0; EC.tt = delay; EC.got = 0; }
+function updateEcho(dt) {
+  if (EC.phase === 'show') {
+    EC.tt -= dt;
+    if (EC.tt <= 0) {
+      if (EC.i < EC.pat.length) { const p = EC.pat[EC.i]; pluck(p, true); litSpots.set(p.i, 0.5); EC.i++; EC.tt = 0.62; mood = 'wow'; moodT = 0.25; }
+      else { EC.phase = 'you'; EC.got = 0; EC.wait = 0; }
+    }
+  } else if (EC.phase === 'you') EC.wait += dt;
+  else if (EC.phase === 'next') { EC.tt -= dt; if (EC.tt <= 0) { EC.round++; if (EC.round >= LV.rounds.length) { EC.phase = 'done'; win(EC.mistakes <= 1 ? 3 : EC.mistakes <= 4 ? 2 : 1, `跟著撥了 ${LV.rounds.length} 回合！`); } else newRound(); } }
+}
+function echoEvent(p) {
+  if (!EC || EC.phase !== 'you' || !p) return;
+  const want = EC.pat[EC.got];
+  const [sx, sy] = spotXY(p);
+  if (p.i === want.i) {
+    EC.got++;
+    if (EC.got >= EC.pat.length) { EC.phase = 'next'; EC.tt = 1.0; MG.sfx('match', EC.round + 2); floatText(MG.praise(EC.roundErr ? 2 : 4), sx, sy - SR * 1.7, '#fff6a8'); hop = 1; }
+    else floatText(MG.WORDS.yes, sx, sy - SR * 1.7, '#ffffff');
+  } else {
+    EC.mistakes++; EC.roundErr++; floatText(MG.WORDS.tryAgain, sx, sy - SR * 1.7, '#ffe0ea'); juice('miss');
+    showPattern(0.9);
+  }
+}
+
+// =====================================================================
+// 🎨 free play: record / playback
+// =====================================================================
+function toggleRec() {
+  if (rec.on) { stopRec(); return; }
+  stopPb(); rec.on = true; rec.t0 = t; rec.ev = []; rec.last = null; MG.sfx('pop'); MG.toast('⏺ 錄音中…', 900);
+}
+function stopRec() { if (!rec.on) return; rec.on = false; if (rec.ev.length) { recSaved = rec.ev; MG.store.set('violin.rec', recSaved); MG.toast('Saved! 🎼', 900); } }
+function recSample() {
+  if (!rec.on) return;
+  const el = t - rec.t0; if (el > 90) { stopRec(); return; }
+  const m = curAmp > 0.02 ? lastSoundM : -1, a = +curAmp.toFixed(2);
+  const L0 = rec.last;
+  if (!L0 || L0[1] !== m || Math.abs(L0[2] - a) > 0.06) { const e = [+el.toFixed(2), m, a]; rec.ev.push(e); rec.last = e; }
+}
+function togglePlay() { if (pb) { stopPb(); return; } stopRec(); if (!recSaved.length) { MG.toast('先按 ⏺ 錄一段喔', 1200); MG.sfx('boing'); return; } pb = { t: 0, i: 0, m: -1, a: 0 }; MG.sfx('pop'); }
+function stopPb() { if (!pb) return; pb = null; ov = null; }
+function updatePb(dt) {
+  pb.t += dt;
+  while (pb.i < recSaved.length && recSaved[pb.i][0] <= pb.t) {
+    const e = recSaved[pb.i++];
+    if (e[1] === -2) { const sp = spotOf(e[2]) || SPOTS.find(q => q.m === e[2]); if (sp) pluck(sp, true); }
+    else { if (e[1] >= 0 && e[1] !== pb.m) { const sp = spotOf(e[1]); if (sp) litSpots.set(sp.i, 0.3); } pb.m = e[1] >= 0 ? e[1] : pb.m; pb.a = e[1] >= 0 ? e[2] : 0; }
+  }
+  ov = { m: pb.m, amp: pb.a };
+  if (pb.i >= recSaved.length && pb.t > recSaved[recSaved.length - 1][0] + 0.8) stopPb();
+}
+
+// =====================================================================
+// buttons
+// =====================================================================
+const BTN = {
+  rec: () => rec.on ? ['⏹', '停止'] : ['⏺', '錄音'],
+  play: () => pb ? ['⏹', '停止'] : ['▶️', '播放'],
+  pizz: () => freePizz ? ['🤏', '撥弦'] : ['🎻', '拉弓'],
+  auto: () => freeAuto ? ['🤖', '自動拉'] : ['✋', '自己拉'],
+  stage: () => [THEME_E[theme], '換舞台'],
+  demo: () => demo ? ['⏹', '停止'] : ['👂', '聽一次'],
+  listen: () => ['👂', '再聽'],
+  again: () => ['🔄', '重來'],
+};
+function pressBtn(b) {
+  pressedBtn = b.id; pressT = 0.18; MG.sfx('click'); unlockAudio();
+  if (b.id === 'rec') toggleRec();
+  else if (b.id === 'play') togglePlay();
+  else if (b.id === 'pizz') { freePizz = !freePizz; MG.toast(freePizz ? '🤏 撥弦：點圓點或琴弦' : '🎻 拉弓', 1000); }
+  else if (b.id === 'auto') { freeAuto = !freeAuto; MG.store.set('violin.freeAuto', freeAuto); MG.toast(freeAuto ? '🤖 自動拉弓：按住圓點就會響' : '✋ 自己拉弓：在琴身上拖弓', 1400); }
+  else if (b.id === 'stage') { const T = ['hall', 'garden', 'night']; theme = T[(T.indexOf(theme) + 1) % 3]; MG.store.set('violin.stage', theme); if (revIn) revIn.gain.value = REV[theme]; bgKey = ''; MG.sfx('whoosh'); }
+  else if (b.id === 'demo') { if (demo) stopDemo(); else startDemo(); }
+  else if (b.id === 'listen') { if (EC && (EC.phase === 'you' || EC.phase === 'show')) showPattern(0.3); }
+  else if (b.id === 'again') startLevel(level);
+}
+function drawButtons() {
+  for (const b of btns) {
+    const [ic, tx] = BTN[b.id](), pr = pressedBtn === b.id && pressT > 0, on = (b.id === 'rec' && rec.on) || (b.id === 'play' && !!pb) || (b.id === 'demo' && !!demo);
+    const y = b.y + (pr ? 2 : 0);
+    x.fillStyle = 'rgba(30,20,40,.22)'; rr(x, b.x, b.y + 4, b.w, b.h, 16); x.fill();
+    x.fillStyle = on ? '#ffe2ea' : '#ffffff'; rr(x, b.x, y, b.w, b.h, 16); x.fill();
+    x.strokeStyle = on ? '#ff6f91' : 'rgba(40,60,50,.14)'; x.lineWidth = 2; x.stroke();
+    emo(ic, b.x + b.w / 2, y + b.h * 0.38, Math.min(b.w, b.h) * 0.42);
+    fitTxt(tx, b.x + b.w / 2, y + b.h * 0.8, b.w - 8, 12.5 * U, '#3a3a4a', 800);
+    if (b.id === 'rec' && rec.on) { x.fillStyle = Math.sin(t * 8) > 0 ? '#ff3b5c' : '#ffb3c2'; dot(x, b.x + b.w - 10, b.y + 10, 5); }
+  }
+}
+
+// =====================================================================
+// drawing
+// =====================================================================
+function draw() {
+  ensureLayer();
+  x.drawImage(bgL, 0, 0, W, H);
+  drawStrings();
+  drawSpotsLive();
+  drawBubbles();
+  drawBow();
+  drawHint();
+  drawHero();
+  drawPanel();
+  drawTitle();
+  drawButtons();
+  MG.fx.draw(x);
+  drawFloats();
+}
+function targetSpot() {
+  if (state !== 'play') return null;
+  if (kind === 'follow' && !demo && fi < notes.length && finT < 0) { if (pace === 'beat') { const nx = notes.find(n => !n.res && n.t * spb() + GOOD >= st); return nx && nx.t * spb() - st < 1.4 ? spotOf(nx.m) : null; } return spotOf(notes[fi].m); }
+  if (kind === 'long' && LG && !LG.done) return sel;
+  return null;
+}
+function drawSpotsLive() {
+  const tg = targetSpot(), cs = curSpot(), held = new Set([...fingers.values()].map(p => p && p.i)); for (const p of kbdHeld.values()) held.add(p.i);
+  for (const [i, v] of litSpots) { const nv = v - 1 / 60; if (nv <= 0) litSpots.delete(i); else litSpots.set(i, nv); }
+  const showTg = tg && !(kind === 'follow' && LV.bowOnly);
+  for (const p of SPOTS) if (!(showTg && tg.i === p.i)) paintSpot(x, p, 0);
+  // the chosen note: a white ring
+  if (cs && !pizzMode()) { const [cx, cy] = spotXY(cs); x.strokeStyle = 'rgba(255,255,255,.9)'; x.lineWidth = 3; x.beginPath(); x.arc(cx, cy, SR * 0.98, 0, 7); x.stroke(); }
+  if (showTg) {
+    const [cx, cy] = spotXY(tg), k = 0.5 + 0.5 * Math.sin(t * 7);
+    const gl = x.createRadialGradient(cx, cy, SR * 0.5, cx, cy, SR * 1.9); gl.addColorStop(0, 'rgba(255,240,120,.85)'); gl.addColorStop(1, 'rgba(255,240,120,0)');
+    x.fillStyle = gl; dot(x, cx, cy, SR * 1.9);
+    paintSpot(x, tg, 2);
+    x.strokeStyle = `rgba(255,255,255,${0.6 + k * 0.4})`; x.lineWidth = 4; x.beginPath(); x.arc(cx, cy, SR * (1.05 + k * 0.25), 0, 7); x.stroke();
+    if (kind === 'long') {   // the helper's finger keeps it pressed
+      x.fillStyle = '#ffc2cf'; x.strokeStyle = '#c45b7c'; x.lineWidth = 2; x.beginPath(); x.ellipse(cx, cy - SR * 0.15, SR * 0.42, SR * 0.36, 0, 0, 7); x.fill(); x.stroke();
+      x.fillStyle = '#fff'; dot(x, cx - SR * 0.12, cy - SR * 0.3, SR * 0.08);
+    }
+  }
+  for (const p of SPOTS) {
+    const lit = litSpots.get(p.i) || 0, isHeld = held.has(p.i);
+    if (!lit && !isHeld) continue;
+    const [cx, cy] = spotXY(p), col = p.f ? fcolOf(p)[1] : STR[p.s].bead;
+    x.globalAlpha = Math.min(1, lit * 3 + (isHeld ? 0.8 : 0));
+    const gl = x.createRadialGradient(cx, cy, SR * 0.3, cx, cy, SR * 1.7); gl.addColorStop(0, col); gl.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = gl; dot(x, cx, cy, SR * 1.7); x.globalAlpha = 1;
+    paintSpot(x, p, 1);
+  }
+}
+function drawStrings() {
+  const vib = ov ? ov.m : (curAmp > 0.02 ? lastSoundM : -1);
+  const vsp = vib >= 0 ? (spotOf(vib) || null) : null;
+  x.save(); iT(x);
+  for (let s = 0; s < 4; s++) {
+    const v = strV(s), S = STR[s];
+    wob[s] = Math.max(0, wob[s] - 1 / 60 * 1.6);
+    let amp = wob[s] * 4;
+    let u0 = nutU;
+    if (vsp && vsp.s === s) { amp = Math.max(amp, (ov ? ov.amp : curAmp) * 3.2); u0 = uOfSemi(vsp.semi) - (vsp.f ? 0 : uOfSemi(0) - nutU); }
+    x.lineCap = 'round';
+    x.strokeStyle = 'rgba(0,0,0,.35)'; x.lineWidth = S.w; x.beginPath(); x.moveTo(nutU, v + 2.5); x.lineTo(bridgeU, v + 2.5); x.stroke();
+    const sg = x.createLinearGradient(0, v - S.w, 0, v + S.w); sg.addColorStop(0, S.c1); sg.addColorStop(1, S.c2);
+    x.strokeStyle = sg; x.lineWidth = S.w;
+    x.beginPath(); x.moveTo(nutU, v);
+    if (amp > 0.2) {
+      if (u0 > nutU) x.lineTo(u0, v);
+      const N = 26, ph = Math.sin(t * 70 + s);
+      for (let k = 1; k <= N; k++) { const q = k / N, uu = lerp(u0, bridgeU, q); x.lineTo(uu, v + Math.sin(q * Math.PI) * amp * ph); }
+    } else x.lineTo(bridgeU, v);
+    x.stroke();
+    if (amp > 0.2) { x.strokeStyle = S.bead; x.globalAlpha = 0.35; x.lineWidth = S.w + 6; x.beginPath(); x.moveTo(u0, v); x.lineTo(bridgeU, v); x.stroke(); x.globalAlpha = 1; }
+  }
+  x.restore();
+}
+function drawBow() {
+  if (pizzMode() && !ov) return;
+  const bp = ov && ov.bp != null ? ov.bp : bowPos;
+  const sp = ov && ov.m >= 0 ? spotOf(ov.m) : curSpot();
+  x.save(); iT(x);
+  x.beginPath(); x.rect(bzU0 - 20, -4, IL - bzU0 + 24, IB + 8); x.clip();
+  const LB = IB * 1.15, c = IB * 0.5 + (bp - 0.5) * IB * 0.62, v0 = c - LB / 2, v1 = c + LB / 2;
+  const tilt = sp ? (strV(sp.s) - IB / 2) * 0.05 : 0;
+  x.translate(bowU, IB / 2); x.rotate(-tilt * 0.004); x.translate(-bowU, -IB / 2);
+  // shadow
+  x.strokeStyle = 'rgba(40,20,10,.25)'; x.lineWidth = 12; x.lineCap = 'round'; x.beginPath(); x.moveTo(bowU + 8, v0 + 6); x.lineTo(bowU + 8, v1 + 6); x.stroke();
+  // hair
+  x.strokeStyle = '#fffbea'; x.lineWidth = 9; x.beginPath(); x.moveTo(bowU, v0 + 14); x.lineTo(bowU, v1 - 30); x.stroke();
+  x.strokeStyle = 'rgba(200,180,140,.6)'; x.lineWidth = 1; x.beginPath(); x.moveTo(bowU + 2, v0 + 14); x.lineTo(bowU + 2, v1 - 30); x.stroke();
+  // stick (slightly curved)
+  x.strokeStyle = '#7a3e14'; x.lineWidth = 7; x.beginPath(); x.moveTo(bowU + 13, v0 + 4); x.quadraticCurveTo(bowU + 6, c, bowU + 12, v1 - 6); x.stroke();
+  x.strokeStyle = 'rgba(255,220,170,.5)'; x.lineWidth = 2; x.beginPath(); x.moveTo(bowU + 10, v0 + 8); x.quadraticCurveTo(bowU + 4, c, bowU + 10, v1 - 10); x.stroke();
+  // tip
+  x.fillStyle = '#f4ead0'; x.strokeStyle = '#7a3e14'; x.lineWidth = 2; x.beginPath(); x.moveTo(bowU - 4, v0 + 14); x.lineTo(bowU + 14, v0); x.lineTo(bowU + 14, v0 + 12); x.closePath(); x.fill(); x.stroke();
+  // frog (the +v end = down-bow side)
+  x.fillStyle = '#231a26'; rr(x, bowU - 6, v1 - 40, 26, 36, 6); x.fill();
+  x.fillStyle = '#f5f0ff'; dot(x, bowU + 7, v1 - 22, 5); x.fillStyle = '#b8a8d8'; dot(x, bowU + 7, v1 - 22, 2.5);
+  x.fillStyle = '#d8c9a0'; rr(x, bowU - 6, v1 - 8, 26, 8, 3); x.fill();
+  // rosin dust on the sounding string
+  const a = ov ? ov.amp : curAmp;
+  if (sp && a > 0.1) { const sv = strV(sp.s); x.fillStyle = `rgba(255,255,255,${0.3 + a * 0.4})`; for (let i = 0; i < 4; i++) dot(x, bowU + 14 + Math.random() * 16, sv + (Math.random() - 0.5) * 10, 1.2 + Math.random() * 1.5); }
+  x.restore();
+}
+function drawHint() {
+  if (state !== 'play' || ov) return;
+  const needBow = handBow() && !pizzMode() && (kind !== 'follow' || !demo);
+  // bow direction arrow in the bow lane
+  let dir = 0;
+  if (kind === 'follow' && finT < 0 && notes[fi] && (handBow() || LV.bowOnly)) dir = notes[fi].dir;
+  if (kind === 'long' && LG && !LG.done) dir = LV.v === 'whole' ? (LG.run && !LG.run.counted ? LG.run.dir : -bowDir) : 0;
+  const [cx, cy] = I2S(bowU + (bridgeU - bowU) * 0.5 + 14, IB / 2);
+  if (dir && needBow) {
+    const k = (t * 1.2) % 1, sh = (k - 0.5) * IB * 0.36 * dir;
+    const [ax, ay] = land ? [cx, cy + sh] : [cx + sh, cy];
+    x.globalAlpha = 0.85 * Math.sin(k * Math.PI); bowArrow(x, ax, ay, Math.min(56, IB * 0.2), dir, '#ffffff', '#ff6f91'); x.globalAlpha = 1;
+    bowArrow(x, cx, cy, Math.min(46, IB * 0.16), dir, '#fff6a8', '#e0731c');
+  } else if (needBow && curAmp < 0.05 && idleT > 1.2 && (kind === 'free' || kind === 'long')) {
+    // a ghost finger sliding along the bow lane
+    const k = Math.sin(t * 2.4), sh = k * IB * 0.28, [ax, ay] = land ? [cx, cy + sh] : [cx + sh, cy];
+    x.fillStyle = 'rgba(255,255,255,.55)'; dot(x, ax, ay, 16); x.strokeStyle = 'rgba(255,255,255,.9)'; x.lineWidth = 3; x.beginPath(); x.arc(ax, ay, 22, 0, 7); x.stroke();
+  }
+  // whole bow: start and end marks
+  if (kind === 'long' && LV.v === 'whole' && LG && !LG.done) {
+    for (const q of [0.12, 0.88]) { const [mx, my] = I2S(bowU - 40, IB * q); x.fillStyle = 'rgba(255,255,255,.85)'; star5(x, mx, my, 12, 5.5); x.fill(); x.strokeStyle = '#e0a020'; x.lineWidth = 2; x.stroke(); }
+  }
+}
+function drawBubbles() {
+  for (const b of bubbles) {
+    const [bx, by0] = bubXY(b), by = by0 - SR * 0.2 + Math.sin(t * 2.2 + b.ph) * 4;
+    const pa = b.pop ? 1 - (t - b.pop) / 0.4 : 1, gr = b.pop ? 1 + (t - b.pop) * 2 : Math.min(1, (t - b.born) * 4);
+    if (pa <= 0) continue;
+    const r = SR * 1.3 * gr;
+    x.globalAlpha = pa;
+    const g = x.createRadialGradient(bx - r * 0.3, by - r * 0.35, r * 0.1, bx, by, r); g.addColorStop(0, 'rgba(255,255,255,.9)'); g.addColorStop(0.55, 'rgba(180,230,255,.38)'); g.addColorStop(1, 'rgba(120,190,255,.7)');
+    x.fillStyle = g; dot(x, bx, by, r); x.strokeStyle = 'rgba(90,150,230,.9)'; x.lineWidth = 2.5; x.beginPath(); x.arc(bx, by, r, 0, 7); x.stroke();
+    if (!b.pop) emo(b.fr, bx, by + 1, r * 0.95);
+    x.fillStyle = 'rgba(255,255,255,.9)'; x.beginPath(); x.ellipse(bx - r * 0.42, by - r * 0.45, r * 0.2, r * 0.11, -0.7, 0, 7); x.fill();
+    x.globalAlpha = 1;
+  }
+}
+function drawFloats() {
+  for (const f of floats) {
+    f.x += f.vx / 60; f.y += f.vy / 60; f.life -= 1 / 60;
+    const a = clamp(f.life / f.max * 1.8, 0, 1); x.globalAlpha = a;
+    if (f.kind === 'note') txt(f.ch, f.x, f.y, f.s, f.col, 'center', 900, 'rgba(40,30,60,.45)', 3);
+    else txt(f.ch, f.x, f.y, f.s, f.col, 'center', 900, 'rgba(40,30,60,.7)', 5);
+    x.globalAlpha = 1;
+  }
+  floats = floats.filter(f => f.life > 0);
+}
+function drawTitle() {
+  if (!TITLE) return;
+  const R = TITLE, tx = kind === 'free' ? '🎨 自由拉' : `${level}. ${mkOf(LV)} ${LV.name}`;
+  x.fillStyle = 'rgba(255,255,255,.82)'; rr(x, R.x, R.y + R.h * 0.18, R.w, R.h * 0.64, R.h * 0.32); x.fill();
+  fitTxt(tx, R.x + R.w / 2, R.y + R.h / 2, R.w - 24, 19 * U, '#4a2a50', 900);
+}
+// the info panel above the violin: notes to play / bow meter / bubbles / echo
+function panelBox() {
+  const R = STRIP;
+  x.fillStyle = 'rgba(30,20,50,.22)'; rr(x, R.x + 2, R.y + 5, R.w, R.h, 20); x.fill();
+  x.fillStyle = 'rgba(255,253,246,.93)'; rr(x, R.x, R.y, R.w, R.h, 20); x.fill();
+  x.strokeStyle = 'rgba(255,255,255,1)'; x.lineWidth = 3; x.stroke();
+}
+function drawToken(n, cx, cy, r, done, cur) {
+  const sp = spotOf(n.m); if (!sp) return;
+  x.globalAlpha = done ? 0.35 : 1;
+  if (cur) { x.fillStyle = 'rgba(255,220,90,.45)'; dot(x, cx, cy, r * 1.35); }
+  x.fillStyle = 'rgba(0,0,0,.18)'; dot(x, cx + 1.5, cy + 3, r);
+  if (sp.f === 0) {
+    x.fillStyle = '#fff'; dot(x, cx, cy, r); x.strokeStyle = STR[sp.s].bead; x.lineWidth = r * 0.3; x.beginPath(); x.arc(cx, cy, r * 0.82, 0, 7); x.stroke();
+    x.fillStyle = STR[sp.s].bead; dot(x, cx, cy, r * 0.32);
+  } else {
+    const fc = fcolOf(sp), g = x.createRadialGradient(cx - r * 0.3, cy - r * 0.35, r * 0.1, cx, cy, r); g.addColorStop(0, fc[0]); g.addColorStop(0.6, fc[1]); g.addColorStop(1, fc[2]);
+    x.fillStyle = g; dot(x, cx, cy, r); x.strokeStyle = fc[2]; x.lineWidth = 2; if (sp.low) x.setLineDash([4, 3]); x.beginPath(); x.arc(cx, cy, r, 0, 7); x.stroke(); x.setLineDash([]);
+    txt(String(sp.f), cx, cy + 1, r * 1.05, '#fff', 'center', 900, fc[2], 3);
+    x.fillStyle = STR[sp.s].bead; x.strokeStyle = '#fff'; x.lineWidth = 2; x.beginPath(); x.arc(cx + r * 0.72, cy + r * 0.72, r * 0.3, 0, 7); x.fill(); x.stroke();
+  }
+  x.fillStyle = 'rgba(255,255,255,.75)'; x.beginPath(); x.ellipse(cx - r * 0.35, cy - r * 0.45, r * 0.25, r * 0.13, -0.6, 0, 7); x.fill();
+  x.globalAlpha = 1;
+}
+function drawPanel() {
+  const R = STRIP;
+  panelBox();
+  x.save(); rr(x, R.x, R.y, R.w, R.h, 20); x.clip();
+  if (kind === 'follow') drawFollowStrip(R);
+  else if (kind === 'long') drawLongPanel(R);
+  else if (kind === 'pbub') drawBubPanel(R);
+  else if (kind === 'pecho') drawEchoPanel(R);
+  else drawFreePanel(R);
+  x.restore();
+}
+function drawFollowStrip(R) {
+  const showDir = handBow() || LV.bowOnly;
+  const tr = Math.min(R.h * (showDir ? 0.22 : 0.28), land ? 44 : 32), cy = R.y + R.h * (showDir ? 0.4 : 0.5);
+  if (pace === 'wait' || demo) {
+    const sp = tr * 2.7, x0 = R.x + 22 + tr * 1.4;
+    const base = demo ? Math.max(0, demo.i) : scrollF;
+    for (let j = Math.max(0, Math.floor(base) - 1); j < notes.length; j++) {
+      const cx = x0 + (j - base) * sp; if (cx > R.x + R.w + tr) break; if (cx < R.x - tr * 2) continue;
+      const cur = demo ? j === demo.i : j === fi, rr0 = cur ? tr * 1.2 : tr;
+      const n = notes[j];
+      if (n.slur >= 2 && j > 0) { const px0 = x0 + (j - 1 - base) * sp; x.strokeStyle = '#8a6ad8'; x.lineWidth = 3; x.beginPath(); x.moveTo(px0, cy - tr * 1.25); x.quadraticCurveTo((px0 + cx) / 2, cy - tr * 2.1, cx, cy - tr * 1.25); x.stroke(); }
+      drawToken(n, cx, cy + (cur ? Math.sin(t * 6) * 3 : 0), rr0, !demo && j < fi, cur);
+      if (showDir) bowArrow(x, cx, cy + tr * 1.9, tr * 0.9, n.dir, cur ? '#fff6a8' : '#ffffff', cur ? '#e0731c' : '#9aa8c0');
+    }
+    if (demo) { emo('👂', R.x + R.w - 26, R.y + 24, 26); }
+  } else {
+    const nowX = R.x + 58, pxs = clamp(R.w / 6.5, 70, 150) / spb();
+    x.strokeStyle = '#fff'; x.lineWidth = 6; x.beginPath(); x.moveTo(nowX, R.y + 8); x.lineTo(nowX, R.y + R.h - 8); x.stroke();
+    x.strokeStyle = '#ffb02e'; x.lineWidth = 3; x.stroke();
+    for (let j = 0; j < notes.length; j++) {
+      const n = notes[j], cx = nowX + (n.t * spb() - st) * pxs; if (cx > R.x + R.w + tr * 2) break;
+      const len = n.d * spb() * pxs;
+      if (cx + len < R.x) continue;
+      if (!n.res) { const sp = spotOf(n.m), col = sp && sp.f ? fcolOf(sp)[1] : sp ? STR[sp.s].bead : '#ccc'; x.fillStyle = col; x.globalAlpha = 0.3; rr(x, cx, cy - tr * 0.35, Math.max(0, len - 6), tr * 0.7, tr * 0.35); x.fill(); x.globalAlpha = 1; }
+      if (n.slur >= 2 && j > 0) { const pcx = nowX + (notes[j - 1].t * spb() - st) * pxs; x.strokeStyle = '#8a6ad8'; x.lineWidth = 3; x.beginPath(); x.moveTo(pcx, cy - tr * 1.25); x.quadraticCurveTo((pcx + cx) / 2, cy - tr * 2.1, cx, cy - tr * 1.25); x.stroke(); }
+      if (n.res) { if (n.res !== 'miss' && cx > nowX - 50) { x.globalAlpha = clamp(1 - (nowX - cx) / 50, 0, 1); emo(n.res === 'perfect' ? '🌟' : '👍', cx, cy, tr * 1.1); x.globalAlpha = 1; } continue; }
+      drawToken(n, cx, cy, tr, false, Math.abs(n.t * spb() - st) < GOOD);
+      if (showDir) bowArrow(x, cx, cy + tr * 1.9, tr * 0.85, n.dir, '#ffffff', '#9aa8c0');
+    }
+    if (st < 0) { const k = Math.ceil(-st / spb()); if (k <= 4) txt(String(k), R.x + R.w / 2, R.y + R.h / 2, R.h * 0.5, '#ffb02e', 'center', 900, '#fff', 8); }
+  }
+  // progress bar along the bottom
+  const pr = fi / notes.length; x.fillStyle = 'rgba(120,100,160,.18)'; rr(x, R.x + 14, R.y + R.h - 10, R.w - 28, 5, 3); x.fill();
+  x.fillStyle = '#7ed957'; rr(x, R.x + 14, R.y + R.h - 10, (R.w - 28) * pr, 5, 3); x.fill();
+}
+function drawLongPanel(R) {
+  if (!LG) return;
+  const [lo, hi] = bandOf(), toP = s => clamp(Math.log(Math.max(s, 0.02) / 0.02) / Math.log(4 / 0.02), 0, 1);
+  const gx = R.x + 18 + R.h * 0.62, gw = R.w - (gx - R.x) - 20, gy = R.y + R.h * 0.28, gh = Math.min(44, R.h * 0.26);
+  // goal picture at the left of the panel
+  const px0 = R.x + 12 + R.h * 0.3, py0 = R.y + R.h * 0.5;
+  const prog = LV.v === 'whole' ? LG.strokes / LV.goal : (LG.k + LG.prog / LV.goal) / LG.seq.length;
+  if (LV.v === 'steady') { const br = R.h * (0.14 + prog * 0.24); x.strokeStyle = '#8a6a5a'; x.lineWidth = 2; x.beginPath(); x.moveTo(px0, py0 + br); x.lineTo(px0 + 4, R.y + R.h - 6); x.stroke(); const g = x.createRadialGradient(px0 - br * 0.3, py0 - br * 0.3, 2, px0, py0, br); g.addColorStop(0, '#ffd0dc'); g.addColorStop(1, '#ff4f7a'); x.fillStyle = g; x.beginPath(); x.ellipse(px0, py0, br * 0.88, br, 0, 0, 7); x.fill(); x.strokeStyle = '#b8264a'; x.stroke(); x.fillStyle = 'rgba(255,255,255,.7)'; x.beginPath(); x.ellipse(px0 - br * 0.35, py0 - br * 0.4, br * 0.2, br * 0.12, -0.6, 0, 7); x.fill(); }
+  else if (LV.v === 'whole') { const pr = R.h * 0.13; for (let i = 0; i < LV.goal; i++) { const a = -Math.PI / 2 + i * Math.PI * 2 / LV.goal, on = i < LG.strokes; x.fillStyle = on ? '#ff8fbf' : 'rgba(200,190,210,.5)'; x.beginPath(); x.ellipse(px0 + Math.cos(a) * pr * 1.3, py0 + Math.sin(a) * pr * 1.3, pr, pr * 0.7, a, 0, 7); x.fill(); } x.fillStyle = '#ffd23f'; dot(x, px0, py0, pr * 0.8); }
+  else if (LV.v === 'scale') { const C = ['#ff6b6b', '#ffa94d', '#ffd43b', '#69db7c', '#4dabf7']; for (let i = 0; i < LG.seq.length; i++) { const on = i < LG.k || (i === LG.k && LG.prog > 0); x.strokeStyle = on ? C[i % 5] : 'rgba(200,190,210,.35)'; x.lineWidth = R.h * 0.06; x.globalAlpha = i === LG.k ? 0.4 + LG.prog / LV.goal * 0.6 : 1; if (i < LG.k) x.globalAlpha = 1; x.beginPath(); x.arc(px0, py0 + R.h * 0.22, R.h * (0.36 - i * 0.065), Math.PI, 0); x.stroke(); x.globalAlpha = 1; } }
+  else { const f = LG.seq[LG.k] === 'f'; emo(f ? '☀️' : '🌙', px0, py0 - 4, R.h * 0.42); txt(`${Math.min(LG.k + 1, LG.seq.length)}/${LG.seq.length}`, px0, R.y + R.h - 14, 13, '#6a5a7a', 'center', 800); }
+  // meter: 🐢 | 🌟 | 🐇
+  const xl = gx + toP(lo) * gw, xh = gx + toP(hi) * gw;
+  x.fillStyle = '#c9d6ea'; rr(x, gx, gy, gw, gh, gh / 2); x.fill();
+  x.fillStyle = '#ffb3b3'; rr(x, xh, gy, gx + gw - xh, gh, [0, gh / 2, gh / 2, 0]); x.fill();
+  x.fillStyle = '#8fe39a'; x.fillRect(xl, gy, xh - xl, gh);
+  x.strokeStyle = 'rgba(60,60,90,.35)'; x.lineWidth = 2; rr(x, gx, gy, gw, gh, gh / 2); x.stroke();
+  emo('🐢', gx + Math.max(16, (xl - gx) / 2), gy + gh / 2, gh * 0.8); emo('🌟', (xl + xh) / 2, gy + gh / 2, gh * 0.8); if (gx + gw - xh > 30) emo('🐇', (xh + gx + gw) / 2, gy + gh / 2, gh * 0.8);
+  const nx = gx + toP(bowS) * gw, inB = bowS >= lo && bowS <= hi;
+  x.fillStyle = inB ? '#2fb565' : '#ff6f91'; x.beginPath(); x.moveTo(nx, gy - 2); x.lineTo(nx - 10, gy - 16); x.lineTo(nx + 10, gy - 16); x.closePath(); x.fill();
+  x.strokeStyle = '#fff'; x.lineWidth = 2; x.stroke();
+  x.fillStyle = inB ? '#2fb565' : '#ff6f91'; rr(x, nx - 3, gy - 2, 6, gh + 4, 3); x.fill();
+  // progress bar (goal)
+  const by = gy + gh + Math.min(22, R.h * 0.18), bh = Math.min(16, R.h * 0.12);
+  x.fillStyle = 'rgba(120,100,160,.18)'; rr(x, gx, by, gw, bh, bh / 2); x.fill();
+  const pg = x.createLinearGradient(gx, 0, gx + gw, 0); pg.addColorStop(0, '#ffd23f'); pg.addColorStop(1, '#ff8fbf');
+  x.fillStyle = pg; rr(x, gx, by, Math.max(bh, gw * clamp(prog, 0, 1)), bh, bh / 2); x.fill();
+}
+function drawBubPanel(R) {
+  const n = LV.need, cr = Math.min(R.h * 0.26, (R.w - 40) / n * 0.42), sp = Math.min(cr * 2.5, (R.w - 40) / n);
+  const x0 = R.x + R.w / 2 - (n - 1) * sp / 2, cy = R.y + R.h * 0.5;
+  for (let i = 0; i < n; i++) {
+    const cx = x0 + i * sp, on = i < popped;
+    x.fillStyle = on ? 'rgba(160,215,255,.9)' : 'rgba(200,210,230,.35)'; dot(x, cx, cy, cr);
+    x.strokeStyle = on ? '#4c8de0' : 'rgba(150,160,190,.5)'; x.lineWidth = 2; x.beginPath(); x.arc(cx, cy, cr, 0, 7); x.stroke();
+    if (on) { x.fillStyle = 'rgba(255,255,255,.9)'; dot(x, cx - cr * 0.35, cy - cr * 0.35, cr * 0.22); emo('✨', cx, cy, cr * 1.1); }
+  }
+}
+function drawEchoPanel(R) {
+  if (!EC) return;
+  const ic = EC.phase === 'show' ? '👂' : EC.phase === 'you' ? '👆' : '🎉';
+  const isz = Math.min(R.h * 0.5, 54); emo(ic, R.x + 18 + isz * 0.6, R.y + R.h / 2, isz);
+  if (EC.phase === 'you' && Math.sin(t * 6) > 0) { x.strokeStyle = 'rgba(255,176,46,.8)'; x.lineWidth = 3; x.beginPath(); x.arc(R.x + 18 + isz * 0.6, R.y + R.h / 2, isz * 0.7, 0, 7); x.stroke(); }
+  const n = EC.pat.length, xs = R.x + 30 + isz * 1.3, wv = R.x + R.w - 20 - xs, sp = Math.min(wv / n, R.h * 0.62), cr = Math.min(sp * 0.36, R.h * 0.24);
+  for (let i = 0; i < n; i++) {
+    const p = EC.pat[i], cx = xs + sp * (i + 0.5), cy = R.y + R.h * 0.45;
+    const shown = EC.phase === 'show' ? i < EC.i : EC.phase === 'you' ? i < EC.got : true;
+    if (shown && (EC.phase !== 'you' || i < EC.got)) drawToken({ m: p.m }, cx, cy, cr, false, EC.phase === 'show' && i === EC.i - 1);
+    else { x.fillStyle = 'rgba(190,180,215,.35)'; dot(x, cx, cy, cr); x.strokeStyle = 'rgba(150,140,190,.5)'; x.lineWidth = 2; x.setLineDash([5, 4]); x.beginPath(); x.arc(cx, cy, cr, 0, 7); x.stroke(); x.setLineDash([]); txt('?', cx, cy + 1, cr, 'rgba(120,110,160,.7)', 'center', 900); }
+  }
+  // rounds
+  for (let i = 0; i < LV.rounds.length; i++) { x.fillStyle = i < EC.round ? '#ffb02e' : 'rgba(180,170,200,.4)'; star5(x, xs + 10 + i * 22, R.y + R.h - 14, 8, 3.6); x.fill(); }
+}
+function drawFreePanel(R) {
+  const tr = Math.min(R.h * 0.26, 28), cy = R.y + R.h * 0.48, sp = tr * 2.5;
+  const list = trail.slice(-Math.floor((R.w - 30) / sp));
+  list.forEach((e, i) => { const age = t - e.t; drawToken({ m: e.m }, R.x + R.w - 24 - tr - (list.length - 1 - i) * sp, cy, tr * (age < 0.15 ? 1.2 : 1), false, i === list.length - 1 && age < 0.4); });
+  if (!list.length) {
+    emo(freePizz ? '🤏' : '🎻', R.x + R.w / 2 - 90, cy, tr * 1.6); emo('🎵', R.x + R.w / 2, cy, tr * 1.4); emo('😊', R.x + R.w / 2 + 90, cy, tr * 1.4);
+  }
+  if (rec.on) { x.fillStyle = '#ff3b5c'; dot(x, R.x + 22, R.y + 20, 7); txt(`${Math.floor(t - rec.t0)}s`, R.x + 36, R.y + 20, 14, '#ff3b5c', 'left', 800); }
+  if (pb) { emo('▶️', R.x + 22, R.y + 20, 16); }
+}
+
+// =====================================================================
+// flow
+// =====================================================================
+function resetPlay() {
+  fingers.clear(); bowPtr = null; kbdHeld.clear(); kbdBow = 0; bowS = 0; autoA = 0; autoHoldT = 0;
+  demo = null; ov = null; pb = null; floats = []; litSpots.clear(); MG.fx.clear(); LG = null; EC = null; bubbles = [];
+  if (rec.on) stopRec();
+}
+function setKey(k) { if (k === KEY) return; KEY = k; buildSpots(); sel = spotOf(sel ? sel.m : 62) || SPOTS[4]; bgKey = ''; }
+function startFree() {
+  resetPlay(); kind = 'free'; LV = null; state = 'play'; setKey('D'); trail = [];
+  sel = sel || SPOTS[4]; relayout(); MG.hide(); hud();
+}
+function startLevel(n) {
+  resetPlay(); level = clamp(n | 0, 1, LEVELS.length); LV = LEVELS[level - 1]; kind = LV.type; theme = LV.theme;
+  setKey(LV.key || 'D'); state = 'play'; if (revIn) revIn.gain.value = REV[theme];
+  sel = SPOTS.find(p => p.m === 62);
+  if (kind === 'follow') startFollow(); else if (kind === 'long') startLong(); else if (kind === 'pbub') startBub(); else if (kind === 'pecho') startEcho();
+  relayout(); MG.hide(); hud();
+  const want = [LV.news, kind === 'follow' && pace === 'beat' ? 'beat' : null].filter(Boolean);
+  const fresh = want.filter(k => NEWS[k] && !MG.store.get('violin.seen.' + k, false));
+  if (fresh.length) {
+    fresh.forEach(k => MG.store.set('violin.seen.' + k, true));
+    const holdBeat = kind === 'follow' && pace === 'beat';
+    MG.panel({ title: fresh.map(k => NEWS[k][0]).join('＋'), html: fresh.map(k => `<p>${NEWS[k][1]}</p>`).join(''), buttons: [{ label: '開始', on: () => { MG.hide(); if (holdBeat) st = -4 * spb() - 0.6; } }] });
+  }
+}
+function starsMap() { const s = MG.store.get('violin.stars', {}); return s && typeof s === 'object' ? s : {}; }
+function totalStars() { const s = starsMap(); return Object.values(s).reduce((a, b) => a + (+b || 0), 0); }
+function win(stars, line) {
+  if (state !== 'play') return;
+  state = 'over'; fingers.clear(); bowPtr = null; demo = null; ov = null;
+  const sm = starsMap(), old = sm[level] || 0; if (stars > old) { sm[level] = stars; MG.store.set('violin.stars', sm); }
+  MG.record('violin', totalStars());
+  MG.sfx('win'); setTimeout(() => MG.sfx('yay'), 260); hop = 1; mood = 'love'; moodT = 1.5;
+  MG.fx.burst(W / 2, TOP * 0.6, { n: 50, colors: ['#ffd23f', '#ff8ac2', '#8fd0ff', '#8fe39a'], shape: 'star', speed: 320, up: 180, size: 7 });
+  hud();
+  const next = level < LEVELS.length ? LEVELS[level] : null;
+  setTimeout(() => {
+    if (state !== 'over') return;
+    MG.panel({
+      title: `第 ${level} 關過關！`,
+      html: `<div class="vl-stars">${'⭐'.repeat(stars)}<span style="opacity:.25">${'⭐'.repeat(3 - stars)}</span></div><p>${mkOf(LV)} ${LV.name}</p><p>${line || ''}</p>` + (next ? `<p>下一關：${mkOf(next)} ${next.name}</p>` : '<p>你是噗噗小提琴家！🎻</p>'),
+      buttons: [...(next ? [{ label: '下一關', on: () => { MG.store.set('violin.pickLevel', level + 1); startLevel(level + 1); } }] : []), { label: '再拉一次', alt: !!next, on: () => startLevel(level) }, { label: '選關卡', alt: true, on: menu }],
+    });
+  }, 950);
+}
+function hud() {
+  if (kind === 'free') { MG.stat('a', '🎨 自由拉'); MG.stat('b', ''); return; }
+  MG.stat('a', `第 ${level} 關`);
+  const sm = starsMap()[level] || 0;
+  MG.stat('b', sm ? '⭐'.repeat(sm) : '');
+}
+function menu() {
+  state = 'menu'; resetPlay(); voiceUpdate(-1, 0, 0);
+  if (!LV) { LV = LEVELS[clamp(MG.store.get('violin.pickLevel', 1), 1, LEVELS.length) - 1]; }
+  const sm = starsMap();
+  MG.choose({
+    id: 'violin', title: '噗噗拉提琴',
+    html: '<p>噗噗變成小小提琴家！左手<b>按圓點</b>選音，右手在琴身上<b>拖弓</b>，小提琴就會唱歌。也可以「🤖 自動拉弓」：按住圓點就會自己拉 ^_^</p>',
+    picks: [
+      { key: 'bow', title: '怎麼拉弓？', def: 'auto', options: [{ id: 'auto', label: '🤖 自動拉弓', sub: '按住圓點就會響' }, { id: 'hand', label: '🎻 自己拉弓', sub: '另一隻手拖弓' }] },
+      { key: 'pace', title: '跟著拉的時候', def: 'wait', options: [{ id: 'wait', label: '🐢 等我', sub: '拉對了才往下' }, { id: 'beat', label: '🥁 跟節拍', sub: '照拍子拉' }] },
+    ],
+    modesTitle: '想怎麼玩？',
+    modes: [{ id: 'lv', label: '🎻 闖關', sub: '跟著拉・長音・撥弦' }, { id: 'free', label: '🎨 自由拉', sub: '錄音・播放・撥弦' }],
+    levels: { count: LEVELS.length, max: LEVELS.length, label: n => `${mkOf(LEVELS[n - 1])} ${LEVELS[n - 1].name}${sm[n] ? ' ' + '⭐'.repeat(sm[n]) : ''}`, short: n => `${n}${mkOf(LEVELS[n - 1])}${sm[n] ? '⭐' : ''}` },
+    keys: '手指點圓點選音，在琴身（弓那裡）上下拖就是拉弓　鍵盤：<kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd><kbd>V</kbd> G 弦、<kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><kbd>F</kbd> D 弦、<kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd><kbd>R</kbd> A 弦、<kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> E 弦，<kbd>↓</kbd><kbd>↑</kbd> 拉弓',
+    playing: () => state === 'play',
+    onPause: () => { fingers.clear(); bowPtr = null; kbdHeld.clear(); kbdBow = 0; bowS = 0; autoA = 0; voiceUpdate(-1, 0, 0); },
+    start: (m, lv, pk) => {
+      bowPick = pk && pk.bow === 'hand' ? 'hand' : 'auto';
+      pace = pk && pk.pace === 'beat' ? 'beat' : 'wait';
+      if (m === 'free') startFree(); else startLevel(lv);
+    },
+  });
+  hud();
+}
+
+// =====================================================================
+// main loop
+// =====================================================================
+function update(dt) {
+  t += dt; frameN++;
+  if (pressT > 0) pressT -= dt; if (moodT > 0) moodT -= dt;
+  idleT += dt; recSample();
+  if (state === 'play' && !MG.panelOpen()) {
+    updateBow(dt);
+    if (kind === 'follow') updateFollow(dt);
+    else if (kind === 'long') updateLong(dt);
+    else if (kind === 'pbub') updateBub(dt);
+    else if (kind === 'pecho') updateEcho(dt);
+    if (pb) updatePb(dt);
+  } else { bowS *= Math.pow(0.001, dt); autoA *= Math.pow(0.001, dt); fingers.clear(); }
+  // what sounds this frame
+  const uv = state === 'play' && !MG.panelOpen() ? userVoice(dt) : { m: -1, amp: 0, sc: 0 };
+  let m = uv.m, amp = uv.amp, sc = uv.sc;
+  if (ov) { m = ov.m; amp = ov.amp; sc = 0; }
+  if (MG.panelOpen() && !ov) amp = 0;
+  curAmp = amp; scratch = sc; if (m >= 0) lastSoundM = m;
+  voiceUpdate(m, amp, sc);
+  // note-on events from the hand bow (start of a sound after silence)
+  // a new bow stroke (start after a rest, or a change of direction) = a new note
+  const on = amp > 0.08;
+  if (on && !ov && handBow() && !pizzMode() && (!strokeOn || strokeDir !== bowDir)) { strokeOn = true; strokeDir = bowDir; const sp = curSpot(); if (sp) noteEvent(sp.m, bowDir, 'bow'); }
+  if (on) silentT = 0; else { silentT += dt; if (silentT > 0.3) strokeOn = false; }
+  soundOn = on;
+  if (amp > 0.1) { noteSpawn -= dt; if (noteSpawn <= 0) { noteSpawn = 0.45; const sp = spotOf(m); spawnNoteFloat(sp && sp.f ? fcolOf(sp)[1] : sp ? STR[sp.s].bead : '#fff'); } }
+  MG.fx.step(dt);
+}
+kind = 'free';
+cv.onfit = () => relayout();
+MG.fit(cv, (sw, sh) => {
+  const l = sw > sh * 1.05;
+  if (l) { const h = 560; return [Math.round(Math.min(1400, Math.max(800, h * (sw - 12) / Math.max(1, sh - 12)))), h]; }
+  const w = sw / sh > 0.62 ? 600 : 480; return [w, Math.round(Math.min(1040, Math.max(640, w * (sh - 12) / Math.max(1, sw - 12))))];
+});
+LV = LEVELS[clamp(MG.store.get('violin.pickLevel', 1), 1, LEVELS.length) - 1];
+menu();
+MG.loop(dt => { update(dt); draw(); });
+
+// ---------- hook for automated tests ----------
+function toClient(lx, ly) { const rc = cv.getBoundingClientRect(), B = 3; return { x: rc.left + B + lx * (rc.width - 2 * B) / W, y: rc.top + B + ly * (rc.height - 2 * B) / H }; }
+window.VLN = {
+  levels: LEVELS.length, get state() { return state; }, get kind() { return kind; }, get level() { return level; }, get pace() { return pace; }, get bow() { return handBow() ? 'hand' : 'auto'; },
+  get land() { return land; }, dims: () => ({ W, H, land, TOP, IB, IL, SR, gap }),
+  start: (lv, o = {}) => { if (o.bow) bowPick = o.bow; if (o.pace) pace = o.pace; startLevel(lv); },
+  free: () => startFree(), menu: () => menu(),
+  get fi() { return fi; }, get n() { return notes.length; }, notes: () => notes.map(n => ({ m: n.m, d: n.d, t: n.t, dir: n.dir, slur: n.slur, res: n.res })),
+  target: () => { const s = targetSpot(); return s ? { s: s.s, f: s.f, m: s.m } : null; },
+  get wrong() { return wrong; }, get perfect() { return perfect; }, get good() { return good; }, get missed() { return missed; },
+  stars: () => starsMap(), total: () => totalStars(),
+  spots: () => SPOTS.map(p => ({ s: p.s, f: p.f, m: p.m, low: p.low })),
+  spotXY: m => { const p = spotOf(m); if (!p) return null; const [a, b] = spotXY(p); return toClient(a, b); },
+  bowXY: q => { const [a, b] = I2S(bowU + 30, IB * q); return toClient(a, b); },
+  btn: id => { const b = btns.find(q => q.id === id); return b ? toClient(b.x + b.w / 2, b.y + b.h / 2) : null; },
+  get amp() { return curAmp; }, get bowS() { return bowS; }, get bowDir() { return bowDir; }, get sel() { return sel && sel.m; },
+  audio: () => ({ ...AU, ctx: ac ? ac.state : null }),
+  long: () => LG && { k: LG.k, prog: LG.prog, strokes: LG.strokes, done: LG.done, inBand: LG.inBand, bowing: LG.bowing },
+  bubbles: () => bubbles.filter(b => !b.pop).map(b => ({ m: b.spot.m, xy: toClient(...bubXY(b)) })), get popped() { return popped; },
+  echo: () => EC && { phase: EC.phase, round: EC.round, pat: EC.pat.map(p => p.m), got: EC.got },
+  ev: (m, dir = 1, how = 'auto') => noteEvent(m, dir, how),
+  win: (s = 3) => win(s, 'test'), get demo() { return !!demo; }, get rec() { return rec.on; }, get pb() { return !!pb; }, recLen: () => recSaved.length,
+  evlog: () => EVLOG.slice(), get st() { return st; }, spb: () => spb(),
+  get theme() { return theme; }, floats: () => floats.filter(f => f.kind === 'text').map(f => f.ch), get frames() { return frameN; },
+};
+</script>
+</body>
+</html>
