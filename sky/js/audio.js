@@ -60,6 +60,13 @@ const Snd = {
       case 'warn': for (let i = 0; i < 6; i++) this.tone(i % 2 ? 660 : 440, 0.24, 'sawtooth', 0.07, null, i * 0.26); break;
       case '1up': [784, 988, 1175, 1568, 1976].forEach((f, i) => this.tone(f, 0.12, 'square', 0.07, null, i * 0.07)); break;
       case 'select': this.tone(880, 0.06, 'square', 0.05); break;
+      case 'siren': for (let i = 0; i < 2; i++) { this.tone(420, 0.42, 'sawtooth', 0.05, 840, i * 0.5); this.tone(423, 0.42, 'square', 0.025, 846, i * 0.5); } this.tone(70, 0.9, 'sine', 0.3, 40); break;
+      case 'sting': {
+        this.noise(0.5, 0.12, 300, 6000, 0, 'bandpass');
+        for (const [m, g] of [[38, 0.07], [45, 0.05], [50, 0.045], [53, 0.04], [57, 0.035]]) { const f = 440 * Math.pow(2, (m - 69) / 12); this.tone(f, 1.6, 'sawtooth', g, f * 0.98, 0.45); this.tone(f * 1.006, 1.6, 'square', g * 0.4, null, 0.45); }
+        this.tone(55, 1.8, 'sine', 0.55, 30, 0.45); this.noise(1.4, 0.35, 1800, 60, 0.45); this.noise(0.12, 0.3, 8000, 3000, 0.45, 'highpass');
+        break;
+      }
       case 'start': [392, 523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.14, 'square', 0.07, null, i * 0.07)); break;
     }
   },

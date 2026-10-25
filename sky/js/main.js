@@ -45,7 +45,7 @@ function newGame(from = 0) {
 function startStage(n) {
   G.stage = n; Terrain.reset(n); G.scroll = 0; G.st = 0;
   G.enemies = []; G.eb = []; G.pb = []; G.items = []; G.fx = []; G.decals = []; G.beams = []; G.queue = [];
-  G.phase = 'fight'; G.seqI = 0; G.nextWave = 2.6; G.boss = null; G.bombT = 0;
+  G.phase = 'fight'; G.seqI = 0; G.nextWave = 2.6; G.boss = null; G.bombT = 0; G.intro = null; G.caution = null;
   G.stageKills = G.kills; G.stageMedals = G.medals; G.stageMiss = G.miss; G.bonusGiven = false; G.medalChain = 0;
   G.speed = STAGES[n].speed || 46;
   G.banner = { t: 0, big: 'STAGE ' + (n + 1) + (G.round > 1 ? '-2' : ''), small: STAGES[n].name, en: STAGES[n].en, extra: G.round === 1 && n > 0 && LV_CAP[n] > LV_CAP[n - 1] ? '武器等級上限提升到 Lv' + LV_CAP[n] : '' };
@@ -82,12 +82,10 @@ function runScript(dt) {
       G.nextWave = base + d + 0.3;
     } else if (G.seqI >= S.seq.length && G.st >= G.nextWave) {
       const left = G.enemies.some(e => !e.boss && e.layer === 'air' && e.y > -40);
-      if (!left || G.st > G.nextWave + 6) { G.phase = 'warn'; G.warnT = 0; Terrain.statics = false; Music.stop(); Snd.play('warn'); }
+      if (!left || G.st > G.nextWave + 6) { G.phase = 'warn'; G.warnT = 0; Terrain.statics = false; Music.stop(); }
     }
   } else if (G.phase === 'warn') {
-    const before = G.warnT; G.warnT += dt;
-    if (before < 1.6 && G.warnT >= 1.6) Snd.play('warn');
-    if (G.warnT > 3.4) { G.phase = 'boss'; G.boss = spawn(S.boss, 180, -140); Music.play('boss'); }
+    BossIntro.warnTick(dt);
   } else if (G.phase === 'down') {
     G.downT += dt;
     if (G.downT < 2.4 && Math.random() < dt * 14) boom(G.downX + rnd(-60, 60), G.downY + rnd(-50, 50), rnd(1, 2.2), !G.downAir);
@@ -123,6 +121,7 @@ function update(dt) {
     updatePlayer(dt); updatePB(dt); updateEnemies(dt); updateEB(dt); updateItems(dt);
     if (G.bombT > 0) bombTick(dt);
     if (G.banner) G.banner.t += dt;
+    BossIntro.update(dt);
   } else {
     G.t += dt; G.scroll += G.speed * 0.5 * dt; Terrain.ensure(G.scroll);
   }
@@ -207,13 +206,7 @@ function drawHUD(c) {
   txt(c, 'HI', 168, 11, 9, '#ffd23f', 'right'); txt(c, pad8(hi), 172, 11, 12, '#ffe9a8');
   txt(c, 'ST' + (G.stage + 1), W - 8, 11, 10, '#8fd0ff', 'right');
   // 頭目血條
-  const b = G.boss;
-  if (b && !b.dead) {
-    const f = Math.max(0, b.hp / b.maxhp);
-    c.fillStyle = 'rgba(0,0,0,.55)'; c.fillRect(30, 24, W - 60, 7);
-    c.fillStyle = f < 0.5 ? '#ff5a4e' : '#ffcc33'; c.fillRect(31, 25, (W - 62) * (b.inv ? Math.min(1, b.t / 2) : f), 5);
-    txt(c, ET[b.type].name, W / 2, 39, 10, '#fff', 'center', CJK, 700);
-  }
+  BossIntro.drawBar(c);
   // 殘機與炸彈
   for (let i = 0; i < Math.min(G.lives, 7); i++) Art.draw(c, 'lifeIcon', 12 + i * 14, H - 14);
   if (G.lives > 7) txt(c, '×' + G.lives, 12 + 7 * 14, H - 14, 9);
@@ -241,15 +234,8 @@ function drawHUD(c) {
     if (bn.extra) txt(c, bn.extra, W / 2, 342, 13, '#7dffb0', 'center', CJK, 700);
     c.globalAlpha = 1;
   }
-  if (G.phase === 'warn') {
-    const on = Math.floor(G.warnT * 4) % 2 === 0;
-    c.fillStyle = 'rgba(160,0,0,.35)'; c.fillRect(0, 240, W, 90);
-    c.fillStyle = '#ffcc00';
-    for (let x = -40 + (G.warnT * 60) % 20; x < W; x += 20) { c.beginPath(); c.moveTo(x, 240); c.lineTo(x + 10, 240); c.lineTo(x + 4, 248); c.lineTo(x - 6, 248); c.fill(); c.beginPath(); c.moveTo(x, 322); c.lineTo(x + 10, 322); c.lineTo(x + 4, 330); c.lineTo(x - 6, 330); c.fill(); }
-    if (on) txt(c, 'WARNING', W / 2, 272, 26, '#ff4a3a', 'center');
-    const B = ET[STAGES[G.stage].boss];
-    txt(c, '頭目接近中：' + B.name, W / 2, 304, 14, '#fff', 'center', CJK, 700);
-  }
+  if (G.phase === 'warn') BossIntro.drawWarn(c);
+  BossIntro.drawPlate(c); BossIntro.drawCaution(c); BossIntro.drawDown(c);
   if (G.phase === 'clear' && G.clearT > 0.3 && G.clearT < 5.6) {
     const T = G.tally;
     c.fillStyle = 'rgba(0,0,0,.55)'; c.fillRect(30, 200, W - 60, 190);
@@ -320,7 +306,7 @@ function doContinue() {
   clearInterval(contTimer);
   G.cont++; G.lives = G.d.lives; G.bombs = G.d.bombs; G.state = 'play';
   showOv(null); playerEnter(); P.inv = 3;
-  Music.play(G.phase === 'boss' ? 'boss' : 's' + G.stage);
+  Music.play(G.phase === 'boss' ? (STAGES[G.stage].bossSong || 'boss') : 's' + G.stage);
 }
 function gameOver() {
   clearInterval(contTimer);
@@ -380,7 +366,7 @@ function bindUI() {
 let last = 0;
 function frame(ts) {
   const dt = Math.min(0.034, (ts - last) / 1000 || 0.016); last = ts;
-  update(dt);
+  if (!window.__freeze) update(dt);
   if (G.state !== 'play' || G.paused) Snd.humAll(0);
   draw();
   if (G.state === 'play') $('bombN').textContent = G.bombs;
@@ -400,4 +386,4 @@ refreshTitle(); showOv('title');
 Music.play('title');
 requestAnimationFrame(frame);
 // 測試用
-window.__sky = { G, P, STAGES, startStage, spawn, newGame, Bake };
+window.__sky = { G, P, STAGES, startStage, spawn: (...a) => spawn(...a), newGame: (...a) => newGame(...a), Bake, ET, step: (n, dt = 1 / 60) => { for (let i = 0; i < n; i++) { update(dt); Input.endFrame(); } } };
