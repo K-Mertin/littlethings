@@ -2,7 +2,7 @@
 'use strict';
 const MG = (() => {
   // 版號：每次合併更新時一起改（修正 → 第三碼 +1；新遊戲／新功能 → 第二碼 +1）
-  const VERSION = '1.29.0', BUILT = '2026/10/25';
+  const VERSION = '1.29.1', BUILT = '2026/10/25';
   const LS = 'puputown.';
   const store = {
     get(k, d) { try { const v = localStorage.getItem(LS + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -619,12 +619,18 @@ const MG = (() => {
     };
     const picks = {};
     for (const pk of o.picks || []) { let v = store.get(o.id + '.pick.' + pk.key, pk.def || pk.options[0].id); if (!pk.options.some(q => q.id === v)) v = pk.options[0].id; picks[pk.key] = v; }
-    const html = (o.html || '') +
-      (o.picks || []).map(pk => `<p class="mg-pick-h">${pk.title}</p><div class="mg-pick">${pk.options.map(q => `<button type="button" class="mg-opt" data-pk="${pk.key}" data-pv="${q.id}">${q.label}<small>${q.sub || ''}</small></button>`).join('')}</div>`).join('') +
-      (o.modes ? `${o.picks ? `<p class="mg-pick-h">${o.modesTitle || '要不要計時？'}</p>` : ''}<div class="mg-pick">${o.modes.map(m => `<button type="button" class="mg-opt" data-mode="${m.id}">${m.label}<small>${m.sub || ''}</small></button>`).join('')}</div>` : '') +
-      (o.levels ? `<p class="mg-pick-h">${o.levelsTitle || '從哪一關開始？'}</p>` + lvGrid() : '');
+    // a mode can say it needs no level list (noLevels) or hide some picks (hide: ['pace', …]); then the mode question comes first
+    const modeOf = id => (o.modes || []).find(m => m.id === id) || {};
+    const modesFirst = o.modesFirst || (o.modes || []).some(m => m.noLevels || m.hide);
+    const picksHtml = (o.picks || []).map(pk => `<div class="mg-pkwrap" data-pkwrap="${pk.key}"><p class="mg-pick-h">${pk.title}</p><div class="mg-pick">${pk.options.map(q => `<button type="button" class="mg-opt" data-pk="${pk.key}" data-pv="${q.id}">${q.label}<small>${q.sub || ''}</small></button>`).join('')}</div></div>`).join('');
+    const modesHtml = o.modes ? `${o.picks ? `<p class="mg-pick-h">${o.modesTitle || '要不要計時？'}</p>` : ''}<div class="mg-pick">${o.modes.map(m => `<button type="button" class="mg-opt" data-mode="${m.id}">${m.label}<small>${m.sub || ''}</small></button>`).join('')}</div>` : '';
+    const html = (o.html || '') + (modesFirst ? modesHtml + picksHtml : picksHtml + modesHtml) +
+      (o.levels ? `<div class="mg-lvwrap"><p class="mg-pick-h">${o.levelsTitle || '從哪一關開始？'}</p>` + lvGrid() + '</div>' : '');
     panel({ title: o.title, html, keys: o.keys, buttons: [{ label: isPause ? '重新開始' : '開始', alt: !!isPause, on: () => { store.set(o.id + '.pickMode', mode); store.set(o.id + '.pickLevel', lvl); for (const k in picks) store.set(o.id + '.pick.' + k, picks[k]); o.start(mode, lvl, picks); } }, ...(o.extra || [])] });
     const sync = () => {
+      const mo = modeOf(mode), lw = over.querySelector('.mg-lvwrap');
+      if (lw) lw.hidden = !!mo.noLevels;
+      over.querySelectorAll('.mg-pkwrap').forEach(w => { w.hidden = !!(mo.hide && mo.hide.includes(w.dataset.pkwrap)); });
       over.querySelectorAll('.mg-opt[data-mode]').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === mode));
       over.querySelectorAll('.mg-opt[data-pk]').forEach(b => b.setAttribute('aria-pressed', picks[b.dataset.pk] === b.dataset.pv));
       over.querySelectorAll('.mg-lv').forEach(b => b.setAttribute('aria-pressed', +b.dataset.lv === lvl));
