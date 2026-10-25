@@ -37,6 +37,16 @@ Press **📱 Phone controller** on the title screen. The big screen (computer or
 - One phone drives the game; a second phone takes over. If the phone disconnects, open the same page again and it rejoins.
 - **How it connects:** PeerJS (WebRTC). The free PeerJS server only introduces the two sides, then they talk directly. Both need internet; some work or school networks block WebRTC. Add `?net=local` to both pages to test on one computer with two tabs.
 
+## Maps
+Each stage is generated from a fixed seed (the same layout every time), about three times the floor area of the original hand-drawn maps.
+
+- **Safe house:** every stage starts in a small closed cabin with a few supplies. No monster is placed near it, and nothing gets in until you open its door.
+- **Zones and keys:** the map is split into one zone per key. Each zone holds the key to the coloured door into the next, so keys always come in order (red, blue, yellow). The last zone holds the rune seal; on boss stages it sits in the boss's arena.
+- **Inside a zone:** indoor halls and outdoor yards, joined by corridors with extra loops so there is more than one way round. Some halls are L-shaped or have pillars; some yards have pools.
+- **Secrets:** every zone hides a closet behind a wall that opens when you press Use on it.
+- **Checked:** the generator walks each map like a player (picking up keys, opening doors) and only keeps a layout where the seal, every key, monster and pickup can be reached.
+- The generator is `genLevel()` in `index.html`; sizes, key counts and monster mixes per stage are in `GEN`.
+
 ## Play
 Open `index.html` in a browser, or play it at https://k-mertin.github.io/littlethings/cobblekeep/.
 
