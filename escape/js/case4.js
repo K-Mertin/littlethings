@@ -19,8 +19,7 @@
     return `<svg viewBox="0 0 130 200">${o}</svg>`;
   };
   const scene = s => {
-    let o = `<rect width="1000" height="625" fill="#efe2c8"/><rect width="1000" height="625" fill="url(#p-noise)"/><rect width="1000" height="40" fill="#8c5634"/><rect y="40" width="1000" height="10" fill="#6b4a33"/>`;
-    o += A.floor('tile', ['#c9b89a', '#b8a888'], 470);
+    let o = A.wall({ c: '#efe2c8', trim: '#c9a87a', wain: '#8c5634', wy: 392, floor: 'tile', fc: ['#c9b89a', '#b8a888'], fy: 470 }).replace('<!--DECO-->', '') + `<rect width="1000" height="40" fill="#8c5634" opacity=".55"/><rect y="40" width="1000" height="10" fill="#6b4a33" opacity=".6"/>` + [0, 1, 2, 3, 4, 5].map(i => `<path d="M${90 + i * 170} 50v18" stroke="#4a3222" stroke-width="2"/><path d="M${78 + i * 170} 68h24l-4 10h-16z" fill="#3b3a40" ${SW2}/><ellipse cx="${90 + i * 170}" cy="79" rx="8" ry="2.4" fill="#fff6c8"/>`).join('');
     // 大窗與月台
     o += `<rect x="640" y="90" width="320" height="220" rx="110" fill="url(#sky)" ${SW}/><rect x="640" y="230" width="320" height="80" fill="#9aa6b0"/><path d="M640 250h320" stroke="#e0c27a" stroke-width="6"/><rect x="660" y="190" width="160" height="50" rx="10" fill="#4f9e9a" ${SW2}/><rect x="676" y="200" width="30" height="20" fill="#cfeaf2"/><rect x="716" y="200" width="30" height="20" fill="#cfeaf2"/><rect x="756" y="200" width="30" height="20" fill="#cfeaf2"/><rect x="640" y="90" width="320" height="220" rx="110" fill="url(#glass)"/><path d="M800 90v220M640 200h320" stroke="#8c5634" stroke-width="8"/>`;
     // 時鐘與時刻表

@@ -75,6 +75,7 @@ const G = {
     const art = $('#art');
     art.innerHTML = svg;
     $('#fxs').innerHTML = this.lift();
+    A.enrich(art); A.enrich($('#fxs'));
     let h = '';
     this.hots = hots || [];
     this.hots.forEach((o, i) => {
@@ -170,7 +171,7 @@ const G = {
       const pic = $('#dlgPic');
       const staged = P && opt.stage && opt.stage(L.w, L.e || 'n');
       if (P && !L.nopic && !staged) {
-        pic.innerHTML = Face.draw(L.w, L.e || 'n', true);
+        pic.innerHTML = Face.draw(L.w, L.e || 'n', true); A.enrich(pic, 'L');
         pic.className = (lastW !== L.w ? 'in ' : 'talk ') + ((L.e === 's' || L.e === 'a' || L.e === 'c') ? 'jolt' : '');
         void pic.offsetWidth;
       } else { pic.innerHTML = ''; pic.className = ''; }
@@ -197,7 +198,8 @@ const G = {
   titleCard(R, cb) { // 章節開場卡
     const isCase = !R.walls;
     const no = isCase ? `CASE ${R.no}` : (R.bonus ? `EXTRA · ${R.no}` : `CHAPTER ${R.no}`);
-    this.overlay(`<div class="tcard"><div class="tc-line"></div><small>${no}</small><h2>${esc(R.name)}</h2><p>${esc(R.en || (isCase ? '小鎮推理事件簿' : ''))}</p><div class="tc-line"></div>${this.ctrl && this.ctrl.daily ? `<b class="tc-chal daily">${ICO('cal')} 今日謎題 ${this.ctrl.daily.slice(5).replace('-', '/')}：不能看提示，今天大家的答案都一樣</b>` : this.ctrl && this.ctrl.chal ? `<b class="tc-chal">${ICO('watch')} 挑戰模式：不能看提示，謎題答案隨機</b>` : ''}</div>`, 1900, cb, 'tc');
+    const orn = flip => `<svg class="tc-orn" viewBox="0 0 320 40" aria-hidden="true"${flip ? ' style="transform:scaleY(-1)"' : ''}><path d="M10 20H128M192 20H310" stroke="#e0b048" stroke-width="1.2" opacity=".8"/><path d="M128 20q-14-14-30-6q14 2 18 10M192 20q14-14 30-6q-14 2-18 10M100 20q-10 8-24 4M220 20q10 8 24 4" stroke="#e0b048" stroke-width="1.3" fill="none"/><circle cx="10" cy="20" r="2.4" fill="#e0b048"/><circle cx="310" cy="20" r="2.4" fill="#e0b048"/><g transform="translate(160 20)"><path d="${A.gearPath(0, 0, 13, 10, 0.4)}" fill="url(#brass)" fill-rule="evenodd" stroke="#6a3d10" stroke-width=".8"/><path d="M-26 0l6-4v8zM26 0l-6-4v8z" fill="#e0b048"/></g></svg>`;
+    this.overlay(`<div class="tcard">${orn(0)}<small>${no}</small><h2>${esc(R.name)}</h2><p>${esc(R.en || (isCase ? '小鎮推理事件簿' : ''))}</p>${orn(1)}${this.ctrl && this.ctrl.daily ? `<b class="tc-chal daily">${ICO('cal')} 今日謎題 ${this.ctrl.daily.slice(5).replace('-', '/')}：不能看提示，今天大家的答案都一樣</b>` : this.ctrl && this.ctrl.chal ? `<b class="tc-chal">${ICO('watch')} 挑戰模式：不能看提示，謎題答案隨機</b>` : ''}</div>`, 1900, cb, 'tc');
   },
   gearGet(n, cb) {
     Snd.play('solve');
@@ -208,7 +210,7 @@ const G = {
   modal(html, o = {}) {
     const m = $('#modal'); $('#panel').style.setProperty('--pw', (o.w || 560) + 'px');
     $('#panel').className = o.cls || '';
-    const b = $('#mBody'); b.onclick = null; b.innerHTML = html; m.hidden = false;
+    const b = $('#mBody'); b.onclick = null; b.innerHTML = html; m.hidden = false; A.enrich(b, 'L');
     this.onClose = o.onClose || null;
     $('#mClose').hidden = !!o.noClose;
     return $('#mBody');
@@ -250,7 +252,7 @@ const G = {
       if (!it) { h += '<div class="slot empty"></div>'; continue; }
       h += `<button class="slot${it.id === sel ? ' sel' : ''}${it.isNew ? ' new' : ''}" data-slot="${esc(it.id)}" aria-label="${esc(it.n)}"><svg viewBox="0 0 100 100">${it.ic}</svg><span class="nm">${esc(it.n)}</span></button>`;
     }
-    $('#slots').innerHTML = h;
+    $('#slots').innerHTML = h; A.enrich($('#slots'), 'L');
   },
   memoAdd(id, quiet) {
     if (!MEMO[id] || Store.data.memo.includes(id)) return;
@@ -333,6 +335,7 @@ function RoomCtrl(room, resume, opt = {}) {
   C.render = () => {
     const v = R.views[C.view];
     const hots = v.hot(C.s, C).slice();
+    A.setKey(R, C.view);
     let svg = v.draw(C.s, C);
     if (R.deco) svg = svg.replace('<!--DECO-->', R.deco(C.view, C.s) || '');
     if (R.note && R.note.v === C.view && !Store.data.notes[R.id] && (!R.note.cond || R.note.cond(C.s))) {
