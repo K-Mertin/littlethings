@@ -7,7 +7,7 @@ const Main = {
     bindEngine();
     Snd.applyMute(); G.applyFx();
     const ta = () => {
-      const w = innerWidth / innerHeight >= 1.25; if (this._taw !== w) { this._taw = w; $('#titleArt').innerHTML = this.titleArt(w ? 690 : 500); $('#titleFx').innerHTML = this._tfx; }
+      const w = innerWidth / innerHeight >= 1.25; if (this._taw !== w) { this._taw = w; $('#titleArt').innerHTML = this.titleArt(w ? 690 : 500); $('#titleFx').innerHTML = this._tfx; A.enrich($('#titleArt'), 'R'); }
       const sc = Math.max(innerWidth / 1000, innerHeight / 625), tf = $('#titleFx').style; // 跟著 slice 的縮放對齊
       tf.width = 1000 * sc + 'px'; tf.height = 625 * sc + 'px'; tf.left = (innerWidth - 1000 * sc) / 2 + 'px'; tf.top = (innerHeight - 625 * sc) / 2 + 'px';
     };
@@ -59,7 +59,7 @@ const Main = {
   },
   thumb(r, tab) {
     let t = '';
-    try { if (tab === 'rooms') { const st = r.init(), vw = r.thumb || r.walls[0]; t = r.views[vw].draw(st, { s: st }); if (r.deco) t = t.replace('<!--DECO-->', r.deco(vw, st) || ''); } else t = r.thumb(); t += A.still(); } catch (e) { A.flush(); t = ''; }
+    try { if (tab === 'rooms') { const st = r.init(), vw = r.thumb || r.walls[0]; A.setKey(r, vw); t = r.views[vw].draw(st, { s: st }); if (r.deco) t = t.replace('<!--DECO-->', r.deco(vw, st) || ''); } else t = r.thumb(); t += A.still(); } catch (e) { A.flush(); t = ''; }
     return t;
   },
   showChapters(tab) {
@@ -129,7 +129,7 @@ const Main = {
     const isRoom = r.kind === 'room', L = isRoom ? ROOMS : CASES, i = L.indexOf(r.def);
     $('#cLbl').textContent = isRoom ? (r.daily ? 'DAILY PUZZLE CLEAR' : r.chal ? 'CHALLENGE CLEAR' : 'CHAPTER CLEAR') : 'CASE CLOSED';
     $('#cName').textContent = r.def.name;
-    $('#clearArt').innerHTML = this.thumb(r.def, isRoom ? 'rooms' : 'cases');
+    $('#clearArt').innerHTML = this.thumb(r.def, isRoom ? 'rooms' : 'cases'); A.enrich($('#clearArt'));
     $('#cStars').innerHTML = [0, 1, 2].map(k => k < r.stars ? '<b>★</b>' : '<i>★</i>').join('');
     $('#cStats').innerHTML = `<span><b>${fmtTime(r.time)}</b>用時</span><span><b>${r.chal ? '—' : r.hints}</b>看過的提示</span>${isRoom ? '' : `<span><b>${r.miss}</b>出示錯誤</span>`}`;
     $('#cExtra').innerHTML = isRoom ? `<span class="${Store.data.notes[r.def.id] ? 'on' : ''}">♪ 隱藏音符${Store.data.notes[r.def.id] ? '找到了！' : '還沒找到'}</span>${r.chal ? `<span class="on"><i class="medal">${ICO('medal', '', r.medal)}</i> ${ICO.medalName[r.medal]}</span>` : ''}` : '';
@@ -178,7 +178,17 @@ const Main = {
     s += `<path d="M${hx - 140} ${hy - 330}v80h50v-56z" fill="#a8703f" ${SW}/><path d="M${hx - 26} ${hy - 330}q26-40 52 0z" fill="#3f6f8f" ${SW}/><rect x="${hx - 26}" y="${hy - 330}" width="52" height="60" fill="#e8c890" ${SW}/><path d="M${hx - 26} ${hy - 330}a26 26 0 0 1 52 0" fill="#ffe9a0" ${SW2}/>`;
     A.fx(`<g class="steam" style="animation-duration:4s"><circle cx="${hx - 115}" cy="${hy - 340}" r="12" fill="#fff" opacity=".5"/></g>`); A.fx(`<g class="steam" style="animation-duration:4s;animation-delay:-2s"><circle cx="${hx - 112}" cy="${hy - 345}" r="9" fill="#fff" opacity=".5"/></g>`);
     [[hx - 150, hy - 150], [hx - 70, hy - 150], [hx + 30, hy - 150], [hx + 110, hy - 150], [hx - 150, hy - 80], [hx + 110, hy - 80], [hx + 92, hy - 250]].forEach(([x, y], i) => { s += `<circle cx="${x + 20}" cy="${y + 25}" r="46" fill="url(#lampG)"/><rect x="${x}" y="${y}" width="40" height="50" rx="4" fill="#ffd77a" ${SW}/><rect x="${x}" y="${y}" width="40" height="50" rx="4" fill="url(#glass)"/><path d="M${x + 20} ${y}v50M${x} ${y + 25}h40" ${SW2}/>`; });
-    s += `<rect x="${hx - 30}" y="${hy - 90}" width="60" height="90" rx="28" fill="#7a4a2a" ${SW}/><circle cx="${hx + 18}" cy="${hy - 44}" r="4" fill="url(#brass)"/></g>`;
+    // 屋瓦（魚鱗瓦）、屋簷線板、百葉窗、花台、門框、台階、牆角石、常春藤
+    { let tl = ''; for (let k = 0; k < 5; k++) { const y = hy - 196 - k * 21, x0 = hx - 176 + k * 36, x1 = hx + 176 - k * 36; for (let x = x0; x < x1 - 4; x += 16) { if ((x > hx + 54 && x < hx + 162) || (y < hy - 246 && x > hx - 42 && x < hx + 28)) continue; tl += `M${x} ${y}q8 9 16 0`; } } s += `<path d="${tl}" stroke="#8a3a1a" stroke-width="1.1" fill="none" opacity=".75"/>`; }
+    s += `<path d="M${hx - 196} ${hy - 188}H${hx + 70}M${hx + 160} ${hy - 188}H${hx + 196}" stroke="#fffaf0" stroke-width="5"/><path d="M${hx - 196} ${hy - 184}H${hx + 70}M${hx + 160} ${hy - 184}H${hx + 196}" stroke="#c9a87f" stroke-width="1.4"/>`;
+    [[hx - 150, hy - 150], [hx - 70, hy - 150], [hx + 30, hy - 150], [hx + 110, hy - 150], [hx - 150, hy - 80], [hx + 110, hy - 80]].forEach(([x, y], i) => { s += `<rect x="${x - 13}" y="${y - 2}" width="11" height="54" rx="2" fill="#5f8a7a" ${SW2}/><rect x="${x + 42}" y="${y - 2}" width="11" height="54" rx="2" fill="#5f8a7a" ${SW2}/><path d="M${x - 11} ${y + 8}h7M${x - 11} ${y + 18}h7M${x - 11} ${y + 28}h7M${x - 11} ${y + 38}h7M${x + 44} ${y + 8}h7M${x + 44} ${y + 18}h7M${x + 44} ${y + 28}h7M${x + 44} ${y + 38}h7" stroke="#3f6a5a" stroke-width="1"/><rect x="${x - 4}" y="${y + 50}" width="48" height="9" rx="2" fill="#a8703f" ${SW2}/>${[0, 1, 2, 3].map(k => `<circle cx="${x + 3 + k * 11}" cy="${y + 49}" r="3.6" fill="${['#e57aa8', '#f2c232', '#e0504a', '#fffaf0'][(k + i) % 4]}" stroke="#4a3222" stroke-width=".6"/>`).join('')}`; });
+    s += `<path d="M${hx - 44} ${hy}v-62q0-40 44-40t44 40v62" fill="#e8c890" ${SW}/><path d="M${hx - 36} ${hy}v-60q0-32 36-32t36 32v60" fill="none" stroke="#c9a87f" stroke-width="1.2"/><path d="M${hx - 60} ${hy}h120v8h-120zM${hx - 50} ${hy + 8}h100v8h-100z" fill="#d9c8a8" ${SW2}/>`;
+    s += [[hx - 190, 1], [hx + 190, -1]].map(([x, d]) => [0, 1, 2, 3, 4, 5].map(k => `<rect x="${d > 0 ? x : x - 16}" y="${hy - 30 - k * 30}" width="${k % 2 ? 12 : 16}" height="28" fill="#e2c49a" stroke="#b8946a" stroke-width=".8"/>`).join('')).join('');
+    { let iv = ''; for (let k = 0; k < 14; k++) { const x = hx - 186 + (k % 3) * 8 + Math.sin(k) * 6, y = hy - 10 - k * 9; iv += `<path d="M${x.toFixed(1)} ${y}q5-7 10-1q-4 6-10 1z" fill="${k % 2 ? '#4f8a4a' : '#5f9e5a'}" stroke="#2f5a2e" stroke-width=".6"/>`; } s += `<path d="M${hx - 184} ${hy}q10-60-2-130" stroke="#3f6a3a" stroke-width="1.6" fill="none"/>` + iv; }
+    s += `<path d="M${hx + 115} ${hy - 400}v-14" stroke="#c9a14a" stroke-width="2.4"/><circle cx="${hx + 115}" cy="${hy - 416}" r="3.5" fill="url(#brass)"/>${[...Array(12)].map((_, k) => { const a = k * Math.PI / 6; return `<circle cx="${(hx + 115 + Math.sin(a) * 21).toFixed(1)}" cy="${(hy - 290 - Math.cos(a) * 21).toFixed(1)}" r="${k % 3 ? 0.9 : 1.6}" fill="#4a3222"/>`; }).join('')}<circle cx="${hx + 115}" cy="${hy - 290}" r="29" fill="none" stroke="url(#brass)" stroke-width="3"/>`;
+    s += `<rect x="${hx - 30}" y="${hy - 90}" width="60" height="90" rx="28" fill="#7a4a2a" ${SW}/><rect x="${hx - 30}" y="${hy - 90}" width="60" height="90" rx="28" fill="url(#p-grainV)"/><path d="M${hx} ${hy - 88}v86" stroke="#4a2a1a" stroke-width="1.2"/><circle cx="${hx}" cy="${hy - 66}" r="8" fill="#ffe9a0" ${SW2}/><circle cx="${hx + 18}" cy="${hy - 44}" r="4" fill="url(#brass)"/></g>`;
+    // 門邊的路燈
+    s += `<path d="M${hx - 90} ${hy + 10}V${hy - 70}" stroke="#2a2a32" stroke-width="5"/><path d="M${hx - 100} ${hy - 70}h20l-4-20h-12z" fill="#ffe9a0" ${SW2}/><path d="M${hx - 102} ${hy - 90}h24l-12-8z" fill="#2a2a32"/><circle cx="${hx - 90}" cy="${hy - 80}" r="40" fill="url(#lampG)"/><rect x="${hx - 98}" y="${hy + 6}" width="16" height="6" rx="2" fill="#2a2a32"/>`;
     s += `<path d="M${hx - 40} ${hy}Q${hx - 80} 560 ${hx - 160} 625H${hx + 160}Q${hx + 80} 560 ${hx + 40} ${hy}z" fill="#e9c98f" opacity=".85"/>`;
     s += A.plant(hx - 250, 520, 1.3, '#d9774b', '#4f8a5a') + A.plant(hx + 260, 520, 1.1, '#4f9e9a', '#5f9e5a') + A.cat(hx + 70, 540, 0.7);
     for (let i = 0; i < 6; i += 2) A.fx(`<g class="bob" style="animation-delay:-${i * 0.5}s;opacity:.85">${A.txt(150 + i * 140, 300 - (i % 2) * 60, i % 2 ? '♪' : '♫', 34, '#fff3c8')}</g>`);

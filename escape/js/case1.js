@@ -3,8 +3,7 @@
 (() => {
   const bust = (who, x, y, sc = 1, e = 'n') => `<svg x="${x}" y="${y}" width="${200 * sc}" height="${240 * sc}" viewBox="0 0 200 240">${Face.body(PEOPLE[who], e)}</svg>`;
   const scene = s => {
-    let o = `<rect width="1000" height="625" fill="#f6c9c0"/><rect width="1000" height="420" fill="url(#p-stripe)"/><rect y="0" width="1000" height="30" fill="#fff6ee"/>`;
-    o += A.floor('check', ['#fff6ee', '#e9a0a0'], 470);
+    let o = A.wall({ c: '#f6c9c0', pat: 'stripe', trim: '#fff6ee', wain: '#f4dcd2', wy: 384, floor: 'check', fc: ['#fff6ee', '#e9a0a0'], fy: 470 }).replace('<!--DECO-->', '') + A.pendant(250, 40, '#f6b0a0', 520);
     // 招牌與時鐘
     o += `<rect x="330" y="46" width="340" height="60" rx="30" fill="#fff6ee" ${SW}/>` + A.txt(500, 88, '暖暖烘焙', 32, '#c4502c', 'middle', 900, 'font-family="Noto Serif TC,serif"');
     o += `<circle cx="150" cy="90" r="44" fill="#fffaf0" ${SW}/><path d="M150 90V60M150 90l20 12" ${SW}/>`;
@@ -13,7 +12,7 @@
     // 後廚房門口（阿哲）
     o += `<rect x="40" y="170" width="150" height="300" rx="6" fill="#fff6ee" ${SW}/><rect x="54" y="184" width="122" height="286" fill="#e9dcc8" ${SW2}/>` + A.person('zhe', 55, 230, 0.6, { front: `<rect x="40" y="380" width="150" height="90" fill="#c9895a" ${SW}/><rect x="40" y="380" width="150" height="14" fill="#e9b07a" ${SW2}/>` });
     // 櫃台與蛋糕玻璃罩
-    o += `<g filter="url(#ds)"><rect x="230" y="300" width="360" height="170" rx="8" fill="#fff6ee" ${SW}/><rect x="246" y="316" width="328" height="70" rx="6" fill="#dff0f2" ${SW2}/>${[0, 1, 2, 3].map(i => `<circle cx="${280 + i * 80}" cy="352" r="22" fill="${['#e9b45a', '#d9774b', '#f6d08a', '#c9895a'][i]}" ${SW2}/>`).join('')}</g>`;
+    o += `<g filter="url(#ds)"><rect x="230" y="300" width="360" height="170" rx="8" fill="#fff6ee" ${SW}/><rect x="246" y="316" width="328" height="70" rx="6" fill="#dff0f2" ${SW2}/>${[0, 1, 2, 3].map(i => `<ellipse cx="${280 + i * 80}" cy="372" rx="30" ry="5" fill="#fffaf0" ${SW2}/><circle cx="${280 + i * 80}" cy="352" r="22" fill="${['#e9b45a', '#d9774b', '#f6d08a', '#c9895a'][i]}" ${SW2}/>` + [`<path d="M${266 + i * 80} 346q14-10 28 0M${268 + i * 80} 356q12 6 24 0" stroke="#fff6e0" stroke-width="2" fill="none"/>`, `<circle cx="${280 + i * 80}" cy="340" r="5" fill="#e0504a" ${SW2}/><path d="M${280 + i * 80} 335l3-5" stroke="#5f9e5a" stroke-width="2"/>`, `<path d="M${266 + i * 80} 350h28M${270 + i * 80} 358h20" stroke="#c9895a" stroke-width="2" stroke-dasharray="3 3"/>`, `<path d="M${270 + i * 80} 344a10 10 0 1 0 20 0a6 6 0 1 0-12 0" stroke="#7a4a2a" stroke-width="1.6" fill="none"/>`][i] + `<path d="M${266 + i * 80} 342q6-8 14-8" stroke="#fff" stroke-opacity=".5" stroke-width="2.4" fill="none" stroke-linecap="round"/>`).join('')}<rect x="246" y="316" width="328" height="70" rx="6" fill="url(#glassR)"/><path d="M246 400h328M246 440h328" stroke="#e8d8c8" stroke-width="1.2"/><rect x="260" y="404" width="140" height="56" rx="4" fill="none" stroke="#e8d8c8" stroke-width="1.2"/><rect x="420" y="404" width="140" height="56" rx="4" fill="none" stroke="#e8d8c8" stroke-width="1.2"/></g>`;
     o += A.person('wang', 420, 150, 0.62);
     o += `<ellipse cx="320" cy="296" rx="64" ry="12" fill="#fff" ${SW}/><path d="M262 296q0-90 58-90t58 90" fill="#dff0f2" fill-opacity=".55" ${SW}/><path d="M290 290q8-6 16 0" stroke="#f6a0b0" stroke-width="5"/>${A.sparkle(372, 214, 0.6)}`;
     // 小胖的桌子

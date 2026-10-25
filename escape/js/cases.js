@@ -28,6 +28,7 @@ function CaseCtrl(def, resume) {
   C.next = () => { C.st++; if (C.st >= D.stages.length) { C.finish(); return; } C.enterStage(); };
 
   C.render = () => {
+    A.key = 'L';
     const S = stage() || D.stages[D.stages.length - 1];
     $('#rNo').textContent = `事件 ${D.no} · ${S.goal ? S.goal : ''}`;
     $('#rName').textContent = D.name;

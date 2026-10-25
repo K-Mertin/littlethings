@@ -47,7 +47,9 @@ const Face = {
     if (P.style === 'twin') o += `<path d="M48 ${hy - 46}q-26 6-22 46q8 22 18 30q-4-36 10-60z" fill="${hr}" ${s}/><path d="M152 ${hy - 46}q26 6 22 46q-8 22-18 30q4-36-10-60z" fill="${hr}" ${s}/><circle cx="52" cy="${hy - 44}" r="7" fill="${acc.includes('ribbon') ? '#f2648a' : '#f2c232'}" ${SW2}/><circle cx="148" cy="${hy - 44}" r="7" fill="${acc.includes('ribbon') ? '#f2648a' : '#f2c232'}" ${SW2}/>`;
     if (acc.includes('backpack')) o += `<path d="M30 200q-6-30 20-36M170 200q6-30-20-36" stroke="#2a3a5a" stroke-width="10" fill="none"/>`;
     // 身體
-    o += `<path d="M20 240q4-66 80-72q76 6 80 72z" fill="${P.cloth}" ${s}/><path d="M20 240q4-66 80-72q76 6 80 72z" fill="url(#cyl)" opacity=".55"/>`;
+    const clD = shade(P.cloth, -0.32), clL = shade(P.cloth, 0.3);
+    o += `<path d="M20 240q4-66 80-72q76 6 80 72z" fill="${P.cloth}" ${s}/><path d="M20 240q4-66 80-72q76 6 80 72z" fill="url(#p-weave)"/><path d="M20 240q4-66 80-72q76 6 80 72z" fill="url(#cyl)" opacity=".55"/>`;
+    o += `<path d="M34 238q4-26 16-44M166 238q-4-26-16-44M58 238q2-18 10-30M142 238q-2-18-10-30M70 236q6-10 4-22M130 236q-6-10-4-22" stroke="${clD}" stroke-width="1.2" fill="none" stroke-linecap="round" opacity=".55"/><path d="M38 220q6-20 18-34M162 220q-6-20-18-34" stroke="${clL}" stroke-width="2.2" fill="none" stroke-linecap="round" opacity=".45"/><path d="M50 184q14-10 30-12M150 184q-14-10-30-12" stroke="${clD}" stroke-width="1" fill="none" stroke-dasharray="2.5 2" opacity=".6"/>`;
     if (acc.includes('suit') || acc.includes('vest')) o += `<path d="M76 172l24 34 24-34 10 68H66z" fill="${acc.includes('vest') ? '#f4ead8' : P.cloth2}" ${s}/><path d="M76 172l16 30-8 6 16 32M124 172l-16 30 8 6-16 32" fill="none" stroke="${shade(P.cloth, -0.35)}" stroke-width="3"/>`;
     else o += `<path d="M82 170l18 24 18-24" fill="${P.cloth2}" ${s}/>`;
     if (acc.includes('vest')) o += `<path d="M84 186l16 22 16-22v54H84z" fill="#3f7a4a" ${SW2}/><circle cx="100" cy="220" r="3" fill="url(#brass)"/><circle cx="100" cy="232" r="3" fill="url(#brass)"/>`;
@@ -66,7 +68,10 @@ const Face = {
     o += `<path d="M86 ${hy + 38}h28v32q-14 8-28 0z" fill="${skD}" ${s}/>`;
     const ear = x => `<ellipse cx="${x}" cy="${hy + 6}" rx="10" ry="13" fill="${sk}" ${s}/><path d="M${x + (x < 100 ? 2 : -2)} ${hy}q${x < 100 ? -5 : 5} 6 0 12" stroke="${skD}" stroke-width="3" fill="none"/>`;
     o += ear(100 - hrx - 2) + ear(100 + hrx + 2);
-    o += `<ellipse cx="100" cy="${hy}" rx="${hrx}" ry="${hry}" fill="${sk}" ${s}/>`;
+    o += `<ellipse cx="100" cy="${hy + hry - 2}" rx="20" ry="7" fill="${shade(sk, -0.35)}" opacity=".45"/>`;
+    o += `<ellipse cx="100" cy="${hy}" rx="${hrx}" ry="${hry}" fill="${sk}" ${s}/><ellipse cx="100" cy="${hy}" rx="${hrx}" ry="${hry}" fill="url(#skinG)"/>`;
+    if (P.style !== 'bald') o += `<path d="M${100 - hrx + 8} ${hy - hry * 0.42}q${hrx - 8} 16 ${hrx * 2 - 16} 0" stroke="${skD}" stroke-width="7" fill="none" opacity=".28" stroke-linecap="round"/>`;
+    o += `<path d="M${100 - hrx * 0.62} ${hy + hry * 0.62}q${hrx * 0.62} ${hry * 0.34} ${hrx * 1.24} 0" stroke="${skD}" stroke-width="1.1" fill="none" opacity=".45"/>`;
     o += `<path d="M${100 - hrx + 4} ${hy + 10}q${hrx - 4} ${hry + 6} ${hrx * 2 - 8} 0q-4 ${hry * 0.5} -${hrx - 4} ${hry * 0.85}q-${hrx - 8} -4 -${hrx - 4} -${hry * 0.85}z" fill="${skD}" opacity=".35"/>`;
     o += `<ellipse cx="${100 - 16}" cy="${hy - hry * 0.45}" rx="22" ry="12" fill="#fff" opacity=".22"/>`;
     if (acc.includes('wrinkle')) o += `<path d="M76 ${hy - 26}q24-6 48 0M80 ${hy - 18}q20-4 40 0" stroke="${skD}" stroke-width="2" fill="none" opacity=".8"/>`;
@@ -80,8 +85,8 @@ const Face = {
       if (e === 'h') return `<path d="M${x - 9} ${ey + 3}q9-12 18 0" ${SW} stroke-width="4" fill="none"/>`;
       if (e === 'c') return `<path d="M${x - 9} ${ey - 1}q9 9 18 0" ${SW} stroke-width="4" fill="none"/><path d="M${x + side * 2} ${ey + 6}q${side * 3} 16 ${side * 1} 30" stroke="#8fd0ff" stroke-width="5" fill="none" stroke-linecap="round" opacity=".9"/>`;
       const rw = e === 's' ? 9.5 : 7.5, rh = e === 's' ? 10.5 : 8.5, ir = e === 's' ? 3.4 : 5.6, dx = e === 'w' ? side * -2 : 0, dy = e === 'w' ? 2 : 0;
-      let q = `<ellipse cx="${x}" cy="${ey}" rx="${rw}" ry="${rh}" fill="#fff" ${SW2}/><circle cx="${x + dx}" cy="${ey + dy + 1}" r="${ir}" fill="${ic}"/><circle cx="${x + dx}" cy="${ey + dy + 1}" r="${ir * 0.48}" fill="#1a0e08"/><circle cx="${x + dx + ir * 0.4}" cy="${ey + dy - ir * 0.35}" r="${Math.max(1.4, ir * 0.35)}" fill="#fff"/><circle cx="${x + dx - ir * 0.35}" cy="${ey + dy + ir * 0.5}" r="1" fill="#fff" opacity=".8"/>`;
-      q += `<path d="M${x - rw - 1} ${ey - 1}q${rw + 1} -${rh + 3} ${rw * 2 + 2} 0" stroke="#2a1a10" stroke-width="${lash ? 4 : 3}" fill="none" stroke-linecap="round"/>`;
+      let q = `<ellipse cx="${x}" cy="${ey}" rx="${rw}" ry="${rh}" fill="#fff" ${SW2}/><circle cx="${x + dx}" cy="${ey + dy + 1}" r="${ir}" fill="${ic}"/><circle cx="${x + dx}" cy="${ey + dy + 1}" r="${ir}" fill="url(#irisG)"/><circle cx="${x + dx}" cy="${ey + dy + 1}" r="${ir * 0.48}" fill="#1a0e08"/><path d="M${x - rw + 1} ${ey - rh * 0.3}q${rw - 1} -${rh * 0.75} ${rw * 2 - 2} 0" fill="#7a5a4a" opacity=".18"/><circle cx="${x + dx + ir * 0.4}" cy="${ey + dy - ir * 0.35}" r="${Math.max(1.4, ir * 0.35)}" fill="#fff"/><circle cx="${x + dx - ir * 0.35}" cy="${ey + dy + ir * 0.5}" r="1" fill="#fff" opacity=".8"/>`;
+      q += `<path d="M${x - rw - 1} ${ey - 1}q${rw + 1} -${rh + 3} ${rw * 2 + 2} 0" stroke="#2a1a10" stroke-width="${lash ? 3.4 : 2.6}" fill="none" stroke-linecap="round"/><path d="M${x - rw + 2} ${ey + rh - 0.5}q${rw - 2} 3 ${rw * 2 - 4} 0" stroke="${skD}" stroke-width=".9" fill="none" opacity=".8"/><path d="M${x - rw * 0.8} ${ey - rh - 4.5}q${rw * 0.8} -3 ${rw * 1.6} 0" stroke="${skD}" stroke-width=".9" fill="none" opacity=".55"/>`;
       if (lash) q += `<path d="M${x + side * (rw + 1)} ${ey - 2}l${side * 5} -4" stroke="#2a1a10" stroke-width="2.5" stroke-linecap="round"/>`;
       // 生氣、得意：上眼皮蓋住一半
       if (e === 'a') q += `<path d="M${x - rw - 2} ${ey - rh - 2}H${x + rw + 2}V${ey - 2 + side * 3}L${x - rw - 2} ${ey - 2 - side * 3}z" fill="${sk}"/><path d="M${x - rw - 1} ${ey - 2 - side * 3}L${x + rw + 1} ${ey - 2 + side * 3}" stroke="#2a1a10" stroke-width="3" stroke-linecap="round"/>`;
@@ -131,6 +136,19 @@ const Face = {
       case 'slick': o += `<path d="M48 ${hy - 8}q4-${hry + 2} 56-${hry + 2}t48 ${hry - 6}q-40-24-104 12z" fill="${hr}" ${s}/><path d="M68 ${top + 12}q30-10 66 6M74 ${top + 22}q26-8 54 2" stroke="#fff" stroke-opacity=".55" stroke-width="3" fill="none"/>`; break;
       case 'short': o += `<path d="M48 ${hy - 4}q0-${hry + 2} 52-${hry + 2}t52 ${hry + 2}q-10-14-20-16q-14 8-30 4q-20 8-54 14z" fill="${hr}" ${s}/><path d="M70 ${hy - 34}q14-16 34-18" stroke="${hrL}" stroke-width="4" fill="none" stroke-linecap="round" opacity=".6"/>`; break;
       case 'bald': o += `<path d="M50 ${hy}q-4-20 6-30M150 ${hy}q4-20-6-30" stroke="${hr}" stroke-width="10" stroke-linecap="round" fill="none"/><path d="M76 ${top + 14}q14-8 30-6" stroke="#fff" stroke-opacity=".6" stroke-width="6" stroke-linecap="round" fill="none"/>`; break;
+    }
+    // 髮絲：細細的深色與亮色線條，讓頭髮有層次
+    const hs = (d, d2) => `<path d="${d}" stroke="${hrD}" stroke-width=".9" fill="none" stroke-linecap="round" opacity=".7"/>` + (d2 ? `<path d="${d2}" stroke="${hrL}" stroke-width="1.1" fill="none" stroke-linecap="round" opacity=".6"/>` : '');
+    switch (P.style) {
+      case 'bun': case 'bob': case 'pony': case 'twin':
+        o += hs(`M118 ${hy - 30}q-20-18-50-12M116 ${hy - 33}q-26-10-56 6M114 ${hy - 36}q-12-16-36-20M120 ${hy - 30}q12-14 30-10M122 ${hy - 28}q16-2 28 18M110 ${hy - 26}q-24 2-44 18`, `M112 ${hy - 40}q-16-10-40-6M124 ${hy - 34}q14-8 26 2M60 ${hy - 14}q14-14 34-18`);
+        if (P.style === 'bob') o += hs(`M44 ${hy + 10}v40M50 ${hy + 16}q-2 22 2 36M156 ${hy + 10}v40M150 ${hy + 16}q2 22-2 36`);
+        if (P.style === 'bun') o += hs(`M86 ${hy - 66}q14-10 28 0M84 ${hy - 58}q16 6 32 0`);
+        break;
+      case 'part': o += hs(`M96 ${top + 2}q-16 8-30 30M94 ${top + 4}q-24 4-38 34M98 ${top + 3}q22-2 46 14M100 ${top + 6}q24 2 40 20`, `M92 ${top + 6}q-14 10-22 24M104 ${top + 4}q18 0 34 12`); break;
+      case 'slick': o += hs(`M58 ${top + 26}q36-26 90-10M62 ${top + 34}q30-18 70-8M54 ${hy - 14}q20-20 50-24`); break;
+      case 'short': o += hs(`M60 ${hy - 26}q8-20 26-28M76 ${hy - 26}q8-18 24-26M96 ${hy - 26}q10-16 26-20M116 ${hy - 26}q10-12 22-12M136 ${hy - 22}q6-8 12-6`, `M66 ${hy - 36}q10-14 26-20M104 ${hy - 40}q10-8 24-6`); break;
+      case 'gp': o += hs(`M52 ${hy}q-4-20 8-36M148 ${hy}q4-20-8-36M84 ${top + 6}q16-6 32 0`); break;
     }
     // 帽子
     if (acc.includes('cap')) o += `<path d="M48 ${hy - 18}q0-42 52-42t52 42z" fill="#d94a3a" ${s}/><path d="M48 ${hy - 18}h82q22 0 32 8h-114z" fill="#b83a2a" ${s}/><circle cx="100" cy="${hy - 58}" r="4" fill="#b83a2a"/><path d="M70 ${hy - 40}q14-14 30-16" stroke="#fff" stroke-opacity=".4" stroke-width="4" fill="none"/>`;
