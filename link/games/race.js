@@ -494,7 +494,7 @@
         leave() { ctx.push(); },
         results() {
           return {
-            rows: ids.map(id => ({ id, key: score[id], line: `${score[id]} 分 · 答對 ${okN[id]}/${plan.length} 題${firstN[id] ? ` · ⚡最快 ${firstN[id]} 次` : ''}` })),
+            rows: ids.map(id => ({ id, key: score[id], line: `${score[id]} 分 · 答對 ${okN[id]}/${plan.length} 題${firstN[id] ? ` · ⚡×${firstN[id]}` : ''}` })),
             sub: kid ? '每個人都好棒！🎉' : ''
           };
         }
@@ -751,7 +751,7 @@
         const m = V.my, pm = prevMy || {};
         if (V.ty === 'react') {
           const pad = E.ch.querySelector('.rk-react');
-          if (pad && V.green && !greenT && m.st !== 'out') { greenT = performance.now(); pad.classList.add('g'); pad.querySelector('.e').textContent = '👆'; pad.querySelector('.tx').textContent = '按！'; api.sfx('go'); api.vibrate(40); }
+          if (pad && V.green && !greenT && m.st !== 'out') { greenT = performance.now(); pad.classList.add('g'); pad.querySelector('.e').textContent = '👆'; pad.querySelector('.tx').textContent = '按！'; api.sfx('go'); api.vibrate(40); setSt('👆 快按！', 'ok'); }
           if (m.st === 'early' && m.wn !== pm.wn) {
             api.sfx('buzz'); api.vibrate(150); local.tapped = 0; pend = performance.now() + 1000;
             if (pad) { pad.classList.add('x'); pad.querySelector('.tx').textContent = '太早了！'; shake(pad); setTimeout(() => { if (pad.isConnected && !greenT) { pad.classList.remove('x'); pad.querySelector('.tx').textContent = '等一下…'; } else if (pad.isConnected) pad.classList.remove('x'); }, 1000); }
@@ -839,7 +839,7 @@
             drawHeader();
             if (v.ph === 'ready') { E.ov.classList.add('dim'); buildReady(); }
             else if (v.ph === 'reveal') { E.ov.classList.add('dim'); buildReveal(); }
-            else { E.ov.innerHTML = ''; E.ov.classList.remove('dim'); buildChallenge(); setSt(v.ph === 'show' ? (kid ? '👀 記住它！' : '👀 記住順序…') : (kid ? '👆 快！' : '⚡ 開始！'), 'info'); }
+            else { E.ov.innerHTML = ''; E.ov.classList.remove('dim'); buildChallenge(); setSt(v.ph === 'show' ? (kid ? '👀 記住它！' : '👀 記住順序…') : v.ty === 'react' ? '✋ 等綠色…' : (kid ? '👆 快！' : '⚡ 開始！'), 'info'); }
             phaseSound();
             if (v.ph === 'go' && !pub) api.vibrate(25);
           }
