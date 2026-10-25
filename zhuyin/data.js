@@ -280,6 +280,26 @@
     { k: 'read2p', t: '看注音讀詞', after: 22 },
     { k: 'rsp', t: '讀短句練習', after: 30 },
   ];
+
+  // 進階島：基礎課上到第 16 課才打開，一關一關往前
+  const ADV_AFTER = 16;
+  const PAIRS = {
+    'ㄓㄗ': 'ㄓ和ㄗ很像。念ㄓ的時候，舌頭要往上捲；念ㄗ的時候，舌頭平平的，頂在牙齒後面。',
+    'ㄔㄘ': 'ㄔ和ㄘ：ㄔ舌頭往上捲，ㄘ舌頭平平的。兩個都要噴一口氣。',
+    'ㄕㄙ': 'ㄕ和ㄙ：ㄕ舌頭往上捲，ㄙ舌頭平平的，像蛇的聲音。',
+    'ㄣㄥ': 'ㄣ和ㄥ：ㄣ最後舌頭頂住上面，聲音短短的；ㄥ最後聲音從鼻子後面出來，長長的。',
+    'ㄢㄤ': 'ㄢ和ㄤ：ㄢ最後舌頭頂住上面；ㄤ嘴巴張大，聲音從鼻子後面出來。',
+    'ㄈㄏ': 'ㄈ和ㄏ：ㄈ要用上面的牙齒碰下嘴唇；ㄏ是從喉嚨哈氣，嘴唇不用碰。',
+    'ㄋㄌ': 'ㄋ和ㄌ：ㄋ的聲音從鼻子出來，捏住鼻子就念不出來；ㄌ的聲音從舌頭兩邊出來。',
+  };
+  const ADVANCED = [
+    { k: 'pair', s: ['ㄓㄗ', 'ㄔㄘ', 'ㄕㄙ'], t: '捲舌和不捲舌' },
+    { k: 'pair', s: ['ㄣㄥ', 'ㄢㄤ'], t: 'ㄣㄥ、ㄢㄤ' },
+    { k: 'pair', s: ['ㄈㄏ', 'ㄋㄌ'], t: 'ㄈㄏ、ㄋㄌ' },
+    { k: 'neutral', t: '輕聲' },
+    { k: 'three', t: '三拼' },
+  ];
+  const NEUTRAL_WORDS = () => TWO.filter(w => w.z.split(' ')[1].endsWith('˙'));
   const CN = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'].concat(Array.from({ length: 30 }, (_, i) => ((i + 11) >= 20 ? ['', '', '二', '三', '四'][Math.floor((i + 11) / 10)] : '') + '十' + ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'][(i + 11) % 10]));
   const lessonTitle = (L, n) => L.k === 'sym' ? L.s : L.k === 'story' ? STORIES[L.i].title : L.k === 'rp' ? PASSAGES[L.i].title : L.t;
 
@@ -507,6 +527,18 @@
     // 教一教：寫字的注音、讀注音
     wwT: ['寫字的注音，要先把字拆開來聽。貓：ㄇ，ㄠ。', '先寫ㄇ，再寫ㄠ，從上面寫到下面。', '最後想想是第幾聲。貓是一聲，不用標符號。', '換你寫寫看！'],
     rdT: ['只看注音的時候，先念出每一個音，再拼起來。', 'ㄇ，ㄠ，拼起來：貓。', '一句話，就一個字一個字讀：魚，在，水，裡，游。', '再讀快一點：魚在水裡游。', '換你讀讀看！'],
+    // 進階島
+    advIntro: (L, n) => `進階島第${CN[n]}關：${L.t}。`,
+    advDone: n => `進階島第${CN[n]}關完成了！你好厲害！`,
+    trackAdv: '這是進階島，有更難一點的挑戰。',
+    advLocked: '進階島要等基礎課程上到第十六課才會打開喔。',
+    pairListen: (a, b) => `聽聽看：${a}，${b}。${a}，${b}。`,
+    pairQ: (w, a, b) => `${w}。有${a}，還是${b}？`,
+    pairA: (w, s) => `${w}裡面是${s}。`,
+    ntTeach: ['有些字要念得又短又輕，叫做輕聲。輕聲的符號是一個小點點，寫在注音的上面。', '像媽媽，第二個媽就念得很輕。', '兔子的子，也是輕聲。', '換你聽聽看，第二個字是第幾聲。'],
+    ntQ: w => `${w}。第二個字是第幾聲？`,
+    ntA: (w, n) => `${w}，第二個字是${n === 4 ? '輕聲' : TONE_NAMES[n]}。`,
+    thTeach: ['有些字有三個注音，叫做三拼。中間的ㄧ、ㄨ、ㄩ要念得快快的。', '三拼：ㄐ，ㄧ，ㄠ，腳。', '三拼：ㄒ，ㄩ，ㄥ，熊。'],
     // 練習島
     pracIntro: L => `練習島：${L.t}。`,
     pracDone: '練習完成了！好棒！',
@@ -564,6 +596,11 @@
     ['ㄧ', 'ㄨ', 'ㄩ'].forEach(m => add(P.ctIntro(m))); add(P.twIntro);
     P.wwT.forEach(add); P.rdT.forEach(add);
     ['企鵝', '藍鵲', '兔兔', '狗狗', '貓貓'].forEach(n => add(P.palHi(n)));
+    ADVANCED.forEach((L, i) => { add(P.advIntro(L, i + 1)); add(P.advDone(i + 1)); }); add(P.trackAdv); add(P.advLocked);
+    for (const pr in PAIRS) { add(PAIRS[pr]); const [a, b] = Array.from(pr); add(P.pairListen(a, b));
+      for (const w of WORDS) { const f = w.z.split(' ')[0]; const has = [a, b].filter(x => f.includes(x)); if (has.length === 1) { add(P.pairQ(w.w, a, b)); add(P.pairA(w.w, has[0])); } } }
+    P.ntTeach.forEach(add); for (const w of TWO) { const t = parseSyl(w.z.split(' ')[1]).tone; add(P.ntQ(w.w)); add(P.ntA(w.w, t)); }
+    P.thTeach.forEach(add);
     PRACTICE.forEach(L => add(P.pracIntro(L))); add(P.pracDone); add(P.trackMain); add(P.trackPrac); add(P.trackLocked);
     LESSONS.forEach((L, i) => { add(P.lessonIntro(L, i + 1)); add(P.lessonDone(i + 1)); });
     for (const x of SYMBOLS) add(P.lessonWrite(x.s));
@@ -597,7 +634,7 @@
     return h.toString(16).padStart(8, '0');
   }
 
-  const ZY = { SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, SENTS, PASSAGES, LESSONS, PRACTICE, THEMES, themeWords, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
+  const ZY = { SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, SENTS, PASSAGES, LESSONS, PRACTICE, ADVANCED, ADV_AFTER, PAIRS, NEUTRAL_WORDS, THEMES, themeWords, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
     TONE_NAMES, TONE_MARKS, parseSyl, syllables, P, allLines, hash, symOf, spoken, TIPS, teachWords, strokeCount };
   if (typeof module !== 'undefined' && module.exports) module.exports = ZY;
   else root.ZY = ZY;
