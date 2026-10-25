@@ -254,6 +254,8 @@
 .cd-seat .cnt{font:700 calc(var(--u)*30)/1 var(--round);margin-left:calc(var(--u)*12)}
 .cd-seat .one{position:absolute;top:calc(var(--u)*-16);right:calc(var(--u)*-14);background:#ff4d6a;color:#fff;font-weight:900;font-size:calc(var(--u)*18);border-radius:calc(var(--u)*12);
   padding:calc(var(--u)*4) calc(var(--u)*10);box-shadow:0 0 0 calc(var(--u)*3) #fff;transform:rotate(8deg)}
+.cd-bub.cd-below{top:auto;bottom:-6px;transform:translate(-50%,100%);animation-name:cdBubD}
+@keyframes cdBubD{0%{opacity:0;transform:translate(-50%,60%) scale(.6)}12%{opacity:1;transform:translate(-50%,100%) scale(1.1)}20%{transform:translate(-50%,100%) scale(1)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,130%)}}
 .cd-seat .cd-bub{font-size:calc(var(--u)*22);padding:calc(var(--u)*6) calc(var(--u)*14)}
 .cd-tb .cd-yt b{font-size:calc(var(--u)*50)}
 .cd-tb .cd-winov img{width:calc(var(--u)*200);height:calc(var(--u)*200)}
@@ -455,6 +457,7 @@
       }
       function bubble(host, text) {
         if (!host) return; const b = document.createElement('div'); b.className = 'cd-bub'; b.textContent = text;
+        if (host.getBoundingClientRect().top < 110) b.classList.add('cd-below');   // seats at the top edge: show it underneath
         host.appendChild(b); setTimeout(() => b.remove(), 1900);
       }
       function confetti() {
