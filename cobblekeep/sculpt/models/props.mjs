@@ -60,3 +60,39 @@ export function cursedCrystal() {
       { name: 'amethyst', mat: 'amethyst', sdf: amethyst, lo: [-.2, .28, -.15], hi: [.2, .92, .17], step: .0035, paint: p => lerp3(AD, AM, clamp((p[1] - .3) * 1.8 + noise(p[0] * 30, p[1] * 30, p[2] * 30) * .3, 0, 1)) },
     ] };
 }
+
+/* ---------- breakables and treasure ---------- */
+import { cappedConeY as _ccone } from '../sdf.mjs';
+const one = { bones: [['base', null, V3(0, 0, 0)]], weights: () => [[0, 1]], meta: { HOLD: [0, 0, 0], HC: [0, 0, 0], HK: 1, J: { head: [0, 0, 0] } }, errScale: 3 };
+const staves = (p, base, dark) => { const a = Math.atan2(p[0], p[2]), k = Math.abs(((a / (Math.PI * 2) * 16) % 1 + 1) % 1 - .5) < .03; const g = noise(a * 8, p[1] * 40, 0); return mul3(lerp3(hexLin(base), hexLin(dark), clamp(g * .6 + (k ? .5 : 0), 0, 1)), .9 + noise(p[0] * 200, p[1] * 200, p[2] * 200) * .15); };
+function barrelSDF(p, H = .5, R = .17) { const y = clamp(p[1] / H, 0, 1), r = R + Math.sin(y * Math.PI) * .035; return Math.max(Math.hypot(p[0], p[2]) - r - Math.abs(Math.sin(Math.atan2(p[0], p[2]) * 8)) * .002, -p[1], p[1] - H) + (noise(p[0] * 60, p[1] * 60, p[2] * 60) - .5) * .002; }
+const hoops = (p, H = .5, R = .17) => { let d = 1e9; for (const y of [.05, .17, .33, .45]) { const r = R + Math.sin(y / H * Math.PI) * .035 + .004; d = Math.min(d, Math.max(Math.abs(Math.hypot(p[0], p[2]) - r) - .006, Math.abs(p[1] - y) - .014)); } return d; };
+export function barrel() {
+  return { name: 'barrel', ...one, budget: .2, pieces: [
+    { name: 'wood', mat: 'wood', sdf: p => smin(barrelSDF(p), Math.max(_box(p, [0, .5, 0], [.15, .006, .15]), Math.hypot(p[0], p[2]) - .17), .004), lo: [-.23, -.01, -.23], hi: [.23, .52, .23], step: .004, paint: p => staves(p, '#a0703e', '#5e3c20'), ao: true },
+    { name: 'hoops', mat: 'metal', sdf: p => hoops(p), lo: [-.23, .02, -.23], hi: [.23, .48, .23], step: .003, paint: () => hexLin('#4a4650') },
+  ] };
+}
+export function keg() {   // a red powder keg with a fuse: it explodes when broken
+  const mark = p => { const q = [p[0], p[1] - .25]; return p[2] > .1 && Math.hypot(q[0], q[1]) < .055; };
+  return { name: 'keg', ...one, budget: .2, pieces: [
+    { name: 'wood', mat: 'wood', sdf: p => barrelSDF(p, .46, .16), lo: [-.22, -.01, -.22], hi: [.22, .48, .22], step: .004, paint: p => mark(p) ? hexLin('#f0e0b0') : staves(p, '#b8382a', '#5a1410'), ao: true },
+    { name: 'hoops', mat: 'metal', sdf: p => Math.min(hoops(p, .46, .16), cone(p, [0, .46, 0], [.03, .55, .02], .008, .005)), lo: [-.22, .02, -.22], hi: [.22, .57, .22], step: .003, paint: (p) => p[1] > .47 ? hexLin('#3a2a1a') : hexLin('#2e2a30') },
+  ] };
+}
+export function chestBody() {
+  const body = p => _box(p, [0, .14, 0], [.24, .14, .16], .015);
+  const trim = p => { let d = 1e9; for (const x of [-.18, .18]) d = Math.min(d, _box(p, [x, .14, 0], [.022, .145, .165], .004)); d = Math.min(d, _box(p, [0, .25, .163], [.04, .045, .008], .004)); return d; };   // straps and the lock plate
+  return { name: 'chestBody', ...one, budget: .25, pieces: [
+    { name: 'wood', mat: 'wood', sdf: body, lo: [-.27, -.01, -.19], hi: [.27, .3, .19], step: .004, paint: p => mul3(lerp3(hexLin('#8a5a32'), hexLin('#4e301a'), clamp(noise(p[0] * 6, p[1] * 60, p[2] * 6) * .7 + (Math.abs(((p[1] * 12) % 1) - .5) > .46 ? .5 : 0), 0, 1)), 1), ao: true },
+    { name: 'trim', mat: 'gold', sdf: trim, lo: [-.22, -.01, -.19], hi: [.22, .3, .19], step: .003, paint: () => hexLin('#e8b85a') },
+  ] };
+}
+export function chestLid() {   // hinge on the x axis at the back top edge (origin), lid extends toward +z
+  const lid = p => Math.max(Math.hypot(p[1], p[2] - .16) - .16, -p[1], Math.abs(p[0]) - .24);
+  const trim = p => { let d = 1e9; for (const x of [-.18, .18]) d = Math.min(d, Math.max(Math.abs(Math.hypot(p[1], p[2] - .16) - .16) - .006, -p[1], Math.abs(p[0] - x) - .022)); return d; };
+  return { name: 'chestLid', ...one, budget: .2, pieces: [
+    { name: 'wood', mat: 'wood', sdf: lid, lo: [-.26, -.01, -.02], hi: [.26, .18, .34], step: .004, paint: p => mul3(lerp3(hexLin('#8a5a32'), hexLin('#4e301a'), noise(p[0] * 60, p[1] * 6, p[2] * 6) * .7), 1), ao: true },
+    { name: 'trim', mat: 'gold', sdf: trim, lo: [-.22, -.01, -.02], hi: [.22, .18, .34], step: .003, paint: () => hexLin('#e8b85a') },
+  ] };
+}
