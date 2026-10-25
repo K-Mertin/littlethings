@@ -98,7 +98,7 @@ function startLevel(li, diff, endless, chal, mode) {
   app.classList.add('playing');
   Snd.play(THEMES[LEVELS[li].theme].music, 1);
   const modTxt = m => m.map(k => HEROIC_MODS[k].name).join('＋');
-  App.ui.banner = { t: 0, intro: true, li, en: LEVELS[li].en, big: LEVELS[li].name, small: weekly ? `每週挑戰 · ${modTxt(weekly.mods)} · 撐越久分數越高` : heroic ? `英雄模式 · ${modTxt(LEVELS[li].heroic)} · 共 ${App.game.nWaves} 波` : chal ? `挑戰 · ${CHALLENGES[chal].name}（${CHALLENGES[chal].desc}）` : endless ? '無盡模式 · 準備好就按開始' : `${DIFFS[diff].name}難度 · 共 ${App.game.nWaves} 波` };
+  App.ui.banner = { t: 0, intro: true, li, en: LEVELS[li].en, big: LEVELS[li].name, small: weekly ? `每週挑戰 · ${modTxt(weekly.mods)} · 撐越久分數越高` : heroic ? `菁英模式 · ${modTxt(LEVELS[li].heroic)} · 共 ${App.game.nWaves} 波` : chal ? `挑戰 · ${CHALLENGES[chal].name}（${CHALLENGES[chal].desc}）` : endless ? '無盡模式 · 準備好就按開始' : `${DIFFS[diff].name}難度 · 共 ${App.game.nWaves} 波` };
 }
 App.startLevel = (...a) => startLevel(...a);
 function toScene(s) {

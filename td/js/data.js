@@ -505,7 +505,7 @@ const CHALLENGES = {
   iron: { name: '鐵人', desc: '只有 1 條命（敵人強度同簡單）' },
 };
 const CHAL_ORDER = ['limit', 'noskill', 'iron'];
-// 英雄模式：普通難度再加上每關固定的兩個詞綴（敵人血量再 +15%），過關得 2 顆星
+// 菁英模式：普通難度再加上每關固定的兩個詞綴（敵人血量再 +15%），過關得 2 顆星
 const HEROIC_MODS = {
   swift: { name: '疾風', desc: '敵人速度 +12%' },
   armored: { name: '鐵壁', desc: '敵人護甲 +15%' },
@@ -559,8 +559,8 @@ const ACHIEVEMENTS = [
   { id: 'bossTortoise', name: '破殼者', desc: '擊倒玄甲龜皇' },
   { id: 'bossRaijin', name: '止雷者', desc: '擊倒雷鼓鬼神' },
   { id: 'bossEclipse', name: '破曉', desc: '擊倒蝕月魔君' },
-  { id: 'heroic1', name: '英雄試煉', desc: '完成任何一關的英雄模式' },
-  { id: 'heroic10', name: '傳說守衛', desc: '完成 10 關英雄模式' },
+  { id: 'heroic1', name: '菁英試煉', desc: '完成任何一關的菁英模式' },
+  { id: 'heroic10', name: '傳說守衛', desc: '完成 10 關菁英模式' },
   { id: 'weekly10', name: '每週挑戰者', desc: '每週挑戰撐過 10 波' },
   { id: 'weekly30', name: '週賽霸主', desc: '每週挑戰撐過 30 波' },
   { id: 'hold300', name: '銅牆鐵壁', desc: '兵營士兵累計擋下 300 個敵人' },

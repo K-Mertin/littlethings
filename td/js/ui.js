@@ -323,7 +323,7 @@ const UI = (() => {
     }
     if (G.endless && G.mod) return `<b>詞綴 · ${ENDLESS_MODS[G.mod].name}</b>：${ENDLESS_MODS[G.mod].desc}`;
     if (G.weekly && G.wave < 1) return `<b>每週挑戰</b>：${G.weekly.mods.map(k => HEROIC_MODS[k].name + '（' + HEROIC_MODS[k].desc + '）').join('、')}`;
-    if (G.heroic && G.wave < 1) return `<b>英雄模式</b>：${G.L.heroic.map(k => HEROIC_MODS[k].name + '（' + HEROIC_MODS[k].desc + '）').join('、')}`;
+    if (G.heroic && G.wave < 1) return `<b>菁英模式</b>：${G.L.heroic.map(k => HEROIC_MODS[k].name + '（' + HEROIC_MODS[k].desc + '）').join('、')}`;
     if (G.chal && G.wave < 1) return `<b>挑戰 · ${CHALLENGES[G.chal].name}</b>：${G.chal === 'limit' ? '只能用 ' + G.L.limit.map(k => TOWERS[k].name).join('、') : CHALLENGES[G.chal].desc}`;
     if (G.state === 'run' && G.nextT !== null && G.wave < G.nWaves - 1) return `提早叫下一波可以多拿 <b>${earlyBonus(G)}</b> 金幣。`;
     return '點塔可以升級、換目標或賣掉。';
@@ -448,7 +448,7 @@ const UI = (() => {
     const e = Prog.endlessOk(li);
     const hb = $('bHeroic'), hd = !!Store.data.heroic[li];
     hb.hidden = !(r && r.stars);
-    if (L.heroic) hb.innerHTML = `<b>英雄模式</b><small>${L.heroic.map(k => HEROIC_MODS[k].name).join('＋')} · ${L.heroic.map(k => HEROIC_MODS[k].desc).join('、')} · 只有 ${HEROIC_LIVES} 條命</small><i>${hd ? '✓' : '★2'}</i>`;
+    if (L.heroic) hb.innerHTML = `<b>菁英模式</b><small>${L.heroic.map(k => HEROIC_MODS[k].name).join('＋')} · ${L.heroic.map(k => HEROIC_MODS[k].desc).join('、')} · 只有 ${HEROIC_LIVES} 條命</small><i>${hd ? '✓' : '★2'}</i>`;
     hb.classList.toggle('done', hd);
     $('bEndless').hidden = !e;
     if (e) $('bEndless').textContent = `無盡模式（最佳 ${Store.data.endless[li] || 0} 波）`;
@@ -533,7 +533,7 @@ const UI = (() => {
       <li><b>河道</b>：敵人坐船順流而下，速度 ×1.5；士兵擋不住、毒池會被沖走。</li>
       <li><b>天氣</b>：暴雨讓塔變慢、狂風讓飛行敵人加速、雷暴劈中敵人而且法師塔 +35%。</li>
       <li><b>地道</b>：敵人在地底下走，看不到也打不到，上面可以蓋塔。<b>旋轉祭壇</b>：每隔幾秒轉向，決定敵人走哪條路。</li>
-      <li><b>兵營</b>：點兵營再點道路可以移動集結點。<b>英雄模式</b>：過關後解鎖，每關兩個固定詞綴，過關得 2 顆星。<b>每週挑戰</b>：每週一換地圖與規則，看你能撐幾波。</li></ul>
+      <li><b>兵營</b>：點兵營再點道路可以移動集結點。<b>菁英模式</b>：過關後解鎖，每關兩個固定詞綴，過關得 2 顆星。<b>每週挑戰</b>：每週一換地圖與規則，看你能撐幾波。</li></ul>
       <h3>防禦塔</h3><div class="hl">${tw}</div>
       <h3>敵人</h3><div class="hl">${en}</div>
       <h3 class="kb">鍵盤快捷鍵</h3>
@@ -545,8 +545,8 @@ const UI = (() => {
 
   function showResult(G, rec) {
     const won = G.state === 'won';
-    $('rTitle').textContent = G.weekly ? '每週挑戰結束' : G.endless ? '無盡模式結束' : won ? (G.heroic ? '英雄勝利！' : '勝利！') : '城堡失守…';
-    $('rSub').textContent = G.weekly ? `${G.L.name} · 撐過 ${rec.cleared} 波 · 分數 ${rec.score.toLocaleString()}${rec.rank === 0 ? '　本週最佳！' : rec.rank > 0 ? `　本週第 ${rec.rank + 1} 名` : ''}` : G.endless ? `${G.L.name} · 撐過 ${rec.cleared} 波${rec.newBest ? '　新紀錄！' : ''}` : `${G.L.name} · ${G.heroic ? '英雄模式' : DIFFS[G.diff].name}`;
+    $('rTitle').textContent = G.weekly ? '每週挑戰結束' : G.endless ? '無盡模式結束' : won ? (G.heroic ? '菁英勝利！' : '勝利！') : '城堡失守…';
+    $('rSub').textContent = G.weekly ? `${G.L.name} · 撐過 ${rec.cleared} 波 · 分數 ${rec.score.toLocaleString()}${rec.rank === 0 ? '　本週最佳！' : rec.rank > 0 ? `　本週第 ${rec.rank + 1} 名` : ''}` : G.endless ? `${G.L.name} · 撐過 ${rec.cleared} 波${rec.newBest ? '　新紀錄！' : ''}` : `${G.L.name} · ${G.heroic ? '菁英模式' : DIFFS[G.diff].name}`;
     const stars = $('rStars');
     stars.hidden = G.endless || !won;
     const spans = [...stars.children];
@@ -563,7 +563,7 @@ const UI = (() => {
     $('rArt').src = Render.icon('castle', 'c', 0, undefined, 160);
     $('ovResult').classList.toggle('lost', !won && !G.endless);
     $('ovResult').classList.toggle('won', won);
-    $('rReward').textContent = rec.heroicNew ? '英雄模式完成！獲得 ★ 2' : G.weekly ? '下週一會換新的戰場和規則。' : rec.chalNew ? `挑戰「${CHALLENGES[G.chal].name}」完成！獲得 ★ 1` : rec.gained > 0 ? `獲得 ★ ${rec.gained}！可以到天賦樹使用。` : (won || G.endless ? (G.chal && won ? '這個挑戰已經完成過了。' : '') : '調整一下塔的位置再試一次吧！');
+    $('rReward').textContent = rec.heroicNew ? '菁英模式完成！獲得 ★ 2' : G.weekly ? '下週一會換新的戰場和規則。' : rec.chalNew ? `挑戰「${CHALLENGES[G.chal].name}」完成！獲得 ★ 1` : rec.gained > 0 ? `獲得 ★ ${rec.gained}！可以到天賦樹使用。` : (won || G.endless ? (G.chal && won ? '這個挑戰已經完成過了。' : '') : '調整一下塔的位置再試一次吧！');
     if (G.chal) { $('rTitle').textContent = won ? '挑戰成功！' : '挑戰失敗…'; $('rSub').textContent = `${G.L.name} · 挑戰「${CHALLENGES[G.chal].name}」`; }
     const u = $('rUnlock');
     if (rec.unlock) {
