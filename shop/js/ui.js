@@ -39,7 +39,7 @@ const UI = {
   setSpeed(i) { this.speed = i; if (i) this.lastSpeed = i; Music.paused = i === 0 && !this.modal; this.refreshHud(); },
   measure() {
     const hr = this.hud.getBoundingClientRect(), br = this.bar.getBoundingClientRect();
-    const vert = br.height > br.width;
+    const vert = getComputedStyle(this.bar).flexDirection === 'column';
     R.top = hr.bottom + 4;
     R.left = vert ? br.right + 4 : 0;
     R.bottom = (vert ? 0 : innerHeight - br.top) + (this.bb.hidden ? 0 : this.bb.offsetHeight + 6);
@@ -48,6 +48,9 @@ const UI = {
       const pr = this.pnl.getBoundingClientRect();
       if (pr.left > innerWidth * 0.3) R.right = innerWidth - pr.left + 4; else R.bottom = Math.max(R.bottom, innerHeight - pr.top + 4);
     }
+    // 直的手機：左上角的目標卡片不要蓋住店面
+    const ge = document.getElementById('goal');
+    if (ge && !ge.hidden && innerWidth < innerHeight && this.pnl.hidden) R.top = Math.max(R.top, ge.getBoundingClientRect().bottom + 4);
   },
 
   // ---------- 動作 ----------
@@ -56,11 +59,11 @@ const UI = {
     switch (a) {
       case 'speed': Snd.play('click'); this.setSpeed(+v); break;
       case 'mute': { const on = !(Prefs.d.music || Prefs.d.sfx); Prefs.d.music = on; Prefs.d.sfx = on; Prefs.save(); Snd.applyVol(); this.refreshHud(); break; }
-      case 'open': Snd.play('tab'); this.closeInfo(); if (this.panel === v) this.closePanel(); else this.openPanel(v); break;
+      case 'open': Snd.play('tab'); el.classList.remove('nw'); this.closeInfo(); if (this.panel === v) this.closePanel(); else this.openPanel(v); break;
       case 'close': Snd.play('click'); this.closePanel(); break;
       case 'tab': Snd.play('tab'); this.tab[this.panel] = v; this.renderPanel(); break;
       case 'pick': { // 建造物選擇
-        const f = F[v], why = f.lv > S.lv ? '店舖等級不夠' : (f.unlock && !S.unlock[f.unlock]) ? '還沒得到' : (f.unlock && S.items.some(i => i.id === v)) ? '已經擺出來了' : (S.money < f.price ? '錢不夠' : '');
+        const f = F[v], why = f.lv > S.lv ? '店舖等級不夠' : (f.unlock && !S.unlock[f.unlock]) ? '還沒得到' : (f.unlock && S.items.some(i => i.id === v)) ? '已經擺出來了' : (S.money < f.price && !Guide.giftFree(v) ? '錢不夠' : '');
         if (why) { Snd.play('bad'); this.toast(why, 'bad'); return; }
         Snd.play('click'); this.startBuild(v); break;
       }
@@ -70,7 +73,7 @@ const UI = {
       case 'train': { const [uid, st] = v.split(':'); const s = S.staff.find(s => s.uid == uid); const r = Game.train(s, st); if (r[0] === '+') this.toast(`${s.name} 的${{ cook: '廚藝', serv: '服務', charm: '魅力' }[st]} ${r}`, 'good'); else { Snd.play('bad'); this.toast(r, 'bad'); } this.renderPanel(); break; }
       case 'fire': { const s = S.staff.find(s => s.uid == v); if (s && confirm(`確定要請 ${s.name} 離開嗎？`)) { Game.fire(s); this.renderPanel(); } break; }
       case 'hire': { const r = Game.hire(+v); if (r) { Snd.play('bad'); this.toast(r, 'bad'); } else this.toast('歡迎新夥伴加入！', 'good'); this.renderPanel(); break; }
-      case 'price': { const [id, d] = v.split(':'); const o = S.dishes[id], base = Game.dishValue(id); o.price = clamp(Math.round((o.price + (+d) * Math.max(5, Math.round(base * 0.05 / 5) * 5)) / 5) * 5, Math.max(5, Math.round(base * 0.4 / 5) * 5), Math.round(base * 3 / 5) * 5); Snd.play('click'); this.renderPanel(); break; }
+      case 'price': { const [id, d] = v.split(':'); if (Guide.ob()) Guide.ob().f.price = 1; const o = S.dishes[id], base = Game.dishValue(id); o.price = clamp(Math.round((o.price + (+d) * Math.max(5, Math.round(base * 0.05 / 5) * 5)) / 5) * 5, Math.max(5, Math.round(base * 0.4 / 5) * 5), Math.round(base * 3 / 5) * 5); Snd.play('click'); this.renderPanel(); break; }
       case 'toggle': { const o = S.dishes[v]; o.on = !o.on; Snd.play('click'); this.renderPanel(); break; }
       case 'dup': { const r = Game.upgradeDish(v); if (r) { Snd.play('bad'); this.toast(r, 'bad'); } else this.toast(`${DISH[v].n} 升到 Lv${S.dishes[v].lv}！`, 'good'); this.renderPanel(); break; }
       case 'buying': { const r = Game.buyIng(v); if (r) { Snd.play('bad'); this.toast(r, 'bad'); } else this.toast(`開始進貨「${ING[v].n}」`, 'good'); this.renderPanel(); break; }
@@ -90,9 +93,10 @@ const UI = {
       case 'isell': { const it = this.info?.it; if (it) { Game.remove(it, true); Snd.play('cash'); this.closeInfo(); } break; }
       case 'iclose': this.closeInfo(); break;
       case 'ijob': { const [uid, job] = v.split(':'); const s = S.staff.find(s => s.uid == uid); if (s) { Game.setJob(s, job); this.showStaff(Game.srt.get(s.uid)); } break; }
-      case 'tutnext': Snd.play('click'); Tut.advance(); break;
-      case 'tutskip': Snd.play('click'); Tut.skip(); break;
-      case 'tutre': Snd.play('click'); this.closePanel(); Tut.restart(); break;
+      case 'help': Snd.play('tab'); Help.show(v || 'flow'); break;
+      case 'story': Snd.play('tab'); this.closePanel(); Story.play(null); break;
+      case 'guideskip': this.closePanel(); Guide.askSkip(); break;
+      case 'opt2': Prefs.d[v] = Prefs.d[v] === false; Prefs.save(); Snd.play('click'); if (v === 'hints' && Prefs.d.hints === false) Hint.hide(); Guide._gk = ''; Guide.renderGoal(); this.renderPanel(); break;
       case 'qacc': { const q = this.modal && this.modal.q; if (q) { Game.acceptQuest(q); this.toast(`接下委託「${q.title}」`, 'good'); } this.nextModal(); break; }
       case 'dacc': { const d = this.modal && this.modal.d; if (d) { const r = Game.acceptDuel(d); if (r) { Snd.play('bad'); this.toast(r, 'bad'); } else { this.toast(`接受挑戰！賭注 ${money(d.bet)}`, 'goal'); Snd.play('drum'); } } this.nextModal(); break; }
       case 'ddec': { const d = this.modal && this.modal.d; if (d) Game.declineDuel(d); this.nextModal(); break; }
@@ -123,7 +127,11 @@ const UI = {
       info: [['rank', '排行榜'], ['goal', '目標'], ['ach', '成就'], ['combo', '組合圖鑑'], ['guest', '客人圖鑑'], ['rev', '評論'], ['rep', '報表']],
       sys: [],
     }[k];
-    const tb = this.tab[k] || (tabs[0] && tabs[0][0]);
+    // 新手引導還沒介紹的分頁先藏起來
+    const tabs2 = tabs.filter(([v]) => (k !== 'build' && !(k === 'menu' && v === 'ing')) || Guide.can('tab:' + v));
+    tabs.length = 0; tabs.push(...tabs2);
+    let tb = this.tab[k] || (tabs[0] && tabs[0][0]);
+    if (tabs.length && !tabs.some(t => t[0] === tb)) tb = tabs[0][0];
     let body = '';
     try { body = this['p_' + k](tb); } catch (e) { console.error(e); body = '<p>發生錯誤</p>'; }
     this.pnl.innerHTML = `<div class="ph"><h3>${T}</h3><button class="x" data-a="close" aria-label="關閉">✕</button></div>` +
@@ -136,20 +144,20 @@ const UI = {
     const S = Game.S;
     let h = '';
     const n = LEVELS[S.lv + 1];
-    if (n && tb === 'station') {
+    if (n && tb === 'station' && Guide.can('expand')) {
       const why = Game.canExpand();
       h += `<div class="expand"><div><b>擴建：${n.n}</b><small>店面 ${n.W}×${n.H}・員工上限 ${n.staff}・月租 ${money(n.rent)}</small><small>需要人氣 ${num(n.pop)}（目前 ${num(S.pop)}）・${money(n.cost)}</small></div><button class="btn ${why ? 'dis' : 'go'}" data-a="expand">${why ? '還不行' : '擴建！'}</button></div>`;
     }
     const list = FAC.filter(f => f.cat === tb && (!f.unlock || S.unlock[f.unlock]));
     h += '<div class="grid">';
     for (const f of list) {
-      const lock = f.lv > S.lv, poor = S.money < f.price;
+      const gift = Guide.giftFree(f.id), lock = f.lv > S.lv, poor = S.money < f.price && !gift;
       const pic = f.cat === 'floor' ? this.img(Art.floor(f.id, 0), 3) : this.img(Art.fac(f.id, 0), 3);
       const extra = f.cat === 'seat' ? `座位 ${f.seats}` : f.cat === 'station' ? STN[f.st] : f.inc ? '遊戲攤' : '';
       const cnt = f.cat !== 'floor' ? S.items.filter(i => i.id === f.id).length : 0;
       h += `<button class="card ${lock ? 'lock' : ''} ${poor && !lock ? 'poor' : ''}" data-a="pick" data-v="${f.id}">
         <div class="pic">${pic}${cnt ? `<i class="cnt">×${cnt}</i>` : ''}</div><b>${f.n}</b>
-        <span class="pr">${lock ? '🔒 ' + LEVELS[f.lv].n : (f.price ? money(f.price) : '免費')}</span>
+        <span class="pr">${gift ? '🎁 阿德伯送的・免費' : lock ? '🔒 ' + LEVELS[f.lv].n : (f.price ? money(f.price) : '免費')}</span>
         <small>${extra ? extra + '・' : ''}魅力 ${f.ap}</small><small class="d">${f.d}</small></button>`;
     }
     h += '</div>';
@@ -323,7 +331,7 @@ const UI = {
       } else h += '<p class="tip">目前沒有委託。過幾週會有人來找你。</p>';
       if (S.yg) {
         const g = S.yg, p = Game.ygProg(g), pr = Math.max(0, Math.min(1, p[0] / p[1]));
-        h += `<p class="lbl">第 ${g.y} 年的目標</p><div class="quest yg"><div class="pic pt">${this.img(Art.portrait(Tut.look(), 'happy'), 2)}</div><div><b>${esc(g.title)}</b><small>年底的頒獎典禮會檢查，達成可以拿到獎勵。</small><small class="good">獎勵：${Game.rewardText(g.r)}</small>${p[0] >= p[1] ? '<small class="good">✔ 已達成！</small>' : `<i class="bar"><b style="width:${pr * 100}%"></b></i>${p[1] > 1 ? `<small>${num(Math.max(0, p[0]))} / ${num(p[1])}</small>` : ''}`}</div></div>`;
+        h += `<p class="lbl">第 ${g.y} 年的目標</p><div class="quest yg"><div class="pic pt">${this.img(Art.portrait(Guide.look(), 'happy'), 2)}</div><div><b>${esc(g.title)}</b><small>年底的頒獎典禮會檢查，達成可以拿到獎勵。</small><small class="good">獎勵：${Game.rewardText(g.r)}</small>${p[0] >= p[1] ? '<small class="good">✔ 已達成！</small>' : `<i class="bar"><b style="width:${pr * 100}%"></b></i>${p[1] > 1 ? `<small>${num(Math.max(0, p[0]))} / ${num(p[1])}</small>` : ''}`}</div></div>`;
       }
       if (S.duel) {
         const d = S.duel, p = Game.duelProg(d), pr = Math.max(0, Math.min(1, p[0] / p[1]));
@@ -392,7 +400,9 @@ const UI = {
     setTimeout(() => d.classList.add('out'), 3800); setTimeout(() => d.remove(), 4300);
   },
   p_sys() {
-    let h = `<p class="lbl">店名</p><div class="row"><b class="shopname">${esc(Game.S.shop)}</b><button class="btn" data-a="rename">改名</button></div><p class="lbl">存檔（每個月底會自動存到目前的欄位）</p>`;
+    let h = `<p class="lbl">說明與提示</p><div class="row"><button class="btn go" data-a="help">怎麼玩</button><button class="btn" data-a="story">重看開場故事</button>${Guide.on() ? '<button class="btn" data-a="guideskip">跳過新手引導</button>' : ''}</div>`;
+    h += `<div class="row"><button class="btn ${Prefs.d.hints !== false ? 'go' : ''}" data-a="opt2" data-v="hints">阿德伯的提示 ${Prefs.d.hints !== false ? '開' : '關'}</button><button class="btn ${Prefs.d.goals !== false ? 'go' : ''}" data-a="opt2" data-v="goals">左上角目標 ${Prefs.d.goals !== false ? '開' : '關'}</button></div>`;
+    h += `<p class="lbl">店名</p><div class="row"><b class="shopname">${esc(Game.S.shop)}</b><button class="btn" data-a="rename">改名</button></div><p class="lbl">存檔（每個月底會自動存到目前的欄位）</p>`;
     for (let i = 0; i < 3; i++) {
       const m = Main.slotMeta(i);
       h += `<div class="slotrow ${i === this.slot ? 'cur' : ''}"><div><b>存檔 ${i + 1}${i === this.slot ? '（使用中）' : ''}</b><small>${m ? `${esc(m.shop)}・第${m.y}年${m.m}月・${money(m.money)}` : '空的'}</small></div>
@@ -403,7 +413,6 @@ const UI = {
     h += `<p class="lbl">畫質（手機比較慢可以調低）</p><div class="row">${[['auto', '自動'], ['0', '高'], ['1', '中'], ['2', '省電']].map(([v, n]) => `<button class="btn ${qv === v ? 'go' : ''}" data-a="qual" data-v="${v}">${n}</button>`).join('')}<small class="mute">目前：${['高', '中', '省電'][R.q]}</small></div>`;
     const S = Game.S, sc = SCENARIOS.find(x => x.id === S.scen);
     h += `<p class="lbl">傳承（第 ${S.gen} 代・${sc ? sc.n : ''}）</p><div class="row"><button class="btn ${S.ended || Game.year() >= 6 ? 'go' : 'dis'}" data-a="retire">傳承給下一代</button><small class="mute">${S.ended || Game.year() >= 6 ? `可以得到 ${Game.retirePts()} 點傳承點數` : '經營滿 5 年或看到結局後開放'}</small></div>`;
-    h += `<div class="row"><button class="btn" data-a="tutre">重看新手教學</button></div>`;
     h += `<div class="row"><button class="btn" data-a="toTitle">存檔並回標題</button><a class="btn" href="../index.html">← 回遊戲大廳</a></div>`;
     h += '<p class="tip">操作：拖曳畫面可以移動，雙指或滑鼠滾輪縮放。點攤位、桌子、員工可以看詳細資料。鍵盤：空白鍵暫停，1～3 調速度，0 暫停，Esc 關閉。</p>';
     return h;
@@ -431,18 +440,18 @@ const UI = {
 
   // ---------- 建造模式 ----------
   startBuild(id) {
-    this.closePanel(); this.mode = 'build'; this.sel = id; this.bb.hidden = false; this.updateBB();
+    this.closePanel(); Hint.hide(); this.mode = 'build'; this.sel = id; this.free = Guide.giftFree(id); this.bb.hidden = false; this.updateBB();
     R.ghost = null; this.measure();
   },
   startMove(it) {
-    this.mode = 'move'; this.carry = { it, ox: it.x, oy: it.y }; this.sel = it.id;
+    this.mode = 'move'; this.carry = { it, ox: it.x, oy: it.y }; this.sel = it.id; this.free = false;
     Game.S.items = Game.S.items.filter(i => i !== it); Game.rebuild();
     this.bb.hidden = false; this.updateBB(); this.measure();
   },
   updateBB() {
     const f = F[this.sel];
     const pic = f.cat === 'floor' ? Art.floor(f.id, 0) : Art.fac(f.id, 0);
-    this.bb.innerHTML = `${this.img(pic, 2)}<div><b>${this.mode === 'move' ? '移動：' : ''}${f.n}</b><small>${this.mode === 'move' ? '點一格空地放下' : (f.price ? money(f.price) : '免費') + '・點店面的格子放置'}</small></div><button class="btn go" data-a="buildDone">${this.mode === 'move' ? '取消' : '完成'}</button>`;
+    this.bb.innerHTML = `${this.img(pic, 2)}<div><b>${this.mode === 'move' ? '移動：' : ''}${f.n}</b><small>${this.mode === 'move' ? '點一格空地放下' : (this.free ? '阿德伯送的，免費' : f.price ? money(f.price) : '免費') + '・點店面的格子放置'}</small></div><button class="btn go" data-a="buildDone">${this.mode === 'move' ? '取消' : '完成'}</button>`;
   },
   endBuild() {
     if (this.mode === 'move' && this.carry) { const c = this.carry; c.it.x = c.ox; c.it.y = c.oy; Game.S.items.push(c.it); Game.rebuild(); this.carry = null; }
@@ -451,12 +460,13 @@ const UI = {
   tapWorld(wx, wy, drag) {
     const S = Game.S, tx = Math.floor(wx / TILE), ty = Math.floor(wy / TILE);
     if (this.mode === 'build') {
-      const why = Game.canPlace(this.sel, tx, ty);
+      const free = this.free, why = Game.canPlace(this.sel, tx, ty, free);
       R.ghost = { id: this.sel, x: tx, y: ty, ok: !why };
       if (why) { if (!drag) { Snd.play('bad'); this.toast(why, 'bad'); } return; }
-      Game.place(this.sel, tx, ty);
+      Game.place(this.sel, tx, ty, free);
       Snd.play(F[this.sel].cat === 'floor' ? 'pop' : 'place');
-      if (S.money < F[this.sel].price) { this.toast('錢不夠了', 'bad'); this.endBuild(); }
+      if (free) { this.toast(`擺好了！謝謝阿德伯的${F[this.sel].n}`, 'good'); this.endBuild(); }
+      else if (S.money < F[this.sel].price) { this.toast('錢不夠了', 'bad'); this.endBuild(); }
       else this.updateBB();
       return;
     }
@@ -516,7 +526,7 @@ const UI = {
 
   // ---------- 彈出視窗 ----------
   checkPending() {
-    if (this.modal || !Game.pending.length) return;
+    if (this.modal || !Game.pending.length || Guide.coachOpen || Story.open || Help.open) return;
     const p = Game.pending.shift();
     this.modal = p; this.mdl.hidden = false;
     Music.paused = false;
@@ -546,7 +556,7 @@ const UI = {
     if (p.k === 'story') {
       Snd.play('event');
       const g = p.g, txt = STORY[Math.min(p.y, STORY.length) - 2] || pick(STORY_LATE);
-      this.mdl.innerHTML = `<div class="mc story"><p class="lbl">第 ${p.y} 年・夜市故事</p><div class="sp">${this.img(Art.portrait(Tut.look(), 'happy'), 4)}<div class="say"><b>阿德伯</b><p>${txt}</p></div></div>
+      this.mdl.innerHTML = `<div class="mc story"><p class="lbl">第 ${p.y} 年・夜市故事</p><div class="sp">${this.img(Art.portrait(Guide.look(), 'happy'), 4)}<div class="say"><b>阿德伯</b><p>${txt}</p></div></div>
         ${p.prev ? `<p class="${p.done ? 'good' : 'mute'}">去年的目標「${esc(p.prev.title)}」${p.done ? '達成！ ' + Game.rewardText(p.prev.r) : '沒有達成…'}</p>` : ''}
         <div class="qbox"><small>第 ${p.y} 年的目標</small><b>${esc(g.title)}</b><small class="good">獎勵：${Game.rewardText(g.r)}</small></div><button class="btn go big" data-a="ok">今年也要加油！</button></div>`;
       return;

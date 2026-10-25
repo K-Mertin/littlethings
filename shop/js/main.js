@@ -8,7 +8,7 @@ const Main = {
     Legacy.load();
     R.init($('#cv'));
     UI.init();
-    Tut.init();
+    Guide.init(); Hint.init();
     addEventListener('resize', () => { R.resize(); UI.measure(); });
     R.resize();
     this.input();
@@ -21,7 +21,7 @@ const Main = {
   // 標題背景：一間熱鬧的示範小店
   demo() {
     Game.demoMode = true;
-    Game.fresh('夜市小吃王', { noTut: true });
+    Game.fresh('夜市小吃王', {});
     const S = Game.S;
     S.lv = 2; S.W = 10; S.H = 7; S.items = []; S.pop = 800; S.money = 1e6; S.week = 30;
     const add = (id, x, y) => S.items.push({ uid: S.uid++, id, x, y, lv: 1, dirty: 0 });
@@ -41,6 +41,7 @@ const Main = {
     this.state = 'title';
     $('#title').hidden = false; $('#hud').hidden = true; $('#bar').hidden = true; $('#panel').hidden = true; $('#buildbar').hidden = true; $('#info').hidden = true;
     R.top = 0; R.bottom = 0; R.zoomMul = 1; R.pan.x = 0; R.pan.y = 0;
+    if (Story.open) { Story.done = null; Story.close(); } Guide._begin = false; Help.close(); Guide.coachOpen = false; $('#coach').hidden = true; $('#coachDim').hidden = true; $('#goal').hidden = true; Hint.hide();
     const box = $('#slots'); let h = '';
     for (let i = 0; i < 3; i++) {
       const m = this.slotMeta(i);
@@ -49,6 +50,7 @@ const Main = {
     }
     box.innerHTML = h;
     this.titleScen();
+    const gb = document.querySelector('[data-a2="guide"]'); if (gb) { const on = Prefs.d.guide !== false; gb.classList.toggle('on', on); gb.querySelector('b').textContent = on ? '開' : '關'; }
     const mb = document.querySelector('[data-a2="music"] b'); if (mb) mb.textContent = Prefs.d.music ? '開' : '關';
     Music.play('title');
   },
@@ -73,12 +75,18 @@ const Main = {
     const scen = o.scen || this.scen || 'std';
     Game.demoMode = false;
     UI.closePanel(); UI.closeInfo();
-    Game.fresh(n, { scen, gen: o.gen || 1, perks: Legacy.d.perks, noTut: (o.gen || 1) > 1 || Prefs.d.tutDone && scen !== 'std' });
+    const gen = o.gen || 1, guide = gen === 1 && Prefs.d.guide !== false;
+    Game.fresh(n, { scen, gen, perks: Legacy.d.perks, guide });
     UI.slot = i;
     this.enter();
     const sc = SCENARIOS.find(x => x.id === scen);
-    if (o.gen > 1) Game.say('intro', { title: `第 ${o.gen} 代老闆`, big: n, text: `上一代把店交給你了！傳承加成已經生效。<br>從小攤車重新開始，看看這一代能走多遠吧！`, icon: 'star' });
-    else if (scen !== 'std') Game.say('intro', { title: sc.n, big: n, text: sc.d, icon: 'star' });
+    const intro = () => {
+      if (gen > 1) Game.say('intro', { title: `第 ${gen} 代老闆`, big: n, text: `上一代把店交給你了！傳承加成已經生效。<br>從小攤車重新開始，看看這一代能走多遠吧！`, icon: 'star' });
+      else if (scen !== 'std') Game.say('intro', { title: sc.n, big: n, text: sc.d, icon: 'star' });
+    };
+    // 新手引導：先播開場故事，再由阿德伯一課一課帶
+    if (guide) { UI.setSpeed(0); Story.play(() => { intro(); Guide.begin(); }); }
+    else intro();
     UI.save(i, false);
   },
   enter() {
@@ -86,6 +94,8 @@ const Main = {
     $('#title').hidden = true; $('#hud').hidden = false; $('#bar').hidden = false;
     R.zoomMul = 1; R.pan.x = 0; R.pan.y = 0;
     UI.setSpeed(1);
+    Guide.applyGates(); Guide._gk = '';
+    document.querySelectorAll('.nw').forEach(e => e.classList.remove('nw'));
     UI.measure();
     this.seasonMusic();
     Snd.play('start');
@@ -158,6 +168,9 @@ const Main = {
       if (this.state !== 'play' || e.target.closest('input')) return;
       if (e.code === 'Space') { e.preventDefault(); UI.setSpeed(UI.speed ? 0 : UI.lastSpeed); }
       if (/^Digit[0-3]$/.test(e.code)) UI.setSpeed(+e.code.slice(5));
+      if (Guide.coachOpen && (e.code === 'Space' || e.code === 'Enter')) { e.preventDefault(); const ok = $('#coach [data-g="ok"]'); if (ok) ok.click(); else Guide.tapCoach(); return; }
+      if (Story.open || Guide.coachOpen) return;
+      if (Help.open) { if (e.code === 'Escape') Help.close(); return; }
       if (e.code === 'Escape') { if (UI.modal) return; if (UI.mode !== 'play') UI.endBuild(); else if (UI.panel) UI.closePanel(); else UI.closeInfo(); }
     });
     // 標題畫面按鈕
@@ -171,6 +184,8 @@ const Main = {
       else if (b.dataset.a2 === 'scen') { const sc = SCENARIOS.find(x => x.id === b.dataset.v); if (!Legacy.scenOpen(sc)) { Snd.play('bad'); $('#scenBox .scd').textContent = '通關一次（看到結局）或傳承後解鎖。'; return; } this.scen = sc.id; Snd.play('click'); this.titleScen(); }
       else if (b.dataset.a2 === 'perks') { this.showPerks = !this.showPerks; Snd.play('tab'); this.titleScen(); }
       else if (b.dataset.a2 === 'perk') { const r = Legacy.buy(b.dataset.v); Snd.play(r ? 'bad' : 'level'); this.titleScen(); }
+      else if (b.dataset.a2 === 'guide') { Prefs.d.guide = Prefs.d.guide === false; Prefs.save(); Snd.play('click'); const on = Prefs.d.guide !== false; b.classList.toggle('on', on); b.querySelector('b').textContent = on ? '開' : '關'; }
+      else if (b.dataset.a2 === 'help') { Snd.play('tab'); Help.show('flow'); }
       else if (b.dataset.a2 === 'music') { Prefs.d.music = !Prefs.d.music; Prefs.d.sfx = Prefs.d.music; Prefs.save(); Snd.applyVol(); b.querySelector('b').textContent = Prefs.d.music ? '開' : '關'; }
     });
   },
@@ -182,7 +197,8 @@ const Main = {
       R.top = 0; R.bottom = 0;
     } else {
       UI.checkPending();
-      const sp = UI.modal ? 0 : SPEEDS[UI.speed];
+      const sp = UI.modal || Guide.blocking() ? 0 : SPEEDS[UI.speed];
+      Guide.coachTick(dt);
       Music.paused = sp === 0 && !UI.modal;
       if (sp) {
         this.acc += dt * sp;
@@ -192,20 +208,24 @@ const Main = {
         if (n >= 6) this.acc = 0;
       }
       this.hudT = (this.hudT || 0) - dt;
-      if (this.hudT <= 0) { this.hudT = 0.25; UI.refreshHud(); UI.measure(); Tut.update(); if (UI.info?.s && !UI.inf.hidden) UI.showStaff(Game.srt.get(UI.info.s.uid)); }
+      this.hintT = (this.hintT || 0) + dt;
+      if (this.hintT >= 1) { Hint.tick(this.hintT); this.hintT = 0; }
+      if (this.hudT <= 0) { this.hudT = 0.25; UI.refreshHud(); UI.measure(); Guide.update(); if (UI.info?.s && !UI.inf.hidden) UI.showStaff(Game.srt.get(UI.info.s.uid)); }
       this.saveT += dt;
       if (this.saveT > 60) { this.saveT = 0; UI.save(UI.slot, false); }
     }
-    R.perfTick(dt);
-    R.draw(dt);
+    // 開場故事蓋住整個畫面的時候不用畫街景
+    if (!Story.open) { R.perfTick(dt); R.draw(dt); }
     requestAnimationFrame(t2 => this.frame(t2));
   },
 };
 
 // 測試/除錯用
 window.__shop = {
-  Game, UI, Main, R,
+  Game, UI, Main, R, Guide, Story, Help, Hint,
+  skipIntro() { if (Story.open) { Story.done = null; Story.close(); } Guide._begin = false; Guide.skipAll(true); },
   run(weeks, auto) {
+    if (auto && (Story.open || (Guide.ob() && Guide.ob().ch !== -1))) this.skipIntro(); // 自動玩家不跑新手引導
     for (let w = 0; w < weeks; w++) {
       const target = Game.S.week + 1;
       let guard = 0;
