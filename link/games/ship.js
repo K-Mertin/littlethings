@@ -169,7 +169,7 @@
 .sp-nm{font-weight:900;font-size:13px;line-height:1.15;text-align:center;color:#fff;max-width:100%;padding:0 2px;flex:none;word-break:break-all}
 .sp-kid .sp-nm{color:#1f2346;font-size:14px}
 .sp-ctl{flex:1;min-height:0;width:100%;display:flex;align-items:center;justify-content:center;position:relative}
-.sp-btn{width:min(66cqh,78cqw,104px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;font-size:min(30cqh,44px);line-height:1;
+.sp-btn{width:min(100cqh - 46px,76cqw,104px);margin-bottom:9px;aspect-ratio:1;border-radius:50%;display:grid;place-items:center;font-size:min(30cqh,44px);line-height:1;
   background:radial-gradient(circle at 35% 30%,color-mix(in srgb,var(--cc) 45%,#fff),var(--cc) 58%,color-mix(in srgb,var(--cc) 70%,#000));
   box-shadow:0 0 0 5px #1b2038,0 0 0 7px #596291,0 7px 0 5px #11152b,inset 0 -5px 0 rgba(0,0,0,.18);transition:transform .07s,box-shadow .07s}
 .sp-kid .sp-btn{box-shadow:0 0 0 5px #fff,0 0 0 8px color-mix(in srgb,var(--cc) 60%,#000),0 8px 0 7px rgba(0,0,0,.18),inset 0 -6px 0 rgba(0,0,0,.18)}
@@ -191,22 +191,22 @@
 .sp-sl{position:relative;width:94%;height:min(78cqh,76px);touch-action:none}
 .sp-trk{position:absolute;left:8%;right:8%;top:34%;height:10px;border-radius:5px;background:#141930;box-shadow:inset 0 2px 3px #000,0 0 0 2px #596291}
 .sp-kid .sp-trk{background:#e6ebff;box-shadow:inset 0 2px 3px rgba(0,0,0,.2),0 0 0 2px var(--cc)}
-.sp-nt{position:absolute;top:60%;transform:translateX(-50%);font-family:var(--round);font-weight:700;font-size:15px;color:#8a93b8;min-width:24px;text-align:center}
+.sp-nt{position:absolute;top:66%;transform:translateX(-50%);font-family:var(--round);font-weight:700;font-size:15px;color:#8a93b8;min-width:24px;text-align:center}
 .sp-nt::before{content:'';position:absolute;left:50%;top:-11px;width:2px;height:7px;background:#6f779a}
 .sp-nt.cur{color:#ffd166;transform:translateX(-50%) scale(1.2)}
 .sp-kid .sp-nt{color:#9aa3c8;font-size:20px}
 .sp-kid .sp-nt.cur{color:var(--cc)}
-.sp-knob{position:absolute;top:calc(34% + 5px);left:8%;width:32px;height:42px;border-radius:10px;transform:translate(-50%,-50%);display:grid;place-items:center;font-size:22px;
+.sp-knob{position:absolute;top:calc(34% + 5px);left:8%;width:28px;height:36px;border-radius:10px;transform:translate(-50%,-50%);display:grid;place-items:center;font-size:22px;
   background:linear-gradient(#fff,#c6cce4);box-shadow:0 4px 0 #6f779a,0 6px 10px rgba(0,0,0,.45);transition:left .16s cubic-bezier(.3,1.5,.5,1)}
 .sp-knob::after{content:'';position:absolute;left:4px;right:4px;top:50%;height:4px;margin-top:-2px;border-radius:2px;background:var(--cc)}
 .sp-kid .sp-knob{width:46px;height:46px;border-radius:50%;border:3px solid var(--cc)}
 .sp-kid .sp-knob::after{display:none}
 .sp-knob.drag{transition:none;transform:translate(-50%,-50%) scale(1.12)}
-.sp-dl{position:relative;height:100%;max-height:150px;max-width:96cqw;aspect-ratio:1}
-.sp-dk{position:absolute;left:25%;top:25%;width:50%;height:50%;border-radius:50%;
+.sp-dl{position:relative;height:100%;width:min(96cqw,190px)}
+.sp-dk{position:absolute;left:50%;top:50%;height:min(78%,84px);aspect-ratio:1;transform-origin:50% 50%;translate:-50% -50%;border-radius:50%;
   background:radial-gradient(circle at 38% 32%,#f2f4ff,#9aa3c8 60%,#5a6288);box-shadow:0 0 0 4px #1b2038,0 5px 0 4px #11152b;transition:transform .2s cubic-bezier(.3,1.5,.5,1)}
 .sp-dk::before{content:'';position:absolute;left:50%;top:6%;width:5px;height:38%;margin-left:-2.5px;border-radius:3px;background:var(--cc);box-shadow:0 0 6px var(--cc)}
-.sp-dlb{position:absolute;width:34%;height:30%;transform:translate(-50%,-50%);font-weight:900;font-size:min(13cqh,16px);color:#8a93b8;border-radius:10px;display:grid;place-items:center}
+.sp-dlb{position:absolute;width:30%;height:44%;transform:translate(-50%,-50%);font-weight:900;font-size:min(15cqh,17px);color:#8a93b8;border-radius:10px;display:grid;place-items:center}
 .sp-dlb.cur{color:#ffd166;background:rgba(255,209,102,.12)}
 
 .sp-plus{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);font-family:var(--round);font-weight:700;font-size:42px;color:#ffd166;
@@ -608,7 +608,7 @@
       if (c.ty === 'bt') inner = `<button class="sp-btn" aria-label="${esc(c.nm)}">${ic}</button>`;
       else if (c.ty === 'tg') inner = `<div class="sp-tog"><span class="sp-slot"><span class="sp-lev">${ic}</span></span><span class="sp-tl"><span class="u">${kid ? '⬆️開' : '開'}</span><span class="sp-led"></span><span class="d">${kid ? '⬇️關' : '關'}</span></span></div>`;
       else if (c.ty === 'sl') inner = `<div class="sp-sl"><div class="sp-trk"></div>${c.lb.map((l, i) => `<span class="sp-nt" style="left:${sliderPct(i, c.n)}%">${esc(l)}</span>`).join('')}<div class="sp-knob">${ic}</div></div>`;
-      else inner = `<div class="sp-dl"><button class="sp-dk" aria-label="${esc(c.nm)}"></button>${c.lb.map((l, i) => { const a = DIAL_ANG[i] * Math.PI / 180; return `<button class="sp-dlb" data-v="${i}" style="left:${50 + 39 * Math.sin(a)}%;top:${50 - 39 * Math.cos(a)}%">${esc(garb(l))}</button>`; }).join('')}</div>`;
+      else inner = `<div class="sp-dl"><button class="sp-dk" aria-label="${esc(c.nm)}"></button>${c.lb.map((l, i) => { const a = DIAL_ANG[i] * Math.PI / 180; return `<button class="sp-dlb" data-v="${i}" style="left:${50 + 35 * Math.sign(Math.sin(a))}%;top:${50 - 27 * Math.sign(Math.cos(a))}%">${esc(garb(l))}</button>`; }).join('')}</div>`;
       return `<div class="sp-c sp-k-${c.ty}${c.ty === 'sl' ? ' w2' : ''}" data-c="${c.id}" style="--cc:${c.co}"><div class="sp-ctl">${inner}</div>${nm}</div>`;
     }
     function buildPanel(gl) {
@@ -618,7 +618,7 @@
       if (gl) { const r = seeded(V.ev.seed + V.me * 7919); order = order.map(c => [r(), c]).sort((a, b) => a[0] - b[0]).map(x => x[1]); R = seeded(V.ev.seed + 13 + V.me); }
       const units = order.reduce((s, c) => s + (c.ty === 'sl' ? 2 : 1), 0), rows = Math.max(1, Math.ceil(units / cols));
       el.grid.style.gridTemplateColumns = `repeat(${cols},minmax(0,1fr))`;
-      el.grid.style.gridTemplateRows = `repeat(${rows},minmax(${kid ? 116 : land ? 88 : 94}px,1fr))`;
+      el.grid.style.gridTemplateRows = `repeat(${rows},minmax(${kid ? 116 : land ? 86 : rows >= 5 ? 80 : 94}px,1fr))`;
       el.grid.style.gridAutoFlow = 'row dense';
       el.grid.innerHTML = order.map(c => ctlHTML(c, R)).join('');
       cels = {}; el.grid.querySelectorAll('.sp-c').forEach(e => { cels[e.dataset.c] = e; });

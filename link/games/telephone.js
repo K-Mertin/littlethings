@@ -436,7 +436,7 @@
         };
         const fit = () => {
           const w = cw.clientWidth, h = cw.clientHeight; if (!w || !h) return;
-          px = Math.min(w, h); sizeCanvas(cv, px); paint(cv, strokes);
+          px = Math.min(w, h) - 8; sizeCanvas(cv, px); paint(cv, strokes);
         };
         const pos = e => { const r = cv.getBoundingClientRect(); return [clamp(Math.round((e.clientX - r.left) / r.width * 1000), 0, 1000), clamp(Math.round((e.clientY - r.top) / r.height * 1000), 0, 1000)]; };
         const seg = (s, from) => {
@@ -516,7 +516,7 @@
         let first = true;
         const fit = () => {
           const w = cw.clientWidth, h = cw.clientHeight; if (!w || !h) return;
-          sizeCanvas(cv, Math.min(w, h));
+          sizeCanvas(cv, Math.min(w, h) - 8);
           if (first) { first = false; replay(cv, v.dr || [], Math.min(2200, 500 + nPts(v.dr || []) * 3)); } else if (!raf) paint(cv, v.dr || []);
         };
         requestAnimationFrame(fit);
@@ -798,7 +798,7 @@
 .tp-from{margin-left:auto;display:flex;align-items:center;gap:4px;font-size:12px;color:var(--mute);font-weight:700}
 .tp-from img{width:26px;height:26px}
 .tp-dmain,.tp-gmain{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px}
-.tp-cwrap{flex:1;min-height:120px;position:relative;display:flex;align-items:center;justify-content:center}
+.tp-cwrap{flex:1;min-height:120px;padding:4px;position:relative;display:flex;align-items:center;justify-content:center}
 .tp-cv{background:#fff;border-radius:18px;box-shadow:0 0 0 3px #ffd9bf,0 8px 24px rgba(60,70,140,.12);touch-action:none;display:block}
 .tp-cvhint{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:#c9cfe0;font-weight:900;font-size:18px;pointer-events:none;white-space:nowrap}
 .tp-empty{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:#aab2c8;font-weight:900;font-size:24px;pointer-events:none;white-space:nowrap}

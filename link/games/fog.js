@@ -419,7 +419,7 @@
     rules: kid => kid ? [
       '👆 手指按住螢幕拖一拖，小探險家就會走',
       '🔦 你只看得到燈籠照亮的地方，走過的路會畫在小地圖上',
-      '💎 撿寶石！黃色大顆最多分，🧰 寶箱更多分',
+      '💎 撿寶石！黃色大顆最多分，🎁 寶箱更多分',
       '🔦👟🗺️ 撿道具：燈變亮、跑更快、看見地圖',
       '⏱ 2 分鐘，寶石分數最多的人贏！'
     ] : [
@@ -646,7 +646,7 @@
             }
           }
           // bumps (adult)
-          if (!kid) for (let a = 0; a < N; a++) for (let b = a + 1; b < N; b++) {
+          if (!kid && t > 3) for (let a = 0; a < N; a++) for (let b = a + 1; b < N; b++) {
             const A = P[a], B = P[b]; if (A.off || B.off) continue;
             const dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy);
             if (d > 0.62 || (A.bump[B.id] || 0) > t) continue;
@@ -737,7 +737,7 @@
         results() {
           return {
             rows: P.map(e => kid
-              ? { id: e.id, key: e.score, line: `💎 撿到 ${e.cnt} 顆寶石${e.chests ? ` · 🧰×${e.chests}` : ''} · ${e.score} 分` }
+              ? { id: e.id, key: e.score, line: `💎 撿到 ${e.cnt} 顆寶石${e.chests ? ` · 🎁×${e.chests}` : ''} · ${e.score} 分` }
               : { id: e.id, key: e.score, line: `${e.score} 分 · 💎${e.cnt}${e.chests ? ` · 🎁寶箱×${e.chests}` : ''} · 👻被抓 ${e.caught} 次` }),
             sub: kid ? '比一比誰撿到最多寶石分數！' : '寶石總分排名'
           };
