@@ -122,11 +122,13 @@ const Music = {
     const base = s.key + root;
     // 貝斯
     const bassPat = s.drums >= 3 ? [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1] : [1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1];
-    if (bassPat[st]) Snd.tone(midi(base - 12 + (st % 8 === 6 ? 12 : 0)), sp * 0.9, 'triangle', 0.32, null, when, D);
+    if (bassPat[st]) Snd.tone(midi(base - 12 + (st % 8 === 6 ? 12 : 0)), sp * 0.9, s.bass || 'triangle', s.bass ? 0.16 : 0.32, null, when, D);
+    // 和弦長音（新關卡用）
+    if (s.pad && st === 0) for (const iv of [0, third, 7]) { Snd.tone(midi(base + iv), sp * 15, 'sawtooth', 0.012 * s.pad, null, when, D); Snd.tone(midi(base + iv) * 1.004, sp * 15, 'triangle', 0.03 * s.pad, null, when, D); }
     // 琶音
     if (st % 2 === 0) {
-      const arp = [0, third, 7, 12, 7, third, 0, 12][(st / 2) | 0];
-      Snd.tone(midi(base + 12 + arp), sp * 1.4, 'square', 0.035, null, when, D);
+      const arp = (s.arp || [0, third, 7, 12, 7, third, 0, 12])[(st / 2) | 0];
+      Snd.tone(midi(base + 12 + (arp === 3 || arp === 4 ? third : arp)), sp * 1.4, s.arpW || 'square', 0.035, null, when, D);
     }
     // 旋律
     const ph = this.bars[Math.floor(step / 32) % 4], local = step % 32;
@@ -134,8 +136,8 @@ const Music = {
       const at = n.st + (local >= 16 ? 16 : 0);
       if (local === at && (local < 16 || n.st < 16)) {
         const iv = q === 'm' ? ({ 4: 3, 9: 8 }[n.deg] ?? n.deg) : n.deg;
-        Snd.tone(midi(base + 24 + iv), sp * n.len * 1.6, 'square', 0.055, null, when, D);
-        Snd.tone(midi(base + 24 + iv) * 1.005, sp * n.len * 1.6, 'sawtooth', 0.018, null, when, D);
+        Snd.tone(midi(base + 24 + iv + (s.oct || 0)), sp * n.len * 1.6, s.lead || 'square', s.lead === 'triangle' || s.lead === 'sine' ? 0.09 : 0.055, null, when, D);
+        Snd.tone(midi(base + 24 + iv + (s.oct || 0)) * 1.005, sp * n.len * 1.6, 'sawtooth', 0.018, null, when, D);
       }
     }
     // 鼓
