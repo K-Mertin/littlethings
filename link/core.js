@@ -10,13 +10,17 @@
                      view(null) is the public view (big screen / watchers) and must never contain secrets.
        client(root, api) → runs on every screen in the game: { view(v), destroy?() }
        bot?(view, api)   → optional: plays one random-but-legal move (used by the tests) }
-   host ctx: { kid, players:[{id,name,animal,col}], hasTable, push(), sound(to,name), toast(to,text), online(id), now() }
+   host ctx: { kid, players:[{id,name,animal,col}], hasTable, push(), sound(to,name), toast(to,text), online(id), leader() → id, now() }
              push(): views changed, send them. Games with `rate` (Hz) are sent that often automatically.
    client api: { me (id or null), isTable, spectator, kid, players(), player(id), send(d), sfx(name),
                  vibrate(ms), avatar(p,size) → img url, color(p) → {c,d}, toast(text) } */
 const $ = id => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
 const LGAMES = [];
+/* lobby groups; a game may set cat itself, otherwise the table below decides */
+const LCATS = [{ id: 'table', n: '🃏 桌上遊戲' }, { id: 'draw', n: '🎨 創意歡樂' }, { id: 'action', n: '🏃 各自視角動作' }, { id: 'brain', n: '🧠 比快比腦力' }, { id: 'coop', n: '🤝 大家合作' }];
+const LCAT_OF = { cards: 'table', treasure: 'table', spy: 'draw', telephone: 'draw', snake: 'action', fog: 'action', race: 'brain', ship: 'coop' };
+const lcatOf = g => LCAT_OF[g.id] || (LCATS.some(c => c.id === g.cat) ? g.cat : 'brain');   // never lose a game to an unknown cat
 const MAX_PLAYERS = 6;
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const rnd = (a, b) => a + Math.random() * (b - a);
@@ -193,6 +197,7 @@ const Host = {
       sound: (to, name, arg) => this.fx(to, 'sfx', name, arg),
       toast: (to, text) => this.fx(to, 'toast', text),
       online: id => { const p = this.byId(id); return !!(p && p.online); },
+      leader: () => { const l = this.leader(); return l ? l.id : null; },
       now: () => performance.now() / 1000
     };
     try { this.game = this.def.host(ctx); } catch (e) { console.error(e); this.toLobby(); return; }
@@ -485,13 +490,18 @@ const App = {
     $('lvBtn').onclick = () => { if (this.role !== 'host' || confirm('關閉房間？大家都會離開。')) this.leave(); };
     if (lead) {
       const gbox = $('games');
-      LGAMES.forEach((g, i) => {
+      LCATS.forEach(c => {
+        const list = LGAMES.filter(g => lcatOf(g) === c.id); if (!list.length) return;
+        const h = document.createElement('div'); h.className = 'gcat'; h.textContent = c.n; gbox.appendChild(h);
+        list.forEach(g => addCard(g));
+      });
+      function addCard(g) {
         const b = document.createElement('button');
         b.className = 'gcard' + (g.id === R.pick ? ' on' : '');
         b.innerHTML = `<span class="ic">${g.icon}</span><span class="nm">${esc(g.name)}</span><span class="bl">${esc(g.blurb)}</span><span class="pp">${g.players[0]}–${g.players[1]} 人</span>`;
-        b.onclick = () => { Sfx.play('pop'); this.send({ k: 'pick', id: g.id }); };
+        b.onclick = () => { Sfx.play('pop'); App.send({ k: 'pick', id: g.id }); };
         gbox.appendChild(b);
-      });
+      }
       $('modeSeg').querySelectorAll('button').forEach(b => b.onclick = () => this.send({ k: 'mode', kid: b.dataset.k === '1' }));
       $('startBtn').onclick = () => { Sfx.play('go'); this.send({ k: 'start' }); };
     }
