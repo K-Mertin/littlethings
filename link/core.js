@@ -20,7 +20,7 @@ const LGAMES = [];
 /* lobby groups; a game may set cat itself, otherwise the table below decides */
 const LCATS = [{ id: 'table', n: '🃏 桌上遊戲' }, { id: 'draw', n: '🎨 創意歡樂' }, { id: 'action', n: '🏃 各自視角動作' }, { id: 'brain', n: '🧠 比快比腦力' }, { id: 'coop', n: '🤝 大家合作' }];
 const LCAT_OF = { cards: 'table', treasure: 'table', spy: 'draw', telephone: 'draw', snake: 'action', fog: 'action', race: 'brain', ship: 'coop' };
-const lcatOf = g => g.cat || LCAT_OF[g.id] || 'brain';
+const lcatOf = g => LCAT_OF[g.id] || (LCATS.some(c => c.id === g.cat) ? g.cat : 'brain');   // never lose a game to an unknown cat
 const MAX_PLAYERS = 6;
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const rnd = (a, b) => a + Math.random() * (b - a);

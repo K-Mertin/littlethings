@@ -47,7 +47,7 @@
     host(ctx) {
       const kid = ctx.kid, ids = ctx.players.map(p => p.id), n = ids.length, now = () => ctx.now();
       const G = kid ? 4 : 6, NC = G * G, PC = kid ? PK : PA;
-      const HIDE = 40, TURN = kid ? 30 : 20, REV = kid ? 2.1 : 1.7, RMAX = kid ? (n <= 3 ? 8 : 6) : 10, MAXDIG = 3;
+      const HIDE = 40, TURN = kid ? 30 : 20, REV = kid ? 2.1 : 1.7, RMAX = kid ? (n === 2 ? 10 : n === 3 ? 8 : 6) : 10, MAXDIG = 3;
       const S = {};
       ids.forEach(id => S[id] = { pl: PC.map(() => null), lay: Array(NC).fill('.'), dug: Array(NC).fill('.'), rdy: false, pts: 0, found: 0, cells: 0, traps: 0, probe: null, best: false });
       let ph = 'hide', st = '', T = now() + HIDE, tm = HIDE, over = false, hide0 = now();
@@ -171,15 +171,17 @@
             return;
           }
           if (ph !== 'dig' || st !== 'pick' || cur !== id) return;
+          const okT = t => typeof t === 'string' && ids.includes(t);
           if (d.aim) {
             const t = d.aim.t, c = d.aim.c | 0;
+            if (!okT(t)) return;
             if (t !== id && S[t] && isOpen(t) && c >= -1 && c < NC) { aim = { t, c: c >= 0 && S[t].dug[c] === '.' ? c : -1 }; push(); }
             return;
           }
-          if (d.dig) { dig(id, d.dig.t, d.dig.c | 0, false); return; }
+          if (d.dig) { if (okT(d.dig.t)) dig(id, d.dig.t, d.dig.c | 0, false); return; }
           if (d.probe && !kid && !s.probe) {
             const t = d.probe.t, c = d.probe.c | 0;
-            if (t === id || !S[t] || !isOpen(t) || c < 0 || c >= NC || (c % G) > G - 2 || (c / G | 0) > G - 2) return;
+            if (!okT(t) || t === id || !S[t] || !isOpen(t) || c < 0 || c >= NC || (c % G) > G - 2 || (c / G | 0) > G - 2) return;
             const area = [c, c + 1, c + G, c + G + 1], o = S[t];
             const y = area.some(i => o.lay[i] !== '.' && o.lay[i] !== 'T' && o.dug[i] === '.') ? 1 : 0;
             s.probe = { t, c, y }; lp = { seq: ++seq, by: id, t, c };
@@ -346,6 +348,7 @@
       const gainTxt = g => g > 0 ? `+${g}⭐` : g < 0 ? `${g}⭐` : '';
 
       /* ---------- layout ---------- */
+      const LANDF = 1 + 2 * (kid ? 0.24 : 0.2) / G;   // island width / grid width
       const ro = new ResizeObserver(() => layout(true));
       ro.observe(root);
       function fit(I, maxW, minW) {
@@ -364,7 +367,7 @@
         if (w2 !== wide) { wide = w2; wrap.classList.toggle('tr-wide', wide); }
         if (mode === 'pub') {
           const list = V.order, n = list.length, oc = elBody.querySelector('.tr-ocean'); if (!oc) return;
-          const headH = tv ? 62 : 40, avH = elBody.clientHeight - (tv ? 100 : 70), avW = elBody.clientWidth - 16;
+          const headH = tv ? 62 : 40, avH = elBody.clientHeight - (tv ? 16 : 70), avW = elBody.clientWidth - 16;
           const f = 1 + 2 * (kid ? 0.24 : 0.2) / G;   // land padding around the grid
           let best = 0, bc = 1;
           for (let cols = 1; cols <= n; cols++) {
@@ -379,13 +382,15 @@
         }
         if (mode === 'hide') {
           const I = isl[me]; if (!I) return;
-          fit(I, wide ? Math.min(H - 90, W * 0.5) : Math.min(W - 64, 520), 150);
+          if (wide) I.size(Math.min((elBody.clientHeight - 34) / LANDF, W * 0.5));
+          else fit(I, Math.min((W - 52) / LANDF, 520), 150);
           return;
         }
         if (mode === 'dig') {
           const main = curMain && (curMain === me ? isl._me : isl[curMain]);
-          if (mineI && !elBody.querySelector('.tr-mine').hidden) mineI.size(wide ? Math.min(W * 0.26, H * 0.42) : Math.max(110, Math.min(W * 0.36, 160)));
-          if (main) fit(main, wide ? Math.min(H - 90, W * 0.5) : Math.min(W - 64, 520), 150);
+          const small = V.cur === me && (V.st === 'pick' || V.st === 'rev');
+          if (mineI && !elBody.querySelector('.tr-mine').hidden) mineI.size(wide ? Math.min(W * 0.24, H * (small ? 0.3 : 0.42)) : small ? 96 : Math.max(110, Math.min(W * 0.36, 160)));
+          if (main) { if (wide) main.size(Math.min((elBody.clientHeight - 34) / LANDF, W * 0.5)); else fit(main, Math.min((W - 52) / LANDF, 520), 150); }
         }
       }
 
@@ -393,8 +398,9 @@
       function build(m) {
         mode = m; isl = {}; mineI = null; curMain = undefined; structKey = '';
         if (m === 'pub') {
-          elBody.innerHTML = `<div class="tr-ocean"></div><div class="tr-news" hidden></div>`;
+          elBody.innerHTML = `<span class="tr-boat">⛵</span><span class="tr-boat b2">🐬</span><div class="tr-ocean"></div><div class="tr-news" hidden></div>`;
           const oc = elBody.querySelector('.tr-ocean');
+          if (tv) { const old = Q('.tr-top .tr-news'); if (old) old.remove(); Q('.tr-top').insertBefore(elBody.querySelector('.tr-news'), elTm); }
           V.order.forEach(id => { const I = Island(id, false); I.el.classList.add('pub'); oc.appendChild(I.el); isl[id] = I; });
         } else if (m === 'hide') {
           elBody.innerHTML = `<div class="tr-hide">
@@ -475,13 +481,14 @@
           if (v.ph === 'hide') { I.mask.hidden = false; set(I.mask, v.ready.includes(id) ? 'r' : 'h', v.ready.includes(id) ? '<span class="ok">✔</span>' : '<span class="tr-shh">🤫</span>'); }
           else I.mask.hidden = true;
         });
-        const nw = elBody.querySelector('.tr-news');
+        const nw = root.querySelector('.tr-news');
         let nk = '', nh = '';
         if (v.ph === 'dig' && v.st === 'rev' && v.last) { nk = 'r' + v.last.seq; nh = `${av(v.last.by, 128)}<b>${nm(v.last.by)}</b><span class="r ${v.last.r}${v.last.full ? ' full' : ''}">${resultText(v.last)}</span>${v.last.g ? `<i>${gainTxt(v.last.g)}</i>` : ''}`; }
         else if (v.ph === 'dig' && v.st === 'skip') { nk = 's' + v.cur + v.rd; nh = `${av(v.cur, 128)}<b>${nm(v.cur)}</b><span class="r">😵 踩到陷阱，休息一回合</span>`; }
         else if (v.ph === 'dig' && v.st === 'go') { nk = 'go'; nh = `<span class="r big">⛏️ 開挖！輪流去挖別人的島</span>`; }
         else if (v.ph === 'dig' && v.st === 'pick') { nk = 'p' + v.cur + v.dg; nh = `${av(v.cur, 128)}<b>${nm(v.cur)}</b><span class="r">${v.dg > 0 ? '再挖一次！' : '的回合'}${v.aim && v.aim.t ? ` → ${av(v.aim.t, 96)}${nm(v.aim.t)} 的島` : '…選島中'}</span>`; nk += v.aim ? v.aim.t : ''; }
         else if (v.ph === 'end') { nk = 'end'; nh = `<span class="r big">🏁 ${v.why === 'clear' ? '寶藏快被挖光了！' : '時間到！'}看看大家藏在哪裡</span>`; }
+        wrap.classList.toggle('tr-hasnews', !!nk);
         if (nk) { nw.hidden = false; if (set(nw, nk, nh)) { nw.classList.remove('in'); void nw.offsetWidth; nw.classList.add('in'); } } else nw.hidden = true;
         nw.classList.toggle('pick', v.st === 'pick');
       }
@@ -702,12 +709,13 @@
         });
         // my small island
         const mineBox = elBody.querySelector('.tr-mine');
-        mineBox.hidden = ownBig || my;
+        mineBox.hidden = ownBig;
+        mineBox.classList.toggle('small', v.cur === me && (v.st === 'pick' || v.st === 'rev'));
         if (!ownBig) {
           set(mineBox.querySelector('.tr-ml'), 'ml' + v.isl[me].l, `🏝️ 我的島・還藏著 <b>${v.isl[me].l}/${TRE}</b>`);
           mineI.render({ d: v.isl[me].d, lay: v.mine });
         }
-        const sk = [my, ownBig, curMain, wide, v.st === 'go'].join();
+        const sk = [my, ownBig, curMain, wide, v.st === 'go', mineBox.hidden, mineBox.classList.contains('small')].join();
         if (sk !== structKey) { structKey = sk; layout(); main.pk = ''; main.bk = ''; main.curK = ''; main.render(main.lastO); if (!ownBig) { mineI.pk = ''; mineI.render(mineI.lastO); } }
       }
 
@@ -767,6 +775,7 @@
         const mine = isMyTurn() || (V.ph === 'hide' && me && V.my && !V.my.rdy);
         if (mine && s <= 5 && s > 0 && s !== lastTick) { lastTick = s; api.sfx('tick'); }
         if (lpUntil && performance.now() > lpUntil) { lpUntil = 0; render(); }
+        if (mode !== 'pub' && !wide && !drag && elBody.scrollHeight - elBody.clientHeight > 2) layout();
       }, 200);
 
       const cleanups = [];
@@ -842,7 +851,7 @@
 .tr-bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#fff3a0,#ffd23f);border-radius:9px;transition:width .2s linear}
 .tr-bar.low i{background:#ff6b6b}
 .tr-body{flex:1;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch;position:relative}
-.tr-myturn .tr-ph{color:#fff36b;animation:tr-beat .6s ease-in-out infinite alternate}
+.tr-myturn .tr-ph{color:#fff36b;animation:tr-beat .6s ease-in-out infinite alternate;transform-origin:left center}
 /* score chips */
 .tr-sc{display:flex;gap:5px;flex-wrap:wrap;justify-content:center;padding:3px 2px;flex:none}
 .tr-sc::-webkit-scrollbar{display:none}
@@ -896,11 +905,11 @@
 .tr-c.sel{box-shadow:0 0 0 3px #fff,0 0 0 6px #ff7a45;z-index:1}
 .tr-c.pv{background:#c5f5ad!important;box-shadow:0 0 0 3px #22c26a}
 .tr-c.pvx{background:#ffc0c0!important;box-shadow:0 0 0 3px var(--bad)}
-.tr-c.aim{box-shadow:inset 0 0 0 4px #ff7a45,0 0 16px rgba(255,122,69,.9);animation:tr-aim .7s ease-in-out infinite alternate;z-index:1}
+.tr-c.aim{background:linear-gradient(160deg,#ffe2c8,#ffb98a)!important;outline:4px solid #ff7a45;outline-offset:-2px;box-shadow:0 0 18px rgba(255,122,69,.95);animation:tr-aim .7s ease-in-out infinite alternate;z-index:1}
 .tr-c.aim::after{content:'⛏️';font-size:calc(var(--cs)*.5);animation:tr-shovel .7s ease-in-out infinite}
 .tr-e{font-size:calc(var(--cs)*.56);line-height:1;pointer-events:none}
 .tr-chest{width:calc(var(--cs)*.8);height:auto;pointer-events:none;filter:drop-shadow(0 2px 0 rgba(90,46,12,.35))}
-.tr-pcs,.tr-prbs{position:absolute;inset:0;pointer-events:none}
+.tr-pcs,.tr-prbs{position:absolute;inset:0;pointer-events:none;z-index:2}
 .tr-pco{position:absolute;display:grid;place-items:center;border-radius:calc(var(--cs)*.22)}
 .tr-pco.own{background:rgba(255,255,255,.38);border:2.5px dashed rgba(150,95,20,.6)}
 .tr-pco.own.trap{background:rgba(255,120,100,.25);border-color:rgba(200,40,40,.55)}
@@ -958,7 +967,8 @@
 .tr-msg small{display:block;font-size:12.5px;color:var(--mute);font-weight:700}
 .tr-msg.ok{background:#eaffef;color:#127a40}
 .tr-msg.big{font-size:22px;padding:14px}
-.tr-tray{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.tr-tray{display:flex;gap:6px;justify-content:center}
+.tr-tray .tr-pc{flex:1 1 0;min-width:0;max-width:110px}
 .tr-tray:empty{display:none}
 .tr-pc{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:rgba(255,255,255,.95);border-radius:16px;padding:6px 8px;min-width:64px;min-height:64px;border:3px solid transparent;box-shadow:0 3px 0 rgba(0,40,80,.22);transition:transform .15s,border-color .15s;touch-action:none}
 .tr-pc.on{border-color:#ff7a45;transform:translateY(-3px);box-shadow:0 6px 0 rgba(0,40,80,.22)}
@@ -1014,6 +1024,8 @@
 .tr-mine{background:rgba(255,255,255,.16);border-radius:20px;padding:6px 22px 4px;align-self:center}
 .tr-ml{color:#fff;font-weight:900;font-size:14px;text-align:center;text-shadow:0 1px 0 rgba(0,40,80,.4)}
 .tr-ml b{font-family:var(--round);color:#fff36b}
+.tr-mine.small{padding:4px 14px 2px}
+.tr-mine.small .tr-ml{font-size:12px}
 .tr-isl.mine-big .tr-ih .tr-hn{color:#fff36b}
 .tr-hide .tr-grid{touch-action:none}
 .tr-hide>.tr-sc{order:0}.tr-hide>.tr-hint{order:1}.tr-hide>.tr-gbox{order:2}.tr-hide>.tr-tray{order:3}.tr-hide>.tr-acts{order:4}
@@ -1024,7 +1036,14 @@
 .tr-wide .tr-dig{display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-areas:"main sc" "main now" "main tabs" "main acts" "main mine";grid-template-rows:auto auto auto auto 1fr;column-gap:16px;row-gap:8px;align-items:start}
 .tr-wide .tr-dig>.tr-gbox{grid-area:main;align-self:center}
 .tr-wide .tr-dig>.tr-sc{grid-area:sc}.tr-wide .tr-dig>.tr-now{grid-area:now}.tr-wide .tr-dig>.tr-tabs{grid-area:tabs}.tr-wide .tr-dig>.tr-acts{grid-area:acts}.tr-wide .tr-dig>.tr-mine{grid-area:mine;justify-self:center}
-.tr-wide .tr-gbox.main{padding:16px 8px 8px 18px}
+.tr-wide .tr-gbox.main{padding:20px 8px 6px 18px}
+.tr-wide .tr-gbox.main .tr-isl{position:relative}
+.tr-wide .tr-gbox.main .tr-ih{position:absolute;top:-16px;left:50%;transform:translateX(-50%);z-index:6;min-height:0;background:rgba(10,70,120,.75);border-radius:999px;padding:2px 10px 2px 2px}
+.tr-wide .tr-gbox.main .tr-hav{width:26px;height:26px}
+.tr-wide .tr-wrap{gap:4px;padding-top:6px}
+.tr-wide .tr-ph{font-size:17px}
+.tr-wide .tr-rd{font-size:12px;padding:4px 10px}
+.tr-wide .tr-tm{font-size:17px;padding:2px 10px}
 /* public ocean map */
 .tr-ocean{display:grid;justify-content:center;align-content:center;gap:12px 34px;min-height:100%;padding:18px 8px 64px}
 .tr-ocean .tr-isl{animation:tr-float 5s ease-in-out infinite}
@@ -1039,6 +1058,11 @@
 .tr-news .r.big{padding:6px 10px}
 .tr-news i{font-style:normal;font-family:var(--round);color:#e08600;background:#fff3c4;border-radius:999px;padding:0 10px}
 .tr-news.pick{background:rgba(255,255,255,.85)}
+.tr-boat{position:absolute;top:38%;left:-80px;font-size:34px;pointer-events:none;opacity:.85;animation:tr-sail 46s linear infinite;filter:drop-shadow(0 4px 2px rgba(0,30,60,.3))}
+.tr-boat.b2{top:auto;bottom:16%;font-size:28px;animation:tr-swim 31s linear -12s infinite}
+.tr-tv .tr-boat{font-size:56px}.tr-tv .tr-boat.b2{font-size:44px}
+@keyframes tr-sail{from{transform:translateX(0)}to{transform:translateX(calc(100vw + 160px))}}
+@keyframes tr-swim{0%{transform:translateX(calc(100vw + 100px)) scaleX(1)}100%{transform:translateX(-100px) scaleX(1)}}
 /* big screen */
 .tr-tv .tr-wrap{padding:14px 28px 18px;gap:10px}
 .tr-tv .tr-rd{font-size:24px;padding:8px 20px}
@@ -1049,10 +1073,17 @@
 .tr-tv .tr-hav{width:52px;height:52px}
 .tr-tv .tr-ih em{font-size:18px;padding:2px 12px}
 .tr-tv .tr-ih .tr-dots{font-size:16px}
-.tr-tv .tr-news{font-size:30px;bottom:18px;padding:8px 30px 8px 8px}
-.tr-tv .tr-news img{width:70px;height:70px}
-.tr-tv .tr-news .r img{width:46px;height:46px}
+.tr-tv .tr-top .tr-news{position:static;transform:none;flex:1;min-width:0;max-width:none;justify-content:flex-start;font-size:32px;padding:4px 26px 4px 4px;box-shadow:0 4px 0 rgba(0,40,80,.25);overflow:hidden}
+.tr-tv .tr-top .tr-news.in{animation:tr-pop2 .35s cubic-bezier(.3,1.5,.5,1)}
+@keyframes tr-pop2{from{transform:scale(.94);opacity:.5}}
+.tr-tv .tr-top .tr-news.pick{background:rgba(255,255,255,.92)}
+.tr-tv.tr-hasnews .tr-ph{display:none}
+.tr-tv .tr-news img{width:58px;height:58px}
+.tr-tv .tr-news .r img{width:42px;height:42px}
+.tr-tv .tr-ocean{padding-bottom:18px}
 .tr-tv .tr-prb span{font-size:18px}
+.tr-tv .tr-cur{width:calc(var(--cs)*1.15);height:calc(var(--cs)*1.15)}
+.tr-tv .tr-cur span{font-size:calc(var(--cs)*.7)}
 .tr-tv .tr-tag{font-size:15px}
 /* overlay */
 .tr-ov{position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;background:rgba(0,30,70,.4);animation:tr-fade .2s;pointer-events:none}
@@ -1069,7 +1100,7 @@
 @keyframes tr-bob{50%{transform:translateY(-4px)}}
 @keyframes tr-float{50%{transform:translateY(-6px)}}
 @keyframes tr-twinkle{50%{transform:scale(1.25) rotate(12deg)}}
-@keyframes tr-aim{to{box-shadow:inset 0 0 0 4px #ff7a45,0 0 26px rgba(255,122,69,1)}}
+@keyframes tr-aim{to{box-shadow:0 0 30px rgba(255,122,69,1);transform:scale(1.05)}}
 @keyframes tr-shovel{50%{transform:rotate(-22deg)}}
 @keyframes tr-dig{0%{transform:rotate(0)}40%{transform:rotate(-45deg) translateY(-6px)}100%{transform:rotate(15deg) translateY(4px)}}
 @keyframes tr-crab{0%,100%{transform:translateX(0)}50%{transform:translateX(calc(var(--cs)*.25))}}
