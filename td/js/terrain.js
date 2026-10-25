@@ -237,17 +237,19 @@ const Terrain = (() => {
         break;
       }
       case 'bamboo': {
-        // 一叢竹子：幾根有節的竹竿＋細長竹葉
+        // 一叢竹子：粗細不一、有竹節的竹竿，頂端一團團細長竹葉
         const sz = 0.85 + v * 0.4;
-        ell(x, u * 0.04, 0, u * 0.3 * sz, u * 0.1 * sz, 'rgba(0,0,0,.22)');
-        const n = 4 + Math.floor(v * 2);
-        for (let i = 0; i < n; i++) {
-          const bx = (i - (n - 1) / 2) * u * 0.09 + (rng() - 0.5) * u * 0.04, h = u * (0.7 + rng() * 0.45) * sz, lean = (rng() - 0.5) * 0.12, w = u * 0.045;
-          const g = i % 2 ? '#7ab84a' : '#62a03c';
-          x.save(); x.translate(bx, 0); x.rotate(lean);
-          x.fillStyle = lgrad(x, -w / 2, 0, w / 2, 0, [shade(g, 0.25), g, shade(g, -0.3)]); x.fillRect(-w / 2, -h, w, h);
-          for (let k = 1; k < 5; k++) { const ny = -h * k / 5; x.fillStyle = shade(g, -0.35); x.fillRect(-w * 0.6, ny - u * 0.008, w * 1.2, u * 0.016); x.fillStyle = rgba('#ffffff', 0.3); x.fillRect(-w * 0.5, ny - u * 0.016, w * 1.0, u * 0.006); }
-          for (let k = 0; k < 4; k++) { const ny = -h * (0.45 + k * 0.15), sd = k % 2 ? 1 : -1; x.save(); x.translate(0, ny); x.rotate(sd * (0.5 + rng() * 0.5)); x.fillStyle = shade('#6cbc4c', rng() * 0.2 - 0.1); x.beginPath(); x.moveTo(0, 0); x.quadraticCurveTo(sd * u * 0.1, -u * 0.04, sd * u * 0.24, -u * 0.02); x.quadraticCurveTo(sd * u * 0.1, u * 0.02, 0, 0); x.fill(); x.restore(); }
+        ell(x, u * 0.04, 0, u * 0.32 * sz, u * 0.1 * sz, 'rgba(0,0,0,.22)');
+        const n = 4 + Math.floor(v * 3), stalks = [];
+        for (let i = 0; i < n; i++) stalks.push({ bx: (i - (n - 1) / 2) * u * 0.075 + (rng() - 0.5) * u * 0.04, h: u * (0.75 + rng() * 0.45) * sz, lean: (rng() - 0.5) * 0.16, w: u * (0.045 + rng() * 0.02), g: ['#6aae44', '#7ac04e', '#5a9a3a'][i % 3] });
+        const leafy = (cx, cy, r, c) => { for (let k = 0; k < 7; k++) { const a = -Math.PI / 2 + (k - 3) * 0.42 + (rng() - 0.5) * 0.2, l = r * (0.8 + rng() * 0.5); x.save(); x.translate(cx, cy); x.rotate(a); x.fillStyle = shade(c, (rng() - 0.5) * 0.25); x.beginPath(); x.moveTo(0, 0); x.quadraticCurveTo(l * 0.5, -l * 0.16, l, 0); x.quadraticCurveTo(l * 0.5, l * 0.12, 0, 0); x.fill(); x.restore(); } };
+        for (const st2 of stalks) {
+          x.save(); x.translate(st2.bx, 0); x.rotate(st2.lean);
+          const { h, w, g } = st2;
+          x.fillStyle = lgrad(x, -w / 2, 0, w / 2, 0, [shade(g, 0.3), g, shade(g, -0.32)]); x.fillRect(-w / 2, -h, w, h);
+          for (let k = 1; k < 6; k++) { const ny = -h * k / 6; x.fillStyle = shade(g, -0.4); x.fillRect(-w * 0.6, ny - u * 0.009, w * 1.2, u * 0.018); x.fillStyle = rgba('#ffffff', 0.35); x.fillRect(-w * 0.5, ny - u * 0.02, w * 0.9, u * 0.007); }
+          leafy(0, -h * 0.98, u * 0.2 * sz, '#5aae42');
+          if (h > u * 0.85) leafy((rng() - 0.5) * u * 0.05, -h * 0.68, u * 0.15 * sz, '#68bc4e');
           x.restore();
         }
         break;

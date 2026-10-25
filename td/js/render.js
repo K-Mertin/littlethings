@@ -231,7 +231,7 @@ const Render = (() => {
       return null;
     }
     const y0 = e.fly ? gy - s * 0.68 + Math.sin(e.wob * 0.5) * s * 0.05 : e.riv ? gy - s * 0.06 : gy;
-    const vis = e.vis ? 1 : 0.3;
+    const vis = e.vis ? 1 : e.boss ? 0.7 : 0.3;
     ctx.globalAlpha = fade * vis;
     if (e.riv) drawBoat(ctx, a, gy + s * 0.02, R, s, face, time, e);
     else if (!e.fly) ell(ctx, a, gy, R * (e.boss ? 1.1 : 0.85), R * 0.3, 'rgba(20,10,20,.3)');
@@ -399,11 +399,18 @@ const Render = (() => {
   const POOL_COL = [['#c8ff6a', '#7ad04a', '#2f6a1a'], ['#f4ff8a', '#d8ff4a', '#7a8a1a'], ['#e8b8ff', '#9a4ad8', '#3a1a5a']];
   function poolSprite(kind) {
     if (poolC[kind]) return poolC[kind];
-    const S = 128, c = Gfx.canvas(S, S), x = c.getContext('2d'), r = mkRng(kind * 7 + 3), C = S / 2, cols = POOL_COL[kind];
-    x.beginPath(); for (let i = 0; i < 14; i++) { const a = i / 14 * TAU, rr = C * (0.72 + r() * 0.24); x.lineTo(C + Math.cos(a) * rr, C + Math.sin(a) * rr); } x.closePath();
-    x.fillStyle = rgrad(x, C * 0.9, C * 0.85, 0, C, [rgba(cols[0], 0.95), rgba(cols[1], 0.85), rgba(cols[2], 0.75)]); x.fill();
-    x.strokeStyle = rgba(cols[2], 0.6); x.lineWidth = 4; x.stroke();
-    for (let i = 0; i < 6; i++) { const a = r() * TAU, d = r() * C * 0.5; x.fillStyle = rgba('#ffffff', 0.25); x.beginPath(); x.ellipse(C + Math.cos(a) * d, C + Math.sin(a) * d, C * 0.12, C * 0.05, a, 0, TAU); x.fill(); }
+    const S = 160, c = Gfx.canvas(S, S), x = c.getContext('2d'), r = mkRng(kind * 7 + 3), C = S / 2, cols = POOL_COL[kind];
+    // 平滑的不規則一灘（經過一圈隨機半徑點的平滑曲線）＋旁邊幾滴濺出來的小水滴
+    const n = 11, pts = [];
+    for (let i = 0; i < n; i++) { const a = i / n * TAU + (r() - 0.5) * 0.3, rr = C * (0.6 + r() * 0.22); pts.push([C + Math.cos(a) * rr, C + Math.sin(a) * rr]); }
+    const blob = () => { x.beginPath(); for (let i = 0; i <= n; i++) { const p0 = pts[i % n], p1 = pts[(i + 1) % n], mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2; if (!i) x.moveTo(mx, my); else x.quadraticCurveTo(p0[0], p0[1], mx, my); } x.closePath(); };
+    for (let i = 0; i < 6; i++) { const a = r() * TAU, d = C * (0.82 + r() * 0.14), rr = C * (0.04 + r() * 0.05); x.fillStyle = rgba(cols[1], 0.75); x.beginPath(); x.ellipse(C + Math.cos(a) * d, C + Math.sin(a) * d, rr, rr * 0.8, 0, 0, TAU); x.fill(); }
+    blob(); x.fillStyle = rgrad(x, C * 0.92, C * 0.88, C * 0.05, C * 0.85, [rgba(cols[0], 0.95), rgba(cols[1], 0.88), rgba(cols[2], 0.7)]); x.fill();
+    x.save(); blob(); x.clip();
+    x.strokeStyle = rgba(cols[2], 0.55); x.lineWidth = 6; blob(); x.stroke();
+    for (let i = 0; i < 5; i++) { const a = r() * TAU, d = r() * C * 0.4; x.fillStyle = rgba('#ffffff', 0.22); x.beginPath(); x.ellipse(C * 0.9 + Math.cos(a) * d, C * 0.85 + Math.sin(a) * d, C * (0.08 + r() * 0.08), C * 0.035, a, 0, TAU); x.fill(); }
+    x.restore();
+    x.fillStyle = rgba('#ffffff', 0.5); x.beginPath(); x.ellipse(C * 0.78, C * 0.72, C * 0.18, C * 0.06, -0.4, 0, TAU); x.fill();
     return (poolC[kind] = c);
   }
   function drawPools(ctx, G, s, time) {
@@ -1286,7 +1293,7 @@ const Render = (() => {
     const fogR = G.fog || G.eclipse ? (G.eclipse ? 2.2 : 2.0) + G.M.sight : 0;
     for (const t of G.towers) {
       const h = Art.topH(t.k, t.tier) / Art.HS;
-      if (fogR) add(t.cx, t.cy, 0.3, fogR * 1.15, LCOL[t.k] || '#ffcf7a', 0.85);
+      if (fogR) add(t.cx, t.cy, 0.3, fogR * 1.15, null, 0.85);
       if (t.k === 'magic' || t.k === 'frost') add(t.cx, t.cy, h + 0.25, 1.6 + t.tier * 0.15, LCOL[t.k], 0.8 + 0.2 * Math.sin(time * 3 + t.id));
       else if (t.k === 'alchemy') add(t.cx, t.cy, h, 1.2, '#9ef06a', 0.6 + 0.15 * Math.sin(time * 3 + t.id));
       else if (dark) add(t.cx, t.cy, h * 0.7, 1.4, LCOL[t.k] || '#ffcf7a', 0.75 + 0.1 * Math.sin(time * 9 + t.id));

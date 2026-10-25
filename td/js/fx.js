@@ -10,7 +10,7 @@ const FX = (() => {
   let cap = 320;
   function reset(g) {
     G = g; parts = []; decals = []; deaths = []; coins = []; lights = []; ghosts = []; amb = []; clouds = [];
-    st.castleHit = 0; st.freeze = 0; st.meteorSky = 0; st.bossIntro = null; st.flashW = 0; st.ambT = 0;
+    st.castleHit = 0; st.freeze = 0; st.meteorSky = 0; st.bossIntro = null; st.flashW = 0; st.ambT = 0; st.rainA = 0; st.windA = 0; st.thunderA = 0; st.fogA = 0; st.dawn = 0; st.weatherFlash = 0; st.stormA = 0;
     if (g) { const rr = mkRng(g.L.seed * 13 + 1); for (let i = 0; i < 3; i++) clouds.push({ x: rr() * COLS * 1.4 - 2, y: rr() * ROWS, sc: 0.8 + rr() * 0.6, sp: 0.18 + rr() * 0.12, v: i }); }
   }
   function setLow(low) { st.low = low; cap = low ? 200 : 320; }
@@ -287,7 +287,7 @@ const FX = (() => {
     if (th === 'forest' || th === 'meadow' || th === 'autumn') { if (count('leaf') < (th === 'meadow' ? 5 : 14) * lim && R() < 0.3) part('leaf', rx(), ry(), 2.5 + R(), 0.2, 0.1, -0.5, 6, 0.06, R() < 0.5 ? Terrain.pal(th).leaf : '#c8a040'); }
     if (th === 'meadow' || th === 'coast' || th === 'forest') { if (count('fly') < 4 * lim && R() < 0.1) part('fly', rx(), ry(), 0.4, 0, 0, 0, 8, 0.05, ['#ffffff', '#ffd36b', '#ff9ec7', '#9fd8ff'][Math.floor(R() * 4)]); }
     if (th === 'bamboo') { if (count('leaf') < 12 * lim && R() < 0.35) part('leaf', rx(), ry(), 2.5 + R(), 0.2, 0.1, -0.5, 6, 0.06, R() < 0.6 ? '#9ad86a' : '#c8e08a'); if (count('fly') < 3 * lim && R() < 0.06) part('fly', rx(), ry(), 0.4, 0, 0, 0, 8, 0.05, '#ffd1e6'); }
-    if (th === 'harbor') { if (count('mist') < 16 * lim && R() < 0.5) part('mist', -1, ry(), 0.2 + R() * 0.5, 0.25 + R() * 0.25, (R() - 0.5) * 0.05, 0, 14, 0.9 + R() * 0.8, '#8aa8c0'); }
+    if (th === 'harbor') { if (count('mist') < 7 * lim && R() < 0.25) part('mist', -1, ry(), 0.2 + R() * 0.5, 0.3 + R() * 0.25, (R() - 0.5) * 0.05, 0, 12, 0.6 + R() * 0.4, '#8aa8c0'); }
     if (th === 'river') { if (count('fly') < 5 * lim && R() < 0.1) part('fly', rx(), ry(), 0.4, 0, 0, 0, 8, 0.05, ['#9fd8ff', '#ffffff', '#ffd36b'][Math.floor(R() * 3)]); if (count('leaf') < 5 * lim && R() < 0.15) part('leaf', rx(), ry(), 2.5 + R(), 0.2, 0.1, -0.5, 6, 0.06, '#9adc78'); }
     if (th === 'plateau' && G.weather && G.weather.k === 'wind') { if (count('leaf') < 30 * lim) for (let i = 0; i < 2; i++) part('leaf', -0.5, ry(), 0.5 + R() * 1.5, 4 + R() * 2, (R() - 0.5) * 0.5, 0, 4, 0.06, R() < 0.5 ? '#b0ae7a' : '#8a8a5a'); }
     if (th === 'amber') { if (count('ember') < 22 * lim) part('ember', rx(), ry(), 0, (R() - 0.5) * 0.2, -0.05, 0.3 + R() * 0.4, 4 + R() * 2, 0.025 + R() * 0.02, R() < 0.5 ? '#ffb03a' : '#ffe08a'); }

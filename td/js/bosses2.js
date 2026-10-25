@@ -116,14 +116,20 @@
     part(x, P.fn(q => { q.moveTo(-R * 0.62, -R * 1.25); q.lineTo(R * 0.62, -R * 1.25); q.lineTo(R * 0.7, -R * 0.75); q.lineTo(R * 0.35, -R * 0.82); q.lineTo(R * 0.1, -R * 0.68); q.lineTo(-R * 0.2, -R * 0.82); q.lineTo(-R * 0.7, -R * 0.75); q.closePath(); }), tiger, 0, -R * 1.0, R * 0.6, { lw: lw(R), tex: q => { q.strokeStyle = '#2a1a10'; q.lineWidth = R * 0.07; q.lineCap = 'round'; for (const fx of [-0.45, -0.1, 0.25, 0.5]) { q.beginPath(); q.moveTo(fx * R, -R * 1.2); q.quadraticCurveTo(fx * R + R * 0.08, -R * 1.05, fx * R, -R * 0.9); q.stroke(); } } });
     // 身體（肌肉）
     part(x, P.blob([-R * 0.65, -R * 1.2, -R * 0.75, -R * 2.0, 0, -R * 2.35, R * 0.75, -R * 2.0, R * 0.65, -R * 1.2, 0, -R * 1.1]), skin, 0, -R * 1.7, R * 0.75, { lw: lw(R) * 1.1, tex: q => { q.strokeStyle = 'rgba(20,40,100,.35)'; q.lineWidth = R * 0.05; q.beginPath(); q.moveTo(0, -R * 2.1); q.lineTo(0, -R * 1.3); q.moveTo(-R * 0.4, -R * 1.75); q.quadraticCurveTo(0, -R * 1.6, R * 0.4, -R * 1.75); q.stroke(); } });
-    // 頭：白色亂髮＋雙角
-    x.save(); x.translate(R * 0.1, -R * 2.6); x.rotate(s.hit ? -0.2 : pw > 0.2 ? -0.1 : 0);
-    for (let i = 0; i < 9; i++) { const a = Math.PI * (0.85 + i * 0.16), l = R * (0.75 + (i % 2) * 0.2) + (pw ? pw * R * 0.15 : 0); part(x, P.fn(q => { q.moveTo(Math.cos(a - 0.2) * R * 0.35, Math.sin(a - 0.2) * R * 0.35); q.quadraticCurveTo(Math.cos(a) * l * 0.8, Math.sin(a) * l * 0.8 - R * 0.1, Math.cos(a) * l, Math.sin(a) * l); q.quadraticCurveTo(Math.cos(a + 0.1) * l * 0.6, Math.sin(a + 0.1) * l * 0.6, Math.cos(a + 0.2) * R * 0.35, Math.sin(a + 0.2) * R * 0.35); q.closePath(); }), mat('#f4f4ff'), Math.cos(a) * l * 0.6, Math.sin(a) * l * 0.6, R * 0.25, { lw: lw(R) * 0.6 }); }
-    part(x, P.circ(R * 0.05, 0, R * 0.45), skin, R * 0.05, 0, R * 0.45, { lw: lw(R) });
-    for (const sd of [-1, 1]) part(x, P.fn(q => { q.moveTo(sd * R * 0.2 + R * 0.05, -R * 0.35); q.quadraticCurveTo(sd * R * 0.45, -R * 0.75, sd * R * 0.3 + R * 0.1, -R * 1.0); q.quadraticCurveTo(sd * R * 0.2 + R * 0.05, -R * 0.65, sd * R * 0.05, -R * 0.38); q.closePath(); }), horn, sd * R * 0.25, -R * 0.65, R * 0.2, { lw: lw(R) * 0.7 });
+    // 頭：一大團往後飄的白色鬃毛、雙角、怒目
+    x.save(); x.translate(R * 0.12, -R * 2.68); x.rotate(s.hit ? -0.2 : pw > 0.2 ? -0.1 : 0); x.scale(1.25, 1.25);
+    const fl2 = s.walk ? Math.sin(s.ph) * 0.08 : s.an === 'idle' ? s.br * 0.05 : pw * 0.15;
+    const mane = P.fn(q => { q.moveTo(R * 0.25, -R * 0.42); for (let i = 0; i <= 8; i++) { const a = -1.2 - i * 0.28 + fl2, l = R * (0.7 + (i % 2) * 0.22 + i * 0.03); q.quadraticCurveTo(Math.cos(a + 0.14) * l * 0.85, Math.sin(a + 0.14) * l * 0.85, Math.cos(a) * l, Math.sin(a) * l); } q.quadraticCurveTo(-R * 0.6, R * 0.35, -R * 0.2, R * 0.3); q.closePath(); });
+    part(x, mane, mat('#f4f4ff', { sh: 0.4 }), -R * 0.3, -R * 0.2, R * 0.6, { lw: lw(R) * 0.8, tex: q => { q.strokeStyle = 'rgba(150,160,210,.6)'; q.lineWidth = R * 0.03; for (let i = 0; i < 5; i++) { const a = -1.5 - i * 0.35 + fl2; q.beginPath(); q.moveTo(Math.cos(a) * R * 0.3, Math.sin(a) * R * 0.3); q.quadraticCurveTo(Math.cos(a + 0.2) * R * 0.55, Math.sin(a + 0.2) * R * 0.55, Math.cos(a) * R * 0.8, Math.sin(a) * R * 0.8); q.stroke(); } } });
+    part(x, P.circ(R * 0.05, 0, R * 0.42), skin, R * 0.05, 0, R * 0.42, { lw: lw(R) });
+    for (const sd of [-1, 1]) part(x, P.fn(q => { q.moveTo(sd * R * 0.18 + R * 0.08, -R * 0.32); q.quadraticCurveTo(sd * R * 0.5 + R * 0.05, -R * 0.7, sd * R * 0.32 + R * 0.12, -R * 1.02); q.quadraticCurveTo(sd * R * 0.22 + R * 0.06, -R * 0.62, sd * R * 0.04 + R * 0.04, -R * 0.36); q.closePath(); }), horn, sd * R * 0.25, -R * 0.65, R * 0.2, { lw: lw(R) * 0.7 });
+    // 濃眉
+    for (const ex of [R * 0.1, R * 0.38]) part(x, P.fn(q => { q.moveTo(ex - R * 0.14, -R * 0.2); q.lineTo(ex + R * 0.12, -R * 0.13); q.lineTo(ex + R * 0.1, -R * 0.07); q.lineTo(ex - R * 0.14, -R * 0.13); q.closePath(); }), mat('#f4f4ff'), ex, -R * 0.14, R * 0.1, { lw: lw(R) * 0.5 });
     const md = s.hit ? 'shut' : s.die ? 'x' : 'angry';
-    eye(x, R * 0.1, -R * 0.05, R * 0.14, { iris: '#ffd36b', mood: md, look: [0.35, 0.1] }); eye(x, R * 0.38, -R * 0.05, R * 0.12, { iris: '#ffd36b', mood: md, look: [0.35, 0.1] });
-    mouth(x, R * 0.25, R * 0.22, R * 0.2, pw > 0.2 || s.hit ? 'roar' : 'grin', R * (0.08 + pw * 0.18));
+    eye(x, R * 0.1, -R * 0.02, R * 0.12, { iris: '#ffd36b', mood: md, look: [0.35, 0.1] }); eye(x, R * 0.36, -R * 0.02, R * 0.11, { iris: '#ffd36b', mood: md, look: [0.35, 0.1] });
+    mouth(x, R * 0.24, R * 0.22, R * 0.2, pw > 0.2 || s.hit ? 'roar' : 'grin', R * (0.08 + pw * 0.18));
+    // 獠牙
+    if (!s.die) for (const tx of [R * 0.12, R * 0.34]) part(x, P.poly([tx - R * 0.03, R * 0.2, tx, R * 0.32, tx + R * 0.03, R * 0.2]), mat('#ffffff'), tx, R * 0.25, R * 0.04, { lw: lw(R) * 0.4 });
     x.restore();
     // 兩手各拿鼓棒：放招時高舉再敲下
     const up = wu > 0 ? wu : 0, strike = s.an === 'cast' && s.t > 0.4 ? Math.max(0, 1 - (s.t - 0.4) / 0.4) : 0;
@@ -149,8 +155,8 @@
       glow(x, () => { x.strokeStyle = '#fff3a0'; x.lineWidth = R * 0.05; x.beginPath(); x.moveTo(-R * 0.6, cy + R * 0.3); x.lineTo(-R * 0.4, cy + R * 0.6); x.lineTo(-R * 0.55, cy + R * 0.65); x.lineTo(-R * 0.3, cy + R * 0.95); x.stroke(); }, '#fff3a0', R * 0.3);
     }
   }
-  def('bossRaijin', { w: 5.4, h: 5.2, ay: 4.2, top: 3.9, vis: 1.22, die: 'bake', boss: true }, (x, R, s) => raijin(x, R, s, false));
-  def('bossRaijin2', { w: 5.4, h: 5.6, ay: 3.9, top: 3.9, vis: 1.22, die: 'bake', boss: true }, (x, R, s) => raijin(x, R, s, true));
+  def('bossRaijin', { w: 5.4, h: 5.5, ay: 4.5, top: 3.9, vis: 1.22, die: 'bake', boss: true }, (x, R, s) => raijin(x, R, s, false));
+  def('bossRaijin2', { w: 5.4, h: 6.1, ay: 5.0, top: 4.4, vis: 1.22, die: 'bake', boss: true }, (x, R, s) => raijin(x, R, s, true));
 
   // ───────── 蝕月魔君：黑金長袍、面具、背後一輪日蝕光環；第二形態光環轉紅、第三形態全身裂出光芒、浮在空中 ─────────
   function eclipse(x, R, s, ph) {

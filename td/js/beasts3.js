@@ -167,47 +167,53 @@
     x.restore();
   });
 
-  // ───────── 狂暴猿：深色粗毛、紅色雞冠頭、鐵護腕、用拳頭著地走 ─────────
-  def('brute', { w: 4.6, h: 4.0, ay: 3.2, top: 2.8, vis: 1.3, die: 'fall' }, (x, R, s) => {
-    const fur = mat('#5a4a5a', { sh: 0.5 }), furD = mat('#3e323e', { sh: 0.5 }), skin = mat('#c89a88', { sh: 0.4 }), iron = mat('#8a909a', { gloss: 0.8 });
+  // ───────── 狂暴猿：暗紅粗毛、火紅雞冠頭、寬肩厚胸、用拳頭著地走（鐵護腕） ─────────
+  def('brute', { w: 4.4, h: 4.0, ay: 3.25, top: 2.85, vis: 1.3, die: 'fall' }, (x, R, s) => {
+    const fur = mat('#7a3e3a', { sh: 0.5 }), furD = mat('#542a28', { sh: 0.5 }), chest = mat('#d8a890', { sh: 0.4 }), iron = mat('#8a909a', { gloss: 0.8 }), mane = mat('#ff6a2a', { sh: 0.4 });
     const ph = s.ph;
-    let by = -R * 1.35, fwd = 0, lean = 0.25;
-    if (s.walk) by -= Math.abs(Math.sin(ph)) * R * 0.12;
-    if (s.sw) { fwd = s.sw > 0 ? s.sw * R * 0.35 : s.sw * R * 0.1; lean = 0.25 + s.sw * 0.25; by -= s.sw < 0 ? -s.sw * R * 0.25 : 0; }
-    if (s.hit) { fwd = -R * 0.12; lean = 0.05; }
-    if (s.die) { lean = 0.25 - s.die * 0.3; }
-    // 後腳
+    let by = -R * 1.2, fwd = 0, lean = 0.1;
+    if (s.walk) by -= Math.abs(Math.sin(ph)) * R * 0.1;
+    if (s.sw) { fwd = s.sw > 0 ? s.sw * R * 0.3 : s.sw * R * 0.08; lean = 0.1 + (s.sw > 0 ? s.sw * 0.2 : s.sw * 0.15); }
+    if (s.hit) { fwd = -R * 0.12; lean = -0.08; }
+    if (s.die) lean = 0.1 - s.die * 0.2;
+    // 腿（短而粗）
     for (const i of [1, 0]) {
-      const a = s.walk ? Math.sin(ph + i * Math.PI) * 0.45 : 0;
-      const [, , fx, fy] = limb2(x, -R * 0.35 + (i ? -R * 0.1 : R * 0.1), by + R * 0.55, a, s.walk ? -Math.max(0, Math.sin(ph + i * Math.PI + 1)) * 0.6 : 0, R * 0.42, R * 0.42, R * 0.2, R * 0.15, i ? furD : fur);
-      part(x, P.ell(fx + R * 0.08, fy - R * 0.06, R * 0.2, R * 0.1), skin, fx, fy, R * 0.18, { lw: lw(R) * 0.7 });
+      const a = s.walk ? Math.sin(ph + i * Math.PI) * 0.45 : s.sw > 0 ? (i ? 0.3 : -0.2) * s.sw : 0;
+      const [, , fx, fy] = limb2(x, -R * 0.25 + (i ? -R * 0.12 : R * 0.12) + fwd * 0.5, by + R * 0.05, a, s.walk ? -Math.max(0, Math.sin(ph + i * Math.PI + 1)) * 0.6 : 0, R * 0.48, R * 0.45, R * 0.24, R * 0.18, i ? furD : fur);
+      part(x, P.ell(fx + R * 0.1, fy - R * 0.06, R * 0.24, R * 0.11), chest, fx, fy, R * 0.2, { lw: lw(R) * 0.7 });
     }
-    x.save(); x.translate(fwd, by); x.rotate(lean);
-    // 後手（著地）
-    const armA = (i) => s.walk ? Math.sin(ph + i * Math.PI + Math.PI) * 0.55 : s.sw ? (i ? -0.3 : s.arc(0.2, -2.6, 0.9)) : s.hit ? -0.8 : 0.1;
+    // 手臂：從肩膀往前下撐地；攻擊時前手高舉再砸下
+    const armA = i => {
+      if (s.sw) return i ? 0.15 : s.arc(0.3, -2.7, 0.55);
+      if (s.hit) return i ? 0.6 : 0.8;
+      if (s.die) return 0.3 - s.die * 0.5;
+      return s.walk ? 0.3 + Math.sin(ph + i * Math.PI + Math.PI) * 0.4 : 0.3;
+    };
     const arm = (i) => {
-      x.save(); x.translate(R * 0.3, -R * 0.55); x.rotate(armA(i));
-      part(x, P.cap(0, 0, 0, R * 1.05, R * 0.27, R * 0.22), i ? furD : fur, 0, R * 0.5, R * 0.3, { lw: lw(R) });
-      part(x, P.rr(-R * 0.25, R * 0.62, R * 0.5, R * 0.2, R * 0.06), iron, 0, R * 0.72, R * 0.25, { lw: lw(R) * 0.7, tex: q => { for (const sx of [-0.15, 0, 0.15]) Gfx.circ(q, sx * R, R * 0.72, R * 0.03, '#d8dee8'); } });
-      part(x, P.ell(0, R * 1.1, R * 0.27, R * 0.2), skin, 0, R * 1.1, R * 0.25, { lw: lw(R) * 0.8 });
+      x.save(); x.translate(R * (0.42 - i * 0.22) + fwd, by - R * 1.0); x.rotate(-armA(i));
+      part(x, P.cap(0, 0, R * 0.1, R * 0.85, R * 0.28, R * 0.25), i ? furD : fur, R * 0.05, R * 0.42, R * 0.28, { lw: lw(R), tex: q => Rig.fur(q, R * 0.05, R * 0.4, R * 0.4, R * 0.6, 6, 'rgba(40,16,16,.45)', R * 0.12, 1.9, R * 0.03, 11 + i) });
+      part(x, P.cap(R * 0.1, R * 0.85, R * 0.14, R * 1.55, R * 0.25, R * 0.23), i ? furD : fur, R * 0.12, R * 1.2, R * 0.25, { lw: lw(R) });
+      part(x, P.rr(-R * 0.13, R * 1.2, R * 0.54, R * 0.19, R * 0.06), iron, R * 0.14, R * 1.3, R * 0.27, { lw: lw(R) * 0.7, tex: q => { for (const sx of [-0.02, 0.14, 0.3]) Gfx.circ(q, sx * R, R * 1.3, R * 0.03, '#e0e6f0'); } });
+      part(x, P.ell(R * 0.16, R * 1.66, R * 0.27, R * 0.2), chest, R * 0.16, R * 1.66, R * 0.25, { lw: lw(R) * 0.8, tex: q => { q.strokeStyle = 'rgba(120,70,60,.5)'; q.lineWidth = R * 0.025; for (let k = 0; k < 3; k++) { q.beginPath(); q.moveTo(R * (0.06 + k * 0.08), R * 1.53); q.lineTo(R * (0.06 + k * 0.08), R * 1.63); q.stroke(); } } });
       x.restore();
     };
     arm(1);
-    // 身體（大胸膛）
-    const body = P.blob([-R * 0.9, -R * 0.1, -R * 0.8, -R * 0.75, -R * 0.1, -R * 1.05, R * 0.6, -R * 0.85, R * 0.75, -R * 0.2, R * 0.4, R * 0.35, -R * 0.4, R * 0.4]);
-    part(x, body, fur, 0, -R * 0.35, R * 0.85, { lw: lw(R) * 1.1, tex: q => { Rig.fur(q, -R * 0.1, -R * 0.4, R * 1.5, R * 0.8, 22, 'rgba(30,20,30,.45)', R * 0.16, 2.2, R * 0.04, 5); q.fillStyle = 'rgba(200,154,136,.85)'; q.beginPath(); q.ellipse(R * 0.35, -R * 0.35, R * 0.32, R * 0.42, 0.3, 0, TAU); q.fill(); } });
-    // 頭（紅色雞冠毛）
-    x.save(); x.translate(R * 0.62, -R * 0.82); x.rotate(-lean * 0.7 + (s.hit ? -0.3 : 0));
-    part(x, P.fn(q => { q.moveTo(-R * 0.35, -R * 0.25); for (let i = 0; i < 5; i++) { const a = -2.6 + i * 0.35; q.lineTo(Math.cos(a) * R * 0.62 - R * 0.05, Math.sin(a) * R * 0.62 - R * 0.05); q.lineTo(Math.cos(a + 0.17) * R * 0.35, Math.sin(a + 0.17) * R * 0.35); } q.closePath(); }), mat('#e5483a', { sh: 0.4 }), 0, -R * 0.4, R * 0.35, { lw: lw(R) * 0.8 });
-    part(x, P.circ(0, 0, R * 0.4), fur, 0, 0, R * 0.4, { lw: lw(R) });
-    part(x, P.ell(R * 0.15, R * 0.1, R * 0.32, R * 0.24), skin, R * 0.15, R * 0.1, R * 0.3, { lw: lw(R) * 0.8 });
-    seg(x, -R * 0.1, -R * 0.12, R * 0.35, -R * 0.15, 'rgba(40,20,30,.8)', R * 0.1);
+    x.save(); x.translate(fwd, by); x.rotate(lean);
+    // 身體：寬肩厚胸、腰比較細（上寬下窄），背上一道隆起
+    const body = P.blob([-R * 0.55, R * 0.05, -R * 0.78, -R * 0.55, -R * 0.55, -R * 1.25, R * 0.15, -R * 1.45, R * 0.8, -R * 1.2, R * 0.85, -R * 0.6, R * 0.45, -R * 0.05, -R * 0.05, R * 0.15]);
+    part(x, body, fur, 0, -R * 0.6, R * 0.85, { lw: lw(R) * 1.1, tex: q => { Rig.fur(q, -R * 0.05, -R * 0.75, R * 1.3, R * 1.1, 22, 'rgba(40,14,14,.45)', R * 0.15, 2.3, R * 0.035, 5); q.fillStyle = 'rgba(216,168,144,.92)'; q.beginPath(); q.ellipse(R * 0.42, -R * 0.72, R * 0.34, R * 0.42, 0.25, 0, TAU); q.fill(); q.strokeStyle = 'rgba(150,90,70,.55)'; q.lineWidth = R * 0.03; q.beginPath(); q.moveTo(R * 0.28, -R * 0.95); q.quadraticCurveTo(R * 0.45, -R * 0.82, R * 0.62, -R * 0.95); q.moveTo(R * 0.3, -R * 0.62); q.quadraticCurveTo(R * 0.45, -R * 0.52, R * 0.6, -R * 0.62); q.stroke(); } });
+    // 頭：濃眉骨、淺色口鼻、紅眼、火紅雞冠毛
+    x.save(); x.translate(R * 0.72, -R * 1.38); x.rotate(-lean * 0.6 + (s.hit ? -0.25 : s.sw > 0 ? 0.1 : 0));
+    for (let i = 0; i < 6; i++) { const a = -2.5 + i * 0.28, l = R * (0.55 + (i % 2) * 0.12); part(x, P.poly([Math.cos(a - 0.12) * R * 0.3, Math.sin(a - 0.12) * R * 0.3, Math.cos(a) * l, Math.sin(a) * l, Math.cos(a + 0.12) * R * 0.3, Math.sin(a + 0.12) * R * 0.3]), mane, Math.cos(a) * l * 0.6, Math.sin(a) * l * 0.6, R * 0.15, { lw: lw(R) * 0.6 }); }
+    part(x, P.blob([-R * 0.38, R * 0.08, -R * 0.32, -R * 0.3, R * 0.05, -R * 0.4, R * 0.4, -R * 0.22, R * 0.45, R * 0.12, R * 0.2, R * 0.36, -R * 0.2, R * 0.32]), fur, 0, 0, R * 0.42, { lw: lw(R) });
+    part(x, P.ell(R * 0.2, R * 0.14, R * 0.3, R * 0.22), chest, R * 0.2, R * 0.14, R * 0.28, { lw: lw(R) * 0.8, tex: q => { Gfx.circ(q, R * 0.3, R * 0.06, R * 0.035, '#5a2a2a'); Gfx.circ(q, R * 0.4, R * 0.06, R * 0.035, '#5a2a2a'); } });
+    part(x, P.fn(q => { q.moveTo(-R * 0.15, -R * 0.12); q.quadraticCurveTo(R * 0.15, -R * 0.24, R * 0.44, -R * 0.12); q.lineTo(R * 0.42, -R * 0.04); q.quadraticCurveTo(R * 0.15, -R * 0.12, -R * 0.12, -R * 0.04); q.closePath(); }), furD, R * 0.15, -R * 0.1, R * 0.2, { lw: lw(R) * 0.6 });
     const md = s.hit ? 'shut' : s.die ? 'x' : 'angry';
-    eye(x, R * 0.08, -R * 0.03, R * 0.1, { iris: '#ff3a2a', mood: md, look: [0.4, 0.1] }); eye(x, R * 0.3, -R * 0.03, R * 0.09, { iris: '#ff3a2a', mood: md, look: [0.4, 0.1] });
-    mouth(x, R * 0.2, R * 0.2, R * 0.16, s.sw > 0.1 || s.hit ? 'roar' : 'grin', R * (0.1 + (s.sw > 0 ? s.sw * 0.15 : 0)));
+    eye(x, R * 0.06, -R * 0.0, R * 0.09, { iris: '#ff3a2a', mood: md, look: [0.4, 0.1] }); eye(x, R * 0.27, -R * 0.0, R * 0.08, { iris: '#ff3a2a', mood: md, look: [0.4, 0.1] });
+    mouth(x, R * 0.24, R * 0.26, R * 0.15, s.sw > 0.1 || s.hit ? 'roar' : 'grin', R * (0.08 + (s.sw > 0 ? s.sw * 0.14 : 0)));
+    x.restore();
     x.restore();
     arm(0);
-    x.restore();
   });
 
   // ───────── 圖騰薩滿：羽毛頭冠、木面具、骷髏圖騰杖（發綠光） ─────────

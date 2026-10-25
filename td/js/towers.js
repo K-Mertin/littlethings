@@ -1420,10 +1420,12 @@ const Towers = (() => {
       palisade(x, u, u * 0.46, u * 0.2, u * 0.22, 'back', undefined, true);
       prism(x, u, 0, u * 0.02, u * 0.66, u * 0.24, '#8a5a32', { tex: 'log', rh: u * 0.055, top: false });
       pyr(x, u, 0, -u * 0.22, u * 0.8, u * 0.5, '#9a7a3e', { style: 'thatch', rows: 7 });
-      // 屋脊的雕龍角（兩根彎角）
-      x.strokeStyle = '#5a3a1e'; x.lineCap = 'round';
-      for (const sd of [-1, 1]) { x.lineWidth = lw(x, u, 0.05); x.beginPath(); x.moveTo(0, -u * 0.7); x.quadraticCurveTo(sd * u * 0.1, -u * 0.86, sd * u * 0.06, -u * 0.98); x.stroke(); x.strokeStyle = '#8a5a32'; x.lineWidth = lw(x, u, 0.028); x.stroke(); x.strokeStyle = '#5a3a1e'; }
-      x.lineCap = 'butt';
+      // 屋脊兩端交叉的山牆板，末端雕成往外捲的龍頭
+      for (const sd of [-1, 1]) {
+        beam(x, u, -sd * u * 0.05, -u * 0.64, sd * u * 0.16, -u * 0.9, u * 0.035, sd < 0 ? '#8a5a32' : '#6a4424');
+        x.strokeStyle = '#5a3a1e'; x.lineWidth = lw(x, u, 0.03); x.lineCap = 'round'; x.beginPath(); x.moveTo(sd * u * 0.16, -u * 0.9); x.quadraticCurveTo(sd * u * 0.26, -u * 0.98, sd * u * 0.22, -u * 0.86); x.stroke(); x.lineCap = 'butt';
+        circ(x, sd * u * 0.19, -u * 0.93, u * 0.012, '#ffd36b');
+      }
       // 門＋牛角頭骨
       arch(x, u, -u * 0.16, -u * 0.04, u * 0.11, u * 0.16, '#2a1a14', K, '#ff9a3a');
       x.save(); x.translate(-u * 0.16, -u * 0.2);
