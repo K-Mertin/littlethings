@@ -36,7 +36,7 @@ function updatePlayer(dt) {
   let dx = (k.ArrowRight || k.KeyD ? 1 : 0) - (k.ArrowLeft || k.KeyA ? 1 : 0) + pad.x;
   let dy = (k.ArrowDown || k.KeyS ? 1 : 0) - (k.ArrowUp || k.KeyW ? 1 : 0) + pad.y;
   const focus = k.ShiftLeft || k.ShiftRight;
-  const sp = focus ? 120 : 215;
+  const sp = (focus ? 120 : 215) * (P.spd || 1);
   const m = Math.hypot(dx, dy); if (m > 1) { dx /= m; dy /= m; }
   let mvx = dx * sp * dt, mvy = dy * sp * dt;
   if (Input.ptr) { mvx += Input.ptr.dx * 1.35; mvy += Input.ptr.dy * 1.35; Input.ptr.dx = 0; Input.ptr.dy = 0; }
@@ -260,7 +260,7 @@ function ring(x, y, n, spd, off = 0, kind) {
 }
 const BEAM_COL = {}, EB_SPR = {};
 function updateEB(dt) {
-  const hr = G.d.hit;
+  const hr = G.d.hit * (P.hitk || 1);
   for (const b of G.eb) {
     b.t += dt;
     if (b.split && b.t > b.split) {

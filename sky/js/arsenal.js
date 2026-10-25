@@ -196,7 +196,7 @@ startStage = function (n) {
 const _hudArs = drawHUD;
 drawHUD = function (c) {
   _hudArs(c);
-  P.opts.forEach((o, i) => { c.fillStyle = ITEM_COL.O[0]; c.beginPath(); c.arc(98 + i * 11, H - 50, 3.6, 0, TAU); c.fill(); c.strokeStyle = '#fff'; c.lineWidth = 0.8; c.stroke(); });
+  P.opts.forEach((o, i) => { c.fillStyle = ITEM_COL.O[0]; c.beginPath(); c.arc(98 + (window.odCap ? odCap() : 0) * 6 + i * 11, H - 50, 3.6, 0, TAU); c.fill(); c.strokeStyle = '#fff'; c.lineWidth = 0.8; c.stroke(); });
   const bn = G.banner;
   if (bn && bn.extra2 && bn.t < 3.2 && G.phase === 'fight') {
     c.globalAlpha = bn.t < 0.3 ? bn.t / 0.3 : bn.t > 2.6 ? Math.max(0, (3.2 - bn.t) / 0.6) : 1;
