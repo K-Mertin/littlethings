@@ -108,6 +108,34 @@
 .modes .tx{min-width:0}
 .modes b{display:block;font-size:18px;font-weight:900;color:var(--ink)}
 .modes span{font-size:13px;color:var(--mute)}
+.modes h5{margin:6px 2px 0;font-size:13px;font-weight:700;color:var(--mute);letter-spacing:.08em}
+.modes button{padding:10px 12px}
+.modes .ic{width:44px;height:44px;font-size:24px}
+.modes .ic.k4{background:linear-gradient(135deg,#14b8a6,#6366f1)}
+.modes .ic.k5{background:linear-gradient(135deg,#f59e0b,#ec4899)}
+.modes .ic.k6{background:linear-gradient(135deg,#fb7185,#e11d48)}
+.modes .ic.k7{background:linear-gradient(135deg,#8b5cf6,#0ea5e9)}
+.card.cov .c-mid,.card.cov .c-face,.card.cov .c-br{display:none}
+.card.can .f{box-shadow:0 0 0 3px #22c55e,0 0 16px 4px rgba(34,197,94,.75)}
+.xzone{position:absolute;z-index:960;border-radius:50%;cursor:pointer;border:3px dashed rgba(255,255,255,.55);background:radial-gradient(circle,rgba(255,255,255,.12),rgba(255,255,255,.04) 70%);touch-action:none;transition:background .15s,border-color .15s}
+.xzone span{position:absolute;left:50%;bottom:8%;transform:translateX(-50%);color:#fff;font-weight:900;font-size:18px;opacity:.85;letter-spacing:.2em}
+.xzone:active{background:radial-gradient(circle,rgba(255,255,255,.35),rgba(255,255,255,.08) 70%)}
+.xzone.hot{border-color:#fde047;animation:xbeat .45s ease-in-out infinite alternate}
+@keyframes xbeat{from{box-shadow:0 0 0 0 rgba(253,224,71,.0)}to{box-shadow:0 0 0 12px rgba(253,224,71,.35)}}
+.xcall{position:absolute;left:50%;transform:translateX(-50%);z-index:965;font-weight:900;color:#fff;line-height:1;pointer-events:none;text-shadow:0 4px 18px rgba(15,23,42,.35);font-family:var(--sans)}
+.xcall.pop{animation:xpop .3s ease-out}
+.xcall.hit{color:#fde047;animation:xhit .5s ease-out}
+@keyframes xpop{from{transform:translateX(-50%) scale(1.35)}to{transform:translateX(-50%) scale(1)}}
+@keyframes xhit{0%{transform:translateX(-50%) scale(1.8)}60%{transform:translateX(-50%) scale(.9)}100%{transform:translateX(-50%) scale(1)}}
+.xhand{position:absolute;transform:translate(-50%,-50%);pointer-events:none;display:flex;flex-direction:column;align-items:center;animation:xslap .35s cubic-bezier(.2,.9,.3,1.4)}
+.xhand b{line-height:1;filter:drop-shadow(0 6px 10px rgba(15,23,42,.35))}
+.xhand span{font-size:13px;font-weight:700;background:#fff;color:#0f172a;border-radius:999px;padding:1px 10px;margin-top:-4px;box-shadow:0 2px 6px rgba(15,23,42,.2)}
+@keyframes xslap{from{transform:translate(-50%,-50%) scale(2.2);opacity:0}to{transform:translate(-50%,-50%) scale(1);opacity:1}}
+.xmsg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:1000;background:#fff;border-radius:22px;padding:16px 26px;text-align:center;box-shadow:0 12px 40px rgba(15,23,42,.35);pointer-events:none;animation:tbpop .2s}
+.xmsg b{display:block;font-size:24px;font-weight:900;color:#0f172a}
+.xmsg span{font-size:15px;color:var(--mute)}
+.xmsg.me b{color:#e11d48}
+.xtip{position:absolute;left:12px;right:12px;text-align:center;z-index:955;color:#fff;font-size:13px;font-weight:500;text-shadow:0 1px 4px rgba(15,23,42,.35);pointer-events:none}
 .res{width:100%;border-collapse:collapse;font-size:14px;margin-top:8px}
 .res td,.res th{padding:7px 4px;border-bottom:1px solid var(--line);text-align:center}
 .res th{color:var(--mute);font-weight:400;font-size:12px}
@@ -937,15 +965,777 @@ const B = {
 };
 
 // =====================================================================
+// 共用：固定種子洗牌（空當接龍局號）、多人座位
+// =====================================================================
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function seededShuffle(arr, seed) { const r = mulberry32((Math.imul(seed, 2654435761) ^ 0x9e3779b9) >>> 0); for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; }
+function rand(a, b) { return a + Math.random() * (b - a); }
+
+// =====================================================================
+// 空當接龍 FreeCell
+// =====================================================================
+const F = {
+  key: 'freecell', title: '空當接龍', vert: true, st: null, hist: [],
+  cards: std52,
+  opt() { return {}; },
+  fresh(seed) {
+    seed = seed >= 1 && seed <= 1000000 ? seed | 0 : 1 + Math.floor(Math.random() * 1000000);
+    const deck = seededShuffle(range(52), seed);
+    const s = { seed, cells: [-1, -1, -1, -1], found: [[], [], [], []], tab: range(8).map(() => []), moves: 0, time: 0, counted: false, done: false };
+    this.dealOrder = [];
+    deck.forEach((id, k) => { s.tab[k % 8].push(id); this.dealOrder.push(id); });
+    this.st = s; this.hist = [];
+  },
+  valid(s) { try { const all = [].concat(s.cells.filter(x => x >= 0), ...s.found, ...s.tab); return s.cells.length === 4 && s.tab.length === 8 && all.length === 52 && new Set(all).size === 52; } catch (e) { return false; } },
+  save() { TB.store.set('poker:freecell', this.st); },
+  layout() {
+    const gapR = 0.08, tight = W < 560;
+    setCW(tight ? Math.min((W - 18) / 8, (H - 40) / 5) : Math.min(W / (8 + 9 * gapR), (H - 40) / 5, 108));
+    const g = tight ? 2 : Math.max(3, Math.round(CW * gapR)), x0 = (W - (8 * CW + 7 * g)) / 2;
+    this.g = { gap: g, x: range(8).map(i => x0 + i * (CW + g)), top: g + 2 };
+    this.g.tabY = this.g.top + CH + Math.max(10, Math.round(g * 2.2));
+    this.g.tabH = H - this.g.tabY - 28;
+    clearSlots();
+    for (let c = 0; c < 4; c++) addSlot('c' + c, this.g.x[c], this.g.top, '');
+    for (let f = 0; f < 4; f++) addSlot('f' + f, this.g.x[4 + f], this.g.top, 'A');
+    for (let t = 0; t < 8; t++) addSlot('t' + t, this.g.x[t], this.g.tabY, '');
+  },
+  pileY(p) {
+    const g = this.g, U = CW < 58 ? Math.max(CH * 0.27, CW * 0.62) : CH * 0.27;
+    const total = U * Math.max(0, p.length - 1);
+    const sc = total > g.tabH - CH ? Math.max(0.2, (g.tabH - CH) / total) : 1;
+    return p.map((_, j) => g.tabY + j * U * sc);
+  },
+  render() {
+    const s = this.st, g = this.g; if (!s) return;
+    s.cells.forEach((id, c) => { if (id >= 0) place(id, g.x[c], g.top, 30, true); });
+    s.found.forEach((f, fi) => f.forEach((id, i) => place(id, g.x[4 + fi], g.top, 20 + i, true)));
+    s.tab.forEach((p, pi) => { const ys = this.pileY(p); p.forEach((id, j) => place(id, g.x[pi], ys[j], 100 + j, true)); });
+    this.hudUpd();
+  },
+  hudUpd() { const s = this.st; hud.textContent = s ? `空當接龍 #${s.seed} · 步數 ${s.moves} · ${fmtTime(s.time)}` : ''; },
+  tick() { const s = this.st; if (s && s.counted && !s.done && !busy) { s.time++; this.hudUpd(); if (s.time % 5 === 0) this.save(); } },
+  locate(id) {
+    const s = this.st;
+    let i = s.cells.indexOf(id); if (i >= 0) return { t: 'c', i };
+    for (let f = 0; f < 4; f++) { i = s.found[f].indexOf(id); if (i >= 0) return { t: 'f', i: f, idx: i }; }
+    for (let t = 0; t < 8; t++) { i = s.tab[t].indexOf(id); if (i >= 0) return { t: 't', i: t, idx: i }; }
+    return null;
+  },
+  isSeq(p, idx) { for (let k = idx + 1; k < p.length; k++) if (isRed(p[k]) === isRed(p[k - 1]) || rk(p[k - 1]) !== rk(p[k]) + 1) return false; return true; },
+  grab(id) {
+    const s = this.st, loc = this.locate(id); if (!loc || s.done) return null;
+    if (loc.t === 'c') return [id];
+    if (loc.t === 'f') return loc.idx === s.found[loc.i].length - 1 ? [id] : null;
+    const p = s.tab[loc.i]; return this.isSeq(p, loc.idx) ? p.slice(loc.idx) : null;
+  },
+  freeCells() { return this.st.cells.filter(x => x < 0).length; },
+  emptyCols() { return this.st.tab.filter(p => !p.length).length; },
+  maxMove(toEmpty) { return (this.freeCells() + 1) * Math.pow(2, Math.max(0, this.emptyCols() - (toEmpty ? 1 : 0))); },
+  canFound(id, f) { const p = this.st.found[f]; if (!p.length) return rk(id) === 1; const t = p[p.length - 1]; return su(t) === su(id) && rk(id) === rk(t) + 1; },
+  canTab(id, t) { const p = this.st.tab[t]; if (!p.length) return true; const top = p[p.length - 1]; return isRed(top) !== isRed(id) && rk(top) === rk(id) + 1; },
+  snap() { const s = this.st; this.hist.push(JSON.stringify({ cells: s.cells, found: s.found, tab: s.tab, moves: s.moves })); if (this.hist.length > 500) this.hist.shift(); },
+  count() { const s = this.st; if (!s.counted) { s.counted = true; TB.bump('poker', 'played'); TB.bump('poker-freecell', 'played'); } },
+  move(grp, dest) {
+    const s = this.st, loc = this.locate(grp[0]);
+    this.snap(); this.count();
+    if (loc.t === 'c') s.cells[loc.i] = -1; else if (loc.t === 'f') s.found[loc.i].pop(); else s.tab[loc.i].splice(loc.idx);
+    if (dest.t === 'c') s.cells[dest.i] = grp[0]; else if (dest.t === 'f') s.found[dest.i].push(grp[0]); else s.tab[dest.i].push(...grp);
+    s.moves++; TB.sfx('place');
+    this.after();
+  },
+  after() {
+    const s = this.st; clearHints(); this.render(); this.save();
+    if (s.found.every(f => f.length === 13)) return this.win();
+    // 每一疊都排好順序時，詢問一次要不要自動收完
+    if (!s.askedAuto && s.tab.every(p => p.every((id, j) => j === 0 || rk(p[j - 1]) > rk(id)))) {
+      s.askedAuto = true; this.save();
+      TB.dialog({ title: '牌都排好了', html: '<p>每一疊都已經排好，要讓電腦幫你把牌收到回收區嗎？</p>', buttons: [{ label: '我自己來' }, { label: '自動收完', primary: true, onClick: () => { setTimeout(() => this.auto(), 0); } }] });
+    }
+  },
+  auto() {
+    const s = this.st; busy = true;
+    const stepF = () => {
+      const tops = s.cells.filter(x => x >= 0).concat(s.tab.filter(p => p.length).map(p => p[p.length - 1]));
+      for (const id of tops) for (let f = 0; f < 4; f++) if (this.canFound(id, f)) {
+        const loc = this.locate(id); if (loc.t === 'c') s.cells[loc.i] = -1; else s.tab[loc.i].pop();
+        s.found[f].push(id); s.moves++; TB.sfx('place'); this.render(); return true;
+      }
+      return false;
+    };
+    const loop = () => { if (cur !== this) { busy = false; return; } if (stepF()) setTimeout(loop, 80); else { busy = false; this.save(); if (s.found.every(f => f.length === 13)) this.win(); } };
+    setTimeout(loop, 250);
+  },
+  win() {
+    const s = this.st; if (s.done) return; s.done = true; this.save();
+    TB.bump('poker', 'won'); TB.bump('poker-freecell', 'won');
+    const best = TB.store.get('poker:best:freecell', 0); if (!best || s.time < best) TB.store.set('poker:best:freecell', s.time);
+    winDance(() => TB.dialog({ title: '過關！', html: `<p>空當接龍第 ${s.seed} 局完成了，共 ${s.moves} 步，用時 ${fmtTime(s.time)}。</p>`, buttons: [{ label: '重玩這一局', onClick: () => { setTimeout(() => this.replay(), 0); } }, { label: '再玩一局', primary: true, onClick: () => { setTimeout(() => newGame(), 0); } }] }));
+  },
+  click(id) {
+    const s = this.st, loc = this.locate(id); if (!loc || s.done) return;
+    // 點一下不移牌；快速點兩下 → 送到回收區（可以收的話）
+    const now = Date.now(), dbl = this._lastId === id && now - this._lastT < 400;
+    this._lastId = id; this._lastT = now;
+    if (!dbl) return;
+    this._lastId = -1;
+    if (loc.t === 'f') return;
+    if (loc.t === 't' && loc.idx !== s.tab[loc.i].length - 1) { TB.sfx('bad'); return; }
+    for (let f = 0; f < 4; f++) if (this.canFound(id, f)) { this.move([id], { t: 'f', i: f }); return; }
+    TB.sfx('bad');
+  },
+  clickSlot() {},
+  drop(grp, cx, cy) {
+    const s = this.st, g = this.g; let col = 0, bd = 1e9;
+    g.x.forEach((x, i) => { const d = Math.abs(x + CW / 2 - cx); if (d < bd) { bd = d; col = i; } });
+    if (bd > CW * 1.2) return false;
+    const loc = this.locate(grp[0]);
+    if (cy < g.tabY - g.gap) {
+      if (grp.length !== 1) return false;
+      if (col < 4) {
+        if (loc.t === 'c') return false;
+        const order = [col, 0, 1, 2, 3];
+        for (const c of order) if (s.cells[c] < 0) { this.move(grp, { t: 'c', i: c }); return true; }
+        TB.toast('空當都滿了'); return false;
+      }
+      const order = [col - 4, 0, 1, 2, 3];
+      for (const f of order) if (this.canFound(grp[0], f) && !(loc.t === 'f' && loc.i === f)) { this.move(grp, { t: 'f', i: f }); return true; }
+      return false;
+    }
+    if (loc.t === 't' && loc.i === col) return false;
+    if (!this.canTab(grp[0], col)) return false;
+    const mx = this.maxMove(!s.tab[col].length);
+    if (grp.length > mx) { TB.toast(`空當不夠，這次最多只能移 ${mx} 張`); return false; }
+    this.move(grp, { t: 't', i: col }); return true;
+  },
+  hints() {
+    const s = this.st, res = [];
+    const tops = [];
+    s.cells.forEach((id, c) => { if (id >= 0) tops.push({ id, loc: { t: 'c', i: c } }); });
+    s.tab.forEach((p, t) => { if (p.length) tops.push({ id: p[p.length - 1], loc: { t: 't', i: t, idx: p.length - 1 } }); });
+    for (const { id, loc } of tops) for (let f = 0; f < 4; f++) if (this.canFound(id, f)) res.push({ pri: 0, grp: [id], dest: { t: 'f', i: f } });
+    // 從空當放回牌桌
+    s.cells.forEach((id, c) => { if (id < 0) return; for (let t = 0; t < 8; t++) if (s.tab[t].length && this.canTab(id, t)) res.push({ pri: 1, grp: [id], dest: { t: 't', i: t } }); });
+    // 牌桌之間移動（不拆開已經排好的串）
+    s.tab.forEach((p, i) => {
+      for (let idx = 0; idx < p.length; idx++) {
+        if (!this.isSeq(p, idx)) continue;
+        const breaks = idx > 0 && isRed(p[idx - 1]) !== isRed(p[idx]) && rk(p[idx - 1]) === rk(p[idx]) + 1;
+        if (breaks) continue;
+        const grp = p.slice(idx);
+        for (let t = 0; t < 8; t++) {
+          if (t === i) continue;
+          const d = s.tab[t];
+          if (!d.length) { if (idx > 0 && grp.length <= this.maxMove(true)) res.push({ pri: 3, grp, dest: { t: 't', i: t } }); continue; }
+          if (this.canTab(grp[0], t) && grp.length <= this.maxMove(false)) res.push({ pri: 2, grp, dest: { t: 't', i: t } });
+        }
+        break;
+      }
+    });
+    if (this.freeCells()) s.tab.forEach((p, t) => { if (p.length > 1) res.push({ pri: 4, grp: [p[p.length - 1]], dest: { t: 'c', i: s.cells.indexOf(-1) } }); });
+    res.sort((a, b) => a.pri - b.pri);
+    return res;
+  },
+  hint() {
+    const s = this.st; if (s.done) return;
+    const h = this.hints()[0];
+    if (!h) { TB.toast('沒有可以走的步了，可以復原或開新局'); return; }
+    const els = h.grp.map(i => EL[i]);
+    if (h.dest.t === 'c') els.push(felt.querySelector(`.slot[data-slot="c${h.dest.i}"]`));
+    else { const dp = h.dest.t === 'f' ? s.found[h.dest.i] : s.tab[h.dest.i]; els.push(dp.length ? EL[dp[dp.length - 1]] : felt.querySelector(`.slot[data-slot="${h.dest.t}${h.dest.i}"]`)); }
+    flashHint(els); TB.sfx('select');
+  },
+  undo() {
+    if (busy) return; const h = this.hist.pop(); if (!h) { TB.toast('沒有可以復原的步'); return; }
+    const s = this.st; if (s.done) return;
+    Object.assign(s, JSON.parse(h)); TB.sfx('flip'); clearHints(); this.render(); this.save();
+  },
+  newDialog() {
+    return TB.dialog({
+      title: '空當接龍 · 新局', html: '<p>所有牌一開始就翻開。善用左上角四個「空當」暫放牌，把牌依花色從 A 排到 K 送進右上角回收區。</p>' +
+        '<div class="tb-field"><label>局號（1～1000000，留空就隨機發一局）</label><input id="fc-no" type="number" inputmode="numeric" min="1" max="1000000" placeholder="例如 1" style="width:100%;background:var(--panel2);color:var(--ink);border:0;border-radius:12px;padding:10px 12px;font-size:16px"></div>',
+      buttons: [{ label: '取消', value: null }].concat(this.st ? [{ label: '重玩這一局', value: 'replay', onClick: () => { setTimeout(() => this.replay(), 0); } }] : [], [{ label: '開始', primary: true, onClick: d => { const v = parseInt(d.querySelector('#fc-no').value, 10); setTimeout(() => this.start(v >= 1 && v <= 1000000 ? v : 0), 0); } }])
+    });
+  },
+  start(seed) { this.fresh(seed); this.save(); this.layout(); dealAnim(W / 2 - CW / 2, H - CH - 30, this.dealOrder); },
+  replay() { if (!this.st) return; TB.sfx('click'); this.start(this.st.seed); TB.toast('重新發第 ' + this.st.seed + ' 局'); },
+  resume() { const v = loadSave('poker:freecell'); if (v && this.valid(v)) { this.st = v; this.hist = []; return true; } return false; },
+  rules: `<h4>目標</h4><p>52 張牌一開始全部翻開，分成八疊。把牌依花色從 A 排到 K，全部送進右上角的四個回收區。</p>
+    <h4>怎麼玩</h4><ul><li>牌桌上：可以把牌接在<b>顏色不同、點數大一</b>的牌下面。空出來的一疊可以放任何牌。</li>
+    <li>左上角四個<b>空當</b>，每格可以暫放一張牌。</li>
+    <li>一次只能移一張牌；但有空當或空的一疊時，可以把排好的一串一起拖過去。最多能移的張數 =（空當數＋1）×2<sup>空疊數</sup>。</li>
+    <li>用拖曳移牌；點兩下一張牌可以直接收到回收區。</li></ul>
+    <h4>局號</h4><p>每一局都有局號，輸入同一個局號會發出一模一樣的牌，可以跟朋友比賽誰用的步數少。「重玩這一局」從頭再來一次。幾乎每一局都解得開。</p>`,
+};
+
+// =====================================================================
+// 金字塔 Pyramid
+// =====================================================================
+const PROW = [], PCOL = [];
+for (let r = 0; r < 7; r++) for (let c = 0; c <= r; c++) { PROW.push(r); PCOL.push(c); }
+const P = {
+  key: 'pyramid', title: '金字塔', vert: true, st: null, hist: [], sel: -1,
+  cards: std52,
+  opt() { return TB.store.get('poker:opt:pyramid', { redeal: 2 }); },
+  fresh(opt, deck0) {
+    const deck = deck0 && deck0.length === 52 ? deck0.slice() : shuffle(range(52));
+    const s = { deck: deck.slice(), redeal: +opt.redeal === 0 ? 0 : 2, used: 0, pyr: deck.slice(0, 28), stock: deck.slice(28).reverse(), waste: [], out: [], moves: 0, time: 0, counted: false, done: false };
+    this.dealOrder = deck.slice(0, 28);
+    this.st = s; this.hist = []; this.sel = -1;
+  },
+  valid(s) { try { const all = [].concat(s.pyr.filter(x => x >= 0), s.stock, s.waste, s.out); return s.pyr.length === 28 && all.length === 52 && new Set(all).size === 52; } catch (e) { return false; } },
+  save() { TB.store.set('poker:pyramid', this.st); },
+  layout() {
+    const tight = W < 560;
+    setCW(Math.min(tight ? (W - 16) / 7.3 : W / 8, (H - 46) / 7.3, 100));
+    const g = Math.max(3, Math.round(CW * 0.1)), x0 = (W - (7 * CW + 6 * g)) / 2;
+    this.g = { gap: g, x0, top: g + 4, row: CH * 0.5, xs: range(7).map(i => x0 + i * (CW + g)) };
+    this.g.stockY = this.g.top + 6 * this.g.row + CH + Math.max(14, g * 3);
+    clearSlots();
+    this.slotStock = addSlot('stock', this.g.xs[1], this.g.stockY, '');
+    addSlot('waste', this.g.xs[2], this.g.stockY, '');
+    addSlot('out', this.g.xs[5], this.g.stockY, '');
+  },
+  pos(i) { const g = this.g, r = PROW[i], c = PCOL[i]; return [g.x0 + (6 - r) * (CW + g.gap) / 2 + c * (CW + g.gap), g.top + r * g.row]; },
+  free(i) { const s = this.st, r = PROW[i]; if (s.pyr[i] < 0) return false; if (r === 6) return true; const a = i + r + 1; return s.pyr[a] < 0 && s.pyr[a + 1] < 0; },
+  avail() { const s = this.st, a = []; s.pyr.forEach((id, i) => { if (id >= 0 && this.free(i)) a.push(id); }); if (s.waste.length) a.push(s.waste[s.waste.length - 1]); return a; },
+  render() {
+    const s = this.st, g = this.g; if (!s) return;
+    s.pyr.forEach((id, i) => { if (id < 0) return; const [x, y] = this.pos(i); place(id, x, y, 10 + i, true); EL[id].classList.toggle('cov', !this.free(i)); });
+    s.stock.forEach((id, i) => place(id, g.xs[1] - Math.min(3, i / 8 | 0), g.stockY - Math.min(3, i / 8 | 0), 60 + i, false));
+    s.waste.forEach((id, i) => place(id, g.xs[2], g.stockY, 120 + i, true));
+    s.out.forEach((id, i) => { place(id, g.xs[5] + Math.min(4, i / 6 | 0), g.stockY, 200 + i, true); EL[id].classList.remove('cov'); });
+    EL.forEach((e, id) => e.classList.toggle('sel', id === this.sel));
+    this.slotStock.textContent = s.stock.length ? '' : (s.used < s.redeal && s.waste.length ? '↻' : '');
+    this.hudUpd();
+  },
+  hudUpd() { const s = this.st; if (!s) { hud.textContent = ''; return; } const left = s.pyr.filter(x => x >= 0).length; hud.textContent = `金字塔 · 剩 ${left} 張 · 重洗 ${s.used}/${s.redeal} · 步數 ${s.moves} · ${fmtTime(s.time)}`; },
+  tick() { const s = this.st; if (s && s.counted && !s.done && !busy) { s.time++; this.hudUpd(); if (s.time % 5 === 0) this.save(); } },
+  snap() { const s = this.st; this.hist.push(JSON.stringify({ pyr: s.pyr, stock: s.stock, waste: s.waste, out: s.out, used: s.used, moves: s.moves })); if (this.hist.length > 400) this.hist.shift(); },
+  count() { const s = this.st; if (!s.counted) { s.counted = true; TB.bump('poker', 'played'); TB.bump('poker-pyramid', 'played'); } },
+  remove(ids) {
+    const s = this.st; this.snap(); this.count();
+    ids.forEach(id => { const i = s.pyr.indexOf(id); if (i >= 0) s.pyr[i] = -1; else if (s.waste[s.waste.length - 1] === id) s.waste.pop(); s.out.push(id); });
+    s.moves++; this.sel = -1; TB.sfx('place'); this.after();
+  },
+  draw() {
+    const s = this.st; if (s.done) return;
+    if (s.stock.length) { this.snap(); this.count(); s.waste.push(s.stock.pop()); s.moves++; TB.sfx('flip'); }
+    else if (s.used < s.redeal && s.waste.length) { this.snap(); this.count(); s.stock = s.waste.reverse(); s.waste = []; s.used++; s.moves++; TB.sfx('flip'); }
+    else { TB.sfx('bad'); TB.toast('牌堆翻完了'); return; }
+    this.sel = -1; this.after();
+  },
+  pairs() {
+    const a = this.avail(), res = [];
+    a.forEach(id => { if (rk(id) === 13) res.push([id]); });
+    for (let i = 0; i < a.length; i++) for (let j = i + 1; j < a.length; j++) if (rk(a[i]) + rk(a[j]) === 13) res.push([a[i], a[j]]);
+    return res;
+  },
+  after() {
+    const s = this.st; clearHints(); this.render(); this.save();
+    if (s.pyr.every(x => x < 0)) return this.win();
+    if (!this.pairs().length && !s.stock.length && !(s.used < s.redeal && s.waste.length)) this.stuck();
+  },
+  stuck() {
+    const s = this.st; if (s.done) return; s.done = true; this.save(); TB.sfx('lose');
+    const left = s.pyr.filter(x => x >= 0).length;
+    setTimeout(() => TB.dialog({ title: '沒有步了', html: `<p>金字塔還剩 ${left} 張牌。換個順序再試一次？</p>`, buttons: [{ label: '重玩這一局', onClick: () => { setTimeout(() => this.replay(), 0); } }, { label: '新的一局', primary: true, onClick: () => { setTimeout(() => newGame(), 0); } }] }), 400);
+  },
+  win() {
+    const s = this.st; if (s.done) return; s.done = true; this.save();
+    TB.bump('poker', 'won'); TB.bump('poker-pyramid', 'won');
+    const best = TB.store.get('poker:best:pyramid', 0); if (!best || s.time < best) TB.store.set('poker:best:pyramid', s.time);
+    winDance(() => TB.dialog({ title: '過關！', html: `<p>金字塔全部拆完了，共 ${s.moves} 步，用時 ${fmtTime(s.time)}。</p>`, buttons: [{ label: '重玩這一局', onClick: () => { setTimeout(() => this.replay(), 0); } }, { label: '再玩一局', primary: true, onClick: () => { setTimeout(() => newGame(), 0); } }] }));
+  },
+  click(id) {
+    const s = this.st; if (!s || s.done) return;
+    if (s.stock.includes(id)) return this.draw();
+    if (!this.avail().includes(id)) { TB.sfx('bad'); if (s.pyr.includes(id)) TB.toast('這張被壓住了，要先拿走下面的兩張'); return; }
+    if (rk(id) === 13) return this.remove([id]);
+    if (this.sel >= 0 && this.sel !== id) {
+      if (rk(this.sel) + rk(id) === 13) return this.remove([this.sel, id]);
+      TB.sfx('bad'); TB.toast(`${RANKS[rk(this.sel)]} + ${RANKS[rk(id)]} 不是 13`); this.sel = id;
+    } else { this.sel = this.sel === id ? -1 : id; TB.sfx('select'); }
+    this.render();
+  },
+  clickSlot(n) { if (n === 'stock') this.draw(); },
+  grab() { return null; }, drop() { return false; },
+  hint() {
+    const s = this.st; if (s.done) return;
+    const p = this.pairs()[0];
+    if (p) { flashHint(p.map(i => EL[i])); TB.sfx('select'); }
+    else if (s.stock.length) { flashHint([EL[s.stock[s.stock.length - 1]]]); TB.toast('翻一張牌看看'); }
+    else if (s.used < s.redeal && s.waste.length) { flashHint([this.slotStock]); TB.toast('點牌堆把牌重洗回來'); }
+  },
+  undo() {
+    if (busy) return; const h = this.hist.pop(); if (!h) { TB.toast('沒有可以復原的步'); return; }
+    const s = this.st; s.done = false;
+    Object.assign(s, JSON.parse(h)); this.sel = -1; TB.sfx('flip'); clearHints(); this.render(); this.save();
+  },
+  newDialog() {
+    const o = this.opt();
+    return TB.dialog({
+      title: '金字塔 · 新局', html: '<p>兩張牌加起來是 13 就一起拿走（J=11、Q=12、K=13 單獨就能拿走）。把整座金字塔拆完就贏了。</p>' + TB.seg('牌堆翻完後可以重洗', 'redeal', [[0, '不能重洗（困難）'], [2, '重洗 2 次']], o.redeal),
+      buttons: [{ label: '取消', value: null }].concat(this.st ? [{ label: '重玩這一局', value: 'replay', onClick: () => { setTimeout(() => this.replay(), 0); } }] : [], [{ label: '開始新的一局', primary: true, onClick: d => { const v = { redeal: +TB.segVal(d, 'redeal') }; TB.store.set('poker:opt:pyramid', v); setTimeout(() => this.start(v), 0); } }])
+    });
+  },
+  start(opt, deck) { this.fresh(opt, deck); this.save(); this.layout(); dealAnim(W / 2 - CW / 2, this.g.stockY, this.dealOrder); },
+  replay() { if (!this.st) return; const s = this.st; TB.sfx('click'); this.start({ redeal: s.redeal }, s.deck); TB.toast('重新發同一局的牌'); },
+  resume() { const v = loadSave('poker:pyramid'); if (v && this.valid(v)) { this.st = v; this.hist = []; this.sel = -1; return true; } return false; },
+  rules: `<h4>目標</h4><p>28 張牌排成金字塔。把<b>兩張加起來是 13</b> 的牌一起拿走，把整座金字塔拆完就贏了。</p>
+    <h4>點數</h4><p>A=1、J=11、Q=12、K=13。例如 A+Q、2+J、3+10、6+7。<b>K 自己就是 13</b>，點一下就拿走。</p>
+    <h4>怎麼玩</h4><ul><li>只能拿<b>沒被壓住</b>的牌：下面兩張都拿走了，上面那張才能用。</li>
+    <li>點一張牌選起來，再點另一張配對。</li>
+    <li>下方左邊的牌堆點一下翻一張，翻出來的牌也可以拿來配對。</li>
+    <li>牌堆翻完後，可以依設定重洗 0 次或 2 次。</li></ul>`,
+};
+
+// =====================================================================
+// 多人遊戲共用：座位位置
+// =====================================================================
+function seatSide(n, p) { if (p === 0) return 'me'; if (n === 2) return 'top'; if (n === 3) return p === 1 ? 'right' : 'left'; return ['me', 'right', 'top', 'left'][p]; }
+function mkEl(cls, parent) { const d = document.createElement('div'); d.className = cls; (parent || felt).appendChild(d); return d; }
+
+// =====================================================================
+// 撿紅點（台灣規則）
+// =====================================================================
+const R = {
+  key: 'redpoint', title: '撿紅點', vert: false, noUndo: true, st: null, sel: -1, flipId: -1, lock: false,
+  cards: std52,
+  opt() { return TB.store.get('poker:opt:redpoint', { n: 4, level: 'normal' }); },
+  valid(s) { try { return [2, 4].includes(s.n) && s.hands.length === s.n && Array.isArray(s.table) && !s.over; } catch (e) { return false; } },
+  save() { if (this.st) TB.store.set('poker:redpoint', this.st); },
+  match(a, b) { const x = rk(a), y = rk(b); return (x >= 10 || y >= 10) ? x === y : x + y === 10; },
+  pts(id) { const n = this.st.n, s = su(id), r = rk(id); if (s === 1 || s === 2) return r === 1 ? 20 : r <= 8 ? r : 10; if (r === 1 && n === 4) return s === 0 ? 30 : 40; return 0; },
+  score(p) { return this.st.cap[p].reduce((a, id) => a + this.pts(id), 0); },
+  // 這張牌可以吃哪些（每個選項是一組牌）；桌上已經有同點三張（5、10、J、Q、K）時一次吃三張
+  takes(c) {
+    const t = this.st.table, res = [], r = rk(c);
+    if (r === 5 || r >= 10) { const same = t.filter(x => rk(x) === r); if (same.length === 3) return [same]; }
+    t.forEach(x => { if (this.match(c, x)) res.push([x]); });
+    return res;
+  },
+  fresh(opt) {
+    const n = +opt.n === 2 ? 2 : 4;
+    let deck;
+    for (;;) { deck = shuffle(range(52)); const tb = deck.slice(24, 28).map(i => i % 13); if (!tb.every(x => x === tb[0])) break; }
+    const per = 24 / n;
+    const s = { n, level: opt.level || 'normal', hands: range(n).map(p => deck.slice(p * per, p * per + per)), table: deck.slice(24, 28), stock: deck.slice(28), cap: range(n).map(() => []), turn: 0, over: false, counted: false, log: '' };
+    this.dealOrder = []; for (let k = 0; k < per; k++) for (let p = 0; p < n; p++) this.dealOrder.push(s.hands[p][k]);
+    this.dealOrder.push(...s.table);
+    this.st = s; this.sel = -1; this.flipId = -1; this.lock = false;
+  },
+  enter() {
+    const bar = document.createElement('div'); bar.id = 'bar';
+    bar.innerHTML = '<span class="me"></span><button class="tb-btn" data-a="hint">提示</button><button class="tb-btn go" data-a="drop">打出</button>';
+    bar.addEventListener('click', e => { const b = e.target.closest('button'); if (!b || b.disabled) return; this.act(b.dataset.a); });
+    bar.addEventListener('pointerdown', e => e.stopPropagation());
+    felt.appendChild(bar);
+    this.seats = [1, 2, 3].map(() => mkEl('seat'));
+    this.bub = mkEl('bubble'); this.bub.hidden = true;
+    this.tag = mkEl('ctag'); this.tag.hidden = true;
+  },
+  leave() { clearTimeout(this.tmr); clearTimeout(this.tmr2); ['#bar', '.seat', '.bubble', '.ctag'].forEach(q => felt.querySelectorAll(q).forEach(e => e.remove())); },
+  layout() {
+    clearSlots();
+    const barH = 56, n = this.st ? this.st.n : 4, per = 24 / n;
+    setCW(Math.min(88, (W - 20) / (1 + (per - 1) * 0.5), H * 0.18 / 1.4));
+    const g = this.g = {};
+    g.handY = H - barH - CH - 16; g.step = Math.min(CW * 0.66, (W - 20 - CW) / Math.max(1, per - 1));
+    g.opp = Math.max(0.4, Math.min(0.55, H / 1250)); g.ow = CW * g.opp; g.oh = CH * g.opp;
+    g.topY = 30; g.sideY = Math.max(g.topY + g.oh + 30, H * 0.24);
+    g.ts = 0.86; g.tw = CW * g.ts; g.th = CH * g.ts;
+    // 每位電腦的座位：窄螢幕（或 2 人）全部排在上方一列；寬螢幕 4 人時左右兩家直排
+    g.narrow = n === 2 || W < 640;
+    g.seat = [];
+    for (let p = 1; p < n; p++) {
+      const side = seatSide(n, p);
+      if (g.narrow) { const cx = n === 2 ? W / 2 : { right: W * 0.82, top: W * 0.5, left: W * 0.18 }[side]; g.seat[p] = { h: true, cx, y: g.topY, wmax: n === 2 ? W * 0.6 : W * 0.28, lx: cx, ly: g.topY + g.oh + 4 }; }
+      else if (side === 'top') g.seat[p] = { h: true, cx: W / 2, y: g.topY, wmax: W * 0.5, lx: W / 2, ly: g.topY + g.oh + 4 };
+      else g.seat[p] = { h: false, x: side === 'right' ? W - g.ow - 8 : 8, y: g.sideY, lx: side === 'right' ? W - g.ow / 2 - 8 : g.ow / 2 + 8, ly: g.sideY - 24 };
+    }
+    g.areaL = g.narrow ? 12 : g.ow + 22; g.areaR = W - g.areaL;
+    g.areaT = g.topY + g.oh + 34; g.areaB = g.handY - 22;
+    g.ss = Math.min(g.ts, 0.7);   // 牌堆、翻出來的牌小一點
+    const midX = W / 2;
+    g.stockX = midX - CW * g.ss - 6; g.flipX = midX + 6; g.stockY = g.areaT;
+    g.gridY0 = g.areaT + CH * g.ss + 14;
+    g.cols = Math.max(4, Math.floor((g.areaR - g.areaL + 8) / (g.tw + 8)));
+  },
+  sideXY(p) {
+    const g = this.g; if (p === 0) return [W / 2, H - 40];
+    const st = g.seat[p]; return st.h ? [st.cx, st.y + g.oh / 2] : [st.lx, st.y + g.oh];
+  },
+  render() {
+    const s = this.st, g = this.g; if (!s) return;
+    const shown = new Set();
+    // 自己的手牌
+    const mine = s.hands[0].slice().sort((a, b) => rk(a) - rk(b) || su(a) - su(b));
+    const hw = CW + g.step * (mine.length - 1), hx = (W - hw) / 2;
+    mine.forEach((id, i) => { shown.add(id); EL[id].classList.remove('can'); place(id, hx + i * g.step, g.handY - (this.sel === id ? CH * 0.18 : 0), 500 + i, true); EL[id].classList.toggle('sel', this.sel === id); });
+    // 電腦的手牌（背面）
+    for (let p = 1; p < s.n; p++) {
+      const h = s.hands[p], k = h.length, se = g.seat[p];
+      h.forEach((id, i) => {
+        shown.add(id); EL[id].classList.remove('sel', 'can');
+        if (se.h) { const st = Math.min(g.ow * 0.3, (se.wmax - g.ow) / Math.max(1, k - 1)); const x0 = se.cx - (g.ow + st * (k - 1)) / 2; place(id, x0 + i * st, se.y, 100 + i, false, g.opp); }
+        else { const st = Math.min(g.oh * 0.2, (g.areaB - se.y - g.oh) / Math.max(1, k)); place(id, se.x, se.y + i * st, 100 + i, false, g.opp); }
+      });
+    }
+    // 牌堆與翻出來的牌
+    s.stock.forEach((id, i) => { shown.add(id); EL[id].classList.remove('sel', 'can'); place(id, g.stockX - Math.min(3, i / 8 | 0), g.stockY - Math.min(3, i / 8 | 0), 300 + i, false, g.ss); });
+    if (this.flipId >= 0) { shown.add(this.flipId); place(this.flipId, g.flipX, g.stockY, 950, true, g.ss); }
+    // 桌面
+    const can = this.sel >= 0 ? new Set(this.takes(this.sel).flat()) : new Set();
+    const rows = Math.ceil(s.table.length / g.cols) || 1;
+    const rs = Math.min(g.th + 10, Math.max(g.th * 0.45, (g.areaB - g.gridY0 - g.th) / Math.max(1, rows - 1)));
+    s.table.forEach((id, k) => {
+      shown.add(id);
+      const r = k / g.cols | 0, c = k % g.cols, inRow = Math.min(g.cols, s.table.length - r * g.cols);
+      const x0 = W / 2 - (inRow * g.tw + (inRow - 1) * 8) / 2;
+      place(id, x0 + c * (g.tw + 8), g.gridY0 + r * rs, 400 + k, true, g.ts);
+      EL[id].classList.toggle('can', can.has(id)); EL[id].classList.remove('sel');
+    });
+    // 吃到的牌：飛到座位後淡出
+    s.cap.forEach((arr, p) => arr.forEach(id => {
+      if (shown.has(id)) return;
+      const e = EL[id]; const [x, y] = this.sideXY(p);
+      if (!e.classList.contains('gone')) { place(id, x - CW * 0.2, y - CH * 0.2, 980, true, 0.4); e.classList.add('gone'); }
+      e.classList.remove('sel', 'can');
+    }));
+    // 座位
+    this.seats.forEach((d, k) => {
+      const p = k + 1; if (p >= s.n) { d.hidden = true; return; } d.hidden = false;
+      d.textContent = g.narrow && s.n === 4 ? `${NAMES[p]} ${this.score(p)} 分` : `${NAMES[p]} · ${s.cap[p].length} 張 · ${this.score(p)} 分`;
+      d.classList.toggle('turn', !s.over && s.turn === p);
+      let x = g.seat[p].lx, y = g.seat[p].ly;
+      d.style.top = y + 'px'; d.style.left = '0px'; const w = d.offsetWidth; x = Math.max(w / 2 + 4, Math.min(W - w / 2 - 4, x)); d.style.left = x + 'px';
+    });
+    this.updBar();
+  },
+  updBar() {
+    const s = this.st, bar = felt.querySelector('#bar'); if (!bar || !s) return;
+    const my = !s.over && s.turn === 0 && !this.lock && !busy;
+    bar.querySelector('.me').innerHTML = `${my ? (this.sel >= 0 ? '<b>點桌上發亮的牌吃掉</b>' : '<b>輪到你，選一張手牌</b>') : (s.over ? '這局結束' : (s.turn === 0 ? '翻牌中…' : '等 ' + NAMES[s.turn] + '…'))} · 你 ${this.score(0)} 分`;
+    bar.querySelector('[data-a=drop]').disabled = !my || this.sel < 0;
+    bar.querySelector('[data-a=hint]').disabled = !my;
+  },
+  // 電腦挑一步：吃到最多分；沒得吃就丟最不值錢的牌
+  aiMove(p) {
+    const s = this.st, lvl = s.level, h = s.hands[p];
+    let best = null;
+    h.forEach(c => this.takes(c).forEach(set => {
+      let v = this.pts(c) + set.reduce((a, x) => a + this.pts(x), 0) + 0.5;
+      if (lvl === 'easy') v += rand(0, 25); else if (lvl === 'normal') v += rand(0, 4);
+      if (!best || v > best.v) best = { c, set, v };
+    }));
+    if (best && !(lvl === 'easy' && Math.random() < 0.15 && best.v < 15)) return best;
+    // 丟牌：分數低、也不容易讓下一家吃到的牌
+    let drop = null;
+    h.forEach(c => {
+      let v = this.pts(c) * (lvl === 'hard' ? 1.6 : 1);
+      if (lvl === 'hard') { const r = rk(c), need = r >= 10 ? r : 10 - r; v += s.table.filter(x => rk(x) === need).length ? 0 : -1; v += (r >= 10 || r === 5) ? 2 : 0; }
+      if (lvl === 'easy') v += rand(0, 15);
+      if (best && best.c === c) v += 100;
+      if (!drop || v < drop.v) drop = { c, set: null, v };
+    });
+    return drop;
+  },
+  doPlay(p, c, set) {
+    const s = this.st; this.lock = true; this.sel = -1;
+    if (!s.counted) { s.counted = true; }
+    s.hands[p] = s.hands[p].filter(x => x !== c);
+    if (set) { s.table = s.table.filter(x => !set.includes(x)); s.cap[p].push(c, ...set); TB.sfx('capture'); this.say(p, set.length > 1 ? '一次吃三張！' : '吃！'); }
+    else { s.table.push(c); TB.sfx('place'); }
+    this.render();
+    this.tmr = setTimeout(() => this.flip(p), 650);
+  },
+  flip(p) {
+    const s = this.st; if (cur !== this) return;
+    if (!s.stock.length) return this.endTurn(p);
+    const id = s.stock.pop(); this.flipId = id; TB.sfx('flip'); this.render();
+    this.tmr = setTimeout(() => {
+      if (cur !== this) return;
+      const opts = this.takes(id);
+      this.flipId = -1;
+      if (opts.length) {
+        let best = opts[0], bv = -1; opts.forEach(set => { const v = set.reduce((a, x) => a + this.pts(x), 0); if (v > bv) { bv = v; best = set; } });
+        s.table = s.table.filter(x => !best.includes(x)); s.cap[p].push(id, ...best); TB.sfx('capture'); this.say(p, '翻牌吃到了！');
+      } else { s.table.push(id); TB.sfx('place'); }
+      this.render();
+      this.tmr = setTimeout(() => this.endTurn(p), 600);
+    }, 700);
+  },
+  say(p, txt) {
+    const b = this.bub, [x, y] = p === 0 ? [W / 2, this.g.handY - 22] : this.sideXY(p);
+    b.textContent = (p === 0 ? '你' : NAMES[p]) + '：' + txt; b.hidden = false;
+    b.style.left = Math.max(80, Math.min(W - 80, x)) + 'px'; b.style.top = (p === 0 ? y : y + 30) + 'px';
+    clearTimeout(this.tmr2); this.tmr2 = setTimeout(() => { b.hidden = true; }, 1100);
+  },
+  endTurn(p) {
+    const s = this.st; this.lock = false;
+    if (s.hands.every(h => !h.length)) return this.end();
+    s.turn = (p + 1) % s.n; this.save(); this.next();
+  },
+  next() {
+    const s = this.st; clearTimeout(this.tmr);
+    if (!s || s.over) return;
+    if (busy) { this.tmr = setTimeout(() => this.next(), 250); return; }
+    this.render();
+    if (s.turn !== 0) this.tmr = setTimeout(() => { if (cur !== this || s.over) return; const m = this.aiMove(s.turn); this.doPlay(s.turn, m.c, m.set); }, 700 + Math.random() * 400);
+  },
+  end() {
+    const s = this.st; s.over = true; this.render();
+    const tie = s.n === 2 ? 105 : 70;
+    const sc = range(s.n).map(p => this.score(p)), top = Math.max(...sc);
+    TB.bump('poker', 'played'); TB.bump('poker-redpoint', 'played');
+    const won = sc[0] === top; if (won) { TB.bump('poker', 'won'); TB.bump('poker-redpoint', 'won'); }
+    TB.store.del('poker:redpoint');
+    TB.sfx(won ? 'win' : 'lose');
+    const tbl = '<table class="res"><tr><th></th><th>吃到</th><th>分數</th><th>和底分比</th></tr>' +
+      range(s.n).map(p => `<tr class="${sc[p] === top ? 'w' : ''}"><td>${NAMES[p]}</td><td>${s.cap[p].length} 張</td><td>${sc[p]}</td><td>${sc[p] - tie > 0 ? '+' : ''}${sc[p] - tie}</td></tr>`).join('') + '</table>';
+    setTimeout(() => TB.dialog({ title: won ? '你贏了！' : NAMES[sc.indexOf(top)] + ' 分數最高', html: `<p>${s.n} 人局的底分是 ${tie} 分（全部分數平分）。</p>` + tbl, buttons: [{ label: '看一下', value: null }, { label: '再玩一局', primary: true, onClick: () => { setTimeout(() => this.start({ n: s.n, level: s.level }), 0); } }] }), 600);
+  },
+  act(a) {
+    const s = this.st; if (!s || busy || this.lock) return;
+    if (s.over) { if (a === 'hint') newGame(); return; }
+    if (s.turn !== 0) return;
+    if (a === 'hint') return this.hint();
+    if (a === 'drop') {
+      if (this.sel < 0) return;
+      if (this.takes(this.sel).length) { TB.sfx('bad'); TB.toast('這張可以吃桌上的牌喔，點發亮的那張'); return; }
+      this.doPlay(0, this.sel, null);
+    }
+  },
+  hint() {
+    const s = this.st; if (s.over || s.turn !== 0 || this.lock) return;
+    const best = this.aiMoveFor0();
+    this.sel = best.c; this.render();
+    if (best.set) flashHint([EL[best.c], ...best.set.map(i => EL[i])]); else TB.toast('沒有牌可以吃，建議打出這張');
+    TB.sfx('select');
+  },
+  aiMoveFor0() { const lv = this.st.level; this.st.level = 'hard'; const m = this.aiMove(0); this.st.level = lv; return m; },
+  click(id) {
+    const s = this.st; if (!s || s.over || s.turn !== 0 || this.lock || busy) return;
+    if (s.hands[0].includes(id)) { this.sel = this.sel === id ? -1 : id; TB.sfx('click'); this.render(); return; }
+    if (s.table.includes(id)) {
+      if (this.sel < 0) { TB.toast('先選一張手牌'); return; }
+      const opt = this.takes(this.sel).find(set => set.includes(id));
+      if (!opt) { TB.sfx('bad'); TB.toast(rk(this.sel) >= 10 || rk(id) >= 10 ? '10、J、Q、K 要配一樣的數字' : '兩張加起來要是 10'); return; }
+      this.doPlay(0, this.sel, opt);
+    }
+  },
+  grab() { return null; }, drop() { return false; },
+  undo() { TB.toast('撿紅點不能復原喔'); },
+  tick() {},
+  newDialog() {
+    const o = this.opt();
+    return TB.dialog({
+      title: '撿紅點 · 新局', html: '<p>用手牌去「吃」桌上的牌：加起來是 10（A+9、2+8、3+7、4+6、5+5），10、J、Q、K 要配一樣的。最後吃到的紅色牌分數最多的人贏。</p>' +
+        TB.seg('人數', 'n', [[2, '2 人（你 vs 電腦）'], [4, '4 人']], o.n) +
+        TB.seg('電腦強度', 'level', [['easy', '簡單'], ['normal', '普通'], ['hard', '困難']], o.level),
+      buttons: [{ label: '取消', value: null }, { label: '開始', primary: true, onClick: d => { const v = { n: +TB.segVal(d, 'n'), level: TB.segVal(d, 'level') }; TB.store.set('poker:opt:redpoint', v); setTimeout(() => this.start(v), 0); } }]
+    });
+  },
+  start(opt) {
+    clearTimeout(this.tmr); this.fresh(opt); this.save(); this.layout();
+    felt.querySelectorAll('.card').forEach(e => e.classList.remove('can', 'sel'));
+    dealAnim(W / 2 - CW / 2, H / 2 - CH, this.dealOrder); setTimeout(() => this.next(), 1300);
+  },
+  resume() { const v = loadSave('poker:redpoint'); if (v && this.valid(v)) { this.st = v; this.sel = -1; this.flipId = -1; this.lock = false; return true; } return false; },
+  afterResume() { setTimeout(() => this.next(), 500); },
+  rules: `<h4>目標</h4><p>用手上的牌去「吃」桌上的牌，最後比誰吃到的分數多。</p>
+    <h4>發牌</h4><p>2 人每人 12 張、4 人每人 6 張，桌上翻開 4 張，其餘當牌堆。</p>
+    <h4>怎麼吃</h4><ul><li>A～9：兩張加起來是 10 就能吃（A+9、2+8、3+7、4+6、5+5）。</li>
+    <li>10、J、Q、K：要配<b>一樣的數字</b>（10 吃 10、J 吃 J…）。</li>
+    <li>桌上已經有三張一樣的 5、10、J、Q 或 K 時，用第四張可以一次吃三張。</li>
+    <li>輪到你：先點一張手牌，桌上能吃的牌會發亮，點它就吃掉。這張吃不到東西，就按「打出」把它放到桌上。</li>
+    <li>出完手牌後會自動翻牌堆最上面一張，能吃就自動吃（挑分數最高的），不能吃就留在桌上。</li></ul>
+    <h4>算分（只算吃到的牌）</h4><ul><li>紅心、方塊：A = 20 分，2～8 照點數，9、10、J、Q、K 各 10 分。</li>
+    <li>4 人局另外加：黑桃 A = 30 分、梅花 A = 40 分。2 人局黑色牌都不算分。</li>
+    <li>底分（平分線）：2 人 105 分、4 人 70 分。分數最高的人贏。</li></ul>
+    <p style="font-size:12px">撿紅點各地規則略有不同，這裡用的是常見的台灣玩法。</p>`,
+};
+
+// =====================================================================
+// 心臟病（反應遊戲）
+// =====================================================================
+const X = {
+  key: 'heart', title: '心臟病', vert: true, noUndo: true, st: null, tms: [], ev: null, resolving: false,
+  cards: std52,
+  opt() { return TB.store.get('poker:opt:heart', { n: 4, level: 'normal' }); },
+  PACE: { easy: 1150, normal: 900, hard: 760 },
+  REACT: { easy: [900, 1400], normal: [550, 900], hard: [350, 600] },
+  FALSE: { easy: 0.07, normal: 0.045, hard: 0.025 },
+  valid() { return false; },
+  save() {},
+  resume() { return false; },
+  fresh(opt) {
+    const n = [2, 3, 4].includes(+opt.n) ? +opt.n : 4, deck = shuffle(range(52));
+    const s = { n, level: opt.level || 'normal', piles: range(n).map(() => []), center: [], call: 0, turn: 0, over: false };
+    deck.forEach((id, k) => s.piles[k % n].push(id));
+    this.dealOrder = deck.slice(); this.st = s; this.ev = null; this.resolving = false;
+  },
+  enter() {
+    this.zone = mkEl('xzone'); this.zone.innerHTML = '<span>拍！</span>';
+    this.zone.addEventListener('pointerdown', e => { e.stopPropagation(); e.preventDefault(); this.slap(0); });
+    this.callEl = mkEl('xcall'); this.msg = mkEl('xmsg'); this.msg.hidden = true;
+    this.seats = [0, 1, 2, 3].map(() => mkEl('seat'));
+    this.tip = mkEl('xtip'); this.tip.textContent = '數字跟喊的一樣時，快點拍中間（或按空白鍵）！最慢拍的人要收走整疊牌。';
+  },
+  leave() { this.clear(); ['.xzone', '.xcall', '.xmsg', '.seat', '.xtip', '.xhand'].forEach(q => felt.querySelectorAll(q).forEach(e => e.remove())); },
+  clear() { this.tms.forEach(clearTimeout); this.tms = []; },
+  later(fn, ms) { const t = setTimeout(() => { this.tms = this.tms.filter(x => x !== t); if (cur === this) fn(); }, ms); this.tms.push(t); return t; },
+  layout() {
+    clearSlots();
+    setCW(Math.min(110, W / 4.3, H / 7));
+    const g = this.g = {}, n = this.st ? this.st.n : 4;
+    g.cx = W / 2 - CW / 2;
+    const side = Math.max(10, W * 0.04);
+    g.port = W < H * 0.9;
+    let me, topY, zr;
+    if (g.port) {
+      // 直向：電腦都排在上方一列，喊的數字在牌堆上方
+      topY = 30; g.cy = Math.max(H * 0.46 - CH / 2, topY + CH + 30 + CW * 0.95); me = [W / 2 - CW / 2, H - CH - 40];
+      g.pile = range(n).map(p => p === 0 ? me : (n === 2 ? [W / 2 - CW / 2, topY] : [W * (n - p) / n - CW / 2, topY]));
+      zr = Math.min(W * 0.42, CH * 1.25, me[1] - (g.cy + CH / 2) - 6, g.cy + CH / 2 - (topY + CH + 26));
+    } else {
+      // 橫向：對家在上、左右兩家在兩側，喊的數字在牌堆左邊
+      topY = 10; me = [W / 2 - CW / 2, H - CH - 26];
+      g.cy = ((topY + CH + 24) + me[1]) / 2 - CH / 2;
+      g.pile = range(n).map(p => {
+        const sd = seatSide(n, p);
+        if (sd === 'me') return me;
+        if (sd === 'top') return [W / 2 - CW / 2, topY];
+        if (sd === 'right') return n === 3 ? [W * 0.78 - CW / 2, topY] : [W - CW - side, g.cy];
+        return n === 3 ? [W * 0.22 - CW / 2, topY] : [side, g.cy];
+      });
+      zr = Math.min(W * 0.42, CH * 1.25, me[1] - (g.cy + CH / 2) - 4, g.cy + CH / 2 - (topY + CH + 24));
+    }
+    zr = Math.max(CW * 0.8, zr);
+    const z = this.zone; if (z) { z.style.width = z.style.height = 2 * zr + 'px'; z.style.left = (W / 2 - zr) + 'px'; z.style.top = (g.cy + CH / 2 - zr) + 'px'; }
+    if (this.callEl) {
+      const fs = Math.round(CW * 0.85); this.callEl.style.fontSize = fs + 'px';
+      if (g.port) { this.callEl.style.left = '50%'; this.callEl.style.top = Math.max(8, g.cy - CW * 1.05) + 'px'; }
+      else { this.callEl.style.left = (W / 2 - CW * 1.25) + 'px'; this.callEl.style.top = (g.cy + CH / 2 - fs * 0.5) + 'px'; }
+    }
+    if (this.tip) { this.tip.style.top = (g.cy + CH / 2 + zr + 8) + 'px'; this.tip.hidden = g.cy + CH / 2 + zr + 50 > me[1]; }
+  },
+  render() {
+    const s = this.st, g = this.g; if (!s) return;
+    s.piles.forEach((pl, p) => { const [x, y] = g.pile[p]; pl.forEach((id, i) => place(id, x - Math.min(4, i / 6 | 0), y - Math.min(4, i / 6 | 0), 20 + i, false)); });
+    s.center.forEach((id, i) => { const dx = (id * 37 % 13) - 6, dy = (id * 53 % 11) - 5; place(id, g.cx + dx, g.cy + dy, 300 + i, true); });
+    this.seats.forEach((d, p) => {
+      if (p >= s.n) { d.hidden = true; return; } d.hidden = false;
+      const [x, y] = g.pile[p];
+      d.textContent = `${p === 0 ? '你' : NAMES[p]} · ${s.piles[p].length} 張`;
+      d.classList.toggle('turn', !s.over && s.turn === p && !this.resolving);
+      d.style.top = (p === 0 ? y + CH + 6 : y + CH + 6) + 'px';
+      d.style.left = '0px'; const w = d.offsetWidth; d.style.left = Math.max(w / 2 + 4, Math.min(W - w / 2 - 4, x + CW / 2)) + 'px';
+    });
+    this.callEl.textContent = s.call ? String(['', 'A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'][s.call]) : '';
+    hud.textContent = '';
+  },
+  step() {
+    const s = this.st; if (!s || s.over || this.resolving) return;
+    this.clear();
+    const t = s.turn;
+    if (!s.piles[t].length) return this.end(t);
+    const id = s.piles[t].pop(); s.center.push(id); s.call = s.call % 13 + 1;
+    this.ev = { match: rk(id) === s.call, slaps: [], id };
+    TB.sfx('flip'); this.render();
+    const ce = this.callEl; ce.classList.remove('hit', 'pop'); void ce.offsetWidth; ce.classList.add(this.ev.match ? 'hit' : 'pop');
+    const [a, b] = this.REACT[s.level];
+    if (this.ev.match) {
+      this.zone.classList.add('hot');
+      for (let p = 1; p < s.n; p++) { if (Math.random() < (s.level === 'easy' ? 0.04 : 0.01)) continue; this.later(() => this.slap(p), rand(a, b) * (0.9 + p * 0.05)); }
+      this.ev.deadline = this.later(() => this.resolve(), Math.max(b + 700, 2000));
+    } else {
+      // 偶爾有電腦拍錯（數字很接近時更容易）
+      const near = Math.abs(rk(id) - s.call) === 1 || (s.call === 13 && rk(id) === 1);
+      for (let p = 1; p < s.n; p++) if (Math.random() < this.FALSE[s.level] * (near ? 2.5 : 0.6)) { this.later(() => this.slap(p), rand(a, b)); break; }
+      this.ev.next = this.later(() => { s.turn = (t + 1) % s.n; this.step(); }, this.PACE[s.level]);
+    }
+  },
+  slap(p) {
+    const s = this.st; if (!s || s.over || this.resolving || busy) return;
+    const ev = this.ev;
+    if (!ev || !s.center.length) { if (p === 0) TB.toast('還沒開始喔'); return; }
+    if (ev.slaps.includes(p)) return;
+    ev.slaps.push(p); this.showHand(p, ev.slaps.length);
+    if (!ev.match) return this.collect(p, '拍錯了');
+    if (ev.slaps.length === s.n) this.resolve();
+  },
+  showHand(p, k) {
+    const h = mkEl('xhand'), s = this.st;
+    h.innerHTML = '<b>🖐️</b><span>' + (p === 0 ? '你' : NAMES[p]) + '</span>';
+    const ang = (p / s.n) * Math.PI * 2 + Math.PI / 2, r = CW * 0.35;
+    h.style.left = (W / 2 + Math.cos(ang) * r) + 'px'; h.style.top = (this.g.cy + CH / 2 + Math.sin(ang) * r * 0.6) + 'px';
+    h.style.fontSize = Math.round(CW * 0.9) + 'px'; h.style.zIndex = 990 + k;
+    TB.sfx('capture'); if (p === 0 && navigator.vibrate) try { navigator.vibrate(30); } catch (_) {}
+    setTimeout(() => h.remove(), 1500);
+  },
+  resolve() {
+    const s = this.st, ev = this.ev; if (!ev || this.resolving) return;
+    const miss = range(s.n).filter(p => !ev.slaps.includes(p));
+    const loser = miss.length ? (miss.includes(0) ? 0 : miss[Math.random() * miss.length | 0]) : ev.slaps[ev.slaps.length - 1];
+    this.collect(loser, miss.length ? '沒拍到' : '最慢拍');
+  },
+  collect(p, why) {
+    const s = this.st; this.resolving = true; this.clear(); this.zone.classList.remove('hot');
+    const n = s.center.length;
+    this.msg.innerHTML = `<b>${p === 0 ? '你' : NAMES[p]}${why}！</b><span>收走 ${n} 張牌</span>`; this.msg.hidden = false;
+    this.msg.classList.toggle('me', p === 0);
+    TB.sfx(p === 0 ? 'bad' : 'check');
+    this.render();
+    this.later(() => {
+      s.piles[p].unshift(...s.center.slice().reverse()); s.center = []; s.call = 0; s.turn = p; this.ev = null;
+      this.render();
+      this.later(() => { this.msg.hidden = true; this.resolving = false; this.render(); this.later(() => this.step(), 500); }, 700);
+    }, 1100);
+  },
+  end(w) {
+    const s = this.st; if (s.over) return; s.over = true; this.clear(); this.render();
+    TB.bump('poker', 'played'); TB.bump('poker-heart', 'played');
+    if (w === 0) { TB.bump('poker', 'won'); TB.bump('poker-heart', 'won'); }
+    TB.sfx(w === 0 ? 'win' : 'lose');
+    TB.dialog({ title: w === 0 ? '你贏了！' : NAMES[w] + ' 先出完了', html: '<p>' + (w === 0 ? '手上的牌全部出完，反應超快！' : '再來一局，看準數字快點拍！') + '</p>' + '<table class="res"><tr><th></th><th>剩下</th></tr>' + range(s.n).map(p => `<tr class="${p === w ? 'w' : ''}"><td>${p === 0 ? '你' : NAMES[p]}</td><td>${s.piles[p].length} 張</td></tr>`).join('') + '</table>', buttons: [{ label: '再玩一局', primary: true, onClick: () => { setTimeout(() => this.start({ n: s.n, level: s.level }), 0); } }] });
+  },
+  click() {}, clickSlot() {}, grab() { return null; }, drop() { return false; },
+  hint() { TB.toast('數字跟喊的一樣時，快點拍中間！'); },
+  undo() { TB.toast('心臟病不能復原喔'); },
+  tick() {},
+  newDialog() {
+    const o = this.opt();
+    return TB.dialog({
+      title: '心臟病 · 新局', html: '<p>大家輪流翻牌，一邊喊 A、2、3…K。翻出來的牌<b>跟喊的數字一樣</b>時，大家搶著拍牌堆，<b>最慢拍的人</b>收走整疊牌。先把牌出完的人贏！</p>' +
+        TB.seg('人數', 'n', [[2, '2 人'], [3, '3 人'], [4, '4 人']], o.n) +
+        TB.seg('電腦反應', 'level', [['easy', '慢慢的'], ['normal', '普通'], ['hard', '超快']], o.level) + '<p style="font-size:13px">心臟病一局很快，離開頁面後不會保留進度。</p>',
+      buttons: [{ label: '取消', value: null }, { label: '開始', primary: true, onClick: d => { const v = { n: +TB.segVal(d, 'n'), level: TB.segVal(d, 'level') }; TB.store.set('poker:opt:heart', v); setTimeout(() => this.start(v), 0); } }]
+    });
+  },
+  start(opt) {
+    this.clear(); this.fresh(opt); this.layout(); this.msg.hidden = true;
+    dealAnim(W / 2 - CW / 2, this.g.cy, this.dealOrder); this.later(() => this.step(), 1500);
+  },
+  rules: `<h4>目標</h4><p>先把自己手上的牌全部出完的人贏。</p>
+    <h4>怎麼玩</h4><ul><li>牌平均分給每個人，蓋著放。大家輪流翻一張到中間，同時依序喊 A、2、3、…、K，喊完 K 再從 A 開始（畫面上方的大數字就是現在喊到的）。</li>
+    <li>翻出來的牌<b>跟喊的數字一樣</b>時，所有人搶著拍中間的牌堆。<b>最慢拍（或沒拍）</b>的人要把中間整疊牌收回去。</li>
+    <li>數字不一樣卻去拍，叫做<b>拍錯</b>，也要收走整疊牌。</li>
+    <li>收牌的人從 A 重新開始翻。輪到你時手上已經沒有牌，你就贏了。</li></ul>
+    <h4>操作</h4><p>點畫面中間的圓圈，或按鍵盤空白鍵拍牌。翻牌是自動的。心臟病一局很快，離開頁面後不會保留進度。</p>`,
+};
+
+// =====================================================================
 // 模式切換、按鈕
 // =====================================================================
-const MODES = { klondike: K, spider: S, bigtwo: B };
+const MODES = { klondike: K, spider: S, freecell: F, pyramid: P, bigtwo: B, redpoint: R, heart: X };
 function setMode(key, fromUser) {
   if (cur && cur.leave) cur.leave();
   clearTimeout(B.tmr); busy = false; TB.closeDialog();
   cur = MODES[key] || K; TB.store.set('poker:mode', cur.key);
   felt.classList.toggle('v', !!cur.vert);
-  document.getElementById('b-undo').disabled = cur === B;
+  document.getElementById('b-undo').disabled = cur === B || !!cur.noUndo;
   hud.textContent = '';
   const had = cur.resume();
   buildCards(cur === S && had ? S.cardList(S.st.suits) : cur.cards());
@@ -957,11 +1747,12 @@ function setMode(key, fromUser) {
 function newGame() { if (!cur) return; cur.newDialog(); }
 function measure() { const r = felt.getBoundingClientRect(); W = r.width; H = r.height; }
 function chooseMode(first) {
-  const IC = { klondike: ['k1', '♠︎'], spider: ['k2', '🕷'], bigtwo: ['k3', '2'] };
-  const m = (k, t, d) => `<button data-m="${k}" class="${cur && cur.key === k ? 'cur' : ''}"><span class="ic ${IC[k][0]}">${IC[k][1]}</span><span class="tx"><b>${t}</b><span>${d}</span></span></button>`;
+  const IC = { klondike: ['k1', '♠︎'], spider: ['k2', '🕷'], freecell: ['k4', '♣︎'], pyramid: ['k5', '▲'], bigtwo: ['k3', '2'], redpoint: ['k6', '♥︎'], heart: ['k7', '🖐'] };
+  const m = (k, t, d) => `<button data-m="${k}" class="${cur && cur.key === k && cur.st ? 'cur' : ''}"><span class="ic ${IC[k][0]}">${IC[k][1]}</span><span class="tx"><b>${t}</b><span>${d}</span></span></button>`;
   TB.dialog({
     title: '選一種玩法', dismiss: !first,
-    html: '<div class="modes">' + m('klondike', '新接龍', '一個人的經典接龍，翻一張或翻三張') + m('spider', '蜘蛛紙牌', '兩副牌，同花色從 K 排到 A；一、二、四種花色') + m('bigtwo', '大老二', '台灣規則，跟三位電腦對手比誰先出完') + '</div>',
+    html: '<div class="modes"><h5>一個人玩</h5>' + m('klondike', '新接龍', '經典接龍，翻一張或翻三張') + m('spider', '蜘蛛紙牌', '兩副牌，同花色從 K 排到 A') + m('freecell', '空當接龍', '全部翻開，靠四個空當解開；有局號') + m('pyramid', '金字塔', '兩張加起來 13 就拿走') +
+      '<h5>跟電腦玩</h5>' + m('bigtwo', '大老二', '台灣規則，跟三位電腦比誰先出完') + m('redpoint', '撿紅點', '湊 10 吃牌，比誰撿到的紅點多') + m('heart', '心臟病', '數字一樣就快拍！比反應') + '</div>',
     buttons: first ? [] : [{ label: '取消', value: null }],
   });
   document.querySelector('.tb-dlg .modes').addEventListener('click', e => {
@@ -979,10 +1770,12 @@ document.getElementById('b-info').onclick = () => {
   if (cur === K) { const b = TB.store.get('poker:best:klondike', 0); items.push(['最快', b ? fmtTime(b) : '—']); }
   if (cur === S) [1, 2, 4].forEach(n => { const b = TB.store.get('poker:best:spider' + n, 0); items.push([n + ' 花色最快', b ? fmtTime(b) : '—']); });
   if (cur === B && cur.st) items.push(['目前分數', cur.st.scores[0]]);
+  if (cur === F || cur === P) { const b = TB.store.get('poker:best:' + cur.key, 0); items.push(['最快', b ? fmtTime(b) : '—']); }
   TB.dialog({ title: cur.title, html: '<div class="tb-rules">' + cur.rules + '<h4>戰績</h4>' + TB.statsHtml(items) + '</div>', buttons: [{ label: '知道了', primary: true }] });
 };
 addEventListener('keydown', e => {
   if (e.target.closest && e.target.closest('input,textarea')) return;
+  if (cur === X && (e.code === 'Space' || e.key === ' ') && !document.querySelector('.tb-over')) { e.preventDefault(); X.slap(0); return; }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && cur) { e.preventDefault(); cur.undo(); }
   else if (e.key === 'h' && cur && !document.querySelector('.tb-over')) document.getElementById('b-hint').click();
 });
@@ -994,7 +1787,7 @@ setInterval(() => { if (cur && document.visibilityState === 'visible' && !docume
 measure();
 const saved = TB.store.get('poker:mode', null);
 if (saved && MODES[saved]) setMode(saved); else { cur = K; buildCards(K.cards()); EL.forEach(e => e.classList.add('gone')); felt.classList.add('v'); K.layout(); chooseMode(true); }
-window.__poker = { K, S, B, classify, beats, genPlays, straightInfo, pow, get cur() { return cur; } };
+window.__poker = { K, S, B, F, P, R, X, classify, beats, genPlays, straightInfo, pow, get cur() { return cur; } };
 </script>
 </body>
 </html>
