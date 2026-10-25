@@ -22,8 +22,8 @@
     let mid, ix, sh = w ? '' : (kid ? C.k : C.s);
     if (w) {
       const plus = cd.v === 'F';
-      mid = `<div class="cd-ov cd-wild"><b>${plus ? '+4' : (kid ? '🌈' : '')}</b></div>`;
-      ix = plus ? '+4' : (kid ? '🌈' : '★');
+      mid = `<div class="cd-flw"><i></i><i></i><i></i><i></i><b>${plus ? '+4' : '★'}</b></div>`;
+      ix = plus ? '+4' : '★';
     } else if (typeof cd.v === 'number') {
       ix = String(cd.v);
       if (kid) {
@@ -55,27 +55,38 @@
 .cd-in{position:absolute;inset:.055em;border-radius:.09em;background:linear-gradient(150deg,var(--a),var(--b));overflow:hidden}
 .cd-in::after{content:'';position:absolute;inset:0;pointer-events:none;
   background:linear-gradient(118deg,rgba(255,255,255,.5) 0,rgba(255,255,255,.08) 30%,rgba(255,255,255,0) 55%,rgba(255,255,255,.16) 100%)}
-.cd-ov{position:absolute;left:50%;top:50%;width:.74em;height:1.1em;margin:-.55em 0 0 -.37em;border-radius:50%;background:#fff;transform:rotate(28deg);
-  display:grid;place-items:center;box-shadow:inset 0 0 0 .02em rgba(0,0,0,.08),0 0 0 .025em rgba(255,255,255,.35)}
-.cd-ov b{transform:rotate(-28deg);font:700 .5em/1 var(--round);color:var(--b);letter-spacing:-.04em;
+.cd-ov{position:absolute;left:50%;top:50%;width:.68em;height:.68em;margin:-.34em 0 0 -.34em;border-radius:50%;background:#fff;
+  display:grid;place-items:center;box-shadow:inset 0 0 0 .035em #fff,inset 0 0 0 .05em var(--a),0 .03em .06em rgba(0,0,0,.18),0 0 0 .03em rgba(255,255,255,.4)}
+.cd-ov::before{content:'';position:absolute;inset:-.07em;border-radius:50%;border:.012em dashed rgba(255,255,255,.6)}
+.cd-ov b{font:700 .5em/1 var(--round);color:var(--b);letter-spacing:-.04em;
   text-shadow:.04em .04em 0 rgba(0,0,0,.2),-.02em -.02em 0 #fff}
 .cd-ov b.cd-ul{text-decoration:underline;text-decoration-thickness:.06em;text-underline-offset:.06em}
 .cd-ov.cd-emo b{font-size:.42em;text-shadow:none}
 .cd-ix{position:absolute;color:#fff;font:700 .19em/1 var(--round);text-shadow:0 .07em 0 rgba(0,0,0,.28);display:flex;flex-direction:column;align-items:center;gap:.05em}
 .cd-ix i{font-style:normal;font-size:.62em;opacity:.95;text-shadow:none}
 .cd-tl{left:.3em;top:.3em}.cd-br{right:.3em;bottom:.3em;transform:rotate(180deg)}
-.cd-w .cd-in{background:radial-gradient(circle at 30% 20%,#43477a,#16182e 70%)}
-.cd-wild{background:conic-gradient(from -28deg,#ff4d6a 0 25%,#ffc928 0 50%,#2fcf7a 0 75%,#3f8cff 0)!important}
-.cd-wild b{color:#fff;font-size:.42em;text-shadow:0 .03em .08em rgba(0,0,0,.6),0 0 .1em rgba(0,0,0,.5)}
+.cd-w .cd-in{background:radial-gradient(circle at 50% 45%,#fff 0,#fff8e8 45%,#ffe9c4 100%)}
+.cd-w .cd-in::before{content:'';position:absolute;inset:.035em;border-radius:.07em;border:.012em dashed rgba(180,120,40,.35)}
+.cd-w .cd-ix{color:#7a4bd6;text-shadow:0 .05em 0 rgba(255,255,255,.9)}
+.cd-flw{position:absolute;left:50%;top:50%;width:.8em;height:.8em;margin:-.4em 0 0 -.4em}
+.cd-flw i{position:absolute;left:.25em;top:0;width:.3em;height:.42em;border-radius:50% 50% 45% 45%/60% 60% 40% 40%;transform-origin:50% 95%;
+  box-shadow:inset 0 -.03em 0 rgba(0,0,0,.15),inset .03em .03em 0 rgba(255,255,255,.45)}
+.cd-flw i:nth-child(1){background:linear-gradient(#ff8597,#e8264a);transform:rotate(0deg)}
+.cd-flw i:nth-child(2){background:linear-gradient(#ffe066,#f29a00);transform:rotate(90deg)}
+.cd-flw i:nth-child(3){background:linear-gradient(#6ff0a6,#139a55);transform:rotate(180deg)}
+.cd-flw i:nth-child(4){background:linear-gradient(#7fc0ff,#1d5cd6);transform:rotate(270deg)}
+.cd-flw b{position:absolute;left:50%;top:50%;width:.34em;height:.34em;margin:-.17em 0 0 -.17em;border-radius:50%;background:#fff;
+  display:grid;place-items:center;font:700 .2em/1 var(--round);width:1.7em;height:1.7em;margin:-.85em 0 0 -.85em;color:#7a4bd6;
+  box-shadow:0 0 0 .12em #ffd84d,0 .1em .2em rgba(0,0,0,.2)}
 .cd-pips{position:absolute;left:.15em;right:.15em;top:.33em;bottom:.33em;background:rgba(255,255,255,.93);border-radius:.1em;display:grid;
   grid-template:repeat(3,1fr)/repeat(3,1fr);place-items:center;padding:.04em;box-shadow:inset 0 0 0 .02em rgba(0,0,0,.08)}
 .cd-pips span{font-size:.25em;line-height:1;filter:drop-shadow(0 .04em 0 rgba(0,0,0,.15))}
 .cd-kidc .cd-ix{font-size:.22em}
-.cd-back .cd-in{background:repeating-linear-gradient(45deg,#302c7a 0 .045em,#262265 .045em .09em)}
-.cd-bov{position:absolute;left:50%;top:50%;width:.72em;height:1.08em;margin:-.54em 0 0 -.36em;border-radius:50%;transform:rotate(28deg);
+.cd-back .cd-in{background:radial-gradient(circle at 50% 50%,rgba(255,255,255,.18) 0 .02em,transparent .025em) 0 0/.12em .12em,linear-gradient(160deg,#6a5cff,#3d2fb8)}
+.cd-bov{position:absolute;left:50%;top:50%;width:.66em;height:.66em;margin:-.33em 0 0 -.33em;border-radius:50%;
   background:conic-gradient(#ff4d6a,#ffc928,#2fcf7a,#3f8cff,#b06bff,#ff4d6a);display:grid;place-items:center}
 .cd-bov::before{content:'';position:absolute;inset:.06em;border-radius:50%;background:radial-gradient(circle at 40% 30%,#3d3897,#1b1850)}
-.cd-bov b{position:relative;transform:rotate(-28deg);font:900 .17em/1 var(--sans);letter-spacing:.06em;
+.cd-bov b{position:relative;font:900 .17em/1 var(--sans);letter-spacing:.06em;
   background:linear-gradient(90deg,#ff8095,#ffd84a,#6ef0a5,#7fb6ff);-webkit-background-clip:text;background-clip:text;color:transparent}
 .cd-mini .cd-bov b{display:none}
 /* ---- shared bits ---- */
@@ -163,18 +174,18 @@
 .cd-tbar i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#ffd84d,#ffef9e);border-radius:99px;transform-origin:left}
 .cd-tbar.low i{background:linear-gradient(90deg,#ff4d6a,#ff9a9a)}
 .cd-hand{flex:none;position:relative;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;transition:background .3s;
-  height:calc(var(--cw)*1.5 + 56px);padding-bottom:env(safe-area-inset-bottom,0px)}
+  height:calc(var(--cw)*1.5 + 56px + env(safe-area-inset-bottom,0px))}
 .cd-hand::-webkit-scrollbar,.cd-opps::-webkit-scrollbar{display:none}
 .cd-hand.me{background:linear-gradient(180deg,rgba(255,216,77,0),rgba(255,216,77,.28))}
 .cd-fan{position:relative;height:100%;margin:0 auto}
-.cd-hc{position:absolute;top:30px;transition:left .32s cubic-bezier(.2,.8,.2,1),transform .32s cubic-bezier(.2,.8,.2,1),filter .3s,opacity .3s;
+.cd-hc{position:absolute;bottom:calc(14px + env(safe-area-inset-bottom,0px));transition:left .32s cubic-bezier(.2,.8,.2,1),transform .32s cubic-bezier(.2,.8,.2,1),filter .3s,opacity .3s;
   transform-origin:50% 140%;cursor:pointer}
 .cd-hc .cd-card{font-size:var(--cw)}
 .cd-hc.pl .cd-card{box-shadow:0 0 0 .035em #fff,0 0 .2em .05em #ffe066,0 .08em .2em rgba(0,0,0,.35)}
 .cd-hc.dim{filter:brightness(.72) saturate(.75)}
 .cd-kid .cd-hc.dim{filter:brightness(.6) saturate(.5);opacity:.85}
 .cd-hc.new{animation:cdIn .45s cubic-bezier(.2,.8,.2,1.2) both}
-@keyframes cdIn{from{opacity:0;margin-top:80px}}
+@keyframes cdIn{from{opacity:0;translate:0 90px}}
 .cd-hc.going{opacity:0;transition:opacity .15s}
 .cd-sheet{position:absolute;inset:0;z-index:50;background:rgba(10,15,40,.5);display:flex;align-items:flex-end;justify-content:center;animation:cdFade .2s both}
 .cd-sheet>div{background:#fff;color:#1f2346;width:100%;max-width:520px;border-radius:26px 26px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px));
@@ -196,8 +207,8 @@
 .cd-land-l .cd-mid{flex-direction:row;gap:16px}
 .cd-land-l .cd-piles{gap:14px}
 .cd-land-l .cd-info{max-width:230px;gap:6px}
-.cd-land-l .cd-hand{height:calc(var(--cw)*1.5 + 30px)}
-.cd-land-l .cd-hc{top:20px}
+.cd-land-l .cd-hand{height:calc(var(--cw)*1.5 + 40px)}
+.cd-land-l .cd-hc{bottom:16px}
 .cd-land-l .cd-yt b{font-size:30px}.cd-land-l .cd-yt img{width:64px;height:64px}
 .cd-land-l .cd-acts{flex-direction:column;flex-wrap:nowrap;max-height:100%}
 .cd-land-l .cd-btn{min-height:50px;font-size:17px;padding:8px 16px}
@@ -493,7 +504,7 @@
         function sizes() {
           const W = R.clientWidth, H = R.clientHeight, land = W > H * 1.15;
           R.classList.toggle('cd-land-l', land);
-          CW = land ? clamp(H * (kid ? 0.22 : 0.2), 52, 120) : clamp(Math.min(W * (kid ? 0.27 : 0.24), H * (kid ? 0.17 : 0.15)), 60, 140);
+          CW = land ? clamp(H * (kid ? 0.21 : 0.19), 52, 120) : clamp(Math.min(W * (kid ? 0.27 : 0.24), H * (kid ? 0.17 : 0.15)), 60, 140);
           const pw = land ? clamp(H * 0.2, 50, 110) : clamp(Math.min(W * 0.3, H * 0.17), 70, 160);
           R.style.setProperty('--cw', CW + 'px'); R.style.setProperty('--pw', pw + 'px'); R.style.setProperty('--dw', (pw * 0.78) + 'px');
           const n = Math.max(1, (V ? V.ps.length : 2) - 1);
@@ -515,7 +526,7 @@
             const el = handEls.get(cd.i); if (!el) return;
             const off = i - (n - 1) / 2, ang = full > W ? 0 : off * fanA, lift = plSet.has(cd.i) ? -(kid ? 26 : 20) : 0;
             el.style.left = (x0 + i * step) + 'px'; el.style.zIndex = i + 1;
-            el.style.transform = `translateY(${lift + Math.abs(off) * Math.abs(ang) * 0.9}px) rotate(${ang}deg)`;
+            el.style.transform = `translateY(${lift + Math.abs(ang) * 0.6}px) rotate(${ang}deg)`;
             el.classList.toggle('pl', plSet.has(cd.i));
             el.classList.toggle('dim', myTurn && !plSet.has(cd.i));
           });
