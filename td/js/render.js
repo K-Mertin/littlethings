@@ -94,17 +94,20 @@ const Render = (() => {
     if (G.L.pool) for (const p of G.L.pool) ks.add(p[0]);
     if (G.L.boss) ks.add(G.L.boss);
     if (G.L.midBoss) ks.add(G.L.midBoss[1]);
-    for (const k of [...ks, ...first]) { const d = ENEMIES[k]; ks.add(k); if (d.split) ks.add(d.split); if (d.summon) ks.add(d.summonK || 'skeleton'); }
+    for (const k of [...ks, ...first]) { const d = ENEMIES[k]; ks.add(k); if (d.split) ks.add(d.split); if (d.drop) ks.add(d.drop); if (d.summon) ks.add(d.summonK || 'skeleton'); }
+    if (ks.has('bossTortoise')) { ks.add('bossTortoise2'); ks.add('crab'); }
+    if (ks.has('bossRaijin')) ks.add('bossRaijin2');
+    if (ks.has('bossEclipse')) { ks.add('bossEclipse2'); ks.add('bossEclipse3'); ks.add('shade'); ks.add('raven'); }
     const knight = G.hero && G.hero.d.block, dd = dpr;
     const order = [...ks].sort((a, b) => (first.has(b) ? 1 : 0) - (first.has(a) ? 1 : 0));
-    const Rof = k => { const d = ENEMIES[k]; return Beasts.visR(k, d.r, V.s) * (d.boss ? 0.85 : 1); };
+    const Rof = k => { const d = ENEMIES[k] || ENEMIES[k.replace(/\d$/, '')]; return Beasts.visR(k, d.r, V.s) * (d.boss ? 0.85 : 1); };
     if (G.hero) { const id = G.hero.id, R = V.s * 0.33; for (const an of ['idle', 'walk', 'atk', 'cast']) for (let f = 0; f < HeroArt.FR[an]; f++) warmQ.push(() => HeroArt.frame(id, R, an, f, dd)); }
     for (const k of order) warmQ.push(() => { Beasts.frame(k, Rof(k), 0, 0, dd); Beasts.frame(k, Rof(k), 0, 1, dd); });
     for (const k of order) for (let f = 1; f < Beasts.N.walk; f++) warmQ.push(() => Beasts.frame(k, Rof(k), f, 0, dd));
     for (const k of order) for (let f = 0; f < Beasts.N.hit; f++) warmQ.push(() => Beasts.frame(k, Rof(k), f, 0, dd, 'hit'));
     for (const k of order) for (let f = 0; f < Beasts.N.die; f++) warmQ.push(() => Beasts.frame(k, Rof(k), f, 0, dd, 'die'));
     for (const k of order) {
-      const d = ENEMIES[k], B = Beasts.BOX[k];
+      const d = ENEMIES[k] || ENEMIES[k.replace(/\d$/, '')], B = Beasts.BOX[k];
       if (knight && !d.fly && !d.boss) for (let f = 0; f < Beasts.N.atk; f++) warmQ.push(() => Beasts.frame(k, Rof(k), f, 0, dd, 'atk'));
       if (B.boss || B.cast) for (let f = 0; f < Beasts.N.cast; f++) warmQ.push(() => Beasts.frame(k, Rof(k), f, 0, dd, 'cast'));
       if (B.boss) for (let f = 0; f < Beasts.N.idle; f++) warmQ.push(() => Beasts.frame(k, Rof(k), f, 0, dd, 'idle'));
@@ -187,14 +190,38 @@ const Render = (() => {
 
   // ───────── 敵人 ─────────
   function enemyR(e, s) { return Beasts.visR(e.k, e.r, s) * (e.boss ? 0.85 : 1); }
+  // 多階段頭目：每個形態用不同的精靈圖
+  function artKind(e) {
+    if (e.d.phases && e.phase > 0) { const k = e.k + (e.phase + 1); if (Beasts.BOX[k]) return k; if (Beasts.BOX[e.k + '2']) return e.k + '2'; }
+    return e.k;
+  }
+  function drawBoat(ctx, a, y, R, s, face, time, e) {
+    const w = Math.max(R * 1.25, s * 0.42), h = w * 0.32, bob = Math.sin(time * 4 + e.id) * s * 0.02;
+    ctx.save(); ctx.translate(a, y + bob); ctx.scale(face, 1);
+    // 水波
+    ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = Math.max(1, s * 0.025);
+    for (let i = 0; i < 2; i++) { const ph = (time * 1.5 + i * 0.5 + e.id * 0.1) % 1; ctx.globalAlpha = (1 - ph) * 0.8; ctx.beginPath(); ctx.ellipse(-w * 0.2 - ph * w * 0.6, h * 0.5, w * (0.7 + ph * 0.5), h * (0.5 + ph * 0.4), 0, 0.2, Math.PI - 0.2); ctx.stroke(); }
+    ctx.globalAlpha = 1;
+    ctx.beginPath(); ctx.moveTo(-w, -h * 0.2); ctx.quadraticCurveTo(-w * 0.9, h * 0.9, 0, h); ctx.quadraticCurveTo(w * 0.9, h * 0.9, w * 1.15, -h * 0.55); ctx.lineTo(w * 0.85, -h * 0.1); ctx.lineTo(-w, -h * 0.2); ctx.closePath();
+    ctx.fillStyle = lgrad(ctx, 0, -h, 0, h, ['#b07a44', '#7a4e28', '#5a3418']); ctx.fill(); ctx.strokeStyle = 'rgba(50,28,12,.7)'; ctx.lineWidth = Math.max(1, s * 0.02); ctx.stroke();
+    ctx.strokeStyle = '#d8a868'; ctx.lineWidth = Math.max(1, s * 0.03); ctx.beginPath(); ctx.moveTo(-w * 0.95, -h * 0.15); ctx.lineTo(w * 0.9, -h * 0.12); ctx.stroke();
+    ctx.restore();
+  }
   function drawEnemy(ctx, e, a, b, s, time, face, dt) {
-    const R = enemyR(e, s), B = Beasts.BOX[e.k];
+    const R = enemyR(e, s), ak = e._ak = artKind(e), B = Beasts.BOX[ak];
     let ph = e.wob * (e.fly ? 1.7 : 1);
     const f = ((Math.floor(ph / TAU * Beasts.FR) % Beasts.FR) + Beasts.FR) % Beasts.FR;
     e._f = f;
     const fade = clamp(e.dist / 0.7, 0, 1) * clamp((e.P.len - e.dist) / 0.45, 0, 1);
     if (fade <= 0.01) return;
     const gy = b + s * 0.08;
+    if (e.inT) {
+      // 地道裡：地面上只看得到一道隆起移動的土痕
+      ctx.globalAlpha = fade * 0.75;
+      for (let i = 0; i < 3; i++) { const ox = (i - 1) * R * 0.3, h = R * (0.18 + 0.08 * Math.sin(time * 10 + i + e.id)); ell(ctx, a + ox, gy - h * 0.3, R * 0.26, h * 0.5, i % 2 ? '#6a5038' : '#5a4230'); }
+      ctx.globalAlpha = 1;
+      return null;
+    }
     if (e.under > 0) {
       // 鑽地中：只看得到翻起的土堆
       ctx.globalAlpha = fade;
@@ -203,9 +230,11 @@ const Render = (() => {
       ctx.globalAlpha = 1;
       return null;
     }
-    const y0 = e.fly ? gy - s * 0.68 + Math.sin(e.wob * 0.5) * s * 0.05 : gy;
-    ctx.globalAlpha = fade;
-    if (!e.fly) ell(ctx, a, gy, R * (e.boss ? 1.1 : 0.85), R * 0.3, 'rgba(20,10,20,.3)');
+    const y0 = e.fly ? gy - s * 0.68 + Math.sin(e.wob * 0.5) * s * 0.05 : e.riv ? gy - s * 0.06 : gy;
+    const vis = e.vis ? 1 : 0.3;
+    ctx.globalAlpha = fade * vis;
+    if (e.riv) drawBoat(ctx, a, gy + s * 0.02, R, s, face, time, e);
+    else if (!e.fly) ell(ctx, a, gy, R * (e.boss ? 1.1 : 0.85), R * 0.3, 'rgba(20,10,20,.3)');
     // 動作：放招 > 受擊 > 被擋住時攻擊 > 走路
     if (e.flash > 0.05 && !(e._hcd > 0)) { e._hitT = 0.16; e._hcd = 0.55; }
     if (e._hcd > 0) e._hcd -= dt; if (e._hitT > 0) e._hitT -= dt;
@@ -215,13 +244,21 @@ const Render = (() => {
     else if (e.held) { an = 'atk'; fa = Math.floor(time * 9 + e.id) % Beasts.FA; }
     else if (e.boss && e.frozenT > 0) { an = 'idle'; fa = Math.floor(time * 6) % Beasts.N.idle; }
     const atk = an;
-    const sp = Beasts.frame(e.k, R, fa, 0, dpr, atk);
+    const sp = Beasts.frame(ak, R, fa, 0, dpr, atk);
     const flip = face < 0;
+    const ax = a;
     if (flip) { ctx.save(); ctx.translate(a, 0); ctx.scale(-1, 1); a = 0; }
     Gfx.drawSprite(ctx, sp, a, y0);
-    if (e.frozenT <= 0 && e.slowA > 0) { ctx.globalAlpha = fade * 0.65; Gfx.drawSprite(ctx, Beasts.frame(e.k, R, fa, 2, dpr, atk), a, y0); ctx.globalAlpha = fade; }
-    if (e.flash > 0) { ctx.globalAlpha = fade * Math.min(1, e.flash / 0.09) * 0.85; Gfx.drawSprite(ctx, Beasts.frame(e.k, R, fa, 1, dpr, atk), a, y0); ctx.globalAlpha = fade; }
+    if (e.frozenT <= 0 && e.slowA > 0) { ctx.globalAlpha = fade * vis * 0.65; Gfx.drawSprite(ctx, Beasts.frame(ak, R, fa, 2, dpr, atk), a, y0); ctx.globalAlpha = fade * vis; }
+    if (e.flash > 0) { ctx.globalAlpha = fade * vis * Math.min(1, e.flash / 0.09) * 0.85; Gfx.drawSprite(ctx, Beasts.frame(ak, R, fa, 1, dpr, atk), a, y0); ctx.globalAlpha = fade * vis; }
     if (flip) ctx.restore();
+    if (e.inv > 0) {
+      // 縮進殼裡：無敵的光罩
+      const rr = R * 1.7; ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.35 + 0.15 * Math.sin(time * 8);
+      ctx.drawImage(Gfx.glow('#9effe0'), ax - rr, y0 - R * 1.2 - rr * 0.7, rr * 2, rr * 1.4); ctx.restore();
+    }
+    if (e.d.rage && e.hp < e.maxHp * 0.5 && Math.random() < dt * 8) FX.part('smoke', e.x, e.y, 0.9, (Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.2, 0.5, 0.6, 0.1, '#ff6a5a');
+    if (!e.vis && e.d.stealth && Math.random() < dt * 4) FX.part('mist', e.x, e.y, 0.3, 0, 0, 0.2, 0.8, 0.15, '#4a3a6a');
     ctx.globalAlpha = 1;
     return { R, y0, top: y0 - B.top * R };
   }
@@ -299,7 +336,7 @@ const Render = (() => {
   }
   function drawDeath(ctx, d, s, time) {
     const [a, b] = V.P(d.x, d.y), u = d.t / d.dur;
-    const R = Beasts.visR(d.k, d.r, s) * (d.boss ? 0.85 : 1);
+    const R = Beasts.visR(d.k.replace(/\d$/, '') === d.k ? d.k : d.k, d.r, s) * (d.boss ? 0.85 : 1);
     const st = (Beasts.BOX[d.k] || {}).die;
     const df = Math.min(Beasts.N.die - 1, Math.floor(Math.min(1, u / 0.8) * Beasts.N.die));
     const sp = Beasts.frame(d.k, R, df, u < 0.08 ? 1 : 0, dpr, 'die');
@@ -328,6 +365,56 @@ const Render = (() => {
       Gfx.drawSprite(ctx, sp, 0, 0);
     }
     ctx.restore();
+  }
+
+  // ───────── 兵營士兵 ─────────
+  function troopLook(kind, tier) {
+    if (kind === 'knight') return { kind: 'knight' };
+    if (kind === 'berserk') return { kind: 'berserk', mad: true };
+    return tier >= 2 ? { kind: 'foot', tab: '#c8382e', shield: '#3a6fd8' } : tier === 1 ? { kind: 'foot', tab: '#c8382e', shield: '#a86a3a' } : { kind: 'foot', tab: '#4f8a4a', shield: '#8a5a32' };
+  }
+  function drawTroop(ctx, so, s, time) {
+    const [a, b] = V.P(so.x, so.y), t = so.t;
+    const kind = t.tier === 3 ? (t.spec === 0 ? 'knight' : 'berserk') : 'foot';
+    // 面向：用螢幕上的移動方向／敵人方向
+    const tx = so.tgt && so.tgt.alive ? V.P(so.tgt.x, so.tgt.y)[0] : null;
+    if (tx !== null && Math.abs(tx - a) > 1) so._sf = tx > a ? 1 : -1;
+    else if (so._sx !== undefined && Math.abs(a - so._sx) > 0.3) so._sf = a > so._sx ? 1 : -1;
+    so._sx = a; if (!so._sf) so._sf = 1;
+    const moving = so._lw !== undefined && so.walk - so._lw > 0.0001; so._lw = so.walk;
+    const f = moving ? [1, 0, 3, 0][Math.floor(so.walk * 0.55) % 4] : 0;
+    const swing = so.atkT > 0 ? Math.sin((1 - so.atkT / 0.3) * Math.PI) : so.tgt ? 0.12 + 0.06 * Math.sin(time * 6 + so.id) : 0;
+    ell(ctx, a, b + s * 0.06, s * 0.17, s * 0.06, 'rgba(20,10,20,.3)');
+    ctx.save(); ctx.translate(a, b + s * 0.06); ctx.scale(so._sf, 1);
+    Crew.soldier(ctx, s, troopLook(kind, t.tier), f, swing);
+    ctx.restore();
+    if (so.hp < t.st.hp - 0.5) {
+      const bw = s * 0.36, bh = Math.max(3, s * 0.055), bx = a - bw / 2, by = b - s * 0.62;
+      rrect(ctx, bx - 1, by - 1, bw + 2, bh + 2, bh); ctx.fillStyle = 'rgba(20,14,28,.8)'; ctx.fill();
+      const f2 = clamp(so.hp / t.st.hp, 0, 1); if (f2 > 0) { rrect(ctx, bx, by, Math.max(bh, bw * f2), bh, bh / 2); ctx.fillStyle = '#6fc3ff'; ctx.fill(); }
+    }
+  }
+  // 毒池：不規則的一灘（快取成圖），上面冒泡
+  const poolC = {};
+  const POOL_COL = [['#c8ff6a', '#7ad04a', '#2f6a1a'], ['#f4ff8a', '#d8ff4a', '#7a8a1a'], ['#e8b8ff', '#9a4ad8', '#3a1a5a']];
+  function poolSprite(kind) {
+    if (poolC[kind]) return poolC[kind];
+    const S = 128, c = Gfx.canvas(S, S), x = c.getContext('2d'), r = mkRng(kind * 7 + 3), C = S / 2, cols = POOL_COL[kind];
+    x.beginPath(); for (let i = 0; i < 14; i++) { const a = i / 14 * TAU, rr = C * (0.72 + r() * 0.24); x.lineTo(C + Math.cos(a) * rr, C + Math.sin(a) * rr); } x.closePath();
+    x.fillStyle = rgrad(x, C * 0.9, C * 0.85, 0, C, [rgba(cols[0], 0.95), rgba(cols[1], 0.85), rgba(cols[2], 0.75)]); x.fill();
+    x.strokeStyle = rgba(cols[2], 0.6); x.lineWidth = 4; x.stroke();
+    for (let i = 0; i < 6; i++) { const a = r() * TAU, d = r() * C * 0.5; x.fillStyle = rgba('#ffffff', 0.25); x.beginPath(); x.ellipse(C + Math.cos(a) * d, C + Math.sin(a) * d, C * 0.12, C * 0.05, a, 0, TAU); x.fill(); }
+    return (poolC[kind] = c);
+  }
+  function drawPools(ctx, G, s, time) {
+    for (const p of G.pools) {
+      const [a, b] = V.P(p.x, p.y), al = Math.min(1, p.t * 5, (p.T - p.t) * 1.5), r = p.r * s * (0.55 + 0.45 * Math.min(1, p.t * 6));
+      ctx.globalAlpha = al * 0.82; ctx.drawImage(poolSprite(p.kind), a - r * 1.05, b - r * 0.75, r * 2.1, r * 1.5);
+      const col = POOL_COL[p.kind][0];
+      for (let i = 0; i < 3; i++) { const ph = (time * 1.3 + i * 0.37 + p.id * 0.17) % 1, bx = a + Math.cos(i * 2.3 + p.id) * r * 0.5, by = b + Math.sin(i * 2.3 + p.id) * r * 0.3; ctx.globalAlpha = al * Math.sin(ph * Math.PI) * 0.9; ctx.strokeStyle = col; ctx.lineWidth = Math.max(1, s * 0.02); ctx.beginPath(); ctx.arc(bx, by - ph * s * 0.08, s * (0.03 + ph * 0.03), 0, TAU); ctx.stroke(); }
+      if (!lowFx && Math.random() < 0.06) FX.part('mist', p.x + (Math.random() - 0.5) * p.r, p.y + (Math.random() - 0.5) * p.r * 0.6, 0.1, 0, 0, 0.3, 1.2, 0.18, col);
+    }
+    ctx.globalAlpha = 1;
   }
 
   // ───────── 其他物件 ─────────
@@ -373,8 +460,94 @@ const Render = (() => {
 
 
   // ───────── 關卡機制的畫面：傳送陣、海流、水晶基座光芒 ─────────
+  // 吊橋：放下時是木板橋面，收起時看得到河水、兩端翹起的橋板和紅燈
+  function drawBridges(ctx, G, s, time) {
+    for (const br of G.bridges) {
+      let dx = 1, dy = 0;
+      for (const P of G.paths) for (const sg of P.seg) if (segDist2(br.x + 0.5, br.y + 0.5, sg.a.x, sg.a.y, sg.b.x, sg.b.y) < 0.05) { dx = sg.dx; dy = sg.dy; }
+      const cx = br.x + 0.5, cy = br.y + 0.5, an = V.A(Math.atan2(dy, dx));
+      const [a, b] = V.P(cx, cy);
+      ctx.save(); ctx.translate(a, b); ctx.rotate(an);
+      const L = s * 0.62, W = s * 0.46;
+      if (!br.open) {
+        // 河水露出來
+        ctx.fillStyle = lgrad(ctx, 0, -W, 0, W, ['#2a8aa0', '#4ac0c8', '#2a8aa0']); ctx.fillRect(-L * 0.7, -W, L * 1.4, W * 2);
+        ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = Math.max(1, s * 0.025);
+        for (let i = 0; i < 3; i++) { const ph = (time * 0.8 + i * 0.33) % 1, yy = -W + ph * W * 2; ctx.globalAlpha = Math.sin(ph * Math.PI) * 0.8; ctx.beginPath(); ctx.moveTo(-L * 0.4, yy); ctx.quadraticCurveTo(0, yy - s * 0.04, L * 0.4, yy); ctx.stroke(); }
+        ctx.globalAlpha = 1;
+      }
+      // 橋板（放下＝平的，收起＝兩半往上翹，從上往下看變短）
+      const lift = br.open ? 0 : 1;
+      for (const sd of [-1, 1]) {
+        const len = L * (1 - lift * 0.62);
+        const x0 = sd * L * 1.02, x1 = x0 - sd * len;
+        ctx.fillStyle = lgrad(ctx, 0, -W, 0, W, ['#c8945a', '#a8743e', '#7a4e28']);
+        ctx.fillRect(Math.min(x0, x1), -W * 0.92, Math.abs(x1 - x0), W * 1.84);
+        ctx.strokeStyle = 'rgba(70,40,20,.55)'; ctx.lineWidth = Math.max(1, s * 0.015);
+        for (let k = 1; k < 6; k++) { const xx = x0 - sd * len * k / 6; ctx.beginPath(); ctx.moveTo(xx, -W * 0.92); ctx.lineTo(xx, W * 0.92); ctx.stroke(); }
+        if (lift) { ctx.fillStyle = 'rgba(40,20,10,.35)'; ctx.fillRect(Math.min(x0, x1), -W * 0.92, Math.abs(x1 - x0), W * 0.3); }
+        // 橋頭柱＋鐵鍊
+        for (const sy of [-1, 1]) {
+          circ(ctx, x0, sy * W * 1.02, s * 0.065, '#5a4030'); circ(ctx, x0 - s * 0.01, sy * W * 1.02 - s * 0.015, s * 0.03, '#8a6a4a');
+          ctx.strokeStyle = '#4a4a52'; ctx.lineWidth = Math.max(1, s * 0.02); ctx.setLineDash([s * 0.03, s * 0.02]); ctx.beginPath(); ctx.moveTo(x0, sy * W * 1.02); ctx.lineTo(x1, sy * W * 0.85); ctx.stroke(); ctx.setLineDash([]);
+        }
+      }
+      ctx.restore();
+      // 計時：綠燈＝通行，紅燈＝收起（外圈是剩下的時間）
+      const [ia, ib] = V.P(cx, cy - 0.62), r = s * 0.13, col = br.open ? '#5ae07a' : '#ff5a4a';
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.7; ctx.drawImage(Gfx.glow(col), ia - r * 3, ib - r * 3, r * 6, r * 6); ctx.restore();
+      circ(ctx, ia, ib, r * 1.25, 'rgba(20,14,28,.75)');
+      ctx.strokeStyle = col; ctx.lineWidth = Math.max(2, s * 0.04); ctx.lineCap = 'round'; ctx.beginPath(); ctx.arc(ia, ib, r * 1.05, -Math.PI / 2, -Math.PI / 2 + TAU * (br.p || 0)); ctx.stroke(); ctx.lineCap = 'butt';
+      circ(ctx, ia, ib, r * 0.6, col);
+    }
+  }
+  // 旋轉祭壇：石盤＋轉動的符文環，箭頭指向目前打開的路；其他路口有紫色的光柵
+  function drawRotor(ctx, G, s, time) {
+    const R2 = G.L.rotor, R = G.rotor, act = R2[3][R.i], cx = R2[0] + 0.5, cy = R2[1] + 0.5;
+    const J = G.forkJ[act], o = { x: 0, y: 0 };
+    pathPos(G.paths[act], J + 0.6, o);
+    const tgt = Math.atan2(o.y - cy, o.x - cx);
+    if (R.ang === undefined || isNaN(R.ang)) R.ang = tgt;
+    let dA = Math.atan2(Math.sin(tgt - R.ang), Math.cos(tgt - R.ang)); R.ang += dA * Math.min(1, 0.12);
+    const [a, b] = V.P(cx, cy), r = s * 0.48;
+    ctx.save(); ctx.translate(a, b);
+    ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(0, s * 0.05, r * 1.05, r * 1.05, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = rgrad(ctx, -r * 0.3, -r * 0.3, 0, r, ['#8a7aa8', '#5a4a7a', '#3a2e56']); ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#d8b04a'; ctx.lineWidth = Math.max(1.5, s * 0.035); ctx.stroke();
+    ctx.rotate(time * 0.6);
+    ctx.strokeStyle = 'rgba(200,168,255,.8)'; ctx.lineWidth = Math.max(1, s * 0.02); ctx.beginPath(); ctx.arc(0, 0, r * 0.72, 0, TAU); ctx.stroke();
+    for (let i = 0; i < 8; i++) { ctx.rotate(TAU / 8); ctx.fillStyle = '#e8d8ff'; ctx.fillRect(r * 0.62, -s * 0.015, s * 0.06, s * 0.03); }
+    ctx.restore();
+    ctx.save(); ctx.translate(a, b); ctx.rotate(V.A(R.ang));
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.6 + 0.3 * Math.sin(time * 5); ctx.drawImage(Gfx.glow('#ffd36b'), r * 0.1, -r * 0.6, r * 1.4, r * 1.2); ctx.restore();
+    ctx.fillStyle = '#ffd36b'; ctx.beginPath(); ctx.moveTo(r * 0.95, 0); ctx.lineTo(r * 0.2, -r * 0.42); ctx.lineTo(r * 0.38, 0); ctx.lineTo(r * 0.2, r * 0.42); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(90,60,10,.7)'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.restore();
+    // 計時
+    const f = R.t / R2[2];
+    ctx.strokeStyle = 'rgba(255,211,107,.9)'; ctx.lineWidth = Math.max(2, s * 0.04); ctx.lineCap = 'round'; ctx.beginPath(); ctx.arc(a, b, r * 1.12, -Math.PI / 2, -Math.PI / 2 + TAU * f); ctx.stroke(); ctx.lineCap = 'butt';
+    // 各條路口：打開的那條有往前流動的金色箭頭，關閉的是紫色光柵
+    const seen = new Set();
+    for (const pi of R2[3]) {
+      if (seen.has(pi)) continue; seen.add(pi);
+      const P = G.paths[pi], Jp = G.forkJ[pi];
+      if (pi === act) {
+        for (let k = 0; k < 4; k++) { const d = Jp + 0.55 + ((time * 1.4 + k * 0.6) % 2.4); pathPos(P, d, o); const [p, q] = V.P(o.x, o.y), an = V.A(Math.atan2(o.dy, o.dx)); ctx.save(); ctx.translate(p, q); ctx.rotate(an); ctx.globalAlpha = 0.8 * Math.sin(((time * 1.4 + k * 0.6) % 2.4) / 2.4 * Math.PI); ctx.strokeStyle = '#ffd36b'; ctx.lineWidth = Math.max(2, s * 0.06); ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-s * 0.08, -s * 0.13); ctx.lineTo(s * 0.06, 0); ctx.lineTo(-s * 0.08, s * 0.13); ctx.stroke(); ctx.restore(); }
+      } else {
+        pathPos(P, Jp + 0.75, o); const [p, q] = V.P(o.x, o.y), an = V.A(Math.atan2(o.dy, o.dx));
+        ctx.save(); ctx.translate(p, q); ctx.rotate(an + Math.PI / 2);
+        ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.45 + 0.15 * Math.sin(time * 4 + pi); ctx.drawImage(Gfx.glow('#9a5aff'), -s * 0.5, -s * 0.25, s, s * 0.5);
+        ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 0.85; ctx.strokeStyle = '#c8a8ff'; ctx.lineWidth = Math.max(1.5, s * 0.03);
+        for (let k = -2; k <= 2; k++) { ctx.beginPath(); ctx.moveTo(k * s * 0.09, -s * 0.12); ctx.lineTo(k * s * 0.09, s * 0.12); ctx.stroke(); }
+        ctx.restore();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
   function levelFx(ctx, G, s, time) {
     const L = G.L;
+    if (G.bridges.length) drawBridges(ctx, G, s, time);
+    if (G.rotor) drawRotor(ctx, G, s, time);
     if (L.tp) {
       for (const P of G.paths) for (const sg of P.seg) if (sg.tp) for (const [pt, out] of [[sg.a, 0], [sg.b, 1]]) {
         const [a, b] = V.P(pt.x, pt.y), rr = s * 0.5;
@@ -608,6 +781,8 @@ const Render = (() => {
     rrect(ctx, V.ox, V.oy, V.w, V.h, s * 0.3); ctx.clip();
     drawWaterAnim(ctx, s, time);
     drawDecals(ctx, s, time);
+    drawPools(ctx, G, s, time);
+    for (const e of G.enemies) if (e.alive && e.d.ward && e.vis) { const [a, b] = V.P(e.x, e.y), r = 1.7 * s; ctx.save(); ctx.globalAlpha = 0.55; ctx.strokeStyle = 'rgba(125,255,176,.7)'; ctx.lineWidth = Math.max(1.5, s * 0.035); ctx.setLineDash([s * 0.12, s * 0.1]); ctx.lineDashOffset = -time * s * 0.3; ctx.beginPath(); ctx.ellipse(a, b, r, r * (V.rot ? 1 : 1), 0, 0, TAU); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 0.08; ctx.fillStyle = '#7dffb0'; ctx.fill(); ctx.restore(); }
     groundUi(ctx, G, ui, s, time);
     levelFx(ctx, G, s, time);
     if (G.hero) drawHeroGround(ctx, G, G.hero, ui, s, time);
@@ -633,6 +808,7 @@ const Render = (() => {
     for (const e of G.enemies) if (e.alive && !e.fly) { const [, b] = P(e.x, e.y); items.push([b + s * 0.08, 1, e]); }
     for (const d of FX.deaths) if (!d.fly) { const [, b] = P(d.x, d.y); items.push([b + s * 0.08, 3, d]); }
     for (const g of FX.ghosts) { const [, b] = P(g.x, g.y); items.push([b + s * 0.12, 4, g]); }
+    for (const so of G.troops) if (!so.dead) { const [, b] = P(so.x, so.y); items.push([b + s * 0.06, 8, so]); }
     items.push([castlePos(G)[1] + s * 0.2, 5, null]);
     if (G.hero && !G.hero.dead) items.push([P(G.hero.x, G.hero.y)[1] + s * 0.1, 7, G.hero]);
     for (const p of TR.portals) items.push([P(p.x, p.y)[1] + s * 0.3, 6, p]);
@@ -647,12 +823,13 @@ const Render = (() => {
           const sd = V.rot ? -o.dy : o.dx;
           if (sd < -0.3) o._face = -1; else if (sd > 0.3) o._face = 1; else if (!o._face) o._face = 1;
           const inf = drawEnemy(ctx, o, a, b, s, time, o._face, dt);
-          if (inf) statusQ.push([o, a, inf]);
+          if (inf && o.vis) statusQ.push([o, a, inf]);
           break;
         }
         case 2: drawProp(ctx, o, s, time); break;
         case 3: drawDeath(ctx, o, s, time); break;
         case 4: {
+          if (o.troop) { const [a, b] = P(o.x, o.y), u = o.t / o.dur; ctx.save(); ctx.globalAlpha = 1 - u; ctx.translate(a, b + s * 0.06); ctx.rotate(-o.sf * Rig.ease(Math.min(1, u * 2)) * 1.3); ctx.scale(o.sf, 1); Crew.soldier(ctx, s, troopLook(o.troop, o.tier), 0, 0); ctx.restore(); break; }
           if (o.hero) { const [a, b] = P(o.x, o.y), u = o.t / o.dur, sp = HeroArt.frame(o.hero, s * 0.33, 'idle', 0, dpr); ctx.save(); ctx.globalAlpha = (1 - u) * 0.7; ctx.translate(a, b + s * 0.1 - u * s * 0.9); ctx.scale(o.sf, 1); Gfx.drawSprite(ctx, Gfx.tinted(sp, 'ghost:' + o.hero + ':' + sp.w, '#cfe6ff', 0.75), 0, 0); ctx.restore(); break; }
           const [a, b] = P(o.x, o.y), [bk] = towerSprites(o.k, o.tier, o.spec, s), u = o.t / o.dur;
           ctx.globalAlpha = 1 - u * u; partial(ctx, bk, a, b + s * 0.12 + u * s * 0.15, 1 - u); ctx.globalAlpha = 1; break;
@@ -660,6 +837,7 @@ const Render = (() => {
         case 5: drawCastle(ctx, G, s, time); break;
         case 6: drawPortal(ctx, o, s, time, th); break;
         case 7: { const [a, b] = P(o.x, o.y); drawHero(ctx, G, o, a, b, s, time, ui); break; }
+        case 8: drawTroop(ctx, o, s, time); break;
       }
     }
     for (const [o, a, inf] of statusQ) enemyStatus(ctx, o, a, inf, s, time, dt);
@@ -673,7 +851,7 @@ const Render = (() => {
       const [a, b] = P(e.x, e.y), sd = V.rot ? -e.dy : e.dx;
       if (sd < -0.3) e._face = -1; else if (sd > 0.3) e._face = 1; else if (!e._face) e._face = 1;
       const inf = drawEnemy(ctx, e, a, b, s, time, e._face, dt);
-      enemyStatus(ctx, e, a, inf, s, time, dt);
+      if (e.vis) enemyStatus(ctx, e, a, inf, s, time, dt);
       if (e.k === 'bossDragon' && e.dashT > 0 && Math.random() < 0.6) FX.part('fire', e.x - e.dx * 0.4, e.y - e.dy * 0.4, 0.7, -e.dx * 0.5, -e.dy * 0.5, 0.2, 0.5, 0.3, '#ff8a2a');
     }
     for (const d of FX.deaths) if (d.fly) drawDeath(ctx, d, s, time);
@@ -681,7 +859,7 @@ const Render = (() => {
     drawParticles(ctx, G, s, HS, time, false);
     // ── 雲影 ──
     ctx.save(); rrect(ctx, V.ox, V.oy, V.w, V.h, s * 0.3); ctx.clip();
-    if (th !== 'night' && th !== 'cave' && qual < 2) {
+    if (th !== 'night' && th !== 'cave' && th !== 'harbor' && th !== 'amber' && th !== 'spire' && qual < 2) {
       const cs = cloudSprite();
       ctx.globalAlpha = th === 'desert' ? 0.5 : th === 'snow' ? 0.35 : 0.45;
       for (const c of FX.clouds) { const [a, b] = P(c.x, c.y), w = s * 7 * c.sc, h = w * 0.5; ctx.drawImage(cs, a - w / 2, b - h / 2, w, h); }
@@ -689,11 +867,13 @@ const Render = (() => {
     }
     // ── 夜晚光照 ──
     const lights = collectLights(G, s, HS, time, th);
-    if (PAL.dark > 0) drawDarkness(ctx, lights, PAL);
+    const fa = FX.st.fogA || 0;
+    const DK = fa > 0.02 ? { dark: Math.max(PAL.dark, 0.74 * fa), darkC: '#0c0422' } : PAL;
+    if (DK.dark > 0) drawDarkness(ctx, lights, DK);
     ctx.restore();
     // ── 發光（加色）──
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    for (const l of lights) { if (!l.c) continue; const r = l.r * s * (PAL.dark > 0 ? 0.8 : 0.5); glowAt(ctx, Gfx.glow(l.c), l.sx, l.sy, r, l.a * (PAL.dark > 0 ? 0.2 : 0.14)); }
+    for (const l of lights) { if (!l.c) continue; const r = l.r * s * (DK.dark > 0 ? 0.8 : 0.5) * (l.r > 2 ? 0.6 : 1); glowAt(ctx, Gfx.glow(l.c), l.sx, l.sy, r, l.a * (DK.dark > 0 ? 0.2 : 0.14)); }
     ctx.globalAlpha = 1;
     drawBolts(ctx, G, s, HS);
     drawParticles(ctx, G, s, HS, time, true);
@@ -721,6 +901,14 @@ const Render = (() => {
   function drawWaterAnim(ctx, s, time) {
     for (const w of TR.waters) {
       if (w.void) continue;
+      if (w.river) {
+        const [ax, ay] = V.P(w.pts[0].x, w.pts[0].y), [bx, by] = V.P(w.pts[1].x, w.pts[1].y), l = Math.hypot(bx - ax, by - ay), ux = (bx - ax) / l, uy = (by - ay) / l;
+        ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = Math.max(1, s * 0.03); ctx.lineCap = 'round';
+        const n = Math.max(4, Math.round(l / s * 2.2));
+        for (let i = 0; i < n; i++) { const ph = (time * 0.45 + i / n) % 1, off = (Gfx.hash2(i, 3, 7) - 0.5) * s * 0.6, px = ax + ux * l * ph - uy * off, py = ay + uy * l * ph + ux * off, ww = s * 0.14; ctx.globalAlpha = Math.sin(ph * Math.PI) * 0.75; ctx.beginPath(); ctx.moveTo(px - ux * ww, py - uy * ww); ctx.quadraticCurveTo(px - uy * s * 0.03, py + ux * s * 0.03, px + ux * ww, py + uy * ww); ctx.stroke(); }
+        ctx.restore(); ctx.globalAlpha = 1;
+        continue;
+      }
       const [x0, y0, x1, y1] = w.box;
       ctx.save();
       ctx.clip(w.path);
@@ -891,6 +1079,14 @@ const Render = (() => {
       const [a, b] = V.P(t.cx, t.cy);
       ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = Math.max(2, s * 0.05); ctx.beginPath(); ctx.ellipse(a, b + s * 0.12, s * 0.5, s * 0.22, 0, 0, TAU); ctx.stroke();
       if (t.k === 'banner') for (const o of G.towers) if (o !== t && o.buff.dmg > 0 && dist2(o.cx, o.cy, t.cx, t.cy) <= t.st.range ** 2 + 0.01) { const [p, q] = V.P(o.cx, o.cy); ctx.strokeStyle = 'rgba(255,140,100,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(p, q + s * 0.12, s * 0.42, s * 0.18, 0, 0, TAU); ctx.stroke(); }
+      if (t.rally) {
+        // 集結點：小旗＋擋人的範圍
+        const [p, q] = V.P(t.rally.x, t.rally.y);
+        ctx.save(); ctx.strokeStyle = 'rgba(255,220,120,.85)'; ctx.lineWidth = 2; ctx.setLineDash([s * 0.08, s * 0.08]); ctx.lineDashOffset = time * s * 0.3; ctx.beginPath(); ctx.ellipse(p, q, s * 1.05, s * 1.05, 0, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
+        ctx.strokeStyle = '#5a3a22'; ctx.lineWidth = Math.max(2, s * 0.04); ctx.beginPath(); ctx.moveTo(p, q); ctx.lineTo(p, q - s * 0.55); ctx.stroke();
+        const wv = Math.sin(time * 6) * s * 0.03; ctx.fillStyle = '#ffd36b'; ctx.beginPath(); ctx.moveTo(p, q - s * 0.55); ctx.quadraticCurveTo(p + s * 0.15, q - s * 0.55 + wv, p + s * 0.3, q - s * 0.47); ctx.quadraticCurveTo(p + s * 0.15, q - s * 0.42 + wv, p, q - s * 0.38); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
     }
     if (ui.ghost) {
       const g = ui.ghost, d = TOWERS[g.k], ok = canBuild(G, g.x, g.y);
@@ -954,6 +1150,18 @@ const Render = (() => {
           if (p.big) { ctx.strokeStyle = '#ffb347'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(a, b, r * 0.7, time * 8, time * 8 + 1.5); ctx.stroke(); }
           p._st = (p._st || 0) - dt;
           if (p._st <= 0) { p._st = lowFx ? 0.08 : 0.04; FX.part('smoke', p.x, p.y, p.h, 0, 0, 0.1, 0.45, 0.07, '#cfc8bc'); }
+          break;
+        }
+        case 'flask': {
+          const b = b0 - p.h * HS, sp0 = p.spec === 0 ? 2 : p.spec === 1 ? 1 : 0, col = POOL_COL[sp0][1];
+          ell(ctx, a, b0 + s * 0.05, s * 0.08, s * 0.035, 'rgba(0,0,0,.22)');
+          ctx.save(); ctx.globalCompositeOperation = 'lighter'; glowAt(ctx, Gfx.glow(col), a, b, s * 0.28, 0.8); ctx.restore();
+          ctx.save(); ctx.translate(a, b); ctx.rotate(time * 12 + p.x0 * 3);
+          circ(ctx, 0, s * 0.02, s * 0.075, rgrad(ctx, 0, s * 0.02, 0, s * 0.075, ['#ffffff', col, POOL_COL[sp0][2]], -s * 0.025, -s * 0.02));
+          ctx.fillStyle = 'rgba(230,255,240,.9)'; ctx.fillRect(-s * 0.025, -s * 0.1, s * 0.05, s * 0.07);
+          ctx.fillStyle = '#a8743e'; ctx.fillRect(-s * 0.03, -s * 0.13, s * 0.06, s * 0.035);
+          ctx.restore();
+          if (Math.random() < 0.35) FX.part('glint', p.x, p.y, p.h, 0, 0, -0.2, 0.3, 0.035, col);
           break;
         }
         case 'shard': {
@@ -1074,21 +1282,27 @@ const Render = (() => {
   function collectLights(G, s, HS, time, th) {
     const L = [], P = V.P;
     const add = (x, y, h, r, c, a) => { const [sx, sy] = P(x, y); L.push({ sx, sy: sy - h * HS, r, c, a }); };
-    const dark = Terrain.pal(th).dark > 0;
+    const dark = Terrain.pal(th).dark > 0 || G.eclipse;
+    const fogR = G.fog || G.eclipse ? (G.eclipse ? 2.2 : 2.0) + G.M.sight : 0;
     for (const t of G.towers) {
       const h = Art.topH(t.k, t.tier) / Art.HS;
+      if (fogR) add(t.cx, t.cy, 0.3, fogR * 1.15, LCOL[t.k] || '#ffcf7a', 0.85);
       if (t.k === 'magic' || t.k === 'frost') add(t.cx, t.cy, h + 0.25, 1.6 + t.tier * 0.15, LCOL[t.k], 0.8 + 0.2 * Math.sin(time * 3 + t.id));
-      else if (dark) add(t.cx, t.cy, h * 0.7, 1.4, LCOL[t.k], 0.75 + 0.1 * Math.sin(time * 9 + t.id));
+      else if (t.k === 'alchemy') add(t.cx, t.cy, h, 1.2, '#9ef06a', 0.6 + 0.15 * Math.sin(time * 3 + t.id));
+      else if (dark) add(t.cx, t.cy, h * 0.7, 1.4, LCOL[t.k] || '#ffcf7a', 0.75 + 0.1 * Math.sin(time * 9 + t.id));
     }
     for (const [px, py] of (G.L.pads || [])) add(px + 0.5, py + 0.5, 0.1, 1.3, '#7fe8ff', 0.8 + 0.2 * Math.sin(time * 2.5 + px));
-    for (const p of props) { if (p.k === 'crystal') add(p.wx, p.wy, 0.3, 1.2, th === 'volcano' ? '#ffb35a' : p.v < 0.5 ? '#9fe6ff' : '#d0a8ff', 0.7 + 0.2 * Math.sin(time * 2 + p.ph)); else if (p.k === 'lamp') add(p.wx, p.wy, 0.8, 1.6, '#ffcf7a', 0.85); }
+    for (const p of props) { if (p.k === 'crystal') add(p.wx, p.wy, 0.3, 1.2, th === 'volcano' || th === 'amber' ? '#ffb35a' : th === 'spire' && p.v >= 0.5 ? '#ffd36b' : p.v < 0.5 ? '#9fe6ff' : '#d0a8ff', 0.7 + 0.2 * Math.sin(time * 2 + p.ph)); else if (p.k === 'lamp') add(p.wx, p.wy, 0.8, G.fog ? 2.5 : 1.6, '#ffcf7a', 0.9 + 0.05 * Math.sin(time * 7 + p.ph)); }
     for (const p of TR.portals) add(p.x, p.y, 0.4, 2, (PORTAL_COL[th] || ['#ff9ae0', '#b06bff'])[1], 0.8 + 0.2 * Math.sin(time * 3));
     if (dark) { const e = G.exitPt; add(e.x, e.y, 0.6, 2.4, '#ffcf7a', 0.8); }
     if (TR.waters.length && TR.waters[0].lava) for (const w of TR.waters) { const [x0, y0, x1, y1] = w.box; L.push({ sx: (x0 + x1) / 2, sy: (y0 + y1) / 2, r: Math.max(x1 - x0, y1 - y0) / s * 0.9, c: '#ff7a2a', a: 0.8 + 0.15 * Math.sin(time * 2) }); }
-    for (const p of G.projs) { if (p.k === 'orb') add(p.x, p.y, p.h, 0.9, '#c08bff', 0.9); else if (p.k === 'missile') add(p.x, p.y, p.h, 0.7, '#ffb347', 0.8); else if (p.k === 'meteor' && p.tt >= 0) add(p.x, p.y, p.h, 2.6, '#ff8a3a', 1); else if (p.k === 'shard') add(p.x, p.y, p.h, 0.6, '#9fe6ff', 0.6); }
+    for (const pl of G.pools) add(pl.x, pl.y, 0.1, pl.r * 2.2, POOL_COL[pl.kind][1], 0.5 * Math.min(1, (pl.T - pl.t) * 2));
+    if (G.rotor) { const R2 = G.L.rotor; add(R2[0] + 0.5, R2[1] + 0.5, 0.2, 2, '#c8a8ff', 0.8); }
+    for (const p of props) if (p.k === 'stonelamp') add(p.wx, p.wy, 0.45, 1.2, '#ffcf7a', 0.7);
+    for (const p of G.projs) { if (p.k === 'flask') add(p.x, p.y, p.h, 0.8, '#9ef06a', 0.7); if (p.k === 'orb') add(p.x, p.y, p.h, 0.9, '#c08bff', 0.9); else if (p.k === 'missile') add(p.x, p.y, p.h, 0.7, '#ffb347', 0.8); else if (p.k === 'meteor' && p.tt >= 0) add(p.x, p.y, p.h, 2.6, '#ff8a3a', 1); else if (p.k === 'shard') add(p.x, p.y, p.h, 0.6, '#9fe6ff', 0.6); }
     for (const l of FX.lights) add(l.x, l.y, l.h, l.r, l.c, l.a * (l.life / l.max));
     if (dark) for (const p of FX.parts) if (p.k === 'firefly' || p.k === 'ember' || p.k === 'fire') { const [sx, sy] = P(p.x, p.y); L.push({ sx, sy: sy - p.h * HS, r: p.k === 'fire' ? 0.8 : 0.35, c: null, a: 0.6 }); }
-    for (const e of G.enemies) if (e.alive && (e.k === 'bossLich' || e.k === 'bossGolem')) add(e.x, e.y, 0.6, 1.8, e.k === 'bossLich' ? '#b38aff' : '#ff8a2a', 0.7);
+    for (const e of G.enemies) if (e.alive && (e.k === 'bossLich' || e.k === 'bossGolem' || e.k === 'bossEclipse' || e.k === 'bossRaijin')) add(e.x, e.y, e.k === 'bossEclipse' ? 2.2 : 0.6, e.k === 'bossEclipse' ? 2.4 : 1.8, e.k === 'bossLich' ? '#b38aff' : e.k === 'bossEclipse' ? (e.phase ? '#ff7a4a' : '#ffd36b') : e.k === 'bossRaijin' ? '#bfe0ff' : '#ff8a2a', 0.7);
     for (const b of G.bolts) { const p = b.pts[b.pts.length - 1]; add(p.x, p.y, p.h, 1.4, b.c, b.life / b.max); }
     if (G.hero && !G.hero.dead) { const H = G.hero; add(H.x, H.y, 0.9, dark ? 1.6 : 0.9, H.id === 'mage' ? '#c08bff' : dark ? '#ffcf7a' : null, 0.7); }
     return L;
@@ -1153,6 +1367,31 @@ const Render = (() => {
       for (let i = 0; i < 5; i++) { const ph = (time * 0.25 + i * 0.21) % 1; ctx.drawImage(cs, V.ox - V.w * 0.4 + ph * V.w * 1.4, V.oy + V.h * (i / 5) - s, V.w * 0.6, s * 2.5); }
       ctx.restore(); ctx.globalAlpha = 1;
     }
+    // 天氣：暴雨／狂風／雷暴
+    const ra = FX.st.rainA || 0, wa = FX.st.windA || 0, ta = FX.st.thunderA || 0;
+    if (ra > 0.02 || wa > 0.02) {
+      ctx.save(); ctx.beginPath(); ctx.rect(V.ox, V.oy, V.w, V.h); ctx.clip();
+      if (ra > 0.02) {
+        ctx.fillStyle = `rgba(30,40,70,${0.16 * ra + 0.14 * ta})`; ctx.fillRect(V.ox, V.oy, V.w, V.h);
+        ctx.strokeStyle = 'rgba(200,220,255,.55)'; ctx.lineWidth = Math.max(1, s * 0.018); ctx.lineCap = 'round';
+        const n = Math.round((lowFx ? 70 : 140) * ra), L = s * 0.32;
+        ctx.beginPath();
+        for (let i = 0; i < n; i++) { const fx = Gfx.hash2(i, 1, 3), fy = Gfx.hash2(i, 2, 5), sp = 0.8 + Gfx.hash2(i, 4, 9) * 0.4; const px = V.ox + ((fx * V.w + time * s * 2.2 * sp) % (V.w + L)) - L * 0.3, py = V.oy + ((fy * V.h + time * s * 9 * sp) % (V.h + L)) - L; ctx.moveTo(px, py); ctx.lineTo(px - L * 0.22, py + L); }
+        ctx.stroke();
+        // 地上的水花
+        ctx.fillStyle = 'rgba(220,235,255,.5)';
+        for (let i = 0; i < n * 0.25; i++) { const ph = (time * 2 + Gfx.hash2(i, 7, 1)) % 1, px = V.ox + Gfx.hash2(i, Math.floor(time * 2 + Gfx.hash2(i, 7, 1)), 11) * V.w, py = V.oy + Gfx.hash2(i + 3, Math.floor(time * 2 + Gfx.hash2(i, 7, 1)), 13) * V.h; ctx.globalAlpha = (1 - ph) * ra; ctx.beginPath(); ctx.ellipse(px, py, s * 0.05 * ph + 1, s * 0.02 * ph + 0.5, 0, 0, TAU); ctx.fill(); }
+        ctx.globalAlpha = 1;
+      }
+      if (wa > 0.02) {
+        ctx.strokeStyle = 'rgba(255,255,255,.45)'; ctx.lineWidth = Math.max(1, s * 0.02); ctx.lineCap = 'round';
+        for (let i = 0; i < 26; i++) { const fy = Gfx.hash2(i, 5, 2), sp = 0.7 + Gfx.hash2(i, 6, 3) * 0.6, len = s * (0.8 + Gfx.hash2(i, 8, 4) * 1.2); const px = V.ox + ((Gfx.hash2(i, 9, 1) * V.w + time * s * 6 * sp) % (V.w + len * 2)) - len, py = V.oy + fy * V.h; ctx.globalAlpha = wa * 0.7; ctx.beginPath(); ctx.moveTo(px, py); ctx.quadraticCurveTo(px + len * 0.5, py - s * 0.08, px + len, py); ctx.stroke(); }
+        ctx.globalAlpha = 1;
+      }
+      ctx.restore();
+    }
+    if (G.weather) weatherBadge(ctx, G, s, time);
+    if (FX.st.dawn > 0) { ctx.fillStyle = `rgba(255,236,190,${Math.min(0.45, FX.st.dawn * 0.25)})`; ctx.fillRect(0, 0, W, H); }
     // 頭目在場：暗紅邊緣
     const boss = G.enemies.find(e => e.alive && e.boss);
     if (boss) {
@@ -1180,15 +1419,38 @@ const Render = (() => {
       ctx.strokeStyle = '#ff7a4a'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]); ctx.lineDashOffset = time * 20; ctx.stroke(); ctx.setLineDash([]);
     }
   }
+  // 天氣小牌：地圖左上角
+  function weatherBadge(ctx, G, s, time) {
+    const W2 = G.weather, k = W2.k, nm = { clear: '晴朗', rain: '暴雨', wind: '狂風', thunder: '雷暴' }[k], tip = { clear: '', rain: '塔變慢、冰霜更冷', wind: '飛行敵人加速', thunder: '法師塔 +35%' }[k];
+    const fz = Math.max(11, Math.min(14, s * 0.3)), x0 = V.ox + s * 0.25, y0 = V.oy + s * 0.25;
+    ctx.font = `700 ${fz}px "Noto Sans TC",sans-serif`;
+    const txt = `${nm}${tip ? ' · ' + tip : ''}  ${Math.ceil(W2.t)}`;
+    const w = ctx.measureText(txt).width + fz * 2.6, h = fz * 2;
+    const fl = FX.st.weatherFlash > 0 ? FX.st.weatherFlash : 0;
+    rrect(ctx, x0, y0, w, h, h / 2); ctx.fillStyle = `rgba(14,16,34,${0.72 + fl * 0.2})`; ctx.fill(); ctx.strokeStyle = fl > 0 ? `rgba(255,220,120,${0.4 + fl * 0.6})` : 'rgba(255,255,255,.18)'; ctx.lineWidth = 1.5; ctx.stroke();
+    // 圖示
+    const ix = x0 + h * 0.55, iy = y0 + h / 2, r = h * 0.28;
+    if (k === 'clear') { circ(ctx, ix, iy, r * 0.7, '#ffd36b'); ctx.strokeStyle = '#ffd36b'; ctx.lineWidth = 1.5; for (let i = 0; i < 8; i++) { const a = i / 8 * TAU + time; ctx.beginPath(); ctx.moveTo(ix + Math.cos(a) * r * 0.95, iy + Math.sin(a) * r * 0.95); ctx.lineTo(ix + Math.cos(a) * r * 1.3, iy + Math.sin(a) * r * 1.3); ctx.stroke(); } }
+    else {
+      circ(ctx, ix - r * 0.35, iy - r * 0.1, r * 0.55, '#c8d0e0'); circ(ctx, ix + r * 0.3, iy - r * 0.25, r * 0.65, '#dfe6f2'); circ(ctx, ix + r * 0.75, iy + r * 0.05, r * 0.45, '#c8d0e0');
+      if (k === 'rain') { ctx.strokeStyle = '#8ac8ff'; ctx.lineWidth = 1.5; for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(ix - r * 0.4 + i * r * 0.45, iy + r * 0.5); ctx.lineTo(ix - r * 0.55 + i * r * 0.45, iy + r * 1.0); ctx.stroke(); } }
+      else if (k === 'wind') { ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(ix - r, iy + r * 0.55); ctx.quadraticCurveTo(ix + r * 0.5, iy + r * 0.4, ix + r * 1.1, iy + r * 0.75); ctx.stroke(); }
+      else { ctx.fillStyle = '#fff3a0'; ctx.beginPath(); ctx.moveTo(ix + r * 0.1, iy + r * 0.2); ctx.lineTo(ix - r * 0.3, iy + r * 0.85); ctx.lineTo(ix + r * 0.05, iy + r * 0.75); ctx.lineTo(ix - r * 0.15, iy + r * 1.3); ctx.lineTo(ix + r * 0.45, iy + r * 0.55); ctx.lineTo(ix + r * 0.1, iy + r * 0.6); ctx.closePath(); ctx.fill(); }
+    }
+    ctx.fillStyle = '#f6f1e7'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(txt, x0 + h * 1.15, iy + 0.5);
+  }
   function bossBar(ctx, boss, s) {
     const bw = Math.min(V.w * 0.72, 440), bx = V.ox + (V.w - bw) / 2, by = V.oy + s * 0.3, bh = Math.max(9, s * 0.18);
     rrect(ctx, bx - 6, by - 4, bw + 12, bh + 26, 10); ctx.fillStyle = 'rgba(24,10,22,.85)'; ctx.fill();
     ctx.strokeStyle = 'rgba(255,190,90,.6)'; ctx.lineWidth = 1.5; ctx.stroke();
     const f = clamp(boss.hp / boss.maxHp, 0, 1);
     rrect(ctx, bx, by + 17, bw, bh, bh / 2); ctx.fillStyle = 'rgba(255,255,255,.1)'; ctx.fill();
-    if (f > 0) { rrect(ctx, bx, by + 17, Math.max(bh, bw * f), bh, bh / 2); ctx.fillStyle = lgrad(ctx, bx, 0, bx + bw, 0, ['#ff2a4a', '#ff7a3c', '#ffc94a']); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,.3)'; ctx.fillRect(bx + 3, by + 18, Math.max(0, bw * f - 6), bh * 0.3); }
+    if (f > 0) { rrect(ctx, bx, by + 17, Math.max(bh, bw * f), bh, bh / 2); ctx.fillStyle = lgrad(ctx, bx, 0, bx + bw, 0, boss.d.phases && boss.phase >= 1 ? ['#a82aff', '#ff3a6a', '#ff9a3a'] : ['#ff2a4a', '#ff7a3c', '#ffc94a']); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,.3)'; ctx.fillRect(bx + 3, by + 18, Math.max(0, bw * f - 6), bh * 0.3); }
+    if (boss.shieldMax && boss.shield > 0) { rrect(ctx, bx, by + 17 + bh * 0.6, bw * clamp(boss.shield / boss.shieldMax, 0, 1), bh * 0.4, bh * 0.2); ctx.fillStyle = '#8fe8ff'; ctx.fill(); }
+    // 形態分界
+    if (boss.d.phases) for (const th of boss.d.phases) { const px = bx + bw * th; ctx.fillStyle = '#fff3c0'; ctx.fillRect(px - 1, by + 14, 2, bh + 6); poly(ctx, [px - 4, by + 13, px + 4, by + 13, px, by + 18], '#fff3c0'); }
     ctx.font = '700 12.5px "Noto Sans TC",sans-serif'; ctx.fillStyle = '#ffe9d0'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    ctx.fillText('☠ 頭目 · ' + boss.d.name, bx + 2, by - 1);
+    ctx.fillText('☠ 頭目 · ' + boss.d.name + (boss.d.phases ? ` · 第 ${boss.phase + 1} 形態` : ''), bx + 2, by - 1);
     ctx.textAlign = 'right'; ctx.font = '600 12px "Fredoka",sans-serif'; ctx.fillText(Math.ceil(boss.hp) + ' / ' + Math.round(boss.maxHp), bx + bw - 2, by - 1);
   }
   const vigs = {};

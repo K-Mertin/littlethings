@@ -33,7 +33,7 @@ const FX = (() => {
   function on(name, g, a, b, c, d, e) {
     if (g !== G) return;
     // 頭目放招、祭司補血：畫面層播放 cast 動畫（只是畫面用的計時，不影響模擬）
-    if ((name === 'stomp' || name === 'ink' || name === 'summon' || name === 'dash' || name === 'burrow' || name === 'heal') && a && Beasts.BOX[a.k] && (Beasts.BOX[a.k].boss || Beasts.BOX[a.k].cast)) a._castT = 0.9;
+    if ((name === 'stomp' || name === 'ink' || name === 'summon' || name === 'dash' || name === 'burrow' || name === 'heal' || name === 'shell' || name === 'drums' || name === 'pulse' || name === 'blink' || name === 'frenzy' || name === 'phase') && a && Beasts.BOX[a.k] && (Beasts.BOX[a.k].boss || Beasts.BOX[a.k].cast)) a._castT = name === 'shell' ? 2.5 : 0.9;
     switch (name) {
       case 'boom': boom(a, b, c, d, e); break;
       case 'meteor': {
@@ -99,6 +99,33 @@ const FX = (() => {
         for (let i = 0; i < 20; i++) { const an = i / 20 * TAU; part('smoke', a.x + Math.cos(an) * 0.5, a.y + Math.sin(an) * 0.4, 0.2, Math.cos(an) * 2, Math.sin(an) * 1.5, 0.3, 1, 0.3, '#2a1a3a'); }
         break;
       case 'storm': st.storm = a ? 1 : 0; break;
+      // ── 第二章 ──
+      case 'splash': {
+        const c = d === 1 ? '#d8ff4a' : d === 2 ? '#b46aff' : '#7ad04a';
+        for (let i = 0; i < (st.low ? 6 : 12); i++) { const an = R() * TAU, v = 0.6 + R() * 1.6; part('debris', a, b, 0.15, Math.cos(an) * v, Math.sin(an) * v, 1.5 + R() * 2, 0.6, 0.03 + R() * 0.03, c, { g: 10 }); }
+        part('flash', a, b, 0.2, 0, 0, 0, 0.15, 0.5, '#f0ffd0'); light(a, b, 0.2, 1.4, c, 0.4, 1);
+        for (let i = 0; i < 3; i++) part('mist', a + (R() - 0.5) * 0.4, b + (R() - 0.5) * 0.3, 0.2, (R() - 0.5) * 0.3, (R() - 0.5) * 0.2, 0.3, 1.2, 0.3, c);
+        break;
+      }
+      case 'drop': for (let i = 0; i < 8; i++) part('smoke', a.x + (R() - 0.5) * 0.5, a.y + (R() - 0.5) * 0.4, 0.8, (R() - 0.5) * 0.6, (R() - 0.5) * 0.4, -0.3, 0.9, 0.2, '#e8d8c0'); for (let i = 0; i < 6; i++) { const an = R() * TAU; part('debris', a.x, a.y, 0.9, Math.cos(an), Math.sin(an), 1, 1, 0.05, R() < 0.5 ? '#e5484d' : '#ffd36b', { g: 6 }); } break;
+      case 'dig': case 'tunnelIn': case 'tunnelOut': { const e = a; decal('crack', e.x, e.y, 0.6, 1.2); for (let i = 0; i < 8; i++) { const an = R() * TAU, v = 0.6 + R() * 1.2; part('debris', e.x, e.y, 0.1, Math.cos(an) * v, Math.sin(an) * v, 1.5 + R() * 2, 0.8, 0.04, R() < 0.5 ? '#6a5038' : '#8a6a48', { g: 10 }); } part('smoke', e.x, e.y, 0.15, 0, 0, 0.3, 0.7, 0.22, '#9a8468'); break; }
+      case 'block': { const e = a; part('flash', e.x, e.y, 0.45, 0, 0, 0, 0.1, 0.25, '#ffffff'); break; }
+      case 'troopHit': { const e = b; for (let i = 0; i < 3; i++) { const an = R() * TAU; part('glint', e.x, e.y, 0.35, Math.cos(an) * 0.8, Math.sin(an) * 0.8, 0.5, 0.25, 0.03, '#fff4c0'); } break; }
+      case 'troopDie': { const s2 = a; ghosts.push({ troop: s2.t.tier === 3 ? (s2.t.spec === 0 ? 'knight' : 'berserk') : 'foot', tier: s2.t.tier, x: s2.x, y: s2.y, t: 0, dur: 0.9, sf: s2.face || 1 }); for (let i = 0; i < 5; i++) part('smoke', s2.x + (R() - 0.5) * 0.3, s2.y + (R() - 0.5) * 0.2, 0.3, (R() - 0.5) * 0.4, (R() - 0.5) * 0.3, 0.4, 0.8, 0.15, '#d8d2c8'); break; }
+      case 'troopUp': { const s2 = a; for (let i = 0; i < 6; i++) part('glint', s2.x + (R() - 0.5) * 0.3, s2.y + (R() - 0.5) * 0.2, R() * 0.4, 0, 0, 1, 0.6, 0.04, '#fff4c0'); break; }
+      case 'rally': { const t = a; if (t.rally) { decal('shock', t.rally.x, t.rally.y, 0.8, 0.5); for (let i = 0; i < 6; i++) part('smoke', t.rally.x + (R() - 0.5) * 0.4, t.rally.y + (R() - 0.5) * 0.3, 0.05, 0, 0, 0.2, 0.5, 0.12, '#e8dcc0'); } break; }
+      case 'evade': { const e = a; for (let i = 0; i < 3; i++) part('leaf', e.x + (R() - 0.5) * 0.3, e.y, 0.9, (R() - 0.5) * 0.6, (R() - 0.5) * 0.4, -0.4, 0.8, 0.05, '#4a3a6a'); break; }
+      case 'shell': { const e = a; light(e.x, e.y, 0.6, 2.2, '#9effe0', 2.5, 0.8); for (let i = 0; i < 12; i++) { const an = R() * TAU; part('glint', e.x + Math.cos(an) * 0.8, e.y + Math.sin(an) * 0.5, 0.2 + R() * 0.8, 0, 0, 0.4, 1.2, 0.05, '#e8fff8'); } break; }
+      case 'drums': { const e = a; light(e.x, e.y, 1.2, 3.4, '#bfe0ff', 0.4, 1); st.flashW = Math.max(st.flashW, 0.3); decal('shock', e.x, e.y, 2.6, 0.6); break; }
+      case 'strike': { const e = a; st.flashW = Math.max(st.flashW, 0.35); decal('scorch', e.x, e.y, 0.5, 3); light(e.x, e.y, 0.5, 2.4, '#fff3a0', 0.35, 1); for (let i = 0; i < 6; i++) { const an = R() * TAU; part('glint', e.x, e.y, 0.3, Math.cos(an) * 2, Math.sin(an) * 2, 1, 0.3, 0.04, '#fff8c0'); } break; }
+      case 'frenzy': { const e = a; light(e.x, e.y, 1, 4, '#bfe0ff', 0.8, 1); st.flashW = Math.max(st.flashW, 0.4); for (const en of G.enemies) if (en.alive) for (let i = 0; i < 2; i++) part('glint', en.x, en.y, 0.5, (R() - 0.5), (R() - 0.5), 1, 0.5, 0.04, '#bfe0ff'); break; }
+      case 'blink': { const e = a; for (const [px, py] of [[b, c], [e.x, e.y]]) { light(px, py, 0.6, 2, '#b06bff', 0.5, 1); for (let i = 0; i < 12; i++) { const an = R() * TAU; part('smoke', px + Math.cos(an) * 0.3, py + Math.sin(an) * 0.2, 0.5, Math.cos(an) * 0.8, Math.sin(an) * 0.5, 0.4, 0.9, 0.25, '#3a1a5a'); } } break; }
+      case 'pulse': { const e = a; decal('ink', e.x, e.y, 2.4, 3); light(e.x, e.y, 0.5, 3, '#8a4ad8', 0.6, 1); for (let i = 0; i < 24; i++) { const an = i / 24 * TAU; part('smoke', e.x + Math.cos(an) * 0.6, e.y + Math.sin(an) * 0.4, 0.2, Math.cos(an) * 2.2, Math.sin(an) * 1.6, 0.3, 1, 0.3, '#2a1040'); } break; }
+      case 'phase': { const e = a; light(e.x, e.y, 0.8, 5, '#ffe9a0', 1.4, 1); st.flashW = Math.max(st.flashW, 0.5); decal('shock', e.x, e.y, 3, 0.8); for (let i = 0; i < 30; i++) { const an = R() * TAU, v = 1 + R() * 3; part('debris', e.x, e.y, 0.5, Math.cos(an) * v, Math.sin(an) * v, 2 + R() * 3, 1.2, 0.06, e.k === 'bossTortoise' ? '#2f8a6a' : e.k === 'bossRaijin' ? '#bfe0ff' : '#8a4ad8', { g: 9 }); } break; }
+      case 'dawn': st.dawn = 2.5; break;
+      case 'bridge': { const br = a; for (let i = 0; i < 6; i++) part('smoke', br.x + 0.5 + (R() - 0.5) * 0.6, br.y + 0.5 + (R() - 0.5) * 0.4, 0.1, (R() - 0.5) * 0.4, (R() - 0.5) * 0.3, 0.3, 0.7, 0.15, '#c8b8a0'); break; }
+      case 'rotor': { const R2 = G.L.rotor; decal('rune', R2[0] + 0.5, R2[1] + 0.5, 1.1, 1.2); light(R2[0] + 0.5, R2[1] + 0.5, 0.3, 2.2, '#c8a8ff', 0.8, 1); break; }
+      case 'weather': st.weatherFlash = 1; break;
       // ── 英雄 ──
       case 'heroMove': for (let i = 0; i < 4; i++) part('smoke', a.x + (R() - 0.5) * 0.3, a.y + (R() - 0.5) * 0.2, 0.05, (R() - 0.5) * 0.4, (R() - 0.5) * 0.3, 0.2, 0.5, 0.12, '#d8c8a8'); break;
       case 'heroLevel':
@@ -146,7 +173,7 @@ const FX = (() => {
   }
   function kill(e) {
     const face = e._face || 1;
-    deaths.push({ k: e.k, x: e.x, y: e.y, fly: e.fly, face, r: e.r, boss: e.boss, f: e._f || 0, t: 0, dur: e.boss ? 1.6 : e.fly ? 0.75 : 0.7 });
+    deaths.push({ k: e._ak || e.k, x: e.x, y: e.y, fly: e.fly, face, r: e.r, boss: e.boss, f: e._f || 0, t: 0, dur: e.boss ? 1.6 : e.fly ? 0.75 : 0.7 });
     const col = enemyColor(e.k);
     const h = e.fly ? 0.75 : 0.25;
     for (let i = 0; i < (e.boss ? 12 : 3); i++) part('smoke', e.x + (R() - 0.5) * 0.3, e.y + (R() - 0.5) * 0.2, h, (R() - 0.5) * 0.5, (R() - 0.5) * 0.3, 0.4, 0.7 + R() * 0.4, (e.boss ? 0.4 : 0.18) + R() * 0.1, '#e8e2d8');
@@ -206,6 +233,13 @@ const FX = (() => {
     if (st.freeze > 0) st.freeze -= dt;
     if (st.meteorSky > 0) st.meteorSky -= dt;
     if (st.flashW > 0) st.flashW -= dt;
+    if (st.dawn > 0) st.dawn -= dt;
+    if (st.weatherFlash > 0) st.weatherFlash -= dt;
+    st.fogA = (st.fogA || 0) + (((G && G.eclipse) ? 1 : 0) - (st.fogA || 0)) * Math.min(1, dt * 0.8);
+    const wk = G && G.weather ? G.weather.k : null;
+    st.rainA = (st.rainA || 0) + ((wk === 'rain' || wk === 'thunder' ? 1 : 0) - (st.rainA || 0)) * Math.min(1, dt * 1.2);
+    st.windA = (st.windA || 0) + ((wk === 'wind' ? 1 : 0) - (st.windA || 0)) * Math.min(1, dt * 1.2);
+    st.thunderA = (st.thunderA || 0) + ((wk === 'thunder' ? 1 : 0) - (st.thunderA || 0)) * Math.min(1, dt * 1.2);
     st.stormA += ((G && G.stormOn ? 1 : 0) - st.stormA) * Math.min(1, dt * 1.5);
     if (st.bossIntro) { st.bossIntro.t += dt; if (st.bossIntro.t > 3.2) st.bossIntro = null; }
     const keep = [];
@@ -252,13 +286,19 @@ const FX = (() => {
     if (th === 'night' || th === 'swamp' || th === 'forest') { if (count('firefly') < (th === 'forest' ? 8 : 18) * lim) part('firefly', rx(), ry(), 0.2 + R() * 0.6, 0, 0, 0, 5 + R() * 3, 0.03, th === 'night' ? '#b8f0ff' : '#e8ff8a'); }
     if (th === 'forest' || th === 'meadow' || th === 'autumn') { if (count('leaf') < (th === 'meadow' ? 5 : 14) * lim && R() < 0.3) part('leaf', rx(), ry(), 2.5 + R(), 0.2, 0.1, -0.5, 6, 0.06, R() < 0.5 ? Terrain.pal(th).leaf : '#c8a040'); }
     if (th === 'meadow' || th === 'coast' || th === 'forest') { if (count('fly') < 4 * lim && R() < 0.1) part('fly', rx(), ry(), 0.4, 0, 0, 0, 8, 0.05, ['#ffffff', '#ffd36b', '#ff9ec7', '#9fd8ff'][Math.floor(R() * 4)]); }
+    if (th === 'bamboo') { if (count('leaf') < 12 * lim && R() < 0.35) part('leaf', rx(), ry(), 2.5 + R(), 0.2, 0.1, -0.5, 6, 0.06, R() < 0.6 ? '#9ad86a' : '#c8e08a'); if (count('fly') < 3 * lim && R() < 0.06) part('fly', rx(), ry(), 0.4, 0, 0, 0, 8, 0.05, '#ffd1e6'); }
+    if (th === 'harbor') { if (count('mist') < 16 * lim && R() < 0.5) part('mist', -1, ry(), 0.2 + R() * 0.5, 0.25 + R() * 0.25, (R() - 0.5) * 0.05, 0, 14, 0.9 + R() * 0.8, '#8aa8c0'); }
+    if (th === 'river') { if (count('fly') < 5 * lim && R() < 0.1) part('fly', rx(), ry(), 0.4, 0, 0, 0, 8, 0.05, ['#9fd8ff', '#ffffff', '#ffd36b'][Math.floor(R() * 3)]); if (count('leaf') < 5 * lim && R() < 0.15) part('leaf', rx(), ry(), 2.5 + R(), 0.2, 0.1, -0.5, 6, 0.06, '#9adc78'); }
+    if (th === 'plateau' && G.weather && G.weather.k === 'wind') { if (count('leaf') < 30 * lim) for (let i = 0; i < 2; i++) part('leaf', -0.5, ry(), 0.5 + R() * 1.5, 4 + R() * 2, (R() - 0.5) * 0.5, 0, 4, 0.06, R() < 0.5 ? '#b0ae7a' : '#8a8a5a'); }
+    if (th === 'amber') { if (count('ember') < 22 * lim) part('ember', rx(), ry(), 0, (R() - 0.5) * 0.2, -0.05, 0.3 + R() * 0.4, 4 + R() * 2, 0.025 + R() * 0.02, R() < 0.5 ? '#ffb03a' : '#ffe08a'); }
+    if (th === 'spire') { if (count('glint') < 26 * lim && R() < 0.5) part('glint', rx(), ry(), 0.2 + R() * 1.5, (R() - 0.5) * 0.1, (R() - 0.5) * 0.1, 0.1, 3 + R() * 2, 0.03, R() < 0.5 ? '#ffd36b' : '#c8a8ff'); }
     if (th === 'cave') { if (count('glint') < 24 * lim && R() < 0.5) part('glint', rx(), ry(), 0.2 + R() * 1.2, (R() - 0.5) * 0.1, (R() - 0.5) * 0.1, 0.05, 3 + R() * 2, 0.03, R() < 0.5 ? '#9ef0ff' : '#e0b0ff'); }
     if (th === 'deep') { if (count('bubble') < 22 * lim && R() < 0.6) part('bubble', rx(), ry(), 0, (R() - 0.5) * 0.1, 0, 0.6 + R() * 0.5, 4 + R() * 2, 0.025 + R() * 0.03, '#cff4ff'); }
     if (th === 'sky') { if (count('cloudlet') < 5 * lim && R() < 0.05) part('cloudlet', -1.5, ry(), 2.5 + R(), 0.5 + R() * 0.3, 0, 0, 40, 0.5 + R() * 0.4, '#ffffff'); }
     if ((th === 'ruins' && !(G.stormOn)) ) { if (count('dust') < 6 * lim && R() < 0.2) part('dust', -0.5, ry(), 0.1 + R() * 0.3, 1.2 + R(), 0.1, 0, 8, 0.3 + R() * 0.3, '#f6dfaa'); }
     if (th === 'ruins' && G.stormOn) { if (count('dust') < 40 * lim) for (let i = 0; i < 3; i++) part('dust', -0.5 - R(), ry(), 0.1 + R() * 0.8, 4 + R() * 2, 0.4, 0, 4, 0.4 + R() * 0.4, '#e8c888'); }
     if (th === 'desert' || th === 'canyon') { if (count('dust') < 10 * lim && R() < 0.3) part('dust', -0.5, ry(), 0.1 + R() * 0.3, 1.5 + R(), 0.1, 0, 7, 0.3 + R() * 0.3, '#f6dfaa'); }
-    if (th !== 'night' && th !== 'volcano' && th !== 'cave' && th !== 'deep' && count('bird') < 2 && R() < 0.012) {
+    if (th !== 'night' && th !== 'volcano' && th !== 'cave' && th !== 'deep' && th !== 'harbor' && th !== 'amber' && th !== 'spire' && count('bird') < 2 && R() < 0.012) {
       const fromL = R() < 0.5, y0 = R() * ROWS;
       for (let i = 0; i < 3; i++) part('bird', fromL ? -1 - i * 0.4 : COLS + 1 + i * 0.4, y0 + i * 0.3, 3, fromL ? 1.6 : -1.6, (R() - 0.5) * 0.3, 0, 14, 0.12, th === 'coast' ? '#ffffff' : '#2a2a3a');
     }

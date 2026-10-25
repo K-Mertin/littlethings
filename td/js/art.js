@@ -773,6 +773,53 @@ const Art = (() => {
         if (tier >= 1 && sp !== 0 && sp !== 1) for (const sx of tier >= 2 ? [-1, 1] : [1]) flame(x, sx * u * 0.33, -u * 0.27, u * 0.07, time + sx);
         break;
       }
+      case 'barracks': {
+        // 旗竿上的軍旗＋營門衛兵（士兵本身在路上，由畫面層另外畫）
+        const tall = sp === 0 ? u * 1.2 : sp === 1 ? u * 1.0 : u * (0.62 + tier * 0.12);
+        const px = sp === 0 ? 0 : sp === 1 ? u * 0.3 : tier === 2 ? 0 : u * 0.06, base = sp === 0 ? -u * 0.86 : sp === 1 ? -u * 0.2 : tier === 2 ? -u * 0.44 : tier === 1 ? -u * 0.6 : -u * 0.08;
+        const fc = sp === 0 ? '#2f56b8' : sp === 1 ? '#8a2a1e' : tier >= 1 ? '#c8382e' : '#4f8a4a';
+        post(x, px, base, px, base - tall * 0.42, u * 0.022, '#5a3a22', u);
+        const top = base - tall * 0.42, fw = u * 0.24, fh = u * 0.14;
+        const wv = f => Math.sin(time * 5.2 - f * 4.5 + t.id) * u * 0.028 * f;
+        x.beginPath(); x.moveTo(px + u * 0.01, top);
+        for (let i = 0; i <= 8; i++) { const f = i / 8; x.lineTo(px + u * 0.01 + f * fw, top + wv(f)); }
+        for (let i = 8; i >= 0; i--) { const f = i / 8; x.lineTo(px + u * 0.01 + f * fw, top + fh + wv(f) - (i === 8 ? fh * 0.3 : 0)); }
+        x.closePath(); fs(x, lgrad(x, px, top, px + fw, top + fh, [shade(fc, 0.15), fc, shade(fc, -0.2)]), OUT, lw(u, 0.01));
+        if (sp === 1) { x.fillStyle = '#efe2c4'; x.beginPath(); x.arc(px + fw * 0.45, top + fh * 0.5 + wv(0.45), fh * 0.22, 0, TAU); x.fill(); }
+        else Gfx.star(x, px + fw * 0.42, top + fh * 0.5 + wv(0.42), fh * 0.26, '#ffe08a', false);
+        circ(x, px, top - u * 0.015, u * 0.022, '#ffd36b');
+        if (sp !== 0 && sp !== 1) { x.save(); x.translate(tier === 2 ? u * 0.08 : -u * 0.32, tier === 2 ? u * 0.12 : u * 0.1); Crew.draw(x, 'guard', { c: tier >= 1 ? '#c8382e' : '#4f8a4a', plume: tier >= 2 ? '#ffd36b' : '#e5484d' }, u * 0.85, 0); x.restore(); }
+        if (sp === 1) for (const sx of [-1, 1]) flame(x, sx * u * 0.4, -u * 0.17, u * 0.06, time + sx);
+        if (sp === 0) { x.save(); x.translate(-u * 0.05, u * 0.14); Crew.draw(x, 'guard', { c: '#2f56b8', helm: '#e8eef8', plume: '#ffd36b' }, u * 0.85, 0); x.restore(); }
+        break;
+      }
+      case 'alchemy': {
+        const liq = sp === 0 ? '#b46aff' : sp === 1 ? '#d8ff4a' : '#7ad04a';
+        // 冒泡
+        const bub = (cx, cy, r, n) => { for (let i = 0; i < n; i++) { const ph = (time * 0.9 + i * 0.37 + t.id * 0.13) % 1, bx = cx + Math.sin(i * 2.3 + time) * r * 0.5, by = cy - ph * r * 1.8; x.globalAlpha = Math.sin(ph * Math.PI) * 0.9; x.strokeStyle = rgba(shade(liq, 0.4), 0.95); x.lineWidth = lw(u, 0.008); x.beginPath(); x.arc(bx, by, r * (0.12 + ph * 0.1), 0, TAU); x.stroke(); } x.globalAlpha = 1; };
+        const smoke = (cx, cy, n, c) => { const pf = Gfx.puff(c); for (let i = 0; i < n; i++) { const ph = (time * 0.35 + i / n + t.id * 0.1) % 1, sz = u * (0.08 + ph * 0.16); x.globalAlpha = (1 - ph) * 0.6; x.drawImage(pf, cx + Math.sin(ph * 5 + i) * u * 0.04 + ph * u * 0.08 - sz / 2, cy - ph * u * 0.5 - sz / 2, sz, sz); } x.globalAlpha = 1; };
+        if (tier === 0) { smoke(u * 0.1, -u * 0.58, 3, '#b8e8a0'); bub(u * 0.24, u * 0.06, u * 0.08, 3); }
+        else if (tier === 1) { smoke(0, -u * 0.72, 2, '#c8f0b0'); bub(u * 0.3, -u * 0.05, u * 0.04, 2); }
+        else if (tier === 2 && sp < 0) {
+          const pr = u * (0.42 + 0.06 * Math.sin(time * 2.5 + t.id) + rec * 0.2);
+          x.save(); x.globalCompositeOperation = 'lighter'; x.globalAlpha = 0.45 + rec * 0.4; x.drawImage(Gfx.glow('#9ef06a'), -pr / 2, -u * 0.72 - pr / 2, pr, pr); x.restore();
+          bub(0, -u * 0.66, u * 0.1, 3); bub(u * 0.3, u * 0.07, u * 0.06, 2);
+        } else if (sp === 0) {
+          smoke(0, -u * 0.4, 5, '#9a6ad8'); bub(0, -u * 0.31, u * 0.25, 6);
+          const pr = u * (0.7 + 0.08 * Math.sin(time * 2 + t.id)); x.save(); x.globalCompositeOperation = 'lighter'; x.globalAlpha = 0.35 + rec * 0.3; x.drawImage(Gfx.glow('#b46aff'), -pr / 2, -u * 0.32 - pr * 0.3, pr, pr * 0.6); x.restore();
+        } else if (sp === 1) {
+          smoke(u * 0.05, -u * 0.68, 3, '#e8f0c0');
+          for (const sx of [-1, 1]) bub(sx * u * 0.27, -u * 0.25, u * 0.08, 3);
+          const gl = 0.6 + 0.4 * Math.sin(time * 3 + t.id); x.save(); x.globalCompositeOperation = 'lighter'; x.globalAlpha = gl * 0.4; for (const sx of [-1, 1]) x.drawImage(Gfx.glow('#d8ff4a'), sx * u * 0.27 - u * 0.2, -u * 0.6, u * 0.4, u * 0.5); x.restore();
+        }
+        // 煉金師：準備丟的時候把藥瓶舉高
+        const af = rec > 0.55 ? 2 : pull > 0.8 ? 1 : 0;
+        const pos = tier === 0 ? [u * 0.04, u * 0.08] : tier === 1 ? [-u * 0.3, u * 0.12] : sp === 0 ? [u * 0.36, u * 0.08] : sp === 1 ? [-u * 0.3, u * 0.14] : [-u * 0.28, u * 0.12];
+        x.save(); x.translate(pos[0], pos[1]); x.scale(face, 1);
+        Crew.draw(x, 'alchemist', { liq, robe: sp === 0 ? '#5a3a7a' : sp === 1 ? '#8a7a2a' : '#5a7a3a', hood: sp === 0 ? '#3a2a4a' : sp === 1 ? '#6a5a1a' : '#3a5a2a' }, u * 0.85, af);
+        x.restore();
+        break;
+      }
       case 'mine': {
         if (tier === 3 && sp === 0) {
           const tw = (time * 0.9 + t.id * 0.37) % 1;

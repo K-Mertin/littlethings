@@ -97,8 +97,36 @@ const TOWERS = {
       { name: '寶石礦坑', cost: 300, range: 0.6, gold: 115, desc: '每波穩定產出大量金幣。' },
     ],
   },
+  // 兵營：派士兵到路上擋住地面敵人（頭目會直接踩過去）。range = 集結點離塔多遠
+  barracks: {
+    name: '兵營', en: 'BARRACKS', key: '8', color: '#c8763a', air: false, dt: 'phys', unlock: 14, troops: true,
+    desc: '派士兵到路上擋住地面敵人，讓其他塔慢慢打。頭目會直接踩過去。',
+    tiers: [
+      { cost: 85, range: 1.7, n: 2, hp: 80, dmg: 9, rate: 1.0, armor: 0.2, resp: 10 },
+      { cost: 80, range: 1.8, n: 3, hp: 115, dmg: 13, rate: 1.0, armor: 0.3, resp: 9 },
+      { cost: 130, range: 1.9, n: 3, hp: 160, dmg: 19, rate: 1.05, armor: 0.35, resp: 8 },
+    ],
+    spec: [
+      { name: '騎士團', cost: 280, n: 3, hp: 360, dmg: 28, rate: 1.0, armor: 0.55, resp: 9, desc: '三名重甲騎士，血厚耐打，擋得最久。' },
+      { name: '狂戰營', cost: 270, n: 3, hp: 190, dmg: 50, rate: 1.4, armor: 0.25, resp: 6, leech: 0.3, desc: '雙斧狂戰士砍得又快又狠，還會吸血回復。' },
+    ],
+  },
+  // 煉金塔：丟毒瓶，地上留下毒池；毒傷無視護甲（抗魔減半計算）
+  alchemy: {
+    name: '煉金塔', en: 'ALCHEMIST', key: '9', color: '#7ad04a', air: false, dt: 'poison', unlock: 15,
+    desc: '丟出毒藥瓶，地上的毒池持續傷害、無視護甲。打不到飛行敵人。',
+    tiers: [
+      { cost: 110, dmg: 21, rate: 0.5, range: 2.5, pool: 0.66, poolT: 3.0 },
+      { cost: 100, dmg: 33, rate: 0.52, range: 2.6, pool: 0.72, poolT: 3.2 },
+      { cost: 150, dmg: 48, rate: 0.55, range: 2.7, pool: 0.78, poolT: 3.4 },
+    ],
+    spec: [
+      { name: '瘟疫鍋', cost: 300, dmg: 68, rate: 0.6, range: 2.8, pool: 0.9, poolT: 4.0, spread: true, desc: '毒池更大更久；中毒倒下的敵人會炸出新的毒霧。' },
+      { name: '腐蝕酸', cost: 290, dmg: 60, rate: 0.6, range: 2.8, pool: 0.78, poolT: 3.4, corrode: 0.35, desc: '酸液腐蝕護甲：池裡的敵人護甲 -35%、抗魔 -20%。' },
+    ],
+  },
 };
-const TOWER_ORDER = ['arrow', 'cannon', 'frost', 'magic', 'sniper', 'banner', 'mine'];
+const TOWER_ORDER = ['arrow', 'cannon', 'frost', 'magic', 'sniper', 'banner', 'mine', 'barracks', 'alchemy'];
 const TARGET_MODES = [['first', '最前'], ['last', '最後'], ['strong', '最強'], ['close', '最近']];
 
 // ───────── 敵人 ─────────
@@ -120,6 +148,15 @@ const ENEMIES = {
   crawler: { name: '晶甲蛛', hp: 85, spd: 1.0, bounty: 13, r: 0.3, armor: 0.35, mres: 0.35, cost: 3, desc: '背著水晶的蜘蛛，物理和魔法都只吃六成五傷害。' },
   mummy: { name: '木乃伊', hp: 110, spd: 0.7, bounty: 14, r: 0.3, revive: 0.45, cost: 3.2, desc: '倒下一次會再站起來（回復四成五生命）。' },
   crab: { name: '鐵螯蟹', hp: 65, spd: 1.1, bounty: 11, r: 0.3, armor: 0.55, cost: 2.4, desc: '硬殼橫著走，物理攻擊打不太動。' },
+  // ── 第二章的新敵人 ──
+  goblin: { name: '哥布林', hp: 24, spd: 1.55, bounty: 4, r: 0.22, cost: 0.75, desc: '跑得飛快的小哥布林，常常一大群一起衝。' },
+  balloon: { name: '哥布林熱氣球', hp: 110, spd: 0.62, bounty: 12, r: 0.42, fly: true, drop: 'goblin', dropN: 3, cost: 3.4, desc: '慢慢飄的熱氣球，被打下來時會跳出三隻哥布林。' },
+  paladin: { name: '聖盾騎士', hp: 230, spd: 0.68, bounty: 18, r: 0.32, armor: 0.25, cap: 0.07, cost: 4.2, desc: '舉著聖盾，每一下最多只會掉 7% 生命。用射得快的塔或毒池慢慢磨！' },
+  raven: { name: '夜鴉', hp: 34, spd: 1.5, bounty: 8, r: 0.26, fly: true, evade: 0.35, cost: 2.0, desc: '靈巧的飛鳥，35% 機率閃過箭、冰晶、法球和飛彈。狙擊、閃電、光束和暴風雪必中。' },
+  brute: { name: '狂暴猿', hp: 150, spd: 0.72, bounty: 15, r: 0.36, armor: 0.15, rage: 1.0, cost: 3.8, desc: '越受傷越暴躁，血越少跑得越快（最多快一倍）。用減速和暈眩壓住牠！' },
+  shaman: { name: '圖騰薩滿', hp: 75, spd: 0.78, bounty: 14, r: 0.28, ward: 0.35, cost: 3.0, desc: '附近的同伴受到的傷害減少 35%。用狙擊塔或「最強」目標先打掉他！' },
+  shade: { name: '影行者', hp: 60, spd: 1.2, bounty: 10, r: 0.26, stealth: true, cost: 2.2, desc: '隱身的刺客，走到塔旁邊（1.5 格內）或被打中才會現形。毒池和士兵抓得到他。' },
+  mole: { name: '鑽地鼴', hp: 80, spd: 0.85, bounty: 12, r: 0.28, armor: 0.2, dig: 4.5, cost: 2.8, desc: '每隔幾秒鑽進地底快速前進，這時候打不到。' },
   bossGolem: { name: '岩石巨人王', hp: 3200, spd: 0.38, bounty: 300, r: 0.62, armor: 0.5, lives: 10, boss: true, stomp: 6, cost: 0, desc: '頭目！每 6 秒跺腳，震暈附近的塔。' },
   bossDragon: { name: '炎龍', hp: 2800, spd: 0.55, bounty: 350, r: 0.62, mres: 0.3, fly: true, lives: 10, boss: true, dash: 7, cost: 0, desc: '頭目！會飛，還會突然加速衝刺。' },
   bossLich: { name: '巫妖王', hp: 5200, spd: 0.4, bounty: 500, r: 0.6, mres: 0.55, armor: 0.2, lives: 15, boss: true, summon: 5, cost: 0, desc: '最終頭目！不斷召喚骷髏兵。' },
@@ -127,6 +164,10 @@ const ENEMIES = {
   bossWorm: { name: '晶甲巨蟲', hp: 4600, spd: 0.45, bounty: 420, r: 0.62, armor: 0.45, lives: 12, boss: true, burrow: 7, cost: 0, desc: '頭目！會鑽進地底快速前進，這時候打不到牠。' },
   bossPharaoh: { name: '沙漠法老', hp: 5400, spd: 0.4, bounty: 480, r: 0.6, mres: 0.45, armor: 0.15, lives: 15, boss: true, summon: 7, summonK: 'mummy', summonN: 2, cost: 0, desc: '頭目！喚醒沉睡的木乃伊為他開路。' },
   bossKraken: { name: '深淵海妖', hp: 7200, spd: 0.38, bounty: 600, r: 0.64, armor: 0.3, mres: 0.3, lives: 20, boss: true, stomp: 6.5, ink: true, cost: 0, desc: '最終頭目！噴出墨汁，讓附近的塔暫時無法攻擊。' },
+  // 多階段頭目：phases = 血量降到這些比例時進入下一個形態
+  bossTortoise: { name: '玄甲龜皇', hp: 7000, spd: 0.36, bounty: 520, r: 0.64, armor: 0.7, lives: 15, boss: true, shell: 9, phases: [0.5], cost: 0, desc: '頭目！龜殼極硬，還會縮進殼裡完全無敵。血剩一半時殼會碎，變得又快又兇、召喚鐵螯蟹。' },
+  bossRaijin: { name: '雷鼓鬼神', hp: 8200, spd: 0.4, bounty: 600, r: 0.62, mres: 0.35, armor: 0.15, lives: 15, boss: true, drums: 7, phases: [0.6, 0.25], cost: 0, desc: '頭目！敲雷鼓劈暈附近的塔；第二形態飄上天空（只有能打空中的塔打得到）；最後引來狂雷讓所有敵人加速。' },
+  bossEclipse: { name: '蝕月魔君', hp: 15000, spd: 0.34, bounty: 1000, r: 0.66, armor: 0.3, mres: 0.3, lives: 20, boss: true, phases: [0.66, 0.33], cost: 0, desc: '最終頭目！暗影護盾＋影行者護衛；第二形態天色變暗、瞬間移動；最後狂暴，黑暗脈衝讓附近的塔停擺。' },
 };
 
 // ───────── 地圖主題 ─────────
@@ -144,6 +185,12 @@ const THEMES = {
   cave: { g1: '#4a4a5e', g2: '#424256', edge: '#24243a', path: '#8a8270', pathE: '#4a4438', deco: ['crystal', 'crystal', 'rock', 'mush', 'rock'], flower: ['#9ef0ff', '#ff9ef0'], bg: '#141420', music: 7, water: '#5ae8e0' },
   ruins: { g1: '#e2c488', g2: '#d8b87a', edge: '#a8844a', path: '#cfc2a8', pathE: '#8a7a5a', deco: ['pillar', 'cactus', 'rock', 'pillar', 'palm'], flower: ['#ffb36b'], bg: '#a8743a', music: 2, water: '#4cc7e8' },
   deep: { g1: '#3a8a98', g2: '#34808e', edge: '#1e4e5a', path: '#d8d0b0', pathE: '#8a8468', deco: ['coral', 'coral', 'rock', 'coral', 'shell'], flower: ['#ff9ad0', '#ffd36b', '#9ef0ff'], bg: '#0e3048', music: 6, water: '#1a5a7a' },
+  bamboo: { g1: '#7cc65a', g2: '#72bc52', edge: '#3f8a3a', path: '#e2cc98', pathE: '#9a7a4a', deco: ['bamboo', 'bamboo', 'stonelamp', 'rock', 'bamboo', 'bush'], flower: ['#ffd1e6', '#ffffff'], bg: '#244a26', music: 10, water: '#5ac8d8' },
+  harbor: { g1: '#4a6a7a', g2: '#44627a', edge: '#243a4a', path: '#9a9488', pathE: '#5a5448', deco: ['crate', 'mast', 'rock', 'crate'], flower: ['#9ef0ff', '#ffe08a'], bg: '#0e1a2e', music: 7, water: '#1e4a6a' },
+  river: { g1: '#86cc66', g2: '#7cc25e', edge: '#3f8a4a', path: '#e6d4a4', pathE: '#a88a58', deco: ['tree', 'reed', 'bamboo', 'rock', 'tree', 'bush'], flower: ['#ffffff', '#ffe066', '#ff9ec7'], bg: '#1e5a46', music: 10, water: '#3ab8b0' },
+  plateau: { g1: '#a8a868', g2: '#9e9e60', edge: '#5a5a38', path: '#d4c4a0', pathE: '#8a7a58', deco: ['rock', 'rock', 'dead', 'obelisk', 'bush'], flower: ['#d7c8ff', '#ffffff'], bg: '#3a3a4a', music: 5, water: '#5a8ab8' },
+  amber: { g1: '#8a5a32', g2: '#80522e', edge: '#4a2e1a', path: '#c8a070', pathE: '#7a5a3a', deco: ['crystal', 'mush', 'rock', 'crystal', 'rock'], flower: ['#ffc84a', '#ff9a3a'], bg: '#1e120a', music: 7, water: '#ffb03a' },
+  spire: { g1: '#5a4a86', g2: '#54447e', edge: '#2a2048', path: '#c8bce0', pathE: '#6a5a8a', deco: ['obelisk', 'crystal', 'rock', 'obelisk', 'dead'], flower: ['#ffd36b', '#c8a8ff'], bg: '#120c26', music: 11, water: '#6a4ad8' },
   night: { g1: '#4b5a86', g2: '#45537d', edge: '#262e4f', path: '#8f8aa8', pathE: '#4c4766', deco: ['crystal', 'dead', 'rock', 'grave'], flower: ['#9ef0ff', '#d7a8ff'], bg: '#151a33', music: 7 },
 };
 
@@ -158,7 +205,7 @@ const LEVELS = [
     entries: [[0]],
     pool: [['slime', 0, 5], ['runner', 3, 2], ['beetle', 6, 2]],
     b0: 7, bg: 1.2, hp0: 1, hpg: 0.05, story: '史萊姆大軍從森林那頭冒出來了！在路邊蓋箭塔和砲塔，守住城堡。',
-    limit: ['arrow', 'cannon'],
+    limit: ['arrow', 'cannon'], heroic: ['swift', 'armored'],
   },
   {
     name: '迷霧森林', en: 'MISTY WOODS', theme: 'forest', seed: 23, waves: 12, gold: 270,
@@ -166,7 +213,7 @@ const LEVELS = [
     entries: [[0]],
     pool: [['slime', 0, 4], ['runner', 1, 3], ['bat', 3, 2], ['beetle', 5, 2]],
     b0: 8, bg: 1.19, hp0: 1.05, hpg: 0.055, story: '森林裡的路彎彎曲曲。新的冰霜塔可以讓跑很快的疾風狼慢下來。',
-    limit: ['arrow', 'frost'],
+    limit: ['arrow', 'frost'], heroic: ['horde', 'regen'],
   },
   {
     name: '沙丘綠洲', en: 'DUNE OASIS', theme: 'desert', seed: 37, waves: 12, gold: 300,
@@ -178,7 +225,7 @@ const LEVELS = [
     water: [[7, 7, 3, 2]],
     pool: [['slime', 0, 3], ['runner', 0, 2], ['beetle', 1, 3], ['golem', 4, 2], ['healer', 6, 2], ['bat', 3, 1]],
     b0: 9, bg: 1.19, hp0: 1.1, hpg: 0.06, story: '兩個入口同時進攻！鐵甲蟲很硬，用新的法師塔打穿牠的殼。',
-    limit: ['cannon', 'frost', 'magic'],
+    limit: ['cannon', 'frost', 'magic'], heroic: ['shielded', 'swift'],
   },
   {
     name: '冰封雪原', en: 'FROZEN FIELD', theme: 'snow', seed: 41, waves: 14, gold: 320,
@@ -187,7 +234,7 @@ const LEVELS = [
     pool: [['slime', 0, 3], ['runner', 0, 2], ['beetle', 1, 2], ['golem', 2, 2], ['bat', 2, 2], ['shield', 5, 3], ['healer', 6, 1], ['ogre', 8, 1]],
     boss: 'bossGolem',
     b0: 9, bg: 1.17, hp0: 1.15, hpg: 0.065, story: '道路在中間交叉，砲塔放在十字路口附近效果加倍。最後一波，岩石巨人王會來！',
-    limit: ['arrow', 'magic', 'sniper'],
+    limit: ['arrow', 'magic', 'sniper'], heroic: ['armored', 'poor'],
   },
   {
     name: '沼澤濕地', en: 'MURKY SWAMP', theme: 'swamp', seed: 53, waves: 15, gold: 340,
@@ -199,7 +246,7 @@ const LEVELS = [
     water: [[0, 4, 2, 2], [12, 0, 2, 2]],
     pool: [['slime', 0, 2], ['runner', 0, 2], ['splitter', 1, 3], ['beetle', 2, 2], ['golem', 3, 2], ['bat', 2, 2], ['gargoyle', 6, 2], ['shield', 4, 2], ['healer', 5, 2], ['ogre', 9, 1]],
     b0: 10, bg: 1.17, hp0: 1.2, hpg: 0.065, story: '分裂膠被打爆會變成三隻小膠。戰旗可以讓附近的塔都變強。',
-    limit: ['cannon', 'magic', 'banner'],
+    limit: ['cannon', 'magic', 'banner'], heroic: ['regen', 'horde'],
   },
   {
     name: '熔岩火山', en: 'LAVA PEAK', theme: 'volcano', seed: 67, waves: 15, gold: 360,
@@ -212,7 +259,7 @@ const LEVELS = [
     pool: [['slime', 0, 2], ['runner', 0, 2], ['beetle', 0, 2], ['golem', 1, 2], ['bat', 1, 2], ['shield', 2, 2], ['splitter', 3, 2], ['healer', 4, 2], ['gargoyle', 5, 2], ['ogre', 6, 1]],
     boss: 'bossDragon',
     b0: 10, bg: 1.17, hp0: 1.3, hpg: 0.065, story: '路在火山口分成兩條，中間的島是兵家必爭之地。金礦能幫你存錢。炎龍在最後等著。',
-    limit: ['arrow', 'frost', 'sniper'],
+    limit: ['arrow', 'frost', 'sniper'], heroic: ['swift', 'warded'],
   },
   {
     name: '海岸峭壁', en: 'CLIFF COAST', theme: 'coast', seed: 79, waves: 16, gold: 380,
@@ -225,7 +272,7 @@ const LEVELS = [
     pool: [['slime', 0, 2], ['runner', 0, 2], ['beetle', 0, 2], ['golem', 0, 2], ['bat', 1, 2], ['shield', 1, 2], ['splitter', 2, 2], ['healer', 3, 2], ['gargoyle', 3, 2], ['ogre', 5, 2]],
     boss: 'bossGolem',
     b0: 10, bg: 1.165, hp0: 1.4, hpg: 0.065, story: '敵人從海上登陸，兩路在中間會合。善用所有的塔！',
-    limit: ['cannon', 'magic', 'sniper'],
+    limit: ['cannon', 'magic', 'sniper'], heroic: ['shielded', 'armored'],
   },
   {
     name: '暗影城堡', en: 'SHADOW KEEP', theme: 'night', seed: 97, waves: 20, gold: 450,
@@ -237,7 +284,7 @@ const LEVELS = [
     pool: [['slime', 0, 1], ['runner', 0, 2], ['beetle', 0, 2], ['golem', 0, 2], ['bat', 0, 2], ['shield', 1, 2], ['splitter', 1, 2], ['healer', 2, 2], ['gargoyle', 2, 2], ['ogre', 4, 2]],
     boss: 'bossLich', midBoss: [14, 'bossDragon', 0.65],
     b0: 9, bg: 1.14, hp0: 1.2, hpg: 0.058, story: '最後的決戰。兩條路交叉兩次，巫妖王會帶著骷髏大軍出現。',
-    limit: ['arrow', 'cannon', 'magic'],
+    limit: ['arrow', 'cannon', 'magic'], heroic: ['horde', 'swift'],
   },
   {
     name: '楓紅山谷', en: 'AUTUMN VALE', theme: 'autumn', seed: 113, waves: 18, gold: 480,
@@ -250,7 +297,7 @@ const LEVELS = [
     pool: [['slime', 0, 1], ['runner', 0, 2], ['beetle', 0, 2], ['golem', 0, 2], ['bat', 0, 2], ['shield', 1, 2], ['splitter', 1, 2], ['healer', 2, 2], ['gargoyle', 2, 2], ['ogre', 3, 2], ['skeleton', 4, 2]],
     boss: 'bossDragon', midBoss: [9, 'bossGolem', 0.6],
     b0: 10, bg: 1.16, hp0: 1.6, hpg: 0.062, story: '秋天的山谷，岔路在山腳分開又會合。骷髏兵也來湊熱鬧，最後炎龍會飛越整座山谷。',
-    limit: ['arrow', 'magic', 'banner'],
+    limit: ['arrow', 'magic', 'banner'], heroic: ['warded', 'regen'],
   },
   {
     name: '赤岩峽谷', en: 'RED CANYON', theme: 'canyon', seed: 131, waves: 22, gold: 520,
@@ -263,7 +310,7 @@ const LEVELS = [
     pool: [['slime', 0, 1], ['runner', 0, 2], ['beetle', 0, 2], ['golem', 0, 2], ['bat', 0, 2], ['shield', 0, 2], ['splitter', 1, 2], ['healer', 1, 2], ['gargoyle', 2, 2], ['ogre', 3, 2], ['skeleton', 3, 1]],
     boss: 'bossLich', midBoss: [11, 'bossGolem', 0.7],
     b0: 10, bg: 1.15, hp0: 1.5, hpg: 0.06, story: '峽谷裡兩條路交叉成井字，到處都是火力交會點。這是王國最後的防線！',
-    limit: ['cannon', 'frost', 'sniper'],
+    limit: ['cannon', 'frost', 'sniper'], heroic: ['armored', 'horde'],
   },
   {
     name: '天空浮島', en: 'SKY ISLES', theme: 'sky', seed: 151, waves: 20, gold: 520,
@@ -277,7 +324,7 @@ const LEVELS = [
     pool: [['slime', 0, 1], ['runner', 0, 2], ['bat', 0, 2], ['wisp', 1, 3], ['beetle', 1, 2], ['golem', 2, 2], ['shield', 2, 2], ['gargoyle', 3, 2], ['splitter', 4, 1], ['healer', 3, 2], ['ogre', 5, 2]],
     boss: 'bossRoc', midBoss: [12, 'bossDragon', 0.5],
     b0: 10, bg: 1.15, hp0: 1.55, hpg: 0.06, story: '雲端上的浮島，敵人會踩著傳送陣從一座島跳到另一座。注意大量飛行敵人！',
-    limit: ['arrow', 'magic', 'sniper'],
+    limit: ['arrow', 'magic', 'sniper'], heroic: ['swift', 'shielded'],
   },
   {
     name: '水晶礦坑', en: 'CRYSTAL MINE', theme: 'cave', seed: 167, waves: 20, gold: 540,
@@ -291,7 +338,7 @@ const LEVELS = [
     pool: [['slime', 0, 1], ['runner', 0, 2], ['beetle', 0, 2], ['golem', 1, 2], ['crawler', 2, 3], ['bat', 2, 2], ['shield', 3, 2], ['splitter', 3, 2], ['healer', 4, 2], ['gargoyle', 5, 2], ['ogre', 6, 2]],
     boss: 'bossWorm', midBoss: [10, 'bossGolem', 0.65],
     b0: 10.5, bg: 1.155, hp0: 1.95, hpg: 0.06, story: '黑漆漆的礦坑裡，地上發光的水晶基座能讓蓋在上面的塔更強。晶甲巨蟲在最深處等著。',
-    limit: ['cannon', 'frost', 'magic'],
+    limit: ['cannon', 'frost', 'magic'], heroic: ['regen', 'armored'],
   },
   {
     name: '沙暴遺跡', en: 'DUNE RUINS', theme: 'ruins', seed: 181, waves: 22, gold: 560,
@@ -305,7 +352,7 @@ const LEVELS = [
     pool: [['slime', 0, 1], ['runner', 0, 2], ['beetle', 0, 2], ['golem', 0, 2], ['mummy', 1, 3], ['bat', 1, 2], ['shield', 2, 2], ['healer', 2, 2], ['splitter', 3, 2], ['gargoyle', 3, 2], ['ogre', 4, 2], ['skeleton', 4, 1]],
     boss: 'bossPharaoh', midBoss: [11, 'bossLich', 0.45],
     b0: 10, bg: 1.15, hp0: 1.55, hpg: 0.06, story: '古老的沙漠遺跡，每隔一陣子就會刮起沙暴，所有塔的射程都會變短。木乃伊打倒一次還會再爬起來！',
-    limit: ['arrow', 'cannon', 'banner'],
+    limit: ['arrow', 'cannon', 'banner'], heroic: ['poor', 'swift'],
   },
   {
     name: '海底神殿', en: 'ABYSS TEMPLE', theme: 'deep', seed: 197, waves: 24, gold: 600,
@@ -320,7 +367,93 @@ const LEVELS = [
     pool: [['slime', 0, 1], ['runner', 0, 2], ['beetle', 0, 2], ['crab', 0, 3], ['golem', 1, 2], ['bat', 1, 2], ['shield', 2, 2], ['splitter', 2, 2], ['healer', 3, 2], ['gargoyle', 3, 2], ['ogre', 4, 2], ['wisp', 5, 1], ['mummy', 6, 1]],
     boss: 'bossKraken', midBoss: [12, 'bossPharaoh', 0.5],
     b0: 11, bg: 1.14, hp0: 1.62, hpg: 0.06, story: '沉在海底的古神殿，三個入口同時湧入，中間的海流會讓敵人突然加速。深淵海妖是王國最後的威脅！',
-    limit: ['frost', 'magic', 'sniper'],
+    limit: ['frost', 'magic', 'sniper'], heroic: ['horde', 'warded'],
+  },
+  // ═════════ 第二章 · 東境遠征（第 15–20 關）═════════
+  {
+    name: '竹林古道', en: 'BAMBOO PASS', theme: 'bamboo', seed: 211, waves: 20, gold: 560, act: 1,
+    paths: [
+      [[-1, 4], [3, 4], [3, 1], [11, 1], [11, 4], [13, 4], [13, 7], [16, 7]],
+      [[-1, 4], [3, 4], [3, 7], [11, 7], [11, 4], [13, 4], [13, 7], [16, 7]],
+    ],
+    entries: [[0, 1]],
+    water: [[7, 0, 1, 10]],
+    bridges: [[7, 1, 0], [7, 7, 7]], // 吊橋 [x, y, 相位]：每 14 秒放下 8 秒；收起時敵人會在橋頭等，走到岔路口會選放下的那座
+    pool: [['slime', 0, 1], ['goblin', 0, 3], ['runner', 0, 2], ['beetle', 1, 2], ['bat', 1, 2], ['golem', 2, 2], ['brute', 4, 2], ['shield', 3, 2], ['healer', 5, 2], ['gargoyle', 6, 1], ['ogre', 7, 2]],
+    boss: 'bossGolem', midBoss: [10, 'bossDragon', 0.5],
+    b0: 10.5, bg: 1.15, hp0: 1.75, hpg: 0.06, story: '東方大陸的竹林古道，一條小河把路切成南北兩條。吊橋輪流放下，敵人會擠在橋頭等——砲塔和毒池的好機會！新的兵營可以派士兵擋路。',
+    limit: ['arrow', 'cannon', 'barracks'], heroic: ['swift', 'horde'],
+  },
+  {
+    name: '霧港夜燈', en: 'FOG HARBOR', theme: 'harbor', seed: 223, waves: 22, gold: 580, act: 1,
+    paths: [
+      [[-1, 2], [4, 2], [4, 6], [8, 6], [8, 3], [12, 3], [12, 7], [16, 7]],
+      [[6, 10], [6, 8], [10, 8], [10, 5], [12, 5], [12, 7], [16, 7]],
+    ],
+    entries: [[0], [1]],
+    water: [[0, 7, 4, 3], [13, 0, 3, 2]],
+    fog: 1, lamps: [[2, 3], [6, 4], [10, 2], [9, 7], [13, 5], [7, 9], [14, 8]], // 夜霧：只有路燈和塔附近看得到敵人
+    pool: [['slime', 0, 1], ['goblin', 0, 2], ['runner', 0, 2], ['shade', 1, 3], ['beetle', 1, 2], ['raven', 4, 2], ['shield', 2, 2], ['healer', 4, 2], ['golem', 3, 1], ['gargoyle', 5, 2], ['ogre', 6, 2]],
+    boss: 'bossLich', midBoss: [11, 'bossPharaoh', 0.45],
+    b0: 10.5, bg: 1.15, hp0: 1.7, hpg: 0.06, story: '濃霧籠罩的夜港，只有路燈下和塔的附近看得見敵人，射程再遠也沒用。影行者會隱身摸過來，新的煉金塔丟出的毒池不用看也打得到！',
+    limit: ['frost', 'magic', 'alchemy'], heroic: ['shielded', 'poor'],
+  },
+  {
+    name: '翡翠大河', en: 'JADE RIVER', theme: 'river', seed: 239, waves: 22, gold: 650, act: 1,
+    paths: [
+      [[-1, 1], [4, 1], [4, 4], [12, 4], [12, 7], [16, 7]],
+      [[5, 10], [5, 7], [8, 7], [8, 4], [12, 4], [12, 7], [16, 7]],
+    ],
+    river: [[2], [3]], // 這幾段是河道：敵人坐船順流而下（速度 ×1.5，士兵擋不住、毒池會被沖走）
+    entries: [[0], [1]],
+    water: [[0, 4, 4, 1], [13, 4, 3, 1], [14, 0, 2, 2]],
+    pool: [['goblin', 0, 2], ['runner', 0, 2], ['balloon', 1, 3], ['beetle', 0, 2], ['crab', 1, 2], ['paladin', 3, 3], ['shaman', 5, 2], ['healer', 2, 1], ['raven', 4, 2], ['ogre', 6, 2], ['golem', 2, 1]],
+    boss: 'bossTortoise', midBoss: [11, 'bossGolem', 0.6],
+    b0: 10.5, bg: 1.15, hp0: 1.66, hpg: 0.06, story: '翠綠的大河穿過山谷，敵人乘船順流而下，速度飛快。聖盾騎士每下只會掉一點血，要用射得快的塔磨他。河的主人玄甲龜皇在最後登場！',
+    limit: ['arrow', 'frost', 'barracks'], heroic: ['armored', 'regen'],
+  },
+  {
+    name: '雷鳴高原', en: 'THUNDER PLATEAU', theme: 'plateau', seed: 251, waves: 24, gold: 660, act: 1,
+    paths: [
+      [[-1, 2], [5, 2], [5, 7], [9, 7], [9, 2], [13, 2], [13, 6], [16, 6]],
+      [[7, -1], [7, 4], [11, 4], [11, 8], [14, 8], [14, 6], [16, 6]],
+    ],
+    entries: [[0], [1]],
+    water: [[0, 8, 3, 2]],
+    weather: [['clear', 14], ['rain', 12], ['clear', 9], ['wind', 12], ['clear', 9], ['thunder', 12]], // 天氣循環
+    pool: [['goblin', 0, 2], ['runner', 0, 2], ['brute', 1, 2], ['mole', 2, 3], ['raven', 2, 2], ['golem', 1, 2], ['paladin', 4, 2], ['shaman', 4, 2], ['wisp', 3, 2], ['gargoyle', 5, 2], ['ogre', 6, 2]],
+    boss: 'bossRaijin', midBoss: [11, 'bossRoc', 0.36],
+    b0: 10, bg: 1.145, hp0: 1.6, hpg: 0.06, story: '高原上天氣說變就變：暴雨讓塔變慢、狂風讓飛行敵人加速、雷暴時法師塔充飽電。雷鼓鬼神在雷聲中降臨！',
+    limit: ['cannon', 'magic', 'alchemy'], heroic: ['swift', 'warded'],
+  },
+  {
+    name: '琥珀蟲巢', en: 'AMBER HIVE', theme: 'amber', seed: 263, waves: 24, gold: 640, act: 1,
+    paths: [
+      [[-1, 2], [3, 2], [3, 6], [5, 6], [9, 6], [10, 6], [10, 2], [14, 2], [14, 7], [16, 7]],
+      [[6, 10], [6, 8], [8, 8], [12, 8], [13, 8], [13, 7], [16, 7]],
+    ],
+    tunnel: [[3], [2]], // 地道：這一段在地底下走，看不到也打不到，上面可以蓋塔
+    entries: [[0], [1]],
+    water: [[0, 8, 2, 2], [12, 0, 2, 1]],
+    pool: [['goblin', 0, 2], ['runner', 0, 1], ['mole', 0, 3], ['crawler', 1, 2], ['shade', 2, 2], ['mummy', 3, 2], ['brute', 3, 2], ['shaman', 5, 2], ['balloon', 4, 2], ['beetle', 1, 2], ['ogre', 6, 2]],
+    boss: 'bossWorm', midBoss: [12, 'bossTortoise', 0.45],
+    b0: 10.2, bg: 1.145, hp0: 1.78, hpg: 0.06, story: '發著琥珀光的地底蟲巢。敵人會鑽進地道，從路中間冒出來——在地道出口布下重兵！',
+    limit: ['cannon', 'sniper', 'barracks'], heroic: ['horde', 'regen'],
+  },
+  {
+    name: '暮光王座', en: 'TWILIGHT THRONE', theme: 'spire', seed: 277, waves: 26, gold: 720, act: 1,
+    paths: [
+      [[-1, 5], [5, 5], [5, 1], [12, 1], [12, 5], [16, 5]],
+      [[-1, 5], [5, 5], [12, 5], [16, 5]],
+      [[-1, 5], [5, 5], [5, 8], [12, 8], [12, 5], [16, 5]],
+    ],
+    entries: [[0, 1, 2]],
+    rotor: [5, 5, 8, [0, 1, 2, 1]], // 旋轉祭壇 [x, y, 每幾秒轉一次, 路線順序]：敵人走到祭壇時，走目前對準的那條路
+    water: [[14, 0, 2, 2], [14, 8, 2, 2]],
+    pool: [['goblin', 0, 3], ['runner', 0, 1], ['brute', 1, 2], ['shade', 1, 2], ['raven', 2, 1], ['paladin', 3, 2], ['shaman', 4, 2], ['mole', 2, 2], ['balloon', 3, 2], ['crawler', 5, 1], ['gargoyle', 6, 1], ['ogre', 7, 2], ['mummy', 8, 1]],
+    boss: 'bossEclipse', midBoss: [13, 'bossRaijin', 0.45],
+    b0: 10, bg: 1.14, hp0: 1.6, hpg: 0.06, story: '王座前的旋轉祭壇每隔幾秒轉向，敵人走哪條路由它決定——中間那條最短！蝕月魔君會帶來無盡的黑夜，這是東境最後一戰。',
+    limit: ['arrow', 'magic', 'sniper'], heroic: ['shielded', 'swift'],
   },
 ];
 
@@ -343,6 +476,7 @@ const META = [
   // 防禦
   { id: 'lives', col: 1, name: '城牆加固', desc: n => `生命 +${n * 3}`, cost: [1, 2, 3] },
   { id: 'range', col: 1, name: '鷹巢', desc: n => `所有塔射程 +${n * 5}%`, cost: [2, 3], req: ['lives', 1] },
+  { id: 'sight', col: 1, name: '照明彈', desc: n => `塔在夜霧中的視野 +${n * 0.4} 格，影行者在 ${(1.5 + n * 0.3).toFixed(1)} 格內現形`, cost: [1, 2] },
   { id: 'arrow', col: 1, name: '精鋼箭頭', desc: n => `箭塔傷害 +${n * 12}%`, cost: [1, 2] },
   { id: 'cannon', col: 1, name: '高爆火藥', desc: n => `砲塔傷害 +${n * 8}%、爆炸範圍 +${n * 12}%`, cost: [1, 2] },
   { id: 'frost', col: 1, name: '永凍核心', desc: n => `冰霜塔減速時間 +${n * 25}%、傷害 +${n * 15}%`, cost: [1, 2] },
@@ -350,6 +484,8 @@ const META = [
   { id: 'sniper', col: 2, name: '精密瞄準鏡', desc: n => `狙擊塔傷害 +${n * 12}%`, cost: [1, 2] },
   { id: 'banner', col: 2, name: '軍樂隊', desc: n => `戰旗加成額外 +${n * 5}%`, cost: [1, 2] },
   { id: 'mine', col: 2, name: '深層礦脈', desc: n => `金礦產量 +${n * 15}%`, cost: [1, 2] },
+  { id: 'barracks', col: 2, name: '精兵訓練', desc: n => `兵營士兵生命 +${n * 15}%、傷害 +${n * 10}%`, cost: [1, 2] },
+  { id: 'alchemy', col: 2, name: '劇毒配方', desc: n => `煉金塔毒傷 +${n * 12}%、毒池時間 +${n * 10}%`, cost: [1, 2] },
   // 技能
   { id: 'meteor', col: 3, name: '烈焰隕石', desc: n => `隕石傷害 +${n * 35}%`, cost: [1, 2, 3] },
   { id: 'meteorCd', col: 3, name: '星辰召喚', desc: n => `隕石冷卻 -${n * 15}%`, cost: [2, 3], req: ['meteor', 1] },
@@ -369,6 +505,19 @@ const CHALLENGES = {
   iron: { name: '鐵人', desc: '只有 1 條命（敵人強度同簡單）' },
 };
 const CHAL_ORDER = ['limit', 'noskill', 'iron'];
+// 英雄模式：普通難度再加上每關固定的兩個詞綴（敵人血量再 +15%），過關得 2 顆星
+const HEROIC_MODS = {
+  swift: { name: '疾風', desc: '敵人速度 +12%' },
+  armored: { name: '鐵壁', desc: '敵人護甲 +15%' },
+  warded: { name: '結界', desc: '敵人抗魔 +20%' },
+  regen: { name: '再生', desc: '敵人每秒回復 1.5% 生命' },
+  horde: { name: '大軍', desc: '敵人數量 +30%' },
+  shielded: { name: '護盾', desc: '所有敵人帶著兩成生命的護盾' },
+  poor: { name: '拮据', desc: '開場金幣 -20%、擊倒金幣 -15%' },
+};
+const HEROIC_HP = 1.15, HEROIC_LIVES = 15;
+// 每週挑戰：每週一換一張地圖、固定的塔與詞綴、無盡模式計分（不套用天賦，大家條件一樣）
+const WEEKLY = { towers: 5, mods: 2, lives: 20, gold: 420, unlock: 4 };
 // 無盡模式的詞綴：每 5 波換一次
 const ENDLESS_MODS = {
   swift: { name: '疾風', desc: '敵人速度 +15%' },
@@ -405,6 +554,18 @@ const ACHIEVEMENTS = [
   { id: 'iron', name: '鐵人', desc: '完成任何一關的鐵人挑戰' },
   { id: 'chal10', name: '挑戰大師', desc: '完成 10 個關卡挑戰' },
   { id: 'meta', name: '學以致用', desc: '在天賦樹學會 10 階天賦' },
+  { id: 'act2', name: '遠征東境', desc: '打贏第 15 關（第二章第一關）' },
+  { id: 'all20', name: '曙光重現', desc: '打贏第二章全部關卡' },
+  { id: 'bossTortoise', name: '破殼者', desc: '擊倒玄甲龜皇' },
+  { id: 'bossRaijin', name: '止雷者', desc: '擊倒雷鼓鬼神' },
+  { id: 'bossEclipse', name: '破曉', desc: '擊倒蝕月魔君' },
+  { id: 'heroic1', name: '英雄試煉', desc: '完成任何一關的英雄模式' },
+  { id: 'heroic10', name: '傳說守衛', desc: '完成 10 關英雄模式' },
+  { id: 'weekly10', name: '每週挑戰者', desc: '每週挑戰撐過 10 波' },
+  { id: 'weekly30', name: '週賽霸主', desc: '每週挑戰撐過 30 波' },
+  { id: 'hold300', name: '銅牆鐵壁', desc: '兵營士兵累計擋下 300 個敵人' },
+  { id: 'plague', name: '毒霧瀰漫', desc: '毒池累計擊倒 300 個敵人' },
+  { id: 'dawn', name: '照亮黑夜', desc: '在霧港夜燈不漏任何敵人過關' },
 ];
 const ENDLESS_UNLOCK = 3; // 打贏第 4 關後解鎖無盡模式
 const WAVE_GAP = 14; // 一波出完之後到下一波的秒數

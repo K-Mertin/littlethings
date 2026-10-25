@@ -1288,6 +1288,327 @@ const Towers = (() => {
     sack(x, u, u * 0.26, u * 0.13, u * 0.1, u * 0.1, '#c8a060'); x.fillStyle = '#8a5a12'; x.font = `900 ${u * 0.045}px "Noto Sans TC",sans-serif`; x.fillText('$', u * 0.26, u * 0.09);
   }
 
+  // ───────── 兵營：木柵營地 → 石基營房 → 城門要塞；騎士團＝白石城堡、狂戰營＝北地長屋 ─────────
+  // 木樁圍籬：繞著一個橢圓，part = back / front（front 在 gate 角度留門）
+  function palisade(x, u, rx, ry, h, part, gate, sharp) {
+    const n = 15, list = [];
+    for (let i = 0; i < n; i++) list.push((i + 0.5) / n * TAU);
+    list.sort((a, b) => Math.sin(a) - Math.sin(b));
+    for (const a of list) {
+      const front = Math.sin(a) > 0;
+      if ((part === 'front') !== front) continue;
+      if (gate !== undefined && Math.abs(Math.atan2(Math.sin(a - gate), Math.cos(a - gate))) < 0.32) continue;
+      const px = Math.cos(a) * rx, py = Math.sin(a) * ry, hh = h * (0.85 + 0.15 * Math.sin(a * 5.3));
+      const w = u * 0.034;
+      path(x, [px - w, py, px - w, py - hh * 0.82, px, py - hh, px + w, py - hh * 0.82, px + w, py]);
+      fe(x, u, lgrad(x, px - w, 0, px + w, 0, front ? [shade(WOOD, 0.12 - Math.cos(a) * 0.12), shade(WOOD2, -0.05 - Math.cos(a) * 0.1)] : [shade(WOOD2, -0.1), shade(WOOD2, -0.3)]), WOOD2, 0.01);
+      if (sharp) { path(x, [px - w * 0.5, py - hh * 0.86, px, py - hh, px + w * 0.5, py - hh * 0.86]); x.fillStyle = rgba('#f4e2c4', 0.55); x.fill(); }
+    }
+    // 橫綁的繩
+    x.strokeStyle = rgba('#d8c08a', 0.8); x.lineWidth = lw(x, u, 0.01);
+    x.beginPath(); x.ellipse(0, -h * 0.55, rx, ry, 0, part === 'front' ? 0.05 : Math.PI + 0.05, part === 'front' ? Math.PI - 0.05 : TAU - 0.05); x.stroke();
+  }
+  function gateFrame(x, u, cx, yb, w, h, c) {
+    for (const sx of [-1, 1]) beam(x, u, cx + sx * w / 2, yb + u * 0.01, cx + sx * w / 2, yb - h, u * 0.04, sx < 0 ? c : shade(c, -0.15));
+    beam(x, u, cx - w / 2 - u * 0.04, yb - h + u * 0.01, cx + w / 2 + u * 0.04, yb - h + u * 0.01, u * 0.045, shade(c, 0.05));
+  }
+  function spears(x, u, cx, yb, n) {
+    for (let i = 0; i < n; i++) { const dx = (i - (n - 1) / 2) * u * 0.035, top = yb - u * (0.26 + (i % 2) * 0.03); line(x, cx + dx, yb, cx + dx * 1.6, top, '#7a5232', lw(x, u, 0.012)); path(x, [cx + dx * 1.6, top - u * 0.05, cx + dx * 1.6 - u * 0.014, top + u * 0.004, cx + dx * 1.6 + u * 0.014, top + u * 0.004]); x.fillStyle = '#d8dee8'; x.fill(); }
+  }
+  function barracksBody(x, tier, sp, u, B, T) {
+    void T;
+    if (tier === 3 && sp === 0) return barracksKnight(x, u, B);
+    if (tier === 3 && sp === 1) return barracksBerserk(x, u, B);
+    if (tier === 0) {
+      // Lv1：一圈木樁圍成的營地，前面開門，裡面一頂帳篷和兵器架
+      if (B) {
+        pad(x, u, 0);
+        palisade(x, u, u * 0.42, u * 0.18, u * 0.2, 'back');
+        tent(x, u, -u * 0.08, -u * 0.06, u * 0.2, u * 0.32, '#b8a070', '#8a7448', false);
+        rack(x, u, u * 0.18, -u * 0.04);
+        // 營火
+        for (let i = 0; i < 6; i++) { const a = i / 6 * TAU; ell(x, u * 0.2 + Math.cos(a) * u * 0.045, u * 0.08 + Math.sin(a) * u * 0.02, u * 0.016, u * 0.01, '#7a7468'); }
+        ell(x, u * 0.2, u * 0.08, u * 0.03, u * 0.013, '#3a2a20');
+      } else {
+        palisade(x, u, u * 0.42, u * 0.18, u * 0.2, 'front', Math.PI * 0.62);
+        gateFrame(x, u, -u * 0.15, u * 0.17, u * 0.17, u * 0.27, WOOD);
+      }
+      return;
+    }
+    if (tier === 1) {
+      // Lv2：石砌下半＋木框灰泥上半的營房，魚鱗瓦屋頂，門口掛盾
+      if (B) {
+        pad(x, u, 1);
+        palisade(x, u, u * 0.44, u * 0.19, u * 0.16, 'back', undefined, true);
+        prism(x, u, 0, u * 0.02, u * 0.6, u * 0.2, '#b0a796', { tex: 'stone', rh: u * 0.065, top: false, seed: 41 });
+        prism(x, u, 0, -u * 0.18, u * 0.6, u * 0.22, '#e8dcc0', { tex: 'plaster', top: false });
+        // 木框
+        for (const [x0, y0, x1, y1] of [[-0.3, -0.18, -0.3, -0.4], [0, -0.07, 0, -0.29], [0.3, -0.18, 0.3, -0.4], [-0.3, -0.29, 0, -0.18], [0, -0.18, 0.3, -0.29]]) beam(x, u, x0 * u, y0 * u, x1 * u, y1 * u, u * 0.024, WOOD2);
+        arch(x, u, -u * 0.15, -u * 0.02, u * 0.11, u * 0.16, '#3a2a22', K);
+        x.save(); x.translate(u * 0.15, -u * 0.27); x.transform(1, -K, 0, 1, 0, 0); x.beginPath(); x.rect(-u * 0.04, -u * 0.03, u * 0.08, u * 0.06); fe(x, u, '#3a2a30', '#5a4a40', 0.01); x.fillStyle = rgba('#ffd36b', 0.7); x.fillRect(-u * 0.03, -u * 0.02, u * 0.06, u * 0.04); x.restore();
+        pyr(x, u, 0, -u * 0.4, u * 0.72, u * 0.3, '#b8503a', { rows: 5 });
+        line(x, u * 0.12, -u * 0.62, u * 0.12, -u * 0.78, '#4a4a52', lw(x, u, 0.03));
+      } else {
+        palisade(x, u, u * 0.44, u * 0.19, u * 0.16, 'front', Math.PI * 0.62, true);
+        shield(x, u, u * 0.08, -u * 0.08, u * 0.055, '#3a6fd8');
+        barrel(x, u, u * 0.3, u * 0.12, u * 0.045, u * 0.08, '#8a5a2e');
+      }
+      return;
+    }
+    // Lv3：兩座圓塔夾著城門，鐵閘門、紅瓦尖頂、門上的大旗
+    if (B) {
+      pad(x, u, 2);
+      for (const sx of [-1, 1]) {
+        x.save(); x.translate(sx * u * 0.27, -u * 0.02);
+        drum(x, u, 0, u * 0.14, u * 0.5, '#b4ab9a', { r1: u * 0.13, tex: 'stone', seed: 50 + sx, rh: u * 0.07 });
+        merlons(x, u, -u * 0.5, u * 0.15, u * 0.05, '#b4ab9a', 'back', 6);
+        disk(x, u, -u * 0.5, u * 0.15, '#c8bfae', u * 0.02);
+        cone(x, u, -u * 0.53, u * 0.16, u * 0.26, sx < 0 ? '#b8503a' : '#a8463a', { finial: '#ffd36b', rows: 4 });
+        slit(x, u, sx * u * 0.03, -u * 0.25, u * 0.07, 0);
+        x.restore();
+      }
+      prism(x, u, 0, u * 0.02, u * 0.4, u * 0.36, '#c0b7a4', { tex: 'stone', seed: 52, top: '#a89f8c' });
+      merlons(x, u, -u * 0.36, u * 0.0, u * 0.0, '#c0b7a4', 'back', 1);
+      // 鐵閘門
+      x.save(); x.translate(-u * 0.1, -u * 0.06); x.transform(1, K, 0, 1, 0, 0);
+      x.beginPath(); x.moveTo(-u * 0.07, u * 0.1); x.lineTo(-u * 0.07, -u * 0.05); x.arc(0, -u * 0.05, u * 0.07, Math.PI, 0); x.lineTo(u * 0.07, u * 0.1); x.closePath(); fe(x, u, '#2a1e22', '#5a4a50', 0.01);
+      x.strokeStyle = '#6a6e78'; x.lineWidth = lw(x, u, 0.012);
+      for (let i = -2; i <= 2; i++) { x.beginPath(); x.moveTo(i * u * 0.025, -u * 0.1); x.lineTo(i * u * 0.025, u * 0.06); x.stroke(); }
+      for (let j = 0; j < 3; j++) { x.beginPath(); x.moveTo(-u * 0.065, -u * 0.05 + j * u * 0.045); x.lineTo(u * 0.065, -u * 0.05 + j * u * 0.045); x.stroke(); }
+      x.restore();
+      banner(x, u, u * 0.1, -u * 0.32, u * 0.11, u * 0.2, '#c8382e', 'cross');
+      // 城牆垛口（後半）
+      for (const [px, py] of [[-0.18, -0.38], [-0.06, -0.43], [0.06, -0.43], [0.18, -0.38]]) { x.beginPath(); x.rect(px * u - u * 0.03, py * u - u * 0.05, u * 0.06, u * 0.05); fe(x, u, '#c8bfae', '#a89f8c', 0.01); }
+    } else {
+      for (const sx of [-1, 1]) { x.save(); x.translate(sx * u * 0.27, -u * 0.02); merlons(x, u, -u * 0.5, u * 0.15, u * 0.05, '#b4ab9a', 'front', 6); x.restore(); }
+      barrel(x, u, u * 0.4, u * 0.14, u * 0.04, u * 0.07, '#8a5a2e');
+      spears(x, u, -u * 0.42, u * 0.12, 3);
+    }
+  }
+  // 騎士團：白石方堡＋兩座藍頂尖塔、藍底金獅旗、台階
+  function barracksKnight(x, u, B) {
+    const st = '#e2ddd2';
+    if (B) {
+      pad(x, u, 3, '#c8c4bc');
+      for (const sx of [-1, 1]) {
+        x.save(); x.translate(sx * u * 0.3, -u * 0.06);
+        drum(x, u, 0, u * 0.11, u * 0.72, st, { r1: u * 0.1, tex: 'stone', seed: 60 + sx, rh: u * 0.065 });
+        disk(x, u, -u * 0.72, u * 0.12, '#d0cabe', u * 0.02);
+        cone(x, u, -u * 0.74, u * 0.13, u * 0.38, '#3a5aa8', { style: 'slate', finial: '#ffd36b', rows: 5 });
+        slit(x, u, sx * u * 0.02, -u * 0.4, u * 0.08, 0);
+        x.restore();
+      }
+      prism(x, u, 0, u * 0.03, u * 0.48, u * 0.5, st, { tex: 'stone', seed: 61, top: false });
+      prism(x, u, 0, -u * 0.47, u * 0.52, u * 0.06, '#d4cec2', { tex: 'stone', seed: 62, rh: u * 0.06 });
+      pyr(x, u, 0, -u * 0.53, u * 0.56, u * 0.34, '#4a68b8', { style: 'slate', finial: '#ffd36b', rows: 5 });
+      // 大門＋金邊
+      arch(x, u, -u * 0.12, -u * 0.05, u * 0.13, u * 0.2, '#2a2236', K, '#ffcf7a');
+      // 藍金大旗
+      banner(x, u, u * 0.12, -u * 0.42, u * 0.13, u * 0.28, '#2f56b8', 'cross', { trim: '#ffd36b', ec: '#ffd36b' });
+      x.save(); x.translate(u * 0.12, -u * 0.3); crest(x, u, 0, 0, u * 0.035, '#f2c14e', '#fff3b0'); x.restore();
+    } else {
+      // 台階
+      for (let i = 0; i < 2; i++) { const w = u * (0.2 - i * 0.04); x.save(); x.translate(-u * 0.18, u * 0.1 - i * u * 0.035); x.transform(1, K, 0, 1, 0, 0); x.beginPath(); x.rect(-w / 2, -u * 0.035, w, u * 0.035); fe(x, u, lgrad(x, -w / 2, 0, w / 2, 0, ['#f0ece4', '#bab4a8']), '#a8a298', 0.01); x.restore(); }
+      pennant(x, u, u * 0.42, u * 0.12, u * 0.14, '#3a6fd8', 1);
+      pennant(x, u, -u * 0.44, u * 0.06, u * 0.14, '#f2c14e', -1);
+    }
+  }
+  // 狂戰營：圓木長屋＋陡峭茅草屋頂、屋脊兩端翹起的獸角、門上牛角頭骨、尖木樁與火盆
+  function barracksBerserk(x, u, B) {
+    if (B) {
+      pad(x, u, 0);
+      palisade(x, u, u * 0.46, u * 0.2, u * 0.22, 'back', undefined, true);
+      prism(x, u, 0, u * 0.02, u * 0.66, u * 0.24, '#8a5a32', { tex: 'log', rh: u * 0.055, top: false });
+      pyr(x, u, 0, -u * 0.22, u * 0.8, u * 0.5, '#9a7a3e', { style: 'thatch', rows: 7 });
+      // 屋脊的雕龍角（兩根彎角）
+      x.strokeStyle = '#5a3a1e'; x.lineCap = 'round';
+      for (const sd of [-1, 1]) { x.lineWidth = lw(x, u, 0.05); x.beginPath(); x.moveTo(0, -u * 0.7); x.quadraticCurveTo(sd * u * 0.1, -u * 0.86, sd * u * 0.06, -u * 0.98); x.stroke(); x.strokeStyle = '#8a5a32'; x.lineWidth = lw(x, u, 0.028); x.stroke(); x.strokeStyle = '#5a3a1e'; }
+      x.lineCap = 'butt';
+      // 門＋牛角頭骨
+      arch(x, u, -u * 0.16, -u * 0.04, u * 0.11, u * 0.16, '#2a1a14', K, '#ff9a3a');
+      x.save(); x.translate(-u * 0.16, -u * 0.2);
+      x.beginPath(); x.ellipse(0, 0, u * 0.035, u * 0.04, 0, 0, TAU); fe(x, u, '#f0e6d0', '#a89878', 0.01);
+      circ(x, -u * 0.012, -u * 0.004, u * 0.008, '#2a1a14'); circ(x, u * 0.012, -u * 0.004, u * 0.008, '#2a1a14');
+      x.strokeStyle = '#efe2c4'; x.lineWidth = lw(x, u, 0.016); x.lineCap = 'round';
+      for (const sd of [-1, 1]) { x.beginPath(); x.moveTo(sd * u * 0.03, -u * 0.02); x.quadraticCurveTo(sd * u * 0.08, -u * 0.02, sd * u * 0.08, -u * 0.07); x.stroke(); }
+      x.lineCap = 'butt'; x.restore();
+      // 紅色戰紋
+      x.save(); x.translate(u * 0.17, -u * 0.12); x.transform(1, -K, 0, 1, 0, 0); x.strokeStyle = rgba('#c8281e', 0.85); x.lineWidth = lw(x, u, 0.018); x.beginPath(); x.moveTo(-u * 0.06, -u * 0.04); x.lineTo(0, u * 0.03); x.lineTo(u * 0.06, -u * 0.04); x.moveTo(-u * 0.06, u * 0.0); x.lineTo(0, u * 0.07); x.lineTo(u * 0.06, u * 0.0); x.stroke(); x.restore();
+      for (const sx of [-1, 1]) brazier(x, u, sx * u * 0.4, -u * 0.12);
+    } else {
+      palisade(x, u, u * 0.46, u * 0.2, u * 0.22, 'front', Math.PI * 0.64, true);
+      // 斧頭架
+      x.save(); x.translate(u * 0.3, u * 0.1);
+      for (const sd of [-1, 1]) { line(x, sd * u * 0.03, 0, -sd * u * 0.03, -u * 0.18, '#6a4424', lw(x, u, 0.014)); x.beginPath(); x.moveTo(-sd * u * 0.03, -u * 0.17); x.quadraticCurveTo(-sd * u * 0.09, -u * 0.2, -sd * u * 0.08, -u * 0.12); x.lineTo(-sd * u * 0.035, -u * 0.13); x.closePath(); fe(x, u, '#c8ccd4', '#6a6e78', 0.01); }
+      x.restore();
+    }
+  }
+
+  // ───────── 煉金塔：煉金小屋 → 銅頂工坊 → 煉金高塔；瘟疫鍋＝巨大鐵鍋、腐蝕酸＝黃銅精煉廠 ─────────
+  // 玻璃瓶（藥水）
+  function vial(x, u, cx, yb, s, c, tall) {
+    const h = s * (tall ? 2.6 : 1.6);
+    x.beginPath(); x.moveTo(cx - s * 0.28, yb - h); x.lineTo(cx - s * 0.28, yb - h * 0.62); x.quadraticCurveTo(cx - s, yb - h * 0.5, cx - s, yb - s * 0.4); x.quadraticCurveTo(cx - s, yb, cx, yb); x.quadraticCurveTo(cx + s, yb, cx + s, yb - s * 0.4); x.quadraticCurveTo(cx + s, yb - h * 0.5, cx + s * 0.28, yb - h * 0.62); x.lineTo(cx + s * 0.28, yb - h); x.closePath();
+    fe(x, u, rgba('#e8fff4', 0.35), '#5a8a7a', 0.008);
+    x.save(); x.clip(); x.fillStyle = lgrad(x, 0, yb - h * 0.55, 0, yb, [shade(c, 0.35), c, shade(c, -0.3)]); x.fillRect(cx - s * 1.2, yb - h * 0.52, s * 2.4, h); x.restore();
+    x.fillStyle = rgba('#ffffff', 0.7); x.fillRect(cx - s * 0.6, yb - s * 1.0, s * 0.18, s * 0.6);
+    x.beginPath(); x.rect(cx - s * 0.34, yb - h - s * 0.3, s * 0.68, s * 0.32); fe(x, u, '#a8743e', '#6a4424', 0.008);
+  }
+  function cauldron(x, u, cx, yb, r, c, liq) {
+    x.save(); x.translate(cx, 0);
+    for (const sd of [-1, 0.2, 1]) line(x, sd * r * 0.75, yb + r * 0.05, sd * r * 0.6, yb - r * 0.3, '#2a2a30', lw(x, u, 0.018));
+    x.beginPath(); x.ellipse(0, yb - r * 0.55, r, r * K * 1.1, 0, Math.PI, 0, true); x.quadraticCurveTo(r * 1.05, yb + r * 0.15, 0, yb + r * 0.2); x.quadraticCurveTo(-r * 1.05, yb + r * 0.15, -r, yb - r * 0.55); x.closePath();
+    fe(x, u, rgrad(x, -r * 0.3, yb - r * 0.4, r * 0.1, r * 1.3, [shade(c, 0.35), c, shade(c, -0.45)]), c);
+    x.beginPath(); x.ellipse(0, yb - r * 0.55, r * 1.04, r * K * 1.14, 0, 0, TAU); fe(x, u, shade(c, 0.15), c, 0.012);
+    x.beginPath(); x.ellipse(0, yb - r * 0.55, r * 0.88, r * K * 0.95, 0, 0, TAU); x.fillStyle = rgrad(x, 0, yb - r * 0.55, 0, r * 0.9, [shade(liq, 0.45), liq, shade(liq, -0.25)]); x.fill();
+    x.restore();
+  }
+  function pipe(x, u, pts, w, c) {
+    x.lineJoin = 'round'; x.lineCap = 'round';
+    x.strokeStyle = edgeC(c); x.lineWidth = w + lw(x, u, 0.012) * 2; x.beginPath(); pts.forEach(([px, py], i) => i ? x.lineTo(px, py) : x.moveTo(px, py)); x.stroke();
+    x.strokeStyle = c; x.lineWidth = w; x.stroke();
+    x.strokeStyle = rgba('#fff4d0', 0.45); x.lineWidth = w * 0.3; x.beginPath(); pts.forEach(([px, py], i) => i ? x.lineTo(px, py - w * 0.2) : x.moveTo(px, py - w * 0.2)); x.stroke();
+    x.lineCap = 'butt';
+  }
+  const ALC_G = '#7ad04a';
+  function alchemyBody(x, tier, sp, u, B, T) {
+    void T;
+    if (tier === 3 && sp === 0) return alchemyPlague(x, u, B);
+    if (tier === 3 && sp === 1) return alchemyAcid(x, u, B);
+    if (tier === 0) {
+      // Lv1：圓形土屋＋茅草頂、石砌煙囪，屋外一口小鍋
+      if (B) {
+        pad(x, u, 0);
+        x.save(); x.translate(-u * 0.08, -u * 0.02);
+        drum(x, u, 0, u * 0.24, u * 0.24, '#c8a878', { r1: u * 0.22, tex: 'plaster', seed: 5 });
+        arch(x, u, u * 0.02, -u * 0.04, u * 0.09, u * 0.13, '#3a2a22', 0, '#9ef06a');
+        cone(x, u, -u * 0.22, u * 0.3, u * 0.3, '#a88848', { style: 'thatch', seed: 8 });
+        x.restore();
+        prism(x, u, u * 0.1, -u * 0.32, u * 0.08, u * 0.24, '#8a8478', { tex: 'stone', rh: u * 0.04, top: '#5a5650' });
+        for (let i = 0; i < 4; i++) { vial(x, u, -u * 0.36 + i * u * 0.05, u * 0.1, u * 0.02, ['#7ad04a', '#c87aff', '#ffb03a', '#5ad8ff'][i], i % 2); }
+      } else {
+        cauldron(x, u, u * 0.24, u * 0.13, u * 0.11, '#3a3a44', ALC_G);
+      }
+      return;
+    }
+    if (tier === 1) {
+      // Lv2：石砌圓工坊＋銅綠圓頂，旁邊蒸餾器（燒瓶＋盤管＋接收瓶）
+      if (B) {
+        pad(x, u, 1);
+        drum(x, u, 0, u * 0.28, u * 0.36, '#b4aa98', { r1: u * 0.26, tex: 'stone', seed: 72, rh: u * 0.07 });
+        disk(x, u, -u * 0.36, u * 0.29, '#9a9284', u * 0.025);
+        cone(x, u, -u * 0.38, u * 0.27, u * 0.26, '#5aa88a', { conc: 0.05, finial: '#c87a3a', rows: 5 });
+        // 銅邊
+        x.strokeStyle = '#c87a3a'; x.lineWidth = lw(x, u, 0.022); x.beginPath(); x.ellipse(0, -u * 0.38, u * 0.27, u * 0.27 * K, 0, 0.05, Math.PI - 0.05); x.stroke();
+        arch(x, u, -u * 0.08, -u * 0.06, u * 0.1, u * 0.15, '#2a2a22', 0, '#9ef06a');
+        x.save(); x.translate(u * 0.13, -u * 0.22); x.transform(1, -0.15, 0, 1, 0, 0); x.beginPath(); x.arc(0, 0, u * 0.04, 0, TAU); fe(x, u, '#2a3a2a', '#5a6a5a', 0.01); x.fillStyle = rgba('#9ef06a', 0.7); x.beginPath(); x.arc(0, 0, u * 0.028, 0, TAU); x.fill(); x.restore();
+      } else {
+        // 蒸餾器
+        brazierSmall(x, u, u * 0.3, u * 0.12);
+        vial(x, u, u * 0.3, u * 0.02, u * 0.05, ALC_G, false);
+        pipe(x, u, [[u * 0.3, -u * 0.1], [u * 0.36, -u * 0.16], [u * 0.43, -u * 0.08], [u * 0.43, u * 0.04]], u * 0.014, '#c87a3a');
+        vial(x, u, u * 0.43, u * 0.14, u * 0.035, '#c8ff6a', false);
+        for (let i = 0; i < 3; i++) vial(x, u, -u * 0.38 + i * u * 0.055, u * 0.13, u * 0.022, ['#c87aff', '#ffb03a', '#5ad8ff'][i], true);
+      }
+      return;
+    }
+    // Lv3：細高的石塔＋頂上發光的玻璃圓頂（黃銅骨架），外牆有管線、窗裡排滿藥瓶
+    if (B) {
+      pad(x, u, 2);
+      drum(x, u, 0, u * 0.26, u * 0.62, '#a8a092', { r1: u * 0.2, tex: 'stone', seed: 81, rh: u * 0.075 });
+      for (const y of [-0.2, -0.42]) { x.strokeStyle = '#c87a3a'; x.lineWidth = lw(x, u, 0.02); x.beginPath(); const r = L(u * 0.26, u * 0.2, -y / 0.62); x.ellipse(0, y * u, r, r * K, 0, 0.05, Math.PI - 0.05); x.stroke(); }
+      arch(x, u, -u * 0.07, -u * 0.06, u * 0.1, u * 0.15, '#2a2a22', 0, '#9ef06a');
+      arch(x, u, u * 0.06, -u * 0.36, u * 0.07, u * 0.1, '#2a2a22', 0, '#c8ff6a');
+      disk(x, u, -u * 0.62, u * 0.24, '#c87a3a', u * 0.03);
+      // 玻璃圓頂（黃銅肋）
+      const dy = -u * 0.64, dr = u * 0.2;
+      x.beginPath(); x.ellipse(0, dy, dr, dr * K, 0, 0, Math.PI); x.arc(0, dy, dr, 0, Math.PI, true); x.closePath();
+      fe(x, u, rgrad(x, -dr * 0.3, dy - dr * 0.5, 0, dr * 1.2, [rgba('#f0ffe0', 0.95), rgba('#9ef06a', 0.8), rgba('#3a8a3a', 0.85)]), '#3a6a3a');
+      x.strokeStyle = '#c87a3a'; x.lineWidth = lw(x, u, 0.016);
+      for (const f of [-0.6, 0, 0.6]) { x.beginPath(); x.moveTo(f * dr, dy + Math.sqrt(1 - f * f) * dr * K * 0.9); x.quadraticCurveTo(f * dr * 1.05, dy - dr * 0.7, 0, dy - dr); x.stroke(); }
+      line(x, 0, dy - dr, 0, dy - dr - u * 0.1, '#c87a3a', lw(x, u, 0.02)); circ(x, 0, dy - dr - u * 0.11, u * 0.024, '#ffd36b');
+      banner(x, u, -u * 0.13, -u * 0.5, u * 0.09, u * 0.18, '#3a8a4a', 'circle', { ec: '#c8ff6a' });
+      // 外牆管線
+      pipe(x, u, [[u * 0.2, -u * 0.55], [u * 0.3, -u * 0.5], [u * 0.3, -u * 0.08], [u * 0.24, u * 0.0]], u * 0.022, '#c87a3a');
+    } else {
+      brazierSmall(x, u, -u * 0.34, u * 0.12);
+      vial(x, u, -u * 0.34, u * 0.03, u * 0.05, '#c8ff6a', false);
+      cauldron(x, u, u * 0.3, u * 0.14, u * 0.09, '#3a3a44', ALC_G);
+    }
+  }
+  function brazierSmall(x, u, cx, yb) {
+    for (const sd of [-1, 1]) line(x, cx + sd * u * 0.04, yb, cx + sd * u * 0.025, yb - u * 0.07, '#3a3a40', lw(x, u, 0.014));
+    x.beginPath(); x.ellipse(cx, yb - u * 0.07, u * 0.05, u * 0.018, 0, 0, TAU); fe(x, u, '#4a4a52', '#2a2a30', 0.01);
+    ell(x, cx, yb - u * 0.075, u * 0.035, u * 0.01, '#ff8a2a');
+  }
+  // 瘟疫鍋：石砌火坑上一口巨大的黑鐵鍋，上方歪斜的木吊架掛著大勺和鐵鍊，旁邊骷髏
+  function alchemyPlague(x, u, B) {
+    if (B) {
+      pad(x, u, 0);
+      x.fillStyle = rgba('#5a2a6a', 0.3); x.beginPath(); x.ellipse(0, u * 0.03, u * 0.46, u * 0.19, 0, 0, TAU); x.fill();
+      // 木吊架
+      log(x, u, -u * 0.36, u * 0.02, -u * 0.22, -u * 0.86, u * 0.04, WOOD2);
+      log(x, u, u * 0.34, -u * 0.02, u * 0.22, -u * 0.84, u * 0.04, WOOD);
+      log(x, u, -u * 0.3, -u * 0.86, u * 0.3, -u * 0.8, u * 0.042, shade(WOOD, -0.08));
+      lash(x, u, -u * 0.22, -u * 0.84, u * 0.02); lash(x, u, u * 0.22, -u * 0.82, u * 0.02);
+      // 石砌火坑
+      drum(x, u, 0, u * 0.36, u * 0.14, '#6a6058', { r1: u * 0.34, tex: 'stone', seed: 91, rh: u * 0.06 });
+      x.fillStyle = rgba('#ff6a1a', 0.85); for (let i = 0; i < 5; i++) { const a = (i + 0.5) / 5 * Math.PI; x.beginPath(); x.ellipse(Math.cos(a) * u * 0.3, -u * 0.07 + Math.sin(a) * u * 0.3 * K, u * 0.03, u * 0.018, 0, 0, TAU); x.fill(); }
+      // 大鐵鍋
+      cauldron(x, u, 0, -u * 0.12, u * 0.33, '#2e2a34', '#9a4ad8');
+      // 鍋邊的骷髏
+      x.save(); x.translate(-u * 0.22, -u * 0.27);
+      x.beginPath(); x.arc(0, 0, u * 0.04, 0, TAU); fe(x, u, '#e8e0cc', '#8a8070', 0.01); x.fillStyle = '#e8e0cc'; x.fillRect(-u * 0.022, u * 0.02, u * 0.044, u * 0.025);
+      circ(x, -u * 0.015, 0, u * 0.011, '#2a1a2a'); circ(x, u * 0.015, 0, u * 0.011, '#2a1a2a');
+      x.restore();
+      // 鐵鍊與大勺
+      x.strokeStyle = '#5a5a64'; x.lineWidth = lw(x, u, 0.012); for (let i = 0; i < 6; i++) { x.beginPath(); x.ellipse(u * 0.12, -u * 0.78 + i * u * 0.05, u * 0.01, u * 0.022, 0, 0, TAU); x.stroke(); }
+      line(x, u * 0.12, -u * 0.48, u * 0.16, -u * 0.36, '#6a4424', lw(x, u, 0.02));
+      x.beginPath(); x.ellipse(u * 0.17, -u * 0.34, u * 0.035, u * 0.018, 0, 0, TAU); fe(x, u, '#5a5a64', '#2a2a30', 0.01);
+    } else {
+      for (const [px, c] of [[-0.42, '#9a4ad8'], [0.4, '#7ad04a'], [0.46, '#c87aff']]) vial(x, u, px * u, u * 0.14, u * 0.028, c, px > 0.42);
+    }
+  }
+  // 腐蝕酸：黃銅鍋爐＋兩座玻璃酸液槽、管線、壓力錶、警示條紋
+  function alchemyAcid(x, u, B) {
+    const brass = '#c89a3a';
+    if (B) {
+      pad(x, u, 3, '#8a8a8e');
+      // 後方兩座酸液槽
+      for (const sx of [-1, 1]) {
+        x.save(); x.translate(sx * u * 0.27, -u * 0.06);
+        drum(x, u, 0, u * 0.12, u * 0.08, brass, { tex: 'plate', n: 6 });
+        const gh = u * 0.5;
+        x.beginPath(); x.moveTo(-u * 0.11, -u * 0.08); x.lineTo(-u * 0.11, -u * 0.08 - gh); x.ellipse(0, -u * 0.08 - gh, u * 0.11, u * 0.11 * K, 0, Math.PI, 0); x.lineTo(u * 0.11, -u * 0.08); x.ellipse(0, -u * 0.08, u * 0.11, u * 0.11 * K, 0, 0, Math.PI); x.closePath();
+        fe(x, u, rgba('#e8fff0', 0.3), '#5a7a6a', 0.01);
+        const lv = -u * 0.08 - gh * (sx < 0 ? 0.7 : 0.55);
+        x.save(); x.clip(); x.fillStyle = lgrad(x, -u * 0.11, 0, u * 0.11, 0, ['#e8ff6a', '#b8e83a', '#6a9a1a']); x.fillRect(-u * 0.12, lv, u * 0.24, gh + u * 0.1); x.fillStyle = rgba('#f8ffb0', 0.7); x.beginPath(); x.ellipse(0, lv, u * 0.11, u * 0.11 * K, 0, 0, TAU); x.fill(); x.restore();
+        x.fillStyle = rgba('#ffffff', 0.55); x.fillRect(-u * 0.08, -u * 0.08 - gh * 0.9, u * 0.02, gh * 0.75);
+        for (const f of [0.33, 0.66]) { x.strokeStyle = brass; x.lineWidth = lw(x, u, 0.016); x.beginPath(); x.ellipse(0, -u * 0.08 - gh * f, u * 0.112, u * 0.112 * K, 0, 0.05, Math.PI - 0.05); x.stroke(); }
+        disk(x, u, -u * 0.08 - gh, u * 0.12, brass, u * 0.025);
+        x.restore();
+      }
+      pipe(x, u, [[-u * 0.27, -u * 0.62], [-u * 0.27, -u * 0.72], [u * 0.27, -u * 0.72], [u * 0.27, -u * 0.62]], u * 0.024, brass);
+      // 中央鍋爐
+      drum(x, u, u * 0.04, u * 0.17, u * 0.34, '#b88a3a', { r1: u * 0.15, tex: 'plate', n: 8 });
+      cone(x, u, -u * 0.3, u * 0.16, u * 0.12, '#a87a2a', { style: 'slate', rows: 3 });
+      line(x, u * 0.05, -u * 0.4, u * 0.05, -u * 0.62, '#4a4a52', lw(x, u, 0.04));
+      // 警示條紋
+      x.save(); x.beginPath(); x.ellipse(0, u * 0.0, u * 0.17, u * 0.17 * K, 0, 0, Math.PI); x.lineTo(-u * 0.17, -u * 0.04); x.ellipse(0, -u * 0.04, u * 0.17, u * 0.17 * K, 0, Math.PI, 0, true); x.closePath(); x.clip();
+      for (let i = -6; i < 6; i++) { x.fillStyle = i % 2 ? '#2a2a2a' : '#f2c14e'; x.beginPath(); x.moveTo(i * u * 0.04, -u * 0.08); x.lineTo(i * u * 0.04 + u * 0.04, -u * 0.08); x.lineTo(i * u * 0.04 + u * 0.08, u * 0.08); x.lineTo(i * u * 0.04 + u * 0.04, u * 0.08); x.closePath(); x.fill(); }
+      x.restore();
+    } else {
+      // 壓力錶與閥門
+      x.save(); x.translate(-u * 0.06, -u * 0.18);
+      circ(x, 0, 0, u * 0.05, '#c89a3a'); x.strokeStyle = '#6a4a1a'; x.lineWidth = lw(x, u, 0.01); x.stroke(); circ(x, 0, 0, u * 0.038, '#f4f0e0');
+      line(x, 0, 0, u * 0.025, -u * 0.02, '#c8281e', lw(x, u, 0.01));
+      x.restore();
+      pipe(x, u, [[u * 0.17, -u * 0.12], [u * 0.36, -u * 0.12], [u * 0.36, u * 0.06]], u * 0.022, brass);
+      circ(x, u * 0.36, -u * 0.12, u * 0.03, '#c8281e');
+      vial(x, u, -u * 0.38, u * 0.14, u * 0.03, '#d8ff4a', true);
+    }
+  }
+
   // ───────── 靜態塔身入口 ─────────
   function body(x, k, tier, sp, u, part) {
     const B = part === 'back', T = Art.topH(k, tier) * u;
@@ -1299,7 +1620,9 @@ const Towers = (() => {
       case 'sniper': return sniperBody(x, tier, sp, u, B, T);
       case 'banner': return bannerBody(x, tier, sp, u, B, T);
       case 'mine': return mineBody(x, tier, sp, u, B, T);
+      case 'barracks': return barracksBody(x, tier, sp, u, B, T);
+      case 'alchemy': return alchemyBody(x, tier, sp, u, B, T);
     }
   }
-  return { body, lw, edge, fe, drum, prism, cone, pyr, disk, ice, rock, banner, lantern, beam, log, eagle, shield };
+  return { body, lw, edge, fe, drum, prism, cone, pyr, disk, ice, rock, banner, lantern, beam, log, eagle, shield, vial, cauldron, pipe };
 })();

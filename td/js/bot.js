@@ -34,11 +34,18 @@ function botBestSpot(G, k) {
     return bs >= 3 ? best : null;
   }
   const r = TOWERS[k].tiers[0].range;
+  if (k === 'barracks') {
+    // 兵營：緊貼道路、而且附近有一段可以擋人的路
+    const fake = { cx: 0, cy: 0, st: { range: r } };
+    for (const s of botSpotScores(G, 2.2)) { if (!canBuild(G, s.x, s.y) || G.grid[s.y][s.x].near !== 1) continue; fake.cx = s.x + 0.5; fake.cy = s.y + 0.5; const rp = rallyPoint(G, fake); if (rp && rp.f > 0.2 && rp.f < 0.8) return s; }
+    return null;
+  }
   for (const s of botSpotScores(G, r)) if (canBuild(G, s.x, s.y)) return s;
   return null;
 }
 const BOT_SEQ = {
   mix: ['arrow', 'cannon', 'arrow', 'frost', 'magic', 'cannon', 'mine', 'sniper', 'magic', 'arrow', 'banner', 'cannon', 'frost', 'magic', 'sniper', 'arrow', 'banner', 'cannon', 'magic'],
+  mix2: ['arrow', 'cannon', 'barracks', 'arrow', 'frost', 'magic', 'alchemy', 'mine', 'sniper', 'magic', 'arrow', 'banner', 'alchemy', 'cannon', 'frost', 'magic', 'barracks', 'sniper', 'arrow', 'banner', 'magic'],
   arrow: ['arrow'],
   cannon: ['cannon', 'arrow'],
   magic: ['magic', 'arrow'],
