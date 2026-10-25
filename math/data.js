@@ -66,7 +66,44 @@
     { id: 25, t: '乘法算式', e: '✖️', g: 'F' },
     { id: 26, t: '平分', e: '🐻', g: 'G' },
     { id: 27, t: '除法算式', e: '➗', g: 'G' },
+    { id: 28, t: '看一眼', e: '🎲', g: 'A' },
+    { id: 29, t: '多一和少一', e: '↔️', g: 'A' },
+    { id: 30, t: '加幾才會變', e: '❓', g: 'C' },
+    { id: 31, t: '連加', e: '➕', g: 'C' },
+    { id: 32, t: '數線往回跳', e: '🐸', g: 'D' },
+    { id: 33, t: '多幾個', e: '🦴', g: 'D' },
+    { id: 34, t: '20 以內減法', e: '📦', g: 'E' },
+    { id: 35, t: '20 以內加減', e: '🔀', g: 'E' },
+    { id: 36, t: '排排站', e: '🍓', g: 'F' },
+    { id: 37, t: '九九 2、5、10', e: '🔟', g: 'F' },
+    { id: 38, t: '九九 3、4', e: '🎯', g: 'F' },
+    { id: 39, t: '分完還剩下', e: '🍪', g: 'G' },
+    { id: 40, t: '認識錢幣', e: '🪙', g: 'H' },
+    { id: 41, t: '數錢', e: '💰', g: 'H' },
+    { id: 42, t: '買東西', e: '🛒', g: 'H' },
+    { id: 43, t: '幾個十幾個一', e: '🧱', g: 'I' },
+    { id: 44, t: '整十加減', e: '🏗️', g: 'I' },
+    { id: 45, t: '二位數加法', e: '🔼', g: 'I' },
+    { id: 46, t: '二位數減法', e: '🔽', g: 'I' },
   ];
+  // 第 4 段：題目清單（和台詞一起列出，才知道要錄哪些句子）
+  const rng = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+  const LISTS = {
+    more1: rng(1, 9), less1: rng(1, 10),
+    miss: rng(1, 9).flatMap(a => rng(a + 1, 10).map(c => ({ a, b: c - a, c }))),
+    add3: rng(1, 4).flatMap(a => rng(1, 4).flatMap(b => rng(1, 4).filter(c => a + b + c <= 10).map(c => ({ a, b, c })))),
+    sub20: rng(11, 18).flatMap(a => rng(2, 9).filter(b => a - b < 10 && a - b > 0).map(b => ({ a, b, op: '-' }))),
+    add20: rng(6, 9).flatMap(a => rng(2, 9).filter(b => a + b > 10 && a + b <= 18).map(b => ({ a, b, op: '+' }))),
+    arr: rng(2, 5).flatMap(r => rng(2, 5).map(c => ({ r, c }))),
+    t2510: [2, 5, 10].flatMap(k => rng(1, 9).map(g => ({ k, g }))),
+    t34: [3, 4].flatMap(k => rng(1, 9).map(g => ({ k, g }))),
+    rem: [2, 3].flatMap(k => rng(1, 4).flatMap(q => rng(1, k - 1).map(l => ({ k, q, l, n: k * q + l })))),
+    tens: [...rng(1, 9).flatMap(a => rng(1, 9 - a).map(b => ({ a: a * 10, b: b * 10, op: '+' }))), ...rng(2, 10).flatMap(a => rng(1, a - 1).map(b => ({ a: a * 10, b: b * 10, op: '-' })))],
+    two: [...rng(1, 8).flatMap(t => [1, 3, 5].flatMap(o => [2, 3, 4].map(b => ({ a: t * 10 + o, b, op: '+' })))),
+      ...rng(1, 8).flatMap(t => [4, 6, 8].flatMap(o => [1, 2, 3].map(b => ({ a: t * 10 + o, b, op: '-' }))))],
+  };
+  const COINS = [1, 5, 10, 50];
+  const SHOP = [{ e: '🍎', n: '蘋果' }, { e: '🍭', n: '棒棒糖' }, { e: '🧃', n: '果汁' }];
   // 小遊戲
   const GAMES = [
     { id: 'feed', t: '餵動物', e: '🐶', lv: ['count', 'add', 'sub', 'mix'] },
@@ -77,7 +114,7 @@
   const LVNAME = { count: '數數', add: '加法', sub: '減法', mix: '加減', five: '湊五', ten: '湊十' };
   const ANIMALS = [{ e: '🐶', n: '小狗', f: '🍖' }, { e: '🐰', n: '小兔子', f: '🥕' }, { e: '🐵', n: '小猴子', f: '🍌' }];
   const FISH = ITEMS.find(x => x.e === '🐟');
-  const GROUPS = { A: '數與量', B: '分與合', C: '加法', D: '減法', E: '加減一起', F: '乘法入門', G: '除法入門' };
+  const GROUPS = { A: '數與量', B: '分與合', C: '加法', D: '減法', E: '加減一起', F: '乘法入門', G: '除法入門', H: '錢幣', I: '二位數' };
 
   const P = {
     hello: '嗨！我是小黑，我們一起來玩數字！',
@@ -117,7 +154,51 @@
       25: '每盤幾個、有幾盤，就是乘法。',
       26: '把東西平分給小熊，每隻要一樣多。點一下東西，就會分給一隻小熊。',
       27: '除法就是平分。看算式，算算每隻小熊有幾個。',
+      28: '東西只出現一下下，看一眼就說出有幾個！',
+      29: '多一就是往後一個，少一就是往前一個。',
+      30: '已經有幾個，還要加幾個才會變成那個數？',
+      31: '三個數加在一起，先加兩個，再加第三個。',
+      32: '這次小青蛙往回跳，減幾就往回跳幾格。',
+      33: '上下一個對一個排好，看看多出來幾個。',
+      34: '先拿走外面的，不夠再從盒子裡拿。',
+      35: '加法和減法混在一起，看清楚是加還是減。',
+      36: '東西排得整整齊齊，一排一排數最快。',
+      37: '二、五、十的乘法，跳著數就會了。',
+      38: '三和四的乘法，一排一排跳著數。',
+      39: '平分給小熊，分不完的就是剩下的。',
+      40: '台灣的錢幣有一元、五元、十元、五十元。',
+      41: '先數大的錢幣，再數小的。',
+      42: '點錢幣付錢，付好了按付好了。',
+      43: '一條是十，一顆是一。先數十，再數一。',
+      44: '整十的加減，十個十個數。',
+      45: '二位數加一位數，從大的數接著往下數。',
+      46: '二位數減一位數，從大的數往回數。',
     },
+    // 第 4 段
+    subQ: '看一眼，是幾個？',
+    more1Q: n => `比${CN(n)}多一是幾？`,
+    less1Q: n => `比${CN(n)}少一是幾？`,
+    more1A: n => `比${CN(n)}多一是${CN(n + 1)}。`,
+    less1A: n => `比${CN(n)}少一是${CN(n - 1)}。`,
+    missQ: (a, c) => `${CN(a)}加幾等於${CN(c)}？`,
+    add3Q: (a, b, c) => `${CN(a)}加${CN(b)}加${CN(c)}等於多少？`,
+    add3A: (a, b, c) => `${CN(a)}加${CN(b)}加${CN(c)}等於${CN(a + b + c)}。`,
+    frogBack: '小青蛙一格一格往回跳。',
+    diffQ: '上面比下面多幾個？',
+    diffA: d => `多${Q(d)}個。`,
+    left: n => `剩下${Q(n)}個。`,
+    rowsQ: (r, c) => `一排${Q(c)}顆，有${Q(r)}排，`,
+    leftQ: '還剩幾顆？',
+    leftA: n => `還剩${Q(n)}顆。`,
+    coinIs: v => `這是${Q(v)}元。`,
+    coinQ: v => `${Q(v)}元在哪裡？`,
+    moneyQ: '一共有幾元？',
+    moneyA: n => `一共有${Q(n)}元。`,
+    buyQ: (it, p) => `${it.n}要${Q(p)}元，請你付錢。`,
+    payOk: '剛剛好！',
+    payFew: '錢不夠喔，再付一點。',
+    payMany: '付太多了，多的還給你。',
+    tensQ: '數一數，是多少？',
     // 小遊戲
     gIntro: {
       feed: '小動物肚子餓了！點食物餵牠，餵好了就按吃飽了。',
@@ -222,6 +303,20 @@
       add(P.share('顆', k * r, k)); add(P.eachA('顆', r));
       add(P.eqQ(k * r, '÷', k)); add(P.eqA(k * r, '÷', k, r));
     }
+    // 第 4 段
+    add(P.subQ); add(P.frogBack); add(P.diffQ); add(P.leftQ); add(P.moneyQ); add(P.payOk); add(P.payFew); add(P.payMany); add(P.tensQ);
+    LISTS.more1.forEach(n => { add(P.more1Q(n)); add(P.more1A(n)); });
+    LISTS.less1.forEach(n => { add(P.less1Q(n)); add(P.less1A(n)); });
+    LISTS.miss.forEach(q => { add(P.missQ(q.a, q.c)); add(P.eqA(q.a, '+', q.b, q.c)); });
+    LISTS.add3.forEach(q => { add(P.add3Q(q.a, q.b, q.c)); add(P.add3A(q.a, q.b, q.c)); });
+    for (let d = 1; d <= 9; d++) { add(P.diffA(d)); add(P.left(d)); }
+    for (const q of [...LISTS.sub20, ...LISTS.add20, ...LISTS.tens, ...LISTS.two]) { const r = q.op === '+' ? q.a + q.b : q.a - q.b; add(P.eqQ(q.a, q.op, q.b)); add(P.eqA(q.a, q.op, q.b, r)); }
+    LISTS.arr.forEach(q => add(P.rowsQ(q.r, q.c)));
+    for (const q of [...LISTS.t2510, ...LISTS.t34]) { add(P.eqQ(q.k, '×', q.g)); add(P.eqA(q.k, '×', q.g, q.k * q.g)); }
+    LISTS.rem.forEach(q => { add(P.share('顆', q.n, q.k)); add(P.eachA('顆', q.q)); add(P.leftA(q.l)); });
+    COINS.forEach(v => { add(P.coinIs(v)); add(P.coinQ(v)); });
+    for (let n = 1; n <= 100; n++) add(P.moneyA(n));
+    for (const it of SHOP) for (let p = 1; p <= 20; p++) add(P.buyQ(it, p));
     // 小遊戲
     Object.values(P.gIntro).forEach(add); Object.values(P.pairQ).forEach(add); Object.values(P.pairNo).forEach(add);
     ['tooFew', 'tooMany', 'boardDone'].forEach(k => add(P[k]));
@@ -240,7 +335,7 @@
     return h.toString(16).padStart(8, '0');
   }
 
-  const M = { GAMES, LVNAME, ANIMALS, FISH, CN, Q, ITEMS, BOXABLE, FOOD, STORY, LESSONS, GROUPS, P, allLines, hash };
+  const M = { LISTS, COINS, SHOP, GAMES, LVNAME, ANIMALS, FISH, CN, Q, ITEMS, BOXABLE, FOOD, STORY, LESSONS, GROUPS, P, allLines, hash };
   if (typeof module !== 'undefined' && module.exports) module.exports = M;
   else root.M = M;
 })(typeof window !== 'undefined' ? window : globalThis);
