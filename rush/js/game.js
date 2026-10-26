@@ -20,7 +20,7 @@ function newGame(s, opts) {
     N: startN(s) + up.men * 2, peak: 0, wid: 'rifle', lv: 1,
     dmgK: 1 + up.dmg * 0.05, rateK: 1 + up.rate * 0.04,
     px: 0, tx: 0,
-    sold: [], objs: [], bullets: [], parts: [], floats: [], q: [],
+    sold: [], objs: [], bullets: [], parts: [], floats: [], fx: [], decals: [], q: [],
     fireAcc: 0, shooterI: 0, boss: null, bossDone: false, endT: 0,
     shake: 0, flash: 0, lost: 0, gained: 0, kills: 0, gatesGood: 0, gatesBad: 0,
     hint: null, sim: !!opts.sim,
@@ -31,6 +31,7 @@ function newGame(s, opts) {
 }
 
 const emit = (name, a) => { if (!G.sim) G.q.push([name, a]); };
+const fxOn = () => !G.sim && typeof FX !== 'undefined';
 
 // 畫面上的士兵（最多 VIS_CAP 個）
 function visCount(N) { return Math.min(VIS_CAP, N <= 0 ? 0 : N <= 40 ? N : Math.round(40 + (Math.min(N, 400) - 40) / 360 * (VIS_CAP - 40))); }
@@ -71,6 +72,9 @@ function setN(n, why) {
 // 目前預期火力（不含強化，讓強化真的有幫助）
 function curDps() { return Math.max(1, G.N) * genDps(G.wid, G.lv); }
 
+// 強化只算一半進難度（強化有幫助，但不會讓關卡變無聊）
+function upK() { return Math.sqrt(G.dmgK * G.rateK); }
+
 // ---- 事件生成 ----
 function spawnEvents() {
   const L = G.L;
@@ -85,7 +89,7 @@ function spawnEvents() {
       }
     } else if (e.type === 'wave') {
       // 依目前實力調整（選得好還是比較強，但不會無聊）
-      const f = clamp(Math.pow(curDps() / e.exp, 0.6), 0.5, 3);
+      const f = clamp(Math.pow(curDps() * upK() / e.exp, 0.6), 0.5, 3);
       const sHP = curDps() / Math.max(1, G.N);
       for (const m of e.list) {
         const K = ENEMIES[m.k];
@@ -96,7 +100,7 @@ function spawnEvents() {
     } else if (e.type === 'boss') {
       const B = BOSSES[e.k];
       const sc = 1 + e.tier * 0.12;
-      const f = clamp(Math.pow(curDps() / e.exp, 0.8), 0.5, 4);
+      const f = clamp(Math.pow(curDps() * upK() / e.exp, 0.8), 0.5, 4);
       const hp = e.hp * f;
       G.boss = { t: 'boss', id: _uid++, k: e.k, tier: e.tier, x: 0, z: Math.min(z0, 34), hp, max: hp, r: B.r * sc, h: B.h * sc, spd: 2.5, eat: Math.max(1, G.N * 0.05), sHP: curDps() / Math.max(1, G.N), atk: 0, atkT: 0, phase: 1, hit: 0, ph: 0, intro: 2.2, dead: 0 };
       G.objs.push(G.boss);
@@ -146,6 +150,7 @@ function fire(dt) {
       G.bullets.push({ x: bx, z: bz, vx: Math.sin(a) * BULLET_V, vz: Math.cos(a) * BULLET_V, dmg: per, pierce: w.pierce, splash: w.splash, wid: G.wid, d: 0, last: 0 });
     }
     so.fl = 0.06;
+    if (fxOn()) FX.shot(so, G.wid, G.bullets[G.bullets.length - 1]);
   }
   if (n) emit('shot', { wid: G.wid, n });
 }
@@ -178,7 +183,7 @@ function kill(o, b) {
   if (o.t === 'en') {
     G.kills++;
     emit('kill', o);
-    if (!G.sim) for (let i = 0; i < 6; i++) G.parts.push(part(o.x, o.z, o.h * 0.5, o.k === 'brute' ? '#7bd36a' : o.k === 'runner' ? '#ff6b5a' : o.k === 'shield' ? '#9aa7c7' : '#b07cff', o.k === 'brute' ? 2 : 1.2));
+    if (fxOn()) FX.kill(o);
   } else if (o.t === 'bar') {
     emit('boom', o);
     G.shake = Math.max(G.shake, 0.5);
@@ -188,12 +193,12 @@ function kill(o, b) {
       if (dx * dx + dz * dz < 3.2 * 3.2) hurt(e, o.boom);
     }
     if (G.boss && !G.boss.dead && Math.abs(G.boss.z - o.z) < 4) hurt(G.boss, o.boom * 0.5);
-    if (!G.sim) for (let i = 0; i < 26; i++) G.parts.push(part(o.x, o.z, 0.6, i % 3 ? '#ffb347' : '#ff5a36', 2.4, 6));
+    if (fxOn()) FX.boom(o.x, o.z, 1.6);
   } else if (o.t === 'boss') {
     emit('bossdie', o);
     G.shake = 1.2;
     G.endT = 2.2;
-    if (!G.sim) for (let i = 0; i < 60; i++) G.parts.push(part(o.x + (Math.random() - 0.5) * o.r * 2, o.z, Math.random() * o.h, i % 2 ? '#ffd166' : '#ff7b54', 3, 7));
+    if (fxOn()) FX.bossdie(o);
   }
 }
 
@@ -228,14 +233,14 @@ function updateBullets(dt) {
     // 盾牌兵正面減傷
     if (best.t === 'en' && best.k === 'shield' && !b.splash && !b.pierce) dmg *= 0.45;
     hurt(best, dmg, b);
-    if (!G.sim) G.parts.push({ x: b.x, z: best.z - 0.2, h: best.t === 'gate' ? 1.2 : (best.h || 1) * 0.55, vx: 0, vz: 0, vh: 0, life: 0.12, t: 0, col: WEAPONS[b.wid].col, sz: 1.4, spark: 1 });
+    if (fxOn()) FX.hit(b, best, dmg);
     if (b.splash) {
       for (const o of O) {
         if (o === best || o.dead || (o.t !== 'en' && o.t !== 'bar')) continue;
         const dx = o.x - b.x, dz = o.z - best.z;
         if (dx * dx + dz * dz < b.splash * b.splash) hurt(o, b.dmg * 0.6);
       }
-      if (!G.sim) { for (let k = 0; k < 6; k++) G.parts.push(part(b.x, best.z, 0.6, '#ffa040', 1.6, 4)); emit('rocket', best); }
+      if (fxOn()) { FX.boom(b.x, best.z, 0.8, true); emit('rocket', best); }
     }
     if (b.pierce > 0 && best.t !== 'gate') { b.pierce--; b.last = best; }
     else B.splice(i, 1);
@@ -332,7 +337,7 @@ function step(dt, input) {
         floatText(o.x, 0.5, 1.6, '−' + loss, '#ff6b6b', 1);
         setN(G.N - loss, 'hit');
         emit('hit', { loss });
-        if (!G.sim) for (let k = 0; k < 5; k++) G.parts.push(part(o.x, o.z, 0.6, '#d9d9ff', 1.2));
+        if (fxOn()) FX.crowdHit(o, loss);
         if (G.N <= 0) { lose(); return; }
         continue;
       }
@@ -356,6 +361,7 @@ function step(dt, input) {
           floatText(G.px, 0.8, 2, '−' + loss, '#ff6b6b', 1.2);
           setN(G.N - loss, 'boss');
           emit('slam', { loss });
+          if (fxOn()) FX.slam(o);
           if (G.N <= 0) { lose(); return; }
         }
       }
@@ -377,6 +383,7 @@ function step(dt, input) {
 
 function stepFx(dt) {
   if (G.sim) return;
+  if (typeof FX !== 'undefined') FX.update(dt);
   const P = G.parts;
   for (let i = P.length - 1; i >= 0; i--) {
     const p = P[i];
