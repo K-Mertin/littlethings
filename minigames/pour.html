@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>彩虹倒水瓶</title>
 <link rel="stylesheet" href="mini.css">
-<style>.mg-stage{padding:6px}</style>
+<style>.mg-stage{padding:6px}.pour-demo{display:block;margin:.2em auto .4em;width:min(100%,330px);height:auto}</style>
 </head>
 <body>
 <main class="mg-stage"><canvas id="cv" aria-label="遊戲畫面"></canvas></main>
@@ -13,7 +13,7 @@
 <script>
 'use strict';
 MG.init({ id: 'pour', title: '彩虹倒水瓶', stats: ['level', 'moves'] });
-const cv = document.getElementById('cv'), x = cv.getContext('2d');
+const cv = document.getElementById('cv'); let x = cv.getContext('2d');   // x is swapped for a moment while the intro pictures are drawn
 let land = false;
 
 // ---------- data ----------
@@ -30,82 +30,140 @@ const LEVELS = [[3, 3], [3, 4], [4, 4], [5, 4], [6, 4], [7, 4], [5, 5], [8, 4], 
   [5, 4, 2, false, { small: 2 }], [5, 4, 2, false, { one: true }], [4, 4, 2, false, { tag: true }], [6, 4, 2, false, { lock: true }],
   [7, 4, 3, false, { small: 2 }], [7, 4, 2, false, { one: true }], [5, 4, 2, false, { tag: true }], [8, 4, 2, false, { lock: true }],
   [6, 5, 2, true, { small: 3 }], [7, 4, 2, false, { one: true, lock: true }], [6, 4, 2, false, { tag: true }], [8, 5, 2, true, { lock: true }],
-  [12, 6], [8, 4, 1], [12, 6, 2, true], [14, 7]];
-const LV = n => { const [c, k, e = 2, m = false, o = {}] = LEVELS[n - 1]; return { c, k, e, m, small: o.small || 0, one: !!o.one, tag: !!o.tag, lock: !!o.lock }; };
-const lvName = n => { const L = LV(n); return `${L.c}色×${L.k}格${L.e < 2 ? '・1空瓶' : ''}${L.m ? '・❓' : ''}${L.small ? '・🥛小瓶' : ''}${L.one ? '・💧細口' : ''}${L.tag ? '・🏷️標籤' : ''}${L.lock ? '・🔒鎖' : ''}`; };
-const BW = 52, UH = 30, NECK = 16;
+  [12, 6], [8, 4, 1], [12, 6, 2, true], [14, 7],
+  // from 37 on, three more twists (and mixes with the old ones):
+  //   ice: that many layers are frozen 🧊 — a frozen layer can't pour out; pour the same colour onto it and it melts
+  //   bucket: a wide glass bucket 🪣 that holds two bottles' worth of any colours, but never gets a cork (it must end empty)
+  //   tap: that many bottles have a tap at the bottom 🚰 — they pour out their BOTTOM layer (water still goes in at the top)
+  [6, 4, 2, false, { ice: 2 }], [6, 4, 1, false, { bucket: true }], [6, 4, 2, false, { tap: 1 }], [10, 5, 2, true],
+  [8, 4, 2, false, { ice: 3 }], [8, 5, 1, false, { bucket: true }], [8, 4, 2, false, { tap: 1 }], [10, 5, 2, false, { small: 3 }],
+  [8, 5, 2, false, { ice: 3, lock: true }], [7, 4, 1, false, { bucket: true, one: true }], [8, 4, 2, false, { tap: 2 }], [12, 6, 2, true],
+  [10, 5, 2, false, { ice: 4 }], [10, 5, 1, false, { bucket: true, lock: true }], [9, 5, 2, false, { tap: 2, small: 3 }], [10, 6, 2, false, { one: true }],
+  [8, 4, 2, false, { ice: 3, one: true }], [11, 6, 1, false, { bucket: true }], [10, 5, 2, false, { tap: 2, ice: 2 }], [12, 6, 2, true, { lock: true }],
+  [8, 5, 2, false, { tag: true, ice: 3 }], [12, 6, 1, false, { bucket: true, tap: 1 }], [11, 6, 2, false, { ice: 3, tap: 1, lock: true }], [13, 6, 1, false, { bucket: true, ice: 3 }]];
+const LV = n => { const [c, k, e = 2, m = false, o = {}] = LEVELS[n - 1]; return { c, k, e, m, small: o.small || 0, one: !!o.one, tag: !!o.tag, lock: !!o.lock, ice: o.ice || 0, bucket: !!o.bucket, tap: o.tap || 0 }; };
+const lvName = n => { const L = LV(n); return `${L.c}色×${L.k}格${L.e < 2 ? `・${L.e}空瓶` : ''}${L.m ? '・❓' : ''}${L.small ? '・🥛小瓶' : ''}${L.one ? '・💧細口' : ''}${L.tag ? '・🏷️標籤' : ''}${L.lock ? '・🔒鎖' : ''}${L.ice ? '・🧊冰塊' : ''}${L.bucket ? '・🪣大水桶' : ''}${L.tap ? '・🚰水龍頭' : ''}`; };
+const BW = 52, UH = 30, NECK = 16, BKW = 112, STAND = 22;   // bottle width, layer height, neck · bucket top width · height of a tap bottle's stand
+const ICE = 32;                                           // a frozen layer is stored as colour + ICE
+const fz = v => v >= ICE, colOf = v => v >= ICE ? v - ICE : v;
 
 let bottles = [], hid = [], gone = [], cap = 4, level = 1, mode = 'shape', state = 'menu';
 let hintPlan = null, sel = -1, moves = 0, hist = [], anim = null, puzzle = null, extraUsed = false, downOn = -1;
-let fade = [], shake = [], hint = null, t = 0, pos = [], scale = 1, btns = [], floats = [], doneN = 0;
+let melts = [], fade = [], shake = [], hint = null, t = 0, pos = [], scale = 1, btns = [], floats = [], doneN = 0;
 
 // ---------- rules ----------
 const topOf = b => b[b.length - 1];
 // R: the rules of the current puzzle — k layers per colour, caps per bottle, one-layer pours, colour labels (-1 = none), the locked bottle
-let R = { k: 4, caps: [], one: false, tags: null, lock: -1 }, lockOpen = true;
+// tap / big: per-bottle flags (or null) for 🚰 tap bottles and the 🪣 bucket
+let R = { k: 4, caps: [], one: false, tags: null, lock: -1, tap: null, big: null }, lockOpen = true;
 const capOf = (rs, j) => rs.caps[j] ?? rs.k;
-const done1 = (b, i, rs = R) => b.length === rs.k && b.every(v => v === b[0]) && (!rs.tags || rs.tags[i] === b[0]);
+const isTap = (rs, j) => !!(rs.tap && rs.tap[j]), isBig = (rs, j) => !!(rs.big && rs.big[j]);
+const outOf = (b, i, rs = R) => isTap(rs, i) ? b[0] : b[b.length - 1];       // the layer that would pour out
+const done1 = (b, i, rs = R) => b.length === rs.k && !isBig(rs, i) && b[0] < ICE && b.every(v => v === b[0]) && (!rs.tags || rs.tags[i] === b[0]);
 const full1 = (b, i) => done1(b, i);
 function canPour(bs, i, j, rs = R, open = lockOpen) {
   const a = bs[i], b = bs[j];
-  if (i === j || !a.length || b.length >= capOf(rs, j) || (b.length && topOf(b) !== topOf(a))) return false;
+  if (i === j || !a.length || b.length >= capOf(rs, j)) return false;
+  const v = outOf(a, i, rs);
+  if (fz(v) || (b.length && colOf(topOf(b)) !== v)) return false;   // ice can't move; pouring onto ice of the same colour is fine (it melts)
   if (rs.lock >= 0 && !open && (i === rs.lock || j === rs.lock)) return false;
   return true;
 }
 function runLen(b) { let k = 1; while (k < b.length && b[b.length - 1 - k] === topOf(b)) k++; return k; }
-const pourAmount = (bs, i, j, rs = R) => rs.one ? 1 : Math.min(runLen(bs[i]), capOf(rs, j) - bs[j].length);
-function pourInto(bs, i, j, rs = R) { const k = pourAmount(bs, i, j, rs); for (let n = 0; n < k; n++) bs[j].push(bs[i].pop()); return k; }
+function runLow(b) { let k = 1; while (k < b.length && b[k] === b[0]) k++; return k; }   // same colour run from the bottom (tap bottles)
+const pourAmount = (bs, i, j, rs = R) => rs.one ? 1 : Math.min(isTap(rs, i) ? runLow(bs[i]) : runLen(bs[i]), capOf(rs, j) - bs[j].length);
+function pourInto(bs, i, j, rs = R) {
+  const k = pourAmount(bs, i, j, rs), a = bs[i], b = bs[j], tap = isTap(rs, i);
+  if (b.length && fz(b[b.length - 1])) b[b.length - 1] -= ICE;               // 🧊 melts under the same colour
+  for (let n = 0; n < k; n++) b.push(tap ? a.shift() : a.pop());
+  return k;
+}
 
 // depth-first search with memo: used to make sure every puzzle can be solved, and for the 💡 hint
 function solve(start, rs = R, open0 = lockOpen, limit = 80000) {
   const seen = new Set(); let nodes = 0;
   // labels, a lock or different sizes make bottle positions matter; otherwise bottles are interchangeable
-  const positional = !!rs.tags || rs.lock >= 0 || rs.caps.some(c => c !== rs.k);
-  const key = (bs, open) => (positional ? bs.map(b => b.join(',')).join('|') : bs.map(b => b.join(',')).sort().join('|')) + (open ? '+' : '-');
+  const positional = !!rs.tags || rs.lock >= 0 || !!rs.tap || !!rs.big || rs.caps.some(c => c !== rs.k);
+  const enc = b => String.fromCharCode(...b), key = (bs, open) => (positional ? bs.map(enc).join('|') : bs.map(enc).sort().join('|')) + (open ? '+' : '-');
   const done = bs => bs.every((b, i) => b.length === 0 || done1(b, i, rs));
-  const path = [];
+  const prune = !rs.tags && !rs.one && !rs.tap && !rs.big;
+  const path = [], maxD = start.reduce((a, b) => a + b.length, 0) * (rs.one ? 2.5 : 1.2) + 20;   // depth cap: no endless wandering (and no stack overflow)
   const dfs = (bs, open) => {
     if (done(bs)) return true;
-    if (++nodes > limit) return false;
+    if (++nodes > limit || path.length > maxD) return false;
     const k = key(bs, open); if (seen.has(k)) return false; seen.add(k);
+    // try the most promising pours first: onto a bottle that holds only that colour, moves that take a whole run, then the rest, empty bottles last
+    const mv = [];
     for (let i = 0; i < bs.length; i++) {
       const a = bs[i]; if (!a.length || done1(a, i, rs)) continue;
-      const uniform = a.every(v => v === a[0]), prune = !rs.tags && !rs.one;
+      const uniform = a.every(v => v === a[0]);
       const tried = new Set();
       for (let j = 0; j < bs.length; j++) {
         if (!canPour(bs, i, j, rs, open)) continue;
-        if (!bs[j].length) { const ck = capOf(rs, j) + (rs.tags ? ':' + j : ''); if ((prune && uniform) || tried.has(ck)) continue; tried.add(ck); }
-        const nb = bs.map(b => b.slice()); pourInto(nb, i, j, rs);
-        path.push([i, j]);
-        if (dfs(nb, open || done1(nb[j], j, rs))) return true;
-        path.pop();
+        const b = bs[j];
+        if (!b.length) {
+          const ck = capOf(rs, j) + (rs.tags ? ':' + j : '') + (isTap(rs, j) ? 't' : '') + (isBig(rs, j) ? 'b' : '');
+          if ((prune && uniform) || tried.has(ck)) continue; tried.add(ck); mv.push(i, j, 0); continue;
+        }
+        const bu = b.every(v => v === b[0]);
+        const run = isTap(rs, i) ? runLow(a) : runLen(a), whole = run <= capOf(rs, j) - b.length;
+        mv.push(i, j, (bu ? 4 : 1) + (whole ? 2 : 0) + (whole && run === a.length ? 1 : 0));
       }
+    }
+    const ord = []; for (let m = 0; m < mv.length; m += 3) ord.push(m);
+    ord.sort((p, q) => mv[q + 2] - mv[p + 2]);
+    for (const m of ord) {
+      const i = mv[m], j = mv[m + 1];
+      const nb = bs.slice(); nb[i] = bs[i].slice(); nb[j] = bs[j].slice(); pourInto(nb, i, j, rs);   // only the two bottles that change are copied
+      path.push([i, j]);
+      if (dfs(nb, open || done1(nb[j], j, rs))) return true;
+      path.pop();
     }
     return false;
   };
-  return dfs(start.map(b => b.slice()), open0) ? path : null;
+  const ok = dfs(start.map(b => b.slice()), open0); solve.nodes = nodes;
+  return ok ? path : null;
 }
-// returns { b: bottles, rs: rules } — only puzzles the solver could finish
-function makePuzzle(nc, c, empties = 2, L = {}) {
-  let last = null;
-  const hard = empties < 2 || L.tag || L.lock || L.small || L.one;
+// 🧊 freeze n layers (at most one per bottle, never under a layer of its own colour, never in a tap bottle)
+function freeze(bs, nc, n, rs) {
+  const spots = [];
+  for (let i = 0; i < nc; i++) if (!isTap(rs, i)) for (let p = 0; p < bs[i].length; p++) if (p === bs[i].length - 1 || bs[i][p + 1] !== bs[i][p]) spots.push([i, p]);
+  const used = new Set();
+  for (const [i, p] of MG.shuffle(spots)) { if (used.size >= n) break; if (used.has(i)) continue; used.add(i); bs[i][p] += ICE; }
+}
+// returns { b: bottles, rs: rules, ok } — keeps trying until the solver can finish one (ok), within a small time budget
+let GEN_LIM = 4000;
+function makePuzzle(nc, c, empties = 2, L = {}, again = 0) {
+  let last = null; const t0 = performance.now();
+  const hard = empties < 2 || L.tag || L.lock || L.small || L.one || L.ice || L.bucket || L.tap;
   for (let tries = 0; tries < (hard ? 400 : 80); tries++) {
     const units = MG.shuffle(Array.from({ length: nc * c }, (_, i) => i % nc));
     const bs = Array.from({ length: nc }, (_, i) => units.slice(i * c, (i + 1) * c));
     if (bs.some(b => b.every(v => v === b[0]))) continue;              // nothing already finished
     for (let k = 0; k < empties; k++) bs.push([]);
-    const rs = { k: c, caps: bs.map((b, i) => i >= nc && L.small ? L.small : c), one: !!L.one, tags: null, lock: -1 };
-    if (L.tag) rs.tags = MG.shuffle(Array.from({ length: nc }, (_, i) => i)).concat(Array(empties).fill(-1));
+    if (L.bucket) bs.push([]);                                          // the 🪣 bucket comes last
+    const n = bs.length, bk = L.bucket ? n - 1 : -1;
+    const rs = { k: c, caps: bs.map((b, i) => i === bk ? c * 2 : i >= nc && L.small ? L.small : c), one: !!L.one, tags: null, lock: -1, tap: null, big: null };
+    if (L.bucket) rs.big = bs.map((b, i) => i === bk);
+    if (L.tag) rs.tags = MG.shuffle(Array.from({ length: nc }, (_, i) => i)).concat(Array(n - nc).fill(-1));
     if (L.lock) rs.lock = MG.randi(0, nc - 1);
-    last = { b: bs, rs };
-    if (solve(bs, rs, !L.lock, hard ? 60000 : 40000)) return last;
+    if (L.tap) { const ids = MG.shuffle(Array.from({ length: nc }, (_, i) => i)).slice(0, L.tap); rs.tap = bs.map((b, i) => ids.includes(i)); }
+    if (L.ice) freeze(bs, nc, L.ice, rs);
+    last = { b: bs, rs, ok: false };
+    if (solve(bs, rs, !L.lock, GEN_LIM)) { last.ok = true; last.tries = tries + 1; last.extra = again; return last; }
+    if (performance.now() - t0 > 750 && tries > 2) break;   // keeps a slow tablet under ~1 s
   }
-  return last;
+  // very unlucky: never hand out a puzzle that wasn't checked — try again with one more empty bottle
+  return again < 2 ? makePuzzle(nc, c, empties + 1, L, again + 1) : last;
 }
 
 // ---------- layout ----------
 const bh = (c = cap) => c * UH + 10;                  // body height (local units) of a bottle that holds c layers
-const BH = i => bh(capOf(R, i));
+const BH = i => isBig(R, i) ? bh(R.k) : bh(capOf(R, i));   // the bucket is as tall as a bottle, just twice as wide
+const unitH = i => isBig(R, i) ? UH / 2 : UH;                 // …so each of its layers is half as thick
+const halfW = i => isBig(R, i) ? BKW / 2 : BW / 2;
+const lift = i => isTap(R, i) ? STAND : 0;                    // a tap bottle stands on little legs
+const mouthY = i => BH(i) + (isBig(R, i) ? 6 : NECK) + lift(i); // height of the opening above the shelf (local units)
 let U = 1;
 function layout() {
   const W = cv.lw, H = cv.lh, n = bottles.length, g = 10;
@@ -125,21 +183,23 @@ function layout() {
     btns = labels.map(([id, label], k) => ({ id, label, x: (W - tot) / 2 + k * (bw + gap), y: H - bh2 - 12, w: bw, h: bh2 }));
     botY = H - bh2 - 28;
   }
-  const cellW = BW + 26, cellH = bh() + NECK + 46;
+  const cellW = BW + 26, cellH = bh() + NECK + 46 + (R.tap && R.tap.some(v => v) ? STAND : 0);
+  // the 🪣 bucket takes a wider cell; split the bottles into rows by width, keep the layout that makes them biggest
+  const ws = bottles.map((_, i) => isBig(R, i) ? (BKW + 26) / cellW : 1), tot = ws.reduce((a, b) => a + b, 0);
+  const split = rows => { const rw = Array(rows).fill(0), ri = []; let acc = 0; ws.forEach(w => { const r = Math.min(rows - 1, Math.floor((acc + w / 2) / (tot / rows))); ri.push(r); rw[r] += w; acc += w; }); return { rw, ri }; };
   let best = null;
-  for (let per = 1; per <= n; per++) {
-    const rows = Math.ceil(n / per);
-    const s = Math.min((aw - 20) / (per * cellW), (botY - topY) / (rows * cellH), 3);
-    if (!best || s > best.s + 1e-6) best = { per, rows, s };
+  for (let rows = 1; rows <= n; rows++) {
+    const sp = split(rows), s = Math.min((aw - 20) / (Math.max(...sp.rw) * cellW), (botY - topY) / (rows * cellH), 3);
+    if (!best || s > best.s + 1e-6) best = { rows, s, ...sp };
   }
   scale = best.s; pos = [];
-  const rows = best.rows, base = Math.floor(n / rows), extra = n % rows;
+  const rows = best.rows;
   const usedH = rows * cellH * scale, y0 = topY + (botY - topY - usedH) / 2;
-  let i = 0;
-  for (let r = 0; r < rows; r++) {
-    const cnt = base + (r < extra ? 1 : 0), rowW = cnt * cellW * scale, x0 = ax0 + (aw - rowW) / 2;
-    for (let k = 0; k < cnt; k++, i++) pos.push({ cx: x0 + (k + 0.5) * cellW * scale, by: y0 + (r + 1) * cellH * scale - 18 * scale });
-  }
+  const accs = Array(rows).fill(0);
+  ws.forEach((w, i) => {
+    const r = best.ri[i], x0 = ax0 + (aw - best.rw[r] * cellW * scale) / 2;
+    pos.push({ cx: x0 + (accs[r] + w / 2) * cellW * scale, by: y0 + (r + 1) * cellH * scale - 26 * scale }); accs[r] += w;
+  });
   shelfW = [ax0 + 10, aw - 20];
 }
 let shelfW = [10, 300];
@@ -160,39 +220,54 @@ function reveal() { hid.forEach((h, i) => { if (h.length) h[h.length - 1] = fals
 function startLevel(lv, fresh = true) {
   level = lv; const L = LV(lv); cap = L.k;
   if (fresh || !puzzle) puzzle = makePuzzle(L.c, cap, L.e, L);
-  R = { ...puzzle.rs, caps: puzzle.rs.caps.slice(), tags: puzzle.rs.tags && puzzle.rs.tags.slice() }; lockOpen = R.lock < 0;
+  R = { ...puzzle.rs, caps: puzzle.rs.caps.slice(), tags: puzzle.rs.tags && puzzle.rs.tags.slice(), tap: puzzle.rs.tap && puzzle.rs.tap.slice(), big: puzzle.rs.big && puzzle.rs.big.slice() }; lockOpen = R.lock < 0;
   bottles = puzzle.b.map(b => b.slice()); gone = bottles.map(() => false);
   hid = bottles.map(b => b.map((_, k) => L.m && k < b.length - 1));
   fade = bottles.map(() => 0); shake = bottles.map(() => 0);
-  sel = -1; moves = 0; hist = []; anim = null; extraUsed = false; hint = null; downOn = -1; floats = []; doneN = 0;
+  sel = -1; moves = 0; hist = []; anim = null; extraUsed = false; hint = null; downOn = -1; floats = []; doneN = 0; melts = [];
   layout(); hud(); state = 'play'; MG.hide();
   // the first time a new way to play shows up, explain it once (in the menu language)
   const NEWS = { small: ['🥛 小瓶子', '空瓶子比較矮，裝不下一整瓶。只能拿來暫放，最後要清空喔！'], one: ['💧 細口瓶', '瓶口很細，每次只會倒過去一格。要多倒幾次才能把同顏色搬完。'],
-    tag: ['🏷️ 顏色標籤', '每個瓶子下面有顏色標籤，要倒滿<b>和標籤一樣的顏色</b>才會蓋上蓋子。倒錯顏色的話，標籤會搖一搖。'], lock: ['🔒 鎖住的瓶子', '有一個瓶子被鎖住了，不能倒進去也不能倒出來。先完成任何一瓶，鎖就會打開！'] };
+    tag: ['🏷️ 顏色標籤', '每個瓶子下面有顏色標籤，要倒滿<b>和標籤一樣的顏色</b>才會蓋上蓋子。倒錯顏色的話，標籤會搖一搖。'], lock: ['🔒 鎖住的瓶子', '有一個瓶子被鎖住了，不能倒進去也不能倒出來。先完成任何一瓶，鎖就會打開！'],
+    ice: ['🧊 結冰的水', '有些水結冰了，冰塊<b>倒不出來</b>。把<b>一樣顏色</b>的水倒在冰上面，冰就會融化！'],
+    bucket: ['🪣 大水桶', '大水桶很寬，可以裝<b>兩瓶</b>的水，什麼顏色都能放。它不會蓋蓋子，最後要把它<b>倒空</b>喔！'],
+    tap: ['🚰 水龍頭瓶', '這個瓶子站在小腳上，下面有水龍頭：水會從<b>最下面</b>流出來！倒進來的水還是從上面進去。'] };
   const fresh1 = Object.keys(NEWS).filter(k => L[k] && !MG.store.get('pour.seen.' + k, false));
   if (fresh1.length) {
     fresh1.forEach(k => MG.store.set('pour.seen.' + k, true));
-    MG.panel({ title: fresh1.map(k => NEWS[k][0]).join('＋'), html: fresh1.map(k => `<p>${NEWS[k][1]}</p>`).join(''), buttons: [{ label: '開始', on: () => MG.hide() }] });
+    MG.panel({ title: fresh1.map(k => NEWS[k][0]).join('＋'), html: fresh1.map(k => `<p>${NEWS[k][1]}</p>` + (DEMO[k] ? `<img class="pour-demo" alt="" src="${demoImg(k)}">` : '')).join(''), buttons: [{ label: '開始', on: () => MG.hide() }] });
   }
 }
+// 🧊 the layer that would pour out is frozen: the bottle shivers
+function brrr(i) { shake[i] = 0.35; MG.sfx('miss'); MG.sfx('tick'); say(i, '🧊 Brrr!', '#3d86c8'); }
 function hud() { MG.stat('level', `第 ${level} 關`); MG.stat('moves', `🫗 ${moves} 步`); }
 function tryPour(i, j) {
   if (!canPour(bottles, i, j)) {
     shake[j] = 0.35; MG.sfx('miss');
     // no rule sentence during play: a tiny visual instead (full bottle, or colours that don't match)
     if (R.lock >= 0 && !lockOpen && (i === R.lock || j === R.lock)) { shake[R.lock] = 0.35; say(R.lock, '🔒', '#6f7f99'); sel = -1; return; }
+    if (bottles[i].length && fz(outOf(bottles[i], i))) { brrr(i); sel = -1; return; }
     say(j, bottles[j].length >= capOf(R, j) ? MG.WORDS.full : '❌ 🎨≠🎨', '#d0404e');
     sel = -1; return;
   }
   hist.push(snapshot()); hint = null;
   const k = pourAmount(bottles, i, j);
-  anim = { i, j, c: topOf(bottles[i]), k, t: 0 };
+  anim = { i, j, c: outOf(bottles[i], i), k, t: 0, tap: isTap(R, i) };
   sel = -1; moves++; hud(); MG.sfx('flip');
+  if (anim.tap) setTimeout(() => MG.sfx('boing'), 200);          // the tap squeaks open
 }
 function finishPour() {
   const { i, j } = anim; anim = null;
+  const melt = bottles[j].length > 0 && fz(topOf(bottles[j])), meltAt = bottles[j].length;
   const k = pourInto(bottles, i, j);
-  hid[i].splice(hid[i].length - k, k); for (let n = 0; n < k; n++) hid[j].push(false);
+  if (isTap(R, i)) hid[i].splice(0, k); else hid[i].splice(hid[i].length - k, k);
+  for (let n = 0; n < k; n++) hid[j].push(false);
+  if (melt) {                                // 🧊 → 💧 : crackle, drips and a little splash of ice bits
+    const p = pos[j], y = p.by - (lift(j) + 4 + (meltAt - 0.5) * unitH(j)) * scale;
+    MG.fx.burst(p.cx, y, { n: 16, colors: ['#e6f7ff', '#bfe8ff', '#ffffff', COLORS[colOf(bottles[j][meltAt - 1])]], shape: 'sq', speed: 170, up: 120, size: 5 });
+    MG.sfx('sparkle'); MG.sfx('perfect'); setTimeout(() => MG.sfx('pop'), 120);
+    say(j, 'Melt! 💧', '#2f86d0'); melts.push({ i: j, u: meltAt - 1, t: 0 });
+  }
   const wasHidden = hid.some(h => h.length && h[h.length - 1]);
   reveal();
   MG.sfx('pop'); if (wasHidden) MG.sfx('sparkle');
@@ -202,7 +277,7 @@ function finishPour() {
     // layered: a rising match chime + sparkle, then a whoosh as the bottle flies away
     MG.sfx('match', doneN + 1); MG.sfx('sparkle'); setTimeout(() => MG.sfx('whoosh'), 380);
     say(j, MG.praise(Math.min(5, doneN)), '#ff6a00');
-    const p = pos[j]; MG.fx.burst(p.cx, p.by - (BH(j) + NECK) * scale, { n: 22, colors: [COLORS[bottles[j][0]], '#fff', '#ffd23f'], shape: 'star', speed: 220, up: 140, size: 6 });
+    const p = pos[j]; MG.fx.burst(p.cx, p.by - mouthY(j) * scale, { n: 22, colors: [COLORS[bottles[j][0]], '#fff', '#ffd23f'], shape: 'star', speed: 220, up: 140, size: 6 });
   }
   checkStuck();
 }
@@ -234,7 +309,7 @@ function undo() {
 function addBottle() {
   if (anim) return;
   if (extraUsed) { MG.toast('No more ➕'); MG.sfx('miss'); return; }
-  extraUsed = true; R.caps.push(R.k); if (R.tags) R.tags.push(-1); bottles.push([]); hid.push([]); gone.push(false); fade.push(0); shake.push(0);
+  extraUsed = true; R.caps.push(R.k); if (R.tags) R.tags.push(-1); if (R.tap) R.tap.push(false); if (R.big) R.big.push(false); bottles.push([]); hid.push([]); gone.push(false); fade.push(0); shake.push(0);
   for (const s of hist) { s.b.push([]); s.h.push([]); s.gone.push(false); }
   layout(); MG.sfx('pop'); MG.sfx('whoosh'); MG.toast('+1 🫙');
 }
@@ -252,7 +327,7 @@ function showHint() {
 // solve only with the bottles still on the shelf: a finished bottle has flown away, so the hint must never point at its empty spot
 function solveAlive() {
   const ids = bottles.map((b, i) => i).filter(i => !gone[i] && !(fade[i] > 0));
-  const rs = { ...R, caps: ids.map(i => capOf(R, i)), tags: R.tags ? ids.map(i => R.tags[i]) : null, lock: ids.indexOf(R.lock) };
+  const rs = { ...R, caps: ids.map(i => capOf(R, i)), tags: R.tags ? ids.map(i => R.tags[i]) : null, lock: ids.indexOf(R.lock), tap: R.tap ? ids.map(i => R.tap[i]) : null, big: R.big ? ids.map(i => R.big[i]) : null };
   const p = solve(ids.map(i => bottles[i]), rs, lockOpen);
   return p && p.map(([a, b]) => [ids[a], ids[b]]);
 }
@@ -262,7 +337,7 @@ function reset() { if (anim) return; startLevel(level, false); MG.sfx('whoosh');
 function hitBottle(p) {
   for (let i = 0; i < bottles.length; i++) {
     if (gone[i] || fade[i] > 0) continue;
-    const q = pos[i], w = (BW / 2 + 12) * scale, h = (BH(i) + NECK + 30) * scale;
+    const q = pos[i], w = (halfW(i) + 12) * scale, h = (mouthY(i) + 30) * scale;
     if (p.x > q.cx - w && p.x < q.cx + w && p.y > q.by - h && p.y < q.by + 14 * scale) return i;
   }
   return -1;
@@ -277,6 +352,7 @@ cv.addEventListener('pointerdown', e => {
   if (i < 0) { sel = -1; return; }
   if (sel < 0) {
     if (!bottles[i].length) { shake[i] = 0.25; MG.sfx('miss'); say(i, 'Empty 🫙', '#5a6f90'); return; }
+    if (fz(outOf(bottles[i], i))) { brrr(i); return; }
     sel = i; downOn = i; MG.sfx('tick');
     try { cv.setPointerCapture(e.pointerId); } catch {}
   } else if (sel === i) sel = -1;
@@ -292,7 +368,7 @@ addEventListener('keydown', e => {
   if (e.key === 'z' || e.key === 'Z' || e.key === 'Backspace') undo();
   if (e.key === 'h' || e.key === 'H') showHint();
   const n = parseInt(e.key, 10); const idx = e.key === '0' ? 9 : n - 1;
-  if (!isNaN(n) && idx < bottles.length && !gone[idx]) { if (sel < 0) { if (bottles[idx].length) { sel = idx; MG.sfx('tick'); } } else if (sel === idx) sel = -1; else tryPour(sel, idx); }
+  if (!isNaN(n) && idx < bottles.length && !gone[idx]) { if (sel < 0) { if (bottles[idx].length && fz(outOf(bottles[idx], idx))) brrr(idx); else if (bottles[idx].length) { sel = idx; MG.sfx('tick'); } } else if (sel === idx) sel = -1; else tryPour(sel, idx); }
 });
 
 // ---------- drawing ----------
@@ -317,6 +393,70 @@ function shapePath(id, r) {
 }
 // segs: [[colour, units], ...] from the bottom
 function segsOf(b) { const s = []; for (const v of b) { if (s.length && s[s.length - 1][0] === v) s[s.length - 1][1]++; else s.push([v, 1]); } return s; }
+// the water inside a glass (clip already set): segs from the bottom, w2 = half width, uh = height of one layer; returns the surface y
+function liquid(segs, tilt, w2, H, uh) {
+  if (tilt) {                                      // tipped over: keep the water level flat
+    x.translate(0, -H / 2); x.rotate(-tilt);
+    let y = -1e9; for (const sx of [-1, 1]) for (const sy of [-1, 1]) y = Math.max(y, sx * w2 * Math.sin(tilt) + sy * H / 2 * Math.cos(tilt));
+    const f = Math.max(0.42, Math.cos(tilt));
+    for (const [c, n] of segs) {
+      const h = n * uh * f; if (h <= 0.01) continue;
+      x.fillStyle = c < 0 ? HIDDEN : COLORS[colOf(c)]; x.fillRect(-200, y - h - 2, 400, h + 2.6);
+      if (fz(c)) { x.fillStyle = 'rgba(225,245,255,.5)'; x.fillRect(-200, y - h - 2, 400, h + 2.6); }
+      y -= h;
+    }
+    x.fillStyle = 'rgba(255,255,255,.3)'; x.fillRect(-200, y - 2, 400, 3);
+    return 0;
+  }
+  let y = -4;
+  const sr = Math.min(8.5, uh * 0.36);
+  for (const [c, n] of segs) {
+    const h = n * uh; if (h <= 0.01) continue;
+    x.fillStyle = c < 0 ? HIDDEN : COLORS[colOf(c)]; x.fillRect(-w2, y - h, w2 * 2, h + 0.6);
+    x.fillStyle = 'rgba(0,0,0,.08)'; x.fillRect(w2 - 14, y - h, 10, h);
+    if (c < 0) {                                     // ❓ layers: striped, with a question mark each
+      x.save(); x.beginPath(); x.rect(-w2, y - h, w2 * 2, h); x.clip();
+      x.strokeStyle = 'rgba(255,255,255,.45)'; x.lineWidth = 4; for (let d = -w2 * 2; d < h + w2 * 2; d += 11) { x.beginPath(); x.moveTo(-w2, y - d); x.lineTo(w2, y - d - w2 * 2); x.stroke(); }
+      x.restore();
+      x.fillStyle = '#6f7f99'; x.font = `900 ${Math.round(Math.min(20, uh * 0.7))}px system-ui,sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
+      for (let u = 0; u < Math.floor(n + 0.001); u++) { x.fillText('?', 0, y - (u + 0.5) * uh + 1); x.fillStyle = 'rgba(111,127,153,.5)'; x.fillRect(-w2, y - u * uh - 1, w2 * 2, 1.5); x.fillStyle = '#6f7f99'; }
+    } else {
+      if (mode === 'shape') for (let u = 0; u < Math.floor(n + 0.001); u++) { x.save(); x.translate(0, y - (u + 0.5) * uh); x.fillStyle = 'rgba(255,255,255,.78)'; shapePath(SHAPES[colOf(c)], sr); x.fill(); x.restore(); }
+      if (fz(c)) drawIce(-w2, y - h, w2 * 2, h, uh);
+    }
+    y -= h;
+  }
+  return y;
+}
+// 🧊 a frozen layer: frosty glaze, ice-cube edges, glints and a snowflake (the colour still shows through)
+function drawIce(x0, y0, w, h, uh) {
+  const g = x.createLinearGradient(0, y0, 0, y0 + h); g.addColorStop(0, 'rgba(240,252,255,.62)'); g.addColorStop(1, 'rgba(160,215,255,.5)');
+  x.fillStyle = g; x.fillRect(x0, y0, w, h);
+  const n = Math.max(1, Math.round(h / uh));
+  for (let u = 0; u < n; u++) {
+    const cy = y0 + u * uh, cx0 = x0 + 3, cw = w - 6;
+    x.strokeStyle = '#ffffff'; x.lineWidth = 3;                    // the ice cube's bright edge
+    x.beginPath(); x.roundRect(cx0, cy + 2, cw, uh - 4, 6); x.stroke();
+    x.strokeStyle = 'rgba(90,160,220,.85)'; x.lineWidth = 2;       // shaded lower-right edge
+    x.beginPath(); x.moveTo(cx0 + 6, cy + uh - 3); x.lineTo(cx0 + cw - 5, cy + uh - 3); x.quadraticCurveTo(cx0 + cw - 1, cy + uh - 3, cx0 + cw - 1, cy + uh - 8); x.lineTo(cx0 + cw - 1, cy + 8); x.stroke();
+    x.strokeStyle = '#fff'; x.lineWidth = 2.6; x.lineCap = 'round';  // glints
+    x.beginPath(); x.moveTo(cx0 + 5, cy + 11); x.lineTo(cx0 + 12, cy + 6); x.moveTo(cx0 + 5, cy + 17); x.lineTo(cx0 + 8, cy + 15); x.stroke();
+    // icicles hanging from the top of the layer
+    x.fillStyle = 'rgba(255,255,255,.92)';
+    for (let k = 0; k < 4; k++) { const ix = cx0 + 8 + k * (cw - 16) / 3, il = 4 + ((k * 5) % 4); x.beginPath(); x.moveTo(ix - 3, cy + 2); x.lineTo(ix + 3, cy + 2); x.lineTo(ix, cy + 2 + il); x.closePath(); x.fill(); }
+    // snowflake on the right
+    const sx = cx0 + cw - Math.min(11, cw * 0.22), sy = cy + uh / 2 + 1, r = Math.min(6, uh * 0.22);
+    x.strokeStyle = '#fff'; x.lineWidth = 2;
+    x.beginPath(); for (let k = 0; k < 3; k++) { const a = k * Math.PI / 3 + Math.PI / 2; x.moveTo(sx - Math.cos(a) * r, sy - Math.sin(a) * r); x.lineTo(sx + Math.cos(a) * r, sy + Math.sin(a) * r); } x.stroke();
+  }
+  const gl = ((t * 0.35) % 1.6) - 0.3, gx = x0 + gl * w;                  // a slow glint sliding across
+  x.fillStyle = 'rgba(255,255,255,.4)'; x.beginPath(); x.moveTo(gx, y0); x.lineTo(gx + 8, y0); x.lineTo(gx - 4, y0 + h); x.lineTo(gx - 12, y0 + h); x.closePath(); x.fill();
+}
+function happyFace(fy) {                          // a finished bottle smiles
+  x.fillStyle = '#2b2020'; for (const sd of [-1, 1]) { x.beginPath(); x.arc(sd * 7, fy - 4, 2.4, 0, 7); x.fill(); }
+  x.strokeStyle = '#2b2020'; x.lineWidth = 2; x.beginPath(); x.arc(0, fy, 5, 0.3, Math.PI - 0.3); x.stroke();
+  x.fillStyle = 'rgba(255,120,140,.55)'; for (const sd of [-1, 1]) { x.beginPath(); x.ellipse(sd * 13, fy, 3.5, 2.2, 0, 0, 7); x.fill(); }
+}
 function drawBottle(segs, done, happy, tilt = 0, H = bh()) {
   const w2 = BW / 2;
   // glass back
@@ -325,40 +465,10 @@ function drawBottle(segs, done, happy, tilt = 0, H = bh()) {
   x.fillRect(-13, -H - NECK, 26, NECK + 2);
   // liquid
   x.save(); x.beginPath(); x.roundRect(-w2 + 4, -H + 2, BW - 8, H - 6, [4, 4, 14, 14]); x.clip();
-  if (tilt) {                                      // tipped over: keep the water level flat
-    x.translate(0, -H / 2); x.rotate(-tilt);
-    let y = -1e9; for (const sx of [-1, 1]) for (const sy of [-1, 1]) y = Math.max(y, sx * w2 * Math.sin(tilt) + sy * H / 2 * Math.cos(tilt));
-    const f = Math.max(0.42, Math.cos(tilt));
-    for (const [c, n] of segs) { const h = n * UH * f; if (h <= 0.01) continue; x.fillStyle = c < 0 ? HIDDEN : COLORS[c]; x.fillRect(-200, y - h - 2, 400, h + 2.6); y -= h; }
-    x.fillStyle = 'rgba(255,255,255,.3)'; x.fillRect(-200, y - 2, 400, 3);
-    segs = [];
-  }
-  let y = -4, k = 0;
-  for (const [c, n] of segs) {
-    const h = n * UH; if (h <= 0.01) continue;
-    x.fillStyle = c < 0 ? HIDDEN : COLORS[c]; x.fillRect(-w2, y - h, BW, h + 0.6);
-    x.fillStyle = 'rgba(0,0,0,.08)'; x.fillRect(w2 - 14, y - h, 10, h);
-    if (c < 0) {                                     // ❓ layers: striped, with a question mark each
-      x.save(); x.beginPath(); x.rect(-w2, y - h, BW, h); x.clip();
-      x.strokeStyle = 'rgba(255,255,255,.45)'; x.lineWidth = 4; for (let d = -BW; d < h + BW; d += 11) { x.beginPath(); x.moveTo(-w2, y - d); x.lineTo(w2, y - d - BW); x.stroke(); }
-      x.restore();
-      x.fillStyle = '#6f7f99'; x.font = '900 20px system-ui,sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
-      for (let u = 0; u < Math.floor(n + 0.001); u++) { x.fillText('?', 0, y - (u + 0.5) * UH + 1); x.fillStyle = 'rgba(111,127,153,.5)'; x.fillRect(-w2, y - u * UH - 1, BW, 1.5); x.fillStyle = '#6f7f99'; }
-    } else if (mode === 'shape') {
-      for (let u = 0; u < Math.floor(n + 0.001); u++) { x.save(); x.translate(0, y - (u + 0.5) * UH); x.fillStyle = 'rgba(255,255,255,.78)'; shapePath(SHAPES[c], 8.5); x.fill(); x.restore(); }
-    }
-    y -= h; k++;
-  }
-  if (segs.length && y < -4) {
-    const c = segs[segs.length - 1][0];
+  const y = liquid(segs, tilt, w2, H, UH);
+  if (!tilt && segs.length && y < -4) {
     x.fillStyle = 'rgba(255,255,255,.35)'; x.beginPath(); x.ellipse(0, y, w2 - 5, 3.2, 0, 0, 7); x.fill();
-    if (happy) {                                    // a finished bottle smiles
-      const fy = y + Math.min(40, -y - 4) / 2 + 6;
-      x.fillStyle = '#2b2020'; for (const sd of [-1, 1]) { x.beginPath(); x.arc(sd * 7, fy - 4, 2.4, 0, 7); x.fill(); }
-      x.strokeStyle = '#2b2020'; x.lineWidth = 2; x.beginPath(); x.arc(0, fy, 5, 0.3, Math.PI - 0.3); x.stroke();
-      x.fillStyle = 'rgba(255,120,140,.55)'; for (const sd of [-1, 1]) { x.beginPath(); x.ellipse(sd * 13, fy, 3.5, 2.2, 0, 0, 7); x.fill(); }
-      void c;
-    }
+    if (happy) happyFace(y + Math.min(40, -y - 4) / 2 + 6);
   }
   x.restore();
   // glass shine + outline
@@ -367,6 +477,97 @@ function drawBottle(segs, done, happy, tilt = 0, H = bh()) {
   x.beginPath(); x.moveTo(-13, -H - NECK); x.lineTo(-13, -H); x.lineTo(-w2 + 6, -H); x.quadraticCurveTo(-w2, -H, -w2, -H + 6); x.lineTo(-w2, -18); x.quadraticCurveTo(-w2, 0, -w2 + 18, 0); x.lineTo(w2 - 18, 0); x.quadraticCurveTo(w2, 0, w2, -18); x.lineTo(w2, -H + 6); x.quadraticCurveTo(w2, -H, w2 - 6, -H); x.lineTo(13, -H); x.lineTo(13, -H - NECK); x.stroke();
   x.fillStyle = '#b9c6da'; x.beginPath(); x.roundRect(-17, -H - NECK - 5, 34, 7, 3); x.fill(); x.stroke();
   if (done) { x.fillStyle = '#b07a45'; x.strokeStyle = '#7a5530'; x.lineWidth = 2; x.beginPath(); x.roundRect(-11, -H - NECK - 14, 22, 14, [3, 3, 1, 1]); x.fill(); x.stroke(); }
+}
+// 🪣 the big bucket: a wide glass tub with a sunny yellow rim and handle; layers are half as thick, so it holds two bottles' worth
+function bucketPath(H, ins = 0) {
+  const wt = BKW / 2 - ins, wb = BKW / 2 - 10 - ins, r = 16 - ins * 0.5;
+  x.beginPath(); x.moveTo(-wt, -H + ins); x.lineTo(wt, -H + ins); x.lineTo(wb, -r - ins); x.quadraticCurveTo(wb - 1, -ins, wb - r, -ins); x.lineTo(-wb + r, -ins); x.quadraticCurveTo(-wb + 1, -ins, -wb, -r - ins); x.closePath();
+}
+function drawBucket(segs, tilt = 0, H = bh()) {
+  const wt = BKW / 2, sw = Math.sin(t * 1.3) * 0.06;
+  // handle behind the tub (swings a little)
+  x.save(); x.translate(0, -H); x.rotate(tilt ? 0 : sw);
+  x.lineCap = 'round'; x.strokeStyle = '#a87400'; x.lineWidth = 8; x.beginPath(); x.moveTo(-wt + 6, 0); x.bezierCurveTo(-wt + 6, -46, wt - 6, -46, wt - 6, 0); x.stroke();
+  x.strokeStyle = '#ffd25a'; x.lineWidth = 4.5; x.stroke();
+  x.strokeStyle = 'rgba(255,255,255,.6)'; x.lineWidth = 1.6; x.beginPath(); x.moveTo(-wt + 18, -22); x.bezierCurveTo(-wt + 26, -34, -10, -36, 0, -35); x.stroke();
+  x.restore();
+  x.fillStyle = 'rgba(255,255,255,.45)'; bucketPath(H); x.fill();
+  x.save(); bucketPath(H, 4); x.clip();
+  const y = liquid(segs, tilt, wt, H, UH / 2);
+  if (!tilt && segs.length && y < -4) { x.fillStyle = 'rgba(255,255,255,.35)'; x.beginPath(); x.ellipse(0, y, wt - 10, 3.2, 0, 0, 7); x.fill(); }
+  x.restore();
+  // half-way mark: "one bottle" line (dashed), shine, outline, rim and the side knobs
+  x.strokeStyle = 'rgba(111,127,153,.45)'; x.lineWidth = 1.5; x.setLineDash([5, 5]); x.beginPath(); x.moveTo(-wt + 10, -4 - H / 2 + 3); x.lineTo(wt - 10, -4 - H / 2 + 3); x.stroke(); x.setLineDash([]);
+  x.fillStyle = 'rgba(255,255,255,.5)'; x.beginPath(); x.roundRect(-wt + 10, -H + 12, 7, H - 34, 3); x.fill();
+  x.strokeStyle = '#6f7f99'; x.lineWidth = 3; x.lineJoin = 'round'; bucketPath(H); x.stroke();
+  x.fillStyle = '#ffc93a'; x.strokeStyle = '#a87400'; x.lineWidth = 2.5;
+  x.beginPath(); x.roundRect(-wt - 5, -H - 6, BKW + 10, 11, 5); x.fill(); x.stroke();
+  x.fillStyle = 'rgba(255,255,255,.55)'; x.fillRect(-wt + 2, -H - 3.5, BKW - 30, 2.5);
+  for (const sd of [-1, 1]) { x.fillStyle = '#ffc93a'; x.beginPath(); x.arc(sd * (wt - 6), -H + 1, 5, 0, 7); x.fill(); x.stroke(); }
+}
+// little pictures for the intro panels, drawn with the game's own art (so a child sees exactly what to look for)
+const DEMO = {
+  ice: g => {
+    const s = 0.72, arrow = (x0, y0, x1, y1) => { g.strokeStyle = '#ff9f1c'; g.lineWidth = 4; g.lineCap = 'round'; g.setLineDash([2, 8]); g.beginPath(); g.moveTo(x0, y0); g.quadraticCurveTo((x0 + x1) / 2, Math.min(y0, y1) - 30, x1, y1); g.stroke(); g.setLineDash([]); g.fillStyle = '#ff9f1c'; g.beginPath(); g.moveTo(x1, y1 + 9); g.lineTo(x1 - 7, y1 - 3); g.lineTo(x1 + 7, y1 - 3); g.fill(); };
+    const bot = (cx, b, done) => { g.save(); g.translate(cx, 150); g.scale(s, s); drawBottle(segsOf(b), done, done); g.restore(); };
+    bot(48, [0, 4 + ICE]); bot(128, [2, 4]); arrow(128, 42, 52, 52);
+    g.fillStyle = '#c99a5a'; g.font = '900 30px system-ui,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('➜', 186, 100);
+    bot(250, [0, 4, 4]);
+    g.fillStyle = '#ffd23f'; for (const [px, py, r] of [[218, 56, 6], [284, 70, 5], [272, 44, 4]]) { g.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.45 : r; g.lineTo(px + Math.cos(a) * rr, py + Math.sin(a) * rr); } g.fill(); }
+  },
+  bucket: g => {
+    const s = 0.72;
+    for (const [cx, b] of [[40, [0, 3, 2, 4]], [104, [1, 5, 6, 3]]]) { g.save(); g.translate(cx, 150); g.scale(s, s); drawBottle(segsOf(b), false, false); g.restore(); }
+    g.fillStyle = '#c99a5a'; g.font = '900 30px system-ui,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('+', 72, 100); g.fillText('＝', 156, 100);
+    g.save(); g.translate(240, 150); g.scale(s, s); drawBucket(segsOf([0, 3, 2, 4, 1, 5, 6, 3])); g.restore();
+  },
+  tap: g => {
+    const s = 0.62, lowH = (bh(4) + NECK) * s;
+    g.save(); g.translate(150, 205); g.scale(s, s); drawBottle(segsOf([5, 0]), false, false); g.restore();
+    const ty = 205 - lowH - 10 * s;
+    g.strokeStyle = COLORS[0]; g.lineWidth = 5; g.lineCap = 'round'; g.beginPath(); g.moveTo(150, ty - 2); g.lineTo(150, 205 - (4 + 2.5 * UH) * s); g.stroke();
+    g.save(); g.translate(150, ty); g.scale(s, s); drawStand(true, null); g.translate(0, -STAND); drawBottle(segsOf([0, 4, 3, 3]), false, false); g.restore();
+    // big "down" arrows on both sides of the tap
+    g.fillStyle = '#ff9f1c'; for (const sd of [-1, 1]) { const ax = 150 + sd * 62, ay = ty - 14; g.beginPath(); g.moveTo(ax - 6, ay - 26); g.lineTo(ax + 6, ay - 26); g.lineTo(ax + 6, ay - 6); g.lineTo(ax + 13, ay - 6); g.lineTo(ax, ay + 8); g.lineTo(ax - 13, ay - 6); g.lineTo(ax - 6, ay - 6); g.closePath(); g.fill(); }
+  },
+};
+const demoCache = {};
+function demoImg(k) {
+  if (demoCache[k]) return demoCache[k];
+  const H = k === 'tap' ? 215 : 160, c = document.createElement('canvas'); c.width = 600; c.height = H * 2;
+  const g = c.getContext('2d'), keep = x; g.scale(2, 2); x = g;
+  try { DEMO[k](g); } finally { x = keep; }
+  return (demoCache[k] = c.toDataURL());
+}
+// 🚰 a tap bottle's little legs and the tap underneath (drawn at the shelf; the bottle itself sits STAND higher)
+function drawStand(open, drip) {
+  const S = STAND;
+  x.lineCap = 'round'; x.lineJoin = 'round';
+  for (const sd of [-1, 1]) {                      // two wooden legs
+    x.strokeStyle = '#8a5a2b'; x.lineWidth = 7; x.beginPath(); x.moveTo(sd * (BW / 2 - 8), -S - 2); x.lineTo(sd * (BW / 2 - 1), -1); x.stroke();
+    x.strokeStyle = '#e0b07a'; x.lineWidth = 3.5; x.stroke();
+  }
+  // brass spout: down, then a little bend
+  x.fillStyle = '#ffd25a'; x.strokeStyle = '#a87400'; x.lineWidth = 2.2;
+  x.beginPath(); x.roundRect(-6, -S - 3, 12, S - 6, [0, 0, 3, 3]); x.fill(); x.stroke();
+  x.beginPath(); x.roundRect(-4.5, -9, 9, 7, [0, 0, 4, 4]); x.fill(); x.stroke();
+  x.fillStyle = 'rgba(255,255,255,.65)'; x.fillRect(-3.5, -S - 1, 2.2, S - 10);
+  // red valve wheel on a short stem to the side (spins while pouring)
+  x.strokeStyle = '#a87400'; x.lineWidth = 3; x.beginPath(); x.moveTo(5, -S + 6); x.lineTo(12, -S + 6); x.stroke();
+  x.save(); x.translate(15, -S + 6); x.rotate(open ? t * 14 : 0.3);
+  x.fillStyle = '#ff5d6e'; x.strokeStyle = '#b5303e'; x.lineWidth = 1.8;
+  x.beginPath(); for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2; x.moveTo(Math.cos(a) * 9.4, Math.sin(a) * 9.4); x.arc(Math.cos(a) * 6, Math.sin(a) * 6, 3.4, 0, 7); } x.fill(); x.stroke();
+  x.beginPath(); x.arc(0, 0, 3.2, 0, 7); x.fill(); x.stroke();
+  x.fillStyle = 'rgba(255,255,255,.7)'; x.beginPath(); x.arc(-1, -1, 1.1, 0, 7); x.fill();
+  x.restore();
+  // a little drop of the bottom colour wobbling at the tip: "the water comes out down here"
+  if (drip != null && !open) {
+    const ph = (t * 0.7) % 1, r = 1.6 + ph * 2.6, dy = ph > 0.85 ? (ph - 0.85) * 40 : 0;
+    x.globalAlpha = ph > 0.85 ? 1 - (ph - 0.85) / 0.15 : 1;
+    x.fillStyle = COLORS[drip]; x.strokeStyle = 'rgba(0,0,0,.25)'; x.lineWidth = 1;
+    x.beginPath(); x.moveTo(0, -2 + dy); x.quadraticCurveTo(r * 1.3, r * 1.6 - 2 + dy, 0, r * 2.2 - 2 + dy); x.quadraticCurveTo(-r * 1.3, r * 1.6 - 2 + dy, 0, -2 + dy); x.fill(); x.stroke();
+    x.globalAlpha = 1;
+  }
 }
 function backdrop(W, H) {
   const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#fff6e0'); g.addColorStop(1, '#ffe2c4'); x.fillStyle = g; x.fillRect(0, 0, W, H);
@@ -393,11 +594,18 @@ function draw() {
     const q = pos[i];
     let segs = segsOf(vis(i));
     let cx = q.cx, by = q.by, ang = 0, a = 1, sc = scale;
-    if (anim && i === anim.i) {
+    if (anim && i === anim.i && anim.tap) {
+      // 🚰 a tap bottle doesn't tip: it floats up over the other bottle and opens its tap
+      const e = animBits.mv * animBits.mv * (3 - 2 * animBits.mv), dq = pos[anim.j];
+      const tx = dq.cx, ty = dq.by - (mouthY(anim.j) + 10) * scale;
+      cx = q.cx + (tx - q.cx) * e; by = q.by + (ty - q.by) * e;
+      let rem = anim.k * animBits.pr; segs = segs.map(s => s.slice());
+      while (rem > 0 && segs.length) { const s = segs[0], d = Math.min(s[1], rem); s[1] -= d; rem -= d; if (s[1] <= 0.0001) segs.shift(); }
+    } else if (anim && i === anim.i) {
       const left = pos[anim.i].cx < pos[anim.j].cx ? 1 : -1, A = 1.15 * left;
       const e = animBits.mv * animBits.mv * (3 - 2 * animBits.mv);
-      const dq = pos[anim.j], L = (BH(i) / 2 + NECK) * scale;
-      const tx = dq.cx - Math.sin(A) * L, ty = dq.by - (BH(anim.j) + NECK + 26) * scale + Math.cos(A) * L;   // pivot (centre) target
+      const dq = pos[anim.j], L = (BH(i) / 2 + (isBig(R, i) ? 6 : NECK)) * scale;
+      const tx = dq.cx - Math.sin(A) * L, ty = dq.by - (mouthY(anim.j) + 26) * scale + Math.cos(A) * L;   // pivot (centre) target
       const hx = q.cx, hy = q.by - BH(i) / 2 * scale;
       cx = hx + (tx - hx) * e; by = hy + (ty - hy) * e + BH(i) / 2 * scale; ang = A * e;
       const lost = anim.k * animBits.pr; let rem = lost;
@@ -413,8 +621,15 @@ function draw() {
     x.save(); x.globalAlpha = a; x.translate(cx, by);
     if (ang) { x.translate(0, -BH(i) / 2 * sc); x.rotate(ang); x.translate(0, BH(i) / 2 * sc); }
     x.scale(sc, sc);
-    if (hint && (i === hint.i || i === hint.j) && Math.floor(hint.t * 4) % 2 === 0) { x.fillStyle = 'rgba(255,210,63,.45)'; x.beginPath(); x.roundRect(-BW / 2 - 10, -BH(i) - NECK - 18, BW + 20, BH(i) + NECK + 28, 14); x.fill(); }
-    drawBottle(segs, fade[i] > 0, fade[i] > 0, ang, BH(i));
+    const hw = halfW(i);
+    if (hint && (i === hint.i || i === hint.j) && Math.floor(hint.t * 4) % 2 === 0) { x.fillStyle = 'rgba(255,210,63,.45)'; x.beginPath(); x.roundRect(-hw - 10, -mouthY(i) - 18, hw * 2 + 20, mouthY(i) + 28, 14); x.fill(); }
+    if (isTap(R, i)) { const b0 = bottles[i][0]; drawStand(!!(anim && anim.i === i && animBits.pouring), b0 != null && !fz(b0) && !hid[i][0] ? b0 : null); x.translate(0, -STAND); }
+    if (isBig(R, i)) drawBucket(segs, ang, BH(i)); else drawBottle(segs, fade[i] > 0, fade[i] > 0, ang, BH(i));
+    for (const m of melts) if (m.i === i && !ang) {          // the ice that just melted fades away
+      x.globalAlpha = a * Math.max(0, 1 - m.t / 0.7); const uh = unitH(i);
+      x.save(); x.beginPath(); x.rect(-hw + 4, -4 - (m.u + 1) * uh, hw * 2 - 8, uh); x.clip(); drawIce(-hw + 4, -4 - (m.u + 1) * uh - m.t * 6, hw * 2 - 8, uh, uh); x.restore();
+      x.globalAlpha = a;
+    }
     if (i === R.lock && !lockOpen) drawLock(BH(i));
     x.restore();
     // number label (for keyboard players)
@@ -423,17 +638,17 @@ function draw() {
   }
   // the stream of water
   if (anim && animBits.pouring) {
-    const left = pos[anim.i].cx < pos[anim.j].cx ? 1 : -1, dq = pos[anim.j];
-    const mx = dq.cx, my = dq.by - (BH(anim.j) + NECK + 26) * scale;
-    const fill = bottles[anim.j].length + anim.k * animBits.pr;
-    const ly = dq.by - (4 + fill * UH) * scale;
-    x.strokeStyle = COLORS[anim.c]; x.lineCap = 'round'; x.lineWidth = 7 * scale;
-    x.beginPath(); x.moveTo(mx + left * 2 * scale, my); x.lineTo(mx, ly); x.stroke();
+    const left = pos[anim.i].cx < pos[anim.j].cx ? 1 : -1, dq = pos[anim.j], j = anim.j;
+    const mx = dq.cx, my = anim.tap ? dq.by - (mouthY(j) + 10 + 3) * scale : dq.by - (mouthY(j) + 26) * scale;
+    const fill = bottles[j].length + anim.k * animBits.pr;
+    const ly = dq.by - (lift(j) + 4 + fill * unitH(j)) * scale;
+    x.strokeStyle = COLORS[anim.c]; x.lineCap = 'round'; x.lineWidth = (anim.tap ? 6 : 7) * scale;
+    x.beginPath(); x.moveTo(mx + (anim.tap ? 0 : left * 2 * scale), my); x.lineTo(mx, ly); x.stroke();
     x.fillStyle = 'rgba(255,255,255,.6)'; for (let k = 0; k < 3; k++) { const yy = my + ((t * 300 + k * 40) % Math.max(10, ly - my)); x.beginPath(); x.arc(mx - 1, yy, 1.6 * scale, 0, 7); x.fill(); }
   }
   // hint arrow
   if (hint) {
-    const a = pos[hint.i], b = pos[hint.j], yA = a.by - (BH(hint.i) + NECK + 34) * scale, yB = b.by - (BH(hint.j) + NECK + 34) * scale, bob = Math.sin(t * 8) * 4;
+    const a = pos[hint.i], b = pos[hint.j], yA = a.by - (mouthY(hint.i) + 34) * scale, yB = b.by - (mouthY(hint.j) + 34) * scale, bob = Math.sin(t * 8) * 4;
     x.strokeStyle = '#ff9f1c'; x.lineWidth = 5; x.lineCap = 'round'; x.setLineDash([2, 10]);
     x.beginPath(); x.moveTo(a.cx, yA + bob); x.quadraticCurveTo((a.cx + b.cx) / 2, Math.min(yA, yB) - 50 * scale, b.cx, yB + bob); x.stroke(); x.setLineDash([]);
     x.fillStyle = '#ff9f1c'; x.beginPath(); x.moveTo(b.cx, yB + 12 + bob); x.lineTo(b.cx - 10, yB - 4 + bob); x.lineTo(b.cx + 10, yB - 4 + bob); x.fill();
@@ -497,18 +712,19 @@ function menu() {
   state = 'menu';
   MG.choose({
     id: 'pour', title: '彩虹倒水瓶',
-    html: `<p>點一個瓶子，再點另一個瓶子，就會把上面的水倒過去。<b>只能倒在一樣的顏色上面，或倒進空瓶子</b>。</p><p>把每個瓶子都倒成同一個顏色，瓶子就會蓋上蓋子、開心地消失！不限時間，慢慢想 ^_^</p><p>後面的關卡有 ⚠️ 只有一個空瓶、❓ 神秘瓶、🥛 小瓶子、💧 細口瓶、🏷️ 顏色標籤、🔒 鎖住的瓶子！</p>`,
+    html: `<p>點一個瓶子，再點另一個瓶子，就會把上面的水倒過去。<b>只能倒在一樣的顏色上面，或倒進空瓶子</b>。</p><p>把每個瓶子都倒成同一個顏色，瓶子就會蓋上蓋子、開心地消失！不限時間，慢慢想 ^_^</p><p>後面的關卡有 ⚠️ 只有一個空瓶、❓ 神秘瓶、🥛 小瓶子、💧 細口瓶、🏷️ 顏色標籤、🔒 鎖住的瓶子、🧊 結冰的水、🪣 大水桶、🚰 水龍頭瓶！</p>`,
     modes: [{ id: 'shape', label: '🔷 有小圖案', sub: '每種顏色都有圖案，比較好認' }, { id: 'plain', label: '🎨 只看顏色', sub: '挑戰眼力' }],
-    levels: { count: LEVELS.length, max: LEVELS.length, label: n => `${n}（${lvName(n)}）`, short: n => { const L = LV(n); return `${n}${L.m ? '❓' : L.small ? '🥛' : L.one ? '💧' : L.tag ? '🏷️' : L.lock ? '🔒' : L.e < 2 ? '⚠️' : ''}`; } },
+    levels: { count: LEVELS.length, max: LEVELS.length, label: n => `${n}（${lvName(n)}）`, short: n => { const L = LV(n); return `${n}${L.ice ? '🧊' : L.bucket ? '🪣' : L.tap ? '🚰' : L.m ? '❓' : L.small ? '🥛' : L.one ? '💧' : L.tag ? '🏷️' : L.lock ? '🔒' : L.e < 2 ? '⚠️' : ''}`; } },
     keys: '點瓶子或拖過去倒　<kbd>1</kbd>～<kbd>9</kbd> 選瓶子　<kbd>Z</kbd> 復原　<kbd>H</kbd> 提示',
     playing: () => state === 'play',
     start: (m, lv) => { mode = m; startLevel(lv); },
   });
 }
 // sample puzzle behind the start panel
-cap = 4; R = { k: 4, caps: [], one: false, tags: null, lock: -1 }; bottles = makePuzzle(4, 4).b; hid = bottles.map(b => b.map(() => false)); gone = bottles.map(() => false); fade = bottles.map(() => 0); shake = bottles.map(() => 0); layout();
+cap = 4; R = { k: 4, caps: [], one: false, tags: null, lock: -1, tap: null, big: null }; bottles = makePuzzle(4, 4).b; hid = bottles.map(b => b.map(() => false)); gone = bottles.map(() => false); fade = bottles.map(() => 0); shake = bottles.map(() => 0); layout();
 menu();
-window.PRT = { get state() { return state; }, floats: () => floats.map(f => f.text), bottles: () => bottles.map(b => b.slice()), get cap() { return cap; }, rules: () => JSON.parse(JSON.stringify(R)), get lockOpen() { return lockOpen; }, solveNow: () => solveAlive(), tryPour: (i, j) => tryPour(i, j), start: lv => startLevel(lv), hintNow: () => { showHint(); return hint ? [hint.i, hint.j] : null; }, get anim() { return !!anim; }, gone: () => gone.slice(),
+window.PRT = { get state() { return state; }, get sel() { return sel; }, floats: () => floats.map(f => f.text), bottles: () => bottles.map(b => b.slice()), get cap() { return cap; }, rules: () => JSON.parse(JSON.stringify(R)), get lockOpen() { return lockOpen; }, solveNow: () => solveAlive(), tryPour: (i, j) => tryPour(i, j), start: lv => startLevel(lv), hintNow: () => { showHint(); return hint ? [hint.i, hint.j] : null; }, get anim() { return !!anim; }, gone: () => gone.slice(), get levels() { return LEVELS.length; }, get ok() { return !!(puzzle && puzzle.ok); }, melted: () => melts.length, genSpec(spec) { const [c, k, e = 2, m = false, o = {}] = spec, L = { c, k, e, m, small: o.small || 0, one: !!o.one, tag: !!o.tag, lock: !!o.lock, ice: o.ice || 0, bucket: !!o.bucket, tap: o.tap || 0 }; const t0 = performance.now(), p = makePuzzle(c, k, e, L); return { ms: performance.now() - t0, ok: p.ok, tries: p.tries, extra: p.extra }; }, demo: k => demoImg(k),
+  gen(lv) { const L = LV(lv), t0 = performance.now(), p = makePuzzle(L.c, L.k, L.e, L), ms = performance.now() - t0; const rs = p.rs; return { ms, ok: p.ok, tries: p.tries, extra: p.extra, verified: !!solve(p.b, rs, rs.lock < 0, 400000), n: p.b.length, ice: p.b.flat().filter(fz).length, tap: rs.tap ? rs.tap.filter(v => v).length : 0, big: rs.big ? rs.big.filter(v => v).length : 0 }; },
   at(i) { const q = pos[i], rc = cv.getBoundingClientRect(), B = 3, lx = q.cx, ly = q.by - BH(i) / 2 * scale; return { x: rc.left + B + lx * (rc.width - 2 * B) / cv.lw, y: rc.top + B + ly * (rc.height - 2 * B) / cv.lh }; } };
 
 MG.loop(dt => {
@@ -516,6 +732,7 @@ MG.loop(dt => {
   for (const f of floats) f.life -= dt; floats = floats.filter(f => f.life > 0);
   for (let i = 0; i < shake.length; i++) shake[i] = Math.max(0, shake[i] - dt);
   if (hint) { hint.t += dt; if (hint.t > 6) hint = null; }
+  for (const m of melts) m.t += dt; melts = melts.filter(m => m.t < 0.7);
   if (anim) { anim.t += dt; if (anim.t >= 0.86) finishPour(); }
   for (let i = 0; i < fade.length; i++) if (fade[i] > 0 && !gone[i]) { fade[i] += dt / 1.1; if (fade[i] >= 1) { gone[i] = true; } }
   if (state === 'play' && !anim && bottles.every((b, i) => gone[i] || b.length === 0)) win();
