@@ -12,6 +12,8 @@
 <style>
 .tb-main{padding:0;display:block}
 @media (max-width:560px){.tb-bar{gap:5px;padding:0 6px}}
+@media (max-width:430px){.tb-bar{gap:3px;padding:0 4px}.tb-bar .tb-btn{padding:6px 7px;font-size:13px;min-width:0}.tb-bar .tb-btn.icon{padding:6px 6px;min-width:30px}.tb-back{padding:6px 8px}}
+@media (max-width:370px){#tb-mute{display:none}}
 #felt{position:absolute;inset:0;z-index:0;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;
   background:
     radial-gradient(600px 380px at 12% 8%,rgba(255,255,255,.32),transparent 70%),
@@ -149,6 +151,7 @@
   <span class="tb-sp"></span>
   <button class="tb-btn" id="b-mode">玩法</button>
   <button class="tb-btn" id="b-new">新局</button>
+  <button class="tb-btn" id="b-replay" title="用同一副牌從頭再玩一次">重玩</button>
   <button class="tb-btn" id="b-undo">復原</button>
   <button class="tb-btn" id="b-hint">提示</button>
   <button class="tb-btn icon" id="b-info" title="規則與戰績">?</button>
@@ -459,7 +462,7 @@ const K = {
   rules: `<h4>目標</h4><p>把 52 張牌依花色從 A 排到 K，全部送進右上角的四個回收區。</p>
     <h4>怎麼玩</h4><ul><li>下面七疊牌：可以把牌接在<b>顏色不同、點數大一</b>的牌下面（例如黑 9 接在紅 10 下面）。整串翻開的牌可以一起移動。</li>
     <li>空出來的位置只能放 K（或以 K 開頭的一串）。</li><li>左上角的牌堆點一下就翻牌；翻完了再點一下重新翻。</li>
-    <li>用拖曳的方式移動牌：把牌拖到想放的位置再放開。</li><li>點兩下一張牌，可以直接把它收到上面的回收區（能收的話）。</li><li>按「新局」可以選「重玩這一局」，用同一副牌從頭再來一次。</li><li>所有牌都翻開後，會問你要不要自動收完。</li></ul>
+    <li>用拖曳的方式移動牌：把牌拖到想放的位置再放開。</li><li>點兩下一張牌，可以直接把它收到上面的回收區（能收的話）。</li><li>按上方的「重玩」（或「新局」裡的「重玩這一局」），用同一副牌從頭再來一次。</li><li>所有牌都翻開後，會問你要不要自動收完。</li></ul>
     <h4>翻一張 / 翻三張</h4><p>翻三張比較難：每次翻三張，只能用最上面那一張。</p>`,
 };
 
@@ -471,10 +474,10 @@ const S = {
   cards() { const n = (this.st && this.st.suits) || this.opt().suits; return this.cardList(n); },
   cardList(n) { return range(104).map(i => { const set = Math.floor(i / 13); const s = n === 1 ? 0 : n === 2 ? (set % 2 ? 1 : 0) : set % 4; return { s, r: i % 13 + 1 }; }); },
   opt() { return TB.store.get('poker:opt:spider', { suits: 1 }); },
-  fresh(opt) {
+  fresh(opt, deck0) {
     const n = [1, 2, 4].includes(+opt.suits) ? +opt.suits : 1;
-    const deck = shuffle(range(104));
-    const s = { suits: n, stock: [], tab: range(10).map(() => []), up: Array(104).fill(false), done: [], moves: 0, time: 0, counted: false, over: false };
+    const deck = deck0 && deck0.length === 104 ? deck0.slice() : shuffle(range(104));
+    const s = { deck: deck.slice(), suits: n, stock: [], tab: range(10).map(() => []), up: Array(104).fill(false), done: [], moves: 0, time: 0, counted: false, over: false };
     this.dealOrder = []; let k = 0;
     for (let r = 0; r < 6; r++) for (let c = 0; c < 10; c++) { if (r === 5 && c >= 4) continue; s.tab[c].push(deck[k]); this.dealOrder.push(deck[k]); k++; }
     s.tab.forEach(p => s.up[p[p.length - 1]] = true);
@@ -623,11 +626,13 @@ const S = {
     const o = this.opt();
     return TB.dialog({
       title: '蜘蛛紙牌 · 新局', html: '<p>在牌桌上把同一種花色從 K 排到 A，排好的一整串會自動收走，收滿八串就贏了。</p>' + TB.seg('花色', 'suits', [[1, '一種（入門）'], [2, '兩種（中等）'], [4, '四種（困難）']], o.suits),
-      buttons: [{ label: '取消', value: null }, { label: '開始', primary: true, onClick: d => { const v = { suits: +TB.segVal(d, 'suits') }; TB.store.set('poker:opt:spider', v); setTimeout(() => this.start(v), 0); } }]
+      buttons: [{ label: '取消', value: null }].concat(this.canReplay() ? [{ label: '重玩這一局', value: 'replay', onClick: () => { setTimeout(() => this.replay(), 0); } }] : [], [{ label: '開始新的一局', primary: true, onClick: d => { const v = { suits: +TB.segVal(d, 'suits') }; TB.store.set('poker:opt:spider', v); setTimeout(() => this.start(v), 0); } }])
     });
   },
-  start(opt) {
-    this.fresh(opt); this.save(); buildCards(this.cardList(this.st.suits)); this.layout();
+  canReplay() { return !!(this.st && Array.isArray(this.st.deck) && this.st.deck.length === 104); },
+  replay() { if (!this.canReplay()) return; const s = this.st; TB.sfx('click'); this.start({ suits: s.suits }, s.deck); TB.toast('重新發同一局的牌'); },
+  start(opt, deck) {
+    this.fresh(opt, deck); this.save(); buildCards(this.cardList(this.st.suits)); this.layout();
     dealAnim(this.g.x[9], this.g.botY, this.dealOrder);
   },
   resume() { const v = loadSave('poker:spider'); if (v && this.valid(v)) { this.st = v; this.hist = []; return true; } return false; },
@@ -1736,6 +1741,7 @@ function setMode(key, fromUser) {
   cur = MODES[key] || K; TB.store.set('poker:mode', cur.key);
   felt.classList.toggle('v', !!cur.vert);
   document.getElementById('b-undo').disabled = cur === B || !!cur.noUndo;
+  document.getElementById('b-replay').style.display = cur.replay ? '' : 'none';
   hud.textContent = '';
   const had = cur.resume();
   buildCards(cur === S && had ? S.cardList(S.st.suits) : cur.cards());
@@ -1761,6 +1767,12 @@ function chooseMode(first) {
 }
 document.getElementById('b-mode').onclick = () => { TB.sfx('click'); chooseMode(false); };
 document.getElementById('b-new').onclick = () => { TB.sfx('click'); if (!busy) newGame(); };
+document.getElementById('b-replay').onclick = () => {
+  if (!cur || !cur.replay || busy) return; TB.sfx('click');
+  const ok = cur.canReplay ? cur.canReplay() : !!cur.st;
+  if (!ok) { TB.toast('這一局是更新前開始的，從下一局起就能重玩', 2600); return; }
+  TB.dialog({ title: '重玩這一局？', html: '<p>用同一副牌從頭再發一次，目前這局的進度會清掉。</p>', buttons: [{ label: '取消' }, { label: '重玩這一局', primary: true, onClick: () => { setTimeout(() => cur.replay(), 0); } }] });
+};
 document.getElementById('b-undo').onclick = () => cur && cur.undo();
 document.getElementById('b-hint').onclick = () => { if (!cur || busy) return; cur === B ? B.act('hint') : cur.hint(); };
 document.getElementById('b-info').onclick = () => {
