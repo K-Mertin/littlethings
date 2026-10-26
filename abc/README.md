@@ -35,7 +35,7 @@
 | 📚 Stories | 8 本原創小故事書（每本 6～7 頁）：Pip's Hat、The Big Red Bus、Little Duck、Bedtime for Pip、The Hungry Monkey、Rainy Day、Pip at the Farm、The Snowman。Pip 唸的時候字會一個個亮起來，點任何一個字可以聽那個字；讀完回答 3 題（選項順序隨機） |
 | 💬 Talk | 和 Pip 用英文聊天的 14 個情境：打招呼、顏色、動物、點心、數數、天氣、心情、家人、玩具和動作、在哪裡（in／on／next to）、生日派對、早安日常（刷牙、早餐、please／thank you）、穿衣服（冷／熱）、形狀。可以點圖片回答，也可以按 🎤 用說的 |
 | ⭐ Challenge | 進階挑戰：🧩 Spell+（4～5 個字母、有連音的單字，沒有提示字，多 3 個干擾字母）、📖 Reading（只顯示字、不唸出來，自己讀再選圖，選項是長得像的字）、📝 Sentences（聽 Pip 說一句話，把字卡排成句子，多一張干擾字卡）、👂 Listen（聽較長的指令，例如 Find the small blue star.／Find three red hearts.，選出對的圖） |
-| 📒 Stickers | 貼紙簿：11 個主題頁（Island、Under the Sea、Farm、Jungle、Forest、Town、Party、Space、Snow Land、Dino Land、Fairy Tale），共 163 種貼紙，每頁有自己的場景。每完成一輪得到一張，優先補齊正在收集的那一頁（偶爾來自別頁），收齊所有貼紙之前不會重複。頁面下方是這頁的收集欄：沒拿到的是灰色剪影，拿到的可以拖到頁面上（或點一下自動貼上），頁面上的貼紙可以拖著移動，拖回收集欄就收起來。點貼紙會唸出英文。收齊一頁 Pip 會恭喜、頁籤變 ⭐。舊版小島上的貼紙會自動搬到對應的主題頁 |
+| 📒 Stickers | 貼紙簿：13 個主題頁（Island、Under the Sea、Mermaid Lagoon、Farm、Garden、Jungle、Forest、Town、Party、Space、Snow Land、Dino Land、Fairy Tale），共 193 種貼紙，每頁有自己的場景。每完成一輪得到一張，優先補齊正在收集的那一頁（偶爾來自別頁），收齊所有貼紙之前不會重複。頁面下方是這頁的收集欄：沒拿到的是灰色剪影，拿到的可以拖到頁面上（或點一下自動貼上），頁面上的貼紙可以拖著移動，拖回收集欄就收起來。點貼紙會唸出英文。收齊一頁 Pip 會恭喜、頁籤變 ⭐。舊版小島上的貼紙會自動搬到對應的主題頁；之後調整分類時，已貼上的貼紙也會跟著搬到新的頁 |
 
 任何時候點 Pip，他會再說一次題目。
 
