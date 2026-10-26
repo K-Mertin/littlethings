@@ -21,7 +21,7 @@ function rr(g, x, y, w, h, r) {
 }
 function ell(g, x, y, rx, ry) { g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); }
 function radial(g, x, y, r, c0, c1, ox, oy) {
-  const gr = g.createRadialGradient(x + (ox || -0.35) * r, y + (oy || -0.4) * r, r * 0.1, x, y, r * 1.1);
+  const gr = g.createRadialGradient(x + (ox == null ? -0.35 : ox) * r, y + (oy == null ? -0.4 : oy) * r, r * 0.1, x, y, r * 1.1);
   gr.addColorStop(0, c0); gr.addColorStop(1, c1); return gr;
 }
 function lin(g, x0, y0, x1, y1, stops) { const gr = g.createLinearGradient(x0, y0, x1, y1); stops.forEach((c, i) => gr.addColorStop(i / (stops.length - 1), c)); return gr; }
@@ -328,15 +328,6 @@ const DECOR_SIZE = { tree: [3.2, 3.6], bush: [1.6, 1.2], flower: [1.8, 1.0], roc
 
 function buildArt() {
   const SH = 112;
-  ART.soldier = [0, 1, 2].map(f => mk(Math.round(SH * 0.6), SH, (g, w, h) => drawSoldier(g, w, h, f)));
-  const enemy = (fn, w, h) => {
-    const fr = [0, 1].map(f => mk(w, h, (g, W, H) => fn(g, W, H, f)));
-    return { fr, fl: fr.map(flashOf) };
-  };
-  ART.grunt = enemy(drawGrunt, 128, 128);
-  ART.runner = enemy(drawRunner, 104, 112);
-  ART.brute = enemy(drawBrute, 220, 210);
-  ART.shield = enemy(drawShield, 128, 136);
   ART.barrel = mk(96, 112, drawBarrel);
   ART.decor = {};
   for (const k in DECOR) {
@@ -344,4 +335,6 @@ function buildArt() {
     const H = k === 'building' ? 220 : 150, W = Math.round(H * ww / hh);
     ART.decor[k] = [0, 1, 2].map(v => mk(W, H, (g, w, h) => DECOR[k](g, w, h, v)));
   }
+  if (typeof buildChars === 'function') buildChars();
+  if (typeof buildScene === 'function') buildScene();
 }
