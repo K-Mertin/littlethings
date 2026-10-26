@@ -8,8 +8,8 @@
 首頁分成四區，往下滑可以看到全部活動，每個遊戲都一按就開始（沒有「Games」「Challenge」這種中間選單）：
 
 - 🔤 **Letters**：Write、Phonics、First Letter、Big & Small、ABC Order、What's Missing?
-- 🧩 **Words**：Things（19 組名詞，進去選一組）、Actions、Describing、Spell、Spell+ ⭐、Blends、Magic e ⭐、Sight Words、Sight Words 2 ⭐、Rhyme、Opposites
-- 📝 **Sentences**：a or an?、He / She / They、How?、What can it do?、Where is it?、One or many?、Is or are?、What, Who, Where?、Big, bigger, biggest ⭐、Stories、Reading ⭐、Sentences ⭐、Listen ⭐
+- 🧩 **Words**：Things（19 組名詞，進去選一組）、Actions、Describing、Spell、Spell+ ⭐、Blends、Magic e ⭐、ee, oa, ai ⭐、Sight Words、Sight Words 2 ⭐、Sight Words 3 ⭐、Rhyme、Opposites
+- 📝 **Sentences**：a or an?、He / She / They、How?、What can it do?、Where is it?、One or many?、Is or are?、What, Who, Where?、Big, bigger, biggest ⭐、This or that?、Can or can't?、Yesterday ⭐、Stories、Reading ⭐、Sentences ⭐、Listen ⭐
 - 🎉 **Play**：Talk、Memory、Simon Says、Stickers
 
 ⭐ 是比較難的挑戰；玩過的格子右上角有 ✔。從遊戲回到首頁會停在原本滑到的位置。
@@ -25,6 +25,10 @@
 | 📝 句型（2026-10 新增） | 都是填空句子，Pip 唸句子和選項，每組都有 📖 Learn：**One or many?**（one cat / three cats，看圖上有幾個）、**Is or are?**（The dog is… / The dogs are…）、**What, Who, Where?**（東西用 what、人用 who、地方用 where，答句一起唸）、**Big, bigger, biggest**（同一樣東西由小排到大，👇 指著的那個要選 big / bigger / the biggest；也有 small / smaller / the smallest） |
 | ✨ Magic e | 進階自然發音：字尾加 e，母音唸成字母名（cap → cape、pin → pine、kit → kite、cub → cube…）。看圖選字；Learn 會一組一組示範「Cap. Add a magic e. Cape!」 |
 | 👀 Sight Words 2 | 第二級常見字 30 個（are、was、they、have、with、what、this、that…），玩法同 Sight Words |
+| 📝 句型第三批 | **This or that?**（小孩旁邊的是 this，路的另一頭變小的是 that）、**Can or can't?**（A fish can swim. / A fish can't fly.，角落小圖示意動作）、**Yesterday**（過去式 -ed：Yesterday I played. / Today I play.，圖上有 Yesterday / Today 標籤）。每組都有 📖 Learn |
+| 🐐 ee, oa, ai | 母音組合：看圖，單字中間空兩格（b __ t），選 ee / oa / ai。Pip 唸單字再唸選項的兩個字母。Learn 一次教一組（bee、tree、feet…） |
+| 👀 Sight Words 3 | 第三級常見字 30 個（after、again、could、every、know、thank、when…） |
+| 📚 第二級故事書 ⭐ | The Lost Kitten、Pip's Garden、The Big Race：每本 8 頁，句子比較長、用到 Sight Words 2 的字，書單上標 ⭐ |
 | 📖 Learn | 先教再玩。Words 每一組（含 Actions、Describing）、Sentences 區的五組填空，和 Rhyme、Opposites、Big & Small，進到遊戲後上方有「📖 Learn」按鈕（不會自動跳出）。上課照「我說、一起說、你來」：一次一張大圖＋字，Pip 唸出來，再說「Say it with me!」（點圖可以再聽，按 🎤 可以跟著唸，Pip 會回應）；每教 3～4 個，就用剛教的內容出 1～2 題小確認（答錯會唸出選到的是什麼，錯兩次提示答案）。教完按 ▶️ Play 直接進遊戲，🔁 再上一次。一次教 8 個，下次打開接著教後面的 |
 | 🎲 Games | 小遊戲區（7 個）：🎵 Rhyme 押韻（22 組字族）、🃏 Memory 翻牌（任一組單字的 6 對圖）、🙋 Simon Says（聽指令點身體部位）、↔️ Opposites 相反詞（12 組）、❓ What's Missing?（看圖補字母，多半是中間的母音）、🔡 ABC Order（「a b _」接下一個字母）、🅰️ Big & Small（大寫配小寫，常混入 b/d/p/q 這類長得像的字母） |
 | 👀 Sight Words | 常見字（I、the、see、can、like…共 30 個）：先看字、聽 Pip 唸，再從三張字卡找出來；之後只聽不看再找一次。答對會聽到一句用到這個字的例句 |
