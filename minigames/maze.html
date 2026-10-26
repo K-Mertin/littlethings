@@ -754,6 +754,17 @@ function slide(dScreen) {
     k = nk;
   }
 }
+// the arrow pad / arrow keys: exactly one cell per press (hold the pad to keep walking)
+function step1(dScreen) {
+  if (state !== 'play') return;
+  idleT = 0;
+  const k = canonDir(dScreen), cur = headCell(), hs = headState();
+  if (hs.d < 4 && k !== hs.d) return;                         // sliding on ice: can't steer
+  if (queue.length > 1) return;                               // still walking: don't pile up steps
+  const why = whyNot(cur, k);
+  if (why) { bump(dScreen, why, cur, k); return; }
+  stepTo(nb(cur, k));
+}
 function bump(d, why, at, k) {
   bumpT = 0.25; bumpD = d; MG.sfx('tick');
   if (!why || why === 'wall' || lockMsgT > 0 || at == null) return;
@@ -856,7 +867,9 @@ function collect(i) {
     hud();
   }
 }
+let padHold = null;
 function update(dt) {
+  if (padHold) { if (state !== 'play' || MG.panelOpen()) padHold = null; else if ((padHold.t -= dt) <= 0) { padHold.t = 0.15; if (!queue.length) step1(padHold.d); } }
   if (state === 'play' && !MG.panelOpen()) { elapsed += dt; idleT += dt; }
   if (nxt < 0 && queue.length && state === 'play') { nxt = queue.shift(); tt = 0; }
   updMoo(dt); updSnail();
@@ -945,7 +958,7 @@ function hitButton(p) {
 }
 function pressButton(b) {
   pressed = b; pressT = 0.15;
-  if (b.id === 'hint') useHint(); else if (b.id === 'fresh') pressFresh(); else if (b.id === 'pad') slide(b.d);
+  if (b.id === 'hint') useHint(); else if (b.id === 'fresh') pressFresh(); else if (b.id === 'pad') step1(b.d);
 }
 function playerXY() {
   const a = center(pos);
@@ -984,7 +997,7 @@ stageEl.addEventListener('pointerdown', e => {
   const p = cv.logical(e);
   const b = hitButton(p);
   e.preventDefault();
-  if (b) { pressButton(b); return; }
+  if (b) { pressButton(b); if (b.id === 'pad') padHold = { id: e.pointerId, d: b.d, t: 0.32 }; return; }
   const near = isNear(p);
   drag = { id: e.pointerId, mode: near ? 'drag' : 'pend', sx: e.clientX, sy: e.clientY, t0: performance.now(), moved: 0 };
   try { stageEl.setPointerCapture(e.pointerId); } catch {}
@@ -996,6 +1009,7 @@ stageEl.addEventListener('pointermove', e => {
   if (drag.mode === 'drag' && state === 'play' && slideDir < 0) { idleT = 0; dragFollow(cv.logical(e)); }
 });
 function ptrEnd(e, ok) {
+  if (padHold && e.pointerId === padHold.id) { padHold = null; return; }
   if (!drag || e.pointerId !== drag.id) return;
   const d = drag; drag = null;
   if (!ok || state !== 'play') return;
@@ -1020,7 +1034,7 @@ stageEl.addEventListener('pointercancel', e => ptrEnd(e, false));
 addEventListener('keydown', e => {
   if (state !== 'play' || MG.panelOpen()) return;
   const k = e.key, d = { ArrowRight: 0, d: 0, D: 0, ArrowDown: 1, s: 1, S: 1, ArrowLeft: 2, a: 2, A: 2, ArrowUp: 3, w: 3, W: 3 }[k];
-  if (d != null) { e.preventDefault(); slide(d); }
+  if (d != null) { e.preventDefault(); step1(d); }
   else if (k === 'h' || k === 'H') { e.preventDefault(); useHint(); }
 });
 
@@ -1774,7 +1788,7 @@ function menu() {
     ],
     modes: [{ id: 'slow', label: '🐢 慢慢走', sub: '不計時、提示用不完' }, { id: 'timed', label: '⏱ 計時挑戰', sub: '看看幾秒走到' }],
     levels: { count: LEVELS, max: LEVELS, label: n => { const th = thOf(n), F = FEAT[n]; return F ? `${n} ${FMARK(F)} ${FLONG(F)}・${th.nm}` : `${n} ${th.ic} ${th.nm}`; }, short: n => `${n}${FMARK(FEAT[n])}` },
-    keys: '按住噗噗拖著走、點一下格子、滑一下　電腦：<kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd> 走到路口、<kbd>H</kbd> 提示',
+    keys: '按住噗噗拖著走、點一下格子、滑一下　電腦：<kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd> 走一步、<kbd>H</kbd> 提示',
     playing: () => state === 'play',
     start: (m, lv, pk) => { mode = m; tapOn = !pk || pk.tap !== 'off'; fogOn = !!pk && pk.fog === 'on'; startLevel(lv); },
   });
