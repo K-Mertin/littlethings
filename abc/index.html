@@ -152,6 +152,8 @@ main{flex:1;min-height:0;position:relative}
 #rhPic small{font-size:.2em}
 #rhCards .card .lab,#sqCards .card .lab{font-size:clamp(18px,3.4vmin,32px)}
 .rword.ear{font-family:var(--emoji)}
+.rword.sent{font-size:clamp(30px,6.4vmin,64px);padding:.3em .6em;max-width:92vw;text-align:center}.rword .hl{color:var(--purple);border-bottom:.08em solid var(--purple)}
+.rword.flip{animation:rflip .35s ease}@keyframes rflip{from{transform:rotateY(90deg)}}
 button.rword{border:none;cursor:pointer}
 #storyPick{align-items:center;justify-content:center}
 #sbPacks{grid-template-columns:repeat(4,1fr)}
@@ -169,6 +171,11 @@ button.rword{border:none;cursor:pointer}
 #rhCards .card .spk{position:absolute;top:6px;right:6px;width:44px;height:44px;border-radius:50%;background:#eef2ff;display:flex;align-items:center;justify-content:center;
   font-family:var(--emoji);font-size:22px;line-height:1}
 /* Words: 🔊 sits under the word, so it never covers the letters */
+#lnOpts .card.word.hasspk{height:auto;padding:10px 8px 8px;gap:6px}
+.card.word .spk{width:52px;height:40px;border-radius:20px;background:#eef2ff;display:flex;align-items:center;justify-content:center;font-family:var(--emoji);font-size:22px;line-height:1;flex:0 0 auto}
+.wtile.hasspk{display:inline-flex;flex-direction:column;align-items:center;gap:6px;padding-bottom:8px}
+.wtile .spk{width:46px;height:32px;border-radius:16px;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;font-family:var(--emoji);font-size:18px;line-height:1}
+.wtile.used .spk{visibility:hidden}
 #mCards .card.word{height:auto;min-height:clamp(110px,19vmin,180px);padding:10px 8px 8px;gap:6px}
 #mCards .card.word .spk{width:52px;height:40px;border-radius:20px;background:#eef2ff;display:flex;align-items:center;justify-content:center;
   font-family:var(--emoji);font-size:22px;line-height:1;flex:0 0 auto}
@@ -1462,6 +1469,14 @@ Screens.spell = {
 };
 $('#bPic').onclick = () => { const it = SP.list[SP.i]; if (it) say(it[0] + '.'); };
 
+// a 🔊 inside an answer button: it says the word and does not answer, for children who know a word by ear but cannot read it yet
+function addSpk(b, line) {
+  const k = el('span', 'spk', '🔊'); k.setAttribute('aria-label', 'Listen'); k.setAttribute('role', 'button');
+  const go = e => { e.stopPropagation(); e.preventDefault(); SFX.pop(); say(line); };
+  k.addEventListener('pointerdown', e => e.stopPropagation()); k.onclick = go;
+  b.appendChild(k); b.classList.add('hasspk');
+  return b;
+}
 /* ---------------- words: find the picture ---------------- */
 const MT = { pack: null, q: [], i: 0, total: 8, busy: false };
 const article = (it, pack) => pack.kind || it[2] === 2 ? it[0] : it[2] ? `some ${it[0]}` : (/^[aeiou]/.test(it[0]) ? 'an ' : 'a ') + it[0];
@@ -2130,9 +2145,10 @@ function sentAsk() {
   const extra = shuffle(SENTS.flatMap(([t]) => t.split(' ').map(bare)).filter(x => !have.has(x) && x !== 'I'))[0];
   const tiles = $('#stTiles'); tiles.innerHTML = '';
   shuffle([...ST.words.map((t, i) => [t, i]), [extra, -1]]).forEach(([t, i], k) => {
-    const b = el('button', 'wtile', esc(t)); const [c, d] = BUB[k % BUB.length];
+    const b = el('button', 'wtile', `<span class="wt">${esc(t)}</span>`); const [c, d] = BUB[k % BUB.length];
     b.style.setProperty('--c', c); b.style.setProperty('--d', d); b.dataset.i = i; b.dataset.w = bare(t);
     b.onclick = () => sentTap(b, f);
+    addSpk(b, `${cap(bare(t))}.`);
     tiles.appendChild(b);
   });
   Pip.again = () => say(['Listen.', 300, text]);
@@ -2330,22 +2346,34 @@ function swMake() {
   const review = shuffle([...learn, ...shuffle(old).slice(0, 2)]).slice(0, 5);
   return [...learn.map(it => ({ it, learn: true })), ...review.map(it => ({ it, learn: false }))];
 }
-function swAsk() {
-  const f = flow, { it, learn } = SW.q[SW.i], [w] = it;
+// the example sentence with the new word marked
+const swMark = (ex, w) => esc(ex).replace(new RegExp(`(^|[^A-Za-z'])(${w})(?![A-Za-z])`, 'i'), '$1<b class="hl">$2</b>');
+async function swAsk() {
+  const f = flow, { it, learn } = SW.q[SW.i], [w, ex] = it;
   setProg(SW.q.length, SW.i); SW.wrong = 0; SW.busy = false;
-  // learning: the word is shown big; review: only heard
-  $('#swWord').textContent = learn ? w : '👂';
-  $('#swWord').classList.toggle('ear', !learn);
-  const near = SW.list.filter(x => x[0] !== w).sort((a, b) => Math.abs(a[0].length - w.length) - Math.abs(b[0].length - w.length));
-  const opts = shuffle([it, ...shuffle(near.slice(0, 8)).slice(0, 2)]);
+  // choices: words that look like it (same length, same letters in the same places), from every level
+  const opts = shuffle([it, ...lookAlike(w, [...SIGHT, ...SIGHT2, ...SIGHT3], 2)]);
   const box = $('#swCards'); box.innerHTML = '';
   for (const o of opts) {
     const b = el('button', 'card word', `<span class="wtxt">${esc(o[0])}</span>`); b.dataset.w = o[0];
     b.onclick = () => swTap(b, o, it, f);
     box.appendChild(b);
   }
+  const card = $('#swWord');
   Pip.again = () => say(`Find the word ${w}.`);
-  say(learn ? [`This word is ${w}.`, 500, `Find the word ${w}.`] : `Find the word ${w}.`);
+  if (!learn) {
+    // review: only heard
+    card.textContent = '👂'; card.className = 'rword ear'; box.style.visibility = '';
+    say(`Find the word ${w}.`); return;
+  }
+  // a new word: first meet it in a sentence, then it is covered and the child finds it from memory
+  card.innerHTML = swMark(ex, w); card.className = 'rword sent'; box.style.visibility = 'hidden';
+  Pip.again = () => say([ex, 400, `This word is ${w}.`]);
+  if (!await say([ex, 400, `This word is ${w}.`])) return;
+  await sleep(900); if (!live(f) || SW.q[SW.i].it !== it) return;
+  card.textContent = '❓'; card.className = 'rword ear flip'; box.style.visibility = '';
+  Pip.again = () => say(`Find the word ${w}.`);
+  say(`Find the word ${w}.`);
 }
 async function swTap(b, o, it, f) {
   if (SW.busy || !live(f)) return;
@@ -2353,7 +2381,7 @@ async function swTap(b, o, it, f) {
   if (o === it) {
     SW.busy = true; SFX.ding(); b.classList.add('right'); confetti(...centerOf(b), 8);
     if (!SW.wrong) { S.sw[w] = (S.sw[w] || 0) + 1; save(); }
-    $('#swWord').textContent = w; $('#swWord').classList.remove('ear');
+    $('#swWord').innerHTML = swMark(ex, w); $('#swWord').className = 'rword sent';
     await say([`Yes! ${w}.`, 300, ex], `Yes! ${w}. ${ex}`); if (!live(f)) return;
     SW.i++;
     if (SW.i >= SW.q.length) { setProg(SW.q.length, SW.q.length); reward('home'); } else swAsk();
@@ -2994,9 +3022,10 @@ function fgAsk() {
   $('#fgSent').classList.toggle('tight', !!q.tight);
   const box = $('#fgCh'); box.innerHTML = '';
   q.opts.forEach((o, i) => {
-    const b = el('button', 'wtile', esc(o)); const [c, d] = BUB[(FG.i + i) % BUB.length];
-    b.style.setProperty('--c', c); b.style.setProperty('--d', d);
+    const b = el('button', 'wtile', `<span class="wt">${esc(o)}</span>`); const [c, d] = BUB[(FG.i + i) % BUB.length];
+    b.style.setProperty('--c', c); b.style.setProperty('--d', d); b.dataset.w = o;
     b.onclick = () => fgTap(b, o, q, f);
+    addSpk(b, q.optSay ? q.optSay(o) : `${cap(o)}?`);
     box.appendChild(b);
   });
   Pip.again = () => fgRead(q, f);
@@ -3014,7 +3043,7 @@ async function fgTap(b, o, q, f) {
   } else {
     SFX.soft(); b.classList.remove('shake'); void b.offsetWidth; b.classList.add('shake');
     FG.wrong++;
-    if (FG.wrong >= 2) $$('#fgCh .wtile').forEach(x => x.classList.toggle('glow', x.textContent === q.ans));
+    if (FG.wrong >= 2) $$('#fgCh .wtile').forEach(x => x.classList.toggle('glow', x.dataset.w === q.ans));
     say([q.optSay ? q.optSay(o) : `${cap(o)}?`, 300, 'Hmm, not that one. Try again!']);
   }
 }
@@ -3133,7 +3162,7 @@ const FILL_LESSONS = {
   },
   team: () => TEAMS.map(([t, words]) => {
     const ws = shuffle(words).slice(0, 3), [a, b] = t;
-    return { intro: { pic: `<span class="lt">${t}</span>`, word: '', lines: [`${L(a)}, ${L(b)}. ${ws.map(([w]) => cap(w)).join(', ')}!`] },
+    return { intro: { pic: `<span class="lt">${t}</span>`, word: '', lines: [`${L(a)}, ${L(b)}. ${words.slice(0, 3).map(([w]) => cap(w)).join(', ')}!`] },
       items: ws.map(([w, e]) => ({ pic: lnPic(e), word: w.replace(t, B(t)), lines: [`${cap(w)}.`], rep: `${cap(w)}!`, keys: [w] })),
       checks: [(() => { const [w, e] = pick(ws), opts = ['ee', 'oa', 'ai'];
         return { pic: lnPic(e), line: [`${cap(w)}.`, 400, 'Which letters?'], opts: opts.map(o => ({ html: lnTxt(o), word: o, that: [`${L(o[0])}, ${L(o[1])}.`] })), ans: opts.indexOf(t), right: ['Yes!', 200, `${cap(w)}.`] }; })()] };
@@ -3272,6 +3301,7 @@ function lnCheck(c, f) {
   c.opts.forEach((o, i) => {
     const b = el('button', 'card' + (o.word ? ' word' : ''), o.html);
     b.onclick = () => lnTap(b, i, c, f);
+    if (o.word && o.that) addSpk(b, o.that);
     box.appendChild(b);
   });
   Pip.again = () => say(c.line);
