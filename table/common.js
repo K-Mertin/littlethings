@@ -131,6 +131,19 @@
     }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wireBar); else wireBar();
+  // 網址列收合/展開時，看得到的高度會變：通知各遊戲重新排版
+  // --appH = 實際看得到的高度（舊版瀏覽器不支援 dvh 時也正確）
+  const setAppH = () => { try { document.documentElement.style.setProperty('--appH', Math.round(window.innerHeight) + 'px'); } catch (e) {} };
+  setAppH();
+  addEventListener('resize', setAppH);
+  addEventListener('orientationchange', () => setTimeout(() => { setAppH(); dispatchEvent(new Event('resize')); }, 250));
+  if (window.visualViewport) {
+    let vvH = visualViewport.height, vvT = 0;
+    visualViewport.addEventListener('resize', () => {
+      if (Math.abs(visualViewport.height - vvH) < 2) return; vvH = visualViewport.height;
+      clearTimeout(vvT); vvT = setTimeout(() => { setAppH(); dispatchEvent(new Event('resize')); }, 60);
+    });
+  }
   // 第一次互動時解鎖音效（iOS）
   addEventListener('pointerdown', () => ctx(), { once: true });
 
