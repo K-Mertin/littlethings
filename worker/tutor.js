@@ -7,7 +7,7 @@
 const LIMITS = { perIpHour: 300, perDay: 4000 };
 const GAMES = {
   math: {
-    who: '「123 小島」數學遊戲裡的小黑熊「小黑」',
+    who: '「123 小島」數學遊戲裡的小白兔「小白」',
     kid: '5 歲左右、剛開始學數數和 10 以內加減的小朋友',
   },
 };
@@ -44,7 +44,7 @@ export async function handleTutor(request, env, allow) {
     body: JSON.stringify({
       model: (env.TUTOR_MODEL || env.CLAUDE_MODEL || 'claude-haiku-5-5').trim(), max_tokens: 1024,   // 模型可能先思考，留足空間；字數由提示詞限制
       system: system(g),
-      messages: [{ role: 'user', content: `課程：${lesson || '（未提供）'}\n題目（小黑剛剛念的）：${question}\n正確答案：${right}\n孩子選的：${picked}` }],
+      messages: [{ role: 'user', content: `課程：${lesson || '（未提供）'}\n題目（小白剛剛念的）：${question}\n正確答案：${right}\n孩子選的：${picked}` }],
     }),
   });
   if (!res.ok) {
