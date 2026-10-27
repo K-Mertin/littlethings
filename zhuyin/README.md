@@ -55,14 +55,10 @@
   ```sh
   node tools/lines.js > audio/phrases.tsv
   python3 -m pip install --user edge-tts
-  python3 tools/record.py audio/phrases.tsv audio            # 只錄還沒有的句子（跳過混音句）
-  python3 tools/record_mix.py audio/phrases.tsv audio        # 有 ㄖㄩㄛㄜㄝㄟㄦ 的句子（雲哲＋曉臻片段）
+  python3 tools/record.py audio/phrases.tsv audio            # 只錄還沒有的句子（有注音的用曉臻，其他用雲哲）
   python3 tools/record.py audio/phrases.tsv audio zh-TW-HsiaoYuNeural   # 換聲音要先刪掉舊音檔
   ```
-- 單獨的注音怎麼念，是 MK 2026-10-26／27 用試聽頁一個一個聽過選的：
-  - ㄠㄡㄢ：雲哲直接念不自然（常常句子第一個念怪），送去錄音前換成同音字（凹、歐、安，見 `data.js` 的 `spoken()`）；`audio/phrases.tsv` 存的是實際送去念的文字
-  - ㄖㄩㄛㄜㄝㄟㄦ：雲哲不管念符號還是同音字都怪，改用曉臻（zh-TW-HsiaoChenNeural）念的片段（`tools/clips/`）。有這 7 個符號的句子用 `tools/record_mix.py` 錄：其他部分是雲哲，接上曉臻的片段
-  - 其他符號（包括 ㄅㄆㄇ）直接念
+- 有注音符號的句子（約 1,089 句）由 **曉臻（zh-TW-HsiaoChenNeural，語速 +0%）** 直接念注音，其他句子由雲哲念。MK 2026-10-26／27 用試聽頁比過：雲哲念單獨注音（ㄅㄆ、ㄖㄩㄛㄜㄝㄟㄦ…）不自然，換同音字或男女聲接在同一句也怪。`tools/record.py` 依句子有沒有注音自動選聲音。
 - 結合韻不直接把「ㄧㄚ」丟給語音（有幾個會念得不準），而是用同音的一聲字代替（ㄧㄚ 念「鴨」、ㄩㄥ 念「雍」），畫面上還是顯示注音。台詞物件是 `{ text: 念的字, show: 泡泡顯示的字 }`。
 - **授權注意**：edge-tts 用的是 Edge「大聲朗讀」的服務，不是有授權的 Azure API。正式公開前打算改用 Azure AI Speech（同一個聲音）重錄。
 
