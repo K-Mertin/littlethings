@@ -637,12 +637,9 @@
   }
 
 
-  // 念法是 MK 2026-10-26／27 用試聽頁一個一個選的：
-  // ㄠㄡㄢ 雲哲直接念不自然，改念同音字；ㄅㄆㄇ 等其他符號直接念（之前改念玻坡摸反而怪）。
-  // ㄖㄩㄛㄜㄝㄟㄦ 雲哲怎麼念都怪，錄音時這幾個換成曉臻念的片段（tools/record_mix.py），句子其他部分還是雲哲。
-  const SPEAK_AS = { 'ㄠ': '凹', 'ㄡ': '歐', 'ㄢ': '安' };
-  const MIX_SYMS = 'ㄖㄩㄛㄜㄝㄟㄦ';
-  const spoken = t => t.replace(/[ㄠㄡㄢ]/g, c => SPEAK_AS[c]);
+  // 有注音符號的句子由曉臻（zh-TW-HsiaoChenNeural，語速 +0%）直接念，其他句子由雲哲念（MK 2026-10-27 試聽後決定：
+  // 雲哲念單獨注音不自然、男女聲接在同一句又很怪）。錄音時 tools/record.py 依 ZY_RE 選聲音。
+  const spoken = t => t;
 
   // FNV-1a 32-bit，音檔檔名
   function hash(text) {
@@ -653,7 +650,7 @@
   }
 
   const ZY = { SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, SENTS, PASSAGES, LESSONS, PRACTICE, ADVANCED, ADV_AFTER, PAIRS, NEUTRAL_WORDS, ORDER_SENTS, THEMES, themeWords, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
-    TONE_NAMES, TONE_MARKS, parseSyl, syllables, P, allLines, hash, symOf, spoken, MIX_SYMS, TIPS, teachWords, strokeCount };
+    TONE_NAMES, TONE_MARKS, parseSyl, syllables, P, allLines, hash, symOf, spoken, TIPS, teachWords, strokeCount };
   if (typeof module !== 'undefined' && module.exports) module.exports = ZY;
   else root.ZY = ZY;
 })(typeof window !== 'undefined' ? window : globalThis);

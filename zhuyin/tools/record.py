@@ -3,7 +3,8 @@
     python3 -m pip install --user edge-tts
     python3 tools/record.py audio/phrases.tsv audio [聲音] [語速]
 
-預設聲音 zh-TW-YunJheNeural（雲哲），語速 +5%。
+預設聲音 zh-TW-YunJheNeural（雲哲），語速 +5%；有注音符號的句子改用 zh-TW-HsiaoChenNeural（曉臻），語速 +0%
+（MK 2026-10-27 決定：雲哲念單獨注音不自然）。給了聲音參數就全部用那個聲音。
 錄完用 ffmpeg 剪掉前後靜音，存成 audio/<id>.mp3。
 """
 import asyncio, os, subprocess, sys, tempfile
@@ -13,11 +14,13 @@ if os.environ.get("TTS_CA"):
     _c._SSL_CTX = ssl.create_default_context(cafile=os.environ["TTS_CA"])
 
 tsv, outdir = sys.argv[1], sys.argv[2]
-voice = sys.argv[3] if len(sys.argv) > 3 else 'zh-TW-YunJheNeural'
-rate = sys.argv[4] if len(sys.argv) > 4 else '+5%'
+import re
+ZY = re.compile('[\u3105-\u3129]')
+def voice_of(t):
+    if len(sys.argv) > 3: return sys.argv[3], (sys.argv[4] if len(sys.argv) > 4 else '+5%')
+    return ('zh-TW-HsiaoChenNeural', '+0%') if ZY.search(t) else ('zh-TW-YunJheNeural', '+5%')
 rows = [l.rstrip('\n').split('\t', 1) for l in open(tsv, encoding='utf-8') if l.strip()]
 todo = [(i, t) for i, t in rows if not os.path.exists(os.path.join(outdir, i + '.mp3'))]
-todo = [(i, t) for i, t in todo if not any(c in t for c in 'ㄖㄩㄛㄜㄝㄟㄦ')]   # 這些句子用 record_mix.py
 print(f'{len(rows)} 句，要錄 {len(todo)} 句')
 
 def trim(src, dst):
@@ -31,7 +34,7 @@ async def one(i, t, sem):
         tmp = tempfile.mktemp(suffix='.mp3')
         for k in range(4):
             try:
-                await asyncio.wait_for(edge_tts.Communicate(t, voice, rate=rate).save(tmp), 40)
+                await asyncio.wait_for(edge_tts.Communicate(t, *voice_of(t)[:1], rate=voice_of(t)[1]).save(tmp), 40)
                 if os.path.getsize(tmp) > 0:
                     trim(tmp, os.path.join(outdir, i + '.mp3')); os.remove(tmp); return
             except Exception as e:
