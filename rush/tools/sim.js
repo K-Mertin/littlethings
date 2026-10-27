@@ -4,8 +4,8 @@ const dir = path.join(__dirname, '..', 'js');
 const ctx = { console, Math, JSON, localStorage: { getItem() { return null; }, setItem() { } } };
 vm.createContext(ctx);
 const src = ['core.js', 'levels.js', 'game.js'].map(f => fs.readFileSync(path.join(dir, f), 'utf8')).join('\n;\n') +
-  '\n;this.api={newGame,step,get G(){return G},WEAPONS,genDps,ROAD,LV_MAX};';
-vm.runInContext(src, ctx);
+  '\n;this.api={newGame,step,get G(){return G},WEAPONS,genDps,ROAD,LV_MAX,get LOSS(){return LOSS}};';
+vm.runInContext('var LOSS={};' + src.replace('function setN(n, why) {', 'function setN(n, why) { if (n < G.N) LOSS[why] = (LOSS[why] || 0) + (G.N - n);'), ctx);
 const A = ctx.api;
 
 const policy = process.argv[2] || 'smart';
@@ -24,6 +24,7 @@ function gateVal(G, g) {
 }
 
 const G_boss = r => r.bossT0 != null;
+const LOSSLOG = process.env.LOSSLOG ? {} : null;
 function play(s, seed) {
   A.newGame(s, { sim: true, seed, up: { men: upL, dmg: upL, rate: upL } });
   let G = A.G;
@@ -35,7 +36,7 @@ function play(s, seed) {
     let next = null;
     for (const o of G.objs) if (o.t === 'gate' && !o.pair.used && o.z > -0.5 && (!next || o.z < next.z)) next = o;
     let tx = 0;
-    if (next) {
+    if (next && next.pair.n === 2) {
       const pair = G.objs.filter(o => o.t === 'gate' && o.pair === next.pair);
       if (!choice.has(next.pair.id) || policy === 'smart') {
         let side;
@@ -49,11 +50,45 @@ function play(s, seed) {
     // 像真人一樣：門還遠的時候，先把部隊帶到前面敵人最多的地方開槍
     if (policy !== 'still') {
       let sw = 0, sx = 0, nearZ = 1e9;
-      for (const o of G.objs) if ((o.t === 'en' || o.t === 'boss') && !o.dead && o.z > 0 && o.z < 30) { const w = o.hp / Math.max(1, o.z); sw += w; sx += w * o.x; nearZ = Math.min(nearZ, o.z); }
+      for (const o of G.objs) if ((o.t === 'en' || o.t === 'boss' || o.t === 'crate') && !o.dead && o.z > 0 && o.z < 30) { const w = (o.t === 'crate' ? o.hp * 2 : o.hp) / Math.max(1, o.z); sw += w; sx += w * o.x; nearZ = Math.min(nearZ, o.z); }
       if (sw > 0 && (!next || next.z > nearZ + 4)) tx = Math.max(-3.6, Math.min(3.6, sx / sw));
+      if (next && next.pair.n === 1) {
+        // 會動的門：算好到達時門在哪
+        const v = G.scroll ? G.spd : 0.001, T = next.z / v;
+        if (next.z < 22) tx = next.slide.cx + next.slide.amp * Math.sin((G.t + T) * next.slide.f + next.slide.ph);
+      }
+      if (next && next.roul && next.z < 12) {
+        // 轉盤門：挑到達時比較好的那一邊
+        const v = G.scroll ? G.spd : 0.001, T = next.z / v;
+        let bestSide = 0, bestV = -1e9;
+        for (const o of G.objs) if (o.t === 'gate' && o.pair === next.pair) {
+          const r = o.roul; const steps = Math.floor((r.t + T) / r.per); const g = r.vals[(r.i + steps) % r.vals.length];
+          const val = gateVal(G, g); if (val > bestV) { bestV = val; bestSide = o.side; }
+        }
+        tx = bestSide * A.ROAD / 2;
+      }
+      // 危險：刀鋸、尖刺、紅圈
+      const cr = { rx: 0.3 * Math.sqrt(Math.min(64, G.N) + 0.6) + 0.25 };
+      const danger = x => {
+        let d = 0;
+        for (const o of G.objs) {
+          if (o.t === 'saw' && o.z > -1 && o.z < 7) { const T = Math.max(0, o.z) / Math.max(0.1, G.spd); const sx = o.cx + o.amp * Math.sin((G.t + T) * o.f + o.ph); if (Math.abs(sx - x) < cr.rx + o.r + 0.3) d += 3; }
+          if (o.t === 'spike' && o.z < 5 && o.z + o.len > -1 && x + cr.rx > o.x0 && x - cr.rx < o.x1) d += 2;
+          if (o.t === 'lob' && o.T - o.age < 1.0 && Math.abs(o.tx - x) < o.rad + cr.rx * 0.6 + 0.3) d += 4;
+          if (o.t === 'boss' && o.strike && Math.abs(o.strike.x - x) < 1.25 + cr.rx * 0.5 + 0.3) d += 5;
+        }
+        return d;
+      };
+      if (danger(tx) > 0) {
+        let bx = tx, bd = 1e9;
+        for (let x = -3.6; x <= 3.61; x += 0.3) { const dd = danger(x) * 10 + Math.abs(x - tx) + (next && next.z < 10 && next.pair.n === 2 && Math.sign(x || 1) !== Math.sign(tx || 1) ? 6 : 0); if (dd < bd) { bd = dd; bx = x; } }
+        tx = bx;
+      }
     }
+    const n0 = G.N;
     A.step(dt, { abs: tx });
     G = A.G;
+    if (LOSSLOG && G.N < n0 && G.q.length === 0) { }
     if (G.boss && G.bossN0 == null) { G.bossN0 = G.N; G.bossT0 = G.t; }
     t += dt;
   }
@@ -67,5 +102,6 @@ for (let s = s0; s <= s1; s++) {
     if (res.win) { w++; st += res.stars; bl += res.bossLoss; bt += res.bossT; Ns.push(res.N); } else fails.push((res.dist / res.len).toFixed(2) + (G_boss(res) ? 'B' + res.bossHpLeft.toFixed(2) : ''));
     tt += res.t; peaks.push(res.peak);
   }
+  if (process.env.LOSS) { const L = A.LOSS; const tot = Object.values(L).reduce((a, b) => a + b, 0) || 1; console.log('   loss%', Object.entries(L).map(([k, v]) => k + ':' + Math.round(100 * v / tot)).join(' ')); for (const k in L) delete L[k]; }
   console.log(`S${String(s).padStart(2)} exp${Math.round(play(s,1).expN)} ${policy} win ${w}/${runs} stars ${(st / Math.max(1, w)).toFixed(1)} t ${(tt / runs).toFixed(0)}s peak~${Math.round(peaks.reduce((a, b) => a + b, 0) / runs)} endN~${Ns.length ? Math.round(Ns.reduce((a, b) => a + b, 0) / Ns.length) : '-'} boss ${(bt / Math.max(1, w)).toFixed(1)}s -${Math.round(100 * bl / Math.max(1, w))}% ${fails.length ? 'fail@' + fails.join(',') : ''}`);
 }

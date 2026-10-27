@@ -42,6 +42,9 @@ const ENEMIES = {
   runner: { name: '飛毛鬼', r: 0.36, h: 1.0,  spd: 5.2, home: 1.7, hpK: 0.55, mass: 1.1 },
   brute:  { name: '大胖魔', r: 0.95, h: 2.2,  spd: 1.15, home: 0.55, hpK: 6.0, mass: 0.9 },
   shield: { name: '盾牌兵', r: 0.55, h: 1.45, spd: 1.6, home: 0.8, hpK: 2.0,  mass: 0.9 },
+  thrower: { name: '丟丟鬼', r: 0.5, h: 1.35, spd: 1.8, home: 0.5, hpK: 1.6,  mass: 0.8 },
+  splitter: { name: '分裂史萊姆', r: 0.6, h: 1.2, spd: 1.5, home: 0.8, hpK: 1.6, mass: 0.8 },
+  mini:   { name: '小史萊姆', r: 0.34, h: 0.75, spd: 2.8, home: 1.4, hpK: 0.3, mass: 1.0, art: 'splitter' },
 };
 
 // 永久強化

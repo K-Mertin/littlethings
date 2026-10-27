@@ -43,7 +43,7 @@ const FX = {
   },
 
   kill(o) {
-    FX.add({ k: 'die', e: o.k, x: o.x, z: o.z, h: o.h, ph: o.ph, life: 0.28 });
+    FX.add({ k: 'die', e: o.art || o.k, x: o.x, z: o.z, h: o.h, ph: o.ph, life: 0.28 });
     const n = o.k === 'brute' ? 4 : 2;
     for (let i = 0; i < n; i++) FX.add({ k: 'puff', spr: 'dust', x: o.x + FX.rnd(-o.r, o.r) * 0.6, z: o.z, h: FX.rnd(0.1, o.h * 0.5), life: 0.45, size: o.r * 1.6, grow: 1.6, rise: 0.6, a: 0.85 });
     for (let i = 0; i < (o.k === 'brute' ? 10 : 5) && G.parts.length < 380; i++)
@@ -72,6 +72,22 @@ const FX = {
   slam(b) {
     FX.add({ k: 'ring', x: G.px, z: 0.6, life: 0.45, size: 3.2, col: '255,255,255' });
     for (let i = 0; i < 5; i++) FX.add({ k: 'puff', spr: 'dust', x: G.px + FX.rnd(-1.6, 1.6), z: FX.rnd(0, 1.2), h: 0.2, life: 0.55, size: 1.3, grow: 1.6, rise: 0.4, a: 0.85 });
+  },
+
+
+  wallbreak(o) {
+    for (let i = 0; i < 18 && G.parts.length < 400; i++)
+      G.parts.push({ x: FX.rnd(-ROAD, ROAD), z: o.z, h: FX.rnd(0.2, 1.6), vx: FX.rnd(-3, 3), vz: FX.rnd(-4, 1), vh: FX.rnd(2, 6), life: 0.9, t: 0, col: i % 3 ? '#b5653f' : '#8a8f99', sz: 1.6, brick: 1 });
+    for (let i = 0; i < 5; i++) FX.add({ k: 'puff', spr: 'dust', x: FX.rnd(-ROAD, ROAD), z: o.z, h: FX.rnd(0.3, 1.2), life: 0.7, size: 1.8, grow: 1.6, rise: 0.5, a: 0.8 });
+  },
+  crate(o) {
+    FX.add({ k: 'flash', x: o.x, z: o.z, h: 0.5, life: 0.2, size: 2 });
+    for (let i = 0; i < 10 && G.parts.length < 400; i++)
+      G.parts.push({ x: o.x, z: o.z, h: 0.5, vx: FX.rnd(-3, 3), vz: FX.rnd(-2, 2), vh: FX.rnd(3, 6), life: 0.7, t: 0, col: i % 2 ? '#d9a35a' : '#ffe680', sz: 0.9, brick: 1 });
+  },
+  strike(x, z) {
+    for (let i = 0; i < 6; i++) FX.add({ k: 'ring', x, z: z - 1.5 - i * 1.8, life: 0.35 + i * 0.05, size: 1.6, col: '255,120,90' });
+    for (let i = 0; i < 8; i++) FX.add({ k: 'puff', spr: 'dust', x: x + FX.rnd(-1.1, 1.1), z: FX.rnd(-2, z - 1), h: 0.3, life: 0.6, size: 1.4, grow: 1.6, rise: 0.6, a: 0.85 });
   },
 
   bossdie(o) {
@@ -106,5 +122,5 @@ const FX = {
     for (let i = D.length - 1; i >= 0; i--) { D[i].z -= v * dt; if (D[i].z < -9) D.splice(i, 1); }
   },
 };
-const ENEMY_COL = { grunt: '#9a6cf0', runner: '#ff6b4a', brute: '#6fc95e', shield: '#9aa7c7' };
+const ENEMY_COL = { grunt: '#9a6cf0', runner: '#ff6b4a', brute: '#6fc95e', shield: '#9aa7c7', thrower: '#f0a83a', splitter: '#6fe07a', mini: '#6fe07a' };
 function fmtNum(n) { n = Math.round(n); return n >= 10000 ? (n / 1000).toFixed(0) + 'K' : n >= 1000 ? (n / 1000).toFixed(1) + 'K' : String(Math.max(1, n)); }

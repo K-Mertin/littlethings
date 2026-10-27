@@ -337,4 +337,5 @@ function buildArt() {
   }
   if (typeof buildChars === 'function') buildChars();
   if (typeof buildScene === 'function') buildScene();
+  if (typeof buildHaz === 'function') buildHaz();
 }

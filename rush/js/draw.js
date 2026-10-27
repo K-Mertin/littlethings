@@ -180,8 +180,10 @@ function drawGate(g, o, t) {
   const x0 = o.x - o.w + 0.12, x1 = o.x + o.w - 0.12;
   const A = P(x0, o.z, 0.15), B = P(x1, o.z, H);
   const w = B.x - A.x, h = A.y - B.y;
+  const ga = g.globalAlpha;
+  if (o.slide || o.roul) drawGateExtra(g, o, t);
   g.save();
-  g.globalAlpha = al;
+  g.globalAlpha = al * ga;
   // 面板
   const gr = g.createLinearGradient(0, B.y, 0, A.y);
   gr.addColorStop(0, look[0] + 'e0'); gr.addColorStop(0.55, look[0] + '80'); gr.addColorStop(1, look[0] + '30');
@@ -216,10 +218,10 @@ function drawGate(g, o, t) {
     g.beginPath(); g.moveTo(cx, cy - s); g.lineTo(cx + s, cy); g.lineTo(cx + s * 0.4, cy); g.lineTo(cx + s * 0.4, cy + s); g.lineTo(cx - s * 0.4, cy + s); g.lineTo(cx - s * 0.4, cy); g.lineTo(cx - s, cy); g.closePath(); g.stroke(); g.fill();
   }
   g.restore();
-  g.globalAlpha = al;
+  g.globalAlpha = al * ga;
   drawPost(g, o.x - o.w, o.z, H + 0.15);
   drawPost(g, o.x + o.w, o.z, H + 0.15);
-  g.globalAlpha = 1;
+  g.globalAlpha = ga;
 }
 
 function drawWeaponIcon(g, wid, x, y, s, fill, stroke) {
@@ -514,6 +516,7 @@ function render(G, t) {
   drawClouds(g, th, t);
   drawGround(g, th, G.dist);
   drawGroundDetail(g, th, G.dist);
+  drawHazGround(g, G, t);
   for (const e of G.fx) if (e.k === 'ring') drawRing(g, e);
 
   // 收集要畫的東西
@@ -532,7 +535,7 @@ function render(G, t) {
     items.push({ z, d: 0, kind, x, v: (h >>> 12) % 3, sc: 0.8 + ((h >>> 15) % 50) / 100 });
   }
   fenceItems(items, th, G.dist);
-  for (const o of G.objs) items.push({ z: o.z, o });
+  for (const o of G.objs) if (o.t !== 'spike') items.push({ z: o.t === 'lob' ? o.z - 0.3 : o.z, o });
   for (const e of G.fx) if (e.k !== 'ring' && !(e.k === 'die' && e.boss)) items.push({ z: e.z - 0.05, e });
   items.push({ z: 0.001, crowd: 1 });
   items.sort((a, b) => b.z - a.z);
@@ -547,8 +550,15 @@ function render(G, t) {
       else if (o.t === 'en') drawEnemy(g, o);
       else if (o.t === 'bar') drawBarrelObj(g, o, t);
       else if (o.t === 'boss') drawBoss(g, o, t);
+      else if (o.t === 'wall') drawWall(g, o, t);
+      else if (o.t === 'crate') drawCrate(g, o, t);
+      else if (o.t === 'saw') drawSaw(g, o);
+      else if (o.t === 'lob') drawLob(g, o);
     }
   }
+  drawLobWarnTop(g, G, t);
+  if (G.rule === 'fog') drawFogRule(g, th);
+  if (G.rule === 'dark') drawDarkRule(g, G);
   drawBullets(g, G);
   drawParts(g, G);
   drawFloats(g, G);
@@ -583,7 +593,7 @@ function drawDecor(g, it) {
 }
 
 function drawEnemy(g, o) {
-  const A = ART[o.k];
+  const A = ART[o.art || o.k];
   const fi = Math.floor(o.ph / (Math.PI / 2)) & 3;
   const spr = o.hit > 0 ? A.fl[fi] : A.fr[fi];
   const p = P(o.x, o.z, 0);
@@ -704,6 +714,12 @@ function drawParts(g, G) {
   for (const p of G.parts) {
     const q = P(p.x, p.z, p.h);
     const k = 1 - p.t / p.life;
+    if (p.brick) {
+      const s = Math.max(2, p.sz * 0.12 * q.s);
+      g.save(); g.translate(q.x, q.y); g.rotate(p.t * 9 + p.vx);
+      g.fillStyle = p.col; g.fillRect(-s, -s * 0.55, s * 2, s * 1.1); g.restore();
+      continue;
+    }
     if (p.shell) {
       const s = Math.max(1.5, p.sz * 0.09 * q.s);
       g.save(); g.translate(q.x, q.y); g.rotate(p.t * 25);
