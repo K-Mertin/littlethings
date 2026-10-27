@@ -46,6 +46,12 @@ function play(s, seed) {
       }
       tx = choice.get(next.pair.id) * A.ROAD / 2;
     }
+    // 像真人一樣：門還遠的時候，先把部隊帶到前面敵人最多的地方開槍
+    if (policy !== 'still') {
+      let sw = 0, sx = 0, nearZ = 1e9;
+      for (const o of G.objs) if ((o.t === 'en' || o.t === 'boss') && !o.dead && o.z > 0 && o.z < 30) { const w = o.hp / Math.max(1, o.z); sw += w; sx += w * o.x; nearZ = Math.min(nearZ, o.z); }
+      if (sw > 0 && (!next || next.z > nearZ + 4)) tx = Math.max(-3.6, Math.min(3.6, sx / sw));
+    }
     A.step(dt, { abs: tx });
     G = A.G;
     if (G.boss && G.bossN0 == null) { G.bossN0 = G.N; G.bossT0 = G.t; }
