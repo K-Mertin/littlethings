@@ -21,19 +21,35 @@ const THEMES = [
 ];
 
 const STAGES = [
-  { name: '綠野小路',   boss: 'golem' },
-  { name: '風車農場',   boss: 'golem' },
-  { name: '森林關口',   boss: 'golem' },
-  { name: '沙丘公路',   boss: 'scorpion' },
-  { name: '紅岩峽谷',   boss: 'scorpion' },
-  { name: '沙暴遺跡',   boss: 'scorpion' },
-  { name: '雪原隧道',   boss: 'yeti' },
-  { name: '冰湖大道',   boss: 'yeti' },
-  { name: '極光山口',   boss: 'yeti' },
-  { name: '霓虹大道',   boss: 'mech' },
-  { name: '港口夜色',   boss: 'mech' },
-  { name: '最終要塞',   boss: 'mech' },
+  { name: '綠野小路',   boss: 'golem',    rule: 'none',  feats: [] },
+  { name: '風車農場',   boss: 'golem',    rule: 'crate', feats: ['crate'] },
+  { name: '森林關口',   boss: 'golem',    rule: 'slide', feats: ['crate', 'slide'] },
+  { name: '沙丘公路',   boss: 'scorpion', rule: 'wall',  feats: ['wall', 'slide', 'crate'] },
+  { name: '紅岩峽谷',   boss: 'scorpion', rule: 'saw',   feats: ['saw', 'wall', 'crate'] },
+  { name: '沙暴遺跡',   boss: 'scorpion', rule: 'fog',   feats: ['saw', 'slide', 'wall'] },
+  { name: '雪原隧道',   boss: 'yeti',     rule: 'ice',   feats: ['crate', 'slide', 'saw'] },
+  { name: '冰湖大道',   boss: 'yeti',     rule: 'spike', feats: ['spike', 'saw', 'wall'] },
+  { name: '極光山口',   boss: 'yeti',     rule: 'horde', feats: ['crate', 'slide', 'spike'] },
+  { name: '霓虹大道',   boss: 'mech',     rule: 'dark',  feats: ['spike', 'wall', 'crate'] },
+  { name: '港口夜色',   boss: 'mech',     rule: 'roul',  feats: ['roul', 'saw', 'slide'] },
+  { name: '最終要塞',   boss: 'mech',     rule: 'final', feats: ['wall', 'saw', 'spike', 'slide', 'roul', 'crate'] },
 ];
+
+// 每關的特殊規則
+const RULES = {
+  none:  { name: '基本訓練', desc: '選對門、閃開怪物，打倒最後的頭目' },
+  crate: { name: '補給充足', desc: '路上有很多補給箱，打開就有士兵或火力' },
+  slide: { name: '會動的門', desc: '有些門會左右移動，看準時機穿過去' },
+  wall:  { name: '破牆前進', desc: '把牆打破才拿得到獎勵；沒打破會撞掉士兵' },
+  saw:   { name: '刀鋸陷阱', desc: '旋轉刀鋸打不壞，只能閃開' },
+  fog:   { name: '沙暴', desc: '風沙很大，門要靠近才看得清楚' },
+  ice:   { name: '冰面路滑', desc: '路面結冰，部隊移動會滑一下才停' },
+  spike: { name: '尖刺陷阱', desc: '地上的尖刺一下升起一下降下，看準了再過' },
+  horde: { name: '大軍來襲', desc: '怪物多了一倍，但每隻比較弱' },
+  dark:  { name: '停電了', desc: '城市停電，只看得到部隊前面一點點' },
+  roul:  { name: '轉盤門', desc: '轉盤門會一直換數字，看準時機穿過' },
+  final: { name: '最終決戰', desc: '所有陷阱都會出現' },
+};
 
 const BOSSES = {
   golem:    { name: '巨石魔像', r: 1.9, h: 4.2 },
@@ -49,11 +65,12 @@ const themeOf = s => THEMES[Math.min(THEMES.length - 1, Math.floor((s - 1) / 3))
 function genDps(wid, lv) { const w = WEAPONS[wid]; return w.rate * w.dmg * (w.n > 1 ? w.n * 0.8 : 1) * (1 + (w.eff - 1) * 0.5) * lvMult(lv); }
 
 // 產生一關。回傳事件清單（依距離排序）
-function genStage(s, seed) {
+function genStage(s, seed, opts) {
   const R = rng(seed || (s * 7919 + 1301));
   const ri = (a, b) => a + Math.floor(R() * (b - a + 1));
   const pick = a => a[Math.floor(R() * a.length)];
   const ev = [];
+  const L = { rule: (opts && opts.rule) || STAGES[s - 1].rule, feats: (opts && opts.feats) || STAGES[s - 1].feats };
   const len = 400 + s * 28;
   const spd = 7 + s * 0.12;
   // 「選得好」的預期狀態，用來決定後面敵人有多強
@@ -87,6 +104,28 @@ function genStage(s, seed) {
   }
 
   function gates() {
+    const fx = L.feats;
+    // 會動的門：只有一扇，對準了才拿得到
+    if (fx.includes('slide') && cyc > 0 && R() < 0.3) {
+      const g = N < 25 ? { k: 'add', v: rnd5(Math.max(8, N * (0.9 + R() * 0.5))) } : { k: 'mul', v: R() < 0.3 ? 3 : 2 };
+      const e = { d, type: 'gates', slide: { amp: 2.3 + R() * 0.3, f: 1.0 + R() * 0.7 + s * 0.03, ph: R() * 6 }, L: g, step: gateStep() };
+      ev.push(e);
+      const got = g.k === 'mul' ? N * g.v : N + g.v;
+      N = Math.round(N * 0.3 + got * 0.7);
+      lastGate = 'slide';
+      return;
+    }
+    // 轉盤門：兩邊都會換數字
+    if (fx.includes('roul') && cyc > 0 && R() < 0.4) {
+      const mk = () => {
+        const vals = [{ k: 'mul', v: 2 }, { k: 'add', v: rnd5(Math.max(4, N * 0.5)) }, { k: 'add', v: -rnd5(Math.max(3, N * 0.3)) }, R() < 0.5 ? { k: 'div', v: 2 } : { k: 'mul', v: 3 }];
+        return vals.sort(() => R() - 0.5);
+      };
+      ev.push({ d, type: 'gates', roul: [{ vals: mk(), per: 0.75 + R() * 0.3 }, { vals: mk(), per: 0.75 + R() * 0.3 }], step: gateStep() });
+      N = Math.round(N * 1.6);
+      lastGate = 'roul';
+      return;
+    }
     let types;
     if (s === 1 && cyc < 4) types = [['plusMinus', 'mulAdd', 'weapon', 'plusPlus'][cyc]];
     else {
@@ -94,6 +133,7 @@ function genStage(s, seed) {
       if (s >= 3) types.push('minusMinus', 'mulAdd');
       if (s >= 5) types.push('minusMinus', 'mulMul');
       if (cyc % 3 === 2 && wpnGiven < 3) types = ['weapon'];
+      if (L.rule === 'horde') types.push('plusPlus', 'mulAdd');
     }
     let t = pick(types);
     if (t === lastGate && t !== 'weapon') t = pick(types);
@@ -128,6 +168,9 @@ function genStage(s, seed) {
     if (s >= 2) for (let i = ri(0, 2 + Math.floor(s / 3)); i > 0; i--) kinds.push('runner');
     if (s >= 3 && R() < 0.35 + s * 0.05) for (let i = ri(1, 1 + Math.floor(s / 5)); i > 0; i--) kinds.push('brute');
     if (s >= 6 && R() < 0.45) for (let i = ri(1, 3); i > 0; i--) kinds.push('shield');
+    if (s >= 4 && guard == null && R() < 0.3 + s * 0.03) for (let i = ri(1, s >= 9 ? 2 : 1); i > 0; i--) kinds.push('thrower');
+    if (s >= 7 && R() < 0.5) for (let i = ri(1, 2 + (s >= 10 ? 1 : 0)); i > 0; i--) kinds.push('splitter');
+    if (L.rule === 'horde') { const n0 = kinds.length; for (let i = 0; i < n0; i++) if (kinds[i] === 'grunt' || kinds[i] === 'runner') kinds.push(kinds[i]); }
     let W = 0; for (const k of kinds) W += ENEMIES[k].hpK;
     const h = H / W;
     const list = [];
@@ -139,6 +182,17 @@ function genStage(s, seed) {
       list.push({ k, x, dz: row * 1.6 + R() * 1.1 + (k === 'brute' ? 1.5 : 0), hp: h * ENEMIES[k].hpK });
     });
     const e = { d, type: 'wave', list, sHP, exp: dps() };
+    // 補給箱
+    const crateP = L.feats.includes('crate') ? (L.rule === 'crate' ? 0.75 : 0.35) : 0;
+    if (guard == null && R() < crateP) {
+      e.crates = [];
+      const nc = L.rule === 'crate' && R() < 0.4 ? 2 : 1;
+      for (let i = 0; i < nc; i++) {
+        const rw = lv < LV_MAX && R() < 0.3 ? { k: 'lv', v: 1 } : { k: 'add', v: rnd5(Math.max(4, N * (0.18 + R() * 0.15))) };
+        e.crates.push({ x: (R() * 2 - 1) * (ROAD - 1), dz: -3 - R() * 3, hp: dps() * (0.35 + R() * 0.2), rw });
+        if (rw.k === 'lv') lv = Math.min(LV_MAX, lv + 1); else N += Math.round(rw.v * 0.6);
+      }
+    }
     if (s >= 2 && R() < 0.35 && guard == null) {
       e.barrels = [];
       const nb = ri(1, 2);
@@ -147,6 +201,37 @@ function genStage(s, seed) {
     ev.push(e);
     N = Math.max(1, Math.round(N * (0.9 - s * 0.003)));
     return rows;
+  }
+
+  // 兩波之間的陷阱或牆
+  function feature() {
+    const opts = L.feats.filter(f => f === 'wall' || f === 'saw' || f === 'spike');
+    if (!opts.length || d > len - 110) return;
+    const main = { wall: 'wall', saw: 'saw', spike: 'spike' }[L.rule];
+    if (R() > (main ? 0.75 : 0.5)) return;
+    const f = main && R() < 0.6 ? main : pick(opts);
+    if (f === 'wall') {
+      const rw = R() < 0.45 ? { k: 'mul', v: 2 } : lv < LV_MAX && R() < 0.3 ? { k: 'lv', v: 1 } : { k: 'add', v: rnd5(Math.max(8, N * (0.6 + R() * 0.4))) };
+      ev.push({ d, type: 'wall', hp: dps() * (1.3 + R() * 0.6 + s * 0.03), rw, sHP: dps() / N, expN: N });
+      if (rw.k === 'mul') N = Math.round(N * 1.7); else if (rw.k === 'lv') lv = Math.min(LV_MAX, lv + 1); else N += Math.round(rw.v * 0.8);
+      d += 16;
+    } else if (f === 'saw') {
+      const n = ri(1, s >= 8 ? 3 : 2);
+      const list = [];
+      for (let i = 0; i < n; i++) list.push({ dz: i * 5.5, cx: (R() * 2 - 1) * 2.2, amp: R() < 0.6 ? 1.2 + R() * 1.6 : 0, f: 1 + R() * 1.2, ph: R() * 6 });
+      ev.push({ d, type: 'saw', list });
+      d += 10 + n * 5.5;
+    } else if (f === 'spike') {
+      const n = ri(1, 2);
+      const list = [];
+      for (let i = 0; i < n; i++) {
+        const side = R() < 0.5 ? -1 : 1, w = 4.2 + R() * 2;
+        const x0 = side < 0 ? -ROAD : ROAD - w;
+        list.push({ dz: i * 5, x0, x1: x0 + w, per: 2.2 - Math.min(0.6, s * 0.04), ph: R() * 2 });
+      }
+      ev.push({ d, type: 'spike', list });
+      d += 10 + n * 5;
+    }
   }
 
   while (d < len - 75) {
@@ -161,12 +246,13 @@ function genStage(s, seed) {
     d += 32 + R() * 8;
     const rows = wave(2.6 + s * 0.03 + R() * 0.6);
     d += 30 + rows * 2 + R() * 10;
+    feature();
     cyc++;
   }
   const bk = STAGES[s - 1].boss;
   const tier = (s - 1) % 3;
-  const bossT = 10 + s * 0.25;
+  const bossT = 8.5 + s * 0.2;
   ev.push({ d: len, type: 'boss', k: bk, tier, hp: dps() * bossT, eat: Math.max(1, N * 0.05), sHP: dps() / N, exp: dps() });
   ev.sort((a, b) => a.d - b.d);
-  return { s, len, spd, ev, theme: themeOf(s), name: STAGES[s - 1].name, expN: N };
+  return { s, len, spd, ev, theme: themeOf(s), name: STAGES[s - 1].name, expN: N, rule: L.rule, feats: L.feats };
 }

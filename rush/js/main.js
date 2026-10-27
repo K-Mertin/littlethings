@@ -28,6 +28,20 @@ function startStage(s) {
   AU.music(G.L.theme.bgm, false);
   Save.d.last = s; Save.save();
   if (s === 1 && !Save.d.tips.move) toast('左右拖曳（或按 ← →），帶部隊穿過好的門！', 3.2);
+  showRule(G.rule, `第 ${s} 關 · ${G.L.name}`);
+}
+
+// 關卡開始時的規則看板
+function showRule(rule, title) {
+  const r = RULES[rule];
+  const el = $('#ruleBanner');
+  if (!r || !el) return;
+  el.querySelector('.rt').textContent = title;
+  el.querySelector('.rn').textContent = r.name;
+  el.querySelector('.rd').textContent = r.desc;
+  el.hidden = false;
+  el.classList.remove('in'); void el.offsetWidth; el.classList.add('in');
+  UI.ruleT = 2.8;
 }
 
 function toast(text, sec) {
@@ -64,6 +78,18 @@ function handleEvents() {
       case 'bossdie': AU.sfx('bossdie'); AU.stop(); break;
       case 'lose': AU.sfx('lose'); AU.stop(); break;
       case 'count': if (a.d > 0) G.badgeBump = 1; else G.badgeRed = 0.35; break;
+      case 'throw': AU.sfx('throw'); break;
+      case 'land': AU.sfx('land'); break;
+      case 'split': AU.sfx('split'); break;
+      case 'wallbreak': AU.sfx('wallbreak'); vibrate(40); break;
+      case 'wallhit': AU.sfx('slam'); G.flash = 0.7; vibrate(60); break;
+      case 'crate': AU.sfx('crate'); break;
+      case 'saw': AU.sfx('saw'); G.flash = 0.35; vibrate(15); break;
+      case 'spike': AU.sfx('spike'); G.flash = 0.5; vibrate(30); break;
+      case 'roul': if (a.z < 30) AU.sfx('tick'); break;
+      case 'miss': AU.sfx('gateBad'); break;
+      case 'strikewarn': AU.sfx('warn'); break;
+      case 'strike': AU.sfx('slam'); vibrate(60); break;
     }
   }
   G.q.length = 0;
@@ -72,6 +98,18 @@ function vibrate(ms) { try { if (navigator.vibrate && Save.d.sfx) navigator.vibr
 
 // 第一關的教學提示
 function tutorial() {
+  for (const o of G.objs) {
+    if (o.t === 'lob' && o.z < 30) tipOnce('lob', '地上的紅圈是炸彈要掉下來的地方，快閃開！', 3);
+    else if (o.t === 'crate' && o.z < 40) tipOnce('crate', '補給箱：對著它開槍，打開就拿到上面的獎勵', 3);
+    else if (o.t === 'wall' && o.z < 45) tipOnce('wall', '把牆打破才拿得到獎勵；沒打破撞上去會少兵', 3.2);
+    else if (o.t === 'saw' && o.z < 40) tipOnce('saw', '旋轉刀鋸打不壞，從旁邊閃過去', 3);
+    else if (o.t === 'spike' && o.z < 40) tipOnce('spike', '尖刺會一下升起一下降下，趁降下去的時候通過', 3.2);
+    else if (o.t === 'gate' && o.slide && o.z < 45) tipOnce('slide', '這扇門會左右移動，只有對準它才拿得到', 3);
+    else if (o.t === 'gate' && o.roul && o.z < 45) tipOnce('roul', '轉盤門的數字會一直換，下面有寫下一個是什麼', 3.2);
+    else if (o.t === 'en' && o.k === 'thrower' && o.z < 30) tipOnce('thrower', '丟丟鬼會停在前面丟炸彈，先移過去打倒它', 3);
+    else if (o.t === 'en' && o.k === 'splitter' && o.z < 30) tipOnce('splitter', '史萊姆打倒後會分裂成三隻小的', 3);
+    else if (o.t === 'boss' && o.strike) tipOnce('strike', '頭目要重擊了！快離開紅色長條', 2.5);
+  }
   if (G.s !== 1 && G.s !== 2) return;
   for (const o of G.objs) {
     if (o.t === 'gate' && o.z < 46 && !o.pair.used) {
@@ -162,7 +200,7 @@ function buildLevels() {
       const s = ti * 3 + k + 1;
       const un = Save.unlocked(s), st = Save.d.stars[s] || 0;
       html += `<button class="tile t-${th.id}" data-stage="${s}" ${un ? '' : 'disabled'}>
-        <span class="n">${un ? s : '🔒'}</span><span class="nm">${STAGES[s - 1].name}</span>
+        <span class="n">${un ? s : '🔒'}</span><span class="nm">${STAGES[s - 1].name}</span><span class="rl">${RULES[STAGES[s - 1].rule].name}</span>
         <span class="ss">${[0, 1, 2].map(i => `<i class="${i < st ? 'on' : ''}">★</i>`).join('')}</span>
         ${k === 2 ? `<span class="bossTag">頭目 ${BOSSES[STAGES[s - 1].boss].name}</span>` : ''}</button>`;
     }
@@ -302,6 +340,7 @@ function frame(now) {
   UI.last = now;
   AU.tick();
   if (UI.toastT > 0) { UI.toastT -= dt; if (UI.toastT <= 0) $('#toast').hidden = true; }
+  if (UI.ruleT > 0) { UI.ruleT -= dt; if (UI.ruleT <= 0 || UI.mode !== 'play') { UI.ruleT = 0; $('#ruleBanner').hidden = true; } }
   if (!G) return;
   if (UI.mode === 'play') {
     const ax = (UI.kbR || 0) - (UI.kbL || 0) + gamepadX();

@@ -75,6 +75,15 @@ const AU = {
       case 'win': { const c = this.ctx.currentTime; [523, 659, 784, 1047, 784, 1047, 1319].forEach((f, i) => this.tone(f, i === 6 ? 0.6 : 0.16, 'square', 0.1, 0, null, c + i * 0.11)); break; }
       case 'lose': { const c = this.ctx.currentTime; [392, 370, 349, 262].forEach((f, i) => this.tone(f, i === 3 ? 0.7 : 0.25, 'triangle', 0.18, 0, null, c + i * 0.25)); break; }
       case 'click': this.tone(880, 0.05, 'triangle', 0.1); break;
+      case 'throw': if (this.ok('throw', 6)) this.tone(500, 0.25, 'sine', 0.08, 900); break;
+      case 'land': if (this.ok('land', 8)) { this.noiseHit(0.3, 0.25, 300, 0.6, null, null, 'lowpass'); this.tone(80, 0.25, 'sine', 0.25, 40); } break;
+      case 'split': this.tone(300, 0.15, 'sine', 0.12, 700); break;
+      case 'wallbreak': this.noiseHit(0.5, 0.4, 500, 0.5, null, null, 'lowpass'); this.tone(120, 0.3, 'square', 0.1, 50); break;
+      case 'crate': { const c = this.ctx.currentTime; this.noiseHit(0.12, 0.2, 1500, 1); [659, 880, 1175].forEach((f, i) => this.tone(f, 0.12, 'triangle', 0.14, 0, null, c + 0.05 + i * 0.05)); break; }
+      case 'saw': if (this.ok('saw', 6)) this.tone(1800, 0.12, 'sawtooth', 0.06, 900); break;
+      case 'spike': this.noiseHit(0.15, 0.25, 3000, 2); this.tone(200, 0.15, 'square', 0.1, 80); break;
+      case 'tick': if (this.ok('tick', 5)) this.tone(1500, 0.03, 'square', 0.04); break;
+      case 'warn': { const c = this.ctx.currentTime; for (let i = 0; i < 2; i++) this.tone(880, 0.12, 'square', 0.08, 0, null, c + i * 0.18); break; }
       case 'buy': { const c = this.ctx.currentTime; [784, 1047, 1319].forEach((f, i) => this.tone(f, 0.12, 'triangle', 0.15, 0, null, c + i * 0.06)); break; }
       case 'star': this.tone(1047 + (a || 0) * 260, 0.25, 'triangle', 0.18); break;
     }

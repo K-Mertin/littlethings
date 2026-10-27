@@ -280,6 +280,50 @@ function drawShield2(g, W, H, f) {
   g.restore();
 }
 
+
+function drawThrower2(g, W, H, f) {
+  const u = H / 100; const P = walkPh(f);
+  g.save(); g.translate(W / 2, 0); g.scale(u, u);
+  for (const sd of [-1, 1]) {
+    const lift = Math.max(0, sd * P.s) * 5;
+    g.fillStyle = '#6a4a1a'; rr(g, sd * 10 - 5, 78 - lift, 10, 14, 4); g.fill();
+    g.fillStyle = '#3a2810'; ell(g, sd * 10, 94 - lift, 9, 4.5); g.fill();
+  }
+  g.translate(0, P.up);
+  // 背上的炸彈袋
+  g.fillStyle = '#7a5a2a'; rr(g, -24, 40, 48, 34, 10); g.fill();
+  for (const [x, y] of [[-14, 38], [0, 34], [14, 38]]) { g.fillStyle = rad(g, x, y, 7, '#5a5f70', '#14161c'); ell(g, x, y, 7, 7); g.fill(); g.fillStyle = '#ffd34d'; ell(g, x + 2, y - 7, 2, 2); g.fill(); }
+  // 身體
+  g.fillStyle = rad(g, -3, 58, 26, '#ffd27a', '#c97a1f'); ell(g, 0, 60, 24, 26); g.fill();
+  g.fillStyle = 'rgba(255,245,210,.5)'; ell(g, 0, 70, 13, 10); g.fill();
+  // 頭巾
+  g.fillStyle = '#d83a3a'; rr(g, -20, 34, 40, 8, 4); g.fill();
+  g.fillStyle = '#d83a3a'; poly(g, [18, 36, 30, 30 + P.s * 2, 28, 42]); g.fill();
+  eyes2(g, 0, 50, 6.5, 8.5, true, '#3a1a05');
+  g.fillStyle = '#3a1a05'; g.beginPath(); g.ellipse(0, 64, 7, 4, 0, 0, Math.PI); g.fill();
+  // 舉起丟炸彈的手
+  g.fillStyle = '#e09a3a'; ell(g, 26, 40, 6, 9); g.fill();
+  g.fillStyle = rad(g, 28, 28, 7, '#5a5f70', '#14161c'); ell(g, 28, 28, 7, 7); g.fill();
+  g.fillStyle = '#ffd34d'; ell(g, 31, 20, 2.4, 2.4); g.fill();
+  g.fillStyle = '#e09a3a'; ell(g, -25, 62 + P.s * 3, 6, 8); g.fill();
+  g.restore();
+}
+function drawSplitter2(g, W, H, f) {
+  const u = H / 100; const P = walkPh(f);
+  g.save(); g.translate(W / 2, 0); g.scale(u, u);
+  const sq = 1 + (f % 2 ? 0.08 : -0.04);
+  g.translate(0, 96); g.scale(1 / sq, sq); g.translate(0, -96);
+  g.fillStyle = rad(g, -6, 60, 40, 'rgba(190,255,150,.95)', 'rgba(40,150,60,.95)', -0.3, -0.5);
+  g.beginPath(); g.moveTo(-36, 96); g.quadraticCurveTo(-42, 40, 0, 26); g.quadraticCurveTo(42, 40, 36, 96); g.closePath(); g.fill();
+  // 身體裡的小史萊姆影子
+  g.fillStyle = 'rgba(30,110,40,.35)'; for (const [x, y, r] of [[-14, 74, 8], [12, 78, 7], [0, 60, 6]]) { ell(g, x, y, r, r * 0.8); g.fill(); }
+  g.fillStyle = 'rgba(255,255,255,.55)'; ell(g, -16, 44, 8, 5); g.fill(); ell(g, -6, 38, 3, 2); g.fill();
+  eyes2(g, 0, 58, 7, 10, false, '#123a12');
+  g.fillStyle = '#123a12'; g.beginPath(); g.ellipse(0, 74, 8, 5, 0, 0, Math.PI); g.fill();
+  g.fillStyle = 'rgba(40,150,60,.9)'; ell(g, -30, 96, 6, 3); g.fill(); ell(g, 28, 97, 7, 3); g.fill();
+  g.restore();
+}
+
 // ---------- 死亡變成的小金幣 ----------
 function drawCoin(g, W, H) {
   const c = W / 2;
@@ -334,6 +378,8 @@ function buildChars() {
   ART.runner = enemy(drawRunner2, 150, 160, 'rgba(70,10,4,.92)');
   ART.brute = enemy(drawBrute2, 300, 280, 'rgba(14,40,10,.92)');
   ART.shield = enemy(drawShield2, 176, 186, 'rgba(20,24,40,.92)');
+  ART.thrower = enemy(drawThrower2, 176, 176, 'rgba(70,30,0,.92)');
+  ART.splitter = enemy(drawSplitter2, 180, 160, 'rgba(10,50,14,.92)');
   ART.coin = mk(48, 48, drawCoin);
   ART.glow = {};
   for (const k in WEAPONS) ART.glow[k] = glowSprite(WEAPONS[k].col.length === 7 ? WEAPONS[k].col : '#ffcc33', 64);
