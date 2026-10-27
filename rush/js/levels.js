@@ -66,15 +66,16 @@ function genDps(wid, lv) { const w = WEAPONS[wid]; return w.rate * w.dmg * (w.n 
 
 // 產生一關。回傳事件清單（依距離排序）
 function genStage(s, seed, opts) {
+  opts = opts || {};
   const R = rng(seed || (s * 7919 + 1301));
   const ri = (a, b) => a + Math.floor(R() * (b - a + 1));
   const pick = a => a[Math.floor(R() * a.length)];
   const ev = [];
-  const L = { rule: (opts && opts.rule) || STAGES[s - 1].rule, feats: (opts && opts.feats) || STAGES[s - 1].feats };
-  const len = 400 + s * 28;
+  const L = { rule: opts.rule || STAGES[s - 1].rule, feats: opts.feats || STAGES[s - 1].feats };
+  const len = opts.len || 400 + s * 28;
   const spd = 7 + s * 0.12;
   // 「選得好」的預期狀態，用來決定後面敵人有多強
-  let N = startN(s), wid = 'rifle', lv = 1;
+  let N = opts.startN || startN(s), wid = opts.wid || 'rifle', lv = opts.lv || 1;
   const dps = () => N * genDps(wid, lv);
   let d = 42, cyc = 0, wpnGiven = 0, lastGate = '';
   const rnd5 = v => v >= 40 ? Math.round(v / 5) * 5 : Math.round(v);
@@ -249,10 +250,42 @@ function genStage(s, seed, opts) {
     feature();
     cyc++;
   }
-  const bk = STAGES[s - 1].boss;
-  const tier = (s - 1) % 3;
-  const bossT = 8.5 + s * 0.2;
+  const bk = opts.boss || STAGES[s - 1].boss;
+  const tier = opts.tier != null ? opts.tier : (s - 1) % 3;
+  const bossT = (8.5 + s * 0.2) * (opts.bossK || 1);
   ev.push({ d: len, type: 'boss', k: bk, tier, hp: dps() * bossT, eat: Math.max(1, N * 0.05), sHP: dps() / N, exp: dps() });
   ev.sort((a, b) => a.d - b.d);
-  return { s, len, spd, ev, theme: themeOf(s), name: STAGES[s - 1].name, expN: N, rule: L.rule, feats: L.feats };
+  return { s, len, spd, ev, theme: opts.theme || themeOf(s), name: opts.name || STAGES[s - 1].name, expN: N, rule: L.rule, feats: L.feats };
+}
+
+// ---- 無盡模式：一段一段接下去，每段尾巴有頭目 ----
+const THEME_RULES = {
+  meadow: ['crate', 'slide', 'wall', 'saw', 'horde', 'roul'],
+  desert: ['wall', 'saw', 'fog', 'slide', 'crate', 'horde'],
+  snow:   ['ice', 'spike', 'horde', 'saw', 'crate', 'slide'],
+  night:  ['dark', 'roul', 'spike', 'wall', 'saw', 'horde'],
+};
+const BOSS_OF_THEME = { meadow: 'golem', desert: 'scorpion', snow: 'yeti', night: 'mech' };
+function featsOf(rule) { const st = STAGES.find(x => x.rule === rule); return st ? st.feats : []; }
+
+function legStage(leg, seed, carry) {
+  const R = rng((seed || 1) * 131 + leg * 977 + 7);
+  const theme = THEMES[leg % THEMES.length];
+  const list = THEME_RULES[theme.id];
+  const rule = leg === 0 ? 'crate' : list[Math.floor(R() * list.length)];
+  const sv = Math.min(12, 2 + leg * 2);
+  return genStage(sv, (seed || 1) * 7 + leg * 101, { rule, feats: featsOf(rule), boss: BOSS_OF_THEME[theme.id], theme, name: `第 ${leg + 1} 段 · ${theme.name}`, len: 330 + Math.min(leg, 6) * 25, tier: Math.min(2, Math.floor(leg / 4)), bossK: 0.8, startN: carry && carry.N, wid: carry && carry.wid, lv: carry && carry.lv });
+}
+
+// ---- 每日挑戰：用日期當種子，每天一關不一樣 ----
+function todayKey(d) { d = d || new Date(); return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); }
+function dailyStage(key) {
+  const R = rng(key * 31 + 17);
+  const theme = THEMES[Math.floor(R() * THEMES.length)];
+  const list = THEME_RULES[theme.id];
+  const rule = list[Math.floor(R() * list.length)];
+  const sv = 5 + Math.floor(R() * 5);
+  const L = genStage(sv, key, { rule, feats: featsOf(rule), boss: BOSS_OF_THEME[theme.id], theme, name: '每日挑戰' });
+  L.daily = key;
+  return L;
 }
