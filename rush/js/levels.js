@@ -165,7 +165,7 @@ function genStage(s, seed) {
   }
   const bk = STAGES[s - 1].boss;
   const tier = (s - 1) % 3;
-  const bossT = 12 + s * 0.25;
+  const bossT = 10 + s * 0.25;
   ev.push({ d: len, type: 'boss', k: bk, tier, hp: dps() * bossT, eat: Math.max(1, N * 0.05), sHP: dps() / N, exp: dps() });
   ev.sort((a, b) => a.d - b.d);
   return { s, len, spd, ev, theme: themeOf(s), name: STAGES[s - 1].name, expN: N };

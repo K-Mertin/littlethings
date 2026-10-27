@@ -111,6 +111,9 @@ function spawnEvents() {
 }
 
 // ---- 射擊 ----
+// 射擊範圍：外側士兵往外偏 FAN_A 弧度；每發再隨機偏 ±AIM_JIT
+const FAN_W = 1.6, FAN_A = 0.07, AIM_JIT = 0.035, BULLET_R = 0.5;
+
 function fire(dt) {
   if (G.N <= 0 || !G.sold.length) return;
   const w = WEAPONS[G.wid];
@@ -118,19 +121,6 @@ function fire(dt) {
   const rate = w.rate * G.rateK;
   G.fireAcc += dt * rate * shooters;
   const per = w.dmg * lvMult(G.lv) * G.dmgK * G.N / shooters;
-  // 瞄準：前方扇形內最近的幾個敵人（沒有敵人就直直往前打，可以打門）
-  if (G.fireAcc >= 1) {
-    const T = G.aimT || (G.aimT = []);
-    T.length = 0;
-    for (const o of G.objs) {
-      if ((o.t !== 'en' && o.t !== 'boss' && o.t !== 'bar') || o.dead || o.intro > 0) continue;
-      if (o.z < 0.6 || o.z > BULLET_RANGE - 4) continue;
-      if (Math.abs(o.x - G.px) > 1.4 + o.z * 0.5 + o.r) continue;
-      T.push(o);
-    }
-    T.sort((a, b) => a.z - b.z);
-    if (T.length > 4) T.length = 4;
-  }
   let n = 0;
   while (G.fireAcc >= 1 && n < 40) {
     G.fireAcc -= 1; n++;
@@ -138,13 +128,8 @@ function fire(dt) {
     const idx = (G.shooterI++ * 7) % S.length;
     const so = S[idx];
     const bx = G.px + so.x, bz = so.z + 0.35;
-    let a0 = 0;
-    const T = G.aimT;
-    if (T && T.length) {
-      const o = T[n % T.length];
-      const tz = Math.max(0.5, o.z - bz - (o.t === 'en' ? (G.scroll ? G.spd : 0) + o.spd : 0) * (o.z - bz) / BULLET_V);
-      a0 = Math.atan2(o.x - bx, tz);
-    }
+    // 不鎖定目標：每個士兵朝自己前方開槍，隊伍外側稍微往外散開，蓋住部隊前方一整片
+    const a0 = so.x / FAN_W * FAN_A + (Math.random() - 0.5) * 2 * AIM_JIT;
     for (let k = 0; k < w.n; k++) {
       const a = a0 + (w.n > 1 ? (k - (w.n - 1) / 2) * w.spread + (Math.random() - 0.5) * 0.03 : (Math.random() - 0.5) * w.spread);
       G.bullets.push({ x: bx, z: bz, vx: Math.sin(a) * BULLET_V, vz: Math.cos(a) * BULLET_V, dmg: per, pierce: w.pierce, splash: w.splash, wid: G.wid, d: 0, last: 0 });
@@ -221,7 +206,7 @@ function updateBullets(dt) {
         if (Math.abs(b.x - o.x) > o.w - 0.12) continue;
         if (o.z < bz) { bz = o.z; best = o; }
       } else {
-        const rr = o.r * (o.t === 'boss' ? 0.9 : 1);
+        const rr = o.r * (o.t === 'boss' ? 0.9 : 1) + BULLET_R;
         if (o.z - rr * 0.6 > b.z || o.z + rr * 0.6 < z0) continue;
         if (Math.abs(b.x - o.x) > rr) continue;
         if (o.intro > 0) continue;
@@ -373,7 +358,7 @@ function step(dt, input) {
         // 叫小怪
         for (let k = 0; k < 6; k++) {
           const K = ENEMIES.grunt, hp = o.max * 0.012;
-          O.push({ t: 'en', id: _uid++, k: 'grunt', x: o.x + (k - 2.5) * 1.1, z: o.z + 1 + (k % 2), hp, max: hp, r: K.r, h: K.h, spd: K.spd, home: K.home, mass: K.mass, sHP: o.sHP, ph: k, hit: 0, dead: 0 });
+          O.push({ t: 'en', id: _uid++, k: 'grunt', x: clamp(o.x + (k - 2.5) * 1.3, -PX_MAX, PX_MAX), z: Math.max(2.5, o.z - o.r * 0.6 - 0.8 - (k % 2) * 0.9), hp, max: hp, r: K.r, h: K.h, spd: K.spd, home: K.home, mass: K.mass, sHP: o.sHP, ph: k, hit: 0, dead: 0 });
         }
       }
     }

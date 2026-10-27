@@ -80,7 +80,7 @@ function tutorial() {
       if (o.k === 'mul') tipOnce('mul', '×2 和 +多少，哪個比較多？快算一算！', 3.2);
       if (o.k === 'wpn') tipOnce('wpn', '黃色的門可以換武器，綠色的門讓火力升級', 3.2);
     }
-    if (o.t === 'en' && o.z < 40) tipOnce('enemy', '怪物撞到部隊會帶走士兵，人越多火力越強！', 3);
+    if (o.t === 'en' && o.z < 40) tipOnce('enemy', '士兵只往正前方開槍：把部隊移到怪物前面打！撞到會少兵', 3.4);
     if (o.t === 'bar' && o.z < 40) tipOnce('barrel', '打爆油桶，旁邊的怪物一起炸飛！', 3);
   }
   if (G.t > 3) Save.d.tips.move = 1;
