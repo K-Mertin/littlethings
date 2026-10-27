@@ -17,6 +17,7 @@ voice = sys.argv[3] if len(sys.argv) > 3 else 'zh-TW-YunJheNeural'
 rate = sys.argv[4] if len(sys.argv) > 4 else '+5%'
 rows = [l.rstrip('\n').split('\t', 1) for l in open(tsv, encoding='utf-8') if l.strip()]
 todo = [(i, t) for i, t in rows if not os.path.exists(os.path.join(outdir, i + '.mp3'))]
+todo = [(i, t) for i, t in todo if not any(c in t for c in 'ㄖㄩㄛㄜㄝㄟㄦ')]   # 這些句子用 record_mix.py
 print(f'{len(rows)} 句，要錄 {len(todo)} 句')
 
 def trim(src, dst):
