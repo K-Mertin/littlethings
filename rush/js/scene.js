@@ -149,7 +149,7 @@ function drawFence(g, it, th) {
 }
 
 function drawClouds(g, th, t) {
-  if (th.dark) return;
+  if (th.dark || R.hy < R.H * 0.06) return;
   const S = ART.scene;
   for (let i = 0; i < 5; i++) {
     const sp = 0.004 + (i % 3) * 0.002;

@@ -37,7 +37,7 @@ function genDefense(n, seed) {
       let g = n === 1 ? [{ k: 'mul', v: 2 }, { k: 'add', v: 1 }][i] : pick(opts);
       if (reds > 0 && i === cnt - 1 && ri > 0 && R() < 0.7) { g = { k: 'kill', v: 0 }; reds--; }
       const o = { t: 'gate', id: _uid++, x, w, z, k: g.k, v: g.v, pair: { used: false, n: 1 }, fade: 0, bump: 0, acc: 0 };
-      if (slides > 0 && g.k !== 'kill' && i === 0 && R() < 0.8) { o.slide = { cx: 0, amp: 4.2 - w - 0.3, f: 0.6 + R() * 0.4, ph: R() * 6 }; slides--; }
+      if (slides > 0 && (g.k !== 'kill' || D.lvl >= 7) && i === 0 && R() < 0.8) { o.slide = { cx: 0, amp: 4.2 - w - 0.3, f: 0.6 + R() * 0.4, ph: R() * 6 }; slides--; }
       gates.push(o);
     });
   });
@@ -50,8 +50,8 @@ function genDefense(n, seed) {
   return {
     n, name: D.name, theme: THEMES[D.theme], gates, E, lv,
     baseHp: Math.round(E * (30 + lv * 3)),
-    castle: 20,
-    flow: E * (0.58 + lv * 0.03),   // 怪物每秒的血量
+    castle: 15,
+    flow: E * (0.5 + lv * 0.055),   // 怪物每秒的血量
     dur: 0,
   };
 }
@@ -112,6 +112,15 @@ function defWave() {
     G.objs.push(defEnemy(k, x, DEF_Z_BASE - 2 - (i % 4) * 0.9 - Math.random(), Math.max(1, Math.round(unit * hk))));
   });
   emit('dwave', { n: G.waveN });
+}
+
+// 巨魔兵：基地半血時派出來，很耐打，撞到城扣很多
+function defBoss() {
+  if (G.L.lv < 2) return;
+  const o = defEnemy('brute', (Math.random() - 0.5) * 2, DEF_Z_BASE - 2.5, Math.round(G.L.E * (5 + G.L.lv * 0.8)));
+  o.h *= 1.9; o.r *= 1.7; o.pow = 6; o.spd *= 0.7; o.boss = 1;
+  G.objs.push(o);
+  emit('dboss', o);
 }
 
 function defFireUnit(giant) {
@@ -247,7 +256,7 @@ function defUnitsMove(dt, endOnly) {
       emit('basehit', { d: u.hp, giant: !!u.giant });
       if (fxOn() && Math.random() < (u.giant ? 1 : 0.2)) FX.add({ k: 'spark', x: u.x, z: DEF_Z_BASE - 1.4, h: 0.5 + Math.random() * 2.5, life: 0.12, size: u.giant ? 2 : 0.8, fl: 'y', rot: Math.random() * 3 });
       if (u.giant && fxOn()) FX.boom(u.x, DEF_Z_BASE - 1.4, 1.2);
-      if (!b.rage && b.hp < b.max * 0.5) { b.rage = true; emit('baserage'); }
+      if (!b.rage && b.hp < b.max * 0.5) { b.rage = true; emit('baserage'); defBoss(); }
       if (b.hp <= 0 && G.st === 'play') {
         b.hp = 0; G.st = 'winning'; G.endT = 2.6; G.shake = 1.2;
         for (const e of G.objs) if (e.t === 'en' && !e.dead) { e.dead = 1; if (fxOn()) FX.kill(e); }

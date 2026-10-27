@@ -266,7 +266,7 @@ function drawGateExtra(g, o, t) {
 // ---------- 天候 ----------
 function drawFogRule(g, th) {
   // 沙暴：遠方幾乎看不到，26 公尺內才清楚
-  const y0 = R.hy - 4, y1 = P(0, 24, 0).y;
+  const y0 = Math.max(0, R.hy - 4), y1 = P(0, 24, 0).y;
   const gr = g.createLinearGradient(0, y0, 0, y1);
   gr.addColorStop(0, 'rgba(232,196,140,.97)'); gr.addColorStop(0.55, 'rgba(232,196,140,.85)'); gr.addColorStop(1, 'rgba(232,196,140,0)');
   g.fillStyle = gr; g.fillRect(-20, y0, R.W + 40, y1 - y0);
@@ -314,5 +314,31 @@ function drawLobWarnTop(g, G, t) {
     g.strokeStyle = `rgba(255,70,70,${0.6 + 0.3 * Math.sin(t * 18)})`; g.lineWidth = Math.max(2.5, 0.06 * m.s);
     g.beginPath(); g.ellipse(m.x, (a.y + b.y) / 2, o.rad * m.s, Math.max(2, (a.y - b.y) / 2), 0, 0, Math.PI * 2); g.stroke();
     g.setLineDash([]);
+  }
+}
+
+// 岔路中間的隔牆（分段加入深度排序）
+function dividerItems(items, o) {
+  for (let z = 0; z < o.len; z += 3) items.push({ z: o.z + z, div: o, z0: o.z + z, z1: o.z + Math.min(o.len, z + 3) });
+}
+function drawDividerSeg(g, it) {
+  const z0 = Math.max(it.z0, -Z0 + 0.8), z1 = it.z1;
+  if (z1 <= z0) return;
+  const w = 0.32, h = 0.95;
+  // 側面
+  g.fillStyle = '#9aa3b2';
+  quadW(g, -w, z0, w, z0, 0);
+  const a = P(-w, z0, 0), b = P(w, z0, 0), c = P(w, z0, h), d = P(-w, z0, h);
+  g.fillStyle = '#c9d0db'; g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.lineTo(c.x, c.y); g.lineTo(d.x, d.y); g.closePath(); g.fill();
+  for (const sx of [-1, 1]) {
+    const p0 = P(sx * w, z0, 0), p1 = P(sx * w, z1, 0), p2 = P(sx * w, z1, h), p3 = P(sx * w, z0, h);
+    g.fillStyle = '#aab3c2'; g.beginPath(); g.moveTo(p0.x, p0.y); g.lineTo(p1.x, p1.y); g.lineTo(p2.x, p2.y); g.lineTo(p3.x, p3.y); g.closePath(); g.fill();
+  }
+  // 頂面黃黑條紋
+  const n = 3;
+  for (let k = 0; k < n; k++) {
+    const za = z0 + (z1 - z0) * k / n, zb = z0 + (z1 - z0) * (k + 1) / n;
+    g.fillStyle = k % 2 ? '#2a2d36' : '#ffcc33';
+    quadW(g, -w, za, w, zb, h); g.fill();
   }
 }
