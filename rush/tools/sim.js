@@ -4,7 +4,7 @@ const dir = path.join(__dirname, '..', 'js');
 const ctx = { console, Math, JSON, localStorage: { getItem() { return null; }, setItem() { } } };
 vm.createContext(ctx);
 const src = ['core.js', 'levels.js', 'game.js'].map(f => fs.readFileSync(path.join(dir, f), 'utf8')).join('\n;\n') +
-  '\n;this.api={newGame,step,get G(){return G},WEAPONS,genDps,ROAD,LV_MAX,get LOSS(){return LOSS}};';
+  '\n;this.api={todayKey,newGame,step,get G(){return G},WEAPONS,genDps,ROAD,LV_MAX,get LOSS(){return LOSS}};';
 vm.runInContext('var LOSS={};' + src.replace('function setN(n, why) {', 'function setN(n, why) { if (n < G.N) LOSS[why] = (LOSS[why] || 0) + (G.N - n);'), ctx);
 const A = ctx.api;
 
@@ -25,13 +25,14 @@ function gateVal(G, g) {
 
 const G_boss = r => r.bossT0 != null;
 const LOSSLOG = process.env.LOSSLOG ? {} : null;
+const MODE = process.env.MODE || 'stage';
 function play(s, seed) {
-  A.newGame(s, { sim: true, seed, up: { men: upL, dmg: upL, rate: upL } });
+  A.newGame(s, { sim: true, seed, mode: MODE, up: { men: upL, dmg: upL, rate: upL } });
   let G = A.G;
   const dt = 1 / 60;
   const choice = new Map();
   let t = 0;
-  while ((G.st === 'play' || G.st === 'lose' || (G.boss && G.boss.dead && G.st !== 'win')) && t < 400) {
+  while ((G.st === 'play' || G.st === 'lose' || (G.boss && G.boss.dead && G.st !== 'win')) && t < (MODE === 'endless' ? 1500 : 400)) {
     // 找下一對門
     let next = null;
     for (const o of G.objs) if (o.t === 'gate' && !o.pair.used && o.z > -0.5 && (!next || o.z < next.z)) next = o;
@@ -92,6 +93,7 @@ function play(s, seed) {
     if (G.boss && G.bossN0 == null) { G.bossN0 = G.N; G.bossT0 = G.t; }
     t += dt;
   }
+  if (MODE !== 'stage') console.log('  ', MODE, 'seed', seed, G.st, 'dist', Math.round(G.dist), 'leg', G.leg, 'N', G.N, 'peak', G.peak);
   return { bossT0: G.bossT0, bossLoss: G.bossN0 ? 1 - G.N / G.bossN0 : 0, bossT: G.bossT0 != null ? G.t - G.bossT0 : 0, win: G.st === 'win', N: G.N, peak: G.peak, t: G.t, lost: G.lost, stars: G.st === 'win' ? (G.N >= G.peak * 0.75 ? 3 : G.N >= G.peak * 0.45 ? 2 : 1) : 0, bossHpLeft: G.boss ? G.boss.hp / G.boss.max : 1, dist: G.dist, len: G.L.len, expN: G.L.expN };
 }
 

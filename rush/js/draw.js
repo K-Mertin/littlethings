@@ -576,6 +576,7 @@ function render(G, t) {
   }
   g.drawImage(R.vig, 0, 0);
   if (G.flash > 0) { g.fillStyle = `rgba(255,60,60,${G.flash * 0.35})`; g.fillRect(0, 0, R.W, R.H); }
+  if (G.themeFade > 0) { g.fillStyle = `rgba(255,255,255,${Math.min(1, G.themeFade * 1.4)})`; g.fillRect(0, 0, R.W, R.H); }
 }
 
 function drawShadow(g, x, y, w) {
@@ -835,8 +836,8 @@ function drawHud(G) {
     g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = `900 ${13 * u}px "Noto Sans TC",system-ui,sans-serif`;
     g.fillText(BOSSES[b.k].name + (b.phase > 1 ? '・狂暴' : ''), cx, by + 13.5 * u);
   } else if (!G.boss) {
-    const k = clamp(G.dist / G.L.len, 0, 1);
-    const label = `第 ${G.s} 關 · ${G.L.name}`;
+    const k = G.mode === 'endless' ? clamp((G.dist - G.legStart) / (G.L.len - G.legStart), 0, 1) : clamp(G.dist / G.L.len, 0, 1);
+    const label = G.mode === 'endless' ? `無盡 · 第 ${G.leg + 1} 段 · ${Math.floor(G.dist)} 公尺` : G.mode === 'daily' ? `每日挑戰 · ${RULES[G.rule].name}` : `第 ${G.s} 關 · ${G.L.name}`;
     g.textAlign = 'center'; g.font = `900 ${13 * u}px "Noto Sans TC",system-ui,sans-serif`;
     g.lineJoin = 'round'; g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = 4 * u; g.strokeText(label, cx, by + 6 * u);
     g.fillStyle = '#fff'; g.fillText(label, cx, by + 6 * u);

@@ -44,6 +44,19 @@ function showRule(rule, title) {
   UI.ruleT = 2.8;
 }
 
+// 無盡模式／每日挑戰
+function startMode(mode) {
+  AU.init();
+  const seed = mode === 'daily' ? todayKey() : (Date.now() % 100000) + 1;
+  newGame(1, { mode, seed, up: Save.d.up });
+  G.badgeBump = 0; G.badgeRed = 0;
+  UI.mode = 'play'; UI.banner = 0; UI.resultShown = false;
+  show(null);
+  AU.music(G.L.theme.bgm, false);
+  showRule(G.rule, mode === 'daily' ? `每日挑戰 · ${String(G.L.daily).replace(/(\d{4})(\d\d)(\d\d)/, '$1/$2/$3')}` : '無盡模式 · 第 1 段');
+  if (mode === 'daily') toast('每日挑戰不使用強化，大家的條件都一樣', 2.6);
+}
+
 function toast(text, sec) {
   const el = $('#toast');
   el.textContent = text; el.hidden = false;
@@ -90,6 +103,8 @@ function handleEvents() {
       case 'miss': AU.sfx('gateBad'); break;
       case 'strikewarn': AU.sfx('warn'); break;
       case 'strike': AU.sfx('slam'); vibrate(60); break;
+      case 'legclear': toast(`打倒頭目！第 ${a.leg} 段完成`, 1.6); break;
+      case 'legtheme': AU.music(G.L.theme.bgm, false); showRule(G.rule, `無盡模式 · 第 ${G.leg + 1} 段 · ${G.L.theme.name}`); break;
     }
   }
   G.q.length = 0;
@@ -125,6 +140,60 @@ function tutorial() {
 }
 
 // ---------- 結束 ----------
+function resultRow(primary) {
+  return `<div class="row">
+        <button class="btn primary" data-act="retry">${primary}</button>
+        <button class="btn" data-act="shop">強化部隊</button>
+        <button class="btn ghost" data-act="title">回標題</button>
+      </div>`;
+}
+function finishEndless() {
+  const d = Save.d, dist = Math.floor(G.dist);
+  const prev = d.endBest || 0, rec = dist > prev;
+  if (rec) d.endBest = dist;
+  d.endLegs = Math.max(d.endLegs || 0, G.leg);
+  const coins = Math.floor(dist / 15) + G.leg * 20 + Math.floor(G.kills / 10);
+  d.coins += coins; d.plays++; Save.save();
+  AU.sfx(rec ? 'win' : 'lose');
+  $('#resultBody').innerHTML = `<p class="eyebrow">無盡模式</p>
+      <h2 class="big ${rec ? 'ok' : 'bad'}">${rec ? '新紀錄！' : '部隊全滅'}</h2>
+      <div class="bigNum"><b>${dist}</b> 公尺</div>
+      <div class="stats">
+        <div><b>${G.leg}</b><span>打倒頭目</span></div>
+        <div><b>${G.peak}</b><span>最多兵力</span></div>
+        <div><b>${G.kills}</b><span>打倒怪物</span></div>
+        <div><b class="gold">+${coins}</b><span>金幣</span></div>
+      </div>
+      <p class="hint">${rec ? '比上次跑得更遠了！' : `最遠紀錄：${prev} 公尺`}</p>
+      ${resultRow('再跑一次')}`;
+  show('result'); refreshCoins();
+}
+function finishDaily(win) {
+  const d = Save.d, key = G.L.daily;
+  if (!d.daily || d.daily.key !== key) d.daily = { key, best: 0, stars: 0, tries: 0, paid: false };
+  const r = d.daily;
+  r.tries++;
+  const st = win ? starsOf() : 0, score = win ? G.N : 0;
+  const rec = win && score > r.best;
+  if (win) { r.best = Math.max(r.best, score); r.stars = Math.max(r.stars, st); }
+  let coins = 5 + Math.floor(G.kills / 8);
+  if (win && !r.paid) { coins += 80 + st * 20; r.paid = true; }
+  d.coins += coins; d.plays++; Save.save();
+  AU.sfx(win ? 'win' : 'lose');
+  $('#resultBody').innerHTML = `<p class="eyebrow">每日挑戰 · ${String(key).replace(/(\d{4})(\d\d)(\d\d)/, '$1/$2/$3')} · ${RULES[G.rule].name}</p>
+      <h2 class="big ${win ? 'ok' : 'bad'}">${win ? (rec ? '今日新紀錄！' : '挑戰成功！') : '部隊全滅'}</h2>
+      ${win ? `<div class="stars">${[0, 1, 2].map(i => `<span class="st ${i < st ? 'on' : ''}" style="animation-delay:${0.25 + i * 0.25}s">★</span>`).join('')}</div>` : ''}
+      <div class="stats">
+        <div><b>${win ? G.N : Math.round(clamp(G.dist / G.L.len, 0, 1) * 100) + '%'}</b><span>${win ? '存活士兵' : '前進距離'}</span></div>
+        <div><b>${r.best}</b><span>今天最佳</span></div>
+        <div><b>${r.tries}</b><span>挑戰次數</span></div>
+        <div><b class="gold">+${coins}</b><span>金幣</span></div>
+      </div>
+      <p class="hint">${win ? '存活的士兵越多分數越高。明天會換一關新的。' : '每日挑戰不使用強化，多試幾次找出最好的選門路線。'}</p>
+      ${resultRow(win ? '再挑戰一次' : '再試一次')}`;
+  show('result'); refreshCoins();
+}
+
 function starsOf() { return G.N >= G.peak * 0.75 ? 3 : G.N >= G.peak * 0.45 ? 2 : 1; }
 function finish(win) {
   if (UI.resultShown) return;
@@ -132,6 +201,8 @@ function finish(win) {
   UI.mode = 'result';
   const s = G.s, d = Save.d;
   let html = '';
+  if (G.mode === 'endless') return finishEndless();
+  if (G.mode === 'daily') return finishDaily(win);
   if (win) {
     const st = starsOf();
     const prev = d.stars[s] || 0;
@@ -238,6 +309,9 @@ function goTitle() {
   AU.stop();
   const next = nextStage();
   $('#startBtn').textContent = next === 1 && !Save.d.stars[1] ? '開始遊戲' : `繼續：第 ${next} 關`;
+  $('#endInfo').textContent = Save.d.endBest ? `最遠 ${Save.d.endBest} 公尺` : '一直跑到全滅';
+  const dd = Save.d.daily;
+  $('#dailyInfo').textContent = dd && dd.key === todayKey() && dd.best ? `今天最佳 ${dd.best} 人` : '今天還沒挑戰';
   refreshCoins();
   show('title');
 }
@@ -271,7 +345,12 @@ function onAct(act, el) {
     case 'help': show('help'); break;
     case 'title': goTitle(); if (AU.ctx) AU.ctx.resume(); break;
     case 'resume': resume(); break;
-    case 'restart': case 'retry': startStage(G.s && !G.demo ? G.s : (Save.d.last || 1)); break;
+    case 'restart': case 'retry':
+      if (G && !G.demo && G.mode !== 'stage') startMode(G.mode);
+      else startStage(G.s && !G.demo ? G.s : (Save.d.last || 1));
+      break;
+    case 'endless': startMode('endless'); break;
+    case 'daily': startMode('daily'); break;
     case 'next': startStage(Math.min(STAGES.length, G.s + 1)); break;
     case 'quit': goTitle(); if (AU.ctx) AU.ctx.resume(); break;
   }
@@ -349,6 +428,7 @@ function frame(now) {
     if (G.badgeBump > 0) G.badgeBump = Math.max(0, G.badgeBump - dt * 4);
     if (G.badgeRed > 0) G.badgeRed -= dt;
     if (G.flash > 0) G.flash = Math.max(0, G.flash - dt * 2.5);
+    if (G.themeFade > 0) G.themeFade = Math.max(0, G.themeFade - dt * 1.2);
     if (UI.banner > 0) UI.banner -= dt;
     handleEvents();
     tutorial();

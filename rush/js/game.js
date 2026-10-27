@@ -13,7 +13,9 @@ for (let i = 0; i < VIS_CAP; i++) {
 
 function newGame(s, opts) {
   opts = opts || {};
-  const L = genStage(s, opts.seed, opts.gen);
+  const mode = opts.mode || 'stage';
+  const L = mode === 'endless' ? legStage(0, opts.seed) : mode === 'daily' ? dailyStage(opts.seed || todayKey()) : genStage(s, opts.seed, opts.gen);
+  if (mode !== 'stage') s = L.s;
   const up = opts.up || { men: 0, dmg: 0, rate: 0 };
   G = {
     s, L, st: 'play', t: 0, dist: 0, evI: 0, spd: L.spd, scroll: true,
@@ -25,7 +27,10 @@ function newGame(s, opts) {
     shake: 0, flash: 0, lost: 0, gained: 0, kills: 0, gatesGood: 0, gatesBad: 0,
     hint: null, sim: !!opts.sim,
     rule: L.rule, ice: L.rule === 'ice', vx: 0,
+    mode, leg: 0, hpMul: 1, seed: opts.seed || 1, legStart: 0,
   };
+  if (mode === 'endless') { G.adE = 0.85; G.adMin = 0.12; G.hpMul = 0.8; }
+  if (mode === 'daily') { G.N = startN(s); G.dmgK = 1; G.rateK = 1; }
   G.peak = G.N;
   syncSoldiers(true);
   return G;
@@ -114,8 +119,8 @@ function spawnEvents() {
         }
       }
     } else if (e.type === 'wall') {
-      const f = clamp(Math.pow(curDps() * upK() / (e.sHP * Math.max(1, e.expN || 1)), 0.6), 0.5, 3);
-      const hp = e.hp * f;
+      const f = clamp(Math.pow(curDps() * upK() / (e.sHP * Math.max(1, e.expN || 1)), G.adE || 0.6), G.adMin || 0.5, 3);
+      const hp = e.hp * f * G.hpMul;
       G.objs.push({ t: 'wall', id: _uid++, x: 0, z: z0, hp, max: hp, rw: e.rw, sHP: curDps() / Math.max(1, G.N), r: ROAD, hit: 0 });
     } else if (e.type === 'saw') {
       for (const m of e.list) G.objs.push({ t: 'saw', id: _uid++, cx: m.cx, amp: m.amp, f: m.f, ph: m.ph, x: m.cx, z: z0 + m.dz, r: 0.72, tick: 0, spin: 0 });
@@ -123,7 +128,7 @@ function spawnEvents() {
       for (const m of e.list) G.objs.push({ t: 'spike', id: _uid++, x0: m.x0, x1: m.x1, x: (m.x0 + m.x1) / 2, z: z0 + m.dz, len: 2.6, per: m.per, ph: m.ph, hitC: -1 });
     } else if (e.type === 'wave') {
       // 依目前實力調整（選得好還是比較強，但不會無聊）
-      const f = clamp(Math.pow(curDps() * upK() / e.exp, 0.6), 0.5, 3);
+      const f = clamp(Math.pow(curDps() * upK() / e.exp, G.adE || 0.6), G.adMin || 0.5, 3) * G.hpMul;
       const sHP = curDps() / Math.max(1, G.N);
       for (const m of e.list) {
         const K = ENEMIES[m.k];
@@ -135,7 +140,7 @@ function spawnEvents() {
     } else if (e.type === 'boss') {
       const B = BOSSES[e.k];
       const sc = 1 + e.tier * 0.12;
-      const f = clamp(Math.pow(curDps() * upK() / e.exp, 0.8), 0.5, 4);
+      const f = clamp(Math.pow(curDps() * upK() / e.exp, G.adE ? G.adE + 0.1 : 0.8), G.adMin || 0.5, 4) * G.hpMul;
       const hp = e.hp * f;
       G.boss = { t: 'boss', id: _uid++, k: e.k, tier: e.tier, x: 0, z: Math.min(z0, 34), hp, max: hp, r: B.r * sc, h: B.h * sc, spd: 2.5, eat: Math.max(1, G.N * 0.045), sHP: curDps() / Math.max(1, G.N), atk: 0, atkT: 0, phase: 1, hit: 0, ph: 0, intro: 2.2, dead: 0 };
       G.objs.push(G.boss);
@@ -234,8 +239,10 @@ function kill(o, b) {
   } else if (o.t === 'boss') {
     emit('bossdie', o);
     G.shake = 1.2;
-    G.endT = 2.2;
+    o.deadAt = G.t;
     if (fxOn()) FX.bossdie(o);
+    if (G.mode === 'endless') nextLeg();
+    else G.endT = 2.2;
   }
 }
 
@@ -310,6 +317,21 @@ function passGate(g) {
   if (G.N <= 0) lose();
 }
 
+// 無盡模式：打倒頭目後接下一段
+function nextLeg() {
+  G.leg++;
+  const L2 = legStage(G.leg, G.seed, { N: Math.max(5, G.N), wid: G.wid, lv: G.lv });
+  const off = G.dist + 28;
+  for (const e of L2.ev) { e.d += off; G.L.ev.push(e); }
+  G.legStart = G.dist;
+  G.L.len = off + L2.len;
+  G.boss = null; G.stopAt = null; G.scroll = true;
+  G.hpMul = 0.8 + G.leg * 0.06 + G.leg * G.leg * 0.012;
+  // 換場景要等頭目倒下的動畫播完
+  G.pendLeg = L2; G.legT = 1.5;
+  emit('legclear', { leg: G.leg });
+}
+
 function lose() {
   if (G.st !== 'play') return;
   G.st = 'lose';
@@ -340,6 +362,16 @@ function step(dt, input) {
     return;
   }
 
+  if (G.pendLeg) {
+    G.legT -= dt;
+    if (G.legT <= 0) {
+      const L2 = G.pendLeg; G.pendLeg = null;
+      G.L.theme = L2.theme; G.L.name = L2.name; G.L.rule = L2.rule; G.L.s = L2.s;
+      G.rule = L2.rule; G.ice = L2.rule === 'ice'; G.s = L2.s;
+      G.themeFade = 1;
+      emit('legtheme', { leg: G.leg });
+    }
+  }
   // 捲動
   let v = G.spd;
   if (G.stopAt != null && G.dist >= G.stopAt) { v = 0; G.scroll = false; }
@@ -481,7 +513,7 @@ function step(dt, input) {
       }
       if (o.z < -5) O.splice(i, 1);
     } else if (o.t === 'boss') {
-      if (o.dead) continue;
+      if (o.dead) { if (G.mode === 'endless') { o.z -= v * dt; if (G.t - o.deadAt > 2) O.splice(i, 1); } continue; }
       if (o.intro > 0) { o.intro -= dt; o.z -= v * dt; continue; }
       o.ph += dt * 3;
       const reach = cr.rz + o.r * 0.55;
