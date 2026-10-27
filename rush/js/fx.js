@@ -92,6 +92,7 @@ const FX = {
 
   bossdie(o) {
     o.deadAt = G.t;
+    if (G.base && o.k === 'base') G.base.deadAt = G.t;
     FX.q = [];
     for (let i = 0; i < 7; i++) FX.q.push({ at: G.t + i * 0.22, x: o.x + FX.rnd(-o.r, o.r), z: o.z + FX.rnd(-0.5, 0.5), k: 1 + Math.random() * 0.8 });
     FX.add({ k: 'die', boss: o, x: o.x, z: o.z, life: 1.8 });

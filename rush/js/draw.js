@@ -2,7 +2,7 @@
 'use strict';
 
 const R = { cv: null, g: null, W: 0, H: 0, dpr: 1, q: 1, bg: null, bgKey: '', vig: null };
-const Z0 = 7.5;
+let Z0 = 7.5;   // 鏡頭到 z=0 的距離（守城模式拉遠一點）
 
 function resizeRender() {
   const cv = R.cv;
@@ -12,8 +12,10 @@ function resizeRender() {
   cv.width = R.W; cv.height = R.H;
   R.cssW = cw; R.cssH = ch;
   const port = R.H > R.W * 1.05;
-  R.hy = R.H * (port ? 0.15 : 0.12);
-  R.y0 = R.H * (port ? 0.8 : 0.83);
+  const def = R.camMode === 'defense';
+  Z0 = def ? 15 : 7.5;
+  R.hy = R.H * (def ? (port ? 0.1 : 0.06) : port ? 0.15 : 0.12);
+  R.y0 = R.H * (def ? (port ? 0.86 : 0.88) : port ? 0.8 : 0.83);
   const Wp = Math.min(R.W, R.H * (port ? 0.64 : 0.95));
   R.k0 = 0.46 * Wp / ROAD;
   R.F = R.k0 * Z0;
@@ -151,6 +153,7 @@ function drawGround(g, th, dist) {
 // ---------- 門 ----------
 const GATE_COL = { good: ['#2f9bff', '#7fd0ff', '#0b4fae'], bad: ['#ff3b4f', '#ff9aa4', '#9b0f22'], wpn: ['#ffb020', '#ffe08a', '#a86400'], lv: ['#2fd07a', '#a6f5c8', '#0d7a40'] };
 function gateLook(o) {
+  if (o.k === 'kill') return 'bad';
   if (o.k === 'wpn') return 'wpn';
   if (o.k === 'lv') return 'lv';
   if (o.k === 'mul') return 'good';
@@ -158,6 +161,7 @@ function gateLook(o) {
   return o.v >= 0 ? 'good' : 'bad';
 }
 function gateText(o) {
+  if (o.k === 'kill') return '✕';
   if (o.k === 'add') return (o.v >= 0 ? '+' : '−') + Math.abs(o.v);
   if (o.k === 'mul') return '×' + o.v;
   if (o.k === 'div') return '÷' + o.v;

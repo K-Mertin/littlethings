@@ -58,7 +58,7 @@ const UPGRADES = [
 const SAVE_KEY = 'rush:v1';
 const Save = {
   d: null,
-  def() { return { stars: {}, coins: 0, up: { men: 0, dmg: 0, rate: 0 }, music: true, sfx: true, tips: {}, best: {}, plays: 0 }; },
+  def() { return { stars: {}, coins: 0, up: { men: 0, dmg: 0, rate: 0 }, music: true, sfx: true, tips: {}, best: {}, plays: 0, dstars: {} }; },
   load() {
     let d = null;
     try { d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { d = null; }
@@ -71,6 +71,7 @@ const Save = {
   },
   save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(this.d)); } catch (e) { } },
   unlocked(s) { return s === 1 || (this.d.stars[s - 1] || 0) > 0; },
+  dUnlocked(n) { return n === 1 || (this.d.dstars[n - 1] || 0) > 0; },
 };
 
 if (typeof module !== 'undefined') module.exports = { ROAD, PX_MAX, ZSPAWN, BULLET_V, BULLET_RANGE, MAX_SHOOTERS, VIS_CAP, MAX_N, clamp, lerp, rng, WEAPONS, WPN_ORDER, LV_MAX, lvMult, ENEMIES, UPGRADES, Save };
