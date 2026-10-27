@@ -2,7 +2,16 @@
 'use strict';
 
 const R = { cv: null, g: null, W: 0, H: 0, dpr: 1, q: 1, bg: null, bgKey: '', vig: null };
-let Z0 = 7.5;   // 鏡頭到 z=0 的距離（守城模式拉遠一點）
+let Z0 = 8;   // 鏡頭在 z=0 後面多遠
+
+// 俯瞰鏡頭：鏡頭在高處往前下方看。
+// 依「部隊在畫面哪裡」和「最遠要看到幾公尺」算出焦距，所以手機直放、橫放都會自動調整。
+const CAMS = {
+  run:      { th: 40, h: 12, d: 8, z0: 0,    y0: 0.80, zT: 110, yT: 0.09, minRoad: 0 },
+  runL:     { th: 30, h: 10, d: 8, z0: 0,    y0: 0.85, zT: 80,  yT: 0.14, minRoad: 0.27 },
+  defense:  { th: 52, h: 22, d: 8, z0: -1.2, y0: 0.87, zT: 46,  yT: 0.17, minRoad: 0 },
+  defenseL: { th: 46, h: 20, d: 8, z0: -1.2, y0: 0.88, zT: 47,  yT: 0.24, minRoad: 0.12 },
+};
 
 function resizeRender() {
   const cv = R.cv;
@@ -12,33 +21,42 @@ function resizeRender() {
   cv.width = R.W; cv.height = R.H;
   R.cssW = cw; R.cssH = ch;
   const port = R.H > R.W * 1.05;
-  const def = R.camMode === 'defense';
-  Z0 = def ? 15 : 7.5;
-  R.hy = R.H * (def ? (port ? 0.1 : 0.06) : port ? 0.15 : 0.12);
-  R.y0 = R.H * (def ? (port ? 0.86 : 0.88) : port ? 0.8 : 0.83);
-  const Wp = Math.min(R.W, R.H * (port ? 0.64 : 0.95));
-  R.k0 = 0.46 * Wp / ROAD;
-  R.F = R.k0 * Z0;
-  R.camH = (R.y0 - R.hy) / R.k0;
+  const C = CAMS[(R.camMode === 'defense' ? 'defense' : 'run') + (port ? '' : 'L')];
+  const th = C.th * Math.PI / 180;
+  R.cc = Math.cos(th); R.ss = Math.sin(th); R.ch = C.h; Z0 = C.d;
+  const dep = z => (z + C.d) * R.cc + C.h * R.ss, ver = z => -C.h * R.cc + (z + C.d) * R.ss;
+  let F = (C.y0 - C.yT) * R.H / (ver(C.zT) / dep(C.zT) - ver(C.z0) / dep(C.z0));
+  const maxF = 0.49 * R.W * dep(C.z0) / ROAD, minF = C.minRoad * 0.5 * R.W * dep(C.z0) / ROAD;
+  F = clamp(F, minF, maxF);
+  R.F = F;
+  R.cy = C.y0 * R.H + ver(C.z0) * F / dep(C.z0);
+  R.hy = R.cy - F * Math.tan(th);       // 地平線（常常在畫面上方看不到）
+  R.k0 = F / dep(0);                     // z=0 每公尺幾個像素
   R.cx = R.W / 2;
   R.u = Math.min(cw, ch * 0.75, 520) / 400; // HUD 單位（CSS 像素）
   R.bgKey = '';
   R.vig = null;
+  R.zTop = zAtY(0);
 }
 
 // 世界 → 螢幕
 function P(x, z, h) {
-  let d = z + Z0; if (d < 0.5) d = 0.5;
-  const sc = R.F / d;
-  return { x: R.cx + (x - R.camX) * sc, y: R.hy + (R.camH - (h || 0)) * sc, s: sc };
+  const dz = z + Z0, dy = (h || 0) - R.ch;
+  let dep = dz * R.cc - dy * R.ss; if (dep < 0.5) dep = 0.5;
+  const sc = R.F / dep;
+  return { x: R.cx + (x - R.camX) * sc, y: R.cy - (dy * R.cc + dz * R.ss) * sc, s: sc };
 }
-function zAtY(y) { return R.camH * R.F / Math.max(1, y - R.hy) - Z0; }
+// 螢幕上某一列對應地面上的 z
+function zAtY(y) {
+  const k = (R.cy - y) / R.F, den = R.ss - k * R.cc;
+  return den <= 0.0005 ? 1e4 : R.ch * (R.cc + k * R.ss) / den - Z0;
+}
 
 function hash(n) { n = (n ^ 61) ^ (n >>> 16); n = n + (n << 3); n = n ^ (n >>> 4); n = Math.imul(n, 0x27d4eb2d); n = n ^ (n >>> 15); return n >>> 0; }
 
 // ---------- 天空與遠景（快取） ----------
 function buildBg(th) {
-  const W = R.W, H = Math.ceil(R.hy + 4);
+  const W = R.W, H = Math.max(8, Math.ceil(R.hy + 4));
   const pad = Math.round(W * 0.1);
   const c = mkCanvas(W + pad * 2, H);
   const g = c.getContext('2d');
@@ -105,9 +123,9 @@ function vignette() {
 function quad(g, a, b, c, d) { g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.lineTo(c.x, c.y); g.lineTo(d.x, d.y); g.closePath(); g.fill(); }
 
 function drawGround(g, th, dist) {
-  const zFar = ZSPAWN + 8, zNear = Math.max(-Z0 + 0.6, zAtY(R.H + 4));
-  const yFar = P(0, zFar, 0).y;
-  g.fillStyle = th.side[0]; g.fillRect(0, R.hy, R.W, R.H - R.hy);
+  const zFar = Math.min(R.zTop + 4, 170), zNear = Math.max(-Z0 + 0.6, zAtY(R.H + 4));
+  const gy = Math.max(0, R.hy);
+  g.fillStyle = th.side[0]; g.fillRect(0, gy, R.W, R.H - gy);
   // 路邊條紋
   const SB = 5;
   g.fillStyle = th.side[1];
@@ -144,10 +162,14 @@ function drawGround(g, th, dist) {
     const z1 = Math.max(z, zNear), z2 = Math.min(z + DB * 0.5, zFar); if (z2 <= z1) continue;
     quad(g, P(-0.09, z1, 0), P(0.09, z1, 0), P(0.09, z2, 0), P(-0.09, z2, 0));
   }
-  // 地平線霧
-  const fg = g.createLinearGradient(0, R.hy - 2, 0, R.hy + R.H * 0.12);
-  fg.addColorStop(0, th.fog + '0.55)'); fg.addColorStop(1, th.fog + '0)');
-  g.fillStyle = fg; g.fillRect(0, R.hy - 2, R.W, R.H * 0.12 + 2);
+  // 遠方的霧：越遠越淡，蓋住路的盡頭
+  const yA = P(0, Math.min(zFar, ZSPAWN) * 0.72, 0).y, yB = Math.max(gy, P(0, Math.min(zFar, ZSPAWN + 12), 0).y);
+  if (yA > yB + 2) {
+    const fg = g.createLinearGradient(0, yB, 0, yA);
+    fg.addColorStop(0, th.fog + '0.9)'); fg.addColorStop(1, th.fog + '0)');
+    g.fillStyle = fg; g.fillRect(0, yB, R.W, yA - yB);
+  }
+  g.fillStyle = th.fog + '0.9)'; g.fillRect(0, gy, R.W, Math.max(0, yB - gy) + 1);
 }
 
 // ---------- 門 ----------
@@ -516,7 +538,7 @@ function render(G, t) {
   const sx = sh ? (Math.random() - 0.5) * sh : 0, sy = sh ? (Math.random() - 0.5) * sh : 0;
   g.translate(sx, sy);
   // 天空
-  g.drawImage(R.bg, -R.bgPad - R.camX * 2 * R.dpr, 0);
+  if (R.hy > 2) g.drawImage(R.bg, -R.bgPad - R.camX * 2 * R.dpr, 0);
   drawClouds(g, th, t);
   drawGround(g, th, G.dist);
   drawGroundDetail(g, th, G.dist);
@@ -539,13 +561,18 @@ function render(G, t) {
     items.push({ z, d: 0, kind, x, v: (h >>> 12) % 3, sc: 0.8 + ((h >>> 15) % 50) / 100 });
   }
   fenceItems(items, th, G.dist);
-  for (const o of G.objs) if (o.t !== 'spike') items.push({ z: o.t === 'lob' ? o.z - 0.3 : o.z, o });
+  for (const o of G.objs) {
+    if (o.t === 'spike') continue;
+    if (o.t === 'divider') { dividerItems(items, o); continue; }
+    items.push({ z: o.t === 'lob' ? o.z - 0.3 : o.z, o });
+  }
   for (const e of G.fx) if (e.k !== 'ring' && !(e.k === 'die' && e.boss)) items.push({ z: e.z - 0.05, e });
   items.push({ z: 0.001, crowd: 1 });
   items.sort((a, b) => b.z - a.z);
   for (const it of items) {
     if (it.kind) drawDecor(g, it);
     else if (it.fence) drawFence(g, it, th);
+    else if (it.div) drawDividerSeg(g, it);
     else if (it.e) drawFxItem(g, it.e);
     else if (it.crowd) drawCrowd(g, G, t);
     else {
@@ -686,7 +713,7 @@ function drawBullets(g, G) {
   for (const b of G.bullets) {
     const w = WEAPONS[b.wid];
     const a = P(b.x, b.z, 1.0);
-    if (a.y < R.hy) continue;
+    if (a.y < 0) continue;
     const L = b.wid === 'laser' ? 2.6 : w.len;
     const c = P(b.x - b.vx / BULLET_V * L, b.z - b.vz / BULLET_V * L, 1.0);
     if (b.wid === 'rocket') {

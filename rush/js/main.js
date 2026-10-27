@@ -170,6 +170,7 @@ function handleEvents() {
       case 'basehit': if (a.giant) { AU.sfx('boom'); G.shake = Math.max(G.shake, 0.6); } else AU.sfx('kill'); break;
       case 'baserage': AU.sfx('rage'); toast('敵方基地生氣了！怪物變多了', 2.2); break;
       case 'giant': AU.sfx('gateWpn'); toast('金色大兵出動！', 1.4); break;
+      case 'dboss': AU.sfx('boss'); toast('巨魔兵出現了！集中火力擋住它', 2.2); break;
       case 'dwave': break;
       case 'legclear': toast(`打倒頭目！第 ${a.leg} 段完成`, 1.6); break;
       case 'legtheme': AU.music(G.L.theme.bgm, false); showRule(G.rule, `無盡模式 · 第 ${G.leg + 1} 段 · ${G.L.theme.name}`); break;
@@ -448,7 +449,7 @@ function setupInput() {
   cv.addEventListener('pointermove', e => {
     const d = UI.drag;
     if (!d || d.id !== e.pointerId || UI.mode !== 'play') return;
-    const k = R.k0 * 0.65 / R.dpr; // 每公尺幾個 CSS 像素（考慮鏡頭跟隨）
+    const k = R.k0 * (G.mode === 'defense' ? 0.85 : 0.65) / R.dpr; // 每公尺幾個 CSS 像素（考慮鏡頭跟隨）
     G.tx = clamp(d.tx + (e.clientX - d.x) / k, -PX_MAX, PX_MAX);
   });
   const end = e => { if (UI.drag && UI.drag.id === e.pointerId) UI.drag = null; };

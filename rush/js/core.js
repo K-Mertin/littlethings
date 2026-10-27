@@ -3,9 +3,9 @@
 
 const ROAD = 4.2;          // 路面半寬（公尺）
 const PX_MAX = ROAD - 0.55; // 部隊中心可移動範圍
-const ZSPAWN = 74;         // 物件從多遠出現
+const ZSPAWN = 100;        // 物件從多遠出現（俯瞰鏡頭看得比較遠）
 const BULLET_V = 38;       // 子彈速度
-const BULLET_RANGE = 48;   // 子彈射程
+const BULLET_RANGE = 58;   // 子彈射程
 const MAX_SHOOTERS = 24;   // 畫面上實際開槍的士兵數（傷害依總人數放大）
 const VIS_CAP = 64;        // 畫面上最多畫幾個士兵
 const MAX_N = 99999;

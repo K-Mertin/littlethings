@@ -104,10 +104,10 @@ function genStage(s, seed, opts) {
     else if (best.k === 'lv') lv = Math.min(LV_MAX, lv + 1);
   }
 
-  function gates() {
+  function gates(second) {
     const fx = L.feats;
     // 會動的門：只有一扇，對準了才拿得到
-    if (fx.includes('slide') && cyc > 0 && R() < 0.3) {
+    if (!second && fx.includes('slide') && cyc > 0 && R() < 0.3) {
       const g = N < 25 ? { k: 'add', v: rnd5(Math.max(8, N * (0.9 + R() * 0.5))) } : { k: 'mul', v: R() < 0.3 ? 3 : 2 };
       const e = { d, type: 'gates', slide: { amp: 2.3 + R() * 0.3, f: 1.0 + R() * 0.7 + s * 0.03, ph: R() * 6 }, L: g, step: gateStep() };
       ev.push(e);
@@ -117,7 +117,7 @@ function genStage(s, seed, opts) {
       return;
     }
     // 轉盤門：兩邊都會換數字
-    if (fx.includes('roul') && cyc > 0 && R() < 0.4) {
+    if (!second && fx.includes('roul') && cyc > 0 && R() < 0.4) {
       const mk = () => {
         const vals = [{ k: 'mul', v: 2 }, { k: 'add', v: rnd5(Math.max(4, N * 0.5)) }, { k: 'add', v: -rnd5(Math.max(3, N * 0.3)) }, R() < 0.5 ? { k: 'div', v: 2 } : { k: 'mul', v: 3 }];
         return vals.sort(() => R() - 0.5);
@@ -133,14 +133,14 @@ function genStage(s, seed, opts) {
       types = ['plusMinus', 'plusMinus', 'plusPlus', 'mulAdd', 'mulAdd', 'mulDiv'];
       if (s >= 3) types.push('minusMinus', 'mulAdd');
       if (s >= 5) types.push('minusMinus', 'mulMul');
-      if (cyc % 3 === 2 && wpnGiven < 3) types = ['weapon'];
+      if (cyc % 3 === 2 && wpnGiven < 3 && !second) types = ['weapon'];
       if (L.rule === 'horde') types.push('plusPlus', 'mulAdd');
     }
     let t = pick(types);
     if (t === lastGate && t !== 'weapon') t = pick(types);
     lastGate = t;
     const a = rnd5(Math.max(3, N * (0.35 + R() * 0.5) + ri(2, 6)));
-    if (t === 'plusMinus') addPair({ k: 'add', v: a }, { k: 'add', v: -rnd5(Math.max(2, N * (0.2 + R() * 0.35) + ri(1, 4))) });
+    if (t === 'plusMinus') addPair({ k: 'add', v: a }, { k: 'add', v: -rnd5(Math.max(3, N * (0.35 + R() * 0.3) + ri(1, 4))) });
     else if (t === 'plusPlus') addPair({ k: 'add', v: a }, { k: 'add', v: rnd5(Math.max(1, a * (0.35 + R() * 0.3))) });
     else if (t === 'mulAdd') {
       // ×2 和 +a 很接近，要快速心算
@@ -150,7 +150,7 @@ function genStage(s, seed, opts) {
     }
     else if (t === 'mulDiv') addPair({ k: 'mul', v: 2 }, R() < 0.5 ? { k: 'div', v: 2 } : { k: 'add', v: -rnd5(Math.max(2, N * 0.3)) });
     else if (t === 'mulMul') addPair({ k: 'mul', v: 2 }, { k: 'mul', v: 3 });
-    else if (t === 'minusMinus') addPair({ k: 'add', v: -rnd5(Math.max(2, N * (0.12 + R() * 0.1))) }, { k: 'add', v: -rnd5(Math.max(4, N * (0.35 + R() * 0.2))) });
+    else if (t === 'minusMinus') addPair({ k: 'add', v: -rnd5(Math.max(2, N * (0.12 + R() * 0.1))) }, { k: 'add', v: -rnd5(Math.max(4, N * (0.45 + R() * 0.2))) });
     else if (t === 'weapon') {
       const opts = WPN_ORDER.filter(w => w !== wid && (s >= 2 || w !== 'rocket'));
       const w = s === 1 ? 'smg' : pick(opts);
@@ -205,6 +205,37 @@ function genStage(s, seed, opts) {
   }
 
   // 兩波之間的陷阱或牆
+  function cross() {
+    const n = 5 + Math.min(6, s) + ri(0, 3);
+    const dir = R() < 0.5 ? 1 : -1;
+    const H = dps() * (0.9 + s * 0.05);
+    ev.push({ d, type: 'cross', n, dir, spd: 2.2 + R() * 1.2 + s * 0.05, hp: H / n, sHP: dps() / N, exp: dps() });
+  }
+
+  function fork() {
+    const len2 = 30;
+    const kinds = ['gate', 'crate', 'weapon', 'safe'];
+    const a = pick(kinds); let b = pick(kinds); if (b === a) b = pick(kinds.filter(k => k !== a));
+    const lane = (kind) => {
+      if (kind === 'gate') return { gate: N < 25 ? { k: 'add', v: rnd5(Math.max(8, N)) } : { k: 'mul', v: R() < 0.35 ? 3 : 2 }, guard: 0.9 + s * 0.06 };
+      if (kind === 'crate') return { crates: 2, saw: true, gate: { k: 'add', v: rnd5(Math.max(4, N * 0.35)) } };
+      if (kind === 'weapon') return { gate: lv < LV_MAX && R() < 0.5 ? { k: 'lv', v: 1 } : { k: 'wpn', v: pick(WPN_ORDER.filter(w => w !== wid && (s >= 2 || w !== 'rocket'))) }, guard: 0.6 + s * 0.04 };
+      return { gate: { k: 'add', v: rnd5(Math.max(4, N * 0.45)) } };
+    };
+    const L1 = lane(a), L2 = lane(b);
+    const H = dps();
+    for (const Lx of [L1, L2]) {
+      if (Lx.guard) Lx.guardHp = H * Lx.guard;
+      if (Lx.crates) Lx.crateHp = H * 0.4;
+      Lx.crateRw = { k: 'add', v: rnd5(Math.max(3, N * 0.15)) };
+    }
+    ev.push({ d, type: 'fork', len: len2, L: L1, R: L2, sHP: dps() / N, exp: dps() });
+    // 預期：選比較好的那條
+    const gain = Lx => Lx.gate.k === 'mul' ? N * (Lx.gate.v - 1) : Lx.gate.k === 'add' ? Lx.gate.v : N * 0.25;
+    N += Math.round(Math.max(gain(L1), gain(L2)) * 0.8);
+    d += len2 + 26;
+  }
+
   function feature() {
     const opts = L.feats.filter(f => f === 'wall' || f === 'saw' || f === 'spike');
     if (!opts.length || d > len - 110) return;
@@ -243,16 +274,22 @@ function genStage(s, seed, opts) {
       wave(0.7 + s * 0.04, side * ROAD / 2);
       d += 12;
     }
+    // 岔路：中間有隔牆，左右兩條路的東西不一樣，要先決定走哪邊
+    if (s >= 3 && cyc > 0 && R() < 0.22 + s * 0.01 && d < len - 140) { fork(); cyc++; continue; }
     gates();
+    // 連續門：第二對門緊接在後面
+    if (s >= 4 && R() < 0.22) { d += 10; gates(true); }
     d += 32 + R() * 8;
-    const rows = wave(2.6 + s * 0.03 + R() * 0.6);
+    const rows = wave((4.0 + R() * 0.6) * (s === 1 ? 0.8 : 1));
     d += 30 + rows * 2 + R() * 10;
+    // 橫越的怪物：一排怪從路邊走過去
+    if (s >= 2 && R() < 0.3) { cross(); d += 16; }
     feature();
     cyc++;
   }
   const bk = opts.boss || STAGES[s - 1].boss;
   const tier = opts.tier != null ? opts.tier : (s - 1) % 3;
-  const bossT = (8.5 + s * 0.2) * (opts.bossK || 1);
+  const bossT = (11 + s * 0.15) * (opts.bossK || 1);
   ev.push({ d: len, type: 'boss', k: bk, tier, hp: dps() * bossT, eat: Math.max(1, N * 0.05), sHP: dps() / N, exp: dps() });
   ev.sort((a, b) => a.d - b.d);
   return { s, len, spd, ev, theme: opts.theme || themeOf(s), name: opts.name || STAGES[s - 1].name, expN: N, rule: L.rule, feats: L.feats };

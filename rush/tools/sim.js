@@ -53,7 +53,12 @@ function play(s, seed) {
       let sw = 0, sx = 0, nearZ = 1e9;
       for (const o of G.objs) if ((o.t === 'en' || o.t === 'boss' || o.t === 'crate') && !o.dead && o.z > 0 && o.z < 30) { const w = (o.t === 'crate' ? o.hp * 2 : o.hp) / Math.max(1, o.z); sw += w; sx += w * o.x; nearZ = Math.min(nearZ, o.z); }
       if (sw > 0 && (!next || next.z > nearZ + 4)) tx = Math.max(-3.6, Math.min(3.6, sx / sw));
-      if (next && next.pair.n === 1) {
+      if (next && next.lane && next.z < 40) {
+        // 岔路：挑門比較好的那條
+        let bs = 0, bv = -1e9;
+        for (const o of G.objs) if (o.t === 'gate' && o.lane && !o.pair.used && Math.abs(o.z - next.z) < 1) { const val = gateVal(G, o); if (val > bv) { bv = val; bs = o.side; } }
+        tx = bs * A.ROAD / 2;
+      } else if (next && next.pair.n === 1) {
         // 會動的門：算好到達時門在哪
         const v = G.scroll ? G.spd : 0.001, T = next.z / v;
         if (next.z < 22) tx = next.slide.cx + next.slide.amp * Math.sin((G.t + T) * next.slide.f + next.slide.ph);
@@ -101,6 +106,7 @@ for (let s = s0; s <= s1; s++) {
   let bl = 0, bt = 0, w = 0, st = 0, tt = 0, Ns = [], peaks = [], fails = [];
   for (let r = 0; r < runs; r++) {
     const res = play(s, 1000 + r * 77 + s);
+    if (process.env.SEEDS) console.log('   seed', 1000 + r * 77 + s, res.win ? 'win' : 'lose', 'N', res.N, 'peak', res.peak, 'dist', (res.dist / res.len).toFixed(2));
     if (res.win) { w++; st += res.stars; bl += res.bossLoss; bt += res.bossT; Ns.push(res.N); } else fails.push((res.dist / res.len).toFixed(2) + (G_boss(res) ? 'B' + res.bossHpLeft.toFixed(2) : ''));
     tt += res.t; peaks.push(res.peak);
   }

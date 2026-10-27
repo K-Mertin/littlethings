@@ -63,7 +63,7 @@ function renderDef(G, t) {
   g.setTransform(1, 0, 0, 1, 0, 0);
   const sh = G.shake * 9 * R.dpr * R.q;
   g.translate(sh ? (Math.random() - 0.5) * sh : 0, sh ? (Math.random() - 0.5) * sh : 0);
-  g.drawImage(R.bg, -R.bgPad - R.camX * 2 * R.dpr, 0);
+  if (R.hy > 2) g.drawImage(R.bg, -R.bgPad - R.camX * 2 * R.dpr, 0);
   drawClouds(g, th, t);
   drawGround(g, th, 0);
   drawGroundDetail(g, th, 0);

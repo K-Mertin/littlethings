@@ -100,7 +100,8 @@ function lob(sx, sz, sh, kind, T, dmgF, rad, tx) {
 // ---- 事件生成 ----
 function spawnEvents() {
   const L = G.L;
-  while (G.evI < L.ev.length && L.ev[G.evI].d - G.dist <= ZSPAWN) {
+  // 頭目要等前面的東西都過了才出來（不然會提早停住，後面的門就拿不到）
+  while (G.evI < L.ev.length && L.ev[G.evI].d - G.dist <= (L.ev[G.evI].type === 'boss' ? 40 : ZSPAWN)) {
     const e = L.ev[G.evI++];
     const z0 = e.d - G.dist;
     if (e.type === 'gates') {
@@ -119,16 +120,36 @@ function spawnEvents() {
         }
       }
     } else if (e.type === 'wall') {
-      const f = clamp(Math.pow(curDps() * upK() / (e.sHP * Math.max(1, e.expN || 1)), G.adE || 0.6), G.adMin || 0.5, 3);
+      const f = clamp(Math.pow(curDps() * upK() / (e.sHP * Math.max(1, e.expN || 1)), G.adE || 0.4), G.adMin || 0.65, 3);
       const hp = e.hp * f * G.hpMul;
       G.objs.push({ t: 'wall', id: _uid++, x: 0, z: z0, hp, max: hp, rw: e.rw, sHP: curDps() / Math.max(1, G.N), r: ROAD, hit: 0 });
+    } else if (e.type === 'cross') {
+      const f = clamp(Math.pow(curDps() * upK() / e.exp, G.adE || 0.4), G.adMin || 0.65, 3) * G.hpMul;
+      const sHP = curDps() / Math.max(1, G.N);
+      for (let k = 0; k < e.n; k++) {
+        const o = mkEnemy(k % 4 === 3 ? 'runner' : 'grunt', -e.dir * (ROAD + 1 + k * 1.1), z0 + (k % 2) * 0.6, e.hp * f, sHP);
+        o.vx = e.dir * e.spd; o.cross = 1;
+        G.objs.push(o);
+      }
+    } else if (e.type === 'fork') {
+      const f = clamp(Math.pow(curDps() * upK() / e.exp, G.adE || 0.4), G.adMin || 0.65, 3) * G.hpMul;
+      const sHP = curDps() / Math.max(1, G.N);
+      G.objs.push({ t: 'divider', id: _uid++, x: 0, z: z0, len: e.len, r: 0.35 });
+      [[e.L, -1], [e.R, 1]].forEach(([Lx, side]) => {
+        const cx = side * ROAD / 2;
+        const pair = { id: _uid++, used: false, n: 1, quiet: 1 };
+        G.objs.push({ t: 'gate', id: _uid++, pair, side, x: cx, w: ROAD / 2 - 0.45, z: z0 + e.len - 6, k: Lx.gate.k, v: Lx.gate.v, acc: 0, step: 1e9, bump: 0, fade: 0, lane: 1 });
+        if (Lx.guardHp) for (let k = 0; k < 5; k++) { const g = mkEnemy(k === 2 && G.s >= 5 ? 'shield' : 'grunt', cx + (k - 2) * 0.7, z0 + e.len - 14 + (k % 2), Lx.guardHp / 5 * f, sHP); g.home = 0.12; g.spd *= 0.4; G.objs.push(g); }
+        if (Lx.crateHp) for (let k = 0; k < 2; k++) G.objs.push({ t: 'crate', id: _uid++, x: cx + (k ? 0.9 : -0.9), z: z0 + 6 + k * 7, hp: Lx.crateHp * f, max: Lx.crateHp * f, rw: Lx.crateRw, r: 0.5, hit: 0 });
+        if (Lx.saw) G.objs.push({ t: 'saw', id: _uid++, cx, amp: 1.0, f: 1.6, ph: Math.random() * 6, x: cx, z: z0 + 15, r: 0.72, tick: 0, spin: 0 });
+      });
     } else if (e.type === 'saw') {
       for (const m of e.list) G.objs.push({ t: 'saw', id: _uid++, cx: m.cx, amp: m.amp, f: m.f, ph: m.ph, x: m.cx, z: z0 + m.dz, r: 0.72, tick: 0, spin: 0 });
     } else if (e.type === 'spike') {
       for (const m of e.list) G.objs.push({ t: 'spike', id: _uid++, x0: m.x0, x1: m.x1, x: (m.x0 + m.x1) / 2, z: z0 + m.dz, len: 2.6, per: m.per, ph: m.ph, hitC: -1 });
     } else if (e.type === 'wave') {
       // 依目前實力調整（選得好還是比較強，但不會無聊）
-      const f = clamp(Math.pow(curDps() * upK() / e.exp, G.adE || 0.6), G.adMin || 0.5, 3) * G.hpMul;
+      const f = clamp(Math.pow(curDps() * upK() / e.exp, G.adE || 0.4), G.adMin || 0.65, 3) * G.hpMul;
       const sHP = curDps() / Math.max(1, G.N);
       for (const m of e.list) {
         const K = ENEMIES[m.k];
@@ -140,7 +161,7 @@ function spawnEvents() {
     } else if (e.type === 'boss') {
       const B = BOSSES[e.k];
       const sc = 1 + e.tier * 0.12;
-      const f = clamp(Math.pow(curDps() * upK() / e.exp, G.adE ? G.adE + 0.1 : 0.8), G.adMin || 0.5, 4) * G.hpMul;
+      const f = clamp(Math.pow(curDps() * upK() / e.exp, G.adE ? G.adE + 0.1 : 0.6), G.adMin || 0.65, 4) * G.hpMul;
       const hp = e.hp * f;
       G.boss = { t: 'boss', id: _uid++, k: e.k, tier: e.tier, x: 0, z: Math.min(z0, 34), hp, max: hp, r: B.r * sc, h: B.h * sc, spd: 2.5, eat: Math.max(1, G.N * 0.045), sHP: curDps() / Math.max(1, G.N), atk: 0, atkT: 0, phase: 1, hit: 0, ph: 0, intro: 2.2, dead: 0 };
       G.objs.push(G.boss);
@@ -192,7 +213,7 @@ function hurt(o, dmg, b) {
   if (o.t === 'gate') {
     if (o.k !== 'add' || o.pair.used || o.roul) return false;
     o.acc += dmg;
-    const st = Math.max(o.step, curDps() * G.dmgK * 0.45);
+    const st = Math.max(o.step, curDps() * G.dmgK * 0.7);
     if (o.acc >= st) {
       const inc = Math.floor(o.acc / st);
       o.acc -= inc * st;
@@ -259,14 +280,14 @@ function updateBullets(dt) {
     for (let j = 0; j < O.length; j++) {
       const o = O[j];
       if (o.dead || o === b.last) continue;
-      if (o.t === 'saw' || o.t === 'spike' || o.t === 'lob') continue;
+      if (o.t === 'saw' || o.t === 'spike' || o.t === 'lob' || o.t === 'divider') continue;
       if (o.t === 'wall') {
         if (o.z < z0 - 0.2 || o.z > b.z + 0.2) continue;
         if (o.z < bz) { bz = o.z; best = o; }
         continue;
       }
       if (o.t === 'gate') {
-        if (o.k !== 'add' || o.pair.used || o.roul) continue;
+        if (o.k !== 'add' || o.pair.used || o.roul || b.gated) continue;
         if (o.z < z0 - 0.2 || o.z > b.z + 0.2) continue;
         if (Math.abs(b.x - o.x) > o.w - 0.12) continue;
         if (o.z < bz) { bz = o.z; best = o; }
@@ -292,7 +313,9 @@ function updateBullets(dt) {
       }
       if (fxOn()) { FX.boom(b.x, best.z, 0.8, true); emit('rocket', best); }
     }
-    if (b.pierce > 0 && best.t !== 'gate' && best.t !== 'wall') { b.pierce--; b.last = best; }
+    // 打到門：門的數字會長，子彈繼續往前飛（打後面的怪）
+    if (best.t === 'gate') { b.last = best; b.gated = 1; }
+    else if (b.pierce > 0 && best.t !== 'wall') { b.pierce--; b.last = best; }
     else B.splice(i, 1);
   }
 }
@@ -408,7 +431,7 @@ function step(dt, input) {
       if (!o.pair.used && o.z <= 0) {
         if (o.pair.n === 1) {
           if (Math.abs(G.px - o.x) <= o.w + 0.15) passGate(o);
-          else { o.pair.used = true; floatText(G.px, 1.2, 2.2, '錯過了', '#c9d3e6', 1.1); emit('miss', o); }
+          else { o.pair.used = true; if (!o.pair.quiet) { floatText(G.px, 1.2, 2.2, '錯過了', '#c9d3e6', 1.1); emit('miss', o); } }
         } else {
           const side = G.px < 0 ? -1 : 1;
           if (o.side === side) passGate(o);
@@ -432,6 +455,16 @@ function step(dt, input) {
         if (fxOn()) FX.wallbreak(o);
         if (G.N <= 0) { lose(); return; }
       }
+    } else if (o.t === 'divider') {
+      o.z -= v * dt;
+      if (o.z < cr.rz + 0.5 && o.z + o.len > -cr.rz - 0.5) {
+        // 在岔路裡：不能穿過中間的牆
+        if (!G.lane) G.lane = G.px < 0 ? -1 : 1;
+        const m = Math.min(2.0, cr.rx * 0.55 + 0.45);
+        if (G.lane < 0) { G.px = Math.min(G.px, -m); G.tx = Math.min(G.tx, -m); }
+        else { G.px = Math.max(G.px, m); G.tx = Math.max(G.tx, m); }
+      } else if (o.z + o.len < -cr.rz - 0.5) G.lane = 0;
+      if (o.z + o.len < -8) O.splice(i, 1);
     } else if (o.t === 'saw') {
       o.z -= v * dt;
       o.x = o.cx + o.amp * Math.sin(G.t * o.f + o.ph);
@@ -486,7 +519,11 @@ function step(dt, input) {
       }
     } else if (o.t === 'en') {
       if (o.dead) { O.splice(i, 1); continue; }
-      if (o.k === 'thrower' && o.throws < 3 && o.z <= o.hold) {
+      if (o.cross) {
+        // 橫越的怪：跟著地面捲過來，自己往旁邊走
+        o.z -= v * dt; o.x += o.vx * dt; o.ph += dt * 9;
+        if (o.x * o.vx > 0 && Math.abs(o.x) > ROAD + 3) { O.splice(i, 1); continue; }
+      } else if (o.k === 'thrower' && o.throws < 3 && o.z <= o.hold) {
         // 停在前面丟炸彈（跟著部隊一起往前），丟完三顆才衝過來
         o.ph += dt * 3;
         o.throwT -= dt;
@@ -497,7 +534,7 @@ function step(dt, input) {
         o.z -= (v + o.spd) * dt;
         o.ph += dt * (6 + o.spd * 1.5);
       }
-      if (o.z < 32) o.x += clamp(G.px - o.x, -1, 1) * o.home * dt;
+      if (o.z < 32 && !o.cross) o.x += clamp(G.px - o.x, -1, 1) * o.home * dt;
       // 和隊伍碰撞
       if (o.z - o.r * 0.5 <= cr.rz && o.z > -cr.rz - 1 && Math.abs(o.x - G.px) <= cr.rx + o.r * 0.6) {
         const loss = Math.max(1, Math.ceil(o.hp / o.sHP * o.mass));
