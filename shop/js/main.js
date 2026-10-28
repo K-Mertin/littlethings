@@ -1,7 +1,7 @@
 'use strict';
 // 夜市小吃王：主迴圈、輸入、存檔、標題畫面
 const Main = {
-  state: 'title', acc: 0, last: 0, saveT: 0, scen: 'std',
+  state: 'title', acc: 0, last: 0, saveT: 0, scen: 'std', map: 'city',
   init() {
     Prefs.load();
     if (typeof Prefs.d.q === 'number') R.q = clamp(Prefs.d.q, 0, 2);
@@ -45,7 +45,7 @@ const Main = {
     const box = $('#slots'); let h = '';
     for (let i = 0; i < 3; i++) {
       const m = this.slotMeta(i);
-      h += m ? `<button class="slotbtn" data-a2="cont" data-v="${i}"><b>繼續 ・ 存檔 ${i + 1}</b><small>${esc(m.shop)}・第${m.y}年${m.m}月・${money(m.money)}・第${m.rank}名</small></button>`
+      h += m ? `<button class="slotbtn" data-a2="cont" data-v="${i}"><b>繼續 ・ 存檔 ${i + 1}</b><small>${esc(m.shop)}${m.chal ? '・★' + esc(m.chal) : m.map && MAPS[m.map] && m.map !== 'city' ? '・' + MAPS[m.map].s : ''}・第${m.y}年${m.m}月・${money(m.money)}・第${m.rank}名</small></button>`
         : `<button class="slotbtn empty" data-a2="new" data-v="${i}"><b>新遊戲 ・ 存檔 ${i + 1}</b><small>空的欄位</small></button>`;
     }
     box.innerHTML = h;
@@ -64,6 +64,13 @@ const Main = {
     }
     const cur = SCENARIOS.find(x => x.id === this.scen);
     h += `</div><small class="scd">${cur.d}</small>`;
+    // 地點（挑戰關卡拿到星星後解鎖）
+    if (MAP_IDS.some(m => m !== 'city' && Legacy.mapOpen(m))) {
+      if (!Legacy.mapOpen(this.map)) this.map = 'city';
+      h += `<label>地點</label><div class="scen maps">${MAP_IDS.map(m => { const op = Legacy.mapOpen(m); return `<button class="${this.map === m ? 'on' : ''} ${op ? '' : 'lock'}" data-a2="map" data-v="${m}"><b>${op ? '' : '🔒'}${MAPS[m].s}</b></button>`; }).join('')}</div>${this.map !== 'city' ? `<small class="scd">${MAPS[this.map].d}</small>` : ''}`;
+    }
+    const co = Legacy.chalOpen();
+    h += `<button class="legbtn chalbtn ${co ? '' : 'lock'}" data-a2="chal"><span>${co ? `挑戰關卡・星星 <b>${Legacy.starTotal()}</b> / ${CHAL.length * 3}` : '🔒 挑戰關卡'}</span><small>${co ? '海港、山城、廟會……到不同的夜市接受挑戰' : '完成新手引導、擴建成「巷口小吃店」後開放'}</small></button>`;
     const any = L.pts > 0 || Object.keys(L.perks).length;
     h += `<button class="legbtn" data-a2="perks">傳承加成・點數 <b>${L.pts}</b>${Object.keys(L.ach).length ? `・成就 ${Object.keys(L.ach).length}/${ACHS.length}` : ''}</button>`;
     h += `<div class="perks" ${this.showPerks ? '' : 'hidden'}>${PERKS.map(p => { const lv = Legacy.perkLv(p.id), c = Legacy.perkCost(p); return `<div><b>${p.n} <span class="lv">${lv}/${p.max}</span></b><small>${p.d}（每級）</small><button class="btn ${lv < p.max && L.pts >= c ? 'go' : 'dis'}" data-a2="perk" data-v="${p.id}">${lv >= p.max ? '滿級' : c + ' 點'}</button></div>`; }).join('')}<small class="scd">${any ? '加成會套用在之後的新遊戲。' : '解鎖成就、看到結局或傳承都能得到點數。'}</small></div>`;
@@ -72,16 +79,19 @@ const Main = {
   toTitle() { UI.closePanel(); UI.endBuild(); UI.closeInfo(); this.demo(); this.title(); },
   startNew(i, o = {}) {
     const n = o.name || ($('#shopName').value || '').trim().slice(0, 6) || '阿福小吃';
-    const scen = o.scen || this.scen || 'std';
+    const C = o.chal && CHAL.find(c => c.id === o.chal);
+    const scen = C ? C.scen || 'std' : o.scen || this.scen || 'std', map = C ? C.map : o.map || this.map || 'city';
     Game.demoMode = false;
-    UI.closePanel(); UI.closeInfo();
-    const gen = o.gen || 1, guide = gen === 1 && Prefs.d.guide !== false;
-    Game.fresh(n, { scen, gen, perks: Legacy.d.perks, guide });
+    UI.closePanel(); UI.closeInfo(); Chal.close();
+    const gen = o.gen || 1, guide = !C && gen === 1 && Prefs.d.guide !== false;
+    // 挑戰關卡不套用傳承加成，大家的起跑點一樣
+    Game.fresh(n, { scen, map, gen, perks: C ? {} : Legacy.d.perks, guide, chal: C && C.id });
     UI.slot = i;
     this.enter();
     const sc = SCENARIOS.find(x => x.id === scen);
     const intro = () => {
-      if (gen > 1) Game.say('intro', { title: `第 ${gen} 代老闆`, big: n, text: `上一代把店交給你了！傳承加成已經生效。<br>從小攤車重新開始，看看這一代能走多遠吧！`, icon: 'star' });
+      if (C) Game.pending.push({ k: 'chalIntro', id: C.id });
+      else if (gen > 1) Game.say('intro', { title: `第 ${gen} 代老闆`, big: n, text: `上一代把店交給你了！傳承加成已經生效。<br>從小攤車重新開始，看看這一代能走多遠吧！`, icon: 'star' });
       else if (scen !== 'std') Game.say('intro', { title: sc.n, big: n, text: sc.d, icon: 'star' });
     };
     // 新手引導：先播開場故事，再由阿德伯一課一課帶
@@ -108,7 +118,8 @@ const Main = {
     try {
       const S = Game.S;
       localStorage.setItem('shop.save.' + i, JSON.stringify(S));
-      localStorage.setItem('shop.meta.' + i, JSON.stringify({ shop: S.shop, y: Game.year(), m: Game.month(), money: S.money, rank: S.rank, at: Date.now() }));
+      const C = S.chal && CHAL.find(c => c.id === S.chal.id);
+      localStorage.setItem('shop.meta.' + i, JSON.stringify({ shop: S.shop, y: Game.year(), m: Game.month(), money: S.money, rank: S.rank, at: Date.now(), map: S.map, chal: C && S.chal.done === undefined ? C.n : '' }));
       return true;
     } catch (e) { return false; }
   },
@@ -182,6 +193,8 @@ const Main = {
       else if (b.dataset.a2 === 'cont') { if (!this.loadSlot(i)) UI.toast('讀取失敗', 'bad'); }
       else if (b.dataset.a2 === 'fresh') { const s = [0, 1, 2].find(k => !this.slotMeta(k)); this.startNew(s === undefined ? (Prefs.d.lastSlot + 1) % 3 : s); }
       else if (b.dataset.a2 === 'scen') { const sc = SCENARIOS.find(x => x.id === b.dataset.v); if (!Legacy.scenOpen(sc)) { Snd.play('bad'); $('#scenBox .scd').textContent = '通關一次（看到結局）或傳承後解鎖。'; return; } this.scen = sc.id; Snd.play('click'); this.titleScen(); }
+      else if (b.dataset.a2 === 'map') { const m = b.dataset.v; if (!Legacy.mapOpen(m)) { Snd.play('bad'); return; } this.map = m; Snd.play('click'); this.titleScen(); }
+      else if (b.dataset.a2 === 'chal') { if (!Legacy.chalOpen()) { Snd.play('bad'); return; } Snd.play('tab'); Chal.show(); }
       else if (b.dataset.a2 === 'perks') { this.showPerks = !this.showPerks; Snd.play('tab'); this.titleScen(); }
       else if (b.dataset.a2 === 'perk') { const r = Legacy.buy(b.dataset.v); Snd.play(r ? 'bad' : 'level'); this.titleScen(); }
       else if (b.dataset.a2 === 'guide') { Prefs.d.guide = Prefs.d.guide === false; Prefs.save(); Snd.play('click'); const on = Prefs.d.guide !== false; b.classList.toggle('on', on); b.querySelector('b').textContent = on ? '開' : '關'; }
@@ -220,9 +233,58 @@ const Main = {
   },
 };
 
+// 挑戰關卡列表（標題畫面）
+const Chal = {
+  el: null, open: false,
+  show() {
+    let el = this.el;
+    if (!el) {
+      el = this.el = document.createElement('div'); el.id = 'chal'; document.body.appendChild(el);
+      el.addEventListener('click', e => {
+        const b = e.target.closest('[data-c]');
+        if (e.target === el || (b && b.dataset.c === 'x')) { Snd.play('click'); this.close(); return; }
+        if (b && b.dataset.c === 'go') this.start(b.dataset.v);
+        else if (b && b.dataset.c === 'lock') Snd.play('bad');
+      });
+    }
+    this.open = true; el.hidden = false; this.render();
+  },
+  close() { this.open = false; if (this.el) this.el.hidden = true; },
+  render() {
+    const tot = Legacy.starTotal();
+    let h = `<div class="hc"><div class="ph"><h3>挑戰關卡 <span class="tstar">★ ${tot} / ${CHAL.length * 3}</span></h3><button class="x" data-c="x" aria-label="關閉">✕</button></div><div class="pb cb">`;
+    h += '<p class="tip">每一關都有期限和三個目標：第一個目標達成就過關（★），三個都達成是 ★★★。新拿到的星星每顆換 1 點傳承點數。挑戰關卡不套用傳承加成。</p>';
+    for (const m of MAP_IDS) {
+      const M = MAPS[m], list = CHAL.filter(c => c.map === m);
+      h += `<div class="cmap"><div class="cmh">${UI.img(Art.mapScene(m), 2)}<div><b>${M.n}</b><small>${M.d}</small></div></div>`;
+      for (const C of list) {
+        const st = Legacy.stars(C.id), op = Legacy.stageOpen(C), sc = C.scen && SCENARIOS.find(x => x.id === C.scen);
+        const why = (C.req || 0) > tot ? `需要 ★${C.req}` : '先過前一關';
+        h += `<div class="cst ${op ? '' : 'lock'} ${st ? 'clr' : ''}"><div class="csi"><b>${C.n}${sc ? ` <i class="ctag">${sc.n}</i>` : ''}</b><span class="cs3">${[0, 1, 2].map(i => `<i class="${i < st ? 'on' : ''}">★</i>`).join('')}</span>
+          <small>期限 ${C.y} 年・${C.g.map((g, i) => (i < st ? '★' : '☆') + Game.chalText(g)).join('　')}</small></div>
+          <button class="btn ${op ? 'go' : 'dis'}" data-c="${op ? 'go' : 'lock'}" data-v="${C.id}">${op ? (st ? '再挑戰' : '開始') : '🔒 ' + why}</button></div>`;
+      }
+      h += '</div>';
+    }
+    h += '</div></div>';
+    this.el.innerHTML = h;
+  },
+  start(id) {
+    const C = CHAL.find(c => c.id === id); if (!C) return;
+    let i = [0, 1, 2].find(k => !Main.slotMeta(k));
+    if (i === undefined) {
+      i = [0, 1, 2].sort((a, b) => (Main.slotMeta(a).at || 0) - (Main.slotMeta(b).at || 0))[0];
+      const m = Main.slotMeta(i);
+      if (!confirm(`三個存檔都滿了。要用「存檔 ${i + 1}」（${m.shop}・第${m.y}年）來挑戰嗎？\n原本的進度會被覆蓋。`)) return;
+    }
+    Snd.play('start');
+    Main.startNew(i, { chal: id });
+  },
+};
+
 // 測試/除錯用
 window.__shop = {
-  Game, UI, Main, R, Guide, Story, Help, Hint,
+  Game, UI, Main, R, Guide, Story, Help, Hint, Chal, Bot: typeof Bot !== 'undefined' ? Bot : null,
   skipIntro() { if (Story.open) { Story.done = null; Story.close(); } Guide._begin = false; Guide.skipAll(true); },
   run(weeks, auto) {
     if (auto && (Story.open || (Guide.ob() && Guide.ob().ch !== -1))) this.skipIntro(); // 自動玩家不跑新手引導
@@ -231,7 +293,7 @@ window.__shop = {
       let guard = 0;
       while (Game.S.week < target && guard++ < 2000) {
         Game.step(1 / 15);
-        while (Game.pending.length) { const p = Game.pending.shift(); if (p.k === 'contest') Game.runContest(Game.known().sort((a, b) => Game.contestScore(b) - Game.contestScore(a))[0]); if (p.k === 'award') Game.applyAward(p); if (p.k === 'quest' && auto) Game.acceptQuest(p.q); if (p.k === 'duel' && auto) Game.acceptDuel(p.d); }
+        while (Game.pending.length) { const p = Game.pending.shift(); if (p.k === 'contest') Game.runContest(Game.known().sort((a, b) => Game.contestScore(b) - Game.contestScore(a))[0]); if (p.k === 'award') Game.applyAward(p); if (p.k === 'quest' && auto) Game.acceptQuest(p.q); if (p.k === 'duel' && auto) Game.acceptDuel(p.d); if (p.k === 'staffEv' && auto) { const S = Game.S; Game.staffChoice(p, p.t === 'rival' ? 'race' : p.t === 'poach' ? (S.money > p.raise * 6 ? 'keep' : 'go') : p.t === 'course' && S.money > p.cost * 4 ? String(S.staff.filter(x => !x.away)[0].uid) : ''); } }
       }
       if (auto) this.bot();
     }

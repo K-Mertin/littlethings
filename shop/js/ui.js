@@ -31,6 +31,7 @@ const UI = {
     const qs = [];
     if (S.q && S.q.acc) { const p = Game.questProg(S.q); qs.push(`委託：${S.q.title} ${Math.max(0, Math.min(p[0], p[1]))}/${p[1]}`); }
     if (S.fq && !S.fq.done) { const p = Game.questProg(S.fq); qs.push(`${S.fq.title} ${Math.max(0, Math.min(p[0], p[1]))}/${p[1]}`); }
+    if (S.chal && S.chal.done === undefined) qs.push(`★ ${CHAL.find(c => c.id === S.chal.id)?.n || '關卡'}・剩 ${Game.chalLeft()} 週`);
     if (S.duel) { const p = Game.duelProg(S.duel); qs.push(`⚔ 對決${S.duel.n} ${S.duel.k === 'sales' ? money(Math.max(0, p[0])) + '/' + money(p[1]) : Math.max(0, p[0]) + '/' + p[1]}`); }
     $('#hudEv').innerHTML = [[f ? f.n : '', ...ev].filter(Boolean).join('・'), ...qs.map(q => `<span class="hq">${esc(q)}</span>`)].filter(Boolean).join(' ');
     document.querySelectorAll('#speed button').forEach(b => b.classList.toggle('on', +b.dataset.v === this.speed));
@@ -85,7 +86,7 @@ const UI = {
       case 'load': if (confirm('讀取這個存檔？目前沒存的進度會不見。')) { this.loadSlot(+v); } break;
       case 'qual': Prefs.d.q = v === 'auto' ? 'auto' : +v; Prefs.save(); if (v !== 'auto') R.setQ(+v); else if (R._pf) R._pf.bad = 0; Snd.play('click'); this.renderPanel(); break;
       case 'opt': Prefs.d[v] = !Prefs.d[v]; Prefs.save(); Snd.applyVol(); this.renderPanel(); this.refreshHud(); break;
-      case 'toTitle': this.save(this.slot, false); Main.toTitle(); break;
+      case 'toTitle': if (this.modal) { this.modal = null; this.mdl.hidden = true; this.mdl.innerHTML = ''; } this.save(this.slot, false); Main.toTitle(); break;
       case 'ok': this.nextModal(); break;
       case 'contest': this.contestGo(v); break;
       case 'iup': { const it = this.info?.it; if (it && Game.upgrade(it)) this.showInfo(it); else { Snd.play('bad'); this.toast('錢不夠', 'bad'); } break; }
@@ -97,6 +98,7 @@ const UI = {
       case 'story': Snd.play('tab'); this.closePanel(); Story.play(null); break;
       case 'guideskip': this.closePanel(); Guide.askSkip(); break;
       case 'opt2': Prefs.d[v] = Prefs.d[v] === false; Prefs.save(); Snd.play('click'); if (v === 'hints' && Prefs.d.hints === false) Hint.hide(); Guide._gk = ''; Guide.renderGoal(); this.renderPanel(); break;
+      case 'sev': { const p = this.modal; if (p && p.k === 'staffEv') { const r = Game.staffChoice(p, v); if (r === '錢不夠') { Snd.play('bad'); this.toast(r, 'bad'); break; } if (r) this.toast(r, 'good'); } this.nextModal(); break; }
       case 'qacc': { const q = this.modal && this.modal.q; if (q) { Game.acceptQuest(q); this.toast(`接下委託「${q.title}」`, 'good'); } this.nextModal(); break; }
       case 'dacc': { const d = this.modal && this.modal.d; if (d) { const r = Game.acceptDuel(d); if (r) { Snd.play('bad'); this.toast(r, 'bad'); } else { this.toast(`接受挑戰！賭注 ${money(d.bet)}`, 'goal'); Snd.play('drum'); } } this.nextModal(); break; }
       case 'ddec': { const d = this.modal && this.modal.d; if (d) Game.declineDuel(d); this.nextModal(); break; }
@@ -178,7 +180,7 @@ const UI = {
           <b>${esc(s.title ? s.title + ' ' : '')}${esc(s.name)} <span class="lv">Lv${s.lv}</span> ${this.traitTag(s)}</b>
           <div class="exp"><i style="width:${s.exp / need * 100}%"></i></div>
           ${this.statBar('廚藝', s.cook, '#ff8a3d')}${this.statBar('服務', s.serv, '#4fb3ff')}${this.statBar('魅力', s.charm, '#ff6fa8')}
-          <small>${s.owner ? '老闆不支薪' : '月薪 ' + money(s.sal)}${a && a.tired ? '・<span class="bad">累了</span>' : ''}</small>
+          <small>${s.owner ? '老闆不支薪' : '月薪 ' + money(s.sal)}${a && a.tired ? '・<span class="bad">累了</span>' : ''}${s.away ? '・<span class="bad">進修中</span>' : ''}${s.pal && Game.sById(s.pal) ? `・<span class="good">♥ 搭檔：${esc(Game.sById(s.pal).name)}</span>` : ''}${Game.racing(s) ? '・<span class="bad">⚔ 較勁中</span>' : ''}</small>
           <div class="jobs">${[['cook', '廚師'], ['serve', '外場'], ['tout', '攬客']].map(([j, n]) => `<button class="${s.job === j ? 'on' : ''}" data-a="job" data-v="${s.uid}:${j}">${n}</button>`).join('')}</div>
           <div class="jobs tr"><span>培訓 ${money(Game.trainCost(s))}</span>${[['cook', '廚藝'], ['serv', '服務'], ['charm', '魅力']].map(([j, n]) => `<button data-a="train" data-v="${s.uid}:${j}">${n}↑</button>`).join('')}${s.owner ? '' : `<button class="fire" data-a="fire" data-v="${s.uid}">解雇</button>`}</div>
         </div></div>`;
@@ -215,7 +217,7 @@ const UI = {
           <small>${d.lim ? `<span class="${Game.limOn(k) ? 'good' : 'bad'}">季節限定 ${d.lim.join('、')} 月${Game.limOn(k) ? '・販售中' : '・下次再見'}</span>・` : ''}${STN[d.st]}${has ? '' : ' <span class="bad">（還沒有這種攤位）</span>'}${Game.sellable(k) ? '' : ' <span class="bad">（甜點專賣店不能賣）</span>'}・美味 ${this.stars(Game.dishQ(k))}・成本約 ${money(Game.costOf(k))}</small>
           <div class="price"><button data-a="price" data-v="${k}:-1">－</button><span class="${pc}">${money(o.price)}</span><button data-a="price" data-v="${k}:1">＋</button><small>建議 ${money(val)}</small></div>
           <div class="jobs"><button class="${o.on ? 'on' : ''}" data-a="toggle" data-v="${k}">${o.on ? '販售中' : '休息中'}</button>
-          ${o.lv < 10 ? `<button data-a="dup" data-v="${k}">改良 💡${uc.idea}・${money(uc.money)}</button>` : '<button disabled>已達最高等級</button>'}</div>
+          ${o.lv < Game.maxDishLv() ? `<button data-a="dup" data-v="${k}">改良 💡${uc.idea}・${money(uc.money)}</button>` : '<button disabled>已達最高等級</button>'}</div>
         </div></div>`;
       }
     } else {
@@ -272,6 +274,7 @@ const UI = {
       h += `<p class="sum">夜市排行榜依照「人氣」排名。年底的頒獎典禮看的就是名次！</p><ol class="ladder">`;
       L.forEach((r, i) => { if (Math.abs(i - mi) <= 6 || i < 3) h += `<li class="${r.me ? 'me' : ''}"><span>${i + 1}</span><b>${esc(r.n)}</b><em>${num(r.s)}</em></li>`; else if (i === 3 && mi > 10) h += '<li class="gap">⋯</li>'; });
       h += '</ol>';
+      if (S.lv >= 3) { const g = S.gstar || 0; h += `<p class="lbl">夜市美食指南（每年 6 月評鑑）</p><div class="quest yg"><div class="pic">${this.img(Art.icon('medal'), 4)}</div><div><b><span class="stars">${'★'.repeat(g)}<s>${'★'.repeat(3 - g)}</s></span></b><small>每顆星：每週人氣 +4、客人願意多付 4%。評鑑標準（要一顆一顆拿）：</small>${Game.guideCrit().map((c, i) => `<small class="${c.ok ? 'good' : ''}">${c.ok ? '✔' : '・'} ★${i + 1}：${c.t}</small>`).join('')}</div></div>`; }
       if (S.awards.length) { h += '<p class="lbl">歷年得獎</p><div class="awards">'; for (const a of S.awards) h += `<div><b>第${a.y}年</b> ${a.t}（第${a.rank}名）・營業額 ${money(a.sales)}</div>`; h += '</div>'; }
     } else if (tb === 'goal') {
       const done = GOALS.filter(g => S.goals[g.id]).length;
@@ -294,7 +297,7 @@ const UI = {
       h += `<p class="sum">來過的客人種類和招待人數</p><div class="book">`;
       for (const k in CTYPES) {
         const T = CTYPES[k], n2 = S.st.ctype[k] || 0, L = makeLook(17 + k.length * 31, k);
-        h += `<div class="bk ${n2 ? 'got' : ''}">${this.img(Art.portrait(L, n2 ? 'happy' : ''), 2, n2 ? '' : 'sil')}<div><b>${n2 ? T.n : '？？？'}</b><small>${n2 ? `招待 ${num(n2)} 位・喜歡${T.pref.map(c => CAT[c]).join('、')}・預算 ${T.b >= 1.3 ? '很高' : T.b >= 1 ? '普通' : '偏低'}` : (T.lv > S.lv ? `店要擴建到「${LEVELS[T.lv].n}」才會來` : '還沒遇過')}</small></div></div>`;
+        h += `<div class="bk ${n2 ? 'got' : ''}">${this.img(Art.portrait(L, n2 ? 'happy' : ''), 2, n2 ? '' : 'sil')}<div><b>${n2 ? T.n : '？？？'}</b><small>${n2 ? `招待 ${num(n2)} 位・喜歡${T.pref.map(c => CAT[c]).join('、')}${T.sea ? '・最愛海鮮' : ''}・預算 ${T.b >= 1.3 ? '很高' : T.b >= 1 ? '普通' : '偏低'}` : T.map ? `只在「${MAPS[T.map].n}」出現` : (T.lv > S.lv ? `店要擴建到「${LEVELS[T.lv].n}」才會來` : '還沒遇過')}</small></div></div>`;
       }
       h += '</div>';
     } else if (tb === 'combo') {
@@ -387,7 +390,7 @@ const UI = {
     Game.achFlag('gen2');
     const name = S.shop, gen = S.gen + 1, slot = this.slot;
     this.closePanel();
-    Main.startNew(slot, { name, gen, scen: S.scen });
+    Main.startNew(slot, { name, gen, scen: S.scen, map: S.map });
     this.toast(`第 ${gen} 代老闆接手了！傳承點數 +${pts}`, 'goal');
   },
   achToast(a, isNew) {
@@ -412,7 +415,7 @@ const UI = {
     const qv = Prefs.d.q === undefined ? 'auto' : String(Prefs.d.q);
     h += `<p class="lbl">畫質（手機比較慢可以調低）</p><div class="row">${[['auto', '自動'], ['0', '高'], ['1', '中'], ['2', '省電']].map(([v, n]) => `<button class="btn ${qv === v ? 'go' : ''}" data-a="qual" data-v="${v}">${n}</button>`).join('')}<small class="mute">目前：${['高', '中', '省電'][R.q]}</small></div>`;
     const S = Game.S, sc = SCENARIOS.find(x => x.id === S.scen);
-    h += `<p class="lbl">傳承（第 ${S.gen} 代・${sc ? sc.n : ''}）</p><div class="row"><button class="btn ${S.ended || Game.year() >= 6 ? 'go' : 'dis'}" data-a="retire">傳承給下一代</button><small class="mute">${S.ended || Game.year() >= 6 ? `可以得到 ${Game.retirePts()} 點傳承點數` : '經營滿 5 年或看到結局後開放'}</small></div>`;
+    h += `<p class="lbl">傳承（第 ${S.gen} 代・${sc ? sc.n : ''}${S.map !== 'city' ? '・' + MAPS[S.map].n : ''}）</p><div class="row"><button class="btn ${S.ended || Game.year() >= 6 ? 'go' : 'dis'}" data-a="retire">傳承給下一代</button><small class="mute">${S.ended || Game.year() >= 6 ? `可以得到 ${Game.retirePts()} 點傳承點數` : '經營滿 5 年或看到結局後開放'}</small></div>`;
     h += `<div class="row"><button class="btn" data-a="toTitle">存檔並回標題</button><a class="btn" href="../index.html">← 回遊戲大廳</a></div>`;
     h += '<p class="tip">操作：拖曳畫面可以移動，雙指或滑鼠滾輪縮放。點攤位、桌子、員工可以看詳細資料。鍵盤：空白鍵暫停，1～3 調速度，0 暫停，Esc 關閉。</p>';
     return h;
@@ -553,6 +556,8 @@ const UI = {
         <p class="${p.win ? 'good' : 'bad'}">${p.win ? `拿回 ${money(d.bet * 2)}・人氣 +${d.pop}<br>${esc(d.n)}被比下去，人氣暫時下滑！` : `賭注 ${money(d.bet)} 沒了・人氣 -${Math.round(d.pop * 0.7)}`}</p><button class="btn go big" data-a="ok">${p.win ? '太爽了！' : '下次再來！'}</button></div>`;
       return;
     }
+    if (p.k === 'chalIntro' || p.k === 'chalEnd') { this.chalModal(p); return; }
+    if (p.k === 'staffEv') { if (!this.staffModal(p)) { this.modal = null; this.mdl.hidden = true; } return; }
     if (p.k === 'story') {
       Snd.play('event');
       const g = p.g, txt = STORY[Math.min(p.y, STORY.length) - 2] || pick(STORY_LATE);
@@ -565,7 +570,7 @@ const UI = {
       Snd.play(p.kind === 'discover' ? 'discover' : p.kind === 'expand' ? 'fanfare' : 'event');
       const cb = p.combo && COMBOS.find(c => c.id === p.combo);
       const pic = id => F[id].cat === 'floor' ? Art.floor(id, 0) : Art.fac(id);
-      const ic = p.kind === 'season' ? `<div class="bigpic glow combo">${(p.dishes || []).slice(0, 3).map(k => this.img(Art.dish(k), 5)).join('')}</div>` : p.kind === 'discover' ? `<div class="bigpic glow combo">${cb ? `${this.img(pic(cb.a), 4)}<span>＋</span>${this.img(pic(cb.b), 4)}` : this.img(Art.icon('star'), 7)}</div><div class="rays"></div>` : `<div class="bigpic">${this.img(Art.icon(p.icon || 'cal'), 6)}</div>`;
+      const ic = p.kind === 'ade' ? `<div class="bigpic qp">${this.img(Art.portrait(Guide.look(), 'happy'), 4)}</div>` : p.kind === 'season' ? `<div class="bigpic glow combo">${(p.dishes || []).slice(0, 3).map(k => this.img(Art.dish(k), 5)).join('')}</div>` : p.kind === 'discover' ? `<div class="bigpic glow combo">${cb ? `${this.img(pic(cb.a), 4)}<span>＋</span>${this.img(pic(cb.b), 4)}` : this.img(Art.icon('star'), 7)}</div><div class="rays"></div>` : `<div class="bigpic">${this.img(Art.icon(p.icon || 'cal'), 6)}</div>`;
       this.mdl.innerHTML = `<div class="mc ${p.kind}"><p class="lbl">${p.title}</p>${ic}${p.big ? `<h2>${p.big}</h2>` : ''}<p>${p.text || ''}</p><button class="btn go big" data-a="ok">好！</button></div>`;
     } else if (p.k === 'contest') {
       Music.play('contest');
@@ -587,6 +592,70 @@ const UI = {
         <table class="kv"><tr><td>經營年數</td><td>${p.y} 年</td></tr><tr><td>累積客人</td><td>${num(S.st.cust)} 位</td></tr><tr><td>累積營業額</td><td>${money(S.st.sales)}</td></tr><tr><td>研發菜色</td><td>${Game.nKnown()} / ${DISH_ALL.length}</td></tr><tr><td>擺設組合</td><td>${Object.keys(S.combos).length} / ${COMBOS.length}</td></tr><tr><td>目標達成</td><td>${Object.keys(S.goals).length} / ${GOALS.length}</td></tr></table>
         <p>故事還沒結束，夜市的燈每天晚上都會亮起來。<br>接下來可以開<b>分店</b>、辦<b>煙火晚會</b>、研究<b>秘方</b>，或是到選單把店<b>傳承</b>給下一代。</p><p class="good">得到傳承點數 +5！標題畫面可以解鎖新的挑戰模式。</p><button class="btn go big" data-a="ok">繼續經營</button></div>`;
     }
+  },
+  // 挑戰關卡的開場說明和結算
+  chalGoals(C, got, live) {
+    return `<ol class="cgoals">${C.g.map((g, i) => { const ok = got && got[i], v = live ? Game.chalVal(g) : null; return `<li class="${ok ? 'ok' : ''}"><i>${ok ? '★' : '☆'}</i><span>${i ? '' : '<b>過關</b>'}${Game.chalText(g)}${v && !ok && g.k !== 'dish' && g.k !== 'lv' ? `<small>${g.k === 'rank' ? '目前第 ' + v[0] + ' 名' : g.k === 'money' ? '目前 ' + money(v[0]) : num(Math.max(0, v[0])) + ' / ' + num(v[1])}</small>` : ''}</span></li>`; }).join('')}</ol>`;
+  },
+  // 員工之間的小事件：好搭檔、較勁、進修班、挖角（第一次發生時阿德伯會說明）
+  staffModal(p) {
+    const S = Game.S, a = Game.sById(p.a), b = Game.sById(p.b);
+    const pt = s2 => `<div>${this.img(Art.portrait(makeLook(s2.seed, 'staff', s2.job), 'happy'), 3)}<b>${esc(s2.name)}</b></div>`;
+    S.seen = S.seen || {};
+    const first = !S.seen[p.t]; S.seen[p.t] = 1;
+    const tip = t => first ? `<div class="sp ade">${this.img(Art.portrait(Guide.look(), 'happy'), 2)}<div class="say"><b>阿德伯</b><p>${t}</p></div></div>` : '';
+    let h = '';
+    Snd.play('event');
+    if (p.t === 'pal') {
+      if (!a || !b) return false;
+      h = `<p class="lbl">員工的感情</p><div class="vs">${pt(a)}<span class="heart">♥</span>${pt(b)}</div><h2>變成好搭檔了！</h2><p>${esc(a.name)} 和 ${esc(b.name)} 每天一起工作，越來越有默契。<br><b class="good">兩個人同時上班時，動作都快 10%</b></p>
+        ${tip('一起工作久了，員工之間就會培養出默契。別隨便把好搭檔解雇喔！在「員工」裡可以看到誰跟誰是搭檔。')}<button class="btn go big" data-a="ok">感情真好！</button>`;
+    } else if (p.t === 'rival') {
+      if (!a || !b) return false;
+      h = `<p class="lbl">員工在較勁</p><div class="vs">${pt(a)}<span>VS</span>${pt(b)}</div><h2>誰比較厲害？</h2><p>${esc(a.name)}：「我做得比較快！」　${esc(b.name)}：「才怪！」</p>
+        <div class="qbox"><b>讓他們比兩週</b><small class="good">兩個人動作都快 20%，贏的人能力 +3、輸的 +1，比完說不定會變成好搭檔</small><small class="bad">比賽期間比較容易累</small></div>
+        ${tip('員工之間偶爾會互相較勁。讓他們比一比可以激發潛力；不想冒險的話，也可以勸他們和好。')}
+        <div class="row c"><button class="btn" data-a="sev" data-v="calm">勸他們和好</button><button class="btn go big" data-a="sev" data-v="race">比一場吧！</button></div>`;
+    } else if (p.t === 'raceEnd') {
+      if (!a || !b) return false;
+      const nm = { cook: '廚藝', serv: '服務', charm: '魅力' }[p.key];
+      h = `<p class="lbl">較勁結果</p><div class="vs">${pt(a)}<span>WIN</span>${pt(b)}</div><h2>${esc(a.name)} 贏了！</h2><p>工作量 ${num(p.sa)} 比 ${num(p.sb)}。${esc(a.name)} 的${nm} +3、${esc(b.name)} +1。</p>${p.pal ? `<p class="good">不打不相識，兩個人變成好搭檔了！</p>` : ''}<button class="btn go big" data-a="ok">好比賽！</button>`;
+    } else if (p.t === 'course') {
+      const nm = { cook: '廚藝', serv: '服務', charm: '魅力' }[p.kind], list = S.staff.filter(x => !x.away).sort((x, y) => y.lv - x.lv).slice(0, 6);
+      h = `<p class="lbl">進修班招生</p><div class="bigpic">${this.img(Art.icon('book'), 6)}</div><h2>週末${nm}進修班</h2><p>派一個人去上一週的課（這週不在店裡），${nm}會大幅提升，還會多一些經驗。學費 ${money(p.cost)}。</p>
+        <div class="clist sev">${list.map(x => `<button data-a="sev" data-v="${x.uid}" ${S.money < p.cost ? 'disabled' : ''}>${this.img(Art.portrait(makeLook(x.seed, 'staff', x.job), 'happy'), 2)}<b>${esc(x.name)}</b><span>Lv${x.lv}・${nm} ${x[p.kind]}</span></button>`).join('')}</div>
+        ${tip('進修班可以讓員工一口氣變強，但上課那一週店裡會少一個人，要挑不忙的時候喔。')}<button class="btn" data-a="ok">這次不用了</button>`;
+    } else if (p.t === 'poach') {
+      if (!a) return false;
+      h = `<p class="lbl">挖角！</p><div class="vs">${pt(a)}</div><h2>${esc(p.rival)}想挖角 ${esc(a.name)}</h2><p>「來我們這裡吧，薪水給你多三成！」${esc(a.name)} 有點心動……</p>
+        <div class="qbox"><b>加薪留人</b><small>月薪 +${money(p.raise)}（要有 ${money(p.raise * 3)} 以上的現金）・三項能力 +1、以後不會再被挖角</small></div>
+        <div class="qbox"><b>祝他順利</b><small>收到轉職費 ${money(a.sal * 4)}，但會少一個 Lv${a.lv} 的員工</small></div>
+        ${tip('員工越厲害，對手越想挖角。留不留人，要看店裡缺不缺他。')}
+        <div class="row c"><button class="btn" data-a="sev" data-v="go">祝他順利</button><button class="btn go big" data-a="sev" data-v="keep">加薪留人</button></div>`;
+    }
+    this.mdl.innerHTML = `<div class="mc staffev">${h}</div>`;
+    return true;
+  },
+  chalModal(p) {
+    const S = Game.S;
+    if (p.k === 'chalIntro') {
+      const C = CHAL.find(c => c.id === p.id), M = MAPS[C.map], sc = C.scen && SCENARIOS.find(x => x.id === C.scen);
+      Snd.play('event');
+      this.mdl.innerHTML = `<div class="mc chal"><p class="lbl">挑戰關卡・${M.n}</p><div class="cscene">${this.img(Art.mapScene(C.map), 3)}</div><h2>${C.n}</h2>
+        <div class="sp">${this.img(Art.portrait(Guide.look(), 'happy'), 2)}<div class="say"><b>阿德伯</b><p>${C.d}</p></div></div>
+        <p class="mrule">${C.map !== 'city' ? `<b>${M.n}：</b>${M.d}` : ''}${sc ? `<b>${sc.n}：</b>${sc.d}` : ''}</p>
+        ${this.chalGoals(C)}<p class="mute">期限 ${C.y} 年（${Math.round(C.y * 48)} 週）・第一個目標達成就過關，三個都達成是 ★★★</p><button class="btn go big" data-a="ok">開始挑戰！</button></div>`;
+      return;
+    }
+    const C = CHAL.find(c => c.id === p.id);
+    Music.play(p.stars ? 'award' : 'title');
+    this.mdl.innerHTML = `<div class="mc chal ${p.stars ? 'award' : ''}"><p class="lbl">${p.stars ? (p.early ? '提前過關！' : '挑戰成功！') : '挑戰失敗…'}</p><h2>${C.n}</h2>
+      <div class="bstars">${[0, 1, 2].map(i => `<i class="${i < p.stars ? 'on' : ''}" style="--d:${0.25 + i * 0.35}s">★</i>`).join('')}</div>
+      ${this.chalGoals(C, S.chal.got, true)}
+      ${p.gain ? `<p class="good">新的星星 +${p.gain}・傳承點數 +${p.gain}</p>` : p.stars ? '<p class="mute">跟上次一樣好！</p>' : '<p class="mute">過關目標沒有達成。換個做法再試一次吧！</p>'}
+      <p class="mute">可以繼續經營這家店，或回到標題畫面挑戰其他關卡。</p>
+      <div class="row c"><button class="btn" data-a="toTitle">回標題選關</button><button class="btn go big" data-a="ok">繼續經營</button></div></div>`;
+    if (p.stars) setTimeout(() => Snd.play('level'), 600);
   },
   contestGo(id) {
     const r = Game.runContest(id);
