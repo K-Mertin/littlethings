@@ -17,6 +17,14 @@ const FREE_SITES=[
   {id:'snow',  name:'北境雪原',   map:'a8', unlock:7,  pos:[.56,.07], pool:['lian2','ying','jing','qi'],          desc:'雪原上出沒來路不明的部隊。'},
   {id:'ruins', name:'原字碑外圍', map:'c4', unlock:9,  pos:[.47,.38], pool:['ying','jing','zhong','lian2','te'], desc:'石碑的共鳴吸引了各方勢力。'},
   {id:'rift',  name:'虛無裂縫',   map:'a14',unlock:12, pos:[.67,.88], pool:['ye','xu','te','wei'],               desc:'裂縫中不斷湧出無名之影。'},
+  // 以下三處有自己的地形與機關
+  {id:'sky',   name:'浮空遺跡群', unlock:6,  pos:[.36,.22], pool:['yi','ying','qi','jing','ye'], desc:'湖上漂浮的古代遺跡。水面寬廣，飛行機體占盡優勢。',
+    layout:{map:['..ww....wwww....','.www..#..ww..ww.','..w..###.....www','.....r#r..ww....','..........www...','ww...r#r........','www..###..ww..r.','.ww...#..wwww...','......r....ww...','..ww.......w..ww'],deploy:[[0,3],[1,4],[0,4],[1,5],[0,6],[1,8]]}},
+  {id:'forge', name:'熔爐要塞',   unlock:8,  pos:[.62,.48], pool:['dun','zhong','jia','pao','wei'], desc:'帝國的兵工廠。防衛砲台與城牆層層把守。',
+    layout:{map:['mmm......mm....mm','m.....r......r..m','..b......##......','.......r.##..b...','.....r.........r.','...........r.....','.......r.##......','..b......##..b...','m.....r......r..m','mmm......mm....mm'],deploy:[[1,3],[1,4],[1,5],[2,4],[0,4],[2,5]],
+      extra:[{c:'tower',x:11,y:2,dl:-10},{c:'tower',x:11,y:7,dl:-10},{c:'tower',x:15,y:4,dl:-10},{c:'bwall',x:8,y:4,dl:-10},{c:'bwall',x:8,y:5,dl:-10}]}},
+  {id:'abyss', name:'深淵迴廊',   unlock:13, pos:[.86,.66], pool:['ye','xu','te','wei','ye'], elites:2, desc:'虛無之門的更深處。兩台精英守在迴廊盡頭，敵人數量也更多。',
+    layout:{map:['##....r....r....##','#..r.....r....r..#','....##......##....','..r.##..rr..##.r..','.........b........','.........b........','..r.##..rr..##.r..','....##......##....','#..r.....r....r..#','##....r....r....##'],deploy:[[1,3],[0,4],[1,4],[0,5],[1,5],[1,6]]},extraCount:3},
 ];
 
 function storyNo(){ const c=CHAPTERS[G.chapterId]; return c?c.no:1; }
@@ -25,7 +33,7 @@ function freeStatus(s){ if(storyNo()<s.unlock) return 'locked'; if((G.freeDone||
 function freeGold(){ return 250+110*storyNo(); }
 
 function makeFree(id){
-  const S=FREE_SITES.find(s=>s.id===id), base=CHAPTERS[S.map];
+  const S=FREE_SITES.find(s=>s.id===id), base=S.layout||CHAPTERS[S.map];
   const r=rng(((storyNo()*977+id.length*131+Date.now()%1000)>>>0)||1);
   const map=base.map, H=map.length, W=map[0].length, tAt=(x,y)=>TERRAIN[map[y][x]]||TERRAIN['.'];
   const ok=(x,y,fly)=>x>=0&&y>=0&&x<W&&y<H&&!tAt(x,y).block&&(fly||tAt(x,y).k!=='water');
@@ -34,9 +42,10 @@ function makeFree(id){
   const deploy=base.deploy.map(([x,y])=>[x,y]).slice(0,6); deploy.forEach(([x,y])=>used.add(K(x,y)));
   for(let x=0;deploy.length<6&&x<4;x++) for(let y=0;deploy.length<6&&y<H;y++) if(ok(x,y)&&!used.has(K(x,y))){ deploy.push([x,y]); used.add(K(x,y)); }
   const n=Math.min(deploy.length,Math.max(4,G.roster.length));
-  const R=Math.round(partyRank())-1, enemies=[], count=n+2;
+  const R=Math.round(partyRank())-1, enemies=[], count=n+2+(S.extraCount||0);
+  for(const e of (S.extra||[])){ used.add(K(e.x,e.y)); enemies.push({c:e.c,lv:Math.max(1,R+(e.dl||0)),x:e.x,y:e.y}); }
   for(let i=0;i<count;i++){
-    const elite=i===0;
+    const elite=i<(S.elites||1);
     let opts=S.pool.map(c=>({c,lv:R-(CLS(c).tier-1)*10+(elite?2:-Math.floor(r()*3))})).filter(o=>o.lv>=1);
     if(!opts.length){ const lo=S.pool.reduce((a,c)=>CLS(c).tier<CLS(a).tier?c:a); opts=[{c:lo,lv:1}]; }
     const pick=opts[Math.floor(r()*opts.length)], fly=!!CLS(pick.c).fly;
@@ -89,17 +98,30 @@ function drawWorld(cv){
     x.beginPath(); x.arc(u*W,v*H,cur?7:5,0,Math.PI*2); x.fill(); x.stroke(); });
 }
 
-async function worldMap(){
+async function worldMap(tab){
   const W=720, H=400, cur=CHAPTERS[G.chapterId], cp=CH_POS[G.chapterId]||[.5,.5];
+  tab=tab||G.wmTab||'free'; G.wmTab=tab;
   const sites=FREE_SITES.map(s=>({s,st:freeStatus(s)}));
-  const mk=sites.map(({s,st})=>`<button class="wm-site ${st}" data-v="${st==='open'?'free:'+s.id:''}" ${st==='open'?'':'disabled'} style="left:${s.pos[0]*100}%;top:${s.pos[1]*100}%" title="${st==='locked'?'尚未開放':s.name}"><span>⚔</span></button>`).join('');
-  const list=sites.map(({s,st})=>`<button class="btn wm-row" data-v="${st==='open'?'free:'+s.id:''}" ${st==='open'?'':'disabled'}><span><b>${st==='locked'?'？？？':s.name}</b><small>${st==='locked'?`第 ${s.unlock} 章後開放`:s.desc}</small></span><small class="mono">${st==='done'?'本章已攻略':st==='open'?`＋${fmt(freeGold())} G`:''}</small></button>`).join('');
-  const p=ask(`<h2>世界地圖</h2><p style="color:var(--mute);margin-top:-4px">黃色虛線是銘甲隊走過的路，<b style="color:var(--amber)">●</b> 是目前所在地「${cur?cur.title:''}」。⚔ 是自由戰場：敵人等級會配合隊伍，每一章各能攻略一次。</p>
+  const sides=typeof SIDES!=='undefined'?SIDES.map(s=>({s,st:sideStatus(s)})):[];
+  const mk=sites.map(({s,st})=>`<button class="wm-site ${st}" data-v="${st==='open'?'free:'+s.id:''}" ${st==='open'?'':'disabled'} style="left:${s.pos[0]*100}%;top:${s.pos[1]*100}%" title="${st==='locked'?'尚未開放':s.name}"><span>⚔</span></button>`).join('')
+    +sides.filter(({st})=>st!=='hidden').map(({s,st})=>`<button class="wm-site side ${st}" data-v="${st==='open'?'side:'+s.id:''}" ${st==='open'?'':'disabled'} style="left:${s.pos[0]*100}%;top:${s.pos[1]*100}%" title="${st==='locked'?'尚未開放':'外傳：'+s.title}"><span>★</span></button>`).join('');
+  const freeList=sites.map(({s,st})=>`<button class="btn wm-row" data-v="${st==='open'?'free:'+s.id:''}" ${st==='open'?'':'disabled'}><span><b>${st==='locked'?'？？？':s.name}</b><small>${st==='locked'?`第 ${s.unlock} 章後開放`:s.desc}</small></span><small class="mono">${st==='done'?'本章已攻略':st==='open'?`＋${fmt(freeGold())} G`:''}</small></button>`).join('');
+  const sideList=sides.map(({s,st})=>`<button class="btn wm-row${st==='open'?' hot':''}" data-v="${st==='open'?'side:'+s.id:''}" ${st==='open'?'':'disabled'}><span><b>${st==='locked'||st==='hidden'?'？？？':'外傳・'+s.title}</b><small>${st==='hidden'?s.rumor:st==='locked'?s.hint:s.brief}</small>${st!=='locked'&&st!=='hidden'?`<small class="wm-rw">獎勵：${s.rewardText}</small>`:''}</span><small class="mono">${st==='done'?'已完成':st==='open'?'可出擊':''}</small></button>`).join('');
+  const chalList=typeof CHALLENGES!=='undefined'?CHALLENGES.map(c=>{ const b=(G.chalBest||{})[c.id], rk=b!=null?chalRank(b):null;
+    return `<button class="btn wm-row" data-v="chal:${c.id}"><span><b>${c.name}</b><small>${c.desc}</small><small class="wm-rw">A 級：${fmt(1500)} G　S 級：${PARTS[c.prize].name}${(G.chalRw||{})[c.id+'S']?'（已領取）':''}</small></span><small class="mono">${b!=null?`最佳 ${fmt(b)}<br><b class="rk rk-${rk}">${rk}</b>`:'未挑戰'}</small></button>`; }).join(''):'';
+  const nOpen=sides.filter(x=>x.st==='open').length;
+  const tabs=[['free','自由戰場'],['side',`外傳${nOpen?` <b class="badge">${nOpen}</b>`:''}`],['chal','演習挑戰']].map(([k,n])=>`<button class="btn${k===tab?' on':''}" data-v="tab:${k}">${n}</button>`).join('');
+  const intro={free:'⚔ 是自由戰場：敵人等級會配合隊伍，每一章各能攻略一次。',side:'★ 是外傳：只能挑戰一次的特別任務，有獨特的勝利條件，完成後可以得到夥伴或稀有零件。',chal:'演習挑戰：以目前的隊伍挑戰計分關卡，依回合數、剩餘 HP 與擊墜數評分（S〜C）。演習不會保留經驗值，可以重複挑戰；第一次達到 A 級、S 級會得到獎勵。'}[tab];
+  const list={free:freeList,side:sideList,chal:chalList}[tab];
+  const p=ask(`<h2>世界地圖</h2><p style="color:var(--mute);margin-top:-4px">黃色虛線是銘甲隊走過的路，<b style="color:var(--amber)">●</b> 是目前所在地「${cur?cur.title:''}」。</p>
     <div class="wm"><canvas id="wmcv" width="${W}" height="${H}"></canvas><span class="wm-cur" style="left:${cp[0]*100}%;top:${cp[1]*100}%"></span>${mk}</div>
+    <div class="dx-tabs">${tabs}</div><p style="color:var(--mute);font-size:12.5px;margin:4px 0 8px">${intro}</p>
     <div class="wm-list">${list}</div>
     <div class="foot"><button class="btn pri" data-v="back">返回出擊準備</button></div>`,'wide');
   drawWorld($('#wmcv'));
-  const v=await p; return v&&v.startsWith('free:')?v.slice(5):null;
+  const v=await p;
+  if(v&&v.startsWith('tab:')) return worldMap(v.slice(4));
+  return v&&/^(free|side|chal):/.test(v)?v:null;
 }
 
 async function freeWin(){
@@ -125,12 +147,12 @@ async function dexMenu(tab='P'){
   const card=(key,title,sub,body,known)=>`<div class="dx${known?'':' unk'}"><span class="dx-i${iconKey(key)?' hasicon':''}">${known?face(key,'？'):'？'}</span><div><b>${known?title:'？？？'}</b><small>${known?sub:'尚未遇到'}</small>${known&&body?`<p>${body}</p>`:''}</div></div>`;
   let body='';
   if(tab==='P') body=Object.entries(CHARS).map(([k,c])=>{ const cl=CLS(c.cls); return card(k,c.pilot,`${c.mech}・${cl.name}`,cl.desc,d.P.has(k)); }).join('');
-  if(tab==='E') body=Object.values(ECLASSES).filter(c=>!c.obj&&!['general','cmdr','emperor','yuanwu','wuking'].includes(c.id)).map(c=>{ const s=c.stats;
+  if(tab==='E') body=Object.values(ECLASSES).filter(c=>!c.obj&&!['general','cmdr','emperor','yuanwu','wuking','proto','crane'].includes(c.id)).map(c=>{ const s=c.stats;
     return card(c.id,c.name,`${TIER_NAME[c.tier]}・HP ${fmt(s.hp)}・攻 ${s.atk}・甲 ${fmt(s.def)}・避 ${s.eva}・移 ${s.mov}${c.fly?'・飛行':''}`,c.weapons.map(w=>w.name).join('、'),d.E.has(c.id)); }).join('');
   if(tab==='T') body=[...namedFoes()].map(([t,e])=>card(t,e.pilot,`${e.name||CLS(e.c).name}`,'',d.T.has(t))).join('');
   if(tab==='N') body=allEndings().map(([id,t],i)=>`<div class="dx${seenEnd.has(id)?'':' unk'}"><span class="dx-i">${i+1}</span><div><b>${seenEnd.has(id)?t:'？？？'}</b><small>${seenEnd.has(id)?'已達成':'尚未達成'}</small></div></div>`).join('');
   const cnt={P:[d.P.size,Object.keys(CHARS).length],E:[0,0],T:[d.T.size,namedFoes().size],N:[allEndings().filter(([id])=>seenEnd.has(id)).length,allEndings().length]};
-  const eAll=Object.values(ECLASSES).filter(c=>!c.obj&&!['general','cmdr','emperor','yuanwu','wuking'].includes(c.id)); cnt.E=[eAll.filter(c=>d.E.has(c.id)).length,eAll.length];
+  const eAll=Object.values(ECLASSES).filter(c=>!c.obj&&!['general','cmdr','emperor','yuanwu','wuking','proto','crane'].includes(c.id)); cnt.E=[eAll.filter(c=>d.E.has(c.id)).length,eAll.length];
   const tabs=[['P','我方'],['E','敵機'],['T','宿敵'],['N','結局']].map(([k,n])=>`<button class="btn${k===tab?' on':''}" data-v="tab:${k}">${n} ${cnt[k][0]}/${cnt[k][1]}</button>`).join('');
   const v=await ask(`<h2>圖鑑</h2><div class="dx-tabs">${tabs}</div><div class="dx-grid">${body}</div><div class="foot"><button class="btn pri" data-v="back">返回</button></div>`,'wide');
   if(v&&v.startsWith('tab:')) return dexMenu(v.slice(4));

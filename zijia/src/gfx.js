@@ -84,6 +84,7 @@ function gfxResize(){
 }
 function gfxPickCs(avail,W){
   const raw=avail/W;
+  if(typeof mapZoom==='function'&&mapZoom()>1) return Math.max(20,Math.min(96,Math.floor(raw)));   // 放大時不必整數倍
   if(raw>=32) return Math.min(64,Math.floor(raw/16)*16);   // 整數倍放大，像素清楚
   return Math.max(20,Math.floor(raw));
 }
@@ -145,6 +146,7 @@ function drawMap(now){
   for(const k of (ov.ally||[])){ const [x,y]=k.split(',').map(Number); bracket(x,y,'#6dff9a',1+pul*1.5,cs*.3); }
   if(G.sel&&G.units.includes(G.sel)){ const u=G.sel; bracket(u._px??u.x,u._py??u.y,'#ffd25a',1+pul,cs*.32); }
   if(GFX.hover&&inMap(GFX.hover.x,GFX.hover.y)) bracket(GFX.hover.x,GFX.hover.y,'rgba(255,255,255,.85)',2,cs*.22);
+  if(typeof drawWeather==='function') drawWeather(ctx,cs,now);
   // 特效
   drawMapFx(ctx,cs,now);
 }
