@@ -2,7 +2,7 @@
 'use strict';
 const MG = (() => {
   // 版號：每次合併更新時一起改（修正 → 第三碼 +1；新遊戲／新功能 → 第二碼 +1）
-  const VERSION = '1.56.1', BUILT = '2026/10/28';
+  const VERSION = '1.57.0', BUILT = '2026/10/28';
   const LS = 'puputown.';
   const store = {
     get(k, d) { try { const v = localStorage.getItem(LS + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -260,6 +260,8 @@ const MG = (() => {
   }
   function sparkle(delay = 0) { for (let i = 0; i < 5; i++) bell(1800 + Math.random() * 1600, 0.18, 0.025, delay + i * 0.035); }
   // 牛牛's bell: a soft 叮噹 on top of every jump
+  // a single soft musical note (bell timbre) — for games that play a tune note by note
+  function note(f, dur = 0.5, vol = 0.1, delay = 0) { bell(f, dur, vol, delay); }
   function sfx(name, arg) { if (SFX[name]) SFX[name](arg); if (HERO === 'niu' && name === 'jump') { tone(1568, 1568, 0.18, 'sine', 0.05, 0.02); tone(1175, 1175, 0.22, 'sine', 0.045, 0.12); } }
 
   // ---------- short feedback words: English + emoji so kids who can't read Chinese yet still get them ----------
@@ -611,22 +613,26 @@ const MG = (() => {
     const plain = h => String(h).replace(/<[^>]*>/g, '').trim();
     const many = o.levels && o.levels.count > 12;
     const lvShort = n => o.levels.short ? o.levels.short(n) : o.levels.label && plain(lvLabel(n)).length <= 6 ? lvLabel(n) : String(n);
+    // 🆕 levels / ways of playing the kid hasn't tried yet get a little red dot (levels.fresh(n), mode.fresh, option.fresh)
+    const triedSet = new Set(store.get('tried.' + o.id, []));
+    const isFresh = n => !!(o.levels && o.levels.fresh && o.levels.fresh(n) && !triedSet.has('L' + n));
+    const nw = (f) => f ? ' mg-new' : '';
     const lvGrid = () => {
       const N = Array.from({ length: o.levels.count }, (_, i) => i + 1);
-      if (!many) return `<div class="mg-levels">${N.map(n => `<button type="button" class="mg-lv" data-lv="${n}" ${n > o.levels.max ? 'disabled' : ''}>${n > o.levels.max ? '🔒' : lvLabel(n)}</button>`).join('')}</div>`;
+      if (!many) return `<div class="mg-levels">${N.map(n => `<button type="button" class="mg-lv${nw(isFresh(n))}" data-lv="${n}" ${n > o.levels.max ? 'disabled' : ''}>${n > o.levels.max ? '🔒' : lvLabel(n)}</button>`).join('')}</div>`;
       const w = Math.max(...N.map(n => [...plain(lvShort(n))].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? 1 : 0.6), 0)));
-      return `<div class="mg-levels mg-lvgrid" style="--lvw:${Math.max(3, w + 1.4).toFixed(1)}em">${N.map(n => `<button type="button" class="mg-lv" data-lv="${n}" ${n > o.levels.max ? 'disabled' : ''}>${n > o.levels.max ? '🔒' : lvShort(n)}</button>`).join('')}</div><p class="mg-lvsel" aria-live="polite"></p>`;
+      return `<div class="mg-levels mg-lvgrid" style="--lvw:${Math.max(3, w + 1.4).toFixed(1)}em">${N.map(n => `<button type="button" class="mg-lv${nw(isFresh(n))}" data-lv="${n}" ${n > o.levels.max ? 'disabled' : ''}>${n > o.levels.max ? '🔒' : lvShort(n)}</button>`).join('')}</div><p class="mg-lvsel" aria-live="polite"></p>`;
     };
     const picks = {};
     for (const pk of o.picks || []) { let v = store.get(o.id + '.pick.' + pk.key, pk.def || pk.options[0].id); if (!pk.options.some(q => q.id === v)) v = pk.options[0].id; picks[pk.key] = v; }
     // a mode can say it needs no level list (noLevels) or hide some picks (hide: ['pace', …]); then the mode question comes first
     const modeOf = id => (o.modes || []).find(m => m.id === id) || {};
     const modesFirst = o.modesFirst || (o.modes || []).some(m => m.noLevels || m.hide);
-    const picksHtml = (o.picks || []).map(pk => `<div class="mg-pkwrap" data-pkwrap="${pk.key}"><p class="mg-pick-h">${pk.title}</p><div class="mg-pick">${pk.options.map(q => `<button type="button" class="mg-opt" data-pk="${pk.key}" data-pv="${q.id}">${q.label}<small>${q.sub || ''}</small></button>`).join('')}</div></div>`).join('');
-    const modesHtml = o.modes ? `${o.picks ? `<p class="mg-pick-h">${o.modesTitle || '要不要計時？'}</p>` : ''}<div class="mg-pick">${o.modes.map(m => `<button type="button" class="mg-opt" data-mode="${m.id}">${m.label}<small>${m.sub || ''}</small></button>`).join('')}</div>` : '';
+    const picksHtml = (o.picks || []).map(pk => `<div class="mg-pkwrap" data-pkwrap="${pk.key}"><p class="mg-pick-h">${pk.title}</p><div class="mg-pick">${pk.options.map(q => `<button type="button" class="mg-opt${nw(q.fresh && !triedSet.has('P' + pk.key + '=' + q.id))}" data-pk="${pk.key}" data-pv="${q.id}">${q.label}<small>${q.sub || ''}</small></button>`).join('')}</div></div>`).join('');
+    const modesHtml = o.modes ? `${o.picks ? `<p class="mg-pick-h">${o.modesTitle || '要不要計時？'}</p>` : ''}<div class="mg-pick">${o.modes.map(m => `<button type="button" class="mg-opt${nw(m.fresh && !triedSet.has('M' + m.id))}" data-mode="${m.id}">${m.label}<small>${m.sub || ''}</small></button>`).join('')}</div>` : '';
     const html = (o.html || '') + (modesFirst ? modesHtml + picksHtml : picksHtml + modesHtml) +
       (o.levels ? `<div class="mg-lvwrap"><p class="mg-pick-h">${o.levelsTitle || '從哪一關開始？'}</p>` + lvGrid() + '</div>' : '');
-    panel({ title: o.title, html, keys: o.keys, buttons: [{ label: isPause ? '重新開始' : '開始', alt: !!isPause, on: () => { store.set(o.id + '.pickMode', mode); store.set(o.id + '.pickLevel', lvl); for (const k in picks) store.set(o.id + '.pick.' + k, picks[k]); o.start(mode, lvl, picks); } }, ...(o.extra || [])] });
+    panel({ title: o.title, html, keys: o.keys, buttons: [{ label: isPause ? '重新開始' : '開始', alt: !!isPause, on: () => { store.set(o.id + '.pickMode', mode); store.set(o.id + '.pickLevel', lvl); for (const k in picks) store.set(o.id + '.pick.' + k, picks[k]); stampTry(o, mode, lvl, picks); o.start(mode, lvl, picks); } }, ...(o.extra || [])] });
     const sync = () => {
       const mo = modeOf(mode), lw = over.querySelector('.mg-lvwrap');
       if (lw) lw.hidden = !!mo.noLevels;
@@ -634,13 +640,40 @@ const MG = (() => {
       over.querySelectorAll('.mg-opt[data-mode]').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === mode));
       over.querySelectorAll('.mg-opt[data-pk]').forEach(b => b.setAttribute('aria-pressed', picks[b.dataset.pk] === b.dataset.pv));
       over.querySelectorAll('.mg-lv').forEach(b => b.setAttribute('aria-pressed', +b.dataset.lv === lvl));
-      const sel = over.querySelector('.mg-lvsel'); if (sel) { const full = lvLabel(lvl), shown = plain(lvShort(lvl)); sel.innerHTML = !o.levels.label || plain(full) === String(lvl) ? `第 ${lvl} 關` : plain(full).startsWith(String(lvl)) ? `第 ${lvl} 關 ${String(full).replace(String(lvl), '').trim()}` : `${lvl}. ${full}`; void shown; }
+      const sel = over.querySelector('.mg-lvsel'); if (sel) { const full = lvLabel(lvl), shown = plain(lvShort(lvl)); sel.innerHTML = (isFresh(lvl) ? '🆕 ' : '') + (!o.levels.label || plain(full) === String(lvl) ? `第 ${lvl} 關` : plain(full).startsWith(String(lvl)) ? `第 ${lvl} 關 ${String(full).replace(String(lvl), '').trim()}` : `${lvl}. ${full}`); void shown; }
     };
     over.querySelectorAll('.mg-opt[data-mode]').forEach(b => b.onclick = () => { mode = b.dataset.mode; sfx('click'); unlock(); sync(); });
     over.querySelectorAll('.mg-opt[data-pk]').forEach(b => b.onclick = () => { picks[b.dataset.pk] = b.dataset.pv; sfx('click'); unlock(); sync(); });
     over.querySelectorAll('.mg-lv').forEach(b => b.onclick = () => { lvl = +b.dataset.lv; sfx('click'); unlock(); sync(); });
     sync();
     if (paused) addResume();
+  }
+  // ---------- 🎟️ 新玩法印章: every level / mode / way of playing tried for the first time stamps the card ----------
+  // tried.<game> = ['L3', 'Mrelax', 'Pstyle=fall', …]; stamps = how many in all (the hub shows the stamp card)
+  let stampEl = null, stampT = 0;
+  function stampTry(o, mode, lvl, picks) {
+    const keys = [], mo = (o.modes || []).find(m => m.id === mode) || {};
+    if (o.levels && !mo.noLevels) keys.push('L' + lvl);
+    if (o.modes) keys.push('M' + mode);
+    for (const pk of o.picks || []) if (!(mo.hide && mo.hide.includes(pk.key))) keys.push('P' + pk.key + '=' + picks[pk.key]);
+    stamp(o.id, keys);
+  }
+  // MG.stamp(gameId, key | [keys]) — games with their own menus can call it too; returns how many were new
+  function stamp(id, keys) {
+    keys = [].concat(keys).filter(Boolean).map(String);
+    const have = new Set(store.get('tried.' + id, [])), fresh = keys.filter(k => !have.has(k));
+    if (!fresh.length) return 0;
+    fresh.forEach(k => have.add(k)); store.set('tried.' + id, [...have]);
+    const n = store.get('stamps', 0) + fresh.length; store.set('stamps', n);
+    const log = store.get('stampLog', []); log.unshift({ g: id, t: Date.now(), k: fresh.length }); store.set('stampLog', log.slice(0, 30));
+    setTimeout(() => {
+      if (!stampEl) { stampEl = document.createElement('div'); stampEl.className = 'mg-stamp'; stampEl.setAttribute('aria-live', 'polite'); document.body.append(stampEl); }
+      stampEl.innerHTML = `<b>🎟️</b><span>New! +${fresh.length}</span><small>${n}</small>`;
+      stampEl.classList.remove('on'); void stampEl.offsetWidth; stampEl.classList.add('on');
+      bell(1319, 0.25, 0.05); bell(1760, 0.35, 0.05, 0.09);
+      clearTimeout(stampT); stampT = setTimeout(() => stampEl.classList.remove('on'), 2200);
+    }, 450);
+    return fresh.length;
   }
   // extra button in the top bar (e.g. "休息一下" to end an untimed round)
   function barButton(label, onClick) {
@@ -652,5 +685,5 @@ const MG = (() => {
   }
 
   // how far (× r) a hat drawn for 噗噗's taller head has to come down to sit on 牛牛
-  return { swReady, get hatDrop() { return HERO === 'niu' ? 0.34 : 0; }, get hero() { return HERO; }, get heroName() { return heroName(); }, heroText, setHero, niuSVG, niuDraw, VERSION, BUILT, get big() { return big; }, setBig, get textScale() { return big ? 1.3 : 1; }, praise, WORDS, choose, pauseMenu, resume, barButton, init, stat, fit, panel, hide, panelOpen, best, record, sfx, toast, loop, rand, randi, pick, shuffle, store, puPu, fx, unlock, JELLY };
+  return { swReady, get hatDrop() { return HERO === 'niu' ? 0.34 : 0; }, get hero() { return HERO; }, get heroName() { return heroName(); }, heroText, setHero, niuSVG, niuDraw, VERSION, BUILT, get big() { return big; }, setBig, get textScale() { return big ? 1.3 : 1; }, praise, WORDS, choose, stamp, note, get stamps() { return store.get('stamps', 0); }, pauseMenu, resume, barButton, init, stat, fit, panel, hide, panelOpen, best, record, sfx, toast, loop, rand, randi, pick, shuffle, store, puPu, fx, unlock, JELLY };
 })();

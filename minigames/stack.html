@@ -113,14 +113,27 @@ const LEVELS = [
   { n: '城堡大考驗', b: 'castle', gt: 'floors', g: 22, w: 1, sp: [120, 5, 240], pw: 5, sway: 0.6, gust: 0.5, sx: { gold: 0.1, glass: 0.15 }, mk: '🏆' },
   { n: '六連完美火箭', b: 'rocket', gt: 'streak', g: 6, w: 1.1, sp: [105, 2, 170], pw: 6, sway: 0.4, mk: '🏆' },
   { n: '超級星星塔', b: 'hive', gt: 'targets', g: 8, w: 1.05, sp: [115, 4, 220], pw: 5, tw: 8, sway: 0.5, gust: 0.5, sx: { gold: 0.1, rubber: 0.12 }, mk: '👑' },
+  // ---- 🆕 41+: ✋ 按住移動、放開才掉（自己決定速度），🌈 看顏色放（等樓層變成對的顏色再放）----
+  { n: '按住慢慢移', b: 'house', gt: 'floors', g: 6, w: 1.25, sp: [95, 2, 150], pw: 7, hold: 1, mk: '✋' },
+  { n: '彩虹大樓', b: 'house', gt: 'colors', rb: [0, 1, 2, 3, 4], g: 5, w: 1.3, sp: [110, 1, 130], pw: 7, mk: '🌈' },
+  { n: '按住蓋燈塔', b: 'light', gt: 'floors', g: 10, w: 1.1, sp: [100, 3, 170], pw: 6, hold: 1, mk: '✋' },
+  { n: '紅綠藍', b: 'house', gt: 'colors', rb: [0, 2, 3], g: 6, w: 1.2, sp: [115, 2, 140], pw: 7, mk: '🌈' },
+  { n: '按住搖搖蛋糕', b: 'cake', gt: 'floors', g: 10, w: 1.15, sp: [100, 3, 170], pw: 6, hold: 1, sway: 0.35, mk: '✋' },
+  { n: '彩虹高高樓', b: 'house', gt: 'colors', rb: [0, 1, 2, 3, 4, 5, 6], g: 7, w: 1.2, sp: [120, 2, 150], pw: 6, wind: 0.3, mk: '🌈' },
 ];
+// 🌈 colour names (HUES order) for the colour levels
+const HUE_NM = ['Red', 'Orange', 'Green', 'Blue', 'Purple', 'Pink', 'Mint'], HUE_EM = ['🔴', '🟠', '🟢', '🔵', '🟣', '🩷', '🩵'];
 const ENDLESS = LEVELS.length + 1;
+// ♾️ was number 41 before the ✋🌈 levels came in
+if (!MG.store.get('stack.v3', false)) { if (MG.store.get('stack.pickLevel', 1) === 41) MG.store.set('stack.pickLevel', ENDLESS); MG.store.set('stack.v3', true); }
+let cHit = 0;
+const wantHue = () => L && L.rb ? L.rb[cHit % L.rb.length] : -1;
 let level = ENDLESS, L = null, mode = 'normal', pTot = 0, streak = 0, topper = 0, tHit = 0, calm = 1, calmS = 1, tgt = null, lift = 0;
 const bld = () => L ? L.b : 'house';
 const skyK = () => L && L.b === 'rocket' && L.gt === 'floors' ? 50 / L.g : L && L.gt === 'floors' ? Math.max(1, 18 / L.g) : 1;    // 🚀 reaches outer space at the top, short towers still see the sunset
 const lvName = n => n === ENDLESS ? '♾️ 一直蓋' : `${BLD[LEVELS[n - 1].b].ic} ${LEVELS[n - 1].n}`;
-const goalTxt = () => L.gt === 'floors' ? `${BLD[L.b].ic} ${floors.length - 1}/${L.g}` : L.gt === 'perfects' ? `🌟 ${pTot}/${L.g}` : L.gt === 'targets' ? `🎯 ${tHit}/${L.g}` : `🔥 ${streak}/${L.g}`;
-const goalDone = () => !L ? 0 : L.gt === 'floors' ? (floors.length - 1) / L.g : L.gt === 'perfects' ? pTot / L.g : L.gt === 'targets' ? tHit / L.g : streak / L.g;
+const goalTxt = () => L.gt === 'colors' ? `🌈 ${cHit}/${L.g}` : L.gt === 'floors' ? `${BLD[L.b].ic} ${floors.length - 1}/${L.g}` : L.gt === 'perfects' ? `🌟 ${pTot}/${L.g}` : L.gt === 'targets' ? `🎯 ${tHit}/${L.g}` : `🔥 ${streak}/${L.g}`;
+const goalDone = () => !L ? 0 : L.gt === 'colors' ? cHit / L.g : L.gt === 'floors' ? (floors.length - 1) / L.g : L.gt === 'perfects' ? pTot / L.g : L.gt === 'targets' ? tHit / L.g : streak / L.g;
 
 let floors, mover, debris, camY, camT, state = 'ready', t = 0, perfect = 0, pops = [], shake = 0, stars = [], sky = [], picCache = null, fireT = 0;
 
@@ -131,7 +144,7 @@ const gustNow = (tt = t) => L && L.gust ? L.gust * (mode === 'relax' ? 0.6 : 1) 
 
 function reset() {
   floors = [{ x: CW / 2 - BASEW / 2, w: BASEW, n: 0, seed: 1, px: 0 }];
-  debris = []; camY = 0; camT = 0; perfect = 0; pTot = 0; streak = 0; topper = 0; tHit = 0; calm = 1; calmS = 1; tgt = null; lift = 0; pops = []; MG.fx.clear();
+  debris = []; camY = 0; camT = 0; perfect = 0; pTot = 0; cHit = 0; streak = 0; topper = 0; tHit = 0; calm = 1; calmS = 1; tgt = null; lift = 0; pops = []; MG.fx.clear();
   // things in the sky, at different heights (in floors): birds and balloons low down, planes higher, then satellites, planets and a UFO
   sky = [];
   const K = skyK();
@@ -154,6 +167,13 @@ function spawn() {
   mover = { w: top.w, n, seed: Math.random() * 1000, amp, ph: fromLeft ? -Math.PI / 2 : Math.PI / 2, rate: speed * Math.PI / (2 * amp),
     x: 0, y: floorY(n) - HANG - 90, vy: 0, falling: false, sp, drift, x0: 0, y0: 0, bounce: 0, px: top.px };
   mover.x = CW / 2 + Math.sin(mover.ph) * amp - mover.w / 2;
+  // ✋ hold levels: the floor waits at the side; hold to move it across, let go to drop
+  if (L && L.hold) { mover.hold = 1; mover.dir = fromLeft ? 1 : -1; mover.hamp = Math.max(20 * kx, CW / 2 - mover.w / 2 - 6 * kx); mover.hx = CW / 2 - mover.dir * mover.hamp; mover.press = false; mover.hsp = (mode === 'relax' ? 85 : 115) * kx; mover.x = mover.hx - mover.w / 2; }
+  // 🌈 colour levels: the floor keeps changing colour — drop it when it's the colour on the flag
+  if (L && L.rb) {   // the wanted colour + 2 (or 3) others, in a shuffled loop
+    const w = wantHue(), pool = MG.shuffle([...new Set([...L.rb, 1, 4, 5])].filter(h => h !== w)), set = [w, pool[0], w, pool[1]];   // every other trip is the right colour
+    mover.hues = set; mover.hi = (set.indexOf(w) + 1) % set.length; mover.hue = set[mover.hi]; mover.hd = 0;
+  }
   // 🎯 a star to aim at (somewhere on the top floor, not always the middle)
   if (L && L.gt === 'targets') {
     const tw = (L.tw || 10) * kx * (mode === 'relax' ? 1.5 : 1), room = Math.max(0, top.w / 2 - tw - 4 * kx);
@@ -166,8 +186,13 @@ function hud() {
 }
 const floorY = n => GROUNDY - (n + 1) * FH;   // world y of floor n's top edge
 
+function press() {   // ✋ finger down on a hold level: start moving
+  if (state !== 'play' || !mover || mover.falling || MG.panelOpen() || !mover.hold || mover.press) return false;
+  mover.press = true; MG.sfx('tick'); return true;
+}
 function drop() {
   if (state !== 'play' || !mover || mover.falling || MG.panelOpen()) return;
+  if (mover.hold) mover.press = false;
   mover.falling = true; mover.vy = 60; mover.x0 = mover.x; mover.y0 = mover.y; MG.sfx('flip');
 }
 function say(t, y, c) { pops.push({ t, life: 1, y, c }); }
@@ -200,7 +225,7 @@ function land() {
     perfect++; pTot++; streak++; L0 = topX; Rr = topX + top.w;
     let w = top.w;
     if (perfect >= 3 && w < BASEW && !(L && L.b === 'pic')) { w = Math.min(BASEW, w + 10 * kx); L0 -= 5 * kx; perfect = 0; say('Wider! ↔️', floorY(m.n) - 30); MG.sfx('yay'); }
-    floors.push({ x: L0 - swOff(m.n), w: Math.max(w, Rr - L0), n: m.n, seed: m.seed, glow: 0.5, squash: 0.25, sp: m.sp, px: m.px });
+    floors.push({ x: L0 - swOff(m.n), w: Math.max(w, Rr - L0), n: m.n, seed: m.seed, glow: 0.5, squash: 0.25, sp: m.sp, px: m.px, hue: m.hue });
     if (gold) { MG.sfx('coin'); snd('sparkle'); }
     MG.sfx('perfect'); snd('match', Math.max(1, streak)); if (streak >= 2) snd('sparkle');
     say(gold && Math.abs(off) >= pw ? 'Gold! ✨' : streak >= 2 ? `Perfect ×${streak} 🌟` : MG.WORDS.perfect, floorY(m.n) - 8);
@@ -211,7 +236,7 @@ function land() {
     let w = Rr - L0;
     // 🐢 慢慢玩: the floor never gets thinner than a little tower
     if (mode === 'relax' && w < 26 * kx) { const c = (L0 + Rr) / 2; w = 26 * kx; L0 = c - w / 2; Rr = c + w / 2; }
-    floors.push({ x: L0 - swOff(m.n), w, n: m.n, seed: m.seed, squash: 0.25, sp: m.sp, px: pxOf(L0) });
+    floors.push({ x: L0 - swOff(m.n), w, n: m.n, seed: m.seed, squash: 0.25, sp: m.sp, px: pxOf(L0), hue: m.hue });
     // the overhang falls off
     if (m.x < L0) debris.push({ x: m.x, y: floorY(m.n), w: L0 - m.x, vy: 0, vx: -60, rot: 0, vr: -2.5, n: m.n, seed: m.seed, sp: m.sp, px: m.px });
     if (m.x + m.w > Rr) debris.push({ x: Rr, y: floorY(m.n), w: m.x + m.w - Rr, vy: 0, vx: 60, rot: 0, vr: 2.5, n: m.n, seed: m.seed, sp: m.sp, px: pxOf(Rr) });
@@ -223,6 +248,10 @@ function land() {
     if (hitT) { MG.sfx('coin'); snd('sparkle'); say(`🎯 ${tHit}/${L.g}`, floorY(m.n) - 40, '#e0408a'); MG.fx.burst(topX + top.w / 2 + tgt.dx, floorY(m.n), { n: 22, colors: ['#ffe36b', '#ff8ac2', '#fff'], speed: 220, up: 90, size: 6, shape: 'star', life: 0.8 }); }
     else say('Aim for ⭐', floorY(m.n) - 40, '#7a6a9a');
   }
+  if (L && L.rb) {   // 🌈 right colour?
+    if (m.hue === wantHue()) { cHit++; MG.note([523, 587, 659, 698, 784, 880, 988][m.hue % 7], 0.6, 0.12); snd('sparkle'); say(`${HUE_NM[m.hue]}! ${HUE_EM[m.hue]} ✅`, floorY(m.n) - 40, rgb(shade(HUES[m.hue], -0.35))); }
+    else say(`${HUE_EM[wantHue()]} ${HUE_NM[wantHue()]}, please!`, floorY(m.n) - 40, '#7a6a9a');
+  }
   camT = Math.max(0, (floors.length - KEEP) * FH);
   const nf = floors[floors.length - 1], nx = nf.x + swOff(nf.n);
   MG.fx.burst(nx + 4, floorY(nf.n) + FH, { n: 5, colors: ['rgba(255,255,255,.8)'], speed: 60, up: 10, size: 3, grav: 60, life: 0.4, angle: Math.PI, spread: 1.2 });
@@ -232,8 +261,10 @@ function land() {
   if (L && goalDone() >= 1) return win();
   spawn();
 }
-cv.addEventListener('pointerdown', e => { e.preventDefault(); drop(); });
-addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowDown') { if (state === 'play' && !MG.panelOpen()) { e.preventDefault(); drop(); } } });
+cv.addEventListener('pointerdown', e => { e.preventDefault(); if (mover && mover.hold) { press(); return; } drop(); });
+for (const ev of ['pointerup', 'pointercancel']) cv.addEventListener(ev, () => { if (mover && mover.hold && mover.press) drop(); });
+addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowDown') { if (state === 'play' && !MG.panelOpen()) { e.preventDefault(); if (mover && mover.hold) { if (!e.repeat) press(); return; } drop(); } } });
+addEventListener('keyup', e => { if ((e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowDown') && mover && mover.hold && mover.press) drop(); });
 
 let lastOff = null;
 function aimOff() {   // how far the floor would land from where it should (test helper)
@@ -243,6 +274,8 @@ function aimOff() {   // how far the floor would land from where it should (test
 }
 function bot() {   // test bot: drop when the floor (after the wind and the sway) will sit right on top / on the star
   if (!mover || mover.falling) return;
+  if (L && L.rb && mover.hue !== wantHue()) return;   // 🌈 wait for the right colour
+  if (mover.hold && !mover.press) { press(); return; }
   const off = aimOff();
   if (Math.abs(off) < 1.6 * kx || (lastOff != null && Math.sign(off) !== Math.sign(lastOff) && Math.abs(off) < 3 * kx)) { lastOff = null; drop(); return; }
   lastOff = off;
@@ -257,8 +290,15 @@ function update(dt) {
       else if (mover.drift) mover.x = mover.x0 + mover.drift * Math.max(0, Math.min(1, (mover.y - mover.y0) / (floorY(mover.n) - mover.y0)));
       if (mover.y >= floorY(mover.n) && mover.vy > 0) { mover.y = floorY(mover.n); if (mover.bounce) mover.x = mover.bx1; land(); }
     } else {
-      mover.ph += mover.rate * dt;
-      mover.x = CW / 2 + Math.sin(mover.ph) * mover.amp - mover.w / 2;
+      if (mover.hold) {   // ✋ only moves while the finger is down; stops at the far end
+        if (mover.press) mover.hx = Math.max(CW / 2 - mover.hamp, Math.min(CW / 2 + mover.hamp, mover.hx + mover.dir * mover.hsp * dt));
+        mover.x = mover.hx - mover.w / 2;
+      } else {
+        mover.ph += mover.rate * dt;
+        mover.x = CW / 2 + Math.sin(mover.ph) * mover.amp - mover.w / 2;
+      }
+      // 🌈 a new colour every time the floor turns around at the end of a swing (one colour per trip across)
+      if (mover.hues) { const dirNow = Math.sign(Math.cos(mover.ph)) || 1; if (mover.hd && dirNow !== mover.hd) { mover.hi = (mover.hi + 1) % mover.hues.length; mover.hue = mover.hues[mover.hi]; if (mover.hue === wantHue()) MG.sfx('tick'); else MG.sfx('flip'); } mover.hd = dirNow; }
       mover.y += (hangY + Math.sin(t * 4) * 2 - mover.y) * Math.min(1, dt * 10);   // lowered in from above
       if (L && L.gust) mover.drift = gustNow() * 46 * kx;
       if (HOOK.auto && Math.abs(mover.y - hangY) < 6) bot();
@@ -941,8 +981,9 @@ function draw() {
     if (f.n === 0) { groundFloor(f); continue; }
     if (floorY(f.n) + camY - lift > -FH && floorY(f.n) + camY - lift < H + FH) {
       const fx = f.x + swOff(f.n);
-      if (f.squash) { const k = Math.sin(f.squash / 0.25 * Math.PI) * 0.12; x.save(); x.translate(fx + f.w / 2, floorY(f.n) + FH); x.scale(1 + k * 0.5, 1 - k); block(-f.w / 2, -FH, f.w, f.n, f.seed, 1, f.glow || 0, f.sp, f.px); x.restore(); }
-      else block(fx, floorY(f.n), f.w, f.n, f.seed, 1, f.glow || 0, f.sp, f.px);
+      const fn = f.hue != null ? f.hue + 7 : f.n;   // 🌈 a floor keeps the colour it was dropped with
+      if (f.squash) { const k = Math.sin(f.squash / 0.25 * Math.PI) * 0.12; x.save(); x.translate(fx + f.w / 2, floorY(f.n) + FH); x.scale(1 + k * 0.5, 1 - k); block(-f.w / 2, -FH, f.w, fn, f.seed, 1, f.glow || 0, f.sp, f.px); x.restore(); }
+      else block(fx, floorY(f.n), f.w, fn, f.seed, 1, f.glow || 0, f.sp, f.px);
     } }
   if (topper) drawTopper(floors[floors.length - 1]);
   x.restore();
@@ -955,13 +996,27 @@ function draw() {
     x.strokeStyle = 'rgba(255,90,160,.7)'; x.setLineDash([3, 4]); x.lineWidth = 1.5; x.beginPath(); x.moveTo(tx, ty - 14); x.lineTo(tx, mover.y + FH); x.stroke(); x.setLineDash([]);
     x.save(); x.translate(tx, ty - 14); x.scale(s, s); x.fillStyle = '#ffd23f'; x.strokeStyle = '#e0408a'; x.lineWidth = 2.5; star5(0, 0, 11, Math.sin(t * 2) * 0.2); x.fill(); x.stroke(); x.fillStyle = 'rgba(255,255,255,.7)'; x.beginPath(); x.arc(-3, -3, 2.4, 0, 7); x.fill(); x.restore();
   }
+  // 🌈 a flag on the roof shows the colour to drop next
+  if (L && L.rb && state === 'play') {
+    const top = floors[floors.length - 1], fx = top.x + swOff(top.n) + top.w / 2, fy = floorY(top.n), hu = HUES[wantHue()];
+    x.strokeStyle = '#5a4a3a'; x.lineWidth = 3; x.beginPath(); x.moveTo(fx, fy); x.lineTo(fx, fy - 46); x.stroke();
+    x.fillStyle = rgb(hu); x.strokeStyle = rgb(shade(hu, -0.45)); x.lineWidth = 2; const wv = Math.sin(t * 6) * 3;
+    x.beginPath(); x.moveTo(fx, fy - 46); x.quadraticCurveTo(fx + 18, fy - 50 + wv, fx + 34, fy - 44); x.lineTo(fx + 34, fy - 24); x.quadraticCurveTo(fx + 18, fy - 30 + wv, fx, fy - 26); x.closePath(); x.fill(); x.stroke();
+  }
   // the moving floor hangs from the crane hook; the hook lets go when it drops
   let hookInfo = null;
   if (mover && state === 'play') {
     const cx = mover.x + mover.w / 2, my = mover.y, hangY = floorY(mover.n) - HANG;
     const hookY = mover.falling ? hangY - Math.max(0, mover.y - hangY) * 0.3 - 10 : my - 14;
     hookInfo = [mover.falling ? (mover.x0 + mover.w / 2) : cx, hookY + camY, my + camY, mover.falling ? 0 : Math.min(mover.w, 120)];
-    block(mover.x, my, mover.w, mover.n, mover.seed, 1, 0, mover.sp, mover.px);
+    block(mover.x, my, mover.w, mover.hue != null ? mover.hue + 7 : mover.n, mover.seed, 1, 0, mover.sp, mover.px);
+    if (mover.hues && !mover.falling && mover.hue === wantHue()) { x.strokeStyle = `rgba(255,255,255,${0.7 + Math.sin(t * 12) * 0.3})`; x.lineWidth = 4; rr(mover.x - 3, my - 3, mover.w + 6, FH + 6, 6); x.stroke(); }
+    if (mover.hold && !mover.falling && !mover.press && floors.length < 5) {   // ✋ a hint: hold → it moves this way
+      const hx = mover.x + mover.w / 2, hy = my + FH + 24 + Math.sin(t * 5) * 3, d = mover.dir, fs = Math.max(15, TXT(13));
+      x.fillStyle = 'rgba(255,255,255,.92)'; x.strokeStyle = '#ff8a1c'; x.lineWidth = 2.5; rr(hx - 52, hy - 15, 104, 30, 15); x.fill(); x.stroke();
+      x.fillStyle = '#ff8a1c'; x.beginPath(); x.moveTo(hx + d * 50, hy); x.lineTo(hx + d * 36, hy - 9); x.lineTo(hx + d * 36, hy + 9); x.closePath(); x.fill();
+      x.font = `900 ${fs}px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = '#7a3a00'; x.fillText('按住 ✋', hx - d * 6, hy + 1);
+    }
     if (!mover.falling) {   // drop guide (shifted by the wind, so it shows where the floor will really land)
       const gx = mover.x + mover.drift;
       x.strokeStyle = mover.drift ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.6)'; x.setLineDash([4, 5]); x.lineWidth = mover.drift ? 2.5 : 1.5;
@@ -993,7 +1048,7 @@ function drawBadge0(climbed) {
   x.strokeText(climbed, x0 + 12, y0 + f1 * 0.62); x.fillText(climbed, x0 + 12, y0 + f1 * 0.62);
   x.font = `800 ${f2 * 1.15}px ${FONT}`; x.fillStyle = big ? '#1d160d' : '#6b5a44'; x.fillText('層', x0 + 16 + numW, y0 + f1 * 0.72);
   if (L) {
-    const sub = L.gt === 'floors' ? `🏁 蓋到 ${L.g} 層` : L.gt === 'perfects' ? `🌟 完美 ${pTot}/${L.g}` : L.gt === 'targets' ? `🎯 星星 ${tHit}/${L.g}` : `🔥 連續 ${streak}/${L.g}`;
+    const sub = L.gt === 'colors' ? `🌈 對的顏色 ${cHit}/${L.g}` : L.gt === 'floors' ? `🏁 蓋到 ${L.g} 層` : L.gt === 'perfects' ? `🌟 完美 ${pTot}/${L.g}` : L.gt === 'targets' ? `🎯 星星 ${tHit}/${L.g}` : `🔥 連續 ${streak}/${L.g}`;
     x.font = `800 ${f2}px ${FONT},${EMOJI}`; x.fillStyle = big ? '#1d160d' : '#3a2f22'; x.fillText(sub, x0 + 12, y0 + f1 + f2 * 0.7, w - 20);
     const by = y0 + f1 + f2 * 1.6, bw = w - 24, bh = Math.max(8, f2 * 0.65); x.fillStyle = 'rgba(58,47,34,.15)'; rr(x0 + 12, by, bw, bh, bh / 2); x.fill();
     const pg = x.createLinearGradient(x0 + 12, 0, x0 + 12 + bw, 0); pg.addColorStop(0, '#ffcf3a'); pg.addColorStop(1, '#ff8a2a'); x.fillStyle = pg; rr(x0 + 12, by, Math.max(bh, bw * Math.min(1, goalDone())), bh, bh / 2); x.fill();
@@ -1036,7 +1091,7 @@ function drawSides0(climbed) {
   yy += f1 * 1.3;
   if (L) {
     x.fillStyle = big ? '#1d160d' : '#3a2f22'; x.font = `900 ${f1 * 1.02}px ${FONT},${EMOJI}`;
-    x.fillText(L.gt === 'floors' ? `🏁 蓋到 ${L.g} 層` : L.gt === 'perfects' ? `🌟 完美 ${pTot} / ${L.g}` : L.gt === 'targets' ? `🎯 對準星星 ${tHit} / ${L.g}` : `🔥 連續完美 ${streak} / ${L.g}`, cx, yy, cw - 20);
+    x.fillText(L.gt === 'colors' ? `🌈 對的顏色 ${cHit} / ${L.g}` : L.gt === 'floors' ? `🏁 蓋到 ${L.g} 層` : L.gt === 'perfects' ? `🌟 完美 ${pTot} / ${L.g}` : L.gt === 'targets' ? `🎯 對準星星 ${tHit} / ${L.g}` : `🔥 連續完美 ${streak} / ${L.g}`, cx, yy, cw - 20);
     const bh = f1 * 0.75, bw = cw - 28; yy += f1 * 0.9; x.fillStyle = 'rgba(58,47,34,.15)'; rr(pad + 14, yy, bw, bh, bh / 2); x.fill();
     const pg = x.createLinearGradient(pad + 14, 0, pad + 14 + bw, 0); pg.addColorStop(0, '#ffcf3a'); pg.addColorStop(1, '#ff8a2a'); x.fillStyle = pg; rr(pad + 14, yy, Math.max(bh, bw * Math.min(1, goalDone())), bh, bh / 2); x.fill();
     yy += bh + f1 * 1.1;
@@ -1075,10 +1130,12 @@ const NEWS = {
   gust: ['🌬️ 轉來轉去的風', '這次的風一下吹左邊、一下吹右邊！看吊車上的<b>風向袋</b>和<b>白色虛線</b>，等風對了再放。'],
   sway: ['🌊 搖搖塔', '樓越蓋越高，整棟樓會<b>左右搖擺</b>！看準樓頂搖過來的時候再放。放得<b>完美</b>，樓就會搖得比較小喔。'],
   pic: ['🖼️ 疊出一幅圖', '每一層都是一張大圖的<b>一小條</b>，對得越準，蓋好時的圖就越漂亮！'],
+  hold: ['✋ 按住再放開', '這一關樓層不會自己動！<b>按住畫面</b>，樓層就慢慢往旁邊移；移到對的地方<b>放開手指</b>，它就掉下去了。'],
+  colors: ['🌈 看顏色放', '吊車上的樓層每走到邊邊就會<b>換一個顏色</b>！看樓頂上的<b>小旗子</b>是什麼顏色，等樓層變成一樣的顏色（會閃白框）再點一下。顏色對了才算數喔。'],
   narrow: ['📏 細細的樓層', '這一關的樓層比較窄，要更專心對準喔！'],
 };
 function intro() {
-  const ks = ['goal', L.gt, ...Object.keys(L.sx || {}), L.wind ? 'wind' : '', L.gust ? 'gust' : '', L.sway ? 'sway' : '', L.b === 'pic' ? 'pic' : '', L.w < 0.9 ? 'narrow' : ''].filter(k => NEWS[k] && !MG.store.get('stack.seen.' + k, false));
+  const ks = ['goal', L.gt, ...Object.keys(L.sx || {}), L.wind ? 'wind' : '', L.gust ? 'gust' : '', L.sway ? 'sway' : '', L.b === 'pic' ? 'pic' : '', L.w < 0.9 ? 'narrow' : '', L.hold ? 'hold' : ''].filter(k => NEWS[k] && !MG.store.get('stack.seen.' + k, false));
   if (!ks.length) return false;
   ks.forEach(k => MG.store.set('stack.seen.' + k, true));
   MG.panel({ title: ks.map(k => NEWS[k][0]).join('＋'), html: ks.map(k => `<p>${NEWS[k][1]}</p>`).join(''), buttons: [{ label: '開始', on: () => MG.hide() }] });
@@ -1099,7 +1156,7 @@ function win() {
   const done = level, cheer = { house: '屋頂蓋好了，鄰居們都在揮手！', light: '燈塔亮起來了，船兒們看得到路了！', cake: '插上蠟燭，生日快樂！', rocket: '3、2、1，火箭發射！', tree: '小鳥們搬進樹屋了！', castle: '城堡完成，放煙火囉！', hive: '蜜蜂們好開心，蜂蜜滿滿！', pic: '一幅漂亮的圖完成了！' }[L.b];
   setTimeout(() => { if (state !== 'won' || level !== done) return; MG.panel({
     title: `第 ${done} 關完成！`,
-    html: `<div class="big">${BLD[L.b].ic} ${floors.length - 1} 層</div><p>${cheer}</p><p>🌟 完美 ${pTot} 次${L.gt === 'targets' ? `　🎯 星星 ${tHit} 顆` : ''}</p><p>${nx === ENDLESS ? '全部蓋好了！來試試 ♾️ 一直蓋，看能蓋多高 ^_^' : `下一關：${lvName(nx)}`}</p>`,
+    html: `<div class="big">${L.rb ? `🌈 ${cHit} 層` : `${BLD[L.b].ic} ${floors.length - 1} 層`}</div><p>${cheer}</p><p>🌟 完美 ${pTot} 次${L.gt === 'targets' ? `　🎯 星星 ${tHit} 顆` : ''}</p><p>${nx === ENDLESS ? '全部蓋好了！來試試 ♾️ 一直蓋，看能蓋多高 ^_^' : `下一關：${lvName(nx)}`}</p>`,
     buttons: [{ label: nx === ENDLESS ? '♾️ 一直蓋' : '下一關', on: () => startLevel(nx) }, { label: '再玩一次', alt: true, on: () => startLevel(done) }, { label: '選關卡', alt: true, on: menu }],
   }); }, L.b === 'rocket' ? 2200 : 1700);
 }
@@ -1123,9 +1180,10 @@ function menu() {
   state = 'ready'; rest.show(false);
   MG.choose({
     id: 'stack', title: '疊疊高樓',
-    html: '<p>吊車把樓層吊過來左右移動，<b>點一下</b>就放下來。超出下面那層的部分會被切掉，放得剛剛好是「完美」🌟！</p><p>40 關蓋 🏢 大樓、🗼 燈塔、🎂 蛋糕、🚀 火箭、🌳 樹屋、🏰 城堡和 🍯 蜂蜜塔；還有 🌊 會搖的塔、🌬️ 轉向的風、🎯 對準星星、🖼️ 疊出一幅圖，以及 ✨ 金磚、🧊 玻璃磚、🟣 橡皮磚。最後一格是 ♾️ 一直蓋。</p>',
+    html: `<p>吊車把樓層吊過來左右移動，<b>點一下</b>就放下來。超出下面那層的部分會被切掉，放得剛剛好是「完美」🌟！</p><p>${LEVELS.length} 關蓋 🏢 大樓、🗼 燈塔、🎂 蛋糕、🚀 火箭、🌳 樹屋、🏰 城堡和 🍯 蜂蜜塔；還有 🌊 會搖的塔、🌬️ 轉向的風、🎯 對準星星、🖼️ 疊出一幅圖，以及 ✨ 金磚、🧊 玻璃磚、🟣 橡皮磚；🆕 ✋ 按住再放開、🌈 看顏色放。最後一格是 ♾️ 一直蓋。</p>`,
     modes: [{ id: 'normal', label: '🏗️ 一般', sub: '沒疊到就要重來' }, { id: 'relax', label: '🐢 慢慢玩', sub: '沒疊到可以再放一次' }],
     levels: { count: ENDLESS, max: ENDLESS, label: n => n === ENDLESS ? `♾️ 一直蓋（最高 ${MG.best('stack') ?? 0} 層）` : `${n}（${lvName(n)}）`,
+      fresh: n => n >= 41 && n < ENDLESS,
       short: n => n === ENDLESS ? '♾️' : `${n}${LEVELS[n - 1].mk || ''}` },
     keys: '點畫面任何地方　電腦：<kbd>空白鍵</kbd>',
     playing: () => state === 'play',
@@ -1137,7 +1195,7 @@ reset();
 menu();
 // test hook
 const HOOK = window.STK = { auto: false, fast: 1, start(n, m = 'normal') { mode = m; startLevel(n); }, get state() { return state; }, get level() { return level; }, get floors() { return floors.length - 1; }, get perfects() { return pTot; }, get streak() { return streak; },
-  get targets() { return tHit; }, get sway() { return floors ? swOff(floors.length - 1) : 0; }, get gust() { return gustNow(); }, get tgt() { return tgt && { dx: tgt.dx, tw: tgt.tw }; },
+  get targets() { return tHit; }, get colors() { return cHit; }, get sway() { return floors ? swOff(floors.length - 1) : 0; }, get gust() { return gustNow(); }, get tgt() { return tgt && { dx: tgt.dx, tw: tgt.tw }; },
   get count() { return ENDLESS; }, levels: LEVELS, get mover() { return mover && { sp: mover.sp, drift: mover.drift, w: mover.w, x: mover.x, falling: mover.falling }; }, drop: () => drop(), menu: () => menu(), aim: () => mover && !mover.falling && Math.abs(mover.y - floorY(mover.n) + HANG) < 6 ? aimOff() / kx : null, win: () => { if (state === 'play' && L) win(); } };
 let frameMs = 0;
 MG.loop(dt => {
