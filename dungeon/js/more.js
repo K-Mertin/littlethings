@@ -142,7 +142,7 @@ Object.assign(Game, {
     return true;
   },
   relicPool(n, rng = G.rng) {
-    const own = G.P.relics || [], pool = Object.keys(RELICS).filter(k => !own.includes(k));
+    const own = G.P.relics || [], pool = Object.keys(RELICS).filter(k => !own.includes(k) && !RELICS[k].ex);
     rng.shuffle(pool); return pool.slice(0, n);
   },
   relicItem(k) { return { id: G.nid++, k: 'relic', c: 'relic', n: 1, relic: k || this.relicPool(1)[0] || 'coin', known: true, ench: 0, cursed: false }; },
@@ -151,6 +151,7 @@ Object.assign(Game, {
     const fx = typeof FX !== 'undefined';
     if (this.relic('fang')) this.healP(this.rset('blood') ? 2 : 1);
     if (m.hp <= 0) return;
+    if (this.relic('silk') && G.rng.chance(0.2)) { m.st.para = Math.max(m.st.para || 0, MON[m.k].boss ? 1 : 2); msg('蛛絲纏住了' + this.monName(m) + '！', 'g'); }
     if (this.relic('heart') && !MON[m.k].fireImm && G.rng.chance(this.rset('flame') ? 0.35 : 0.15)) { m.st.burn = 3; if (fx) FX.burst(m.x, m.y, '#ff8a3a', 8); }
     if (this.relic('eye') && G.rng.chance(this.rset('storm') ? 0.3 : 0.15)) {
       let from = m; const hit = [m];
@@ -363,7 +364,7 @@ const Weekly = {
   },
   seed() { return 'W' + this.key(); },
   info(seed = this.seed()) {
-    const h = hashStr(seed), mods = Object.keys(DMODS), rel = Object.keys(RELICS);
+    const h = hashStr(seed), mods = Object.keys(DMODS), rel = Object.keys(RELICS).slice(0, 19); // 每週挑戰的開局遺物只從最初的 19 件裡挑（加入新遺物也不會改變本週的內容）
     return { seed, cls: ['warrior', 'rogue', 'mage'][h % 3], mod: mods[(h >>> 3) % mods.length], relic: rel[(h >>> 7) % rel.length], asc: 2 };
   },
   // 每個種子保留前 5 名

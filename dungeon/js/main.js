@@ -26,6 +26,7 @@ const Bot = {
     const P = G.P, F = G.F;
     if (G.perkChoices) { Game.choosePerk(G.perkChoices[0]); return true; }
     if (G.relicChoices) { Game.chooseRelic(G.relicChoices[0]); return true; }
+    if (G.deepChoice) { Game.chooseDeep(!!window.__botDeep); return true; }
     if (G.pendingId) { const u = P.inv.find(o => Game.needsId(o)); Game.finishIdentify(u || null); return true; }
     if (P.st.para > 0 || P.st.freeze > 0) { Game.wait(); return true; }
     const cl = F.clouds.find(c => c.x === P.x && c.y === P.y);
@@ -62,6 +63,7 @@ const Bot = {
       if (id === 'nova' && adj.length >= 1) return Game.useAbility(id);
       if (A.tgt === 'enemy' && id !== 'charge') { const c = Game.abilityTargets(id).filter(m => m.awake || A.range === 1); if (c.length) return Game.useAbility(id, c[0].x, c[0].y); }
       if (id === 'haste' && vis.length >= 2) return Game.useAbility(id);
+      if (id === 'zen' && adj.length && (hpF < 0.6 || adj.length >= 2)) return Game.useAbility(id);
       if (id === 'stealth' && (adj.some(m => MON[m.k].boss) || (adj.length && hpF < 0.5))) return Game.useAbility(id);
     }
     if (adj.length) { const m = adj.sort((a, b) => a.hp - b.hp)[0]; return Game.move(m.x - P.x, m.y - P.y); }
@@ -99,12 +101,18 @@ const Bot = {
       const b = F.mons.find(m => m.id === F.bossId);
       if (b) { const p = FOV.path(F, P.x, P.y, b.x, b.y, (x, y, g) => g || TP[Game.tile(x, y)].walk && Game.tile(x, y) !== T.LAVA && !(Game.monAt(x, y) && MON[Game.monAt(x, y).k].talk)); if (p && p.length) return Game.move(p[0][0] - P.x, p[0][1] - P.y, { force: 1 }); }
     }
+    // 秘境裂口：體力夠就進去打守護者
+    if (F.portal && !F.portal.used && !window.__noBranch && hpF > 0.9) {
+      if (P.x === F.portal.x && P.y === F.portal.y) return Game.descend();
+      const p = FOV.path(F, P.x, P.y, F.portal.x, F.portal.y, (x, y, g) => g || TP[Game.tile(x, y)].walk && Game.tile(x, y) !== T.LAVA && !(Game.monAt(x, y) && MON[Game.monAt(x, y).k].talk));
+      if (p && p.length) return Game.move(p[0][0] - P.x, p[0][1] - P.y, { force: 1 });
+    }
     if (F.stairs) {
       if (P.x === F.stairs[0] && P.y === F.stairs[1]) return Game.descend();
       const p = FOV.path(F, P.x, P.y, F.stairs[0], F.stairs[1], (x, y, g) => g || TP[Game.tile(x, y)].walk && Game.tile(x, y) !== T.LAVA && !(Game.monAt(x, y) && MON[Game.monAt(x, y).k].talk));
       if (p && p.length) return Game.move(p[0][0] - P.x, p[0][1] - P.y, { force: 1 });
     }
-    if (F.arena) { const b = F.mons.find(m => MON[m.k].final); if (b) { const p = FOV.path(F, P.x, P.y, b.x, b.y, (x, y, g) => g || TP[Game.tile(x, y)].walk && Game.tile(x, y) !== T.LAVA && !(Game.monAt(x, y) && MON[Game.monAt(x, y).k].talk)); if (p && p.length) return Game.move(p[0][0] - P.x, p[0][1] - P.y, { force: 1 }); } }
+    if (F.arena) { const b = F.mons.find(m => MON[m.k].boss && m.hp > 0); if (b) { const p = FOV.path(F, P.x, P.y, b.x, b.y, (x, y, g) => g || TP[Game.tile(x, y)].walk && Game.tile(x, y) !== T.LAVA && !(Game.monAt(x, y) && MON[Game.monAt(x, y).k].talk)); if (p && p.length) return Game.move(p[0][0] - P.x, p[0][1] - P.y, { force: 1 }); } }
     Game.rest();
     return true;
   },
@@ -138,7 +146,7 @@ window.__dg = {
   genTest(n = 50, seed = 'G') {
     const out = { ok: 0, fail: [], avgFloor: 0 };
     for (let i = 0; i < n; i++) {
-      const depth = 1 + (i % LAST_FLOOR), rng = new RNG(seed + i);
+      const depth = 1 + (i % DEEP_LAST), rng = new RNG(seed + i);
       try {
         const F = Gen.make(depth, rng);
         const pass = v => TP[v].walk && v !== T.LAVA;

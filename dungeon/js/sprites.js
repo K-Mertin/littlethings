@@ -181,6 +181,7 @@ function drawHero(P, cls, armK, armTint, wpnK, f) {
     if (cls === 'paladin') { P.r(10.5 + ux, 12 + uy, 1, 3, '#d8443a'); P.r(9.5 + ux, 13 + uy, 3, 1, '#d8443a'); }
   }
   if (kind === 'cloak') { P.r(8 + ux, 11 + uy, 8, 2, tintD); P.r(14 + ux, 12 + uy, 2, 5, tintD); }
+  if (cls === 'monk') { for (let i = 0; i < 5; i++) P.p(9 + ux + i, 11 + uy + (i === 0 || i === 4 ? 0 : 1), '#6a3a1a'); P.p(11 + ux, 13 + uy, '#e8c050'); }
   // 頭
   const hx = 9 + ux, hy = 4 + uy;
   P.e(hx + 3.5, hy + 3.6, 3.6, 3.7, H.skin);
@@ -212,6 +213,12 @@ function drawHero(P, cls, armK, armTint, wpnK, f) {
       P.r(hx, hy + 3, 2, 3, H.hair);
       break;
     }
+    case 'monk': {
+      P.e(hx + 3.3, hy + 2.2, 3.4, 2, shade(H.skin, 0.1)); P.p(hx + 2, hy + 1, '#fff2e0');
+      P.r(hx - 0.5, hy + 2, 8, 1.2, '#d8443a'); P.p(hx - 1, hy + 3, '#d8443a'); P.p(hx - 2, hy + 4, '#a02a26'); P.p(hx - 2, hy + 5, '#d8443a');
+      P.r(hx + 4, hy + 2.6, 2, 0.6, '#2a1a12');
+      break;
+    }
     case 'paladin': {
       P.e(hx + 3.5, hy + 3.4, 4, 4, '#d8dee8'); P.r(hx - 0.5, hy + 3, 8, 4, '#d8dee8');
       P.r(hx + 3, hy + 3, 4, 1, '#20182a'); P.p(hx + 5, hy + 5, '#20182a'); P.p(hx + 6, hy + 5, '#20182a');
@@ -229,7 +236,8 @@ function drawHero(P, cls, armK, armTint, wpnK, f) {
   P.l(sx, sy, hand[0], hand[1], sleeve, 2);
   if (kind === 'plate') P.e(sx + 0.2, sy + 0.3, 2.2, 1.8, shade(tint, 0.15));
   if (atk === 1) drawWeapon(P, wpnK, hand[0], hand[1], ang);
-  P.r(hand[0] - 0.5, hand[1] - 0.5, 2, 2, H.skin);
+  P.r(hand[0] - 0.5, hand[1] - 0.5, 2, 2, wpnK === 'wraps' ? '#efe4cc' : H.skin);
+  if (wpnK === 'wraps') { P.p(hand[0] - 1.5, hand[1] + 1, '#d8443a'); P.r(8 + ux, 16 + uy, 2, 1, '#efe4cc'); }
 }
 
 // ---------- 雙足怪物共用的身體 ----------

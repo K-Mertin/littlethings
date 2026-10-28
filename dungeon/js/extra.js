@@ -131,7 +131,7 @@ const ACH = [
   { id: 'forge', n: '熄滅熔爐', d: '擊敗熔爐巨像', s: 15, chk: e => e.t === 'boss' && e.v === 'forge', reward: '龍鱗甲開始出現' },
   { id: 'asc3', n: '深淵行者', d: '在深淵等級 3 以上抵達第 10 層', s: 15, chk: e => e.t === 'depth' && e.v >= 10 && (G.asc || 0) >= 3 },
   { id: 'codex', n: '博物學家', d: '圖鑑收錄 20 種怪物', s: 10, chk: e => e.t === 'codex' && Meta.monCount() >= 20 },
-  { id: 'allcls', n: '百變冒險者', d: '用全部五個職業各抵達第 5 層', s: 12, chk: e => e.t === 'depth' && e.v >= 5 && CLASS_ORDER.every(c => (Store.meta.clsDeep || {})[c] >= 5), reward: '解鎖祝福「老兵」' },
+  { id: 'allcls', n: '百變冒險者', d: '用全部五個職業各抵達第 5 層', s: 12, chk: e => e.t === 'depth' && e.v >= 5 && ['warrior', 'rogue', 'mage', 'ranger', 'paladin'].every(c => (Store.meta.clsDeep || {})[c] >= 5), reward: '解鎖祝福「老兵」' },
   { id: 'witch', n: '破冰者', d: '擊敗冰霜女巫', s: 20, chk: e => e.t === 'boss' && e.v === 'witch' },
   { id: 'relic4', n: '收藏家', d: '在同一局擁有 4 件遺物', s: 8, chk: e => e.t === 'relic' && (G.P.relics || []).length >= 4 },
   { id: 'rset', n: '遺物羈絆', d: '湊齊同一種羈絆的兩件遺物', s: 6, chk: e => e.t === 'relic' && Game.activeSets().length > 0 },

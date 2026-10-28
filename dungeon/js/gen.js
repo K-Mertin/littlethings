@@ -2,12 +2,15 @@
 // 深淵地牢：樓層產生（房間＋走廊、洞窟、岩漿、混合、頭目競技場）
 const Gen = {
   make(depth, rng, opts = {}) {
-    const bi = biomeOf(depth), kind = BIOMES[bi].gen;
+    const bi = opts.biome != null ? opts.biome : biomeOf(depth), kind = opts.kind || (opts.rush ? (depth >= DEEP_LAST ? 'abyss' : 'arena') : BIOMES[bi].gen);
     let F = null;
     for (let tries = 0; tries < 30 && !F; tries++) {
       try {
-        if (kind === 'arena') F = this.arena(rng);
+        if (kind === 'arena') F = this.arena(rng, bi === 2 || bi === 4 ? T.LAVA : T.WATER);
+        else if (kind === 'abyss') F = this.abyss(rng);
         else if (kind === 'caves') F = this.caves(rng, depth);
+        else if (kind === 'flooded') F = this.flooded(rng, depth);
+        else if (kind === 'islands') F = this.islands(rng, depth);
         else F = this.rooms(rng, depth, kind);
       } catch (e) { F = null; if (tries > 25) throw e; }
       if (F && !this.finish(F, rng, depth, opts)) F = null;
@@ -267,13 +270,13 @@ const Gen = {
   },
 
   // ---------- 頭目競技場 ----------
-  arena(rng) {
+  arena(rng, liquid = T.LAVA) {
     const W = 36, H = 30, F = this.blank(W, H);
     const hall = { x: 5, y: 4, w: 26, h: 20, kind: 'room', shape: 'rect' };
     for (let y = hall.y; y < hall.y + hall.h; y++) for (let x = hall.x; x < hall.x + hall.w; x++) this.set(F, x, y, T.FLOOR);
     for (let y = hall.y + 3; y < hall.y + hall.h - 3; y += 4) { this.set(F, hall.x + 4, y, T.PILLAR); this.set(F, hall.x + hall.w - 5, y, T.PILLAR); this.set(F, hall.x + 9, y + 1, T.PILLAR); this.set(F, hall.x + hall.w - 10, y + 1, T.PILLAR); }
     // 岩漿溝
-    for (let x = hall.x + 2; x < hall.x + hall.w - 2; x++) if (x < 15 || x > 20) { this.set(F, x, hall.y + 7, T.LAVA); }
+    for (let x = hall.x + 2; x < hall.x + hall.w - 2; x++) if (x < 15 || x > 20) { this.set(F, x, hall.y + 7, liquid); }
     // 入口走廊
     for (let y = hall.y + hall.h; y < H - 2; y++) { this.set(F, 17, y, T.FLOOR); this.set(F, 18, y, T.FLOOR); }
     const ent = { x: 14, y: H - 5, w: 8, h: 3, kind: 'room', shape: 'rect', start: 1 };
@@ -363,7 +366,7 @@ const Gen = {
     const N = F.w * F.h, cost = new Float32Array(N).fill(1e9), prev = new Int32Array(N).fill(-1);
     const s = from[1] * F.w + from[0], g = to[1] * F.w + to[0];
     cost[s] = 0; const open = [s];
-    const cf = v => v === T.LAVA ? 4 : v === T.WALL || v === T.SECRET || v === T.CRYSTAL || v === T.PILLAR ? 12 : TP[v].walk ? 1 : 12;
+    const cf = v => v === T.LAVA || v === T.DEEP || v === T.CHASM ? 4 : v === T.WALL || v === T.SECRET || v === T.CRYSTAL || v === T.PILLAR ? 12 : TP[v].walk ? 1 : 12;
     while (open.length) {
       let bi = 0; for (let i = 1; i < open.length; i++) if (cost[open[i]] < cost[open[bi]]) bi = i;
       const k = open[bi]; open[bi] = open[open.length - 1]; open.pop();
@@ -379,7 +382,7 @@ const Gen = {
     let k = g;
     while (k >= 0 && k !== s) {
       const v = F.t[k];
-      if (v === T.LAVA) F.t[k] = T.BRIDGE; else if (!TP[v].walk || v === T.SECRET) F.t[k] = T.RUBBLE;
+      if (v === T.LAVA || v === T.DEEP || v === T.CHASM) F.t[k] = T.BRIDGE; else if (!TP[v].walk || v === T.SECRET) F.t[k] = T.RUBBLE;
       k = prev[k];
     }
   },
