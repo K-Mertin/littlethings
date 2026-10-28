@@ -64,7 +64,8 @@ function buildBg(th) {
   g.fillStyle = lin(g, 0, 0, 0, H, th.sky); g.fillRect(0, 0, CW, H);
   const hy = H - 4;
   const r = rng(th.id.length * 97 + 7);
-  if (th.id === 'night') {
+  if (th.id === 'volcano') bgVolcano(g, CW, hy, r);
+  else if (th.id === 'night') {
     for (let i = 0; i < 90; i++) { g.fillStyle = `rgba(255,255,255,${0.3 + r() * 0.7})`; g.fillRect(r() * CW, r() * hy * 0.8, 1.5 * R.dpr, 1.5 * R.dpr); }
     g.fillStyle = radial(g, CW * 0.78, hy * 0.3, hy * 0.18, '#fff8e0', '#e8d8a0', 0, 0); ell(g, CW * 0.78, hy * 0.3, hy * 0.12, hy * 0.12); g.fill();
     // 天際線
@@ -234,8 +235,11 @@ function drawGround(g, th, dist) {
 }
 
 // ---------- 門 ----------
-const GATE_COL = { good: ['#2f9bff', '#7fd0ff', '#0b4fae'], bad: ['#ff3b4f', '#ff9aa4', '#9b0f22'], wpn: ['#ffb020', '#ffe08a', '#a86400'], lv: ['#2fd07a', '#a6f5c8', '#0d7a40'] };
+const GATE_COL = { good: ['#2f9bff', '#7fd0ff', '#0b4fae'], bad: ['#ff3b4f', '#ff9aa4', '#9b0f22'], wpn: ['#ffb020', '#ffe08a', '#a86400'], lv: ['#2fd07a', '#a6f5c8', '#0d7a40'], spec: ['#9a4dff', '#d8b8ff', '#4a1a9a'], buff: ['#ff4fb8', '#ffb8e4', '#9a1060'] };
 function gateLook(o) {
+  if (o.k === 'spec') return 'spec';
+  if (o.k === 'buff') return 'buff';
+  if (o.k === 'pow') return 'wpn';
   if (o.k === 'kill') return 'bad';
   if (o.k === 'wpn') return 'wpn';
   if (o.k === 'lv') return 'lv';
@@ -250,6 +254,9 @@ function gateText(o) {
   if (o.k === 'div') return '÷' + o.v;
   if (o.k === 'wpn') return WEAPONS[o.v].name;
   if (o.k === 'lv') return '火力 +1';
+  if (o.k === 'spec') return SPEC[o.v].name;
+  if (o.k === 'buff') return BUFF[o.v].name;
+  if (o.k === 'pow') return '強化 ×2';
   return '';
 }
 function drawPost(g, x, z, H) {
@@ -287,7 +294,7 @@ function drawGate(g, o, t) {
   rr(g, A.x, B.y, w, h, Math.max(2, h * 0.06)); g.stroke();
   // 文字
   const txt = gateText(o);
-  const isWord = o.k === 'wpn' || o.k === 'lv';
+  const isWord = o.k === 'wpn' || o.k === 'lv' || o.k === 'spec' || o.k === 'buff' || o.k === 'pow';
   let fs = (isWord ? 0.62 : 1.05) * A.s * (1 + o.bump * 0.22);
   const ty = B.y + h * (isWord ? 0.66 : 0.5);
   g.font = `900 ${fs}px "Noto Sans TC","PingFang TC",system-ui,sans-serif`;
@@ -299,6 +306,8 @@ function drawGate(g, o, t) {
   g.strokeText(txt, A.x + w / 2, ty);
   g.fillStyle = '#fff'; g.fillText(txt, A.x + w / 2, ty);
   if (o.k === 'wpn') drawWeaponIcon(g, o.v, A.x + w / 2, B.y + h * 0.3, h * 0.22, '#fff', look[2]);
+  if (o.k === 'spec' || o.k === 'buff') drawSpecIcon(g, o.v, A.x + w / 2, B.y + h * 0.3, h * 0.26, look[2]);
+  if (o.k === 'pow') drawSpecIcon(g, 'fury', A.x + w / 2, B.y + h * 0.3, h * 0.26, look[2]);
   if (o.k === 'lv') { // 往上箭頭
     const cx = A.x + w / 2, cy = B.y + h * 0.3, s = h * 0.16;
     g.fillStyle = '#fff'; g.strokeStyle = look[2]; g.lineWidth = s * 0.25;
@@ -655,7 +664,8 @@ function render(G, t) {
       else if (o.t === 'wall') drawWall(g, o, t);
       else if (o.t === 'crate') drawCrate(g, o, t);
       else if (o.t === 'saw') drawSaw(g, o);
-      else if (o.t === 'lob') drawLob(g, o);
+      else if (o.t === 'lob' || o.t === 'shell') drawLob(g, o);
+      else if (o.t === 'geyser') drawGeyserPlume(g, o, t);
     }
   }
   drawLobWarnTop(g, G, t);
@@ -699,12 +709,13 @@ function drawEnemy(g, o) {
   const A = ART[o.art || o.k];
   const fi = Math.floor(o.ph / (Math.PI / 2)) & 3;
   const spr = o.hit > 0 ? A.fl[fi] : A.fr[fi];
-  const p = P(o.x, o.z, 0);
+  const p0 = P(o.x, o.z, 0), p = o.fly ? P(o.x, o.z, 0.9 + 0.15 * Math.sin(o.ph * 0.5)) : p0;
   const h = spr.wh ? spr.wh * o.h / ENEMIES[o.art || o.k].h * p.s : o.h * 1.12 * p.s, w = h * spr.width / spr.height;
   if (p.y - h > R.H + 50 || p.x + w < 0 || p.x - w > R.W) return;
-  drawShadow(g, p.x, p.y, o.r * 2.4 * p.s);
+  drawShadow(g, p0.x, p0.y, o.r * 2.4 * p0.s * (o.fly ? 0.7 : 1));
+  if (o.k === 'healer' && o.atk > 0) { g.globalCompositeOperation = 'lighter'; const gs = h * 1.6; g.globalAlpha = o.atk / 0.4; g.drawImage(ART.glowW, p.x - gs / 2, p.y - h * 0.6 - gs / 2, gs, gs); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; }
   g.drawImage(spr, p.x - w / 2, p.y - h * (1 - (spr.foot || 0)), w, h);
-  if ((o.k === 'brute' || o.k === 'shield') && o.hp < o.max) {
+  if ((o.k === 'brute' || o.k === 'shield' || o.k === 'healer' || o.k === 'magma') && o.hp < o.max) {
     const bw = o.r * 1.7 * p.s, bh = Math.max(4, 0.13 * p.s), by = p.y - h - 0.12 * p.s;
     g.fillStyle = 'rgba(10,10,20,.7)'; rr(g, p.x - bw / 2 - 1, by - 1, bw + 2, bh + 2, bh); g.fill();
     g.fillStyle = o.hp < o.max * 0.35 ? '#ff4040' : '#ffb03a'; rr(g, p.x - bw / 2, by, bw * clamp(o.hp / o.max, 0.02, 1), bh, bh / 2); g.fill();
@@ -737,6 +748,10 @@ function drawCrowd(g, G, t) {
   order.sort((a, b) => S[b].z - S[a].z);
   const walking = G.scroll && G.st === 'play';
   const mz = MUZ[G.wid];
+  // 兵種士兵站在隊伍裡（第 1 號以後的位置），頭上有小標記
+  const specAt = R.specAt || (R.specAt = []);
+  specAt.length = 0;
+  if (G.spec) { let slot = 1; for (const k of SPEC_ORDER) for (let n = 0; n < (G.spec[k] || 0) && slot < S.length; n++) specAt[slot++] = k; }
   const SV = (ART.soldierW && ART.soldierW[G.wid]) || ART.soldierV, SI = (ART.soldierIdleW && ART.soldierIdleW[G.wid]) || ART.soldierIdle;
   for (const i of order) {
     const so = S[i];
@@ -747,6 +762,7 @@ function drawCrowd(g, G, t) {
     const h = (spr.wh || 1.02) * p.s * k, w = h * spr.width / spr.height;
     drawShadow(g, p.x, p.y, 0.62 * p.s * k);
     g.drawImage(spr, p.x - w / 2, p.y - h * (1 - (spr.foot || 0)), w, h);
+    if (specAt[i]) drawSpecBadge(g, specAt[i], p.x, p.y - h * (1 - (spr.foot || 0)) - 0.05 * p.s, 0.34 * p.s);
     if (so.fl > 0) {
       const m = P(G.px + so.x + 0.075, so.z + 0.05, 0.98 * k);
       const s = mz[1] * m.s * (0.8 + Math.random() * 0.4);
@@ -755,6 +771,7 @@ function drawCrowd(g, G, t) {
       g.globalCompositeOperation = 'source-over';
     }
   }
+  drawShieldBubble(g, G, t);
   // 人數牌
   if (G.demo) return;
   const top = P(G.px, cr.rz, 1.3);
@@ -926,6 +943,7 @@ function drawHud(G) {
   g.fillStyle = '#fff'; g.textAlign = 'left'; g.textBaseline = 'middle';
   g.fillText(w.name, bx + 50 * u, top + bh * 0.37);
   for (let i = 0; i < LV_MAX; i++) { g.fillStyle = i < G.lv ? '#33d17a' : 'rgba(255,255,255,.22)'; rr(g, bx + 50 * u + i * 9 * u, top + bh * 0.68, 7 * u, 5 * u, 2 * u); g.fill(); }
+  drawSupportHud(G, bx + bw + 6 * u, top, u);
   // 第二列：進度或頭目血條
   const cx = R.W / 2;
   const BW = Math.min(R.W - 24 * u, 330 * u);
@@ -939,8 +957,8 @@ function drawHud(G) {
     g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = `900 ${13 * u}px "Noto Sans TC",system-ui,sans-serif`;
     g.fillText(BOSSES[b.k].name + (b.phase > 1 ? '・狂暴' : ''), cx, by + 13.5 * u);
   } else if (!G.boss) {
-    const k = G.mode === 'endless' ? clamp((G.dist - G.legStart) / (G.L.len - G.legStart), 0, 1) : clamp(G.dist / G.L.len, 0, 1);
-    const label = G.mode === 'endless' ? `無盡 · 第 ${G.leg + 1} 段 · ${Math.floor(G.dist)} 公尺` : G.mode === 'daily' ? `每日挑戰 · ${RULES[G.rule].name}` : `第 ${G.s} 關 · ${G.L.name}`;
+    const k = chained() ? clamp((G.dist - G.legStart) / (G.L.len - G.legStart), 0, 1) : clamp(G.dist / G.L.len, 0, 1);
+    const label = G.mode === 'endless' ? `無盡 · 第 ${G.leg + 1} 段 · ${Math.floor(G.dist)} 公尺` : G.mode === 'boss' ? `頭目連戰 · 第 ${G.leg + 1} / ${BR_BOSSES.length} 戰` : G.mode === 'daily' ? `每日挑戰 · ${RULES[G.rule].name}` : `第 ${G.s} 關 · ${G.L.name}`;
     g.textAlign = 'center'; g.font = `900 ${13 * u}px "Noto Sans TC",system-ui,sans-serif`;
     g.lineJoin = 'round'; g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = 4 * u; g.strokeText(label, cx, by + 6 * u);
     g.fillStyle = '#fff'; g.fillText(label, cx, by + 6 * u);

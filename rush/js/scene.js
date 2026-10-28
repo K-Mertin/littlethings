@@ -149,7 +149,7 @@ function drawFence(g, it, th) {
 }
 
 function drawClouds(g, th, t) {
-  if (th.dark || R.hy < R.H * 0.06) return;
+  if (th.dark || th.hot || R.hy < R.H * 0.06) return;
   const S = ART.scene;
   for (let i = 0; i < 5; i++) {
     const sp = 0.004 + (i % 3) * 0.002;
@@ -168,12 +168,18 @@ function drawWeather(g, th, t) {
   const W = R.W, H = R.H, d = R.dpr;
   if (SCN.wxTheme !== th.id + W) {
     SCN.wxTheme = th.id + W; SCN.wx = [];
-    const n = th.id === 'snow' ? 80 : th.id === 'night' ? 70 : th.id === 'desert' ? 36 : 18;
+    const n = th.id === 'snow' ? 80 : th.id === 'night' ? 70 : th.id === 'desert' ? 36 : th.id === 'volcano' ? 46 : 18;
     for (let i = 0; i < n; i++) SCN.wx.push({ x: Math.random() * W, y: Math.random() * H, s: 0.5 + Math.random(), ph: Math.random() * 6 });
   }
   const scroll = G && G.scroll && G.st === 'play' ? 1 : 0.3;
   for (const p of SCN.wx) {
-    if (th.id === 'snow') {
+    if (th.id === 'volcano') {
+      // 火星與灰燼往上飄
+      p.y -= (50 + p.s * 60) * d * dt; p.x += Math.sin(t * 1.7 + p.ph) * 26 * d * dt;
+      if (p.y < -20) { p.y = H + 10; p.x = Math.random() * W; }
+      if (p.ph > 2) { g.fillStyle = `rgba(255,${150 + (p.ph * 30 | 0) % 80},40,${0.55 + 0.35 * Math.sin(t * 6 + p.ph)})`; ell(g, p.x, p.y, 1.8 * p.s * d, 1.8 * p.s * d); g.fill(); }
+      else { g.fillStyle = 'rgba(70,60,60,.5)'; ell(g, p.x, p.y, 2.6 * p.s * d, 2 * p.s * d); g.fill(); }
+    } else if (th.id === 'snow') {
       p.y += (40 + p.s * 50) * d * dt; p.x += Math.sin(t * 1.4 + p.ph) * 18 * d * dt;
       g.fillStyle = 'rgba(255,255,255,.85)'; ell(g, p.x, p.y, 2.2 * p.s * d, 2.2 * p.s * d); g.fill();
     } else if (th.id === 'night') {
