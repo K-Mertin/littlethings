@@ -43,7 +43,7 @@ async def one(i, t, sem):
         print('失敗', i, t)
 
 async def main():
-    sem = asyncio.Semaphore(3)
+    sem = asyncio.Semaphore(int(os.environ.get('TTS_JOBS', '3')))
     await asyncio.gather(*(one(i, t, sem) for i, t in todo))
 
 asyncio.run(main())
