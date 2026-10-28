@@ -168,6 +168,21 @@ details[open] summary::after{content:" ▴"}
 .mstars{color:#f2b200;font-size:16px;letter-spacing:2px}
 .mhero{display:inline-block;align-self:flex-start;width:max-content;margin-top:4px;font-size:12px;font-weight:700;color:#a5770a;background:#fff3c4;border-radius:8px;padding:1px 8px}
 .mstars i{color:#d8ccb2;font-style:normal}
+#rbar{position:fixed;left:50%;transform:translateX(-50%);top:calc(max(8px,env(safe-area-inset-top)) + 56px);z-index:4;display:flex;gap:5px;align-items:center;padding:5px 7px;flex-wrap:wrap;justify-content:center;max-width:calc(100vw - 16px)}
+#rbar button{border:2px solid var(--line);background:#fff;border-radius:10px;padding:3px 9px;font-weight:600;font-size:14px;cursor:pointer;color:var(--ink);font-family:inherit}
+#rbar button.on{background:#2f7cf0;color:#fff;border-color:#1d5fc4}
+#rbar .rt{font-weight:600;font-size:14px;min-width:86px;text-align:center}
+#rbar .rprog{width:90px;height:7px;border-radius:4px;background:#eadfca;overflow:hidden}
+#rbar .rprog i{display:block;height:100%;width:0;background:#2f7cf0}
+body.replaying #rcol,body.replaying #bIdle{display:none}
+body.replaying #toast{top:calc(max(8px,env(safe-area-inset-top)) + 104px)}
+.rlist{display:flex;flex-direction:column;gap:8px;text-align:left}
+.rcard{display:flex;gap:8px;align-items:center;background:#fff;border:2px solid var(--line);border-radius:14px;padding:8px 10px}
+.rcard>div{flex:1;min-width:0}
+.rcard b{display:block}
+.rcard .xs{font-size:12px;color:var(--mute)}
+.rcard .btn2{padding:6px 12px;font-size:14px}
+@media (max-width:640px){#rbar{gap:3px;padding:4px 5px}#rbar button{padding:2px 7px;font-size:13px}#rbar .rprog{width:56px}#rbar .rt{min-width:74px;font-size:13px}}
 .stars{font-size:40px;letter-spacing:6px;color:#f2b200;margin:2px 0 4px}
 .stars i{color:#d8ccb2;font-style:normal}
 .starlist{font-size:13px;color:var(--mute);margin:0 0 6px;line-height:1.6}
@@ -310,6 +325,7 @@ body.small:not(.nosel) #qbar:empty{display:none}
   </div>
   <div id="toast"></div>
   <div id="tip" class="pnl hidden"></div>
+  <div id="rbar" class="pnl hidden"><button id="rPlay" title="Pause / play">❚❚</button><button data-sp="1" class="on">1×</button><button data-sp="2">2×</button><button data-sp="4">4×</button><button data-sp="8">8×</button><span class="rt" id="rTime">0:00</span><div class="rprog"><i id="rProg"></i></div><button id="rFog" title="Show the whole map, or only what you could see">Whole map</button><button id="rExit">✕</button></div>
 </div>
 
 <div id="title" class="screen">
@@ -321,6 +337,7 @@ body.small:not(.nosel) #qbar:empty{display:none}
       <button class="big alt" id="bMissions">Missions</button>
       <button class="btn2" id="bCodex">Units</button>
       <button class="btn2" id="bOnline">Play online</button>
+      <button class="btn2" id="bReplays">Replays</button>
       <button class="btn2 hidden" id="bContinue">Continue <span id="contInfo"></span></button>
     </div>
     <details id="howto"><summary>How to play</summary><div class="help" id="helpBox"></div></details>
@@ -368,6 +385,15 @@ body.small:not(.nosel) #qbar:empty{display:none}
     <div class="row" style="margin-top:10px;gap:8px;align-items:center;justify-content:center"><input id="onCode" maxlength="4" placeholder="CODE" autocomplete="off" autocapitalize="characters" spellcheck="false"><button class="big alt" id="bJoin">Join</button></div>
     <p class="sub" id="onStatus" style="margin-top:12px;min-height:22px"></p>
     <div class="row"><button class="btn2" id="bOnBack">← Back</button></div>
+  </div>
+</div>
+
+<div id="replays" class="screen hidden">
+  <div class="card pnl wide">
+    <div class="logo sm">Replays</div>
+    <p class="sub">Your last five skirmish and survival games, recorded move by move. Watch them again at up to 8× speed, with the whole map or only what you could see.</p>
+    <div class="rlist" id="rlist"></div>
+    <div class="row"><button class="btn2" id="bRepBack">← Back</button></div>
   </div>
 </div>
 
@@ -2152,7 +2178,8 @@ function newGame(opt) {
   G = blankGame({ ...opt, theme, mode }, teams);
   G.theme = theme;
   makeFog();
-  const map = genMap(opt.seed, mode, opt.mapOpt || {});
+  const lay = opt.layout === 'random' ? ['open', 'river', 'canyon'][Math.floor(mulberry32(opt.seed + 11)() * 3)] : opt.layout;
+  const map = genMap(opt.seed, mode, opt.mapOpt || (LAYOUTS[lay] ? { shape: LAYOUTS[lay], density: lay === 'canyon' ? .45 : .7 } : {}));
   G.sites = map.sites.filter(s => !s.main);
   G.mains = map.sites.filter(s => s.main);
   for (const r of map.res) { const e = mk(r.k, -1, r.x, r.y); e.amount = r.amt; e.max = r.amt; e.miner = 0; e.inside = 0; e.ref = 0; }
@@ -2199,6 +2226,7 @@ function computeSupply() {
   }
 }
 function sim(dt) {
+  G.steps = (G.steps || 0) + 1;
   G.time += dt; G.pathBudget = 50;
   buildHash();
   const list = G.ents.slice();
@@ -5781,7 +5809,7 @@ function gameState() {
       v: 3, opt: G.opt, teams: G.teams, w: MW, h: MH, ter: Array.from(TER).join(''), exp: Array.from(EXPS[0]).join(''), exp1: Array.from(EXPS[1]).join(''), rs: G.rs, scans: G.scans, pools: G.pools, ents, proj: G.proj,
       nextId: G.nextId, res: G.res, up: G.up, stats: G.stats, time: G.time, sites: G.sites, mains: G.mains, theme: G.theme, groups: G.groups, seed: G.seed, diff: G.diff,
       ais: G.ais.map(a => a && { team: a.team, diff: a.diff, wave: a.wave, attacking: a.attacking, nextAttack: a.nextAttack, lastBuild: a.lastBuild, lastFail: a.lastFail, passive: a.passive, noBuild: a.noBuild, noExpand: a.noExpand, sent: a.sent, lastPush: a.lastPush, fwd: a.fwd, style: a.style }),
-      cam: { x: cam.x, y: cam.y, z: cam.z }, when: Date.now(),
+      cam: { x: cam.x, y: cam.y, z: cam.z }, when: Date.now(), rec: G.rec || null, steps: G.steps || 0,
     };
     return data;
   }
@@ -5808,7 +5836,7 @@ function loadGame(d) {
   for (const [e, id] of tg) e.tgt = G.byId.get(id) || null;
   G.proj = d.proj || [];
   d.ais.forEach((a, i) => { if (!a) return; const ai = new AI(i, a.diff, a); Object.assign(ai, a); G.ais[i] = ai; });
-  G.nextSave = G.time + 30;
+  G.nextSave = G.time + 30; G.steps = d.steps || 0; G.rec = d.rec || null;
   updCreep(); updPower(); computeSupply(); updFog(); bakeTerrain();
   if (d.cam) { cam.z = d.cam.z; cam.x = d.cam.x; cam.y = d.cam.y; clampCam(); }
 }
@@ -6201,19 +6229,23 @@ const LAYOUTS = {
       else if (d < w - 1.2) sym(x, y, 0);
     }
   },
-  river(sym, sites, R) {   // a river between the two sides, crossed at three fords
-    const fords = riverFords(), A = (MW - 1) / (MH - 1);
+  river(sym, sites, R) {   // a river square across the line between the two sides, crossed at three fords
+    const avg = (l, k) => l.reduce((a, s) => a + s[k], 0) / l.length, m0 = sites.filter(s => s.main && s.side === 0), m1 = sites.filter(s => s.main && s.side === 1);
+    const ax = avg(m1, 'x') - avg(m0, 'x'), ay = avg(m1, 'y') - avg(m0, 'y'), L = Math.hypot(ax, ay), ux = ax / L, uy = ay / L, vx = -uy, vy = ux;
+    const cx = (MW - 1) / 2, cy = (MH - 1) / 2, span = (Math.abs(ux) > .9 || Math.abs(uy) > .9 ? .27 : .25) * MW;
+    const fords = G.fords = [-1, 0, 1].map(k => ({ x: Math.round(cx + vx * span * k), y: Math.round(cy + vy * span * k) }));
     for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
       if (y * MW + x > (MH - 1 - y) * MW + (MW - 1 - x)) continue;
-      const d = Math.abs(x - y * A) / Math.SQRT2 * 1.4, w = 2 + Math.sin((x + y) * .19) * .7;
+      if (sites.some(s => Math.hypot(x - s.x, y - s.y) < 5.5)) continue;
+      const d = Math.abs((x - cx) * ux + (y - cy) * uy), w = 1.45 + Math.sin((x * vx + y * vy) * .27) * .5;
       const fd = Math.min(...fords.map(f => Math.hypot(x - f.x, y - f.y)));
       if (fd < 3.6) { sym(x, y, 0); continue; }
       if (d < w) sym(x, y, 2);
-      else if (d < w + 1.4 && fd > 5 && R() < .28) sym(x, y, 3);
+      else if (d < w + 1.1 && fd > 5 && R() < .28) sym(x, y, 3);
     }
   },
 };
-const riverFords = () => [.33, .5, .67].map(t => ({ x: Math.round((MW - 1) * t), y: Math.round((MH - 1) * t) }));
+const riverFords = () => G.fords || [];
 // ---------- capture points: a side owns one after standing on it alone for a few seconds; it keeps it until the other side takes it back
 function capPoints(list, r = 3, time = 8) { return list.map((p, i) => ({ x: p.x, y: p.y, r: r * T, time, prog: 0, owner: -1, label: p.label || 'ABC'[i] })); }
 function capTick(pts, dt) {
@@ -6743,22 +6775,24 @@ const CODEX = {
 const SURV_KEY = 'crystalOutpost.survival';
 function loadSurvival() { try { return JSON.parse(localStorage.getItem(SURV_KEY)) || {}; } catch (e) { return {}; } }
 function survivalDef(o) {
-  const diffK = { easy: .7, normal: 1, hard: 1.3 }[o.diff] || 1;
+  const coop = !!o.coop, ET = coop ? 2 : 1, diffK = ({ easy: .7, normal: 1, hard: 1.3 }[o.diff] || 1) * (coop ? 1.6 : 1);   // co-op: the waves are team 2 and bigger
   return {
-    survival: true, camp: o.fac, fac: o.fac, facE: o.facE, title: 'Survival', n: '', size: o.size === 'large' ? 'large' : 'medium', theme: o.theme, seed: o.seed,
+    survival: true, coop, camp: o.fac, fac: o.fac, facE: o.facE, title: coop ? 'Co-op survival' : 'Survival', n: '', size: o.size === 'large' ? 'large' : 'medium', theme: o.theme, seed: o.seed,
     setup(G, map) {
       placeStart(0, mainOf(map, 0));
-      const spawns = [mainOf(map, 1), ...G.sites.filter(s => s.side === 1)].map(tileCenter);
-      G.ais[1] = new AI(1, o.diff || 'normal', { passive: true, noBuild: true, noExpand: true });   // only uses abilities
-      G.mdata = { wave: 0, next: 150, spawns, waves: [], cleared: 0, diffK };
+      if (coop) { placeStart(1, map.sites.find(s => s.main && s.side === 0 && s.slot === 1)); G.ais[1] = new AI(1, o.diff || 'normal', { noExpand: true }); }   // your computer ally
+      const spawns = [...map.sites.filter(s => s.main && s.side === 1).sort((a, b) => (a.slot || 0) - (b.slot || 0)), ...G.sites.filter(s => s.side === 1)].map(tileCenter);
+      G.ais[ET] = new AI(ET, o.diff || 'normal', { passive: true, noBuild: true, noExpand: true });   // only uses abilities
+      G.mdata = { wave: 0, next: 150, spawns, waves: [], cleared: 0, diffK, ET };
     },
     start(M) {
       M.obj('w', 'Survive the waves');
-      M.say(`Survival! Waves of ${FAC[facOf(1)].name} will come from the far side of the map, each one bigger than the last.`);
+      M.say(`${coop ? 'Co-op survival' : 'Survival'}! Waves of ${FAC[facOf(ET)].name} will come from the far side of the map, each one bigger than the last.`);
+      if (coop) M.say('Your computer ally builds its own base next to yours and helps defend both. The waves are bigger, and they go for whichever base is closest.');
       M.say('The first wave arrives in two and a half minutes. Build up your economy and defences fast. Every fifth wave brings something big.');
     },
     tick(M) {
-      const D = G.mdata, F = FAC[facOf(1)];
+      const D = G.mdata, F = FAC[facOf(ET)];
       if (G.time >= D.next) {
         D.wave++; const n = D.wave;
         D.next = G.time + Math.max(32, 55 - n);
@@ -6768,24 +6802,24 @@ function survivalDef(o) {
         if (n % 5 === 0) { const boss = F.units[n >= 10 ? 'air' : 'fac'][1]; comp[boss] = Math.ceil(n / 10); budget *= .7; }
         let guard = 0;
         while (budget > 40 && guard++ < 80) {
-          const k = pool[Math.floor(Math.random() * pool.length)], c = DEF[k].cost[0] + DEF[k].cost[1] * 1.5;
+          const k = pool[Math.floor(srand() * pool.length)], c = DEF[k].cost[0] + DEF[k].cost[1] * 1.5;
           if (c > budget && guard > 20) break; comp[k] = (comp[k] || 0) + (DEF[k].pair || 1); budget -= c;
         }
-        const up = G.up[1]; up.weapons = Math.min(2, Math.floor(n / 4)); up.armor = Math.min(2, Math.floor(n / 5));
+        const up = G.up[ET]; up.weapons = Math.min(2, Math.floor(n / 4)); up.armor = Math.min(2, Math.floor(n / 5));
         if (n >= 5) for (const a of F.abil) up[a] = 1;
-        const from = D.spawns[(n - 1) % D.spawns.length], tgt = G.blds.find(b => b.team === 0) || { x: from.x, y: from.y };
-        D.waves.push(attackWave(1, comp, from, tgt).map(u => u.id));
+        const from = D.spawns[(n - 1) % D.spawns.length], tgt = G.blds.filter(b => sideOf(b.team) === 0).sort((a, b) => dist(a, from) - dist(b, from))[0] || { x: from.x, y: from.y };
+        D.waves.push(attackWave(ET, comp, from, tgt).map(u => u.id));
         M.say(n % 5 === 0 ? `Wave ${n}: a big one is coming!` : `Wave ${n} is coming!`);
       }
       // waves keep marching on your nearest building; count cleared waves
       if ((D.rt = (D.rt || 0) + 1) % 90 === 0) {
-        for (const u of G.ents) if (u.alive && u.team === 1 && u.d.unit && u.order.t === 'idle' && !u.tgt) {
-          const b = G.blds.filter(b => b.team === 0).sort((a, c) => dist(a, u) - dist(c, u))[0]; if (b) cmdMove([u], b.x, b.y, true);
+        for (const u of G.ents) if (u.alive && u.team === ET && u.d.unit && u.order.t === 'idle' && !u.tgt) {
+          const b = G.blds.filter(b => sideOf(b.team) === 0).sort((a, c) => dist(a, u) - dist(c, u))[0]; if (b) cmdMove([u], b.x, b.y, true);
         }
         D.cleared = D.waves.filter(w => !w.some(id => byId(id))).length;
       }
       M.set('w', false, `Wave <b>${D.wave}</b> · next in <span class="tm">${fmtT(D.next - G.time)}</span> · cleared ${D.cleared}`);
-      if (!G.blds.some(b => b.team === 0)) M.lose('Your base has fallen.');
+      if (!G.blds.some(b => b.team === 0) && (!coop || !G.blds.some(b => sideOf(b.team) === 0))) M.lose(coop ? 'Both bases have fallen.' : 'Your base has fallen.');
     },
     stars: () => [],
   };
@@ -6830,6 +6864,8 @@ function doCmd(team, c) {
 // run now (single player) or queue for the next network turn (online)
 function issue(c) {
   if (typeof NET !== 'undefined' && NET.on) { NET.out.push(c); return null; }
+  if (G && G.replay) return null;
+  if (G && G.rec) G.rec.cmds.push([G.steps || 0, JSON.parse(JSON.stringify(c))]);
   return doCmd(ME, c);
 }
 
@@ -6877,7 +6913,7 @@ function netMsg(m) {
       {
         const o = NET.opts, seed = (Math.random() * 1e9) | 0;
         const theme = o.theme === 'random' ? ['meadow', 'desert', 'snow'][Math.floor(Math.random() * 3)] : o.theme;
-        const start = { k: 'start', seed, size: o.size, theme, startRes: o.startRes, facs: [NET.fac, m.fac] };
+        const start = { k: 'start', seed, size: o.size, theme, layout: o.layout || 'open', startRes: o.startRes, facs: [NET.fac, m.fac] };
         netSend(start); netBegin(start);
       }
       break;
@@ -6893,7 +6929,7 @@ function netMsg(m) {
 }
 function netBegin(m) {
   NET.me = NET.role === 'host' ? 0 : 1;
-  newGame({ online: true, me: NET.me, seed: m.seed, mode: '1v1', size: m.size, theme: m.theme, startRes: m.startRes, fac: m.facs[0], facE: m.facs[1], diff: 'normal', speed: 'normal' });
+  newGame({ online: true, me: NET.me, seed: m.seed, mode: '1v1', size: m.size, theme: m.theme, layout: m.layout || 'open', startRes: m.startRes, fac: m.facs[0], facE: m.facs[1], diff: 'normal', speed: 'normal' });
   NET.on = true; NET.turn = 0; NET.step = 0; NET.out = []; NET.got = {}; NET.hashes = {}; NET.sentUpTo = NET_DELAY - 1; NET.waiting = 0; NET.needSync = false;
   for (let t = 0; t < NET_DELAY; t++) NET.got[t] = [[], []];
   lastStart = { kind: 'online' };
@@ -7611,7 +7647,7 @@ addEventListener('keydown', e => {
   if (!$('title').classList.contains('hidden')) { if (e.key === 'Enter') { renderSetup(); screen('setup'); } return; }
   if (!$('setup').classList.contains('hidden')) { if (e.key === 'Enter') startSkirmish(); if (e.key === 'Escape') screen('title'); return; }
   if (!$('online').classList.contains('hidden')) { if (e.key === 'Escape') { netClose(); screen('title'); } return; }
-  if (!$('missions').classList.contains('hidden') || !$('codex').classList.contains('hidden')) { if (e.key === 'Escape') screen('title'); return; }
+  if (!$('missions').classList.contains('hidden') || !$('codex').classList.contains('hidden') || !$('replays').classList.contains('hidden')) { if (e.key === 'Escape') screen('title'); return; }
   if (!G || G.demo) return;
   const k = e.key;
   if (!$('end').classList.contains('hidden')) return;
@@ -7707,7 +7743,7 @@ const HELP = `
 <dt>M · S · H · A</dt><dd>Move without fighting · stop · hold position · attack</dd>
 <dt>F2 / ⚔ Army</dt><dd>Select your whole army. <b>\`</b> selects an idle worker.</dd>
 <dt>B</dt><dd>Build menu (worker selected), then a key and click to place. Shift places several.</dd>
-<dt>R · E</dt><dd>Abilities: Rush (Troopers) · Siege mode (Tanks) · Harden (Beetles) · Burrow (Burrowers), once researched. Scanner Sweep (Command Center, E). Uproot / Root (Thorns, E). Blink (Blades, E). Barrier (Wardens, R). Blue workers: R repairs.</dd>
+<dt>R · E</dt><dd>Abilities: Rush (Troopers) · Siege mode (Tanks) · Harden (Beetles) · Burrow (Burrowers), once researched. Scanner Sweep (Command Center, E). Uproot / Root (Thorns, E). Blink (Blades, E). Barrier (Wardens, R). Blue workers: R repairs. Mission heroes: Q.</dd>
 <dt>Ctrl + 1–9</dt><dd>Make a group; press the number to select it, twice to jump there</dd>
 <dt>Arrows / edge / wheel</dt><dd>Scroll and zoom. Middle-drag pans; click the minimap to jump; Space jumps to the last alert.</dd>
 <h4>Touch</h4>
@@ -7728,17 +7764,18 @@ $('helpBox').innerHTML = HELP; $('helpBox2').innerHTML = HELP;
 
 // ---------- skirmish setup
 const SETUP_OPTS = [
-  ['mode', 'Mode', [['1v1', '1 vs 1'], ['2v2', '2 vs 2 with an ally'], ['survival', 'Survival']]],
+  ['mode', 'Mode', [['1v1', '1 vs 1'], ['2v2', '2 vs 2 with an ally'], ['survival', 'Survival'], ['coop', 'Co-op survival']]],
   ['fac', 'You play', [['blue', 'Blue Outpost'], ['bloom', 'The Bloom'], ['shard', 'The Shards']]],
   ['facE', 'Enemy', [['blue', 'Blue Outpost'], ['bloom', 'The Bloom'], ['shard', 'The Shards'], ['random', 'Random']]],
   ['diff', 'Difficulty', [['easy', 'Easy'], ['normal', 'Normal'], ['hard', 'Hard']]],
   ['style', 'Enemy style', [['random', 'Random'], ...STYLE_KEYS.map(k => [k, AI_STYLES[k].name])]],
   ['size', 'Map size', [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']]],
   ['theme', 'Map', [['meadow', 'Meadow'], ['desert', 'Desert'], ['snow', 'Snow'], ['random', 'Random']]],
+  ['layout', 'Layout', [['open', 'Open'], ['river', 'River'], ['canyon', 'Canyon'], ['random', 'Random']]],
   ['startRes', 'Start with', [['standard', 'Standard'], ['more', 'More'], ['lots', 'Lots']]],
   ['speed', 'Speed', [['slow', 'Slow'], ['normal', 'Normal'], ['fast', 'Fast']]],
 ];
-let setup = { mode: '1v1', fac: 'blue', facE: 'blue', diff: 'normal', style: 'random', size: 'medium', theme: 'random', startRes: 'standard', speed: 'normal' };
+let setup = { mode: '1v1', fac: 'blue', facE: 'blue', diff: 'normal', style: 'random', size: 'medium', theme: 'random', layout: 'open', startRes: 'standard', speed: 'normal' };
 try { Object.assign(setup, JSON.parse(localStorage.getItem('crystalOutpost.setup')) || {}); } catch (e) { }
 const FAC_NOTE = {
   shard: '<b>The Shards</b>: living crystal. Few but strong units with shields that grow back fast, but health never heals. Sparks warp buildings in and go back to work; most buildings need power from an Obelisk. Set a gate\'s rally point near any Obelisk and new units warp in right there. Blades Blink, Prisms fire piercing beams, Wardens recharge shields.',
@@ -7746,13 +7783,14 @@ const FAC_NOTE = {
   bloom: '<b>The Bloom</b>: plants and bugs. Every creature hatches at a Heart Tree from seeds (up to 3, regrowing), several at once. Buildings must grow on living ground, where your creatures run faster and heal. Spitters hatch in pairs, Wasps poison, Bombers leave acid, Thorns can uproot and walk. Bloom acid eats through Shard shields.',
 };
 function renderSetup() {
-  $('opts').innerHTML = SETUP_OPTS.map(([k, label, vals]) => `<label>${label}</label><div class="seg" data-k="${k}">${vals.map(([v, t]) => `<button data-v="${v}" class="${setup[k] === v ? 'on' : ''}"${k === 'size' && v === 'small' && setup.mode === '2v2' ? ' disabled style="opacity:.4"' : ''}>${t}</button>`).join('')}</div>`).join('');
-  $('facNote').innerHTML = FAC_NOTE[setup.fac] + (setup.mode === '2v2' ? ' <br>In 2 vs 2 your ally joins when you attack with three or more units.' : setup.mode === 'survival' ? ' <br><b>Survival</b>: no enemy base. Waves of the enemy faction come every 30–50 seconds and keep growing; every fifth wave brings something big. How many can you clear? (Enemy style doesn\'t apply.)' : '');
+  $('opts').innerHTML = SETUP_OPTS.map(([k, label, vals]) => `<label>${label}</label><div class="seg" data-k="${k}">${vals.map(([v, t]) => `<button data-v="${v}" class="${setup[k] === v ? 'on' : ''}"${k === 'size' && v === 'small' && (setup.mode === '2v2' || setup.mode === 'coop') ? ' disabled style="opacity:.4"' : ''}>${t}</button>`).join('')}</div>`).join('');
+  $('facNote').innerHTML = FAC_NOTE[setup.fac] + (setup.mode === '2v2' ? ' <br>In 2 vs 2 your ally joins when you attack with three or more units.' : setup.mode === 'survival' ? ' <br><b>Survival</b>: no enemy base. Waves of the enemy faction come every 30–50 seconds and keep growing; every fifth wave brings something big. How many can you clear? (Enemy style doesn\'t apply.)' : setup.mode === 'coop' ? ' <br><b>Co-op survival</b>: like Survival, but a computer ally builds its own base next to yours, and the waves are bigger. Hold out together.' : '') +
+    (setup.layout === 'river' ? ' <br><b>River</b>: a river splits the map; it can only be crossed at three fords.' : setup.layout === 'canyon' ? ' <br><b>Canyon</b>: cliffs everywhere except one winding lane between the bases.' : '');
 }
 $('opts').addEventListener('click', e => {
   const b = e.target.closest('button[data-v]'); if (!b || b.disabled) return;
   setup[b.parentElement.dataset.k] = b.dataset.v;
-  if (setup.mode === '2v2' && setup.size === 'small') setup.size = 'medium';
+  if ((setup.mode === '2v2' || setup.mode === 'coop') && setup.size === 'small') setup.size = 'medium';
   try { localStorage.setItem('crystalOutpost.setup', JSON.stringify(setup)); } catch (er) { }
   renderSetup(); sfx('click');
 });
@@ -7800,12 +7838,13 @@ function showTitle() {
   const w = loadWins(), bf = w.byFac || {}, sv2 = loadSurvival();
   const facWins = FACS.map(f => { const x = bf[f] || {}; const n = (x.easy || 0) + (x.normal || 0) + (x.hard || 0); return n ? FAC[f].short + ' ' + n : ''; }).filter(Boolean).join(' · ');
   const surv = FACS.map(f => { const b = Math.max(...['easy', 'normal', 'hard'].map(d => sv2[f + ':' + d] || 0)); return b ? FAC[f].short + ' ' + b : ''; }).filter(Boolean).join(' · ');
-  $('wins').innerHTML = 'Skirmish wins: Easy ' + (w.easy || 0) + ' · Normal ' + (w.normal || 0) + ' · Hard ' + (w.hard || 0) + (facWins ? '<br>By faction: ' + facWins : '') + (surv ? '<br>Best survival (waves): ' + surv : '');
+  const coop = FACS.map(f => { const b = Math.max(...['easy', 'normal', 'hard'].map(d => sv2[f + ':' + d + ':coop'] || 0)); return b ? FAC[f].short + ' ' + b : ''; }).filter(Boolean).join(' · ');
+  $('wins').innerHTML = 'Skirmish wins: Easy ' + (w.easy || 0) + ' · Normal ' + (w.normal || 0) + ' · Hard ' + (w.hard || 0) + (facWins ? '<br>By faction: ' + facWins : '') + (surv ? '<br>Best survival (waves): ' + surv : '') + (coop ? '<br>Best co-op survival: ' + coop : '');
   const sv = readSave();
   $('bContinue').classList.toggle('hidden', !sv);
   if (sv) $('contInfo').textContent = `(${FAC[sv.teams[0].fac].short} vs ${FAC[sv.teams[sv.teams.length > 2 ? 2 : 1].fac].short}${sv.teams.length > 2 ? ', 2v2' : ''}, ${fmtT(sv.time)})`;
 }
-function screen(id) { for (const s of ['title', 'setup', 'missions', 'codex', 'online', 'pause', 'end']) $(s).classList.toggle('hidden', s !== id); }
+function screen(id) { for (const s of ['title', 'setup', 'missions', 'codex', 'online', 'replays', 'pause', 'end']) $(s).classList.toggle('hidden', s !== id); }
 function startDemo() {
   const R = Math.random;
   newGame({ demo: true, seed: (R() * 1e9) | 0, diff: 'normal', diffA: 'normal', fac: FACS[Math.floor(R() * 3)], facE: FACS[Math.floor(R() * 3)], size: 'medium', theme: 'random' });
@@ -7827,12 +7866,17 @@ let lastStart = null;
 function startSkirmish() {
   lastStart = { kind: 'skirmish' };
   const seed = (Math.random() * 1e9) | 0;
-  if (setup.mode === 'survival') {
-    const facE = setup.facE === 'random' ? FACS[Math.floor(Math.random() * 3)] : setup.facE;
-    newGame({ ...setup, mode: '1v1', facE, seed, mission: survivalDef({ ...setup, facE, seed }), missionIdx: -1 });
-  } else newGame({ ...setup, seed, diffA: setup.diff });
+  let opt, surv = null, kind = 'skirmish';
+  if (setup.mode === 'survival' || setup.mode === 'coop') {
+    const facE = setup.facE === 'random' ? FACS[Math.floor(Math.random() * 3)] : setup.facE, coop = setup.mode === 'coop';
+    surv = { ...setup, facE, seed, coop }; kind = coop ? 'coop' : 'survival';
+    opt = { ...setup, mode: coop ? '2v2' : '1v1', size: coop && setup.size === 'small' ? 'medium' : setup.size, facE, seed, missionIdx: -1 };
+  } else opt = { ...setup, seed, diffA: setup.diff };
+  newGameFrom(opt, surv);
+  G.rec = { kind, opt, surv, cmds: [] };   // every command is recorded, so the game can be watched again
   enterGame();
 }
+function newGameFrom(opt, surv) { newGame(surv ? { ...opt, mission: survivalDef(surv) } : opt); }
 function startMission(i) {
   const def = MISSIONS[i]; if (!def) return;
   camp = def.camp || 'blue';
@@ -7841,10 +7885,13 @@ function startMission(i) {
   enterGame();
 }
 function continueGame() { const d = readSave(); if (!d) return; lastStart = { kind: 'skirmish' }; loadGame(d); enterGame(); if (d.cam) { cam.x = d.cam.x; cam.y = d.cam.y; cam.z = d.cam.z; clampCam(); } }
-function restart() { if (lastStart && lastStart.kind === 'mission') startMission(lastStart.i); else startSkirmish(); }
+function restart() { if (lastStart && lastStart.kind === 'mission') startMission(lastStart.i); else if (lastStart && lastStart.kind === 'replay') watchReplay(lastStart.i); else startSkirmish(); }
+const canAutosave = () => G && !G.demo && !G.mission && !G.over && !G.opt.online && !G.replay;
 function toTitle() {
   if (NET.on || NET.ws) { netSend({ k: 'bye' }); netClose(); NET.ended = true; }
-  if (G && !G.demo && !G.mission && !G.over && !G.opt.online) saveGame();
+  if (canAutosave()) saveGame();
+  if (G && G.rec && !G.over && G.time > 60) storeReplay('Left early');
+  document.body.classList.remove('replaying'); $('rbar').classList.add('hidden');
   $('bAgain').classList.remove('hidden'); $('bRestart').classList.remove('hidden');
   paused = false;
   $('hud').classList.add('hidden'); $('mpanel').classList.add('hidden');
@@ -7863,7 +7910,9 @@ function endScreen(win, title, sub, stats) {
   screen('end');
 }
 function survivalEnd(M) {
-  const D = G.mdata, key = G.teams[0].fac + ':' + G.diff, best = loadSurvival(), prev = best[key] || 0, score = D.cleared;
+  const D = G.mdata, key = G.teams[0].fac + ':' + G.diff + (M.def.coop ? ':coop' : ''), best = loadSurvival(), prev = best[key] || 0, score = D.cleared;
+  if (G.replay) return;
+  storeReplay('Wave ' + score);
   if (score > prev) { best[key] = score; try { localStorage.setItem(SURV_KEY, JSON.stringify(best)); } catch (e) { } }
   setTimeout(() => {
     if (!G || G.demo || G.mission !== M) return;
@@ -7871,12 +7920,14 @@ function survivalEnd(M) {
     $('endStars').classList.add('hidden'); $('endStarList').classList.add('hidden');
     $('bNext').classList.add('hidden'); $('bEndMissions').classList.add('hidden'); $('bAgain').textContent = 'Play again';
     endScreen(score > prev && score > 0, score > prev && score > 0 ? 'New best!' : 'Survival over',
-      `${FAC[G.teams[0].fac].short} vs ${FAC[facOf(1)].short} · ${G.diff[0].toUpperCase() + G.diff.slice(1)} · ${fmtT(G.time)} · best ${Math.max(prev, score)} waves`,
+      `${M.def.coop ? 'Co-op · ' : ''}${FAC[G.teams[0].fac].short} vs ${FAC[facOf(D.ET || 1)].short} · ${G.diff[0].toUpperCase() + G.diff.slice(1)} · ${fmtT(G.time)} · best ${Math.max(prev, score)} waves`,
       [[score, 'Waves cleared'], [D.wave, 'Waves reached'], [G.stats.killed, 'Enemy units destroyed'], [G.stats.trained, 'Units trained'], [G.stats.lost, 'Units lost']]);
   }, 1800);
 }
 function onGameOver(win) {
   if (G.opt.online) { netSend({ k: 'bye' }); netEnd(win, win ? 'The enemy base is destroyed.' : 'Your base has fallen.'); return; }
+  if (G.replay) return;
+  storeReplay(win ? 'Victory' : 'Defeat');
   if (win) { try { const w = loadWins(); w[G.diff] = (w[G.diff] || 0) + 1; const f = G.teams[0].fac; w.byFac = w.byFac || {}; w.byFac[f] = w.byFac[f] || {}; w.byFac[f][G.diff] = (w.byFac[f][G.diff] || 0) + 1; localStorage.setItem('crystalOutpost.wins', JSON.stringify(w)); } catch (e) { } }
   clearSave();
   setTimeout(() => {
@@ -7925,11 +7976,11 @@ $('bCodexBack').addEventListener('click', () => screen('title'));
 function renderOnline() {
   const opt = (k, label, vals) => `<label>${label}</label><div class="seg" data-ok="${k}">${vals.map(([v, t]) => `<button data-v="${v}" class="${NET.opts[k] === v ? 'on' : ''}">${t}</button>`).join('')}</div>`;
   $('onOpts').innerHTML = opt('fac', 'You play', [['blue', 'Blue Outpost'], ['bloom', 'The Bloom'], ['shard', 'The Shards']]) +
-    opt('size', 'Map size (host)', [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']]) + opt('theme', 'Map (host)', [['meadow', 'Meadow'], ['desert', 'Desert'], ['snow', 'Snow'], ['random', 'Random']]) +
+    opt('size', 'Map size (host)', [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']]) + opt('theme', 'Map (host)', [['meadow', 'Meadow'], ['desert', 'Desert'], ['snow', 'Snow'], ['random', 'Random']]) + opt('layout', 'Layout (host)', [['open', 'Open'], ['river', 'River'], ['canyon', 'Canyon']]) +
     opt('startRes', 'Start with (host)', [['standard', 'Standard'], ['more', 'More'], ['lots', 'Lots']]);
 }
 $('onOpts').addEventListener('click', e => { const b = e.target.closest('button[data-v]'); if (!b) return; NET.opts[b.parentElement.dataset.ok] = b.dataset.v; sfx('click'); renderOnline(); });
-$('bOnline').addEventListener('click', () => { audio(); NET.opts = NET.opts || { fac: setup.fac, size: 'medium', theme: 'random', startRes: 'standard' }; renderOnline(); netStatus('Create a room and send the code to a friend, or type their code to join.'); screen('online'); });
+$('bOnline').addEventListener('click', () => { audio(); NET.opts = NET.opts || { fac: setup.fac, size: 'medium', theme: 'random', layout: 'open', startRes: 'standard' }; renderOnline(); netStatus('Create a room and send the code to a friend, or type their code to join.'); screen('online'); });
 $('bHost').addEventListener('click', () => { NET.fac = NET.opts.fac; const code = netCode(); $('onCode').value = code; netOpen('host', code); });
 $('bJoin').addEventListener('click', () => { const code = ($('onCode').value || '').toUpperCase().replace(/[^A-Z]/g, ''); if (code.length !== 4) { netStatus('Room codes have 4 letters.', true); return; } NET.fac = NET.opts.fac; netOpen('guest', code); });
 $('onCode').addEventListener('keydown', e => { if (e.key === 'Enter') $('bJoin').click(); e.stopPropagation(); });
@@ -7942,28 +7993,91 @@ $('bNext').addEventListener('click', () => { const j = nextInCamp(lastStart && l
 $('bEndMissions').addEventListener('click', () => { toTitle(); renderMissions(); screen('missions'); });
 $('bEndTitle').addEventListener('click', toTitle);
 
+// ---------- replays: a skirmish is its seed plus every command, so it plays again exactly the same way
+const REP_KEY = 'crystalOutpost.replays';
+function loadReplays() { try { return JSON.parse(localStorage.getItem(REP_KEY)) || []; } catch (e) { return []; } }
+function storeReplay(result) {
+  const R = G && G.rec; if (!R || G.replay || R.saved || G.time < 30) return;
+  R.saved = true;
+  const t = G.teams, foe = t[t.length > 2 ? 2 : 1], D = G.diff || 'normal';
+  const rep = { v: 1, when: Date.now(), kind: R.kind, opt: R.opt, surv: R.surv, cmds: R.cmds, steps: G.steps, time: Math.round(G.time), result, hash: stateHash(),
+    title: FAC[t[0].fac].short + ' vs ' + FAC[foe.fac].short + (R.kind === 'coop' ? ' · co-op survival' : R.kind === 'survival' ? ' · survival' : t.length > 2 ? ' · 2 vs 2' : '') + ' · ' + D[0].toUpperCase() + D.slice(1) };
+  const list = [rep, ...loadReplays()].slice(0, 5);
+  while (list.length) { try { localStorage.setItem(REP_KEY, JSON.stringify(list)); return; } catch (e) { list.pop(); } }   // storage full: drop the oldest
+}
+function renderReplays() {
+  const L = loadReplays();
+  $('rlist').innerHTML = L.length ? L.map((r, i) => `<div class="rcard"><div><b>${r.title}</b><span class="xs">${new Date(r.when).toLocaleString()} · ${fmtT(r.time)} · ${r.result}${r.opt.layout && r.opt.layout !== 'open' ? ' · ' + r.opt.layout : ''}</span></div><button class="btn2" data-w="${i}">▶ Watch</button><button class="btn2" data-d="${i}" title="Delete">✕</button></div>`).join('')
+    : '<p class="sub">No replays yet. Finish a skirmish or survival game and it shows up here.</p>';
+}
+function watchReplay(i) {
+  const r = loadReplays()[i]; if (!r) return;
+  newGameFrom(r.opt, r.surv);
+  G.replay = { cmds: r.cmds, i: 0, speed: 1, end: r.steps, hash: r.hash, all: true, len: r.time, done: false, stop: false };
+  lastStart = { kind: 'replay', i };
+  enterGame();
+  document.body.classList.add('replaying'); $('rbar').classList.remove('hidden');
+  for (const b of $('rbar').querySelectorAll('[data-sp]')) b.classList.toggle('on', b.dataset.sp === '1');
+  $('rFog').textContent = 'Whole map'; updRbar();
+}
+function replayFrame(dt) {
+  const R = G.replay;
+  if (R.stop || R.done) { acc = 0; return; }
+  acc += dt * R.speed; let n = 0;
+  while (acc >= STEP && n < 6 * R.speed) {
+    while (R.i < R.cmds.length && R.cmds[R.i][0] <= (G.steps || 0)) doCmd(0, R.cmds[R.i++][1]);
+    if ((G.steps || 0) >= R.end) { R.done = true; acc = 0; toast(stateHash() === R.hash ? 'End of the replay' : 'End of the replay (it drifted a little from the real game)'); updRbar(); return; }
+    sim(STEP); acc -= STEP; n++;
+  }
+  if (n >= 6 * R.speed) acc = 0;
+}
+function updRbar() {
+  const R = G.replay; if (!R) return;
+  $('rTime').textContent = fmtT(G.time) + ' / ' + fmtT(R.len);
+  $('rProg').style.width = Math.min(100, (G.steps || 0) / R.end * 100) + '%';
+  $('rPlay').textContent = R.stop || R.done ? '▶' : '❚❚';
+}
+$('rbar').addEventListener('click', e => {
+  const R = G && G.replay, b = e.target.closest('button'); if (!R || !b) return;
+  if (b.dataset.sp) { R.speed = +b.dataset.sp; for (const x of $('rbar').querySelectorAll('[data-sp]')) x.classList.toggle('on', x === b); }
+  else if (b.id === 'rPlay') { if (R.done) { watchReplay(lastStart.i); return; } R.stop = !R.stop; }
+  else if (b.id === 'rFog') { R.all = !R.all; b.textContent = R.all ? 'Whole map' : 'Your view'; }
+  else if (b.id === 'rExit') { toTitle(); return; }
+  sfx('click'); updRbar();
+});
+$('bReplays').addEventListener('click', () => { audio(); renderReplays(); screen('replays'); });
+$('bRepBack').addEventListener('click', () => screen('title'));
+$('rlist').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.w !== undefined) watchReplay(+b.dataset.w);
+  else if (b.dataset.d !== undefined) { const L = loadReplays(); L.splice(+b.dataset.d, 1); try { localStorage.setItem(REP_KEY, JSON.stringify(L)); } catch (er) { } sfx('click'); renderReplays(); }
+});
+
 let last = performance.now(), acc = 0;
 function frame(now) {
   const dt = Math.min(.1, (now - last) / 1000); last = now; NOW += dt;
   if (G && NET.on && !G.demo) netFrame(dt);
+  else if (G && G.replay) { if (!paused) replayFrame(dt); }
   else if (G && !paused) {
     acc += dt * (G.speed || 1); let n = 0;
     while (acc >= STEP && n < 6) { sim(STEP); acc -= STEP; n++; }
     if (n === 6) acc = 0;
-    if (!G.demo && !G.mission && !G.over && !G.opt.online && G.time >= G.nextSave) { G.nextSave = G.time + 30; saveGame(); }
+    if (canAutosave() && G.time >= G.nextSave) { G.nextSave = G.time + 30; saveGame(); }
   }
   if (G) {
     cameraUpdate(dt);
     if (!G.demo) matWatch(dt);
-    drawAll();
+    const seeAll = G.replay && G.replay.all, fog0 = G.fog;
+    if (seeAll) G.fog = false;   // only for drawing: the simulation keeps its fog
+    try { drawAll(); } finally { G.fog = fog0; }
     missionUI(dt);
-    hudT -= dt; if (hudT <= 0) { hudT = .1; if (!G.demo) { updHud(); drawMinimap(); } }
+    hudT -= dt; if (hudT <= 0) { hudT = .1; if (!G.demo) { updHud(); if (seeAll) G.fog = false; try { drawMinimap(); } finally { G.fog = fog0; } if (G.replay) updRbar(); } }
     if (G.demo && G.over && (G.overT -= dt) <= 0) startDemo();
   }
   requestAnimationFrame(frame);
 }
 addEventListener('resize', resize);
-addEventListener('pagehide', () => { if (G && !G.demo && !G.mission && !G.over && !G.opt.online) saveGame(); });
+addEventListener('pagehide', () => { if (canAutosave()) saveGame(); });
 resize();
 if (matchMedia('(pointer: coarse)').matches) { isTouch = true; document.body.classList.add('touch'); }
 $('bMute').textContent = muted ? '♪̸' : '♪'; $('bMute').style.opacity = muted ? .5 : 1;
@@ -7972,7 +8086,7 @@ startDemo();
 requestAnimationFrame(frame);
 
 // debug / test hooks
-window.RTS = { get G() { return G; }, sim, newGame, startSkirmish, startMission, cam, setup, saveGame, loadGame, readSave, step(n) { for (let i = 0; i < n; i++) sim(STEP); } };
+window.RTS = { get G() { return G; }, sim, newGame, startSkirmish, startMission, watchReplay, loadReplays, stateHash, cam, setup, saveGame, loadGame, readSave, step(n) { for (let i = 0; i < n; i++) sim(STEP); } };
 </script>
 </body>
 </html>
