@@ -196,7 +196,7 @@ const GUESTS={
   hogan:{pilot:'霍岡將軍',mech:'赤環將機',ch:'將',cls:'general',spirits:['熱血','鐵壁'],sp:50,lines:['赤環的武人，豈會落後！','看好了，小子們！']},
 };
 const DIFF=[{name:'簡單',lv:-2,exp:1.25,desc:'敵人等級 −2，經驗值 ×1.25。適合想輕鬆看劇情的玩家。'},{name:'普通',lv:0,exp:1,desc:'標準難度。'},{name:'困難',lv:2,exp:1,desc:'敵人等級 +2（已滿級的敵人改為能力提升）。'}];
-const ROUTE_NAME={common:'共通路線',A:'守護之字',B:'赤環之誓',H:'無銘之甲',T:'始甲之名',free:'自由戰場'};
+const ROUTE_NAME={common:'共通路線',A:'守護之字',B:'赤環之誓',H:'無銘之甲',T:'始甲之名',free:'自由戰場',side:'外傳',chal:'演習挑戰'};
 
 // =====================================================================
 // 狀態
@@ -413,6 +413,7 @@ function hitRate(a,w,d,react){
   let h=75+w.hit+(a.hit-d.eva)/2-terrBonus(d).eva+sk(a,'hitUp')-sk(d,'evaUp')+aa.hit-da.eva;
   if(a.st.focus) h+=30;
   if(d.st.focus) h-=30;
+  const cw=CH(); if(cw&&cw.weather==='snow'&&dist(a,d)>=3) h-=15;   // 暴風雪：遠距離命中下降
   if(react==='evade') h/=2;
   return clamp(Math.round(h),0,100);
 }
@@ -499,7 +500,7 @@ function expFor(a,d,kill){
 // =====================================================================
 function fitMap(){
   const wrap=$('.board'); if(!wrap) return;
-  const avail=wrap.clientWidth-2;
+  const avail=(wrap.clientWidth-2)*(typeof mapZoom==='function'?mapZoom():1);
   const spr=typeof gfxActive==='function'&&gfxActive();
   const cs=spr?gfxPickCs(avail,G.W):clamp(Math.floor((avail-(G.W-1))/G.W),21,46);
   if(spr) GFX.cs=cs;
@@ -567,7 +568,7 @@ function renderFMenu(){
 }
 function renderHeader(){
   const ch=CH();
-  $('#stageName').innerHTML=ch?`第 ${ch.no} 章　${ch.title}${ch.route!=='common'?`<span class="rt">${ROUTE_NAME[ch.route]}</span>`:''}`:'';
+  $('#stageName').innerHTML=ch?`${ch.label||`第 ${ch.no} 章`}　${ch.title}${ch.route!=='common'?`<span class="rt">${ROUTE_NAME[ch.route]}</span>`:''}`:'';
   let t=`第 ${G.turn} 回合`;
   if(ch&&!G.over){ if(ch.win.type==='survive') t+=`／堅守至 ${ch.win.turns}`; if(ch.turnLimit) t+=`／限 ${ch.turnLimit}`; }
   $('#turnLbl').textContent=t;
@@ -622,7 +623,8 @@ function renderMap(){
   }
   $('#map').innerHTML=h; $('#map').dataset.w='';
 }
-function talkTargets(s){ if(!s.cid) return []; return G.units.filter(u=>u.side==='E'&&u.talk&&dist(u,s)===1&&u.talk.by.includes(s.cid)); }
+const talkReady=u=>!!u.talk&&(!u.talk.hpBelow||u.hp<=u.maxHp*u.talk.hpBelow);
+function talkTargets(s){ if(!s.cid) return []; return G.units.filter(u=>u.side==='E'&&talkReady(u)&&dist(u,s)===1&&u.talk.by.includes(s.cid)); }
 function repairTargets(s){ const h=s.skills.heal; if(!h) return []; return G.units.filter(u=>u.side==='P'&&u!==s&&u.hp<u.maxHp&&dist(u,s)>=h.min&&dist(u,s)<=h.max); }
 function comboWeapons(s){
   if(s.side!=='P'||!s.cid||s.merc) return [];
@@ -792,6 +794,7 @@ function strike(a,w,d,react,seq){
   seq.push({a,d,w,hit,dmg,crit,before,after:d.hp,note});
 }
 async function doBattle(att,w,def,react,cw,sup){
+  if(typeof meetEvents==='function') await meetEvents(att,def);
   const hp0={[att.uid]:att.hp,[def.uid]:def.hp};
   let line='';
   if(att.lines.length&&Math.random()<0.75){ line=`${att.pilot}：「${pick(att.lines)}」`; log(line,att.side==='P'?'q':'eq'); }
@@ -836,6 +839,7 @@ async function playBattle(L,R,seq,hp0,line){
   ov.hidden=true; ov.onclick=null; G.skip=false; G.sleepers.length=0;
 }
 async function afterCombat(){
+  if(typeof hpEvents==='function') await hpEvents();
   // 頭目第二形態
   for(const u of G.units.filter(u=>u.hp<=0&&u.phase2&&!u.phased)){
     const ph=u.phase2; u.phased=true;
@@ -846,7 +850,7 @@ async function afterCombat(){
     log(`${u.pilot} 進入第二形態！`,'bad');
   }
   // 陣亡
-  for(const u of G.units) if(u.hp<=0&&!u.dead){u.dead=true; if(u.cls==='bwall'&&G.map[u.y]) G.map[u.y][u.x]='r'; if(typeof mapBoom==='function') mapBoom(u.x,u.y); log(`${u.ch}${u.name} 被擊墜！`,u.side==='P'?'bad':'good'); if(G.pstat){ if(u.side==='P') G.pstat.lost++; else G.pstat.kills++; }}
+  for(const u of G.units) if(u.hp<=0&&!u.dead){u.dead=true; if(u.cls==='bwall'&&G.map[u.y]) G.map[u.y][u.x]='r'; if(typeof mapBoom==='function') mapBoom(u.x,u.y); log(`${u.ch}${u.name} 被擊墜！`,u.side==='P'?'bad':'good'); if(G.pstat){ if(u.side==='P') G.pstat.lost++; else G.pstat.kills++; } if(u.side==='E'&&!u.obj) G.cKills=(G.cKills||0)+1; }
   G.units=G.units.filter(u=>!u.dead);
   // 撤退
   for(const e of G.units.filter(u=>u.side==='E'&&u.retreat&&u.hp<=u.maxHp*u.retreat)){
@@ -873,14 +877,14 @@ async function checkEnd(){
   if(w.type==='boss'&&G.seenTags.has(w.target)&&!es.some(u=>u.tag===w.target)){ win(); return true; }
   if(w.type==='escape'){ const g=G.units.find(u=>u.cid===(w.who||'gang')); if(g&&w.cells.some(([x,y])=>g.x===x&&g.y===y)){ win(); return true; } }
   if(es.length===0&&w.type!=='survive'&&w.type!=='escape'){
-    const pend=(ch.events||[]).filter((e,i)=>!G.firedEvents.has(i)&&e.spawn&&e.spawn.length);
+    const pend=(ch.events||[]).filter((e,i)=>!G.firedEvents.has(i)&&e.spawn&&e.spawn.length&&(!e.ifAlive||G.units.some(u=>u.tag===e.ifAlive)));
     if(pend.length){ // 還有增援：提前觸發
       for(const e of pend){ await fireEvent(e,(ch.events||[]).indexOf(e)); }
       render(); return false;
     }
     win(); return true;
   }
-  if(es.length===0&&w.type==='survive'){ win(); return true; }
+  if(es.length===0&&w.type==='survive'&&!(ch.events||[]).some((e,i)=>!G.firedEvents.has(i)&&e.ifAlive&&G.units.some(u=>u.tag===e.ifAlive))){ win(); return true; }
   return false;
 }
 async function fireEvent(ev,i){
@@ -1065,7 +1069,7 @@ async function confirmAttack(s,w,t){
       <dl><dt>命中率</dt><dd>${ch}</dd><dt>預估傷害</dt><dd>${cd}</dd><dt>地形</dt><dd>${terrAt(t.x,t.y).name}${t.fly?'（飛行）':''}</dd></dl></div>
    </div>
    ${s.st.soul?'<p style="margin-top:10px;color:var(--amber)">魂發動中：本次傷害 ×2.5</p>':s.st.valor?'<p style="margin-top:10px;color:var(--amber)">熱血發動中：本次傷害 ×2</p>':''}
-   ${t.talk&&t.talk.by.includes(s.cid)?'<p style="margin-top:10px;color:var(--good)">這台敵機可以被說服。移動到相鄰格並選擇「說服」吧。</p>':''}
+   ${t.talk&&t.talk.by.includes(s.cid)?(talkReady(t)?'<p style="margin-top:10px;color:var(--good)">這台敵機可以被說服。移動到相鄰格並選擇「說服」吧。</p>':`<p style="margin-top:10px;color:var(--good)">這台敵機的 HP 降到 ${Math.round(t.talk.hpBelow*100)}% 以下後，就可以說服。小心別把它擊墜了！</p>`):''}
    ${w.combo?`<p style="margin-top:10px;color:var(--amber)">合體攻擊：${w.combo.pilot}也會消耗 EN ${w.en} 並結束行動。</p>`:''}
    ${sup?`<label class="supline"><input type="checkbox" id="supOn" checked> 援護攻擊：${sup.u.ch} ${sup.u.pilot}【${sup.w.name}】 命中 ${hitRate(sup.u,sup.w,t,null)}% · 預估 ${fmt(calcDmg(sup.u,sup.w,t,null))}（剩 ${sup.u.supA} 次）</label>`:''}
    <div class="foot"><button class="btn" data-v="no">返回</button><button class="btn pri" data-v="yes">確認攻擊</button></div>`);
@@ -1134,7 +1138,7 @@ function phaseUpkeep(side){
 async function runEvents(phase){
   const evs=CH().events||[];
   for(let i=0;i<evs.length;i++){ const e=evs[i]; if(G.firedEvents.has(i)) continue;
-    if(e.turn===G.turn&&(e.phase||'P')===phase) await fireEvent(e,i); }
+    if(e.turn===G.turn&&(e.phase||'P')===phase){ if(e.ifAlive&&!G.units.some(u=>u.tag===e.ifAlive)){ G.firedEvents.add(i); continue; } await fireEvent(e,i); } }
 }
 async function startPlayerPhase(){
   const ch=CH();
@@ -1306,8 +1310,8 @@ function restoreTurn(t){
   G.phase='P'; G.mode='idle'; G.sel=null; G.inspect=null; G.reach=null; G.targets=[]; G.over=false; G.busy=false;
   log(`── 重來第 ${G.turn} 回合。`,'sys'); render();
 }
-function snapshot(){return {v:4,diff:G.diff==null?1:G.diff,gold:G.gold||0,inv:{...(G.inv||{})},mercs:JSON.parse(JSON.stringify(G.mercs||{})),chapter:G.chapterId,route:G.route,flags:{...G.flags},roster:JSON.parse(JSON.stringify(G.roster)),alumni:JSON.parse(JSON.stringify(G.alumni||{})),visited:[...(G.visited||[])],freeDone:{...(G.freeDone||{})},cycle:G.cycle||0,carry:G.carry||null,t:Date.now()};}
-function restore(s){G.diff=s.diff==null?1:s.diff;G.gold=s.gold==null?1000:s.gold;G.inv={...(s.inv||{})};G.mercs=JSON.parse(JSON.stringify(s.mercs||{}));G.chapterId=s.chapter;G.route=s.route||'common';G.flags={...(s.flags||{})};G.roster=JSON.parse(JSON.stringify(s.roster));G.alumni=JSON.parse(JSON.stringify(s.alumni||{}));G.visited=[...(s.visited||[s.chapter])];G.freeDone={...(s.freeDone||{})};G.cycle=s.cycle||0;G.carry=s.carry||null;G.free=null;}
+function snapshot(){return {v:4,diff:G.diff==null?1:G.diff,gold:G.gold||0,inv:{...(G.inv||{})},mercs:JSON.parse(JSON.stringify(G.mercs||{})),chapter:G.chapterId,route:G.route,flags:{...G.flags},roster:JSON.parse(JSON.stringify(G.roster)),alumni:JSON.parse(JSON.stringify(G.alumni||{})),visited:[...(G.visited||[])],freeDone:{...(G.freeDone||{})},sideDone:{...(G.sideDone||{})},chalBest:{...(G.chalBest||{})},chalRw:{...(G.chalRw||{})},cycle:G.cycle||0,carry:G.carry||null,t:Date.now()};}
+function restore(s){G.diff=s.diff==null?1:s.diff;G.gold=s.gold==null?1000:s.gold;G.inv={...(s.inv||{})};G.mercs=JSON.parse(JSON.stringify(s.mercs||{}));G.chapterId=s.chapter;G.route=s.route||'common';G.flags={...(s.flags||{})};G.roster=JSON.parse(JSON.stringify(s.roster));G.alumni=JSON.parse(JSON.stringify(s.alumni||{}));G.visited=[...(s.visited||[s.chapter])];G.freeDone={...(s.freeDone||{})};G.sideDone={...(s.sideDone||{})};G.chalBest={...(s.chalBest||{})};G.chalRw={...(s.chalRw||{})};G.cycle=s.cycle||0;G.carry=s.carry||null;G.free=null;}
 function store(k,v){try{localStorage.setItem(SAVE+k,JSON.stringify(v));return true;}catch(e){return false;}}
 function load(k){try{const s=localStorage.getItem(SAVE+k);return s?JSON.parse(s):null;}catch(e){return null;}}
 function saveDesc(s){ if(!s) return '（空）'; if(!CHAPTERS[s.chapter]) return '（舊版存檔，無法讀取）'; const c=CHAPTERS[s.chapter]; const d=new Date(s.t);
@@ -1340,7 +1344,10 @@ async function prep(){
   for(;;){
     const v=await ask(prepHtml(),'wide prep');
     if(v==='go'){ if(await deploy()) return startBattle(); continue; }
-    if(v==='world'){ const site=await worldMap(); if(site){ G.free=makeFree(site); if(await deploy()) return startBattle(); G.free=null; setupMap(CH()); render(); } continue; }
+    if(v==='world'){ const pick=await worldMap(); if(pick){ const [kind,id]=pick.split(':'); G.prepSnap=snapshot(); store('auto',G.prepSnap);
+        G.free=kind==='side'?makeSide(id):kind==='chal'?makeChal(id):makeFree(id);
+        if(G.free.pre&&G.free.pre.length){ setupMap(G.free); render(); await playScene(G.free.pre); }
+        if(await deploy()) return startBattle(); G.free=null; setupMap(CH()); render(); } continue; }
     if(v==='save'){ await saveMenu(); continue; }
     if(v==='help'){ await showHelp(); continue; }
     if(v==='diff'){ const dv=await ask(`<h2>更改難度</h2><div class="choices">${DIFF.map((d,i)=>`<button class="btn choice${i===(G.diff??1)?' pri':''}" data-v="${i}"><b>${d.name}${i===(G.diff??1)?'（目前）':''}</b><small>${d.desc}</small></button>`).join('')}</div>`,'wide'); G.diff=+dv; store('auto',snapshot()); G.prepSnap=snapshot(); continue; }
@@ -1453,12 +1460,12 @@ async function startBattle(){
     for(const type of list){ const f=freeNear(cmd.x,cmd.y); if(f) G.units.push(mkMerc(type,m,f.x,f.y)); } }
   G.goldGain=0;
   G.over=false; clearLog(); render();
-  log(`第 ${ch.no} 章 ${ch.title}　開始。勝利條件：${ch.winText}。`,'sys');
+  log(`${ch.label||`第 ${ch.no} 章`} ${ch.title}　開始。勝利條件：${ch.winText}。`,'sys');
   await startPlayerPhase();
 }
 async function win(){
   if(G.over) return; G.over=true; G.busy=false; render(); if(typeof bgm==='function'&&BGM.on) bgm('win'); else sfx('win');
-  if(G.free) return freeWin();
+  if(G.free) return G.free.side?sideWin():G.free.challenge?chalWin():freeWin();
   const ch=CH();
   const alive=new Set(G.units.filter(u=>u.side==='P'&&u.member).map(u=>u.cid));
   const lv=[];
@@ -1505,6 +1512,7 @@ async function showEnding(e,route){
 }
 async function lose(msg){
   if(G.over) return; G.over=true; G.busy=false; render(); if(typeof bgm==='function'&&BGM.on) bgm('lose'); else sfx('lose');
+  if(G.free&&(G.free.side||G.free.challenge)) return sideLose(msg);
   if(G.free){ const fv=await ask(`<h2>自由戰場撤退</h2><p>${msg}</p><p style="color:var(--mute)">自由戰場失敗不會影響劇情，這場戰鬥獲得的經驗與資金不會保留。</p>
     <div class="foot"><button class="btn pri" data-v="retry">回到出擊準備</button></div>`); restore(G.prepSnap); G.free=null; return prep(); }
   const v=await ask(`<h2>作戰失敗</h2><p>${msg}</p><p style="color:var(--mute)">提示：開啟「敵方威脅範圍」，避免主角機被圍攻；重擊前可以用「鐵壁」或選擇「防禦」。</p>
@@ -1515,19 +1523,22 @@ async function lose(msg){
 async function saveMenu(){
   const slots=[1,2,3];
   const v=await ask(`<h2>存檔</h2><p style="color:var(--mute)">存檔會記錄目前章節的出擊準備狀態。存檔只保存在這個瀏覽器中。</p>
-    <div class="stlist" style="max-width:none">${slots.map(i=>`<button class="btn" data-v="${i}"><span>存檔 ${i}</span><small>${saveDesc(load('slot'+i))}</small></button>`).join('')}</div>
+    <div class="stlist" style="max-width:none">${slots.map(i=>`<button class="btn" data-v="${i}"><span>存檔 ${i}</span><small>${saveDesc(load('slot'+i))}</small></button>`).join('')}
+    <button class="btn" data-v="code"><span>匯出存檔碼</span><small>換手機、換瀏覽器時，用這串文字把進度帶過去</small></button></div>
     <div class="foot"><button class="btn" data-v="">返回</button></div>`);
   if(!v) return;
+  if(v==='code') return exportCode();
   const ok=store('slot'+v,snapshot());
   await ask(`<h2>${ok?'已存檔':'存檔失敗'}</h2><p>${ok?`已存到存檔 ${v}。`:'這個瀏覽器目前無法儲存資料（可能是私密瀏覽模式）。'}</p><div class="foot"><button class="btn pri" data-v="ok">好</button></div>`);
 }
 async function loadMenu(){
   const opts=[['auto','自動存檔'],['slot1','存檔 1'],['slot2','存檔 2'],['slot3','存檔 3'],
     ...Object.keys(CHAPTERS).filter(id=>CHAPTERS[id].next&&CHAPTERS[id].next.choice&&load('branch-'+id)).map(id=>['branch-'+id,`分歧點：第 ${CHAPTERS[id].no} 章「${CHAPTERS[id].next.choice.prompt}」`])];
-  const v=await ask(`<h2>讀取</h2><div class="stlist" style="max-width:none">${opts.map(([k,n])=>{const s=load(k);return `<button class="btn" data-v="${k}" ${s?'':'disabled'}><span>${n}</span><small>${saveDesc(s)}</small></button>`;}).join('')}</div>
+  const v=await ask(`<h2>讀取</h2><div class="stlist" style="max-width:none">${opts.map(([k,n])=>{const s=load(k);return `<button class="btn" data-v="${k}" ${s?'':'disabled'}><span>${n}</span><small>${saveDesc(s)}</small></button>`;}).join('')}
+    <button class="btn" data-v="code"><span>輸入存檔碼</span><small>貼上從其他裝置匯出的存檔碼</small></button></div>
     <div class="foot"><button class="btn" data-v="">返回</button></div>`);
   if(!v) return false;
-  const s=load(v); if(!s||!CHAPTERS[s.chapter]) return false;
+  const s=v==='code'?await importCode():load(v); if(!s||!CHAPTERS[s.chapter]) return false;
   restore(s); clearLog();
   if(s.pendingChoice){ const ch=CHAPTERS[s.pendingChoice]; G.chapterId=ch.id; const n=await makeChoice(ch.next.choice); gotoChapter(n); return true; }
   await prep(); return true;
@@ -1595,7 +1606,7 @@ async function titleScreen(){
  · <span class="p">狙</span> · · · · · <span class="e">砲</span> ·`;
   if(typeof startTitleBg==='function') startTitleBg();
   const v=await ask(`<div class="title"><div class="t-logo">銘<b>甲</b>戰記</div>
-    <div class="t-sub">像素機器人戰棋<br>全 15 章・三條路線・五種結局・職業轉職</div>
+    <div class="t-sub">像素機器人戰棋<br>全 15 章＋外傳 5 章・三條路線・五種結局・職業轉職</div>
     <div class="stlist">
       <button class="btn ${auto?'':'pri'}" data-v="new"><span>新遊戲</span><small>從第一章開始</small></button>
       <button class="btn ${auto?'pri':''}" data-v="cont" ${auto?'':'disabled'}><span>繼續</span><small>${auto?saveDesc(auto):'沒有自動存檔'}</small></button>
@@ -1613,7 +1624,7 @@ async function titleScreen(){
   if(v==='cont'){ restore(auto); clearLog(); return prep(); }
   const dv=await ask(`<h2>選擇難度</h2><p style="color:var(--mute)">之後可以在「出擊準備」畫面隨時更改。</p><div class="choices">${DIFF.map((d,i)=>`<button class="btn choice${i===1?' pri':''}" data-v="${i}"><b>${d.name}</b><small>${d.desc}</small></button>`).join('')}</div>`,'wide');
   G.diff=+dv;
-  G.route='common'; G.flags={}; G.roster=[]; G.deployed=[]; G.alumni={}; G.gold=1000; G.inv={kit:2}; G.mercs={}; G.visited=[]; G.freeDone={}; G.cycle=0; G.carry=null;
+  G.route='common'; G.flags={}; G.roster=[]; G.deployed=[]; G.alumni={}; G.gold=1000; G.inv={kit:2}; G.mercs={}; G.visited=[]; G.freeDone={}; G.sideDone={}; G.chalBest={}; G.chalRw={}; G.cycle=0; G.carry=null;
   if(v==='ng'){ const c=load('carry'); if(c){ G.cycle=c.cycle||1; G.carry=c.members||{}; G.gold=1000+Math.floor((c.gold||0)/2); G.inv={kit:2}; for(const [k,n] of Object.entries(c.inv||{})) G.inv[k]=(G.inv[k]||0)+n; } }
   ['gang','feng','lei','yu'].forEach(joinChar);
   gotoChapter(START);
@@ -1746,7 +1757,3 @@ $('#fmenu').addEventListener('mouseenter',e=>e.currentTarget.classList.remove('d
 document.querySelector('.mapwrap').addEventListener('scroll',()=>renderFMenu());
 window.addEventListener('resize',()=>{fitMap();});
 
-fitMap();
-renderLegend();
-if(typeof startMapLoop==='function') startMapLoop();
-titleScreen();
