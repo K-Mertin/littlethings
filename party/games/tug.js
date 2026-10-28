@@ -174,10 +174,16 @@
       }
       g.drawImage(this.bgCv, -400, 0, W + 800, H);
     }
+    /* the crowd is drawn from little cached pictures (40-odd critters every frame would be slow on a TV box) */
+    fan(c, a, happy) {
+      const k = c + '/' + a + '/' + (happy ? 1 : 0), S = this.fans || (this.fans = {});
+      if (!S[k]) { const cv = document.createElement('canvas'); cv.width = cv.height = 64; const cg = cv.getContext('2d'); cg.scale(2, 2); drawCritter(cg, 16, 18, 13, c, a, { noShadow: true, still: true, happy, face: Math.PI / 2 }); S[k] = cv; }
+      return S[k];
+    }
     drawCrowd(g, at) {
       for (const f of this.crowd) {
         const ch = this.cheer[f.side], b = Math.max(0, Math.sin(at * (5 + ch * 6) + f.ph)) * (3 + ch * 14);
-        drawCritter(g, f.x, f.y - b, 13, f.c, f.a, { noShadow: true, still: true, happy: ch > 0.3, face: Math.PI / 2 });
+        g.drawImage(this.fan(f.c, f.a, ch > 0.3), f.x - 16, f.y - b - 18, 32, 32);
       }
     }
     drawRope(g, at) {
