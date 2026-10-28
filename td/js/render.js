@@ -461,7 +461,7 @@ const Render = (() => {
     if (f < 0.3) for (let i = 0; i < 2; i++) Art.flame(ctx, a + (i ? 0.5 : -0.55) * u, b - u * (i ? 1.1 : 0.9), u * 0.07, time * 1.2 + i);
     if (FX.st.castleHit > 0) { ctx.save(); ctx.globalAlpha = FX.st.castleHit; ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(Gfx.glow('#ff4a3a'), a - u * 1.2, b - u * 2, u * 2.4, u * 2.4); ctx.restore(); }
   }
-  const PORTAL_COL = { volcano: ['#ffb36b', '#c8341a'], forge: ['#ffb36b', '#c8341a'], snow: ['#cff4ff', '#3a8ad8'], tundra: ['#cff4ff', '#3a8ad8'], glacier: ['#c8fff0', '#2a8ab8'], swamp: ['#d8ff8a', '#3a8a3a'], night: ['#e8b0ff', '#6a2ad8'] };
+  const PORTAL_COL = { volcano: ['#ffb36b', '#c8341a'], forge: ['#ffb36b', '#c8341a'], snow: ['#cff4ff', '#3a8ad8'], tundra: ['#cff4ff', '#3a8ad8'], glacier: ['#c8fff0', '#2a8ab8'], rift: ['#ffb36b', '#3a8ad8'], aurora: ['#c8fff0', '#8a4ad8'], fortress: ['#cff4ff', '#3a8ad8'], swamp: ['#d8ff8a', '#3a8a3a'], night: ['#e8b0ff', '#6a2ad8'] };
   function drawPortal(ctx, p, s, time, th) {
     const u = s * 0.85;
     const [a, b0] = V.P(p.x, p.y), b = b0 + s * 0.3;
@@ -873,7 +873,7 @@ const Render = (() => {
     drawParticles(ctx, G, s, HS, time, false);
     // ── 雲影 ──
     ctx.save(); rrect(ctx, V.ox, V.oy, V.w, V.h, s * 0.3); ctx.clip();
-    if (th !== 'night' && th !== 'cave' && th !== 'harbor' && th !== 'amber' && th !== 'spire' && th !== 'forge' && th !== 'glacier' && qual < 2) {
+    if (th !== 'night' && th !== 'cave' && th !== 'harbor' && th !== 'amber' && th !== 'spire' && th !== 'forge' && th !== 'glacier' && th !== 'rift' && th !== 'aurora' && qual < 2) {
       const cs = cloudSprite();
       ctx.globalAlpha = th === 'desert' ? 0.5 : th === 'snow' ? 0.35 : 0.45;
       for (const c of FX.clouds) { const [a, b] = P(c.x, c.y), w = s * 7 * c.sc, h = w * 0.5; ctx.drawImage(cs, a - w / 2, b - h / 2, w, h); }

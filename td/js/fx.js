@@ -303,9 +303,9 @@ const FX = (() => {
     const count = k => { let n = 0; for (const p of parts) if (p.k === k) n++; return n; };
     const rx = () => R() * COLS, ry = () => R() * ROWS;
     const lim = st.low ? 0.6 : 1;
-    if (th === 'tundra' || th === 'glacier') { if (count('snow') < (th === 'tundra' ? 80 : 40) * lim) part('snow', rx(), ry(), 3 + R() * 2, 0, 0.15, -0.6 - R() * 0.3, 6, 0.03 + R() * 0.035, '#ffffff', { wind: th === 'tundra' ? 0.5 : 0.1 }); }
-    if (th === 'glacier') { if (count('glint') < 18 * lim && R() < 0.4) part('glint', rx(), ry(), 0.2 + R() * 1.2, (R() - 0.5) * 0.1, (R() - 0.5) * 0.1, 0.05, 3 + R() * 2, 0.03, R() < 0.5 ? '#9ffff0' : '#d8c8ff'); }
-    if (th === 'forge') { if (count('ember') < 24 * lim) part('ember', rx(), ry(), 0, (R() - 0.5) * 0.3, -0.1, 0.5 + R() * 0.6, 3 + R() * 2, 0.025 + R() * 0.02, R() < 0.5 ? '#ff8a2a' : '#ffd36b'); }
+    if (th === 'tundra' || th === 'glacier' || th === 'fortress' || th === 'aurora' || th === 'rift') { if (count('snow') < (th === 'tundra' ? 80 : th === 'rift' ? 25 : 40) * lim) part('snow', rx(), ry(), 3 + R() * 2, 0, 0.15, -0.6 - R() * 0.3, 6, 0.03 + R() * 0.035, '#ffffff', { wind: th === 'tundra' ? 0.5 : 0.1 }); }
+    if (th === 'glacier' || th === 'aurora') { if (count('glint') < 18 * lim && R() < 0.4) part('glint', rx(), ry(), 0.2 + R() * 1.2, (R() - 0.5) * 0.1, (R() - 0.5) * 0.1, 0.05, 3 + R() * 2, 0.03, R() < 0.5 ? '#9ffff0' : '#d8c8ff'); }
+    if (th === 'forge' || th === 'rift') { if (count('ember') < 24 * lim) part('ember', rx(), ry(), 0, (R() - 0.5) * 0.3, -0.1, 0.5 + R() * 0.6, 3 + R() * 2, 0.025 + R() * 0.02, R() < 0.5 ? '#ff8a2a' : '#ffd36b'); }
     if (th === 'snow') { if (count('snow') < 70 * lim) part('snow', rx(), ry(), 3 + R() * 2, 0, 0.15, -0.6 - R() * 0.3, 6, 0.03 + R() * 0.035, '#ffffff', { wind: 0.25 }); }
     if (th === 'volcano') { if (count('ember') < 26 * lim) part('ember', rx(), ry(), 0, (R() - 0.5) * 0.3, -0.1, 0.5 + R() * 0.6, 3 + R() * 2, 0.025 + R() * 0.02, R() < 0.5 ? '#ff8a2a' : '#ffd36b'); }
     if (th === 'night' || th === 'swamp' || th === 'forest') { if (count('firefly') < (th === 'forest' ? 8 : 18) * lim) part('firefly', rx(), ry(), 0.2 + R() * 0.6, 0, 0, 0, 5 + R() * 3, 0.03, th === 'night' ? '#b8f0ff' : '#e8ff8a'); }
@@ -323,7 +323,7 @@ const FX = (() => {
     if ((th === 'ruins' && !(G.stormOn)) ) { if (count('dust') < 6 * lim && R() < 0.2) part('dust', -0.5, ry(), 0.1 + R() * 0.3, 1.2 + R(), 0.1, 0, 8, 0.3 + R() * 0.3, '#f6dfaa'); }
     if (th === 'ruins' && G.stormOn) { if (count('dust') < 40 * lim) for (let i = 0; i < 3; i++) part('dust', -0.5 - R(), ry(), 0.1 + R() * 0.8, 4 + R() * 2, 0.4, 0, 4, 0.4 + R() * 0.4, '#e8c888'); }
     if (th === 'desert' || th === 'canyon') { if (count('dust') < 10 * lim && R() < 0.3) part('dust', -0.5, ry(), 0.1 + R() * 0.3, 1.5 + R(), 0.1, 0, 7, 0.3 + R() * 0.3, '#f6dfaa'); }
-    if (th !== 'night' && th !== 'volcano' && th !== 'cave' && th !== 'deep' && th !== 'harbor' && th !== 'amber' && th !== 'spire' && th !== 'forge' && th !== 'glacier' && count('bird') < 2 && R() < 0.012) {
+    if (th !== 'night' && th !== 'volcano' && th !== 'cave' && th !== 'deep' && th !== 'harbor' && th !== 'amber' && th !== 'spire' && th !== 'forge' && th !== 'glacier' && th !== 'rift' && th !== 'aurora' && count('bird') < 2 && R() < 0.012) {
       const fromL = R() < 0.5, y0 = R() * ROWS;
       for (let i = 0; i < 3; i++) part('bird', fromL ? -1 - i * 0.4 : COLS + 1 + i * 0.4, y0 + i * 0.3, 3, fromL ? 1.6 : -1.6, (R() - 0.5) * 0.3, 0, 14, 0.12, th === 'coast' ? '#ffffff' : '#2a2a3a');
     }

@@ -174,9 +174,8 @@ const Mech3Art = (() => {
   // ───────── 輸送帶＋拉桿 ─────────
   function drawBelts(ctx, G, s, time) {
     const B = G.belt; if (!B) return;
-    for (const [cx, cy, cw, chh] of G.L.belts) for (let y = cy; y < cy + chh; y++) for (let x = cx; x < cx + cw; x++) {
-      let dx = 1, dy = 0;
-      for (const Pp of G.paths) for (const sg of Pp.seg) if (segDist2(x + 0.5, y + 0.5, sg.a.x, sg.a.y, sg.b.x, sg.b.y) < 0.05) { dx = sg.dx; dy = sg.dy; }
+    if (!B.cells) { B.cells = []; for (const [cx, cy, cw, chh] of G.L.belts) for (let y = cy; y < cy + chh; y++) for (let x = cx; x < cx + cw; x++) { let dx = 1, dy = 0; for (const Pp of G.paths) for (const sg of Pp.seg) if (segDist2(x + 0.5, y + 0.5, sg.a.x, sg.a.y, sg.b.x, sg.b.y) < 0.05) { dx = sg.dx; dy = sg.dy; } B.cells.push([x, y, dx, dy]); } }
+    for (const [x, y, dx, dy] of B.cells) {
       const [a, b] = P(x + 0.5, y + 0.5), an = V.A(Math.atan2(dy, dx));
       ctx.save(); ctx.translate(a, b); ctx.rotate(an);
       const L = s * 0.5, W = s * 0.38;

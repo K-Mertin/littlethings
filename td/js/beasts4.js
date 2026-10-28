@@ -271,4 +271,72 @@
   }
   def('bossColossus', { w: 5.6, h: 5.4, ay: 4.4, top: 4.1, vis: 1.12, die: 'bake', boss: true }, (x, R, s) => colossus(x, R, s, false));
   def('bossColossus2', { w: 5.6, h: 5.6, ay: 4.6, top: 4.1, vis: 1.12, die: 'bake', boss: true }, (x, R, s) => colossus(x, R, s, true));
+  // ───────── 永凍冰龍：冰藍鱗片、水晶背棘、半透明的冰翼；第二形態落地披冰甲，第三形態被暴風雪包圍 ─────────
+  function wyrm(x, R, s, ph) {
+    const sc = mat(ph === 2 ? '#5a7ab8' : '#7ab8e0', { sh: 0.5, shc: '#2a3a8a', rimc: '#e8fbff', rima: 0.8 }), scD = mat(ph === 2 ? '#3a5288' : '#4a88b8', { sh: 0.5 }), belly = mat('#e8f6ff', { sh: 0.35 });
+    const memb = mat('#bfeaff', { gloss: 0.8, sh: 0.35 }), membB = mat('#8ac4e8', { gloss: 0.6 }), horn = mat('#f4fbff', { gloss: 1 }), crys = mat('#9fe6ff', { gloss: 1, sh: 0.35, shc: '#3a5ac8' });
+    const pw = power(s), wu = windup(s);
+    const fly = ph === 0;
+    let flap = fly ? (s.walk ? Math.sin(s.ph) : s.an === 'idle' ? Math.sin(s.ph) * 0.5 : 0.2) : -0.9;
+    if (fly && (s.an === 'cast' || s.sw)) flap = wu > 0 ? 0.9 * wu : -0.7 * pw;
+    if (s.hit && fly) flap = -0.3;
+    const sink = s.die ? E(Math.min(1, s.die / 0.8)) : 0;
+    const by = (fly ? -R * 0.3 + (s.walk ? -Math.cos(s.ph) * R * 0.15 : s.an === 'idle' ? s.br * R * 0.06 : 0) : -R * 0.95 - (s.walk ? Math.abs(Math.sin(s.ph)) * R * 0.06 : 0)) + sink * R * 0.6;
+    x.save(); x.translate(pw * R * 0.2 - (s.hit ? R * 0.15 : 0), by); x.rotate(pw * 0.06 - wu * 0.1 + (s.hit ? -0.1 : 0) - sink * 0.2);
+    if (ph === 2 && !s.die) halo(x, 0, -R * 0.2, R * 2.6, '#cfefff', 0.25 + pw * 0.2);
+    const wing = (sd) => {
+      const back = sd < 0, sp = fly ? 1 : 0.55;
+      const jx = sd * R * 1.25 * sp, jy = -R * (1.25 * flap + 0.75), tx = sd * R * 2.7 * sp, ty = -R * (1.4 * flap + 0.35);
+      const tips = [[sd * R * 2.0 * sp, R * 0.4 - flap * R * 0.3], [sd * R * 1.4 * sp, R * 0.52 - flap * R * 0.25], [sd * R * 0.8 * sp, R * 0.5 - flap * R * 0.2]];
+      const p = P.fn(q => { q.moveTo(sd * R * 0.2, -R * 0.35); q.quadraticCurveTo(sd * R * 0.6, jy - R * 0.2, jx, jy); q.lineTo(tx, ty); let px = tx, py = ty; for (const [ax, ay] of tips) { q.quadraticCurveTo((px + ax) / 2 - sd * R * 0.1, (py + ay) / 2 - R * 0.18, ax, ay); px = ax; py = ay; } q.quadraticCurveTo(sd * R * 0.45, R * 0.25, sd * R * 0.2, R * 0.25); q.closePath(); });
+      x.save(); x.globalAlpha = 0.9;
+      part(x, p, back ? membB : memb, sd * R * 1.3, -R * 0.2, R * 1.1, { lw: lw(R), sd: 0.25, tex: q => { q.strokeStyle = rgba('#2a5a9a', 0.75); q.lineWidth = R * 0.08; q.lineCap = 'round'; q.beginPath(); q.moveTo(sd * R * 0.2, -R * 0.35); q.lineTo(jx, jy); q.lineTo(tx, ty); for (const [ax, ay] of tips) { q.moveTo(jx, jy); q.lineTo(ax, ay); } q.stroke(); q.strokeStyle = 'rgba(255,255,255,.6)'; q.lineWidth = R * 0.03; for (const [ax, ay] of tips) { q.beginPath(); q.moveTo((jx + ax) / 2, (jy + ay) / 2); q.lineTo((jx + ax) / 2 + sd * R * 0.15, (jy + ay) / 2 + R * 0.1); q.stroke(); } } });
+      x.restore();
+      part(x, P.poly([jx, jy, jx + sd * R * 0.12, jy - R * 0.3, jx + sd * R * 0.2, jy + R * 0.02]), crys, jx, jy - R * 0.1, R * 0.12, { lw: lw(R) * 0.6 });
+    };
+    wing(-1);
+    // 長尾巴（尾端一顆冰晶）
+    const tw = s.walk ? Math.sin(s.ph + 1) * R * 0.18 : s.an === 'idle' ? s.br * R * 0.08 : 0;
+    const tail = P.fn(q => { q.moveTo(-R * 0.55, R * 0.05); q.bezierCurveTo(-R * 1.4, R * 0.9 + tw, -R * 2.0, -R * 0.1 + tw, -R * 2.6, R * 0.25 + tw * 1.6); q.bezierCurveTo(-R * 1.9, R * 0.15 + tw, -R * 1.35, R * 0.5 + tw, -R * 0.5, -R * 0.25); q.closePath(); });
+    part(x, tail, sc, -R * 1.4, R * 0.25, R * 0.6, { lw: lw(R), tex: q => Rig.scales(q, -R * 2.6, -R * 0.2, R * 2.1, R * 0.9, R * 0.16, 'rgba(30,60,140,.35)', R * 0.025) });
+    part(x, P.poly([-R * 2.6, R * 0.25 + tw * 1.6, -R * 3.0, -R * 0.05 + tw * 1.6, -R * 2.85, R * 0.55 + tw * 1.6]), crys, -R * 2.8, R * 0.25, R * 0.2, { lw: lw(R) * 0.7 });
+    // 腳
+    if (fly) { for (const fx of [-R * 0.3, R * 0.25]) { part(x, P.cap(fx, R * 0.35, fx + R * 0.1, R * 0.85, R * 0.16, R * 0.11), fx < 0 ? scD : sc, fx, R * 0.6, R * 0.2, { lw: lw(R) * 0.8 }); for (let k = -1; k <= 1; k++) seg(x, fx + R * 0.1, R * 0.85, fx + R * (0.14 + k * 0.08), R * 0.98, '#f4fbff', R * 0.05); } }
+    else for (const [fx, i] of [[-R * 0.55, 1], [R * 0.45, 0], [-R * 0.25, 0], [R * 0.75, 1]]) { const a = s.walk ? Math.sin(s.ph + i * Math.PI + fx) * 0.35 : 0; x.save(); x.translate(fx, R * 0.25); x.rotate(a); part(x, P.cap(0, 0, R * 0.05, R * 0.72, R * 0.2, R * 0.15), i ? scD : sc, 0, R * 0.36, R * 0.2, { lw: lw(R) * 0.8 }); for (let k = -1; k <= 1; k++) seg(x, R * 0.05, R * 0.72, R * (0.1 + k * 0.1), R * 0.86, '#f4fbff', R * 0.05); x.restore(); }
+    // 身體
+    part(x, P.ell(0, 0, R * 1.0, R * 0.62, -0.12), sc, 0, 0, R * 0.9, { lw: lw(R) * 1.1, tex: q => { Rig.scales(q, -R, -R * 0.62, R * 2, R * 0.5, R * 0.2, 'rgba(30,60,140,.35)', R * 0.03); } });
+    part(x, P.ell(R * 0.12, R * 0.26, R * 0.66, R * 0.3, -0.12), belly, R * 0.12, R * 0.26, R * 0.55, { lw: lw(R) * 0.6, tex: q => { q.strokeStyle = 'rgba(120,160,210,.6)'; q.lineWidth = R * 0.03; for (let i = 0; i < 5; i++) { q.beginPath(); q.moveTo(-R * 0.4 + i * R * 0.2, R * 0.03); q.lineTo(-R * 0.35 + i * R * 0.2, R * 0.52); q.stroke(); } } });
+    // 背上的水晶棘（第二形態變成整排冰甲）
+    const nsp = ph >= 1 ? 6 : 4;
+    for (let i = 0; i < nsp; i++) { const px = -R * 0.75 + i * R * (1.5 / (nsp - 1)), h = R * (ph >= 1 ? 0.55 + (i % 2) * 0.2 : 0.4); part(x, P.poly([px - R * 0.12, -R * 0.5, px - R * 0.02, -R * 0.5 - h, px + R * 0.1, -R * 0.52]), crys, px, -R * 0.55 - h * 0.4, R * 0.15, { lw: lw(R) * 0.6 }); }
+    if (ph >= 1) part(x, P.fn(q => { q.moveTo(-R * 0.85, -R * 0.15); q.lineTo(-R * 0.6, -R * 0.55); q.lineTo(R * 0.55, -R * 0.6); q.lineTo(R * 0.85, -R * 0.2); q.lineTo(R * 0.5, -R * 0.35); q.lineTo(-R * 0.5, -R * 0.3); q.closePath(); }), mat('#cff4ff', { gloss: 1, sh: 0.3 }), 0, -R * 0.4, R * 0.8, { lw: lw(R) * 0.6, tex: q => { q.strokeStyle = 'rgba(255,255,255,.8)'; q.lineWidth = R * 0.03; q.beginPath(); q.moveTo(-R * 0.5, -R * 0.45); q.lineTo(R * 0.3, -R * 0.5); q.stroke(); } });
+    wing(1);
+    // 脖子與頭
+    const nk = P.fn(q => { q.moveTo(R * 0.45, -R * 0.35); q.quadraticCurveTo(R * 0.95, -R * 0.8 + wu * R * 0.2, R * 1.1 + pw * R * 0.2, -R * 1.05 + wu * R * 0.3 + pw * R * 0.25); q.lineTo(R * 1.38 + pw * R * 0.2, -R * 0.82 + wu * R * 0.3 + pw * R * 0.25); q.quadraticCurveTo(R * 1.05, -R * 0.35, R * 0.75, R * 0.15); q.closePath(); });
+    part(x, nk, sc, R * 0.95, -R * 0.5, R * 0.42, { lw: lw(R) });
+    const hx = R * 1.35 + pw * R * 0.25, hy = -R * 1.05 + wu * R * 0.3 + pw * R * 0.25;
+    x.save(); x.translate(hx, hy); x.rotate(-wu * 0.35 + pw * 0.15 + (s.hit ? -0.3 : 0));
+    // 冰晶冠角
+    for (const [ax, ay, l] of [[-0.2, -0.2, 0.75], [0.0, -0.25, 0.85], [-0.38, -0.08, 0.55]]) part(x, P.poly([ax * R - R * 0.07, ay * R, ax * R - R * 0.35, ay * R - R * l, ax * R + R * 0.08, ay * R - R * 0.05]), horn, ax * R - R * 0.15, ay * R - R * l * 0.5, R * 0.2, { lw: lw(R) * 0.7 });
+    const jaw = R * (0.05 + Math.max(pw, s.hit * 0.6) * 0.25);
+    part(x, P.poly([R * 0.12, R * 0.12, R * 0.7, R * 0.1 + jaw, R * 0.64, R * 0.24 + jaw, R * 0.1, R * 0.3]), scD, R * 0.4, R * 0.2, R * 0.25, { lw: lw(R) * 0.8 });
+    if (jaw > R * 0.1) { x.fillStyle = '#1a2a5a'; x.beginPath(); x.moveTo(R * 0.15, R * 0.12); x.lineTo(R * 0.72, R * 0.02); x.lineTo(R * 0.68, R * 0.1 + jaw); x.closePath(); x.fill(); }
+    part(x, P.ell(0, 0, R * 0.44, R * 0.34, 0.1), sc, 0, 0, R * 0.42, { lw: lw(R) });
+    part(x, P.poly([R * 0.15, -R * 0.15, R * 0.85, -R * 0.02, R * 0.78, R * 0.12, R * 0.15, R * 0.15]), sc, R * 0.45, 0, R * 0.25, { lw: lw(R) * 0.9 });
+    for (let i = 0; i < 3; i++) part(x, P.poly([R * (0.3 + i * 0.14), R * 0.12, R * (0.34 + i * 0.14), R * 0.24, R * (0.38 + i * 0.14), R * 0.12]), mat('#ffffff'), R * 0.34, R * 0.16, R * 0.05, { lw: lw(R) * 0.4, flat: true });
+    const ec = ph === 2 ? '#c8a8ff' : '#e8fbff';
+    if (s.die) eye(x, R * 0.08, -R * 0.08, R * 0.12, { mood: 'x' });
+    else if (s.hit) eye(x, R * 0.08, -R * 0.08, R * 0.12, { mood: 'shut' });
+    else { glow(x, () => { x.fillStyle = ec; x.beginPath(); x.ellipse(R * 0.08, -R * 0.08, R * 0.13, R * 0.09, 0, 0, TAU); x.fill(); }, ph === 2 ? '#9a6aff' : '#7fd8ff', R * 0.35); x.fillStyle = '#1a2a5a'; x.fillRect(R * 0.07, -R * 0.16, R * 0.04, R * 0.16); }
+    // 冰息
+    if (pw > 0.25 && s.an !== 'atk') glow(x, () => { const L = R * (0.9 + pw * 1.6); const fp = P.fn(q => { q.moveTo(R * 0.72, R * 0.12); q.quadraticCurveTo(R * 0.72 + L * 0.5, -R * 0.3 * pw, R * 0.72 + L, R * 0.15); q.quadraticCurveTo(R * 0.72 + L * 0.5, R * 0.6 * pw, R * 0.72, R * 0.22); q.closePath(); }); x.fillStyle = Gfx.lgrad(x, R * 0.72, 0, R * 0.72 + L, 0, ['#ffffff', '#bff0ff', 'rgba(120,200,255,.3)']); x.fill(fp); }, '#7fd8ff', R * 0.5);
+    x.restore();
+    x.restore();
+    // 第三形態：周圍捲起暴風雪
+    if (ph === 2 && !s.die) for (let i = 0; i < 9; i++) { const a = i * 0.7 + s.t * 5 + (s.walk ? s.ph : 0), d = R * (1.6 + (i % 3) * 0.35); x.globalAlpha = 0.55; Gfx.circ(x, Math.cos(a) * d, -R * 0.8 + Math.sin(a) * d * 0.35, R * (0.06 + (i % 2) * 0.04), '#ffffff'); x.globalAlpha = 1; }
+    if (s.die > 0.3) for (let i = 0; i < 10; i++) { const a = i * 0.63, d = R * (0.5 + s.die * 2); x.globalAlpha = 1 - s.die; Gfx.star(x, Math.cos(a) * d, -R * 0.8 + Math.sin(a) * d * 0.6, R * 0.15, '#e8fbff', false); x.globalAlpha = 1; }
+  }
+  def('bossWyrm', { w: 6.6, h: 4.8, ay: 2.9, top: 2.1, vis: 1.25, die: 'bake', boss: true }, (x, R, s) => wyrm(x, R, s, 0));
+  def('bossWyrm2', { w: 6.6, h: 4.4, ay: 3.2, top: 2.6, vis: 1.25, die: 'bake', boss: true }, (x, R, s) => wyrm(x, R, s, 1));
+  def('bossWyrm3', { w: 6.8, h: 4.6, ay: 3.3, top: 2.7, vis: 1.25, die: 'bake', boss: true }, (x, R, s) => wyrm(x, R, s, 2));
 })();
