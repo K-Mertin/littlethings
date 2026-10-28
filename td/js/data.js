@@ -163,7 +163,7 @@ const ENEMIES = {
   clock: { name: '發條兵', hp: 115, spd: 0.85, bounty: 14, r: 0.3, armor: 0.5, mech: true, cost: 3.4, desc: '矮人造的機械士兵，不會被減速、冰凍或震暈。鐵殼很硬，用魔法和毒對付它！' },
   frostmage: { name: '冰霜巫師', hp: 70, spd: 0.8, bounty: 14, r: 0.28, mres: 0.4, freezeT: 6, cost: 3.2, desc: '每隔幾秒把附近（2.4 格內）一座塔凍成冰塊 2 秒。優先擊倒！' },
   moth: { name: '冰晶蛾', hp: 45, spd: 1.25, bounty: 9, r: 0.26, fly: true, shatter: 0.25, cost: 2.2, desc: '會飛的冰晶蛾，倒下時碎成冰片，讓附近的同伴得到護盾（兩成五生命）。在牠飛進敵群前打下來！' },
-  bossYeti: { name: '雪怪王', hp: 7600, spd: 0.4, bounty: 560, r: 0.64, armor: 0.35, chill: 0.5, lives: 15, boss: true, throwT: 7, phases: [0.5], cost: 0, desc: '頭目！把巨大的雪球砸向最強的塔（埋住 3.5 秒）；血剩一半時暴怒，冰封咆哮凍住附近的塔，還會叫來雪怪。' },
+  bossYeti: { name: '雪怪王', hp: 7600, spd: 0.4, bounty: 560, r: 0.64, armor: 0.25, chill: 0.5, lives: 15, boss: true, throwT: 7, phases: [0.5], cost: 0, desc: '頭目！把巨大的雪球砸向最強的塔（埋住 3.5 秒）；血剩一半時暴怒，冰封咆哮凍住附近的塔，還會叫來雪怪。' },
   bossColossus: { name: '鋼鐵巨像', hp: 8800, spd: 0.34, bounty: 640, r: 0.64, armor: 0.6, mres: 0.2, mech: true, lives: 15, boss: true, shellT: 8, phases: [0.45], cost: 0, desc: '頭目！肩上的大砲轟擊遠處的塔；鐵甲很硬、不怕暈眩。血剩不到一半時過熱：護甲脫落、跑得更快，還會放出發條兵和蒸汽。' },
   bossWyrm: { name: '永凍冰龍', hp: 16000, spd: 0.36, bounty: 1100, r: 0.66, armor: 0.25, mres: 0.3, lives: 20, boss: true, breathT: 8, phases: [0.66, 0.3], cost: 0, desc: '最終頭目！一開始在空中盤旋（只有能打空中的塔打得到），冰息凍住一片塔；落地後披上冰甲、叫來雪怪；最後掀起永夜暴風雪，所有塔變慢。' },
   bossGolem: { name: '岩石巨人王', hp: 3200, spd: 0.38, bounty: 300, r: 0.62, armor: 0.5, lives: 10, boss: true, stomp: 6, cost: 0, desc: '頭目！每 6 秒跺腳，震暈附近的塔。' },
@@ -203,6 +203,9 @@ const THEMES = {
   tundra: { g1: '#e6f0f8', g2: '#dce8f2', edge: '#9ab4c8', path: '#c0cede', pathE: '#7a92a8', deco: ['spine', 'spine', 'rock', 'spine', 'dead'], flower: ['#ffffff'], bg: '#4a6a88', music: 12, water: '#8ad0f0' },
   forge: { g1: '#5a4a44', g2: '#52423c', edge: '#2a201c', path: '#9a8a7a', pathE: '#4a3a30', deco: ['crate', 'rock', 'crate', 'rock', 'dead'], flower: ['#ff9a3a'], bg: '#1a100c', music: 13, water: '#ff8a2a', lava: true },
   glacier: { g1: '#a8d0e0', g2: '#9cc6d8', edge: '#4a7a98', path: '#d8e8f0', pathE: '#7a9ab0', deco: ['crystal', 'spine', 'rock', 'crystal', 'spine'], flower: ['#c8f0ff', '#d8c8ff'], bg: '#0e2238', music: 12, water: '#5ab8e0' },
+  fortress: { g1: '#9aa0a8', g2: '#90969e', edge: '#4a5058', path: '#c8c0b0', pathE: '#6a6458', deco: ['rock', 'crate', 'pillar', 'spine', 'rock'], flower: ['#ffffff'], bg: '#2a3038', music: 13, water: '#5a8ab8' },
+  rift: { g1: '#4a5a72', g2: '#44546a', edge: '#1e2838', path: '#a8a8b0', pathE: '#4a4a58', deco: ['rock', 'crystal', 'dead', 'rock', 'spine'], flower: ['#ff9a3a', '#9fe6ff'], bg: '#121824', music: 12, water: '#ff7a2a', lava: true },
+  aurora: { g1: '#3a5a7a', g2: '#365470', edge: '#1a2a40', path: '#c8d8e8', pathE: '#6a7a90', deco: ['spine', 'crystal', 'obelisk', 'spine', 'rock'], flower: ['#9fffd8', '#d8c8ff'], bg: '#060c1a', music: 11, water: '#7affc8' },
   night: { g1: '#4b5a86', g2: '#45537d', edge: '#262e4f', path: '#8f8aa8', pathE: '#4c4766', deco: ['crystal', 'dead', 'rock', 'grave'], flower: ['#9ef0ff', '#d7a8ff'], bg: '#151a33', music: 7 },
 };
 
@@ -512,6 +515,51 @@ const LEVELS = [
     b0: 10, bg: 1.145, hp0: 1.6, hpg: 0.06, story: '極光下的冰湖，冰洞裡住著成群的小雪妖。冰洞一甦醒就會不斷放出小雪妖——在旁邊蓋塔把冰洞打爛！打爛冰洞有賞金。',
     limit: ['arrow', 'frost', 'magic'], heroic: ['horde', 'regen'],
   },
+  {
+    name: '齒輪要塞', en: 'COGWORK FORTRESS', theme: 'fortress', seed: 347, waves: 24, gold: 660, act: 2,
+    paths: [
+      [[-1, 2], [5, 2], [5, 5], [1, 5], [1, 8], [11, 8], [11, 4], [16, 4]],
+      [[8, -1], [8, 4], [11, 4], [16, 4]],
+    ],
+    entries: [[0], [1]],
+    belts: [[3, 8, 6, 1], [12, 4, 3, 1]], // 輸送帶：拉下拉桿，這幾格上的地面敵人被往回送 5 秒
+    lever: [9, 6],
+    water: [[13, 6, 3, 4], [12, 0, 4, 1]],
+    pool: [['goblin', 0, 2], ['clock', 0, 3], ['runner', 0, 1], ['brute', 2, 2], ['balloon', 3, 2], ['paladin', 4, 2], ['frostmage', 5, 2], ['yeti', 5, 2], ['shield', 3, 1], ['moth', 6, 2], ['ogre', 7, 2]],
+    boss: 'bossTortoise', midBoss: [11, 'bossColossus', 0.5],
+    b0: 10.4, bg: 1.145, hp0: 1.76, hpg: 0.06, story: '矮人的齒輪要塞，路上鋪著長長的輸送帶。拉下拉桿，輸送帶就會反轉，把路上的敵人往回送——趁敵人擠成一團時用砲塔轟！',
+    limit: ['cannon', 'frost', 'sniper'], heroic: ['armored', 'swift'],
+  },
+  {
+    name: '冰火裂谷', en: 'FROSTFIRE RIFT', theme: 'rift', seed: 359, waves: 24, gold: 720, act: 2,
+    paths: [
+      [[-1, 1], [3, 1], [3, 4], [7, 4], [7, 1], [12, 1], [12, 5], [16, 5]],
+      [[-1, 8], [5, 8], [5, 6], [9, 6], [9, 8], [13, 8], [13, 5], [16, 5]],
+    ],
+    entries: [[0], [1]],
+    braziers: [[5, 2], [10, 3], [7, 7], [11, 7], [14, 3]], // 火盆：寒潮來時，旁邊 2 格內的塔不會被凍慢
+    cold: [26, 8, 0.6], // 寒潮 [每幾秒一次, 持續幾秒, 攻速變成幾成]
+    water: [[14, 7, 2, 3], [0, 4, 2, 3]],
+    pool: [['imp', 0, 2], ['goblin', 0, 2], ['runner', 0, 1], ['yeti', 2, 2], ['moth', 3, 1], ['clock', 3, 2], ['frostmage', 4, 2], ['brute', 5, 1], ['raven', 6, 1], ['shaman', 6, 2], ['paladin', 7, 1], ['ogre', 8, 2]],
+    boss: 'bossRaijin', midBoss: [9, 'bossYeti', 0.36],
+    b0: 9.6, bg: 1.145, hp0: 1.5, hpg: 0.058, story: '冰與火交界的裂谷，每隔一陣子就有寒潮吹過，塔會凍得動作變慢——只有火盆旁邊是暖的。把主力塔蓋在火盆附近！',
+    limit: ['arrow', 'magic', 'alchemy'], heroic: ['regen', 'shielded'],
+  },
+  {
+    name: '極光王座', en: 'AURORA THRONE', theme: 'aurora', seed: 373, waves: 28, gold: 760, act: 2,
+    paths: [
+      [[-1, 1], [5, 1], [5, 4], [2, 4], [2, 7], [7, 7], [7, 5], [11, 5], [11, 8], [16, 8]],
+      [[9, -1], [9, 2], [14, 2], [14, 5], [11, 5], [11, 8], [16, 8]],
+    ],
+    entries: [[0], [1]],
+    traps: [[6, 3], [8, 6], [13, 3]],
+    nests: [[4, 6, 3], [13, 7, 9], [8, 0, 15]],
+    water: [[14, 0, 2, 1], [0, 8, 2, 2]],
+    pool: [['goblin', 0, 2], ['imp', 0, 1], ['moth', 1, 3], ['clock', 1, 2], ['yeti', 2, 2], ['frostmage', 3, 2], ['raven', 4, 2], ['shade', 4, 1], ['paladin', 5, 2], ['balloon', 5, 2], ['shaman', 6, 2], ['gargoyle', 7, 2], ['brute', 6, 1], ['ogre', 8, 2]],
+    boss: 'bossWyrm', midBoss: [14, 'bossColossus', 0.6],
+    b0: 10.8, bg: 1.15, hp0: 2.0, hpg: 0.064, story: '極光下的冰封王座，永凍冰龍從千年的沉睡中醒來。雪崩陷阱和冰洞都在這裡——這是北境最後一戰！',
+    limit: ['arrow', 'magic', 'sniper'], heroic: ['horde', 'armored'],
+  },
 ];
 
 // ───────── 難度 ─────────
@@ -629,11 +677,14 @@ const ACHIEVEMENTS = [
   { id: 'avalanche', name: '雪崩之怒', desc: '雪崩陷阱累計擊倒 60 個敵人' },
   { id: 'nest10', name: '破巢者', desc: '累計打爛 10 個冰洞巢穴' },
   { id: 'anvil', name: '挖到寶了', desc: '清碎石挖出熔爐基座' },
+  { id: 'bossWyrm', name: '屠冰龍者', desc: '擊倒永凍冰龍' },
+  { id: 'all26', name: '北境之光', desc: '打贏第三章全部關卡' },
+  { id: 'warm', name: '圍爐取暖', desc: '在冰火裂谷不漏任何敵人過關' },
 ];
 const ENDLESS_UNLOCK = 3; // 打贏第 4 關後解鎖無盡模式
 const ACT_OPEN = [0, 14, 20]; // 每一章要先打贏幾關才開放
 // 圖鑑、說明裡敵人的順序
-const ENEMY_ORDER = ['slime', 'runner', 'beetle', 'bat', 'golem', 'healer', 'shield', 'splitter', 'mini', 'ogre', 'gargoyle', 'skeleton', 'wisp', 'crawler', 'mummy', 'crab', 'goblin', 'balloon', 'paladin', 'raven', 'brute', 'shaman', 'shade', 'mole', 'imp', 'yeti', 'clock', 'frostmage', 'moth', 'bossGolem', 'bossDragon', 'bossLich', 'bossRoc', 'bossWorm', 'bossPharaoh', 'bossKraken', 'bossTortoise', 'bossRaijin', 'bossEclipse', 'bossYeti', 'bossColossus'];
+const ENEMY_ORDER = ['slime', 'runner', 'beetle', 'bat', 'golem', 'healer', 'shield', 'splitter', 'mini', 'ogre', 'gargoyle', 'skeleton', 'wisp', 'crawler', 'mummy', 'crab', 'goblin', 'balloon', 'paladin', 'raven', 'brute', 'shaman', 'shade', 'mole', 'imp', 'yeti', 'clock', 'frostmage', 'moth', 'bossGolem', 'bossDragon', 'bossLich', 'bossRoc', 'bossWorm', 'bossPharaoh', 'bossKraken', 'bossTortoise', 'bossRaijin', 'bossEclipse', 'bossYeti', 'bossColossus', 'bossWyrm'];
 const WAVE_GAP = 14; // 一波出完之後到下一波的秒數
 
 // ───────── 英雄 ─────────

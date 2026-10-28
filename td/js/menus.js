@@ -14,7 +14,7 @@ const WorldMap = (() => {
   const NL3 = [[0.12, 0.8], [0.3, 0.56], [0.5, 0.74], [0.66, 0.46], [0.48, 0.2], [0.84, 0.24]];
   const NP3 = [[0.32, 0.92], [0.68, 0.78], [0.3, 0.62], [0.7, 0.46], [0.34, 0.3], [0.66, 0.12]];
   let cache = null;
-  const ICON = { autumn: 'tree', canyon: 'rock', meadow: 'tree', forest: 'pine', desert: 'cactus', snow: 'spine', swamp: 'mush', volcano: 'crystal', coast: 'palm', night: 'grave', sky: 'tree', cave: 'crystal', ruins: 'pillar', deep: 'coral', bamboo: 'bamboo', harbor: 'mast', river: 'tree', plateau: 'obelisk', amber: 'crystal', spire: 'obelisk', tundra: 'spine', forge: 'crate', glacier: 'crystal' };
+  const ICON = { autumn: 'tree', canyon: 'rock', meadow: 'tree', forest: 'pine', desert: 'cactus', snow: 'spine', swamp: 'mush', volcano: 'crystal', coast: 'palm', night: 'grave', sky: 'tree', cave: 'crystal', ruins: 'pillar', deep: 'coral', bamboo: 'bamboo', harbor: 'mast', river: 'tree', plateau: 'obelisk', amber: 'crystal', spire: 'obelisk', tundra: 'spine', forge: 'crate', glacier: 'crystal', fortress: 'pillar', rift: 'rock', aurora: 'obelisk' };
   function positions(w, h, act) { const pt = h > w * 1.05; const P = act === 2 ? (pt ? NP3 : NL3) : act ? (pt ? NP2 : NL2) : (pt ? NP : NL); const n = LEVELS.filter(L => (L.act || 0) === (act || 0)).length; return P.slice(0, n).map(([x, y]) => [x * w, y * h]); }
   function draw(w, h, act) {
     act = act || 0;

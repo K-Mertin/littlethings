@@ -84,7 +84,7 @@ function genEndlessWave(L, w) {
   // 精英：每 5 波（不是頭目波）一隊巨魔
   if ((w + 1) % 5 === 0 && (w + 1) % 10 !== 0) groups.push(makeGroup('ogre', 1 + Math.floor(w / 10), 0, delay + 1, hpMul));
   if ((w + 1) % 10 === 0) {
-    const bosses = L.act === 2 ? ['bossYeti', 'bossColossus', 'bossTortoise', 'bossRaijin', 'bossKraken', 'bossEclipse', 'bossPharaoh'] : L.act ? ['bossTortoise', 'bossRoc', 'bossRaijin', 'bossPharaoh', 'bossLich', 'bossKraken', 'bossEclipse'] : ['bossGolem', 'bossDragon', 'bossLich', 'bossRoc', 'bossWorm', 'bossPharaoh', 'bossKraken'];
+    const bosses = L.act === 2 ? ['bossYeti', 'bossColossus', 'bossWyrm', 'bossTortoise', 'bossRaijin', 'bossKraken', 'bossEclipse', 'bossPharaoh'] : L.act ? ['bossTortoise', 'bossRoc', 'bossRaijin', 'bossPharaoh', 'bossLich', 'bossKraken', 'bossEclipse'] : ['bossGolem', 'bossDragon', 'bossLich', 'bossRoc', 'bossWorm', 'bossPharaoh', 'bossKraken'];
     const b = bosses[Math.floor((w + 1) / 10 - 1) % bosses.length];
     groups.push(makeGroup(b, 1 + Math.floor(w / 30), 0, delay + 2, (1 + 0.06 * w) * 0.9));
     // 第 20 波之後頭目會帶一個不同的頭目副手

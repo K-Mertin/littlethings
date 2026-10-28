@@ -843,8 +843,8 @@ function bossLogic3(G, e, dt) {
     if (e.phase === 0) {
       if (e.abilT <= 0) { const tg = strongTowers(G, e, 4.2, 1)[0]; e.abilT = tg ? d.throwT : 1; if (tg) { lobAt(G, e, tg, 'snow', 3.5); Hook.fx('throw', G, e); Hook.sfx('stomp'); } }
     } else {
-      if (e.abilT <= 0) { e.abilT = 7; iceTowers(G, e.x, e.y, 2.6, 2); ring(G, e.x, e.y, 0.3, 2.6, 0.7, '#cff4ff'); Hook.shake(0.6); Hook.sfx('blizzard'); Hook.fx('roar3', G, e); }
-      if (e.abil2 <= 0) { e.abil2 = 11; summonAround(G, e, 'yeti', 2); }
+      if (e.abilT <= 0) { e.abilT = 8; iceTowers(G, e.x, e.y, 2.3, 2); ring(G, e.x, e.y, 0.3, 2.3, 0.7, '#cff4ff'); Hook.shake(0.6); Hook.sfx('blizzard'); Hook.fx('roar3', G, e); }
+      if (e.abil2 <= 0) { e.abil2 = 13; summonAround(G, e, 'yeti', 2); }
     }
   } else if (e.k === 'bossColossus') {
     e.abilT -= dt;

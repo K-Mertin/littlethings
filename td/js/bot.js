@@ -12,7 +12,8 @@ function botSpotScores(G, r) {
     if (c.path || c.block) continue;
     let s = 0;
     for (const p of samples) if (dist2(p.x, p.y, x + 0.5, y + 0.5) <= r * r) s += p.w;
-    out.push({ x, y, s: s * (c.pad ? 1.35 : 1) + (c.near === 1 ? 0.5 : 0) + (c.pad ? 3 : 0) });
+    const warm = G.braziers && G.braziers.some(b => dist2(b.x, b.y, x + 0.5, y + 0.5) <= 2.25 * 2.25);
+    out.push({ x, y, s: s * (c.pad ? 1.35 : 1) * (warm ? 1.3 : 1) + (c.near === 1 ? 0.5 : 0) + (c.pad ? 3 : 0) + (c.anv ? 2 : 0) });
   }
   out.sort((a, b) => b.s - a.s);
   G._spotCache[r] = out;

@@ -511,6 +511,8 @@ const Ach = {
     if (Prog.cleared() >= 15) this.give('act2');
     if (Prog.cleared() >= 20) this.give('all20');
     if (Prog.cleared() >= 21) this.give('act3');
+    if (Prog.cleared() >= 26) this.give('all26');
+    if (G.L.cold && G.lives >= G.maxLives) this.give('warm');
     if (G.L.fog && G.lives >= G.maxLives) this.give('dawn');
   },
   trap() { /* 雪崩擊倒數在 kill 事件裡累計 */ },
