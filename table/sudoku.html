@@ -63,6 +63,20 @@
   .side .tools button{min-height:58px}
 }
 .side{display:contents}
+.mbig{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:6px 0 4px}
+.mbig button{appearance:none;border:0;border-radius:16px;padding:12px;cursor:pointer;text-align:left;font:inherit;color:#fff;display:flex;flex-direction:column;gap:2px;min-height:76px}
+.mbig button b{font-size:17px;font-weight:900}
+.mbig button span{font-size:12px;opacity:.92}
+.mbig .path{background:linear-gradient(135deg,#6366f1,#ec4899)}
+.mbig .day{background:linear-gradient(135deg,#0ea5e9,#10b981)}
+.lv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(58px,1fr));gap:8px;max-height:52vh;overflow:auto;padding:2px}
+.lv-grid h5{grid-column:1/-1;margin:8px 0 0;font-size:13px;color:var(--mute)}
+.lv-grid button{appearance:none;border:0;background:var(--panel2);border-radius:14px;min-height:58px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font:inherit;color:var(--ink)}
+.lv-grid button b{font-size:18px;font-weight:900;line-height:1.1}
+.lv-grid button s{text-decoration:none;font-size:11px;color:#d1d5db;letter-spacing:1px}
+.lv-grid button s.on{color:#f59e0b}
+.lv-grid button.done{background:#eef0ff}.lv-grid button.done b{color:#4338ca}
+.lv-grid button:disabled{opacity:.35;cursor:default}
 @media (min-aspect-ratio:5/4){.side{display:flex}}
 </style>
 </head>
@@ -98,6 +112,7 @@
   </div>
 </main>
 <script src="common.js"></script>
+<script src="sudoku-puzzles.js"></script>
 <script>
 'use strict';
 // ======================================================================
@@ -357,7 +372,7 @@ function render() {
   numsEl.querySelectorAll('button').forEach(b => { const d = +b.dataset.d, left = n - cnt[d]; b.classList.toggle('done', left <= 0); b.querySelector('small').textContent = left > 0 ? left : '✓'; });
   numsEl.classList.toggle('note', noteMode);
   $('tNote').classList.toggle('on', noteMode); $('noteB').textContent = noteMode ? '開' : '關';
-  $('lv').textContent = (S.n === 6 ? '入門 6×6' : LVNAME[S.lv]);
+  $('lv').textContent = S.kind === 'path' ? '第 ' + (S.pid + 1) + ' 關' : S.kind === 'daily' ? '每日 ' + S.day.slice(5).replace('-', '/') : (S.n === 6 ? '入門 6×6' : LVNAME[S.lv]);
   $('mis').hidden = !pref.check; $('misN').textContent = S.mis;
   $('tm').textContent = fmt(S.time);
 }
@@ -375,6 +390,7 @@ function input(d) {
     S.val[sel] = d; S.notes[sel] = 0;
     // 填對時自動把同列同行同宮的筆記刪掉
     if (d === S.solution[sel]) for (const p of peers[sel]) S.notes[p] &= ~bit;
+    if (d !== S.solution[sel]) S.err = (S.err || 0) + 1;
     if (pref.check && d !== S.solution[sel]) { S.mis++; TB.sfx('bad'); } else TB.sfx('place');
     cells[sel].classList.remove('pop'); void cells[sel].offsetWidth; cells[sel].classList.add('pop');
   }
@@ -422,6 +438,7 @@ function checkDone() {
   for (let i = 0; i < n * n; i++) if (S.val[i] !== S.solution[i]) return;
   S.done = true; save(); stopTimer();
   TB.bump('sudoku', 'won'); TB.bump('sudoku:' + S.lv, 'won');
+  if (S.kind === 'path' || S.kind === 'daily') { sel = -1; render(); winAnim(); return doneSpecial(); }
   const key = 'sudoku:best:' + S.lv, best = TB.store.get(key, null), rec = best == null || S.time < best;
   if (rec) TB.store.set(key, S.time);
   sel = -1; render();
@@ -430,6 +447,64 @@ function checkDone() {
   setTimeout(() => TB.dialog({ title: rec ? '🏆 新紀錄！' : '🎉 完成了！',
     html: TB.statsHtml([['這局時間', fmt(S.time)], ['最佳紀錄', fmt(rec ? S.time : best)], ['錯誤', pref.check ? S.mis : '—'], ['提示', S.hints || 0]]) + '<p>' + (S.n === 6 ? '入門 6×6' : LVNAME[S.lv] + '難度') + '完成！</p>',
     buttons: [{ label: '看盤面' }, { label: '再來一題', primary: true, onClick: () => { setTimeout(() => newDialog(), 0); } }] }), (2 * n) * 45 + 500);
+}
+function winAnim() {
+  const n = S.n;
+  cells.forEach((el, i) => { const r = i / n | 0, c = i % n; setTimeout(() => { el.classList.remove('win'); void el.offsetWidth; el.classList.add('win'); }, (r + c) * 45); });
+  TB.sfx('win');
+}
+function starsOf() { const e = (S.err || 0), h = S.hints || 0; return e === 0 && h === 0 ? 3 : e <= 3 && h <= 1 ? 2 : 1; }
+function doneSpecial() {
+  const delay = (2 * S.n) * 45 + 500;
+  if (S.kind === 'path') {
+    const st = starsOf(), rec = TB.store.get('sudoku:path', {}), old = rec[S.pid] || 0;
+    if (st > old) { rec[S.pid] = st; TB.store.set('sudoku:path', rec); }
+    const bt = TB.store.get('sudoku:pathbest', {}); if (bt[S.pid] == null || S.time < bt[S.pid]) { bt[S.pid] = S.time; TB.store.set('sudoku:pathbest', bt); }
+    const last = S.pid >= SDPATH.length - 1, pid = S.pid;
+    setTimeout(() => TB.dialog({ title: '第 ' + (pid + 1) + ' 關完成！', html: '<p style="font-size:28px;color:#f59e0b;margin:4px 0">' + '★'.repeat(st) + '<span style="color:#e5e7eb">' + '★'.repeat(3 - st) + '</span></p>' +
+      TB.statsHtml([['時間', fmt(S.time)], ['填錯', S.err || 0], ['提示', S.hints || 0]]) + '<p style="font-size:13px">不填錯、不用提示就有 ★★★；填錯 3 次以內、提示 1 次以內 ★★。</p>',
+      buttons: [{ label: '看盤面' }, { label: last ? '關卡列表' : '下一關', primary: true, onClick: () => { setTimeout(() => last ? pathDialog() : startPath(pid + 1), 0); } }] }), delay);
+  } else {
+    const k = S.day, dd = TB.store.get('sudoku:daily', {}), first = dd[k] == null;
+    if (first || S.time < dd[k]) { dd[k] = S.time; TB.store.set('sudoku:daily', dd); }
+    if (first) { const st = TB.store.get('sudoku:streak', { n: 0, last: '' }); st.n = st.last === dayKey(new Date(Date.now() - 864e5)) ? st.n + 1 : 1; st.last = k; TB.store.set('sudoku:streak', st); }
+    const streak = TB.store.get('sudoku:streak', { n: 0 }).n;
+    setTimeout(() => TB.dialog({ title: '🎉 每日一題完成！', html: TB.statsHtml([['時間', fmt(S.time)], ['今天最佳', fmt(dd[k])], ['連續天數', streak]]) + '<p>明天會有新的題目。週一、週二簡單，週末最難。</p>',
+      buttons: [{ label: '看盤面' }, { label: '數獨之路', primary: true, onClick: () => { setTimeout(pathDialog, 0); } }] }), delay);
+  }
+}
+function dayKey(d) { d = d || new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function dailyInfo() {
+  const k = dayKey(), dow = (new Date().getDay() + 6) % 7, lv = [1, 1, 2, 2, 3, 3, 4][dow];
+  let h = 2166136261; for (const ch of k + 'sudoku') { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; }
+  const pool = SDDAILY[lv]; return { k, lv, p: pool[h % pool.length] };
+}
+function startFixed(str, lv, extra) {
+  stopTimer(); ++genToken;
+  const n = Math.round(Math.sqrt(str.length)), puzzle = str.split('').map(Number);
+  const solution = SD.search(puzzle, n, 1, false).sol;
+  S = Object.assign({ n, lv, puzzle, solution, val: puzzle.slice(), notes: new Array(n * n).fill(0), time: 0, mis: 0, err: 0, hints: 0, done: false, counted: false }, extra);
+  hist = []; sel = -1; noteMode = false; save(); build(); startTimer(); TB.sfx('deal');
+}
+function startPath(i) { const [lv, str] = SDPATH[i]; startFixed(str, lv, { kind: 'path', pid: i }); }
+function startDaily() { const d = dailyInfo(); startFixed(d.p, d.lv, { kind: 'daily', day: d.k }); }
+function pathDialog() {
+  const rec = TB.store.get('sudoku:path', {});
+  let open = 0; while (open < SDPATH.length - 1 && rec[open]) open++;
+  const total = Object.values(rec).reduce((a, b) => a + b, 0);
+  const groups = [[0, '入門 6×6'], [1, '簡單'], [2, '普通'], [3, '困難'], [4, '專家']];
+  let h = '<p>60 關由淺入深：從 6×6 入門一路到專家。完成一關就開放下一關。</p><p style="font-weight:700;color:#4338ca">★ ' + total + ' / ' + SDPATH.length * 3 + '</p><div class="lv-grid">';
+  let lastLv = -1;
+  SDPATH.forEach(([lv], i) => {
+    if (lv !== lastLv) { h += '<h5>' + groups[lv][1] + '</h5>'; lastLv = lv; }
+    const st = rec[i] || 0;
+    h += '<button data-i="' + i + '"' + (i <= open ? '' : ' disabled') + ' class="' + (st ? 'done' : '') + '"><b>' + (i + 1) + '</b><s class="' + (st ? 'on' : '') + '">' + '★'.repeat(st) + '☆'.repeat(3 - st) + '</s></button>';
+  });
+  h += '</div>';
+  TB.dialog({ title: '數獨之路', html: h, buttons: [{ label: '關閉' }] });
+  const g = document.querySelector('.lv-grid');
+  g.addEventListener('click', e => { const b = e.target.closest('button'); if (!b || b.disabled) return; TB.closeDialog(); TB.sfx('click'); startPath(+b.dataset.i); });
+  const cur = g.querySelector('button[data-i="' + open + '"]'); if (cur) cur.scrollIntoView({ block: 'center' });
 }
 function startTimer() { stopTimer(); timer = setInterval(() => { if (!S || S.done || document.hidden || document.querySelector('.tb-over')) return; S.time++; $('tm').textContent = fmt(S.time); if (S.time % 5 === 0) save(); }, 1000); }
 function stopTimer() { clearInterval(timer); timer = 0; }
@@ -443,12 +518,15 @@ async function newGame(lv) {
   let r;
   try { r = await GEN.ask({ type: 'gen', n, lv }); } catch (e) { r = SD.generate(n, lv); }
   if (my !== genToken) return;
-  S = { n, lv, puzzle: r.puzzle, solution: r.solution, val: r.puzzle.slice(), notes: new Array(n * n).fill(0), time: 0, mis: 0, hints: 0, done: false, counted: false };
+  S = { n, lv, puzzle: r.puzzle, solution: r.solution, val: r.puzzle.slice(), notes: new Array(n * n).fill(0), time: 0, mis: 0, err: 0, hints: 0, done: false, counted: false, kind: 'free' };
   hist = []; sel = -1; noteMode = false; save(); build(); startTimer(); TB.sfx('deal');
 }
 function newDialog() {
-  return TB.dialog({ title: '新題目',
-    html: '<p>把 1～9 填進空格，讓每一列、每一行、每一宮都剛好各出現一次。</p>' +
+  const di = dailyInfo(), dd = TB.store.get('sudoku:daily', {})[di.k], pr = TB.store.get('sudoku:path', {});
+  const p = TB.dialog({ title: '新題目',
+    html: '<div class="mbig"><button class="path" id="mPath"><b>🧭 數獨之路</b><span>60 關 · 已過 ' + Object.keys(pr).length + ' 關</span></button>' +
+      '<button class="day" id="mDay"><b>📅 每日一題</b><span>今天：' + LVNAME[di.lv] + (dd != null ? ' · 最佳 ' + fmt(dd) : '') + '</span></button></div>' +
+      '<p>或自由練習：把 1～9 填進空格，讓每一列、每一行、每一宮都剛好各出現一次。</p>' +
       TB.seg('難度', 'lv', LV, pref.lv) +
       TB.seg('填錯時標紅色', 'check', [['1', '要'], ['0', '不要']], pref.check ? '1' : '0'),
     buttons: (S ? [{ label: '取消', value: null }] : []).concat([{ label: '開始', primary: true, onClick: d => {
@@ -457,6 +535,9 @@ function newDialog() {
     } }]),
     dismiss: !!S,
   });
+  $('mPath').onclick = () => { TB.closeDialog(); TB.sfx('click'); setTimeout(pathDialog, 0); };
+  $('mDay').onclick = () => { TB.closeDialog(); TB.sfx('click'); startDaily(); };
+  return p;
 }
 
 // ---- 輸入 ----
@@ -470,10 +551,12 @@ $('tNote').onclick = () => { noteMode = !noteMode; TB.sfx('click'); render(); };
 $('bNew').onclick = () => newDialog();
 $('bInfo').onclick = () => {
   const s = TB.stats('sudoku'), b = k => { const v = TB.store.get('sudoku:best:' + k, null); return v == null ? '—' : fmt(v); };
-  TB.dialog({ title: '數獨', html: TB.statsHtml([['完成', s.won || 0], ['入門', b(0)], ['簡單', b(1)], ['普通', b(2)], ['困難', b(3)], ['專家', b(4)]]) +
+  const pr = TB.store.get('sudoku:path', {});
+  TB.dialog({ title: '數獨', html: TB.statsHtml([['完成', s.won || 0], ['入門', b(0)], ['簡單', b(1)], ['普通', b(2)], ['困難', b(3)], ['專家', b(4)], ['數獨之路 ★', Object.values(pr).reduce((x, y) => x + y, 0) + '/180'], ['每日連續', TB.store.get('sudoku:streak', { n: 0 }).n + ' 天']]) +
     TB.seg('填錯時標紅色', 'check', [['1', '要'], ['0', '不要']], pref.check ? '1' : '0') +
     '<div class="tb-rules"><h4>怎麼玩</h4><ul><li>每一列、每一行、每一個粗框的「宮」，都要剛好放進 1～9 各一次（入門 6×6 是 1～6）。</li><li>黑色粗體是題目給的數字，不能改；藍色是你填的。</li><li>每一題都只有一個答案，而且只靠推理就能解開，不用猜。</li></ul>' +
     '<h4>操作</h4><ul><li>點一個格子，再點下方的數字填進去。電腦也可以直接按鍵盤 1～9，方向鍵移動，Backspace 擦掉，N 切換筆記。</li><li><b>筆記</b>：打開後點數字會變成小字的候選數，方便記下「這格可能是哪些」。</li><li><b>提示</b>：幫你填一格並說明理由；有填錯的格子會先指出來。</li><li>點一個數字的格子，盤面上相同的數字會一起亮起來。</li></ul>' +
+    '<h4>數獨之路與每日一題</h4><ul><li><b>數獨之路</b>：60 關由 6×6 入門一路到專家，完成一關開放下一關。不填錯、不用提示拿 ★★★。</li><li><b>每日一題</b>：每天一題，週一、週二簡單，週三、週四普通，週五、週六困難，週日專家。每天完成可以累積連續天數。</li></ul>' +
     '<h4>小技巧</h4><ul><li>先找「某一宮只剩一格能放某數字」的地方。</li><li>某一格的同列、同行、同宮已經用掉八個數字，剩下那個就是答案。</li></ul></div>',
     buttons: [{ label: '好', primary: true, onClick: d => { pref.check = TB.segVal(d, 'check') === '1'; TB.store.set('sudoku:pref', pref); render(); } }] });
 };
