@@ -6,11 +6,12 @@
 
    Game definition (games/*.js push into LGAMES):
      { id, name, icon, col, blurb, players:[min,max], cat, rules(kid) → [lines],
+       opts?(kid) → [{ k, n:'label', o:[[value,'label'],…], d:default }]   lobby settings the leader may change,
        host(ctx)   → runs on the host only: { view(id), msg(id, d), tick?(dt), rate?, over, results(), leave?(id), back?(id) }
                      view(null) is the public view (big screen / watchers) and must never contain secrets.
        client(root, api) → runs on every screen in the game: { view(v), destroy?() }
        bot?(view, api)   → optional: plays one random-but-legal move (used by the tests) }
-   host ctx: { kid, players:[{id,name,animal,col}], hasTable, push(), sound(to,name), toast(to,text), online(id), leader() → id, now() }
+   host ctx: { kid, opt:{k:value} (the chosen settings), players:[{id,name,animal,col}], hasTable, push(), sound(to,name), toast(to,text), online(id), leader() → id, now() }
              push(): views changed, send them. Games with `rate` (Hz) are sent that often automatically.
    client api: { me (id or null), isTable, spectator, kid, players(), player(id), send(d), sfx(name),
                  vibrate(ms), avatar(p,size) → img url, color(p) → {c,d}, toast(text) } */
@@ -22,6 +23,14 @@ const LCATS = [{ id: 'table', n: '🃏 桌上遊戲' }, { id: 'draw', n: '🎨 �
 const LCAT_OF = { cards: 'table', treasure: 'table', spy: 'draw', telephone: 'draw', snake: 'action', fog: 'action', race: 'brain', ship: 'coop' };
 const lcatOf = g => LCAT_OF[g.id] || (LCATS.some(c => c.id === g.cat) ? g.cat : 'brain');   // never lose a game to an unknown cat
 const MAX_PLAYERS = 6;
+/* game settings: what the leader picked, checked against the game's own list */
+function optList(def, kid) { try { return (def && def.opts && def.opts(kid)) || []; } catch (e) { return []; } }
+function optResolve(def, kid, saved) {
+  const out = {};
+  for (const o of optList(def, kid)) { const v = saved ? saved[o.k] : undefined; out[o.k] = o.o.some(x => x[0] === v) ? v : o.d; }
+  return out;
+}
+const PTS_RANK = [3, 2, 1];
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const rnd = (a, b) => a + Math.random() * (b - a);
 const rint = n => Math.random() * n | 0;
@@ -105,12 +114,15 @@ const avatar = (p, size) => critterURL(p ? p.col : 0, p ? p.animal : 0, size || 
 const Host = {
   net: null, room: '', selfId: '', selfTable: false,
   players: [],          // {id,name,animal,col,online,table,joinT,trophies}
-  leadPref: null, kid: true, pick: null, state: 'lobby',
+  leadPref: null, kid: true, pick: null, state: 'lobby', opts: {}, board: {}, hist: [],
   def: null, game: null, inGame: [], introT: 0, res: null, lastSent: {}, sendAcc: 0, dirty: false, loop: 0, roomDirty: false, seq: 0,
 
   start(room, selfProf, asTable) {
     this.room = room; this.selfId = App.id; this.selfTable = asTable;
     this.kid = store.get('kid', true);
+    this.opts = store.get('opts', {}) || {};
+    const sb = tabStore.get('board', null);                       // scores survive a reload of the host's page
+    if (sb && sb.room === room) { this.board = sb.b || {}; this.hist = sb.h || []; } else { this.board = {}; this.hist = []; }
     this.pick = store.get('pick', LGAMES[0] && LGAMES[0].id);
     if (!LGAMES.some(g => g.id === this.pick)) this.pick = LGAMES[0] && LGAMES[0].id;
     this.addPlayer(this.selfId, selfProf, asTable);
@@ -144,7 +156,7 @@ const Host = {
     const animal = clamp((prof && prof.animal) | 0, 0, 5);
     if (!p) {
       if (!table && this.seats().length >= MAX_PLAYERS + 2) return null;      // a couple of watchers are fine
-      p = { id, name, animal, col: table ? 0 : this.freeCol(), online: true, table: !!table, joinT: ++this.seq, trophies: 0 };
+      p = { id, name, animal, col: table ? 0 : this.freeCol(), online: true, table: !!table, joinT: ++this.seq, trophies: this.board[id] ? this.board[id].w : 0 };
       this.players.push(p);
       if (!table) this.fx('*', 'join');
     } else { p.name = name; p.animal = animal; p.online = true; p.table = !!table; }
@@ -169,6 +181,12 @@ const Host = {
     switch (m.k) {
       case 'pick': if (this.state === 'lobby' && LGAMES.some(g => g.id === m.id)) { this.pick = m.id; store.set('pick', m.id); this.sendRoom(); } break;
       case 'mode': if (this.state === 'lobby') { this.kid = !!m.kid; store.set('kid', this.kid); this.sendRoom(); } break;
+      case 'opt': {
+        const def = LGAMES.find(g => g.id === m.g), o = optList(def, this.kid).find(x => x.k === m.o);
+        if (this.state === 'lobby' && o && o.o.some(x => x[0] === m.v)) { (this.opts[m.g] = this.opts[m.g] || {})[m.o] = m.v; store.set('opts', this.opts); this.sendRoom(); }
+        break;
+      }
+      case 'reset': if (this.state === 'lobby' || this.state === 'result') { this.board = {}; this.hist = []; this.players.forEach(p => p.trophies = 0); this.saveBoard(); this.sendRoom(); } break;
       case 'lead': if (this.byId(m.id) && !this.byId(m.id).table) { this.leadPref = m.id; this.sendRoom(); } break;
       case 'start': this.begin(); break;
       case 'skip': if (this.state === 'intro') this.introT = 0; break;
@@ -192,7 +210,7 @@ const Host = {
     const ids = this.inGame, kid = this.kid;
     const players = ids.map(id => { const p = this.byId(id); return { id, name: p.name, animal: p.animal, col: p.col }; });
     const ctx = {
-      kid, players, hasTable: this.players.some(p => p.table && p.online),
+      kid, players, opt: optResolve(this.def, kid, this.opts[this.def.id]), hasTable: this.players.some(p => p.table && p.online),
       push: () => { this.dirty = true; },
       sound: (to, name, arg) => this.fx(to, 'sfx', name, arg),
       toast: (to, text) => this.fx(to, 'toast', text),
@@ -212,14 +230,27 @@ const Host = {
     let rank = 0, prev = null;
     rows.forEach((row, i) => { if (prev === null || row.key !== prev) rank = i + 1; row.rank = rank; prev = row.key; });
     const winners = rows.filter(x => x.rank === 1);
-    if (!r.noWinner && rows.length > 1 && winners.length < rows.length) winners.forEach(w => { const p = this.byId(w.id); if (p) p.trophies++; });
+    const solo = winners.length === rows.length;
+    if (!r.noWinner && rows.length > 1 && !solo) winners.forEach(w => { const p = this.byId(w.id); if (p) p.trophies++; });
     const name = id => { const p = this.byId(id); return p ? p.name : '?'; };
-    const title = r.title || (rows.length <= 1 ? '完成！' : winners.length === rows.length ? '平手！大家都好厲害' : winners.map(w => name(w.id)).join('、') + ' 贏了！');
-    this.res = { title, sub: r.sub || '', rows: rows.map(x => ({ id: x.id, rank: x.rank, line: x.line || '' })), game: this.def.id };
+    const title = r.title || (rows.length <= 1 ? '完成！' : solo ? '平手！大家都好厲害' : winners.map(w => name(w.id)).join('、') + ' 贏了！');
+    /* room scoreboard: 3/2/1 points for the top three; a game may hand out its own (co-op games: everyone the same) */
+    const pts = {};
+    rows.forEach(x => { pts[x.id] = r.pts && r.pts[x.id] != null ? Math.max(0, r.pts[x.id] | 0) : (r.noWinner || rows.length < 2 || solo ? 0 : PTS_RANK[x.rank - 1] || 0); });
+    rows.forEach(x => {
+      const b = this.board[x.id] || (this.board[x.id] = { p: 0, w: 0, n: 0 });
+      b.p += pts[x.id]; b.n++;
+      if (!r.noWinner && rows.length > 1 && !solo && x.rank === 1) b.w++;
+    });
+    this.hist.push({ g: this.def.id, t: title, w: r.noWinner || solo ? [] : winners.map(w => w.id), k: this.kid ? 1 : 0 });
+    if (this.hist.length > 30) this.hist.shift();
+    this.saveBoard();
+    this.res = { title, sub: r.sub || '', rows: rows.map(x => ({ id: x.id, rank: x.rank, line: x.line || '', pts: pts[x.id] })), game: this.def.id };
     this.state = 'result'; this.game = null;
     this.fx('*', 'sfx', 'win');
     this.sendRoom();
   },
+  saveBoard() { tabStore.set('board', { room: this.room, b: this.board, h: this.hist }); },
   toLobby() { this.state = 'lobby'; this.game = null; this.res = null; this.sendRoom(); },
 
   step(dt) {
@@ -240,6 +271,8 @@ const Host = {
     return {
       k: 'room', room: this.room, hostId: this.selfId, leader: l ? l.id : this.selfId, kid: this.kid, pick: this.pick, state: this.state,
       game: this.def ? this.def.id : null, inGame: this.inGame, intro: Math.max(0, Math.ceil(this.introT)), res: this.res,
+      opt: optResolve(LGAMES.find(g => g.id === (this.state === 'lobby' ? this.pick : this.def ? this.def.id : this.pick)), this.kid, this.opts[this.state === 'lobby' ? this.pick : this.def ? this.def.id : this.pick]),
+      board: this.board, hist: this.hist.slice(-8),
       players: this.players.map(p => ({ id: p.id, name: p.name, animal: p.animal, col: p.col, online: p.online, table: p.table, trophies: p.trophies, joinT: p.joinT }))
     };
   },
@@ -427,16 +460,40 @@ const App = {
   },
 
   /* ---------- lobby ---------- */
+  optText(def, R) {
+    return optList(def, R.kid).map(o => { const x = o.o.find(y => y[0] === R.opt[o.k]); return x ? `${o.n}：${x[1]}` : ''; }).filter(Boolean);
+  },
+  optHTML(def, R) {
+    const list = optList(def, R.kid); if (!list.length) return '';
+    return `<div class="opts" id="opts"><div class="optH">⚙️ 玩法設定</div>${list.map(o => `<div class="optR"><span class="optN">${esc(o.n)}</span><div class="seg optSeg">${o.o.map((x, i) => `<button data-o="${esc(o.k)}" data-i="${i}" class="${R.opt[o.k] === x[0] ? 'on' : ''}">${esc(x[1])}</button>`).join('')}</div></div>`).join('')}</div>`;
+  },
+  boardHTML(R, big) {
+    const ids = Object.keys(R.board || {}).filter(id => this.player(id) && !this.player(id).table);
+    if (!ids.length) return '';
+    ids.sort((a, b) => R.board[b].p - R.board[a].p || R.board[b].w - R.board[a].w);
+    let rk = 0, prev = null;
+    const rows = ids.map((id, i) => {
+      const b = R.board[id], p = this.player(id);
+      if (b.p !== prev) { rk = i + 1; prev = b.p; }
+      return `<div class="bdR ${rk === 1 && b.p > 0 ? 'top' : ''} ${id === this.id ? 'me' : ''}"><span class="bdK">${rk === 1 && b.p > 0 ? '👑' : rk}</span><img alt="" src="${avatar(p, 64)}"><span class="bdN">${esc(p.name)}</span><span class="bdS">🏆${b.w}<small>·${b.n} 局</small></span><span class="bdP">${b.p}<small>分</small></span></div>`;
+    }).join('');
+    const hist = (R.hist || []).slice().reverse().map(h => {
+      const d = LGAMES.find(g => g.id === h.g), w = h.w.map(id => this.player(id)).filter(Boolean);
+      return `<span class="bdH" title="${esc(h.t)}">${d ? d.icon : '🎮'} ${w.length ? w.map(p => `<img alt="" src="${avatar(p, 48)}">`).join('') : '🤝'}</span>`;
+    }).join('');
+    return `<section class="card bdCard"><div class="row" style="justify-content:space-between;margin-bottom:8px"><h2 style="margin:0${big ? ';font-size:24px' : ''}">🏅 這個房間的排行榜</h2>${this.isLeader() ? '<button class="btn small ghost" id="bdReset">歸零</button>' : ''}</div>
+      <div class="bdList">${rows}</div>${hist ? `<div class="bdHs"><small>最近幾局</small>${hist}</div>` : ''}<p class="sub" style="text-align:left;font-size:12px;margin-top:6px">每局第 1 名 3 分、第 2 名 2 分、第 3 名 1 分；合作遊戲過關大家一起加分。</p></section>`;
+  },
   drawLobby() {
     const R = this.R, box = $('lobbyWrap');
     if (!R) { box.innerHTML = `<div class="card"><p class="wait">連線到房間 <b>${esc(this.room)}</b> …</p></div><button class="btn ghost" id="lvBtn">← 離開</button>`; $('lvBtn').onclick = () => this.leave(); return; }
     const def = LGAMES.find(g => g.id === R.pick) || LGAMES[0];
     const lead = this.isLeader(), leader = this.player(R.leader);
     const seats = R.players.filter(p => !p.table);
-    const pls = seats.map(p => `<span class="pl ${p.id === this.id ? 'me' : ''} ${p.online ? '' : 'off'}">${p.id === R.leader ? '<span class="crown">👑</span>' : ''}<img alt="" src="${avatar(p, 96)}">${esc(p.name)}${p.trophies ? `<span class="tr">🏆${p.trophies}</span>` : ''}</span>`).join('') || '<span class="wait">還沒有人加入</span>';
+    const pls = seats.map(p => `<span class="pl ${p.id === this.id ? 'me' : ''} ${p.online ? '' : 'off'}">${p.id === R.leader ? '<span class="crown">👑</span>' : ''}<img alt="" src="${avatar(p, 96)}">${esc(p.name)}${p.trophies ? `<span class="ptr">🏆${p.trophies}</span>` : ''}</span>`).join('') || '<span class="wait">還沒有人加入</span>';
     const tables = R.players.filter(p => p.table && p.online).length;
     const modeSeg = `<div class="seg" id="modeSeg"><button data-k="1" class="${R.kid ? 'on' : ''}">🧒 小朋友</button><button data-k="0" class="${R.kid ? '' : 'on'}">🧑 大人</button></div>`;
-    const gameInfo = d => `<div class="gsel"><span class="ic">${d.icon}</span><div><div class="nm" style="font-weight:900;font-size:20px">${esc(d.name)}</div><div class="bl" style="color:var(--mute);font-size:14px">${esc(d.blurb)}</div><div class="pp" style="color:var(--pri);font-weight:700;font-size:13px">${d.players[0]}–${d.players[1]} 人 · ${R.kid ? '小朋友模式' : '大人模式'}</div></div></div>`;
+    const gameInfo = d => `<div class="gsel"><span class="ic">${d.icon}</span><div><div class="nm" style="font-weight:900;font-size:20px">${esc(d.name)}</div><div class="bl" style="color:var(--mute);font-size:14px">${esc(d.blurb)}</div><div class="pp" style="color:var(--pri);font-weight:700;font-size:13px">${d.players[0]}–${d.players[1]} 人 · ${R.kid ? '小朋友模式' : '大人模式'}${this.optText(d, R).map(t => ' · ' + esc(t)).join('')}</div></div></div>`;
 
     if (this.table) {
       box.innerHTML = `
@@ -451,8 +508,9 @@ const App = {
           <div style="display:flex;flex-direction:column;gap:16px">
             <section class="card"><h2 style="font-size:24px">玩家（${seats.filter(p => p.online).length}）</h2><div class="players">${pls}</div></section>
             <section class="card"><h2 style="font-size:24px">${lead ? '選一個遊戲' : `等 👑 ${esc(leader ? leader.name : '房主')} 選遊戲`}</h2>${gameInfo(def)}
-              ${lead ? `<div class="games" id="games" style="margin-top:14px;grid-template-columns:repeat(4,1fr)"></div><div class="row" style="margin-top:14px;justify-content:space-between">${modeSeg}<button class="btn acc" id="startBtn">開始玩 ▶</button></div>` : ''}
+              ${lead ? `<div class="games" id="games" style="margin-top:14px;grid-template-columns:repeat(4,1fr)"></div>${this.optHTML(def, R)}<div class="row" style="margin-top:14px;justify-content:space-between">${modeSeg}<button class="btn acc" id="startBtn">開始玩 ▶</button></div>` : ''}
             </section>
+            ${this.boardHTML(R, true)}
             <p class="sub">這台是大螢幕：顯示大家都能看的畫面，每個人自己的手牌和身分只會出現在自己的手機上。</p>
             <div><button class="btn ghost small" id="lvBtn">關閉房間</button></div>
           </div>
@@ -472,9 +530,11 @@ const App = {
         </section>
         <section class="card">
           ${lead ? `<div class="row" style="justify-content:space-between;margin-bottom:12px"><h2 style="margin:0">選一個遊戲</h2>${modeSeg}</div><div class="games" id="games"></div>
+             ${this.optHTML(def, R)}
              <button class="btn acc wide" id="startBtn" style="margin-top:14px">開始玩 ${def.icon} ${esc(def.name)} ▶</button>`
           : `<h2>${esc(`等 👑 ${leader ? leader.name : '房主'} 選遊戲`)}</h2>${gameInfo(def)}`}
         </section>
+        ${this.boardHTML(R, false)}
         <div class="row" style="justify-content:space-between"><button class="btn small ghost" id="lvBtn">← 離開房間</button>${this.role === 'host' ? '<span class="sub" style="font-size:12px">你是開房的人：請讓這個畫面一直開著</span>' : ''}</div>`;
       const sb = $('shareBtn'), cb = $('copyBtn');
       sb.onclick = async () => {
@@ -488,6 +548,7 @@ const App = {
       if (plsEl) plsEl.querySelectorAll('.pl.me').forEach(el => el.onclick = () => { if (me) { Sfx.play('say', me.animal); this.send({ k: 'say' }); } });
     }
     $('lvBtn').onclick = () => { if (this.role !== 'host' || confirm('關閉房間？大家都會離開。')) this.leave(); };
+    const br = $('bdReset'); if (br) br.onclick = () => { if (confirm('排行榜歸零？')) this.send({ k: 'reset' }); };
     if (lead) {
       const gbox = $('games');
       LCATS.forEach(c => {
@@ -503,6 +564,11 @@ const App = {
         gbox.appendChild(b);
       }
       $('modeSeg').querySelectorAll('button').forEach(b => b.onclick = () => this.send({ k: 'mode', kid: b.dataset.k === '1' }));
+      const ob = $('opts');
+      if (ob) ob.querySelectorAll('button[data-o]').forEach(b => b.onclick = () => {
+        const o = optList(def, R.kid).find(x => x.k === b.dataset.o); if (!o) return;
+        Sfx.play('tick'); this.send({ k: 'opt', g: def.id, o: o.k, v: o.o[+b.dataset.i][0] });
+      });
       $('startBtn').onclick = () => { Sfx.play('go'); this.send({ k: 'start' }); };
     }
   },
@@ -514,6 +580,7 @@ const App = {
     else if (R.intro <= 3 && R.intro > 0) Sfx.play('tick');
     $('introBox').innerHTML = `<div class="big">${def.icon}</div><h2>${esc(def.name)}</h2>
       <div class="pp" style="color:var(--pri);font-weight:900">${R.kid ? '🧒 小朋友模式' : '🧑 大人模式'}${playing ? '' : '　·　這局你在旁邊看'}</div>
+      ${this.optText(def, R).length ? `<div class="optChips">${this.optText(def, R).map(t => `<span>${esc(t)}</span>`).join('')}</div>` : ''}
       <ul class="rules">${(def.rules(R.kid) || []).map(l => `<li>${esc(l)}</li>`).join('')}</ul>
       <div class="count">${R.intro}</div>
       ${this.isLeader() ? '<button class="btn acc" id="skipBtn">準備好了，開始！</button>' : ''}`;
@@ -526,7 +593,7 @@ const App = {
     if (!prev || prev.state !== 'result') { this.vib(80); }
     const name = id => { const p = this.player(id); return p ? p.name : '?'; };
     $('resultBox').innerHTML = `<div class="big">🏆</div><h2>${esc(res.title)}</h2>${res.sub ? `<p class="sub">${esc(res.sub)}</p>` : ''}
-      <div class="res">${res.rows.map(r => `<div class="r ${r.rank === 1 && res.rows.length > 1 ? 'win' : ''}"><span class="rk">${r.rank}</span><img alt="" src="${avatar(this.player(r.id), 96)}"><div><div class="nm">${esc(name(r.id))}${r.id === this.id ? '（你）' : ''}</div><div class="ln">${esc(r.line)}</div></div></div>`).join('')}</div>
+      <div class="res">${res.rows.map(r => `<div class="r ${r.rank === 1 && res.rows.length > 1 ? 'win' : ''}"><span class="rk">${r.rank}</span><img alt="" src="${avatar(this.player(r.id), 96)}"><div style="flex:1;min-width:0"><div class="nm">${esc(name(r.id))}${r.id === this.id ? '（你）' : ''}</div><div class="ln">${esc(r.line)}</div></div>${r.pts ? `<span class="rp">+${r.pts}</span>` : ''}</div>`).join('')}</div>
       ${this.isLeader() ? '<div class="row" style="justify-content:center"><button class="btn acc" id="againBtn">再玩一次</button><button class="btn ghost" id="toLobbyBtn">換遊戲</button></div>' : `<p class="wait">等 👑 ${esc(name(R.leader))} 決定下一步</p>`}`;
     $('result').hidden = false;
     const a = $('againBtn'), l = $('toLobbyBtn');

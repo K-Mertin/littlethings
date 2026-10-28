@@ -32,6 +32,7 @@
   LGAMES.push({
     id: 'treasure', name: '藏寶島', icon: '🏝️', col: '#1fa6d8', cat: 'party',
     blurb: '偷偷藏寶，再去挖別人的小島', players: [2, 6],
+    opts: kid => [{ k: 'tt', n: '每回合', o: kid ? [[20, '20 秒'], [30, '30 秒'], [45, '45 秒']] : [[12, '12 秒'], [20, '20 秒'], [30, '30 秒']], d: kid ? 30 : 20 }],
     rules: kid => kid ? [
       '每個人都有一座小島 🏝️，先偷偷把 🍪💎👑 藏好（別讓別人看到！）',
       '輪到你時，選一座別人的島，點一格挖下去 ⛏️',
@@ -47,7 +48,7 @@
     host(ctx) {
       const kid = ctx.kid, ids = ctx.players.map(p => p.id), n = ids.length, now = () => ctx.now();
       const G = kid ? 4 : 6, NC = G * G, PC = kid ? PK : PA;
-      const HIDE = 40, TURN = kid ? 30 : 20, REV = kid ? 2.1 : 1.7, RMAX = kid ? (n === 2 ? 10 : n === 3 ? 8 : 6) : 10, MAXDIG = 3;
+      const HIDE = 40, TURN = (ctx.opt && ctx.opt.tt) || (kid ? 30 : 20), REV = kid ? 2.1 : 1.7, RMAX = kid ? (n === 2 ? 10 : n === 3 ? 8 : 6) : 10, MAXDIG = 3;
       const S = {};
       ids.forEach(id => S[id] = { pl: PC.map(() => null), lay: Array(NC).fill('.'), dug: Array(NC).fill('.'), rdy: false, pts: 0, found: 0, cells: 0, traps: 0, probe: null, best: false });
       let ph = 'hide', st = '', T = now() + HIDE, tm = HIDE, over = false, hide0 = now();
