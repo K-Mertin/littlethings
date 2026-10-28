@@ -107,6 +107,7 @@ function levelAvail(li) {
 function newGame(li, diff, opts) {
   opts = opts || {};
   const W = opts.weekly || null;
+  if (opts.rush) { li = RUSH.li; diff = 'normal'; opts.endless = false; }
   if (W) { li = W.li; diff = 'normal'; opts.endless = true; opts.meta = {}; }
   const L = LEVELS[li], T = THEMES[L.theme], D = DIFFS[diff] || DIFFS.normal;
   const M = metaBonus(opts.meta !== undefined ? opts.meta : Store.data.meta);
@@ -118,7 +119,7 @@ function newGame(li, diff, opts) {
     paths: levelPaths(L), fpaths: L.paths.map(p => buildPath([p[0], p[p.length - 1]])),
     grid: buildGrid(L, T), wave: -1, spawners: [], enemies: [], towers: [], projs: [],
     parts: [], texts: [], rings: [], bolts: [], nextT: null, state: 'ready', dirty: true,
-    heroic: !!opts.heroic, weekly: W, mods: new Set(mods), troops: [], pools: [],
+    heroic: !!opts.heroic, weekly: W, rush: !!opts.rush, mods: new Set(mods), troops: [], pools: [],
     towersAvail: W ? W.towers.slice() : TOWER_ORDER.filter(k => TOWERS[k].unlock <= lv),
     skills: {
       meteor: { cd: 0, max: SKILLS.meteor.cd * M.meteorCd, on: SKILLS.meteor.unlock <= lv },
@@ -136,8 +137,9 @@ function newGame(li, diff, opts) {
   if (G.chal === 'iron') G.lives = 1;
   G.mod = null;
   G.stormT = L.storm ? L.storm[0] * 0.6 : 0; G.stormOn = false;
-  G.maxLives = G.lives;
-  G.waves = G.endless ? [] : genWaves(L);
+  if (!opts.rush) G.maxLives = G.lives;
+  G.waves = G.endless ? [] : opts.rush ? genRushWaves(L) : genWaves(L);
+  if (opts.rush) { G.gold = RUSH.gold + M.startGold; G.lives = G.maxLives = RUSH.lives + M.lives; G.towersAvail = TOWER_ORDER.slice(); }
   if (G.heroic) for (const w of G.waves) for (const g of w.groups) g.hp *= HEROIC_HP;
   if (G.mods.has('horde')) for (const w of G.waves) for (const g of w.groups) if (!ENEMIES[g.k].boss) g.n = Math.max(g.n + 1, Math.round(g.n * 1.3));
   G.nWaves = G.endless ? Infinity : G.waves.length;
@@ -432,6 +434,7 @@ function killEnemy(G, e, src) {
   }
   e.alive = false;
   if (e._pk) G.stats.poisonKills++;
+  if (e.boss) G.stats.bossKills = (G.stats.bossKills || 0) + 1;
   if (src && src.trap) { G.stats.trapKills++; e._tk = true; }
   if (e.d.shatter) {
     // 冰晶蛾：碎成冰片，附近的同伴得到一層不會回充的護盾
@@ -1414,7 +1417,7 @@ function step(G, dt) {
     if (sp.timer <= 0 && sp.left > 0) { spawnEnemy(G, sp.k, sp.entry, sp.hp); sp.left--; sp.timer = sp.gap; }
   }
   if (G.spawners.length) G.spawners = G.spawners.filter(s => s.left > 0);
-  if (G.state === 'run' && G.wave >= 0 && !G.spawners.length && G.nextT === null && G.wave < G.nWaves - 1) G.nextT = WAVE_GAP;
+  if (G.state === 'run' && G.wave >= 0 && !G.spawners.length && G.nextT === null && G.wave < G.nWaves - 1 && (!G.rush || !G.enemies.some(e => e.alive))) G.nextT = WAVE_GAP;
   updateLevelMech(G, dt);
   updateTroops(G, dt);
   updateEnemies(G, dt);
