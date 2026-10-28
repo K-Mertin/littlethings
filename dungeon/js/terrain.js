@@ -51,6 +51,12 @@ const TEX = {
       (x, px, v) => slab(x, px, v, { base: P.floor, mortar: '#1e1210', mortK: 0.5, jit: 0.12, crack: 0.1, crackCol: '#c8441a', layouts: BIG }),
       (x, px, v) => { slab(x, px, v, { base: P.floor, mortar: P.line, jit: 0.05, bevel: 0.12, layouts: [LAYOUTS[5]] }); for (let k = 0; k < 2; k++) px((H(k, v, 3) * 15) | 0, (H(v, k, 3) * 15) | 0, '#e8fbff'); },
       (x, px, v) => { slab(x, px, v, { base: P.floor, mortar: P.line, jit: 0.08, crack: 0.1, crackCol: '#7a3aa0', layouts: BIG }); },
+      // 溺沒古城：長著水藻的古老石磚
+      (x, px, v) => { slab(x, px, v, { base: P.floor, mortar: P.line, jit: 0.1, crack: 0.12, crackCol: '#1f3432', layouts: LAYOUTS }); for (let k = 0; k < 4; k++) { const cx = (H(k, v, 12) * 14) | 0, cy = (H(v, k, 13) * 14) | 0; px(cx, cy, '#4f8a6a'); px(cx + 1, cy, '#3f7a5a'); if (k % 2) px(cx, cy + 1, '#5fa07a'); } },
+      // 星骸虛空：帶星屑的淡紫色石板
+      (x, px, v) => { slab(x, px, v, { base: P.floor, mortar: P.line, jit: 0.07, bevel: 0.1, crack: 0.06, crackCol: '#2a2640', layouts: BIG }); for (let k = 0; k < 3; k++) px((H(k, v, 21) * 15) | 0, (H(v, k, 22) * 15) | 0, k ? '#c8c0e8' : '#ffe8a0'); },
+      // 終焉之心：泛著紅光裂縫的黑曜石
+      (x, px, v) => { slab(x, px, v, { base: P.floor, mortar: '#120a10', mortK: 0.55, jit: 0.1, crack: 0.16, crackCol: '#c8304a', layouts: BIG }); },
     ];
     t.floor = [0, 1, 2, 3, 4, 5].map(v => this.mk((x, px) => FLO[bi](x, px, v)));
     // ---- 牆頂 ----
@@ -85,6 +91,8 @@ const TEX = {
         if (bi === 3 && v === 1) { x.fillStyle = P.deco; x.fillRect(5, 8, 2, 4); x.fillStyle = P.deco2; x.fillRect(5, 8, 1, 2); }
         if (bi === 3) { x.fillStyle = '#d8f4ff'; for (const ix of v === 2 ? [2, 6, 12] : [9]) { x.fillRect(ix, 5, 2, 1); x.fillRect(ix, 6, 1, 2); } }
         if (bi === 4 && v === 1) { x.fillStyle = P.deco; x.fillRect(6, 7, 4, 1); x.fillRect(7, 8, 1, 4); x.fillRect(9, 9, 1, 2); x.fillRect(6, 11, 3, 1); }
+        if (bi === 5 && v !== 2) { x.fillStyle = '#2f6a4a'; for (const ix of v ? [3, 11] : [7]) { x.fillRect(ix, 5, 1, 7 + (ix % 3)); x.fillRect(ix + 1, 7, 1, 4); } x.fillStyle = '#5fa07a'; x.fillRect(v ? 3 : 7, 5, 1, 2); x.fillStyle = 'rgba(120,230,210,.25)'; x.fillRect(0, 13, 16, 2); }
+        if (bi >= 6 && v === 1) { x.fillStyle = bi === 6 ? '#ffe8a0' : '#ff5a6a'; x.fillRect(4, 8, 1, 1); x.fillRect(11, 11, 1, 1); x.fillStyle = bi === 6 ? '#9ab8ff' : '#c060ff'; x.fillRect(8, 6, 1, 1); }
       }
       x.fillStyle = 'rgba(0,0,0,.35)'; x.fillRect(0, 15, 16, 1);
     };
@@ -228,6 +236,21 @@ const TEX = {
         (x, px) => { x.fillStyle = '#c8c0d0'; x.fillRect(4, 10, 7, 1); x.fillRect(3, 9, 2, 3); x.fillRect(10, 9, 2, 3); },
         (x, px) => { x.fillStyle = P.deco2; x.fillRect(6, 6, 4, 4); x.fillStyle = '#2a1428'; x.fillRect(7, 7, 2, 2); },
       ],
+      [ // 古城：貝殼、水草、發光的海葵
+        (x, px) => { x.fillStyle = '#e8d8c8'; x.fillRect(5, 9, 5, 3); x.fillRect(6, 8, 3, 1); x.fillStyle = '#b8a090'; for (let i = 5; i < 10; i += 2) x.fillRect(i, 9, 1, 3); x.fillStyle = '#f8f0e8'; x.fillRect(11, 11, 2, 2); },
+        (x, px) => { x.fillStyle = P.deco; x.fillRect(6, 10, 1, 3); x.fillRect(8, 9, 1, 4); x.fillRect(10, 10, 1, 3); x.fillStyle = P.deco2; x.fillRect(6, 9, 1, 1); x.fillRect(8, 8, 1, 1); x.fillRect(10, 9, 1, 1); x.fillStyle = '#2a4446'; x.fillRect(5, 13, 7, 1); },
+        (x, px) => { x.fillStyle = '#2f6a4a'; for (const [a, b, h] of [[4, 13, 6], [6, 13, 8], [11, 13, 5]]) { x.fillRect(a, b - h, 1, h); x.fillRect(a + 1, b - h + 2, 1, h - 3); } x.fillStyle = '#4f9a6a'; x.fillRect(6, 5, 1, 2); },
+      ],
+      [ // 虛空：星屑、隕石碎片、法陣
+        (x, px) => { x.fillStyle = P.deco; x.fillRect(7, 7, 1, 1); x.fillRect(4, 11, 1, 1); x.fillRect(11, 5, 1, 1); x.fillStyle = 'rgba(255,230,160,.45)'; x.fillRect(6, 7, 3, 1); x.fillRect(7, 6, 1, 3); },
+        (x, px) => { for (const [a, b, w] of [[4, 9, 3], [9, 11, 4], [7, 5, 2]]) { x.fillStyle = '#2a2640'; x.fillRect(a, b + 1, w, 2); x.fillStyle = '#5a5480'; x.fillRect(a, b, w, 2); x.fillStyle = P.deco2; x.fillRect(a, b, 1, 1); } },
+        (x, px) => { x.fillStyle = 'rgba(154,184,255,.4)'; x.fillRect(4, 4, 8, 1); x.fillRect(4, 11, 8, 1); x.fillRect(4, 4, 1, 8); x.fillRect(11, 4, 1, 8); x.fillStyle = 'rgba(255,217,138,.6)'; x.fillRect(7, 7, 2, 2); },
+      ],
+      [ // 終焉：發光裂縫、碎骨
+        (x, px) => { x.fillStyle = '#1a0a10'; let cx = 4; for (let j = 3; j < 14; j++) { x.fillRect(cx, j, 2, 1); if (j % 3 === 0) cx += 2; } x.fillStyle = P.deco; cx = 4; for (let j = 3; j < 14; j++) { x.fillRect(cx, j, 1, 1); if (j % 3 === 0) cx += 2; } },
+        (x, px) => { x.fillStyle = '#c8b8c0'; x.fillRect(4, 10, 7, 1); x.fillRect(3, 9, 2, 3); x.fillRect(10, 9, 2, 3); },
+        (x, px) => { x.fillStyle = P.deco2; x.fillRect(6, 6, 4, 4); x.fillStyle = '#2a0a14'; x.fillRect(7, 7, 2, 2); },
+      ],
     ];
     t.deco = DECO[bi].map(fn => this.mk(fn));
     t.web = this.mk((x, px) => { x.fillStyle = 'rgba(220,220,235,.55)'; for (let i = 0; i < 9; i++) { px(i, 0, 'rgba(220,220,235,.5)'); px(0, i, 'rgba(220,220,235,.5)'); px(i, i, 'rgba(220,220,235,.6)'); } for (let i = 0; i < 6; i++) { px(i, 5 - i, 'rgba(220,220,235,.45)'); px(i + 1, 8 - i, 'rgba(220,220,235,.35)'); } px(2, 0, '#fff'); });
@@ -339,7 +362,21 @@ const Terr = {
         if (!(sm & 1)) c.fillRect(X, Y + 2, 16, 1); if (!(sm & 4)) c.fillRect(X, Y + 13, 16, 1);
         break;
       }
-      case T.WATER: case T.LAVA: break; // 每格動畫，另外畫
+      case T.WATER: case T.LAVA: case T.DEEP: break; // 每格動畫，另外畫
+      case T.CHASM: { // 虛空裂谷：星空＋上方的斷崖
+        c.fillStyle = '#04030a'; c.fillRect(X, Y, 16, 16);
+        for (let k = 0; k < 3; k++) { const sx = (hash2(x * 3 + k, y, 51) * 16) | 0, sy = (hash2(x, y * 3 + k, 52) * 16) | 0, b = hash2(x, y, 53 + k); if (b < 0.55) { c.fillStyle = b < 0.12 ? '#ffe8a0' : b < 0.3 ? '#9ab8ff' : 'rgba(255,255,255,.55)'; c.fillRect(X + sx, Y + sy, 1, 1); } }
+        if (hash2(x, y, 57) < 0.05) { c.fillStyle = 'rgba(160,140,255,.5)'; const sx = X + 5 + ((hash2(x, y, 58) * 6) | 0), sy = Y + 5 + ((hash2(x, y, 59) * 6) | 0); c.fillRect(sx - 1, sy, 3, 1); c.fillRect(sx, sy - 1, 1, 3); c.fillStyle = '#ffffff'; c.fillRect(sx, sy, 1, 1); }
+        const nb = (xx, yy) => xx < 0 || yy < 0 || xx >= F.w || yy >= F.h ? T.CHASM : F.t[yy * F.w + xx];
+        const up = nb(x, y - 1), lf = nb(x - 1, y), rt = nb(x + 1, y), dn = nb(x, y + 1);
+        const solidUp = up !== T.CHASM && up !== T.BRIDGE;
+        if (solidUp) { const pal = BIOMES[bi].pal; for (let j = 0; j < 7; j++) { c.fillStyle = shade(pal.floor2, -0.35 - j * 0.07); c.fillRect(X, Y + j, 16, 1); } c.fillStyle = shade(pal.floor, -0.15); c.fillRect(X, Y, 16, 1); c.fillStyle = 'rgba(0,0,0,.35)'; for (let i = 1; i < 16; i += 5) c.fillRect(X + i + (y % 3), Y + 2, 1, 4 + (i % 3)); c.fillStyle = 'rgba(4,3,10,.6)'; c.fillRect(X, Y + 7, 16, 2); }
+        c.fillStyle = shade(BIOMES[bi].pal.floor2, -0.25);
+        if (lf !== T.CHASM && lf !== T.BRIDGE) c.fillRect(X, Y, 1, 16);
+        if (rt !== T.CHASM && rt !== T.BRIDGE) c.fillRect(X + 15, Y, 1, 16);
+        if (dn !== T.CHASM && dn !== T.BRIDGE) { c.fillRect(X, Y + 15, 16, 1); c.fillStyle = 'rgba(0,0,0,.4)'; c.fillRect(X, Y + 14, 16, 1); }
+        return;
+      }
       default: fl();
         if (v === T.FLOOR || v === T.ALTAR || v === T.CHEST) {
           const d = F.deco[y * F.w + x];
@@ -347,7 +384,7 @@ const Terr = {
         }
     }
     // 牆邊陰影（環境光遮蔽）
-    if (v !== T.WATER && v !== T.LAVA && v !== T.PILLAR) {
+    if (v !== T.WATER && v !== T.LAVA && v !== T.PILLAR && v !== T.DEEP) {
       const m = (s >> 5) & 255, wall = i => (m >> i) & 1;
       if (wall(0)) { for (let j = 0; j < 6; j++) { c.fillStyle = 'rgba(0,0,0,' + (0.42 - j * 0.07) + ')'; c.fillRect(X, Y + j, 16, 1); } }
       if (wall(6)) { c.fillStyle = 'rgba(0,0,0,.24)'; c.fillRect(X, Y, 2, 16); c.fillStyle = 'rgba(0,0,0,.1)'; c.fillRect(X + 2, Y, 2, 16); }

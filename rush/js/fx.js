@@ -123,5 +123,5 @@ const FX = {
     for (let i = D.length - 1; i >= 0; i--) { D[i].z -= v * dt; if (D[i].z < -9) D.splice(i, 1); }
   },
 };
-const ENEMY_COL = { grunt: '#9a6cf0', runner: '#ff6b4a', brute: '#6fc95e', shield: '#9aa7c7', thrower: '#f0a83a', splitter: '#6fe07a', mini: '#6fe07a' };
+const ENEMY_COL = { grunt: '#9a6cf0', runner: '#ff6b4a', brute: '#6fc95e', shield: '#9aa7c7', thrower: '#f0a83a', splitter: '#6fe07a', mini: '#6fe07a', bat: '#ff7a3a', healer: '#3fcf8a', magma: '#ff6a1a' };
 function fmtNum(n) { n = Math.round(n); return n >= 10000 ? (n / 1000).toFixed(0) + 'K' : n >= 1000 ? (n / 1000).toFixed(1) + 'K' : String(Math.max(1, n)); }

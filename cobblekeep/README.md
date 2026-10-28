@@ -1,6 +1,6 @@
 # Cobble Keep
 
-A 3D fantasy first-person shooter that plays like DOOM: keys, doors, secrets, a status bar and a hero portrait that reacts. The Dark Wizard Morvane has stolen the Crown Crystal; you play a young squire, Rowan or Lyra, crossing five lands to bring it home. Ten stages in five worlds, each world ending with a boss. The game is one file (`index.html`) with no sound files. Three.js loads from a CDN, so it needs an internet connection the first time. Sculpted monsters load from `assets/cast/` and baked surfaces from `assets/tex/` (see below); opened straight from disk (`file://`) the game falls back to its simpler built-in models and painted textures.
+A 3D fantasy first-person shooter that plays like DOOM: keys, doors, secrets, a status bar and a hero portrait that reacts. The Dark Wizard Morvane has stolen the Crown Crystal; you play a young squire, Rowan or Lyra, crossing five lands to bring it home. Part I has ten stages in five worlds, each world ending with a boss. Part II, *The Rift Lands*, adds five more stages in three new worlds with three new bosses, and a Survival Arena mode. The game is one file (`index.html`) with no sound files. Three.js loads from a CDN, so it needs an internet connection the first time. Sculpted monsters load from `assets/cast/` and baked surfaces from `assets/tex/` (see below); opened straight from disk (`file://`) the game falls back to its simpler built-in models and painted textures.
 
 ## Story
 - **Hero:** pick Rowan (squire knight) or Lyra (spellblade squire) on the title screen. The choice changes the HUD portrait and the name used in the story.
@@ -10,6 +10,30 @@ A 3D fantasy first-person shooter that plays like DOOM: keys, doors, secrets, a 
 - **Bosses:** each boss arrives with a cinematic banner (name, title and a line) and says something when defeated: Grukk the Goblin Chief, Nocturna the Bat Queen, Sethep the Mummy King, Hrimgar the Frost Giant and Morvane the Dark Wizard.
 - **Ending:** clearing stage 10 plays a four-panel epilogue before the final results.
 - Story panels advance with a tap, click, Space or Enter, and can be skipped.
+
+## Part II: The Rift Lands
+After the Crown Crystal comes home, a shard tears open a rift in the old Elderwood. Part II is picked from its own tab on the title screen; clearing stage 10 also offers to carry straight on.
+
+| # | Stage | World | Keys | Boss |
+|---|---|---|---|---|
+| 11 | Elderwood Trail | Old woods | red, blue | |
+| 12 | Gloomcap Hollow | Old woods | red, blue | Slime Queen (Glooma) |
+| 13 | Ember Forge | Ember forge (lava) | red, blue | |
+| 14 | Molten Depths | Ember forge (lava) | red, blue, yellow | Forge Titan (Ignar) |
+| 15 | Rift Spire | Rift (void pools) | red, blue, yellow | Shade of Morvane |
+
+- **Rune pillars:** every zone holds a carved pillar. Walk into it to light it (a beam of light rises). The rune seal only rings once every pillar is lit. The HUD shows how many are lit. Lighting one wakes a small ambush around it.
+- **Sealed vaults:** every zone also has a vault behind a rune gate (`O`). It cannot be forced; it grinds open when that zone's pillar is lit, and holds a chest and two good items.
+- **New monsters:** *slime* (hops in, splits into two slimelings when popped), *powder goblin* (sprints at you, lights the keg on its back and blows up; popped, it explodes too and hurts its friends), *shade mage* (ghostly, blinks away when hurt or crowded, throws slow homing ghost-flames), *shield warden* (its shield takes 85% off direct hits unless it is mid-swing or caught unaware; fire blasts and lightning get round it), *goblin shaman* (backs away and heals hurt monsters nearby with a green beam; pop it first).
+- **New bosses:** the *Slime Queen* leaps to where you stand (a green ring marks the landing) and sheds two slimes at two thirds and one third health. The *Forge Titan* raises its fists while a red ring glows round it, then slams everything inside; it also throws molten rocks and calls powder goblins. The *Shade of Morvane* blinks round its tower, throws fans of homing ghost-flames and calls shade mages.
+- **Thunder Rod (weapon 5):** found in the first zone of stage 11. Its bolt strikes the first foe in line and leaps to up to four more nearby, losing a little power each jump. Uses thunder crystals (cap 60), which turn up in Part II stages, chests and vaults.
+- **New surfaces:** bark, living wood, thorn hedges, leaf litter and mossy paths; basalt with glowing cracks, riveted iron, forge brick, grates and lava; rift stone, void brick, star marble and void pools. They are painted in code like the original set (they have no baked versions yet).
+
+## Ratings
+Every cleared stage gets a rating as well as stars. **S** needs all three stars inside the stage's par time (par grows with the map's size); **A** is all three stars, or two stars inside one and a half times par; **B** is at least one star or inside par; otherwise **C**. The results card shows the time, the par time and the rating, and the stage list on the title remembers your best rating.
+
+## Survival Arena
+The third tab on the title screen. Three walled arenas: the Castle Colosseum, the Ember Pit (with lava pools) and the Rift Garden. Monsters pour in through four gates in waves; the mix grows from goblins and bats to wardens and shade mages. Every fifth wave a boss arrives (all eight take turns, with less health than in the story). Between waves there is a short break, supplies drop round the middle, and the field holds at most 18 monsters at once. You start with all five weapons. Score is earned per monster (champions count double) plus a bonus per wave; your best score and wave per arena are saved in the browser.
 
 ## Sculpted monsters
 Monsters are sculpted in code as distance fields ("digital clay"): smooth shapes blended together, with eye sockets and mouths carved out, skinned to a bone rig so arms and legs bend when they walk and swing.
@@ -56,7 +80,7 @@ Open `index.html` in a browser, or play it at https://k-mertin.github.io/littlet
 
 - **Pick a stage:** every stage can be chosen from the title screen on any device. Nothing is locked.
 - **Records:** cleared stages show a tick, your best time and stars. These are saved in that browser.
-- **Direct link:** add `#stage7` (or any number 1–10) to the URL to open the title screen with that stage ready to play.
+- **Direct link:** add `#stage7` (or any number 1–15) to the URL to open the title screen with that stage ready to play.
 - **Mouse:** click inside the view to capture the mouse. Press Esc to release it and pause. The pause menu can restart the stage or return to stage select.
 - **Length:** a full playthrough of all 10 stages takes about an hour.
 
@@ -65,7 +89,7 @@ Open `index.html` in a browser, or play it at https://k-mertin.github.io/littlet
 | WASD | move (Shift to run) |
 | Mouse | look; left click to shoot (F or Ctrl also shoot) |
 | E / Space | open doors, ring the goal block |
-| 1 2 3 4 / wheel | rune sword, arcane wand, repeater crossbow, fire staff |
+| 1 2 3 4 5 / wheel | rune sword, arcane wand, repeater crossbow, fire staff, thunder rod |
 | Tab / M | map |
 | N | music on/off |
 | Arrow keys | turn and move without a mouse |
@@ -145,6 +169,7 @@ The maps are the `MAPS` array in `index.html`; stage settings (name, textures, s
 - **Walls:** `G` grass block, `L` hedge, `P` planks, `W` log, `C` cobble, `B` cream brick, `K` bookshelf, `U` `V` `Y` pink/blue/yellow wool, `N` sandstone, `H` chiseled sandstone, `I` ice, `Q` snow brick, `R` spruce, `J` candy stripe, `Z` cake, `E` chocolate.
 - **Doors and goal:** `D` door, `1` red door, `2` blue door, `3` yellow door, `S` secret wall, `X` goal block.
 - **Floors:** `.` and `,` are indoor floors, `~` and `-` are outdoor floors (open sky), `=` is water or a cursed pool (cursed pools hurt). Each stage picks the textures for these, and can repaint a wall letter with `walls` (the cursed capital turns the castle tapestries `U` into torn banners).
-- **Enemies:** `p` player start, `j` goblin, `m` imp mage, `f` fire wisp, `g` haunted knight, `d` bat, `v` crystal totem, `z` the stage's boss (set by `boss` in `STAGES`), `q` Dark Wizard. (Inside the code the old type names `jelly`, `shroom`, `puff`, `golem`, `bee` and `teapot` are kept; `TYPEMODEL` maps them to the new models.)
-- **Pickups:** `h` heart, `u` super heart, `a` magic ward, `b` mana potion, `c` quiver of bolts, `s` fire runes, `i` Sugar Rush, `w` repeater crossbow, `x` fire staff, `r` `e` `y` red/blue/yellow keys.
+- **Enemies:** `p` player start, `j` goblin, `m` imp mage, `f` fire wisp, `g` haunted knight, `d` bat, `v` crystal totem, `*` slime, `+` powder goblin, `?` shade mage, `@` shield warden, `<` goblin shaman, `z` the stage's boss (set by `boss` in `STAGES`), `q` Dark Wizard. (Inside the code the old type names `jelly`, `shroom`, `puff`, `golem`, `bee` and `teapot` are kept; `TYPEMODEL` maps them to the new models.)
+- **Pickups:** `h` heart, `u` super heart, `a` magic ward, `b` mana potion, `c` quiver of bolts, `s` fire runes, `)` thunder crystals, `i` Sugar Rush, `w` repeater crossbow, `x` fire staff, `(` thunder rod, `r` `e` `y` red/blue/yellow keys.
+- **Part II objects:** `|` rune pillar, `O` rune gate of a sealed vault. The generator records which zone each pillar and gate belongs to (`rows.meta`), so a pillar opens its own zone's vault.
 - **Decorations:** `t` iron lamp post, `o` flower, `k` cactus, `n` frost crystals, `l` cursed crystal.

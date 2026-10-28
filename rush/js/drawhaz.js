@@ -75,6 +75,10 @@ function drawHazGround(g, G, t) {
     else if (o.t === 'saw') drawSawRail(g, o);
     else if (o.t === 'lob') drawLobWarn(g, o, t);
     else if (o.t === 'boss' && o.strike) drawStrikeWarn(g, o, t);
+    else if (o.t === 'lava') drawLava(g, o, t);
+    else if (o.t === 'geyser') drawGeyserGround(g, o, t);
+    else if (o.t === 'pool') drawPool(g, o, t);
+    else if (o.t === 'boss' && o.breath) drawBreath(g, o, t);
   }
 }
 
@@ -145,11 +149,16 @@ function drawLobWarn(g, o, t) {
 
 function drawLob(g, o) {
   const p = P(o.x, o.z, o.h), gnd = P(o.x, o.z, 0);
-  const s = (o.kind === 'bomb' ? 0.8 : 1.15) * p.s;
+  const s = (o.kind === 'bomb' || o.kind === 'shell' ? 0.8 : 1.15) * p.s;
   g.fillStyle = 'rgba(0,0,0,.2)'; ell(g, gnd.x, gnd.y, s * 0.35, s * 0.12); g.fill();
   g.save(); g.translate(p.x, p.y); g.rotate(o.kind === 'missile' ? Math.PI : o.age * 8);
   g.drawImage(ART.haz.proj[o.kind], -s / 2, -s / 2, s, s);
   g.restore();
+  if (o.kind === 'fireball' || o.kind === 'magma') {
+    g.globalCompositeOperation = 'lighter';
+    const gs = s * 1.6; g.drawImage(ART.glow.rocket, p.x - gs / 2, p.y - gs / 2, gs, gs);
+    g.globalCompositeOperation = 'source-over';
+  }
   if (o.kind === 'missile' || o.kind === 'bomb') {
     g.globalCompositeOperation = 'lighter';
     const gs = s * 0.9; g.drawImage(ART.glow.rocket, p.x - gs / 2, p.y - gs / 2 - (o.kind === 'missile' ? -s * 0.3 : s * 0.35), gs, gs);

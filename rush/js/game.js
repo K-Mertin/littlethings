@@ -14,9 +14,9 @@ for (let i = 0; i < VIS_CAP; i++) {
 function newGame(s, opts) {
   opts = opts || {};
   const mode = opts.mode || 'stage';
-  const L = mode === 'endless' ? legStage(0, opts.seed) : mode === 'daily' ? dailyStage(opts.seed || todayKey()) : genStage(s, opts.seed, opts.gen);
+  const L = mode === 'endless' ? legStage(0, opts.seed) : mode === 'boss' ? bossLeg(0, opts.seed) : mode === 'daily' ? dailyStage(opts.seed || todayKey()) : genStage(s, opts.seed, opts.gen);
   if (mode !== 'stage') s = L.s;
-  const up = opts.up || { men: 0, dmg: 0, rate: 0 };
+  const up = Object.assign({ men: 0, dmg: 0, rate: 0, armor: 0, medic: 0, mortar: 0 }, opts.up || {});
   G = {
     s, L, st: 'play', t: 0, dist: 0, evI: 0, spd: L.spd, scroll: true,
     N: startN(s) + up.men * 2, peak: 0, wid: 'rifle', lv: 1,
@@ -28,15 +28,31 @@ function newGame(s, opts) {
     hint: null, sim: !!opts.sim,
     rule: L.rule, ice: L.rule === 'ice', vx: 0,
     mode, leg: 0, hpMul: 1, seed: opts.seed || 1, legStart: 0,
+    spec: { medic: up.medic, mortar: up.mortar, guard: 0 }, buff: { shield: 0, fury: 0 }, armK: 1 - up.armor * 0.02,
+    wounded: 0, medT: 2, morT: 2, metT: 3, healed: 0,
   };
+  if (WEAPONS[opts.wpn]) G.wid = opts.wpn;
   if (mode === 'endless') { G.adE = 0.85; G.adMin = 0.12; G.hpMul = 0.8; }
-  if (mode === 'daily') { G.N = startN(s); G.dmgK = 1; G.rateK = 1; }
+  if (mode === 'boss') { G.hpMul = 0.9; }
+  if (mode === 'daily') { G.N = startN(s); G.dmgK = 1; G.rateK = 1; G.spec = { medic: 0, mortar: 0, guard: 0 }; G.armK = 1; G.wid = 'rifle'; }
   G.peak = G.N;
   syncSoldiers(true);
   return G;
 }
 
 const emit = (name, a) => { if (!G.sim) G.q.push([name, a]); };
+const chained = () => G.mode === 'endless' || G.mode === 'boss';
+
+// 受到傷害：護罩、盾兵、護甲會減少損失；醫護兵之後會救回一部分
+const lossTxt = l => l > 0 ? '−' + l : '擋住！';
+function takeLoss(raw, why) {
+  if (raw <= 0) return 0;
+  if (G.buff && G.buff.shield > 0) { emit('blocked'); return 0; }
+  const k = (G.armK || 1) * (1 - Math.min(SPEC_MAX, G.spec ? G.spec.guard : 0) * 0.07);
+  const loss = Math.max(1, Math.round(raw * k));
+  if (G.spec && G.spec.medic > 0) G.wounded += loss * 0.45;
+  return loss;
+}
 const fxOn = () => !G.sim && typeof FX !== 'undefined';
 
 // 畫面上的士兵（最多 VIS_CAP 個）
@@ -85,6 +101,8 @@ function mkEnemy(k, x, z, hp, sHP) {
   const K = ENEMIES[k];
   const o = { t: 'en', id: _uid++, k, art: K.art || k, x, z, hp, max: hp, r: K.r, h: K.h, spd: K.spd, home: K.home, mass: K.mass, sHP, ph: Math.random() * 6, hit: 0, dead: 0 };
   if (k === 'thrower') { o.hold = 15 + Math.random() * 6; o.throws = 0; o.throwT = 0.6 + Math.random() * 0.8; }
+  if (k === 'healer') { o.hold = 17 + Math.random() * 5; o.heals = 0; o.healT = 1.2 + Math.random() * 0.6; }
+  if (k === 'bat') { o.fly = 1; o.bx = x; o.amp = 1.2 + Math.random() * 1.0; o.f = 2 + Math.random() * 1.2; o.zph = Math.random() * 6; }
   return o;
 }
 
@@ -145,6 +163,10 @@ function spawnEvents() {
       });
     } else if (e.type === 'saw') {
       for (const m of e.list) G.objs.push({ t: 'saw', id: _uid++, cx: m.cx, amp: m.amp, f: m.f, ph: m.ph, x: m.cx, z: z0 + m.dz, r: 0.72, tick: 0, spin: 0 });
+    } else if (e.type === 'lava') {
+      G.objs.push({ t: 'lava', id: _uid++, z: z0, len: e.len, bridges: e.bridges.map(b => Object.assign({ x: b.cx + b.amp * Math.sin(G.t * b.f + b.ph) }, b)), tick: 0 });
+    } else if (e.type === 'geyser') {
+      for (const m of e.list) G.objs.push({ t: 'geyser', id: _uid++, x: m.x, z: z0 + m.dz, per: m.per, ph: m.ph, r: 1.15, hitC: -1, killC: -1 });
     } else if (e.type === 'spike') {
       for (const m of e.list) G.objs.push({ t: 'spike', id: _uid++, x0: m.x0, x1: m.x1, x: (m.x0 + m.x1) / 2, z: z0 + m.dz, len: 2.6, per: m.per, ph: m.ph, hitC: -1 });
     } else if (e.type === 'wave') {
@@ -173,6 +195,7 @@ function spawnEvents() {
 
 // 頭目丟的東西
 const BOSS_MOVES = {
+  dragon:   { kind: 'fireball', every: 3.6, n: 1 },
   golem:    { kind: 'rock',    every: 3.4, n: 1 },
   scorpion: { kind: 'poison',  every: 2.9, n: 1 },
   yeti:     { kind: 'ice',     every: 3.2, n: 2 },
@@ -187,7 +210,7 @@ function fire(dt) {
   if (G.N <= 0 || !G.sold.length) return;
   const w = WEAPONS[G.wid];
   const shooters = Math.min(G.sold.length, MAX_SHOOTERS);
-  const rate = w.rate * G.rateK;
+  const rate = w.rate * G.rateK * (G.buff && G.buff.fury > 0 ? 1.6 : 1);
   G.fireAcc += dt * rate * shooters;
   const per = w.dmg * lvMult(G.lv) * G.dmgK * G.N / shooters;
   let n = 0;
@@ -242,6 +265,7 @@ function kill(o, b) {
       for (let k = 0; k < 3; k++) G.objs.push(mkEnemy('mini', clamp(o.x + (k - 1) * 0.8, -PX_MAX, PX_MAX), o.z + 0.3 + (k % 2) * 0.5, o.max * 0.28, o.sHP));
       emit('split', o);
     }
+    if (o.k === 'magma') G.objs.push({ t: 'pool', id: _uid++, x: o.x, z: o.z, r: 1.05, life: 3.2, tick: 0 });
   } else if (o.t === 'wall' || o.t === 'crate') {
     const r = applyGate(o.rw, true);
     floatText(o.t === 'wall' ? G.px : o.x, o.z, o.t === 'wall' ? 2.4 : 1.6, (o.t === 'wall' ? '破牆！' : '') + r.txt, '#ffe066', o.t === 'wall' ? 1.5 : 1.1);
@@ -262,7 +286,7 @@ function kill(o, b) {
     G.shake = 1.2;
     o.deadAt = G.t;
     if (fxOn()) FX.bossdie(o);
-    if (G.mode === 'endless') nextLeg();
+    if (G.mode === 'endless' || (G.mode === 'boss' && G.leg < BR_BOSSES.length - 1)) nextLeg();
     else G.endT = 2.2;
   }
 }
@@ -280,7 +304,7 @@ function updateBullets(dt) {
     for (let j = 0; j < O.length; j++) {
       const o = O[j];
       if (o.dead || o === b.last) continue;
-      if (o.t === 'saw' || o.t === 'spike' || o.t === 'lob' || o.t === 'divider') continue;
+      if (o.t === 'saw' || o.t === 'spike' || o.t === 'lob' || o.t === 'divider' || o.t === 'lava' || o.t === 'geyser' || o.t === 'pool' || o.t === 'shell') continue;
       if (o.t === 'wall') {
         if (o.z < z0 - 0.2 || o.z > b.z + 0.2) continue;
         if (o.z < bz) { bz = o.z; best = o; }
@@ -327,6 +351,8 @@ function applyGate(g, reward) {
   else if (g.k === 'div') { setN(Math.ceil(G.N / g.v), 'gate'); good = false; txt = '÷' + g.v; }
   else if (g.k === 'wpn') { G.wid = g.v; txt = WEAPONS[g.v].name; }
   else if (g.k === 'lv') { G.lv = Math.min(LV_MAX, G.lv + 1); txt = '火力 Lv' + G.lv; }
+  else if (g.k === 'spec') { const n = G.spec[g.v]; G.spec[g.v] = Math.min(SPEC_MAX, n + 1); txt = SPEC[g.v].name + (n >= SPEC_MAX ? ' 已滿' : ' +1'); emit('spec', g.v); }
+  else if (g.k === 'buff') { G.buff[g.v] = BUFF[g.v].dur; txt = BUFF[g.v].name; emit('buff', g.v); }
   return { good, txt };
 }
 
@@ -343,13 +369,14 @@ function passGate(g) {
 // 無盡模式：打倒頭目後接下一段
 function nextLeg() {
   G.leg++;
-  const L2 = legStage(G.leg, G.seed, { N: Math.max(5, G.N), wid: G.wid, lv: G.lv });
+  const carry = { N: Math.max(5, G.N), wid: G.wid, lv: G.lv };
+  const L2 = G.mode === 'boss' ? bossLeg(G.leg, G.seed, carry) : legStage(G.leg, G.seed, carry);
   const off = G.dist + 28;
   for (const e of L2.ev) { e.d += off; G.L.ev.push(e); }
   G.legStart = G.dist;
   G.L.len = off + L2.len;
   G.boss = null; G.stopAt = null; G.scroll = true;
-  G.hpMul = 0.8 + G.leg * 0.06 + G.leg * G.leg * 0.012;
+  G.hpMul = G.mode === 'boss' ? 0.9 + G.leg * 0.04 : 0.8 + G.leg * 0.06 + G.leg * G.leg * 0.012;
   // 換場景要等頭目倒下的動畫播完
   G.pendLeg = L2; G.legT = 1.5;
   emit('legclear', { leg: G.leg });
@@ -413,6 +440,7 @@ function step(dt, input) {
 
   fire(dt);
   updateBullets(dt);
+  tickSupport(dt, v);
 
   const cr = crowdR();
   const O = G.objs;
@@ -439,6 +467,81 @@ function step(dt, input) {
       }
       if (o.pair.used) o.fade += dt * 2.5;
       if (o.z < -6) O.splice(i, 1);
+    } else if (o.t === 'lava') {
+      o.z -= v * dt;
+      for (const b of o.bridges) b.x = b.cx + b.amp * Math.sin(G.t * b.f + b.ph);
+      o.burn = false;
+      if (G.N > 0 && cr.rz > o.z && -cr.rz < o.z + o.len) {
+        // 部隊有多少比例不在橋上
+        const ex = Math.max(0.35, cr.rx * 0.5), a0 = G.px - ex, a1 = G.px + ex;
+        let safe = 0;
+        for (const b of o.bridges) safe += Math.max(0, Math.min(a1, b.x + b.w) - Math.max(a0, b.x - b.w));
+        const out = 1 - clamp(safe / (a1 - a0), 0, 1);
+        if (out > 0.08) {
+          o.burn = true;
+          o.tick -= dt;
+          if (o.tick <= 0) {
+            o.tick = 0.22;
+            const loss = takeLoss(Math.max(1, Math.ceil(G.N * 0.07 * out)), 'lava');
+            floatText(G.px, 0.4, 1.5, lossTxt(loss), '#ffb04a', 1);
+            setN(G.N - loss, 'lava');
+            emit('lava', { loss });
+            if (G.N <= 0) { lose(); return; }
+          }
+        }
+      }
+      if (o.z + o.len < -8) O.splice(i, 1);
+    } else if (o.t === 'geyser') {
+      o.z -= v * dt;
+      const c = (G.t + o.ph) % o.per, idx = Math.floor((G.t + o.ph) / o.per);
+      o.erupt = c > o.per - 0.9; o.warn = !o.erupt && c > o.per - 1.9;
+      if (o.erupt) {
+        if (o.killC !== idx) { o.killC = idx; if (o.z < 45 && o.z > -3) emit('geyser', o); }
+        // 噴出來的火柱也會燒怪物
+        for (const e of O) if (e.t === 'en' && !e.dead && Math.abs(e.x - o.x) < o.r + e.r * 0.5 && Math.abs(e.z - o.z) < o.r + e.r * 0.5) hurt(e, e.max * 1.3 * dt);
+        if (idx !== o.hitC && G.N > 0 && Math.abs(o.z) < o.r + cr.rz * 0.7 && Math.abs(o.x - G.px) < o.r + cr.rx * 0.6) {
+          o.hitC = idx;
+          const loss = takeLoss(Math.max(1, Math.ceil(G.N * 0.12)) + 1, 'geyser');
+          floatText(o.x, 0.6, 1.8, lossTxt(loss), '#ffb04a', 1.1);
+          setN(G.N - loss, 'geyser');
+          G.shake = Math.max(G.shake, 0.4);
+          emit('hit', { loss });
+          if (G.N <= 0) { lose(); return; }
+        }
+      }
+      if (o.z < -6) O.splice(i, 1);
+    } else if (o.t === 'pool') {
+      o.z -= v * dt; o.life -= dt;
+      if (G.N > 0 && Math.abs(o.z) < o.r + cr.rz * 0.6 && Math.abs(o.x - G.px) < o.r + cr.rx * 0.5) {
+        o.tick -= dt;
+        if (o.tick <= 0) {
+          o.tick = 0.3;
+          const loss = takeLoss(Math.max(1, Math.ceil(G.N * 0.04)), 'pool');
+          floatText(o.x, 0.4, 1.3, lossTxt(loss), '#ffb04a', 0.9);
+          setN(G.N - loss, 'pool');
+          emit('lava', { loss });
+          if (G.N <= 0) { lose(); return; }
+        }
+      }
+      if (o.life <= 0 || o.z < -6) O.splice(i, 1);
+    } else if (o.t === 'shell') {
+      // 我方砲兵的砲彈
+      if (!o.rel) { o.sz -= v * dt; o.tz -= v * dt; }
+      o.age += dt;
+      const q = Math.min(1, o.age / o.T);
+      o.x = lerp(o.sx, o.tx, q); o.z = lerp(o.sz, o.tz, q); o.h = lerp(o.sh, 0, q) + 7 * q * (1 - q);
+      if (o.age >= o.T) {
+        O.splice(i, 1);
+        if (fxOn()) FX.boom(o.tx, o.tz, 1.1, true);
+        emit('shellboom', o);
+        for (const e of O) {
+          if (e.t !== 'en' || e.dead) continue;
+          const dx = e.x - o.tx, dz = e.z - o.tz;
+          if (dx * dx + dz * dz < 2.1 * 2.1) hurt(e, o.dmg);
+        }
+        const B = G.boss;
+        if (B && !B.dead && B.intro <= 0 && Math.abs(B.x - o.tx) < B.r + 1 && Math.abs(B.z - o.tz) < B.r + 1.5) hurt(B, o.dmg * 0.6);
+      }
     } else if (o.t === 'bar' || o.t === 'crate') {
       o.z -= v * dt;
       if (o.dead || o.z < -6) O.splice(i, 1);
@@ -446,10 +549,10 @@ function step(dt, input) {
       if (o.dead) { O.splice(i, 1); continue; }
       o.z -= v * dt;
       if (o.z <= cr.rz + 0.2) {
-        const loss = Math.max(1, Math.ceil(o.hp / o.sHP * 0.7));
+        const loss = takeLoss(Math.max(1, Math.ceil(o.hp / o.sHP * 0.7)), 'wall');
         O.splice(i, 1);
         G.shake = Math.max(G.shake, 0.6);
-        floatText(G.px, 0.6, 2, '撞牆 −' + loss, '#ff6b6b', 1.2);
+        floatText(G.px, 0.6, 2, loss ? '撞牆 −' + loss : '擋住！', '#ff6b6b', 1.2);
         setN(G.N - loss, 'wall');
         emit('wallhit', { loss });
         if (fxOn()) FX.wallbreak(o);
@@ -473,8 +576,8 @@ function step(dt, input) {
         o.tick -= dt;
         if (o.tick <= 0) {
           o.tick = 0.3;
-          const loss = Math.max(1, Math.ceil(G.N * 0.06));
-          floatText(o.x, 0.4, 1.4, '−' + loss, '#ff6b6b', 0.9);
+          const loss = takeLoss(Math.max(1, Math.ceil(G.N * 0.06)), 'saw');
+          floatText(o.x, 0.4, 1.4, lossTxt(loss), '#ff6b6b', 0.9);
           setN(G.N - loss, 'saw');
           emit('saw', { loss, o });
           if (G.N <= 0) { lose(); return; }
@@ -488,8 +591,8 @@ function step(dt, input) {
       o.warn = !o.up && c > o.per - 0.45;
       if (o.up && idx !== o.hitC && cr.rz > o.z - 0.1 && -cr.rz < o.z + o.len && G.px + cr.rx > o.x0 && G.px - cr.rx < o.x1) {
         o.hitC = idx;
-        const loss = Math.max(1, Math.ceil(G.N * 0.12)) + 1;
-        floatText(G.px, 0.5, 1.6, '−' + loss, '#ff6b6b', 1.1);
+        const loss = takeLoss(Math.max(1, Math.ceil(G.N * 0.12)) + 1, 'spike');
+        floatText(G.px, 0.5, 1.6, lossTxt(loss), '#ff6b6b', 1.1);
         setN(G.N - loss, 'spike');
         emit('spike', { loss });
         G.shake = Math.max(G.shake, 0.35);
@@ -509,8 +612,8 @@ function step(dt, input) {
         const dd = Math.abs(G.px - o.tx);
         const cov = Math.abs(o.tz) <= o.rad + cr.rz ? clamp((o.rad + cr.rx * 0.35 - dd) / o.rad, 0, 1) : 0;
         if (cov > 0) {
-          const loss = Math.max(1, Math.ceil(G.N * o.dmgF * cov) + (cov > 0.6 ? 1 : 0));
-          floatText(o.tx, 0.6, 1.8, '−' + loss, '#ff6b6b', 1.2);
+          const loss = takeLoss(Math.max(1, Math.ceil(G.N * o.dmgF * cov) + (cov > 0.6 ? 1 : 0)), 'lob');
+          floatText(o.tx, 0.6, 1.8, lossTxt(loss), '#ff6b6b', 1.2);
           setN(G.N - loss, 'lob');
           emit('hit', { loss });
           G.shake = Math.max(G.shake, 0.5);
@@ -523,6 +626,24 @@ function step(dt, input) {
         // 橫越的怪：跟著地面捲過來，自己往旁邊走
         o.z -= v * dt; o.x += o.vx * dt; o.ph += dt * 9;
         if (o.x * o.vx > 0 && Math.abs(o.x) > ROAD + 3) { O.splice(i, 1); continue; }
+      } else if (o.k === 'bat') {
+        // 火蝙蝠：飛得快，左右擺來擺去
+        o.z -= (v + o.spd) * dt; o.ph += dt * 16;
+        if (o.z < 32) o.bx += clamp(G.px - o.bx, -1, 1) * o.home * dt;
+        o.x = clamp(o.bx + o.amp * Math.sin(G.t * o.f + o.zph), -ROAD + 0.3, ROAD - 0.3);
+      } else if (o.k === 'healer' && o.heals < 4 && o.z <= o.hold) {
+        // 治療巫師：停在後面幫附近的怪補血，補四次才衝過來
+        o.ph += dt * 3;
+        o.healT -= dt;
+        if (o.healT <= 0) {
+          o.healT = 2.1; o.heals++; o.atk = 0.4;
+          let any = 0;
+          for (const e of O) if (e.t === 'en' && !e.dead && e !== o && e.hp < e.max && Math.abs(e.x - o.x) < 4.5 && Math.abs(e.z - o.z) < 5) { e.hp = Math.min(e.max, e.hp + e.max * 0.3); any++; }
+          emit('enheal', o);
+          if (fxOn()) FX.add({ k: 'ring', x: o.x, z: o.z, life: 0.6, size: 4.5, col: '120,255,140' });
+        }
+        if (o.atk > 0) o.atk -= dt;
+        o.x += clamp(G.px - o.x, -1, 1) * 0.4 * dt;
       } else if (o.k === 'thrower' && o.throws < 3 && o.z <= o.hold) {
         // 停在前面丟炸彈（跟著部隊一起往前），丟完三顆才衝過來
         o.ph += dt * 3;
@@ -534,14 +655,14 @@ function step(dt, input) {
         o.z -= (v + o.spd) * dt;
         o.ph += dt * (6 + o.spd * 1.5);
       }
-      if (o.z < 32 && !o.cross) o.x += clamp(G.px - o.x, -1, 1) * o.home * dt;
+      if (o.z < 32 && !o.cross && !o.fly) o.x += clamp(G.px - o.x, -1, 1) * o.home * dt;
       // 和隊伍碰撞
       if (o.z - o.r * 0.5 <= cr.rz && o.z > -cr.rz - 1 && Math.abs(o.x - G.px) <= cr.rx + o.r * 0.6) {
-        const loss = Math.max(1, Math.ceil(o.hp / o.sHP * o.mass));
+        const loss = takeLoss(Math.max(1, Math.ceil(o.hp / o.sHP * o.mass)), 'hit');
         o.dead = 1;
         O.splice(i, 1);
         G.shake = Math.max(G.shake, Math.min(0.6, 0.15 + loss * 0.02));
-        floatText(o.x, 0.5, 1.6, '−' + loss, '#ff6b6b', 1);
+        floatText(o.x, 0.5, 1.6, lossTxt(loss), '#ff6b6b', 1);
         setN(G.N - loss, 'hit');
         emit('hit', { loss });
         if (fxOn()) FX.crowdHit(o, loss);
@@ -550,7 +671,7 @@ function step(dt, input) {
       }
       if (o.z < -5) O.splice(i, 1);
     } else if (o.t === 'boss') {
-      if (o.dead) { if (G.mode === 'endless') { o.z -= v * dt; if (G.t - o.deadAt > 2) O.splice(i, 1); } continue; }
+      if (o.dead) { if (chained()) { o.z -= v * dt; if (G.t - o.deadAt > 2) O.splice(i, 1); } continue; }
       if (o.intro > 0) { o.intro -= dt; o.z -= v * dt; continue; }
       o.ph += dt * 3;
       const reach = cr.rz + o.r * 0.55;
@@ -563,9 +684,9 @@ function step(dt, input) {
         if (o.atkT >= per) {
           o.atkT -= per;
           o.atk = 0.35;
-          const loss = Math.max(1, Math.ceil(o.eat * (o.phase > 1 ? 1.15 : 1)));
+          const loss = takeLoss(Math.max(1, Math.ceil(o.eat * (o.phase > 1 ? 1.15 : 1))), 'boss');
           G.shake = Math.max(G.shake, 0.45);
-          floatText(G.px, 0.8, 2, '−' + loss, '#ff6b6b', 1.2);
+          floatText(G.px, 0.8, 2, lossTxt(loss), '#ff6b6b', 1.2);
           setN(G.N - loss, 'boss');
           emit('slam', { loss });
           if (fxOn()) FX.slam(o);
@@ -586,8 +707,33 @@ function step(dt, input) {
         o.throwA = 0.4;
       }
       if (o.throwA > 0) o.throwA -= dt;
+      // 炎龍：往半邊的路噴火，要躲到另一邊
+      if (o.k === 'dragon') {
+        const br = o.breath;
+        if (!br) {
+          o.brT = (o.brT == null ? 2.4 : o.brT) - dt;
+          if (o.brT <= 0) { o.breath = { side: G.px < 0 ? -1 : 1, t: 1.3, burn: 0, tick: 0 }; emit('strikewarn', o); }
+        } else if (br.t > 0) {
+          br.t -= dt;
+          if (br.t <= 0) { br.burn = 1.3; br.tick = 0.05; o.atk = 0.35; emit('breath', o); }
+        } else {
+          br.burn -= dt; br.tick -= dt;
+          if (fxOn() && Math.random() < 0.5) FX.add({ k: 'puff', x: br.side * (0.4 + Math.random() * 3.4), z: Math.random() * (o.z - 1), h: 0.4, life: 0.5, size: 1.6, grow: 1.8, a: 0.9, spr: 'fire', add: 1 });
+          if (br.tick <= 0) {
+            br.tick = 0.3;
+            if (G.px * br.side > -0.25) {
+              const loss = takeLoss(Math.max(1, Math.ceil(G.N * 0.06)) + 1, 'breath');
+              floatText(G.px, 0.8, 2, lossTxt(loss), '#ffb04a', 1.2);
+              setN(G.N - loss, 'breath');
+              emit('hit', { loss });
+              if (G.N <= 0) { lose(); return; }
+            }
+          }
+          if (br.burn <= 0) { o.breath = null; o.brT = o.phase > 1 ? 3.4 : 4.8; }
+        }
+      }
       // 重擊（第 5 關以後的狂暴階段）：地上出現紅色長條，站在裡面會被打到
-      if (o.phase > 1 && G.s >= 5) {
+      if (o.phase > 1 && G.s >= 5 && o.k !== 'dragon') {
         if (!o.strike) {
           o.strT = (o.strT == null ? 1.5 : o.strT) - dt;
           if (o.strT <= 0) { o.strike = { x: clamp(G.px, -PX_MAX + 0.6, PX_MAX - 0.6), t: 1.05 }; emit('strikewarn', o); }
@@ -600,8 +746,8 @@ function step(dt, input) {
             emit('strike', o);
             if (fxOn()) FX.strike(sx, o.z);
             if (Math.abs(G.px - sx) <= 1.25 + cr.rx * 0.5) {
-              const loss = Math.max(1, Math.ceil(G.N * 0.18)) + 2;
-              floatText(G.px, 0.8, 2.2, '−' + loss, '#ff6b6b', 1.4);
+              const loss = takeLoss(Math.max(1, Math.ceil(G.N * 0.18)) + 2, 'strike');
+              floatText(G.px, 0.8, 2.2, lossTxt(loss), '#ff6b6b', 1.4);
               setN(G.N - loss, 'strike');
               if (G.N <= 0) { lose(); return; }
             }
@@ -614,13 +760,62 @@ function step(dt, input) {
         emit('rage', o);
         // 叫小怪
         for (let k = 0; k < 6; k++) {
-          const K = ENEMIES.grunt, hp = o.max * 0.012;
-          O.push({ t: 'en', id: _uid++, k: 'grunt', x: clamp(o.x + (k - 2.5) * 1.3, -PX_MAX, PX_MAX), z: Math.max(2.5, o.z - o.r * 0.6 - 0.8 - (k % 2) * 0.9), hp, max: hp, r: K.r, h: K.h, spd: K.spd, home: K.home, mass: K.mass, sHP: o.sHP, ph: k, hit: 0, dead: 0 });
+          const e = mkEnemy(o.k === 'dragon' ? 'bat' : 'grunt', clamp(o.x + (k - 2.5) * 1.3, -PX_MAX, PX_MAX), Math.max(2.5, o.z - o.r * 0.6 - 0.8 - (k % 2) * 0.9), o.max * 0.012, o.sHP);
+          e.ph = k; O.push(e);
         }
       }
     }
   }
   stepFx(dt);
+}
+
+// 兵種、加持、火山彈
+function tickSupport(dt, v) {
+  for (const k in G.buff) if (G.buff[k] > 0) G.buff[k] = Math.max(0, G.buff[k] - dt);
+  if (G.N <= 0 || G.st !== 'play') return;
+  const S = G.spec;
+  // 醫護兵：把受傷的士兵救回來
+  if (S.medic > 0 && G.wounded >= 1) {
+    G.medT -= dt;
+    if (G.medT <= 0) {
+      G.medT = 1.8 / Math.min(SPEC_MAX, S.medic);
+      const h = Math.min(Math.floor(G.wounded), Math.max(1, Math.round(G.N * 0.015) + 1));
+      G.wounded -= h; G.healed += h;
+      setN(G.N + h, 'heal');
+      floatText(G.px + (Math.random() - 0.5) * 1.6, 0.2, 1.5, '+' + h, '#7dffa0', 0.8);
+      emit('heal');
+    }
+  } else if (G.wounded > 0) G.wounded = Math.max(0, G.wounded - dt * 0.2);
+  // 砲兵：往怪最多的地方打砲
+  if (S.mortar > 0) {
+    G.morT -= dt;
+    if (G.morT <= 0) {
+      let best = null, bs = 0;
+      for (const o of G.objs) {
+        if ((o.t !== 'en' && o.t !== 'boss') || o.dead || o.cross || o.z < 6 || o.z > 44 || o.intro > 0) continue;
+        let sc = o.t === 'boss' ? o.max * 0.05 : 0;
+        for (const e of G.objs) if (e.t === 'en' && !e.dead && Math.abs(e.x - o.x) < 2 && Math.abs(e.z - o.z) < 2) sc += e.hp;
+        if (sc > bs) { bs = sc; best = o; }
+      }
+      if (best) {
+        G.morT = 2.6 / Math.min(SPEC_MAX, S.mortar);
+        const T = 0.85 + best.z * 0.012, boss = best.t === 'boss';
+        const hold = best.k === 'thrower' || best.k === 'healer';
+        const tz = boss ? best.z : Math.max(2, best.z - (hold ? 0 : best.spd) * T);
+        G.objs.push({ t: 'shell', kind: 'shell', id: _uid++, sx: G.px, sz: 0.4, sh: 1.3, tx: clamp(best.x, -ROAD, ROAD), tz, T, age: 0, x: G.px, z: 0.4, h: 1.3, rel: boss || hold, dmg: curDps() * G.dmgK * G.rateK * 0.9 });
+        emit('mortar');
+      } else G.morT = 0.4;
+    }
+  }
+  // 火山爆發：天上一直掉火山彈
+  if (G.rule === 'inferno' && !G.boss && G.scroll) {
+    G.metT -= dt;
+    if (G.metT <= 0) {
+      G.metT = 1.9 + Math.random() * 1.3;
+      const tx = clamp(G.px + (Math.random() - 0.5) * 3.2, -PX_MAX, PX_MAX);
+      lob(tx + (Math.random() - 0.5) * 6, 34, 20, 'magma', 1.6, 0.08, 1.25, tx);
+    }
+  }
 }
 
 function stepFx(dt) {

@@ -24,6 +24,8 @@ function CaseCtrl(def, resume) {
     if (S.type === 'pick') setTimeout(() => C.openPick(), 300);
     if (S.type === 'accuse') setTimeout(() => C.openAccuse(), 300);
     if (S.type === 'spot') setTimeout(() => C.openSpot(), 300);
+    if (S.type === 'order') setTimeout(() => C.openOrder(), 300);
+    if (S.type === 'liar') setTimeout(() => C.openLiar(), 300);
   };
   C.next = () => { C.st++; if (C.st >= D.stages.length) { C.finish(); return; } C.enterStage(); };
 
@@ -70,7 +72,7 @@ function CaseCtrl(def, resume) {
         $('#tActs').hidden = false;
         $('#bPrev').disabled = C.line === 0; $('#bNext').textContent = C.line === S.lines.length - 1 ? '從頭 ↺' : '下一句 ›';
       } else {
-        G.paint(D.scene.draw(C.s, C) + `<rect width="1000" height="625" fill="#1a1020" opacity=".45"/>` + A.txt(500, 300, S.type === 'grid' ? '整理大家的行蹤……' : S.type === 'pick' ? '仔細比對看看……' : S.type === 'spot' ? '仔細看看照片……' : '真相只有一個……', 40, '#fff3dc', 'middle', 900) , [{ id: 'reopen', r: [0, 0, 1000, 625], on: () => S.type === 'grid' ? C.openGrid() : S.type === 'pick' ? C.openPick() : S.type === 'spot' ? C.openSpot() : C.openAccuse() }]);
+        G.paint(D.scene.draw(C.s, C) + `<rect width="1000" height="625" fill="#1a1020" opacity=".45"/>` + A.txt(500, 300, { grid: '整理大家的行蹤……', pick: '仔細比對看看……', spot: '仔細看看照片……', order: '把事情照順序排好……', liar: '誰在說謊？' }[S.type] || '真相只有一個……', 40, '#fff3dc', 'middle', 900), [{ id: 'reopen', r: [0, 0, 1000, 625], on: () => ({ grid: C.openGrid, pick: C.openPick, spot: C.openSpot, order: C.openOrder, liar: C.openLiar }[S.type] || C.openAccuse)() }]);
         $('#tActs').hidden = true;
       }
       $('#invInfo').hidden = false;
@@ -170,6 +172,34 @@ function CaseCtrl(def, resume) {
       if (t.dataset.sp !== S.ans) { C.miss++; W.fail(body, (S.no && S.no[t.dataset.sp]) || '好像沒什麼特別的……'); return; }
       t.classList.add('hit');
       W.success(C, body, S.okMsg || '找到了！', () => { C.addEv(S.give, true); G.dlg(S.win, () => C.next(), { stage: C.stageFn }); }, 900);
+    };
+  };
+  // 排時間表（第 6 件）：每張卡片寫著一件事和一條線索，照發生的先後點卡片排進時間表
+  C.openOrder = () => {
+    const S = stage(), got = C.s.ord || (C.s.ord = []);
+    const card = (c, i, placed) => `<button class="tlCard${placed ? ' in' : ''}" data-c="${c.id}">${placed ? `<b class="tlN">${i + 1}</b>` : ''}<strong>${c.t}</strong><small>${c.clue}</small></button>`;
+    const draw = () => `<div class="tlLine">${S.cards.map((_, i) => got[i] ? card(S.cards.find(c => c.id === got[i]), i, true) : `<div class="tlSlot"><b class="tlN">${i + 1}</b>　</div>`).join('')}</div><p class="sub" style="margin:6px 0 4px">還沒排的卡片（點一下放到時間表最後面；點時間表上的卡片可以拿回來）：</p><div class="tlPool">${S.cards.filter(c => !got.includes(c.id)).map(c => card(c, 0, false)).join('') || '<p class="sub">全部排好了！按「確定」。</p>'}</div>`;
+    const body = G.modal(`<h3>${S.title}</h3><p class="sub">${S.sub}</p><div class="tlW">${draw()}</div><p class="msg"></p><div class="btnRow"><button class="sec" data-clr="1">全部拿回來</button><button class="ok" data-ok="1">確定</button></div>`, { w: 720, cls: 'wide' });
+    const upd = () => { body.querySelector('.tlW').innerHTML = draw(); C.save(); };
+    body.onclick = e => {
+      if (e.target.closest('[data-clr]')) { got.splice(0); Snd.play('page'); upd(); return; }
+      const c = e.target.closest('[data-c]');
+      if (c) { const id = c.dataset.c, i = got.indexOf(id); if (i >= 0) got.splice(i, 1); else got.push(id); Snd.play('page'); upd(); return; }
+      if (e.target.closest('[data-ok]')) {
+        if (got.length < S.cards.length) { W.fail(body, '還有卡片沒有排進時間表。'); return; }
+        if (got.join() === S.ans.join()) { W.success(C, body, S.okMsg || '時間表排好了！', () => { C.addEv(S.give, true); G.dlg(S.win, () => C.next(), { stage: C.stageFn }); }, 900); }
+        else { C.miss++; const k = got.findIndex((id, i) => id !== S.ans[i]); W.fail(body, `第 ${k + 1} 格開始好像不對，再看看卡片上的線索。`); }
+      }
+    };
+  };
+  // 誰在說謊（第 7 件）：幾個人各說一句話，只有一個人說謊
+  C.openLiar = () => {
+    const S = stage();
+    const body = G.modal(`<h3>${S.title}</h3><p class="sub">${S.sub}</p><div class="liarW">${S.claims.map(c => `<button class="liarC" data-l="${c.who}"><span class="lf">${Face.draw(c.who, 'n')}</span><span><b>${PEOPLE[c.who].n}</b>「${c.t}」</span></button>`).join('')}</div><p class="msg"></p>`, { w: 680, cls: 'wide' });
+    body.onclick = e => {
+      const b = e.target.closest('[data-l]'); if (!b) return;
+      if (b.dataset.l !== S.ans) { C.miss++; W.fail(body, (S.no && S.no[b.dataset.l]) || '如果他說謊，其他三個人的話就會互相打架……再想想。'); return; }
+      W.success(C, body, S.okMsg || '找到說謊的人了！', () => { C.addEv(S.give, true); G.dlg(S.win, () => C.next(), { stage: C.stageFn }); }, 900);
     };
   };
   // 推理表格（只有第 3 件用到）

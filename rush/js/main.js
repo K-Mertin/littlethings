@@ -43,7 +43,7 @@ function demoGame() {
 function startStage(s) {
   AU.init();
   setCam('run');
-  newGame(s, { up: Save.d.up });
+  newGame(s, { up: Save.d.up, wpn: Save.d.wpn });
   G.badgeBump = 0; G.badgeRed = 0;
   UI.mode = 'play'; UI.banner = 0; UI.resultShown = false;
   show(null);
@@ -88,7 +88,7 @@ function buildDLevels() {
     const n = i + 1, un = Save.dUnlocked(n), st = Save.d.dstars[n] || 0;
     return `<button class="tile t-${THEMES[D.theme].id}" data-dstage="${n}" ${un ? '' : 'disabled'}>
       <span class="n">${un ? n : '🔒'}</span><span class="nm">${D.name}</span>
-      <span class="rl">${D.rows} 排門${D.slide ? '・會動' : ''}${D.red ? '・✕ 門' : ''}</span>
+      <span class="rl">${D.rows} 排門${D.slide ? '・會動' : ''}${D.red ? '・✕ 門' : ''}${D.pow ? '・強化門' : ''}${D.gey ? '・火口' : ''}</span>
       <span class="ss">${[0, 1, 2].map(k => `<i class="${k < st ? 'on' : ''}">★</i>`).join('')}</span></button>`;
   }).join('');
   const total = Object.values(Save.d.dstars).reduce((a, b) => a + b, 0);
@@ -99,7 +99,7 @@ function finishDefense(win) {
   const kc = G.castle / G.castleMax;
   const st = win ? (kc >= 0.8 ? 3 : kc >= 0.45 ? 2 : 1) : 0;
   const prev = d.dstars[n] || 0;
-  let coins = win ? 30 + n * 10 + st * 12 + (prev === 0 ? 30 : 0) : 5 + n * 2 + Math.floor(G.kills / 10);
+  let coins = Math.round((win ? 30 + n * 10 + st * 12 + (prev === 0 ? 30 : 0) : 5 + n * 2 + Math.floor(G.kills / 10)) * coinK());
   if (win) d.dstars[n] = Math.max(prev, st);
   d.coins += coins; d.plays++; Save.save();
   AU.sfx(win ? 'win' : 'lose');
@@ -127,12 +127,13 @@ function startMode(mode) {
   AU.init();
   setCam('run');
   const seed = mode === 'daily' ? todayKey() : (Date.now() % 100000) + 1;
-  newGame(1, { mode, seed, up: Save.d.up });
+  newGame(1, { mode, seed, up: Save.d.up, wpn: Save.d.wpn });
   G.badgeBump = 0; G.badgeRed = 0;
   UI.mode = 'play'; UI.banner = 0; UI.resultShown = false;
   show(null);
   AU.music(G.L.theme.bgm, false);
-  showRule(G.rule, mode === 'daily' ? `每日挑戰 · ${String(G.L.daily).replace(/(\d{4})(\d\d)(\d\d)/, '$1/$2/$3')}` : '無盡模式 · 第 1 段');
+  showRule(G.rule, mode === 'daily' ? `每日挑戰 · ${String(G.L.daily).replace(/(\d{4})(\d\d)(\d\d)/, '$1/$2/$3')}` : mode === 'boss' ? `頭目連戰 · 第 1 戰 · ${BOSSES[BR_BOSSES[0]].name}` : '無盡模式 · 第 1 段');
+  if (mode === 'boss') toast('五個頭目一個接一個！中間的路上記得多拿士兵', 2.8);
   if (mode === 'daily') toast('每日挑戰不使用強化，大家的條件都一樣', 2.6);
 }
 
@@ -190,8 +191,18 @@ function handleEvents() {
       case 'giant': AU.sfx('gateWpn'); toast('金色大兵出動！', 1.4); break;
       case 'dboss': AU.sfx('boss'); toast('巨魔兵出現了！集中火力擋住它', 2.2); break;
       case 'dwave': break;
-      case 'legclear': toast(`打倒頭目！第 ${a.leg} 段完成`, 1.6); break;
-      case 'legtheme': AU.music(G.L.theme.bgm, false); showRule(G.rule, `無盡模式 · 第 ${G.leg + 1} 段 · ${G.L.theme.name}`); break;
+      case 'legclear': toast(G.mode === 'boss' ? `打倒頭目！還剩 ${BR_BOSSES.length - a.leg} 個` : `打倒頭目！第 ${a.leg} 段完成`, 1.6); break;
+      case 'legtheme': AU.music(G.L.theme.bgm, false); showRule(G.rule, G.mode === 'boss' ? `頭目連戰 · 第 ${G.leg + 1} 戰 · ${BOSSES[BR_BOSSES[G.leg]].name}` : `無盡模式 · 第 ${G.leg + 1} 段 · ${G.L.theme.name}`); break;
+      case 'spec': AU.sfx('gateWpn'); tipOnce('spec_' + a, `${SPEC[a].name}加入了：${SPEC[a].desc}`, 2.8); break;
+      case 'buff': AU.sfx('buff'); break;
+      case 'blocked': AU.sfx('blocked'); break;
+      case 'heal': AU.sfx('heal'); break;
+      case 'mortar': AU.sfx('mortar'); break;
+      case 'shellboom': AU.sfx('rocket'); break;
+      case 'lava': AU.sfx('lava'); vibrate(15); break;
+      case 'geyser': AU.sfx('geyser'); break;
+      case 'breath': AU.sfx('breath'); G.shake = Math.max(G.shake, 0.5); vibrate(40); break;
+      case 'enheal': AU.sfx('heal'); break;
     }
   }
   G.q.length = 0;
@@ -203,6 +214,10 @@ function defTips() {
   if (G.t > 0.5 && G.t < 1) tipOnce('dmove', '左右拖曳砲台：讓小兵穿過 ×2、+ 的門會變多！', 3.4);
   if (G.giant >= G.giantMax) tipOnce('dgiant', '能量滿了！按右下角的「大兵」放出金色大兵', 3);
   for (const o of G.objs) if (o.t === 'en' && o.z < 14) { tipOnce('denemy', '怪物快到城了！把砲台移過去擋住它', 3); break; }
+  for (const o of G.objs) {
+    if (o.t === 'gate' && o.k === 'pow') { tipOnce('dpow', '黃色的強化門：人數不變，但穿過的小兵會變成兩倍強！', 3.4); break; }
+    if (o.t === 'geyser' && o.warn) { tipOnce('dgey', '火口冒煙就要噴火了，小兵和怪物經過都會被燒掉', 3.2); break; }
+  }
 }
 
 function tutorial() {
@@ -217,6 +232,14 @@ function tutorial() {
     else if (o.t === 'en' && o.k === 'thrower' && o.z < 30) tipOnce('thrower', '丟丟鬼會停在前面丟炸彈，先移過去打倒它', 3);
     else if (o.t === 'en' && o.k === 'splitter' && o.z < 30) tipOnce('splitter', '史萊姆打倒後會分裂成三隻小的', 3);
     else if (o.t === 'boss' && o.strike) tipOnce('strike', '頭目要重擊了！快離開紅色長條', 2.5);
+    else if (o.t === 'boss' && o.breath) tipOnce('breath', '炎龍要往半邊噴火了！快跑到另一邊', 2.6);
+    else if (o.t === 'lava' && o.z < 40) tipOnce('lava', '岩漿河！對準石橋走過去才不會被燙到', 3);
+    else if (o.t === 'geyser' && o.z < 40) tipOnce('geyser', '火口冒煙就要噴火了，避開它；怪物走過去也會被燒', 3.2);
+    else if (o.t === 'gate' && o.k === 'spec' && o.z < 45 && !o.pair.used) tipOnce('specgate', '紫色的兵種門：醫護兵會救人、砲兵會打砲、盾兵會擋傷害', 3.4);
+    else if (o.t === 'gate' && o.k === 'buff' && o.z < 45 && !o.pair.used) tipOnce('buffgate', '粉紅色的加持門：無敵護罩或狂熱連射，只有幾秒鐘', 3.2);
+    else if (o.t === 'en' && o.k === 'bat' && o.z < 30) tipOnce('bat', '火蝙蝠飛得快又左右亂飄，快對準打下來', 3);
+    else if (o.t === 'en' && o.k === 'healer' && o.z < 32) tipOnce('healer', '治療巫師會幫怪物補血，先把它打倒！', 3);
+    else if (o.t === 'en' && o.k === 'magma' && o.z < 30) tipOnce('magma', '熔岩怪倒下會留下一灘岩漿，別踩上去', 3);
   }
   if (G.s !== 1 && G.s !== 2) return;
   for (const o of G.objs) {
@@ -245,7 +268,7 @@ function finishEndless() {
   const prev = d.endBest || 0, rec = dist > prev;
   if (rec) d.endBest = dist;
   d.endLegs = Math.max(d.endLegs || 0, G.leg);
-  const coins = Math.floor(dist / 15) + G.leg * 20 + Math.floor(G.kills / 10);
+  const coins = Math.round((Math.floor(dist / 15) + G.leg * 20 + Math.floor(G.kills / 10)) * coinK());
   d.coins += coins; d.plays++; Save.save();
   AU.sfx(rec ? 'win' : 'lose');
   $('#resultBody').innerHTML = `<p class="eyebrow">無盡模式</p>
@@ -271,6 +294,7 @@ function finishDaily(win) {
   if (win) { r.best = Math.max(r.best, score); r.stars = Math.max(r.stars, st); }
   let coins = 5 + Math.floor(G.kills / 8);
   if (win && !r.paid) { coins += 80 + st * 20; r.paid = true; }
+  coins = Math.round(coins * coinK());
   d.coins += coins; d.plays++; Save.save();
   AU.sfx(win ? 'win' : 'lose');
   $('#resultBody').innerHTML = `<p class="eyebrow">每日挑戰 · ${String(key).replace(/(\d{4})(\d\d)(\d\d)/, '$1/$2/$3')} · ${RULES[G.rule].name}</p>
@@ -287,6 +311,34 @@ function finishDaily(win) {
   show('result'); refreshCoins();
 }
 
+function coinK() { return 1 + (Save.d.up.coin || 0) * 0.05; }
+function finishBoss(win) {
+  const d = Save.d, sec = Math.round(G.t);
+  const st = win ? starsOf() : 0;
+  const prev = d.bossBest || 0, rec = win && (!prev || sec < prev);
+  if (rec) d.bossBest = sec;
+  if (win) d.bossStars = Math.max(d.bossStars || 0, st);
+  const beaten = win ? BR_BOSSES.length : G.leg;
+  d.bossMost = Math.max(d.bossMost || 0, beaten);
+  const coins = Math.round((win ? 160 + st * 30 + (d.bossWins ? 0 : 120) : 10 + G.leg * 30 + Math.floor(G.kills / 10)) * coinK());
+  if (win) d.bossWins = (d.bossWins || 0) + 1;
+  d.coins += coins; d.plays++; Save.save();
+  AU.sfx(win ? 'win' : 'lose');
+  const mm = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  $('#resultBody').innerHTML = `<p class="eyebrow">頭目連戰</p>
+      <h2 class="big ${win ? 'ok' : 'bad'}">${win ? (rec ? '新紀錄！' : '五連勝！') : '部隊全滅'}</h2>
+      ${win ? `<div class="stars">${[0, 1, 2].map(i => `<span class="st ${i < st ? 'on' : ''}" style="animation-delay:${0.25 + i * 0.25}s">★</span>`).join('')}</div>` : ''}
+      <div class="stats">
+        <div><b>${beaten}/${BR_BOSSES.length}</b><span>打倒頭目</span></div>
+        <div><b>${mm(sec)}</b><span>花的時間</span></div>
+        <div><b>${win ? G.N : G.peak}</b><span>${win ? '存活士兵' : '最多兵力'}</span></div>
+        <div><b class="gold">+${coins}</b><span>金幣</span></div>
+      </div>
+      <p class="hint">${win ? (prev ? `最快紀錄：${mm(d.bossBest)}` : '第一次全部打倒！') : '路上先拿兵種門：砲兵和醫護兵打頭目很有用。'}</p>
+      ${resultRow(win ? '再挑戰一次' : '再試一次')}`;
+  show('result'); refreshCoins();
+}
+
 function starsOf() { return G.N >= G.peak * 0.75 ? 3 : G.N >= G.peak * 0.45 ? 2 : 1; }
 function finish(win) {
   if (UI.resultShown) return;
@@ -295,12 +347,13 @@ function finish(win) {
   const s = G.s, d = Save.d;
   let html = '';
   if (G.mode === 'endless') return finishEndless();
+  if (G.mode === 'boss') return finishBoss(win);
   if (G.mode === 'defense') return finishDefense(win);
   if (G.mode === 'daily') return finishDaily(win);
   if (win) {
     const st = starsOf();
     const prev = d.stars[s] || 0;
-    const coins = 25 + s * 8 + st * 12 + Math.min(80, Math.floor(G.N / 15)) + (prev === 0 ? 30 : 0);
+    const coins = Math.round((25 + s * 8 + st * 12 + Math.min(80, Math.floor(G.N / 15)) + (prev === 0 ? 30 : 0)) * coinK());
     d.stars[s] = Math.max(prev, st);
     d.coins += coins; d.plays++;
     d.best[s] = Math.max(d.best[s] || 0, G.N);
@@ -323,7 +376,7 @@ function finish(win) {
         <button class="btn ghost" data-act="levels">選關</button>
       </div>`;
   } else {
-    const coins = 5 + s * 2 + Math.floor(G.kills / 8);
+    const coins = Math.round((5 + s * 2 + Math.floor(G.kills / 8)) * coinK());
     d.coins += coins; d.plays++; Save.save();
     const tips = [
       '看清楚門上的數字：×2 不一定比 +30 多，要看你現在有幾個人。',
@@ -378,7 +431,11 @@ function buildLevels() {
 
 function buildShop() {
   const box = $('#shopList');
-  box.innerHTML = UPGRADES.map(u => {
+  const own = Save.d.wpns;
+  const armory = `<div class="upg armory"><div class="info"><b>武器庫・開場武器</b><span>買下來就能選開場拿哪一把槍（每日挑戰除外）</span>
+      <div class="wrow">${WPN_ORDER.map(w => { const has = own.includes(w), on = Save.d.wpn === w;
+        return `<button class="wbtn${on ? ' on' : ''}" data-wpn="${w}" ${!has && Save.d.coins < ARMORY[w] ? 'disabled' : ''}><canvas width="64" height="40" data-wicon="${w}"></canvas><span>${WEAPONS[w].name}</span><em>${on ? '使用中' : has ? '選用' : '🪙 ' + ARMORY[w]}</em></button>`; }).join('')}</div></div></div>`;
+  box.innerHTML = armory + UPGRADES.map(u => {
     const lv = Save.d.up[u.id], max = lv >= u.max, cost = u.cost(lv);
     return `<div class="upg">
       <div class="info"><b>${u.name}</b><span>${lv ? u.desc(lv) : '還沒升級'}${max ? '' : ` → <em>${u.desc(lv + 1)}</em>`}</span>
@@ -386,6 +443,7 @@ function buildShop() {
       <button class="btn buy" data-up="${u.id}" ${max || Save.d.coins < cost ? 'disabled' : ''}>${max ? '已滿級' : `🪙 ${cost}`}</button>
     </div>`;
   }).join('');
+  for (const c of box.querySelectorAll('canvas[data-wicon]')) { const g = c.getContext('2d'); drawWeaponIcon(g, c.dataset.wicon, 32, 20, 26, '#ffd34d', 'rgba(0,0,0,.7)'); }
   refreshCoins();
 }
 
@@ -404,13 +462,17 @@ function goTitle() {
   const next = nextStage();
   $('#startBtn').textContent = next === 1 && !Save.d.stars[1] ? '開始遊戲' : `繼續：第 ${next} 關`;
   const dn = Object.values(Save.d.dstars).reduce((a, b) => a + b, 0);
-  $('#defInfo').textContent = dn ? `守城星星 ★ ${dn} / ${DSTAGES.length * 3}` : '砲台射出小兵，穿過 ×2 門變多';
+  $('#defInfo').textContent = dn ? `守城星星 ★ ${dn} / ${DSTAGES.length * 3}` : '小兵穿過 ×2 門變多';
   $('#endInfo').textContent = Save.d.endBest ? `最遠 ${Save.d.endBest} 公尺` : '一直跑到全滅';
+  const bOpen = bossOpen();
+  $('#bossBtn').classList.toggle('locked', !bOpen);
+  $('#bossInfo').textContent = !bOpen ? '🔒 過第 3 關開放' : Save.d.bossBest ? `最快 ${Math.floor(Save.d.bossBest / 60)}:${String(Save.d.bossBest % 60).padStart(2, '0')}` : Save.d.bossMost ? `最多打倒 ${Save.d.bossMost} 個` : '五個頭目連續挑戰';
   const dd = Save.d.daily;
   $('#dailyInfo').textContent = dd && dd.key === todayKey() && dd.best ? `今天最佳 ${dd.best} 人` : '今天還沒挑戰';
   refreshCoins();
   show('title');
 }
+function bossOpen() { return (Save.d.stars[3] || 0) > 0; }
 function nextStage() {
   for (let s = 1; s <= STAGES.length; s++) if (!Save.d.stars[s]) return s;
   return Save.d.last || STAGES.length;
@@ -447,6 +509,7 @@ function onAct(act, el) {
       else startStage(G.s && !G.demo ? G.s : (Save.d.last || 1));
       break;
     case 'endless': startMode('endless'); break;
+    case 'bossrush': if (bossOpen()) startMode('boss'); else toast('先通過第 3 關，就能挑戰頭目連戰！', 2.4); break;
     case 'dlevels': buildDLevels(); if (!G || !G.demo) demoGame(); UI.mode = 'title'; AU.stop(); if (AU.ctx) AU.ctx.resume(); show('dlevels'); break;
     case 'dnext': startDefense(Math.min(DSTAGES.length, G.s + 1)); break;
     case 'daily': startMode('daily'); break;
@@ -494,6 +557,14 @@ function setupInput() {
     if (dt2 && !dt2.disabled) { startDefense(+dt2.dataset.dstage); return; }
     const t = e.target.closest('[data-stage]');
     if (t && !t.disabled) { startStage(+t.dataset.stage); return; }
+    const wb = e.target.closest('[data-wpn]');
+    if (wb && !wb.disabled) {
+      const w = wb.dataset.wpn, own = Save.d.wpns;
+      if (!own.includes(w)) { if (Save.d.coins < ARMORY[w]) return; Save.d.coins -= ARMORY[w]; own.push(w); AU.init(); AU.sfx('buy'); }
+      else { AU.init(); AU.sfx('click'); }
+      Save.d.wpn = w; Save.save(); buildShop();
+      return;
+    }
     const u = e.target.closest('[data-up]');
     if (u && !u.disabled) {
       const U = UPGRADES.find(x => x.id === u.dataset.up);

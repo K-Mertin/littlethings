@@ -69,10 +69,11 @@ const Game = {
     if (G.boon === 'alch') { G.known.p_heal = 1; for (let i = 0; i < 2; i++) this.addInv(this.makeItem(rng.pick(['p_heal', 'p_haste', 'p_detect', 'p_str', 'p_poison', 'p_conf'])), true); }
     if (G.mod === 'arcane') for (const o of P.inv) if (o.c === 'wand') o.ch += 2;
     Store.meta.runs++; Store.saveMeta();
-    this.enterFloor(1);
+    if (opt.rush) { G.rush = 1; G.asc = 0; G.boon = 'none'; G.mod = null; this.rushSetup(); }
+    else this.enterFloor(1);
     if (weekly) this.gainRelic(Weekly.info(seed).relic);
     if (G.boon === 'veteran') { G.pendingPerks++; this.rollPerks(); }
-    msg('歡迎來到深淵地牢。往下走，擊敗深淵之王！', 'y');
+    if (!G.rush) msg('歡迎來到深淵地牢。往下走，擊敗深淵之王！', 'y');
     if (G.asc) msg('深淵等級 ' + G.asc + '：' + ASC.slice(1, G.asc + 1).map(a => a.d).join(' '), 'w');
     if (G.mod) msg('今日變化「' + DMODS[G.mod].n + '」：' + DMODS[G.mod].d, 'w');
     if (G.boon && G.boon !== 'none') msg('開局祝福「' + BOONS[G.boon].n + '」：' + BOONS[G.boon].d, 'i');
@@ -171,31 +172,31 @@ const Game = {
     const P = G.P, C = CLASSES[P.cls], w = this.equipped('w'), a = this.equipped('a');
     const W = w ? ITEMS[w.k] : { dmg: [1, 3], acc: 0 }, A = a ? ITEMS[a.k] : { arm: 0, eva: 0 };
     const weak = P.hunger < 100 ? 2 : 0;
-    let bonus = P.str + (P.perks.str || 0) * 2 + this.ringEnch('r_str') + (w ? w.ench : 0) - weak + (this.rset('war') ? 2 : 0);
+    let bonus = this.fistBonus() + (this.rset('legend') ? 2 : 0) + P.str + (P.perks.str || 0) * 2 + this.ringEnch('r_str') + (w ? w.ench : 0) - weak + (this.rset('war') ? 2 : 0);
     const furyOn = P.perks.fury && P.hp < P.mhp * 0.35;
     const st = {
       dmin: Math.max(1, W.dmg[0] + bonus), dmax: Math.max(1, W.dmg[1] + bonus),
       acc: C.acc + Math.floor(P.lvl / 2) + (W.acc || 0) + (w ? w.ench : 0) + (P.perks.acc || 0) * 3 - weak,
-      eva: C.eva + (A.eva || 0) + Math.floor(P.lvl / 3) + (P.perks.dodge || 0) * 3 + this.ringEnch('r_evade') * 2 + (this.runeOf('a') === 'swift' ? 3 : 0) + (this.reson() === 'rime' ? 2 : 0) + (this.relic('boots') ? 2 : 0),
+      eva: C.eva + (A.eva || 0) + Math.floor(P.lvl / 3) + (P.perks.dodge || 0) * 3 + this.ringEnch('r_evade') * 2 + (this.runeOf('a') === 'swift' ? 3 : 0) + (this.reson() === 'rime' ? 2 : 0) + (this.relic('boots') ? 2 : 0) + (this.rset('tide') && this.isWetAt(P.x, P.y) ? 3 : 0),
       arm: Math.max(0, (A.arm || 0) + (a ? a.ench : 0) + this.ringEnch('r_prot') + (P.perks.tough || 0) + (P.cls === 'paladin' ? 1 : 0) + (this.relic('ward') ? 2 : 0)),
       crit: 0.05 + (P.perks.crit || 0) * 0.07 + (P.cls === 'rogue' ? 0.05 : 0) + (this.runeOf('w') === 'keen' ? 0.1 : 0) + (w && ITEMS[w.k].keen ? 0.1 : 0) + Math.max(0, this.ringEnch('r_crit')) * 0.05 + (this.reson() === 'hunt' ? 0.05 : 0),
       fury: furyOn ? 1.5 : 1,
-      sight: 8 + (P.perks.eye ? 2 : 0) + (P.cls === 'ranger' ? 1 : 0) - (G.mod === 'dark' ? 2 : 0) - (G.F && G.F.event === 'mist' ? 3 : 0),
+      sight: 8 + (P.perks.eye ? 2 : 0) + (this.relic('lantern') ? 2 : 0) + (P.cls === 'ranger' ? 1 : 0) - (G.mod === 'dark' ? 2 : 0) - (G.F && G.F.event === 'mist' ? 3 : 0),
       wname: w ? this.itemName(w, true) : '拳頭',
     };
     return st;
   },
   pSpeed() { const s = G.P.st; return s.haste ? 200 : s.slow ? 50 : 100; },
-  canSeeInvis() { return this.hasRing('r_sight') || G.P.st.detect > 0; },
+  canSeeInvis() { return this.hasRing('r_sight') || G.P.st.detect > 0 || this.relic('lantern'); },
 
   // ---------- 樓層 ----------
   enterFloor(depth, how) {
     const prevDepth = G.depth;
     // 測試用的跳層（直接進入更深的樓層）不算數：不給成就、不更新最深紀錄
-    if (depth > (prevDepth || 0) + 1 && !G.demo) G.dbgSkip = 1;
+    if (depth > (prevDepth || 0) + 1 && !G.demo && !G.rush) G.dbgSkip = 1;
     G.depth = depth;
     const rng = new RNG('floor:' + G.seed + ':' + depth);
-    const F = Gen.make(depth, rng, {});
+    const F = Gen.make(depth, rng, { rush: G.rush });
     F.seen = new Uint8Array(F.w * F.h);
     F.mons = []; F.items = []; F.traps = []; F.clouds = []; F.detect = false; F.spawnT = 0; F.visited = {};
     G.F = F;
@@ -205,13 +206,14 @@ const Game = {
     P.energy = 100;
     this.populate(F, depth);
     G.stats.maxDepth = Math.max(G.stats.maxDepth, depth);
-    if (!G.dbgSkip && depth > (Store.meta.deepest || 0)) { Store.meta.deepest = depth; }
-    if (!G.dbgSkip && depth >= 6 && !Store.meta.unlocked.ranger) { Store.meta.unlocked.ranger = true; G.newUnlock = 'ranger'; msg('解鎖了新職業：遊俠！', 'y'); }
+    if (!G.dbgSkip && !G.rush && depth > (Store.meta.deepest || 0)) { Store.meta.deepest = depth; }
+    if (!G.dbgSkip && !G.rush && depth >= 6 && !Store.meta.unlocked.ranger) { Store.meta.unlocked.ranger = true; G.newUnlock = 'ranger'; msg('解鎖了新職業：遊俠！', 'y'); }
+    if (!G.dbgSkip && !G.rush && depth >= 10 && !Store.meta.unlocked.monk) { Store.meta.unlocked.monk = true; G.newUnlock = 'monk'; msg('解鎖了新職業：武僧！', 'y'); }
     Store.saveMeta();
     const B = BIOMES[F.biome];
-    if (prevDepth) msg('你來到了第 ' + depth + ' 層 · ' + B.n + '。', 'i');
+    if (prevDepth && !G.rush) msg('你來到了第 ' + depth + ' 層 · ' + B.n + '。', 'i');
     if (!prevDepth || biomeOf(prevDepth) !== F.biome) msg(B.flavor, 'm');
-    if (BOSS_FLOOR[depth]) msg(depth === LAST_FLOOR ? '空氣凝重得讓人發抖……深淵之王就在這裡。' : '一股強大的氣息擋住了樓梯……這層有守層頭目！', 'w');
+    if (BOSS_FLOOR[depth] && !G.rush) msg(depth === LAST_FLOOR ? '空氣凝重得讓人發抖……深淵之王就在這裡。' : depth === DEEP_LAST ? '虛空正在崩塌……終焉吞噬者就在前方。' : '一股強大的氣息擋住了樓梯……這層有守層頭目！', 'w');
     if (F.shop) msg('這層好像有一間商店。', 'y');
     if (F.event) { msg('【' + FEVENTS[F.event].n + '】' + FEVENTS[F.event].d, 'w'); if (typeof UI !== 'undefined' && !G.demo) setTimeout(() => UI.banner('樓層事件', FEVENTS[F.event].n, FEVENTS[F.event].d), 300); }
     if (this.relic('boots')) P.st.haste = Math.max(P.st.haste || 0, 4);
@@ -219,7 +221,7 @@ const Game = {
     G.stats.floors = G.stats.floors || []; if (!G.stats.floors.includes(depth)) G.stats.floors.push(depth);
     Art.buildTiles(F.biome);
     this.updateFov();
-    Meta.event('depth', depth);
+    if (!G.rush) Meta.event('depth', depth);
     if (typeof Music !== 'undefined') Music.play(BOSS_FLOOR[depth] ? 'boss' : 'b' + F.biome);
     if (typeof Render !== 'undefined') Render.snapCam();
     this.save();
@@ -246,7 +248,7 @@ const Game = {
     };
     // 商店
     const bossK = BOSS_FLOOR[depth];
-    if (!F.arena && !bossK && depth >= 2 && (depth === 3 || depth === 10 || rng.chance(G.mod === 'rich' ? 0.55 : 0.3))) {
+    if (!F.arena && !bossK && depth >= 2 && (depth === 3 || depth === 10 || depth === 18 || rng.chance(G.mod === 'rich' ? 0.55 : 0.3))) {
       const cand = F.rooms.filter(r => r.kind === 'room' && !r.start && r.w * r.h >= 16 && r.w >= 4 && r.h >= 4 && !this.inRoom(r, F.stairs[0], F.stairs[1]));
       if (cand.length) {
         const r = rng.pick(cand); r.kind = 'shop'; F.shop = r;
@@ -286,7 +288,7 @@ const Game = {
       const at = F.arena ? F.bossAt : this.nearFree(F.stairs[0], F.stairs[1], used, 3) || F.stairs;
       const b = this.spawnAt(bossK, at[0], at[1], true, used);
       b.boss = 1; F.locked = !F.arena; F.bossId = b.id;
-      if (F.arena) for (let i = 0; i < 3; i++) { const q = this.nearFree(at[0], at[1] + 4, used, 4); if (q) this.spawnAt('skeleton', q[0], q[1], true, used); }
+      if (F.arena && (!G.rush || depth >= LAST_FLOOR)) for (let i = 0; i < 3; i++) { const q = this.nearFree(at[0], at[1] + 4, used, 4); if (q) this.spawnAt(depth >= DEEP_LAST ? (i ? 'starmote' : 'voidling') : 'skeleton', q[0], q[1], true, used); }
     }
     // 特殊房間
     for (const v of F.vaults) {
@@ -323,7 +325,7 @@ const Game = {
       const ni = 5 + rng.int(0, 3) + (G.mod === 'famine' ? 1 : 0);
       for (let i = 0; i < ni; i++) { const p = free(null, false); if (p) F.items.push({ x: p[0], y: p[1], it: this.randomItem(depth) }); }
       for (let i = rng.int(2, 4); i > 0; i--) { const p = free(null, false); if (p) F.items.push({ x: p[0], y: p[1], it: this.goldItem(depth, 1) }); }
-      if (rng.chance(G.mod === 'famine' ? 0.2 : 0.55)) { const p = free(null, false); if (p) F.items.push({ x: p[0], y: p[1], it: this.makeItem('ration') }); }
+      if (rng.chance(G.mod === 'famine' ? 0.2 : depth > LAST_FLOOR ? 0.85 : 0.55)) { const p = free(null, false); if (p) F.items.push({ x: p[0], y: p[1], it: this.makeItem('ration') }); }
       if (rng.chance(G.mod === 'famine' ? 0.25 : 0.5)) { const p = free(null, false); if (p) F.items.push({ x: p[0], y: p[1], it: this.makeItem('apple') }); }
       // 寶箱怪偽裝
       if (depth >= 4 && rng.chance(0.18)) { const p = free(null); if (p) this.spawnAt('mimic', p[0], p[1], true, used); }
@@ -357,7 +359,7 @@ const Game = {
     for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) {
       const nx = x + i, ny = y + j; if (nx < 1 || ny < 1 || nx >= F.w - 1 || ny >= F.h - 1) continue;
       const k = ny * F.w + nx, v = F.t[k];
-      if (!TP[v].walk || v === T.LAVA || v === T.DOOR || v === T.STAIRS || (used && used.has(k)) || this.monAt(nx, ny) || (nx === G.P.x && ny === G.P.y)) continue;
+      if (!TP[v].walk || v === T.LAVA || v === T.DOOR || v === T.STAIRS || v === T.PORTAL || (used && used.has(k)) || this.monAt(nx, ny) || (nx === G.P.x && ny === G.P.y)) continue;
       c.push([nx, ny]);
     }
     if (!c.length) return null;
@@ -396,7 +398,7 @@ const Game = {
     for (let r = 0; r < 4; r++) for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) {
       if (Math.max(Math.abs(i), Math.abs(j)) !== r) continue;
       const nx = x + i, ny = y + j, v = this.tile(nx, ny);
-      if (!TP[v].walk || v === T.LAVA || v === T.STAIRS || v === T.DOOR) continue;
+      if (!TP[v].walk || v === T.LAVA || v === T.STAIRS || v === T.DOOR || v === T.PORTAL) continue;
       if (this.itemsAt(nx, ny).length) continue;
       if (v === T.WATER && it.c !== 'gold' && G.rng.chance(0.2)) { /* 掉進水裡也沒關係 */ }
       const o = { x: nx, y: ny, it }; F.items.push(o); if (typeof FX !== 'undefined' && (nx !== x || ny !== y || it.k !== 'gold')) FX.pop(o, x, y); return true;
@@ -461,9 +463,10 @@ const Game = {
     if (v === T.ALTAR) { const a = this.altarAt(nx, ny); if (!a) return false; if (a.used) { if (!opts.auto) msg(ALTARS[a.k].n + '的力量已經消失了。', 'm'); return false; } if (!opts.auto && typeof UI !== 'undefined') UI.askAltar(a); return false; }
     if (v === T.DRYFOUNT) { msg('泉水已經乾涸了。', 'm'); return false; }
     if (v === T.PROP) { const pp = this.propAt(nx, ny); if (!pp || opts.auto) return false; if (typeof FX !== 'undefined') FX.bump(P, dx, dy); if (PROPS[pp.k].camp) return this.useCamp(pp); if (PROPS[pp.k].deco) { if (G.bumpT !== G.turn + ':' + nx) { G.bumpT = G.turn + ':' + nx; msg(PROPS[pp.k].n + '。' + PROPS[pp.k].d, 'm'); } return false; } if (PROPS[pp.k].boom && G.kegWarn !== nx + ',' + ny) { G.kegWarn = nx + ',' + ny; msg('那是火藥桶！在旁邊打破會被炸傷。再按一次才會打破（也可以從遠處丟東西引爆）。', 'w'); return false; } G.kegWarn = null; this.breakProp(pp); this.endTurn(); return true; }
+    if (v === T.CHASM) return opts.auto ? false : this.chasmStep(nx, ny, opts);
     if (v === T.SECRET || !TP[v].walk) { if (!opts.auto && G.bumpT !== G.turn) { G.bumpT = G.turn; } return false; }
     if (v === T.DOOR) { this.setTile(nx, ny, T.ODOOR); Snd.play('door'); }
-    if (v === T.LAVA && !opts.force) { if (G.lavaWarn !== nx + ',' + ny) { G.lavaWarn = nx + ',' + ny; msg('那是滾燙的岩漿！再按一次才會走進去。', 'w'); return false; } }
+    if (v === T.LAVA && !opts.force && !this.relic('magma')) { if (G.lavaWarn !== nx + ',' + ny) { G.lavaWarn = nx + ',' + ny; msg('那是滾燙的岩漿！再按一次才會走進去。', 'w'); return false; } }
     const tr = this.trapAt(nx, ny);
     if (tr && !tr.hid && !opts.force) { if (G.trapWarn !== nx + ',' + ny) { G.trapWarn = nx + ',' + ny; msg('那裡有' + TRAPS[tr.k].n + '！再按一次才會踩上去。', 'w'); return false; } }
     G.trapWarn = G.lavaWarn = null;
