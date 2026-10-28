@@ -14,8 +14,10 @@ import { hatch } from './hatch.mjs';
 import { proto } from './proto.mjs';
 import { roadster } from './roadster.mjs';
 import { baja } from './baja.mjs';
+import { formula } from './formula.mjs';
+import { volt } from './volt.mjs';
 
-const MODELS = { gt, wheelSplit, muscle, hatch, proto, roadster, baja };
+const MODELS = { gt, wheelSplit, muscle, hatch, proto, roadster, baja, formula, volt };
 const LODS = { hi: { budget: 90000, min: 200, err: .004 }, lo: { budget: 16000, min: 60, err: .02 } };
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'cars');
 

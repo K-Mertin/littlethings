@@ -8,7 +8,7 @@ MK 的瀏覽器遊戲合集，每個資料夾自成一體。線上遊玩：https
 |---|---|---|
 | [Cobble Keep](https://k-mertin.github.io/littlethings/cobblekeep/) | [`cobblekeep/`](cobblekeep/README.md) | DOOM 操作的 3D 第一人稱射擊，明亮的奇幻怪物風格，兩部共 15 個關卡、8 個 Boss，符文柱與封印寶庫、S/A/B/C 評價、生存競技場，可自選關卡，支援手機 |
 | [銘甲戰記](https://k-mertin.github.io/littlethings/zijia/) | [`zijia/`](zijia/README.md) | 像素風機器人戰棋（15 章＋外傳、隱藏夥伴、演習挑戰） |
-| [Sunny Circuit](https://k-mertin.github.io/littlethings/racing/) | [`racing/`](racing/README.md) | 3D 賽車，6 款車＋改裝、6 條賽道可反向、大獎賽、生涯獎金、計時賽幽靈車、雨天與輪胎磨耗、5 種難度 |
+| [Sunny Circuit](https://k-mertin.github.io/littlethings/racing/) | [`racing/`](racing/README.md) | 3D 賽車，8 款車＋改裝、10 條賽道可反向（跳台、泥土捷徑、夜間體育場）、生涯模式（四個等級、宿敵、駕照）、淘汰賽／甩尾挑戰／檢查點計時、三種大獎賽、計時賽幽靈車、雨天與輪胎磨耗、5 種難度 |
 | [Crystal Outpost](https://k-mertin.github.io/littlethings/outpost/) | [`outpost/`](outpost/README.md) | 星海爭霸風格的即時戰略：玩法不同的藍色前哨、綻放族與晶族三個陣營、21 關戰役任務（護送、搶點、英雄生存，會升級的英雄）、1v1 或 2v2（電腦盟友）、生存與合作生存模式、對戰重播、3 種地圖風格與大小、峽谷與河流地形、自動存檔，支援觸控 |
 | [ABC Island](https://k-mertin.github.io/littlethings/abc/) | [`abc/`](abc/README.md) | 幼兒英文：描小寫字母、開頭音、拼字、單字圖卡、和小狐狸 Pip 聊天，貼紙小島，家長區，平板優先 |
 | [ㄅㄆㄇ 小島](https://littleland.mwstudio.workers.dev/zhuyin/) | [`zhuyin/`](zhuyin/README.md) | 幼兒注音：認識 37 個注音、聽音找注音、第一個音、拼注音、四聲，台灣腔語音（微軟雲哲預錄），貼紙簿，家長區，平板優先 |
