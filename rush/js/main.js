@@ -488,7 +488,7 @@ function setupInput() {
   $('#pauseBtn').addEventListener('click', e => { e.stopPropagation(); pause(); });
   $('#giantBtn').addEventListener('click', e => { e.stopPropagation(); if (UI.mode === 'play' && G.mode === 'defense' && !defLaunchGiant()) AU.sfx('click'); });
   document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
-  addEventListener('resize', () => resizeRender());
+  addEventListener('resize', () => { UI.pendResize = true; });
 }
 
 function gamepadX() {
@@ -526,6 +526,7 @@ function frame(now) {
   } else if (UI.mode === 'result') {
     if (G.mode === 'defense') { defStep(dt, null); G.q.length = 0; } else stepFx(dt);
   }
+  if (UI.pendResize) { UI.pendResize = false; resizeRender(); }
   if (G.mode === 'defense') {
     renderDef(G, now / 1000);
     if (UI.mode === 'play' || UI.mode === 'pause') drawDefHud(G);
@@ -539,15 +540,19 @@ function frame(now) {
 }
 
 // 畫面太慢就自動降解析度
+// 畫面太慢就自動降解析度。
+// 只在畫之前改尺寸（改畫布大小會清空畫面，畫完才改會閃一下），
+// 而且要連續好幾次都很順才會調回來，避免一直上上下下。
 function autoQuality(dt) {
   if (UI.mode !== 'play') { UI.fpsT = 0; UI.fpsN = 0; return; }
   UI.fpsT += dt; UI.fpsN++;
-  if (UI.fpsT >= 2.5) {
-    const fps = UI.fpsN / UI.fpsT;
-    UI.fpsT = 0; UI.fpsN = 0;
-    if (fps < 45 && R.q > 0.55) { R.q = Math.max(0.55, R.q - 0.15); resizeRender(); }
-    else if (fps > 58 && R.q < 1) { R.q = Math.min(1, R.q + 0.05); resizeRender(); }
-  }
+  if (UI.fpsT < 3) return;
+  const fps = UI.fpsN / UI.fpsT;
+  UI.fpsT = 0; UI.fpsN = 0;
+  UI.slowN = fps < 42 ? (UI.slowN || 0) + 1 : 0;
+  UI.fastN = fps > 57 ? (UI.fastN || 0) + 1 : 0;
+  if (UI.slowN >= 2 && R.q > 0.55) { R.q = Math.max(0.55, R.q - 0.15); UI.slowN = 0; UI.drops = (UI.drops || 0) + 1; UI.pendResize = true; }
+  else if (UI.fastN >= 5 && R.q < 1 && (UI.drops || 0) < 2) { R.q = Math.min(1, R.q + 0.15); UI.fastN = 0; UI.pendResize = true; }
 }
 
 function boot() {

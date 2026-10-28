@@ -17,8 +17,10 @@ const DSTAGES = [
   { name: '魔王城', theme: 3, rows: 3, slide: 2, red: 2, lvl: 8 },
 ];
 
-// 門的效果：穿過的每一個小兵都會被乘或加
-function defGateGain(g) { return g.k === 'mul' ? g.v : g.k === 'add' ? 1 + g.v : g.k === 'kill' ? 0 : 1; }
+// 砲台一次射出一小隊（3 個人）。門是對「整隊」算的：
+// ×2 讓整隊變兩倍，+6 讓整隊多 6 個人，所以隊伍越大，乘法門越划算。
+const DEF_SQUAD = 3;
+function defApply(S, g) { return g.k === 'mul' ? S * g.v : g.k === 'add' ? S + g.v : g.k === 'kill' ? 0 : S; }
 
 function genDefense(n, seed) {
   const D = DSTAGES[n - 1];
@@ -32,9 +34,9 @@ function genDefense(n, seed) {
     const cnt = D.rows === 1 ? 2 : R() < 0.5 ? 2 : 3;
     const xs = cnt === 2 ? [-1.9, 1.9] : [-2.7, 0, 2.7];
     const w = cnt === 2 ? 1.25 : 0.95;
-    const opts = ri === 0 ? [{ k: 'mul', v: 2 }, { k: 'add', v: 1 }, { k: 'mul', v: 2 }] : [{ k: 'mul', v: 2 }, { k: 'mul', v: 3 }, { k: 'add', v: 2 }, { k: 'add', v: 1 }];
+    const opts = ri === 0 ? [{ k: 'mul', v: 2 }, { k: 'add', v: 4 }, { k: 'add', v: 5 }] : ri === 1 ? [{ k: 'mul', v: 2 }, { k: 'mul', v: 3 }, { k: 'add', v: 6 }, { k: 'add', v: 8 }] : [{ k: 'mul', v: 2 }, { k: 'mul', v: 3 }, { k: 'add', v: 10 }, { k: 'add', v: 15 }];
     xs.forEach((x, i) => {
-      let g = n === 1 ? [{ k: 'mul', v: 2 }, { k: 'add', v: 1 }][i] : pick(opts);
+      let g = n === 1 ? [{ k: 'mul', v: 2 }, { k: 'add', v: 5 }][i] : pick(opts);
       if (reds > 0 && i === cnt - 1 && ri > 0 && R() < 0.7) { g = { k: 'kill', v: 0 }; reds--; }
       const o = { t: 'gate', id: _uid++, x, w, z, k: g.k, v: g.v, pair: { used: false, n: 1 }, fade: 0, bump: 0, acc: 0 };
       if (slides > 0 && (g.k !== 'kill' || D.lvl >= 7) && i === 0 && R() < 0.8) { o.slide = { cx: 0, amp: 4.2 - w - 0.3, f: 0.6 + R() * 0.4, ph: R() * 6 }; slides--; }
@@ -45,7 +47,7 @@ function genDefense(n, seed) {
   const rate = 5;
   let best = 1;
   for (let x = -3.4; x <= 3.4; x += 0.2) best = Math.max(best, defPathGain(gates, x, 0));
-  const E = rate * Math.sqrt(Math.min(best, 16)) * 0.85;
+  const E = rate * Math.pow(Math.min(best, 30), 0.75) * 0.75;
   const lv = D.lvl;
   return {
     n, name: D.name, theme: THEMES[D.theme], gates, E, lv,
@@ -56,14 +58,15 @@ function genDefense(n, seed) {
   };
 }
 
-// 從 x 直直往前，會拿到多少倍（看當下門的位置）
+// 從 x 直直往前，一隊會變成原本的幾倍（看當下門的位置）
 function defPathGain(gates, x, t) {
-  let m = 1;
-  for (const g of gates) {
+  let S = DEF_SQUAD;
+  const gs = gates.slice().sort((a, b) => a.z - b.z);
+  for (const g of gs) {
     const gx = g.slide ? g.slide.cx + g.slide.amp * Math.sin(t * g.slide.f + g.slide.ph) : g.x;
-    if (Math.abs(x - gx) <= g.w) m *= defGateGain(g);
+    if (Math.abs(x - gx) <= g.w) S = defApply(S, g);
   }
-  return m;
+  return S / DEF_SQUAD;
 }
 
 function newDefense(n, opts) {
@@ -77,7 +80,7 @@ function newDefense(n, opts) {
     fireAcc: 0, rate: 5 * (1 + up.rate * 0.04), pow: 1 + up.dmg * 0.05,
     castle: L.castle + up.men, castleMax: L.castle + up.men,
     base: { t: 'base', hp: L.baseHp, max: L.baseHp, hit: 0, rage: false, x: 0, z: DEF_Z_BASE },
-    spawnAcc: 0, waveT: 2.5, waveN: 0, giant: 0, giantMax: 90,
+    spawnAcc: 0, waveT: 2.5, waveN: 0, giant: 0, giantMax: 90, sqId: 0,
     shake: 0, flash: 0, kills: 0, sent: 0, peak: 0, endT: 0, sim: !!opts.sim,
     rule: 'none', N: 0, lost: 0,
   };
@@ -123,14 +126,23 @@ function defBoss() {
   emit('dboss', o);
 }
 
-function defFireUnit(giant) {
+function defFireUnit(giant, sq, k) {
   if (G.units.length >= DEF_UNIT_CAP && !giant) return;
-  const u = { x: G.px + (Math.random() - 0.5) * 0.3, vx: (Math.random() - 0.5) * 0.8, z: DEF_Z_CANNON + 0.6, ph: Math.random() * 6, v: (Math.random() * 3) | 0, gates: 0, pop: 0.6 };
+  const off = k == null ? 0 : (k - 1) * 0.32;
+  const u = { x: G.px + off + (Math.random() - 0.5) * 0.12, vx: (Math.random() - 0.5) * 0.4, z: DEF_Z_CANNON + 0.6 - (k || 0) % 2 * 0.25, ph: Math.random() * 6, v: (Math.random() * 3) | 0, gates: 0, pop: 0.6, sq };
   if (giant) { u.giant = 1; u.hp = 24 * G.pow; u.r = 0.62; u.spd = 4.2; }
   else { u.hp = G.pow; u.r = 0.22; u.spd = DEF_UNIT_SPD; }
   G.units.push(u);
+  if (sq) sq.size++;
   G.sent++;
   return u;
+}
+// 一次射一隊
+function defFireSquad() {
+  const sq = { id: ++G.sqId, size: 0, used: 0 };
+  let n = 0;
+  for (let k = 0; k < DEF_SQUAD; k++) if (defFireUnit(false, sq, k)) n++;
+  return n;
 }
 
 function defLaunchGiant() {
@@ -154,10 +166,10 @@ function defStep(dt, input) {
     defUnitsMove(dt, true);
     return;
   }
-  // 發射
-  G.fireAcc += dt * G.rate;
+  // 發射：每次一小隊
+  G.fireAcc += dt * G.rate / DEF_SQUAD;
   let shots = 0;
-  while (G.fireAcc >= 1) { G.fireAcc -= 1; if (defFireUnit(false)) shots++; G.giant = Math.min(G.giantMax, G.giant + 1); }
+  while (G.fireAcc >= 1) { G.fireAcc -= 1; shots += defFireSquad(); G.giant = Math.min(G.giantMax, G.giant + DEF_SQUAD); }
   if (shots) emit('dshot', { n: shots });
   // 門移動
   for (const o of G.objs) if (o.t === 'gate') {
@@ -203,6 +215,8 @@ function defStep(dt, input) {
   stepFx(dt);
 }
 
+function defUnitGone(u) { if (u.sq) u.sq.size = Math.max(0, u.sq.size - 1); }
+
 function defUnitsMove(dt, endOnly) {
   const U = G.units, O = G.objs;
   const gates = O.filter(o => o.t === 'gate');
@@ -220,14 +234,19 @@ function defUnitsMove(dt, endOnly) {
       const g = gates[k];
       if (z0 < g.z && u.z >= g.z && Math.abs(u.x - g.x) <= g.w && !(u.gates & (1 << k))) {
         u.gates |= 1 << k;
-        const gain = defGateGain(g);
-        if (gain === 0) { U.splice(i, 1); emit('unitdie'); if (fxOn() && Math.random() < 0.4) FX.add({ k: 'spark', x: u.x, z: g.z, h: 0.6, life: 0.12, size: 0.6, fl: 'o', rot: 0 }); break; }
-        const extra = Math.round(gain) - 1;
+        if (g.k === 'kill') { U.splice(i, 1); defUnitGone(u); emit('unitdie'); if (fxOn() && Math.random() < 0.4) FX.add({ k: 'spark', x: u.x, z: g.z, h: 0.6, life: 0.12, size: 0.6, fl: 'o', rot: 0 }); break; }
+        const sq = u.sq;
+        if (!sq || (sq.used & (1 << k))) continue;   // 這一隊已經算過這扇門了
+        sq.used |= 1 << k;
+        const before = sq.size;
+        const extra = Math.max(0, Math.round(defApply(before, g)) - before);
+        let made = 0;
         for (let c = 0; c < extra && U.length < DEF_UNIT_CAP; c++) {
-          const nu = { x: clamp(u.x + (c + 1) * (c % 2 ? -0.28 : 0.28), g.x - g.w + 0.1, g.x + g.w - 0.1), vx: (Math.random() - 0.5) * 1.6, z: u.z + 0.05, ph: Math.random() * 6, v: (Math.random() * 3) | 0, gates: u.gates, pop: 1, hp: u.hp, r: u.r, spd: u.spd };
-          U.push(nu);
+          const nu = { x: clamp(u.x + ((c % 6) - 2.5) * 0.3, g.x - g.w + 0.1, g.x + g.w - 0.1), vx: (Math.random() - 0.5) * 1.4, z: u.z + 0.05 + Math.floor(c / 6) * 0.3, ph: Math.random() * 6, v: (Math.random() * 3) | 0, gates: u.gates, pop: 1, hp: u.hp, r: u.r, spd: u.spd, sq };
+          U.push(nu); made++;
         }
-        if (extra > 0) { g.bump = 0.6; emit('mult', { g }); }
+        sq.size += made;
+        if (made > 0) { g.bump = 0.6; emit('mult', { g }); if (!G.sim && G.t - (g.ftT || -9) > 0.9) { g.ftT = G.t; floatText(g.x, g.z, 3.3, `${before}→${before + made}`, '#ffffff', 0.55); } }
       }
     }
     if (U[i] !== u) continue;
@@ -246,13 +265,13 @@ function defUnitsMove(dt, endOnly) {
         if (fxOn()) FX.kill(hitE);
         if (hitE.k === 'splitter') for (let c = 0; c < 3; c++) G.objs.push(defEnemy('mini', clamp(hitE.x + (c - 1) * 0.7, -PX_MAX, PX_MAX), hitE.z + 0.4, Math.max(1, Math.round(hitE.max * 0.25))));
       }
-      if (u.hp <= 0.001) { U.splice(i, 1); continue; }
+      if (u.hp <= 0.001) { U.splice(i, 1); defUnitGone(u); continue; }
     }
     // 打到基地
     if (u.z >= DEF_Z_BASE - 1.2) {
       const b = G.base;
       b.hp -= u.hp; b.hit = 0.1;
-      U.splice(i, 1);
+      U.splice(i, 1); defUnitGone(u);
       emit('basehit', { d: u.hp, giant: !!u.giant });
       if (fxOn() && Math.random() < (u.giant ? 1 : 0.2)) FX.add({ k: 'spark', x: u.x, z: DEF_Z_BASE - 1.4, h: 0.5 + Math.random() * 2.5, life: 0.12, size: u.giant ? 2 : 0.8, fl: 'y', rot: Math.random() * 3 });
       if (u.giant && fxOn()) FX.boom(u.x, DEF_Z_BASE - 1.4, 1.2);
