@@ -117,6 +117,7 @@
 .modes .ic.k5{background:linear-gradient(135deg,#f59e0b,#ec4899)}
 .modes .ic.k6{background:linear-gradient(135deg,#fb7185,#e11d48)}
 .modes .ic.k7{background:linear-gradient(135deg,#8b5cf6,#0ea5e9)}
+.modes .ic.k8{background:linear-gradient(135deg,#f472b6,#f59e0b)}
 .card.cov .c-mid,.card.cov .c-face,.card.cov .c-br{display:none}
 .card.can .f{box-shadow:0 0 0 3px #22c55e,0 0 16px 4px rgba(34,197,94,.75)}
 .xzone{position:absolute;z-index:960;border-radius:50%;cursor:pointer;border:3px dashed rgba(255,255,255,.55);background:radial-gradient(circle,rgba(255,255,255,.12),rgba(255,255,255,.04) 70%);touch-action:none;transition:background .15s,border-color .15s}
@@ -1732,9 +1733,390 @@ const X = {
 };
 
 // =====================================================================
+// 拱豬（四人吃墩，豬羊變壓器）
+// =====================================================================
+const GZ_PIG = 0 * 13 + 11, GZ_SHEEP = 2 * 13 + 10, GZ_TF = 3 * 13 + 9, GZ_C2 = 3 * 13 + 1;  // ♠Q ♦J ♣10 ♣2
+function gzV(id) { const r = id % 13 + 1; return r === 1 ? 14 : r; }       // A 最大
+function gzHeart(id) { const r = id % 13 + 1; return r === 1 ? -50 : r === 13 ? -40 : r === 12 ? -30 : r === 11 ? -20 : r >= 5 ? -10 : 0; }
+function gzScoring(id) { return Math.floor(id / 13) === 1 || id === GZ_PIG || id === GZ_SHEEP || id === GZ_TF; }
+/** 一局拿到的分數牌 → 分數與說明 */
+function gzScore(cards) {
+  const hearts = cards.filter(id => Math.floor(id / 13) === 1);
+  let hs = hearts.reduce((a, id) => a + gzHeart(id), 0), all = hearts.length === 13;
+  if (all) hs = 200;                                   // 全紅：紅心變成 +200
+  let t = hs;
+  const pig = cards.includes(GZ_PIG), sheep = cards.includes(GZ_SHEEP), tf = cards.includes(GZ_TF);
+  if (pig) t -= 100;
+  if (sheep) t += 100;
+  const others = hearts.length || pig || sheep;
+  if (tf) t = others ? t * 2 : 50;                      // 變壓器：其他分數加倍；只拿到它自己 +50
+  return { t, all, pig, sheep, tf, hn: hearts.length };
+}
+// 依目前的墩算贏家
+function gzWinner(trick) { const ls = Math.floor(trick[0].id / 13); let w = trick[0]; for (const x of trick) if (Math.floor(x.id / 13) === ls && gzV(x.id) > gzV(w.id)) w = x; return w.p; }
+function gzLegal(hand, trick) {
+  if (!trick.length) return hand.slice();
+  const ls = Math.floor(trick[0].id / 13), f = hand.filter(id => Math.floor(id / 13) === ls);
+  return f.length ? f : hand.slice();
+}
+// 把目前墩上的牌估個值（給 AI 用；變壓器看成「讓分數加倍」，只能粗估）
+function gzTrickVal(ids) {
+  let v = 0; for (const id of ids) { if (Math.floor(id / 13) === 1) v += gzHeart(id); if (id === GZ_PIG) v -= 100; if (id === GZ_SHEEP) v += 100; }
+  return v;
+}
+/** 規則式電腦：p 號玩家在 st 狀態下出哪張（seen = 已出過的牌） */
+function gzPolicy(hand, trick, seen, lvl, rnd) {
+  const legal = gzLegal(hand, trick);
+  if (legal.length === 1) return legal[0];
+  if (lvl === 'easy' && rnd() < 0.35) return legal[(rnd() * legal.length) | 0];
+  const pigOut = seen.includes(GZ_PIG) || hand.includes(GZ_PIG);
+  const sheepOut = seen.includes(GZ_SHEEP) || hand.includes(GZ_SHEEP);
+  const has = id => hand.includes(id);
+  if (!trick.length) {
+    // 領出：挑最不會惹禍的牌
+    const outSuit = s => 13 - seen.filter(id => Math.floor(id / 13) === s).length - hand.filter(id => Math.floor(id / 13) === s).length;
+    let best = legal[0], bs = 1e9;
+    for (const id of legal) {
+      const s = Math.floor(id / 13), v = gzV(id);
+      let r = v;
+      if (s === 1) r += 4 + (v >= 11 ? 20 : 0);
+      if (s === 0 && !pigOut && v >= 12) r += 40;            // 豬還沒出，別用黑桃 Q K A 領
+      if (id === GZ_PIG) r += 80;
+      if (s === 0 && has(GZ_PIG)) r += 15;                   // 手上有豬：少碰黑桃
+      if (id === GZ_SHEEP) r += 30;
+      if (s === 2 && !sheepOut && v > 11) r -= 4;           // 用方塊大牌去釣羊
+      if (id === GZ_TF) r += 12;
+      if (outSuit(s) === 0) r += 8;                          // 別人都沒這花色：一定是自己吃
+      r += (rnd() - 0.5) * (lvl === 'easy' ? 6 : 1.5);
+      if (r < bs) { bs = r; best = id; }
+    }
+    return best;
+  }
+  const ls = Math.floor(trick[0].id / 13), follow = Math.floor(legal[0] / 13) === ls;
+  const cur = trick.reduce((w, x) => (Math.floor(x.id / 13) === ls && gzV(x.id) > gzV(w.id)) ? x : w, trick[0]);
+  const last = trick.length === 3, tv = gzTrickVal(trick.map(x => x.id));
+  if (follow) {
+    const under = legal.filter(id => gzV(id) < gzV(cur.id)), over = legal.filter(id => gzV(id) > gzV(cur.id));
+    // 黑桃：別人的 K、A 已經壓上來 → 把豬丟給他
+    if (ls === 0 && has(GZ_PIG) && gzV(cur.id) > 12) return GZ_PIG;
+    // 最後一家而且能用羊吃下 → 牽羊
+    if (last && over.includes(GZ_SHEEP) && tv >= 0) return GZ_SHEEP;
+    // 有羊或好處、而且是最後一家（或我出最大一定贏）→ 吃下來
+    const gain = tv + (legal.includes(GZ_SHEEP) ? 100 : 0);
+    if (over.length && tv > 0 && (last || lvl !== 'easy')) {
+      const safe = over.filter(id => id !== GZ_PIG);
+      if (safe.length) return safe.reduce((a, b) => gzV(b) > gzV(a) ? b : a);
+    }
+    if (under.length) {
+      // 可以不吃：丟最大的那張小牌（羊不要隨便送人）
+      const cand = under.filter(id => id !== GZ_SHEEP || gain < 0);
+      const pool = cand.length ? cand : under;
+      return pool.reduce((a, b) => gzV(b) > gzV(a) ? b : a);
+    }
+    // 一定會吃：最後一家就出最大，否則出最小的那張大牌；豬能不出就不出
+    const ok = over.filter(id => id !== GZ_PIG);
+    const pool = ok.length ? ok : over;
+    if (last && tv >= 0) return pool.reduce((a, b) => gzV(b) > gzV(a) ? b : a);
+    return pool.reduce((a, b) => gzV(b) < gzV(a) ? b : a);
+  }
+  // 沒有這花色：墊牌
+  if (has(GZ_PIG)) return GZ_PIG;
+  if (has(GZ_TF) && tv < 0) return GZ_TF;
+  if (!pigOut) { const big = legal.filter(id => Math.floor(id / 13) === 0 && gzV(id) > 12); if (big.length) return big.reduce((a, b) => gzV(b) > gzV(a) ? b : a); }
+  const hearts = legal.filter(id => Math.floor(id / 13) === 1);
+  if (hearts.length) { const h = hearts.reduce((a, b) => gzV(b) > gzV(a) ? b : a); if (gzHeart(h) < 0) return h; }
+  const pool = legal.filter(id => id !== GZ_SHEEP && id !== GZ_TF);
+  const pl = pool.length ? pool : legal;
+  return pl.reduce((a, b) => gzV(b) > gzV(a) ? b : a);
+}
+/** 困難：把看不到的牌隨機分給別人，模擬打完，挑平均分數最好的那張 */
+function gzMonteCarlo(st, p, samples) {
+  const hand = st.hands[p], legal = gzLegal(hand, st.trick);
+  if (legal.length === 1) return legal[0];
+  const seen = st.seen.concat(st.trick.map(x => x.id));
+  const unknown = range(52).filter(id => !hand.includes(id) && !seen.includes(id));
+  const need = [0, 1, 2, 3].map(q => q === p ? 0 : st.hands[q].length);
+  const rnd = Math.random;
+  const tot = new Map(legal.map(id => [id, 0])), t0 = Date.now();
+  for (let k = 0; k < samples; k++) {
+    if (k >= 6 && Date.now() - t0 > 250) break;   // 慢的裝置：最多想 0.25 秒
+    // 隨機分牌（尊重已知的缺門）
+    let hands, tries = 0;
+    do {
+      const pool = shuffle(unknown.slice()); hands = [[], [], [], []]; hands[p] = hand.slice();
+      let ok = true;
+      for (let q = 0; q < 4 && ok; q++) if (q !== p) {
+        for (let i = pool.length - 1; i >= 0 && hands[q].length < need[q]; i--) { const id = pool[i]; if (!st.void[q][Math.floor(id / 13)]) { hands[q].push(id); pool.splice(i, 1); } }
+        if (hands[q].length < need[q]) ok = false;
+      }
+      if (ok) break;
+    } while (++tries < 20);
+    if (tries >= 20) { const pool = shuffle(unknown.slice()); hands = [[], [], [], []]; hands[p] = hand.slice(); for (let q = 0; q < 4; q++) if (q !== p) hands[q] = pool.splice(0, need[q]); }
+    for (const first of legal) {
+      const H = hands.map(h => h.slice()), taken = st.taken.map(t => t.slice());
+      let trick = st.trick.map(x => ({ p: x.p, id: x.id })), turn = p, sn = seen.slice(), card = first;
+      for (;;) {
+        H[turn] = H[turn].filter(x => x !== card); trick.push({ p: turn, id: card });
+        if (trick.length === 4) {
+          const w = gzWinner(trick); trick.forEach(x => { if (gzScoring(x.id)) taken[w].push(x.id); sn.push(x.id); }); trick = []; turn = w;
+          if (!H[turn].length) break;
+        } else turn = (turn + 1) % 4;
+        card = gzPolicy(H[turn], trick, sn, 'normal', rnd);
+      }
+      const mine = gzScore(taken[p]).t, others = [0, 1, 2, 3].filter(q => q !== p).reduce((a, q) => a + gzScore(taken[q]).t, 0) / 3;
+      tot.set(first, tot.get(first) + mine - others * 0.3);
+    }
+  }
+  let best = legal[0], bv = -1e9; for (const [id, v] of tot) if (v > bv) { bv = v; best = id; }
+  return best;
+}
+const G = {
+  key: 'gongzhu', title: '拱豬', vert: false, noUndo: true, st: null, sel: -1, lock: false,
+  cards: std52,
+  opt() { return TB.store.get('poker:opt:gongzhu', { level: 'normal', rounds: 4 }); },
+  valid(s) { try { return Array.isArray(s.hands) && s.hands.length === 4 && Array.isArray(s.totals) && Array.isArray(s.taken) && !s.matchOver; } catch (e) { return false; } },
+  save() { if (this.st) TB.store.set('poker:gongzhu', this.st); },
+  newMatch(opt) { this.st = { level: opt.level || 'normal', rounds: +opt.rounds || 4, round: 0, totals: [0, 0, 0, 0], hist: [], matchOver: false }; this.newRound(); },
+  newRound() {
+    const s = this.st, deck = shuffle(range(52));
+    s.hands = [0, 1, 2, 3].map(p => deck.slice(p * 13, p * 13 + 13));
+    s.trick = []; s.taken = [[], [], [], []]; s.seen = []; s.void = [0, 1, 2, 3].map(() => [false, false, false, false]);
+    s.turn = s.hands.findIndex(h => h.includes(GZ_C2)); s.lead = s.turn; s.over = false; s.round++; s.tricks = 0;
+    this.dealOrder = []; for (let k = 0; k < 13; k++) for (let p = 0; p < 4; p++) this.dealOrder.push(s.hands[p][k]);
+    this.sel = -1;
+  },
+  enter() {
+    const bar = document.createElement('div'); bar.id = 'bar';
+    bar.innerHTML = '<span class="me"></span><button class="tb-btn" data-a="score">分數</button><button class="tb-btn" data-a="hint">提示</button><button class="tb-btn go" data-a="play">出牌</button>';
+    bar.addEventListener('click', e => { const b = e.target.closest('button'); if (!b || b.disabled) return; this.act(b.dataset.a); });
+    bar.addEventListener('pointerdown', e => e.stopPropagation());
+    felt.appendChild(bar);
+    this.seats = [1, 2, 3].map(() => mkEl('seat'));
+    this.tags = [0, 1, 2, 3].map(() => { const d = mkEl('ctag'); d.hidden = true; return d; });
+    this.bub = mkEl('bubble'); this.bub.hidden = true;
+    hud.textContent = '';
+  },
+  leave() { clearTimeout(this.tmr); clearTimeout(this.tmr2); ['#bar', '.seat', '.bubble', '.ctag'].forEach(q => felt.querySelectorAll(q).forEach(e => e.remove())); },
+  layout() {
+    clearSlots();
+    const barH = 56;
+    setCW(Math.min(92, (W - 20) / (1 + 12 * 0.42), H * 0.2 / 1.4));
+    const g = this.g = {};
+    g.handY = H - barH - CH - 8; g.step = Math.min(CW * 0.62, (W - 20 - CW) / 12);
+    g.opp = Math.max(0.42, Math.min(0.62, H / 1100)); g.ow = CW * g.opp; g.oh = CH * g.opp;
+    g.topY = 30; g.sideY = Math.max(g.topY + g.oh + 30, H * 0.22);
+    g.act = 0.8; g.aw = CW * g.act; g.ah = CH * g.act;
+    const cy = (g.topY + g.oh + g.handY) / 2;
+    const dy = Math.min(g.ah * 0.62 + 4, (g.handY - g.topY - g.oh) / 4);
+    const dx = Math.min(W * 0.2, g.aw * 1.25 + 10);
+    g.actC = [[W / 2, cy + dy], [W / 2 + dx, cy], [W / 2, cy - dy], [W / 2 - dx, cy]];
+  },
+  handOrder() { const so = [0, 1, 3, 2]; return this.st.hands[0].slice().sort((a, b) => so.indexOf(Math.floor(a / 13)) - so.indexOf(Math.floor(b / 13)) || gzV(a) - gzV(b)); },
+  render() {
+    const s = this.st, g = this.g; if (!s) return;
+    const shown = new Set();
+    const my = !s.over && s.turn === 0 && !this.lock;
+    const legal = my ? new Set(gzLegal(s.hands[0], s.trick)) : new Set();
+    const mine = this.handOrder(), hw = CW + g.step * (mine.length - 1), hx = (W - hw) / 2;
+    mine.forEach((id, i) => {
+      shown.add(id); place(id, hx + i * g.step, g.handY - (this.sel === id ? CH * 0.2 : 0), 500 + i, true);
+      EL[id].classList.toggle('sel', this.sel === id); EL[id].classList.toggle('cov', false);
+      EL[id].classList.toggle('can', false); EL[id].style.filter = my && !legal.has(id) ? 'brightness(.62) saturate(.5)' : '';
+    });
+    [1, 2, 3].forEach(p => {
+      const h = s.hands[p], n = h.length;
+      h.forEach((id, i) => {
+        shown.add(id); EL[id].classList.remove('sel', 'can'); EL[id].style.filter = '';
+        if (p === 2) { const st = Math.min(g.ow * 0.22, (W * 0.6) / Math.max(1, n)); const x0 = W / 2 - (g.ow + st * (n - 1)) / 2; place(id, x0 + i * st, g.topY, 100 + i, false, g.opp); }
+        else { const st = Math.min(g.oh * 0.16, (g.handY - g.sideY - g.oh - 20) / Math.max(1, n)); const x = p === 1 ? W - g.ow - 8 : 8; place(id, x, g.sideY + i * st, 100 + i, false, g.opp); }
+      });
+    });
+    s.trick.forEach((x, k) => { shown.add(x.id); const [cx, cy] = g.actC[x.p]; EL[x.id].classList.remove('sel', 'can'); EL[x.id].style.filter = ''; place(x.id, cx - g.aw / 2, cy - g.ah / 2, 700 + k, true, g.act); });
+    // 收走的牌：飛到贏家那邊後淡出
+    EL.forEach((e, id) => {
+      if (shown.has(id)) return;
+      if (!e.classList.contains('gone')) { const w = this.lastWin != null ? this.lastWin : 0; const [x, y] = this.seatXY(w); place(id, x - CW * 0.3, y - CH * 0.3, 980, false, 0.4); e.classList.add('gone'); }
+      e.classList.remove('sel', 'can'); e.style.filter = '';
+    });
+    // 每家拿到的分數牌
+    for (let p = 0; p < 4; p++) {
+      const t = this.tags[p], sc = gzScore(s.taken[p]);
+      const bits = []; if (sc.hn) bits.push('♥' + sc.hn); if (sc.pig) bits.push('🐷'); if (sc.sheep) bits.push('🐑'); if (sc.tf) bits.push('⚡');
+      t.hidden = !bits.length;
+      if (bits.length) {
+        t.textContent = bits.join(' ') + ' ' + (sc.t > 0 ? '+' : '') + sc.t;
+        let x, y;
+        if (p === 0) { x = W / 2; y = g.handY - 26; }
+        else if (p === 2) { x = W / 2; y = g.topY + g.oh + 4; }
+        else { x = p === 1 ? W - g.ow / 2 - 8 : g.ow / 2 + 8; y = g.sideY - 46; }
+        t.style.top = y + 'px'; t.style.left = '0px'; const w = t.offsetWidth; t.style.left = Math.max(w / 2 + 4, Math.min(W - w / 2 - 4, x)) + 'px';
+      }
+    }
+    const pos = [null, [W - g.ow / 2 - 8, g.sideY - 24], [W / 2, 4], [g.ow / 2 + 8, g.sideY - 24]];
+    [1, 2, 3].forEach((p, k) => {
+      const d = this.seats[k]; d.textContent = `${NAMES[p]} · 總分 ${s.totals[p]}`;
+      let [x, y] = pos[p]; d.style.top = y + 'px'; d.classList.toggle('turn', !s.over && s.turn === p);
+      d.style.left = '0px'; const w = d.offsetWidth; x = Math.max(w / 2 + 4, Math.min(W - w / 2 - 4, x)); d.style.left = x + 'px';
+    });
+    this.updBar();
+  },
+  seatXY(p) { const g = this.g; if (p === 0) return [W / 2, H - 60]; if (p === 2) return [W / 2, g.topY]; return [p === 1 ? W - g.ow / 2 - 8 : g.ow / 2 + 8, g.sideY + g.oh / 2]; },
+  updBar() {
+    const s = this.st, bar = felt.querySelector('#bar'); if (!bar || !s) return;
+    const my = !s.over && s.turn === 0 && !this.lock && !busy;
+    const lead = s.trick.length ? '跟' + SUITS[Math.floor(s.trick[0].id / 13)] : '';
+    bar.querySelector('.me').innerHTML = `第 ${s.round}/${s.rounds} 局 · ${my ? '<b>輪到你' + (lead ? '（' + lead + '）' : '，你先出') + '</b>' : (s.over ? '這局結束' : '等 ' + NAMES[s.turn] + '…')} · 總分 ${s.totals[0]}`;
+    bar.querySelector('[data-a=play]').disabled = !my || this.sel < 0;
+    bar.querySelector('[data-a=hint]').disabled = !my;
+  },
+  aiPick(p) {
+    const s = this.st;
+    if (s.level === 'hard') return gzMonteCarlo(s, p, 28);
+    return gzPolicy(s.hands[p], s.trick, s.seen, s.level, Math.random);
+  },
+  play(p, id) {
+    const s = this.st; this.sel = -1;
+    if (s.trick.length && Math.floor(id / 13) !== Math.floor(s.trick[0].id / 13)) s.void[p][Math.floor(s.trick[0].id / 13)] = true;
+    s.hands[p] = s.hands[p].filter(x => x !== id); s.trick.push({ p, id });
+    TB.sfx('place');
+    if (id === GZ_PIG) this.say(p, '豬來了！'); else if (id === GZ_SHEEP) this.say(p, '羊！'); else if (id === GZ_TF) this.say(p, '變壓器！');
+    this.render();
+    if (s.trick.length === 4) {
+      this.lock = true;
+      this.tmr = setTimeout(() => this.collect(), 950);
+    } else { s.turn = (p + 1) % 4; this.save(); this.next(); }
+  },
+  collect() {
+    const s = this.st; if (cur !== this) return;
+    const w = gzWinner(s.trick), pts = s.trick.filter(x => gzScoring(x.id)).map(x => x.id);
+    s.taken[w].push(...pts); s.seen.push(...s.trick.map(x => x.id)); s.trick = []; s.turn = w; s.tricks++;
+    this.lastWin = w; this.lock = false;
+    if (pts.length) { TB.sfx(w === 0 ? (gzTrickVal(pts) >= 0 ? 'win' : 'bad') : 'capture'); if (pts.includes(GZ_PIG)) this.say(w, w === 0 ? '吃到豬了…' : '被拱到豬了！'); else if (pts.includes(GZ_SHEEP)) this.say(w, '牽到羊！'); }
+    else TB.sfx('flip');
+    this.render();
+    if (!s.hands[0].length) { this.tmr = setTimeout(() => this.endRound(), 700); return; }
+    this.save(); this.next();
+  },
+  say(p, txt) {
+    const b = this.bub, [x, y] = p === 0 ? [W / 2, this.g.handY - 50] : this.seatXY(p);
+    b.textContent = (p === 0 ? '你' : NAMES[p]) + '：' + txt; b.hidden = false;
+    b.style.left = Math.max(90, Math.min(W - 90, x)) + 'px'; b.style.top = (p === 0 ? y : y + 36) + 'px';
+    clearTimeout(this.tmr2); this.tmr2 = setTimeout(() => { b.hidden = true; }, 1300);
+  },
+  next() {
+    const s = this.st; clearTimeout(this.tmr);
+    if (!s || s.over || this.lock) return;
+    if (busy) { this.tmr = setTimeout(() => this.next(), 250); return; }
+    this.render();
+    if (s.turn !== 0) this.tmr = setTimeout(() => { if (cur !== this || s.over || this.lock) return; this.play(s.turn, this.aiPick(s.turn)); }, 520 + Math.random() * 360);
+  },
+  endRound() {
+    const s = this.st; s.over = true;
+    const res = [0, 1, 2, 3].map(p => gzScore(s.taken[p]));
+    res.forEach((r, p) => s.totals[p] += r.t);
+    s.hist.push(res.map(r => r.t));
+    const last = s.round >= s.rounds;
+    if (last) s.matchOver = true;
+    this.render(); this.save();
+    const top = Math.max(...s.totals);
+    if (last) {
+      TB.bump('poker', 'played'); TB.bump('poker-gongzhu', 'played');
+      const won = s.totals[0] === top; if (won) { TB.bump('poker', 'won'); TB.bump('poker-gongzhu', 'won'); }
+      TB.store.del('poker:gongzhu'); TB.sfx(won ? 'win' : 'lose');
+    }
+    const desc = r => [r.hn ? (r.all ? '全紅 +200' : '♥×' + r.hn) : '', r.pig ? '豬 −100' : '', r.sheep ? '羊 +100' : '', r.tf ? (r.hn || r.pig || r.sheep ? '變壓器 ×2' : '變壓器 +50') : ''].filter(Boolean).join('、') || '—';
+    const tbl = '<table class="res"><tr><th></th><th>這局拿到</th><th>這局</th><th>總分</th></tr>' +
+      [0, 1, 2, 3].map(p => `<tr class="${last && s.totals[p] === top ? 'w' : ''}"><td>${NAMES[p]}</td><td style="font-size:12px">${desc(res[p])}</td><td>${res[p].t > 0 ? '+' : ''}${res[p].t}</td><td>${s.totals[p]}</td></tr>`).join('') + '</table>';
+    const title = last ? (s.totals[0] === top ? '你贏了這一場！' : NAMES[s.totals.indexOf(top)] + ' 贏了這一場') : '第 ' + s.round + ' 局結束';
+    setTimeout(() => TB.dialog({ title, html: tbl + (last ? '<p>' + s.rounds + ' 局打完，總分最高的人贏。</p>' : '<p>還有 ' + (s.rounds - s.round) + ' 局。</p>'),
+      buttons: [{ label: '看一下', value: null }, { label: last ? '再來一場' : '下一局', primary: true, onClick: () => { setTimeout(() => last ? this.start({ level: s.level, rounds: s.rounds }) : this.nextRound(), 0); } }] }), 500);
+  },
+  nextRound() {
+    const s = this.st; if (!s || s.matchOver) return;
+    this.newRound(); this.save(); this.lastWin = null;
+    felt.querySelectorAll('.card').forEach(e => { e.classList.remove('can', 'sel'); e.style.filter = ''; });
+    dealAnim(W / 2 - CW / 2, H / 2 - CH, this.dealOrder); setTimeout(() => this.next(), 1300);
+  },
+  act(a) {
+    const s = this.st; if (!s || busy) return;
+    if (a === 'score') return this.scoreDialog();
+    if (s.over) { if (s.matchOver) newGame(); else this.nextRound(); return; }
+    if (s.turn !== 0 || this.lock) return;
+    if (a === 'hint') return this.hint();
+    if (a === 'play' && this.sel >= 0) this.play(0, this.sel);
+  },
+  scoreDialog() {
+    const s = this.st;
+    const rows = s.hist.map((h, i) => `<tr><td>第 ${i + 1} 局</td>${h.map(v => `<td>${v > 0 ? '+' : ''}${v}</td>`).join('')}</tr>`).join('');
+    const live = [0, 1, 2, 3].map(p => gzScore(s.taken[p]).t);
+    TB.dialog({ title: '分數表', html: '<table class="res"><tr><th></th>' + NAMES.map(n => `<th>${n}</th>`).join('') + '</tr>' + rows +
+      (s.over ? '' : `<tr><td>這局目前</td>${live.map(v => `<td>${v > 0 ? '+' : ''}${v}</td>`).join('')}</tr>`) +
+      `<tr class="w"><td>總分</td>${s.totals.map(v => `<td>${v}</td>`).join('')}</tr></table>`, buttons: [{ label: '好', primary: true }] });
+  },
+  hint() {
+    const s = this.st; if (s.over || s.turn !== 0 || this.lock) return;
+    const id = gzMonteCarlo(s, 0, 24);
+    this.sel = id; this.render(); flashHint([EL[id]]); TB.sfx('select');
+  },
+  click(id) {
+    const s = this.st; if (!s || s.over || s.turn !== 0 || this.lock || busy) return;
+    if (!s.hands[0].includes(id)) return;
+    const legal = gzLegal(s.hands[0], s.trick);
+    if (!legal.includes(id)) { TB.sfx('bad'); TB.toast('要跟出同花色（' + SUITS[Math.floor(s.trick[0].id / 13)] + '）'); return; }
+    if (this.sel === id) { this.play(0, id); return; }
+    this.sel = id; TB.sfx('click'); this.render();
+  },
+  grab() { return null; }, drop() { return false; },
+  undo() { TB.toast('拱豬不能復原喔'); },
+  tick() {},
+  newDialog() {
+    const o = this.opt();
+    return TB.dialog({
+      title: '拱豬 · 新局', html: '<p>四個人輪流出牌、比大小吃墩。<b>紅心是扣分</b>，黑桃 Q 是<b>豬（−100）</b>，方塊 J 是<b>羊（+100）</b>，梅花 10 是<b>變壓器</b>（分數加倍）。把豬「拱」給別人吧！</p>' +
+        TB.seg('一場打幾局', 'rounds', [[1, '1 局'], [4, '4 局'], [8, '8 局']], o.rounds) +
+        TB.seg('電腦強度', 'level', [['easy', '簡單'], ['normal', '普通'], ['hard', '困難']], o.level),
+      buttons: [{ label: '取消', value: null }, { label: '開始', primary: true, onClick: d => { const v = { rounds: +TB.segVal(d, 'rounds'), level: TB.segVal(d, 'level') }; TB.store.set('poker:opt:gongzhu', v); setTimeout(() => this.start(v), 0); } }]
+    });
+  },
+  start(opt) {
+    clearTimeout(this.tmr); this.newMatch(opt); this.save(); this.layout(); this.lock = false; this.lastWin = null;
+    felt.querySelectorAll('.card').forEach(e => { e.classList.remove('can', 'sel'); e.style.filter = ''; });
+    dealAnim(W / 2 - CW / 2, H / 2 - CH, this.dealOrder); setTimeout(() => this.next(), 1300);
+  },
+  resume() {
+    const v = loadSave('poker:gongzhu');
+    if (v && this.valid(v)) {
+      this.st = v; this.sel = -1; this.lastWin = null;
+      // 存檔時剛好一墩出滿四張：重新結算
+      this.lock = v.trick.length === 4;
+      return true;
+    }
+    return false;
+  },
+  afterResume() {
+    const s = this.st;
+    if (s.trick.length === 4) { this.tmr = setTimeout(() => this.collect(), 600); return; }
+    if (s.over) { this.render(); setTimeout(() => this.act('play'), 300); return; }
+    setTimeout(() => this.next(), 500);
+  },
+  rules: `<h4>目標</h4><p>四個人打，每局把 52 張牌發完（每人 13 張）。一場打完，<b>總分最高</b>的人贏。</p>
+    <h4>出牌</h4><ul><li>拿到梅花 2 的人先出。之後由上一墩的贏家先出。</li>
+    <li>要<b>跟出同一個花色</b>；沒有這個花色才可以出別的牌（墊牌）。</li>
+    <li>同花色裡點數最大的人（A 最大）吃下這一墩，墩裡的分數牌都歸他。</li>
+    <li>點一張牌選起來，再點一次（或按「出牌」）就打出；不能出的牌會變暗。</li></ul>
+    <h4>分數牌</h4><ul><li><b>紅心</b>：A −50、K −40、Q −30、J −20、5～10 各 −10，2、3、4 不扣分。</li>
+    <li><b>豬</b>（黑桃 Q）：−100。</li>
+    <li><b>羊</b>（方塊 J）：+100。</li>
+    <li><b>變壓器</b>（梅花 10）：拿到它的人，這局其他分數全部 ×2；如果只拿到它自己，算 +50。</li>
+    <li><b>全紅</b>：一個人收齊 13 張紅心，紅心反過來算 +200。</li></ul>
+    <h4>小技巧</h4><p>手上有豬時，等別人出黑桃 K、A 再把豬丟下去；黑桃 Q 還沒出現前，別急著出黑桃 K、A。沒有某個花色時，正好把大紅心或豬墊給別人。</p>
+    <p style="font-size:12px">拱豬各地規則略有不同，這裡用的是常見的玩法，沒有亮牌加倍。</p>`,
+};
+
+// =====================================================================
 // 模式切換、按鈕
 // =====================================================================
-const MODES = { klondike: K, spider: S, freecell: F, pyramid: P, bigtwo: B, redpoint: R, heart: X };
+const MODES = { klondike: K, spider: S, freecell: F, pyramid: P, bigtwo: B, redpoint: R, heart: X, gongzhu: G };
 function setMode(key, fromUser) {
   if (cur && cur.leave) cur.leave();
   clearTimeout(B.tmr); busy = false; TB.closeDialog();
@@ -1753,12 +2135,12 @@ function setMode(key, fromUser) {
 function newGame() { if (!cur) return; cur.newDialog(); }
 function measure() { const r = felt.getBoundingClientRect(); W = r.width; H = r.height; }
 function chooseMode(first) {
-  const IC = { klondike: ['k1', '♠︎'], spider: ['k2', '🕷'], freecell: ['k4', '♣︎'], pyramid: ['k5', '▲'], bigtwo: ['k3', '2'], redpoint: ['k6', '♥︎'], heart: ['k7', '🖐'] };
+  const IC = { klondike: ['k1', '♠︎'], spider: ['k2', '🕷'], freecell: ['k4', '♣︎'], pyramid: ['k5', '▲'], bigtwo: ['k3', '2'], redpoint: ['k6', '♥︎'], heart: ['k7', '🖐'], gongzhu: ['k8', '🐷'] };
   const m = (k, t, d) => `<button data-m="${k}" class="${cur && cur.key === k && cur.st ? 'cur' : ''}"><span class="ic ${IC[k][0]}">${IC[k][1]}</span><span class="tx"><b>${t}</b><span>${d}</span></span></button>`;
   TB.dialog({
     title: '選一種玩法', dismiss: !first,
     html: '<div class="modes"><h5>一個人玩</h5>' + m('klondike', '新接龍', '經典接龍，翻一張或翻三張') + m('spider', '蜘蛛紙牌', '兩副牌，同花色從 K 排到 A') + m('freecell', '空當接龍', '全部翻開，靠四個空當解開；有局號') + m('pyramid', '金字塔', '兩張加起來 13 就拿走') +
-      '<h5>跟電腦玩</h5>' + m('bigtwo', '大老二', '台灣規則，跟三位電腦比誰先出完') + m('redpoint', '撿紅點', '湊 10 吃牌，比誰撿到的紅點多') + m('heart', '心臟病', '數字一樣就快拍！比反應') + '</div>',
+      '<h5>跟電腦玩</h5>' + m('bigtwo', '大老二', '台灣規則，跟三位電腦比誰先出完') + m('redpoint', '撿紅點', '湊 10 吃牌，比誰撿到的紅點多') + m('heart', '心臟病', '數字一樣就快拍！比反應') + m('gongzhu', '拱豬', '四人吃墩，把豬拱給別人、把羊牽回家') + '</div>',
     buttons: first ? [] : [{ label: '取消', value: null }],
   });
   document.querySelector('.tb-dlg .modes').addEventListener('click', e => {
@@ -1799,7 +2181,7 @@ setInterval(() => { if (cur && document.visibilityState === 'visible' && !docume
 measure();
 const saved = TB.store.get('poker:mode', null);
 if (saved && MODES[saved]) setMode(saved); else { cur = K; buildCards(K.cards()); EL.forEach(e => e.classList.add('gone')); felt.classList.add('v'); K.layout(); chooseMode(true); }
-window.__poker = { K, S, B, F, P, R, X, classify, beats, genPlays, straightInfo, pow, get cur() { return cur; } };
+window.__poker = { K, S, B, F, P, R, X, G, gzScore, gzPolicy, gzMonteCarlo, classify, beats, genPlays, straightInfo, pow, get cur() { return cur; } };
 </script>
 </body>
 </html>
