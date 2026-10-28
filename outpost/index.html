@@ -166,6 +166,7 @@ details[open] summary::after{content:" ▴"}
 .xcard .xg::before{content:'▲ ';color:var(--green)}
 .xcard .xb::before{content:'▼ ';color:var(--red)}
 .mstars{color:#f2b200;font-size:16px;letter-spacing:2px}
+.mhero{display:inline-block;align-self:flex-start;width:max-content;margin-top:4px;font-size:12px;font-weight:700;color:#a5770a;background:#fff3c4;border-radius:8px;padding:1px 8px}
 .mstars i{color:#d8ccb2;font-style:normal}
 .stars{font-size:40px;letter-spacing:6px;color:#f2b200;margin:2px 0 4px}
 .stars i{color:#d8ccb2;font-style:normal}
@@ -468,6 +469,13 @@ const DEF = {
   cannon:   { fac: 'shard', name: 'Shard Cannon', bld: 1, w: 2, h: 2, hp: 220, shield: 220, armor: 1, sight: 9, cost: [125, 0], time: 26, key: 'T', req: 'gate', wpn: { dmg: 13, range: 192, cd: .8, proj: 'lance', air: 1 }, desc: 'Crystal tower that shoots at air and ground.' },
   sanctum:  { fac: 'shard', name: 'Sanctum', bld: 1, w: 2, h: 2, hp: 450, shield: 400, armor: 1, sight: 6, cost: [150, 50], time: 35, key: 'A', req: 'gate', research: ['weapons', 'armor'], desc: 'Researches Resonance (weapons) and Lattice (armor) for all your units.' },
   skygate:  { fac: 'shard', name: 'Sky Gate', bld: 1, w: 3, h: 3, hp: 600, shield: 500, armor: 1, sight: 7, cost: [150, 150], time: 45, key: 'V', req: 'forge', trains: ['glider', 'monolith'], desc: 'Makes flying Gliders and Monoliths. Warps them to its rally point like a Warp Gate.' },
+  // ---------------------------------------------------------------- mission-only heroes (they level up) and escort cargo
+  rook:     { fac: 'blue', name: 'Captain Rook', hero: 1, look: 'trooper', scale: 1.5, skill: 'overdrive', unit: 1, hp: 360, armor: 2, r: 13, speed: 92, sight: 10, cost: [0, 0], time: 1, sup: 0, key: '', wpn: { dmg: 12, range: 160, cd: .5, proj: 'bolt', air: 1 }, desc: 'Commander Pip\'s best soldier. Hits air and ground, grows stronger with every level. Overdrive (R): he and every soldier near him run and shoot 50% faster for a few seconds.' },
+  bramble:  { fac: 'bloom', name: 'Old Bramble', hero: 1, look: 'beetle', scale: 1.55, skill: 'regrow', unit: 1, hp: 620, armor: 2, r: 17, speed: 86, sight: 9, cost: [0, 0], time: 1, sup: 0, key: '', wpn: { dmg: 26, range: 8, cd: 1.0, melee: 1, upg: 2 }, desc: 'An ancient beetle, the Elder\'s guardian. Grows stronger with every level. Regrowth (R): heals every friend nearby and poisons the enemies around him.' },
+  aster:    { fac: 'shard', name: 'Aster', hero: 1, look: 'lancer', scale: 1.5, skill: 'nova', unit: 1, hp: 230, shield: 210, armor: 1, r: 13, speed: 96, sight: 10, cost: [0, 0], time: 1, sup: 0, key: '', wpn: { dmg: 17, range: 165, cd: .8, proj: 'lance', air: 1 }, desc: 'Oracle Lumen\'s champion. Grows stronger with every level. Nova (R): a burst of light that hurts every enemy around her and refills her shield.' },
+  crawler:  { fac: 'blue', name: 'Supply Crawler', cargo: 1, unit: 1, mech: 1, hp: 520, armor: 2, r: 15, speed: 46, sight: 6, cost: [0, 0], time: 1, sup: 0, key: '', desc: 'A slow, armored supply truck. It drives itself and stops while it is being shot at. Workers can repair it.' },
+  elder:    { fac: 'bloom', name: 'Elder Seed', cargo: 1, look: 'thornw', scale: 1.7, unit: 1, hp: 1500, armor: 1, r: 22, speed: 38, sight: 7, cost: [0, 0], time: 1, sup: 0, key: '', desc: 'A walking seed of the first Heart Tree. It walks by itself and stops while it is being hurt; out of combat it heals slowly.' },
+  ark:      { fac: 'shard', name: 'Crystal Ark', cargo: 1, look: 'monolith', scale: 1.35, unit: 1, air: 1, hp: 800, shield: 500, armor: 1, r: 22, speed: 42, sight: 8, cost: [0, 0], time: 1, sup: 0, key: '', desc: 'A floating crystal carrying the Shards\' memory. It flies by itself and stops while it is under fire.' },
   // ---------------------------------------------------------------- neutral
   crystal:  { name: 'Crystals', res: 1, w: 1, h: 1, hp: 1, sight: 0 },
   geyser:   { name: 'Gas Geyser', res: 1, w: 2, h: 2, hp: 1, sight: 0 },
@@ -1270,6 +1278,7 @@ function consume(e) {   // a Sprout that turned into a building
 }
 function kill(t, src) {
   t.alive = false; t.hp = 0;
+  if (G.heroOn) heroKill(t, src);
   if (t.d.unit) {
     releaseRes(t);
     if (t.order && t.order.t === 'build' && t.order.paid) refund(t.team, t.order.k);
@@ -1302,6 +1311,7 @@ function updUnit(e, dt) {
   if (e.d.shield) regenShield(e, dt);
   if (e.blinkCD > 0) e.blinkCD -= dt;
   if (e.barCD > 0) e.barCD -= dt;
+  if (e.skCD > 0) e.skCD -= dt;
   if (e.busyT > 0) { e.busyT -= dt; e.planted = true; return; }
   if (e.rushT > 0) { e.rushT -= dt; if (Math.random() < dt * 12) G.parts.push({ k: 'spark', x: e.x, y: e.y, vx: (Math.random() - .5) * 40, vy: -30, life: .3, max: .3, c: '#ffd23f' }); }
   if (e.hardT > 0) e.hardT -= dt;
@@ -1810,7 +1820,7 @@ class AI {
     this.team = team; this.diff = diff; this.style = AI_STYLES[flags.style] ? flags.style : 'balanced';
     this.cfg = AI_STYLES[this.style].cfg({ ...AI_CFG[diff] });
     this.acc = srand() * .3; this.wave = this.cfg.wave; this.attacking = false; this.nextAttack = this.cfg.first; this.lastBuild = {}; this.lastFail = {};
-    this.passive = !!flags.passive; this.noBuild = !!flags.noBuild; this.noExpand = !!flags.noExpand; this.ally = sideOf(team) === 0;
+    this.passive = !!flags.passive; this.noBuild = !!flags.noBuild; this.noExpand = !!flags.noExpand; this.abilOnly = !!flags.abilOnly; this.ally = sideOf(team) === 0;
     this.lastPush = 0;
     this.rng = mulberry32((G.seed * 7 + team * 131 + Math.floor(G.time)) | 0);
   }
@@ -1825,9 +1835,10 @@ class AI {
     const me = this.team, R = G.res[me], t = G.time, cfg = this.cfg, K = r => this.R(r);
     const hqs = this.mine(K('hq')).filter(b => b.built >= 1);
     const hq = hqs[0] || this.mine(K('hq'))[0];
-    const units = G.ents.filter(e => e.alive && e.team === me && e.d.unit && !e.captive);
+    const units = G.ents.filter(e => e.alive && e.team === me && e.d.unit && !e.captive && !e.scripted);
     const workers = units.filter(u => u.d.worker);
     const army = units.filter(u => !u.d.worker);
+    if (this.abilOnly) { this.abilities(army, false); return; }   // mission posts: keep their places, only use abilities
     if (!hq) { this.armyControl(army, null); return; }
     // --- economy
     for (const w of workers) if (w.order.t === 'idle') { const c = bestCrystal(hq.x, hq.y, 12 * T) || bestCrystal(w.x, w.y, 40 * T); if (c) { setOrder(w, { t: 'gather', res: c.id }); w.lastRes = c.id; } }
@@ -2430,9 +2441,47 @@ function bakeTerrain() {
 
 // ---------- units
 function drawUnit(c, e) {
+  if (e.d.look) { drawLook(c, e); return; }
+  if (e.kind === 'crawler') { drawCrawler(c, e); return; }
   if (e.d.fac === 'bloom') { drawBloomUnit(c, e); return; }
   if (e.d.fac === 'shard') { drawShardUnit(c, e); return; }
   drawBlueUnit(c, e);
+}
+
+// heroes and the big escorts reuse a unit's art, scaled up; heroes get a golden ring and a level star
+function drawLook(c, e) {
+  const d = e.d, s = d.scale || 1, base = DEF[d.look], x = e.x, y = e.y;
+  if (d.hero) {
+    const p = 1 + Math.sin(NOW * 3 + e.id) * .06, r = e.r * 1.25 * p;
+    c.fillStyle = 'rgba(255,210,63,.18)'; c.beginPath(); c.ellipse(x, y + 2, r, r * .62, 0, 0, 7); c.fill();
+    c.strokeStyle = 'rgba(255,214,90,.85)'; c.lineWidth = 2; c.beginPath(); c.ellipse(x, y + 2, r, r * .62, 0, 0, 7); c.stroke();
+  }
+  const p = Object.create(e); p.kind = d.look; p.d = base; p.r = base.r;
+  c.save(); c.translate(x, y); c.scale(s, s); c.translate(-x, -y);
+  if (base.fac === 'bloom') drawBloomUnit(c, p); else if (base.fac === 'shard') drawShardUnit(c, p); else drawBlueUnit(c, p);
+  c.restore();
+  if (d.hero) {   // a gold star over the head with the level in it
+    const [sx, sy] = S3(x, y, (base.air ? AIR_ALT : 0) + base.r * s * 2.3 + 10), R = 7.5;
+    c.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr2 = i % 2 ? R * .48 : R; c.lineTo(sx + Math.cos(a) * rr2, sy + Math.sin(a) * rr2); } c.closePath();
+    c.fillStyle = '#ffd23f'; c.fill(); c.strokeStyle = '#8a5a00'; c.lineWidth = 1.2; c.stroke();
+    c.fillStyle = '#5a3a00'; c.font = '700 8px Fredoka, system-ui, sans-serif'; c.textAlign = 'center'; c.fillText(String(e.lvl || 1), sx, sy + 3); c.textAlign = 'left';
+  }
+}
+// Supply Crawler: tracked truck with a cab and a load of crates and crystals
+function drawCrawler(c, e) {
+  const tm = TC(e.team), a = e.face, x = e.x, y = e.y, ca = Math.cos(a), sa = Math.sin(a), px = -sa, py = ca;
+  shadow3(c, x, y, 19, 12, 16);
+  const roll = e.moved ? (NOW * 9) % 1 : 0;
+  for (const sd of [-1, 1]) {
+    const tx = x + px * sd * 10, ty = y + py * sd * 10;
+    box3(c, tx, ty, a, 32, 7, 0, 8, '#3b3f4f', { top: '#4a4f62', wall: (g, f, A, B, C, D) => { g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 1; for (let k = 0; k < 6; k++) { const t2 = (k + roll) / 6; g.beginPath(); g.moveTo(A[0] + (B[0] - A[0]) * t2, A[1] + (B[1] - A[1]) * t2); g.lineTo(D[0] + (C[0] - D[0]) * t2, D[1] + (C[1] - D[1]) * t2); g.stroke(); } } });
+  }
+  box3(c, x, y, a, 28, 17, 6, 14, METAL.m, { top: METAL.l });
+  const back = () => { const bx = x - ca * 4, by = y - sa * 4; box3(c, bx, by, a, 15, 15, 14, 25, '#c9934a', { top: '#e8b874', wall: (g, f, A, B, C, D) => { g.strokeStyle = 'rgba(90,50,10,.5)'; g.lineWidth = .8; g.beginPath(); g.moveTo(A[0], A[1]); g.lineTo(C[0], C[1]); g.moveTo(B[0], B[1]); g.lineTo(D[0], D[1]); g.stroke(); } });
+    for (const [o, s2] of [[-3, -3], [2, 3]]) { const [gx, gy] = [bx + ca * o + px * s2, by + sa * o + py * s2]; prism3(c, ngon3(2.6, 6), gx, gy, 0, 25, 31, '#5fe1ff', { top: '#d6fbff', taper: .4 }); } };
+  const cab = () => { const fx = x + ca * 9, fy = y + sa * 9; box3(c, fx, fy, a, 9, 15, 14, 23, tm.c, { top: tm.l }); const [lx, ly] = S3(fx + ca * 4.6, fy + sa * 4.6, 18); c.fillStyle = '#bfe6ff'; c.fillRect(lx - 3, ly - 2, 6, 3); };
+  if (sa > 0) { back(); cab(); } else { cab(); back(); }
+  if (e.halt && (NOW * 4 % 1) < .5) { const [hx, hy] = S3(x, y, 36); c.fillStyle = '#ff4a5a'; circ(c, hx, hy, 3); c.fill(); }
 }
 
 // ---------- buildings & resources
@@ -2658,6 +2707,10 @@ function drawMinimap() {
     else { const z = Math.max(4, S * 2); mmc.fillRect(e.x / T * S - z / 2, e.y / T * S - z / 2, z, z); }
   }
   if (G.fog) { mmc.imageSmoothingEnabled = true; mmc.drawImage(fogCv, 0, 0, mm.width, mm.height); }
+  if (G.mission) {   // capture points, heroes and cargo stand out on the minimap
+    for (const p of G.mission.points || []) { mmc.fillStyle = p.owner === 0 ? '#3cff7a' : p.owner === 1 ? '#ff4a5a' : '#ffffff'; mmc.strokeStyle = '#14202c'; mmc.lineWidth = 2; circ(mmc, p.x / T * S, p.y / T * S, 6); mmc.fill(); mmc.stroke(); }
+    for (const e of G.ents) if (e.alive && (e.d.hero || e.d.cargo) && sideOf(e.team) === MYSIDE) { mmc.fillStyle = e.d.hero ? '#ffd23f' : '#ffffff'; mmc.strokeStyle = '#14202c'; mmc.lineWidth = 1.5; const z = Math.max(7, S * 3); mmc.fillRect(e.x / T * S - z / 2, e.y / T * S - z / 2, z, z); mmc.strokeRect(e.x / T * S - z / 2, e.y / T * S - z / 2, z, z); }
+  }
   for (const p of G.pings) { mmc.strokeStyle = p.c || '#ff3b50'; mmc.lineWidth = 3; circ(mmc, p.x / T * S, p.y / T * S, 6 + (p.t % .6) * 30); mmc.stroke(); }
   mmc.strokeStyle = '#fff'; mmc.lineWidth = 2.5;
   mmc.strokeRect(cam.x / T * S, cam.y / T * S, W / cam.z / T * S, (H - hudH()) / cam.z / T * S);
@@ -2725,6 +2778,12 @@ function drawAction(g, k, S) {
       g.fillStyle = '#58b6f2'; g.beginPath(); g.moveTo(0, -14); g.lineTo(10, 0); g.lineTo(0, 14); g.lineTo(-10, 0); g.closePath(); g.fill();
       if (k === 'r:barrier') { g.fillStyle = '#2fbf68'; g.font = '700 30px system-ui'; g.fillText('+', 14, 34); } break;
     }
+    case 'sk:overdrive': g.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 13 : 30; g.lineTo(Math.cos(a) * r, Math.sin(a) * r); } g.closePath(); g.fillStyle = '#ffd23f'; g.fill(); st('#c99312', 3);
+      g.beginPath(); g.moveTo(4, -18); g.lineTo(-8, 2); g.lineTo(1, 2); g.lineTo(-4, 18); g.lineTo(9, -4); g.lineTo(0, -4); g.closePath(); g.fillStyle = '#ff5a6a'; g.fill(); break;
+    case 'sk:regrow': circ(g, 0, 0, 27); g.fillStyle = 'rgba(60,220,110,.25)'; g.fill(); st('#2fbf68', 4); g.fillStyle = '#36bf62'; for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + .6; g.beginPath(); g.ellipse(Math.cos(a) * 11, Math.sin(a) * 11, 11, 5, a, 0, 7); g.fill(); }
+      g.fillStyle = '#fff'; g.fillRect(-4, -12, 8, 24); g.fillRect(-12, -4, 24, 8); break;
+    case 'sk:nova': g.fillStyle = 'rgba(240,184,30,.25)'; circ(g, 0, 0, 30); g.fill(); for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; g.beginPath(); g.moveTo(Math.cos(a) * 10, Math.sin(a) * 10); g.lineTo(Math.cos(a) * 29, Math.sin(a) * 29); st('#f0b81e', 4); }
+      g.fillStyle = '#ffe7a3'; g.beginPath(); g.moveTo(0, -13); g.lineTo(10, 0); g.lineTo(0, 13); g.lineTo(-10, 0); g.closePath(); g.fill(); st('#a5770a', 2); break;
     case 'cancel': g.beginPath(); g.moveTo(-18, -18); g.lineTo(18, 18); g.moveTo(18, -18); g.lineTo(-18, 18); st('#ff5a6a', 9); break;
   }
 }
@@ -5696,6 +5755,7 @@ document.getElementById('dlg').addEventListener('pointerdown', e => { if (e.targ
 document.getElementById('bObjs').addEventListener('click', () => { const o = $('objs'); o.classList.toggle('min'); $('bObjs').textContent = o.classList.contains('min') ? '+' : '–'; });
 function drawMarks(c) {
   const M = G.mission; if (!M || !M.marks) return;
+  if (M.points) drawPoints(c, M.points);
   for (const m of M.marks) {
     if (m.done) continue;
     const pulse = 1 + Math.sin(NOW * 3) * .04;
@@ -5757,9 +5817,9 @@ function loadGame(d) {
 //  Bloom and Shards campaigns (three missions each)
 // =====================================================================
 const CAMPS = {
-  blue:  { name: 'Blue Outpost', who: 'Commander Pip', blurb: 'Six missions that teach the basics with the Blue Outpost.' },
-  bloom: { name: 'The Bloom', who: 'Elder Moss', blurb: 'Three missions about seeds, living ground and ambushes.' },
-  shard: { name: 'The Shards', who: 'Oracle Lumen', blurb: 'Three missions about power fields, shields and forward warp.' },
+  blue:  { name: 'Blue Outpost', who: 'Commander Pip', blurb: 'Nine missions: the basics with the Blue Outpost, then Captain Rook leads convoys, beacon fights and a last stand.' },
+  bloom: { name: 'The Bloom', who: 'Elder Moss', blurb: 'Six missions about seeds, living ground and ambushes, then Old Bramble guards the sacred groves and the Elder Seed.' },
+  shard: { name: 'The Shards', who: 'Oracle Lumen', blurb: 'Six missions about power fields, shields and forward warp, then Aster fights for the river, the Crystal Ark and her own trial.' },
 };
 for (const m of MISSIONS) m.camp = m.camp || 'blue';
 const markAt = (tx, ty, r, label, foe) => ({ x: (tx + .5) * T, y: (ty + .5) * T, r: r * T, label, foe });
@@ -6021,6 +6081,632 @@ MISSIONS.push(
     stars: () => [['Victory', true], ['Won in under 18:00', G.time <= 1080], ['Warped 10 units in at the front', (G.stats.warped || 0) >= 10]],
   },
 );
+// =====================================================================
+//  Heroes, escorts, capture points and new map layouts (campaign part 2)
+// =====================================================================
+const HERO_XP = [0, 150, 400, 750, 1200];   // XP needed for levels 1–5
+const HERO_SK = {
+  overdrive: { name: 'Overdrive', cd: 24, tip: 'Captain Rook and every soldier near him run and shoot 50% faster for a few seconds (longer at higher levels).' },
+  regrow:    { name: 'Regrowth', cd: 22, tip: 'Old Bramble heals every friend nearby, buildings too, and poisons the enemies right around him. Stronger at higher levels.' },
+  nova:      { name: 'Nova', cd: 18, tip: 'Aster bursts with light: every enemy around her is hurt and her shield fills up again. Stronger at higher levels.' },
+};
+const heroDefs = {};
+function heroDef(kind, lvl) {
+  const key = kind + lvl; if (heroDefs[key]) return heroDefs[key];
+  const b = DEF[kind], k = 1 + .15 * (lvl - 1);
+  const d = Object.assign({}, b, { hp: Math.round(b.hp * k), armor: b.armor + (lvl >= 4 ? 1 : 0), lvl });
+  if (b.shield) d.shield = Math.round(b.shield * k);
+  if (b.wpn) d.wpn = Object.assign({}, b.wpn, { dmg: Math.round(b.wpn.dmg * k) });
+  return heroDefs[key] = d;
+}
+function mkHero(kind, team, x, y, lvl = 1) {
+  const e = spawnGroup(team, kind, 1, x, y)[0];
+  e.lvl = lvl; e.xp = HERO_XP[lvl - 1]; e.d = heroDef(kind, lvl); e.hp = e.d.hp; if (e.d.shield) e.sh = e.d.shield; e.skCD = 0;
+  G.heroOn = true;
+  return e;
+}
+function heroGain(h, xp) {
+  if (!h.alive || h.lvl >= 5) return;
+  h.xp += xp;
+  while (h.lvl < 5 && h.xp >= HERO_XP[h.lvl]) {
+    const f = h.hp / h.d.hp;
+    h.lvl++; h.d = heroDef(h.kind, h.lvl);
+    h.hp = Math.min(h.d.hp, h.d.hp * (f + .3)); if (h.d.shield) h.sh = h.d.shield;
+    G.parts.push({ k: 'ring', x: h.x, y: h.y, life: .8, max: .8, s: 3 * T, c: '#ffd23f' });
+    if (h.team === ME && !G.demo) { toast(h.d.name + ' reached level ' + h.lvl + '!', 'good'); sfx('done'); }
+  }
+}
+// heroes learn from every kill they make, and a little from kills made close to them
+function heroKill(t, src) {
+  if (!t.d.unit && !t.d.bld) return;
+  const val = t.d.worker ? 12 : (t.d.cost[0] + t.d.cost[1]) * (t.d.bld ? .25 : .5) * (t.d.pair ? .5 : 1);
+  if (!val) return;
+  for (const h of G.ents) {
+    if (!h.alive || !h.d.hero || !isFoe(h.team, t.team)) continue;
+    if (src === h) heroGain(h, val);
+    else if (src && isFriend(src.team, h.team) && Math.hypot(h.x - t.x, h.y - t.y) < 8 * T) heroGain(h, val * .2);
+  }
+}
+function heroSkill(e) {
+  if (!e.d.hero || e.skCD > 0 || e.busyT > 0) return false;
+  const L = e.lvl || 1, sk = e.d.skill, R = 4.5 * T;
+  if (sk === 'overdrive') {
+    forNear(e.x, e.y, R, u => { if (u.team === e.team && u.d.unit && !u.d.worker && !u.d.cargo && Math.hypot(u.x - e.x, u.y - e.y) < R) u.rushT = Math.max(u.rushT || 0, 5 + L); });
+    e.rushT = 5 + L;
+    G.parts.push({ k: 'ring', x: e.x, y: e.y, life: .6, max: .6, s: R, c: '#ffd23f' }); sfxAt('rush', e.x, e.y);
+  } else if (sk === 'regrow') {
+    const heal = 45 + 15 * L, foes = [];
+    forNear(e.x, e.y, R, u => {
+      const d = Math.hypot(u.x - e.x, u.y - e.y); if (d > R) return;
+      if (isFriend(e.team, u.team) && !u.hidden) { u.hp = Math.min(u.d.hp, u.hp + heal); burst(u.x, u.y, '#9cff9c', 3, 40); }
+      else if (isFoe(e.team, u.team) && d < 3 * T && !u.d.air && targetable(e.team, u)) foes.push(u);
+    });
+    for (const b of G.blds) if (b.alive && isFriend(e.team, b.team) && Math.hypot(b.x - e.x, b.y - e.y) < R) b.hp = Math.min(b.d.hp, b.hp + heal);
+    for (const u of foes) { u.poisonT = 4; u.poisonD = 4 + 2 * L; u.poisonSrc = e.id; hit(u, 6, e); }
+    G.parts.push({ k: 'ring', x: e.x, y: e.y, life: .7, max: .7, s: R, c: '#9cff9c' }); sfxAt('harden', e.x, e.y);
+  } else if (sk === 'nova') {
+    const foes = [], r = 3.4 * T;
+    forNear(e.x, e.y, r, u => { if (isFoe(e.team, u.team) && Math.hypot(u.x - e.x, u.y - e.y) < r && targetable(e.team, u)) foes.push(u); });
+    for (const u of foes) hit(u, 30 + 12 * L, e);
+    if (e.d.shield) e.sh = e.d.shield;
+    G.parts.push({ k: 'ring', x: e.x, y: e.y, life: .5, max: .5, s: r, c: '#ffe7a3' }, { k: 'ring', x: e.x, y: e.y, life: .35, max: .35, s: r * .6, c: '#ffffff' }); sfxAt('barrier', e.x, e.y);
+  } else return false;
+  e.skCD = HERO_SK[sk].cd;
+  return true;
+}
+// keeps an eye on the mission's hero: lose when it falls, or bring it back at the base after 30 seconds
+function heroWatch(M, D, how) {
+  const h = byId(D.hero);
+  if (h) { D.hlvl = h.lvl; D.hxp = h.xp; D.hmax = Math.max(D.hmax || 1, h.lvl); return true; }
+  if (how === 'lose') { M.lose(DEF[D.heroK].name + ' has fallen.'); return false; }
+  if (how === 'stay') { if (!D.heroDown) { D.heroDown = G.time; M.say(DEF[D.heroK].name + ' is down! Carry on without the hero.'); } return true; }
+  if (!D.heroDown) { D.heroDown = G.time; M.say(DEF[D.heroK].name + ' is down! Back at your base in 30 seconds.'); return true; }
+  if (G.time - D.heroDown >= 30) {
+    const hq = G.blds.find(b => b.alive && b.team === 0 && b.d.hq && b.built >= 1);
+    if (hq) { const n = mkHero(D.heroK, 0, hq.x, hq.y + 2.6 * T, D.hlvl || 1); n.xp = D.hxp || n.xp; D.hero = n.id; D.heroDown = 0; M.say(DEF[D.heroK].name + ' is back in the fight!'); }
+  }
+  return true;
+}
+// ---------- map layouts: a winding canyon, and a river with three fords
+function canyonRoute(sites) {
+  const P = sites.find(s => s.main && s.side === 0 && !s.slot), E = sites.find(s => s.main && s.side === 1 && !s.slot);
+  const dx = E.x - P.x, dy = E.y - P.y, L = Math.hypot(dx, dy), nx = -dy / L, ny = dx / L, k = MW * .15;
+  const A = { x: P.x + dx * .3 + nx * k, y: P.y + dy * .3 + ny * k };
+  return [{ x: P.x, y: P.y }, A, { x: (MW - 1) / 2, y: (MH - 1) / 2 }, { x: MW - 1 - A.x, y: MH - 1 - A.y }, { x: E.x, y: E.y }];
+}
+function routeDist(rt, x, y) {
+  let m = 1e9;
+  for (let i = 0; i < rt.length - 1; i++) {
+    const a = rt[i], b = rt[i + 1], vx = b.x - a.x, vy = b.y - a.y, t = clamp(((x - a.x) * vx + (y - a.y) * vy) / (vx * vx + vy * vy), 0, 1);
+    m = Math.min(m, Math.hypot(x - a.x - vx * t, y - a.y - vy * t));
+  }
+  return m;
+}
+// a point part of the way (0..1) along a route, in world pixels
+function routeAt(rt, f) {
+  const seg = []; let tot = 0;
+  for (let i = 0; i < rt.length - 1; i++) { const l = Math.hypot(rt[i + 1].x - rt[i].x, rt[i + 1].y - rt[i].y); seg.push(l); tot += l; }
+  let d = f * tot;
+  for (let i = 0; i < seg.length; i++) { if (d <= seg[i] || i === seg.length - 1) { const t = seg[i] ? Math.min(1, d / seg[i]) : 0; return { x: (rt[i].x + (rt[i + 1].x - rt[i].x) * t + .5) * T, y: (rt[i].y + (rt[i + 1].y - rt[i].y) * t + .5) * T }; } d -= seg[i]; }
+  return { x: (rt[0].x + .5) * T, y: (rt[0].y + .5) * T };
+}
+const LAYOUTS = {
+  canyon(sym, sites, R) {   // cliffs everywhere except one winding lane between the bases (and pockets around each site)
+    const rt = canyonRoute(sites), hw = MW > 90 ? 3.8 : 3.3;
+    const nearS = (x, y) => sites.some(s => Math.hypot(x - s.x, y - s.y) < 7.5);
+    for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+      if (y * MW + x > (MH - 1 - y) * MW + (MW - 1 - x)) continue;   // the other half is the mirror image
+      const w = hw + Math.sin(x * .45 + y * .3) * .9 + R() * .7, d = routeDist(rt, x, y);
+      if (d > w && !nearS(x, y)) sym(x, y, d < w + 1.8 && R() < .5 ? 3 : 1);
+      else if (d < w - 1.2) sym(x, y, 0);
+    }
+  },
+  river(sym, sites, R) {   // a river between the two sides, crossed at three fords
+    const fords = riverFords(), A = (MW - 1) / (MH - 1);
+    for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+      if (y * MW + x > (MH - 1 - y) * MW + (MW - 1 - x)) continue;
+      const d = Math.abs(x - y * A) / Math.SQRT2 * 1.4, w = 2 + Math.sin((x + y) * .19) * .7;
+      const fd = Math.min(...fords.map(f => Math.hypot(x - f.x, y - f.y)));
+      if (fd < 3.6) { sym(x, y, 0); continue; }
+      if (d < w) sym(x, y, 2);
+      else if (d < w + 1.4 && fd > 5 && R() < .28) sym(x, y, 3);
+    }
+  },
+};
+const riverFords = () => [.33, .5, .67].map(t => ({ x: Math.round((MW - 1) * t), y: Math.round((MH - 1) * t) }));
+// ---------- capture points: a side owns one after standing on it alone for a few seconds; it keeps it until the other side takes it back
+function capPoints(list, r = 3, time = 8) { return list.map((p, i) => ({ x: p.x, y: p.y, r: r * T, time, prog: 0, owner: -1, label: p.label || 'ABC'[i] })); }
+function capTick(pts, dt) {
+  for (const p of pts) {
+    let a = 0, b = 0;
+    forNear(p.x, p.y, p.r, u => { if (!u.d.unit || u.d.worker || u.hidden || u.d.cargo || u.captive || u.team < 0 || Math.hypot(u.x - p.x, u.y - p.y) > p.r) return; if (sideOf(u.team) === 0) a++; else b++; });
+    p.a = a; p.b = b;
+    const dir = a && !b ? 1 : b && !a ? -1 : 0;
+    if (dir) p.prog = clamp(p.prog + dir * dt / p.time, -1, 1);
+    const was = p.owner;
+    if (p.prog >= 1) p.owner = 0; else if (p.prog <= -1) p.owner = 1;
+    else if ((p.owner === 0 && p.prog <= 0) || (p.owner === 1 && p.prog >= 0)) p.owner = -1;
+    if (was !== p.owner && G.mission && !G.demo) { if (p.owner === 0) { toast('Point ' + p.label + ' captured!', 'good'); sfx('done'); } else if (p.owner === 1) { toast('The enemy took point ' + p.label + '!', 'bad'); G.pings.push({ x: p.x, y: p.y, t: 3 }); } }
+  }
+}
+function drawPoints(c, pts) {
+  for (const p of pts) {
+    const col = p.owner === 0 ? '60,255,122' : p.owner === 1 ? '255,74,90' : '255,255,255';
+    c.fillStyle = `rgba(${col},.12)`; c.beginPath(); c.ellipse(p.x, p.y, p.r, p.r * .75, 0, 0, 7); c.fill();
+    c.lineWidth = 3; c.strokeStyle = `rgba(${col},.85)`; c.beginPath(); c.ellipse(p.x, p.y, p.r, p.r * .75, 0, 0, 7); c.stroke();
+    if (p.prog && Math.abs(p.prog) < 1) { c.lineWidth = 6; c.strokeStyle = p.prog > 0 ? 'rgba(60,255,122,.95)' : 'rgba(255,74,90,.95)'; c.beginPath(); c.ellipse(p.x, p.y, p.r + 6, p.r * .75 + 6, 0, -Math.PI / 2, -Math.PI / 2 + Math.abs(p.prog) * Math.PI * 2, p.prog < 0); c.stroke(); }
+    // a little beacon in the middle
+    const [bx, by] = S3(p.x, p.y, 0);
+    cyl3(c, bx, by, 7, 0, 10, '#8a90a6', { top: '#c6cadc' });
+    const [tx, ty] = S3(p.x, p.y, 16 + Math.sin(NOW * 3) * 2);
+    c.fillStyle = `rgb(${col})`; c.beginPath(); c.moveTo(tx, ty - 8); c.lineTo(tx + 6, ty); c.lineTo(tx, ty + 8); c.lineTo(tx - 6, ty); c.closePath(); c.fill(); c.strokeStyle = 'rgba(20,28,44,.6)'; c.lineWidth = 1; c.stroke();
+    c.font = '600 15px Fredoka, system-ui, sans-serif'; c.textAlign = 'center'; c.lineWidth = 4; c.strokeStyle = 'rgba(20,28,44,.8)';
+    const lab = p.name || 'Point ' + p.label; c.strokeText(lab, p.x, p.y - p.r * .75 - 10); c.fillStyle = '#fff'; c.fillText(lab, p.x, p.y - p.r * .75 - 10); c.textAlign = 'left';
+  }
+}
+// ---------- escorts: cargo follows a route by itself and stops for a moment whenever it is hurt
+function convoyTick(D) {
+  D.cargo.forEach((id, i) => {
+    const u = byId(id); if (!u) return;
+    if (G.time < (D.go || 0) + i * 2.5) return;
+    u.wi = u.wi || 0;
+    let foe = G.time - (u.hitT ?? -9) < 2.2;   // stop when hurt, or when armed enemies are close ahead
+    if (!foe) forNear(u.x, u.y, 6.5 * T, e => { if (!foe && e.d.wpn && isFoe(u.team, e.team) && !e.hidden && e.burrow !== 2 && Math.hypot(e.x - u.x, e.y - u.y) < 6.5 * T) foe = true; });
+    if (!foe) for (const b of G.blds) if (b.alive && b.d.wpn && isFoe(u.team, b.team) && Math.hypot(b.x - u.x, b.y - u.y) < 7.5 * T) { foe = true; break; }
+    if (foe) { if (u.order.t !== 'idle') setOrder(u, { t: 'idle' }); u.halt = true; return; }
+    u.halt = false;
+    let wp = D.route[u.wi];
+    if (Math.hypot(u.x - wp.x, u.y - wp.y) < 2 * T && u.wi < D.route.length - 1) { u.wi++; wp = D.route[u.wi]; }
+    const off = (i - (D.cargo.length - 1) / 2) * 30;
+    const gx = wp.x + off, gy = wp.y - off;
+    if (u.order.t !== 'move' || Math.hypot(u.order.x - gx, u.order.y - gy) > 2 * T) cmdMove([u], gx, gy, false);
+  });
+}
+// ---------- waves for the timed defence missions
+function waveTick(M, D, team, target) {
+  while (D.next < D.waves.length && G.time >= D.waves[D.next][0]) {
+    const [, comp, si, hunt] = D.waves[D.next]; D.next++;
+    const from = D.spawns[(si ?? D.next) % D.spawns.length], h = hunt && byId(D.hero);
+    attackWave(team, comp, from, h || target() || from);
+    if (D.onWave) D.onWave(D.next, hunt);
+  }
+  if ((D.pt = (D.pt || 0) + 1) % 75 === 0) for (const u of G.ents) if (u.alive && u.team === team && u.d.unit && !u.d.worker && u.order.t === 'idle' && !u.tgt && u.burrow !== 2) {
+    const t = target(u); if (t) cmdMove([u], t.x, t.y, true);
+  }
+}
+const nearestBld = (team, u) => G.blds.filter(b => b.alive && b.team === team).sort((a, b) => dist(a, u) - dist(b, u))[0] || null;
+// a ready-made base for a side: main building, workers and a list of buildings around it
+function baseAt(team, S, list, workers, gas) {
+  const hq = mk(roleK(team, 'hq'), team, S.x - 1, S.y - 1), f = towardCenter(S, 6), b = towardCenter(S, -3);
+  if (facOf(team) === 'shard') { placeNear('obelisk', team, f.x - 3, f.y + 2); placeNear('obelisk', team, f.x + 2, f.y - 3); updPower(); }
+  list.forEach(([k, at, dx = 0, dy = 0]) => { const p = at === 'back' ? b : at === 'front' ? f : at === 'mid' ? towardCenter(S, 9) : S; placeNear(k, team, p.x + dx, p.y + dy); });
+  const ref = gas ? refineryOn(team, hq) : null;
+  workersTo(team, hq, workers, ref);
+  return hq;
+}
+const heroEnd = k => (G.mdata.hmax || 1) >= k;
+
+MISSIONS.push(
+  // ------------------------------------------------------------ Blue Outpost, part 2
+  {
+    camp: 'blue', title: 'Convoy Run', brief: 'Captain Rook joins you. Guard three Supply Crawlers through a long canyon to the forward camp.', hero: 'rook',
+    size: 'medium', theme: 'desert', seed: 907, mapOpt: { density: .45, shape: LAYOUTS.canyon },
+    setup(G, map) {
+      const P = mainOf(map, 0), rt = canyonRoute(map.sites), route = [.08, .25, .42, .58, .75, .92, 1].map(f => routeAt(rt, f));
+      const st = routeAt(rt, .02), s2 = routeAt(rt, .06);
+      const h = mkHero('rook', 0, s2.x, s2.y, 1);
+      spawnGroup(0, 'trooper', 6, s2.x, s2.y); spawnGroup(0, 'guardian', 3, s2.x, s2.y); spawnGroup(0, 'tank', 2, st.x, st.y); spawnGroup(0, 'worker', 2, st.x, st.y);
+      G.up[0].rush = 1; G.up[0].siege = 1;
+      const cargo = spawnGroup(0, 'crawler', 3, (P.x + .5) * T, (P.y + .5) * T);
+      // red posts along the canyon
+      const post = (f, comp, tur) => { const p = routeAt(rt, f); for (const k in comp) spawnGroup(1, k, comp[k], p.x, p.y, 'hold'); for (let i = 0; i < (tur || 0); i++) placeNear('turret', 1, p.x / T + (i ? 3 : -3), p.y / T + (i ? -2 : 2)); };
+      post(.18, { trooper: 3 });
+      post(.32, { trooper: 5, guardian: 1 });
+      post(.5, { trooper: 5, guardian: 2 }, 2);
+      post(.68, { trooper: 5, guardian: 2, tank: 1 }, 1);
+      post(.88, { trooper: 5, guardian: 2, tank: 1 }, 1);
+      G.up[1].siege = 1; G.up[1].rush = 1;
+      G.ais[1] = new AI(1, 'normal', { abilOnly: true });
+      const dest = route[route.length - 1];
+      G.mdata = { hero: h.id, heroK: 'rook', cargo: cargo.map(u => u.id), route, dest, go: 12, raids: [[40, { buggy: 3 }], [90, { buggy: 3, trooper: 3 }], [140, { buggy: 4, trooper: 3 }], [190, { buggy: 4, trooper: 4, guardian: 1 }], [240, { buggy: 5, trooper: 4, guardian: 2 }]], ri: 0 };
+      G.mission.marks = [{ x: dest.x, y: dest.y, r: 3.5 * T, label: 'Forward camp' }];
+    },
+    start(M) {
+      reveal(G.mdata.dest.x, G.mdata.dest.y, 4);
+      M.obj('cv', 'Bring 2 Supply Crawlers to the forward camp');
+      M.say('This is Captain Rook, our best soldier. He fights like three Troopers, and he grows stronger with every enemy he beats.');
+      M.say('The Supply Crawlers drive by themselves, but they stop whenever they are shot at. Clear the canyon ahead of them!');
+      M.say('Select Rook and press Q for Overdrive: he and every soldier near him run and shoot faster for a few seconds.');
+    },
+    tick(M) {
+      const D = G.mdata;
+      heroWatch(M, D, 'stay');
+      convoyTick(D);
+      const alive = D.cargo.map(byId).filter(Boolean), home = alive.filter(u => near(u, D.dest.x, D.dest.y, 3.8 * T)).length;
+      M.set('cv', home >= 2, `Bring 2 Supply Crawlers to the forward camp (${home}/2 · ${alive.length} left)`);
+      if (home >= 2 && (home === alive.length || G.time - (D.arr2 || (D.arr2 = G.time)) > 8)) { M.win(); return; }
+      if (alive.length < 2) { M.lose('Too many Supply Crawlers were destroyed.'); return; }
+      if (D.ri < D.raids.length && G.time >= D.raids[D.ri][0]) {   // Buggies race in from the side pockets to hit the convoy
+        const lead = alive.slice().sort((a, b) => (b.wi || 0) - (a.wi || 0))[0];
+        const from = G.sites.filter(s => s.side === 1).map(tileCenter).sort((a, b) => dist(a, lead) - dist(b, lead))[0] || D.dest;
+        attackWave(1, D.raids[D.ri][1], from, lead); D.ri++;
+        M.say(D.ri === 1 ? 'Red Buggies are coming for the Crawlers! Keep some soldiers right next to them.' : 'More raiders on the way!');
+      }
+      if ((D.ht = (D.ht || 0) + 1) % 60 === 0) for (const u of G.ents) if (u.alive && u.team === 1 && u.kind === 'buggy' && u.order.t !== 'attack') { const c = alive.slice().sort((a, b) => dist(a, u) - dist(b, u))[0]; if (c) cmdMove([u], c.x, c.y, true); }
+      if (!G.ents.some(e => e.alive && e.team === 0 && e.d.unit && !e.d.cargo && !e.d.worker)) M.lose('Your escort was wiped out.');
+    },
+    stars: () => [['Supplies delivered', true], ['All 3 Crawlers arrived', G.mdata.cargo.filter(id => byId(id)).length >= 3], ['Rook reached level 3', heroEnd(3)]],
+  },
+  {
+    camp: 'blue', title: 'Beacon Hill', brief: 'Three beacons stand at the river fords. Hold more of them than red does, until the score reaches 300.', hero: 'rook',
+    size: 'medium', theme: 'meadow', seed: 908, mapOpt: { density: .55, shape: LAYOUTS.river },
+    setup(G, map) {
+      const P = mainOf(map, 0), E = mainOf(map, 1);
+      const hq = baseAt(0, P, [['depot', 'back', -2], ['depot', 'back', 2], ['barracks', 'front', -2, 1], ['factory', 'front', 3, -2]], 12, true);
+      const c = tileCenter(towardCenter(P, 9));
+      const h = mkHero('rook', 0, c.x, c.y, 2);
+      spawnGroup(0, 'trooper', 6, c.x, c.y); spawnGroup(0, 'guardian', 2, c.x, c.y); spawnGroup(0, 'tank', 1, c.x, c.y);
+      G.res[0] = { c: 400, g: 150 }; G.up[0].rush = 1;
+      baseAt(1, E, [['depot', 'back', -2], ['depot', 'back', 2], ['depot', 'center', 4, 0], ['barracks', 'front', -2, 1], ['barracks', 'front', 3, -3], ['factory', 'mid', 0, 0], ['turret', 'mid', -3, 3], ['turret', 'mid', 3, -3]], 12, true);
+      G.res[1] = { c: 400, g: 100 };
+      G.ais[1] = new AI(1, 'normal', { noExpand: true });
+      const pts = capPoints(riverFords().map(f => ({ x: (f.x + .5) * T, y: (f.y + .5) * T })));
+      G.mission.points = pts; pts[1].prog = -1; pts[1].owner = 1;   // red already holds the middle ford
+      for (const u of [...spawnGroup(1, 'trooper', 5, pts[1].x, pts[1].y, 'hold'), ...spawnGroup(1, 'guardian', 2, pts[1].x, pts[1].y, 'hold')]) u.scripted = true;
+      G.mdata = { hero: h.id, heroK: 'rook', hq: hq.id, sc: [0, 0], goal: 300, wave: 0, nextW: 25, all3: false, front: tileCenter(towardCenter(E, 7)) };
+    },
+    start(M) {
+      M.obj('sc', 'Reach 300 points first'); for (const p of M.points) reveal(p.x, p.y, 4);
+      M.say('Red is fighting us for the three river fords. Each ford has a beacon: stand next to it with soldiers, and no enemies, to capture it.');
+      M.say('Every beacon you hold gives you a point each second, and the same for red. A beacon stays yours until red takes it back.');
+      M.say('Rook comes back at the Command Center 30 seconds after he falls, so don\'t be afraid to use him.');
+    },
+    tick(M, dt) {
+      const D = G.mdata, pts = M.points;
+      if (!G.blds.some(b => b.team === 0)) { M.lose('Your base was destroyed.'); return; }
+      heroWatch(M, D, 'revive');
+      capTick(pts, dt);
+      const mine = pts.filter(p => p.owner === 0).length, theirs = pts.filter(p => p.owner === 1).length;
+      D.sc[0] += mine * dt; D.sc[1] += theirs * dt;
+      if (mine === 3) D.all3 = true;
+      M.set('sc', D.sc[0] >= D.goal, `Score: you <b>${Math.floor(D.sc[0])}</b> · red <b>${Math.floor(D.sc[1])}</b> (first to ${D.goal})`);
+      if (D.sc[0] >= D.goal) { M.win(); return; }
+      if (D.sc[1] >= D.goal) { M.lose('Red held the beacons longer.'); return; }
+      if (G.time >= D.nextW) {   // red sends a squad to take a beacon back
+        const n = ++D.wave; D.nextW = G.time + Math.max(25, 38 - n);
+        const comp = n === 1 ? { trooper: 4, buggy: 2 } : { trooper: 4 + n, guardian: 1 + Math.floor(n / 2), buggy: n % 2 ? 2 : 0, tank: Math.floor(n / 3) };
+        const goal = pts.filter(p => p.owner !== 1).sort((a, b) => dist(a, D.front) - dist(b, D.front))[0] || pts[1];
+        for (const u of attackWave(1, comp, D.front, goal)) u.scripted = true;   // they stay and guard the beacon
+        if (n === 1 || n % 3 === 0) M.say(n === 1 ? 'Red troops are heading for the fords!' : 'A bigger red squad is coming for point ' + goal.label + '!');
+      }
+    },
+    stars: () => [['Hill won', true], ['Won in under 11:00', G.time <= 660], ['Held all three beacons at once', G.mdata.all3]],
+  },
+  {
+    camp: 'blue', title: 'Last Stand', brief: 'The Bloom swarm the snow base for seven minutes, and some waves hunt Captain Rook. Keep him and the Command Center alive.', hero: 'rook', facE: 'bloom',
+    size: 'small', theme: 'snow', seed: 909,
+    setup(G, map) {
+      const P = mainOf(map, 0), E = mainOf(map, 1);
+      const hq = baseAt(0, P, [['depot', 'back', -2], ['depot', 'back', 2], ['depot', 'center', 4, -3], ['barracks', 'front', -3, 1], ['barracks', 'front', 2, -3], ['factory', 'center', -4, 3], ['armory', 'back', 0, 3], ['turret', 'mid', -2, 1], ['turret', 'mid', 2, -1], ['turret', 'mid', 0, 3]], 10, true);
+      const c = tileCenter(towardCenter(P, 7));
+      const h = mkHero('rook', 0, c.x, c.y, 3);
+      spawnGroup(0, 'trooper', 10, c.x, c.y); spawnGroup(0, 'guardian', 3, c.x, c.y); spawnGroup(0, 'tank', 2, c.x, c.y);
+      G.res[0] = { c: 450, g: 200 }; G.up[0].rush = 1; G.up[0].siege = 1;
+      G.ais[1] = new AI(1, 'normal', { passive: true, noBuild: true, noExpand: true });
+      const spawns = [tileCenter(E), ...G.sites.filter(s => s.side === 1).map(tileCenter)];
+      const waves = [];
+      for (let n = 1; n <= 11; n++) {
+        const comp = { spitter: 4 + Math.round(n * 1.4), beetle: 1 + Math.floor(n / 3) };
+        if (n >= 4) comp.burrower = Math.floor(n / 4);
+        if (n >= 6) comp.wasp = n - 5;
+        if (n === 11) comp.bomber = 1;
+        waves.push([20 + n * 35, comp, n, n % 4 === 0]);
+      }
+      G.mdata = { hero: h.id, heroK: 'rook', hq: hq.id, minHp: 1, waves, next: 0, spawns, end: 420 };
+      G.mdata.onWave = (n, hunt) => { const M = G.mission; if (n >= 4) { G.up[1].burrow = 1; G.up[1].harden = 1; } if (n === 6) G.up[1].weapons = 1; if (n === 9) G.up[1].armor = 1;
+        M.say(hunt ? `Wave ${n}: these ones are hunting Captain Rook!` : n === 11 ? 'The last wave! Everything they have left!' : `Wave ${n} is coming!`);
+        if (n === 4) M.say('Burrowers dig in and ambush. Use a Scanner Sweep (Command Center, E) to find them.'); };
+    },
+    start(M) {
+      M.obj('t', 'Survive'); M.obj('hero', 'Keep Captain Rook alive'); M.obj('hq', 'Keep the Command Center standing');
+      M.say('The Bloom found our snow base, and they know Rook is here. Hold out for seven minutes until the dropships arrive!');
+      M.say('Every fourth wave goes straight for Rook. Pull him back behind the Turrets when they come, and use Overdrive (Q) when the fight is close.');
+    },
+    tick(M) {
+      const D = G.mdata, hq = byId(D.hq);
+      if (!hq) { M.lose('The Command Center was destroyed.'); return; }
+      if (!heroWatch(M, D, 'lose')) return;
+      D.minHp = Math.min(D.minHp, hq.hp / hq.d.hp);
+      const left = D.end - G.time;
+      M.set('t', left <= 0, `Survive <span class="tm">${fmtT(left)}</span> · wave ${D.next}/${D.waves.length}`);
+      waveTick(M, D, 1, u => (u && nearestBld(0, u)) || hq);
+      if (left <= 0) { M.set('hero', true); M.set('hq', true); M.win(); }
+    },
+    stars: () => [['Held out', true], ['Rook reached level 5', heroEnd(5)], ['Command Center never below half health', G.mdata.minHp >= .5]],
+  },
+  // ------------------------------------------------------------ The Bloom, part 2
+  {
+    camp: 'bloom', fac: 'bloom', facE: 'shard', title: 'Sacred Groves', brief: 'Old Bramble wakes up. Cover all three sacred groves with living ground and keep the Shards off them for 45 seconds.', hero: 'bramble',
+    size: 'medium', theme: 'meadow', seed: 914,
+    setup(G, map) {
+      const P = mainOf(map, 0), E = mainOf(map, 1);
+      const hq = baseAt(0, P, [['pod', 'back', -2], ['pod', 'back', 2], ['nest', 'front', -2, 1]], 10, true);
+      const c = tileCenter(towardCenter(P, 8));
+      const h = mkHero('bramble', 0, c.x, c.y, 1);
+      spawnGroup(0, 'spitter', 8, c.x, c.y); spawnGroup(0, 'beetle', 3, c.x, c.y);
+      G.res[0] = { c: 600, g: 100 }; G.up[0].harden = 1;
+      baseAt(1, E, [['gate', 'front', -2, 2], ['forge', 'front', 3, -2], ['cannon', 'front', 0, 0], ['cannon', 'center', 3, 3]], 10, true);
+      G.res[1] = { c: 300, g: 100 };
+      G.ais[1] = new AI(1, 'normal', { passive: true, noExpand: true });
+      const mid = { x: Math.round(MW / 2), y: Math.round(MH / 2) };
+      const s0 = G.sites.filter(s => s.side === 0).sort((a, b) => Math.hypot(a.x - mid.x, a.y - mid.y) - Math.hypot(b.x - mid.x, b.y - mid.y))[0];
+      const s1 = G.sites.filter(s => s.side === 1).sort((a, b) => Math.hypot(a.x - mid.x, a.y - mid.y) - Math.hypot(b.x - mid.x, b.y - mid.y))[0];
+      const gr = [s0, mid, s1].map((s, i) => { const p = freeSpot(s.x + (i === 1 ? 0 : s.x < mid.x ? 3 : -3), s.y, 1, 1, 6); return { x: p.x, y: p.y, name: ['Moss Grove', 'Old Grove', 'Far Grove'][i] }; });
+      G.mission.points = capPoints(gr, 3.2);
+      G.mdata = { hero: h.id, heroK: 'bramble', hold: 0, best: 0, raid: 0, nextR: 100, front: tileCenter(towardCenter(E, 6)) };
+    },
+    start(M) {
+      M.obj('g', 'Hold all three groves at once for 45 seconds'); for (const p of M.points) reveal(p.x, p.y, 4);
+      M.say('Old Bramble is awake! He was guarding the Elder long before you hatched. He grows stronger with every enemy he beats.');
+      M.say('A grove is ours when our living ground covers it and no Shard fighter stands on it. Living ground spreads from our buildings.');
+      M.say('A Heart Tree can grow anywhere, even far from home. Or chain Seed Pods outward, or walk a Thorn there. Bramble\'s Regrowth (Q) heals everyone near him.');
+    },
+    tick(M, dt) {
+      const D = G.mdata, pts = M.points;
+      if (!G.blds.some(b => b.team === 0)) { M.lose('Your garden was destroyed.'); return; }
+      heroWatch(M, D, 'revive');
+      for (const p of pts) {   // ownership comes from living ground, not from standing there
+        let foe = 0; forNear(p.x, p.y, p.r, u => { if (u.team >= 0 && sideOf(u.team) === 1 && u.d.unit && !u.d.worker && Math.hypot(u.x - p.x, u.y - p.y) < p.r) foe++; });
+        const ours = onCreep(0, p.x, p.y), was = p.owner;
+        p.owner = ours && !foe ? 0 : foe && !ours ? 1 : -1; p.prog = 0;
+        if (was !== p.owner && p.owner === 0) { toast(p.name + ' is ours!', 'good'); sfx('done'); }
+      }
+      const all = pts.every(p => p.owner === 0);
+      D.hold = all ? D.hold + dt : 0; D.best = Math.max(D.best, D.hold);
+      M.set('g', D.hold >= 45, `Hold all three groves at once: <b>${pts.filter(p => p.owner === 0).length}/3</b>` + (all ? ` · <span class="tm">${fmtT(45 - D.hold)}</span>` : ''));
+      if (D.hold >= 45) { M.win(); return; }
+      if (G.time >= D.nextR) {
+        const n = ++D.raid; D.nextR = G.time + Math.max(38, 55 - n * 2);
+        const goal = pts.filter(p => p.owner === 0).sort((a, b) => dist(a, D.front) - dist(b, D.front))[0] || pts.slice().sort((a, b) => dist(a, D.front) - dist(b, D.front))[0];
+        const comp = { lancer: 2 + n, blade: 1 + Math.floor(n / 2) }; if (n >= 3) comp.prism = Math.floor(n / 3); if (n >= 5) comp.warden = 1;
+        attackWave(1, comp, D.front, goal);
+        M.say(n === 1 ? 'A Shard patrol is marching on ' + goal.name + '!' : 'More Shards heading for ' + goal.name + '.');
+        if (n >= 3) G.up[1].blink = 1;
+      }
+    },
+    stars: () => [['Groves rooted', true], ['Done in under 14:00', G.time <= 840], ['Bramble reached level 3', heroEnd(3)]],
+  },
+  {
+    camp: 'bloom', fac: 'bloom', title: 'The Wandering Elder', brief: 'The Elder Seed walks through a frozen canyon to find new soil. Clear the way and keep it alive.', hero: 'bramble',
+    size: 'medium', theme: 'snow', seed: 915, mapOpt: { density: .45, shape: LAYOUTS.canyon },
+    setup(G, map) {
+      const P = mainOf(map, 0), rt = canyonRoute(map.sites), route = [.08, .25, .42, .58, .75, .92, 1].map(f => routeAt(rt, f));
+      const s2 = routeAt(rt, .06);
+      const h = mkHero('bramble', 0, s2.x, s2.y, 2);
+      spawnGroup(0, 'spitter', 10, s2.x, s2.y); spawnGroup(0, 'beetle', 4, s2.x, s2.y); spawnGroup(0, 'burrower', 3, s2.x, s2.y); spawnGroup(0, 'mender', 2, s2.x, s2.y); spawnGroup(0, 'wasp', 2, s2.x, s2.y);
+      G.up[0].harden = 1; G.up[0].burrow = 1;
+      const elder = spawnGroup(0, 'elder', 1, (P.x + .5) * T, (P.y + .5) * T);
+      const post = (f, comp, tur) => { const p = routeAt(rt, f); for (const k in comp) spawnGroup(1, k, comp[k], p.x, p.y, 'hold'); for (let i = 0; i < (tur || 0); i++) placeNear('turret', 1, p.x / T + (i ? 3 : -3), p.y / T + (i ? -2 : 2)); };
+      post(.28, { trooper: 5, guardian: 1 });
+      post(.48, { trooper: 4, guardian: 2, tank: 1 }, 1);
+      post(.68, { trooper: 5, guardian: 2, tank: 1 }, 2);
+      post(.88, { trooper: 5, guardian: 2, buggy: 2 }, 1);
+      G.up[1].siege = 1; G.up[1].rush = 1;
+      G.ais[1] = new AI(1, 'normal', { abilOnly: true });
+      const dest = route[route.length - 1];
+      G.mdata = { hero: h.id, heroK: 'bramble', cargo: elder.map(u => u.id), route, dest, go: 10, raids: [[70, { hornet: 3 }], [150, { hornet: 3, buggy: 2 }], [230, { hornet: 4, gunship: 1 }]], ri: 0, minHp: 1 };
+      G.mission.marks = [{ x: dest.x, y: dest.y, r: 3.5 * T, label: 'New soil' }];
+    },
+    start(M) {
+      reveal(G.mdata.dest.x, G.mdata.dest.y, 4);
+      M.obj('el', 'Walk the Elder Seed to the new soil');
+      M.say('The Elder Seed must find new soil, beyond the frozen canyon. Blue soldiers are dug in along the way.');
+      M.say('The Elder walks by itself and stops while it is hurt. Out of combat it heals slowly. Keep the Menders close to it.');
+      M.say('Burrowers can burrow (E) ahead of the Elder and ambush the Blue posts.');
+    },
+    tick(M) {
+      const D = G.mdata, el = byId(D.cargo[0]);
+      heroWatch(M, D, 'stay');
+      if (!el) { M.lose('The Elder Seed was destroyed.'); return; }
+      D.minHp = Math.min(D.minHp, el.hp / el.d.hp);
+      convoyTick(D);
+      M.set('el', near(el, D.dest.x, D.dest.y, 3.5 * T), `Walk the Elder Seed to the new soil (${Math.round(el.hp / el.d.hp * 100)}% health)`);
+      if (near(el, D.dest.x, D.dest.y, 3.5 * T)) {   // it puts down roots: a new Heart Tree
+        el.alive = false; const ht = placeNear('heart', 0, el.x / T - 1.5, el.y / T - 1.5); if (ht) { ht.built = .3; ht.hp = ht.d.hp * .3; G.creepDirty = true; }
+        G.parts.push({ k: 'ring', x: el.x, y: el.y, life: 1, max: 1, s: 5 * T, c: '#9cff9c' });
+        M.win(); return;
+      }
+      if (D.ri < D.raids.length && G.time >= D.raids[D.ri][0]) {
+        const from = G.sites.filter(s => s.side === 1).map(tileCenter).sort((a, b) => dist(a, el) - dist(b, el))[0] || D.dest;
+        attackWave(1, D.raids[D.ri][1], from, el); D.ri++;
+        M.say(D.ri === 1 ? 'Hornets in the sky! Spitters and Wasps can shoot them down.' : 'More Blue flyers are after the Elder!');
+      }
+      if ((D.ht = (D.ht || 0) + 1) % 60 === 0) for (const u of G.ents) if (u.alive && u.team === 1 && (u.d.air || u.kind === 'buggy') && u.order.t !== 'attack') cmdMove([u], el.x, el.y, true);
+      if (!G.ents.some(e => e.alive && e.team === 0 && e.d.unit && !e.d.cargo)) M.lose('Your creatures were wiped out.');
+    },
+    stars: () => [['Elder rooted', true], ['The Elder kept over half its health', G.mdata.minHp >= .5], ['Done in under 7:00', G.time <= 420]],
+  },
+  {
+    camp: 'bloom', fac: 'bloom', facE: 'blue', title: 'Blight Siege', brief: 'Blue machines and Shard warriors come together to burn the grove. Hold out for eight minutes and keep Bramble alive.', hero: 'bramble',
+    size: 'small', theme: 'desert', seed: 916,
+    setup(G, map) {
+      const P = mainOf(map, 0), E = mainOf(map, 1);
+      const hq = baseAt(0, P, [['pod', 'back', -2], ['pod', 'back', 2], ['pod', 'center', 4, -3], ['nest', 'front', -3, 1], ['hive', 'front', 2, -3], ['spire', 'center', -4, 3], ['grove', 'back', 0, 3], ['thorn', 'front', 0, 3], ['thorn', 'mid', -2, 1], ['thorn', 'mid', 2, -1]], 12, true);
+      const c = tileCenter(towardCenter(P, 7));
+      const h = mkHero('bramble', 0, c.x, c.y, 3);
+      spawnGroup(0, 'spitter', 10, c.x, c.y); spawnGroup(0, 'beetle', 4, c.x, c.y); spawnGroup(0, 'mender', 2, c.x, c.y); spawnGroup(0, 'wasp', 2, c.x, c.y);
+      G.res[0] = { c: 500, g: 250 }; G.up[0].harden = 1; G.up[0].burrow = 1;
+      G.ais[1] = new AI(1, 'normal', { passive: true, noBuild: true, noExpand: true });
+      const spawns = [tileCenter(E), ...G.sites.filter(s => s.side === 1).map(tileCenter)];
+      const waves = [];
+      for (let n = 1; n <= 12; n++) {
+        const comp = n % 2 ? { trooper: 4 + n, guardian: Math.floor(n / 2), buggy: n >= 3 ? 2 : 0, tank: n >= 5 ? Math.floor(n / 4) : 0, hornet: n >= 7 ? n - 5 : 0 }
+                           : { lancer: 2 + Math.floor(n * .8), blade: 1 + Math.floor(n / 3), prism: n >= 6 ? Math.floor(n / 4) : 0, warden: n >= 6 ? 1 : 0, glider: n >= 8 ? n - 6 : 0 };
+        if (n === 12) { comp.gunship = 1; comp.monolith = 1; }
+        waves.push([25 + n * 38, comp, n, n === 6 || n === 10]);
+      }
+      G.mdata = { hero: h.id, heroK: 'bramble', hq: hq.id, minHp: 1, waves, next: 0, spawns, end: 480 };
+      G.mdata.onWave = (n, hunt) => { const M = G.mission; if (n >= 5) { G.up[1].siege = 1; G.up[1].blink = 1; } if (n >= 6) G.up[1].barrier = 1; if (n === 7) G.up[1].weapons = 1; if (n === 10) G.up[1].armor = 1;
+        M.say(hunt ? `Wave ${n}: they are going for Old Bramble!` : n === 12 ? 'The last wave, with a Gunship and a Monolith!' : n % 2 ? `Wave ${n}: Blue machines!` : `Wave ${n}: Shard warriors!`); };
+    },
+    start(M) {
+      M.obj('t', 'Survive'); M.obj('hero', 'Keep Old Bramble alive');
+      M.say('Blue and the Shards have joined forces against us. They will take turns attacking the grove for eight minutes.');
+      M.say('Spitter acid melts Shard shields; Beetles and Thorns hold back Blue Troopers. Hatch the right creatures for the next wave.');
+    },
+    tick(M) {
+      const D = G.mdata, hq = byId(D.hq);
+      if (!G.blds.some(b => b.team === 0 && b.d.hq)) { M.lose('Every Heart Tree was destroyed.'); return; }
+      if (!heroWatch(M, D, 'lose')) return;
+      if (hq) D.minHp = Math.min(D.minHp, hq.hp / hq.d.hp);
+      const left = D.end - G.time;
+      M.set('t', left <= 0, `Survive <span class="tm">${fmtT(left)}</span> · wave ${D.next}/${D.waves.length}`);
+      waveTick(M, D, 1, u => (u && nearestBld(0, u)) || hq || G.blds.find(b => b.team === 0));
+      if (left <= 0) { M.set('hero', true); M.win(); }
+    },
+    stars: () => [['Grove saved', true], ['Heart Tree never below half health', G.mdata.minHp >= .5], ['Lost 30 creatures or fewer', G.stats.lost <= 30]],
+  },
+  // ------------------------------------------------------------ The Shards, part 2
+  {
+    camp: 'shard', fac: 'shard', facE: 'bloom', title: 'Resonance Points', brief: 'Aster joins you. Three resonance points sit on the river fords: hold more of them than the Bloom until you reach 300.', hero: 'aster',
+    size: 'medium', theme: 'desert', seed: 924, mapOpt: { density: .55, shape: LAYOUTS.river },
+    setup(G, map) {
+      const P = mainOf(map, 0), E = mainOf(map, 1);
+      const hq = baseAt(0, P, [['obelisk', 'back', 0, 2], ['gate', 'front', -3, 1], ['gate', 'front', 2, -3], ['forge', 'center', 4, 2], ['cannon', 'mid', 0, 0]], 12, true);
+      const c = tileCenter(towardCenter(P, 9));
+      const h = mkHero('aster', 0, c.x, c.y, 1);
+      spawnGroup(0, 'lancer', 4, c.x, c.y); spawnGroup(0, 'blade', 3, c.x, c.y); spawnGroup(0, 'warden', 1, c.x, c.y);
+      G.res[0] = { c: 400, g: 150 }; G.up[0].blink = 1;
+      baseAt(1, E, [['pod', 'back', -2], ['pod', 'back', 2], ['nest', 'front', -2, 1], ['hive', 'front', 3, -3], ['thorn', 'mid', -2, 2], ['thorn', 'mid', 2, -2]], 12, true);
+      G.res[1] = { c: 400, g: 100 };
+      G.ais[1] = new AI(1, 'normal', { noExpand: true });
+      const pts = G.mission.points = capPoints(riverFords().map(f => ({ x: (f.x + .5) * T, y: (f.y + .5) * T })));
+      pts[1].prog = -1; pts[1].owner = 1;   // the Bloom already hold the middle ford
+      for (const u of [...spawnGroup(1, 'spitter', 8, pts[1].x, pts[1].y, 'hold'), ...spawnGroup(1, 'beetle', 2, pts[1].x, pts[1].y, 'hold')]) u.scripted = true;
+      G.mdata = { hero: h.id, heroK: 'aster', hq: hq.id, sc: [0, 0], goal: 300, wave: 0, nextW: 25, all3: false, front: tileCenter(towardCenter(E, 7)) };
+    },
+    start(M) {
+      M.obj('sc', 'Reach 300 points first'); for (const p of M.points) reveal(p.x, p.y, 4);
+      M.say('This is Aster, my champion. She grows stronger with every enemy she beats. Her Nova (Q) hurts everything around her and fills her shield.');
+      M.say('The river fords hum with power. Stand on a point with no enemies to capture it; every point you hold gives you a point each second.');
+      M.say('Set your gates\' rally point next to an Obelisk near the river, and new warriors warp in right at the front.');
+    },
+    tick(M, dt) {
+      const D = G.mdata, pts = M.points;
+      if (!G.blds.some(b => b.team === 0)) { M.lose('Your base was destroyed.'); return; }
+      heroWatch(M, D, 'revive');
+      capTick(pts, dt);
+      const mine = pts.filter(p => p.owner === 0).length, theirs = pts.filter(p => p.owner === 1).length;
+      D.sc[0] += mine * dt; D.sc[1] += theirs * dt;
+      if (mine === 3) D.all3 = true;
+      M.set('sc', D.sc[0] >= D.goal, `Score: you <b>${Math.floor(D.sc[0])}</b> · Bloom <b>${Math.floor(D.sc[1])}</b> (first to ${D.goal})`);
+      if (D.sc[0] >= D.goal) { M.win(); return; }
+      if (D.sc[1] >= D.goal) { M.lose('The Bloom held the points longer.'); return; }
+      if (G.time >= D.nextW) {
+        const n = ++D.wave; D.nextW = G.time + Math.max(25, 38 - n);
+        const comp = n === 1 ? { spitter: 8 } : { spitter: 8 + n * 2, beetle: 1 + Math.floor(n / 2), burrower: n >= 3 ? Math.floor(n / 3) : 0, wasp: n >= 4 ? Math.floor(n / 2) : 0 };
+        const goal = pts.filter(p => p.owner !== 1).sort((a, b) => dist(a, D.front) - dist(b, D.front))[0] || pts[1];
+        for (const u of attackWave(1, comp, D.front, goal)) u.scripted = true;
+        if (n >= 3) { G.up[1].harden = 1; G.up[1].burrow = 1; }
+        if (n === 1 || n % 3 === 0) M.say(n === 1 ? 'The swarm is crawling toward the river!' : 'A big swarm is coming for point ' + goal.label + '!');
+      }
+    },
+    stars: () => [['Points held', true], ['Won in under 11:00', G.time <= 660], ['Aster reached level 3', heroEnd(3)]],
+  },
+  {
+    camp: 'shard', fac: 'shard', facE: 'bloom', title: 'The Crystal Ark', brief: 'A floating Ark carries the memory of the Shards across Bloom land. Escort it all the way, with Aster at the front.', hero: 'aster',
+    size: 'medium', theme: 'meadow', seed: 925, mapOpt: { density: .8 },
+    setup(G, map) {
+      const P = mainOf(map, 0), E = mainOf(map, 1);
+      const sides = G.sites.slice().sort((a, b) => Math.hypot(a.x - P.x, a.y - P.y) - Math.hypot(b.x - P.x, b.y - P.y));
+      const mid = { x: Math.round(MW / 2), y: Math.round(MH / 2) }, w1 = sides.find(s => s.side === 0 && Math.abs(s.x - P.x) > 10) || sides[0], w2 = { x: MW - 1 - w1.x, y: MH - 1 - w1.y };
+      const route = [w1, mid, w2, E].map(tileCenter);
+      const s2 = tileCenter(towardCenter(P, 3));
+      const h = mkHero('aster', 0, s2.x, s2.y, 2);
+      spawnGroup(0, 'lancer', 5, s2.x, s2.y); spawnGroup(0, 'glider', 3, s2.x, s2.y); spawnGroup(0, 'warden', 2, s2.x, s2.y); spawnGroup(0, 'blade', 2, s2.x, s2.y);
+      G.up[0].blink = 1; G.up[0].barrier = 1;
+      const ark = spawnGroup(0, 'ark', 1, (P.x + .5) * T, (P.y + .5) * T);
+      // Bloom outposts on the way: a Seed Pod with Thorns and a brood
+      const camp = (s, comp, th) => { const c = tileCenter(s); placeNear('pod', 1, s.x, s.y); for (let i = 0; i < th; i++) placeNear('thorn', 1, s.x + (i ? 3 : -3), s.y + (i ? -2 : 2)); for (const k in comp) spawnGroup(1, k, comp[k], c.x, c.y, 'hold'); };
+      camp({ x: Math.round((w1.x + mid.x) / 2), y: Math.round((w1.y + mid.y) / 2) }, { spitter: 8, beetle: 1 }, 1);
+      camp(mid, { spitter: 8, beetle: 2 }, 2);
+      camp(w2, { spitter: 10, beetle: 2, burrower: 2 }, 2);
+      camp(towardCenter(E, 5), { spitter: 10, beetle: 3 }, 2);
+      G.up[1].burrow = 1; G.up[1].harden = 1;
+      G.ais[1] = new AI(1, 'normal', { abilOnly: true });
+      const dest = route[route.length - 1];
+      G.mdata = { hero: h.id, heroK: 'aster', cargo: ark.map(u => u.id), route, dest, go: 10, raids: [[60, { wasp: 3 }], [130, { wasp: 4 }], [200, { wasp: 4, spitter: 6 }], [270, { wasp: 5, bomber: 1 }]], ri: 0, minHp: 1 };
+      G.mission.marks = [{ x: dest.x, y: dest.y, r: 3.5 * T, label: 'Safe harbor' }];
+    },
+    start(M) {
+      reveal(G.mdata.dest.x, G.mdata.dest.y, 4);
+      M.obj('ark', 'Bring the Crystal Ark to the safe harbor');
+      M.say('The Crystal Ark holds the memory of our people. It must cross the Bloom\'s land to reach the safe harbor in the far corner.');
+      M.say('It flies by itself and stops while it is under fire. Its shield grows back between fights; its health does not.');
+      M.say('Wasps will hunt it from the sky. Lancers and Gliders shoot them down; Wardens can recharge the Ark\'s shield.');
+    },
+    tick(M) {
+      const D = G.mdata, ark = byId(D.cargo[0]);
+      heroWatch(M, D, 'stay');
+      if (!ark) { M.lose('The Crystal Ark was destroyed.'); return; }
+      D.minHp = Math.min(D.minHp, ark.hp / ark.d.hp);
+      convoyTick(D);
+      const at = near(ark, D.dest.x, D.dest.y, 3.5 * T);
+      M.set('ark', at, `Bring the Crystal Ark to the safe harbor (${Math.round(ark.hp / ark.d.hp * 100)}% health)`);
+      if (at) { M.win(); return; }
+      if (D.ri < D.raids.length && G.time >= D.raids[D.ri][0]) {
+        const from = [tileCenter(mainOf({ sites: G.mains }, 1)), ...G.sites.filter(s => s.side === 1).map(tileCenter)].sort((a, b) => dist(a, ark) - dist(b, ark))[0];
+        attackWave(1, D.raids[D.ri][1], from, ark); D.ri++;
+        M.say(D.ri === 1 ? 'Wasps! They are going for the Ark.' : 'Another swarm is after the Ark!');
+      }
+      if ((D.ht = (D.ht || 0) + 1) % 60 === 0) for (const u of G.ents) if (u.alive && u.team === 1 && u.d.air && u.order.t !== 'attack') cmdMove([u], ark.x, ark.y, true);
+      if (!G.ents.some(e => e.alive && e.team === 0 && e.d.unit && !e.d.cargo)) M.lose('Your escort was wiped out.');
+    },
+    stars: () => [['Ark delivered', true], ['The Ark kept over half its health', G.mdata.minHp >= .5], ['Lost 6 units or fewer', G.stats.lost <= 6]],
+  },
+  {
+    camp: 'shard', fac: 'shard', facE: 'blue', title: 'Aster\'s Trial', brief: 'No base, no gates: Aster and a small band in the old crystal ring, against Blue waves from every side for six minutes.', hero: 'aster',
+    size: 'small', theme: 'snow', seed: 926,
+    setup(G, map) {
+      const mid = { x: Math.round(MW / 2), y: Math.round(MH / 2) }, c = tileCenter(mid);
+      const h = mkHero('aster', 0, c.x, c.y, 3);
+      spawnGroup(0, 'lancer', 6, c.x, c.y); spawnGroup(0, 'blade', 2, c.x, c.y); spawnGroup(0, 'warden', 1, c.x, c.y);
+      G.up[0].blink = 1; G.up[0].barrier = 1;
+      G.ais[1] = new AI(1, 'normal', { passive: true, noBuild: true, noExpand: true });
+      const spawns = [...G.mains, ...G.sites].map(tileCenter).sort((a, b) => Math.atan2(a.y - c.y, a.x - c.x) - Math.atan2(b.y - c.y, b.x - c.x));
+      const waves = [];
+      for (let n = 1; n <= 11; n++) {
+        const comp = { trooper: 2 + Math.round(n * .8), guardian: Math.floor(n / 4), buggy: n % 2 ? 1 + Math.floor(n / 5) : 0 };
+        if (n >= 7) comp.tank = 1;
+        if (n >= 9) comp.hornet = n - 7;
+        waves.push([18 + n * 29, comp, n * 3, n % 4 === 0]);
+      }
+      G.mdata = { hero: h.id, heroK: 'aster', waves, next: 0, spawns, end: 360, c, reinf: [100, 200, 280], rr: 0 };
+      G.mdata.onWave = (n, hunt) => { const M = G.mission; if (n >= 5) { G.up[1].rush = 1; G.up[1].siege = 1; } if (n === 8) G.up[1].weapons = 1;
+        M.say(hunt ? `Wave ${n}: they are hunting Aster! Blink your Blades in to help her.` : n === 11 ? 'The last wave! Hold the ring!' : `Wave ${n}, from a new side!`); };
+      G.mission.marks = [{ x: c.x, y: c.y, r: 6 * T, label: 'Crystal ring' }];
+    },
+    start(M) {
+      M.obj('t', 'Survive'); M.obj('hero', 'Keep Aster alive');
+      M.say('This is Aster\'s trial. No base, no gates: only her, her friends, and six minutes of Blue soldiers coming from every side.');
+      M.say('Shields grow back, health does not. Pull hurt warriors behind Aster and let the Warden recharge them. Help warps in three times.');
+    },
+    tick(M) {
+      const D = G.mdata;
+      if (!heroWatch(M, D, 'lose')) return;
+      const left = D.end - G.time, h = byId(D.hero);
+      M.set('t', left <= 0, `Survive <span class="tm">${fmtT(left)}</span> · wave ${D.next}/${D.waves.length}`);
+      waveTick(M, D, 1, u => { const mine = G.ents.filter(e => e.alive && e.team === 0 && e.d.unit); return u ? mine.sort((a, b) => dist(a, u) - dist(b, u))[0] : h; });
+      if (D.rr < D.reinf.length && G.time >= D.reinf[D.rr]) {
+        D.rr++; const at = h || D.c; const us = [...spawnGroup(0, 'lancer', 2, at.x, at.y), ...spawnGroup(0, 'blade', 1, at.x, at.y), ...spawnGroup(0, 'warden', 1, at.x, at.y)];
+        for (const u of us) { u.warpT = 1; u.busyT = 1; } G.stats.warped = (G.stats.warped || 0) + us.length;
+        M.say('Oracle Lumen sends help: two Lancers, a Blade and a Warden warp in next to Aster!');
+      }
+      if (left <= 0) { M.set('hero', true); M.win(); }
+    },
+    stars: () => [['Trial passed', true], ['Aster reached level 5', heroEnd(5)], ['Lost 5 units or fewer', G.stats.lost <= 5]],
+  },
+);
 MISSIONS.forEach(m => { m.n = MISSIONS.filter(x => x.camp === m.camp).indexOf(m) + 1; });
 const nextInCamp = i => { const m = MISSIONS[i]; const j = MISSIONS.findIndex((x, k) => k > i && x.camp === m.camp); return j; };
 
@@ -6113,7 +6799,7 @@ function survivalDef(o) {
 const ids = list => list.map(e => e.id);
 function doCmd(team, c) {
   const own = id => { const e = byId(id); return e && e.team === team ? e : null; };
-  const units = () => (c.ids || []).map(own).filter(e => e && e.d.unit && !e.captive);
+  const units = () => (c.ids || []).map(own).filter(e => e && e.d.unit && !e.captive && !e.d.cargo);
   const blds = () => (c.ids || []).map(own).filter(e => e && e.d.bld);
   const tgt = c.tid ? G.byId.get(c.tid) : null, t = tgt && tgt.alive ? tgt : null;
   switch (c.t) {
@@ -6132,6 +6818,7 @@ function doCmd(team, c) {
     case 'rush': { let n = 0; for (const u of units()) if (rush(u)) n++; return n ? null : 'Too hurt or already rushing'; }
     case 'harden': { let n = 0; for (const u of units()) if (harden(u)) n++; return n ? null : 'Still recovering'; }
     case 'barrier': { for (const u of units()) if (barrier(u)) return null; return 'Barrier is still recharging'; }
+    case 'skill': { for (const u of units()) if (heroSkill(u)) return null; return 'Not ready yet'; }
     case 'blink': { let n = 0; for (const u of units()) if (blink(u, c.x, c.y)) n++; return n ? null : 'Blink is still recharging'; }
     case 'siege': for (const u of units()) { if (c.go) deploy(u); else pack(u); } return null;
     case 'burrow': for (const u of units()) { if (c.go) burrowDown(u); else burrowUp(u); } return null;
@@ -6370,7 +7057,7 @@ function underAttack(t) {
   sfx('alert');
 }
 const selEnts = () => G.sel.map(id => G.byId.get(id)).filter(e => e && e.alive);
-const ownUnits = () => selEnts().filter(e => e.team === ME && e.d.unit && !e.captive);
+const ownUnits = () => selEnts().filter(e => e.team === ME && e.d.unit && !e.captive && !e.d.cargo);
 const ownBlds = () => selEnts().filter(e => e.team === ME && e.d.bld);
 function setSel(list) {
   G.sel = list.map(e => e.id); G.sub = null;
@@ -6431,6 +7118,12 @@ function card() {
       S[5] = { key: 'E', img: icon(down ? 'unburrow' : 'burrow'), name: down ? 'Unburrow' : 'Burrow', tip: down ? 'Burst out of the ground.' : 'Hide underground: enemies can\'t see or hit Burrowers. They burst out when an enemy walks close, and the first hit does double damage.', act: () => {
         const bs2 = ownUnits().filter(u => u.kind === 'burrower'), go = bs2.some(u => !u.burrow || u.burrow === 3);
         issue({ t: 'burrow', go, ids: ids(bs2) }); } };
+    }
+    const hero = us.find(u => u.d.hero);
+    if (hero) {
+      const sk = HERO_SK[hero.d.skill], cd = Math.ceil(hero.skCD || 0);
+      S[6] = { key: 'Q', img: icon('sk:' + hero.d.skill), name: sk.name, off: cd > 0, why: cd > 0 ? 'Ready in ' + cd + 's' : '', tip: sk.tip + ' Ready again after ' + sk.cd + ' seconds.', act: () => {
+        const err = issue({ t: 'skill', ids: ids(ownUnits().filter(u => u.d.hero)) }); if (err) { toast(err, 'bad'); sfx('error'); } } };
     }
     if (allW) {
       S[4] = { key: 'G', img: icon('gather'), name: 'Gather', tip: fac === 'bloom' ? 'Gather crystals, or sap from your Sap Well.' : fac === 'shard' ? 'Gather crystals, or gas from your Prism Tap.' : 'Mine crystals, or collect gas from your Refinery.', act: () => setMode('gather') };
@@ -6562,6 +7255,8 @@ function hpCol(f) { return f > .5 ? 'var(--green)' : f > .25 ? 'var(--gold)' : '
 function statusText(e) {
   const o = e.order;
   if (e.captive) return 'Captured';
+  if (e.d.cargo) return e.halt ? 'Stopped: enemies ahead!' : e.order.t === 'move' ? 'On the way' : 'Waiting';
+  if (e.d.hero) return 'Level ' + (e.lvl || 1) + (e.lvl >= 5 ? ' (max)' : ' · XP ' + Math.floor(e.xp || 0) + '/' + HERO_XP[e.lvl || 1]) + ' · ' + HERO_SK[e.d.skill].name + (e.skCD > 0 ? ' in ' + Math.ceil(e.skCD) + 's' : ' ready');
   if (e.d.worker) {
     if (o.t === 'gather') { const r = G.byId.get(o.res); const g = e.d.fac === 'bloom' ? ' sap' : ' gas'; return e.ws === 'back' ? 'Bringing back ' + (e.carry ? e.carry.amt + (e.carry.type === 'c' ? ' crystals' : g) : '') : r && r.d.refinery ? 'Collecting' + g : 'Mining crystals'; }
     if (o.t === 'build') return (e.d.fac === 'bloom' ? 'On the way to grow into a ' : e.d.fac === 'shard' ? 'On the way to warp in a ' : 'On the way to build a ') + DEF[o.k].name;
@@ -7074,7 +7769,7 @@ function renderMissions() {
   $('mlist').innerHTML = MISSIONS.map((m, i) => {
     if (m.camp !== camp) return '';
     const open = prev < 0 || pr[prev] > 0, st = pr[i] || 0; prev = i;
-    return `<button class="mcard${open ? '' : ' locked'}" data-m="${i}"${open ? '' : ' disabled'}><span class="mn">Mission ${m.n}${open ? '' : ' · locked'}</span><b>${m.title}</b><p>${m.brief}</p><span class="mstars">${'★'.repeat(st)}<i>${'★'.repeat(3 - st)}</i></span></button>`;
+    return `<button class="mcard${open ? '' : ' locked'}" data-m="${i}"${open ? '' : ' disabled'}><span class="mn">Mission ${m.n}${open ? '' : ' · locked'}</span><b>${m.title}</b><p>${m.brief}</p>${m.hero ? `<span class="mhero">★ Hero: ${DEF[m.hero].name}</span>` : ''}<span class="mstars">${'★'.repeat(st)}<i>${'★'.repeat(3 - st)}</i></span></button>`;
   }).join('');
 }
 $('ctabs').addEventListener('click', e => { const b = e.target.closest('button[data-c]'); if (!b) return; camp = b.dataset.c; try { localStorage.setItem('crystalOutpost.camp', camp); } catch (er) { } sfx('click'); renderMissions(); });
