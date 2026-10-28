@@ -98,6 +98,38 @@
   function bump(game, key, n) { const s = stats(game); s[key] = (s[key] || 0) + (n == null ? 1 : n); store.set('stats:' + game, s); return s; }
   function statsHtml(items) { return '<div class="tb-stats">' + items.map(([l, v]) => '<div><b>' + esc(v) + '</b><span>' + esc(l) + '</span></div>').join('') + '</div>'; }
 
+  // ---- 等級分（跟電腦下棋的天梯）----
+  // 每個電腦強度有固定分數（最弱 600、最強 1900），用 Elo 公式更新自己的等級分。
+  const TITLES = [[0, '新手'], [700, '見習棋士'], [850, '三級棋士'], [1000, '二級棋士'], [1150, '一級棋士'], [1300, '初段'], [1450, '二段'], [1600, '三段'], [1750, '四段'], [1900, '五段']];
+  const eloTitle = r => { let t = TITLES[0][1]; for (const [m, n] of TITLES) if (r >= m) t = n; return t; };
+  const eloOpp = (i, n) => Math.round(600 + 1300 * (n > 1 ? i / (n - 1) : 0));
+  const elo = {
+    get(game) { return store.get('elo:' + game, null); },
+    title: eloTitle,
+    /** lv：0 起算的電腦強度；n：強度數；score：1 贏 / 0.5 和 / 0 輸 */
+    update(game, lv, n, score) {
+      const o = store.get('elo:' + game, { r: 800, n: 0, best: 800 }), opp = eloOpp(lv, n);
+      const exp = 1 / (1 + Math.pow(10, (opp - o.r) / 400)), K = o.n < 10 ? 48 : 28;
+      const before = eloTitle(o.r), d = Math.round(K * (score - exp));
+      o.r = Math.max(100, o.r + d); o.n++; o.best = Math.max(o.best || 0, o.r);
+      store.set('elo:' + game, o);
+      const t = eloTitle(o.r);
+      return { r: o.r, d, title: t, promoted: t !== before && d > 0, demoted: t !== before && d < 0 };
+    },
+    html(res) {
+      return '<div class="tb-elo"><span>等級分</span><b>' + res.r + '</b><em class="' + (res.d >= 0 ? 'up' : 'dn') + '">' + (res.d >= 0 ? '+' : '') + res.d + '</em><span>· ' + esc(res.title) + '</span></div>' +
+        (res.promoted ? '<p class="tb-elo-up">🎉 升級了！現在是「' + esc(res.title) + '」</p>' : '');
+    },
+    /** 新局對話框裡的建議 */
+    hint(game, names) {
+      const o = store.get('elo:' + game, null);
+      if (!o) return '<p class="tb-elo-hint">跟電腦下完一盤就會有<b>等級分</b>，贏強的電腦加比較多分。</p>';
+      let best = 0, bd = 1e9; names.forEach((_, i) => { const d = Math.abs(eloOpp(i, names.length) - (o.r + 60)); if (d < bd) { bd = d; best = i; } });
+      return '<p class="tb-elo-hint">你的等級分 <b>' + o.r + '</b>（' + esc(eloTitle(o.r)) + '），建議挑戰「<b>' + esc(names[best]) + '</b>」。</p>';
+    },
+    stat(game) { const o = store.get('elo:' + game, null); return o ? [['等級分', o.r], ['稱號', eloTitle(o.r)], ['最高', o.best || o.r]] : []; },
+  };
+
   // ---- 把一個函式放進 Web Worker（電腦思考不卡畫面）----
   /** worker(fn) — fn(self) 會在 worker 內執行並自行設定 onmessage。回傳 {ask(msg)→Promise, kill()} */
   function worker(fn) {
@@ -147,6 +179,6 @@
   // 第一次互動時解鎖音效（iOS）
   addEventListener('pointerdown', () => ctx(), { once: true });
 
-  window.TB = { store, sfx, dialog, closeDialog, seg, segVal, toast, stats, bump, statsHtml, worker, esc,
+  window.TB = { store, sfx, dialog, closeDialog, seg, segVal, toast, stats, bump, statsHtml, worker, esc, elo,
     get muted() { return muted; } };
 })();
