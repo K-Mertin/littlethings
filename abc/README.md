@@ -8,9 +8,9 @@
 首頁分成四區，往下滑可以看到全部活動，每個遊戲都一按就開始（沒有「Games」「Challenge」這種中間選單）：
 
 - 🔤 **Letters**：Write、Phonics、First Letter、Big & Small、ABC Order、What's Missing?
-- 🧩 **Words**：Things（19 組名詞，進去選一組）、Actions、Describing、Spell、Spell+ ⭐、Blends、Magic e ⭐、ee, oa, ai ⭐、Sight Words、Sight Words 2 ⭐、Sight Words 3 ⭐、Rhyme、Opposites
-- 📝 **Sentences**：a or an?、He / She / They、How?、What can it do?、Where is it?、One or many?、Is or are?、What, Who, Where?、Big, bigger, biggest ⭐、This or that?、Can or can't?、Yesterday ⭐、Stories、Reading ⭐、Sentences ⭐、Listen ⭐
-- 🎉 **Play**：Talk、Memory、Simon Says、Stickers
+- 🧩 **Words**：Things（19 組名詞，進去選一組）、Actions、Describing、My Day、Spell、Spell+ ⭐、Blends、Magic e ⭐、ee, oa, ai ⭐、Sight Words、Sight Words 2 ⭐、Sight Words 3 ⭐、Rhyme、Opposites
+- 📝 **Sentences**：a or an?、He / She / They、How?、What can it do?、Where is it?、One or many?、Is or are?、What, Who, Where?、Behind, between ⭐、How do I feel?、Make a Sentence、Big, bigger, biggest ⭐、This or that?、Can or can't?、Yesterday ⭐、Stories、Reading ⭐、Sentences ⭐、Listen ⭐
+- 🎉 **Play**：Talk、Memory、Simon Says、Find it!、Story Order、Stickers
 
 ⭐ 是比較難的挑戰；玩過的格子右上角有 ✔。從遊戲回到首頁會停在原本滑到的位置。
 
@@ -31,11 +31,12 @@
 | 📚 第二級故事書 ⭐ | The Lost Kitten、Pip's Garden、The Big Race：每本 8 頁，句子比較長、用到 Sight Words 2 的字，書單上標 ⭐ |
 | 📖 Learn | 先教再玩。Words 每一組（含 Actions、Describing）、Sentences 區的五組填空，和 Rhyme、Opposites、Big & Small，進到遊戲後上方有「📖 Learn」按鈕（不會自動跳出）。上課照「我說、一起說、你來」：一次一張大圖＋字，Pip 唸出來，再說「Say it with me!」（點圖可以再聽，按 🎤 可以跟著唸，Pip 會回應）；每教 3～4 個，就用剛教的內容出 1～2 題小確認（答錯會唸出選到的是什麼，錯兩次提示答案）。教完按 ▶️ Play 直接進遊戲，🔁 再上一次。一次教 8 個，下次打開接著教後面的 |
 | 🎲 Games | 小遊戲區（7 個）：🎵 Rhyme 押韻（22 組字族）、🃏 Memory 翻牌（任一組單字的 6 對圖）、🙋 Simon Says（聽指令點身體部位）、↔️ Opposites 相反詞（12 組）、❓ What's Missing?（看圖補字母，多半是中間的母音）、🔡 ABC Order（「a b _」接下一個字母）、🅰️ Big & Small（大寫配小寫，常混入 b/d/p/q 這類長得像的字母） |
+| 🆕 2026-10-28 | **🪥 My Day**（Words 區，日常作息：waking up、brushing teeth、taking a bath、going to bed…12 個，每張圖都是孩子在做那件事，有 Learn）。**🧸 Behind, between ⭐**（behind／in front of／between／next to the box，箱子和動物分層畫：behind 被箱子擋住一半、between 是兩個箱子中間；選項是整個片語）。**😊 How do I feel?**（看發生了什麼事推想心情：My balloon flew away. I feel ___；選項附表情，意思相近的心情不會同時出現；Learn 用新的情境出確認題）。**🧱 Make a Sentence**（看圖把字卡排成句子，例如 The dog / is / running.，多一張和圖不符的字卡；選錯會說「Look at the picture again」或「What comes first?」）。**🔎 Find it!**（聽力：公園、房間、農場、海邊四張大圖，每次換一張；前三題「Find the dog.」，後三題要聽位置、顏色、大小才分得出來：the cat under the tree／the cat next to the house、the red balloon、the big sheep；泡泡不顯示題目）。**🔢 Story Order**（Pip 講三段小故事，孩子依 First／Next／Last 排圖；剩最後一張時自動放上，不問沒有意義的題目；12 個故事，有 Learn）。手機橫拿時，填空和排句子畫面縮小圖片、🔊 改放在字卡旁，不再被切掉 |
 | 👀 Sight Words | 常見字（I、the、see、can、like…共 30 個）：先看字、聽 Pip 唸，再從三張字卡找出來；之後只聽不看再找一次。答對會聽到一句用到這個字的例句 |
 | 📚 Stories | 8 本原創小故事書（每本 6～7 頁）：Pip's Hat、The Big Red Bus、Little Duck、Bedtime for Pip、The Hungry Monkey、Rainy Day、Pip at the Farm、The Snowman。Pip 唸的時候字會一個個亮起來，點任何一個字可以聽那個字；讀完回答 3 題（選項順序隨機） |
-| 💬 Talk | 和 Pip 用英文聊天的 14 個情境：打招呼、顏色、動物、點心、數數、天氣、心情、家人、玩具和動作、在哪裡（in／on／next to）、生日派對、早安日常（刷牙、早餐、please／thank you）、穿衣服（冷／熱）、形狀。可以點圖片回答，也可以按 🎤 用說的 |
+| 💬 Talk | 和 Pip 用英文聊天的 19 個情境：打招呼、顏色、動物、點心、數數、天氣、心情、家人、玩具和動作、在哪裡（in／on／next to）、生日派對、早安日常（刷牙、早餐、please／thank you）、穿衣服（冷／熱）、形狀、公園（輪流：Can I have a turn?）、商店（買東西、數硬幣付錢）、Ouch!（哪裡痛、身體部位）、睡前（數綿羊、說晚安）、餵動物（猴子吃什麼？）。可以點圖片回答，也可以按 🎤 用說的 |
 | ⭐ Challenge | 進階挑戰：🧩 Spell+（4～5 個字母、有連音的單字，沒有提示字，多 3 個干擾字母）、📖 Reading（只顯示字、不唸出來，自己讀再選圖，選項是長得像的字）、📝 Sentences（聽 Pip 說一句話，把字卡排成句子，多一張干擾字卡）、👂 Listen（聽較長的指令，例如 Find the small blue star.／Find three red hearts.，選出對的圖） |
-| 📒 Stickers | 貼紙簿：13 個主題頁（Island、Under the Sea、Mermaid Lagoon、Farm、Garden、Jungle、Forest、Town、Party、Space、Snow Land、Dino Land、Fairy Tale），共 193 種貼紙，每頁有自己的場景。每完成一輪得到一張，優先補齊正在收集的那一頁（偶爾來自別頁），收齊所有貼紙之前不會重複。頁面下方是這頁的收集欄：沒拿到的是灰色剪影，拿到的可以拖到頁面上（或點一下自動貼上），頁面上的貼紙可以拖著移動，拖回收集欄就收起來。點貼紙會唸出英文。收齊一頁 Pip 會恭喜、頁籤變 ⭐。舊版小島上的貼紙會自動搬到對應的主題頁；之後調整分類時，已貼上的貼紙也會跟著搬到新的頁 |
+| 📒 Stickers | 貼紙簿：17 個主題頁（Island、Under the Sea、Mermaid Lagoon、Farm、Garden、Jungle、Forest、Town、Party、Space、Snow Land、Dino Land、Fairy Tale、Music Show、Sports Day、Bakery、Building Site），共 262 種貼紙，每頁有自己的場景。每完成一輪得到一張，優先補齊正在收集的那一頁（偶爾來自別頁），收齊所有貼紙之前不會重複。頁面下方是這頁的收集欄：沒拿到的是灰色剪影，拿到的可以拖到頁面上（或點一下自動貼上），頁面上的貼紙可以拖著移動，拖回收集欄就收起來。點貼紙會唸出英文。收齊一頁 Pip 會恭喜、頁籤變 ⭐。舊版小島上的貼紙會自動搬到對應的主題頁；之後調整分類時，已貼上的貼紙也會跟著搬到新的頁 |
 
 任何時候點 Pip，他會再說一次題目。
 
