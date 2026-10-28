@@ -64,6 +64,14 @@ function buildGrid(L, T) {
     }
   });
   for (const [px, py] of (L.pads || [])) if (inMap(px, py)) g[py][px].pad = true;
+  // 第三章：雪崩陷阱、冰洞巢穴、熔爐基座、碎石、火盆、輸送帶拉桿（都不能蓋塔，碎石清掉之後可以）
+  for (const [tx, ty] of (L.traps || [])) if (inMap(tx, ty)) { g[ty][tx].trap = true; g[ty][tx].block = true; }
+  for (const [nx, ny] of (L.nests || [])) if (inMap(nx, ny)) { g[ny][nx].nest = true; g[ny][nx].block = true; }
+  for (const [ax, ay] of (L.anvils || [])) if (inMap(ax, ay)) g[ay][ax].anv = true;
+  for (const [rx, ry] of (L.rubble || [])) if (inMap(rx, ry) && !g[ry][rx].path) { g[ry][rx].rub = true; g[ry][rx].block = true; }
+  for (const [bx, by] of (L.braziers || [])) if (inMap(bx, by)) { g[by][bx].brz = true; g[by][bx].block = true; }
+  if (L.lever && inMap(L.lever[0], L.lever[1])) { g[L.lever[1]][L.lever[0]].lever = true; g[L.lever[1]][L.lever[0]].block = true; }
+  for (const [cx, cy, cw, chh] of (L.belts || [])) for (let y = cy; y < cy + chh; y++) for (let x = cx; x < cx + cw; x++) if (inMap(x, y)) g[y][x].belt = true;
   (L.bridges || []).forEach(([bx, by], i) => { if (inMap(bx, by)) g[by][bx].br = i; });
   for (const [lx, ly] of (L.lamps || [])) if (inMap(lx, ly) && !g[ly][lx].path) { g[ly][lx].block = true; g[ly][lx].deco = 'lamp'; g[ly][lx].dv = 0.5; }
   if (L.tunnel) L.paths.forEach((P, pi) => (L.tunnel[pi] || []).forEach(i => { for (const [tx, ty] of [P[i], P[i + 1]]) if (inMap(tx, ty)) g[ty][tx].hole = true; }));
@@ -82,11 +90,13 @@ function buildGrid(L, T) {
     const c = g[y][x];
     const p = c.near === 1 ? 0.05 : c.near === 2 ? 0.1 : 0.2;
     const r = rng();
-    if (!c.path && !c.water && !c.pad && !c.deco && r < p) { c.block = true; c.deco = T.deco[Math.floor(rng() * T.deco.length)]; c.dv = rng(); }
+    if (!c.path && !c.water && !c.pad && !c.deco && !c.block && !c.anv && r < p && !nearMech(g, x, y)) { c.block = true; c.deco = T.deco[Math.floor(rng() * T.deco.length)]; c.dv = rng(); }
   }
   return g;
 }
 
+// 陷阱和巢穴旁邊不放裝飾物（免得擋住）
+function nearMech(g, x, y) { for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const r = g[y + dy], c = r && r[x + dx]; if (c && (c.trap || c.nest || c.lever)) return true; } return false; }
 function levelAvail(li) {
   // 第 li 關可以用的塔：解鎖條件 ≤ max(這關, 已過關數)
   let cleared = 0;
@@ -114,7 +124,7 @@ function newGame(li, diff, opts) {
       meteor: { cd: 0, max: SKILLS.meteor.cd * M.meteorCd, on: SKILLS.meteor.unlock <= lv },
       freeze: { cd: 0, max: SKILLS.freeze.cd * M.freezeCd, on: SKILLS.freeze.unlock <= lv },
     },
-    stats: { kills: 0, leaks: 0, built: 0, earned: 0, blocks: 0, poisonKills: 0 }, bossOn: null, flash: 0,
+    stats: { kills: 0, leaks: 0, built: 0, earned: 0, blocks: 0, poisonKills: 0, trapKills: 0, nests: 0 }, bossOn: null, flash: 0,
   };
   if (G.mods.has('poor')) G.gold = Math.round(G.gold * 0.8);
   if (G.heroic) G.lives = HEROIC_LIVES + M.lives;
@@ -158,6 +168,13 @@ function newGame(li, diff, opts) {
   G.rotor = L.rotor ? { i: 0, t: L.rotor[2], ang: 0 } : null;
   G.fog = !!L.fog; G.eclipse = false;
   G.lamps = (L.lamps || []).map(([x, y]) => ({ x: x + 0.5, y: y + 0.5 }));
+  // 第三章的關卡機制
+  G.traps = (L.traps || []).map(([x, y], i) => { const p = nearPath(G, x + 0.5, y + 0.5); return { i, x, y, cx: x + 0.5, cy: y + 0.5, tx: lerp(p.x, x + 0.5, 0.12), ty: lerp(p.y, y + 0.5, 0.12), cd: 3 + i * 2, max: TRAP.cd }; });
+  G.nests = (L.nests || []).map(([x, y, w]) => { const p = nearPath(G, x + 0.5, y + 0.5); return { nest: true, x: x + 0.5, y: y + 0.5, gx: x, gy: y, wake: w, awake: false, alive: true, hp: 1, maxHp: 1, spawnT: 2, pi: p.pi, pd: p.d, d: {}, fly: false, boss: false, under: 0, inv: 0, inT: false, vis: true, dist: 1, P: { len: 2 }, r: 0.42, off: 0, shield: 0, slowA: 0, slowT: 0, frozenT: 0, markT: 0, markA: 0, flash: 0, k: 'nest' }; });
+  G.belt = L.belts ? { on: 0, cd: 2, max: BELT.cd } : null;
+  G.cold = L.cold ? { on: false, t: L.cold[0] * 0.7 } : null;
+  G.braziers = (L.braziers || []).map(([x, y]) => ({ x: x + 0.5, y: y + 0.5 }));
+  G.wyrmStorm = false;
   updateBridges(G);
   G.hero = opts.hero && typeof makeHero === 'function' ? makeHero(G, opts.hero) : null;
   return G;
@@ -251,11 +268,15 @@ function calcStats(G) {
     const d = TOWERS[t.k], s = baseStats(t);
     s.air = s.air !== undefined ? s.air : d.air;
     if (t.buff.air && !d.troops && t.k !== 'alchemy') s.air = true;
-    const pad = G.grid[t.y][t.x].pad;
-    if (s.dmg) s.dmg *= M.dmg[t.k] * (1 + t.buff.dmg) * (pad ? 1.25 : 1) * (wk === 'thunder' && t.k === 'magic' ? 1.35 : 1);
+    const pad = G.grid[t.y][t.x].pad, anv = G.grid[t.y][t.x].anv;
+    if (s.dmg) s.dmg *= M.dmg[t.k] * (1 + t.buff.dmg) * (pad ? 1.25 : 1) * (anv ? 1.1 : 1) * (wk === 'thunder' && t.k === 'magic' ? 1.35 : 1);
     if (d.troops) s.range *= 1; // 集結範圍不受射程加成影響
     else s.range *= M.range * (1 + t.buff.range) * (pad ? 1.1 : 1) * (G.stormOn ? G.L.storm[2] : 1) * (wk === 'wind' && (t.k === 'arrow' || t.k === 'sniper') ? 0.85 : 1);
-    if (s.rate) s.rate *= (1 + t.buff.rate) * (wk === 'rain' && t.k !== 'frost' && !d.troops ? 0.85 : 1);
+    if (s.rate) s.rate *= (1 + t.buff.rate) * (wk === 'rain' && t.k !== 'frost' && !d.troops ? 0.85 : 1) * (anv ? 1.2 : 1);
+    // 寒潮：沒有靠近火盆的塔凍得動作變慢；永夜暴風雪：所有塔都變慢
+    t.cold = !!(G.cold && G.cold.on && !d.troops && !towerWarm(G, t));
+    if (s.rate && t.cold) s.rate *= G.L.cold[2];
+    if (s.rate && G.wyrmStorm && !d.troops) s.rate *= 0.8;
     if (wk === 'rain' && s.slow) s.slow = Math.min(0.75, s.slow + 0.1);
     if (d.troops) { s.hp *= M.troopHp * (pad ? 1.25 : 1); }
     if (s.poolT) s.poolT *= M.poolT * (wk === 'rain' ? 0.65 : 1);
@@ -343,7 +364,7 @@ function spawnEnemy(G, k, entry, hpMul, pi, at) {
     armor: d.armor || 0, mres: d.mres || 0, fly: !!d.fly, boss: !!d.boss,
     shield: d.shield ? d.shield * hpMul * G.D.hp : 0, shieldMax: d.shield ? d.shield * hpMul * G.D.hp : 0,
     slowT: 0, slowA: 0, frozenT: 0, brittle: false, markT: 0, markA: 0, shred: 0, flash: 0, lastHit: -9,
-    abilT: d.stomp || d.summon || d.dash || d.burrow || d.dig || d.shell || d.drums || 2.4, under: 0, revived: false, dashT: 0, stunFx: 0,
+    abilT: d.stomp || d.summon || d.dash || d.burrow || d.dig || d.shell || d.drums || (d.freezeT ? d.freezeT * 0.6 : 0) || d.throwT || d.shellT || d.breathT || 2.4, under: 0, revived: false, dashT: 0, stunFx: 0,
     off: d.boss ? 0 : (G.rnd() - 0.5) * 0.34, x: 0, y: 0, dx: 1, dy: 0, alive: true, wob: G.rnd() * 6.28, r: d.r,
     lives: d.lives || 1, healFx: 0, vis: true, revealT: 0, wardA: 0, phase: 0, inv: 0, inT: false, riv: false,
     poisonT: 0, poisonD: 0, corT: 0, corA: 0, hasteT: 0, abil2: 6, forkDone: false,
@@ -358,6 +379,8 @@ function spawnEnemy(G, k, entry, hpMul, pi, at) {
   }
   if (d.boss && d.phases) e.abil2 = 9;
   if (k === 'bossEclipse') { e.shield = e.shieldMax = hp * 0.12; }
+  if (k === 'bossWyrm') e.fly = true; // 冰龍一開始在空中盤旋（但沿著道路前進）
+  e.shieldBase = e.shieldMax; // 會自己回充的護盾上限（冰晶蛾給的冰片護盾不會回充）
   placeEnemy(e);
   G.enemies.push(e);
   if (e.boss) { G.bossOn = e; Hook.sfx('roar'); Hook.shake(0.5); Hook.fx('boss', G, e); }
@@ -376,6 +399,7 @@ function placeEnemy(e) {
 }
 
 function hurt(G, e, amt, type, src) {
+  if (e.nest) return hurtNest(G, e, amt, type, src);
   if (!e.alive || amt <= 0 || e.under > 0 || e.inv > 0) return 0;
   let m = 1;
   if (e.markT > 0) m += e.markA;
@@ -408,6 +432,16 @@ function killEnemy(G, e, src) {
   }
   e.alive = false;
   if (e._pk) G.stats.poisonKills++;
+  if (src && src.trap) { G.stats.trapKills++; e._tk = true; }
+  if (e.d.shatter) {
+    // 冰晶蛾：碎成冰片，附近的同伴得到一層不會回充的護盾
+    let n = 0;
+    for (const o of G.enemies) {
+      if (!o.alive || o === e || o.boss || o.d.shatter || dist2(o.x, o.y, e.x, e.y) > 1.5 * 1.5) continue;
+      o.shield += o.maxHp * e.d.shatter; o.shieldMax = Math.max(o.shieldMax, o.shield); n++;
+    }
+    ring(G, e.x, e.y, 0.1, 1.5, 0.45, '#cff4ff'); Hook.fx('shatter', G, e, n);
+  }
   Hook.fx('kill', G, e);
   const b = Math.max(1, Math.round(e.d.bounty * Math.pow(e.hpMul, 0.7) * G.D.bounty * G.M.bounty * (G.mod === 'rich' ? 1.3 : 1)));
   G.gold += b; G.stats.kills++;
@@ -421,6 +455,7 @@ function killEnemy(G, e, src) {
     Hook.shake(1); Hook.sfx('bossdie');
     if (G.bossOn === e) G.bossOn = null;
     if (e.k === 'bossEclipse') { G.eclipse = false; Hook.fx('dawn', G, e); }
+    if (e.k === 'bossWyrm' && G.wyrmStorm) { G.wyrmStorm = false; G.dirty = true; Hook.fx('dawn', G, e); }
   } else {
     burst(G, e.x, e.y, e.fly ? 0.6 : 0.25, 12, col, 2.6, 0.55);
     Hook.sfx('pop');
@@ -442,7 +477,7 @@ function killEnemy(G, e, src) {
   }
 }
 function enemyColor(k) {
-  return ({ slime: '#6ad65e', runner: '#ff9a3c', beetle: '#9aa6b6', bat: '#9c6bff', golem: '#b9a98e', healer: '#ffffff', shield: '#5aa8ff', splitter: '#ff7fbf', mini: '#ff9fd0', ogre: '#7fae55', gargoyle: '#8e98a8', skeleton: '#f1eee2', bossGolem: '#b28c63', bossDragon: '#ff5a3a', bossLich: '#8a5cff', wisp: '#bfe8ff', crawler: '#7fe8ff', mummy: '#e8dcc0', crab: '#ff7a4a', bossRoc: '#6a8ae8', bossWorm: '#9a7ad8', bossPharaoh: '#ffd36b', bossKraken: '#b04ad8' })[k] || '#fff';
+  return ({ slime: '#6ad65e', runner: '#ff9a3c', beetle: '#9aa6b6', bat: '#9c6bff', golem: '#b9a98e', healer: '#ffffff', shield: '#5aa8ff', splitter: '#ff7fbf', mini: '#ff9fd0', ogre: '#7fae55', gargoyle: '#8e98a8', skeleton: '#f1eee2', bossGolem: '#b28c63', bossDragon: '#ff5a3a', bossLich: '#8a5cff', wisp: '#bfe8ff', crawler: '#7fe8ff', mummy: '#e8dcc0', crab: '#ff7a4a', imp: '#e8f6ff', yeti: '#f0f4fa', clock: '#c8a050', frostmage: '#7ac8ff', moth: '#bfeaff', bossYeti: '#e8f0ff', bossColossus: '#a8a0a0', bossWyrm: '#8ad8ff', bossRoc: '#6a8ae8', bossWorm: '#9a7ad8', bossPharaoh: '#ffd36b', bossKraken: '#b04ad8' })[k] || '#fff';
 }
 
 function updateEnemies(G, dt) {
@@ -453,6 +488,7 @@ function updateEnemies(G, dt) {
   for (const e of G.enemies) {
     if (!e.alive) continue;
     if (e.flash > 0) e.flash -= dt;
+    if (e.d.mech) { e.frozenT = 0; e.slowA = 0; e.slowT = 0; e.brittle = false; } // 發條兵、鋼鐵巨像：不會被減速、冰凍、震暈
     if (e.markT > 0) e.markT -= dt;
     if (e.revealT > 0) e.revealT -= dt;
     if (e.corT > 0) e.corT -= dt;
@@ -477,7 +513,9 @@ function updateEnemies(G, dt) {
       const ax = Math.floor(_po.x), ay = Math.floor(_po.y), cx = Math.floor(e.x), cy = Math.floor(e.y);
       if (inMap(ax, ay)) { const b = G.grid[ay][ax].br; if (b !== undefined && !G.bridges[b].open && !(inMap(cx, cy) && G.grid[cy][cx].br === b)) { sp = 0; e.waitBr = true; } else e.waitBr = false; }
     }
-    e.dist += sp * dt;
+    // 輸送帶反轉：把地面敵人往回推（頭目只推一半）
+    if (G.belt && G.belt.on > 0 && !e.fly && !e.inT) { const bx = Math.floor(e.x), by = Math.floor(e.y); if (inMap(bx, by) && G.grid[by][bx].belt) sp -= BELT.push * (e.boss ? 0.5 : 1); }
+    e.dist = Math.max(0, e.dist + sp * dt);
     // 岔路口：吊橋與旋轉祭壇決定走哪條
     if (!e.fly && !e.forkDone && G.forkJ[e.pi] > 0 && e.dist >= G.forkJ[e.pi]) { e.forkDone = true; forkChoose(G, e); }
     if (e.P.hasTp) {
@@ -506,7 +544,7 @@ function updateEnemies(G, dt) {
         if (n) { ring(G, e.x, e.y, 0.2, 1.7, 0.5, '#7dffb0'); Hook.sfx('heal'); Hook.fx('heal', G, e); }
       }
     }
-    if (e.shieldMax && e.shield < e.shieldMax && G.t - e.lastHit > 3) e.shield = Math.min(e.shieldMax, e.shield + e.shieldMax * 0.4 * dt);
+    if (e.shieldBase && e.shield < e.shieldBase && G.t - e.lastHit > 3) e.shield = Math.min(e.shieldBase, e.shield + e.shieldBase * 0.4 * dt);
     if (d.stomp && e.frozenT <= 0) {
       e.abilT -= dt;
       if (e.abilT <= 0) {
@@ -529,6 +567,16 @@ function updateEnemies(G, dt) {
       e.abilT -= dt;
       if (e.abilT <= 0) { e.abilT = d.dig + G.rnd() * 1.2; e.under = 1.4; e.dashT = 1.4; Hook.fx('dig', G, e); }
     }
+    if (d.freezeT && e.frozenT <= 0 && e.vis) {
+      // 冰霜巫師：把附近一座塔凍成冰塊
+      e.abilT -= dt;
+      if (e.abilT <= 0) {
+        let best = null, bd = 2.4 * 2.4;
+        for (const t of G.towers) { if (t.stunT > 0.3) continue; const dd = dist2(t.cx, t.cy, e.x, e.y); if (dd < bd) { bd = dd; best = t; } }
+        if (best) { e.abilT = d.freezeT; best.stunT = Math.max(best.stunT, 2); best.inked = false; best.iced = 2; Hook.fx('chill', G, e, best); Hook.sfx('frost'); }
+        else e.abilT = 0.5;
+      }
+    }
     if (d.dash) {
       e.abilT -= dt;
       if (e.abilT <= 0) { e.abilT = d.dash; e.dashT = 1.6; Hook.sfx('roar'); Hook.fx('dash', G, e); }
@@ -542,7 +590,7 @@ function updateEnemies(G, dt) {
 function summonAround(G, e, sk, sn) {
   const hm = 1 + 0.05 * Math.max(0, G.wave);
   for (let i = 0; i < sn; i++) { const c = spawnEnemy(G, sk, 0, hm, e.pi, Math.max(0, e.dist - 0.3 - i * 0.3)); c.off = (i - (sn - 1) / 2) * 0.22; c.forkDone = e.forkDone; c.P = e.P; placeEnemy(c); }
-  ring(G, e.x, e.y, 0.2, 1.5, 0.6, sk === 'wisp' ? '#bfe8ff' : sk === 'mummy' ? '#ffd36b' : sk === 'crab' ? '#ff9a6a' : '#b38aff'); Hook.sfx('summon'); Hook.fx('summon', G, e);
+  ring(G, e.x, e.y, 0.2, 1.5, 0.6, sk === 'wisp' ? '#bfe8ff' : sk === 'mummy' ? '#ffd36b' : sk === 'crab' ? '#ff9a6a' : sk === 'yeti' || sk === 'moth' ? '#dff6ff' : sk === 'clock' ? '#ffcf7a' : '#b38aff'); Hook.sfx('summon'); Hook.fx('summon', G, e);
 }
 // 隱身與夜霧：誰看得到
 function updateVision(G) {
@@ -597,6 +645,7 @@ function updateBridges(G) {
 // 天氣、旋轉祭壇
 function updateLevelMech(G, dt) {
   if (G.bridges.length) updateBridges(G);
+  updateMech3(G, dt);
   const W = G.weather;
   if (W && G.state === 'run') {
     W.t -= dt;
@@ -625,6 +674,104 @@ function updateLevelMech(G, dt) {
     if (R.t <= 0) { R.t = G.L.rotor[2]; R.i = (R.i + 1) % G.L.rotor[3].length; Hook.fx('rotor', G, R); Hook.sfx('build'); }
   }
 }
+// ───────── 第三章的關卡機制 ─────────
+const TRAP = { cd: 20, r: 1.3, dmg: 75 };
+const BELT = { cd: 24, dur: 5, push: 1.55 };
+const NEST = { hp: 1300, every: 7, bounty: 60 };
+const RUB_COST = 40;
+// 最靠近某一點的地面道路（不含傳送段、地道）
+function nearPath(G, x, y) {
+  const o = { x: 0, y: 0 }; let best = { x, y, pi: 0, d: 0 }, bd = 1e9;
+  G.paths.forEach((P, pi) => { for (let d = 0.6; d < P.len - 0.6; d += 0.1) { pathPos(P, d, o); if (o.sg.tp || o.sg.tn) continue; const dd = dist2(o.x, o.y, x, y); if (dd < bd) { bd = dd; best = { x: o.x, y: o.y, pi, d }; } } });
+  return best;
+}
+// 雪崩陷阱：砸中附近道路上的地面敵人（頭目只吃六成、不會被砸暈）
+function triggerTrap(G, tr) {
+  if (!tr || tr.cd > 0 || G.state !== 'run') return false;
+  tr.cd = tr.max;
+  const dmg = TRAP.dmg * (1 + 0.09 * Math.max(0, G.wave)) * (G.M.meteor > 1 ? 1 + (G.M.meteor - 1) * 0.5 : 1);
+  for (const e of G.enemies) {
+    if (!e.alive || e.fly || e.inT || e.under > 0) continue;
+    if (dist2(e.x, e.y, tr.tx, tr.ty) > (TRAP.r + e.r * 0.5) ** 2) continue;
+    hurt(G, e, e.boss ? dmg * 0.6 : dmg, 'true', { trap: true });
+    if (!e.alive) continue;
+    if (e.boss) applySlow(G, e, 0.5, 3); else if (!e.d.mech && e.frozenT < 1.6) { e.frozenT = 1.6; e.stunFx = 1.6; }
+  }
+  ring(G, tr.tx, tr.ty, 0.2, TRAP.r, 0.6, '#ffffff'); burst(G, tr.tx, tr.ty, 0.3, 26, '#f4faff', 3.2, 0.9);
+  Hook.fx('avalanche', G, tr); Hook.sfx('meteorhit'); Hook.shake(0.5);
+  return true;
+}
+// 清除碎石（底下可能有熔爐基座）
+function clearRubble(G, x, y) {
+  if (!inMap(x, y) || G.state === 'won' || G.state === 'lost') return false;
+  const c = G.grid[y][x];
+  if (!c.rub || G.gold < RUB_COST) return false;
+  G.gold -= RUB_COST; c.rub = false; c.block = false; c.dug = true;
+  G._spotCache = {};
+  burst(G, x + 0.5, y + 0.5, 0.2, 18, '#9a8a7a', 2.6, 0.7);
+  Hook.fx('rubble', G, x, y, !!c.anv); Hook.sfx(c.anv ? 'spec' : 'stomp');
+  return true;
+}
+// 輸送帶反轉
+function activateBelt(G) {
+  const B = G.belt;
+  if (!B || B.cd > 0 || G.state !== 'run') return false;
+  B.cd = B.max; B.on = BELT.dur;
+  Hook.fx('belt', G, true); Hook.sfx('build');
+  return true;
+}
+// 冰洞巢穴受傷：物理七成、毒打不到
+function hurtNest(G, n, amt, type, src) {
+  if (!n.alive || !n.awake || amt <= 0 || type === 'poison') return 0;
+  const a = amt * (type === 'phys' ? 0.7 : 1) * (n.markT > 0 ? 1 + n.markA : 1);
+  n.hp -= a; n.flash = 0.09;
+  if (src && src.t) src.t.dmgDone += a;
+  if (n.hp <= 0) {
+    n.alive = false; G.grid[n.gy][n.gx].nestDead = true;
+    const b = Math.round((NEST.bounty + 5 * Math.max(0, G.wave)) * G.D.bounty);
+    G.gold += b; G.stats.nests++;
+    if (src && src.t) src.t.kills++;
+    addText(G, n.x, n.y - 0.6, '+' + b, '#ffd84a', 1.4);
+    burst(G, n.x, n.y, 0.4, 40, '#dff6ff', 3.5, 1); ring(G, n.x, n.y, 0.2, 1.6, 0.6, '#bfeaff');
+    Hook.fx('nestDie', G, n); Hook.sfx('bossdie'); Hook.shake(0.5);
+  }
+  return a;
+}
+function updateNests(G, dt) {
+  for (const n of G.nests) {
+    if (n.flash > 0) n.flash -= dt;
+    if (n.markT > 0) n.markT -= dt;
+    if (!n.alive || G.state !== 'run') continue;
+    if (!n.awake) {
+      if (G.wave >= n.wake) {
+        n.awake = true; n.maxHp = n.hp = NEST.hp * G.D.hp * (1 + 0.08 * G.wave) * (G.heroic ? HEROIC_HP : 1); n.spawnT = 1.5;
+        Hook.fx('nestWake', G, n); Hook.sfx('summon');
+      }
+      continue;
+    }
+    // 這一波還在出怪時，每隔幾秒放出小雪妖
+    if (!G.spawners.length) continue;
+    n.spawnT -= dt;
+    if (n.spawnT <= 0) {
+      n.spawnT = NEST.every;
+      const hm = G.L.hp0 * (1 + G.L.hpg * Math.max(0, G.wave));
+      for (let i = 0; i < 2; i++) { const c = spawnEnemy(G, 'imp', 0, hm, n.pi, Math.max(0, n.pd - i * 0.25)); c.forkDone = true; c._drop = 0.35; }
+      Hook.fx('nestSpawn', G, n);
+    }
+  }
+}
+function towerWarm(G, t) { for (const b of G.braziers) if (dist2(b.x, b.y, t.cx, t.cy) <= 2.25 * 2.25) return true; return false; }
+function updateMech3(G, dt) {
+  if (G.state !== 'run') return;
+  for (const tr of G.traps) if (tr.cd > 0) tr.cd = Math.max(0, tr.cd - dt);
+  if (G.belt) { const B = G.belt; if (B.cd > 0) B.cd = Math.max(0, B.cd - dt); if (B.on > 0) { B.on -= dt; if (B.on <= 0) { B.on = 0; Hook.fx('belt', G, false); } } }
+  if (G.nests.length) updateNests(G, dt);
+  if (G.cold) {
+    const C = G.cold; C.t -= dt;
+    if (C.t <= 0) { C.on = !C.on; C.t = C.on ? G.L.cold[1] : G.L.cold[0]; C.max = C.t; G.dirty = true; Hook.fx('cold', G, C.on); }
+  }
+}
+
 // ───────── 多階段頭目 ─────────
 function bossLogic(G, e, dt) {
   const d = e.d, f = e.hp / e.maxHp;
@@ -653,6 +800,8 @@ function bossLogic(G, e, dt) {
       for (const o of G.enemies) if (o.alive) o.hasteT = 3.5;
       Hook.fx('frenzy', G, e); Hook.sfx('roar');
     }
+  } else if (e.k === 'bossYeti' || e.k === 'bossColossus' || e.k === 'bossWyrm') {
+    bossLogic3(G, e, dt);
   } else if (e.k === 'bossEclipse') {
     if (e.phase === 0) {
       if (e.abil2 <= 0) { e.abil2 = 9; summonAround(G, e, 'shade', 2); }
@@ -675,12 +824,63 @@ function bossLogic(G, e, dt) {
     }
   }
 }
+// 頭目往塔丟東西（雪球、砲彈）：落地時讓塔暫停
+function lobAt(G, e, t, kind, stun) {
+  const T = 0.75 + Math.sqrt(dist2(e.x, e.y, t.cx, t.cy)) * 0.08;
+  G.projs.push({ k: 'lob', kind, x0: e.x, y0: e.y, x: e.x, y: e.y, tx: t.cx, ty: t.cy, T, tt: 0, h0: 1.2, h: 1.2, tgt: t, stun });
+}
+// 射程內最強的塔（等級高、輸出高的優先）
+function strongTowers(G, e, r, n) {
+  return G.towers.filter(t => !TOWERS[t.k].support && t.stunT <= 0.5 && dist2(t.cx, t.cy, e.x, e.y) < r * r).sort((a, b) => (b.tier * 1e6 + b.dmgDone) - (a.tier * 1e6 + a.dmgDone)).slice(0, n);
+}
+function iceTowers(G, x, y, r, T) {
+  for (const t of G.towers) if (dist2(t.cx, t.cy, x, y) < r * r) { t.stunT = Math.max(t.stunT, T); t.inked = false; t.iced = T; }
+}
+function bossLogic3(G, e, dt) {
+  const d = e.d;
+  if (e.k === 'bossYeti') {
+    e.abilT -= dt;
+    if (e.phase === 0) {
+      if (e.abilT <= 0) { const tg = strongTowers(G, e, 4.2, 1)[0]; e.abilT = tg ? d.throwT : 1; if (tg) { lobAt(G, e, tg, 'snow', 3.5); Hook.fx('throw', G, e); Hook.sfx('stomp'); } }
+    } else {
+      if (e.abilT <= 0) { e.abilT = 7; iceTowers(G, e.x, e.y, 2.6, 2); ring(G, e.x, e.y, 0.3, 2.6, 0.7, '#cff4ff'); Hook.shake(0.6); Hook.sfx('blizzard'); Hook.fx('roar3', G, e); }
+      if (e.abil2 <= 0) { e.abil2 = 11; summonAround(G, e, 'yeti', 2); }
+    }
+  } else if (e.k === 'bossColossus') {
+    e.abilT -= dt;
+    if (e.phase === 0) {
+      if (e.abilT <= 0) { const ts = strongTowers(G, e, 4.6, 2); e.abilT = ts.length ? d.shellT : 1; for (const t of ts) lobAt(G, e, t, 'shell', 2.4); if (ts.length) { Hook.fx('cannon3', G, e); Hook.sfx('bigboom'); } }
+    } else {
+      if (e.abilT <= 0) { e.abilT = 6; iceTowers(G, e.x, e.y, 1.9, 1.5); for (const t of G.towers) if (dist2(t.cx, t.cy, e.x, e.y) < 1.9 * 1.9) t.iced = 0; ring(G, e.x, e.y, 0.3, 1.9, 0.6, '#e8e0d8'); Hook.sfx('blizzard'); Hook.fx('steam', G, e); }
+      if (e.abil2 <= 0) { e.abil2 = 7; summonAround(G, e, 'clock', 3); }
+    }
+  } else if (e.k === 'bossWyrm') {
+    e.abilT -= dt;
+    if (e.abilT <= 0) {
+      e.abilT = e.phase >= 2 ? 6 : d.breathT;
+      // 冰息：前方一片區域的塔被凍住
+      const o = { x: 0, y: 0 }; pathPos(e.P, Math.min(e.P.len - 0.5, e.dist + 1.6), o);
+      iceTowers(G, o.x, o.y, 2.0, 2.2);
+      G.bolts.push({ pts: [{ x: e.x, y: e.y, h: e.fly ? 1.2 : 0.8 }, { x: o.x, y: o.y, h: 0.2 }], life: 0.5, max: 0.5, c: '#bff0ff', w: 4, beam: true });
+      ring(G, o.x, o.y, 0.3, 2.0, 0.7, '#dff8ff'); burst(G, o.x, o.y, 0.3, 30, '#e8fbff', 3, 0.9);
+      Hook.fx('breath', G, e, o.x, o.y); Hook.sfx('blizzard'); Hook.shake(0.4);
+    }
+    if (e.phase === 1 && e.abil2 <= 0) { e.abil2 = 12; e.shield += e.maxHp * 0.08; e.shieldMax = Math.max(e.shieldMax, e.shield); summonAround(G, e, 'yeti', 2); Hook.fx('iceArmor', G, e); }
+    if (e.phase === 2 && e.abil2 <= 0) { e.abil2 = 10; summonAround(G, e, 'moth', 3); }
+  }
+}
 function bossPhase(G, e) {
   const k = e.k;
   if (k === 'bossTortoise') { e.armor = 0.1; e.spd *= 1.7; e.inv = 0; e.abil2 = 1; }
   else if (k === 'bossRaijin') { if (e.phase === 1) { e.fly = true; e.spd *= 1.15; } else { e.abil2 = 0.5; e.spd *= 1.1; } }
+  else if (k === 'bossYeti') { e.spd *= 1.25; e.abilT = 1.5; e.abil2 = 2; }
+  else if (k === 'bossColossus') { e.armor = 0.15; e.spd *= 1.45; e.abilT = 2; e.abil2 = 1.5; }
+  else if (k === 'bossWyrm') {
+    if (e.phase === 1) { e.fly = false; e.abilT = 3; e.abil2 = 1; e.armor = 0.4; }
+    else { G.wyrmStorm = true; G.dirty = true; e.spd *= 1.3; e.abilT = 2; e.abil2 = 3; }
+  }
   else if (k === 'bossEclipse') {
-    if (e.phase === 1) { G.eclipse = true; e.shield = 0; e.shieldMax = 0; e.abilT = 2; e.abil2 = 3; }
+    if (e.phase === 1) { G.eclipse = true; e.shield = 0; e.shieldMax = 0; e.shieldBase = 0; e.abilT = 2; e.abil2 = 3; }
     else { e.spd *= 1.35; e.abilT = 2; e.abil2 = 4; }
   }
   e.frozenT = 0; e.slowA = 0;
@@ -694,6 +894,7 @@ function leak(G, e) {
   G.lives = Math.max(0, G.lives - e.lives); G.stats.leaks += e.lives;
   if (G.bossOn === e) G.bossOn = null;
   if (e.k === 'bossEclipse') G.eclipse = false;
+  if (e.k === 'bossWyrm' && G.wyrmStorm) { G.wyrmStorm = false; G.dirty = true; }
   addText(G, G.exitPt.x, G.exitPt.y - 0.5, '-' + e.lives + ' ♥', '#ff5d6c', 1.3);
   Hook.sfx('leak'); Hook.shake(0.35);
   G.flash = 0.35;
@@ -716,6 +917,8 @@ function targets(G, t, n) {
     if (dist2(t.cx, t.cy, e.x, e.y) > r2) continue;
     out.push(e);
   }
+  // 附近沒有敵人時，打冰洞巢穴
+  if (!out.length && G.nests.length && t.k !== 'alchemy') for (const nb of G.nests) if (nb.alive && nb.awake && dist2(t.cx, t.cy, nb.x, nb.y) <= r2 + 0.2) out.push(nb);
   if (out.length > 1) { out.sort((a, b) => score(t, b) - score(t, a)); }
   return n ? out.slice(0, n) : out;
 }
@@ -726,6 +929,8 @@ function updateTowers(G, dt) {
   for (const t of G.towers) {
     if (t.recoil > 0) t.recoil = Math.max(0, t.recoil - dt * 4);
     if (t.pulse > 0) t.pulse = Math.max(0, t.pulse - dt * 1.5);
+    if (t.iced > 0) t.iced -= dt;
+    if (t.snowT > 0) t.snowT -= dt;
     if (t.stunT > 0) { t.stunT -= dt; continue; }
     const st = t.st;
     if (!st.rate || TOWERS[t.k].troops) continue;
@@ -753,7 +958,8 @@ function updateTowers(G, dt) {
   }
 }
 function applySlow(G, e, a, T) {
-  if (!a) return;
+  if (!a || e.d.mech) return;
+  if (e.d.chill) a *= e.d.chill;
   const bossMul = e.boss ? 0.5 : 1;
   if (a * bossMul >= e.slowA) { e.slowA = a * bossMul; e.slowT = Math.max(e.slowT, T); }
   else e.slowT = Math.max(e.slowT, T * 0.5);
@@ -784,9 +990,9 @@ function fire(G, t, list) {
       } else {
         const T = 0.55 + Math.sqrt(dist2(t.cx, t.cy, e.x, e.y)) * 0.07;
         // 預判落點
-        const o = { x: 0, y: 0 };
-        const lead = e.frozenT > 0 ? 0 : e.spd * (1 - e.slowA) * T * 0.92;
-        pathPos(e.P, Math.min(e.P.len, e.dist + lead), o);
+        const o = { x: e.x, y: e.y, dx: 0, dy: 0 };
+        const lead = e.frozenT > 0 || e.nest ? 0 : e.spd * (1 - e.slowA) * T * 0.92;
+        if (!e.nest) pathPos(e.P, Math.min(e.P.len, e.dist + lead), o);
         G.projs.push({ k: 'ball', x0: t.cx, y0: t.cy, x: t.cx, y: t.cy, tx: o.x - o.dy * e.off, ty: o.y + o.dx * e.off, T, tt: 0, h0, h: h0, dmg: st.dmg, splash: st.splash, stun: st.stun || 0, big: !!st.stun, src: { t } });
         Hook.sfx(st.stun ? 'bigboom' : 'cannon');
       }
@@ -833,6 +1039,7 @@ function fire(G, t, list) {
           if (!o.alive) continue;
           if (segDist2(o.x, o.y, t.cx, t.cy, bx, by) < (0.32 + o.r * 0.5) ** 2) hurt(G, o, st.dmg, 'magic', { t });
         }
+        if (e.nest) hurt(G, e, st.dmg, 'magic', { t });
         G.bolts.push({ pts: [{ x: t.cx, y: t.cy, h: h0 }, { x: bx, y: by, h: 0.35 }], life: 0.3, max: 0.3, c: '#ff9ef0', w: 3, beam: true });
         Hook.sfx('beam');
       } else {
@@ -843,7 +1050,7 @@ function fire(G, t, list) {
     case 'sniper': {
       let dmg = st.dmg;
       let head = false;
-      if (st.headshot && G.rnd() < st.headshot) { head = true; dmg = e.boss ? dmg * 3 : e.hp + e.shield + 1e5; }
+      if (st.headshot && !e.nest && G.rnd() < st.headshot) { head = true; dmg = e.boss ? dmg * 3 : e.hp + e.shield + 1e5; }
       if (st.mark) { e.markT = st.markT; e.markA = Math.max(e.markA, st.mark); }
       const dealt = hurt(G, e, dmg, head && !e.boss ? 'true' : 'phys', { t, pierce: st.pierce });
       G.bolts.push({ pts: [{ x: t.cx, y: t.cy, h: h0 }, { x: e.x, y: e.y, h: e.fly ? 0.75 : 0.25 }], life: 0.16, max: 0.16, c: '#fff6c8', w: 1.5, tracer: true });
@@ -866,15 +1073,28 @@ function explode(G, x, y, r, dmg, type, src, opts) {
     if (opts.evade && e.d.evade && G.rnd() < e.d.evade) continue;
     const fall = 1 - 0.35 * Math.sqrt(d2) / rr;
     hurt(G, e, dmg * fall, type, src);
-    if (opts.stun && e.alive) { const T = e.boss ? opts.stun * 0.25 : opts.stun; if (e.frozenT < T) { e.frozenT = T; e.stunFx = T; } }
+    if (opts.stun && e.alive && !e.d.mech) { const T = e.boss ? opts.stun * 0.25 : opts.stun; if (e.frozenT < T) { e.frozenT = T; e.stunFx = T; } }
   }
+  for (const nb of G.nests) if (nb.alive && nb.awake && dist2(nb.x, nb.y, x, y) < (r + 0.4) ** 2) hurtNest(G, nb, dmg, type, src);
 }
 
 function updateProjs(G, dt) {
   const keep = [];
   for (const p of G.projs) {
     let done = false;
-    if (p.k === 'flask') {
+    if (p.k === 'lob') {
+      p.tt += dt;
+      const u = Math.min(1, p.tt / p.T);
+      p.x = lerp(p.x0, p.tx, u); p.y = lerp(p.y0, p.ty, u);
+      p.h = lerp(p.h0, 0.6, u) + Math.sin(u * Math.PI) * (1.6 + p.T);
+      if (u >= 1) {
+        done = true;
+        const t = p.tgt;
+        if (t && G.towers.includes(t)) { t.stunT = Math.max(t.stunT, p.stun); t.inked = false; t.iced = 0; if (p.kind === 'snow') t.snowT = p.stun; }
+        if (p.kind === 'shell') boom(G, p.tx, p.ty, 0.7, true, 0.5); else { burst(G, p.tx, p.ty, 0.6, 24, '#f4faff', 2.8, 0.8); ring(G, p.tx, p.ty, 0.1, 0.9, 0.4, '#ffffff'); }
+        Hook.fx('lobHit', G, p); Hook.sfx(p.kind === 'shell' ? 'bigboomhit' : 'stomp'); Hook.shake(0.3);
+      }
+    } else if (p.k === 'flask') {
       p.tt += dt;
       const u = Math.min(1, p.tt / p.T);
       p.x = lerp(p.x0, p.tx, u); p.y = lerp(p.y0, p.ty, u);

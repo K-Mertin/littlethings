@@ -98,6 +98,10 @@ const Render = (() => {
     if (ks.has('bossTortoise')) { ks.add('bossTortoise2'); ks.add('crab'); }
     if (ks.has('bossRaijin')) ks.add('bossRaijin2');
     if (ks.has('bossEclipse')) { ks.add('bossEclipse2'); ks.add('bossEclipse3'); ks.add('shade'); ks.add('raven'); }
+    if (ks.has('bossYeti')) { ks.add('bossYeti2'); ks.add('yeti'); }
+    if (ks.has('bossColossus')) { ks.add('bossColossus2'); ks.add('clock'); }
+    if (ks.has('bossWyrm')) { ks.add('bossWyrm2'); ks.add('bossWyrm3'); ks.add('yeti'); ks.add('moth'); }
+    if (G.L.nests) ks.add('imp');
     const knight = G.hero && G.hero.d.block, dd = dpr;
     const order = [...ks].sort((a, b) => (first.has(b) ? 1 : 0) - (first.has(a) ? 1 : 0));
     const Rof = k => { const d = ENEMIES[k] || ENEMIES[k.replace(/\d$/, '')]; return Beasts.visR(k, d.r, V.s) * (d.boss ? 0.85 : 1); };
@@ -165,9 +169,10 @@ const Render = (() => {
       ctx.save(); ctx.globalAlpha = Math.min(1, t.stunT * 1.5) * 0.85; ctx.fillStyle = '#24142e';
       for (let i = 0; i < 5; i++) { const an = i * 1.3 + t.id; ctx.beginPath(); ctx.ellipse(a + Math.cos(an) * s * 0.18, gy - s * 0.7 + Math.sin(an) * s * 0.25, s * 0.13, s * 0.09, an, 0, TAU); ctx.fill(); }
       ctx.restore();
-    } else if (t.stunT > 0) {
+    } else if (t.stunT > 0 && !(t.iced > 0) && !(t.snowT > 0)) {
       for (let i = 0; i < 3; i++) { const aa = time * 5 + i * 2.1; Gfx.star(ctx, a + Math.cos(aa) * s * 0.25, gy - s * 1.05 + Math.sin(aa) * s * 0.08, s * 0.07, '#ffe27a'); }
     }
+    if (!ghost && (t.iced > 0 || t.snowT > 0 || t.cold)) Mech3Art.towerOverlay(ctx, t, a, gy, s, time);
   }
   function partial(ctx, sp, x, y, f) {
     // 只畫精靈下面 f 比例（以腳底為準往上長）
@@ -456,7 +461,7 @@ const Render = (() => {
     if (f < 0.3) for (let i = 0; i < 2; i++) Art.flame(ctx, a + (i ? 0.5 : -0.55) * u, b - u * (i ? 1.1 : 0.9), u * 0.07, time * 1.2 + i);
     if (FX.st.castleHit > 0) { ctx.save(); ctx.globalAlpha = FX.st.castleHit; ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(Gfx.glow('#ff4a3a'), a - u * 1.2, b - u * 2, u * 2.4, u * 2.4); ctx.restore(); }
   }
-  const PORTAL_COL = { volcano: ['#ffb36b', '#c8341a'], snow: ['#cff4ff', '#3a8ad8'], swamp: ['#d8ff8a', '#3a8a3a'], night: ['#e8b0ff', '#6a2ad8'] };
+  const PORTAL_COL = { volcano: ['#ffb36b', '#c8341a'], forge: ['#ffb36b', '#c8341a'], snow: ['#cff4ff', '#3a8ad8'], tundra: ['#cff4ff', '#3a8ad8'], glacier: ['#c8fff0', '#2a8ab8'], swamp: ['#d8ff8a', '#3a8a3a'], night: ['#e8b0ff', '#6a2ad8'] };
   function drawPortal(ctx, p, s, time, th) {
     const u = s * 0.85;
     const [a, b0] = V.P(p.x, p.y), b = b0 + s * 0.3;
@@ -551,8 +556,9 @@ const Render = (() => {
     }
     ctx.globalAlpha = 1;
   }
-  function levelFx(ctx, G, s, time) {
+  function levelFx(ctx, G, s, time, ui) {
     const L = G.L;
+    Mech3Art.ground(ctx, G, s, time, ui, V, dpr);
     if (G.bridges.length) drawBridges(ctx, G, s, time);
     if (G.rotor) drawRotor(ctx, G, s, time);
     if (L.tp) {
@@ -715,6 +721,7 @@ const Render = (() => {
     V = v; dpr = d; lastG = fake;
     const tr = Terrain.paint(x, v, fake, w, h, { thumb: true });
     void tr;
+    Mech3Art.thumb(x, fake, s, v, d);
     const items = Terrain.genProps(fake).map(p => [V.P(p.wx, p.wy)[1], 0, p]);
     const [ca, cb] = castlePos(fake); items.push([cb + s * 0.2, 1, null]);
     const ps = portalSpots(fake); for (const p of ps) items.push([V.P(p.x, p.y)[1] + s * 0.3, 2, p]);
@@ -791,7 +798,7 @@ const Render = (() => {
     drawPools(ctx, G, s, time);
     for (const e of G.enemies) if (e.alive && e.d.ward && e.vis) { const [a, b] = V.P(e.x, e.y), r = 1.7 * s; ctx.save(); ctx.globalAlpha = 0.55; ctx.strokeStyle = 'rgba(125,255,176,.7)'; ctx.lineWidth = Math.max(1.5, s * 0.035); ctx.setLineDash([s * 0.12, s * 0.1]); ctx.lineDashOffset = -time * s * 0.3; ctx.beginPath(); ctx.ellipse(a, b, r, r * (V.rot ? 1 : 1), 0, 0, TAU); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 0.08; ctx.fillStyle = '#7dffb0'; ctx.fill(); ctx.restore(); }
     groundUi(ctx, G, ui, s, time);
-    levelFx(ctx, G, s, time);
+    levelFx(ctx, G, s, time, ui);
     if (G.hero) drawHeroGround(ctx, G, G.hero, ui, s, time);
     // 光環（模擬層的衝擊波）
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
@@ -866,7 +873,7 @@ const Render = (() => {
     drawParticles(ctx, G, s, HS, time, false);
     // ── 雲影 ──
     ctx.save(); rrect(ctx, V.ox, V.oy, V.w, V.h, s * 0.3); ctx.clip();
-    if (th !== 'night' && th !== 'cave' && th !== 'harbor' && th !== 'amber' && th !== 'spire' && qual < 2) {
+    if (th !== 'night' && th !== 'cave' && th !== 'harbor' && th !== 'amber' && th !== 'spire' && th !== 'forge' && th !== 'glacier' && qual < 2) {
       const cs = cloudSprite();
       ctx.globalAlpha = th === 'desert' ? 0.5 : th === 'snow' ? 0.35 : 0.45;
       for (const c of FX.clouds) { const [a, b] = P(c.x, c.y), w = s * 7 * c.sc, h = w * 0.5; ctx.drawImage(cs, a - w / 2, b - h / 2, w, h); }
@@ -1127,6 +1134,7 @@ const Render = (() => {
         const [ga, gb] = P(p.tx, p.ty); ell(ctx, ga, gb, s * 0.3 * (1 - p.h / 8), s * 0.15 * (1 - p.h / 8), 'rgba(0,0,0,.25)');
         continue;
       }
+      if (p.k === 'lob') { Mech3Art.drawLob(ctx, p, s, HS, time); continue; }
       const [a, b0] = P(p.x, p.y);
       switch (p.k) {
         case 'arrow': {
@@ -1311,6 +1319,7 @@ const Render = (() => {
     if (dark) for (const p of FX.parts) if (p.k === 'firefly' || p.k === 'ember' || p.k === 'fire') { const [sx, sy] = P(p.x, p.y); L.push({ sx, sy: sy - p.h * HS, r: p.k === 'fire' ? 0.8 : 0.35, c: null, a: 0.6 }); }
     for (const e of G.enemies) if (e.alive && (e.k === 'bossLich' || e.k === 'bossGolem' || e.k === 'bossEclipse' || e.k === 'bossRaijin')) add(e.x, e.y, e.k === 'bossEclipse' ? 2.2 : 0.6, e.k === 'bossEclipse' ? 2.4 : 1.8, e.k === 'bossLich' ? '#b38aff' : e.k === 'bossEclipse' ? (e.phase ? '#ff7a4a' : '#ffd36b') : e.k === 'bossRaijin' ? '#bfe0ff' : '#ff8a2a', 0.7);
     for (const b of G.bolts) { const p = b.pts[b.pts.length - 1]; add(p.x, p.y, p.h, 1.4, b.c, b.life / b.max); }
+    Mech3Art.lights(G, add, time);
     if (G.hero && !G.hero.dead) { const H = G.hero; add(H.x, H.y, 0.9, dark ? 1.6 : 0.9, H.id === 'mage' ? '#c08bff' : dark ? '#ffcf7a' : null, 0.7); }
     return L;
   }
@@ -1398,6 +1407,9 @@ const Render = (() => {
       ctx.restore();
     }
     if (G.weather) weatherBadge(ctx, G, s, time);
+    else if (G.cold) Mech3Art.coldBadge(ctx, G, s, time);
+    FX.st.coldA = (FX.st.coldA || 0) + (((G.cold && G.cold.on) || G.wyrmStorm ? 1 : 0) - (FX.st.coldA || 0)) * Math.min(1, (ui.dt || 0.016) * 1.5);
+    if (FX.st.coldA > 0.02) Mech3Art.coldOverlay(ctx, W, H, FX.st.coldA * 0.6);
     if (FX.st.dawn > 0) { ctx.fillStyle = `rgba(255,236,190,${Math.min(0.45, FX.st.dawn * 0.25)})`; ctx.fillRect(0, 0, W, H); }
     // 頭目在場：暗紅邊緣
     const boss = G.enemies.find(e => e.alive && e.boss);
