@@ -11,7 +11,7 @@ MK 的瀏覽器遊戲合集，每個資料夾自成一體。線上遊玩：https
 | [Sunny Circuit](https://k-mertin.github.io/littlethings/racing/) | [`racing/`](racing/README.md) | 3D 賽車，8 款車＋改裝、10 條賽道可反向（跳台、泥土捷徑、夜間體育場）、生涯模式（四個等級、宿敵、駕照）、淘汰賽／甩尾挑戰／檢查點計時、三種大獎賽、計時賽幽靈車、雨天與輪胎磨耗、5 種難度 |
 | [Crystal Outpost](https://k-mertin.github.io/littlethings/outpost/) | [`outpost/`](outpost/README.md) | 星海爭霸風格的即時戰略：玩法不同的藍色前哨、綻放族與晶族三個陣營、21 關戰役任務（護送、搶點、英雄生存，會升級的英雄）、1v1 或 2v2（電腦盟友）、生存與合作生存模式、對戰重播、3 種地圖風格與大小、峽谷與河流地形、自動存檔，支援觸控 |
 | [ABC Island](https://k-mertin.github.io/littlethings/abc/) | [`abc/`](abc/README.md) | 幼兒英文：描小寫字母、開頭音、拼字、單字圖卡、和小狐狸 Pip 聊天，貼紙小島，家長區，平板優先 |
-| [ㄅㄆㄇ 小島](https://littleland.mwstudio.workers.dev/zhuyin/) | [`zhuyin/`](zhuyin/README.md) | 幼兒注音：認識 37 個注音、聽音找注音、第一個音、拼注音、四聲，台灣腔語音（微軟雲哲預錄），貼紙簿，家長區，平板優先 |
+| [ㄅㄆㄇ 小島](https://littleland.mwstudio.workers.dev/zhuyin/) | [`zhuyin/`](zhuyin/README.md) | 幼兒注音：37 課課程（先教再玩）、練習島、進階島、探險島（聲調變變變、圖上找找看、彩色注音積木、聲調小偵探、讀短語、跟著讀），台灣腔語音（微軟雲哲／曉臻預錄），可換吉祥物，可拖放的場景貼紙簿，家長區，平板優先 |
 | [123 小島](https://littleland.mwstudio.workers.dev/math/) | [`math/`](math/README.md) | 幼兒數學 46 課：數數、比多少、排順序、分與合、湊十、加法、減法、數線、乘法和除法入門、九九、錢幣、二位數，4 款小遊戲（餵動物、戳氣球、魚缸、湊數配對），台灣腔語音（微軟雲哲預錄），貼紙簿，家長區，平板優先 |
 | [噗噗的遊戲小屋](https://k-mertin.github.io/littlethings/minigames/) | [`minigames/`](minigames/README.md) | 向「好玩遊戲區」致敬的小遊戲合輯：30 款：下樓梯、接水果、敲地鼠、排球（可兩人對打）、疊疊高樓、釣魚、打磚塊、節奏樂園、跑跑跑、毛毛蟲（貪食蛇）、開車車（賽車，可兩人）、對對碰（兩人同一台平板面對面）、大家來找碴、翻牌記憶、聽聽看（聲音記憶）、十乘十方塊、泡泡龍、連連看、彩虹倒水瓶、消消樂、拼拼圖、走迷宮、下棋（黑白棋／五子棋）、小廚房、小廚房第二季（蛋糕／壽司／冰淇淋）、換裝屋、著色本、小鋼琴、小寵物、蓋房子；首頁的噗噗會跟著玩過的遊戲長大，紀錄可以備份到別台 |
 | [小夥伴大作戰](https://k-mertin.github.io/littlethings/brawl/) | [`brawl/`](brawl/README.md) | 《小朋友齊打交》風格的橫向格鬥：16 位 Q 版角色各 3 招必殺技、從老街打到 101 的 8 關闖關、無盡挑戰塔和魔王連戰、9 個對戰場地、練習場；1–4 人（同一台 2 人，或手機當手把），支援觸控、鍵盤、手把 |

@@ -283,6 +283,10 @@
     { k: 'comboRev', t: '結合韻總複習', after: 15 },
     { k: 'read2p', t: '看注音讀詞', after: 22 },
     { k: 'rsp', t: '讀短句練習', after: 30 },
+    { k: 'tpP', t: '聲調變變變', after: 12 },
+    { k: 'sceneP', t: '找找看', after: 12 },
+    { k: 'tdP', t: '聲調小偵探', after: 16 },
+    { k: 'phP', t: '讀短語', after: 22 },
   ];
 
   // 進階島：基礎課上到第 16 課才打開，一關一關往前
@@ -308,7 +312,79 @@
     { k: 'rp', i: 6, t: '小藍去海邊' },
     { k: 'rp', i: 7, t: '種豆子' },
   ];
-  const ORDER_SENTS = () => SENTS.filter(x => { const n = parseLine(x.t).filter(y => y.z).length; return n >= 3 && n <= 5; });
+  // 探險島：基礎課上到第 12 課（拼一個字）就打開，一關一關往前；每關先教再玩
+  const EXP_AFTER = 12;
+  // 聲調變變變：同一個音、聲調不一樣的兩個字（都有圖）
+  const TONE_PAIRS = [
+    [['書', 'ㄕㄨ', '📖'], ['樹', 'ㄕㄨˋ', '🌳']], [['湯', 'ㄊㄤ', '🍲'], ['糖', 'ㄊㄤˊ', '🍬']],
+    [['魚', 'ㄩˊ', '🐟'], ['雨', 'ㄩˇ', '🌧️']], [['鴨', 'ㄧㄚ', '🦆'], ['牙', 'ㄧㄚˊ', '🦷']],
+    [['花', 'ㄏㄨㄚ', '🌸'], ['畫', 'ㄏㄨㄚˋ', '🖼️']], [['媽', 'ㄇㄚ', '👩'], ['馬', 'ㄇㄚˇ', '🐴']],
+    [['鼻', 'ㄅㄧˊ', '👃'], ['筆', 'ㄅㄧˇ', '✏️']], [['豬', 'ㄓㄨ', '🐷'], ['竹', 'ㄓㄨˊ', '🎋']],
+    [['刀', 'ㄉㄠ', '🔪'], ['島', 'ㄉㄠˇ', '🏝️']], [['獅', 'ㄕ', '🦁'], ['十', 'ㄕˊ', '🔟']],
+    [['鹽', 'ㄧㄢˊ', '🧂'], ['眼', 'ㄧㄢˇ', '👁️']], [['秋', 'ㄑㄧㄡ', '🍂'], ['球', 'ㄑㄧㄡˊ', '⚽']],
+    [['衣', 'ㄧ', '👕'], ['椅', 'ㄧˇ', '🪑']],
+  ].map(pr => pr.map(([w, z, e]) => ({ w, z, e })));
+  // 找找看的場景：w 詞（都在 WORDS 裡）、x,y 位置（百分比）
+  const FIND_SCENES = {
+    farm: { t: '農場', e: '🐮', o: '蝴蝶 38,15|蜜蜂 62,13|房子 12,36|馬 44,42|牛 66,45|樹 87,33|豬 13,66|羊 34,63|雞 56,68|兔子 80,64|貓 23,87|花 44,88|狗 64,86|鴨 87,86' },
+    home: { t: '我的家', e: '🏠', o: '窗戶 18,18|燈 50,10|電視 82,20|床 14,45|書 36,40|電話 60,42|鉛筆 86,45|杯子 32,64|碗 50,66|筷子 66,64|蛋 84,67|椅子 13,86|麵包 34,88|牛奶 52,88|蘋果 70,88|香蕉 88,88' },
+    beach: { t: '海邊', e: '🏖️', o: '雲 20,12|鳥 52,16|太陽 86,12|船 28,37|鯨魚 68,39|魚 10,53|蝦 46,54|烏龜 86,51|雨傘 13,75|螃蟹 37,73|球 62,75|帽 86,73|拖鞋 28,91|杯子 72,91' },
+  };
+  FIND_SCENES.park = { t: '公園', e: '🌳', o: '彩虹 20,13|鳥 52,14|太陽 86,12|樹 10,38|松鼠 30,42|蝴蝶 52,36|氣球 72,30|蜜蜂 90,42|鴨 60,61|蛙 84,61|花 14,76|刺蝟 38,76|狗 24,90|足球 52,90|椅子 78,86' };
+  // 讀短語：只看注音，從三張圖選（第一個是對的）
+  const PHRASES = [
+    [{ t: '紅色ㄏㄨㄥˊ ㄙㄜˋ|的ㄉㄜ˙|蘋果ㄆㄧㄥˊ ㄍㄨㄛˇ', o: ['🍎', '🍏', '🍌'] }, { t: '三ㄙㄢ|隻ㄓ|小狗ㄒㄧㄠˇ ㄍㄡˇ', o: ['🐶🐶🐶', '🐶', '🐱🐱🐱'] },
+     { t: '兩ㄌㄧㄤˇ|顆ㄎㄜ|蛋ㄉㄢˋ', o: ['🥚🥚', '🥚', '🥚🥚🥚'] }, { t: '黃色ㄏㄨㄤˊ ㄙㄜˋ|的ㄉㄜ˙|花ㄏㄨㄚ', o: ['🌻', '🌹', '🍀'] },
+     { t: '五ㄨˇ|顆ㄎㄜ|星星ㄒㄧㄥ ㄒㄧㄥ', o: ['⭐⭐⭐⭐⭐', '⭐⭐⭐', '🌙🌙🌙🌙🌙'] }, { t: '一ㄧ|隻ㄓ|小貓ㄒㄧㄠˇ ㄇㄠ', o: ['🐱', '🐱🐱', '🐶'] },
+     { t: '四ㄙˋ|隻ㄓ|鴨子ㄧㄚ ㄗ˙', o: ['🦆🦆🦆🦆', '🦆🦆', '🐔🐔🐔🐔'] }, { t: '綠色ㄌㄩˋ ㄙㄜˋ|的ㄉㄜ˙|葉子ㄧㄝˋ ㄗ˙', o: ['🍃', '🍂', '🌸'] }],
+    [{ t: '吃ㄔ|香蕉ㄒㄧㄤ ㄐㄧㄠ|的ㄉㄜ˙|猴子ㄏㄡˊ ㄗ˙', o: ['🐒🍌', '🐒🍎', '🐻🍌'] }, { t: '戴ㄉㄞˋ|帽子ㄇㄠˋ ㄗ˙|的ㄉㄜ˙|小狗ㄒㄧㄠˇ ㄍㄡˇ', o: ['🐶🧢', '🐶👓', '🐱🧢'] },
+     { t: '樹上ㄕㄨˋ ㄕㄤˋ|的ㄉㄜ˙|小鳥ㄒㄧㄠˇ ㄋㄧㄠˇ', o: ['🌳🐦', '🌊🐟', '🌳🐿️'] }, { t: '難過ㄋㄢˊ ㄍㄨㄛˋ|的ㄉㄜ˙|臉ㄌㄧㄢˇ', o: ['😢', '😄', '😴'] },
+     { t: '睡覺ㄕㄨㄟˋ ㄐㄧㄠˋ|的ㄉㄜ˙|小貓ㄒㄧㄠˇ ㄇㄠ', o: ['🐱💤', '🐱🍼', '🐶💤'] }, { t: '騎ㄑㄧˊ|腳踏車ㄐㄧㄠˇ ㄊㄚˋ ㄔㄜ|的ㄉㄜ˙|熊ㄒㄩㄥˊ', o: ['🐻🚲', '🐻🚗', '🐰🚲'] },
+     { t: '下雨ㄒㄧㄚˋ ㄩˇ|天ㄊㄧㄢ', o: ['🌧️', '☀️', '❄️'] }, { t: '開心ㄎㄞ ㄒㄧㄣ|的ㄉㄜ˙|臉ㄌㄧㄢˇ', o: ['😄', '😢', '😠'] }],
+  ];
+  // 跟著讀：先聽小藍念，再自己一個詞一個詞點著讀（格式同 STORIES）
+  const ALONG = [
+    { title: '小藍的注音課', e: '🐧🏫', pages: [
+      { e: '🐧🏫', t: '小藍ㄒㄧㄠˇ ㄌㄢˊ|今天ㄐㄧㄣ ㄊㄧㄢ|去ㄑㄩˋ|上課ㄕㄤˋ ㄎㄜˋ|。' },
+      { e: '👩‍🏫📋', t: '老師ㄌㄠˇ ㄕ|教ㄐㄧㄠ|大家ㄉㄚˋ ㄐㄧㄚ|念ㄋㄧㄢˋ|注音ㄓㄨˋ ㄧㄣ|。' },
+      { e: '🐧✏️', t: '小藍ㄒㄧㄠˇ ㄌㄢˊ|學會ㄒㄩㄝˊ ㄏㄨㄟˋ|寫ㄒㄧㄝˇ|自己ㄗˋ ㄐㄧˇ|的ㄉㄜ˙|名字ㄇㄧㄥˊ ㄗ˙|。' },
+      { e: '📖😊', t: '他ㄊㄚ|還ㄏㄞˊ|會ㄏㄨㄟˋ|自己ㄗˋ ㄐㄧˇ|看ㄎㄢˋ|故事書ㄍㄨˋ ㄕˋ ㄕㄨ|。' },
+      { e: '🏠👩', t: '回家ㄏㄨㄟˊ ㄐㄧㄚ|後ㄏㄡˋ|，|他ㄊㄚ|念ㄋㄧㄢˋ|故事ㄍㄨˋ ㄕˋ|給ㄍㄟˇ|媽媽ㄇㄚ ㄇㄚ˙|聽ㄊㄧㄥ|。' },
+    ], qs: [
+      { q: '老師教大家念什麼？', a: 0, o: [['🔤', '注音'], ['🎵', '唱歌'], ['🔢', '數字']] },
+      { q: '小藍念故事給誰聽？', a: 0, o: [['👩', '媽媽'], ['👨', '爸爸'], ['🐻', '小熊']] },
+    ] },
+    { title: '做蛋糕', e: '🎂', pages: [
+      { e: '👵🐧', t: '奶奶ㄋㄞˇ ㄋㄞ˙|跟ㄍㄣ|小藍ㄒㄧㄠˇ ㄌㄢˊ|一起ㄧ ㄑㄧˇ|做ㄗㄨㄛˋ|蛋糕ㄉㄢˋ ㄍㄠ|。' },
+      { e: '🥚🥛', t: '先ㄒㄧㄢ|打ㄉㄚˇ|兩ㄌㄧㄤˇ|顆ㄎㄜ|蛋ㄉㄢˋ|，|再ㄗㄞˋ|倒ㄉㄠˋ|牛奶ㄋㄧㄡˊ ㄋㄞˇ|。' },
+      { e: '🥣🐧', t: '小藍ㄒㄧㄠˇ ㄌㄢˊ|用力ㄩㄥˋ ㄌㄧˋ|攪一攪ㄐㄧㄠˇ ㄧ˙ ㄐㄧㄠˇ|。' },
+      { e: '🔥⏰', t: '放進ㄈㄤˋ ㄐㄧㄣˋ|烤箱ㄎㄠˇ ㄒㄧㄤ|，|等ㄉㄥˇ|一下ㄧ ㄒㄧㄚˋ|。' },
+      { e: '🎂😋', t: '香香ㄒㄧㄤ ㄒㄧㄤ|的ㄉㄜ˙|蛋糕ㄉㄢˋ ㄍㄠ|做好ㄗㄨㄛˋ ㄏㄠˇ|了ㄌㄜ˙|！' },
+    ], qs: [
+      { q: '他們做了什麼？', a: 0, o: [['🎂', '蛋糕'], ['🍪', '餅乾'], ['🍞', '麵包']] },
+      { q: '先打了幾顆蛋？', a: 0, o: [['2️⃣', '兩顆'], ['3️⃣', '三顆'], ['5️⃣', '五顆']] },
+    ] },
+  ];
+  const sceneObjs = id => FIND_SCENES[id].o.split('|').map(s => { const [w, p] = s.split(' '); const [x, y] = p.split(',').map(Number); return { ...WORDS.find(v => v.w === w), x, y }; });
+  const EXPLORE = [
+    { k: 'tp', p: [0, 1, 2, 3, 4, 5], t: '聲調變變變' },
+    { k: 'scene', s: 'farm', m: ['find', 'first'], t: '找找看：農場' },
+    { k: 'blocks', n: 2, t: '注音積木' },
+    { k: 'scene', s: 'home', m: ['find', 'read'], t: '找找看：我的家' },
+    { k: 'tp', p: [6, 7, 8, 9, 10, 11, 12], t: '聲調變變變二' },
+    { k: 'blocks', n: 3, t: '三拼積木' },
+    { k: 'scene', s: 'beach', m: ['read', 'first'], t: '找找看：海邊' },
+    { k: 'td', t: '聲調小偵探' },
+    { k: 'phrase', i: 0, t: '讀短語' },
+    { k: 'along', i: 0, t: '跟著讀：小藍的注音課' },
+    { k: 'scene', s: 'park', m: ['read', 'first'], t: '找找看：公園' },
+    { k: 'blocks', n: 'two', t: '積木拼兩個字' },
+    { k: 'phrase', i: 1, t: '讀短語二' },
+    { k: 'along', i: 1, t: '跟著讀：做蛋糕' },
+  ];
+  // 聲調小偵探用的詞：沒有輕聲、也不是兩個三聲（三聲連在一起會變調）
+  const TD_WORDS = () => TWO.filter(w => { const t = w.z.split(' ').map(z => parseSyl(z).tone); return !t.includes(4) && !(t[0] === 2 && t[1] === 2); });
+  const ORDER_SENTS = () =>SENTS.filter(x => { const n = parseLine(x.t).filter(y => y.z).length; return n >= 3 && n <= 5; });
   const NEUTRAL_WORDS = () => TWO.filter(w => w.z.split(' ')[1].endsWith('˙'));
   const CN = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'].concat(Array.from({ length: 30 }, (_, i) => ((i + 11) >= 20 ? ['', '', '二', '三', '四'][Math.floor((i + 11) / 10)] : '') + '十' + ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'][(i + 11) % 10]));
   const lessonTitle = (L, n) => L.k === 'sym' ? L.s : L.k === 'story' ? STORIES[L.i].title : L.k === 'rp' ? PASSAGES[L.i].title : L.t;
@@ -554,6 +630,33 @@
     orderIntro: '聽小藍念一句話，再把詞語照順序排好。',
     orderTap: '照順序點詞語。',
     thTeach: ['有些字有三個注音，叫做三拼。中間的ㄧ、ㄨ、ㄩ要念得快快的。', '三拼：ㄐ，ㄧ，ㄠ，腳。', '三拼：ㄒ，ㄩ，ㄥ，熊。'],
+    // 探險島
+    expIntro: (L, n) => `探險島第${CN[n]}關：${L.t}。`,
+    expDone: n => `探險島第${CN[n]}關完成了！好棒！`,
+    trackExp: '這是探險島，有新的遊戲可以玩。',
+    expLocked: '探險島要等基礎課程上到第十二課才會打開喔。',
+    tpT: ['同一個音，聲調不一樣，意思就不一樣喔。', '我們來聽聽看。', '換你聽聽看，是哪一個。'],
+    tpHearIntro: '聽一聽，找出對的注音。',
+    tpHearQ: w => `${w}。是哪一個注音？`,
+    scT: t => `這是${t}。我們來看看，有什麼東西。`,
+    scFindIntro: '我說一個東西，你在圖上找出來。',
+    scFind: w => `${w}在哪裡？`,
+    thisW: w => `這是${w}。`,
+    scReadIntro: '看注音，在圖上找出來。',
+    scFirstIntro: '聽注音，找出第一個音一樣的東西。',
+    scFirstQ: s => `找出第一個音是${s}的東西。`,
+    bkT: ['注音積木有四種顏色。', '藍色的是聲母，放在最前面。', '綠色的是介音，放在中間。', '橘色的是韻母，放在後面。', '紅色的是聲調，最後放上去。', '我們用積木拼一個字。'],
+    bkIntro: '聽一聽，把注音積木放進一樣顏色的格子。',
+    bkColor: '要放進一樣顏色的格子喔。',
+    bkTone: '最後，放上聲調積木。',
+    tdT: ['兩個字的詞，每個字都有自己的聲調。', '我們來聽：蘋果。', '換你當聲調小偵探！'],
+    tdIntro: '聽一個詞，找出每個字是第幾聲。',
+    tdQ: '每個字是第幾聲？',
+    tdNext: ['第一個字是第幾聲？', '第二個字是第幾聲？'],
+    phT: ['短短的一句話，要每個字都讀出來，才知道是哪一個。', '有三隻，是小狗，所以要選三隻小狗。', '換你讀讀看！'],
+    phIntro: '只看注音讀一讀，找出對的圖。',
+    raT: ['跟著讀：我先念一次，你仔細聽。', '換你了！亮起來的詞，點一下，跟著念。', '這一頁讀完了！'],
+    raYou: '換你跟著讀，點亮起來的詞。',
     // 練習島
     pracIntro: L => `練習島：${L.t}。`,
     pracDone: '練習完成了！好棒！',
@@ -616,6 +719,17 @@
       for (const w of WORDS) { const f = w.z.split(' ')[0]; const has = [a, b].filter(x => f.includes(x)); if (has.length === 1) { add(P.pairQ(w.w, a, b)); add(P.pairA(w.w, has[0])); } } }
     P.ntTeach.forEach(add); for (const w of TWO) { const t = parseSyl(w.z.split(' ')[1]).tone; add(P.ntQ(w.w)); add(P.ntA(w.w, t)); }
     P.thTeach.forEach(add); add(P.blindIntro); add(P.hzIntro); add(P.hzIntro2); add(P.orderIntro); add(P.orderTap);
+    EXPLORE.forEach((L, i) => { add(P.expIntro(L, i + 1)); add(P.expDone(i + 1)); });
+    for (const pr of TONE_PAIRS) for (const x of pr) { add(x.w); add(P.tpHearQ(x.w)); add(P.toneEx(x.w, parseSyl(x.z).tone)); }
+    for (const id in FIND_SCENES) { add(P.scT(FIND_SCENES[id].t)); for (const x of sceneObjs(id)) { add(P.scFind(x.w)); add(P.thisW(x.w)); add(P.firstAns(x.w, syllables(x.z)[0].parts[0])); add(P.scFirstQ(syllables(x.z)[0].parts[0])); } }
+    for (const w of ONE) add(P.toneEx(w.w, parseSyl(w.z).tone));
+    [['蘋', 1], ['果', 2], ['西', 0], ['瓜', 0]].forEach(([c, t]) => add(P.toneEx(c, t)));
+    for (const set of PHRASES) for (const x of set) add(pageText(x));
+    for (const st of ALONG) {
+      add(st.title);
+      for (const pg of st.pages) { add(pageText(pg)); for (const x of parseLine(pg.t)) if (x.z && !NO_TAP.includes(x.w)) add(x.w); }
+      for (const q of st.qs) { add(q.q); q.o.forEach(o => add(o[1])); }
+    }
     PRACTICE.forEach(L => add(P.pracIntro(L))); add(P.pracDone); add(P.trackMain); add(P.trackPrac); add(P.trackLocked);
     LESSONS.forEach((L, i) => { add(P.lessonIntro(L, i + 1)); add(P.lessonDone(i + 1)); });
     for (const x of SYMBOLS) add(P.lessonWrite(x.s));
@@ -649,7 +763,7 @@
     return h.toString(16).padStart(8, '0');
   }
 
-  const ZY = { SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, SENTS, PASSAGES, LESSONS, PRACTICE, ADVANCED, ADV_AFTER, PAIRS, NEUTRAL_WORDS, ORDER_SENTS, THEMES, themeWords, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
+  const ZY = { SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, SENTS, PASSAGES, LESSONS, PRACTICE, ADVANCED, ADV_AFTER, EXPLORE, EXP_AFTER, TONE_PAIRS, FIND_SCENES, sceneObjs, PHRASES, ALONG, TD_WORDS, PAIRS, NEUTRAL_WORDS, ORDER_SENTS, THEMES, themeWords, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
     TONE_NAMES, TONE_MARKS, parseSyl, syllables, P, allLines, hash, symOf, spoken, TIPS, teachWords, strokeCount };
   if (typeof module !== 'undefined' && module.exports) module.exports = ZY;
   else root.ZY = ZY;
