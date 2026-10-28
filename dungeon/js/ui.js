@@ -20,6 +20,7 @@ const UI = {
     $('tNew').onclick = () => this.openNew('normal');
     $('tDaily').onclick = () => this.openNew('daily');
     $('tWeekly').onclick = () => this.openNew('weekly');
+    $('tRush').onclick = () => { if (!(Store.meta.bossKills > 0)) { this.toast('頭目連戰', '尚未解鎖', '打倒任一守層頭目後解鎖。'); Snd.play('warn'); return; } this.openNew('rush'); };
     $('talkBye').onclick = () => { $('ovTalk').hidden = true; this.dlgOpen = false; Snd.play('click'); };
     $('tAltar').onclick = () => this.openAltar();
     $('tRecords').onclick = () => this.openRecords();
@@ -56,7 +57,7 @@ const UI = {
     $('mSave').onclick = () => { Game.save(); this.toTitle(); };
     $('mGiveUp').onclick = () => this.confirm('確定要放棄這次冒險嗎？角色會死亡，無法復原。', () => { this.closeOv(); Game.die('放棄了冒險'); });
     $('mHall').onclick = () => { Game.save(); location.href = '../index.html'; };
-    $('endAgain').onclick = () => { const c = G.cls; this.openNew(G.daily ? 'daily' : 'normal'); this.selCls = c; this.renderClasses(); };
+    $('endAgain').onclick = () => { const c = G.cls; this.openNew(G.daily ? 'daily' : G.rush ? 'rush' : 'normal'); this.selCls = c; this.renderClasses(); };
     $('endTitle').onclick = () => this.toTitle();
     $('endRec').onclick = () => this.openRecords('ovEnd');
     $('dlgOk').onclick = () => { const f = this.dlgFn; this.hideDlg(); if (f) f(); };
@@ -99,7 +100,9 @@ const UI = {
     const d = Store.meta.daily && Store.meta.daily[todayStr()];
     $('tDaily').querySelector('small').textContent = d ? '今日最佳 ' + d.score : '今天的地牢';
     const wk = (Store.meta.weekly || {})[Weekly.key()];
-    $('tWeekly').querySelector('small').textContent = wk ? '本週最佳 ' + wk.score : '固定職業與遺物';
+    $('tWeekly').querySelector('small').textContent = wk ? '本週最佳 ' + wk.score : '固定職業開局';
+    $('tRush').querySelector('small').textContent = !(Store.meta.bossKills > 0) ? '打倒頭目後解鎖' : Store.meta.rushBest ? '最佳 ' + Store.meta.rushBest + ' 戰' : '連續挑戰頭目';
+    $('tRush').classList.toggle('dim', !(Store.meta.bossKills > 0));
     this.show('ovTitle');
     this.layout();
     Music.play('title');
@@ -169,7 +172,7 @@ const UI = {
     void b.offsetWidth; b.hidden = false;
     clearTimeout(this.banT); this.banT = setTimeout(() => { b.hidden = true; }, 2800);
   },
-  bossIntro(m) { const D = MON[m.k]; this.stopAuto(); this.banner(D.final ? 'FINAL BOSS' : '守層頭目 · BOSS', D.n, D.d2); if (typeof FX !== 'undefined') FX.shake(6); },
+  bossIntro(m) { const D = MON[m.k]; this.stopAuto(); this.banner(D.final ? 'FINAL BOSS' : D.mini ? '秘境守護者 · GUARDIAN' : '守層頭目 · BOSS', D.n, D.d2); if (typeof FX !== 'undefined') FX.shake(6); },
   bossPhase(m) { const D = MON[m.k]; this.banner('第二階段', D.n + '・狂怒', D.final ? '黑暗變得更加狂暴！' : '攻擊變得更加猛烈！', 1); },
   askAltar(a) {
     const A = ALTARS[a.k], c = Game.altarCost(a);
@@ -179,7 +182,7 @@ const UI = {
   },
   // ---------- 深淵等級與開局祝福 ----------
   renderOpts() {
-    const M = Store.meta, mx = M.ascMax || 0, daily = this.newMode === 'daily';
+    const M = Store.meta, mx = M.ascMax || 0, daily = this.newMode === 'daily' || this.newMode === 'rush';
     $('ascBox').hidden = daily || mx <= 0; $('boonBox').hidden = daily;
     this.asc = clamp(this.asc == null ? (M.ascSel || 0) : this.asc, 0, mx);
     $('ascN').textContent = ASC[this.asc].n;
@@ -253,7 +256,7 @@ const UI = {
 
   // ---------- 標題背景：自動走動的英雄 ----------
   makeDemo() {
-    const depth = 1 + ((Math.random() * 16) | 0);
+    const depth = Store.meta.deepOpen && Math.random() < 0.3 ? 18 + ((Math.random() * 7) | 0) : 1 + ((Math.random() * 16) | 0);
     const rng = new RNG('demo' + Math.random());
     G = { demo: 1, depth, rng, nid: 1, looks: {}, known: {}, tried: {}, log: [], stats: {}, P: { id: 0, isP: 1, x: 0, y: 0, cls: CLASS_ORDER[(Math.random() * 3) | 0], lvl: 1, str: 0, st: {}, perks: {}, eq: {}, inv: [], hp: 1, mhp: 1 } };
     const F = Gen.make(depth, rng); F.seen = new Uint8Array(F.w * F.h); F.mons = []; F.items = []; F.traps = []; F.clouds = []; F.visited = {};
@@ -281,10 +284,11 @@ const UI = {
   // ---------- 開新局 ----------
   openNew(mode) {
     this.newMode = mode;
-    $('newHead').textContent = mode === 'daily' ? '每日挑戰' : mode === 'weekly' ? '每週挑戰' : '新的冒險';
+    $('newHead').textContent = mode === 'daily' ? '每日挑戰' : mode === 'weekly' ? '每週挑戰' : mode === 'rush' ? '頭目連戰' : '新的冒險';
     const d = todayStr();
-    $('dailyInfo').hidden = mode !== 'daily' && mode !== 'weekly';
-    $('seedRow').hidden = mode === 'daily' || mode === 'weekly';
+    $('dailyInfo').hidden = mode !== 'daily' && mode !== 'weekly' && mode !== 'rush';
+    $('seedRow').hidden = mode === 'daily' || mode === 'weekly' || mode === 'rush';
+    if (mode === 'rush') { const n = Game.rushList().length; $('dailyInfo').innerHTML = '在頭目競技場裡連續挑戰 <b>' + n + ' 位頭目</b>：' + Game.rushList().map(k => MON[k].n).join('→') + '。<br>每一戰開始前會回滿 HP、提升到該戰的標準等級並得到補給；打倒頭目後挑選遺物。死掉就結束。' + (Store.meta.rushBest ? '<br>你的最佳紀錄：連勝 ' + Store.meta.rushBest + ' 戰' + (Store.meta.rushWins ? '（全勝 ' + Store.meta.rushWins + ' 次）' : '') + '。' : ''); }
     if (mode === 'weekly') {
       const W = Weekly.info(), top = ((Store.meta.seedTop || {})[W.seed] || []);
       this.selCls = W.cls;
@@ -315,13 +319,13 @@ const UI = {
   },
   startRun() {
     Snd.init();
-    let seed = this.newMode === 'daily' ? 'D' + todayStr() : this.newMode === 'weekly' ? Weekly.seed() : ($('seedIn').value || '').trim().toUpperCase().slice(0, 16);
+    let seed = this.newMode === 'daily' ? 'D' + todayStr() : this.newMode === 'weekly' ? Weekly.seed() : this.newMode === 'rush' ? 'R' + randomSeedStr() : ($('seedIn').value || '').trim().toUpperCase().slice(0, 16);
     if (this.newMode === 'weekly') this.selCls = Weekly.info(seed).cls;
     const go = () => {
       Store.clearRun();
       this.state = 'play'; document.body.classList.add('playing');
       Store.meta.ascSel = this.asc || 0; Store.meta.boonSel = this.boon || 'none'; Store.saveMeta();
-      Game.newRun(this.selCls, seed || null, this.newMode === 'daily', { asc: this.asc || 0, boon: this.boon || 'none', weekly: this.newMode === 'weekly' });
+      Game.newRun(this.selCls, seed || null, this.newMode === 'daily', { asc: this.newMode === 'rush' ? 0 : this.asc || 0, boon: this.newMode === 'rush' ? 'none' : this.boon || 'none', weekly: this.newMode === 'weekly', rush: this.newMode === 'rush' });
       Snd.play('start');
       this.closeOv(); this.layout(); Render.snapCam();
       this.dirtyLog = true;
@@ -357,7 +361,7 @@ const UI = {
     $('recStats').innerHTML = [['冒險次數', M.runs || 0], ['勝利', M.wins || 0], ['最深', (M.deepest || 0) + ' 層'], ['總擊殺', M.kills || 0], ['頭目', M.bossKills || 0]].map(([a, b]) => '<div><small>' + a + '</small><b>' + b + '</b></div>').join('');
     const el = $('recList');
     if (!M.records || !M.records.length) el.innerHTML = '<p class="empty">還沒有任何紀錄。去地牢裡留下你的名字吧！</p>';
-    else el.innerHTML = M.records.slice(0, 30).map((r, i) => '<div class="rec' + (r.win ? ' win' : '') + '"><span class="rk">' + (i + 1) + '</span><canvas data-c="' + r.cls + '" width="36" height="30"></canvas><div class="rb"><b>' + r.score + ' 分</b> · ' + CLASSES[r.cls].n + ' Lv' + r.lvl + ' · 第 ' + r.depth + ' 層' + (r.daily ? ' <span class="tag">每日</span>' : r.weekly ? ' <span class="tag" style="color:#c8a0ff;background:rgba(180,140,255,.15)">每週</span>' : '') + (r.asc ? ' <span class="tag" style="color:#ff9ac8;background:rgba(255,90,170,.15)">深淵 ' + r.asc + '</span>' : '') + '<p>' + esc(r.cause) + '</p><small>' + r.date + ' · ' + r.turns + ' 回合 · 種子 <button class="seed" data-s="' + esc(r.seed) + '">' + esc(r.seed) + '</button></small></div></div>').join('');
+    else el.innerHTML = M.records.slice(0, 30).map((r, i) => '<div class="rec' + (r.win ? ' win' : '') + '"><span class="rk">' + (i + 1) + '</span><canvas data-c="' + r.cls + '" width="36" height="30"></canvas><div class="rb"><b>' + r.score + ' 分</b> · ' + CLASSES[r.cls].n + ' Lv' + r.lvl + ' · 第 ' + r.depth + ' 層' + (r.rushRun ? ' <span class="tag" style="color:#ffb35a;background:rgba(255,160,60,.15)">連戰 ' + r.rush + '</span>' : r.daily ? ' <span class="tag">每日</span>' : r.weekly ? ' <span class="tag" style="color:#c8a0ff;background:rgba(180,140,255,.15)">每週</span>' : '') + (r.asc ? ' <span class="tag" style="color:#ff9ac8;background:rgba(255,90,170,.15)">深淵 ' + r.asc + '</span>' : '') + '<p>' + esc(r.cause) + '</p><small>' + r.date + ' · ' + r.turns + ' 回合 · 種子 <button class="seed" data-s="' + esc(r.seed) + '">' + esc(r.seed) + '</button></small></div></div>').join('');
     for (const c of el.querySelectorAll('canvas')) this.drawSpr(c, Spr.hero(c.dataset.c, FR.idle0, this.heroGear(c.dataset.c)));
     for (const b of el.querySelectorAll('.seed')) b.onclick = () => { this.openNew('normal'); $('seedIn').value = b.dataset.s.startsWith('D') ? '' : b.dataset.s; if (b.dataset.s.startsWith('D')) $('seedIn').value = b.dataset.s; };
     this.show('ovRecords', from);
@@ -377,18 +381,29 @@ const UI = {
   },
   // ---------- 和地牢裡的人物對話 ----------
   npcTalk(m) {
-    this.stopAuto();
     const D = MON[m.k];
-    $('talkName').textContent = D.n; $('talkText').textContent = Game.npcLine(m);
-    this.drawSpr($('talkFace'), Spr.mon(m.k, FR.idle0));
+    this.choice(D.n, Game.npcLine(m), Spr.mon(m.k, FR.idle0), Game.npcOptions(m));
+    if (!m.greeted) { m.greeted = 1; Snd.play('secret'); }
+  },
+  // 有選項的對話框（人物、擊敗深淵之王後的抉擇）
+  choice(name, text, spr, opts, noBye) {
+    this.stopAuto();
+    $('talkName').textContent = name; $('talkText').textContent = text;
+    this.drawSpr($('talkFace'), spr);
     const box = $('talkOpts'); box.innerHTML = '';
-    for (const o of Game.npcOptions(m)) {
-      const b = document.createElement('button'); b.className = 'btn'; b.textContent = o.t; b.disabled = !!o.dis;
+    for (const o of opts) {
+      const b = document.createElement('button'); b.className = 'btn' + (o.main ? ' main' : ''); b.textContent = o.t; b.disabled = !!o.dis;
       b.onclick = () => { $('ovTalk').hidden = true; this.dlgOpen = false; Snd.play('select'); o.fn(); };
       box.appendChild(b);
     }
+    $('talkBye').hidden = !!noBye;
     $('ovTalk').hidden = false; this.dlgOpen = true;
-    if (!m.greeted) { m.greeted = 1; Snd.play('secret'); }
+  },
+  openDeepChoice() {
+    this.choice('深淵裂隙', '深淵之王倒下了，王座後方裂開一道通往更深處的裂隙。你可以帶著勝利凱旋歸來，或是踏進裂隙，挑戰深淵下層（第 18–25 層）。', Spr.hero(G.P.cls, FR.idle0, Spr.gearOf(G.P)), [
+      { t: '踏進裂隙，繼續深入（回復一半 HP，並獲得遺物三選一）', fn: () => Game.chooseDeep(1) },
+      { t: '凱旋歸來（結束這次冒險，記為勝利）', fn: () => Game.chooseDeep(0) },
+    ], true);
   },
   // ---------- 遊戲中選單 ----------
   openMenu() {
@@ -410,7 +425,7 @@ const UI = {
     const c = $('bigmap'), F = G.F, s = Math.max(4, Math.floor(Math.min(innerWidth * 0.92 / F.w, innerHeight * 0.75 / F.h) * (window.devicePixelRatio || 1)));
     Render.minimap(c, s);
     c.style.width = Math.min(innerWidth * 0.92, F.w * s / (window.devicePixelRatio || 1)) + 'px';
-    $('mapTitle').textContent = '第 ' + G.depth + ' 層 · ' + BIOMES[F.biome].n;
+    $('mapTitle').textContent = '第 ' + G.depth + ' 層 · ' + Game.areaName();
     this.show('ovMap');
   },
 
@@ -589,7 +604,7 @@ const UI = {
   },
   ctxAction() {
     const P = G.P;
-    if (Game.tile(P.x, P.y) === T.STAIRS) { Game.descend(); return; }
+    if (Game.tile(P.x, P.y) === T.STAIRS || Game.tile(P.x, P.y) === T.PORTAL) { Game.descend(); return; }
     const its = Game.itemsAt(P.x, P.y);
     if (its.length) {
       const r = Game.pickup(false);
@@ -631,6 +646,7 @@ const UI = {
     if (this.ov || this.dlgOpen) return;
     if (G.perkChoices) { this.openPerk(); return; }
     if (G.relicChoices) { this.openRelic(); return; }
+    if (G.deepChoice) { this.openDeepChoice(); return; }
     if (G.pendingId) { this.openInv('identify'); return; }
     if (t < this.stepT) return;
     const P = G.P;
@@ -695,14 +711,15 @@ const UI = {
     if (S.conf) chips.push(['c', '混亂']);
     if (S.para) chips.push(['s', '麻痺']);
     if (S.invis) chips.push(['i', '隱形 ' + S.invis]);
+    if (S.zen) chips.push(['g', '金鐘罩 ' + S.zen]);
     if (G.F.detect) chips.push(['i', '透視']);
-    if (G.F.locked) chips.push(['h', '樓梯封印']);
+    if (G.F.locked) chips.push(['h', G.F.branch ? '出口封印' : '樓梯封印']);
     const rs = Game.reson(); if (rs) chips.push(['r', RESON[rs].n]);
     for (const t of Game.activeSets()) chips.push(['r', RSETS[t].n]);
     if (G.F.event) chips.push(['h', FEVENTS[G.F.event].n]);
     if (G.asc) chips.push(['c', '深淵 ' + G.asc]);
     if (G.mod) chips.push(['h', DMODS[G.mod].n]);
-    const here = Game.tile(P.x, P.y) === T.STAIRS ? 'stairs' : Game.itemsAt(P.x, P.y).length ? (Game.itemsAt(P.x, P.y)[0].it.price ? 'buy' : 'pick') : 'rest';
+    const tv = Game.tile(P.x, P.y), here = tv === T.STAIRS ? 'stairs' : tv === T.PORTAL ? (G.F.branch ? 'leave' : 'enter') : Game.itemsAt(P.x, P.y).length ? (Game.itemsAt(P.x, P.y)[0].it.price ? 'buy' : 'pick') : 'rest';
     const sig = [P.hp, P.mhp, P.xp, P.lvl, P.gold, G.depth, chips.join(), (P.relics || []).length, P.cds[abil[0]], P.cds[abil[1]], here, st.arm, st.dmin, st.dmax].join('|');
     if (sig !== this.hudSig) {
       this.hudSig = sig;
@@ -711,7 +728,7 @@ const UI = {
       $('hpT').textContent = Math.max(0, P.hp) + ' / ' + P.mhp;
       $('xpFill').style.width = clamp(P.xp / XP_NEED(P.lvl) * 100, 0, 100) + '%';
       $('lvT').textContent = 'Lv' + P.lvl;
-      $('depthT').innerHTML = '<b>B' + G.depth + '</b> ' + BIOMES[G.F.biome].n;
+      $('depthT').innerHTML = G.rush ? '<b>第 ' + (G.rushStage + 1) + ' 戰</b> 頭目連戰' : '<b>B' + G.depth + '</b> ' + Game.areaName();
       $('goldT').textContent = P.gold;
       $('atkT').textContent = st.dmin + '–' + st.dmax; $('armT').textContent = st.arm;
       this.relicUrl = this.relicUrl || {};
@@ -724,10 +741,10 @@ const UI = {
         b.classList.toggle('cool', cd > 0);
       });
       const cb = $('bCtx');
-      cb.querySelector('.nm').textContent = { stairs: '下樓', buy: '購買', pick: '撿起', rest: '撿起' }[here];
+      cb.querySelector('.nm').textContent = { stairs: G.rush ? '下一戰' : '下樓', enter: '進入', leave: '離開', buy: '購買', pick: '撿起', rest: '撿起' }[here];
       cb.classList.toggle('dim', here === 'rest');
       cb.classList.toggle('hot', here !== 'rest');
-      cb.classList.toggle('lock', here === 'stairs' && !!G.F.locked);
+      cb.classList.toggle('lock', (here === 'stairs' || here === 'leave' && G.F.stairs && P.x === G.F.stairs[0] && P.y === G.F.stairs[1]) && !!G.F.locked);
       this.miniDirty = true;
     }
     // 頭像（每 0.3 秒換一格待機動作）
@@ -750,16 +767,17 @@ const UI = {
   showEnd() {
     if (!G || !G.summary) return;
     const S = G.summary, win = G.over === 'win';
-    $('endTitle2').textContent = win ? '征服深淵！' : '冒險結束';
+    $('endTitle2').textContent = win ? (G.depth >= DEEP_LAST ? '抵達深淵盡頭！' : '征服深淵！') : G.lordSlain ? '倒在深淵下層' : '冒險結束';
     $('ovEnd').classList.toggle('win', win);
     $('endCause').textContent = G.cause;
     this.drawSpr($('endHero'), Spr.hero(S.cls, win ? FR.atk1 : FR.idle0, Spr.gearOf(G.P)));
     const kc = $('endKiller'); kc.hidden = $('endVs').hidden = !S.killer;
     if (S.killer) { const D = MON[S.killer]; if (D.boss) { kc.width = 56; kc.height = 50; } else { kc.width = 36; kc.height = 30; } const s = Spr.mon(S.killer, FR.atk1); const x = kc.getContext('2d'); this.drawSpr(kc, s, D.boss ? 0.8 : 1); x.save(); x.translate(kc.width, 0); x.scale(-1, 1); const tmp = document.createElement('canvas'); tmp.width = kc.width; tmp.height = kc.height; tmp.getContext('2d').drawImage(kc, 0, 0); x.clearRect(0, 0, kc.width, kc.height); x.drawImage(tmp, 0, 0); x.restore(); }
     // 深度條
-    const bcol = ['#6aa85a', '#b98cff', '#ff7a3a', '#8fe8ff', '#d05cff'];
-    $('endDepth').innerHTML = Array.from({ length: LAST_FLOOR }, (_, i) => { const d = i + 1; return '<i class="' + (d <= S.depth ? 'on' : '') + (d === S.depth ? ' at' : '') + (BOSS_FLOOR[d] ? ' boss' : '') + '" style="background:' + bcol[biomeOf(d)] + ';color:' + bcol[biomeOf(d)] + '" title="第 ' + d + ' 層"></i>'; }).join('');
-    $('endStats').innerHTML = [['職業', CLASSES[S.cls].n + ' Lv' + S.lvl], ['深度', '第 ' + S.depth + ' 層'], ['回合', S.turns], ['擊殺', S.kills], ['精英', S.elites], ['寶箱', S.chests], ['金幣', S.gold], ['分數', S.score]].map(([a, b]) => '<div><small>' + a + '</small><b>' + b + '</b></div>').join('');
+    const bcol = ['#6aa85a', '#b98cff', '#ff7a3a', '#8fe8ff', '#d05cff', '#5fd0b0', '#ffd98a', '#ff5a6a'];
+    if (G.rush) $('endDepth').innerHTML = Game.rushList().map((k, i) => '<i class="' + (i < (G.stats.rush || 0) ? 'on' : '') + (i === G.rushStage ? ' at' : '') + ' boss" style="background:' + bcol[biomeOf(RUSH_D[k])] + ';color:' + bcol[biomeOf(RUSH_D[k])] + '" title="' + MON[k].n + '"></i>').join('');
+    else $('endDepth').innerHTML = Array.from({ length: G.lordSlain || S.depth > LAST_FLOOR ? DEEP_LAST : LAST_FLOOR }, (_, i) => { const d = i + 1; return '<i class="' + (d <= S.depth ? 'on' : '') + (d === S.depth ? ' at' : '') + (BOSS_FLOOR[d] ? ' boss' : '') + '" style="background:' + bcol[biomeOf(d)] + ';color:' + bcol[biomeOf(d)] + '" title="第 ' + d + ' 層"></i>'; }).join('');
+    $('endStats').innerHTML = [['職業', CLASSES[S.cls].n + ' Lv' + S.lvl], G.rush ? ['連戰', (G.stats.rush || 0) + ' / ' + Game.rushList().length + ' 戰'] : ['深度', '第 ' + S.depth + ' 層'], ['回合', S.turns], ['擊殺', S.kills], ['精英', S.elites], ['寶箱', S.chests], ['金幣', S.gold], ['分數', S.score]].map(([a, b]) => '<div><small>' + a + '</small><b>' + b + '</b></div>').join('');
     $('endSouls').innerHTML = '獲得靈魂石 <span class="soul"></span><b>' + S.souls + '</b>　·　排行第 ' + S.rank + ' 名　·　種子 <b>' + esc(S.seed) + '</b>' + (S.seedRank && S.seedRank.n > 1 ? '（這個種子的第 ' + S.seedRank.rank + ' / ' + S.seedRank.n + ' 名）' : '') + (S.relics ? '　·　遺物 ' + S.relics + ' 件' : '');
     $('endSoulDet').textContent = (S.asc ? '基本 ' + S.soulBase + ' × 深淵 ' + S.asc + ' 加成 +' + S.asc * 20 + '%' : '') + (G.mod ? (S.asc ? '　·　' : '') + '今日變化：' + DMODS[G.mod].n : '');
     $('endUnlock').hidden = !G.newUnlock;
@@ -775,7 +793,7 @@ const UI = {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.target.closest && e.target.closest('input,textarea')) { if (e.key === 'Enter' && this.ov === 'ovNew') this.startRun(); return; }
     const k = e.code;
-    if (this.dlgOpen && !$('ovTalk').hidden) { if (k === 'Escape') $('talkBye').click(); else if (/^Digit[1-9]$/.test(k)) { const b = $('talkOpts').children[+k.slice(5) - 1]; if (b && !b.disabled) b.click(); } return; }
+    if (this.dlgOpen && !$('ovTalk').hidden) { if (k === 'Escape' && !$('talkBye').hidden) $('talkBye').click(); else if (/^Digit[1-9]$/.test(k)) { const b = $('talkOpts').children[+k.slice(5) - 1]; if (b && !b.disabled) b.click(); } return; }
     if (this.dlgOpen) { if (k === 'Enter' || k === 'Space') { $('dlgOk').click(); e.preventDefault(); } else if (k === 'Escape') this.hideDlg(); return; }
     if (this.ov) { this.ovKey(e); return; }
     if (this.state !== 'play' || !G || G.demo || G.over) return;
@@ -830,7 +848,7 @@ const UI = {
       return;
     }
     if (ov === 'ovTitle') { if (k === 'Enter') { if (!$('tContinue').hidden) this.continueRun(); else this.openNew('normal'); } if (k === 'KeyN') this.openNew('normal'); return; }
-    if (ov === 'ovNew') { if (k === 'Enter') this.startRun(); const i = /^Digit[1-5]$/.test(k) ? +k.slice(5) - 1 : -1; if (i >= 0 && Store.meta.unlocked[CLASS_ORDER[i]]) { this.selCls = CLASS_ORDER[i]; this.renderClasses(); } if (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'ArrowUp' || k === 'ArrowDown') { const un = CLASS_ORDER.filter(c => Store.meta.unlocked[c]); const j = un.indexOf(this.selCls) + (k === 'ArrowLeft' || k === 'ArrowUp' ? -1 : 1); this.selCls = un[(j + un.length) % un.length]; this.renderClasses(); Snd.play('select'); e.preventDefault(); } return; }
+    if (ov === 'ovNew') { if (k === 'Enter') this.startRun(); const i = /^Digit[1-6]$/.test(k) ? +k.slice(5) - 1 : -1; if (i >= 0 && Store.meta.unlocked[CLASS_ORDER[i]]) { this.selCls = CLASS_ORDER[i]; this.renderClasses(); } if (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'ArrowUp' || k === 'ArrowDown') { const un = CLASS_ORDER.filter(c => Store.meta.unlocked[c]); const j = un.indexOf(this.selCls) + (k === 'ArrowLeft' || k === 'ArrowUp' ? -1 : 1); this.selCls = un[(j + un.length) % un.length]; this.renderClasses(); Snd.play('select'); e.preventDefault(); } return; }
     if (ov === 'ovMap' && (k === 'KeyM' || k === 'Enter' || k === 'Space')) { this.closeOv(); return; }
     if (ov === 'ovLog' && k === 'KeyL') { this.back(); return; }
     if (ov === 'ovEnd' && k === 'Enter') { $('endAgain').click(); return; }
