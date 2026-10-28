@@ -527,6 +527,11 @@ const Guide = {
     if (C) return { h: `第 ${this.ob().ch + 1} 課・${C.t}`, items: C.goals.map((g, i) => { const d = this.goalDone(g, i), p = g.prog ? g.prog() : null; return { t: typeof g.t === 'function' ? g.t() : g.t, d, p, m: g.money }; }), r: C.r };
     // 引導結束以後：下一個建議
     const S = Game.S, items = [];
+    // 挑戰關卡進行中：三個目標＋剩幾週
+    if (S.chal && S.chal.done === undefined) {
+      const C = Game.chalDef();
+      if (C) return { h: `★ ${C.n}・剩 ${Game.chalLeft()} 週`, items: C.g.map((g, i) => { const v = Game.chalVal(g), num1 = !['lv', 'rank', 'dish', 'sat'].includes(g.k); return { t: (i ? '' : '過關：') + Game.chalText(g), d: !!S.chal.got[i], p: num1 ? [Math.max(0, v[0]), v[1]] : null, m: g.k === 'money', sub: S.chal.got[i] ? '' : g.k === 'rank' ? `目前第 ${v[0]} 名` : g.k === 'sat' ? `目前 ${v[0]} 分` : '' }; }) };
+    }
     if (S.q && S.q.acc) { const p = Game.questProg(S.q); items.push({ t: `委託：${S.q.goal}`, p: [Math.max(0, p[0]), p[1]] }); }
     const n = LEVELS[S.lv + 1];
     if (n) { if (!Game.canExpand()) items.push({ t: `可以擴建成「${n.n}」了！`, hot: 1 }); else { const r = Math.min(1, S.pop / n.pop, Math.max(0, S.money) / n.cost); items.push({ t: `擴建成「${n.n}」`, p: [r, 1], em: `人氣 ${num(Math.min(S.pop, n.pop))}／${num(n.pop)}・${money(Math.max(0, Math.min(S.money, n.cost)))}／${money(n.cost)}` }); } }
@@ -650,16 +655,22 @@ const Help = {
         <p><b>廚師</b>顧攤位（一個攤位要一位廚師）、<b>外場</b>清桌子和招呼排隊的客人、<b>攬客</b>站在門口把路人拉進來。</p>
         <p>每個月會有新的應徵者。員工會升級，也可以花錢<b>培訓</b>；每個人還有不同的<b>特質</b>。</p>`],
       ['combo', '擺設組合', `<div class="hfig">${im(Art.fac('lantern'), 3)}${pl}${im(Art.fac('lantern'), 3)}${ar}<b class="hcb">燈籠一條街！</b></div>
-        <p>有些東西放在<b>隔壁</b>（斜的也算）會變成<b>擺設組合</b>，讓客人更滿意、人氣更高、來客更多。</p><p>一共 34 種，「經營 → 組合圖鑑」裡有提示。</p>`],
+        <p>有些東西放在<b>隔壁</b>（斜的也算）會變成<b>擺設組合</b>，讓客人更滿意、人氣更高、來客更多。</p><p>一共 ${COMBOS.length} 種，「經營 → 組合圖鑑」裡有提示。</p>`],
       ['pop', '人氣、排行與擴建', `<div class="hfig">${im(Art.icon('heart'), 4)}${ar}${im(Art.icon('cup'), 4)}${ar}${im(Art.icon('shop'), 4)}</div>
         <p>客人滿意，<b>人氣</b>就上升；夜市<b>排行榜</b>比的就是人氣。裝飾、組合、攬客、活動都能讓更多客人上門。</p>
         <p>人氣和錢夠了就能<b>擴建</b>：路邊小攤 → 巷口小吃店 → 排隊名店 → 美食廣場 → 夜市大街 → 傳說夜市。店越大，能放越多東西、請越多人。</p>`],
       ['biz', '事業', `<div class="hfig">${p(44, 'asker')}${im(Art.icon('firework'), 4)}${im(Art.icon('flask'), 4)}${im(Art.icon('shop'), 4)}</div>
         <p><b>委託</b>：附近的人會來拜託你，完成有獎勵。<b>活動</b>：花錢辦試吃會、演唱會，一週內客人大增。</p>
         <p><b>秘方</b>：用靈感研究永久加成。<b>分店</b>：擴建到美食廣場以後，可以到其他夜市開分店。</p>`],
+      ['crew', '員工之間', `<div class="hfig">${p(12, 'staff', 'cook')}<b class="hcb">♥</b>${p(18, 'staff', 'serve')}${im(Art.icon('book'), 4)}</div>
+        <p>一起工作久了，員工會變成<b>好搭檔</b>（兩個人同時上班時動作快 10%）。有時候兩個人會<b>較勁</b>，可以讓他們比兩週激發潛力。</p>
+        <p>每個月可能有<b>進修班</b>招生，派一個人去上課一週，能力大幅提升。員工太厲害，對手還會來<b>挖角</b>，要不要加薪留人由你決定。</p>`],
+      ['chal', '挑戰關卡與地點', `<div class="hfig">${im(Art.mapScene('harbor'), 1)}${im(Art.mapScene('mountain'), 1)}${im(Art.mapScene('temple'), 1)}</div>
+        <p>新手引導結束、擴建過一次以後，標題畫面會開放<b>挑戰關卡</b>：到<b>海港夜市</b>、<b>山城老街</b>、<b>廟會嘉年華</b>接受有期限的挑戰。每關三個目標，第一個達成就過關，三個都達成是 ★★★。</p>
+        <p>每個地點有自己的客人和規則（海港的海鮮便宜、山城租金便宜但人少、廟會人多但租金貴）。某個地點拿到星星後，一般遊戲也能選在那裡開店。</p>`],
       ['year', '一年的行事曆', `<div class="hfig">${im(Art.icon('firework'), 4)}${im(Art.fac('tG'), 3)}${im(Art.icon('star'), 4)}</div>
         <p>每個月有不同的<b>節慶</b>（春節、暑假、中秋…），會有限定挑戰。每週也可能發生<b>事件</b>（颱風、美食節目、網紅來訪…）。</p>
-        <p>每年 <b>10 月</b>有<b>夜市小吃大賽</b>，年底有<b>頒獎典禮</b>，依排名拿獎金和獎盃。拿下第一名就是<b>夜市之王</b>！</p>`],
+        <p>每年 <b>10 月</b>有<b>夜市小吃大賽</b>，年底有<b>頒獎典禮</b>，依排名拿獎金和獎盃。拿下第一名就是<b>夜市之王</b>！</p><p>擴建成美食廣場以後，每年 <b>6 月</b>還有<b>夜市美食指南</b>評鑑，最多三顆星（星星會掉喔）。</p>`],
     ];
   },
   show(sec = 'flow') {

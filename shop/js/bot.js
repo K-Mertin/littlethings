@@ -53,7 +53,7 @@ const Bot = {
     S.items = []; G.rebuild();
     const order = { station: 0, seat: 1, decor: 2, fun: 3 };
     // 攤位：會組合的放在一起
-    const stOrder = ['griddle', 'drink', 'fryer', 'steam', 'soup', 'ice', 'grill'];
+    const stOrder = ['griddle', 'drink', 'fryer', 'steam', 'soup', 'ice', 'grill', 'wok'];
     its.sort((a, b) => (order[F[a.id].cat] - order[F[b.id].cat]) || (stOrder.indexOf(F[a.id].st) - stOrder.indexOf(F[b.id].st)) || (b.lv - a.lv));
     const left = [];
     for (const it of its) if (!this.put(it.id, true, it.lv)) left.push(it);
@@ -125,6 +125,8 @@ const Bot = {
       const seat = S.lv >= 4 && can(12000 * 3) ? 'booth' : S.lv >= 2 ? 'round' : S.lv >= 1 ? 'picnic' : 'stool';
       if (canE(F[seat].price)) this.put(seat);
     }
+    // 機能設施：大冰箱、外帶窗口、休息室
+    for (const [id, n, lv] of [['fridge', 2, 1], ['tkw', 1, 1], ['lounge', 1, 3]]) if (S.lv >= lv && S.items.filter(i => i.id === id).length < n && canE(F[id].price * 4)) { this.put(id); break; }
     // 員工：廚師 = 攤位數，外場 1/3，有空位再請攬客
     if (S.staff.length < cap && S.hire.length) {
       const cN = S.staff.filter(s => s.job === 'cook').length, sN = S.staff.filter(s => s.job === 'serve').length;
@@ -152,7 +154,7 @@ const Bot = {
       for (let y = 2; y < S.H && n < 12; y++) for (let x = 0; x < S.W && n < 12; x++) if (S.floor[x + ',' + y] !== fl && !G.place(fl, x, y)) n++;
     }
     // 改良、培訓、升級
-    for (const k of G.known()) if (G.sellable(k) && S.dishes[k].lv < 10) { const c = G.upCost(k); if (S.idea > c.idea * 1.5 + G.ideaCost() && canE(c.money * 3)) G.upgradeDish(k); }
+    for (const k of G.known()) if (G.sellable(k) && S.dishes[k].lv < G.maxDishLv()) { const c = G.upCost(k); if (S.idea > c.idea * 1.5 + G.ideaCost() && canE(c.money * 3)) G.upgradeDish(k); }
     if (can(30000)) { const s = pick(S.staff); G.train(s, { cook: 'cook', serve: 'serv', tout: 'charm' }[s.job]); }
     for (const it of this.stations()) if (it.lv < G.maxStLv() && canE(G.upgradeCost(it) * 3) && Math.random() < 0.3) G.upgrade(it);
     if (!this.noNew) {

@@ -61,7 +61,7 @@ const Art = {
   // face: '' / happy / sad / angry
   PW: 12, PH: 21,
   POSES: { '': 0, sit: 1, eat: 2, cook: 3, carry: 4, wipe: 5, call: 6, sip: 7, stir: 8, shake: 9 },
-  COOKPOSE: { griddle: 'cook', fryer: 'cook', grill: 'cook', soup: 'stir', steam: 'stir', drink: 'shake', ice: 'shake' },
+  COOKPOSE: { griddle: 'cook', fryer: 'cook', grill: 'cook', soup: 'stir', steam: 'stir', drink: 'shake', ice: 'shake', wok: 'cook' },
   FACES: { '': 0, happy: 1, sad: 2, angry: 3, wow: 4 },
   person(L, dir, fr, pose = '', face = '') {
     if (pose === true) pose = 'sit';
@@ -311,7 +311,7 @@ const Art = {
   },
 
   // ---------- 設施 ----------
-  facH(id) { const f = F[id]; if (f.cat === 'station') return 29; return ({ banner: 24, icebox: 12, vsign: 28, tree: 28, lion: 18, koi: 14, bingo: 22, fortune: 24, picnic: 14, bar: 16, lantern: 26, neon: 24, shrine: 22, plant: 16, flower: 14, trash: 14, fan: 20, sink: 18, tv: 20, cat: 16, mascot: 26, fountain: 16, stage: 24, pinball: 22, gacha: 20, goldfish: 12, ring: 16, claw: 24, balloon: 24, bench: 10, stool: 12, wood: 12, round: 13, booth: 16, tB: 18, tS: 18, tG: 20 })[id] || 16; },
+  facH(id) { const f = F[id]; if (f.cat === 'station') return 29; return ({ banner: 24, icebox: 12, vsign: 28, tree: 28, lion: 18, koi: 14, bingo: 22, fortune: 24, picnic: 14, bar: 16, lantern: 26, neon: 24, shrine: 22, plant: 16, flower: 14, trash: 14, fan: 20, sink: 18, tv: 20, cat: 16, mascot: 26, fountain: 16, stage: 24, pinball: 22, gacha: 20, goldfish: 12, ring: 16, claw: 24, balloon: 24, bench: 10, stool: 12, wood: 12, round: 13, booth: 16, tB: 18, tS: 18, tG: 20, net: 20, sakura: 30, drum: 20, lighthouse: 30, fridge: 22, tkw: 22, lounge: 22 })[id] || 16; },
   fac(id, fr = 0, lv = 1) {
     const h = this.facH(id);
     return this.get('f' + id + fr + lv, 16, h, r => {
@@ -462,6 +462,39 @@ const Art = {
           r(0, 2, 16, 6, '#7a4a2a'); r(0, 2, 16, 2, '#c8904a'); r(0, 2, 16, 1, '#e8b070'); r(1, 8, 14, 1, '#5a3418');
           r(2, 11, 4, 2, '#e8473b'); r(10, 11, 4, 2, '#e8473b'); r(3, 13, 2, 3, '#8a8a94'); r(11, 13, 2, 3, '#8a8a94'); r(2, 15, 4, 1, '#5a5a64'); r(10, 15, 4, 1, '#5a5a64');
           r(5, 0, 2, 2, '#ffd84a'); r(10, 0, 1, 2, '#ff8ab0'); break;
+        case 'net': // 漁網和彩色浮球
+          r(1, 0, 1, 20, '#7a5a3a'); r(14, 0, 1, 20, '#7a5a3a'); r(0, 19, 16, 1, '#5a4a3a');
+          for (let y = 1; y < 16; y += 3) r(2, y, 12, 1, 'rgba(230,220,190,.85)');
+          for (let x = 3; x < 14; x += 3) r(x, 1, 1, 15, 'rgba(230,220,190,.85)');
+          [[3, 3, '#ff4a3a'], [9, 2, '#ffd040'], [6, 8, '#5ad0ff'], [11, 10, '#ff8a3d'], [4, 13, '#7affb0']].forEach(([x, y, c], i) => { r(x, y + ((i + fr) & 1), 3, 3, c); r(x, y + ((i + fr) & 1), 1, 1, '#ffffff'); });
+          r(1, 16, 14, 2, '#c89a5a'); break;
+        case 'sakura': // 山櫻花樹，花瓣會飄
+          r(7, 18, 2, 11, '#6a3a2a'); r(5, 28, 6, 2, '#5a3a2a'); r(5, 20, 2, 1, '#6a3a2a'); r(9, 17, 2, 1, '#6a3a2a');
+          r(2, 4, 12, 10, '#ff9ac0'); r(0, 7, 16, 7, '#ff9ac0'); r(4, 1, 8, 4, '#ffb0d0'); r(1, 14, 14, 3, '#f080a8');
+          for (let i = 0; i < 9; i++) r((hash(i, 1, 3) * 14) | 0, 2 + ((hash(i, 2, 3) * 13) | 0), 2, 1, i % 3 ? '#ffd0e4' : '#ffffff');
+          r(3 + fr % 3 * 4, 20 + (fr & 1) * 3, 1, 1, '#ffb0d0'); r(12 - fr % 3 * 3, 23, 1, 1, '#ffc8dc'); break;
+        case 'drum': // 廟會大鼓
+          r(2, 14, 2, 6, '#7a3a1a'); r(12, 14, 2, 6, '#7a3a1a'); r(1, 19, 14, 1, '#5a2a12');
+          r(1, 3, 14, 12, '#c8302a'); r(0, 5, 16, 8, '#c8302a'); r(2, 3, 12, 1, '#e8503a'); r(1, 4, 1, 10, '#a8201a'); r(14, 4, 1, 10, '#a8201a');
+          r(3, 4, 10, 10, '#f4e4c0'); r(2, 6, 12, 6, '#f4e4c0'); r(5, 6, 6, 6, '#e8d4a8'); r(7, 8, 2, 2, '#c8302a');
+          for (const x of [1, 14]) for (let y = 5; y < 13; y += 2) r(x, y, 1, 1, '#ffd040');
+          r(fr & 1 ? 12 : 13, fr & 1 ? 0 : 1, 1, 5, '#a8703e'); r(fr & 1 ? 11 : 12, fr & 1 ? 0 : 1, 3, 1, '#ffd040'); break;
+        case 'lighthouse': // 燈塔模型（紅白條紋，燈會轉）
+          r(4, 26, 8, 4, '#8a8a94'); r(3, 29, 10, 1, '#5a5a64');
+          for (let y = 8; y < 26; y++) { const w = 4 + ((y - 8) / 18 * 4 | 0), x = 8 - w / 2 | 0; r(x, y, w, 1, ((y - 8) >> 2) & 1 ? '#ffffff' : '#e8302a'); }
+          r(4, 7, 8, 1, '#3a3a44'); r(5, 3, 6, 4, '#2a3048'); r(6, 4, 4, 3, fr & 1 ? '#fff8c0' : '#ffe070'); r(5, 1, 6, 2, '#c8302a'); r(7, 0, 2, 1, '#3a3a44');
+          if (fr & 1) { r(0, 4, 5, 1, 'rgba(255,248,192,.8)'); } else { r(11, 4, 5, 1, 'rgba(255,248,192,.8)'); } break;
+        case 'fridge': // 大冰箱
+          r(2, 0, 12, 22, '#e8eef4'); r(2, 0, 12, 1, '#ffffff'); r(13, 0, 1, 22, '#b8c0cc'); r(2, 9, 12, 1, '#a8b0bc');
+          r(11, 3, 1, 4, '#8a8a94'); r(11, 12, 1, 6, '#8a8a94'); r(4, 2, 4, 2, '#5ad0ff'); r(4, 11, 3, 2, '#7affb0'); r(3, 21, 2, 1, '#6a6a74'); r(11, 21, 2, 1, '#6a6a74'); break;
+        case 'tkw': // 外帶窗口
+          r(0, 2, 16, 20, '#c8904a'); r(0, 2, 16, 2, '#e0b070'); r(2, 6, 12, 8, '#3a2a2a'); r(3, 7, 10, 6, fr & 1 ? '#ffe8a8' : '#ffd890');
+          r(1, 14, 14, 2, '#a8703e'); r(4, 13, 3, 2, '#ffffff'); r(9, 12, 2, 3, '#c8904a');
+          r(1, 0, 14, 3, '#e8473b'); for (let x = 1; x < 15; x += 4) r(x, 0, 2, 3, '#fff4e8'); r(4, 17, 8, 3, '#2f9a4a'); r(5, 18, 6, 1, '#ffffff'); break;
+        case 'lounge': // 員工休息室（小門＋布簾＋茶壺）
+          r(0, 1, 16, 21, '#a87850'); r(0, 1, 16, 2, '#c8986a'); r(3, 5, 10, 17, '#5a3a2a'); r(4, 6, 8, 16, '#3a2a2a');
+          r(3, 5, 10, 6, '#3a6ab8'); for (let x = 4; x < 13; x += 3) r(x, 5, 1, 6, '#5a8ad8'); r(6, 7, 4, 2, '#ffffff');
+          r(12, 14, 3, 3, '#e8e8f0'); r(13, 13, 1, 1, '#8a8a94'); if (fr & 1) r(13, 11, 1, 2, 'rgba(255,255,255,.7)'); r(1, 18, 2, 4, '#3fa64a'); break;
         case 'balloon':
           r(0, 0, 16, 22, '#f4e8c8'); r(0, 0, 16, 1, '#c8303a'); r(0, 21, 16, 3, '#a8703e');
           [[1, 2, '#ff4a3a'], [6, 2, '#ffd84a'], [11, 2, '#5ad0ff'], [3, 8, '#7affb0'], [8, 8, '#ff8ad0'], [12, 9, '#ff4a3a'], [1, 14, '#5ad0ff'], [6, 14, '#ffd84a'], [10, 15, '#ff8ad0']]
@@ -469,8 +502,8 @@ const Art = {
       }
     });
   },
-  STCOL: { griddle: ['#e8473b', '#fff4e8'], drink: ['#3a8ad8', '#e8f4ff'], fryer: ['#f0a020', '#fff4c8'], soup: ['#3a9a5a', '#eaffea'], ice: ['#ff6fa8', '#fff0f6'], steam: ['#a8703e', '#fff0d8'], grill: ['#8a2a2a', '#ffd8c8'] },
-  STCH: { griddle: '煎', drink: '茶', fryer: '炸', soup: '湯', ice: '冰', steam: '蒸', grill: '烤' },
+  STCOL: { griddle: ['#e8473b', '#fff4e8'], drink: ['#3a8ad8', '#e8f4ff'], fryer: ['#f0a020', '#fff4c8'], soup: ['#3a9a5a', '#eaffea'], ice: ['#ff6fa8', '#fff0f6'], steam: ['#a8703e', '#fff0d8'], grill: ['#8a2a2a', '#ffd8c8'], wok: ['#1f8a86', '#e8fff8'] },
+  STCH: { griddle: '煎', drink: '茶', fryer: '炸', soup: '湯', ice: '冰', steam: '蒸', grill: '烤', wok: '炒' },
   station(r, id, fr, lv) {
     const aw = this.STCOL[id], A = aw[0], B = aw[1], AD = shade(A, -0.3), gold = lv >= 4;
     // fr 0～3：沒在煮（燈泡閃）；4～7：正在煮的動畫格
@@ -544,6 +577,17 @@ const Art = {
         const lift = ck ? [0, 1, 2, 1][cf] : 0;
         r(3, 6 - lift, 10, 1, '#d8b070'); r(4, 5 - lift, 8, 1, '#f0d090'); r(7, 4 - lift, 2, 1, '#a8804a');
         if (lift) { r(3, 7 - lift + 1, 10, lift, 'rgba(255,255,255,.85)'); }
+        break;
+      }
+      case 'wok': { // 快炒：大火竄起、鍋子甩起來、菜在空中翻
+        r(0, 14, 16, 2, '#3a3a44'); r(1, 13, 14, 1, '#5a5a66');
+        const toss = ck ? [0, 1, 2, 1][cf] : 0;
+        r(2, 11 - toss, 9, 2, '#2a2a30'); r(3, 13 - toss, 7, 1, '#2a2a30'); r(2, 11 - toss, 9, 1, '#5a5a66'); r(11, 11 - toss, 4, 1, '#7a4a24');
+        r(4, 10 - toss, 2, 1, '#e8963a'); r(7, 10 - toss, 2, 1, '#59c25a');
+        if (ck && toss) { r(5, 8 - toss * 2, 1, 1, '#e8963a'); r(8, 7 - toss, 1, 1, '#ff4a3a'); r(6, 6 - toss, 1, 1, '#59c25a'); }
+        if (ck) { const fl = ['#ffd040', '#ff8a2a', '#ff5a1a', '#ffb030'][cf]; r(3, 13, 7, 1, fl); r(2 + (cf & 1), 12 - toss, 1, 2, fl); r(10 - (cf & 1), 12 - toss, 1, 2, '#ff8a2a'); if (cf === 2) { r(1, 9, 1, 3, '#ffd040'); r(11, 8, 1, 3, '#ff8a2a'); } }
+        else r(4, 13, 5, 1, '#3a6ae8');
+        r(13, 12, 2, 2, '#c8c8d0'); r(13, 11, 2, 1, '#8a8a94');
         break;
       }
       case 'grill': { // 炭烤：火光跳動、串燒翻面
@@ -682,6 +726,17 @@ const Art = {
       R2(24, 38, 80, 6, '#1a3a5a'); R2(28, 38, 72, 1, '#4a8ac8'); for (let x = 30; x < 100; x += 9) R2(x, 40, 4, 1, '#ffd890');
       R2(52, 22, 24, 3, '#b8302a'); R2(48, 20, 32, 3, '#2a5a4a'); R2(62, 16, 4, 4, '#ffd040'); R2(54, 25, 2, 13, '#b8302a'); R2(72, 25, 2, 13, '#b8302a');
       for (const tx of [10, 100, 118]) { R2(tx, 28, 3, 16, '#4a3020'); R2(tx - 6, 18, 15, 11, '#1f5a2a'); R2(tx - 3, 15, 9, 4, '#2a7a3a'); }
+    } else if (id === 'bangkok') { // 寺廟尖塔＋水上市場的小船
+      for (const [x, h] of [[30, 30], [46, 22], [62, 34]]) { R2(x - 6, 44 - h + 10, 12, h - 10, '#c8902a'); R2(x - 3, 44 - h, 6, 10, '#e8b040'); R2(x - 1, 44 - h - 6, 2, 6, '#ffd040'); }
+      R2(0, 38, W, 6, '#2a5a6a'); for (let x = 2; x < W; x += 7) R2(x, 40, 4, 1, '#5aa0b0');
+      for (const x of [84, 102]) { R2(x, 38, 14, 3, '#7a4a24'); R2(x + 3, 34, 3, 4, '#ffd84a'); R2(x + 8, 35, 3, 3, '#ff6a4a'); R2(x + 2, 33, 10, 1, '#e8d8a0'); }
+    } else if (id === 'singapore') { // 三棟高樓頂著一艘船＋摩天輪
+      for (const x of [70, 86, 102]) { R2(x, 12, 10, 32, '#3a4a6a'); for (let y = 14; y < 42; y += 3) R2(x + 2, y, 6, 1, '#ffd890'); }
+      R2(66, 8, 50, 4, '#5a6a8a'); R2(68, 9, 46, 1, '#a8d0ff');
+      g.strokeStyle = '#7a8ab8'; g.beginPath(); g.arc(30, 26, 14, 0, TAU); g.stroke(); for (let i = 0; i < 8; i++) { const a = i / 8 * TAU; R2(30 + Math.cos(a) * 14 - 1, 26 + Math.sin(a) * 14 - 1, 2, 2, '#5affff'); }
+    } else if (id === 'newyork') { // 大螢幕廣告牆＋高樓
+      for (let i = 0; i < 8; i++) { const x = 4 + i * 16, h = 26 + ((hv(i, 11) * 3) | 0) * 6; R2(x, 44 - h, 14, h, '#2a2a40'); R2(x + 2, 46 - h, 10, 8, ['#ff5ad0', '#5affff', '#ffe040', '#7affb0', '#ff8a3d'][i % 5]); R2(x + 2, 56 - h, 10, 5, ['#5ad0ff', '#ff4a6a', '#ffd040'][i % 3]); }
+      R2(56, 0, 16, 10, '#2a2a40'); R2(63, 0, 2, 4, '#ffffff');
     } else if (id === 'tokyo') { // 紅白電波塔＋紙燈籠
       R2(94, 2, 1, 6, '#ffffff'); R2(92, 8, 5, 6, '#e8473b'); R2(90, 14, 9, 8, '#ffffff'); R2(88, 22, 13, 8, '#e8473b'); R2(85, 30, 19, 8, '#ffffff'); R2(82, 38, 25, 6, '#e8473b'); R2(92, 26, 5, 18, sky[1]);
       for (let x = 6; x < 76; x += 10) { R2(x + 1, 20, 1, 4, '#3a2a2a'); R2(x - 1, 24, 6, 7, x % 20 ? '#fff4e0' : '#e8473b'); R2(x - 1, 24, 6, 1, '#3a2a2a'); R2(x - 1, 30, 6, 1, '#3a2a2a'); }
@@ -706,6 +761,70 @@ const Art = {
       // 燈籠串
       for (let x = 2; x < W; x += 6) R2(x, 44 + Math.round(Math.sin(x / 9) * 1.5) - 2, 2, 2, ['#ff4a3a', '#ffb020', '#ff6fa8'][(x / 6) % 3 | 0]);
     } else { g.fillStyle = 'rgba(10,8,24,.45)'; g.fillRect(0, 0, W, H); }
+    this.cache.set(key, c);
+    return c;
+  },
+  // 夜市地點的小風景（挑戰關卡的卡片用）
+  mapScene(id) {
+    const key = 'mp' + id;
+    let c = this.cache.get(key); if (c) return c;
+    const W = 128, H = 64; c = this.mk(W, H);
+    const g = c.getContext('2d'), R2 = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
+    const hv = (i, j) => hash(i, j, id.length * 17);
+    const sky = { harbor: ['#0c1638', '#2a3a6a'], mountain: ['#0e1430', '#3a2a5a'], temple: ['#1a0e2e', '#5a2240'] }[id] || ['#10102e', '#3a2450'];
+    for (let y = 0; y < 46; y++) R2(0, y, W, 1, mixHex(sky[0], sky[1], y / 46));
+    for (let i = 0; i < 24; i++) R2((hv(i, 1) * W) | 0, (hv(i, 2) * 22) | 0, 1, 1, i % 5 ? '#c8c8f0' : '#ffffe0');
+    const lanternRow = y => { for (let x = 2; x < W; x += 6) R2(x, y + Math.round(Math.sin(x / 9) * 1.5), 2, 2, ['#ff4a3a', '#ffb020', '#ff6fa8'][(x / 6) % 3 | 0]); };
+    const stalls = (y, n, cols) => { for (let i = 0; i < n; i++) { const x = 3 + i * Math.floor((W - 12) / n), col = cols[i % cols.length]; for (let k = 0; k < 10; k += 2) R2(x + k, y, 2, 3, (k / 2) & 1 ? '#fff4e8' : col); R2(x, y + 3, 10, 6, shade(col, -0.2)); R2(x + 3, y + 4, 4, 3, '#fff6e4'); R2(x + 1, y + 3, 8, 1, '#ffe8a0'); } };
+    if (id === 'harbor') {
+      R2(108, 6, 9, 9, '#fff0c0'); R2(107, 8, 11, 5, '#fff0c0');
+      // 遠山、海、月光倒影
+      for (let x = 0; x < W; x++) { const h = 6 + Math.sin(x / 13) * 3 + Math.sin(x / 5) * 1; R2(x, 30 - h, 1, h, '#1c2448'); }
+      for (let y = 30; y < 46; y++) R2(0, y, W, 1, mixHex('#1a3a6a', '#0e2244', (y - 30) / 16));
+      for (let y = 31; y < 46; y += 2) R2(108 + Math.round(Math.sin(y) * 2), y, 8 - (y - 30) / 4, 1, 'rgba(255,240,190,.55)');
+      for (let i = 0; i < 18; i++) R2((hv(i, 5) * W) | 0, 31 + ((hv(i, 6) * 14) | 0), 3, 1, 'rgba(160,200,255,.35)');
+      // 燈塔
+      R2(14, 14, 6, 18, '#f4f0e8'); for (let y = 16; y < 32; y += 6) R2(14, y, 6, 3, '#e8302a'); R2(13, 10, 8, 4, '#2a3048'); R2(15, 11, 4, 2, '#fff8a0'); R2(14, 8, 6, 2, '#c8302a');
+      g.fillStyle = 'rgba(255,248,180,.22)'; g.beginPath(); g.moveTo(17, 12); g.lineTo(60, 4); g.lineTo(60, 16); g.closePath(); g.fill();
+      R2(8, 30, 20, 3, '#3a3a50');
+      // 漁船
+      for (const [x, y, col] of [[40, 38, '#e8473b'], [70, 34, '#3a8ad8'], [92, 40, '#ffd040']]) { R2(x, y, 14, 3, col); R2(x + 2, y + 3, 10, 1, shade(col, -0.4)); R2(x + 5, y - 6, 1, 6, '#c8c8d0'); R2(x + 6, y - 5, 5, 3, '#f4f0e8'); R2(x + 3, y - 2, 3, 2, '#fff2a0'); R2(x + 3, y + 4, 4, 1, 'rgba(255,240,160,.4)'); }
+      R2(0, 46, W, 18, '#4a3a34'); for (let x = 0; x < W; x += 6) R2(x, 46, 5, 18, '#5a4a40'); R2(0, 46, W, 1, '#8a7060');
+      lanternRow(44); stalls(48, 7, ['#3a8ad8', '#e8473b', '#1f8a86', '#f0a020']);
+    } else if (id === 'mountain') {
+      R2(56, 3, 8, 8, '#fff0c0'); R2(55, 5, 10, 4, '#fff0c0');
+      const ridge = (base, amp, f, col, ph) => { for (let x = 0; x < W; x++) { const h = amp * (0.6 + 0.4 * Math.sin(x / f + ph)) + Math.abs(Math.sin(x / (f * 0.37) + ph)) * amp * 0.35; R2(x, base - h, 1, h + 20, col); } };
+      ridge(30, 16, 14, '#34406e', 1); ridge(38, 13, 10, '#2a4a50', 3);
+      // 山頂的塔和纜車
+      R2(86, 8, 6, 12, '#3a2a3a'); R2(84, 7, 10, 2, '#5a3a3a'); R2(85, 12, 8, 1, '#5a3a3a'); R2(87, 10, 4, 2, '#ffd890'); R2(87, 15, 4, 2, '#ffd890');
+      g.strokeStyle = '#8a8aa8'; g.lineWidth = 0.6; g.beginPath(); g.moveTo(0, 24); g.lineTo(88, 6); g.stroke();
+      R2(38, 13, 6, 5, '#e8473b'); R2(39, 14, 4, 2, '#fff2a0'); R2(40, 11, 1, 2, '#8a8aa8');
+      for (let i = 0; i < 3; i++) R2(0, 30 + i * 5, W, 2, `rgba(220,230,255,${0.12 - i * 0.03})`);
+      for (let i = 0; i < 9; i++) { const x = (hv(i, 7) * W) | 0, y = 36 + ((hv(i, 8) * 6) | 0); R2(x + 2, y - 7, 2, 2, '#1a3a2a'); R2(x + 1, y - 5, 4, 3, '#1a3a2a'); R2(x, y - 2, 6, 3, '#1a3a2a'); R2(x + 2, y + 1, 2, 2, '#3a2a1a'); }
+      // 老街木屋
+      for (let i = 0; i < 6; i++) { const x = i * 22 - 2; R2(x, 36, 20, 10, '#6a4a32'); R2(x - 2, 33, 24, 3, '#2a2a34'); R2(x + 4, 39, 5, 4, '#ffd890'); R2(x + 12, 39, 5, 4, '#ffcf70'); }
+      R2(0, 46, W, 18, '#5a5660'); for (let x = 0; x < W; x += 8) for (let y = 46; y < 64; y += 4) R2(x + ((y / 4) & 1) * 4, y, 7, 3, '#6a6670');
+      lanternRow(45); stalls(48, 6, ['#3a9a5a', '#a8703e', '#e8473b', '#8a2a2a']);
+    } else if (id === 'temple') {
+      // 摩天輪
+      g.strokeStyle = '#5a4a7a'; g.lineWidth = 1; g.beginPath(); g.arc(24, 22, 16, 0, TAU); g.stroke();
+      for (let i = 0; i < 10; i++) { const a = i / 10 * TAU; R2(24 + Math.cos(a) * 16 - 1, 22 + Math.sin(a) * 16 - 1, 3, 3, ['#ff5ad0', '#5affff', '#ffe040', '#7affb0'][i % 4]); g.beginPath(); g.moveTo(24, 22); g.lineTo(24 + Math.cos(a) * 16, 22 + Math.sin(a) * 16); g.stroke(); }
+      R2(20, 22, 2, 24, '#5a4a7a'); R2(27, 22, 2, 24, '#5a4a7a');
+      // 大廟（燕尾屋脊）
+      R2(52, 26, 60, 20, '#a8302a'); R2(46, 22, 72, 5, '#2a5a4a'); R2(42, 19, 6, 3, '#2a5a4a'); R2(116, 19, 6, 3, '#2a5a4a'); R2(40, 16, 4, 3, '#ffd040'); R2(120, 16, 4, 3, '#ffd040');
+      R2(58, 14, 48, 5, '#2a5a4a'); R2(54, 12, 5, 3, '#ffd040'); R2(105, 12, 5, 3, '#ffd040'); R2(76, 8, 12, 5, '#ffd040'); R2(80, 5, 4, 3, '#e8302a');
+      R2(74, 32, 16, 14, '#3a1a1a'); R2(76, 34, 12, 2, '#ffd040'); for (let x = 56; x < 110; x += 9) if (x < 72 || x > 90) R2(x, 30, 5, 5, '#ffcf60');
+      for (let i = 0; i < 6; i++) { const x = 50 + i * 12; R2(x, 22, 1, 3, '#3a1a1a'); R2(x - 2, 25, 5, 5, '#ff4a3a'); R2(x - 1, 26, 3, 2, '#ffd890'); }
+      R2(0, 46, W, 18, '#8a6a5a'); for (let x = 0; x < W; x += 8) R2(x, 46, 7, 18, '#9a7a68');
+      lanternRow(44); stalls(48, 7, ['#e8473b', '#ffd040', '#c8302a', '#ff6fa8']);
+      for (let i = 0; i < 18; i++) { const x = (hv(i, 9) * (W - 4)) | 0, y = 58 + ((hv(i, 10) * 5) | 0); R2(x, y - 3, 2, 2, '#f4c8a0'); R2(x, y - 4, 2, 1, i % 3 ? '#ffd040' : '#2b1b16'); R2(x, y - 1, 2, 3, i % 2 ? '#ffd040' : '#e8473b'); }
+    } else {
+      for (let x = 0, i = 0; x < W; i++) { const w = 8 + ((hv(i, 3) * 4) | 0) * 3, h = 12 + ((hv(i, 4) * 6) | 0) * 3; R2(x, 44 - h, w, h, '#2a2450'); for (let wy = 46 - h; wy < 42; wy += 3) for (let wx = x + 1; wx < x + w - 1; wx += 2) if (hv(wx, wy) < 0.35) R2(wx, wy, 1, 1, '#ffd890'); x += w; }
+      R2(10, 18, 7, 26, '#2b1b26'); R2(11, 19, 5, 24, '#ff3a8a'); R2(110, 20, 7, 24, '#2b1b26'); R2(111, 21, 5, 22, '#ffd040');
+      R2(0, 44, W, 20, '#4a3a4e'); for (let x = 0; x < W; x += 8) R2(x, 50 + ((x / 8) & 1) * 4, 7, 1, '#5a4a5e');
+      lanternRow(42); stalls(47, 7, ['#e8473b', '#3a8ad8', '#f0a020', '#3a9a5a', '#ff6fa8']);
+      for (let i = 0; i < 16; i++) { const x = (hv(i, 9) * (W - 4)) | 0, y = 58 + ((hv(i, 10) * 5) | 0); R2(x, y - 3, 2, 2, ['#f4c8a0', '#e8b088'][i % 2]); R2(x, y - 4, 2, 1, '#2b1b16'); R2(x, y - 1, 2, 3, SHIRTS[i % SHIRTS.length]); }
+    }
     this.cache.set(key, c);
     return c;
   },
@@ -734,6 +853,7 @@ const Art = {
         case 'soup': r(0, 5, 12, 2, '#ffffff'); r(1, 7, 10, 3, '#f0f0f8'); r(3, 10, 6, 1, '#d8d8e0'); r(1, 4, 10, 2, ca); r(3, 3, 3, 2, cb); r(7, 3, 2, 1, cb); r(4, 0, 1, 2, '#e8eef4'); r(7, 0, 1, 2, '#e8eef4'); break;
         case 'ice': r(1, 7, 10, 4, '#bfe8ff'); r(3, 11, 6, 1, '#a0c8e0'); r(2, 3, 8, 5, '#ffffff'); r(3, 1, 6, 3, '#ffffff'); r(3, 3, 3, 2, ca); r(6, 2, 3, 3, cb); r(5, 5, 2, 1, cb); break;
         case 'steam': r(0, 6, 12, 5, '#c8a060'); r(0, 6, 12, 1, '#e0c080'); r(0, 8, 12, 1, '#a8804a'); r(2, 2, 3, 4, '#fff4e8'); r(6, 2, 3, 4, '#fff4e8'); r(3, 1, 1, 1, '#fff4e8'); r(7, 1, 1, 1, '#fff4e8'); r(9, 3, 2, 3, ca); break;
+        case 'wok': r(0, 8, 12, 3, '#f8f8f8'); r(1, 11, 10, 1, '#d8d8e0'); r(1, 5, 10, 4, shade(ca, -0.1)); r(2, 4, 8, 1, shade(ca, -0.1)); r(2, 5, 2, 2, cb); r(6, 4, 2, 2, cb); r(8, 6, 2, 2, '#59c25a'); r(4, 7, 2, 1, '#ff4a3a'); r(5, 2, 1, 2, 'rgba(255,255,255,.7)'); break;
         case 'grill': r(5, 0, 1, 12, '#d8c8a0'); r(3, 1, 5, 4, ca); r(3, 5, 5, 4, cb); r(4, 2, 1, 1, '#ffffff'); r(3, 3, 5, 1, shade(ca, -0.3)); r(3, 7, 5, 1, shade(cb, -0.3)); break;
       }
     });

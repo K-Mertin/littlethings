@@ -1,7 +1,7 @@
 'use strict';
 // 夜市小吃王：遊戲資料（設施、食材、菜色、組合、顧客、對手、目標）
 
-const STN = { griddle: '煎台', fryer: '炸鍋', drink: '飲料', soup: '湯鍋', steam: '蒸籠', grill: '烤架', ice: '冰品' };
+const STN = { griddle: '煎台', fryer: '炸鍋', drink: '飲料', soup: '湯鍋', steam: '蒸籠', grill: '烤架', ice: '冰品', wok: '熱炒' };
 const CAT = { salty: '鹹的', sweet: '甜的', spicy: '辣的', drink: '喝的' };
 const CATCOL = { salty: '#e8963a', sweet: '#ff7fb0', spicy: '#e8473b', drink: '#5bb8ff' };
 
@@ -24,6 +24,7 @@ const FAC = [
   { id: 'ice', n: '冰品櫃', cat: 'station', st: 'ice', price: 4000, ap: 2, lv: 1, d: '剉冰、豆花、芒果冰' },
   { id: 'steam', n: '蒸籠台', cat: 'station', st: 'steam', price: 5500, ap: 1, lv: 2, d: '小籠包、肉圓、刈包' },
   { id: 'grill', n: '炭烤架', cat: 'station', st: 'grill', price: 5500, ap: 2, lv: 2, d: '香腸、烤玉米、烤魷魚' },
+  { id: 'wok', n: '快炒台', cat: 'station', st: 'wok', price: 6500, ap: 2, lv: 2, d: '大火快炒：炒蛤蜊、三杯雞、宮保雞丁' },
 
   { id: 'stool', n: '塑膠桌椅', cat: 'seat', seats: 2, price: 600, ap: 0, lv: 0, d: '紅色塑膠椅，夜市的靈魂' },
   { id: 'bench', n: '長板凳', cat: 'seat', seats: 2, price: 500, ap: 0, lv: 0, d: '坐著吃比站著吃開心' },
@@ -52,6 +53,13 @@ const FAC = [
   { id: 'fountain', n: '噴水池', cat: 'decor', price: 20000, ap: 12, lv: 4, d: '夜市中間的地標' },
   { id: 'koi', n: '錦鯉池', cat: 'decor', price: 16000, ap: 10, lv: 4, d: '紅白錦鯉悠游' },
   { id: 'stage', n: '表演舞台', cat: 'decor', price: 30000, ap: 15, lv: 5, d: '週末有街頭藝人表演' },
+  { id: 'net', n: '漁網浮球', cat: 'decor', price: 1200, ap: 3, lv: 1, d: '掛滿彩色浮球的漁網，海港的味道' },
+  { id: 'sakura', n: '山櫻花樹', cat: 'decor', price: 5000, ap: 6, lv: 2, d: '粉紅色的花瓣飄呀飄' },
+  { id: 'drum', n: '廟會大鼓', cat: 'decor', price: 4500, ap: 5, lv: 2, d: '咚咚咚！熱鬧的廟會開始了' },
+  { id: 'lighthouse', n: '燈塔模型', cat: 'decor', price: 9000, ap: 8, lv: 3, d: '一閃一閃，替晚歸的人照路' },
+  { id: 'fridge', n: '大冰箱', cat: 'decor', price: 4000, ap: 0, lv: 1, fx: 'cost', d: '食材放得久，進貨成本 -5%（最多算 3 台）' },
+  { id: 'tkw', n: '外帶窗口', cat: 'decor', price: 3000, ap: 1, lv: 1, fx: 'takeout', d: '外帶的客人比較不會不開心（最多算 2 個）' },
+  { id: 'lounge', n: '員工休息室', cat: 'decor', price: 7000, ap: 0, lv: 2, fx: 'rest', d: '員工體力 +20、累了恢復比較快（最多算 2 間）' },
   { id: 'tB', n: '銅獎盃', cat: 'decor', price: 0, ap: 5, lv: 0, unlock: 'tB', d: '小吃大賽的榮耀' },
   { id: 'tS', n: '銀獎盃', cat: 'decor', price: 0, ap: 8, lv: 0, unlock: 'tS', d: '年度大賞的榮耀' },
   { id: 'tG', n: '金獎盃', cat: 'decor', price: 0, ap: 14, lv: 0, unlock: 'tG', d: '夜市之王的證明' },
@@ -110,6 +118,14 @@ const COMBOS = [
   { id: 'steamx2', a: 'steam', b: 'steam', n: '蒸氣滿滿', eff: { spd: 15 }, h: '兩台蒸籠並排' },
   { id: 'grillx2', a: 'grill', b: 'grill', n: '炭火一條街', eff: { spd: 15 }, h: '兩台烤架並排' },
   { id: 'proud', a: 'tG', b: 'neon', n: '冠軍招牌', eff: { cust: 8, pop: 4 }, h: '把最亮的獎盃秀出來' },
+  { id: 'twinwok', a: 'wok', b: 'wok', n: '雙鍋快炒', eff: { spd: 15 }, h: '兩台大火並排' },
+  { id: 'wokice', a: 'wok', b: 'icebox', n: '熱炒配冰飲', eff: { spd: 15, sat: 2 }, h: '大火快炒的旁邊要有冰的' },
+  { id: 'freshwok', a: 'fridge', b: 'wok', n: '新鮮現炒', eff: { spd: 12, sat: 3 }, h: '食材從哪裡拿出來最快？' },
+  { id: 'seawok', a: 'net', b: 'wok', n: '海產熱炒', eff: { cust: 4, pop: 2 }, h: '漁網旁邊的大火' },
+  { id: 'harbor', a: 'net', b: 'lighthouse', n: '港邊風情', eff: { sat: 6 }, h: '浮球旁邊有一道光' },
+  { id: 'sakura', a: 'sakura', b: 'bench', n: '櫻花步道', eff: { sat: 6 }, h: '花樹下面要有地方坐' },
+  { id: 'fair', a: 'drum', b: 'shrine', n: '迎神廟會', eff: { pop: 4, cust: 4 }, h: '小廟前面敲什麼？' },
+  { id: 'staffroom', a: 'lounge', b: 'tv', n: '員工交誼廳', eff: { sat: 2, spd: 5 }, h: '休息的時候想看什麼？' },
 ];
 
 // 食材：c = 每份成本，buy = 進貨契約價，lv = 店舖等級
@@ -152,6 +168,11 @@ const ING = {
   strawberry: { n: '草莓', c: 18, buy: 8000, lv: 4, col: '#ff3a5a', season: [12, 1, 2, 3] },
   squid: { n: '魷魚', c: 20, buy: 7000, lv: 4, col: '#f0d8c8' },
   shrimp: { n: '蝦仁', c: 16, buy: 6500, lv: 3, col: '#ff9a7a' },
+  garlic: { n: '蒜頭', c: 2, buy: 900, lv: 0, col: '#f4f0e4' },
+  clam: { n: '蛤蜊', c: 9, buy: 3000, lv: 1, col: '#d8c8a8' },
+  fish: { n: '鮮魚', c: 14, buy: 4500, lv: 1, col: '#9ab8d0' },
+  sesoil: { n: '麻油', c: 4, buy: 2600, lv: 2, col: '#b8782a' },
+  pineapple: { n: '鳳梨', c: 8, buy: 3500, lv: 2, col: '#ffd23a' },
 };
 
 // 菜色：a + b 研發出來（a、b 可以是食材，也可以是已經研發的菜）
@@ -211,6 +232,20 @@ const DISH = {
   shrimpomelet: { n: '蝦仁煎', a: 'shrimp', b: 'egg', st: 'griddle', cat: 'salty', p: 90, q: 7, t: 4, h: '跟蚵仔煎很像，換一種海鮮' },
   feast: { n: '夜市滿漢全席', a: 'kingbowl', b: 'combo', st: 'soup', cat: 'salty', p: 380, q: 12, t: 6, h: '把最強的湯和最強的套餐合在一起…' },
   tarobubble: { n: '芋頭珍奶', a: 'bubble', b: 'taro', st: 'drink', cat: 'drink', p: 85, q: 9, t: 3, h: '珍奶再加紫色的根莖' },
+  // 快炒台、海港的菜
+  garlicnoodle: { n: '蒜香炒麵', a: 'noodle', b: 'garlic', st: 'wok', cat: 'salty', p: 65, q: 5, t: 3, h: '細麵配上一顆一顆白白的香料' },
+  clamfry: { n: '塔香炒蛤蜊', a: 'clam', b: 'basil', st: 'wok', cat: 'salty', p: 110, q: 7, t: 4, h: '殼打開了！再丟一把香香的葉子' },
+  kungpao: { n: '宮保雞丁', a: 'chicken', b: 'chili', st: 'wok', cat: 'spicy', p: 95, q: 7, t: 4, h: '雞肉切丁，跟紅紅的一起炒' },
+  sanbei: { n: '三杯雞', a: 'chicken', b: 'sesoil', st: 'wok', cat: 'salty', p: 130, q: 8, t: 5, h: '一杯醬油、一杯酒、一杯香香的油' },
+  pineshrimp: { n: '鳳梨蝦球', a: 'shrimp', b: 'pineapple', st: 'wok', cat: 'sweet', p: 160, q: 9, t: 5, h: '酸甜的黃色水果配海裡的小東西' },
+  seaplatter: { n: '海港大拼盤', a: 'clamfry', b: 'pineshrimp', st: 'wok', cat: 'salty', p: 290, q: 11, t: 6, h: '把兩道最強的海鮮快炒合在一盤' },
+  fishsoup: { n: '鮮魚湯', a: 'fish', b: 'scallion', st: 'soup', cat: 'salty', p: 100, q: 7, t: 4, h: '早上剛上岸的魚，加點綠色的煮湯' },
+  grillfish: { n: '鹽烤香魚', a: 'fish', b: 'pepper', st: 'grill', cat: 'salty', p: 120, q: 8, t: 4, h: '整條魚撒上嗆嗆的粉去烤' },
+  clamsoup: { n: '蒜頭蛤蜊湯', a: 'clam', b: 'garlic', st: 'soup', cat: 'salty', p: 80, q: 6, t: 3, h: '殼一打開湯就變甜了' },
+  sesnoodle: { n: '麻油麵線', a: 'noodle', b: 'sesoil', st: 'soup', cat: 'salty', p: 75, q: 7, t: 4, h: '細麵淋上香噴噴的油，冬天最暖' },
+  pinecake: { n: '鳳梨酥', a: 'pineapple', b: 'flour', st: 'griddle', cat: 'sweet', p: 60, q: 7, t: 3, h: '外酥內軟，送禮最大方' },
+  pinetea: { n: '鳳梨冰茶', a: 'blacktea', b: 'pineapple', st: 'drink', cat: 'drink', p: 55, q: 6, t: 2, h: '紅茶加上酸甜的黃色水果' },
+  garlicsausage: { n: '蒜味香腸', a: 'sausage', b: 'garlic', st: 'grill', cat: 'salty', p: 60, q: 6, t: 3, h: '香腸一定要配這個！' },
   // 季節限定：不用研發，到了那個月份、有那種攤位就會自動上架（lim = 月份、lv = 店舖等級）
   tanghulu: { n: '草莓糖葫蘆', a: 'strawberry', b: 'sugar', st: 'grill', cat: 'sweet', p: 60, q: 7, t: 3, lim: [1, 2, 3], lv: 2, h: '冬天限定，紅通通亮晶晶' },
   yuanxiao: { n: '芝麻湯圓', a: 'glutinous', b: 'sugar', st: 'soup', cat: 'sweet', p: 50, q: 7, t: 3, lim: [2], lv: 1, h: '元宵節一定要吃一碗' },
@@ -226,7 +261,10 @@ const DISH = {
 const DISH_ALL = Object.keys(DISH).filter(k => !DISH[k].lim);
 const DISH_LIM = Object.keys(DISH).filter(k => DISH[k].lim);
 // 素食模式：用到這些食材（或用到這些食材做的菜）就不是素的
-const MEAT = ['chicken', 'pork', 'beef', 'oyster', 'squid', 'shrimp', 'duckblood'];
+const MEAT = ['chicken', 'pork', 'beef', 'oyster', 'squid', 'shrimp', 'duckblood', 'fish', 'clam'];
+// 海鮮：用到這些食材做的菜（海港夜市的客人特別愛）
+const SEA = ['oyster', 'squid', 'shrimp', 'fish', 'clam'];
+function isSea(k) { const d = DISH[k]; if (!d) return SEA.includes(k); return isSea(d.a) || isSea(d.b); }
 function isVeg(k) { const d = DISH[k]; if (!d) return !MEAT.includes(k); if (d.meat) return false; return isVeg(d.a) && isVeg(d.b); }
 
 // 顧客：b = 預算倍率、pat = 耐心、w = 出現權重、lv = 幾級店才會來
@@ -240,6 +278,41 @@ const CTYPES = {
   influencer: { qty: 1, n: '網紅', b: 1.3, pref: ['sweet', 'drink', 'spicy'], pat: 0.9, w: 1.6, lv: 2, vip: 8 },
   critic: { qty: 1, n: '美食評論家', b: 2, pref: ['salty', 'spicy', 'sweet'], pat: 1, w: 1.0, lv: 3, vip: 14 },
 };
+
+// 只在某個地點出現的客人（w = 0，權重寫在 MAPS 裡）
+Object.assign(CTYPES, {
+  fisher: { qty: 1.8, n: '漁夫', b: 1.0, pref: ['salty', 'spicy', 'drink'], pat: 1.1, w: 0, lv: 0, map: 'harbor', sea: 2.4 },
+  hiker: { qty: 1.6, n: '登山客', b: 1.15, pref: ['salty', 'drink', 'sweet'], pat: 0.9, w: 0, lv: 0, map: 'mountain' },
+  pilgrim: { qty: 2.4, n: '進香團', b: 0.95, pref: ['salty', 'sweet', 'drink'], pat: 1.3, w: 0, lv: 0, map: 'temple' },
+});
+
+// 夜市地點：挑戰關卡會用到，第一關拿到星星後也能在一般遊戲選
+//   ctype = 這裡才有的客人權重、rent = 租金倍率、mul = 人潮倍率、budget = 預算倍率、boost = 某種攤位更好賣
+//   sea = 海鮮食材成本倍率、seaW = 海鮮菜更受歡迎、holy = 這些裝飾魅力加倍、ev = 這裡特有的事件
+const MAPS = {
+  city: { n: '老街夜市', s: '老街', d: '從小長大的老街夜市，什麼客人都有，規則最單純。' },
+  harbor: { n: '海港夜市', s: '海港', d: '漁港旁的夜市：海鮮食材便宜四成、海鮮菜特別受歡迎，漁夫一來就是一大桌；但夏天颱風特別多。', ctype: { fisher: 20 }, sea: 0.6, seaW: 1.35, typhoon: 2.4, ev: 'boat' },
+  mountain: { n: '山城老街', s: '山城', d: '山上的觀光老街：租金便宜三成、登山客出手大方，熱湯和蒸籠特別好賣；但平常人比較少，冬天寒流多。', ctype: { hiker: 20 }, rent: 0.7, mul: 0.88, budget: 1.1, boost: { soup: 1.4, steam: 1.25 }, cold: 2.5, ev: 'hikers' },
+  temple: { n: '廟會嘉年華', s: '廟會', d: '大廟前的嘉年華：人潮是平常的 1.25 倍，進香團一團一團來，廟口裝飾（小廟、燈籠、石獅、大鼓）魅力加倍；但租金貴六成。', ctype: { pilgrim: 18 }, rent: 1.6, mul: 1.25, holy: ['shrine', 'lantern', 'lion', 'drum'], ev: 'procession' },
+};
+const MAP_IDS = Object.keys(MAPS);
+
+// 挑戰關卡：y = 期限（年）、w0 = 從第幾週開始（決定開始的月份）、money = 開局資金、req = 需要的星星總數
+//   g = 三個目標（第一個是過關條件 ★，另外兩個是加分 ★★★）；scen = 用哪種遊戲模式
+const CHAL = [
+  { id: 'c1', map: 'city', n: '阿嬤的味道', y: 2, d: '回到熟悉的老街，用兩年證明阿嬤的招牌還是最好吃的！', g: [{ k: 'lv', v: 1 }, { k: 'dishes', v: 16 }, { k: 'rank', v: 9 }] },
+  { id: 'h1', map: 'harbor', n: '漁港的第一盞燈', y: 2, ings: ['clam'], d: '漁港邊的空地，只有一台老攤車和一桶剛撈上岸的蛤蜊。讓漁夫們下船就想來你這裡吃一碗！', g: [{ k: 'lv', v: 1 }, { k: 'sea', v: 600 }, { k: 'rank', v: 9 }] },
+  { id: 'h2', map: 'harbor', n: '颱風季', y: 2, w0: 20, money: 22000, ings: ['clam', 'oyster'], storms: [26, 30, 74], d: '從六月開始的兩年，颱風一個接一個。颱風天也要開門，風雨中的熱湯最暖心。', g: [{ k: 'cust', v: 4000 }, { k: 'storm', v: 60 }, { k: 'sat', v: 80 }] },
+  { id: 'h3', map: 'harbor', n: '海港之王', y: 4, req: 2, d: '四年內把海港夜市變成全台灣的觀光景點，端出傳說中的「海港大拼盤」！', g: [{ k: 'rank', v: 5 }, { k: 'lv', v: 3 }, { k: 'dish', d: 'seaplatter' }] },
+  { id: 'm1', map: 'mountain', n: '山上的小攤', y: 2, req: 3, d: '山城老街人不多，但登山客走了一整天，肚子餓得咕嚕叫。', g: [{ k: 'lv', v: 1 }, { k: 'ctype', t: 'hiker', v: 600 }, { k: 'sat', v: 80 }] },
+  { id: 'm2', map: 'mountain', n: '寒冬熱湯', y: 1.5, w0: 36, money: 30000, ings: ['pork', 'rice'], d: '從十月開始，山上越來越冷。一碗熱湯，就是登山客最大的幸福。', g: [{ k: 'st', st: 'soup', v: 300 }, { k: 'money', v: 60000 }, { k: 'rank', v: 12 }] },
+  { id: 'm3', map: 'mountain', n: '觀光老街', y: 4, req: 5, d: '纜車蓋好了！四年內把山城老街打造成最漂亮的觀光老街。', g: [{ k: 'rank', v: 5 }, { k: 'lv', v: 3 }, { k: 'combos', v: 12 }] },
+  { id: 't1', map: 'temple', n: '廟口開張', y: 2, req: 6, d: '大廟前的廣場，每天都有進香團。廟公說：「好好做，神明會保佑你。」', g: [{ k: 'lv', v: 1 }, { k: 'ctype', t: 'pilgrim', v: 650 }, { k: 'combos', v: 6 }] },
+  { id: 't2', map: 'temple', n: '遶境大拜拜', y: 2, w0: 4, money: 30000, d: '今年的遶境特別盛大！辦活動、招待人潮，讓整條街都熱鬧起來。', g: [{ k: 'cust', v: 4000 }, { k: 'hosted', v: 3 }, { k: 'rank', v: 12 }] },
+  { id: 't3', map: 'temple', n: '嘉年華霸主', y: 5, req: 9, d: '五年內登上排行榜第一名，在小吃大賽拿下冠軍，成為嘉年華的傳說！', g: [{ k: 'rank', v: 1 }, { k: 'lv', v: 4 }, { k: 'contest', v: 1 }] },
+  { id: 'c2', map: 'city', scen: 'sweet', n: '甜點女王', y: 3, req: 10, d: '只賣甜的和喝的，三年內做成排隊名店！', g: [{ k: 'lv', v: 2 }, { k: 'cat', c: 'sweet', v: 8000 }, { k: 'rank', v: 3 }] },
+  { id: 'c3', map: 'city', scen: 'hard', n: '一年翻身', y: 1, req: 14, money: 6000, d: '本金只有一點點、租金兩倍。一年之內，能翻身嗎？', g: [{ k: 'lv', v: 1 }, { k: 'money', v: 30000 }, { k: 'rank', v: 14 }] },
+];
 
 const NAMES1 = ['阿', '小'];
 const NAMES2 = ['明', '美', '豪', '珍', '傑', '芬', '偉', '玲', '強', '萍', '輝', '琪', '宏', '慧', '志', '婷', '龍', '鳳', '福', '寶', '瑞', '華', '翔', '雯', '凱', '妮', '德', '青', '勇', '桃'];
@@ -324,6 +397,9 @@ const BRANCHES = [
   { id: 'liuhe', n: '六合夜市分店', cost: 3600000, inc: 29000, pop: 12, lv: 4 },
   { id: 'luodong', n: '羅東夜市分店', cost: 7000000, inc: 56000, pop: 18, lv: 5 },
   { id: 'tokyo', n: '東京海外旗艦店', cost: 16000000, inc: 128000, pop: 30, lv: 5 },
+  { id: 'bangkok', n: '曼谷水上市場店', cost: 28000000, inc: 215000, pop: 40, lv: 5 },
+  { id: 'singapore', n: '新加坡小販中心店', cost: 48000000, inc: 360000, pop: 55, lv: 5 },
+  { id: 'newyork', n: '紐約時代廣場店', cost: 85000000, inc: 620000, pop: 80, lv: 5 },
 ];
 
 const BRANCH_TXT = {
@@ -333,6 +409,9 @@ const BRANCH_TXT = {
   liuhe: '椰子樹和高樓夜景，南部的大路邊夜市，攤位又大又寬。',
   luodong: '就在公園旁邊，水池映著燈光，宜蘭的在地好味道。',
   tokyo: '紅白鐵塔下的屋台街，日本人排隊也要吃一口台灣味！',
+  bangkok: '小船載著水果和小吃在河上划過，珍奶在熱帶最受歡迎。',
+  singapore: '冷氣小販中心裡一攤接一攤，鹽酥雞跟海南雞飯當鄰居。',
+  newyork: '大螢幕閃個不停的十字路口，排隊的人龍繞了整個街區！',
 };
 // 可以自己舉辦的活動
 const HOSTEV = [
@@ -407,6 +486,13 @@ const ACHS = [
   { id: 'duel3', n: '挑戰者殺手', d: '贏得 3 次對手的挑戰書', pt: 2 },
   { id: 'season', n: '四季饕客', d: '賣過 5 種季節限定菜色', pt: 2 },
   { id: 'story', n: '十年一夢', d: '完成 5 個年度目標', pt: 3 },
+  { id: 'star1', n: '初次登場', d: '挑戰關卡拿到第一顆星', pt: 2 },
+  { id: 'star3', n: '完美通關', d: '任一個挑戰關卡拿到 ★★★', pt: 3 },
+  { id: 'gstar', n: '指南推薦', d: '拿到夜市美食指南的星星', pt: 2 },
+  { id: 'gstar3', n: '指南三星', d: '夜市美食指南 ★★★', pt: 4 },
+  { id: 'pal', n: '最佳拍檔', d: '員工之間出現好搭檔', pt: 1 },
+  { id: 'star20', n: '滿天星斗', d: '挑戰關卡累積 20 顆星', pt: 4 },
+  { id: 'maps', n: '走遍全台', d: '三個新地點的關卡都拿到星星', pt: 3 },
 ];
 
 // 委託人的名字

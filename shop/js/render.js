@@ -2,7 +2,13 @@
 // 夜市小吃王：畫面（天空、街景、店面、人物、燈光、天氣、特效）
 const NB_SHOPS = ['阿婆鐵蛋', '老牌甘蔗汁', '正宗鹽酥雞', '彈珠汽水', '古早味粉圓', '臭豆腐王', '嘉義雞肉飯', '手工麻糬', '烤玉米專賣', '八寶冰', '滷味大王', '麻辣燙', '豆花伯', '蚵嗲', '當歸鴨', '青草茶'];
 const NB_VSIGN = ['藥局', '鐘錶', '冰店', '茶行', '旅社', '眼鏡', '麵館', '金飾', '書局', '牛排', '早餐', '果汁'];
-const NB_STALL = [['fryer', '臭'], ['grill', '香'], ['drink', '甘'], ['soup', '滷'], ['ice', '冰'], ['steam', '包'], ['griddle', '餅']];
+// 不同地點的鄰居店名、直式招牌、牆壁顏色
+const NB_MAP = {
+  harbor: { shops: ['鮮蚵專賣', '旗魚黑輪', '烤小卷', '虱目魚粥', '海產熱炒', '魚丸湯', '蝦捲大王', '花枝羹', '現撈海鮮', '鹹水雞', '鯊魚煙', '漁港冰店'], v: ['漁具', '冰廠', '魚市', '船行', '民宿', '海產'], walls: ['#b8c8d4', '#d8d4c8', '#a8b8c8', '#c8d0c4', '#e0dcd0', '#9ab0c0'] },
+  mountain: { shops: ['高山茶', '竹筒飯', '山豬肉香腸', '苦茶油', '愛玉冰', '紅糟肉圓', '芋圓老店', '山產小炒', '烤香菇', '桂花釀', '溫泉蛋', '梅子專賣'], v: ['茶行', '民宿', '藥草', '登山', '木雕', '茶屋'], walls: ['#a8845a', '#b89870', '#9a7a52', '#c0a07a', '#8a6a4a', '#b08a62'] },
+  temple: { shops: ['廟口米糕', '杏仁茶', '糖葫蘆', '碗粿', '麻糬伯', '鹹粥', '香燭金紙', '祈福平安糕', '紅龜粿', '筒仔米糕', '廟口肉羹', '麵茶'], v: ['香舖', '神像', '金紙', '佛具', '餅行', '祭品'], walls: ['#d8a090', '#e0b8a0', '#c89080', '#e8c8a8', '#d0a088', '#c8a898'] },
+};
+const NB_STALL = [['fryer', '臭'], ['grill', '香'], ['drink', '甘'], ['soup', '滷'], ['ice', '冰'], ['steam', '包'], ['griddle', '餅'], ['wok', '炒']];
 const R = {
   cv: null, g: null, dpr: 1, W: 0, H: 0, z: 2, cam: { x: 0, y: 0 }, zoomMul: 1, pan: { x: 0, y: 0 }, top: 56, bottom: 64, left: 0, right: 0, t: 0,
   hover: null, ghost: null, fw: [], wx: [], fwT: 0, flashA: 0,
@@ -162,8 +168,9 @@ const R = {
   },
   // 背後的大樓（快取）
   skyline(g) {
-    const S = Game.S, x0 = -24 * TILE, x1 = (S.W + 24) * TILE, n = Math.round(this.night() * 6) / 6;
-    const key = S.W + ':' + n;
+    const S = Game.S, x0 = -24 * TILE, x1 = (S.W + 24) * TILE, n = Math.round(this.night() * 6) / 6, MP = S.map || 'city';
+    const key = S.W + ':' + n + ':' + MP;
+    if (MP !== 'city') { if (!this._sky || this._sky.key !== key) this._sky = { key, c: this.mapSky(MP, x0, x1, n, this._sky?.c) }; g.drawImage(this._sky.c, x0, -150 - 40); this.skyAnim(g, MP, x0, x1, n); return; }
     if (!this._sky || this._sky.key !== key) {
       const c = this._sky?.c || document.createElement('canvas');
       c.width = x1 - x0; c.height = 150;
@@ -193,8 +200,113 @@ const R = {
     }
     g.drawImage(this._sky.c, x0, -150 - 40);
   },
+  // 其他地點的背景（快取）：海港＝海和燈塔、山城＝山脊和纜車、廟會＝大廟和摩天輪
+  //   畫布底部在世界座標 y = -40，自己店面的上方（x 在 0～W 之間、y -150～-60）是最看得到的地方
+  mapSky(MP, x0, x1, n, c) {
+    c = c || document.createElement('canvas');
+    c.width = x1 - x0; c.height = 150;
+    const q = c.getContext('2d'); q.clearRect(0, 0, c.width, c.height);
+    const S = Game.S, R2 = (x, y, w, h, col) => { q.fillStyle = col; q.fillRect(x, y, w, h); }, Wc = c.width, sx = -x0, sw = S.W * TILE, cx = sx + sw / 2;
+    const dk = col => mixHex(col, '#1a1838', n * 0.45);
+    if (MP === 'harbor') {
+      for (let x = 0; x < Wc; x++) { const h = 10 + Math.sin(x / 37) * 5 + Math.sin(x / 11) * 2; R2(x, 98 - h, 1, h, dk('#6a7aa8')); }
+      for (let y = 98; y < 150; y++) R2(0, y, Wc, 1, dk(mixHex('#5a8ac8', '#2a4a80', (y - 98) / 52)));
+      for (let i = 0; i < Wc / 5; i++) R2((hash(i, 5, 81) * Wc) | 0, 100 + ((hash(i, 6, 81) * 48) | 0), 4 + ((hash(i, 7, 81) * 6) | 0), 1, n > 0.4 ? 'rgba(170,200,255,.4)' : 'rgba(230,245,255,.55)');
+      // 防波堤和燈塔（在店的右後方）
+      const lx = sx + sw - 18;
+      R2(lx - 34, 95, 70, 5, dk('#7a7a8a')); R2(lx - 34, 95, 70, 1, dk('#9a9aaa'));
+      for (let y = 46; y < 95; y++) { const w = 8 + ((y - 46) / 49 * 6 | 0); R2(lx - w / 2 | 0, y, w, 1, ((y - 46) >> 3) & 1 ? dk('#f4f0e8') : dk('#d8302a')); }
+      R2(lx - 6, 38, 12, 8, '#2a3048'); R2(lx - 4, 39, 8, 6, n > 0.3 ? '#fff6b0' : '#d8e8f0'); R2(lx - 6, 35, 12, 3, dk('#c8302a')); R2(lx - 2, 32, 4, 3, dk('#3a3a44'));
+      for (const { bx, by, col, L } of this.skyPts('harbor', x0)) {
+        R2(bx, by, L, 4, dk(col)); R2(bx + 2, by + 4, L - 4, 2, dk(shade(col, -0.45))); R2(bx + L * 0.4 | 0, by - 7, 9, 7, dk('#f4f0e8')); R2(bx + L * 0.4 + 2 | 0, by - 5, 5, 3, n > 0.3 ? '#fff0a0' : '#6a8aa8');
+        R2(bx + L * 0.25 | 0, by - 16, 1, 16, dk('#c8c8d0')); if (n > 0.3) for (let k = 0; k < 4; k++) R2(bx + 2 + k * (L / 4 | 0), by - 2, 2, 2, ['#ff6a4a', '#ffe070', '#7affb0', '#ffe070'][k]);
+        if (n > 0.3) R2(bx + 2, by + 7, L - 4, 1, 'rgba(255,230,150,.35)');
+      }
+    } else if (MP === 'mountain') {
+      const ridge = (base, amp, f, col, ph) => { for (let x = 0; x < Wc; x++) { const h = amp * (0.55 + 0.45 * Math.sin((x - cx) / f + ph)) + Math.abs(Math.sin((x - cx) / (f * 0.41) + ph * 2)) * amp * 0.4; R2(x, base - h, 1, 150 - base + h, dk(col)); } };
+      ridge(96, 64, 52, '#7a88b8', 1.2); ridge(112, 40, 30, '#4f7480', 2.4);
+      for (let i = 0; i < 3; i++) R2(0, 84 + i * 10, Wc, 5, `rgba(235,240,255,${0.2 - i * 0.05})`);
+      // 山頂的寶塔（店的左後方）
+      const px = sx + sw * 0.22;
+      R2(px - 5, 20, 10, 32, dk('#6a4a4a')); for (let k = 0; k < 3; k++) { R2(px - 11 + k * 2, 17 + k * 11, 22 - k * 4, 3, dk('#2a3a3a')); R2(px - 2, 22 + k * 10, 4, 4, n > 0.3 ? '#ffd890' : dk('#9a7a6a')); }
+      R2(px - 1, 11, 2, 6, dk('#ffd040'));
+      for (let i = 0; i < Wc / 8; i++) { const tx = (hash(i, 4, 91) * Wc) | 0, ty = 104 + ((hash(i, 5, 91) * 40) | 0), col = dk(hash(i, 6, 91) < 0.5 ? '#2f6a44' : '#3a7a4a'); R2(tx + 3, ty - 12, 2, 3, col); R2(tx + 2, ty - 9, 4, 4, col); R2(tx + 1, ty - 5, 6, 4, col); R2(tx, ty - 1, 8, 3, col); R2(tx + 3, ty + 2, 2, 3, dk('#4a3020')); }
+      for (const { bx: hx, by: hy } of this.skyPts('mountain', x0)) { R2(hx, hy, 7, 5, dk('#7a5a44')); R2(hx - 1, hy - 2, 9, 2, dk('#2a2a34')); if (n > 0.3) R2(hx + 2, hy + 1, 3, 2, '#ffd890'); }
+    } else if (MP === 'temple') {
+      for (let x = 0, i = 0; x < Wc; i++) { const w = 26 + ((hash(i, 9, 7) * 4) | 0) * 10, h = 30 + ((hash(i, 8, 7) * 4) | 0) * 8; R2(x, 150 - h, w, h, dk('#7a6090')); x += w - 4; }
+      // 大廟（燕尾屋脊、雙龍、寶塔）在店的正後方，比店面高出一截
+      const tw = Math.min(250, sw + 60), tx = cx - tw / 2;
+      R2(tx + 14, 72, tw - 28, 78, dk('#b8402a')); R2(tx, 64, tw, 9, dk('#2a7a64')); R2(tx - 10, 60, 14, 5, dk('#2a7a64')); R2(tx + tw - 4, 60, 14, 5, dk('#2a7a64'));
+      R2(tx - 14, 55, 6, 6, dk('#ffd040')); R2(tx + tw + 8, 55, 6, 6, dk('#ffd040'));
+      R2(tx + 30, 42, tw - 60, 8, dk('#2a7a64')); R2(tx + 22, 38, 10, 5, dk('#ffd040')); R2(tx + tw - 32, 38, 10, 5, dk('#ffd040')); R2(tx + 36, 50, tw - 72, 14, dk('#c84a30'));
+      R2(cx - 14, 26, 28, 12, dk('#ffd040')); R2(cx - 4, 18, 8, 8, dk('#e8302a')); R2(cx - 2, 12, 4, 6, dk('#ffd040'));
+      for (let k = 0; k < 2; k++) { const dx = k ? tx + tw - 64 : tx + 40; R2(dx, 35, 24, 3, dk('#3fa64a')); R2(dx + (k ? 22 : 0), 31, 4, 4, dk('#3fa64a')); R2(dx + 5, 33, 2, 2, dk('#ffd040')); }
+      for (let x = tx + 44; x < tx + tw - 44; x += 16) R2(x, 54, 8, 8, n > 0.3 ? '#ffcf60' : dk('#e8b070'));
+    }
+    return c;
+  },
+  // 背景裡要亮燈的東西（漁船、山腰的民宿），位置固定，街景的燈光圖也要用
+  skyPts(MP, x0) {
+    const S = Game.S, Wc = (S.W + 48) * TILE, sx = -x0, sw = S.W * TILE, out = [];
+    if (MP === 'harbor') for (let i = 0; i < 12; i++) {
+      const L = 22 + ((hash(i, 3, 83) * 3) | 0) * 6, bx = i < 4 ? sx + sw * (0.08 + i * 0.22) | 0 : ((hash(i, 1, 83) * (Wc - 60)) | 0) + 20, by = 101 + ((hash(i, 2, 83) * (i < 4 ? 6 : 30)) | 0), col = ['#e8473b', '#3a8ad8', '#ffd040', '#f4f0e8', '#3fa64a'][i % 5];
+      if (bx + L > sx + sw - 50 && bx < sx + sw + 10) continue;
+      out.push({ bx, by, col, L });
+    }
+    if (MP === 'mountain') for (let i = 0; i < 30; i++) out.push({ bx: i < 6 ? sx + sw * (i / 6) + 6 | 0 : (hash(i, 7, 93) * Wc) | 0, by: i < 6 ? 92 + ((hash(i, 8, 93) * 10) | 0) : 96 + ((hash(i, 8, 93) * 40) | 0), L: 7 });
+    return out;
+  },
+  // 背景會動的部分：燈塔的光束、纜車、摩天輪
+  skyAnim(g, MP, x0, x1, n) {
+    const S = Game.S, sw = S.W * TILE, t = this.t;
+    if (MP === 'harbor' && n > 0.25) {
+      const lx = sw - 18, ly = -190 + 42, a = Math.PI + Math.sin(t * 0.6) * 1.1;
+      g.globalAlpha = 0.2 * n; g.fillStyle = '#fff6c0'; g.beginPath(); g.moveTo(lx, ly); g.lineTo(lx + Math.cos(a) * 240, ly - 18 + Math.sin(a) * 40); g.lineTo(lx + Math.cos(a) * 240, ly + 18 + Math.sin(a) * 40); g.closePath(); g.fill(); g.globalAlpha = 1;
+      this.lightsList.push([lx, ly, 30, 'rgba(255,246,190,A)', 0.8]);
+    } else if (MP === 'mountain') {
+      const bx = sw * 0.22, by = -190 + 24, ax = sw + 12 * TILE, ay = -190 + 100;
+      g.strokeStyle = 'rgba(40,40,60,.75)'; g.lineWidth = 0.7; g.beginPath(); g.moveTo(ax, ay); g.lineTo(bx, by); g.stroke();
+      for (let k = 0; k < 2; k++) { const f = ((t * 0.018 + k * 0.5) % 1), x = ax + (bx - ax) * f, y = ay + (by - ay) * f; g.fillStyle = '#5a5a6a'; g.fillRect(x - 0.5, y, 1, 4); g.fillStyle = k ? '#3a8ad8' : '#e8473b'; g.fillRect(x - 5, y + 4, 10, 7); g.fillStyle = n > 0.3 ? '#fff2a0' : '#bfe0ff'; g.fillRect(x - 4, y + 5, 8, 3); if (n > 0.3) this.lightsList.push([x, y + 7, 14, 'rgba(255,240,170,A)', 0.6]); }
+    } else if (MP === 'temple') {
+      const fx = -30, fy = -190 + 62, r = 40, a0 = t * 0.15;
+      g.strokeStyle = n > 0.3 ? 'rgba(210,180,255,.8)' : 'rgba(110,90,140,.95)'; g.lineWidth = 1;
+      g.beginPath(); g.arc(fx, fy, r, 0, TAU); g.stroke();
+      g.beginPath(); for (let i = 0; i < 12; i++) { const a = a0 + i / 12 * TAU; g.moveTo(fx, fy); g.lineTo(fx + Math.cos(a) * r, fy + Math.sin(a) * r); } g.stroke();
+      g.fillStyle = '#5a4a7a'; g.fillRect(fx - 12, fy, 3, 70); g.fillRect(fx + 9, fy, 3, 70);
+      for (let i = 0; i < 12; i++) { const a = a0 + i / 12 * TAU; g.fillStyle = ['#ff5ad0', '#5affff', '#ffe040', '#7affb0'][i % 4]; g.fillRect(fx + Math.cos(a) * r - 3, fy + Math.sin(a) * r, 6, 5); }
+      if (n > 0.3) this.lightsList.push([fx, fy, 56, 'rgba(255,140,220,A)', 0.45]);
+    }
+  },
+  // 對面：海港是木棧道、海和停泊的漁船
+  oppHarbor(R2, X0, X1, oy, lights) {
+    const ty = oy + 14;
+    for (let x = X0; x < X1; x += 6) { R2(x, ty, 5, 10, '#8a6a4a'); R2(x, ty, 5, 1, '#a8885a'); R2(x + 5, ty, 1, 10, '#5a4030'); }
+    R2(X0, ty + 10, X1 - X0, 2, '#5a4030');
+    for (let y = ty + 12; y < ty + 80; y++) R2(X0, y, X1 - X0, 1, mixHex('#3a6aa8', '#1e3a70', (y - ty - 12) / 68));
+    for (let i = 0; i < (X1 - X0) / 5; i++) R2(X0 + ((hash(i, 1, 87) * (X1 - X0)) | 0), ty + 14 + ((hash(i, 2, 87) * 64) | 0), 5, 1, 'rgba(190,220,255,.4)');
+    for (let x = X0 + 30, i = 0; x < X1 - 60; x += 90 + ((hash(i, 3, 87) * 3) | 0) * 20, i++) {
+      const col = ['#e8473b', '#3a8ad8', '#ffd040', '#3fa64a', '#f4f0e8'][i % 5], L = 46;
+      R2(x, ty + 18, L, 14, col); R2(x + 2, ty + 32, L - 4, 3, shade(col, -0.45)); R2(x + 3, ty + 20, L - 6, 9, shade(col, 0.25));
+      R2(x + 14, ty + 14, 16, 10, '#f4f0e8'); R2(x + 16, ty + 16, 12, 4, '#ffe8a0'); R2(x + 20, ty + 2, 1, 12, '#c8c8d0');
+      for (let k = 0; k < 5; k++) R2(x + 4 + k * 9, ty + 17, 3, 3, ['#ff4a3a', '#ffd040', '#7affb0', '#5ad0ff', '#ff8ad0'][k]);
+      R2(x + L - 1, ty + 10, 1, 10, '#8a6a4a');
+      lights.push([x + 22, ty + 18, 30, 'rgba(255,220,140,A)', 0.5]);
+    }
+  },
+  // 對面：山城是石欄杆、樹和山谷裡的燈
+  oppMountain(R2, X0, X1, oy, lights, q) {
+    const ty = oy + 14;
+    for (let y = ty; y < ty + 80; y++) R2(X0, y, X1 - X0, 1, mixHex('#3a5a48', '#1c2a34', (y - ty) / 80));
+    for (let x = X0; x < X1; x += 12) { R2(x, ty, 4, 9, '#b8b4a8'); R2(x, ty, 4, 1, '#d8d4c8'); }
+    R2(X0, ty + 1, X1 - X0, 3, '#a8a498'); R2(X0, ty + 1, X1 - X0, 1, '#d0ccc0');
+    for (let i = 0; i < (X1 - X0) / 14; i++) {
+      const tx = X0 + ((hash(i, 1, 89) * (X1 - X0)) | 0), yy = ty + 16 + ((hash(i, 2, 89) * 40) | 0), col = hash(i, 3, 89) < 0.3 ? '#ff9ac0' : hash(i, 3, 89) < 0.6 ? '#2f6a40' : '#3a7a4a';
+      R2(tx + 4, yy - 14, 4, 4, col); R2(tx + 2, yy - 10, 8, 5, col); R2(tx, yy - 5, 12, 5, col); R2(tx + 5, yy, 2, 4, '#5a3a24');
+    }
+    for (let i = 0; i < (X1 - X0) / 30; i++) { const lx = X0 + ((hash(i, 4, 89) * (X1 - X0)) | 0), ly = ty + 50 + ((hash(i, 5, 89) * 26) | 0); R2(lx, ly, 2, 2, '#ffd890'); lights.push([lx + 1, ly + 1, 14, 'rgba(255,214,140,A)', 0.45]); }
+  },
   // ---------- 街景（快取：鄰居店面、空地、人行道、馬路、對面的攤子） ----------
-  streetKey() { const S = Game.S; return [S.W, S.H, S.lv].join(':'); },
+  streetKey() { const S = Game.S; return [S.W, S.H, S.lv, S.map].join(':'); },
   buildStreet() {
     const S = Game.S, W = S.W * TILE, Hh = S.H * TILE, X0 = -24 * TILE, X1 = W + 24 * TILE, Y0 = -100, Y1 = Hh + 16 + 44 + 90;
     const c = this._st?.c || document.createElement('canvas');
@@ -202,13 +314,13 @@ const R = {
     const q = c.getContext('2d'); q.clearRect(0, 0, c.width, c.height); q.imageSmoothingEnabled = false;
     q.save(); q.translate(-X0, -Y0);
     const R2 = (x, y, w, h, col) => { q.fillStyle = col; q.fillRect(x, y, w, h); };
-    const lights = [], texts = [], npcs = [], stalls = [];
+    const lights = [], texts = [], npcs = [], stalls = [], MP = S.map || 'city', NB = NB_MAP[MP];
     // 鄰居店面（兩層樓的街屋）
     let k = 0;
     for (const side of [-1, 1]) {
       for (let i = 0; i < 7; i++, k++) {
         const bw = 48, bx = side < 0 ? -(i + 1) * bw : W + i * bw, hh = 66 + ((hash(i, side, 3) * 4) | 0) * 7;
-        const wall = ['#c8b8a0', '#a8b0b8', '#c0a090', '#9ab0a4', '#c4a8b0', '#b8b0c8'][(i * 2 + (side > 0 ? 1 : 0)) % 6];
+        const wall = (NB ? NB.walls : ['#c8b8a0', '#a8b0b8', '#c0a090', '#9ab0a4', '#c4a8b0', '#b8b0c8'])[(i * 2 + (side > 0 ? 1 : 0)) % 6];
         R2(bx, -hh, bw, hh, wall); R2(bx, -hh, bw, 3, shade(wall, -0.25)); R2(bx, -hh + 3, bw, 1, shade(wall, 0.2));
         R2(bx + bw - 1, -hh, 1, hh, shade(wall, -0.18));
         // 二樓窗戶、冷氣
@@ -232,14 +344,16 @@ const R = {
         // 招牌橫條
         const sc = ['#e8302a', '#2a6ad8', '#2f9a4a', '#f0a020', '#c03ab0', '#1a8a8a'][(i * 5 + (side > 0 ? 3 : 0)) % 6];
         R2(bx + 1, -40, bw - 2, 10, shade(sc, -0.35)); R2(bx + 2, -39, bw - 4, 8, sc); R2(bx + 2, -39, bw - 4, 1, shade(sc, 0.35));
-        texts.push({ x: bx + bw / 2, y: -35, t: NB_SHOPS[(k * 7 + 3) % NB_SHOPS.length], c: '#d8d2e0', s: 5.5 });
+        const SH = NB ? NB.shops : NB_SHOPS;
+        texts.push({ x: bx + bw / 2, y: -35, t: SH[(k * 7 + 3) % SH.length], c: '#d8d2e0', s: 5.5 });
         lights.push([bx + bw / 2, -35, 24, hexA(sc), 0.32]);
         // 直式招牌
         if (hash(i, side, 31) < 0.7) {
           const vx = side < 0 ? bx + 2 : bx + bw - 12, vy = -hh + 8, vc = ['#ff4a6a', '#ffd040', '#5ad0ff', '#7affb0', '#ff8ad0'][(i + k) % 5];
           R2(vx, vy, 10, 32, '#2a2036'); R2(vx + 1, vy + 1, 8, 30, '#fff6dc'); R2(vx, vy, 10, 1, vc); R2(vx, vy + 31, 10, 1, vc); R2(vx, vy, 1, 32, vc); R2(vx + 9, vy, 1, 32, vc);
           R2(side < 0 ? vx + 10 : vx - 2, vy + 4, 2, 2, '#5a5a64'); R2(side < 0 ? vx + 10 : vx - 2, vy + 26, 2, 2, '#5a5a64');
-          texts.push({ x: vx + 5, y: vy + 16, t: NB_VSIGN[(k * 3 + 1) % NB_VSIGN.length], c: '#a84a48', s: 6, v: 1 });
+          const VS = NB ? NB.v : NB_VSIGN;
+          texts.push({ x: vx + 5, y: vy + 16, t: VS[(k * 3 + 1) % VS.length], c: '#a84a48', s: 6, v: 1 });
           lights.push([vx + 5, vy + 16, 28, hexA(vc), 0.34]);
         }
       }
@@ -313,9 +427,12 @@ const R = {
     const oy = ry + 43;
     R2(X0, oy, X1 - X0, 2, '#d8d4dc'); R2(X0, oy + 2, X1 - X0, 12, '#a49ea8');
     for (let x = X0; x < X1; x += 16) R2(x, oy + 2, 1, 12, '#8e8994');
-    let ti = 0;
-    for (let x = X0; x < X1; ti++) {
-      const tw = 40 + ((hash(ti, 1, 71) * 3) | 0) * 8, ty = oy + 14, cs = [['#e8473b', '#fff4e8'], ['#3a8ad8', '#e8f4ff'], ['#f0a020', '#fff4c8'], ['#3a9a5a', '#eaffea'], ['#ff6fa8', '#fff0f6'], ['#8a5ac8', '#f4eaff']][(ti * 5) % 6];
+    for (const p of this.skyPts(MP, -24 * TILE)) lights.push([-24 * TILE + p.bx + p.L / 2, -190 + p.by, MP === 'harbor' ? 26 : 12, 'rgba(255,220,150,A)', MP === 'harbor' ? 0.55 : 0.4]);
+    if (MP === 'harbor') this.oppHarbor(R2, X0, X1, oy, lights);
+    else if (MP === 'mountain') this.oppMountain(R2, X0, X1, oy, lights, q);
+    let ti = MP === 'harbor' || MP === 'mountain' ? 1e9 : 0;
+    for (let x = X0; x < X1 && ti < 1e9; ti++) {
+      const tw = 40 + ((hash(ti, 1, 71) * 3) | 0) * 8, ty = oy + 14, cs = (MP === 'temple' ? [['#c8202a', '#ffd040'], ['#e8473b', '#fff4c8'], ['#d8a020', '#c8202a']] : [['#e8473b', '#fff4e8'], ['#3a8ad8', '#e8f4ff'], ['#f0a020', '#fff4c8'], ['#3a9a5a', '#eaffea'], ['#ff6fa8', '#fff0f6'], ['#8a5ac8', '#f4eaff']])[(ti * 5) % (MP === 'temple' ? 3 : 6)];
       for (let s2 = 0; s2 < tw; s2 += 4) R2(x + s2, ty + 2, 4, 76, (s2 / 4) & 1 ? cs[1] : cs[0]);
       R2(x, ty + 2, tw, 2, shade(cs[0], 0.25));
       for (let s2 = 0; s2 < tw; s2 += 4) R2(x + s2, ty, 4, 3, (s2 / 4) & 1 ? cs[1] : cs[0]);
@@ -562,6 +679,7 @@ const R = {
       case 'soup': if (r < 0.08 * q) Game.fx.push({ x: cx + rnd(-4, 3), y: top + 11, vx: 0, vy: -rnd(3, 6), t: 0, life: 0.5, col: 'rgba(255,240,210,.9)', s: 1, puff: 1 }); break;
       case 'grill': if (r < 0.1 * q) Game.fx.push({ x: cx + rnd(-6, 6), y: top + 14, vx: rnd(-3, 3), vy: -rnd(12, 22), g: -6, t: 0, life: 0.55, col: pick(['#ffd040', '#ff8a2a', '#ff5a1a']), s: 1, ember: 1 }); break;
       case 'steam': if (r < 0.07 * q) Game.steam(cx + rnd(-4, 4), top + 6, 'steam'); break;
+      case 'wok': if (r < 0.14 * q) Game.fx.push({ x: cx - 2 + rnd(-5, 5), y: top + 12, vx: rnd(-8, 8), vy: -rnd(16, 30), g: -4, t: 0, life: 0.45, col: pick(['#ffd040', '#ff8a2a', '#ff5a1a', '#fff0a0']), s: 1, ember: 1 }); else if (r < 0.2 * q) Game.steam(cx + rnd(-3, 3), top + 6, 'grill'); break;
     }
   },
   itemLight(it) {
@@ -576,6 +694,9 @@ const R = {
       case 'stage': L.push([x, y + 8, 50, 'rgba(255,220,160,A)', 0.8]); break;
       case 'fountain': case 'koi': L.push([x, y + 8, 28, 'rgba(120,220,255,A)', 0.5]); break;
       case 'icebox': L.push([x, y + 6, 16, 'rgba(160,220,255,A)', 0.4]); break;
+      case 'lighthouse': L.push([x, y + 5, 46, 'rgba(255,246,190,A)', 0.9]); break;
+      case 'tkw': case 'lounge': L.push([x, y + 10, 22, 'rgba(255,214,150,A)', 0.6]); break;
+      case 'net': case 'drum': L.push([x, y + 8, 18, 'rgba(255,190,120,A)', 0.35]); break;
       case 'balloon': case 'ring': case 'goldfish': L.push([x, y + 6, 24, 'rgba(255,230,160,A)', 0.6]); break;
     }
   },

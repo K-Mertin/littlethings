@@ -2,11 +2,24 @@
 // 夜市小吃王：跨存檔的傳承（成就、傳承點數、加成）與阿德伯的年度故事（新手引導在 guide.js）
 
 const Legacy = {
-  d: { pts: 0, perks: {}, ach: {}, clear: 0, gens: 0 },
+  d: { pts: 0, perks: {}, ach: {}, clear: 0, gens: 0, stars: {}, chal: 0 },
   load() {
     try { const v = JSON.parse(localStorage.getItem('shop.legacy') || 'null'); if (v && typeof v === 'object') Object.assign(this.d, v); } catch (e) { }
-    this.d.perks = this.d.perks || {}; this.d.ach = this.d.ach || {};
+    this.d.perks = this.d.perks || {}; this.d.ach = this.d.ach || {}; this.d.stars = this.d.stars || {};
   },
+  // ---------- 挑戰關卡 ----------
+  stars(id) { return this.d.stars[id] || 0; },
+  starTotal() { let n = 0; for (const k in this.d.stars) n += this.d.stars[k]; return n; },
+  // 挑戰關卡列表開放了沒（引導結束後擴建過一次；老玩家有幾個成就也算）
+  chalOpen() { return !!(this.d.chal || this.d.clear || this.d.gens || Object.keys(this.d.ach).length >= 6 || this.starTotal()); },
+  // 這一關能不能玩：星星總數夠，而且同一個地點的前一關有拿到星星
+  stageOpen(C) {
+    if ((C.req || 0) > this.starTotal()) return false;
+    const same = CHAL.filter(x => x.map === C.map && !x.scen && !C.scen), i = same.indexOf(C);
+    return i <= 0 || this.stars(same[i - 1].id) > 0;
+  },
+  // 一般遊戲可以選的地點：那個地點有任何一關拿到星星
+  mapOpen(m) { return m === 'city' || CHAL.some(x => x.map === m && this.stars(x.id) > 0); },
   save() { try { localStorage.setItem('shop.legacy', JSON.stringify(this.d)); } catch (e) { } },
   add(n) { if (Game.demoMode) return; this.d.pts += n; this.save(); },
   // 回傳是不是第一次解鎖（第一次才給點數）
