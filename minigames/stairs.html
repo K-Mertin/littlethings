@@ -112,10 +112,22 @@ const LEVELS = [
   { n: '叢林大救援', th: 'jungle', g: 30, fr: 6, key: 1, m: { normal: 3, spring: 1, lift: 1, fragile: 1, left: 1, right: 1, spike: 1 }, sp: [72, 1.4, 140], st: 0.3, mk: '👑' },
   { n: '黑暗海底宮殿', th: 'sea', g: 35, fr: 5, key: 1, dark: 1, m: { normal: 3, move: 1, lift: 1, spike: 1, fragile: 1, ice: 1 }, sp: [74, 1.5, 146], st: 0.3, mk: '👑' },
   { n: '終極大冒險', th: 'castle', g: 45, fr: 6, key: 1, dark: 1, m: { normal: 3, spike: 1, spring: 1, left: 1, right: 1, fragile: 1, move: 1, ice: 1, blink: 1, lift: 1 }, sp: [82, 1.6, 164], st: 0.3, mk: '🏆' },
+  // ---- 新玩法（39 起）：🔔 踩鈴鐺彈一首歌、🌬️ 大風吹、🌙 月亮慢慢飄（不是更難，是不一樣的玩法） ----
+  { n: '叮叮噹噹鈴鐺塔', th: 'castle', bell: 7, m: { normal: 4, spring: 1 }, sp: [48, 0.4, 68], st: 0.2, mk: '🔔' },
+  { n: '大風吹', th: 'cloud', g: 16, wind: 1, m: { normal: 4, spring: 1 }, sp: [50, 0.5, 74], st: 0.3, mk: '🌬️' },
+  { n: '月亮慢慢飄', th: 'magic', g: 8, star: 1, moon: 1, m: { normal: 4, spring: 1, move: 1 }, sp: [40, 0.3, 56], st: 0.45, mk: '🌙' },
+  { n: '海底鈴鐺', th: 'sea', bell: 10, m: { normal: 3, move: 1, lift: 1 }, sp: [52, 0.6, 80], st: 0.2, mk: '🔔' },
+  { n: '大樹颳大風', th: 'jungle', g: 22, wind: 1, fr: 4, m: { normal: 3, spring: 1, fragile: 1 }, sp: [56, 0.8, 92], st: 0.25, mk: '🌬️' },
+  { n: '月光冰塔', th: 'ice', g: 20, moon: 1, m: { normal: 3, ice: 2, spring: 1, blink: 1 }, sp: [46, 0.5, 72], st: 0.3, mk: '🌙' },
+  { n: '糖果鈴鐺音樂會', th: 'candy', bell: 12, wind: 1, m: { normal: 3, spring: 1, left: 1, right: 1 }, sp: [52, 0.6, 80], st: 0.2, mk: '🎶' },
 ];
 const ENDLESS = LEVELS.length + 1;
 // the old ♾️ was number 25: a saved "next level" of 25 from before the new levels still means ♾️
 if (!MG.store.get('stairs.v2', false)) { if (MG.store.get('stairs.pickLevel', 1) === 25) MG.store.set('stairs.pickLevel', ENDLESS); MG.store.set('stairs.v2', true); }
+// …and the ♾️ was number 39 before the 🔔🌬️🌙 levels came in
+if (!MG.store.get('stairs.v3', false)) { if (MG.store.get('stairs.pickLevel', 1) === 39) MG.store.set('stairs.pickLevel', ENDLESS); MG.store.set('stairs.v3', true); }
+// 🔔 bells play 「小星星」 one note at a time
+const BELL_SONG = [262, 262, 392, 392, 440, 440, 392, 349, 349, 330, 330, 294, 294, 262];
 let level = ENDLESS, L = null, mode = 'normal', stars = 0;
 const thName = () => L ? L.th : ENDLESS_TH[Math.floor(floor / 20) % ENDLESS_TH.length];
 const theme = () => TH[thName()];
@@ -130,12 +142,14 @@ let floats = [];
 const SND = {}; const snd = (n, a, gap = 60) => { const now = performance.now(); if (now - (SND[n] || 0) < gap) return; SND[n] = now; MG.sfx(n, a); };
 function say(t, c = '#fff', px = P.x, py = P.y - 30) { floats.push({ x: Math.max(50, Math.min(FW - 50, px)), y: Math.max(40, py), t, c, life: 0.9 }); }
 let P, plats, rise, spawnY, nextIdx, floor, state = 'ready', shake = 0, flash = 0, t = 0;
+let rung = 0, windT = 0, windDir = 1, windOn = 0, windWarn = 0, windStreaks = [];
 let rescued = 0, rescuedList = [], hasKey = false, goalIdx = null, lampT = 0, winT = 0, lastFriend = 0, lastKey = 0, endTh = 0;
 const reqMet = () => (!L || !L.fr || rescued >= L.fr) && (!L || !L.key || hasKey);
 
 function reset() {
   P = { x: FW / 2, y: 280 - R, vy: 0, vx: 0, on: null, hp: HPMAX, inv: 0, ignore: null, ignoreT: 0, face: 'happy', squash: 0, trail: [] };
   plats = []; nextIdx = 0; floor = 0; rise = 70; t = 0; floats = []; wallOff = 0; stars = 0; MG.fx.clear();
+  rung = 0; windT = 0; windDir = Math.random() < 0.5 ? -1 : 1; windOn = 0; windWarn = 0; windStreaks = [];
   rescued = 0; rescuedList = []; hasKey = false; goalIdx = null; lampT = 0; winT = 0; lastFriend = 0; lastKey = 0; endTh = 0;
   addPlat(FW / 2 - PW / 2, 280, 'normal');
   spawnY = 280;
@@ -160,6 +174,8 @@ function pickType() {
   // levels: weighted mix, and never two tricky stairs in a row too often
   const prev = plats.length ? plats[plats.length - 1].type : 'normal';
   if ((prev === 'spike' || prev === 'blink' || prev === 'fragile') && Math.random() < 0.5) return 'normal';
+  // 🔔 bell stairs: enough of them so the song can always be finished, never two in a row
+  if (L.bell && prev !== 'bell' && rung + plats.filter(p => p.type === 'bell' && !p.used).length < L.bell + 2 && Math.random() < 0.32) return 'bell';
   let sum = 0; for (const k in L.m) sum += L.m[k];
   let r = Math.random() * sum; for (const k in L.m) { r -= L.m[k]; if (r <= 0) return k; }
   return 'normal';
@@ -167,7 +183,7 @@ function pickType() {
 const onScreen = it => plats.reduce((n, p) => n + (p.item === it && !p.got ? 1 : 0), 0);
 // what sits above a new stair: a friend in a bubble, the 🔑, a lantern, a heart, a ⭐ — or nothing
 function pickItem(type, idx) {
-  if (type === 'spike' || type === 'goal' || idx < 2) return null;
+  if (type === 'spike' || type === 'goal' || type === 'bell' || idx < 2) return null;
   if (L && L.fr && rescued + onScreen('friend') < L.fr && idx - lastFriend >= 2 && (Math.random() < 0.45 || idx - lastFriend >= 5)) { lastFriend = idx; return 'friend'; }
   if (L && L.key && !hasKey && idx >= 3 && !onScreen('key') && idx - lastKey >= 3 && (Math.random() < 0.5 || idx >= L.g - 2)) { lastKey = idx; return 'key'; }
   if (L && L.dark && Math.random() < 0.1 && !onScreen('lamp')) return 'lamp';
@@ -183,6 +199,7 @@ function addPlat(px, py, type, w = PW) {
 }
 const blinkOn = p => ((t + p.ph) % 3.2) < 2.2;          // 👻 magic stairs: 2.2 s there, 1 s gone
 function goalTxt() {
+  if (L.bell) return `🔔 ${rung}/${L.bell}`;
   if (L.star) return `${starIc()} ${stars}/${L.g}`;
   if (L.fr && rescued < L.fr) return `${budIc()} ${rescued}/${L.fr}`;
   if (L.key && !hasKey) return '🔑 0/1';
@@ -227,7 +244,7 @@ function rescue() {
   MG.fx.burst(P.x, y, { n: 14, colors: ['#9ff0ff', '#fff', '#ffd34a'], speed: 150, up: 80, size: 4, shape: 'star', life: 0.7 });
 }
 function autoDir() {   // test bot: head for the best stair below (but ride a safe stair up while low on the screen)
-  const safe = p => p && !['spike', 'fragile', 'blink', 'ice', 'left', 'right', 'lift'].includes(p.type);
+  const safe = p => p && !['spike', 'fragile', 'blink', 'ice', 'left', 'right', 'lift', 'bell'].includes(p.type);
   const want = p => p.item && !p.got && (p.item === 'friend' || p.item === 'key');
   if (P.on && P.y > FH * 0.42 && safe(P.on) && !plats.some(p => want(p) && p.y > P.y && p.y < P.y + 200)) return 0;
   let best = null, bs = -1e9;
@@ -235,7 +252,7 @@ function autoDir() {   // test bot: head for the best stair below (but ride a sa
     if (p.gone || p === P.on || p.y < P.y + R + 8 || p.y > P.y + 320) continue;
     if (p.type === 'blink' && !blinkOn(p)) continue;
     let s = -(p.y - P.y) * 0.5 - Math.abs(p.x + p.w / 2 - P.x) * 0.6;
-    if (p.type === 'spike') s -= 400; if (p.type === 'goal') s += 600; if (p.type === 'fragile') s -= 30;
+    if (p.type === 'spike') s -= 400; if (p.type === 'goal') s += 600; if (p.type === 'fragile') s -= 30; if (p.type === 'bell' && !p.used) s += 380;
     if (p.item && !p.got) s += { friend: 320, key: 360, star: 140, lamp: 90, heart: 80 }[p.item];
     if (P.on && p.x + p.w / 2 > P.on.x - 4 && p.x + p.w / 2 < P.on.x + P.on.w + 4) s -= 150;   // right under my own stair: hard to reach
     if (s > bs) { bs = s; best = p; }
@@ -295,6 +312,7 @@ function update(dt) {
     }
     if (p.type === 'blink' && P.on === p && !blinkOn(p)) { P.on = null; P.vy = 0; }
   }
+  if (L && L.wind) stepWind(dt);
   if (P.on && P.on.type === 'left') P.x -= 95 * kx * dt;
   if (P.on && P.on.type === 'right') P.x += 95 * kx * dt;
   P.x = Math.max(R, Math.min(FW - R, P.x)); if (P.x <= R || P.x >= FW - R) P.vx *= 0.3;
@@ -319,7 +337,8 @@ function update(dt) {
   }
   if (!P.on) {
     const prevFeet = P.y + R;
-    P.vy = Math.min(560, P.vy + 1500 * dt);
+    const moon = L && L.moon;   // 🌙 moon levels: 噗噗 floats down slowly
+    P.vy = Math.min(moon ? 230 : 560, P.vy + (moon ? 520 : 1500) * dt);
     P.y += P.vy * dt;
     const feet = P.y + R;
     if (P.vy >= 0) for (const p of plats) {
@@ -343,6 +362,47 @@ function update(dt) {
   if (P.hp <= 0 || P.y - R > FH) gameOver();
   showHud();
 }
+// 🔔 a bell stair: rings the next note of the song; ring them all to clear the level
+function ringBell(p) {
+  const f = BELL_SONG[rung % BELL_SONG.length]; rung++; p.ring = 1;
+  MG.note(f, 0.9, 0.12); MG.note(f * 2, 0.5, 0.04, 0.01);
+  say(rung >= L.bell ? 'Ding dong! 🎶' : `Ding! 🔔 ${rung}`, '#ffe36b', p.x + p.w / 2, p.y - 46);
+  MG.fx.burst(p.x + p.w / 2, p.y - 26, { n: 14, colors: ['#ffe36b', '#fff6a0', '#fff', '#ffb43a'], speed: 150, up: 70, size: 4.5, shape: 'star', life: 0.7 });
+  if (rung >= L.bell) { showHud(); setTimeout(() => { if (state === 'play') { BELL_SONG.slice(0, 7).forEach((q, i) => MG.note(q * 2, 0.4, 0.06, i * 0.14)); win(); } }, 80); }
+}
+// 🌬️ wind: every few seconds a gust blows 噗噗 sideways; arrows on the wall warn first
+function stepWind(dt) {
+  windT += dt;
+  const CYC = mode === 'relax' ? 7.5 : 6.2;
+  const ph = windT % CYC;
+  const warn = ph < 1.3, blow = ph >= 1.3 && ph < 3.4;
+  if (warn && !windWarn) { windDir = Math.random() < 0.5 ? -1 : 1; MG.sfx('tick'); }
+  if (blow && !windOn) { MG.sfx('whoosh'); say(windDir < 0 ? '⬅️ Wind! 🌬️' : 'Wind! 🌬️ ➡️', '#e6f6ff', FW / 2, FH * 0.3); }
+  windWarn = warn ? 1 : 0; windOn = blow ? 1 : 0;
+  if (blow) { const k = Math.min(1, (ph - 1.3) * 3, (3.4 - ph) * 3); P.x += windDir * 78 * kx * k * dt; if (Math.random() < dt * 30) windStreaks.push({ x: windDir > 0 ? -40 : FW + 40, y: MG.rand(40, FH - 20), l: MG.rand(30, 80), life: 1 }); }
+  for (const w of windStreaks) { w.x += windDir * 420 * kx * dt; w.life -= dt; }
+  windStreaks = windStreaks.filter(w => w.life > 0);
+}
+function drawWind() {
+  x.save(); x.lineCap = 'round';
+  for (const w of windStreaks) for (const [c, lw] of [['60,110,190', 5], ['255,255,255', 2.5]]) { x.strokeStyle = `rgba(${c},${(lw > 3 ? 0.25 : 0.7) * Math.min(1, w.life * 2)})`; x.lineWidth = lw; x.beginPath(); x.moveTo(w.x, w.y); x.quadraticCurveTo(w.x - windDir * w.l * 0.5, w.y - 6, w.x - windDir * w.l, w.y); x.stroke(); }
+  if (windWarn && Math.floor(t * 6) % 2) {   // ⚠️ big arrows show where the wind will blow
+    x.font = `${Math.round(30 * Math.min(1.4, kx))}px ${EMOJI}`; x.textAlign = 'center'; x.textBaseline = 'middle';
+    for (const yy of [FH * 0.35, FH * 0.6]) x.fillText(windDir < 0 ? '⬅️' : '➡️', windDir < 0 ? FW * 0.82 : FW * 0.18, yy);
+  }
+  x.restore();
+}
+function drawBell(p, px, py, pw) {
+  const cx = px + pw / 2, by = py - 22, sw = Math.sin(t * (p.used ? 9 : 2.5) + p.ph) * (p.used ? Math.max(0, 0.5 - (p.ringT = (p.ringT || 0) + 1 / 60) * 0.25) : 0.18);
+  x.save(); x.translate(cx, by - 12); x.rotate(sw); x.scale(1.35, 1.35); x.translate(0, 8);
+  if (!p.used) { const gl = x.createRadialGradient(0, 0, 3, 0, 0, 26); gl.addColorStop(0, `rgba(255,230,120,${0.45 + Math.sin(t * 5) * 0.15})`); gl.addColorStop(1, 'rgba(255,230,120,0)'); x.fillStyle = gl; x.fillRect(-28, -28, 56, 56); }
+  x.fillStyle = p.used ? '#c9b98a' : '#ffd23f'; x.strokeStyle = p.used ? '#8a7a50' : '#a87400'; x.lineWidth = 2;
+  x.beginPath(); x.moveTo(-11, 7); x.quadraticCurveTo(-11, -12, 0, -12); x.quadraticCurveTo(11, -12, 11, 7); x.lineTo(14, 10); x.lineTo(-14, 10); x.closePath(); x.fill(); x.stroke();
+  x.fillStyle = p.used ? '#8a7a50' : '#a87400'; x.beginPath(); x.arc(0, 12, 3.2, 0, 7); x.fill(); x.beginPath(); x.arc(0, -13, 2.6, 0, 7); x.fill();
+  x.fillStyle = 'rgba(255,255,255,.7)'; x.beginPath(); x.ellipse(-5, -4, 2.2, 5, 0.2, 0, 7); x.fill();
+  x.restore();
+  if (p.used) { x.font = `900 12px system-ui,sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = '#fff'; x.strokeStyle = '#6b4a22'; x.lineWidth = 3; x.strokeText('♪', cx + 15, by - 14 + Math.sin(t * 3) * 2); x.fillText('♪', cx + 15, by - 14 + Math.sin(t * 3) * 2); }
+}
 function land(p) {
   P.on = p; P.y = p.y - R; P.squash = 0.22;
   MG.fx.burst(P.x, p.y, { n: 6, colors: ['rgba(255,255,255,.7)', 'rgba(220,210,190,.7)'], speed: 70, up: 30, size: 3, grav: 120, life: 0.45 });
@@ -355,7 +415,8 @@ function land(p) {
   }
   if (p.type === 'spike') { if (!p.used) hurt(4); }
   else if (!p.used && P.hp < HPMAX) P.hp++;
-  if (p.type === 'spring') { P.on = null; P.vy = -560; P.squash = -0.2; p.boing = 0.35; MG.sfx('boing'); snd('jump'); say('Boing! 🚀', '#9ff0ff', P.x, p.y - 40); }
+  if (p.type === 'bell' && !p.used) ringBell(p);
+  if (p.type === 'spring') { P.on = null; P.vy = L && L.moon ? -330 : -560; P.squash = -0.2; p.boing = 0.35; MG.sfx('boing'); snd('jump'); say('Boing! 🚀', '#9ff0ff', P.x, p.y - 40); }
   if (p.type === 'spike' && !p.used) MG.fx.burst(P.x, p.y - 4, { n: 10, colors: ['#ff8fa3', '#ffd23f', '#fff'], speed: 160, shape: 'star', size: 5 });
   else if (p.type !== 'spike') MG.sfx('step');
   if (p.type === 'fragile' && p.crumble < 0) p.crumble = 0;
@@ -908,6 +969,7 @@ function drawPlat(p) {
   const blinkA = p.type === 'blink' ? (blinkOn(p) ? (((t + p.ph) % 3.2) > 1.6 ? 0.55 + 0.45 * Math.abs(Math.cos((t + p.ph) * 18)) : 1) : 0.16) : 1;
   const put = kind => { const c = sprite(kind, th, pw), s = scl(); x.drawImage(c, px - SPX, py - SPT, c.width / s, c.height / s); };
   x.globalAlpha = blinkA;
+  if (p.type === 'bell') { put('normal'); x.fillStyle = p.used ? 'rgba(255,255,255,.12)' : `rgba(255,220,90,${0.35 + Math.sin(t * 4 + p.ph) * 0.12})`; rr(x, px, py, pw, PH, 5); x.fill(); drawBell(p, px, py, pw); x.globalAlpha = 1; return; }
   if (p.type === 'normal' || p.type === 'spike' || p.type === 'ice' || p.type === 'move' || p.type === 'blink' || p.type === 'lift' || p.type === 'goal') {
     if (p.type === 'lift') {   // balloons above the basket
       for (const [bx, col, ph] of [[px + 10, '#ff6b8a', 0], [px + pw - 10, '#6fc3ff', 1.3]]) {
@@ -1075,6 +1137,8 @@ function draw() {
   // player
   if (!(P.inv > 0 && Math.floor(P.inv * 14) % 2)) MG.puPu(x, P.x, P.y, R, state === 'won' ? 'wink' : P.face, P.squash, { look: P.look || 0, arms: P.on && state !== 'won' ? false : 'up' });
   if (L && L.dark) drawDark();
+  if (L && L.wind) drawWind();
+  if (L && L.moon) { x.font = `${Math.round(34 * Math.min(1.4, kx))}px ${EMOJI}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.globalAlpha = 0.85; x.fillText('🌙', FW - 30 * kx, 112); x.globalAlpha = 1; }
   MG.fx.draw(x);
   x.textAlign = 'center'; x.textBaseline = 'middle';
   const ff = Math.max(18, TXT(15)); for (const f of floats) { x.globalAlpha = Math.min(1, f.life * 2); x.font = `900 ${ff}px system-ui,sans-serif`; x.lineWidth = 4 * ff / 18; x.strokeStyle = '#1a1d33'; x.strokeText(f.t, f.x, f.y); x.fillStyle = f.c; x.fillText(f.t, f.x, f.y); }
@@ -1202,6 +1266,7 @@ function curDir() { let d = (keys.r ? 1 : 0) - (keys.l ? 1 : 0); if (touchDir) d
 function goalRows() {
   if (!L) return [{ ic: '🏆', t: `最高 ${MG.best('stairs') ?? 0}`, p: -1 }, { ic: theme().ic, t: theme().nm, p: (floor % 20) / 20 }];
   const rows = [];
+  if (L.bell) rows.push({ ic: '🔔', t: `${rung} / ${L.bell}`, p: rung / L.bell });
   if (L.star) rows.push({ ic: starIc(), t: `${stars} / ${L.g}`, p: stars / L.g });
   if (L.fr) rows.push({ ic: budIc(), t: `${rescued} / ${L.fr}`, p: rescued / L.fr });
   if (L.key) rows.push({ ic: '🔑', t: hasKey ? '找到了！' : '找鑰匙', p: hasKey ? 1 : 0 });
@@ -1215,6 +1280,9 @@ function tipText() {
   if (L && L.fr && rescued < L.fr) return `碰一下泡泡，救出小朋友！還差 ${L.fr - rescued} 個`;
   if (L && L.key && !hasKey) return '先找到 🔑 鑰匙，🚪 門才會出現！';
   if (L && L.key && hasKey) return '有鑰匙了！往下找 🚪 門！';
+  if (L && L.bell) return `踩發亮的 🔔 鈴鐺樓梯，一起彈「小星星」！還差 ${Math.max(0, L.bell - rung)} 個`;
+  if (L && L.wind) return windWarn ? `箭頭出來了，風要往${windDir < 0 ? '左 ⬅️' : '右 ➡️'}吹囉！` : '大風會把噗噗吹走，往反方向按住就好！🌬️';
+  if (L && L.moon) return '月亮上好輕喔，噗噗會慢慢飄下去 🌙';
   if (L && L.dark) return lampT > 0 ? '好亮！趁現在快往下跳！' : '黑漆漆的…撿 🏮 燈籠會變亮！';
   const tips = ['普通樓梯會補血 ❤️', '小心頭上的刺刺！', '有臉的小刺球不要踩喔', `${starIc()} 碰一下就能收集`, '彈簧會彈好高 🚀', '會碎的餅乾要快走開'];
   return tips[Math.floor(Math.max(0, t) / 6) % tips.length];
@@ -1332,18 +1400,22 @@ const NEWS = {
   rescue: ['🫧 救救小朋友', '有小朋友被困在<b>泡泡</b>裡了！碰一下泡泡就能把牠救出來，牠會一路跟著你。救到上面寫的數量就過關！'],
   key: ['🔑 鑰匙和 🚪 門', '這座塔的出口是一扇 <b>🚪 門</b>。要先在路上找到 <b>🔑 鑰匙</b>，門才會出現在下面喔！沒撿到也沒關係，鑰匙會再出現。'],
   dark: ['🏮 黑漆漆的塔', '這裡好暗！只有噗噗的<b>燈籠</b>照得到附近，樓梯的邊邊會微微發亮。撿到 🏮 燈籠，光會變大一下下！'],
+  bell: ['🔔 鈴鐺樓梯', '發亮的<b>鈴鐺樓梯</b>踩一下就會「叮」！一個一個踩，就會彈出一首<b>小星星</b>。踩夠上面寫的數量就過關，不用一直往下衝喔。'],
+  wind: ['🌬️ 大風吹', '這座塔會<b>颳大風</b>！牆上出現 ⬅️ ➡️ 箭頭，就是風要往那邊吹了，往<b>反方向</b>按住就不會被吹走。'],
+  moon: ['🌙 月亮慢慢飄', '這裡像在月亮上一樣<b>好輕好輕</b>，噗噗會慢慢飄下去，在空中也可以慢慢左右移動找位置。'],
   lift: ['🎈 氣球電梯', '有氣球的籃子會<b>慢慢上上下下</b>。站在上面會一起動，等它往下的時候再跳，比較不會撞到刺刺！'],
 };
 function intro() {
-  const ks = [L.g || L.star ? 'goal' : '', ...Object.keys(L.m), L.star ? 'star' : '', L.fr ? 'rescue' : '', L.key ? 'key' : '', L.dark ? 'dark' : ''].filter(k => NEWS[k] && !MG.store.get('stairs.seen.' + k, false));
+  const ks = [L.g || L.star ? 'goal' : '', ...Object.keys(L.m), L.star ? 'star' : '', L.fr ? 'rescue' : '', L.key ? 'key' : '', L.dark ? 'dark' : '', L.bell ? 'bell' : '', L.wind ? 'wind' : '', L.moon ? 'moon' : ''].filter(k => NEWS[k] && !MG.store.get('stairs.seen.' + k, false));
   if (!ks.length) return false;
   ks.forEach(k => MG.store.set('stairs.seen.' + k, true));
   MG.panel({ title: ks.map(k => NEWS[k][0]).join('＋'), html: ks.map(k => `<p>${NEWS[k][1]}</p>`).join(''), buttons: [{ label: '開始', on: () => MG.hide() }] });
   return true;
 }
 function goalLine(Lv) {
+  if (Lv.bell) return `🔔×${Lv.bell}` + (Lv.wind ? '　🌬️' : '');
   if (Lv.star) return `${COLIC[TH[Lv.th].col]}×${Lv.g}`;
-  const a = []; if (Lv.fr) a.push(`${BUDIC[TH[Lv.th].bud]}×${Lv.fr}`); if (Lv.key) a.push('🔑'); if (Lv.g) a.push(`${Lv.key ? '🚪' : '🏁'} ${Lv.g} 層`); if (Lv.dark) a.push('🏮');
+  const a = []; if (Lv.fr) a.push(`${BUDIC[TH[Lv.th].bud]}×${Lv.fr}`); if (Lv.key) a.push('🔑'); if (Lv.g) a.push(`${Lv.key ? '🚪' : '🏁'} ${Lv.g} 層`); if (Lv.dark) a.push('🏮'); if (Lv.wind) a.push('🌬️'); if (Lv.moon) a.push('🌙');
   return a.join('　');
 }
 function startLevel(n) {
@@ -1363,7 +1435,7 @@ function win() {
   MG.store.set('stairs.pickLevel', nx);
   setTimeout(() => state === 'won' && level === done && MG.panel({
     title: `第 ${level} 關完成！`,
-    html: `<div class="big">${L.star ? `${starIc()} × ${stars}` : L.fr ? `${budIc()} × ${rescued}` : `${L.key ? '🚪' : '🏁'} 地下 ${floor} 層`}</div>` +
+    html: `<div class="big">${L.bell ? `🔔 × ${rung} 🎶` : L.star ? `${starIc()} × ${stars}` : L.fr ? `${budIc()} × ${rescued}` : `${L.key ? '🚪' : '🏁'} 地下 ${floor} 層`}</div>` +
       (L.fr ? `<p>救出了 ${rescued} 個小朋友，牠們好開心！</p>` : '') + (!L.star ? `<p>${starIc()} 收集了 ${stars} 個</p>` : `<p>到了地下 ${floor} 層</p>`) +
       `<p>${nx === ENDLESS ? '全部的塔都下完了！你好厲害！來試試 ♾️ 無限下樓吧 ^_^' : `下一關：${lvName(nx)}`}</p>`,
     buttons: [{ label: nx === ENDLESS ? '♾️ 無限下樓' : '下一關', on: () => startLevel(nx) }, { label: '再玩一次', alt: true, on: () => startLevel(level) }, { label: '選關卡', alt: true, on: menu }],
@@ -1391,9 +1463,10 @@ function menu() {
   MG.choose({
     id: 'stairs', title: '噗噗下樓梯',
     html: `<p>天花板的刺刺一直往下壓，快跳到下面的樓梯上！一共 ${LEVELS.length} 關，最後一格是 ♾️ 無限下樓（每 20 層換一座塔）。</p>
-  <p>🏰 城堡、🍭 糖果工廠、🌳 大樹洞、🐠 海底塔、☁️ 雲朵塔…<br>新玩法：🫧 救朋友、🔑 鑰匙和門、🏮 黑漆漆提燈、🎈 氣球電梯！</p>`,
+  <p>🏰 城堡、🍭 糖果工廠、🌳 大樹洞、🐠 海底塔、☁️ 雲朵塔…<br>新玩法：🫧 救朋友、🔑 鑰匙和門、🏮 黑漆漆提燈、🎈 氣球電梯，還有 🆕 🔔 踩鈴鐺彈歌、🌬️ 大風吹、🌙 月亮慢慢飄！</p>`,
     modes: [{ id: 'normal', label: '❤️ 一般', sub: '血用完就要重來' }, { id: 'relax', label: '🐢 慢慢玩', sub: '不會輸・掉下去會再回來' }],
     levels: { count: ENDLESS, max: ENDLESS, label: n => n === ENDLESS ? `♾️ 無限下樓（最高 ${MG.best('stairs') ?? 0} 層）` : `${n}（${lvName(n)}・${goalLine(LEVELS[n - 1])}）${cl[n] != null ? ' ✓' : ''}`,
+      fresh: n => n >= 39 && n < ENDLESS,
       short: n => n === ENDLESS ? '♾️' : `${n}${LEVELS[n - 1].mk || ''}${cl[n] != null ? '<small>✓</small>' : ''}` },
     keys: '電腦：<kbd>←</kbd><kbd>→</kbd> 或 <kbd>A</kbd><kbd>D</kbd>　手機：按住畫面左半邊或右半邊',
     playing: () => state === 'play',
@@ -1406,7 +1479,7 @@ menu();
 // test hook: start any level, steer with a little bot, run faster, read the goals, win at once
 const HOOK = window.STR = { auto: false, fast: 1, start(n, m = 'normal') { mode = m; startLevel(n); }, get state() { return state; }, get level() { return level; }, get floor() { return floor; }, get stars() { return stars; },
   get hp() { return P.hp; }, get count() { return ENDLESS; }, levels: LEVELS, types: () => plats.map(p => p.type), items: () => plats.filter(p => p.item && !p.got).map(p => p.item),
-  get rescued() { return rescued; }, get hasKey() { return hasKey; }, get goalIdx() { return goalIdx; }, get theme() { return thName(); }, get lay() { return LAY; },
+  get rescued() { return rescued; }, get rung() { return rung; }, get hasKey() { return hasKey; }, get goalIdx() { return goalIdx; }, get theme() { return thName(); }, get lay() { return LAY; },
   win: () => win(), dbg: () => [Math.round(P.x), Math.round(P.y), P.on ? Math.round(P.on.y) : null, FH, plats.length], menu: () => menu() };
 MG.loop(dt => {
   if (state === 'play' && !MG.panelOpen()) { for (let i = 0; i < (HOOK.fast | 0 || 1) && state === 'play'; i++) update(dt); }
