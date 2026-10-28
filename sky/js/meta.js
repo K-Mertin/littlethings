@@ -208,8 +208,10 @@ updatePB = function (dt) {
   if (!G.pb3) G.pb3 = [];
   for (const b of G.pb3) {
     b.t += dt; b.spin += dt * 22;
-    if (b.t < 0.5) { const k = Math.pow(1 - b.t / 0.5, 0.8); b.x += b.vx * k * dt; b.y += b.vy * k * dt; }
-    else { const a = Math.atan2(P.y - b.y, P.x - b.x), sp = Math.min(760, 200 + (b.t - 0.5) * 900); b.x += Math.cos(a) * sp * dt; b.y += Math.sin(a) * sp * dt; if (d2(b.x, b.y, P.x, P.y) < 18 * 18 || !P.alive) b.dead = true; }
+    if (b.grind > 0) { b.grind -= dt; b.t -= dt * 0.8; } // 卡在大型目標上研磨：幾乎停住
+    const mv = b.grind > 0 ? 0.12 : 1;
+    if (b.t < 0.5) { const k = Math.pow(1 - b.t / 0.5, 0.8) * mv; b.x += b.vx * k * dt; b.y += b.vy * k * dt; }
+    else { const a = Math.atan2(P.y - b.y, P.x - b.x), sp = Math.min(760, 200 + (b.t - 0.5) * 900) * mv; b.x += Math.cos(a) * sp * dt; b.y += Math.sin(a) * sp * dt; if (d2(b.x, b.y, P.x, P.y) < 18 * 18 || !P.alive) b.dead = true; }
     if (b.t > 2.6) b.dead = true;
     b.tr.unshift([b.x, b.y]); if (b.tr.length > 7) b.tr.length = 7;
     for (const e of G.enemies) {
@@ -218,6 +220,7 @@ updatePB = function (dt) {
       if (b.t - last < 0.13) continue;
       for (const [cx, cy, r] of hitCircles(e)) if (d2(cx, cy, b.x, b.y) < (r + b.r) ** 2) {
         hurt(e, b.dmg); b.cd.set(e, b.t); pulseFlash(e);
+        if ((e.boss || ET[e.type].big) && !b.ground) { b.ground = 1; b.grind = 0.55; } // 每片光刃只研磨一次
         for (let i = 0; i < 2; i++) fxP({ k: 'k', x: b.x, y: b.y, vx: rnd(-150, 150), vy: rnd(-150, 150), life: 0, max: 0.2, c: 'p' });
         Snd.play('hit'); break;
       }
@@ -297,7 +300,7 @@ function practiceDone() {
   const st = G.stage, sc = G.score - (G.stageScore0 || 0), key = st + (G.bossOnly ? 'b' : '');
   const best = Store.data.pbest[key] || 0, isNew = sc > best;
   if (isNew) { Store.data.pbest[key] = sc; Store.save(); }
-  $('pracStage').textContent = '第 ' + (st + 1) + ' 關 · ' + STAGES[st].name + (G.bossOnly ? '（頭目）' : '');
+  $('pracStage').textContent = '第 ' + stageLabel(st) + ' 關 · ' + STAGES[st].name + (G.bossOnly ? '（頭目）' : '');
   $('pracScore').textContent = sc.toLocaleString();
   $('pracBest').textContent = isNew ? '新的練習紀錄！' : '練習最佳 ' + best.toLocaleString();
   showOv('prac'); Music.play('title');
@@ -307,7 +310,7 @@ function practiceDone() {
 function recordRun(cleared) {
   if (G.practice || G.score <= 0) return -1;
   const L = Store.data.rank[G.diff] || (Store.data.rank[G.diff] = []);
-  const now = new Date(), ent = { s: G.score, st: G.stage + 1, r: G.round, ship: G.ship, m: G.medals, k: G.kills, c: !!cleared, d: (now.getMonth() + 1) + '/' + now.getDate(), id: G.runId };
+  const now = new Date(), ent = { s: G.score, st: stageLabel(G.stage), r: G.round, ship: G.ship, m: G.medals, k: G.kills, c: !!cleared, d: (now.getMonth() + 1) + '/' + now.getDate(), id: G.runId };
   const i = L.findIndex(x => x.id === G.runId);
   if (i >= 0) { if (L[i].s > ent.s) return -1; L.splice(i, 1); }
   L.push(ent); L.sort((a, b) => b.s - a.s); L.length = Math.min(L.length, 10);
@@ -344,7 +347,7 @@ refreshTitle = (function (base) {
     document.querySelectorAll('#stages .stg').forEach((b, i) => { b.disabled = i + 1 > maxSel; b.classList.toggle('on', i === G.startFrom); });
     $('stageLbl').textContent = prac ? '練習哪一關（已通過的關）' : '從哪一關開始';
     const key = G.startFrom + (G.bossOnly ? 'b' : ''), pb = d.pbest[key];
-    $('stageName').textContent = '第 ' + (G.startFrom + 1) + ' 關 · ' + STAGES[G.startFrom].name + (prac && pb ? '　練習最佳 ' + pb.toLocaleString() : '');
+    $('stageName').textContent = '第 ' + stageLabel(G.startFrom) + ' 關 · ' + STAGES[G.startFrom].name + (prac && pb ? '　練習最佳 ' + pb.toLocaleString() : '');
     $('bossOnly').hidden = !prac;
     $('bossOnly').classList.toggle('on', G.bossOnly); $('bossOnly').querySelector('b').textContent = G.bossOnly ? '開' : '關';
     $('btnStart').textContent = prac ? '開始練習' : '起 飛';
