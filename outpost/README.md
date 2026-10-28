@@ -8,29 +8,40 @@ Open `index.html` in a browser. The title screen has three choices; a computer-v
 - **Skirmish**: pick your options and press **Start battle** (or Enter).
 - **Missions**: three campaigns, one per faction (21 missions in all), that teach the game and then add escorts, capture points and hero missions. Each mission unlocks the next one in its campaign and earns up to three stars.
 - **Play online**: 1 vs 1 against a friend on another device (see below).
+- **Replays**: watch your last five skirmish and survival games again (see below).
 - **Units**: an encyclopedia of every unit in each faction, with cost, health, attack, and what it is good and bad against.
 - **Continue**: appears when there is an autosaved skirmish to pick up.
 
 ### Skirmish options
 | Option | Choices |
 |---|---|
-| Mode | 1 vs 1, 2 vs 2 with a computer ally (needs a medium or large map), or Survival |
+| Mode | 1 vs 1, 2 vs 2 with a computer ally (needs a medium or large map), Survival, or Co-op survival |
 | You play / Enemy | Blue Outpost, the Bloom, the Shards, or a random enemy faction |
 | Difficulty | Easy, Normal, Hard |
 | Enemy style | Random, Balanced, Rush, Turtle, Air power, Fast expand (see below) |
 | Map size | Small (64×64), Medium (80×80), Large (104×104) |
 | Map | Meadow, Desert, Snow or Random. Every map is randomly generated and mirrored so both sides are fair |
+| Layout | Open, River (a river between the two sides, crossed at three fords), Canyon (cliffs everywhere except one winding lane between the bases, with pockets around the expansions) or Random |
 | Start with | Standard (50 crystals), More (400 + 150 gas), Lots (1500 + 600 gas) |
 | Speed | Slow, Normal, Fast |
 
 **Survival**: there is no enemy base. Waves of the enemy faction come from the far side of the map, the first one at 2:30 and then every 30–55 seconds, each bigger than the last; from wave 4 they bring heavier units, from wave 7 flyers, and every fifth wave has something big. Your score is the number of waves you clear. The best score is kept per faction and difficulty.
+
+**Co-op survival**: Survival with a computer ally. It builds its own base next to yours (2 vs 2 map, medium or large) and helps defend both; the waves are 60% bigger and go for whichever base is closest. You lose when both bases have fallen. Best scores are kept separately.
+
+### Replays
+Every skirmish, survival and co-op survival game is recorded as its starting seed plus the commands you gave, so it can be played back exactly as it happened. **Replays** on the title screen lists the last five (finished games, and games you left after the first minute). While watching:
+- ❚❚ / ▶ pauses, **1× 2× 4× 8×** sets the speed, and the bar shows how far along it is
+- **Whole map** / **Your view** switches between seeing everything and only what you could see during the game
+- you can click units and buildings to look at them, but not give orders; ✕ (or Quit in the pause menu) goes back to the title
+- the replay is checked against the real game at the end; if it ever drifted (for example after continuing an autosave in another browser) it says so
 
 Your choices are remembered. Skirmish games autosave every 30 seconds and when you leave the page; **Continue** on the title screen picks the game back up. Missions don't autosave.
 
 In 2 vs 2 your ally builds its own base, defends yours, attacks on its own, and joins in when you send three or more soldiers somewhere.
 
 ### Play online
-One player picks a faction (and, as host, the map size, map and starting resources) and presses **Create room**; the game shows a four-letter room code. The other player picks a faction, types the code and presses **Join**. The match starts at once on the same map for both.
+One player picks a faction (and, as host, the map size, map, layout and starting resources) and presses **Create room**; the game shows a four-letter room code. The other player picks a faction, types the code and presses **Join**. The match starts at once on the same map for both.
 
 - Both computers run the same simulation and only send each other the commands you give (about ten small messages a second), so it works fine on a phone connection. Orders take effect about 0.2 seconds after you give them.
 - Once a second both sides compare a checksum of the game; if they ever drift apart (it can happen between different browsers), the host's game is sent over and the guest carries on from it.
@@ -50,6 +61,7 @@ One player picks a faction (and, as host, the map size, map and starting resourc
 | F2 or ⚔ Army | select the whole army |
 | ` (backtick) | select the next idle worker |
 | B | build menu for workers, then a building key and click to place. Hold Shift to place several |
+| Q | the hero's ability (Overdrive, Regrowth or Nova) in hero missions |
 | R / E | abilities: Rush (Troopers), Siege mode (Tanks), Harden (Beetles), Burrow (Burrowers) once researched; Scanner Sweep (Command Center); Uproot / Root (Thorns); Blink (Blades, E); Barrier (Wardens, R). R on Blue workers repairs |
 | Ctrl + 1–9 | make a group. Press the number to select it, twice to jump to it |
 | Space | jump to the last "under attack" alert |
@@ -259,7 +271,7 @@ In test matches between two Normal computers, games last about 10–11 minutes o
 - Maps are random blobs of rock, trees and water, mirrored through the centre so both sides are fair; a flood fill carves a path if any base gets cut off. Meadow, desert and snow maps use their own colors, trees (round trees, cacti and palms, snowy pines) and water.
 - Units find their way with A* on the tile grid and smooth the path with line-of-sight checks. Flyers go straight. Units push each other apart; mining workers slip past each other so mineral lines don't jam.
 - The simulation runs at a fixed 30 steps per second and units are drawn between steps, so motion stays smooth on 60 and 120 Hz screens. Fog of war is a per-tile visibility grid shared by your side, blurred when drawn.
-- The simulation is deterministic: it uses its own seeded random numbers (saved with the game), fog of war is worked out for both sides, and every player action goes through one command function, so online matches only exchange commands.
+- The simulation is deterministic: it uses its own seeded random numbers (saved with the game), fog of war is worked out for both sides, and every player action goes through one command function, so online matches only exchange commands and a replay is just the seed plus the list of commands with the step each was given on. Survival waves use the same seeded numbers.
 - Teams sit on two sides, so 2 vs 2 uses the same rules as 1 vs 1. Each faction maps its buildings onto the same roles (main building, supply, gas, barracks, factory, air, tower, tech), which lets one computer player play any faction.
 - All art is drawn in code on a canvas, the HUD icons reuse the same drawing code, and sounds are synthesized with the Web Audio API. Autosaves are JSON in `localStorage`.
 

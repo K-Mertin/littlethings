@@ -56,7 +56,7 @@ function botThink(G, bot) {
   bot.i = bot.i || 0;
   const seq = (BOT_SEQ[bot.strat] || BOT_SEQ.mix).filter(k => G.towersAvail.includes(k));
   for (let guard = 0; guard < 4; guard++) {
-    const want = 2 + Math.floor((G.wave + 1) * 0.7);
+    const want = G.rush ? 5 + Math.floor((G.wave + 1) * 1.6) : 2 + Math.floor((G.wave + 1) * 0.7);
     const attackers = G.towers.filter(t => !TOWERS[t.k].support).length;
     let did = false;
     if (G.towers.length < want || attackers < 2) {

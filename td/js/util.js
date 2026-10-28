@@ -28,13 +28,13 @@ const Store = {
   KEY: 'td.keepers.save.v1',
   data: null,
   blank() {
-    return { v: 1, levels: {}, meta: {}, endless: {}, seen: {}, chal: {}, ach: {}, specs: {}, tot: {}, heroes: {}, heroic: {}, weekly: {}, hero: 'knight', diff: 'normal', music: true, sfx: true, seenHelp: false, plays: 0 };
+    return { v: 1, levels: {}, meta: {}, endless: {}, seen: {}, chal: {}, ach: {}, specs: {}, tot: {}, heroes: {}, heroic: {}, weekly: {}, rush: {}, story: {}, hero: 'knight', diff: 'normal', music: true, sfx: true, seenHelp: false, plays: 0 };
   },
   load() {
     let d = null;
     try { const raw = localStorage.getItem(this.KEY); if (raw) d = JSON.parse(raw); } catch (e) { d = null; }
     this.data = Object.assign(this.blank(), d && typeof d === 'object' ? d : {});
-    for (const k of ['levels', 'meta', 'endless', 'seen', 'chal', 'ach', 'specs', 'tot', 'heroes', 'heroic', 'weekly']) if (!this.data[k] || typeof this.data[k] !== 'object') this.data[k] = {};
+    for (const k of ['levels', 'meta', 'endless', 'seen', 'chal', 'ach', 'specs', 'tot', 'heroes', 'heroic', 'weekly', 'rush', 'story']) if (!this.data[k] || typeof this.data[k] !== 'object') this.data[k] = {};
     return this.data;
   },
   save() {

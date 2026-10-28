@@ -197,9 +197,7 @@ Object.assign(DECOR3, VOLC_DECOR3);
   const base = sceneJobs3;
   sceneJobs3 = function () {
     const J = base();
-    for (const k of Object.keys(VOLC_DECOR3)) J.push(['decor', async () => {
-      ART.decor[k] = await bakeSet(DECOR3[k], [0, 1, 2].map(v => ({ v })), { ppu: 60, th: 40, ol: 'rgba(30,10,8,.55)', olpx: 1.2, key: 2.4 });
-    }]);
+    for (const k of Object.keys(VOLC_DECOR3)) J.push(job('decor', 'decor:' + k, () => bakeSet(DECOR3[k], [0, 1, 2].map(v => ({ v })), { ppu: 52, th: 40, ol: 'rgba(30,10,8,.55)', olpx: 1.1, key: 2.4 }), a => { ART.decor[k] = a; }));
     return J;
   };
 }

@@ -11,12 +11,12 @@ function makeWorld(seed){
     window:{addEventListener(){}},localStorage:{_:{},getItem(k){return this._[k]??null},setItem(k,v){this._[k]=String(v)}}};
   ctx.Math.random=rnd;
   vm.createContext(ctx);
-  const src=['story.js','icons.js','gfx.js','quotes.js','bgm.js','world.js','engine.js'].map(f=>fs.readFileSync(path.join(dir,f),'utf8')).join('\n')
-    +'\n;globalThis.__E={G,CHAPTERS,START,CHARS,GUESTS,CLS,TERRAIN,SPIRITS,EXP,DIFF,MAX_LV,CC_LV,PARTS:(typeof PARTS!=="undefined"?PARTS:null)};globalThis.__F={terrAt,unitAt,inMap,dist,sk,moveCost,terrBonus,addWill,effMove,wMax,key};';
+  const src=['story.js','icons.js','gfx.js','quotes.js','bgm.js','world.js','engine.js','side.js'].map(f=>fs.readFileSync(path.join(dir,f),'utf8')).join('\n')
+    +'\n;globalThis.__E={G,CHAPTERS,START,CHARS,GUESTS,CLS,TERRAIN,SPIRITS,EXP,DIFF,MAX_LV,CC_LV,PARTS:(typeof PARTS!=="undefined"?PARTS:null)};globalThis.__S={SIDES,CHALLENGES,makeSide,sideStatus,makeChal,chalScore,chalRank,sideR};globalThis.__F={terrAt,unitAt,inMap,dist,sk,moveCost,terrBonus,addWill,effMove,wMax,key};';
   vm.runInContext(src,ctx); Object.assign(ctx,ctx.__F);
   return ctx;
 }
-function runRoute(choices,{seed=1,diff=1,verbose=false,persuade=true,maxTries=3,adj=null,useP4=false}={}){
+function runRoute(choices,{seed=1,diff=1,verbose=false,persuade=true,maxTries=3,adj=null,useP4=false,hook=null}={}){
   const W=makeWorld(seed), E=W.__E, G=E.G, CH=()=>E.CHAPTERS[G.chapterId];
   if(adj) for(const [k,v] of Object.entries(adj)) if(E.CHAPTERS[k]) E.CHAPTERS[k].lvAdj=v;
   G.diff=diff; G.anim=false; G.over=true; G.route='common'; G.flags={}; G.roster=[]; G.alumni={}; G.deployed=[];
@@ -33,6 +33,7 @@ function runRoute(choices,{seed=1,diff=1,verbose=false,persuade=true,maxTries=3,
       G.mercs={}; const dep=[...G.roster].sort((a,b)=>(a.cid==='gang'?-1:0)-(b.cid==='gang'?-1:0)).slice(0,ch.deploy.length);
       for(const m of dep){ G.mercs[m.cid]=[]; for(const t of ['guard','bow']){ const c=W.mercCost(t); if(G.gold>=c){ G.gold-=c; G.mercs[m.cid].push(t);} } }
     }
+    if(hook) hook(W,E,ch,report);
     const snap=W.snapshot(); let res, tries=0, first=null;
     do{ tries++; W.restore(snap); G.diff=diff; res=playChapter(W,E,ch,persuade); if(first===null) first=res.win; } while(!res.win&&tries<maxTries);
     report.push({id,no:ch.no,title:ch.title,win:res.win,first,tries,turns:res.turns,lost:res.lost,why:res.why,lv:G.roster.map(m=>`${E.CHARS[m.cid].pilot}${E.CLS(m.cls).tier}-${m.lv}`).join(' ')});
@@ -64,7 +65,8 @@ function playChapter(W,E,ch,persuade){
   for(const [cid,list] of Object.entries(G.mercs||{})){ const cmd=G.units.find(u=>u.cid===cid&&u.side==='P'); const m=G.roster.find(r=>r.cid===cid); if(!cmd||!m) continue;
     for(const type of list){ const f=W.freeNear(cmd.x,cmd.y); if(f) G.units.push(W.mkMerc(type,m,f.x,f.y)); } }
   G.over=false; G.result=null;
-  const fire=(phase)=>{ (ch.events||[]).forEach((e,i)=>{ if(G.firedEvents.has(i)||e.turn!==G.turn||(e.phase||'P')!==phase) return; G.firedEvents.add(i);
+  const alive=t=>G.units.some(u=>u.tag===t&&u.hp>0);
+  const fire=(phase)=>{ (ch.events||[]).forEach((e,i)=>{ if(G.firedEvents.has(i)||e.turn!==G.turn||(e.phase||'P')!==phase) return; G.firedEvents.add(i); if(e.ifAlive&&!alive(e.ifAlive)) return;
       for(const d of (e.spawn||[])){ let {x,y}=d; if(W.unitAt(x,y)||W.terrAt(x,y).block){ const f=W.freeNear(x,y); if(!f) continue; x=f.x;y=f.y; } G.units.push(W.mkEnemy({...d,x,y})); } }); };
   const status=()=>{
     const gang=G.units.some(u=>u.cid==='gang'&&u.side==='P'&&u.hp>0);
@@ -75,11 +77,11 @@ function playChapter(W,E,ch,persuade){
     if(w.type==='capture'&&G.units.some(u=>u.side==='P'&&u.hp>0&&!u.merc&&w.cells.some(([x,y])=>u.x===x&&u.y===y))) return 'win';
     if(w.type==='boss'&&G.seenTags.has(w.target)&&!es.some(u=>u.tag===w.target)) return 'win';
     if(w.type==='escape'){ const g=G.units.find(u=>u.cid===(w.who||'gang')); if(g&&w.cells.some(([x,y])=>g.x===x&&g.y===y)) return 'win'; }
-    if(es.length===0&&w.type!=='escape'){ const pend=(ch.events||[]).some((e,i)=>!G.firedEvents.has(i)&&(e.spawn||[]).length); if(pend){ (ch.events||[]).forEach((e,i)=>{ if(!G.firedEvents.has(i)){ G.firedEvents.add(i); for(const d of (e.spawn||[])){ let {x,y}=d; if(W.unitAt(x,y)||W.terrAt(x,y).block){const f=W.freeNear(x,y); if(!f) continue; x=f.x;y=f.y;} G.units.push(W.mkEnemy({...d,x,y})); } } }); return null; } return 'win'; }
+    if(es.length===0&&w.type!=='escape'){ const live=e=>!e.ifAlive||alive(e.ifAlive); const pend=(ch.events||[]).some((e,i)=>!G.firedEvents.has(i)&&(e.spawn||[]).length&&live(e)); if(pend){ (ch.events||[]).forEach((e,i)=>{ if(!G.firedEvents.has(i)&&live(e)){ G.firedEvents.add(i); for(const d of (e.spawn||[])){ let {x,y}=d; if(W.unitAt(x,y)||W.terrAt(x,y).block){const f=W.freeNear(x,y); if(!f) continue; x=f.x;y=f.y;} G.units.push(W.mkEnemy({...d,x,y})); } } }); return null; } return 'win'; }
     return null;
   };
   const cleanup=()=>{ for(const u of G.units) if(u.hp<=0&&u.phase2&&!u.phased){ const ph=u.phase2; u.phased=true; u.maxHp=Math.round(u.maxHp*(ph.hp||.6)); u.hp=u.maxHp; u.atk+=ph.atk||8; u.def+=ph.def||0; u.en=u.maxEn; u.will=150; }
-    for(const u of G.units) if(u.hp<=0){ u.dead=true; if(u.cls==='bwall') G.map[u.y][u.x]='r'; }
+    for(const u of G.units) if(u.hp<=0){ u.dead=true; if(u.cls==='bwall') G.map[u.y][u.x]='r'; if(u.side==='E'&&!u.obj) G.cKills=(G.cKills||0)+1; }
     for(const e of G.units) if(e.side==='E'&&!e.dead&&e.retreat&&e.hp<=e.maxHp*e.retreat) e.dead=true;
     G.units=G.units.filter(u=>!u.dead); };
   let lost=0; const lostSet=new Set();
@@ -136,10 +138,14 @@ function botAct(W,E,u,ch,persuade){
   const useSp=n=>{ const sp=E.SPIRITS[n]; if(u.spirits.includes(n)&&u.sp>=sp.cost&&!(sp.flag&&u.st[sp.flag])){ u.sp-=sp.cost; if(sp.flag) u.st[sp.flag]=true; if(n==='根性') u.hp=Math.min(u.maxHp,u.hp+Math.round(u.maxHp*.3)); if(n==='氣合') W.addWill(u,10); return true;} return false; };
   if(u.hp<u.maxHp*0.35){ useSp('根性')||useSp('鐵壁'); }
   // 說服
-  if(persuade){ for(const e of enemies){ if(!(e.talk&&e.talk.by.includes(u.cid))) continue;
+  const ready=e=>e.talk&&(!e.talk.hpBelow||e.hp<=e.maxHp*e.talk.hpBelow);
+  if(persuade){ for(const e of enemies){ if(!(ready(e)&&e.talk.by.includes(u.cid))) continue;
     for(const v of reach.values()){ if(!v.stop) continue; if(Math.abs(v.x-e.x)+Math.abs(v.y-e.y)===1){ u.x=v.x;u.y=v.y;
       if(e.talk.flag) G.flags[e.talk.flag]=true; e.hp=0; e.dead=true; G.units=G.units.filter(x=>x!==e);
       if(e.talk.join){ const m=W.joinChar(e.talk.join); if(m){ const nu=W.mkPlayerUnit(m,e.x,e.y); nu.acted=true; G.units.push(nu);} } return; } } } }
+  // 脫離（護送對象優先移動）
+  const esc0=ch.win.type==='escape'&&u.cid===(ch.win.who||'gang');
+  if(esc0){ const ex=ch.win.cells.find(([x,y])=>{const v=reach.get(key(x,y)); return v&&v.stop;}); if(ex){ u.x=ex[0]; u.y=ex[1]; return; } }
   // 修理
   const heal=u.skills.heal;
   if(heal){ let bestH=null;
@@ -154,7 +160,7 @@ function botAct(W,E,u,ch,persuade){
   let best=null;
   for(const v of reach.values()){ if(!v.stop) continue; const moved=!(v.x===ox&&v.y===oy); u.x=v.x; u.y=v.y;
     const danger=dm.get(key(v.x,v.y))||0;
-    for(const t of enemies){ if(persuade&&t.talk&&G.units.some(p=>p.side==='P'&&t.talk.by.includes(p.cid))&&enemies.length>1) continue; const d=Math.abs(v.x-t.x)+Math.abs(v.y-t.y);
+    for(const t of enemies){ if(persuade&&ready(t)&&G.units.some(p=>p.side==='P'&&t.talk.by.includes(p.cid))&&enemies.length>1) continue; const d=Math.abs(v.x-t.x)+Math.abs(v.y-t.y);
       for(const w of u.weapons){ if(W.whyNot(u,w,d,moved)) continue;
         const r=W.aiReact(t,u,d); const hr=W.hitRate(u,w,t,r.react)/100, dmg=W.calcDmg(u,w,t,r.react), kill=dmg>=t.hp;
         let sc=hr*Math.min(dmg,t.hp)+(kill?2000*hr:0)+(t.boss?300:0)+(ch.win.target&&t.tag===ch.win.target?600:0)+(kill&&u.cid==='gang'?900*hr:0);
@@ -191,7 +197,7 @@ function distField(W,E,u,goals){
     for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){ const nx=x+dx,ny=y+dy; if(nx<0||ny<0||nx>=G.W||ny>=G.H) continue; const mc=W.moveCost(u,nx,ny); if(mc>=99) continue; if(c+mc<f[ny][nx]){f[ny][nx]=c+mc;pq.push([c+mc,nx,ny]);} } }
   return f;
 }
-module.exports={runRoute};
+module.exports={runRoute,makeWorld,playChapter};
 if(require.main===module){
   const runs=+(process.argv[2]||3), diff=+(process.argv[3]||1);
   const paths=process.argv.slice(4).length?process.argv.slice(4).map(s=>s.split(',').map(Number)):[[0,1],[1,1],[2,0,1]];

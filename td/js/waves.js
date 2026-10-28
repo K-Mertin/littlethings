@@ -56,6 +56,19 @@ function genWaves(L) {
   return out;
 }
 
+// 頭目連戰：每一波一個頭目（越後面血越多）＋一隊護衛
+function genRushWaves(L) {
+  const rng = mkRng(4242), n = RUSH.bosses.length, out = [];
+  const esc = ['runner', 'beetle', 'goblin', 'gargoyle', 'shield', 'clock', 'yeti', 'paladin', 'moth', 'raven', 'ogre', 'brute', 'frostmage'];
+  for (let w = 0; w < n; w++) {
+    const hpMul = 1.4 * (1 + 0.12 * w), k = esc[Math.floor(rng() * Math.min(esc.length, 4 + w))];
+    const groups = [makeGroup(k, clamp(Math.round((8 + w * 2.5) / ENEMIES[k].cost), 3, 30), 0, 0, hpMul)];
+    if (w >= 4) { const k2 = esc[Math.floor(rng() * esc.length)]; groups.push(makeGroup(k2, clamp(Math.round((6 + w * 2) / ENEMIES[k2].cost), 2, 24), L.entries.length > 1 ? 1 : 0, 4, hpMul)); }
+    groups.push(makeGroup(RUSH.bosses[w], 1, 0, 6, (0.42 + 0.06 * w) * (ENEMIES[RUSH.bosses[w]].fly ? 0.7 : 1)));
+    out.push({ groups });
+  }
+  return out;
+}
 // 無盡模式：一波一波往上堆，每 10 波一個頭目
 function genEndlessWave(L, w) {
   const rng = mkRng(L.seed * 104729 + w * 31);

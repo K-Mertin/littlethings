@@ -381,7 +381,7 @@ const UI = (() => {
   function resetPanel() { lastPanelKey = ''; lastPv = ''; lastTipHtml = ''; msg = null; lastLives = null; lastGold = null; }
 
   // ───────── 選單層 ─────────
-  const OVS = ['ovTitle', 'ovLevels', 'ovBrief', 'ovMeta', 'ovPause', 'ovResult', 'ovHelp', 'ovCodex', 'ovWeekly'];
+  const OVS = ['ovTitle', 'ovLevels', 'ovBrief', 'ovMeta', 'ovPause', 'ovResult', 'ovHelp', 'ovCodex', 'ovWeekly', 'ovRush', 'ovStory'];
   function show(...ids) { for (const o of OVS) $(o).hidden = !ids.includes(o); }
   function syncToggles() {
     for (const b of document.querySelectorAll('.tog')) {
@@ -434,6 +434,38 @@ const UI = (() => {
     const ok = Weekly.open();
     $('wGo').disabled = !ok; $('wGo').textContent = ok ? '開始挑戰' : `打贏前 ${WEEKLY.unlock} 關後開放`;
     show('ovLevels', 'ovWeekly');
+  }
+  // ───────── 頭目連戰 ─────────
+  function rush() {
+    const R = Store.data.rush || {}, ok = Prog.cleared() >= RUSH.unlock, L = LEVELS[RUSH.li];
+    $('rsBest').textContent = R.best ? `最佳：打倒 ${R.best}/${RUSH.bosses.length} 個頭目${R.time ? ' · 全破最快 ' + Math.floor(R.time / 60) + ':' + String(Math.floor(R.time % 60)).padStart(2, '0') : ''}` : '還沒有紀錄';
+    const th = $('rsThumb'); th.innerHTML = ''; th.appendChild(Render.thumb(RUSH.li, 480, 220));
+    $('rsDesc').innerHTML = `在<b>${esc(L.name)}</b>迎戰 ${RUSH.bosses.length} 個頭目，一個打倒才會來下一個，越後面越強。所有塔都能用、開場 ${RUSH.gold} 金幣、${RUSH.lives} 條命（套用天賦）。`;
+    $('rsBoss').innerHTML = RUSH.bosses.map((k, i) => { const seen = !!Store.data.seen[k]; return `<div class="rs-b${seen ? '' : ' off'}${(R.best || 0) > i ? ' done' : ''}"><i>${i + 1}</i><img alt="" src="${Render.icon('enemy', k, 0, undefined, 96)}"><span>${seen ? esc(ENEMIES[k].name) : '？？？'}</span></div>`; }).join('');
+    $('rsGo').disabled = !ok; $('rsGo').textContent = ok ? '開始挑戰' : `打贏第 ${RUSH.unlock} 關後開放`;
+    show('ovTitle', 'ovRush');
+  }
+  // ───────── 劇情對話 ─────────
+  let story = null;
+  function playStory(key, done) {
+    const lines = STORY[key];
+    if (!lines || Store.data.story[key]) { done(); return; }
+    Store.data.story[key] = 1; Store.save();
+    story = { lines, i: 0, done, prev: OVS.filter(o => !$(o).hidden) };
+    storyLine();
+    $('ovStory').hidden = false;
+  }
+  function storyLine() {
+    const [who, col, txt] = story.lines[story.i];
+    const f = $('stFace'); f.textContent = who.split('·').pop().trim()[0]; f.style.background = `radial-gradient(circle at 35% 30%, ${col}, ${Gfx.shade(col, -0.45)})`;
+    $('stName').textContent = who; $('stName').style.color = col; $('stLine').textContent = txt;
+    $('stPage').textContent = `${story.i + 1} / ${story.lines.length}　點一下繼續`;
+    Snd.sfx('click');
+  }
+  function storyNext(skip) {
+    if (!story) return;
+    if (!skip && story.i < story.lines.length - 1) { story.i++; storyLine(); return; }
+    const d = story.done; story = null; $('ovStory').hidden = true; d();
   }
   function brief(li) {
     App.brief.li = li;
@@ -540,6 +572,7 @@ const UI = (() => {
       <li><b>冰洞巢穴</b>：到了指定波次會甦醒，每一波出怪時不斷放出小雪妖。旁邊沒有敵人時，塔會自動打冰洞，打爛有賞金。</li>
       <li><b>輸送帶</b>：點路旁的拉桿，輸送帶反轉 5 秒，把上面的地面敵人往回送（頭目只推一半），冷卻 ${BELT.cd} 秒。</li>
       <li><b>寒潮</b>：每隔一陣子吹來，火盆 2 格以外的塔攻速變慢；把主力塔蓋在火盆旁邊。</li>
+      <li><b>頭目連戰</b>（標題畫面，打贏第 20 關後開放）：所有塔都能用，十三個頭目一個接一個來，看你能打倒幾個。</li>
       <li><b>發條兵</b>不怕減速、冰凍和暈眩；<b>冰霜巫師</b>會把附近的塔凍住；<b>冰晶蛾</b>倒下時讓附近的同伴得到護盾。</li></ul>
       <h3>防禦塔</h3><div class="hl">${tw}</div>
       <h3>敵人</h3><div class="hl">${en}</div>
@@ -552,13 +585,14 @@ const UI = (() => {
 
   function showResult(G, rec) {
     const won = G.state === 'won';
-    $('rTitle').textContent = G.weekly ? '每週挑戰結束' : G.endless ? '無盡模式結束' : won ? (G.heroic ? '菁英勝利！' : '勝利！') : '城堡失守…';
+    $('rTitle').textContent = G.rush ? (won ? '頭目全滅！' : '頭目連戰結束') : G.weekly ? '每週挑戰結束' : G.endless ? '無盡模式結束' : won ? (G.heroic ? '菁英勝利！' : '勝利！') : '城堡失守…';
     $('rSub').textContent = G.weekly ? `${G.L.name} · 撐過 ${rec.cleared} 波 · 分數 ${rec.score.toLocaleString()}${rec.rank === 0 ? '　本週最佳！' : rec.rank > 0 ? `　本週第 ${rec.rank + 1} 名` : ''}` : G.endless ? `${G.L.name} · 撐過 ${rec.cleared} 波${rec.newBest ? '　新紀錄！' : ''}` : `${G.L.name} · ${G.heroic ? '菁英模式' : DIFFS[G.diff].name}`;
+    if (G.rush) $('rSub').textContent = `打倒 ${rec.cleared}/${RUSH.bosses.length} 個頭目${rec.newBest ? '　新紀錄！' : ''}`;
     const stars = $('rStars');
-    stars.hidden = G.endless || !won;
+    stars.hidden = G.endless || G.rush || !won;
     const spans = [...stars.children];
     spans.forEach(s => { s.className = ''; });
-    if (won && !G.endless) {
+    if (won && !G.endless && !G.rush) {
       spans.forEach((s, i) => setTimeout(() => { s.classList.add('show'); if (i < G.stars) { s.classList.add('on'); Snd.sfx('star'); } }, 500 + i * 380));
     }
     const mins = Math.floor(G.t / 60), secs = Math.floor(G.t % 60);
@@ -579,7 +613,7 @@ const UI = (() => {
     } else if (rec.endlessNew) {
       u.hidden = false; u.innerHTML = '<div><b>無盡模式解鎖！</b><br><small>已過關的地圖都可以挑戰無盡模式，每撐過 10 波得 1 顆星。</small></div>';
     } else u.hidden = true;
-    const hasNext = won && !G.endless && !G.heroic && G.li + 1 < LEVELS.length;
+    const hasNext = won && !G.endless && !G.heroic && !G.rush && G.li + 1 < LEVELS.length;
     $('rNext').hidden = !hasNext;
     $('rNext').textContent = '下一關';
     show('ovResult');
@@ -598,5 +632,5 @@ const UI = (() => {
     el.hidden = false; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
     clearTimeout(achT); achT = setTimeout(() => { el.hidden = true; }, inPlay ? 2800 : 3600);
   }
-  return { achToast, buildShop, tick, resetPanel, show, syncToggles, levels, setAct, weekly, brief, syncDiff, meta, help, showResult, say, skillIcon, starsHtml };
+  return { rush, playStory, storyNext, achToast, buildShop, tick, resetPanel, show, syncToggles, levels, setAct, weekly, brief, syncDiff, meta, help, showResult, say, skillIcon, starsHtml };
 })();
