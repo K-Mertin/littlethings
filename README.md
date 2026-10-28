@@ -6,7 +6,7 @@ MK 的瀏覽器遊戲合集，每個資料夾自成一體。線上遊玩：https
 
 | 遊戲 | 資料夾 | 類型 |
 |---|---|---|
-| [Cobble Keep](https://k-mertin.github.io/littlethings/cobblekeep/) | [`cobblekeep/`](cobblekeep/README.md) | DOOM 操作的 3D 第一人稱射擊，明亮的奇幻怪物風格，10 個關卡、5 個 Boss，可自選關卡，支援手機 |
+| [Cobble Keep](https://k-mertin.github.io/littlethings/cobblekeep/) | [`cobblekeep/`](cobblekeep/README.md) | DOOM 操作的 3D 第一人稱射擊，明亮的奇幻怪物風格，兩部共 15 個關卡、8 個 Boss，符文柱與封印寶庫、S/A/B/C 評價、生存競技場，可自選關卡，支援手機 |
 | [銘甲戰記](https://k-mertin.github.io/littlethings/zijia/) | [`zijia/`](zijia/README.md) | 像素風機器人戰棋 |
 | [Sunny Circuit](https://k-mertin.github.io/littlethings/racing/) | [`racing/`](racing/README.md) | 3D 賽車，6 款車＋改裝、6 條賽道可反向、大獎賽、生涯獎金、計時賽幽靈車、雨天與輪胎磨耗、5 種難度 |
 | [Crystal Outpost](https://k-mertin.github.io/littlethings/outpost/) | [`outpost/`](outpost/README.md) | 星海爭霸風格的即時戰略：玩法不同的藍色前哨、綻放族與晶族三個陣營、6 關教學任務、1v1 或 2v2（電腦盟友）、3 種地圖風格與大小、自動存檔，支援觸控 |
