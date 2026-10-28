@@ -36,7 +36,7 @@ Hook.fx = (n, g, a, b, c, d, e) => {
 Hook.banner = (G, boss) => {
   if (G !== App.game) return;
   App.ui.banner = boss
-    ? { t: 0, big: '頭目來襲！', small: ENEMIES[boss].name, boss: true, k: boss }
+    ? { t: 0, big: G.rush ? `第 ${G.wave + 1} 位頭目` : '頭目來襲！', small: ENEMIES[boss].name + (G.rush ? ` · 共 ${G.nWaves} 位` : ''), boss: true, k: boss }
     : { t: 0, big: `第 ${G.wave + 1} 波`, small: G.endless ? '無盡模式' + (G.mod ? ` · 詞綴「${ENDLESS_MODS[G.mod].name}」${ENDLESS_MODS[G.mod].desc}` : '') : (G.wave === G.nWaves - 1 ? '最後一波！' : `共 ${G.nWaves} 波`) };
   if (boss) Snd.play(9, 1);
 };
@@ -44,7 +44,7 @@ Hook.ended = G => {
   if (G !== App.game) return;
   const rec = recordResult(G);
   App.ui.selTower = null; App.ui.selTile = null; App.ui.armed = null; App.ui.aiming = false;
-  setTimeout(() => { if (App.game === G) { UI.showResult(G, rec); Snd.play(8, 0); } }, G.state === 'won' ? 1500 : 1100);
+  setTimeout(() => { if (App.game === G) { UI.showResult(G, rec); Snd.play(8, 0); if (rec.epilogue) setTimeout(() => { if (App.game === G) UI.playStory(rec.epilogue, () => {}); }, 2200); } }, G.state === 'won' ? 1500 : 1100);
 };
 
 // ───────── 版面 ─────────
@@ -90,20 +90,21 @@ addEventListener('orientationchange', () => setTimeout(layout, 150));
 // ───────── 遊戲流程 ─────────
 function startLevel(li, diff, endless, chal, mode) {
   if (chal) { diff = chal === 'iron' ? 'easy' : 'normal'; endless = false; }
-  const heroic = mode === 'heroic', weekly = mode === 'weekly' ? Weekly.rules() : null;
+  const heroic = mode === 'heroic', weekly = mode === 'weekly' ? Weekly.rules() : null, rush = mode === 'rush';
+  if (rush) { li = RUSH.li; diff = 'normal'; endless = false; chal = null; }
   if (heroic) { diff = 'normal'; endless = false; chal = null; }
   if (weekly) { li = weekly.li; diff = 'normal'; endless = true; chal = null; }
   // 英雄已移除（MK 2026-10-23：有英雄後難度降太多）。英雄相關程式保留但不再上場。
-  App.game = newGame(li, diff, { endless, chal, heroic, weekly });
+  App.game = newGame(li, diff, { endless, chal, heroic, weekly, rush });
   App.ui = newUi(); App.speed = 1; App.paused = false; App.acc = 0; App.bot = null;
   App.scene = 'play';
-  if (!chal && !heroic && !weekly) Store.data.diff = diff;
+  if (!chal && !heroic && !weekly && !rush) Store.data.diff = diff;
   Store.data.plays = (Store.data.plays || 0) + 1; Store.save();
   UI.resetPanel(); UI.show();
   app.classList.add('playing');
   Snd.play(THEMES[LEVELS[li].theme].music, 1);
   const modTxt = m => m.map(k => HEROIC_MODS[k].name).join('＋');
-  App.ui.banner = { t: 0, intro: true, li, en: LEVELS[li].en, big: LEVELS[li].name, small: weekly ? `每週挑戰 · ${modTxt(weekly.mods)} · 撐越久分數越高` : heroic ? `菁英模式 · ${modTxt(LEVELS[li].heroic)} · 共 ${App.game.nWaves} 波` : chal ? `挑戰 · ${CHALLENGES[chal].name}（${CHALLENGES[chal].desc}）` : endless ? '無盡模式 · 準備好就按開始' : `${DIFFS[diff].name}難度 · 共 ${App.game.nWaves} 波` };
+  App.ui.banner = { t: 0, intro: true, li, en: LEVELS[li].en, big: LEVELS[li].name, small: rush ? `頭目連戰 · ${RUSH.bosses.length} 個頭目輪番上陣` : weekly ? `每週挑戰 · ${modTxt(weekly.mods)} · 撐越久分數越高` : heroic ? `菁英模式 · ${modTxt(LEVELS[li].heroic)} · 共 ${App.game.nWaves} 波` : chal ? `挑戰 · ${CHALLENGES[chal].name}（${CHALLENGES[chal].desc}）` : endless ? '無盡模式 · 準備好就按開始' : `${DIFFS[diff].name}難度 · 共 ${App.game.nWaves} 波` };
 }
 App.startLevel = (...a) => startLevel(...a);
 function toScene(s) {
@@ -123,7 +124,12 @@ function saveHero(G) {
 function recordResult(G) {
   saveHero(G);
   const out = { gained: 0, unlock: null, endlessNew: false, cleared: 0, newBest: false, chalNew: false, heroicNew: false, score: 0, rank: -1 };
-  if (G.weekly) {
+  if (G.rush) {
+    const R = Store.data.rush;
+    out.cleared = G.stats.bossKills || 0;
+    if (out.cleared > (R.best || 0)) { R.best = out.cleared; out.newBest = true; }
+    if (G.state === 'won' && (!R.time || G.t < R.time)) { R.time = G.t; out.newBest = true; }
+  } else if (G.weekly) {
     const allClear = G.wave >= 0 && !G.spawners.length && !G.enemies.some(e => e.alive) && G.lives > 0;
     out.cleared = Math.max(0, G.wave + (allClear ? 1 : 0));
     out.score = Weekly.score(G, out.cleared);
@@ -146,6 +152,7 @@ function recordResult(G) {
   } else if (G.state === 'won') {
     const clearedBefore = Prog.cleared(), before = Prog.levelStars(G.li);
     const r = Store.data.levels[G.li] || { stars: 0, hard: false, best: {} };
+    if (G.li === LEVELS.length - 1 && !Store.data.story.end3) out.epilogue = 'end3';
     r.stars = Math.max(r.stars || 0, G.stars);
     r.best = r.best || {}; r.best[G.diff] = Math.max(r.best[G.diff] || 0, G.stars);
     if (G.diff === 'hard') r.hard = true;
@@ -168,7 +175,7 @@ function setPaused(p) {
   App.paused = p;
   if (p) {
     const G = App.game;
-    $('pInfo').textContent = `${G.L.name} · ${G.chal ? '挑戰「' + CHALLENGES[G.chal].name + '」' : G.endless ? '無盡模式' : DIFFS[G.diff].name} · 第 ${Math.max(1, G.wave + 1)} 波`;
+    $('pInfo').textContent = G.rush ? `頭目連戰 · 第 ${Math.max(1, G.wave + 1)} 位頭目` : `${G.L.name} · ${G.chal ? '挑戰「' + CHALLENGES[G.chal].name + '」' : G.endless ? '無盡模式' : DIFFS[G.diff].name} · 第 ${Math.max(1, G.wave + 1)} 波`;
     UI.syncToggles(); UI.show('ovPause');
   } else UI.show();
 }
@@ -375,12 +382,17 @@ bindClick('tPlay', () => toScene('levels'));
 bindClick('tMeta', () => { App.metaBack = 'title'; toScene('meta'); });
 bindClick('tHelp', () => UI.help());
 bindClick('tCodex', () => Codex.open(() => toScene('title')));
+bindClick('tRush', () => UI.rush());
+bindClick('rsGo', () => startLevel(RUSH.li, 'normal', false, null, 'rush'));
+bindClick('rsBack', () => toScene('title'));
+$('stBox').addEventListener('click', () => UI.storyNext(false));
+$('stSkip').addEventListener('click', e => { e.stopPropagation(); UI.storyNext(true); });
 bindClick('lCodex', () => Codex.open(() => { UI.show('ovLevels'); UI.levels(); }));
 for (const b of document.querySelectorAll('[data-go]')) b.addEventListener('click', () => { Snd.init(); Snd.sfx('click'); if (b.dataset.go === 'meta') App.metaBack = 'levels'; toScene(b.dataset.go); });
 bindClick('mBack', () => toScene(App.metaBack || 'title'));
 bindClick('mReset', () => { if (Prog.spent() === 0) return; if (confirm('要重置天賦樹，把星星全部退回嗎？')) { Store.data.meta = {}; Store.save(); UI.meta(); } });
 for (const b of $('bDiff').children) b.addEventListener('click', () => { Snd.init(); Snd.sfx('click'); App.brief.diff = b.dataset.d; UI.syncDiff(); });
-bindClick('bGo', () => startLevel(App.brief.li, App.brief.diff, false));
+bindClick('bGo', () => { const li = App.brief.li, d = App.brief.diff; UI.playStory(li, () => startLevel(li, d, false)); });
 bindClick('bEndless', () => startLevel(App.brief.li, App.brief.diff, true));
 bindClick('bHeroic', () => startLevel(App.brief.li, 'normal', false, null, 'heroic'));
 bindClick('lWeekly', () => UI.weekly());
@@ -389,17 +401,18 @@ bindClick('wGo', () => startLevel(0, 'normal', true, null, 'weekly'));
 bindClick('wBack', () => { UI.show('ovLevels'); UI.levels(); });
 bindClick('bBack', () => { UI.show('ovLevels'); UI.levels(); });
 bindClick('pResume', () => setPaused(false));
-const modeOf = G => G.weekly ? 'weekly' : G.heroic ? 'heroic' : undefined;
+const modeOf = G => G.rush ? 'rush' : G.weekly ? 'weekly' : G.heroic ? 'heroic' : undefined;
 bindClick('pRestart', () => { const G = App.game; saveHero(G); startLevel(G.li, G.diff, G.endless, G.chal, modeOf(G)); });
 bindClick('pQuit', () => {
   const G = App.game;
-  if (G && G.endless && G.wave >= 0) { G.state = 'lost'; recordResult(G); } else saveHero(G);
+  if (G && (G.endless || G.rush) && G.wave >= 0) { G.state = 'lost'; recordResult(G); } else saveHero(G);
   if (G && G.weekly) { toScene('levels'); UI.weekly(); return; }
+  if (G && G.rush) { toScene('title'); UI.rush(); return; }
   toScene('levels');
 });
 bindClick('pHelp', () => UI.help(() => UI.show('ovPause')));
 bindClick('rRetry', () => { const G = App.game; startLevel(G.li, G.diff, G.endless, G.chal, modeOf(G)); });
-bindClick('rLevels', () => { const G = App.game; toScene('levels'); if (G && G.weekly) UI.weekly(); });
+bindClick('rLevels', () => { const G = App.game; if (G && G.rush) { toScene('title'); UI.rush(); return; } toScene('levels'); if (G && G.weekly) UI.weekly(); });
 bindClick('rNext', () => { const G = App.game; toScene('levels'); UI.brief(G.li + 1); });
 for (const b of document.querySelectorAll('.tog')) b.addEventListener('click', () => {
   Snd.init();
@@ -492,6 +505,7 @@ const Ach = {
   },
   ended(G, out) {
     if (G.weekly) { if (out.cleared >= 10) this.give('weekly10'); if (out.cleared >= 30) this.give('weekly30'); return; }
+    if (G.rush) { if (out.cleared >= 5) this.give('rush5'); if (G.state === 'won') this.give('rushAll'); return; }
     if (G.endless) { if (out.cleared >= 20) this.give('e20'); if (out.cleared >= 40) this.give('e40'); return; }
     if (G.state !== 'won') return;
     this.give('win1');

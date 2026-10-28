@@ -680,9 +680,23 @@ const ACHIEVEMENTS = [
   { id: 'bossWyrm', name: '屠冰龍者', desc: '擊倒永凍冰龍' },
   { id: 'all26', name: '北境之光', desc: '打贏第三章全部關卡' },
   { id: 'warm', name: '圍爐取暖', desc: '在冰火裂谷不漏任何敵人過關' },
+  { id: 'rush5', name: '連戰新手', desc: '頭目連戰打倒 5 個頭目' },
+  { id: 'rushAll', name: '頭目獵人', desc: '頭目連戰打倒全部 13 個頭目' },
 ];
 const ENDLESS_UNLOCK = 3; // 打贏第 4 關後解鎖無盡模式
-const ACT_OPEN = [0, 14, 20]; // 每一章要先打贏幾關才開放
+const ACT_OPEN = [0, 14, 20];
+// 頭目連戰：固定地圖、所有塔都能用，十三個頭目一個接一個來（越後面越強）
+const RUSH = { li: 9, gold: 2000, lives: 30, unlock: 20, bosses: ['bossGolem', 'bossWorm', 'bossPharaoh', 'bossTortoise', 'bossYeti', 'bossDragon', 'bossLich', 'bossColossus', 'bossRoc', 'bossKraken', 'bossRaijin', 'bossEclipse', 'bossWyrm'] };
+// 第三章的劇情：第一次進入關卡前、打完第 26 關之後播放（說話的人、顏色、台詞）
+const STORY = {
+  20: [['斥候 · 小翎', '#5ab8e8', '將軍！蝕月魔君倒下之後，北方的雪原開始不停地震動，像是有什麼東西醒過來了。'], ['老將軍 · 赫曼', '#e8a84a', '北境……那是矮人和冰原部落的土地。帶上工匠，我們往北走。'], ['斥候 · 小翎', '#5ab8e8', '山坡上積了好厚的雪。如果在敵人經過時把雪推下去……']],
+  21: [['矮人工匠 · 布洛克', '#d8783a', '你們總算來了！我們的熔爐被一群發條兵占領了，還有那個……我們親手造的鋼鐵巨像。'], ['老將軍 · 赫曼', '#e8a84a', '你們造的？'], ['矮人工匠 · 布洛克', '#d8783a', '咳。坍塌的碎石清掉就能蓋塔，運氣好還能挖到老祖宗留下的熔爐基座！']],
+  22: [['冰原長老 · 雪鈴', '#9ad8f0', '巨像身上刻著冰龍的符文。是牠在操縱這一切。'], ['冰原長老 · 雪鈴', '#9ad8f0', '冰湖底下的冰洞住滿了小雪妖，冰洞一醒就會不停冒出來，記得把冰洞打爛。']],
+  23: [['矮人工匠 · 布洛克', '#d8783a', '齒輪要塞的輸送帶還能動！拉下拉桿，路上的敵人就會被送回去。'], ['老將軍 · 赫曼', '#e8a84a', '好。趁牠們擠成一團的時候，讓砲塔好好招呼。']],
+  24: [['冰原長老 · 雪鈴', '#9ad8f0', '前面是冰火裂谷，寒潮一來，連塔都會凍得動不了。'], ['斥候 · 小翎', '#5ab8e8', '我們沿路點好火盆了！把塔蓋在火盆旁邊就不怕冷。']],
+  25: [['冰原長老 · 雪鈴', '#9ad8f0', '永凍冰龍就在極光王座上。牠先在天上盤旋，落地後會披上冰甲，最後會掀起永夜的暴風雪。'], ['老將軍 · 赫曼', '#e8a84a', '王國、東境、北境——這是最後一戰。全軍，守住！']],
+  end3: [['斥候 · 小翎', '#5ab8e8', '冰龍倒下了！極光……變回原本的顏色了。'], ['矮人工匠 · 布洛克', '#d8783a', '熔爐重新點火啦！下次來，我請你們喝最烈的蜂蜜酒。'], ['老將軍 · 赫曼', '#e8a84a', '辛苦了，守塔的勇士們。三片大陸終於恢復和平——至少，暫時是這樣。']],
+}; // 每一章要先打贏幾關才開放
 // 圖鑑、說明裡敵人的順序
 const ENEMY_ORDER = ['slime', 'runner', 'beetle', 'bat', 'golem', 'healer', 'shield', 'splitter', 'mini', 'ogre', 'gargoyle', 'skeleton', 'wisp', 'crawler', 'mummy', 'crab', 'goblin', 'balloon', 'paladin', 'raven', 'brute', 'shaman', 'shade', 'mole', 'imp', 'yeti', 'clock', 'frostmage', 'moth', 'bossGolem', 'bossDragon', 'bossLich', 'bossRoc', 'bossWorm', 'bossPharaoh', 'bossKraken', 'bossTortoise', 'bossRaijin', 'bossEclipse', 'bossYeti', 'bossColossus', 'bossWyrm'];
 const WAVE_GAP = 14; // 一波出完之後到下一波的秒數
