@@ -132,7 +132,7 @@ function drawHUD(c) {
     let i = 0; const y0 = top + (two ? 74 : 54) + (W.players.length > 3 ? 46 : 0);
     for (const f of W.fighters) if (!f.human) { drawPanel(c, f, Wv - 200 - (two ? btnW : 0), y0 + i * 46, 'small'); i++; }
   } else {
-    const A = W.stage.areas, info = `${W.stage.name}・${W.stage.title}　${W.areaIdx + 1} / ${A.length}`;
+    const A = W.stage.areas, info = W.challenge === 'tower' ? `挑戰塔・第 ${W.floor || 1} 層` : W.challenge === 'rush' ? `魔王連戰　${W.areaIdx + 1} / ${A.length}` : `${W.stage.name}・${W.stage.title}　${W.areaIdx + 1} / ${A.length}`;
     c.font = '700 14px "Noto Sans TC",sans-serif';
     if (Wv < 760 || two) { c.textAlign = 'left'; c.strokeText(info, 14, top + 106 + ex); c.fillText(info, 14, top + 106 + ex); }
     else { c.textAlign = 'center'; c.strokeText(info, Wv / 2 + 40, top + 20); c.fillText(info, Wv / 2 + 40, top + 20); }
@@ -350,7 +350,7 @@ function startGame(quick, phone) {
   if (M.players !== 'phone' && Lobby.net) Lobby.close();
   $('menu').hidden = true; $('result').hidden = true; $('pause').hidden = true; $('hallLink').hidden = true; $('topBtns').hidden = false;
   resize();
-  newMatch({ mode: M.mode, players: M.players, heroes: M.heroes, ...(phone || {}), foes: M.foes, diff: M.diff, team: M.team, lives: M.lives, time: M.time, arena: M.arena, stage: M.stage });
+  newMatch({ mode: M.mode, players: M.players, heroes: M.heroes, ...(phone || {}), foes: M.foes, diff: M.diff, team: M.team, lives: M.lives, time: M.time, arena: M.arena, stage: M.stage, chal: M.chal });
   $('touch').hidden = !isTouch || !!phone;
   $('twoRotate').hidden = !(isTouch && portrait && W.players.length > 1) || !!phone;
   running = true; paused = false; acc = 0; last = performance.now();
@@ -374,7 +374,21 @@ function showResult() {
   // monsters knocked out add up across games (unlocks some animal heroes)
   const beforeK = HEROES.filter(heroUnlocked); if (W.kos) store.set('koTotal', store.get('koTotal', 0) + W.kos);
   const newK = HEROES.filter(h => heroUnlocked(h) && !beforeK.includes(h));
-  if (W.mode === 'stage') {
+  if (W.challenge === 'tower') {
+    const fl = W.towerCleared || 0, key = 'tower.' + W.diffN, best = store.get(key, 0), before = HEROES.filter(heroUnlocked);
+    if (fl > best) store.set(key, fl); if (fl > store.get('towerBest', 0)) store.set('towerBest', fl);
+    rows = [['爬到', `第 ${fl} 層` + (fl > best ? ' 新紀錄！' : '')], ['最高紀錄', `第 ${Math.max(fl, best)} 層`], ['時間', ts], ['擊倒', W.kos]];
+    if (two) W.players.forEach(p => rows.push([`${p.slot + 1}P ${p.def.name}`, `擊倒 ${p.kos}`]));
+    HEROES.filter(h => heroUnlocked(h) && !before.includes(h)).forEach(h => rows.push(['新角色解鎖！', CHARS[h].name]));
+    W.label = fl ? `爬到第 ${fl} 層！` : '挑戰結束';
+  } else if (W.challenge === 'rush') {
+    const n = W.stage.areas.length, beat = W.win ? n : W.areaIdx, key = 'rush.' + W.diffN, best = store.get(key, null);
+    let nb = false; if (W.win && (!best || best.n < n || (best.n === n && tsec < best.t))) { store.set(key, { t: tsec, n }); nb = true; }
+    rows = [['打倒魔王', `${beat} / ${n}`], ['時間', ts + (nb ? ' 新紀錄！' : '')], ['擊倒', W.kos]];
+    if (best && !nb) rows.splice(2, 0, ['最快紀錄', `${(best.t / 60) | 0}:${String(best.t % 60).padStart(2, '0')}（${best.n} 個）`]);
+    if (two) W.players.forEach(p => rows.push([`${p.slot + 1}P ${p.def.name}`, `擊倒 ${p.kos}`]));
+    W.label = W.win ? '魔王全部打倒！' : '挑戰結束';
+  } else if (W.mode === 'stage') {
     const bonus = W.win ? Math.round(W.players.reduce((s, p) => s + Math.max(0, p.hp), 0) * 2 / W.players.length + Math.max(0, 300 - tsec) * 5) : 0; W.score += bonus;
     const key = `best.${W.stageN}.${W.diffN}`; const best = store.get(key, null);
     let nb = false; if (W.win && (!best || tsec < best)) { store.set(key, tsec); nb = true; }
