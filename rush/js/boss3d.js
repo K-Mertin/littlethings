@@ -220,11 +220,8 @@ async function bakeBoss3(k) {
     args.push({ ph: 0, bob: 0, ap: 1, raise: false, rage });
     args.push({ ph: 0, bob: 0, ap: 0.5, raise: false, rage });
   }
-  // 分兩批烤，中間讓畫面喘口氣
+  // 一般、暴怒各一組（範圍各自量）
   const fr = [];
-  for (let i = 0; i < 2; i++) {
-    fr.push(...await bakeSet(BOSS3[k], args.slice(i * 7, i * 7 + 7), { ppu: 64, th: 38, scale: 1.1, shadow: true }));
-    await new Promise(r => setTimeout(r, 0));
-  }
-  return { n: fr.slice(0, 7), r: fr.slice(7) };
+  for (let i = 0; i < 2; i++) fr.push(...await bakeSet(BOSS3[k], args.slice(i * 7, i * 7 + 7), { ppu: 56, th: 38, scale: 1.1, shadow: true }));
+  return fr;
 }

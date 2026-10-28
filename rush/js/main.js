@@ -532,6 +532,13 @@ function frame(now) {
   UI.last = now;
   AU.tick();
   bossPrep(now);
+  // 第一次開：在選單畫面顯示 3D 模型的進度（玩的時候不顯示、也不烤）
+  if (now - (UI.bakeT || 0) > 400) {
+    UI.bakeT = now;
+    const tip = $('#bakeTip'), on = Bake.baking && Bake.total > 0 && UI.mode !== 'play';
+    if (tip.hidden !== !on) tip.hidden = !on;
+    if (on) tip.textContent = `立體模型準備中 ${Math.round(100 * Bake.done / Bake.total)}%（只有第一次）`;
+  }
   if (UI.toastT > 0) { UI.toastT -= dt; if (UI.toastT <= 0) $('#toast').hidden = true; }
   if (UI.ruleT > 0) { UI.ruleT -= dt; if (UI.ruleT <= 0 || UI.mode !== 'play') { UI.ruleT = 0; $('#ruleBanner').hidden = true; } }
   if (!G) return;
@@ -587,7 +594,7 @@ function autoQuality(dt) {
   UI.fpsT = 0; UI.fpsN = 0;
   UI.slowN = fps < 42 ? (UI.slowN || 0) + 1 : 0;
   UI.fastN = fps > 57 ? (UI.fastN || 0) + 1 : 0;
-  if (UI.slowN >= 2 && !R.noTex) { R.noTex = true; UI.slowN = 0; } // 先關地面質感，不夠再降解析度
+  if (fps < 50 && !R.noTex) { R.noTex = true; UI.slowN = 0; } // 先關地面質感，不夠再降解析度
   else if (UI.slowN >= 2 && R.q > 0.55) { R.q = Math.max(0.55, R.q - 0.15); UI.slowN = 0; UI.drops = (UI.drops || 0) + 1; UI.pendResize = true; }
   else if (UI.fastN >= 5 && R.q < 1 && (UI.drops || 0) < 2) { R.q = Math.min(1, R.q + 0.15); UI.fastN = 0; UI.pendResize = true; }
 }
