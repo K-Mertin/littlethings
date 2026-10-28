@@ -85,6 +85,25 @@
     { id: 44, t: '整十加減', e: '🏗️', g: 'I' },
     { id: 45, t: '二位數加法', e: '🔼', g: 'I' },
     { id: 46, t: '二位數減法', e: '🔽', g: 'I' },
+    // 第 5 段（2026-10-28）：更多數數、10 以內的玩法，和幾課更深的
+    { id: 47, t: '拿拿看', e: '🧺', g: 'A' },
+    { id: 48, t: '數字比大小', e: '🐊', g: 'A' },
+    { id: 49, t: '第幾個', e: '🚩', g: 'A' },
+    { id: 50, t: '倒著數', e: '🚀', g: 'A' },
+    { id: 51, t: '聽聽有幾下', e: '🥁', g: 'A' },
+    { id: 52, t: '認識形狀', e: '🔺', g: 'J' },
+    { id: 53, t: '找規律', e: '🎨', g: 'J' },
+    { id: 54, t: '認識時鐘', e: '🕒', g: 'J' },
+    { id: 55, t: '變一樣多', e: '⚖️', g: 'B' },
+    { id: 56, t: '分合圖', e: '🔗', g: 'B' },
+    { id: 57, t: '接著數', e: '📦', g: 'C' },
+    { id: 58, t: '骰子加法', e: '🎲', g: 'C' },
+    { id: 59, t: '算對了嗎', e: '✅', g: 'E' },
+    { id: 60, t: '哪個算式', e: '🖼️', g: 'E' },
+    { id: 61, t: '減幾才會變', e: '❔', g: 'D' },
+    { id: 62, t: '十和幾', e: '🔟', g: 'I' },
+    { id: 63, t: '百數表', e: '💯', g: 'I' },
+    { id: 64, t: '二位數比大小', e: '🐊', g: 'I' },
   ];
   // 第 4 段：題目清單（和台詞一起列出，才知道要錄哪些句子）
   const rng = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
@@ -110,11 +129,17 @@
     { id: 'balloon', t: '戳氣球', e: '🎈', lv: ['count', 'add', 'sub', 'mix'] },
     { id: 'fish', t: '魚缸', e: '🐠', lv: ['add', 'sub', 'mix'] },
     { id: 'ten', t: '湊數配對', e: '🃏', lv: ['five', 'ten'] },
+    { id: 'mole', t: '打地鼠', e: '🐹', lv: ['count', 'add', 'sub', 'mix'] },
+    { id: 'frog', t: '青蛙過河', e: '🐸', lv: ['order', 'add', 'sub', 'mix'] },
+    { id: 'quick', t: '快快算', e: '⏱️', lv: ['add5', 'add', 'sub', 'mix', 'add20'] },
   ];
-  const LVNAME = { count: '數數', add: '加法', sub: '減法', mix: '加減', five: '湊五', ten: '湊十' };
+  const LVNAME = { count: '數數', add: '加法', sub: '減法', mix: '加減', five: '湊五', ten: '湊十', order: '排順序', add5: '5 以內加法', add20: '20 以內加法' };
+  // 第 5 段
+  const SHAPES = ['圓形', '三角形', '正方形', '長方形'];
+  const SHAPE_TIP = { 圓形: '圓形圓圓的，沒有角。', 三角形: '三角形有三條邊、三個角。', 正方形: '正方形有四條一樣長的邊。', 長方形: '長方形有四個角，兩條長邊、兩條短邊。' };
   const ANIMALS = [{ e: '🐶', n: '小狗', f: '🍖' }, { e: '🐰', n: '小兔子', f: '🥕' }, { e: '🐵', n: '小猴子', f: '🍌' }];
   const FISH = ITEMS.find(x => x.e === '🐟');
-  const GROUPS = { A: '數與量', B: '分與合', C: '加法', D: '減法', E: '加減一起', F: '乘法入門', G: '除法入門', H: '錢幣', I: '二位數' };
+  const GROUPS = { A: '數與量', J: '形狀、規律、時鐘', B: '分與合', C: '加法', D: '減法', E: '加減一起', F: '乘法入門', G: '除法入門', H: '錢幣', I: '二位數' };
 
   const P = {
     hello: '嗨！我是小白兔小白，我們一起來玩數字！',
@@ -173,6 +198,24 @@
       44: '整十的加減，十個十個數。',
       45: '二位數加一位數，從大的數接著往下數。',
       46: '二位數減一位數，從大的數往回數。',
+      47: '小白說要幾個，你就拿幾個。點一下放進籃子，一邊放一邊數，放好了按好了。',
+      48: '數字越後面就越大。不知道的時候，數一數下面的小圓點。',
+      49: '排隊的時候，從旗子這邊開始數：第一、第二、第三。',
+      50: '火箭要發射了！倒著數，就是一個一個變少：十、九、八。',
+      51: '耳朵聽，心裡數。小白每敲一下，你就數一下。',
+      52: '我們來認識形狀：圓形、三角形、正方形、長方形。',
+      53: '東西照一個樣子一直重複，就叫做規律。找出重複的那一段，就知道下一個。',
+      54: '時鐘有長針和短針。長針指著十二的時候，短針指著幾，就是幾點。',
+      55: '上面和下面一個對一個排。下面少了，就點加號放一個，一樣多了按好了。',
+      56: '分合圖：上面是全部，下面分成兩份。兩份合起來，就是上面的數。',
+      57: '盒子裡的不用再數，記住盒子上的數字，再接著往下數。',
+      58: '骰子上的點，一眼就認得出來。兩個骰子加起來，從大的接著數。',
+      59: '小白算了一題，你來當老師，看看對不對。',
+      60: '看圖說故事：合起來用加，拿走用減。找出和圖一樣的算式。',
+      61: '原本有幾個，拿走幾個以後剩下幾個？拿走的就是答案。',
+      62: '十幾就是一個十，再加幾個一。十三就是十和三。',
+      63: '百數表一排有十個數。往右一格多一，往下一格多十。',
+      64: '兩個二位數比大小：先比十位，十位一樣，再比個位。',
     },
     // 第 4 段
     subQ: '看一眼，是幾個？',
@@ -199,8 +242,58 @@
     payFew: '錢不夠喔，再付一點。',
     payMany: '付太多了，多的還給你。',
     tensQ: '數一數，是多少？',
+    // 第 5 段
+    watchMe: '先看小白做一次。',
+    yourTurn: '換你了！',
+    takeQ: (it, n) => `請拿${Q(n)}${it.c}${it.n}放進籃子。`,
+    takeFew: '還不夠，再拿一點。',
+    takeMany: '太多了，多的拿回來。',
+    bigQ: '哪個數字比較大？',
+    smallQ: '哪個數字比較小？',
+    ordQ: n => `從旗子這邊數，第${CN(n)}個是誰？`,
+    ord: n => `第${CN(n)}`,
+    backNext: '倒著數，下一個是幾？',
+    backMiss: '倒著數，少了哪一個？',
+    liftoff: '發射！',
+    drumQ: '仔細聽，小白敲了幾下鼓？',
+    drumA: n => `敲了${Q(n)}下。`,
+    shapeQ: s => `${s}在哪裡？`,
+    shapeIs: s => `這是${s}。`,
+    shapeCntQ: s => `數一數，有幾個${s}？`,
+    shapeCntA: (s, n) => `有${Q(n)}個${s}。`,
+    shapeTip: SHAPE_TIP,
+    patQ: '看看是怎麼排的，下一個是什麼？',
+    patMissQ: '看看是怎麼排的，少了哪一個？',
+    patRepeat: '一直重複喔！',
+    clockQ: '現在是幾點？',
+    clockA: h => `現在是${Q(h)}點。`,
+    clockHint: '長針指著十二，短針指著幾，就是幾點。',
+    setQ: h => `請把短針撥到${Q(h)}點。`,
+    sameQ: '下面要再放幾個，才會和上面一樣多？',
+    equalOk: '一樣多了！',
+    notYet: '還不一樣多，再放一點。',
+    bondQ: (n, a) => `${CN(n)}可以分成${CN(a)}和幾？`,
+    bondA: (n, a, b) => `${CN(n)}可以分成${CN(a)}和${CN(b)}。`,
+    onQ: a => `盒子裡有${Q(a)}顆，接著往下數，一共有幾顆？`,
+    tfQ: '這個算式對不對？',
+    tfYes: '算對了！',
+    tfNo: '不對喔。',
+    whichEq: '哪一個算式和圖一樣？',
+    missSubQ: (a, c) => `${CN(a)}減幾等於${CN(c)}？`,
+    teenQ: n => `${CN(n)}是十和幾？`,
+    teenA: n => `${CN(n)}是十和${CN(n - 10)}。`,
+    cmpTens: '先比十位，十位大的就比較大。',
+    cmpOnes: '十位一樣，再比個位。',
+    frogHome: '小青蛙過河了！',
+    quickGo: '準備好了嗎？開始！',
+    timeUp: '時間到！',
+    quickScore: n => `你答對了${Q(n)}題！`,
+    newBest: '新紀錄！',
     // 小遊戲
     gIntro: {
+      mole: '地鼠跑出來了！點一下對的那一隻。',
+      frog: '幫小青蛙過河！跳到對的荷葉上。',
+      quick: '快快算！看算式，點答案。',
       feed: '小動物肚子餓了！點食物餵牠，餵好了就按吃飽了。',
       balloon: '點一下對的氣球，把它戳破！',
       fish: '看看魚缸裡的小魚，算算有幾條。',
@@ -324,6 +417,19 @@
     for (let n = 1; n <= 10; n++) add(P.ate(n));
     add(P.nowQ('條'));
     for (let n = 0; n <= 10; n++) { add(P.have(FISH, n || 1)); add(P.come('條', n)); add(P.away('條', n)); add(P.now('條', n)); add(P.allC('條', n || 1)); }
+    // 第 5 段
+    ['watchMe', 'yourTurn', 'takeFew', 'takeMany', 'bigQ', 'smallQ', 'backNext', 'backMiss', 'liftoff', 'drumQ', 'patQ', 'patMissQ', 'patRepeat', 'clockQ', 'clockHint',
+      'sameQ', 'equalOk', 'notYet', 'tfQ', 'tfYes', 'tfNo', 'whichEq', 'cmpTens', 'cmpOnes', 'frogHome', 'quickGo', 'timeUp', 'newBest'].forEach(k => add(P[k]));
+    for (const it of FOOD) for (let n = 1; n <= 10; n++) add(P.takeQ(it, n));
+    for (let n = 1; n <= 7; n++) { add(P.ordQ(n)); add(P.ord(n)); }
+    for (let n = 1; n <= 8; n++) add(P.drumA(n));
+    for (const s of SHAPES) { add(s); add(P.shapeQ(s)); add(P.shapeIs(s)); add(P.shapeCntQ(s)); add(SHAPE_TIP[s]); for (let n = 1; n <= 6; n++) add(P.shapeCntA(s, n)); }
+    for (let h = 1; h <= 12; h++) { add(P.clockA(h)); add(P.setQ(h)); }
+    for (let n = 2; n <= 10; n++) for (let a = 1; a < n; a++) { add(P.bondQ(n, a)); add(P.bondA(n, a, n - a)); }
+    for (let a = 3; a <= 9; a++) add(P.onQ(a));
+    for (let a = 2; a <= 10; a++) for (let c = 0; c < a; c++) add(P.missSubQ(a, c));
+    for (let n = 11; n <= 19; n++) { add(P.teenQ(n)); add(P.teenA(n)); add(P.eqQ(10, '+', n - 10)); add(P.eqA(10, '+', n - 10, n)); }
+    for (let n = 0; n <= 60; n++) add(P.quickScore(n));
     return Array.from(out);
   }
 
@@ -335,7 +441,7 @@
     return h.toString(16).padStart(8, '0');
   }
 
-  const M = { LISTS, COINS, SHOP, GAMES, LVNAME, ANIMALS, FISH, CN, Q, ITEMS, BOXABLE, FOOD, STORY, LESSONS, GROUPS, P, allLines, hash };
+  const M = { SHAPES, LISTS, COINS, SHOP, GAMES, LVNAME, ANIMALS, FISH, CN, Q, ITEMS, BOXABLE, FOOD, STORY, LESSONS, GROUPS, P, allLines, hash };
   if (typeof module !== 'undefined' && module.exports) module.exports = M;
   else root.M = M;
 })(typeof window !== 'undefined' ? window : globalThis);
