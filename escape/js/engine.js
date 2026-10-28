@@ -22,10 +22,17 @@ const ACH = [
   { id: 'daily', n: '今天也來解謎', d: '完成一次「今日謎題」。', ic: 'cal' },
   { id: 'streak3', n: '三天打魚不曬網', d: '連續三天完成今日謎題。', ic: 'flame' },
   { id: 'c5', n: '絕對音感', d: '破解「音樂會的走音事件」。', ic: 'violin' },
+  { id: 'arc2', n: '鐘塔又響了', d: '完成第二部「海港鐘塔之旅」。', ic: 'bell' },
+  { id: 'train', n: '小小列車長', d: '在行李車用 20 步以內推開貨箱。', ic: 'train' },
+  { id: 'c7', n: '燈塔守護者', d: '破解「港口燈塔的怪光」。', ic: 'tower' },
+  { id: 'ladder', n: '一口氣解到底', d: '完成一次「計時連關」。', ic: 'flag' },
+  { id: 'ladderGold', n: '連關金牌', d: '在計時連關拿到金牌。', ic: 'medal', ia: 3 },
   { id: 'secret', n: '鐘樓的祕密', d: '在標題畫面發現爺爺藏的小機關。', ic: 'sparkle', hide: 1 },
 ];
 
 const G = {
+  // 章節標籤：本篇「第 n 章」、番外、第二部「第二部 · 第 n 章」
+  rLabel(R) { return R.bonus ? '番外' : R.arc ? `第二部 · 第 ${R.ch} 章` : `第 ${R.no} 章`; },
   ctrl: null, held: null, active: false, timerOn: false, pan: null, panMax: 0,
 
   // ---------- 畫面配置 ----------
@@ -197,9 +204,9 @@ const G = {
   },
   titleCard(R, cb) { // 章節開場卡
     const isCase = !R.walls;
-    const no = isCase ? `CASE ${R.no}` : (R.bonus ? `EXTRA · ${R.no}` : `CHAPTER ${R.no}`);
+    const no = isCase ? `CASE ${R.no}` : (R.bonus ? `EXTRA · ${R.no}` : R.arc ? `PART II · CHAPTER ${R.ch}` : `CHAPTER ${R.no}`);
     const orn = flip => `<svg class="tc-orn" viewBox="0 0 320 40" aria-hidden="true"${flip ? ' style="transform:scaleY(-1)"' : ''}><path d="M10 20H128M192 20H310" stroke="#e0b048" stroke-width="1.2" opacity=".8"/><path d="M128 20q-14-14-30-6q14 2 18 10M192 20q14-14 30-6q-14 2-18 10M100 20q-10 8-24 4M220 20q10 8 24 4" stroke="#e0b048" stroke-width="1.3" fill="none"/><circle cx="10" cy="20" r="2.4" fill="#e0b048"/><circle cx="310" cy="20" r="2.4" fill="#e0b048"/><g transform="translate(160 20)"><path d="${A.gearPath(0, 0, 13, 10, 0.4)}" fill="url(#brass)" fill-rule="evenodd" stroke="#6a3d10" stroke-width=".8"/><path d="M-26 0l6-4v8zM26 0l-6-4v8z" fill="#e0b048"/></g></svg>`;
-    this.overlay(`<div class="tcard">${orn(0)}<small>${no}</small><h2>${esc(R.name)}</h2><p>${esc(R.en || (isCase ? '小鎮推理事件簿' : ''))}</p>${orn(1)}${this.ctrl && this.ctrl.daily ? `<b class="tc-chal daily">${ICO('cal')} 今日謎題 ${this.ctrl.daily.slice(5).replace('-', '/')}：不能看提示，今天大家的答案都一樣</b>` : this.ctrl && this.ctrl.chal ? `<b class="tc-chal">${ICO('watch')} 挑戰模式：不能看提示，謎題答案隨機</b>` : ''}</div>`, 1900, cb, 'tc');
+    this.overlay(`<div class="tcard">${orn(0)}<small>${no}</small><h2>${esc(R.name)}</h2><p>${esc(R.en || (isCase ? '小鎮推理事件簿' : ''))}</p>${orn(1)}${this.ctrl && this.ctrl.ladder ? `<b class="tc-chal">${ICO('flag')} 計時連關 第 ${this.ctrl.ladder.i + 1} / ${this.ctrl.ladder.ids.length} 關：不能看提示，時間一直累計</b>` : this.ctrl && this.ctrl.daily ? `<b class="tc-chal daily">${ICO('cal')} 今日謎題 ${this.ctrl.daily.slice(5).replace('-', '/')}：不能看提示，今天大家的答案都一樣</b>` : this.ctrl && this.ctrl.chal ? `<b class="tc-chal">${ICO('watch')} 挑戰模式：不能看提示，謎題答案隨機</b>` : ''}</div>`, 1900, cb, 'tc');
   },
   gearGet(n, cb) {
     Snd.play('solve');
@@ -280,10 +287,11 @@ const G = {
   stat(k, n = 1) { Store.data.stat[k] = (Store.data.stat[k] || 0) + n; Store.save(); return Store.data.stat[k]; },
   petCat() { if (this.stat('cat') >= 15) this.ach('cat'); },
   checkMeta() {
-    const P = Store.data.prog, main = ROOMS.filter(r => !r.bonus), bonus = ROOMS.filter(r => r.bonus);
+    const P = Store.data.prog, main = ROOMS.filter(r => !r.bonus && !r.arc), bonus = ROOMS.filter(r => r.bonus), arc = ROOMS.filter(r => r.arc);
     if (P.r1 && P.r1.done) this.ach('r1');
     if (main.every(r => P[r.id] && P[r.id].done)) this.ach('r8');
     if (bonus.length && bonus.every(r => P[r.id] && P[r.id].done)) this.ach('bonus');
+    if (arc.length && arc.every(r => P[r.id] && P[r.id].done)) this.ach('arc2');
     if (CASES.every(c => Store.data.cases[c.id] && Store.data.cases[c.id].done)) this.ach('cases');
     if (ROOMS.every(r => P[r.id] && P[r.id].stars >= 3)) this.ach('allStars');
     const nn = Object.keys(Store.data.notes).length;
@@ -299,7 +307,7 @@ function RoomCtrl(room, resume, opt = {}) {
   if (resume) { Object.assign(C, clone(resume)); }
   else {
     C.s = R.init(); C.inv = []; C.view = R.walls[0]; C.time = 0; C.hl = {}; C.hc = 0; C.newI = {};
-    C.chal = !!opt.chal || !!opt.daily; C.daily = opt.daily || null;
+    C.chal = !!opt.chal || !!opt.daily || !!opt.ladder; C.daily = opt.daily || null; C.ladder = opt.ladder ? clone(opt.ladder) : null;
     // 重玩或挑戰模式：謎題答案隨機變化（第一次玩是固定的標準答案）；每日謎題用日期當種子，大家同一天拿到一樣的題目
     const replay = !!(Store.data.prog[R.id] && Store.data.prog[R.id].done);
     if (R.vary && (C.chal || replay)) { C.s.v = R.vary(makeRng(C.daily ? Daily.seed(C.daily, R.id) : (Math.random() * 1e9) | 0)); }
@@ -310,7 +318,7 @@ function RoomCtrl(room, resume, opt = {}) {
 
   C.save = () => {
     if (C.fin) return;
-    Store.data.cur = { kind: 'room', id: R.id, s: C.s, inv: C.inv, view: C.view, time: C.time, hl: C.hl, hc: C.hc, newI: C.newI, chal: C.chal, replay: C.replay, daily: C.daily };
+    Store.data.cur = { kind: 'room', id: R.id, s: C.s, inv: C.inv, view: C.view, time: C.time, hl: C.hl, hc: C.hc, newI: C.newI, chal: C.chal, replay: C.replay, daily: C.daily, ladder: C.ladder };
     Store.save();
   };
   C.has = id => C.inv.includes(id);
@@ -344,7 +352,7 @@ function RoomCtrl(room, resume, opt = {}) {
     }
     if (R.amb) A.fx(R.amb(C.view, C.s) || '');
     G.paint(svg, hots);
-    $('#rNo').textContent = `${R.bonus ? '番外' : '第 ' + R.no + ' 章'} · ${R.en}${C.daily ? ' · 今日謎題' : C.chal ? ' · 挑戰' : ''}`;
+    $('#rNo').textContent = `${G.rLabel(R)} · ${R.en}${C.ladder ? ` · 連關 ${C.ladder.i + 1}/${C.ladder.ids.length}` : C.daily ? ' · 今日謎題' : C.chal ? ' · 挑戰' : ''}`;
     $('#rName').textContent = R.name + (v.title ? '　' + v.title : '');
     $('#clock').textContent = fmtTime(C.time);
     $('#hintN').textContent = C.chal ? '✕' : C.hc;
@@ -405,7 +413,7 @@ function RoomCtrl(room, resume, opt = {}) {
   C.stepIdx = () => { const st = R.steps; for (let i = 0; i < st.length; i++) if (!st[i].done(C.s, C)) return i; return st.length; };
   C.checkStep = () => { };
   C.hint = () => {
-    if (C.chal) { G.modal(`<h3>${C.daily ? '今日謎題' : '挑戰模式'}</h3><p class="paper">${C.daily ? '今日謎題' : '挑戰模式'}不能看提示喔！\n想看提示的話，可以從選單離開，用一般模式重玩這一章。</p>`, { w: 440 }); return; }
+    if (C.chal) { const nm = C.ladder ? '計時連關' : C.daily ? '今日謎題' : '挑戰模式'; G.modal(`<h3>${nm}</h3><p class="paper">${nm}不能看提示喔！\n想看提示的話，可以從選單離開，用一般模式重玩這一章。</p>`, { w: 440 }); return; }
     const k = C.stepIdx(), st = R.steps[k];
     if (!st) { G.modal('<h3>提示</h3><p class="paper">這一章的謎題都解開了！</p>'); return; }
     const draw = () => {
@@ -426,6 +434,12 @@ function RoomCtrl(room, resume, opt = {}) {
     const stars = starsFor(C.time, C.hc, R.par, 0);
     const first = !p.done;
     Store.data.prog[R.id] = { done: true, stars: Math.max(p.stars || 0, stars), time: p.time ? Math.min(p.time, C.time) : C.time, hints: p.done ? Math.min(p.hints, C.hc) : C.hc };
+    if (C.ladder) { // 計時連關：累計時間，直接進下一關
+      const L = C.ladder; L.total += C.time; L.times.push(C.time); L.i++;
+      if (C.hc === 0) G.ach('nohint');
+      Store.data.cur = null; Store.save(); G.checkMeta(); Snd.play('fanfare');
+      setTimeout(() => Main.ladderNext(L), 400); return;
+    }
     let medal = null;
     let daily = null;
     if (C.daily) {
