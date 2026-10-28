@@ -58,7 +58,7 @@ const UPGRADES = [
 const SAVE_KEY = 'rush:v1';
 const Save = {
   d: null,
-  def() { return { stars: {}, coins: 0, up: { men: 0, dmg: 0, rate: 0 }, music: true, sfx: true, tips: {}, best: {}, plays: 0, dstars: {} }; },
+  def() { return { stars: {}, coins: 0, up: { men: 0, dmg: 0, rate: 0 }, music: true, sfx: true, tips: {}, best: {}, plays: 0, dstars: {}, speed: 1 }; },
   load() {
     let d = null;
     try { d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { d = null; }

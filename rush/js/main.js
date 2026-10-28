@@ -7,8 +7,26 @@ const UI = { mode: 'title', banner: 0, kb: 0, drag: null, fpsT: 0, fpsN: 0, toas
 function show(id) {
   for (const el of document.querySelectorAll('.ov')) el.hidden = el.id !== id;
   $('#pauseBtn').hidden = id !== null;
+  $('#speedBtn').hidden = id !== null;
+  syncSpeed();
   $('#giantBtn').hidden = !(id === null && G && G.mode === 'defense');
 }
+// 遊戲速度
+const SPEEDS = [0.5, 0.75, 1, 1.5, 2];
+function syncSpeed() {
+  const b = $('#speedBtn'); if (!b) return;
+  const v = Save.d.speed || 1;
+  b.textContent = (v === 0.75 ? '¾' : v === 0.5 ? '½' : v) + '×';
+  b.classList.toggle('fast', v > 1); b.classList.toggle('slow', v < 1);
+}
+function cycleSpeed() {
+  const i = SPEEDS.indexOf(Save.d.speed || 1);
+  Save.d.speed = SPEEDS[(i + 1) % SPEEDS.length];
+  Save.save(); syncSpeed();
+  AU.sfx('click');
+  toast(`遊戲速度 ${Save.d.speed}×`, 1);
+}
+
 function setCam(m) { if (R.camMode !== m) { R.camMode = m; resizeRender(); } }
 
 // ---------- 標題畫面的展示部隊 ----------
@@ -458,6 +476,7 @@ function setupInput() {
     if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') { UI.kbL = 1; e.preventDefault(); }
     else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { UI.kbR = 1; e.preventDefault(); }
     else if ((e.key === ' ' || e.key === 'g' || e.key === 'G') && UI.mode === 'play' && G.mode === 'defense') { e.preventDefault(); defLaunchGiant(); }
+    else if ((e.key === 'f' || e.key === 'F') && UI.mode === 'play') cycleSpeed();
     else if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') { if (UI.mode === 'play') pause(); else if (UI.mode === 'pause') resume(); }
     else if (e.key === 'Enter' || e.key === ' ') {
       const vis = document.querySelector('.ov:not([hidden]) .btn.primary');
@@ -486,6 +505,7 @@ function setupInput() {
     if (tg) { const k = tg.dataset.toggle; Save.d[k] = !Save.d[k]; Save.save(); AU.init(); AU.set(k, Save.d[k]); syncToggles(); }
   });
   $('#pauseBtn').addEventListener('click', e => { e.stopPropagation(); pause(); });
+  $('#speedBtn').addEventListener('click', e => { e.stopPropagation(); cycleSpeed(); });
   $('#giantBtn').addEventListener('click', e => { e.stopPropagation(); if (UI.mode === 'play' && G.mode === 'defense' && !defLaunchGiant()) AU.sfx('click'); });
   document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
   addEventListener('resize', () => { UI.pendResize = true; });
@@ -509,7 +529,14 @@ function frame(now) {
   if (UI.mode === 'play') {
     const ax = (UI.kbR || 0) - (UI.kbL || 0) + gamepadX();
     if (ax) G.tx = clamp(G.tx + ax * 9 * dt, -PX_MAX, PX_MAX);
-    if (G.mode === 'defense') defStep(dt, null); else step(dt, null);
+    // 依設定的速度推進（快的時候切成小步，避免東西穿過去）
+    let rem = dt * (Save.d.speed || 1);
+    for (let k = 0; k < 6 && rem > 1e-5; k++) {
+      const d = Math.min(rem, 1 / 60);
+      if (G.mode === 'defense') defStep(d, null); else step(d, null);
+      rem -= d;
+      if (G.st === 'win' || G.st === 'lost') break;
+    }
     if (G.badgeBump > 0) G.badgeBump = Math.max(0, G.badgeBump - dt * 4);
     if (G.badgeRed > 0) G.badgeRed -= dt;
     if (G.flash > 0) G.flash = Math.max(0, G.flash - dt * 2.5);
