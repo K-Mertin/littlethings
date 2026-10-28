@@ -5,6 +5,7 @@
 const Terrain = (() => {
   const { TAU, shade, mix, rgba, ell, circ, rrect, poly, lgrad, rgrad, fbm, vnoise } = Gfx;
   const OUT = 'rgba(30,20,32,.8)';
+  const SNOWY = th => th === 'snow' || th === 'tundra' || th === 'glacier';
 
   // ───────── 每個主題的調色盤 ─────────
   const PAL = {
@@ -28,6 +29,9 @@ const Terrain = (() => {
     plateau: { g: ['#7a7a52', '#8a8a5e', '#9c9c6a', '#b0ae7a'], tuft: ['#6a6a44', '#8a8a5a', '#b0b07a'], dirt: '#6a5a40', path: '#d4c4a0', pathD: '#a8987a', pathL: '#ece0c4', edge: '#5a4a34', cliff: ['#8a7e6a', '#62584a', '#423a30'], out: '#2a2a3c', outD: '#16161f', water: ['#9ac8f0', '#5a8ab8', '#3a5a8a'], flowers: ['#d7c8ff', '#ffffff', '#ffe08a'], amb: 'desert', leaf: '#b0ae7a', tree: ['#6a8a4a', '#7a9a5a', '#5a7a3a'], dark: 0.08, darkC: '#14142a', tint: 'rgba(120,110,200,.08)' },
     amber: { g: ['#5a3a22', '#6a4628', '#7a5430', '#8a643a'], tuft: ['#4a3420', '#6a4a2a', '#9a7040'], dirt: '#3a2414', path: '#c8a070', pathD: '#8a6a44', pathL: '#e0c090', edge: '#2a1a0e', cliff: ['#6a4a2e', '#4a3220', '#2a1c12'], out: '#160c06', outD: '#0a0603', water: ['#ffe08a', '#ffb03a', '#c8701a'], flowers: ['#ffc84a', '#ff9a3a'], amb: 'cave', leaf: '#ffc84a', tree: ['#8a6a3a', '#9a7a4a', '#6a4a2a'], cobble: true, dark: 0.38, darkC: '#1a0a02', tint: 'rgba(255,160,60,.08)' },
     spire: { g: ['#3e3266', '#483a74', '#544684', '#625496'], tuft: ['#342a58', '#4a3c78', '#6a5aa0'], dirt: '#2a2048', path: '#b8acd4', pathD: '#7a6e9a', pathL: '#d8ccec', edge: '#1e163a', cliff: ['#4a3e6e', '#30284e', '#1c1632'], out: '#0c0820', outD: '#060410', water: ['#b89aff', '#7a5ae8', '#4a32a8'], flowers: ['#ffd36b', '#c8a8ff'], amb: 'night', leaf: '#c8a8ff', tree: ['#4a3a7a', '#5a4a8a', '#3a2a6a'], cobble: true, dark: 0.22, darkC: '#0a0620', tint: 'rgba(200,140,255,.07)' },
+    tundra: { g: ['#c4d6e6', '#d8e6f2', '#eaf2fa', '#fafdff'], tuft: ['#9ab0c0', '#b4c6d4', '#7a94a8'], dirt: '#a8b8c8', path: '#b8c8d8', pathD: '#8094a8', pathL: '#dae4ee', edge: '#5a6e82', cliff: ['#98b0c4', '#6a8298', '#44586c'], out: '#4a6884', outD: '#2e4660', water: ['#e0f6ff', '#9ed8f2', '#5aa8d8'], flowers: ['#ffffff', '#cfefff'], amb: 'snow', leaf: '#ffffff', tree: ['#3a6a58', '#4a7a66', '#2a5444'], cobble: true, dark: 0, tint: 'rgba(130,180,255,.07)' },
+    forge: { g: ['#3a302c', '#463a34', '#54463e', '#62544a'], tuft: ['#2e2622', '#4a3e36', '#6a5a4c'], dirt: '#2a201c', path: '#8a7a6a', pathD: '#5a4a3e', pathL: '#a8988a', edge: '#1e1612', cliff: ['#5a4a40', '#3a2e28', '#221a16'], out: '#1a120e', outD: '#0c0806', water: ['#ffe27a', '#ff8a2a', '#c83a12'], flowers: ['#ff9a3a', '#ffd36b'], amb: 'volcano', leaf: '#ff9a3a', tree: ['#3a3030', '#4a3a36', '#2a2222'], cobble: true, dark: 0.3, darkC: '#1e0c04', tint: 'rgba(255,120,40,.07)' },
+    glacier: { g: ['#7ab0c8', '#8ec0d6', '#a8d2e4', '#c4e4f2'], tuft: ['#6a9ab4', '#8ab8d0', '#b8dcec'], dirt: '#6a94ac', path: '#dce9f2', pathD: '#9ab4c8', pathL: '#f4faff', edge: '#3e6a88', cliff: ['#6a9ab8', '#46728e', '#2a4a64'], out: '#0e2238', outD: '#06121e', water: ['#c8f0ff', '#5ab8e0', '#1e6a98'], flowers: ['#c8f0ff', '#d8c8ff'], amb: 'snow', leaf: '#dff6ff', tree: ['#3a6a7a', '#4a7a8a', '#2a5a6a'], dark: 0.2, darkC: '#04142a', tint: 'rgba(120,200,255,.08)' },
   };
   const pal = th => PAL[th] || PAL.meadow;
 
@@ -57,14 +61,14 @@ const Terrain = (() => {
         break;
       }
       case 'pine': case 'spine': {
-        const sz = 0.85 + v * 0.45, g = th === 'snow' || k === 'spine' ? '#3f7a5e' : (v < 0.5 ? '#2f7a44' : '#3a8a4c');
+        const sz = 0.85 + v * 0.45, g = SNOWY(th) || k === 'spine' ? '#3f7a5e' : (v < 0.5 ? '#2f7a44' : '#3a8a4c');
         ell(x, u * 0.04, 0, u * 0.3 * sz, u * 0.11 * sz, 'rgba(0,0,0,.22)');
         x.fillStyle = '#6b4a30'; x.fillRect(-u * 0.04 * sz, -u * 0.2 * sz, u * 0.08 * sz, u * 0.2 * sz);
         for (let i = 0; i < 4; i++) {
           const yy = -u * (0.15 + i * 0.2) * sz, w = u * (0.36 - i * 0.07) * sz, h = u * 0.34 * sz;
           x.beginPath(); x.moveTo(-w, yy); for (let j = 0; j <= 6; j++) x.lineTo(-w + j * w / 3, yy + (j % 2 ? -u * 0.03 : u * 0.02)); x.lineTo(0, yy - h); x.closePath();
           x.fillStyle = lgrad(x, -w, 0, w, 0, [shade(g, 0.18), g, shade(g, -0.3)]); x.fill();
-          if (th === 'snow' || k === 'spine') { x.beginPath(); x.moveTo(-w * 0.55, yy - h * 0.45); x.quadraticCurveTo(0, yy - h * 0.25, w * 0.5, yy - h * 0.5); x.lineTo(0, yy - h); x.closePath(); x.fillStyle = '#f4faff'; x.fill(); }
+          if (SNOWY(th) || k === 'spine') { x.beginPath(); x.moveTo(-w * 0.55, yy - h * 0.45); x.quadraticCurveTo(0, yy - h * 0.25, w * 0.5, yy - h * 0.5); x.lineTo(0, yy - h); x.closePath(); x.fillStyle = '#f4faff'; x.fill(); }
         }
         break;
       }
@@ -77,14 +81,14 @@ const Terrain = (() => {
       }
       case 'rock': case 'pebble': {
         const big = k === 'rock', sz = (big ? 0.85 : 0.45) + v * 0.35;
-        const c = th === 'cave' ? '#5a5a74' : th === 'deep' ? '#5a8a90' : th === 'sky' ? '#c8c4bc' : th === 'volcano' ? '#4a3a36' : th === 'snow' ? '#90a4b8' : th === 'desert' || th === 'ruins' ? '#c49060' : th === 'canyon' ? '#b0603a' : th === 'night' ? '#5a5a7a' : '#9aa0a6';
+        const c = th === 'cave' ? '#5a5a74' : th === 'deep' ? '#5a8a90' : th === 'sky' ? '#c8c4bc' : th === 'volcano' || th === 'forge' ? '#4a3a36' : SNOWY(th) ? '#90a4b8' : th === 'desert' || th === 'ruins' ? '#c49060' : th === 'canyon' ? '#b0603a' : th === 'night' ? '#5a5a7a' : '#9aa0a6';
         ell(x, u * 0.04, 0, u * 0.32 * sz, u * 0.1 * sz, 'rgba(0,0,0,.25)');
         const pts = [-0.32, 0.02, -0.28, -0.2, -0.1, -0.36, 0.14, -0.34, 0.3, -0.16, 0.32, 0.02].map(n => n * u * sz);
         x.beginPath(); x.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) x.lineTo(pts[i], pts[i + 1]); x.closePath();
         x.fillStyle = lgrad(x, -u * 0.3, -u * 0.36, u * 0.3, 0, [shade(c, 0.3), c, shade(c, -0.3)]); x.fill();
         poly(x, [-0.28 * u * sz, -0.2 * u * sz, -0.1 * u * sz, -0.36 * u * sz, 0.14 * u * sz, -0.34 * u * sz, 0.0, -0.18 * u * sz], shade(c, 0.35));
         x.strokeStyle = rgba('#000000', 0.25); x.lineWidth = Math.max(1, u * 0.012); x.beginPath(); x.moveTo(0.02 * u * sz, -0.3 * u * sz); x.lineTo(0.08 * u * sz, -0.1 * u * sz); x.stroke();
-        if (th === 'snow') { x.beginPath(); x.ellipse(-0.06 * u * sz, -0.3 * u * sz, 0.16 * u * sz, 0.06 * u * sz, -0.1, 0, TAU); x.fillStyle = '#ffffff'; x.fill(); }
+        if (SNOWY(th)) { x.beginPath(); x.ellipse(-0.06 * u * sz, -0.3 * u * sz, 0.16 * u * sz, 0.06 * u * sz, -0.1, 0, TAU); x.fillStyle = '#ffffff'; x.fill(); }
         if ((th === 'meadow' || th === 'forest' || th === 'swamp') && v > 0.5) { x.beginPath(); x.ellipse(-0.12 * u * sz, -0.24 * u * sz, 0.1 * u * sz, 0.05 * u * sz, -0.5, 0, TAU); x.fillStyle = rgba('#5aa83c', 0.8); x.fill(); }
         break;
       }
@@ -314,7 +318,7 @@ const Terrain = (() => {
       const cx = x + 0.5, cy = y + 0.6, v = c.dv;
       switch (c.deco) {
         case 'tree': add('tree', cx - 0.08, cy - 0.12, v); if (v > 0.35) add(v > 0.7 ? 'bush' : 'tree', cx + 0.25, cy + 0.22, rng() * 0.4); else add('rock', cx + 0.28, cy + 0.25, 0.1); break;
-        case 'pine': case 'spine': add(c.deco, cx - 0.12, cy - 0.15, v); add(c.deco, cx + 0.22, cy + 0.2, rng() * 0.4); if (th === 'snow' && v > 0.85) add('snowman', cx - 0.25, cy + 0.25, 0.5); break;
+        case 'pine': case 'spine': add(c.deco, cx - 0.12, cy - 0.15, v); add(c.deco, cx + 0.22, cy + 0.2, rng() * 0.4); if (SNOWY(th) && v > 0.85) add('snowman', cx - 0.25, cy + 0.25, 0.5); break;
         case 'bush': add('bush', cx, cy, v); if (v > 0.55) add(th === 'meadow' || th === 'coast' ? 'fence' : 'stump', cx + 0.15, cy + 0.28, 0.5); break;
         case 'rock': add(v > 0.82 && th !== 'volcano' ? 'ruin' : 'rock', cx - 0.05, cy - 0.05, v); add('pebble', cx + 0.28, cy + 0.22, rng()); break;
         case 'mush': add('mush', cx, cy, v); if (v > 0.5) add('stump', cx - 0.25, cy - 0.2, 0.5); break;
@@ -503,12 +507,12 @@ const Terrain = (() => {
     for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
       const c = G.grid[y][x];
       if (c.path || c.water) continue;
-      const n = th === 'desert' || th === 'volcano' || th === 'ruins' ? 2 : th === 'snow' || th === 'cave' ? 2 : 6;
+      const n = th === 'desert' || th === 'volcano' || th === 'ruins' || th === 'forge' ? 1 : SNOWY(th) || th === 'cave' ? 2 : 6;
       for (let i = 0; i < n; i++) {
         const [px, py] = V.P(x + rng(), y + rng());
         tuft(ctx, px, py, s * (0.08 + rng() * 0.07), P.tuft[Math.floor(rng() * P.tuft.length)], rng);
       }
-      if (rng() < (th === 'volcano' || th === 'cave' ? 0.1 : th === 'snow' ? 0.15 : 0.35)) {
+      if (rng() < (th === 'volcano' || th === 'cave' || th === 'forge' ? 0.06 : SNOWY(th) ? 0.15 : 0.35)) {
         const [px, py] = V.P(x + 0.15 + rng() * 0.7, y + 0.15 + rng() * 0.7);
         const fc = P.flowers[Math.floor(rng() * P.flowers.length)];
         for (let k = 0; k < 3; k++) flower(ctx, px + (rng() - 0.5) * s * 0.25, py + (rng() - 0.5) * s * 0.18, s * 0.035, fc);
@@ -629,6 +633,24 @@ const Terrain = (() => {
     } else if (th === 'spire') {
       for (let i = 0; i < 8; i++) { const f = free(); if (!f) continue; const [px, py] = V.P(f[0] + 0.5, f[1] + 0.5), r = s * (0.25 + rng() * 0.15); ctx.strokeStyle = rgba('#c8a8ff', 0.25); ctx.lineWidth = Math.max(1, s * 0.02); ctx.beginPath(); ctx.ellipse(px, py, r, r * 0.55, 0, 0, TAU); ctx.stroke(); ctx.beginPath(); ctx.ellipse(px, py, r * 0.6, r * 0.33, 0, 0, TAU); ctx.stroke(); }
       for (let i = 0; i < 90; i++) { const [px, py] = V.P(rng() * COLS, rng() * ROWS); circ(ctx, px, py, Math.max(0.6, s * 0.012), rgba(rng() < 0.5 ? '#ffd36b' : '#e0c8ff', 0.55)); }
+    } else if (th === 'tundra') {
+      // 風吹出來的雪紋＋淡藍色的冰面
+      ctx.strokeStyle = rgba('#ffffff', 0.5); ctx.lineWidth = Math.max(1, s * 0.03); ctx.lineCap = 'round';
+      for (let i = 0; i < 40; i++) { const [px, py] = V.P(rng() * COLS, rng() * ROWS); const w = s * (0.3 + rng() * 0.5); ctx.beginPath(); ctx.moveTo(px - w, py); ctx.quadraticCurveTo(px, py - s * 0.07, px + w, py + s * 0.02); ctx.stroke(); }
+      for (let i = 0; i < 7; i++) { const f = free(); if (!f) continue; const [px, py] = V.P(f[0] + 0.5, f[1] + 0.5), r = s * (0.3 + rng() * 0.3); ctx.fillStyle = rgrad(ctx, px, py, 0, r, [rgba('#a8d8f0', 0.55), rgba('#c8e8f8', 0.3), rgba('#ffffff', 0)]); ctx.beginPath(); ctx.ellipse(px, py, r, r * 0.6, 0, 0, TAU); ctx.fill(); }
+      for (let i = 0; i < 200; i++) { const [px, py] = V.P(rng() * COLS, rng() * ROWS); circ(ctx, px, py, Math.max(0.6, s * 0.012), rgba('#ffffff', 0.9)); }
+    } else if (th === 'forge') {
+      // 鐵板地磚、鉚釘、熔岩裂縫
+      ctx.strokeStyle = rgba('#000000', 0.28); ctx.lineWidth = Math.max(1, s * 0.02);
+      for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) { const c = G.grid[y][x]; if (c.path || c.water || rng() < 0.45) continue; const [px, py] = V.P(x + 0.5, y + 0.5); ctx.strokeRect(px - s * 0.42, py - s * 0.42, s * 0.84, s * 0.84); for (const [ox, oy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) circ(ctx, px + ox * s * 0.34, py + oy * s * 0.34, Math.max(0.8, s * 0.025), rgba('#8a7a6a', 0.7)); }
+      ctx.lineCap = 'round';
+      for (let i = 0; i < 12; i++) { const f = free(); if (!f) continue; let [px, py] = V.P(f[0] + rng(), f[1] + rng()); ctx.strokeStyle = rgba('#ff7a1a', 0.55); ctx.lineWidth = Math.max(1, s * 0.03); ctx.shadowColor = '#ff6a1a'; ctx.shadowBlur = s * 0.15; ctx.beginPath(); ctx.moveTo(px, py); for (let k = 0; k < 4; k++) { px += (rng() - 0.5) * s * 0.4; py += (rng() - 0.5) * s * 0.3; ctx.lineTo(px, py); } ctx.stroke(); ctx.shadowBlur = 0; }
+    } else if (th === 'glacier') {
+      // 冰面裂紋＋透出的極光反光
+      ctx.lineCap = 'round';
+      for (let i = 0; i < 22; i++) { const f = free(); if (!f) continue; let [px, py] = V.P(f[0] + rng(), f[1] + rng()); ctx.strokeStyle = rgba('#ffffff', 0.45); ctx.lineWidth = Math.max(1, s * 0.022); ctx.beginPath(); ctx.moveTo(px, py); for (let k = 0; k < 3; k++) { px += (rng() - 0.5) * s * 0.5; py += (rng() - 0.5) * s * 0.35; ctx.lineTo(px, py); } ctx.stroke(); }
+      for (let i = 0; i < 8; i++) { const [px, py] = V.P(rng() * COLS, rng() * ROWS), r = s * (1 + rng() * 1.5); ctx.fillStyle = rgrad(ctx, px, py, 0, r, [rgba(rng() < 0.5 ? '#7affc8' : '#b88aff', 0.16), rgba('#7affc8', 0)]); ctx.fillRect(px - r, py - r, r * 2, r * 2); }
+      for (let i = 0; i < 120; i++) { const [px, py] = V.P(rng() * COLS, rng() * ROWS); circ(ctx, px, py, Math.max(0.6, s * 0.012), rgba('#ffffff', 0.7)); }
     } else if (th === 'coast') {
       // 靠海的沙灘
       for (const [wx, wy, ww, wh] of (G.L.water || [])) {
@@ -672,7 +694,7 @@ const Terrain = (() => {
     // 岸
     ctx.lineJoin = 'round';
     if (sh.lava) { ctx.strokeStyle = '#1a100c'; ctx.lineWidth = s * 0.26; ctx.stroke(sh.path); ctx.strokeStyle = '#3a221a'; ctx.lineWidth = s * 0.16; ctx.stroke(sh.path); }
-    else { ctx.strokeStyle = rgba(sh.swamp ? '#3a3020' : th === 'snow' ? '#e8f4fc' : '#d8c08a', 0.9); ctx.lineWidth = s * 0.24; ctx.stroke(sh.path); ctx.strokeStyle = rgba(sh.swamp ? '#2a2418' : '#8a7a5a', 0.45); ctx.lineWidth = s * 0.12; ctx.stroke(sh.path); }
+    else { ctx.strokeStyle = rgba(sh.swamp ? '#3a3020' : SNOWY(th) ? '#e8f4fc' : '#d8c08a', 0.9); ctx.lineWidth = s * 0.24; ctx.stroke(sh.path); ctx.strokeStyle = rgba(sh.swamp ? '#2a2418' : '#8a7a5a', 0.45); ctx.lineWidth = s * 0.12; ctx.stroke(sh.path); }
     ctx.clip(sh.path);
     const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, R = Math.max(x1 - x0, y1 - y0) * 0.65;
     ctx.fillStyle = rgrad(ctx, cx, cy, 0, R, [P.water[2], P.water[1], P.water[0]]);
@@ -725,7 +747,7 @@ const Terrain = (() => {
         const base = shade(P.path, (rng() - 0.5) * 0.3);
         tx.fillStyle = lgrad(tx, cx - rr, cy - rr, cx + rr, cy + rr, [shade(base, 0.18), base, shade(base, -0.18)]); tx.fill();
       }
-      if (th === 'snow') for (let i = 0; i < mw * mh / (s * s) * 6; i++) { const px = ox + rng() * mw, py = oy + rng() * mh, r = s * (0.08 + rng() * 0.18); tx.fillStyle = rgba('#f4faff', 0.15 + rng() * 0.2); tx.beginPath(); tx.ellipse(px, py, r, r * 0.6, rng() * 3, 0, TAU); tx.fill(); }
+      if (SNOWY(th)) for (let i = 0; i < mw * mh / (s * s) * 6; i++) { const px = ox + rng() * mw, py = oy + rng() * mh, r = s * (0.08 + rng() * 0.18); tx.fillStyle = rgba('#f4faff', 0.15 + rng() * 0.2); tx.beginPath(); tx.ellipse(px, py, r, r * 0.6, rng() * 3, 0, TAU); tx.fill(); }
     }
     const [mask, mx] = mk();
     mx.strokeStyle = '#fff'; strokeWorld(mx, V, lines, s * 0.86);
@@ -769,10 +791,10 @@ const Terrain = (() => {
         const [px, py] = V.P(wx + (rng() - 0.5) * 0.08, wy + (rng() - 0.5) * 0.08);
         const r0 = rng();
         if (r0 < 0.35) {
-          const r = s * (0.04 + rng() * 0.04), c0 = th === 'cave' ? '#3a3a50' : th === 'volcano' ? '#3a2e2a' : th === 'snow' ? '#a8b8c8' : th === 'night' ? '#5a5878' : '#a8a296';
+          const r = s * (0.04 + rng() * 0.04), c0 = th === 'cave' ? '#3a3a50' : th === 'volcano' || th === 'forge' ? '#3a2e2a' : SNOWY(th) ? '#a8b8c8' : th === 'night' ? '#5a5878' : '#a8a296';
           ell(ctx, px + r * 0.2, py + r * 0.45, r * 1.1, r * 0.7, rgba('#000000', 0.25));
           ell(ctx, px, py, r, r * 0.75, c0); ell(ctx, px - r * 0.3, py - r * 0.3, r * 0.45, r * 0.3, shade(c0, 0.35));
-        } else if (r0 < 0.8 && th !== 'volcano' && th !== 'cave') {
+        } else if (r0 < 0.8 && th !== 'volcano' && th !== 'cave' && th !== 'forge') {
           tuft(ctx, px, py + s * 0.04, s * (0.09 + rng() * 0.07), P.tuft[Math.floor(rng() * P.tuft.length)], rng);
         }
       });
@@ -815,11 +837,16 @@ const Terrain = (() => {
       for (let i = 0; i < W * H / (s * s) * 0.6; i++) { const px = rng() * W, py = rng() * H, r = s * (0.6 + rng() * 1.2); circ(ctx, px, py, r, rgba('#3a3a52', 0.5)); circ(ctx, px - r * 0.3, py - r * 0.25, r * 0.7, rgba('#4a4a66', 0.45)); }
     } else if (th === 'bamboo') {
       for (let i = 0; i < W / (s * 0.25); i++) { const px = rng() * W, w = s * (0.06 + rng() * 0.05); ctx.fillStyle = rgba(rng() < 0.5 ? '#2a5a2e' : '#1e4a24', 0.8); ctx.fillRect(px, 0, w, H); for (let y = rng() * s; y < H; y += s * (0.7 + rng() * 0.3)) { ctx.fillStyle = rgba('#10301a', 0.8); ctx.fillRect(px - w * 0.2, y, w * 1.4, s * 0.03); } }
-    } else if (th === 'volcano') {
+    } else if (th === 'volcano' || th === 'forge') {
+      if (th === 'forge') { ctx.strokeStyle = rgba('#000000', 0.35); ctx.lineWidth = Math.max(1.5, s * 0.04); for (let yy = 0; yy < H; yy += s * 0.6) { ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(W, yy); ctx.stroke(); for (let xx = ((yy / (s * 0.6)) % 2) * s * 0.6; xx < W; xx += s * 1.2) { ctx.beginPath(); ctx.moveTo(xx, yy); ctx.lineTo(xx, yy + s * 0.6); ctx.stroke(); } } }
       for (let i = 0; i < 12; i++) { const px = rng() * W, py = rng() * H, r = s * (1 + rng() * 2); ctx.fillStyle = rgrad(ctx, px, py, 0, r, [rgba('#ff5a1a', 0.25), rgba('#ff5a1a', 0)]); ctx.fillRect(px - r, py - r, r * 2, r * 2); }
+    } else if (th === 'glacier') {
+      // 夜空中的極光帶
+      for (let i = 0; i < W * H / 900; i++) circ(ctx, rng() * W, rng() * H, rng() < 0.1 ? 1.4 : 0.7, rgba('#ffffff', 0.3 + rng() * 0.5));
+      for (let k = 0; k < 3; k++) { const y0 = H * (0.1 + k * 0.28 + rng() * 0.1), col = k % 2 ? '#b88aff' : '#6affc0'; ctx.lineCap = 'round'; for (let j = 0; j < 6; j++) { ctx.strokeStyle = rgba(col, 0.05); ctx.lineWidth = s * (0.8 + j * 0.5); ctx.beginPath(); ctx.moveTo(-s, y0); for (let xx = 0; xx <= W + s; xx += s * 2) ctx.lineTo(xx, y0 + Math.sin(xx / (s * 3) + k * 2) * s * 0.8); ctx.stroke(); } }
     } else {
       // 遠方樹冠 / 雪堆 / 沙丘
-      const c = th === 'snow' ? '#7a96b0' : th === 'desert' || th === 'ruins' ? '#c08a4a' : th === 'swamp' ? '#34482a' : shade(P.out, 0.1);
+      const c = SNOWY(th) || th === 'tundra' ? '#7a96b0' : th === 'desert' || th === 'ruins' ? '#c08a4a' : th === 'swamp' ? '#34482a' : shade(P.out, 0.1);
       for (let i = 0; i < W * H / (s * s) * 1.4; i++) {
         const px = rng() * W, py = rng() * H, r = s * (0.3 + rng() * 0.5);
         circ(ctx, px, py + r * 0.2, r, rgba(shade(c, -0.3), 0.6)); circ(ctx, px - r * 0.15, py, r * 0.9, rgba(c, 0.8)); circ(ctx, px - r * 0.35, py - r * 0.3, r * 0.4, rgba(shade(c, 0.2), 0.5));

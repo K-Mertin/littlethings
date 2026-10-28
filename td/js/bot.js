@@ -82,12 +82,37 @@ function botThink(G, bot) {
     }
     if (!did) break;
   }
+  botMech3(G, bot);
   if (G.hero && bot.hero !== false) botHero(G, bot);
   if (G.state === 'ready') callWave(G, false);
   if (bot.meteor && G.skills.meteor.on && G.skills.meteor.cd <= 0) {
     let best = null;
     for (const e of G.enemies) if (!best || e.dist > best.dist) best = e;
     if (best && G.enemies.length > 6) castMeteor(G, best.x, best.y);
+  }
+}
+// 第三章的機制：雪崩陷阱（砸一群或砸頭目）、輸送帶（路上敵人多時反轉）、清碎石（錢有剩時清最好的位置）
+function botMech3(G, bot) {
+  if (G.state !== 'run') return;
+  for (const tr of G.traps) {
+    if (tr.cd > 0) continue;
+    let n = 0, big = false;
+    for (const e of G.enemies) if (e.alive && !e.fly && !e.inT && dist2(e.x, e.y, tr.tx, tr.ty) < TRAP.r * TRAP.r) { n++; if (e.boss || e.d.lives > 1) big = true; }
+    if (n >= 4 || big) triggerTrap(G, tr);
+  }
+  if (G.belt && G.belt.cd <= 0) {
+    let n = 0;
+    for (const e of G.enemies) if (e.alive && !e.fly) { const bx = Math.floor(e.x), by = Math.floor(e.y); if (inMap(bx, by) && G.grid[by][bx].belt) n += e.boss ? 6 : 1; }
+    if (n >= 6) activateBelt(G);
+  }
+  if (G.L.rubble && G.wave >= 1 && G.gold >= RUB_COST + 70) {
+    // 碎石的位置值不值得清：跟現有最好的空地比
+    let best = null, bs = -1;
+    const r = 2.6, o = { x: 0, y: 0 };
+    const score = (x, y) => { let s = 0; for (const P of G.paths) for (let d = 0.5; d < P.len; d += 0.5) { pathPos(P, d, o); if (dist2(o.x, o.y, x + 0.5, y + 0.5) <= r * r) s += 0.6 + 0.4 * d / P.len; } return s * (G.grid[y][x].anv ? 1.3 : 1); };
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) { const c = G.grid[y][x]; if (c.rub) { const s = score(x, y); if (s > bs) { bs = s; best = [x, y]; } } }
+    const fs = botSpotScores(G, 2.6).find(s => canBuild(G, s.x, s.y));
+    if (best && (!fs || bs >= fs.s * 0.9)) clearRubble(G, best[0], best[1]);
   }
 }
 // 英雄：站在塔火力最集中的道路上（塔有變化時重新找位置）
