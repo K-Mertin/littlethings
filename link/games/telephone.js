@@ -120,6 +120,7 @@
   LGAMES.push({
     id: 'telephone', name: '傳畫接龍', icon: '🎨', col: '#ff7a45', cat: 'party',
     blurb: '畫畫傳下去、猜猜傳下去，最後一起看歪成什麼樣', players: [3, 6],
+    opts: kid => [{ k: 'draw', n: '畫畫時間', o: kid ? [[60, '60 秒'], [90, '90 秒'], [120, '120 秒']] : [[45, '45 秒'], [70, '70 秒'], [100, '100 秒']], d: kid ? 90 : 70 }],
     rules: kid => kid ? [
       '先選一張圖，偷偷不要說出來 🤫',
       '手機會傳給下一個人：把看到的東西用手指畫出來 🎨',
@@ -136,6 +137,7 @@
       const kid = ctx.kid, ids = ctx.players.map(p => p.id), n = ids.length, now = () => ctx.now();
       const S = n === 3 ? 5 : n;                                   // 3 players: one extra draw/guess loop
       const TM = kid ? { write: 25, draw: 90, guess: 40 } : { write: 40, draw: 70, guess: 35 };
+      if (ctx.opt && ctx.opt.draw) TM.draw = ctx.opt.draw;
       const GRACE = 3, PASS = 1.8, IDLE = 45;
       const chains = ids.map(() => []);
       const chainOf = (id, k) => ((ids.indexOf(id) - k) % n + n) % n;     // chain this player works on at step k

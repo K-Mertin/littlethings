@@ -310,6 +310,7 @@
   LGAMES.push({
     id: 'ship', name: '太空船大作戰', icon: '🚀', col: '#5b5bf7',
     blurb: '指令在你手機，按鈕在別人手機——大聲喊！', players: [2, 6],
+    opts: kid => [{ k: 'diff', n: '難度', o: [['easy', '輕鬆'], ['std', '標準'], ['hard', '困難']], d: 'std' }],
     rules: kid => kid ? [
       '🚀 每個人的手機上都有不一樣的按鈕和拉桿',
       '🖼 上面的大圖片告訴你「要按哪一個」——它通常在別人的手機上！',
@@ -333,9 +334,10 @@
       let st = 'jump', jt = 4, first = true, sec = 1, hull = 100, prog = 0, need = 0, okN = 0, badN = 0, hit = 0, over = false, endT = 0, win = false, ended = false;
       let ev = null, evT = 0, evDone = false, evSeq = 0, er = null, lastEv = '', insSeq = 0, ctlSeq = 0, shouts = [], T = 0;
       const needFor = s => kid ? 2 + 2 * N + s : 3 + 2 * N + 2 * s;
-      const timeFor = s => kid ? Math.max(12, 16 - s) : Math.max(7, 12.6 - 0.8 * s);
+      const DIFF = { easy: [1.3, 0.7], std: [1, 1], hard: [0.82, 1.25] }[(ctx.opt && ctx.opt.diff) || 'std'] || [1, 1];
+      const timeFor = s => DIFF[0] * (kid ? Math.max(12, 16 - s) : Math.max(7, 12.6 - 0.8 * s));
       const nCtl = s => kid ? Math.min(4, (s >= 3 ? 4 : 3) + (N <= 2 ? 1 : 0)) : Math.min(8, 4 + s + (N <= 2 ? 1 : 0));
-      const dmg = () => kid ? 6 : Math.round(10 + Math.min(8, (sec - 1) * 1.5));
+      const dmg = () => Math.round(DIFF[1] * (kid ? 6 : 10 + Math.min(8, (sec - 1) * 1.5)));
       const on = p => ctx.online(p.id);
 
       function mkCtl(ty, own, pool, used) {

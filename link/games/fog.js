@@ -416,6 +416,7 @@
   LGAMES.push({
     id: 'fog', name: '迷霧尋寶', icon: '🔦', col: '#f2a93b',
     blurb: '每人只看得到燈籠照亮的一小圈，摸黑找寶石！', players: [1, 6],
+    opts: kid => [{ k: 'time', n: '時間', o: kid ? [[90, '1.5 分鐘'], [120, '2 分鐘'], [180, '3 分鐘']] : [[120, '2 分鐘'], [180, '3 分鐘'], [240, '4 分鐘']], d: kid ? 120 : 180 }],
     rules: kid => kid ? [
       '👆 手指按住螢幕拖一拖，小探險家就會走',
       '🔦 你只看得到燈籠照亮的地方，走過的路會畫在小地圖上',
@@ -433,6 +434,7 @@
     /* =================================================================== HOST */
     host(ctx) {
       const kid = ctx.kid, N = ctx.players.length, C = CFG(kid);
+      if (ctx.opt && ctx.opt.time) C.time = ctx.opt.time;
       const W = kid ? (N > 3 ? 31 : 27) : (N > 3 ? 45 : 39), H = kid ? (N > 3 ? 21 : 19) : (N > 3 ? 29 : 25);
       const seed = (Math.random() * 1e9) >>> 0, M = genMaze(seed, W, H, kid);
       const floors = []; for (let i = 0; i < M.g.length; i++) if (M.g[i] !== 1) floors.push(i);

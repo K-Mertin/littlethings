@@ -110,12 +110,14 @@
     big: (a, s) => (a | 0) === s
   };
 
-  function makePlan(kid) {
+  function makePlan(kid, n) {
     const pool = kid ? ['odd', 'count', 'math', 'memo', 'react', 'order', 'big'] : ['odd', 'count', 'math', 'memo', 'react', 'stroop', 'order'];
-    const total = kid ? 8 : 10;
+    const total = n || (kid ? 8 : 10);
     let list;
     for (let tries = 0; tries < 80; tries++) {
-      list = shuf(pool.concat(shuf(pool.slice()).slice(0, total - pool.length)));
+      list = [];
+      while (list.length < total) list = list.concat(shuf(pool.slice()).slice(0, total - list.length));
+      list = shuf(list);
       if (list.every((t, i) => i === 0 || list[i - 1] !== t)) break;
     }
     const seen = {};
@@ -365,6 +367,7 @@
 
   LGAMES.push({
     id: 'race', name: '腦力快手', icon: '⚡', col: '#ff7a45', blurb: '同一題同時出現在每支手機，比誰又快又對', players: [1, 6],
+    opts: kid => [{ k: 'n', n: '題數', o: kid ? [[5, '5 題'], [8, '8 題'], [12, '12 題']] : [[6, '6 題'], [10, '10 題'], [15, '15 題']], d: kid ? 8 : 10 }],
     rules: kid => kid ? [
       '👀 每一題大家的手機會同時出現',
       '🔍 找不同、🧮 數一數、➕ 加一加、🧠 記一記、🚦 變綠色就按…',
@@ -379,7 +382,7 @@
 
     host(ctx) {
       const kid = ctx.kid, ids = ctx.players.map(p => p.id), now = () => ctx.now();
-      const plan = makePlan(kid);
+      const plan = makePlan(kid, ctx.opt && ctx.opt.n);
       const score = {}, okN = {}, firstN = {};
       ids.forEach(id => { score[id] = 0; okN[id] = 0; firstN[id] = 0; });
       const READY = kid ? 3 : 2.5, REVEAL = kid ? 5.5 : 5;

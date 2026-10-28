@@ -120,6 +120,7 @@
   LGAMES.push({
     id: 'snake', name: '貪食蛇大戰', icon: '🐍', col: '#22c26a',
     blurb: '每人一條小蛇，吃光點點變超長！', players: [1, 6],
+    opts: kid => [{ k: 'time', n: '時間', o: kid ? [[60, '1 分鐘'], [120, '2 分鐘'], [180, '3 分鐘']] : [[90, '1.5 分鐘'], [150, '2.5 分鐘'], [240, '4 分鐘']], d: kid ? 120 : 150 }],
     rules: kid => kid ? [
       '👆 手指按住螢幕拖一拖，小蛇就往那邊爬',
       '🍎 吃亮亮的點點和水果，越吃越長',
@@ -139,6 +140,7 @@
       const C = kid
         ? { speed: 112, turn: 4.6, time: 120, treat: 0.14, magnet: 20, food: cl(Math.round(W * H / 11000), 200, 300) }
         : { speed: 150, turn: 4.0, time: 150, treat: 0.06, magnet: 8, food: cl(Math.round(W * H / 15000), 180, 260) };
+      if (ctx.opt && ctx.opt.time) C.time = ctx.opt.time;
       let timeLeft = C.time, over = false, endT = 0, fid = 1, evq = 0, pubN = 0, t = 0;
       const foods = [], evs = [];
       const snakes = ctx.players.map((p, i) => ({

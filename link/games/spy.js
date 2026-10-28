@@ -47,6 +47,14 @@
   LGAMES.push({
     id: 'spy', name: '誰是臥底', icon: '🕵️', col: '#6c5ce7', cat: 'party',
     blurb: '大家拿到一樣的詞，只有臥底不一樣', players: [3, 6],
+    opts: kid => kid ? [
+      { k: 'r', n: '最多幾輪', o: [[2, '2 輪'], [3, '3 輪'], [4, '4 輪']], d: 3 },
+      { k: 'talk', n: '每人說話', o: [[30, '30 秒'], [45, '45 秒']], d: 30 }
+    ] : [
+      { k: 'r', n: '最多幾輪', o: [['auto', '依人數'], [3, '3 輪'], [5, '5 輪']], d: 'auto' },
+      { k: 'talk', n: '每人說話', o: [[25, '25 秒'], [40, '40 秒'], [60, '60 秒']], d: 40 },
+      { k: 'spy', n: '臥底人數', o: [['auto', '自動'], [1, '1 個'], [2, '2 個（5 人以上）']], d: 'auto' }
+    ],
     rules: kid => kid ? [
       '手機會出現一張圖，偷偷看，不要給別人看！',
       '有一個人的圖不一樣，他就是「臥底」🕵️（他自己也不知道喔）',
@@ -63,13 +71,14 @@
       const kid = ctx.kid, ids = ctx.players.map(p => p.id), n = ids.length, now = () => ctx.now();
       const pair = (kid ? KID : ADULT)[rint((kid ? KID : ADULT).length)];
       const flip = Math.random() < 0.5, civW = pair[flip ? 1 : 0], spyW = pair[flip ? 0 : 1];
-      const nSpy = !kid && n >= 6 ? 2 : 1;
+      const O = ctx.opt || {};
+      const nSpy = !kid && (O.spy === 2 ? n >= 5 : (O.spy !== 1 && n >= 6)) ? 2 : 1;
       const spies = shuffle(ids.slice()).slice(0, nSpy);
       const isSpy = id => spies.includes(id);
       const base = shuffle(ids.slice());
       const alive = new Set(ids), outs = [];
-      const TALK = kid ? 30 : 40, VOTE = kid ? 30 : 30, LOOK = kid ? 14 : 10;
-      const rmax = kid ? 3 : Math.max(3, n - 1);
+      const TALK = O.talk || (kid ? 30 : 40), VOTE = kid ? 30 : 30, LOOK = kid ? 14 : 10;
+      const rmax = typeof O.r === 'number' ? O.r : kid ? 3 : Math.max(3, n - 1);
       let ph = 'look', r = 0, T = now() + LOOK, tm = LOOK, over = false, win = null, why = '';
       let order = base.slice(), idx = -1, curT0 = 0, clues = [], votes = {}, cand = [], revote = false, rv = null;
       const ready = new Set();

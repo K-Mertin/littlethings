@@ -271,6 +271,10 @@
 
   LGAMES.push({
     id: 'cards', name: '彩虹牌', icon: '🃏', col: '#ff4d6a', blurb: '配顏色、配數字，先把手牌出完的人贏', players: [2, 6],
+    opts: kid => [
+      { k: 'hand', n: '一開始的手牌', o: kid ? [[4, '4 張'], [5, '5 張'], [7, '7 張']] : [[5, '5 張'], [7, '7 張'], [10, '10 張']], d: kid ? 5 : 7 },
+      { k: 'tt', n: '每回合', o: kid ? [[30, '30 秒'], [45, '45 秒'], [60, '60 秒']] : [[15, '15 秒'], [22, '22 秒'], [35, '35 秒']], d: kid ? 45 : 22 }
+    ],
     rules: kid => kid ? [
       '🎨 出一張「一樣顏色」或「一樣數字」的牌',
       '✨ 會發亮、翹起來的牌就可以出',
@@ -288,7 +292,7 @@
     host(ctx) {
       const kid = ctx.kid, P = ctx.players, N = P.length, ids = P.map(p => p.id);
       const nm = id => { const p = P.find(q => q.id === id); return p ? p.name : '?'; };
-      const TT = kid ? 45 : 22, DT = kid ? 30 : 12, CATCH = 4, OFFLINE_WAIT = 3;
+      const TT = (ctx.opt && ctx.opt.tt) || (kid ? 45 : 22), DT = kid ? 30 : 12, CATCH = 4, OFFLINE_WAIT = 3;
       let uid = 0; const deck = [];
       const add = (c, v, k) => { for (let i = 0; i < k; i++) deck.push({ i: uid++, c, v }); };
       for (let c = 0; c < 4; c++) {
@@ -299,7 +303,8 @@
       shuffle(deck);
       const hands = {}; ids.forEach(id => hands[id] = []);
       const sortH = id => hands[id].sort((a, b) => rank(a) - rank(b));
-      for (let k = 0; k < (kid ? 5 : 7); k++) ids.forEach(id => hands[id].push(deck.pop()));
+      const HAND = (ctx.opt && ctx.opt.hand) || (kid ? 5 : 7);
+      for (let k = 0; k < HAND; k++) ids.forEach(id => { if (deck.length > 1) hands[id].push(deck.pop()); });
       ids.forEach(sortH);
       let fi = deck.findIndex(c => typeof c.v === 'number'); if (fi < 0) fi = 0;
       const disc = [deck.splice(fi, 1)[0]];
