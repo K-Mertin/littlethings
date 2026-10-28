@@ -48,13 +48,18 @@ function startStage(n) {
   G.phase = 'fight'; G.seqI = 0; G.nextWave = 2.6; G.boss = null; G.bombT = 0; G.intro = null; G.caution = null;
   G.stageKills = G.kills; G.stageMedals = G.medals; G.stageMiss = G.miss; G.bonusGiven = false; G.medalChain = 0;
   G.speed = STAGES[n].speed || 46;
-  G.banner = { t: 0, big: 'STAGE ' + (n + 1) + (G.round > 1 ? '-2' : ''), small: STAGES[n].name, en: STAGES[n].en, extra: G.round === 1 && n > 0 && LV_CAP[n] > LV_CAP[n - 1] ? '武器等級上限提升到 Lv' + LV_CAP[n] : '' };
+  G.banner = { t: 0, big: 'STAGE ' + stageLabel(n) + (G.round > 1 ? '-2' : ''), small: STAGES[n].name, en: STAGES[n].en, extra: G.round === 1 && n > 0 && LV_CAP[n] > LV_CAP[n - 1] ? '武器等級上限提升到 Lv' + LV_CAP[n] : '' };
   if (STAGES[n].clouds) SkyClouds.init();
   G.amb = [];
   playerEnter(); P.inv = 1.6;
   Music.play('s' + n);
   if (n + 1 > Store.data.reached) { Store.data.reached = n + 1; Store.save(); }
   Terrain.ensure(0);
+}
+// 打完一關之後：一般是下一關，最後一關看結局（route.js 會加上分歧路線）
+function afterClear() {
+  if (G.stage < STAGES.length - 1) startStage(G.stage + 1);
+  else showEnding();
 }
 function addScore(n) {
   G.score += n;
@@ -96,8 +101,7 @@ function runScript(dt) {
     if (G.clearT > 1.4 && !G.bonusGiven) { G.bonusGiven = true; addScore(G.tally.bonus); Snd.play('item'); }
     if (G.clearT > 4.2 && P.alive && !P.auto) { P.auto = 80; }
     if (G.clearT > 6) {
-      if (G.stage < STAGES.length - 1) startStage(G.stage + 1);
-      else showEnding();
+      afterClear();
     }
   }
 }
@@ -205,7 +209,7 @@ function drawHUD(c) {
   const hi = Math.max(Store.data.hi[G.diff] || 0, G.score);
   txt(c, '1P', 8, 11, 9, '#ff8a6a'); txt(c, pad8(G.score), 26, 11, 12);
   txt(c, 'HI', 168, 11, 9, '#ffd23f', 'right'); txt(c, pad8(hi), 172, 11, 12, '#ffe9a8');
-  txt(c, 'ST' + (G.stage + 1), W - 8, 11, 10, '#8fd0ff', 'right');
+  txt(c, 'ST' + stageLabel(G.stage), W - 8, 11, 10, '#8fd0ff', 'right');
   // 頭目血條
   BossIntro.drawBar(c);
   // 殘機與炸彈
@@ -246,7 +250,7 @@ function drawHUD(c) {
     c.fillStyle = 'rgba(0,0,0,.55)'; c.fillRect(30, 200, W - 60, 190);
     c.strokeStyle = 'rgba(255,210,63,.6)'; c.strokeRect(30.5, 200.5, W - 61, 189);
     txt(c, 'STAGE CLEAR', W / 2, 226, 20, '#ffd23f', 'center');
-    txt(c, '第 ' + (G.stage + 1) + ' 關完成！', W / 2, 254, 15, '#fff', 'center', CJK, 700);
+    txt(c, '第 ' + stageLabel(G.stage) + ' 關完成！', W / 2, 254, 15, '#fff', 'center', CJK, 700);
     const rows = [['擊落敵機', T.kills + ' 架'], ['收集獎章', T.medals + ' 個'], ['沒有被打下', T.nomiss ? '+30000' : '—'], ['過關獎勵', String(T.bonus)]];
     rows.forEach(([a, v], i) => {
       if (G.clearT < 0.6 + i * 0.25) return;
@@ -272,12 +276,12 @@ function refreshTitle() {
   const st = $('stages'); st.innerHTML = '';
   for (let i = 0; i < STAGES.length; i++) {
     const b = document.createElement('button');
-    b.className = 'stg' + (G.startFrom === i ? ' on' : ''); b.textContent = i + 1; b.title = STAGES[i].name;
+    b.className = 'stg' + (G.startFrom === i ? ' on' : ''); b.textContent = stageLabel(i); b.title = STAGES[i].name;
     b.disabled = i + 1 > d.reached;
     b.onclick = () => { G.startFrom = i; Snd.init(); Snd.play('select'); refreshTitle(); };
     st.appendChild(b);
   }
-  $('stageName').textContent = '第 ' + (G.startFrom + 1) + ' 關 · ' + STAGES[G.startFrom].name;
+  $('stageName').textContent = '第 ' + stageLabel(G.startFrom) + ' 關 · ' + STAGES[G.startFrom].name;
   $('hiList').innerHTML = ['easy', 'normal', 'hard'].map(k => `<span>${DIFF[k].label}<b>${(d.hi[k] || 0).toLocaleString()}</b></span>`).join('');
   syncToggles();
 }
@@ -296,7 +300,7 @@ function setPause(on) {
   if (G.state !== 'play') return;
   G.paused = on;
   showOv(on ? 'pause' : null);
-  if (on) $('pauseInfo').textContent = '第 ' + (G.stage + 1) + ' 關 · ' + STAGES[G.stage].name + '　分數 ' + G.score.toLocaleString();
+  if (on) $('pauseInfo').textContent = '第 ' + stageLabel(G.stage) + ' 關 · ' + STAGES[G.stage].name + '　分數 ' + G.score.toLocaleString();
 }
 let contTimer = null;
 function showContinue() {
@@ -317,7 +321,7 @@ function gameOver() {
   clearInterval(contTimer);
   G.state = 'over'; saveHi();
   $('overScore').textContent = G.score.toLocaleString();
-  $('overStage').textContent = '到達第 ' + (G.stage + 1) + ' 關 · ' + STAGES[G.stage].name;
+  $('overStage').textContent = '到達第 ' + stageLabel(G.stage) + ' 關 · ' + STAGES[G.stage].name;
   showOv('over'); document.body.classList.remove('playing');
 }
 function showEnding() {

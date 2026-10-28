@@ -115,7 +115,7 @@ const BossIntro = {
     const sub = '巨大能量反應接近中';
     c.strokeText(sub, W / 2, 326); c.fillText(sub, W / 2, 326);
     c.font = '400 9px Silkscreen,monospace'; c.fillStyle = '#ffb0a0';
-    c.fillText('STAGE ' + (G.stage + 1) + ' · BOSS APPROACHING', W / 2, 346);
+    c.fillText('STAGE ' + stageLabel(G.stage) + ' · BOSS APPROACHING', W / 2, 346);
     c.restore();
   },
   drawPlate(c) {
@@ -152,7 +152,7 @@ const BossIntro = {
     const tx = sx + sw + 12;
     c.textAlign = 'left'; c.textBaseline = 'middle';
     c.font = '400 8px Silkscreen,monospace'; c.fillStyle = col;
-    c.fillText('STAGE ' + (G.stage + 1) + (G.round > 1 ? '-' + G.round : '') + ' · BOSS', tx, 16);
+    c.fillText('STAGE ' + stageLabel(G.stage) + (G.round > 1 ? '-' + G.round : '') + ' · BOSS', tx, 16);
     const name = T.name, nShow = Math.min(name.length, Math.floor(Math.max(0, t - 0.25) * 14));
     c.font = '900 27px ' + "'Noto Serif TC','Songti TC',serif";
     c.lineWidth = 4; c.strokeStyle = 'rgba(0,0,0,.7)';

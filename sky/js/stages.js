@@ -1,4 +1,7 @@
 'use strict';
+// 關卡編號顯示：第 13 關有 A／B 兩條分歧路線（陣列索引 12、13），之後是 14、15 關
+const ROUTE_LABEL = { 12: '13A', 13: '13B', 14: '14', 15: '15' };
+function stageLabel(n) { return ROUTE_LABEL[n] || String(n + 1); }
 // 關卡：每關由一串「敵機波次」組成，最後出現頭目
 const STAGES = [
   { name: '綠野河谷', en: 'GREEN VALLEY', boss: 'boss1',
