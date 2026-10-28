@@ -589,11 +589,20 @@ function gamepadX() {
 }
 
 // ---------- 主迴圈 ----------
+// 快遇到頭目時先把它的 3D 模型烤好
+let _bossChk = 0;
+function bossPrep(now) {
+  if (now - _bossChk < 1000 || typeof Bake === 'undefined' || !Bake.ready || !G || G.demo || !G.L || !G.L.ev) return;
+  _bossChk = now;
+  for (let i = G.evI || 0; i < G.L.ev.length; i++) { const e = G.L.ev[i]; if (e.type === 'boss') { Bake.prepBoss(e.k); return; } }
+  if (G.boss && !G.boss.dead) Bake.prepBoss(G.boss.k);
+}
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(1 / 30, Math.max(0, (now - (UI.last || now)) / 1000));
   UI.last = now;
   AU.tick();
+  bossPrep(now);
   if (UI.toastT > 0) { UI.toastT -= dt; if (UI.toastT <= 0) $('#toast').hidden = true; }
   if (UI.ruleT > 0) { UI.ruleT -= dt; if (UI.ruleT <= 0 || UI.mode !== 'play') { UI.ruleT = 0; $('#ruleBanner').hidden = true; } }
   if (!G) return;
@@ -649,7 +658,8 @@ function autoQuality(dt) {
   UI.fpsT = 0; UI.fpsN = 0;
   UI.slowN = fps < 42 ? (UI.slowN || 0) + 1 : 0;
   UI.fastN = fps > 57 ? (UI.fastN || 0) + 1 : 0;
-  if (UI.slowN >= 2 && R.q > 0.55) { R.q = Math.max(0.55, R.q - 0.15); UI.slowN = 0; UI.drops = (UI.drops || 0) + 1; UI.pendResize = true; }
+  if (UI.slowN >= 2 && !R.noTex) { R.noTex = true; UI.slowN = 0; } // 先關地面質感，不夠再降解析度
+  else if (UI.slowN >= 2 && R.q > 0.55) { R.q = Math.max(0.55, R.q - 0.15); UI.slowN = 0; UI.drops = (UI.drops || 0) + 1; UI.pendResize = true; }
   else if (UI.fastN >= 5 && R.q < 1 && (UI.drops || 0) < 2) { R.q = Math.min(1, R.q + 0.15); UI.fastN = 0; UI.pendResize = true; }
 }
 
@@ -668,8 +678,10 @@ function boot() {
   syncToggles();
   goTitle();
   requestAnimationFrame(frame);
+  // 3D 模型在背景慢慢烤，烤好就換上
+  setTimeout(() => Bake.init(), 60);
   // 字型載入後重畫快取
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { R.bgKey = ''; });
-  window.__rush = { get G() { return G; }, UI, R, Save, startStage, step, finish };
+  window.__rush = { get G() { return G; }, UI, R, Save, startStage, startDefense, startMode, step, finish, Bake };
 }
 boot();

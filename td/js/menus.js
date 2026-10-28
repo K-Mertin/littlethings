@@ -10,9 +10,12 @@ const WorldMap = (() => {
   // 第二章：東境群島，六關沿著一條 S 形航線
   const NL2 = [[0.1, 0.76], [0.29, 0.5], [0.47, 0.78], [0.62, 0.48], [0.46, 0.2], [0.82, 0.3]];
   const NP2 = [[0.3, 0.92], [0.7, 0.77], [0.32, 0.61], [0.7, 0.45], [0.3, 0.29], [0.66, 0.11]];
+  // 第三章：北方的冰原群島，六關從南邊的海岸一路往北爬到極光王座
+  const NL3 = [[0.12, 0.8], [0.3, 0.56], [0.5, 0.74], [0.66, 0.46], [0.48, 0.2], [0.84, 0.24]];
+  const NP3 = [[0.32, 0.92], [0.68, 0.78], [0.3, 0.62], [0.7, 0.46], [0.34, 0.3], [0.66, 0.12]];
   let cache = null;
-  const ICON = { autumn: 'tree', canyon: 'rock', meadow: 'tree', forest: 'pine', desert: 'cactus', snow: 'spine', swamp: 'mush', volcano: 'crystal', coast: 'palm', night: 'grave', sky: 'tree', cave: 'crystal', ruins: 'pillar', deep: 'coral', bamboo: 'bamboo', harbor: 'mast', river: 'tree', plateau: 'obelisk', amber: 'crystal', spire: 'obelisk' };
-  function positions(w, h, act) { const P = act ? (h > w * 1.05 ? NP2 : NL2) : (h > w * 1.05 ? NP : NL); return P.map(([x, y]) => [x * w, y * h]); }
+  const ICON = { autumn: 'tree', canyon: 'rock', meadow: 'tree', forest: 'pine', desert: 'cactus', snow: 'spine', swamp: 'mush', volcano: 'crystal', coast: 'palm', night: 'grave', sky: 'tree', cave: 'crystal', ruins: 'pillar', deep: 'coral', bamboo: 'bamboo', harbor: 'mast', river: 'tree', plateau: 'obelisk', amber: 'crystal', spire: 'obelisk', tundra: 'spine', forge: 'crate', glacier: 'crystal', fortress: 'pillar', rift: 'rock', aurora: 'obelisk' };
+  function positions(w, h, act) { const pt = h > w * 1.05; const P = act === 2 ? (pt ? NP3 : NL3) : act ? (pt ? NP2 : NL2) : (pt ? NP : NL); const n = LEVELS.filter(L => (L.act || 0) === (act || 0)).length; return P.slice(0, n).map(([x, y]) => [x * w, y * h]); }
   function draw(w, h, act) {
     act = act || 0;
     const d = Math.min(2, window.devicePixelRatio || 1);
@@ -23,7 +26,7 @@ const WorldMap = (() => {
     const pts = positions(w, h, act);
     const themes = LEVELS.filter(L => (L.act || 0) === act).map(L => L.theme);
     // 海（第二章是暮色的東方海域）
-    x.fillStyle = lgrad(x, 0, 0, 0, h, act ? ['#3a3a8a', '#24467e', '#1a5a7e'] : ['#2a8ec4', '#1a6a9e']); x.fillRect(0, 0, w, h);
+    x.fillStyle = lgrad(x, 0, 0, 0, h, act === 2 ? ['#0e2a48', '#1a4a6a', '#2a6a8a'] : act ? ['#3a3a8a', '#24467e', '#1a5a7e'] : ['#2a8ec4', '#1a6a9e']); x.fillRect(0, 0, w, h);
     const r = mkRng(9);
     x.strokeStyle = 'rgba(255,255,255,.14)'; x.lineWidth = 1.5; x.lineCap = 'round';
     for (let i = 0; i < w * h / 2500; i++) { const px = r() * w, py = r() * h, ww = 6 + r() * 10; x.beginPath(); x.moveTo(px - ww, py); x.quadraticCurveTo(px, py - 4, px + ww, py); x.stroke(); }
@@ -92,8 +95,15 @@ const WorldMap = (() => {
       const k = v < 0.7 ? ICON[th] : (th === 'volcano' || th === 'snow' || th === 'desert' ? 'rock' : th === 'night' ? 'dead' : 'bush');
       x.save(); x.translate(px, py); Terrain.propDraw(x, k, u * 0.9, v, th); x.restore();
     }
+    // 第三章：天邊的極光帶、海上的浮冰
+    if (act === 2) {
+      x.save(); x.lineCap = 'round';
+      for (let k = 0; k < 2; k++) { const y0 = h * (0.08 + k * 0.1), col = k ? '#b88aff' : '#6affc0'; for (let j = 0; j < 5; j++) { x.strokeStyle = rgba(col, 0.045); x.lineWidth = 10 + j * 9; x.beginPath(); x.moveTo(-20, y0); for (let xx = 0; xx <= w + 40; xx += 40) x.lineTo(xx, y0 + Math.sin(xx / 70 + k * 2) * 14); x.stroke(); } }
+      x.restore();
+      for (let i = 0; i < 14; i++) { const px = r() * w, py = r() * h, pw = 10 + r() * 22; x.fillStyle = 'rgba(235,248,255,.75)'; x.beginPath(); x.ellipse(px, py, pw, pw * 0.4, r() * 0.6, 0, TAU); x.fill(); x.fillStyle = 'rgba(160,200,230,.5)'; x.beginPath(); x.ellipse(px, py + pw * 0.15, pw, pw * 0.3, 0, 0, Math.PI); x.fill(); }
+    }
     // 第二章：天邊的日蝕、王座尖塔
-    if (act) {
+    if (act === 1) {
       const mx = w * 0.9, my = h * 0.12, mr = Math.min(w, h) * 0.06;
       x.save(); x.shadowColor = '#ffb03a'; x.shadowBlur = mr * 0.8; circ(x, mx, my, mr, '#ffd36b'); x.restore(); circ(x, mx + mr * 0.25, my - mr * 0.1, mr * 0.92, '#2a2456');
       const si = themes.indexOf('spire');
@@ -160,17 +170,17 @@ const Codex = (() => {
           <div class="cx-info"><b>${esc(nm)}</b><small>${d.en}</small><p>${esc(desc)}</p><div class="cx-stats">${stats}</div><div class="cx-chips">${chips}</div></div></div>`;
       }).join('');
     } else {
-      const order = ['slime', 'runner', 'beetle', 'bat', 'golem', 'healer', 'shield', 'splitter', 'mini', 'ogre', 'gargoyle', 'skeleton', 'wisp', 'crawler', 'mummy', 'crab', 'goblin', 'balloon', 'paladin', 'raven', 'brute', 'shaman', 'shade', 'mole', 'bossGolem', 'bossDragon', 'bossLich', 'bossRoc', 'bossWorm', 'bossPharaoh', 'bossKraken', 'bossTortoise', 'bossRaijin', 'bossEclipse'];
+      const order = ENEMY_ORDER;
       box.innerHTML = order.map(k => {
         const d = ENEMIES[k], ok = !!Store.data.seen[k];
-        const stats = ok ? [['生命', d.hp], ['速度', d.spd], d.armor ? ['護甲', Math.round(d.armor * 100) + '%'] : null, d.mres ? ['抗魔', Math.round(d.mres * 100) + '%'] : null, ['金幣', d.bounty], d.lives > 1 ? ['扣命', d.lives] : null, d.fly ? ['飛行', ''] : null, d.revive ? ['會復活', ''] : null, d.cap ? ['每下最多', Math.round(d.cap * 100) + '%'] : null, d.evade ? ['閃避', Math.round(d.evade * 100) + '%'] : null, d.stealth ? ['隱身', ''] : null, d.ward ? ['守護光環', ''] : null, d.phases ? ['形態', d.phases.length + 1] : null].filter(Boolean).map(([a, b]) => `<span>${a}${b !== '' ? ' <b>' + b + '</b>' : ''}</span>`).join('') : '';
+        const stats = ok ? [['生命', d.hp], ['速度', d.spd], d.armor ? ['護甲', Math.round(d.armor * 100) + '%'] : null, d.mres ? ['抗魔', Math.round(d.mres * 100) + '%'] : null, ['金幣', d.bounty], d.lives > 1 ? ['扣命', d.lives] : null, d.fly ? ['飛行', ''] : null, d.revive ? ['會復活', ''] : null, d.cap ? ['每下最多', Math.round(d.cap * 100) + '%'] : null, d.evade ? ['閃避', Math.round(d.evade * 100) + '%'] : null, d.stealth ? ['隱身', ''] : null, d.ward ? ['守護光環', ''] : null, d.mech ? ['不怕控制', ''] : null, d.chill ? ['減速減半', ''] : null, d.shatter ? ['碎冰護盾', ''] : null, d.phases ? ['形態', d.phases.length + 1] : null].filter(Boolean).map(([a, b]) => `<span>${a}${b !== '' ? ' <b>' + b + '</b>' : ''}</span>`).join('') : '';
         return `<div class="cx-card${ok ? '' : ' locked'}${d.boss ? ' boss' : ''}"><div class="cx-art"><img alt="" src="${Render.icon('enemy', k, 0, undefined, 160)}"></div>
           <div class="cx-info"><b>${ok ? esc(d.name) : '？？？'}</b>${d.boss ? '<small class="bt">頭目</small>' : ''}<p>${ok ? esc(d.desc || '分裂膠被打爆之後跑出來的小膠。') : '還沒遇見過。在戰場上遇到之後就會記錄下來。'}</p><div class="cx-stats">${stats}</div></div></div>`;
       }).join('');
     }
     const nA = ACHIEVEMENTS.filter(a => Store.data.ach[a.id]).length;
-    const nT = TOWER_ORDER.filter(towerUnlocked).length, nE = Object.keys(ENEMIES).filter(k => Store.data.seen[k]).length;
-    $('cxCount').textContent = tab === 'hero' ? `已解鎖 ${HERO_ORDER.filter(h => HeroUI.unlocked(h)).length}/${HERO_ORDER.length}` : tab === 'ach' ? `已達成 ${nA}/${ACHIEVEMENTS.length}` : tab === 'tower' ? `已解鎖 ${nT}/${TOWER_ORDER.length}` : `已遇見 ${nE}/${Object.keys(ENEMIES).length}`;
+    const nT = TOWER_ORDER.filter(towerUnlocked).length, nE = ENEMY_ORDER.filter(k => Store.data.seen[k]).length;
+    $('cxCount').textContent = tab === 'hero' ? `已解鎖 ${HERO_ORDER.filter(h => HeroUI.unlocked(h)).length}/${HERO_ORDER.length}` : tab === 'ach' ? `已達成 ${nA}/${ACHIEVEMENTS.length}` : tab === 'tower' ? `已解鎖 ${nT}/${TOWER_ORDER.length}` : `已遇見 ${nE}/${ENEMY_ORDER.length}`;
   }
   const stCache = {};
   function heroStandee(id) { return stCache[id] || (stCache[id] = HeroArt.standee(id, 240).toDataURL()); }

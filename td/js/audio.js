@@ -100,6 +100,8 @@ const Snd = (() => {
     { bpm: 132, root: 50, scale: 'min', prog: [0, 1, 8, 7], drums: 2 },   // 頭目
     { bpm: 100, root: 57, scale: 'maj', prog: [0, 5, 9, 4], drums: 1 },   // 東境（竹林、大河）
     { bpm: 112, root: 50, scale: 'min', prog: [0, 10, 8, 3], drums: 2 },  // 暮光王座
+    { bpm: 94, root: 62, scale: 'min', prog: [0, 5, 3, 7], drums: 1 },    // 北境雪原、冰湖
+    { bpm: 118, root: 52, scale: 'min', prog: [0, 3, 10, 7], drums: 2 },  // 矮人熔爐
   ];
   const SC = { maj: [0, 2, 4, 5, 7, 9, 11], min: [0, 2, 3, 5, 7, 8, 10] };
   let cur = -1, timer = null, nextT = 0, stepI = 0, song = null, intensity = 0;

@@ -22,9 +22,14 @@ Hook.fx = (n, g, a, b, c, d, e) => {
   if (n === 'storm' && g === App.game && !quiet) { if (a) { UI.say('<b>沙暴來襲！</b>所有塔的射程暫時變成八成。', 3); Snd.sfx('blizzard'); } else UI.say('沙暴過去了。', 1.5); }
   if (g === App.game && !quiet) {
     if (n === 'weather') { const W = { clear: '天氣轉晴。', rain: '<b>暴雨！</b>塔的攻速變慢，冰霜塔更冷，毒池會被沖淡。', wind: '<b>狂風！</b>飛行敵人加速，箭塔、狙擊塔射程變短。', thunder: '<b>雷暴！</b>雷電會隨機劈中敵人，法師塔傷害 +35%。' }[a]; UI.say(W, 3); Snd.sfx(a === 'thunder' ? 'zap' : a === 'clear' ? 'click' : 'blizzard'); }
-    if (n === 'phase') { App.ui.banner = { t: 0, big: a.phase >= 2 ? '最終形態！' : '第二形態！', small: a.d.name + ({ bossTortoise: ' · 龜殼碎了！', bossRaijin: a.phase === 1 ? ' · 乘雲飛起（只有能打空中的塔打得到）' : ' · 狂雷讓所有敵人加速！', bossEclipse: a.phase === 1 ? ' · 日蝕降臨，天色暗了下來' : ' · 狂暴！小心黑暗脈衝' }[a.k] || ''), boss: true, k: Beasts.BOX[a.k + (a.phase + 1)] ? a.k + (a.phase + 1) : Beasts.BOX[a.k + '2'] ? a.k + '2' : a.k }; Snd.play(9, 1); }
+    if (n === 'phase') { App.ui.banner = { t: 0, big: a.phase >= 2 ? '最終形態！' : '第二形態！', small: a.d.name + ({ bossTortoise: ' · 龜殼碎了！', bossRaijin: a.phase === 1 ? ' · 乘雲飛起（只有能打空中的塔打得到）' : ' · 狂雷讓所有敵人加速！', bossEclipse: a.phase === 1 ? ' · 日蝕降臨，天色暗了下來' : ' · 狂暴！小心黑暗脈衝', bossYeti: ' · 暴怒！冰封咆哮凍住附近的塔', bossColossus: ' · 過熱！護甲脫落、放出發條兵', bossWyrm: a.phase === 1 ? ' · 落地了！披上冰甲、叫來雪怪' : ' · 永夜暴風雪！所有塔變慢' }[a.k] || ''), boss: true, k: Beasts.BOX[a.k + (a.phase + 1)] ? a.k + (a.phase + 1) : Beasts.BOX[a.k + '2'] ? a.k + '2' : a.k }; Snd.play(9, 1); }
     if (n === 'bridge' && b === false && g.bridges.every(x => !x.open)) UI.say('吊橋都收起來了，敵人在橋頭排隊！', 2);
-    if (n === 'dawn') UI.say('<b>黑夜散去了！</b>', 2.5);
+    if (n === 'dawn') UI.say(g.L.theme === 'spire' ? '<b>黑夜散去了！</b>' : '<b>暴風雪停了！</b>', 2.5);
+    if (n === 'nestWake') UI.say('<b>冰洞巢穴甦醒了！</b>它會不斷放出小雪妖，在旁邊蓋塔把它打爛。', 3);
+    if (n === 'nestDie') UI.say('冰洞巢穴被打爛了！', 2);
+    if (n === 'rubble' && c) UI.say('<b>挖到熔爐基座了！</b>蓋在上面的塔攻速 +20%、傷害 +10%。', 3);
+    if (n === 'cold') UI.say(a ? '<b>寒潮來襲！</b>火盆旁 2 格以外的塔動作變慢。' : '寒潮過去了。', a ? 3 : 1.5);
+    if (n === 'belt' && a) UI.say('輸送帶反轉！路上的敵人被往回送。', 1.8);
   }
   if (g === App.game && !quiet) Ach.event(n, g, a);
 };
@@ -169,7 +174,7 @@ function setPaused(p) {
 }
 
 // ───────── 操作 ─────────
-function deselect() { const u = App.ui; u.selTile = null; u.selTower = null; u.pending = null; u.preview = null; u.selHero = false; }
+function deselect() { const u = App.ui; u.selTile = null; u.selTower = null; u.pending = null; u.preview = null; u.selHero = false; u.selRub = null; }
 function tryBuild(k, x, y) {
   const G = App.game;
   if (!G.towersAvail.includes(k)) return false;
@@ -233,6 +238,28 @@ function handleTap(sx, sy) {
   const tx = Math.floor(wx), ty = Math.floor(wy);
   if (!inside) { deselect(); ui.armed = null; return; }
   const cell = G.grid[ty][tx];
+  // 第三章：雪崩陷阱、輸送帶拉桿、碎石
+  if (cell.trap) {
+    const tr = G.traps.find(o => o.x === tx && o.y === ty);
+    deselect(); ui.armed = null;
+    if (G.state !== 'run') { Snd.sfx('deny'); UI.say('第一波開始後才能推雪崩。'); }
+    else if (triggerTrap(G, tr)) Ach.trap();
+    else { Snd.sfx('deny'); UI.say(`積雪還沒堆好，再等 ${Math.ceil(tr.cd)} 秒。`, 1.5); }
+    return;
+  }
+  if (cell.lever) {
+    deselect(); ui.armed = null;
+    if (G.state !== 'run') { Snd.sfx('deny'); UI.say('第一波開始後才能拉輸送帶。'); }
+    else if (!activateBelt(G)) { Snd.sfx('deny'); UI.say(G.belt.on > 0 ? '輸送帶正在反轉中。' : `拉桿還在冷卻，再等 ${Math.ceil(G.belt.cd)} 秒。`, 1.5); }
+    return;
+  }
+  if (cell.rub) {
+    if (ui.selRub && ui.selRub.x === tx && ui.selRub.y === ty) {
+      if (clearRubble(G, tx, ty)) { ui.selRub = null; if (cell.anv) Ach.give('anvil'); }
+      else { Snd.sfx('deny'); UI.say(`<span class="warn">金幣不夠！清碎石要 ${RUB_COST}。</span>`); }
+    } else { deselect(); ui.armed = null; ui.selRub = { x: tx, y: ty }; Snd.sfx('click'); UI.say(`再點一次，花 <b>${RUB_COST}</b> 金幣清掉這堆碎石。`, 2.5); }
+    return;
+  }
   // 選著兵營時點道路＝移動集結點
   if (ui.selTower && TOWERS[ui.selTower.k].troops && cell.path) {
     const t = ui.selTower;
@@ -447,7 +474,8 @@ const Ach = {
   },
   event(n, G, a) {
     const T = Store.data.tot;
-    if (n === 'kill') { T.kills = (T.kills || 0) + 1; this.dirty = true; if (a.boss) this.give(a.k); if (a._pk) { T.pk = (T.pk || 0) + 1; if (T.pk >= 300) this.give('plague'); } }
+    if (n === 'kill') { T.kills = (T.kills || 0) + 1; this.dirty = true; if (a.boss) this.give(a.k); if (a._pk) { T.pk = (T.pk || 0) + 1; if (T.pk >= 300) this.give('plague'); } if (a._tk) { T.tk = (T.tk || 0) + 1; if (T.tk >= 60) this.give('avalanche'); } }
+    else if (n === 'nestDie') { T.nests = (T.nests || 0) + 1; this.dirty = true; if (T.nests >= 10) this.give('nest10'); }
     else if (n === 'block') { T.blocks = (T.blocks || 0) + 1; this.dirty = true; if (T.blocks >= 300) this.give('hold300'); }
     else if (n === 'build') { T.built = (T.built || 0) + 1; this.dirty = true; }
     else if (n === 'upgrade' && a.tier === 3) { Store.data.specs[a.k + a.spec] = 1; this.dirty = true; }
@@ -481,9 +509,13 @@ const Ach = {
     if (Prog.cleared() >= 10) this.give('ten');
     if (Prog.cleared() >= 14) this.give('all');
     if (Prog.cleared() >= 15) this.give('act2');
-    if (Prog.cleared() >= LEVELS.length) this.give('all20');
+    if (Prog.cleared() >= 20) this.give('all20');
+    if (Prog.cleared() >= 21) this.give('act3');
+    if (Prog.cleared() >= 26) this.give('all26');
+    if (G.L.cold && G.lives >= G.maxLives) this.give('warm');
     if (G.L.fog && G.lives >= G.maxLives) this.give('dawn');
   },
+  trap() { /* 雪崩擊倒數在 kill 事件裡累計 */ },
   meta() { let n = 0; for (const k in Store.data.meta) n += Store.data.meta[k]; if (n >= 10) this.give('meta'); },
 };
 

@@ -219,11 +219,12 @@ function drawWall(g, o, t) {
 
 function drawCrate(g, o, t) {
   const p = P(o.x, o.z, 0);
-  const s = 1.25 * p.s;
+  const C = ART.haz.crate, s = 1.25 * p.s;
+  const ch = (C.wh || 1.25) * p.s, cw = ch * C.width / C.height, cy = p.y - ch * (1 - (C.foot || 0));
   const bob = Math.sin(t * 3 + o.id) * 0.04 * p.s;
   drawShadow(g, p.x, p.y, s * 1.2);
-  g.drawImage(ART.haz.crate, p.x - s / 2, p.y - s - bob, s, s);
-  if (o.hit > 0) { g.globalCompositeOperation = 'lighter'; g.globalAlpha = 0.45; g.drawImage(ART.haz.crate, p.x - s / 2, p.y - s - bob, s, s); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; }
+  g.drawImage(C, p.x - cw / 2, cy - bob, cw, ch);
+  if (o.hit > 0) { g.globalCompositeOperation = 'lighter'; g.globalAlpha = 0.45; g.drawImage(C, p.x - cw / 2, cy - bob, cw, ch); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; }
   // 獎勵標籤
   const txt = gateText(o.rw);
   const fs = 0.42 * p.s;

@@ -15,7 +15,7 @@ const Prog = {
   total() { let n = 0; for (let i = 0; i < LEVELS.length; i++) n += this.levelStars(i) + this.endlessStars(i) + this.chalStars(i) + this.heroicStars(i); return n; },
   max() { return LEVELS.length * 15; },
   actOf(i) { return LEVELS[i].act || 0; },
-  actOpen(a) { return a === 0 || this.cleared() >= 14; },
+  actOpen(a) { return a === 0 || this.cleared() >= ACT_OPEN[a]; },
   spent() { let n = 0; for (const m of META) { const r = Store.data.meta[m.id] || 0; for (let i = 0; i < r; i++) n += m.cost[i]; } return n; },
   avail() { return this.total() - this.spent(); },
   cleared() { let c = 0; for (let i = 0; i < LEVELS.length; i++) if (this.rec(i) && this.rec(i).stars) c = i + 1; return c; },
@@ -30,7 +30,7 @@ const Weekly = {
   week(t) { return Math.floor(((t || Date.now()) - this.EPOCH) / 6048e5); },
   rules(w) {
     w = w === undefined ? this.week() : w;
-    const r = mkRng(w * 7919 + 13), li = Math.floor(r() * LEVELS.length);
+    const r = mkRng(w * 7919 + 13), li = Math.floor(r() * (w >= 43 ? LEVELS.length : 20)); // 第三章從第 43 週（2026-11-02）起加入輪替，本週的地圖不變
     const aa = ['arrow', 'magic', 'sniper', 'frost'], out = [aa[Math.floor(r() * aa.length)]];
     const pool = TOWER_ORDER.filter(k => k !== out[0] && k !== 'mine');
     while (out.length < WEEKLY.towers) out.push(pool.splice(Math.floor(r() * pool.length), 1)[0]);
@@ -393,7 +393,7 @@ const UI = (() => {
 
   function levels() {
     $('lStars').textContent = `★ ${Prog.total()} / ${Prog.max()}`;
-    if (App.act === undefined) App.act = Prog.cleared() >= 14 ? 1 : 0;
+    if (App.act === undefined) App.act = Prog.cleared() >= ACT_OPEN[2] ? 2 : Prog.cleared() >= ACT_OPEN[1] ? 1 : 0;
     const act = App.act;
     for (const b of $('lActs').children) { const a = +b.dataset.a; b.classList.toggle('on', a === act); b.classList.toggle('lock', !Prog.actOpen(a)); }
     $('lWeekly').classList.toggle('lock', !Weekly.open()); $('lWeekly').classList.toggle('fresh', Weekly.open() && !Weekly.rec().plays);
@@ -417,7 +417,7 @@ const UI = (() => {
       box.appendChild(b);
       if (i === cur) requestAnimationFrame(() => { try { const ov = $('ovLevels'); if (ov.scrollHeight > ov.clientHeight + 20) b.scrollIntoView({ block: 'center' }); } catch (e) { /* 舊瀏覽器 */ } });
     });
-    if (!Prog.actOpen(act)) { const d = document.createElement('div'); d.className = 'actlock'; d.innerHTML = '<b>第二章 · 東境遠征</b><span>打贏第 14 關「海底神殿」之後開啟</span>'; box.appendChild(d); }
+    if (!Prog.actOpen(act)) { const d = document.createElement('div'); d.className = 'actlock'; d.innerHTML = act === 2 ? '<b>第三章 · 霜火北境</b><span>打贏第 20 關「暮光王座」之後開啟</span>' : '<b>第二章 · 東境遠征</b><span>打贏第 14 關「海底神殿」之後開啟</span>'; box.appendChild(d); }
   }
   function setAct(a) { App.act = a; levels(); }
   // ───────── 每週挑戰 ─────────
@@ -443,7 +443,7 @@ const UI = (() => {
     $('bEn').textContent = L.en;
     $('bStory').textContent = L.story;
     const foes = [...new Set(L.pool.map(p => p[0]).concat(L.boss ? [L.boss] : []).concat(L.midBoss ? [L.midBoss[1]] : []))];
-    $('bInfo').textContent = `${L.waves} 波 · ${L.entries.length > 1 ? L.entries.length + ' 個入口' : L.paths.length > 1 ? '岔路' : '單一路線'}${L.boss ? ' · 有頭目' : ''}${L.tp ? ' · 傳送陣' : ''}${L.pads ? ' · 水晶基座' : ''}${L.storm ? ' · 沙暴' : ''}${L.current ? ' · 海流' : ''}${L.bridges ? ' · 吊橋' : ''}${L.fog ? ' · 夜霧' : ''}${L.river ? ' · 河道' : ''}${L.weather ? ' · 天氣變化' : ''}${L.tunnel ? ' · 地道' : ''}${L.rotor ? ' · 旋轉祭壇' : ''}${r ? ' · 最佳 ' + '★'.repeat(r.stars) : ''}`;
+    $('bInfo').textContent = `${L.waves} 波 · ${L.entries.length > 1 ? L.entries.length + ' 個入口' : L.paths.length > 1 ? '岔路' : '單一路線'}${L.boss ? ' · 有頭目' : ''}${L.tp ? ' · 傳送陣' : ''}${L.pads ? ' · 水晶基座' : ''}${L.storm ? ' · 沙暴' : ''}${L.current ? ' · 海流' : ''}${L.bridges ? ' · 吊橋' : ''}${L.fog ? ' · 夜霧' : ''}${L.river ? ' · 河道' : ''}${L.weather ? ' · 天氣變化' : ''}${L.tunnel ? ' · 地道' : ''}${L.rotor ? ' · 旋轉祭壇' : ''}${L.traps ? ' · 雪崩陷阱' : ''}${L.rubble ? ' · 碎石與熔爐基座' : ''}${L.nests ? ' · 冰洞巢穴' : ''}${L.belts ? ' · 輸送帶' : ''}${L.cold ? ' · 寒潮與火盆' : ''}${r ? ' · 最佳 ' + '★'.repeat(r.stars) : ''}`;
     $('bFoes').innerHTML = foes.map(k => `<img alt="${ENEMIES[k].name}" title="${ENEMIES[k].name}" src="${Render.icon('enemy', k)}">`).join('');
     const e = Prog.endlessOk(li);
     const hb = $('bHeroic'), hd = !!Store.data.heroic[li];
@@ -513,7 +513,7 @@ const UI = (() => {
 
   function help(back) {
     const tw = TOWER_ORDER.map(k => `<div><img alt="" src="${Render.icon('tower', k, 1)}"><span><b>${TOWERS[k].name}</b>${esc(TOWERS[k].desc)}</span></div>`).join('');
-    const en = ['slime', 'runner', 'beetle', 'bat', 'golem', 'healer', 'shield', 'splitter', 'ogre', 'gargoyle', 'wisp', 'crawler', 'mummy', 'crab', 'goblin', 'balloon', 'paladin', 'raven', 'brute', 'shaman', 'shade', 'mole', 'bossGolem', 'bossDragon', 'bossLich', 'bossRoc', 'bossWorm', 'bossPharaoh', 'bossKraken', 'bossTortoise', 'bossRaijin', 'bossEclipse'].map(k => `<div><img alt="" src="${Render.icon('enemy', k)}"><span><b>${ENEMIES[k].name}</b>${esc(ENEMIES[k].desc)}</span></div>`).join('');
+    const en = ENEMY_ORDER.filter(k => k !== 'mini' && k !== 'skeleton').map(k => `<div><img alt="" src="${Render.icon('enemy', k)}"><span><b>${ENEMIES[k].name}</b>${esc(ENEMIES[k].desc)}</span></div>`).join('');
     $('helpBody').innerHTML = `<h2>怎麼玩</h2>
       <p>敵人會沿著道路走向你的城堡，漏掉一隻就扣生命。在路旁的空地蓋塔擋住牠們，撐過所有波次就過關。</p>
       <h3>基本操作</h3>
@@ -534,6 +534,13 @@ const UI = (() => {
       <li><b>天氣</b>：暴雨讓塔變慢、狂風讓飛行敵人加速、雷暴劈中敵人而且法師塔 +35%。</li>
       <li><b>地道</b>：敵人在地底下走，看不到也打不到，上面可以蓋塔。<b>旋轉祭壇</b>：每隔幾秒轉向，決定敵人走哪條路。</li>
       <li><b>兵營</b>：點兵營再點道路可以移動集結點。<b>菁英模式</b>：過關後解鎖，每關兩個固定詞綴，過關得 2 顆星。<b>每週挑戰</b>：每週一換地圖與規則，看你能撐幾波。</li></ul>
+      <h3>第三章 · 霜火北境（第 21 關以後）</h3>
+      <ul><li><b>雪崩陷阱</b>：點路旁的雪坡，積雪崩下來砸中虛線圈裡的地面敵人（小怪會被砸暈），各自冷卻 ${TRAP.cd} 秒。</li>
+      <li><b>碎石</b>：點一下看價錢、再點一次花 ${RUB_COST} 金幣清掉，之後就能蓋塔。有些碎石底下埋著<b>熔爐基座</b>（攻速 +20%、傷害 +10%）。</li>
+      <li><b>冰洞巢穴</b>：到了指定波次會甦醒，每一波出怪時不斷放出小雪妖。旁邊沒有敵人時，塔會自動打冰洞，打爛有賞金。</li>
+      <li><b>輸送帶</b>：點路旁的拉桿，輸送帶反轉 5 秒，把上面的地面敵人往回送（頭目只推一半），冷卻 ${BELT.cd} 秒。</li>
+      <li><b>寒潮</b>：每隔一陣子吹來，火盆 2 格以外的塔攻速變慢；把主力塔蓋在火盆旁邊。</li>
+      <li><b>發條兵</b>不怕減速、冰凍和暈眩；<b>冰霜巫師</b>會把附近的塔凍住；<b>冰晶蛾</b>倒下時讓附近的同伴得到護盾。</li></ul>
       <h3>防禦塔</h3><div class="hl">${tw}</div>
       <h3>敵人</h3><div class="hl">${en}</div>
       <h3 class="kb">鍵盤快捷鍵</h3>

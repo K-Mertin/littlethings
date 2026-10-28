@@ -115,36 +115,6 @@ function drawMagma2(g, W, H, f) {
   g.restore();
 }
 
-// ---------- 兵種士兵（在一般士兵身上加裝備） ----------
-function specOverlay(g, W, H, k) {
-  const u = H / 100;
-  g.save(); g.translate(W / 2, 0); g.scale(u, u);
-  if (k === 'medic') {
-    // 白色頭盔＋紅十字、背後的醫療包
-    g.fillStyle = rad(g, 0, 15, 18, '#ffffff', '#c9d2dc'); ell(g, 0, 16, 17.5, 15); g.fill();
-    g.fillStyle = '#e8343f'; rr(g, -2.6, 7, 5.2, 14, 1.5); g.fill(); rr(g, -7, 11.5, 14, 5.2, 1.5); g.fill();
-    g.fillStyle = '#f4f6f8'; rr(g, -12, 36, 24, 22, 5); g.fill();
-    g.fillStyle = '#e8343f'; rr(g, -2.5, 40, 5, 14, 1.5); g.fill(); rr(g, -7, 44.5, 14, 5, 1.5); g.fill();
-  } else if (k === 'mortar') {
-    // 扛在肩上的砲管
-    g.save(); g.translate(-8, 46); g.rotate(-0.42);
-    g.fillStyle = lin(g, -6, 0, 6, 0, ['#3a4a2a', '#7a8f5a', '#2a3820']); rr(g, -6, -46, 12, 52, 4); g.fill();
-    g.fillStyle = '#1c2414'; ell(g, 0, -46, 6, 3); g.fill();
-    g.fillStyle = '#c9a050'; rr(g, -6.5, -20, 13, 4, 2); g.fill();
-    g.restore();
-    g.fillStyle = '#ffb020'; rr(g, -17.5, 21, 35, 5.5, 2.7); g.fill();
-  } else if (k === 'guard') {
-    // 兩邊露出來的大盾牌
-    for (const sd of [-1, 1]) {
-      g.fillStyle = lin(g, sd * 20, 0, sd * 30, 0, ['#9fd4ff', '#2f7fd8']);
-      rr(g, sd > 0 ? 18 : -30, 26, 12, 50, 4); g.fill();
-      g.fillStyle = 'rgba(255,255,255,.45)'; rr(g, sd > 0 ? 20 : -28, 30, 3, 40, 1.5); g.fill();
-    }
-    g.fillStyle = '#5fb6ff'; rr(g, -18.5, 21, 37, 5.5, 2.7); g.fill();
-  }
-  g.restore();
-}
-
 // ---------- 建立圖 ----------
 function buildVolc() {
   const S = ART.scene;
@@ -163,14 +133,6 @@ function buildVolc() {
   ART.bat = enemy(drawBat2, 200, 140, 'rgba(70,8,0,.92)');
   ART.healer = enemy(drawHealer2, 170, 190, 'rgba(6,40,20,.92)');
   ART.magma = enemy(drawMagma2, 190, 180, 'rgba(30,6,0,.92)');
-
-  // 兵種士兵
-  const SH = 168, OL = 'rgba(14,22,48,.9)';
-  ART.specSold = {};
-  for (const k of SPEC_ORDER) {
-    const fr = f => outlined(mk(Math.round(SH * 0.66), SH, (g, w, h) => { drawSoldier2(g, w, h, f, 0); specOverlay(g, w, h, k); }), OL, 2.2);
-    ART.specSold[k] = { walk: [0, 1, 2, 3].map(fr), idle: fr(0) };
-  }
 
   // 拋射物
   const H = ART.haz;
@@ -371,6 +333,14 @@ function drawSpecIcon(g, k, x, y, s, stroke) {
   else if (k === 'shield') { g.strokeStyle = '#fff'; g.lineWidth = 7; g.beginPath(); g.arc(0, 4, 24, Math.PI, 0); g.stroke(); g.fillStyle = 'rgba(255,255,255,.5)'; g.beginPath(); g.arc(0, 4, 24, Math.PI, 0); g.fill(); g.fillStyle = '#fff'; g.fillRect(-28, 4, 56, 6); }
   else if (k === 'fury') { g.fillStyle = '#fff'; g.beginPath(); g.moveTo(6, -30); g.lineTo(-16, 4); g.lineTo(-2, 4); g.lineTo(-8, 30); g.lineTo(16, -6); g.lineTo(2, -6); g.closePath(); g.stroke(); g.fill(); }
   g.restore();
+}
+
+// 兵種士兵頭上的小標記
+function drawSpecBadge(g, k, x, y, s) {
+  if (s < 6) return;
+  g.fillStyle = 'rgba(10,14,24,.75)'; ell(g, x, y - s * 0.5, s * 0.55, s * 0.55); g.fill();
+  g.strokeStyle = SPEC[k].col; g.lineWidth = Math.max(1.5, s * 0.1); ell(g, x, y - s * 0.5, s * 0.55, s * 0.55); g.stroke();
+  drawSpecIcon(g, k, x, y - s * 0.5, s * 0.6, 'rgba(0,0,0,.6)');
 }
 
 // 部隊上的護罩

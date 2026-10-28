@@ -122,41 +122,42 @@ function drawUnit(g, u) {
   const p = P(u.x, u.z, 0);
   if (u.giant) {
     const spr = ART.def.giant[Math.floor(u.ph / (Math.PI / 2)) & 3];
-    const h = 2.1 * p.s, w = h * spr.width / spr.height;
-    drawShadow(g, p.x, p.y, w * 0.9);
-    g.drawImage(spr, p.x - w / 2, p.y - h, w, h);
+    const h = (spr.wh ? spr.wh * 2.06 : 2.1) * p.s, w = h * spr.width / spr.height;
+    drawShadow(g, p.x, p.y, 1.3 * p.s);
+    g.drawImage(spr, p.x - w / 2, p.y - h * (1 - (spr.foot || 0)), w, h);
     const hb = w * 0.8;
     g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(p.x - hb / 2, p.y - h - 0.15 * p.s, hb, Math.max(3, 0.08 * p.s));
     g.fillStyle = '#ffd34d'; g.fillRect(p.x - hb / 2, p.y - h - 0.15 * p.s, hb * clamp(u.hp / (24 * G.pow), 0, 1), Math.max(3, 0.08 * p.s));
     return;
   }
-  const spr = (u.pw ? ART.def.giant : ART.soldierV[u.v])[Math.floor(u.ph / (Math.PI / 2)) & 3];
+  const spr = (u.pw && ART.def.giant ? ART.def.giant : ART.soldierV[u.v])[Math.floor(u.ph / (Math.PI / 2)) & 3];
   const k = (1 + u.pop * 0.5) * (u.pw ? 1.15 : 1);
-  const h = 0.78 * p.s * k, w = h * spr.width / spr.height;
-  g.drawImage(spr, p.x - w / 2, p.y - h, w, h);
+  const h = (spr.wh ? spr.wh * 0.765 : 0.78) * p.s * k, w = h * spr.width / spr.height;
+  g.drawImage(spr, p.x - w / 2, p.y - h * (1 - (spr.foot || 0)), w, h);
 }
 
 function drawBase(g, G, t) {
   const b = G.base;
   if (b.hp <= 0 && G.st !== 'play' && (G.t - (b.deadAt || G.t)) > 1.8) return;
   const p = P(0, DEF_Z_BASE + 0.5, 0);
-  const w = 9.5 * p.s, h = w * 0.75;
+  const spr = (b.hit > 0 ? ART.def.baseFlash : ART.def.base)[b.rage ? 1 : 0];
+  const h = spr.wh ? spr.wh * p.s : 9.5 * p.s * 0.75, w = spr.wh ? h * spr.width / spr.height : 9.5 * p.s, ft = spr.foot || 0;
   const jx = b.hit > 0 ? (Math.random() - 0.5) * 0.08 * p.s : 0;
   const sink = b.hp <= 0 ? Math.min(h * 0.6, (G.t - (b.deadAt || G.t)) * h * 0.4) : 0;
   drawShadow(g, p.x, p.y, w * 1.1);
   g.save();
-  g.beginPath(); g.rect(p.x - w, p.y - h - 20, w * 2, h + 20); g.clip();
-  const spr = (b.hit > 0 ? ART.def.baseFlash : ART.def.base)[b.rage ? 1 : 0];
-  g.drawImage(spr, p.x - w / 2 + jx, p.y - h + sink, w, h);
+  g.beginPath(); g.rect(p.x - w, p.y - h - 20, w * 2, h * (1 + ft) + 20); g.clip();
+  g.drawImage(spr, p.x - w / 2 + jx, p.y - h * (1 - ft) + sink, w, h);
   g.restore();
 }
 
 function drawCannon(g, G, t) {
   const p = P(G.px, DEF_Z_CANNON, 0);
-  const w = 2.1 * p.s, h = w * 200 / 220;
-  drawShadow(g, p.x, p.y, w * 1.1);
+  const CN = ART.def.cannon;
+  const h = CN.wh ? CN.wh * p.s : 2.1 * p.s * 200 / 220, w = CN.wh ? h * CN.width / CN.height : 2.1 * p.s;
+  drawShadow(g, p.x, p.y, 2.3 * p.s);
   const kick = G.fireAcc < 0.25 ? (0.25 - G.fireAcc) * 0.1 * p.s : 0;
-  g.drawImage(ART.def.cannon, p.x - w / 2, p.y - h + kick, w, h);
+  g.drawImage(CN, p.x - w / 2, p.y - h * (1 - (CN.foot || 0)) + kick, w, h);
   // 砲口火光
   if (G.st === 'play' && G.fireAcc < 0.3) {
     const m = P(G.px, DEF_Z_CANNON + 0.4, 1.35), s = 0.9 * m.s;
