@@ -67,6 +67,7 @@ function renderDef(G, t) {
   drawClouds(g, th, t);
   drawGround(g, th, 0);
   drawGroundDetail(g, th, 0);
+  for (const o of G.objs) if (o.t === 'geyser') drawGeyserGround(g, o, t); else if (o.t === 'pool') drawPool(g, o, t);
   // 自己這邊的城牆線
   const a = P(-ROAD, 0.2, 0), b = P(ROAD, 0.2, 0);
   g.strokeStyle = 'rgba(80,170,255,.75)'; g.lineWidth = Math.max(3, 0.12 * a.s);
@@ -105,6 +106,7 @@ function renderDef(G, t) {
       const o = it.o;
       if (o.t === 'gate') drawGate(g, o, t);
       else if (o.t === 'en') drawEnemy(g, o);
+      else if (o.t === 'geyser') drawGeyserPlume(g, o, t);
     }
   }
   drawParts(g, G);
@@ -128,8 +130,8 @@ function drawUnit(g, u) {
     g.fillStyle = '#ffd34d'; g.fillRect(p.x - hb / 2, p.y - h - 0.15 * p.s, hb * clamp(u.hp / (24 * G.pow), 0, 1), Math.max(3, 0.08 * p.s));
     return;
   }
-  const spr = ART.soldierV[u.v][Math.floor(u.ph / (Math.PI / 2)) & 3];
-  const k = 1 + u.pop * 0.5;
+  const spr = (u.pw ? ART.def.giant : ART.soldierV[u.v])[Math.floor(u.ph / (Math.PI / 2)) & 3];
+  const k = (1 + u.pop * 0.5) * (u.pw ? 1.15 : 1);
   const h = 0.78 * p.s * k, w = h * spr.width / spr.height;
   g.drawImage(spr, p.x - w / 2, p.y - h, w, h);
 }

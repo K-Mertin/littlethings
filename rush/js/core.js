@@ -45,6 +45,23 @@ const ENEMIES = {
   thrower: { name: '丟丟鬼', r: 0.5, h: 1.35, spd: 1.8, home: 0.5, hpK: 1.6,  mass: 0.8 },
   splitter: { name: '分裂史萊姆', r: 0.6, h: 1.2, spd: 1.5, home: 0.8, hpK: 1.6, mass: 0.8 },
   mini:   { name: '小史萊姆', r: 0.34, h: 0.75, spd: 2.8, home: 1.4, hpK: 0.3, mass: 1.0, art: 'splitter' },
+  bat:    { name: '火蝙蝠', r: 0.42, h: 1.0, spd: 3.6, home: 0.5, hpK: 0.5, mass: 1.0, fly: 1 },
+  healer: { name: '治療巫師', r: 0.5, h: 1.55, spd: 1.6, home: 0.35, hpK: 2.0, mass: 0.8 },
+  magma:  { name: '熔岩怪', r: 0.62, h: 1.5, spd: 1.5, home: 0.8, hpK: 2.4, mass: 1.0 },
+};
+
+// 兵種（穿過紫色的兵種門就會加入，整關都有效）
+const SPEC = {
+  medic:  { name: '醫護兵', icon: '✚', col: '#ff5a6e', desc: '把受傷的士兵救回來' },
+  mortar: { name: '砲兵',   icon: '💣', col: '#ffb020', desc: '自動往怪最多的地方打砲' },
+  guard:  { name: '盾兵',   icon: '🛡', col: '#5fb6ff', desc: '每個盾兵讓損失少 7%' },
+};
+const SPEC_ORDER = ['medic', 'mortar', 'guard'];
+const SPEC_MAX = 4;
+// 限時加持（粉紅色的加持門）
+const BUFF = {
+  shield: { name: '無敵護罩', dur: 6, col: '#7fe8ff' },
+  fury:   { name: '狂熱連射', dur: 7, col: '#ff7ad9' },
 };
 
 // 永久強化
@@ -52,20 +69,29 @@ const UPGRADES = [
   { id: 'men',  name: '起始兵力', desc: lv => `開場多 ${lv * 2} 名士兵`, max: 10, cost: lv => 60 + lv * 45 },
   { id: 'dmg',  name: '火力訓練', desc: lv => `傷害 +${lv * 5}%`,        max: 10, cost: lv => 80 + lv * 60 },
   { id: 'rate', name: '射速訓練', desc: lv => `射速 +${lv * 4}%`,        max: 10, cost: lv => 80 + lv * 60 },
+  { id: 'armor', name: '護甲訓練', desc: lv => `受到的損失 −${lv * 2}%`,  max: 8,  cost: lv => 120 + lv * 80 },
+  { id: 'medic', name: '隨隊醫護兵', desc: lv => `開場就有 ${lv} 名醫護兵`, max: 2, cost: lv => 500 + lv * 500 },
+  { id: 'mortar', name: '隨隊砲兵', desc: lv => `開場就有 ${lv} 名砲兵`,   max: 2, cost: lv => 600 + lv * 600 },
+  { id: 'coin', name: '戰利品', desc: lv => `金幣多拿 ${lv * 5}%`,         max: 10, cost: lv => 100 + lv * 70 },
 ];
+// 武器庫：買下來之後可以選開場武器
+const ARMORY = { rifle: 0, smg: 300, shotgun: 450, laser: 700, rocket: 900 };
 
 // 存檔
 const SAVE_KEY = 'rush:v1';
 const Save = {
   d: null,
-  def() { return { stars: {}, coins: 0, up: { men: 0, dmg: 0, rate: 0 }, music: true, sfx: true, tips: {}, best: {}, plays: 0, dstars: {}, speed: 1 }; },
+  def() { return { stars: {}, coins: 0, up: { men: 0, dmg: 0, rate: 0, armor: 0, medic: 0, mortar: 0, coin: 0 }, wpn: 'rifle', wpns: ['rifle'], music: true, sfx: true, tips: {}, best: {}, plays: 0, dstars: {}, speed: 1 }; },
   load() {
     let d = null;
     try { d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { d = null; }
     const def = this.def();
     if (!d || typeof d !== 'object') d = def;
     for (const k in def) if (d[k] === undefined) d[k] = def[k];
+    if (!d.up || typeof d.up !== 'object') d.up = def.up;
     for (const k in def.up) if (typeof d.up[k] !== 'number') d.up[k] = 0;
+    if (!Array.isArray(d.wpns)) d.wpns = ['rifle'];
+    if (!WEAPONS[d.wpn] || !d.wpns.includes(d.wpn)) d.wpn = 'rifle';
     this.d = d;
     return d;
   },
@@ -74,4 +100,4 @@ const Save = {
   dUnlocked(n) { return n === 1 || (this.d.dstars[n - 1] || 0) > 0; },
 };
 
-if (typeof module !== 'undefined') module.exports = { ROAD, PX_MAX, ZSPAWN, BULLET_V, BULLET_RANGE, MAX_SHOOTERS, VIS_CAP, MAX_N, clamp, lerp, rng, WEAPONS, WPN_ORDER, LV_MAX, lvMult, ENEMIES, UPGRADES, Save };
+if (typeof module !== 'undefined') module.exports = { SPEC, BUFF, ARMORY, ROAD, PX_MAX, ZSPAWN, BULLET_V, BULLET_RANGE, MAX_SHOOTERS, VIS_CAP, MAX_N, clamp, lerp, rng, WEAPONS, WPN_ORDER, LV_MAX, lvMult, ENEMIES, UPGRADES, Save };

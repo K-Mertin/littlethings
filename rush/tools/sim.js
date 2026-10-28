@@ -20,6 +20,8 @@ function gateVal(G, g) {
   if (g.k === 'div') return Math.ceil(G.N / g.v) * d(G.lv);
   if (g.k === 'wpn') return G.N * A.genDps(g.v, G.lv);
   if (g.k === 'lv') return G.N * d(Math.min(A.LV_MAX, G.lv + 1));
+  if (g.k === 'spec') return G.N * d(G.lv) * (G.spec[g.v] >= 4 ? 0.9 : 1.2);
+  if (g.k === 'buff') return G.N * d(G.lv) * 1.12;
   return 0;
 }
 
@@ -32,7 +34,7 @@ function play(s, seed) {
   const dt = 1 / 60;
   const choice = new Map();
   let t = 0;
-  while ((G.st === 'play' || G.st === 'lose' || (G.boss && G.boss.dead && G.st !== 'win')) && t < (MODE === 'endless' ? 1500 : 400)) {
+  while ((G.st === 'play' || G.st === 'lose' || (G.boss && G.boss.dead && G.st !== 'win')) && t < (MODE === 'endless' ? 1500 : MODE === 'boss' ? 900 : 400)) {
     // 找下一對門
     let next = null;
     for (const o of G.objs) if (o.t === 'gate' && !o.pair.used && o.z > -0.5 && (!next || o.z < next.z)) next = o;
@@ -82,6 +84,14 @@ function play(s, seed) {
           if (o.t === 'spike' && o.z < 5 && o.z + o.len > -1 && x + cr.rx > o.x0 && x - cr.rx < o.x1) d += 2;
           if (o.t === 'lob' && o.T - o.age < 1.0 && Math.abs(o.tx - x) < o.rad + cr.rx * 0.6 + 0.3) d += 4;
           if (o.t === 'boss' && o.strike && Math.abs(o.strike.x - x) < 1.25 + cr.rx * 0.5 + 0.3) d += 5;
+          if (o.t === 'boss' && o.breath && x * o.breath.side > -0.6) d += 5;
+          if (o.t === 'geyser' && o.z > -2 && o.z < 6 && (o.warn || o.erupt) && Math.abs(o.x - x) < o.r + cr.rx * 0.6 + 0.3) d += 3;
+          if (o.t === 'pool' && o.z > -1 && o.z < 5 && Math.abs(o.x - x) < o.r + cr.rx * 0.5 + 0.2) d += 1;
+          if (o.t === 'lava' && o.z < 9 && o.z + o.len > -2) {
+            const ex = Math.max(0.35, cr.rx * 0.5); let ok = false;
+            for (const b of o.bridges) { const T = Math.max(0, o.z) / Math.max(0.1, G.spd); const bx = b.cx + b.amp * Math.sin((G.t + T) * b.f + b.ph); if (Math.abs(bx - x) <= b.w - ex + 0.25) ok = true; }
+            if (!ok) d += 4;
+          }
         }
         return d;
       };

@@ -15,20 +15,26 @@ const DSTAGES = [
   { name: '暴風雪', theme: 2, rows: 3, slide: 2, red: 1, lvl: 6 },
   { name: '霓虹基地', theme: 3, rows: 3, slide: 2, red: 2, lvl: 7 },
   { name: '魔王城', theme: 3, rows: 3, slide: 2, red: 2, lvl: 8 },
+  { name: '熔岩前線', theme: 4, rows: 3, slide: 1, red: 1, lvl: 9, pow: 1, gey: 1 },
+  { name: '噴火峽谷', theme: 4, rows: 3, slide: 2, red: 1, lvl: 10, pow: 1, gey: 2 },
+  { name: '火龍巢穴', theme: 4, rows: 4, slide: 2, red: 2, lvl: 11, pow: 2, gey: 2 },
+  { name: '最終火山', theme: 4, rows: 4, slide: 3, red: 2, lvl: 12, pow: 2, gey: 3 },
 ];
 
 // 砲台一次射出一小隊（3 個人）。門是對「整隊」算的：
 // ×2 讓整隊變兩倍，+6 讓整隊多 6 個人，所以隊伍越大，乘法門越划算。
 const DEF_SQUAD = 3;
 function defApply(S, g) { return g.k === 'mul' ? S * g.v : g.k === 'add' ? S + g.v : g.k === 'kill' ? 0 : S; }
+// 強化門：人數不變，但每個小兵變成兩倍強（算「戰力」時當 ×2）
+function defPower(S, g) { return g.k === 'pow' ? S * 2 : defApply(S, g); }
 
 function genDefense(n, seed) {
   const D = DSTAGES[n - 1];
   const R = rng(seed || n * 4241 + 77);
   const pick = a => a[Math.floor(R() * a.length)];
   const gates = [];
-  const rowZ = D.rows === 1 ? [18] : D.rows === 2 ? [13, 24] : [11, 20, 29];
-  let slides = D.slide, reds = D.red;
+  const rowZ = D.rows === 1 ? [18] : D.rows === 2 ? [13, 24] : D.rows === 3 ? [11, 20, 29] : [9, 16.5, 24, 31.5];
+  let slides = D.slide, reds = D.red, pows = D.pow || 0;
   rowZ.forEach((z, ri) => {
     // 每排 2～3 扇門，中間有空隙
     const cnt = D.rows === 1 ? 2 : R() < 0.5 ? 2 : 3;
@@ -38,6 +44,7 @@ function genDefense(n, seed) {
     xs.forEach((x, i) => {
       let g = n === 1 ? [{ k: 'mul', v: 2 }, { k: 'add', v: 5 }][i] : pick(opts);
       if (reds > 0 && i === cnt - 1 && ri > 0 && R() < 0.7) { g = { k: 'kill', v: 0 }; reds--; }
+      else if (pows > 0 && ri >= D.rows - 2 && i === 0 && R() < 0.75) { g = { k: 'pow', v: 2 }; pows--; }
       const o = { t: 'gate', id: _uid++, x, w, z, k: g.k, v: g.v, pair: { used: false, n: 1 }, fade: 0, bump: 0, acc: 0 };
       if (slides > 0 && (g.k !== 'kill' || D.lvl >= 7) && i === 0 && R() < 0.8) { o.slide = { cx: 0, amp: 4.2 - w - 0.3, f: 0.6 + R() * 0.4, ph: R() * 6 }; slides--; }
       gates.push(o);
@@ -47,13 +54,25 @@ function genDefense(n, seed) {
   const rate = 5;
   let best = 1;
   for (let x = -3.4; x <= 3.4; x += 0.2) best = Math.max(best, defPathGain(gates, x, 0));
+  if (D.lvl > 8) {
+    // 火山關卡門很多又會動：用一段時間內的平均最佳路線來算，不然會高估
+    let sum = 0;
+    for (let t = 0; t < 10; t += 1) { let b = 1; for (let x = -3.4; x <= 3.4; x += 0.2) b = Math.max(b, defPathGain(gates, x, t)); sum += b; }
+    best = Math.min(best, sum / 10);
+  }
   const E = rate * Math.pow(Math.min(best, 30), 0.75) * 0.75;
   const lv = D.lvl;
+  const lvE = lv <= 8 ? lv : 8 + (lv - 8) * 0.2;   // 火山關卡的難度主要來自火口和新怪物
+  // 噴火口：放在門的排與排之間，噴火時小兵和怪物都會被燒
+  for (let k = 0; k < (D.gey || 0); k++) {
+    const z = k === 0 ? (rowZ[0] + rowZ[1]) / 2 : k === 1 ? (rowZ[rowZ.length - 1] + 38) / 2 : (rowZ[1] + rowZ[2]) / 2;
+    gates.push({ t: 'geyser', id: _uid++, x: (R() * 2 - 1) * 2.6, z, per: 4.2 + R() * 1.4, ph: R() * 3, r: 1.15 });
+  }
   return {
-    n, name: D.name, theme: THEMES[D.theme], gates, E, lv,
-    baseHp: Math.round(E * (30 + lv * 3)),
+    n, name: D.name, theme: THEMES[D.theme], gates, E, lv, hot: !!THEMES[D.theme].hot,
+    baseHp: Math.round(E * (30 + lvE * 3)),
     castle: 15,
-    flow: E * (0.5 + lv * 0.055),   // 怪物每秒的血量
+    flow: E * (0.5 + lvE * 0.055),   // 怪物每秒的血量
     dur: 0,
   };
 }
@@ -61,10 +80,10 @@ function genDefense(n, seed) {
 // 從 x 直直往前，一隊會變成原本的幾倍（看當下門的位置）
 function defPathGain(gates, x, t) {
   let S = DEF_SQUAD;
-  const gs = gates.slice().sort((a, b) => a.z - b.z);
+  const gs = gates.filter(g => g.t === 'gate').sort((a, b) => a.z - b.z);
   for (const g of gs) {
     const gx = g.slide ? g.slide.cx + g.slide.amp * Math.sin(t * g.slide.f + g.slide.ph) : g.x;
-    if (Math.abs(x - gx) <= g.w) S = defApply(S, g);
+    if (Math.abs(x - gx) <= g.w) S = defPower(S, g);
   }
   return S / DEF_SQUAD;
 }
@@ -89,7 +108,7 @@ function newDefense(n, opts) {
 
 function defEnemy(k, x, z, hp) {
   const K = ENEMIES[k];
-  return { t: 'en', id: _uid++, k, art: K.art || k, x, z, hp, max: hp, r: K.r, h: K.h, spd: K.spd * 0.62 + 0.4, mass: 1, ph: Math.random() * 6, hit: 0, dead: 0, pow: k === 'brute' ? 4 : k === 'shield' ? 2 : 1 };
+  return { t: 'en', id: _uid++, k, art: K.art || k, x, z, hp, max: hp, r: K.r, h: K.h, spd: K.spd * 0.62 + 0.4, mass: 1, ph: Math.random() * 6, hit: 0, dead: 0, pow: k === 'brute' ? 4 : k === 'shield' || k === 'magma' ? 2 : 1, fly: K.fly };
 }
 
 // 一波怪物：總血量依時間與關卡增加
@@ -105,12 +124,17 @@ function defWave() {
   if (big) add('brute', 8);
   if (lv >= 3 && Math.random() < 0.5) add('shield', 3);
   if (lv >= 4 && Math.random() < 0.4) add('splitter', 3);
-  const nSmall = 5 + Math.floor(Math.random() * 4) + lv;
+  if (L.hot) {
+    for (let i = 1 + Math.floor(Math.random() * 2); i > 0; i--) add('bat', 1);
+    if (lv >= 10 && Math.random() < 0.35) add('healer', 2);
+    if (Math.random() < 0.35) add('magma', 3);
+  }
+  const nSmall = 5 + Math.floor(Math.random() * 4) + Math.min(lv, 9);
   for (let i = 0; i < nSmall; i++) add(Math.random() < 0.25 && lv >= 2 ? 'runner' : 'grunt', 1);
   const unit = hpBudget / w;
   const cx = (Math.random() * 2 - 1) * 2.4;
   kinds.forEach((k, i) => {
-    const hk = k === 'brute' ? 8 : k === 'shield' || k === 'splitter' ? 3 : 1;
+    const hk = k === 'brute' ? 8 : k === 'shield' || k === 'splitter' || k === 'magma' ? 3 : k === 'healer' ? 2 : 1;
     const x = clamp(cx + (Math.random() - 0.5) * 3.2, -PX_MAX, PX_MAX);
     G.objs.push(defEnemy(k, x, DEF_Z_BASE - 2 - (i % 4) * 0.9 - Math.random(), Math.max(1, Math.round(unit * hk))));
   });
@@ -120,8 +144,8 @@ function defWave() {
 // 巨魔兵：基地半血時派出來，很耐打，撞到城扣很多
 function defBoss() {
   if (G.L.lv < 2) return;
-  const o = defEnemy('brute', (Math.random() - 0.5) * 2, DEF_Z_BASE - 2.5, Math.round(G.L.E * (5 + G.L.lv * 0.8)));
-  o.h *= 1.9; o.r *= 1.7; o.pow = 6; o.spd *= 0.7; o.boss = 1;
+  const o = defEnemy(G.L.hot ? 'magma' : 'brute', (Math.random() - 0.5) * 2, DEF_Z_BASE - 2.5, Math.round(G.L.E * (5 + G.L.lv * 0.8)));
+  o.h *= G.L.hot ? 2.6 : 1.9; o.r *= G.L.hot ? 2.3 : 1.7; o.pow = 6; o.spd *= 0.7; o.boss = 1;
   G.objs.push(o);
   emit('dboss', o);
 }
@@ -171,11 +195,31 @@ function defStep(dt, input) {
   let shots = 0;
   while (G.fireAcc >= 1) { G.fireAcc -= 1; shots += defFireSquad(); G.giant = Math.min(G.giantMax, G.giant + DEF_SQUAD); }
   if (shots) emit('dshot', { n: shots });
-  // 門移動
+  // 門移動、噴火口
   for (const o of G.objs) if (o.t === 'gate') {
     if (o.slide) o.x = o.slide.cx + o.slide.amp * Math.sin(G.t * o.slide.f + o.slide.ph);
     if (o.bump > 0) o.bump = Math.max(0, o.bump - dt * 5);
+  } else if (o.t === 'geyser') {
+    const c = (G.t + o.ph) % o.per, idx = Math.floor((G.t + o.ph) / o.per);
+    o.erupt = c > o.per - 0.75; o.warn = !o.erupt && c > o.per - 1.9;
+    if (o.erupt) {
+      if (o.killC !== idx) { o.killC = idx; emit('geyser', o); }
+      const U = G.units;
+      for (let k = U.length - 1; k >= 0; k--) {
+        const u = U[k];
+        if (Math.abs(u.x - o.x) < o.r && Math.abs(u.z - o.z) < o.r) {
+          if (u.giant) { u.hp -= 6 * dt * G.pow; if (u.hp > 0) continue; }
+          U.splice(k, 1); defUnitGone(u);
+        }
+      }
+      for (const e of G.objs) if (e.t === 'en' && !e.dead && Math.abs(e.x - o.x) < o.r + e.r * 0.5 && Math.abs(e.z - o.z) < o.r + e.r * 0.5) e.hp -= e.max * 1.3 * dt, e.hit = 0.08;
+    }
+  } else if (o.t === 'pool') {
+    o.life -= dt;
+    const U = G.units;
+    for (let k = U.length - 1; k >= 0; k--) { const u = U[k]; if (!u.giant && Math.abs(u.x - o.x) < o.r && Math.abs(u.z - o.z) < o.r * 0.8) { U.splice(k, 1); defUnitGone(u); } }
   }
+  for (let i = G.objs.length - 1; i >= 0; i--) if (G.objs[i].t === 'pool' && G.objs[i].life <= 0) G.objs.splice(i, 1);
   // 怪物出生
   G.waveT = Math.max(2.2, 3.4 - G.L.lv * 0.12);
   G.spawnAcc += dt;
@@ -187,7 +231,18 @@ function defStep(dt, input) {
     const o = O[i];
     if (o.t !== 'en') continue;
     if (o.hit > 0) o.hit -= dt;
+    if (o.hp <= 0 && !o.dead) { o.dead = 1; G.kills++; emit('kill', o); if (fxOn()) FX.kill(o); if (o.k === 'magma') O.push({ t: 'pool', id: _uid++, x: o.x, z: o.z, r: 1.0, life: 3 }); }
     if (o.dead) { O.splice(i, 1); continue; }
+    if (o.k === 'healer') {
+      o.healT = (o.healT == null ? 2 : o.healT) - dt;
+      if (o.healT <= 0) {
+        o.healT = 2.6; o.atk = 0.4;
+        for (const e of O) if (e.t === 'en' && !e.dead && e !== o && e.hp < e.max && Math.abs(e.x - o.x) < 3.5 && Math.abs(e.z - o.z) < 4) e.hp = Math.min(e.max, e.hp + e.max * 0.15);
+        emit('enheal', o);
+        if (fxOn()) FX.add({ k: 'ring', x: o.x, z: o.z, life: 0.6, size: 3.5, col: '120,255,140' });
+      }
+      if (o.atk > 0) o.atk -= dt;
+    }
     o.z -= o.spd * dt;
     o.ph += dt * (5 + o.spd);
     // 看到附近有小兵就衝過去打（兩邊的人會撞在一起）
@@ -235,6 +290,7 @@ function defUnitsMove(dt, endOnly) {
       if (z0 < g.z && u.z >= g.z && Math.abs(u.x - g.x) <= g.w && !(u.gates & (1 << k))) {
         u.gates |= 1 << k;
         if (g.k === 'kill') { U.splice(i, 1); defUnitGone(u); emit('unitdie'); if (fxOn() && Math.random() < 0.4) FX.add({ k: 'spark', x: u.x, z: g.z, h: 0.6, life: 0.12, size: 0.6, fl: 'o', rot: 0 }); break; }
+        if (g.k === 'pow') { u.hp *= 2; u.pw = (u.pw || 0) + 1; if (!G.sim && G.t - (g.ftT || -9) > 0.9) { g.ftT = G.t; g.bump = 0.6; floatText(g.x, g.z, 3.3, '變強！', '#ffe066', 0.55); } continue; }
         const sq = u.sq;
         if (!sq || (sq.used & (1 << k))) continue;   // 這一隊已經算過這扇門了
         sq.used |= 1 << k;
@@ -263,6 +319,7 @@ function defUnitsMove(dt, endOnly) {
         hitE.dead = 1; G.kills++;
         emit('kill', hitE);
         if (fxOn()) FX.kill(hitE);
+        if (hitE.k === 'magma') G.objs.push({ t: 'pool', id: _uid++, x: hitE.x, z: hitE.z, r: 1.0, life: 3 });
         if (hitE.k === 'splitter') for (let c = 0; c < 3; c++) G.objs.push(defEnemy('mini', clamp(hitE.x + (c - 1) * 0.7, -PX_MAX, PX_MAX), hitE.z + 0.4, Math.max(1, Math.round(hitE.max * 0.25))));
       }
       if (u.hp <= 0.001) { U.splice(i, 1); defUnitGone(u); continue; }
