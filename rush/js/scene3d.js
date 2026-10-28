@@ -214,10 +214,10 @@ function POLEC(K) { return K.M(0x3a3f55, { r: 0.4, m: 0.7 }); }
 function sceneJobs3() {
   const J = [];
   const order = ['tree', 'bush', 'flower', 'rock', 'windmill', 'cactus', 'skull', 'palm', 'mesa', 'pine', 'snowman', 'ice', 'lamp', 'building', 'sign'];
-  for (const k of order) J.push(['decor', async () => {
+  for (const k of order) {
     const big = k === 'building' || k === 'mesa';
-    ART.decor[k] = await bakeSet(DECOR3[k], [0, 1, 2].map(v => ({ v })), { ppu: big ? 36 : k === 'windmill' || k === 'palm' ? 48 : 60, th: 40, ol: 'rgba(20,30,20,.55)', olpx: 1.2, key: 2.4 });
-  }]);
+    J.push(job('decor', 'decor:' + k, () => bakeSet(DECOR3[k], [0, 1, 2].map(v => ({ v })), { ppu: big ? 32 : k === 'windmill' || k === 'palm' ? 42 : 52, th: 40, ol: 'rgba(20,30,20,.55)', olpx: 1.1, key: 2.4 }), a => { ART.decor[k] = a; }));
+  }
   return J;
 }
 
@@ -326,17 +326,16 @@ function cannon3(K) {
 }
 function propJobs3() {
   return [
-    ['prop', async () => { ART.haz.crate = await bake3(crate3, { ppu: 120, th: 40, scale: 1.1, ol: 'rgba(60,30,8,.8)', olpx: 1.6 }); }],
-    ['prop', async () => { ART.barrel = await bake3(barrel3, { ppu: 110, th: 40, scale: 1.12, ol: 'rgba(60,8,8,.8)', olpx: 1.6 }); }],
+    job('prop', 'crate', async () => [await bake3(crate3, { ppu: 110, th: 40, scale: 1.1, ol: 'rgba(60,30,8,.8)', olpx: 1.5 })], a => { ART.haz.crate = a[0]; }),
+    job('prop', 'barrel', async () => [await bake3(barrel3, { ppu: 100, th: 40, scale: 1.12, ol: 'rgba(60,8,8,.8)', olpx: 1.5 })], a => { ART.barrel = a[0]; }),
   ];
 }
 function defJobs3() {
   return [
-    ['def', async () => {
-      const D = ART.def, b = await bakeSet(castle3, [{ rage: false }, { rage: true }], { ppu: 44, th: 50, ol: 'rgba(20,10,30,.8)', olpx: 1.5 });
-      D.base = b; D.baseFlash = b.map(s => { const c = flashOf(s); c.wh = s.wh; c.foot = s.foot; return c; });
-    }],
-    ['def', async () => { ART.def.cannon = await bake3(cannon3, { ppu: 110, th: 50, rotY: Math.PI, ol: 'rgba(10,20,50,.8)', olpx: 1.6 }); }],
-    ['def', async () => { ART.def.giant = await bakeSet(soldier3, [0, 1, 2, 3].map(f => ({ f, v: 2, wid: 'rifle', gold: 1 })), { ppu: 150, th: 48, rotY: Math.PI, scale: 1.12, ol: 'rgba(90,50,0,.85)', olpx: 1.8 }); }],
+    job('def', 'castle', () => bakeSet(castle3, [{ rage: false }, { rage: true }], { ppu: 40, th: 50, ol: 'rgba(20,10,30,.8)', olpx: 1.4 }), b => {
+      const D = ART.def; D.base = b; D.baseFlash = b.map(s => { const c = flashOf(s); c.wh = s.wh; c.foot = s.foot; return c; });
+    }),
+    job('def', 'cannon', async () => [await bake3(cannon3, { ppu: 100, th: 50, rotY: Math.PI, ol: 'rgba(10,20,50,.8)', olpx: 1.5 })], a => { ART.def.cannon = a[0]; }),
+    job('def', 'giant', () => bakeSet(soldier3, [0, 1, 2, 3].map(f => ({ f, v: 2, wid: 'rifle', gold: 1 })), { ppu: 130, th: 48, rotY: Math.PI, scale: 1.12, ol: 'rgba(90,50,0,.85)', olpx: 1.6 }), a => { ART.def.giant = a; }),
   ];
 }
