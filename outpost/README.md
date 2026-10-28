@@ -6,7 +6,7 @@ A bright little real-time strategy game in the spirit of StarCraft. Mine crystal
 Open `index.html` in a browser. The title screen has three choices; a computer-vs-computer match plays behind it.
 
 - **Skirmish**: pick your options and press **Start battle** (or Enter).
-- **Missions**: three campaigns, one per faction, that teach the game. Each mission unlocks the next one in its campaign and earns up to three stars.
+- **Missions**: three campaigns, one per faction (21 missions in all), that teach the game and then add escorts, capture points and hero missions. Each mission unlocks the next one in its campaign and earns up to three stars.
 - **Play online**: 1 vs 1 against a friend on another device (see below).
 - **Units**: an encyclopedia of every unit in each faction, with cost, health, attack, and what it is good and bad against.
 - **Continue**: appears when there is an autosaved skirmish to pick up.
@@ -188,6 +188,9 @@ Three campaigns, one per faction. Pick the faction with the tabs at the top of t
 | 4 | Break the Wall | Siege tech and sieged Tanks against a walled base | breaking in, under 10:00, losing 10 units or fewer |
 | 5 | Sky Raid | Hornets and Gunships against three Refineries, with a 9-minute timer | finishing, under 6:00, losing 4 units or fewer |
 | 6 | Final Outpost | a full match on a large snowy map against the Bloom on Hard | winning, under 20:00, losing 40 units or fewer |
+| 7 | Convoy Run | **escort**: Captain Rook and a squad guard three Supply Crawlers through a winding canyon past red posts and Buggy raids | delivering 2, all 3 arriving, Rook reaching level 3 |
+| 8 | Beacon Hill | **capture points**: three beacons at the river fords; held beacons score a point a second, first to 240 wins | winning, under 11:00, holding all three at once |
+| 9 | Last Stand | **hero survival**: seven minutes of Bloom waves on a snowy base, every fourth wave hunting Rook | surviving, Rook reaching level 5, Command Center never below half health |
 
 **The Bloom** (Elder Moss)
 
@@ -196,6 +199,9 @@ Three campaigns, one per faction. Pick the faction with the tabs at the top of t
 | 1 | Seeds and Soil | seeds at the Heart Tree, living ground, the Nest, Spitter pairs | finishing, under 5:00, 8+ Sprouts |
 | 2 | Walking Thorns | Uproot a Thorn, walk it to the front and root it, then hold off Blue raiders for five minutes | surviving, a Thorn rooted at the front, Heart Tree never below half health |
 | 3 | Burrow Ambush | burrowed Burrowers ambush a Shard patrol; acid and poison against shields | winning, under 9:00, losing 15 creatures or fewer |
+| 4 | Sacred Groves | **capture with living ground**: cover three groves with your living ground (a Heart Tree grows anywhere) and keep Shard fighters off them for 45 seconds | winning, under 14:00, Old Bramble reaching level 3 |
+| 5 | The Wandering Elder | **escort**: the Elder Seed walks through a frozen canyon past Blue posts and Hornet raids, then roots into a new Heart Tree | arriving, the Elder above half health, under 7:00 |
+| 6 | Blight Siege | **hero survival**: eight minutes of Blue and Shard waves taking turns; Old Bramble must live | surviving, Heart Tree never below half health, losing 30 creatures or fewer |
 
 **The Shards** (Oracle Lumen)
 
@@ -204,6 +210,25 @@ Three campaigns, one per faction. Pick the faction with the tabs at the top of t
 | 1 | Power and Light | warping buildings, power fields, a forward Obelisk and warping units in at the front | finishing, under 6:00, the Warp Gate never losing power |
 | 2 | Hit and Run | shields, pulling back to recharge, Blink and Barrier against three Blue camps | finishing, under 5:00, losing 2 units or fewer |
 | 3 | The Front Line | a full match against the Blue Outpost with a forward Obelisk | winning, under 18:00, warping 10 units in at the front |
+| 4 | Resonance Points | **capture points** against the Bloom at the river fords, first to 240 | winning, under 11:00, Aster reaching level 3 |
+| 5 | The Crystal Ark | **escort**: a slow flying Ark crosses Bloom land past Thorn camps while Wasps hunt it | arriving, the Ark above half health, losing 6 units or fewer |
+| 6 | Aster's Trial | **hero survival**: no base, Aster and a small band in the middle of the map against Blue waves from every side for six minutes; help warps in at 2:00 and 4:00 | surviving, Aster reaching level 5, losing 5 units or fewer |
+
+### Heroes
+From mission 7 (Blue) and mission 4 (Bloom and Shards) each campaign has a hero that only appears in missions. A hero stands in a golden ring with a star showing its level (1–5). It gains experience from every enemy it destroys, and a little from enemies destroyed near it; each level adds 15% health (and shield) and damage, and level 4 adds armor. Each hero has one ability on **Q**:
+
+| Hero | Fights like | Q ability (cooldown) |
+|---|---|---|
+| Captain Rook (Blue) | a big Trooper: ranged, hits air and ground | **Overdrive** (24 s): he and every soldier near him run and shoot 50% faster for 6–10 seconds |
+| Old Bramble (Bloom) | a huge Beetle: melee, very tough, heals out of combat | **Regrowth** (22 s): heals every friend and building nearby, poisons the enemies around him |
+| Aster (Shards) | a big Lancer with a big shield | **Nova** (18 s): hurts every enemy around her and refills her shield |
+
+In missions with a base the hero comes back at the main building 30 seconds after falling; in hero-survival missions losing the hero loses the mission. Heroes and escorted cargo show as gold and white squares on the minimap.
+
+### New mission types and maps
+- **Escort**: Supply Crawlers, the Elder Seed and the Crystal Ark move along a route by themselves and stop for a couple of seconds whenever they are hurt, so the escort has to clear the way ahead. You can select them to see their health but can't give them orders.
+- **Capture points**: stand next to a point with fighters (workers don't count) and no enemies to fill its ring; it stays yours until the other side fills it back past the middle.
+- **Canyon** maps: cliffs everywhere except one winding lane between the bases, with pockets around the expansions. **River** maps: a river between the two sides that can only be crossed at three fords.
 
 Each campaign's guide explains every step in small message boxes on the left that close by themselves (tap to skip). The objective list above them can be folded away with **–**. Stars and unlocked missions are saved in this browser.
 
