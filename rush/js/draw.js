@@ -122,6 +122,64 @@ function vignette() {
 // ---------- 地面 ----------
 function quad(g, a, b, c, d) { g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.lineTo(c.x, c.y); g.lineTo(d.x, d.y); g.closePath(); g.fill(); }
 
+// 地面質感：柏油顆粒、草地紋路（中性的明暗，各主題的顏色都能疊）
+const TEXM = 64; // 貼圖每公尺幾像素
+function groundTex() {
+  if (R.gtex) return R.gtex;
+  const N = 256, r = rng(77);
+  const wrap = (g, fn) => { for (const ox of [-N, 0, N]) for (const oy of [-N, 0, N]) { g.save(); g.translate(ox, oy); fn(g); g.restore(); } };
+  const road = mk(N, N, g => {
+    const pts = []; for (let i = 0; i < 2600; i++) pts.push([r() * N, r() * N, r() < 0.55, 0.6 + r() * 1.4]);
+    const blot = []; for (let i = 0; i < 9; i++) blot.push([r() * N, r() * N, 10 + r() * 26, r() < 0.5]);
+    const cracks = []; for (let i = 0; i < 2; i++) { let x = r() * N, y = r() * N; const c = [[x, y]]; for (let k = 0; k < 6; k++) { x += (r() - 0.5) * 30; y += 8 + r() * 14; c.push([x, y]); } cracks.push(c); }
+    wrap(g, g => {
+      for (const [x, y, rr0, d] of blot) { g.fillStyle = d ? 'rgba(0,0,0,.07)' : 'rgba(255,255,255,.05)'; g.beginPath(); g.ellipse(x, y, rr0, rr0 * 0.6, 0, 0, 7); g.fill(); }
+      for (const [x, y, d, sz] of pts) { g.fillStyle = d ? 'rgba(0,0,0,.22)' : 'rgba(255,255,255,.16)'; g.fillRect(x, y, sz, sz); }
+      g.strokeStyle = 'rgba(0,0,0,.13)'; g.lineWidth = 1.2; g.lineCap = 'round';
+      for (const c of cracks) { g.beginPath(); g.moveTo(c[0][0], c[0][1]); for (const q of c) g.lineTo(q[0], q[1]); g.stroke(); }
+    });
+  });
+  const grass = mk(N, N, g => {
+    const bl = []; for (let i = 0; i < 1500; i++) bl.push([r() * N, r() * N, (r() - 0.5) * 0.9, 3 + r() * 6, r() < 0.5]);
+    const clump = []; for (let i = 0; i < 14; i++) clump.push([r() * N, r() * N, 12 + r() * 30, r() < 0.5]);
+    wrap(g, g => {
+      for (const [x, y, rr0, d] of clump) { g.fillStyle = d ? 'rgba(0,30,0,.08)' : 'rgba(255,255,220,.07)'; g.beginPath(); g.ellipse(x, y, rr0, rr0 * 0.55, 0, 0, 7); g.fill(); }
+      g.lineCap = 'round'; g.lineWidth = 1.3;
+      for (const [x, y, a, l, d] of bl) { g.strokeStyle = d ? 'rgba(0,40,0,.2)' : 'rgba(255,255,210,.16)'; g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.sin(a) * l, y - Math.cos(a) * l); g.stroke(); }
+    });
+  });
+  const g0 = R.g;
+  R.gtex = { road: g0.createPattern(road, 'repeat'), grass: g0.createPattern(grass, 'repeat') };
+  return R.gtex;
+}
+// 一段一段（近的段短、遠的段長）用貼圖填，每段依深度縮放
+function texBands(g, zNear, zFar, dist, pat, x0, x1, alpha) {
+  if (R.q < 0.75 || R.noTex || typeof DOMMatrix === 'undefined' || window.NOTEX) return;
+  let z = zNear;
+  const M = new DOMMatrix();
+  g.save(); g.imageSmoothingEnabled = false;
+  while (z < zFar) {
+    const dz = Math.max(0.6, (z + Z0) * 0.16), z2 = Math.min(zFar, z + dz);
+    const a = P(0, z, 0), b = P(0, z2, 0), sm = P(0, (z + z2) / 2, 0).s;
+    const ky = (a.y - b.y) / (z2 - z) / TEXM, kx = sm / TEXM;
+    const fade = clamp(1.4 - (z + Z0) / 55, 0, 1) * alpha;
+    if (fade > 0.03 && a.y - b.y > 0.5) {
+      M.a = kx; M.b = 0; M.c = 0; M.d = ky; M.e = R.cx - R.camX * sm; M.f = a.y + (z + dist) * ky * TEXM;
+      pat.setTransform(M);
+      g.globalAlpha = fade; g.fillStyle = pat;
+      if (x0 == null) {
+        // 只填路兩邊（路面等一下會蓋掉中間）
+        const L1 = P(-ROAD - 0.3, z, 0), L2 = P(-ROAD - 0.3, z2, 0), R1 = P(ROAD + 0.3, z, 0), R2 = P(ROAD + 0.3, z2, 0);
+        g.beginPath(); g.moveTo(0, a.y + 0.6); g.lineTo(L1.x, a.y + 0.6); g.lineTo(L2.x, b.y); g.lineTo(0, b.y); g.closePath();
+        g.moveTo(R1.x, a.y + 0.6); g.lineTo(R.W, a.y + 0.6); g.lineTo(R.W, b.y); g.lineTo(R2.x, b.y); g.closePath(); g.fill();
+      }
+      else { const nl = P(x0, z, 0), nr = P(x1, z, 0), fr = P(x1, z2, 0), fl = P(x0, z2, 0); g.beginPath(); g.moveTo(nl.x, nl.y + 0.6); g.lineTo(nr.x, nr.y + 0.6); g.lineTo(fr.x, fr.y); g.lineTo(fl.x, fl.y); g.closePath(); g.fill(); }
+    }
+    z = z2;
+  }
+  g.restore();
+}
+
 function drawGround(g, th, dist) {
   const zFar = Math.min(R.zTop + 4, 170), zNear = Math.max(-Z0 + 0.6, zAtY(R.H + 4));
   const gy = Math.max(0, R.hy);
@@ -135,6 +193,8 @@ function drawGround(g, th, dist) {
     const a = P(0, z1, 0), b = P(0, z2, 0);
     g.fillRect(0, b.y, R.W, a.y - b.y + 1);
   }
+  const GT = groundTex();
+  texBands(g, zNear, Math.min(zFar, 70), dist, GT.grass, null, null, 1);
   // 路面
   const nl = P(-ROAD, zNear, 0), nr = P(ROAD, zNear, 0), fl = P(-ROAD, zFar, 0), fr = P(ROAD, zFar, 0);
   g.fillStyle = th.road[0]; quad(g, nl, nr, fr, fl);
@@ -145,6 +205,7 @@ function drawGround(g, th, dist) {
     const z1 = Math.max(z, zNear), z2 = Math.min(z + RB, zFar); if (z2 <= z1) continue;
     quad(g, P(-ROAD, z1, 0), P(ROAD, z1, 0), P(ROAD, z2, 0), P(-ROAD, z2, 0));
   }
+  texBands(g, zNear, Math.min(zFar, 70), dist, GT.road, -ROAD, ROAD, 1);
   // 路肩紅白
   const KB = 2, KW = 0.38;
   for (let z = Math.floor((zNear + dist) / KB) * KB - dist; z < zFar; z += KB) {
@@ -279,25 +340,35 @@ function drawBoss(g, b, t) {
   const sc = b.h / BOSSES[b.k].h;
   // 先畫到離屏畫布，才能加外框和受擊閃白
   const u = s * sc;
-  const BW = Math.ceil(6.4 * u), BH = Math.ceil(6.2 * u);
+  let ap = 0; // 攻擊動作 0..1..0
+  if (b.atk > 0) { const q = 1 - b.atk / 0.35; ap = q < 0.45 ? q / 0.45 : 1 - (q - 0.45) / 0.55; }
+  const raise = b.atk > 0 && (1 - b.atk / 0.35) < 0.45;
+  const bob = Math.sin(b.ph * 2) * 0.06;
+  // 3D 烤好的頭目：挑一格動作
+  const BK = typeof Bake !== 'undefined' && Bake.boss[b.k];
+  let F = null;
+  if (BK) {
+    const set = b.phase > 1 ? BK.r : BK.n;
+    F = set[b.dead ? 0 : raise ? 4 : b.atk > 0 ? (ap > 0.7 ? 5 : 6) : (Math.floor(Math.abs(b.ph) * 4 / Math.PI) & 3)];
+  }
+  const BW = F ? Math.ceil(F.wh * u * F.width / F.height) : Math.ceil(6.4 * u), BH = F ? Math.ceil(F.wh * u) : Math.ceil(6.2 * u);
   if (BW < 4 || BH < 4) return;
   if (!R.bossCv) { R.bossCv = mkCanvas(8, 8); R.bossSil = mkCanvas(8, 8); }
   const C = R.bossCv, S = R.bossSil;
   if (C.width < BW || C.height < BH) { C.width = S.width = Math.max(C.width, BW); C.height = S.height = Math.max(C.height, BH); }
   const c = C.getContext('2d');
   c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, C.width, C.height);
-  c.translate(BW / 2, BH - 0.2 * u); c.scale(u, u);
-  let ap = 0; // 攻擊動作 0..1..0
-  if (b.atk > 0) { const q = 1 - b.atk / 0.35; ap = q < 0.45 ? q / 0.45 : 1 - (q - 0.45) / 0.55; }
-  const raise = b.atk > 0 && (1 - b.atk / 0.35) < 0.45;
-  const bob = Math.sin(b.ph * 2) * 0.06;
-  BOSS_DRAW[b.k](c, { ap, raise, bob, rage: b.phase > 1, t, ph: b.ph, dead: b.dead });
+  if (F) c.drawImage(F, 0, 0, BW, BH);
+  else {
+    c.translate(BW / 2, BH - 0.2 * u); c.scale(u, u);
+    BOSS_DRAW[b.k](c, { ap, raise, bob, rage: b.phase > 1, t, ph: b.ph, dead: b.dead });
+  }
   const sg = S.getContext('2d');
   sg.setTransform(1, 0, 0, 1, 0, 0); sg.clearRect(0, 0, S.width, S.height);
   sg.drawImage(C, 0, 0); sg.globalCompositeOperation = 'source-in';
   sg.fillStyle = b.phase > 1 ? 'rgba(90,0,10,.95)' : 'rgba(20,14,30,.92)'; sg.fillRect(0, 0, S.width, S.height);
   sg.globalCompositeOperation = 'source-over';
-  const ox = p.x + jit + dj - BW / 2, oy = p.y + sink - BH + 0.2 * u;
+  const ox = p.x + jit + dj - BW / 2, oy = F ? p.y + sink - BH * (1 - F.foot) : p.y + sink - BH + 0.2 * u;
   const ol = Math.max(1.5, 0.05 * u);
   g.save(); g.globalAlpha = alpha;
   for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; g.drawImage(S, ox + Math.cos(a) * ol, oy + Math.sin(a) * ol); }
@@ -618,10 +689,10 @@ function drawDecor(g, it) {
   const spr = ART.decor[it.kind][it.v];
   const [ww, hh] = DECOR_SIZE[it.kind];
   const p = P(it.x, it.z, 0);
-  const h = hh * it.sc * p.s, w = ww * it.sc * p.s;
+  const h = (spr.wh || hh) * it.sc * p.s, w = spr.wh ? h * spr.width / spr.height : ww * it.sc * p.s;
   if (p.y - h > R.H || p.x + w < 0 || p.x - w > R.W) return;
   drawShadow(g, p.x, p.y, w * 0.9);
-  g.drawImage(spr, p.x - w / 2, p.y - h, w, h);
+  g.drawImage(spr, p.x - w / 2, p.y - h * (1 - (spr.foot || 0)), w, h);
 }
 
 function drawEnemy(g, o) {
@@ -629,10 +700,10 @@ function drawEnemy(g, o) {
   const fi = Math.floor(o.ph / (Math.PI / 2)) & 3;
   const spr = o.hit > 0 ? A.fl[fi] : A.fr[fi];
   const p = P(o.x, o.z, 0);
-  const h = o.h * 1.12 * p.s, w = h * spr.width / spr.height;
+  const h = spr.wh ? spr.wh * o.h / ENEMIES[o.art || o.k].h * p.s : o.h * 1.12 * p.s, w = h * spr.width / spr.height;
   if (p.y - h > R.H + 50 || p.x + w < 0 || p.x - w > R.W) return;
   drawShadow(g, p.x, p.y, o.r * 2.4 * p.s);
-  g.drawImage(spr, p.x - w / 2, p.y - h, w, h);
+  g.drawImage(spr, p.x - w / 2, p.y - h * (1 - (spr.foot || 0)), w, h);
   if ((o.k === 'brute' || o.k === 'shield') && o.hp < o.max) {
     const bw = o.r * 1.7 * p.s, bh = Math.max(4, 0.13 * p.s), by = p.y - h - 0.12 * p.s;
     g.fillStyle = 'rgba(10,10,20,.7)'; rr(g, p.x - bw / 2 - 1, by - 1, bw + 2, bh + 2, bh); g.fill();
@@ -641,14 +712,14 @@ function drawEnemy(g, o) {
 }
 function drawBarrelObj(g, o, t) {
   const p = P(o.x, o.z, 0);
-  const h = 1.15 * p.s, w = h * ART.barrel.width / ART.barrel.height;
-  drawShadow(g, p.x, p.y, w * 1.2);
-  g.drawImage(ART.barrel, p.x - w / 2, p.y - h, w, h);
+  const BR = ART.barrel, h = (BR.wh || 1.15) * p.s, w = h * BR.width / BR.height, by = p.y - h * (1 - (BR.foot || 0));
+  drawShadow(g, p.x, p.y, 1.1 * p.s);
+  g.drawImage(BR, p.x - w / 2, by, w, h);
   // 閃爍的警告燈
   const blink = (Math.sin(t * 8 + o.id) + 1) / 2;
   g.globalCompositeOperation = 'lighter'; g.globalAlpha = 0.35 + blink * 0.4;
   const gs = 0.7 * p.s; g.drawImage(ART.glow.rocket, p.x - gs / 2, p.y - h * 1.05 - gs / 2, gs, gs);
-  if (o.hit > 0) { g.globalAlpha = 0.5; g.drawImage(ART.barrel, p.x - w / 2, p.y - h, w, h); }
+  if (o.hit > 0) { g.globalAlpha = 0.5; g.drawImage(BR, p.x - w / 2, by, w, h); }
   g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
 }
 
@@ -666,15 +737,16 @@ function drawCrowd(g, G, t) {
   order.sort((a, b) => S[b].z - S[a].z);
   const walking = G.scroll && G.st === 'play';
   const mz = MUZ[G.wid];
+  const SV = (ART.soldierW && ART.soldierW[G.wid]) || ART.soldierV, SI = (ART.soldierIdleW && ART.soldierIdleW[G.wid]) || ART.soldierIdle;
   for (const i of order) {
     const so = S[i];
     const p = P(G.px + so.x, so.z, 0);
     const k = 1 + so.pop * 0.6;
     const v = i % 5 === 1 ? 1 : i % 7 === 3 ? 2 : 0;
-    const spr = walking ? ART.soldierV[v][Math.floor(so.ph / (Math.PI / 2)) & 3] : ART.soldierIdle[v];
-    const h = 1.02 * p.s * k, w = h * spr.width / spr.height;
-    drawShadow(g, p.x, p.y, w * 0.85);
-    g.drawImage(spr, p.x - w / 2, p.y - h, w, h);
+    const spr = walking ? SV[v][Math.floor(so.ph / (Math.PI / 2)) & 3] : SI[v];
+    const h = (spr.wh || 1.02) * p.s * k, w = h * spr.width / spr.height;
+    drawShadow(g, p.x, p.y, 0.62 * p.s * k);
+    g.drawImage(spr, p.x - w / 2, p.y - h * (1 - (spr.foot || 0)), w, h);
     if (so.fl > 0) {
       const m = P(G.px + so.x + 0.075, so.z + 0.05, 0.98 * k);
       const s = mz[1] * m.s * (0.8 + Math.random() * 0.4);
