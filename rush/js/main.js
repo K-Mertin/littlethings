@@ -606,7 +606,7 @@ function frame(now) {
   // 第一次開：在選單畫面顯示 3D 模型的進度（玩的時候不顯示、也不烤）
   if (now - (UI.bakeT || 0) > 400) {
     UI.bakeT = now;
-    const tip = $('#bakeTip'), on = Bake.baking && Bake.total > 0 && UI.mode !== 'play';
+    const tip = $('#bakeTip'), on = Bake.baking && Bake.total > 0 && !$('#title').hidden;
     if (tip.hidden !== !on) tip.hidden = !on;
     if (on) tip.textContent = `立體模型準備中 ${Math.round(100 * Bake.done / Bake.total)}%（只有第一次）`;
   }
