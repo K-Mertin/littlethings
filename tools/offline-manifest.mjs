@@ -53,7 +53,7 @@ function pack(name, files) {
 try {
   const hall = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const games = {};
-  for (const m of hall.matchAll(/<a class="game[^"]*" href="([^"\/]+)\/index\.html">([\s\S]*?)<\/a>/g)) {
+  for (const m of hall.matchAll(/<a class="game[^"]*" href="([^"\/]+)\/index\.html"[^>]*>([\s\S]*?)<\/a>/g)) {
     const slug = m[1];
     if (SKIP.has(slug) || !fs.existsSync(path.join(ROOT, slug))) continue;
     const name = ((m[2].match(/<h2>([\s\S]*?)<\/h2>/) || [])[1] || slug).replace(/<[^>]+>/g, '').trim();
