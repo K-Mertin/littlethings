@@ -27,6 +27,7 @@
 2. `<head>` 加離線那一行：`<script src="/offline/offline.js" data-game="<slug>" defer></script>`。
 3. 大廳 `index.html` 的 `.grid` 複製一張 `<a class="game" href="<slug>/index.html">` 卡片：
    - 截圖放 `<slug>/hall_shot.jpg`（卡片的 `<img>`）。
+   - 分類：`data-cat="…"`，可多選：`kid`（小朋友）`learn`（學習）`action`（動作）`brain`（動腦）`adv`（冒險）`multi`（多人）。沒有 data-cat 的卡片不會出現在篩選和最近玩過。
    - 需要 3D 加 `<span class="req gl">`；需要網路／手機／語音辨識也加對應標籤。
    - 鍵盤快捷鍵：`index.html` 裡 `keydown` 的對照表。
 4. 大廳版本號第二碼 +1。
