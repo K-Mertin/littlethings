@@ -25,6 +25,7 @@
 | R | `dungeon/` | 深淵地牢 | `index.html`＋`js/` | — | ✓ | |
 | Q | `rpg/` | 曉鐘傳說 | `index.html`＋`js/` | — | ✓ | |
 | J | `bounce/` | 彈彈球大冒險 | `index.html`＋`levels.js`（字元地圖）＋`game.js`，Canvas 2D | — | ✓ | |
+| N | `ember/` | 燼燈 | `index.html`＋`js/`（world、core、actors、render、main），Canvas 2D | — | ✓ | |
 
 ## 未上架（大廳沒有卡片，網址可以直接進）
 | 資料夾 | 說明 |
