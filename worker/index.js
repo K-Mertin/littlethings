@@ -1,6 +1,7 @@
 // littleland Worker: serves the static site, plus a tiny API for online games and the hall chatbot.
 //   /api/chat, /api/issue  →  大廳小幫手 (worker/chat.js)
 //   /api/tts?t=…           →  小幫手朗讀，Azure 神經語音 (worker/tts.js)
+//   /api/save[/代碼]       →  跨裝置進度備份 (worker/save.js)
 //   /api/tutor             →  學習遊戲答錯時的 AI 家教提示 (worker/tutor.js)
 //   /api/outpost/room/ABCD?role=host|guest  →  Crystal Outpost 1 vs 1 relay (one Durable Object per room)
 //   /api/link/room/ABCDE?role=host|guest&id=…  →  連線一起玩 room relay (worker/link.js)
@@ -10,7 +11,8 @@ import { handleChat, ChatGuard, allow } from './chat.js';
 import { handleTts, TtsCache } from './tts.js';
 import { handleTutor } from './tutor.js';
 import { LinkRoom } from './link.js';
-export { ChatGuard, TtsCache, LinkRoom };
+import { handleSave, SaveBox } from './save.js';
+export { ChatGuard, TtsCache, LinkRoom, SaveBox };
 
 export class OutpostRoom {
   constructor(ctx, env) { this.ctx = ctx; }
@@ -61,6 +63,7 @@ export default {
     if (url.pathname === '/api/chat' || url.pathname === '/api/issue') return handleChat(request, env, url.pathname);
     if (url.pathname === '/api/tts') return handleTts(request, env, (k, l, t, a) => allow(env, k, l, t, a));
     if (url.pathname === '/api/tutor') return handleTutor(request, env, (k, l, t, a) => allow(env, k, l, t, a));
+    if (url.pathname === '/api/save' || url.pathname.startsWith('/api/save/')) return handleSave(request, env, url.pathname, (k, l, t, a) => allow(env, k, l, t, a));
     if (url.pathname.startsWith('/api/')) return new Response('Not found', { status: 404 });
     return env.ASSETS.fetch(request);
   },

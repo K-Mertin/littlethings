@@ -23,6 +23,7 @@
 | `POST /api/issue` | `chat.js` | 使用者按「送出」後開 GitHub issue（草稿 HMAC 簽章防竄改） |
 | `GET /api/tts?t=…&r=+5%` | `tts.js` | Azure 神經語音 mp3，同一句存在 DO `TtsCache` 只合成一次 |
 | `POST /api/tutor` | `tutor.js` | 123 小島答錯時的 AI 家教一句話提示 |
+| `POST /api/save`、`GET/PUT/DELETE /api/save/<代碼>` | `save.js` | 跨裝置進度備份（大廳「💾 進度備份」，前端 `helper/save.js`） |
 
 ### Durable Objects（`wrangler.jsonc`）
 | binding | class | migration | 用途 |
@@ -31,6 +32,7 @@
 | `CHAT_GUARD` | `ChatGuard` | v2 | 次數限制：`allow(env, key, limit, ttlMs, add=1)` |
 | `TTS_CACHE` | `TtsCache` | v3 | 語音快取（一句一個物件） |
 | `LINK_ROOMS` | `LinkRoom` | v4 | 連線一起玩房間 |
+| `SAVE_BOX` | `SaveBox` | v5 | 進度備份，一個代碼一個物件；一年沒更新自動刪除 |
 
 新增 DO 類別 → 加 binding、export class、**新的 migration tag（v5…）**。不要改舊的 migration。
 
@@ -38,6 +40,7 @@
 - chat：每 IP 每小時 30 則、每 IP 每天 5 份回報、全站每天 1,500 則。
 - tts：每 IP 每小時 80 句新句子、全站每天 15,000 字（Azure F0 每月 50 萬字）。超過回 429，前端改用瀏覽器語音。
 - tutor：每 IP 每小時 300 句、全站每天 4,000 句。
+- save：每 IP 每天建立 10 份、每小時寫入 120 次、讀取 40 次（防猜代碼）；壓縮後最大 4 MB。
 
 ### Secrets 與變數（Cloudflare 後台 → littleland → Settings → Variables and Secrets）
 | 名稱 | 類型 | 說明 |
@@ -58,6 +61,12 @@
 - 需求標籤 `.reqs`：`.req.gl`（3D/WebGL，偵測不到會變紅）、`.req.sr`（語音辨識）、網路／手機。
 - 離線狀態小標籤（每張卡片右下）、斷網提示列 `#netBar`。
 - 載入 `/offline/offline.js`（`data-game="hall"`）和 `helper/helper.js`。
+
+## 進度備份 `helper/save.js`
+- 大廳「💾 進度備份」：把整個網域的 localStorage（所有遊戲的存檔，離線狀態除外）gzip 後存到 `/api/save`，給 12 碼代碼（XXXX-XXXX-XXXX）和 QR code（`/?restore=代碼`）。
+- 有代碼的裝置每次打開大廳，進度有變且距上次 5 分鐘以上就自動更新。用 `rev` 做樂觀鎖：別台先更新過就回 409，這台不覆蓋，按鈕亮紅點讓家長選用哪一份。
+- 還原 = 清掉這台的 localStorage（保留離線狀態），換成備份內容。
+- **新遊戲不用做任何事**：只要存檔放 localStorage 就會自動被備份。存在 IndexedDB 的不會。
 
 ## 小幫手 `helper/helper.js`
 - 只在大廳。右下浮動聊天；對話存 sessionStorage。不自稱「MW 小幫手」、不自我介紹（MK 的決定）。
