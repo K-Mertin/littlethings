@@ -53,6 +53,10 @@
 
 進度存在瀏覽器的 localStorage。
 
+## AI 提示
+- 第二次答錯、正確的卡片亮起來時，遊戲把 Pip 的題目（`Pip.again()` 會重念的那句）、正確答案、孩子選的送到 `/api/tutor`，Pip 用很簡單的英文補一句提示（例如 "Look at the first sound!"），聲音是 Azure 的 en-US-JennyNeural（`/api/tts?v=en`）。家長區可以關（`S.settings.ai`）。
+- 統一監看 `.shake` 之後 1.5 秒內出現的 `.glow`，所以新的活動照「答錯加 .shake、第二次答錯讓正確答案加 .glow、設定 Pip.again」就會自動有提示。
+
 ## 語音
 - Pip 的聲音是預先錄好的音檔（`audio/`），用開源模型 Kokoro-82M（Apache-2.0）的 af_heart 聲音錄製（語速 0.8），小朋友角色用 af_sky（0.9）。字母的純音（自然發音）是家長錄的真人聲音。遊戲用 Web Audio 播放，所以不依賴瀏覽器的語音功能（Mac 上的 Chrome 就叫不出系統語音）。
 - 沒有音檔的句子才改用瀏覽器內建語音（`speechSynthesis`）。中文提示已關閉（`zh()` 一律回傳 null）。

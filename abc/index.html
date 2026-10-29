@@ -846,7 +846,7 @@ const BUB = [['#ff6b6b', '#d84a4a'], ['#3d9bff', '#2a74c8'], ['#2fbf68', '#1f915
 /* ---------------- save ---------------- */
 const KEY = 'abc-island-v1';
 const DEF = () => ({ v: 1, stickers: [], trace: {}, sounds: {}, words: {}, match: {}, talk: {}, ph: {}, bl: {}, ch: {}, sw: {}, story: {}, games: {}, fill: {}, learn: {},
-  settings: { zh: true, rate: 0.85, voice: '', mic: true, ghost: true, breakMin: 15 }, play: { day: '', ms: 0 } });
+  settings: { zh: true, rate: 0.85, voice: '', mic: true, ghost: true, breakMin: 15, ai: true }, play: { day: '', ms: 0 } });
 let S;
 try { S = Object.assign(DEF(), JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { S = DEF(); }
 S.settings = Object.assign(DEF().settings, S.settings || {});
@@ -1039,6 +1039,61 @@ const TTS = {
 };
 if (TTS.ok) { TTS.load(); speechSynthesis.onvoiceschanged = () => TTS.load(); }
 const say = (p, s) => TTS.say(p, s);
+
+/* ---------------- AI tutor hint (/api/tutor) ----------------
+   On the second wrong tap most activities make the right card glow. When a card starts glowing right after a shake,
+   ask the tutor for one short, simple English hint about this mistake, and Pip says it once the current line ends.
+   The question is whatever Pip.again() would repeat. Parent panel can turn it off (S.settings.ai). Needs network. */
+const AIH = { busy: 0, shake: null, shakeAt: 0, done: new WeakSet() };
+{
+  const real = TTS.say.bind(TTS);
+  TTS.say = async (p, sh) => { AIH.busy++; try { return await real(p, sh); } finally { AIH.busy--; } };
+}
+const partsText = p => (Array.isArray(p) ? p : [p]).map(x => typeof x === 'string' ? x : x && x.t ? x.t : '').filter(Boolean).join(' ');
+function aihQuestion() {
+  if (!Pip.again) return '';
+  let got = null; const real = TTS.say;
+  TTS.say = p => { got = p; return Promise.resolve(true); };
+  try { Pip.again(); } catch (e) { } finally { TTS.say = real; }
+  return got ? plainLetters(partsText(got)) : '';
+}
+const aihLabel = el => {
+  if (!el) return '';
+  const d = el.dataset || {};
+  return plainLetters(String(d.w || d.l || el.getAttribute('aria-label') || el.innerText || '').replace(/\s+/g, ' ').trim()).slice(0, 30);
+};
+async function aihSpeak(line) {
+  Pip.bubble(esc(line)); Pip.talk(true);
+  try {
+    const r = await fetch('/api/tts?v=en&r=' + encodeURIComponent('-10%') + '&t=' + encodeURIComponent(line));
+    if (!r.ok) throw 0;
+    const a = new Audio(URL.createObjectURL(await r.blob()));
+    await new Promise(res => { a.onended = res; a.onerror = res; a.play().catch(res); setTimeout(res, 12000); });
+  } catch (e) { Pip.talk(false); return say(line); }
+  Pip.talk(false);
+}
+async function aihAsk(picked, right) {
+  if (!S.settings.ai || !navigator.onLine || AIH.done.has(right)) return;
+  AIH.done.add(right);
+  const q = aihQuestion(), r = aihLabel(right), p = aihLabel(picked);
+  if (!q || !r || !p || r === p) return;
+  const line = await Promise.race([
+    fetch('/api/tutor', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ game: 'abc', lesson: cur || '', question: q, right: r, picked: p }) })
+      .then(res => res.ok ? res.json() : null).then(j => j && j.line).catch(() => null),
+    sleep(8000).then(() => null)]);
+  if (!line) return;
+  for (let quiet = 0, t = 0; quiet < 2 && t < 40; t++) { await sleep(200); quiet = AIH.busy ? 0 : quiet + 1; }
+  if (!right.isConnected || !right.classList.contains('glow') || right.classList.contains('right')) return;   // already solved or moved on
+  await aihSpeak(line);
+}
+new MutationObserver(ms => {
+  for (const m of ms) {
+    if (m.attributeName !== 'class') continue;
+    const el = m.target, old = m.oldValue || '';
+    if (el.classList.contains('shake') && !/(^|\s)shake(\s|$)/.test(old)) { AIH.shake = el; AIH.shakeAt = Date.now(); }
+    else if (el.classList.contains('glow') && !/(^|\s)glow(\s|$)/.test(old) && AIH.shake && AIH.shake !== el && Date.now() - AIH.shakeAt < 1500) aihAsk(AIH.shake, el);
+  }
+}).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'], attributeOldValue: true });
 
 /* ---------------- speech in (talk) ---------------- */
 const Rec = {
@@ -3961,6 +4016,7 @@ function openParent() {
     <div class="set"><label for="pRate">英文語速</label><input type="range" id="pRate" min="0.6" max="1.1" step="0.05" value="${st.rate}"></div>
     <div class="set"><label for="pVoice">英文聲音</label><select id="pVoice">${voiceOpts || '<option>預設</option>'}</select></div>
     <div class="set"><label for="pMic">聊天時可以用說的（麥克風）${recOK ? '' : '<br><span class="note">這個瀏覽器不支援語音辨識，只能點圖片。</span>'}</label><input type="checkbox" id="pMic" ${st.mic ? 'checked' : ''} ${recOK ? '' : 'disabled'}></div>
+    <div class="set"><label for="pAi">AI 提示（第二次答錯時，Pip 用簡單英文多說一句怎麼想；需要網路）</label><input type="checkbox" id="pAi" ${st.ai ? 'checked' : ''}></div>
     <div class="set"><label for="pBreak">休息提醒</label><select id="pBreak">${[0, 10, 15, 20, 30].map(m => `<option value="${m}" ${st.breakMin === m ? 'selected' : ''}>${m ? m + ' 分鐘' : '關閉'}</option>`).join('')}</select></div>
     <p class="note">語音辨識由瀏覽器提供（Android 的 Chrome 會把聲音送到 Google 處理）。遊戲本身不錄音、不儲存任何聲音或對話內容。</p>
     <div class="row" style="justify-content:flex-start">
@@ -3975,6 +4031,7 @@ function openParent() {
   $('#pVoice').onchange = e => { st.voice = e.target.value; save(); TTS.load(); };
   $('#pMic').onchange = e => { st.mic = e.target.checked; save(); };
   $('#pBreak').onchange = e => { st.breakMin = +e.target.value; save(); };
+  $('#pAi').onchange = e => { st.ai = e.target.checked; save(); };
   $('#pTest').onclick = () => say('Hello! I am Pip. A, B, C!');
   $('#pFull').onclick = () => { const d = document.documentElement; if (document.fullscreenElement) document.exitFullscreen(); else if (d.requestFullscreen) d.requestFullscreen().catch(() => {}); };
   $('#pReset').onclick = () => {

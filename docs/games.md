@@ -8,8 +8,8 @@
 | 1 | `minigames/` | 噗噗的遊戲小屋 | 每款一個 HTML（60+ 款），共用 `mini.js`／`mini.css`；自己的 `sw.js`（不走全站離線包）、自己的版本號 `MG.VERSION` | three（開車車） | ✓ | ✓ |
 | 2 | `party/` | 大家一起玩 | `index.html`（大螢幕）＋`pad.html`（手機手把）＋`core.js`、`games/` | peerjs、本機 `qrcode.js` | — | |
 | L | `link/` | 連線一起玩 | `index.html`＋`core.js`、`net.js`、`games/`；房間走 `/api/link/room` | — | — | |
-| 3 | `abc/` | ABC Island | 單一 `index.html`＋`audio/`（Kokoro 預錄） | — | ✓ | ✓ |
-| 4 | `zhuyin/` | ㄅㄆㄇ 小島 | `index.html`＋`data.js`＋`audio/`（預錄） | — | ✓ | ✓ |
+| 3 | `abc/` | ABC Island | 單一 `index.html`＋`audio/`（Kokoro 預錄）；第二次答錯時 AI 英文提示（`/api/tutor`＋`/api/tts?v=en`） | — | ✓ | ✓ |
+| 4 | `zhuyin/` | ㄅㄆㄇ 小島 | `index.html`＋`data.js`＋`audio/`（預錄）；答錯時 AI 家教提示（`/api/tutor`），沒預錄的句子用 `/api/tts` | — | ✓ | ✓ |
 | M | `math/` | 123 小島 | `index.html`＋`data.js`＋`audio/`（預錄）；AI 家教 `/api/tutor` | — | ✓ | |
 | T | `table/` | 棋牌桌遊 | 每款一個 HTML，共用 `common.js`／`common.css`；電腦對手在 Web Worker | — | — | |
 | 5 | `cobblekeep/` | Cobble Keep | 3D FPS | three、peerjs、qrcode | ✓ | ✓ |
