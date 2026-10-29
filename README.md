@@ -27,6 +27,7 @@ MW · Game Hall：MK 的瀏覽器遊戲合集，每個資料夾自成一體。�
 | [八音盒謎屋](https://littleland.mwstudio.workers.dev/escape/) | [`escape/`](escape/README.md) | 密室逃脫＋推理：14 間謎屋（8 章本篇＋2 章番外＋第二部「海港鐘塔之旅」4 章）、7 件推理事件（證詞矛盾、比對鞋印、照片找線索、排時間表、找出說謊的人）、每日「今日謎題」、計時連關、重玩時答案隨機、無提示挑戰模式與獎牌、隱藏音符與 23 個成就、每步三層提示、自動存檔，支援觸控與滑鼠 |
 | [深淵地牢](https://littleland.mwstudio.workers.dev/dungeon/) | [`dungeon/`](dungeon/README.md) | 回合制 Roguelike：17 層隨機地牢＋擊敗深淵之王後的深淵下層（第 18–25 層：溺沒古城、星骸虛空、終焉之心；深水、虛空裂谷與擊退）、6 職業（含武僧）、四座支線秘境（守護者＋獨有遺物）、頭目連戰模式、主角換裝外觀、怪物招式與法術特效、精英怪＋7 頭目、未鑑定道具、符文與共鳴、29 件遺物與 12 種羈絆、地牢人物與旅行商人、7 種樓層事件、寶箱／祭壇／試煉、深淵等級 0–10、33 個成就、圖鑑、每日＋每週挑戰、畫質自動調整、永久死亡＋自動存檔，支援點擊移動與鍵盤 |
 | [曉鐘傳說](https://littleland.mwstudio.workers.dev/rpg/) | [`rpg/`](rpg/README.md) | 經典回合制 RPG（原創劇情）：逐像素繪製的大陸與渡船、會掀屋頂的城鎮、側面戰鬥與各法術特效、劇情演出、5 位夥伴與隊伍編成、87 種怪物圖鑑、33 個成就、星之碎片、懸賞、賭場、大鬥技場、秘傳之書、交換之旅、通關後星之迴廊、新篇章「月汐群島」（新地區、伊芙、潮汐／迷途／鐘／日輪謎題、兩階段最終頭目與深淵隱藏頭目）、釣魚小遊戲、二周目、3 個記錄欄位、三種難度，支援觸控與鍵盤 |
+| [彈彈球大冒險](https://littleland.mwstudio.workers.dev/bounce/) | [`bounce/`](bounce/README.md) | 橫向捲軸闖關＋解謎：控制一顆球滾動跳躍，變大浮水、變小鑽洞，箱子／壓板／柵欄、風扇、冰、岩漿、火焰棒，4 個世界 12 關、36 顆星星，Canvas 2D 程式繪圖，支援觸控與鍵盤 |
 | [捏臉工坊](https://littleland.mwstudio.workers.dev/face/)（未上架） | [`face/`](face/README.md) | 2D 捏臉：臉型、五官、髮型、瀏海、配件、衣服，即時預覽縮圖、隨機、復原、存檔、下載 PNG，支援手機 |
 | [寫實捏臉 3D](https://littleland.mwstudio.workers.dev/face3d/)（未上架） | [`face3d/`](face3d/README.md) | 寫實 3D 捏臉：MakeHuman CC0 人體、417 個變形滑桿、寫實皮膚、3D 髮型眉毛睫毛、表情、眼睛看游標，支援手機 |
 | [MW 大街](https://littleland.mwstudio.workers.dev/street/)（未上架，開發中） | [`street/`](street/README.md) | 擬真 3D 商店街：操作寫實人物逛街，每間店是一款遊戲，給小學中年級以上 |
@@ -39,7 +40,7 @@ python3 -m http.server 8000      # 只看遊戲；然後打開 http://localhost:
 npx wrangler dev --local         # 連後端 API 一起跑（http://localhost:8787）
 ```
 
-大廳鍵盤快捷鍵：`1` 遊戲小屋、`2` 大家一起玩、`L` 連線一起玩、`3` ABC Island、`4` ㄅㄆㄇ 小島、`M` 123 小島、`T` 棋牌桌遊、`5` Cobble Keep、`6` 銘甲戰記、`7` Sunny Circuit、`8` Crystal Outpost、`9` 小夥伴大作戰、`S` 空戰、`G` 千軍突圍、`D` 守塔奇兵、`B` 夜市小吃王、`E` 八音盒謎屋、`R` 深淵地牢、`Q` 曉鐘傳說。
+大廳鍵盤快捷鍵：`1` 遊戲小屋、`2` 大家一起玩、`L` 連線一起玩、`3` ABC Island、`4` ㄅㄆㄇ 小島、`M` 123 小島、`T` 棋牌桌遊、`5` Cobble Keep、`6` 銘甲戰記、`7` Sunny Circuit、`8` Crystal Outpost、`9` 小夥伴大作戰、`S` 空戰、`G` 千軍突圍、`D` 守塔奇兵、`B` 夜市小吃王、`E` 八音盒謎屋、`R` 深淵地牢、`Q` 曉鐘傳說、`J` 彈彈球大冒險。
 
 ## 結構
 ```
@@ -67,6 +68,7 @@ shop/             index.html＋js/（依序載入，無建置步驟，不需外�
 escape/           index.html＋css/＋js/（依序載入，無建置步驟，不需外部函式庫，美術全用 SVG）
 dungeon/          index.html＋js/（依序載入，無建置步驟，不需外部函式庫）
 rpg/              index.html＋js/（依序載入，無建置步驟，不需外部函式庫）
+bounce/           index.html＋levels.js（關卡字元地圖）＋game.js，無建置步驟，不需外部函式庫（Canvas 2D 程式繪圖）
 face/             單一檔案，無建置步驟，不需任何外部函式庫（純 SVG）
 face3d/           index.html＋預先處理的 data/（Three.js 由 CDN 載入）；data/ 由 tools/build.py 從 MakeHuman 素材產生
 street/           index.html＋js/＋assets/（Three.js 由 CDN 載入）
