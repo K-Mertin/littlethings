@@ -67,7 +67,7 @@ function renderDef(G, t) {
   drawClouds(g, th, t);
   drawGround(g, th, 0);
   drawGroundDetail(g, th, 0);
-  for (const o of G.objs) if (o.t === 'geyser') drawGeyserGround(g, o, t); else if (o.t === 'pool') drawPool(g, o, t);
+  for (const o of G.objs) if (o.t === 'geyser') drawGeyserGround(g, o, t); else if (o.t === 'pool') drawPool(g, o, t); else if (o.t === 'lob') drawLobWarn(g, o, t);
   // 自己這邊的城牆線
   const a = P(-ROAD, 0.2, 0), b = P(ROAD, 0.2, 0);
   g.strokeStyle = 'rgba(80,170,255,.75)'; g.lineWidth = Math.max(3, 0.12 * a.s);
@@ -107,6 +107,8 @@ function renderDef(G, t) {
       if (o.t === 'gate') drawGate(g, o, t);
       else if (o.t === 'en') drawEnemy(g, o);
       else if (o.t === 'geyser') drawGeyserPlume(g, o, t);
+      else if (o.t === 'lob') drawLob(g, o);
+      else if (o.t === 'dwall') drawDefWall(g, o);
     }
   }
   drawParts(g, G);
@@ -116,6 +118,22 @@ function renderDef(G, t) {
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.drawImage(R.vig, 0, 0);
   if (G.flash > 0) { g.fillStyle = `rgba(255,60,60,${G.flash * 0.3})`; g.fillRect(0, 0, R.W, R.H); }
+}
+
+// 守城的牆：只擋中間一段，要打破才能過
+function drawDefWall(g, o) {
+  const Hh = 1.8, A = P(o.x - o.w, o.z, 0), B = P(o.x + o.w, o.z, Hh);
+  const w = B.x - A.x, h = A.y - B.y;
+  if (h < 2) return;
+  const jx = o.hit > 0 ? (Math.random() - 0.5) * 0.05 * A.s : 0;
+  g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(A.x + jx, A.y - 0.04 * A.s, w, 0.12 * A.s);
+  g.drawImage(ART.haz.wall, A.x + jx, B.y, w, h);
+  const dmg = 1 - o.hp / o.max, ci = dmg > 0.7 ? 2 : dmg > 0.4 ? 1 : dmg > 0.15 ? 0 : -1;
+  if (ci >= 0) g.drawImage(ART.haz.crack[ci], A.x + jx, B.y, w, h);
+  if (o.hit > 0) { g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(A.x + jx, B.y, w, h); }
+  const u = A.s, cx = A.x + w / 2, hw = w * 0.7, hy = B.y - 0.35 * u, hh = Math.max(4, 0.22 * u);
+  g.fillStyle = 'rgba(10,10,20,.75)'; rr(g, cx - hw / 2, hy, hw, hh, hh / 2); g.fill();
+  g.fillStyle = '#ff7a3a'; rr(g, cx - hw / 2 + 2, hy + 2, Math.max(0, (hw - 4) * (o.hp / o.max)), hh - 4, (hh - 4) / 2); g.fill();
 }
 
 function drawUnit(g, u) {

@@ -8,6 +8,7 @@ function show(id) {
   for (const el of document.querySelectorAll('.ov')) el.hidden = el.id !== id;
   $('#pauseBtn').hidden = id !== null;
   $('#speedBtn').hidden = id !== null;
+  const dc = $('#dcard'); if (dc) dc.hidden = !(id === null && G && G.mode === 'defense' && G.card && !G.demo);
   syncSpeed();
   $('#giantBtn').hidden = !(id === null && G && G.mode === 'defense');
 }
@@ -78,7 +79,7 @@ function startDefense(n) {
   const el = $('#ruleBanner');
   el.querySelector('.rt').textContent = `守城模式 · 第 ${n} 關`;
   el.querySelector('.rn').textContent = G.L.name;
-  el.querySelector('.rd').textContent = '左右移動砲台，讓小兵穿過 ×2、+ 門變多，把敵方基地打爆！';
+  el.querySelector('.rd').textContent = (n <= 2 ? '左右移動砲台，讓小兵穿過 ×2、+ 門變多，把敵方基地打爆！' : '') + (G.L.tip || '');
   el.hidden = false; el.classList.remove('in'); void el.offsetWidth; el.classList.add('in');
   UI.ruleT = 2.8;
 }
@@ -88,7 +89,7 @@ function buildDLevels() {
     const n = i + 1, un = Save.dUnlocked(n), st = Save.d.dstars[n] || 0;
     return `<button class="tile t-${THEMES[D.theme].id}" data-dstage="${n}" ${un ? '' : 'disabled'}>
       <span class="n">${un ? n : '🔒'}</span><span class="nm">${D.name}</span>
-      <span class="rl">${D.rows} 排門${D.slide ? '・會動' : ''}${D.red ? '・✕ 門' : ''}${D.pow ? '・強化門' : ''}${D.gey ? '・火口' : ''}</span>
+      <span class="rl">${D.rows} 排門${D.slide ? '・會動' : ''}${D.roul ? '・轉盤' : ''}${D.red ? '・✕ 門' : ''}${D.wall ? '・牆' : ''}${D.bomb ? '・砲擊' : ''}${D.pow ? '・強化門' : ''}${D.gey ? '・火口' : ''}</span>
       <span class="ss">${[0, 1, 2].map(k => `<i class="${k < st ? 'on' : ''}">★</i>`).join('')}</span></button>`;
   }).join('');
   const total = Object.values(Save.d.dstars).reduce((a, b) => a + b, 0);
@@ -184,6 +185,9 @@ function handleEvents() {
       case 'strikewarn': AU.sfx('warn'); break;
       case 'strike': AU.sfx('slam'); vibrate(60); break;
       case 'dshot': AU.sfx('shot', 'rifle'); break;
+      case 'dcard': showCards(a); break;
+      case 'dpick': AU.sfx('gateWpn'); toast(DCARDS[a].ico + ' ' + DCARDS[a].name + '！', 1.4); break;
+      case 'dbomb': AU.sfx('warn'); tipOnce('dbomb', '基地要砲擊了！紅圈裡的小兵會被炸掉，快移開', 3); break;
       case 'mult': AU.sfx('bump', 20); break;
       case 'castlehit': AU.sfx('hit'); vibrate(25); break;
       case 'basehit': if (a.giant) { AU.sfx('boom'); G.shake = Math.max(G.shake, 0.6); } else AU.sfx('kill'); break;
@@ -478,11 +482,23 @@ function nextStage() {
   return Save.d.last || STAGES.length;
 }
 
+// 守城的強化卡
+function showCards(ks) {
+  const box = $('#dcard'), list = box.querySelector('.dcs');
+  list.innerHTML = ks.map((k, i) => `<button data-card="${k}"><i>${DCARDS[k].ico}</i><b>${DCARDS[k].name}</b><span>${DCARDS[k].desc}</span><kbd>${i + 1}</kbd></button>`).join('');
+  box.hidden = false;
+  AU.sfx('gateGood');
+}
+function pickCard(k) {
+  if (!G || !G.card || UI.mode !== 'play') return;
+  if (defPickCard(k)) $('#dcard').hidden = true;
+}
 function pause() {
   if (UI.mode !== 'play') return;
   UI.mode = 'pause';
   syncToggles();
   show('pause');
+  $('#dcard').hidden = true;
   if (AU.ctx) AU.ctx.suspend();
 }
 function resume() {
@@ -535,7 +551,10 @@ function setupInput() {
   });
   const end = e => { if (UI.drag && UI.drag.id === e.pointerId) UI.drag = null; };
   cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+  $('#dcard').addEventListener('click', e => { const b = e.target.closest('[data-card]'); if (b) { e.stopPropagation(); pickCard(b.dataset.card); } });
+  $('#dcard').addEventListener('pointerdown', e => e.stopPropagation());
   addEventListener('keydown', e => {
+    if (G && G.card && UI.mode === 'play' && e.key >= '1' && e.key <= '3') { const k = G.card[+e.key - 1]; if (k) { e.preventDefault(); pickCard(k); return; } }
     if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') { UI.kbL = 1; e.preventDefault(); }
     else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { UI.kbR = 1; e.preventDefault(); }
     else if ((e.key === ' ' || e.key === 'g' || e.key === 'G') && UI.mode === 'play' && G.mode === 'defense') { e.preventDefault(); defLaunchGiant(); }
