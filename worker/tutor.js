@@ -34,7 +34,7 @@ ${g.rules}
 - Do not end with a question. Output only that sentence.`;
   return `你是${g.who}，正在陪${g.kid}練習。孩子剛剛答錯了一題，遊戲已經自動示範過正確做法，正確答案也已經在畫面上發亮。
 請你補一句「針對這次錯誤」的溫柔提示，幫孩子知道下次怎麼避免：
-- 只回一句話，繁體中文（台灣口語），最多 25 個字，不要標點以外的符號、不要 emoji、不要引號。
+- 只回一句話，繁體中文（台灣口語），最多 25 個字（一定要短），不要標點以外的符號、不要 emoji、不要引號。
 ${g.rules}
 - 不要說「答錯了」「不對」，用鼓勵的語氣，例如「下次可以…」「我們一起…」。
 - 最後不要問問題。只輸出那一句話。`;
@@ -69,7 +69,10 @@ export async function handleTutor(request, env, allow) {
   }
   const data = await res.json();
   let line = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
-  line = line.replace(/^["「『]|["」』]$/g, '').replace(/\s+/g, ' ').slice(0, g.en ? 120 : 40);
+  line = line.replace(/^["「『]|["」』]$/g, '').replace(/\s+/g, ' ');
+  // 模型偶爾超過字數：太長就切在最後一個標點，不要切在半句
+  const max = g.en ? 120 : 50;
+  if (line.length > max) { const cut = line.slice(0, max); const i = Math.max(...['，', '。', '！', ',', '.', '!'].map(c => cut.lastIndexOf(c))); line = i > max / 2 ? cut.slice(0, i + 1).replace(/[，,]$/, '') : cut; }
   if (!line) console.log('tutor empty', data.stop_reason, JSON.stringify((data.content || []).map(c => c.type)), JSON.stringify(data.usage || {}));
   return line ? json({ line }) : json({ error: 'empty', why: data.stop_reason }, 502);
 }
