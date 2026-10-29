@@ -21,8 +21,8 @@
 | `/api/link/room/ABCDE` | `link.js` | 連線一起玩的房間，WebSocket 轉送（DO `LinkRoom`） |
 | `POST /api/chat` | `chat.js` | 大廳小幫手：Claude Messages API，工具 `open_game`、`draft_issue` |
 | `POST /api/issue` | `chat.js` | 使用者按「送出」後開 GitHub issue（草稿 HMAC 簽章防竄改） |
-| `GET /api/tts?t=…&r=+5%` | `tts.js` | Azure 神經語音 mp3，同一句存在 DO `TtsCache` 只合成一次 |
-| `POST /api/tutor` | `tutor.js` | 123 小島答錯時的 AI 家教一句話提示 |
+| `GET /api/tts?t=…&r=+5%&v=en` | `tts.js` | Azure 神經語音 mp3，同一句存在 DO `TtsCache` 只合成一次 |
+| `POST /api/tutor` | `tutor.js` | 學習遊戲答錯時的 AI 家教一句話提示（math、zhuyin 中文；abc 簡單英文） |
 | `POST /api/save`、`GET/PUT/DELETE /api/save/<代碼>` | `save.js` | 跨裝置進度備份（大廳「💾 進度備份」，前端 `helper/save.js`） |
 
 ### Durable Objects（`wrangler.jsonc`）

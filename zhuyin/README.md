@@ -69,6 +69,11 @@
 
 進度存在瀏覽器的 localStorage（`zhuyin-v1`）。
 
+## AI 家教提示
+- 答錯一題、正確答案亮起來時，遊戲把「剛剛念的題目、正確答案、孩子選的」送到 `/api/tutor`（Claude），企鵝念完後補一句針對這次錯誤的提示（例如ㄅㄆ怎麼分）。家長區可以關（存在 `S.ai`）。
+- 做法是統一監看按鈕加上 `.no`／`.glow` 的時機（`tutorHint`），所以新的關卡只要沿用「答錯加 .no、正確答案加 .glow」就會自動有提示。
+- 提示句沒有預錄音檔，`load()` 會改抓 `/api/tts`（同一個雲哲聲音）；沒網路就不提示。
+
 ## 語音
 - 全部台詞預錄在 `audio/`：微軟 Edge 的台灣中文神經語音 **zh-TW-YunJheNeural（雲哲，男聲）**，語速 +5%（2026-10-21 從曉臻 -10% 換過來，和 123 小島一樣），用 [edge-tts](https://github.com/rany2/edge-tts) 錄、ffmpeg 剪掉前後靜音。遊戲用 Web Audio 播放；沒有音檔的句子才用瀏覽器的 zh-TW 語音。
 - 台詞都寫在 `data.js` 的 `P`，`allLines()` 會列出每一句。`audio/phrases.tsv` 是「id、文字」，id 是文字的 FNV-1a 32-bit 雜湊。
