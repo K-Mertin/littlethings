@@ -30,7 +30,7 @@ const GO_COORD = /^([A-HJ-T](1[0-9]|[1-9])|虛手)$/;
 function goSystem() {
   return `你是陪大人和小學中高年級小朋友學圍棋的老師，正在陪他覆盤一盤 9 路或 13 路的棋。
 請針對「這一手」說明為什麼好或不好，以及較好的下法好在哪：
-- 只回 1～3 句話，繁體中文（台灣用語、口語），合計最多 80 個字。不要條列、不要 emoji、不要引號。
+- 只回 1～3 句話，繁體中文（台灣用語、口語），合計最多 80 個字。一定要用繁體字，不可以有簡體字或英文。不要條列、不要 emoji、不要引號。
 - 只能根據提供的資料（座標、勝率變化、事實短句）來說，不要自己想像盤面上其他棋子的位置，也不要編新的變化圖。
 - 座標照原樣寫（例如 D4），可以搭配提供的方位（例如左下角）。
 - 盡量用白話；用到術語（例如叫吃、氣、眼、打劫、斷、地）時，順便用幾個字白話解釋。
@@ -101,6 +101,24 @@ export async function handleTutor(request, env, allow) {
   if (!await allow('tutor:' + ip, LIMITS.perIpHour, 3600e3)) return json({ error: 'slow down' }, 429);
   if (!await allow('tutorday:' + new Date().toISOString().slice(0, 10), LIMITS.perDay, 86400e3)) return json({ error: 'daily budget' }, 429);
 
+  const isGo = b.game === 'go';
+  // 圍棋講解偶爾會出現簡體字或句尾夾帶英文（例如「Wait」）：清掉英文尾巴，若還有簡體就重問一次，最後再用小對照表轉繁體
+  let line = '', why = '';
+  for (let attempt = 0; attempt < (isGo ? 2 : 1); attempt++) {
+    const msg = attempt ? content + '\n（請只用繁體中文，不要夾雜英文。）' : content;
+    const r = await askClaude(env, sys, msg);
+    if (r.error) return json({ error: 'upstream' }, 502);
+    line = clean(r.text, max); why = r.why;
+    if (!isGo) break;
+    line = stripLatinTail(line);
+    if (line && !SIMP_RE.test(line)) break;
+  }
+  if (isGo && line) line = toTrad(line);
+  if (!line) console.log('tutor empty', why);
+  return line ? json({ line }) : json({ error: 'empty', why }, 502);
+}
+
+async function askClaude(env, sys, content) {
   const res = await fetch(env.ANTHROPIC_API_URL || 'https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
@@ -110,15 +128,22 @@ export async function handleTutor(request, env, allow) {
       messages: [{ role: 'user', content }],
     }),
   });
-  if (!res.ok) {
-    console.log('tutor error', res.status, (await res.text()).slice(0, 300));
-    return json({ error: 'upstream' }, 502);
-  }
+  if (!res.ok) { console.log('tutor error', res.status, (await res.text()).slice(0, 300)); return { error: true }; }
   const data = await res.json();
-  let line = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
-  line = line.replace(/^["「『]|["」』]$/g, '').replace(/\s+/g, ' ');
-  // 模型偶爾超過字數：太長就切在最後一個標點，不要切在半句
-  if (line.length > max) { const cut = line.slice(0, max); const i = Math.max(...['，', '。', '！', ',', '.', '!'].map(c => cut.lastIndexOf(c))); line = i > max / 2 ? cut.slice(0, i + 1).replace(/[，,]$/, '') : cut; }
-  if (!line) console.log('tutor empty', data.stop_reason, JSON.stringify((data.content || []).map(c => c.type)), JSON.stringify(data.usage || {}));
-  return line ? json({ line }) : json({ error: 'empty', why: data.stop_reason }, 502);
+  const text = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
+  if (!text) console.log('tutor empty', data.stop_reason, JSON.stringify((data.content || []).map(c => c.type)), JSON.stringify(data.usage || {}));
+  return { text, why: data.stop_reason };
 }
+
+function clean(text, max) {
+  let line = String(text || '').replace(/^["「『]|["」』]$/g, '').replace(/\s+/g, ' ').trim();
+  // 模型偶爾超過字數：太長就切在最後一個標點，不要切在半句
+  if (line.length > max) { const c = line.slice(0, max); const i = Math.max(...['，', '。', '！', ',', '.', '!'].map(ch => c.lastIndexOf(ch))); line = i > max / 2 ? c.slice(0, i + 1).replace(/[，,]$/, '') : c; }
+  return line;
+}
+// 中文句子後面多出來的英文字（例如「… 是好棋。 Wait」）拿掉
+function stripLatinTail(line) { return /[\u4e00-\u9fff]/.test(line) ? line.replace(/\s*[A-Za-z][A-Za-z\s.,!?'’-]*$/, '').trim() : line; }
+// 常見只出現在簡體的字（圍棋講解會用到的）＋對照
+const S2T = { 这: '這', 个: '個', 们: '們', 说: '說', 为: '為', 时: '時', 会: '會', 气: '氣', 势: '勢', 胜: '勝', 从: '從', 涨: '漲', 认: '認', 两: '兩', 处: '處', 实: '實', 战: '戰', 败: '敗', 让: '讓', 点: '點', 断: '斷', 连: '連', 边: '邊', 围: '圍', 块: '塊', 头: '頭', 门: '門', 对: '對', 应: '應', 还: '還', 没: '沒', 样: '樣', 种: '種', 进: '進', 选: '選', 关: '關', 际: '際', 发: '發', 现: '現', 动: '動', 过: '過', 于: '於', 与: '與', 将: '將', 机: '機', 变: '變', 观: '觀', 么: '麼', 开: '開', 复: '復', 盘: '盤', 总: '總', 数: '數', 电: '電', 脑: '腦', 赢: '贏', 输: '輸', 帮: '幫', 吗: '嗎', 吃: '吃', 逼: '逼', 处: '處', 护: '護', 补: '補', 挡: '擋', 现: '現', 较: '較', 该: '該', 虽: '雖', 话: '話', 题: '題', 线: '線', 黑: '黑', 显: '顯', 优: '優', 劣: '劣', 场: '場', 难: '難', 简: '簡', 单: '單', 体: '體', 级: '級', 无: '無', 东: '東', 双: '雙', 长: '長', 风: '風', 却: '卻', 尽: '盡', 错: '錯', 并: '並', 亏: '虧', 经: '經', 结: '結', 构: '構', 后: '後', 里: '裡', 着: '著' };
+const SIMP_RE = new RegExp('[' + Object.keys(S2T).filter(k => S2T[k] !== k && !'後裡著'.includes(S2T[k])).join('') + ']');
+function toTrad(s) { return s.replace(/[\u4e00-\u9fff]/g, ch => S2T[ch] || ch); }
