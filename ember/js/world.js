@@ -65,7 +65,7 @@ EM.buildWorld = function () {
     R.bench = (x, y) => E.benches.push({ id: `bench_${id}`, x: px(x), y: py(y), room: R.idx });
     R.item = (kind, iid, x, y) => E.items.push({ kind, id: iid, x: px(x), y: py(y) - 18, room: R.idx });
     R.tablet = (x, y, text) => E.tablets.push({ x: px(x), y: py(y), text, room: R.idx });
-    R.hint = (x, y, text) => E.hints.push({ x: px(x), y: py(y) - 60, text, room: R.idx });
+    R.hint = (x, y, text, opt = {}) => E.hints.push({ x: px(x), y: py(y) - 60, text, room: R.idx, need: opt.need, have: opt.have });   // need：還沒有這個能力才顯示；have：有了才顯示
     R.mover = (x0p, y0p, x1p, y1p, wt, speed = 70) => E.plats.push({ x0: ax(x0p) * T, y0: ay(y0p) * T, x1: ax(x1p) * T, y1: ay(y1p) * T, w: wt * T, h: 12, speed, room: R.idx });
     R.crusher = (x, yTop, yBot, wt, delay = 0) => E.crushers.push({ x: ax(x) * T, yTop: ay(yTop) * T, yBot: ay(yBot + 1) * T, w: wt * T, h: 2 * T, delay, room: R.idx });
     R.jet = (x, y, period = 2.4, offset = 0) => E.jets.push({ x: ax(x) * T, y: ay(y) * T, period, offset, room: R.idx });
@@ -117,6 +117,7 @@ EM.buildWorld = function () {
     R.fill(1, 4, 1, 15, TL.SPIKE); R.fill(22, 4, 22, 15, TL.SPIKE);
     R.plat(9, 12, 24); R.plat(3, 6, 22); R.plat(9, 12, 20); R.plat(3, 6, 18); R.plat(9, 12, 16); R.plat(2, 5, 13);
     R.item('flask', 'flask_A4', 16, 9);
+    R.hint(10, 15, '太高了，現在還跳不上去⋯⋯之後拿到新能力再回來', { need: 'double' });
     R.tablet(11, 9, '橋斷的那天，城裡的鐘一起響了七次。\n之後再也沒有人聽過鐘聲。');
     R.enemy('crawler', 18, 25); R.enemy('moth', 14, 19);
     R.decor('chain', 9, 4); R.decor('chain', 19, 6);
@@ -153,6 +154,8 @@ EM.buildWorld = function () {
     R.enemy('crawler', 4, 11); R.enemy('charger', 30, 11); R.enemy('moth', 24, 5);
     R.tablet(5, 11, '守門的騎士至今仍在等候命令。\n沒有人告訴他，王國已經不在了。');
     R.hint(11, 9, '按 C 衝刺');
+    R.hint(37, 9, '牆太高了，現在爬不上去⋯⋯先找找別的路', { need: 'wall' });
+    R.hint(37, 9, '貼著牆按住方向再按 Z：蹬牆跳', { have: 'wall' });
     R.decor('arch', 28, 11); R.decor('chain', 34, 3);
     R.door('E', 2);
   });
@@ -283,7 +286,7 @@ EM.buildWorld = function () {
     R.fill(1, 8, 6, 12); R.fill(7, 9, 7, 11, TL.SPIKE);
     R.enemy('charger', 16, 11);
     R.tablet(12, 11, '再往下就是熔爐。\n守燈人的職責，是把火帶回它該去的地方。');
-    R.hint(12, 8, '在空中再按一次 Z：二段跳');
+    R.hint(12, 8, '在空中再按一次 Z：二段跳', { have: 'double' }); R.hint(12, 8, '太高了，現在還跳不上去⋯⋯', { need: 'double' });
     R.decor('pipe', 18, 2);
     R.door('W', 5);
   });
