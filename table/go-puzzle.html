@@ -118,7 +118,7 @@ body.narrow .acts .tb-btn{min-height:40px;padding:6px 4px;font-size:13px}
 'use strict';
 // 圍棋死活題：題目與解答樹在 go-puzzles.js（由 tools/go-puzzle-check.mjs 驗證後產生）
 const N = 9, COLS = 'ABCDEFGHJ';
-const SETC = ['#14b8a6', '#3b82f6', '#8b5cf6', '#f43f5e'];
+const SETC = ['#14b8a6', '#3b82f6', '#8b5cf6', '#f43f5e', '#f59e0b', '#0ea5e9'];
 const GOALTXT = { capture: '吃掉白棋', save: '救出黑棋', kill: '殺死白棋', live: '讓黑棋活', };
 const $ = id => document.getElementById(id);
 let stars = TB.store.get('gop:stars', {});
@@ -143,10 +143,13 @@ const dkey = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '
 function todayKey() { return dkey(new Date()); }
 function dailyPick() {
   const k = todayKey(); let h = 2166136261; for (const ch of k) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; }
-  const dow = (new Date().getDay() + 6) % 7, si = [0, 0, 1, 1, 2, 2, 3][dow];   // 週一最簡單、週末最難
+  const dow = (new Date().getDay() + 6) % 7, si = [0, 0, 1, 4, 2, 5, 3][dow];   // 週一最簡單、週末最難（週四手筋、週六多步死活）
+  if (!GOP[si]) return { si: 0, pi: h % GOP[0].list.length };
   return { si, pi: h % GOP[si].list.length };
 }
-function unlocked(si) { if (si === 0) return true; const prev = GOP[si - 1]; return prev.list.filter((_, i) => stars[(si - 1) + '-' + i]).length >= Math.min(6, prev.list.length); }
+// 解鎖：預設要前一組解開 6 題；新增的組別用 req 指定要哪一組（手筋看中級、多步死活看初級）
+const reqOf = si => GOP[si].req != null ? GOP[si].req : si - 1;
+function unlocked(si) { if (si === 0) return true; const r = reqOf(si), prev = GOP[r]; return prev.list.filter((_, i) => stars[r + '-' + i]).length >= Math.min(6, prev.list.length); }
 function renderMenu() {
   const done = Object.keys(stars).length, st = Object.values(stars).reduce((a, b) => a + b, 0);
   const dp = dailyPick(), dd = TB.store.get('gop:daily', {}), streak = TB.store.get('gop:streak', { n: 0, last: '' });
@@ -158,7 +161,7 @@ function renderMenu() {
   GOP.forEach((s, si) => {
     const c = SETC[si], ok = unlocked(si), n = s.list.filter((_, i) => stars[si + '-' + i]).length;
     h += `<div class="set" style="--c:${c}"><h3>${s.name}</h3><span class="d">${s.desc}</span><span class="cnt">${n} / ${s.list.length}</span></div>`;
-    if (!ok) h += `<div class="lockmsg">🔒 先解開「${GOP[si - 1].name}」6 題就能挑戰</div>`;
+    if (!ok) h += `<div class="lockmsg">🔒 先解開「${GOP[reqOf(si)].name}」6 題就能挑戰</div>`;
     h += `<div class="tiles" style="--c:${c}">`;
     s.list.forEach((_, pi) => {
       const v = stars[si + '-' + pi] || 0;
@@ -189,7 +192,7 @@ function reset() {
   hint = -1; busy = false; anim = null; showing = false;
   setMsg(intro()); render();
 }
-function intro() { const z = P.z; return '黑先 · ' + GOALTXT[z.g] + (z.k > 1 ? '（' + z.k + ' 手內）' : '') + '。'; }
+function intro() { const z = P.z; return (z.tag ? '【' + z.tag + '】' : '') + '黑先 · ' + GOALTXT[z.g] + (z.k > 1 ? '（' + z.k + ' 手內）' : '') + '。'; }
 function setMsg(t, cls) { const m = $('msg'); m.innerHTML = t; m.className = 'card msg' + (cls ? ' ' + cls : ''); }
 function put(p, col) {
   const r = play(P.b, P.ko, p, col); if (!r) return false;
@@ -393,8 +396,9 @@ $('bRule').onclick = () => TB.dialog({ title: '死活題玩法', html: `<div cla
   <ul><li><b>吃掉白棋</b>：把圈起來的白棋提掉</li><li><b>救出黑棋</b>：讓圈起來的黑棋長到三口氣以上、逃出去</li><li><b>殺死白棋</b>：讓白棋做不出兩隻眼</li><li><b>讓黑棋活</b>：做出兩隻眼</li></ul>
   <p>你下一手之後，白棋會自動找最頑強的應對。下錯了，白棋會示範為什麼不行。</p>
   <h4>星星</h4><ul><li>★★★ 一次就解開</li><li>★★ 中途下錯</li><li>★ 用了提示或看了解答</li></ul>
+  <h4>手筋與多步死活</h4><ul><li><b>征子</b>：一直從同一方向叫吃，把白棋趕到棋盤邊吃掉</li><li><b>倒撲</b>：先送一顆子讓白棋吃，吃完白棋反而只剩一口氣</li><li><b>接不歸</b>：叫吃之後，白棋接上也只剩一口氣</li><li><b>枷</b>：不急著叫吃，先擋住白棋的去路</li><li><b>雙叫吃</b>：一手同時叫吃兩塊白棋</li><li><b>多步死活</b>：眼位太大時，要先擠、扳把眼位縮小再點眼；做活時要先佔住要點再做出兩隻眼。白棋每一步都會抵抗。</li></ul>
   <h4>每日一題</h4><p>每天會從題庫挑一題，週一最簡單、週末最難。每天都解開可以累積連續天數。</p>
-  <h4>解鎖</h4><p>每一組解開 6 題，就能挑戰下一組。不會下圍棋？先去 <a href="go-learn.html">圍棋教室</a>。</p>
+  <h4>解鎖</h4><p>每一組解開 6 題，就能挑戰下一組（「手筋」要先解開中級 6 題，「多步死活」要先解開初級 6 題）。不會下圍棋？先去 <a href="go-learn.html">圍棋教室</a>。</p>
   <p style="font-size:12px">每一題都用程式逐題驗證過：正解有效、白棋的應手合法、錯的下法會被反擊。</p></div>`, buttons: [{ label: '知道了', primary: true }] });
 addEventListener('resize', () => layout());
 if (window.ResizeObserver) new ResizeObserver(() => layout()).observe(play_);

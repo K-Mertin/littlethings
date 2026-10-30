@@ -68,10 +68,23 @@ export function makeCtx(pz) {
     else { res = true; const ms = gen(b, 3 - atk); ms.push(-1); for (const p of ms) { const r = play(b, ko, p, 3 - atk); if (r && !canCap(r.b, r.ko, atk, k, atk)) { res = false; break; } } }
     capMemo.set(key, res); return res;
   }
-  const empties = b => [...pz.region].filter(p => b[p] === 0).length;
+  // 範圍內最大的一塊連在一起的空地（眼位）：還有大眼位就還不算「看得出來」死了
+  function maxSpace(b) {
+    const seen = new Set(); let best = 0;
+    for (const p of pz.region) {
+      if (b[p] !== 0 || seen.has(p)) continue;
+      let n = 0; const st = [p]; seen.add(p);
+      while (st.length) { const q = st.pop(); n++; for (const x of NB[q]) if (pz.region.has(x) && b[x] === 0 && !seen.has(x)) { seen.add(x); st.push(x); } }
+      best = Math.max(best, n);
+    }
+    return best;
+  }
+  // 殺棋「看得出來」：已經提掉；或輪到白下、白棋沒有眼、剩下的眼位都很小（≤3 格），
+  // 而且搜尋確認白棋先下也逃不過被提（雙方都正確應對）。所以大眼位要先擠、扳、縮小，才算殺完——可以出多步題。
   function goal(b, toMove) {
-    if (pz.goal === 'kill') return !alive(b) || (toMove === opp && eyes(b, pz.target) === 0 && empties(b) <= 4 && canCap(b, -1, opp, 12, me));
-    if (pz.goal === 'live') return alive(b) && (eyes(b, pz.target) >= 2 || (toMove === opp && !canCap(b, -1, opp, 12, opp)));
+    if (pz.goal === 'kill') return !alive(b) || (toMove === opp && eyes(b, pz.target) === 0 && maxSpace(b) <= 3 && canCap(b, -1, opp, 14, me));
+    // vis：多步做活題，要真的做出兩隻眼才算（不然第一手就「保證活」、題目只剩一步）
+    if (pz.goal === 'live') return alive(b) && (eyes(b, pz.target) >= 2 || (!pz.vis && toMove === opp && !canCap(b, -1, opp, 12, opp)));
     if (pz.goal === 'capture') return !alive(b);
     return alive(b) && group(b, pz.target).libs.length >= 3;   // save：長到三口氣就算逃出
   }
