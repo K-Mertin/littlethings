@@ -169,15 +169,67 @@ function applyMove(m, quiet) {
   }
   checkEnd(quiet);
 }
+// ---------------- 長將／長捉 ----------------
+// 由開局回放出每一步之前的盤面：boards[j] = 第 j 步走之前
+function replayBoards(moves) {
+  const b = START.slice(), out = [b.slice()];
+  for (const m of moves) { b[m & 127] = b[m >> 7]; b[m >> 7] = 0; out.push(b.slice()); }
+  return out;
+}
+const SIDE_NAME = ['紅方', '黑方'];
+/** 分析第 i0 步到最後這段重複循環，回傳 null（沒人違規或雙方都違規）或 { loser, kind } */
+function repVerdict(moves, boards, i0) {
+  const foul = [null, null];
+  for (const s of [0, 1]) {
+    let n = 0, checks = 0, ok = true, tgt = null;
+    for (let j = i0; j < moves.length; j++) {
+      if (j % 2 !== s) continue; // 紅方先走，第 j 步由 j%2 那方走
+      n++;
+      X.init(boards[j], s);
+      const c = X.classify(moves[j]);
+      if (c.check) { checks++; continue; }
+      if (!c.chase.length) { ok = false; break; }
+      tgt = tgt ? tgt.filter(x => c.chase.includes(x)) : c.chase.slice();
+      if (!tgt.length) { ok = false; break; }
+    }
+    if (!n || !ok) continue;
+    foul[s] = checks === n ? '長將' : checks === 0 ? '長捉' : '一將一捉';
+  }
+  X.init(G.board, G.side);
+  if (foul[0] && !foul[1]) return { loser: 0, kind: foul[0] };
+  if (foul[1] && !foul[0]) return { loser: 1, kind: foul[1] };
+  return null;
+}
+function sameIdx(hashes, h) { const r = []; hashes.forEach((x, i) => { if (x[0] === h[0] && x[1] === h[1]) r.push(i); }); return r; }
+/** side 這一方走了會「第三次重複而且自己違規判負」的步（給電腦和提示避開） */
+function foulMoves(side) {
+  if (G.over) return [];
+  X.init(G.board, side);
+  const cand = [];
+  for (const m of X.legal()) { X.make(m); const h = X.hash(); X.unmake(); const idx = sameIdx(G.hashes, h); if (idx.length >= 2) cand.push([m, idx[idx.length - 2]]); }
+  if (!cand.length) return [];
+  const moves0 = G.moves.map(x => x.m), boards = replayBoards(moves0), out = [];
+  for (const [m, i0] of cand) { const v = repVerdict(moves0.concat(m), boards, i0); if (v && v.loser === side) out.push(m); }
+  X.init(G.board, G.side);
+  return out;
+}
+
 function checkEnd(quiet) {
   X.init(G.board, G.side);
   const lm = X.legal(), chk = X.inCheck(G.side);
   let over = null;
   if (!lm.length) over = { winner: G.side ^ 1, why: chk ? '將死' : '困斃' };
   else {
-    const [a, b] = G.hashes[G.hashes.length - 1];
-    if (G.hashes.filter(h => h[0] === a && h[1] === b).length >= 3) over = { winner: -1, why: '同一局面重複三次' };
-    else {
+    const idx = sameIdx(G.hashes, G.hashes[G.hashes.length - 1]);
+    G.warn = null;
+    if (idx.length >= 3) {
+      const moves = G.moves.map(x => x.m), v = repVerdict(moves, replayBoards(moves), idx[idx.length - 3]);
+      over = v ? { winner: v.loser ^ 1, why: SIDE_NAME[v.loser] + v.kind + '，判負' } : { winner: -1, why: '同一局面重複三次' };
+    } else if (idx.length === 2) {
+      const moves = G.moves.map(x => x.m), v = repVerdict(moves, replayBoards(moves), idx[0]);
+      if (v) G.warn = v;
+    }
+    if (!over) {
       let n = 0; for (let i = G.moves.length - 1; i >= 0 && !G.moves[i].cap; i--) n++;
       if (n >= 120) over = { winner: -1, why: '連續 60 回合沒有吃子' };
       else if (!G.board.some(p => p && [4, 5, 6, 7].includes(p & 7))) over = { winner: -1, why: '雙方都沒有能過河攻擊的棋子' };
@@ -212,7 +264,7 @@ function maybeAI() {
   thinking = true; render();
   const lv = LEVELS[settings.level - 1] || LEVELS[2];
   const startLen = G.moves.length, t0 = performance.now();
-  AI.ask({ board: G.board.slice(), side: G.side, hist: G.hashes.slice(0, -1).slice(-200), depth: lv.depth, time: lv.time, noise: lv.noise })
+  AI.ask({ board: G.board.slice(), side: G.side, hist: G.hashes.slice(0, -1).slice(-200), depth: lv.depth, time: lv.time, noise: lv.noise, avoid: foulMoves(G.side) })
     .then(res => {
       const wait = Math.max(0, 380 - (performance.now() - t0));
       setTimeout(() => {
@@ -403,6 +455,7 @@ function render() {
     let s = '輪到 ' + who(G.side);
     if (settings.mode === 'ai') s += G.side === humanSide() ? '（你）' : '';
     if (chk) s += '　<span class="warn">將軍！</span>';
+    if (G.warn) s += '<br><span style="font-size:13px;color:#e11d48;font-weight:700">⚠ ' + SIDE_NAME[G.warn.loser] + '在' + G.warn.kind + '，再重複一次就會判負</span>';
     st.innerHTML = s;
   }
   // 玩家欄：上面是畫面上方那一方
@@ -514,7 +567,7 @@ document.getElementById('bHint').onclick = () => {
   if (!canTouch()) return;
   const b = document.getElementById('bHint'); b.disabled = true; b.textContent = '想想…';
   const len = G.moves.length;
-  AI.ask({ board: G.board.slice(), side: G.side, hist: G.hashes.slice(0, -1).slice(-200), depth: 6, time: 900 }).then(res => {
+  AI.ask({ board: G.board.slice(), side: G.side, hist: G.hashes.slice(0, -1).slice(-200), depth: 6, time: 900, avoid: foulMoves(G.side) }).then(res => {
     b.textContent = '提示';
     if (G.moves.length !== len || !res.move) { render(); return; }
     hint = res.move; sel = -1; targets = []; TB.sfx('select');
@@ -536,8 +589,14 @@ document.getElementById('bInfo').onclick = () => {
     <li><b>俥／車</b>：直線走任意格，不能跳過棋子。</li>
     <li><b>炮／包</b>：不吃子時跟車一樣走；吃子時中間必須剛好隔一個子（炮架）。</li>
     <li><b>兵／卒</b>：只能往前一格；過河之後也可以左右走，但永遠不能後退。</li></ul>
+    <h4>長將、長捉判負</h4><ul>
+    <li>同一個局面出現第三次時，看這段來回重複裡雙方怎麼走：</li>
+    <li><b>長將</b>：一方每一步都在將軍，另一方沒有，將軍的一方判負。</li>
+    <li><b>長捉</b>：一方每一步都在「捉」對方同一個子，另一方沒有長將或長捉，捉子的一方判負。「捉」是指剛走的那顆子走完可以吃掉對方的子，而且那個子比較值錢，或是吃了對方吃不回來（沒有保護）。帥將、兵卒去捉子不算；沒過河的兵卒被捉也不算。</li>
+    <li>一方將軍和捉子交替（一將一捉）也算違規。雙方都違規、或雙方都沒違規，就算和局。</li>
+    <li>第二次重複時，畫面會先提醒違規的一方。電腦會自己避開。</li></ul>
     <h4>和局（本遊戲的簡化規則）</h4><ul>
-    <li>同一個局面出現三次（例如雙方來回重複走）。正式比賽的「長將判負」等細則這裡不判，都算和局。</li>
+    <li>同一個局面出現三次，而且沒有人長將或長捉（例如雙方都只是來回走）。</li>
     <li>連續 60 回合雙方都沒有吃子。</li>
     <li>雙方都沒有車、馬、炮、兵卒這些能過河進攻的子。</li></ul>
     <h4>操作</h4><p>點一下自己的棋子，綠點是可以走的地方，紅色虛線圈是可以吃的子；也可以直接拖曳。走錯可以按「悔棋」，不知道怎麼走可以按「提示」。對電腦時，棋局會自動保存，關掉網頁再回來可以接著下。</p>

@@ -262,8 +262,10 @@ function XQLOGIC(self) {
     killers.fill(0); for (let i = 0; i < hist.length; i++) hist[i] >>= 2;
     const t0 = Date.now(); deadline = t0 + (o.time || 1e9); stop = false; nodes = 0;
     hp = 0; for (const [a, b] of (o.hist || [])) { HH1[hp] = a; HH2[hp] = b; hp++; if (hp > 1900) break; }
-    const moves = legal();
+    let moves = legal();
     if (!moves.length) return { move: 0 };
+    // 避開會讓自己因長將／長捉判負的步（全部都要避開時就照常）
+    if (o.avoid && o.avoid.length) { const f = moves.filter(m => !o.avoid.includes(m)); if (f.length) moves = f; }
     if (moves.length === 1) return { move: moves[0], score: 0, depth: 0 };
     HH1[hp] = h1; HH2[hp] = h2; hp++;
     if (o.noise) { // 低等級：每一步都評分後加上隨機誤差
@@ -295,6 +297,40 @@ function XQLOGIC(self) {
       if (Date.now() - t0 > (o.time || 1e9) * 0.45) break;
     }
     return { move: best, score: bestScore, depth: done, nodes };
+  }
+
+  // -------------------- 長將／長捉判定用 --------------------
+  // classify(m)：目前輪到走的一方走 m 之後，是否將軍、以及「捉」了對方哪些子。
+  // 捉（簡化規則）：走動的那顆子（不含帥將、兵卒）走完後可以吃到對方某個子（不含帥將），
+  // 而且那個子價值比捉子者高，或沒有被保護（吃了之後對方不能吃回來）。
+  // 回傳 { check, chase: [被捉子的代碼...] }。不改變局面。
+  function classify(m) {
+    const mover = side, to = m & 127, p = board[m >> 7];
+    make(m);
+    const check = inCheck(side);
+    const chase = [];
+    const at = p & 7;
+    {
+      if (at !== K && at !== P) {
+        // 讓走子方再走一次，看它從 to 能吃到什麼
+        const opp = side; side = mover;
+        const caps = gen([], true).filter(c => (c >> 7) === to);
+        for (const c of caps) {
+          const sq = c & 127, q = board[sq], qt = q & 7;
+          if (qt === K) continue;
+          if (qt === P && (q < 8 ? ((sq / 9) | 0) > 4 : ((sq / 9) | 0) < 5)) continue; // 沒過河的兵卒不算
+          make(c);
+          if (inCheck(side ^ 1)) { unmake(); continue; } // 吃了會被將，不算能吃
+          let prot = false;
+          if (MAT[qt] <= MAT[at]) { for (const r of legal()) if ((r & 127) === sq) { prot = true; break; } }
+          unmake();
+          if (MAT[qt] > MAT[at] || !prot) chase.push(q);
+        }
+        side = opp;
+      }
+    }
+    unmake();
+    return { check, chase };
   }
 
   // -------------------- 連將殺解題 --------------------
@@ -350,7 +386,7 @@ function XQLOGIC(self) {
 
   self.X = {
     K, A, B, N, R, C, P, board, init, legal, make, unmake, inCheck, gen,
-    get side() { return side; }, hash: () => [h1, h2], think, mateFirst, mateLen, defend,
+    get side() { return side; }, hash: () => [h1, h2], think, classify, mateFirst, mateLen, defend,
   };
   self.onmessage = e => {
     const d = e.data; init(d.board, d.side);
