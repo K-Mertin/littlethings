@@ -95,8 +95,47 @@
 
   // ---- 戰績 ----
   function stats(game) { return store.get('stats:' + game, {}); }
-  function bump(game, key, n) { const s = stats(game); s[key] = (s[key] || 0) + (n == null ? 1 : n); store.set('stats:' + game, s); return s; }
+  function bump(game, key, n) { const s = stats(game); s[key] = (s[key] || 0) + (n == null ? 1 : n); store.set('stats:' + game, s); checkBadges(); return s; }
   function statsHtml(items) { return '<div class="tb-stats">' + items.map(([l, v]) => '<div><b>' + esc(v) + '</b><span>' + esc(l) + '</span></div>').join('') + '</div>'; }
+
+  // ---- 成就徽章：戰績有變動時，延遲載入 badges.js 檢查，新取得的跳出通知 ----
+  const BADGE_SRC = (() => { try { const c = document.currentScript; return c && c.src ? c.src.replace(/common\.js(\?.*)?$/, 'badges.js') : 'badges.js'; } catch (e) { return 'badges.js'; } })();
+  let badgeLoad = null, badgeT = 0;
+  function loadBadges() {
+    if (window.TBBadges) return Promise.resolve(window.TBBadges);
+    if (!badgeLoad) badgeLoad = new Promise(res => {
+      const sc = document.createElement('script'); sc.src = BADGE_SRC; sc.async = true;
+      sc.onload = () => res(window.TBBadges || null); sc.onerror = () => res(null);
+      document.head.appendChild(sc);
+    });
+    return badgeLoad;
+  }
+  function badgeToast(b) {
+    try {
+      const t = document.createElement('div'); t.className = 'tb-badge-toast';
+      t.innerHTML = '<span class="i">' + esc(b.i) + '</span><span><small>獲得成就</small><b>' + esc(b.n) + '</b></span>';
+      t.onclick = () => { location.href = BADGE_SRC.replace(/badges\.js$/, 'badges.html'); };
+      document.body.appendChild(t); sfx('win');
+      setTimeout(() => t.classList.add('out'), 3600); setTimeout(() => t.remove(), 4200);
+    } catch (e) { }
+  }
+  function checkBadges() {
+    clearTimeout(badgeT);
+    badgeT = setTimeout(() => {
+      loadBadges().then(B => {
+        if (!B) return;
+        const { fresh } = B.evaluate();
+        fresh.slice(0, 3).forEach((b, i) => setTimeout(() => badgeToast(b), 600 + i * 1500));
+      }).catch(() => { });
+    }, 400);
+  }
+  // 第一次用到這個功能時，先把已經達成的徽章默默記下，之後新達成的才跳通知
+  try {
+    if (localStorage.getItem('tb:badges') == null) {
+      const prime = () => loadBadges().then(B => { if (B) B.primeSilently(); }).catch(() => { });
+      (window.requestIdleCallback || (f => setTimeout(f, 1500)))(prime);
+    }
+  } catch (e) { }
 
   // ---- 等級分（跟電腦下棋的天梯）----
   // 每個電腦強度有固定分數（最弱 600、最強 1900），用 Elo 公式更新自己的等級分。
@@ -179,6 +218,6 @@
   // 第一次互動時解鎖音效（iOS）
   addEventListener('pointerdown', () => ctx(), { once: true });
 
-  window.TB = { store, sfx, dialog, closeDialog, seg, segVal, toast, stats, bump, statsHtml, worker, esc, elo,
+  window.TB = { store, sfx, dialog, closeDialog, seg, segVal, toast, stats, bump, statsHtml, worker, esc, elo, checkBadges,
     get muted() { return muted; } };
 })();
