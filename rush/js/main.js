@@ -76,7 +76,7 @@ function startMode(mode) {
   show(null);
   AU.music(G.L.theme.bgm, false);
   showRule(G.rule, mode === 'daily' ? `每日挑戰 · ${String(G.L.daily).replace(/(\d{4})(\d\d)(\d\d)/, '$1/$2/$3')}` : mode === 'boss' ? `頭目連戰 · 第 1 戰 · ${BOSSES[BR_BOSSES[0]].name}` : '無盡模式 · 第 1 段');
-  if (mode === 'boss') toast('五個頭目一個接一個！中間的路上記得多拿士兵', 2.8);
+  if (mode === 'boss') toast('六個頭目一個接一個！中間的路上記得多拿士兵', 2.8);
   if (mode === 'daily') toast('每日挑戰不使用強化，大家的條件都一樣', 2.6);
 }
 
@@ -138,6 +138,11 @@ function handleEvents() {
       case 'geyser': AU.sfx('geyser'); break;
       case 'breath': AU.sfx('breath'); G.shake = Math.max(G.shake, 0.5); vibrate(40); break;
       case 'enheal': AU.sfx('heal'); break;
+      case 'zap': AU.sfx('zap'); G.flash = Math.max(G.flash, 0.15); vibrate(30); break;
+      case 'boltwarn': tipOnce('bolt', '地上的藍圈要被雷劈了！圈亮起來之前離開', 3); break;
+      case 'gustwarn': AU.sfx('warn'); tipOnce('gust', `強風要從${a.dir > 0 ? '左' : '右'}邊吹過來了！往反方向拉住部隊`, 3); break;
+      case 'gust': AU.sfx('gust'); break;
+      case 'fall': AU.sfx('fall'); vibrate(15); break;
     }
   }
   G.q.length = 0;
@@ -157,7 +162,11 @@ function tutorial() {
     else if (o.t === 'en' && o.k === 'splitter' && o.z < 30) tipOnce('splitter', '史萊姆打倒後會分裂成三隻小的', 3);
     else if (o.t === 'boss' && o.strike) tipOnce('strike', '頭目要重擊了！快離開紅色長條', 2.5);
     else if (o.t === 'boss' && o.breath) tipOnce('breath', '炎龍要往半邊噴火了！快跑到另一邊', 2.6);
+    else if (o.t === 'lava' && o.sky && o.z < 40) tipOnce('gap', '橋斷了！對準木板橋走過去，掉下雲海會少兵', 3);
     else if (o.t === 'lava' && o.z < 40) tipOnce('lava', '岩漿河！對準石橋走過去才不會被燙到', 3);
+    else if (o.t === 'en' && o.k === 'eagle' && o.z < 30) tipOnce('eagle', '疾風鷹飛得很快，靠近時會直接衝過來，快對準打', 3);
+    else if (o.t === 'en' && o.k === 'bomber' && o.z < 30) tipOnce('bomber', '氣球炸彈兵會飄在前面丟炸彈，先打下來', 3);
+    else if (o.t === 'boss' && o.zap) tipOnce('zap', '雷霆巨鷹要劈兩條路了！站到沒有藍光的那一條', 2.8);
     else if (o.t === 'geyser' && o.z < 40) tipOnce('geyser', '火口冒煙就要噴火了，避開它；怪物走過去也會被燒', 3.2);
     else if (o.t === 'gate' && o.k === 'spec' && o.z < 45 && !o.pair.used) tipOnce('specgate', '紫色的兵種門：醫護兵會救人、砲兵會打砲、盾兵會擋傷害', 3.4);
     else if (o.t === 'gate' && o.k === 'buff' && o.z < 45 && !o.pair.used) tipOnce('buffgate', '粉紅色的加持門：無敵護罩或狂熱連射，只有幾秒鐘', 3.2);
@@ -250,7 +259,7 @@ function finishBoss(win) {
   AU.sfx(win ? 'win' : 'lose');
   const mm = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   $('#resultBody').innerHTML = `<p class="eyebrow">頭目連戰</p>
-      <h2 class="big ${win ? 'ok' : 'bad'}">${win ? (rec ? '新紀錄！' : '五連勝！') : '部隊全滅'}</h2>
+      <h2 class="big ${win ? 'ok' : 'bad'}">${win ? (rec ? '新紀錄！' : '六連勝！') : '部隊全滅'}</h2>
       ${win ? `<div class="stars">${[0, 1, 2].map(i => `<span class="st ${i < st ? 'on' : ''}" style="animation-delay:${0.25 + i * 0.25}s">★</span>`).join('')}</div>` : ''}
       <div class="stats">
         <div><b>${beaten}/${BR_BOSSES.length}</b><span>打倒頭目</span></div>
@@ -387,7 +396,7 @@ function goTitle() {
   $('#endInfo').textContent = Save.d.endBest ? `最遠 ${Save.d.endBest} 公尺` : '一直跑到全滅';
   const bOpen = bossOpen();
   $('#bossBtn').classList.toggle('locked', !bOpen);
-  $('#bossInfo').textContent = !bOpen ? '🔒 過第 3 關開放' : Save.d.bossBest ? `最快 ${Math.floor(Save.d.bossBest / 60)}:${String(Save.d.bossBest % 60).padStart(2, '0')}` : Save.d.bossMost ? `最多打倒 ${Save.d.bossMost} 個` : '五個頭目連續挑戰';
+  $('#bossInfo').textContent = !bOpen ? '🔒 過第 3 關開放' : Save.d.bossBest ? `最快 ${Math.floor(Save.d.bossBest / 60)}:${String(Save.d.bossBest % 60).padStart(2, '0')}` : Save.d.bossMost ? `最多打倒 ${Save.d.bossMost} 個` : '六個頭目連續挑戰';
   const dd = Save.d.daily;
   $('#dailyInfo').textContent = dd && dd.key === todayKey() && dd.best ? `今天最佳 ${dd.best} 人` : '今天還沒挑戰';
   refreshCoins();
@@ -442,14 +451,14 @@ function setupInput() {
   cv.addEventListener('pointerdown', e => {
     AU.init();
     if (UI.mode !== 'play') return;
-    UI.drag = { id: e.pointerId, x: e.clientX, tx: G.tx };
+    UI.drag = { id: e.pointerId, x: e.clientX, tx: G.tx, wdx: G.windDX || 0 };
     try { cv.setPointerCapture(e.pointerId); } catch (err) { }
   });
   cv.addEventListener('pointermove', e => {
     const d = UI.drag;
     if (!d || d.id !== e.pointerId || UI.mode !== 'play') return;
     const k = R.k0 * 0.65 / R.dpr; // 每公尺幾個 CSS 像素（考慮鏡頭跟隨）
-    G.tx = clamp(d.tx + (e.clientX - d.x) / k, -PX_MAX, PX_MAX);
+    G.tx = clamp(d.tx + ((G.windDX || 0) - d.wdx) + (e.clientX - d.x) / k, -PX_MAX, PX_MAX);
   });
   const end = e => { if (UI.drag && UI.drag.id === e.pointerId) UI.drag = null; };
   cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);

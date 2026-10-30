@@ -30,7 +30,7 @@ for (let s = s0; s <= s1; s++) {
       thinkT -= 1 / 60;
       if (thinkT <= 0) {
         thinkT = policy === 'lazy' ? 1.6 : 0.3;
-        const gates = G.objs.filter(o => o.t === 'gate');
+        const gates = G.objs.filter(o => o.t === 'gate' || o.t === 'dgap');
         let best = -1, bx = 0;
         // 有怪物快到城了就過去擋
         let ex = null, ez = 1e9;
@@ -40,8 +40,9 @@ for (let s = s0; s <= s1; s++) {
           let v = A.defPathGain(gates, x, G.t + 1.5);
           if (G.objs.some(o => o.t === 'dwall' && Math.abs(x - o.x) < o.w)) v *= 0.4;
           if (policy === 'lazy') v = A.defPathGain(gates, x, G.t) + Math.random() * 2;
-          if (ex != null) v = v / (1 + Math.abs(x - ex) * (policy === 'lazy' ? 0.8 : 1.5));
+          if (ex != null) v = (v + 1) / (1 + Math.abs(x - ex) * (policy === 'lazy' ? 0.8 : 1.5));
           if (policy === 'smart') for (const b of bombs) if (Math.abs(b.tx - x) < b.rad + 0.3) v *= 0.5;
+          if (policy === 'smart' && G.gust && G.gust.warn <= 0) v = A.defPathGain(gates, x + G.gust.dir * 1.2, G.t + 1.5) > 0 ? v : v * 0.3;   // 強風時往上風處偏一點
           if (v > best) { best = v; bx = x; }
         }
         tx = policy === 'center' ? 0 : bx;

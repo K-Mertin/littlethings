@@ -79,6 +79,8 @@ function drawHazGround(g, G, t) {
     else if (o.t === 'geyser') drawGeyserGround(g, o, t);
     else if (o.t === 'pool') drawPool(g, o, t);
     else if (o.t === 'boss' && o.breath) drawBreath(g, o, t);
+    else if (o.t === 'bolt') drawBoltGround(g, o, t);
+    else if (o.t === 'boss' && o.zap) drawZap(g, o, t);
   }
 }
 

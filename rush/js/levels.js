@@ -22,24 +22,31 @@ const THEMES = [
     sky: ['#1e0a12', '#5a1a1c', '#c4482a'], far: '#4a1c18', far2: '#2e1012',
     side: ['#3e2c2a', '#372624'], road: ['#4f4644', '#47403e'], kerb: ['#ffb020', '#2a1a18'], line: '#ffcf4a',
     decor: ['lavarock', 'deadtree', 'vent', 'lavarock', 'obsidian', 'deadtree'], fog: 'rgba(110,40,24,', bgm: 4, hot: true },
+  { id: 'sky', name: '天空浮島',
+    sky: ['#4f9cff', '#9fd0ff', '#eaf6ff'], far: '#d6e8fb', far2: '#bcd6f4',
+    side: ['#f6f9ff', '#e9f1fd'], road: ['#a08a6c', '#957f62'], kerb: ['#ffffff', '#ffc83d'], line: '#fff4c0',
+    decor: ['cloudpuff', 'floatrock', 'balloon', 'cloudpuff', 'skytower', 'floatrock'], fog: 'rgba(236,246,255,', bgm: 5, airy: true },
 ];
 
 const STAGES = [
   { name: '綠野小路',   boss: 'golem',    rule: 'none',  feats: [] },
-  { name: '風車農場',   boss: 'golem',    rule: 'crate', feats: ['crate'] },
-  { name: '森林關口',   boss: 'golem',    rule: 'slide', feats: ['crate', 'slide'] },
-  { name: '沙丘公路',   boss: 'scorpion', rule: 'wall',  feats: ['wall', 'slide', 'crate'] },
-  { name: '紅岩峽谷',   boss: 'scorpion', rule: 'saw',   feats: ['saw', 'wall', 'crate'] },
-  { name: '沙暴遺跡',   boss: 'scorpion', rule: 'fog',   feats: ['saw', 'slide', 'wall'] },
-  { name: '雪原隧道',   boss: 'yeti',     rule: 'ice',   feats: ['crate', 'slide', 'saw'] },
-  { name: '冰湖大道',   boss: 'yeti',     rule: 'spike', feats: ['spike', 'saw', 'wall'] },
-  { name: '極光山口',   boss: 'yeti',     rule: 'horde', feats: ['crate', 'slide', 'spike'] },
-  { name: '霓虹大道',   boss: 'mech',     rule: 'dark',  feats: ['spike', 'wall', 'crate'] },
-  { name: '港口夜色',   boss: 'mech',     rule: 'roul',  feats: ['roul', 'saw', 'slide'] },
-  { name: '最終要塞',   boss: 'mech',     rule: 'final', feats: ['wall', 'saw', 'spike', 'slide', 'roul', 'crate'] },
-  { name: '熔岩小徑',   boss: 'dragon',   rule: 'lava',  feats: ['lava', 'crate', 'spec', 'slide'] },
-  { name: '噴泉火口',   boss: 'dragon',   rule: 'geyser', feats: ['geyser', 'lava', 'wall', 'spec', 'buff'] },
-  { name: '炎龍巢穴',   boss: 'dragon',   rule: 'inferno', feats: ['lava', 'geyser', 'saw', 'roul', 'spec', 'buff', 'crate'] },
+  { name: '風車農場',   boss: 'golem',    rule: 'crate', df: 1.02, feats: ['crate'] },
+  { name: '森林關口',   boss: 'golem',    rule: 'slide', df: 1.14, feats: ['crate', 'slide'] },
+  { name: '沙丘公路',   boss: 'scorpion', rule: 'wall',  df: 1.2, feats: ['wall', 'slide', 'crate'] },
+  { name: '紅岩峽谷',   boss: 'scorpion', rule: 'saw',   df: 1.08, feats: ['saw', 'wall', 'crate'] },
+  { name: '沙暴遺跡',   boss: 'scorpion', rule: 'fog',   df: 1.03, feats: ['saw', 'slide', 'wall'] },
+  { name: '雪原隧道',   boss: 'yeti',     rule: 'ice',   df: 0.99, feats: ['crate', 'slide', 'saw'] },
+  { name: '冰湖大道',   boss: 'yeti',     rule: 'spike', df: 0.84, feats: ['spike', 'saw', 'wall'] },
+  { name: '極光山口',   boss: 'yeti',     rule: 'horde', df: 1.01, feats: ['crate', 'slide', 'spike'] },
+  { name: '霓虹大道',   boss: 'mech',     rule: 'dark',  df: 0.93, feats: ['spike', 'wall', 'crate'] },
+  { name: '港口夜色',   boss: 'mech',     rule: 'roul',  df: 0.91, feats: ['roul', 'saw', 'slide'] },
+  { name: '最終要塞',   boss: 'mech',     rule: 'final', df: 1.28, feats: ['wall', 'saw', 'spike', 'slide', 'roul', 'crate'] },
+  { name: '熔岩小徑',   boss: 'dragon',   rule: 'lava',  df: 1.05, feats: ['lava', 'crate', 'spec', 'slide'] },
+  { name: '噴泉火口',   boss: 'dragon',   rule: 'geyser', df: 1.05, feats: ['geyser', 'lava', 'wall', 'spec', 'buff'] },
+  { name: '炎龍巢穴',   boss: 'dragon',   rule: 'inferno', df: 0.85, feats: ['lava', 'geyser', 'saw', 'roul', 'spec', 'buff', 'crate'] },
+  { name: '雲端棧道',   boss: 'thunder',  rule: 'wind',  df: 1.05, feats: ['gap', 'crate', 'slide', 'spec', 'buff'] },
+  { name: '雷雲高原',   boss: 'thunder',  rule: 'storm', df: 0.89, feats: ['gap', 'wall', 'roul', 'spec', 'buff', 'crate'] },
+  { name: '天空之城',   boss: 'thunder',  rule: 'skyfinal', df: 0.99, feats: ['gap', 'saw', 'spike', 'roul', 'spec', 'buff', 'crate', 'wall'] },
 ];
 
 // 每關的特殊規則
@@ -59,6 +66,9 @@ const RULES = {
   lava:  { name: '岩漿河', desc: '岩漿流過馬路，從石橋上走過去才不會被燙到' },
   geyser: { name: '噴火口', desc: '路上的火口會噴火，冒煙的時候快離開；怪物也會被燒到' },
   inferno: { name: '火山爆發', desc: '火山彈一直從天上掉下來，看地上的紅圈閃開' },
+  wind:  { name: '強風', desc: '一陣一陣的強風會把部隊吹向旁邊，看箭頭提早往反方向拉' },
+  storm: { name: '雷雨', desc: '雷會打在地上的藍圈，圈亮起來之前快離開；怪物也會被劈到' },
+  skyfinal: { name: '天空之城', desc: '強風、雷擊、斷橋全部都來了' },
 };
 
 const BOSSES = {
@@ -67,6 +77,7 @@ const BOSSES = {
   yeti:     { name: '冰霜巨人', r: 2.0, h: 4.6 },
   mech:     { name: '機械魔王', r: 2.2, h: 4.8 },
   dragon:   { name: '熔岩炎龍', r: 2.4, h: 4.6 },
+  thunder:  { name: '雷霆巨鷹', r: 2.3, h: 4.4 },
 };
 
 const startN = s => 6 + s * 2;
@@ -83,7 +94,8 @@ function genStage(s, seed, opts) {
   const pick = a => a[Math.floor(R() * a.length)];
   const ev = [];
   const L = { rule: opts.rule || STAGES[s - 1].rule, feats: opts.feats || STAGES[s - 1].feats };
-  const hot = opts.hot != null ? opts.hot : s >= 13;   // 火山的新怪物
+  const hot = opts.hot != null ? opts.hot : (s >= 13 && s <= 15);   // 火山的新怪物
+  const airy = opts.airy != null ? opts.airy : s >= 16;              // 天空的新怪物
   let specGiven = 0;
   const len = opts.len || 400 + s * 28;
   const spd = 7 + s * 0.12;
@@ -190,7 +202,7 @@ function genStage(s, seed, opts) {
   }
 
   function wave(T, guard) {
-    const H = dps() * T * (hot ? 1.1 : 1);
+    const H = dps() * T * (hot || airy ? 1.1 : 1);
     const sHP = dps() / N; // 一名士兵等值
     const kinds = [];
     const ng = ri(7, 12) + Math.min(8, s);
@@ -204,6 +216,11 @@ function genStage(s, seed, opts) {
       for (let i = ri(1, 3); i > 0; i--) kinds.push('bat');
       if (guard == null && R() < 0.45) kinds.push('healer');
       if (R() < 0.5) for (let i = ri(1, 2); i > 0; i--) kinds.push('magma');
+    }
+    if (airy) {
+      for (let i = ri(1, 3); i > 0; i--) kinds.push('eagle');
+      if (guard == null && R() < 0.5) for (let i = ri(1, 2); i > 0; i--) kinds.push('bomber');
+      if (R() < 0.35) kinds.push('healer');
     }
     if (L.rule === 'horde') { const n0 = kinds.length; for (let i = 0; i < n0; i++) if (kinds[i] === 'grunt' || kinds[i] === 'runner') kinds.push(kinds[i]); }
     let W = 0; for (const k of kinds) W += ENEMIES[k].hpK;
@@ -271,9 +288,9 @@ function genStage(s, seed, opts) {
   }
 
   function feature() {
-    const opts = L.feats.filter(f => f === 'wall' || f === 'saw' || f === 'spike' || f === 'lava' || f === 'geyser');
+    const opts = L.feats.filter(f => f === 'wall' || f === 'saw' || f === 'spike' || f === 'lava' || f === 'geyser' || f === 'gap');
     if (!opts.length || d > len - 110) return;
-    const main = { wall: 'wall', saw: 'saw', spike: 'spike', lava: 'lava', geyser: 'geyser' }[L.rule];
+    const main = { wall: 'wall', saw: 'saw', spike: 'spike', lava: 'lava', geyser: 'geyser', wind: 'gap', storm: 'gap', skyfinal: 'gap' }[L.rule];
     if (R() > (main ? 0.8 : 0.5)) return;
     const f = main && R() < 0.6 ? main : pick(opts);
     if (f === 'wall') {
@@ -305,6 +322,14 @@ function genStage(s, seed, opts) {
       else { const sd = R() < 0.5 ? -1 : 1; bridges.push({ cx: -2.6 * sd, w: 1.2, amp: 0, f: 1, ph: 0 }, { cx: 2.1 * sd, w: 1.2, amp: s >= 14 ? 0.7 : 0, f: 0.9 + R() * 0.4, ph: R() * 6 }); }
       ev.push({ d, type: 'lava', len: 2.6, bridges });
       d += 14;
+    } else if (f === 'gap') {
+      // 斷橋：雲海上只有木板橋，掉下去會少兵；第 17 關以後橋會晃
+      const nb = R() < 0.6 ? 1 : 2, mv = s >= 17;
+      const bridges = [];
+      if (nb === 1) bridges.push({ cx: (R() * 2 - 1) * 2.3, w: 1.35, amp: mv && R() < 0.6 ? 0.9 + R() * 0.7 : 0, f: 0.8 + R() * 0.5, ph: R() * 6 });
+      else { const sd = R() < 0.5 ? -1 : 1; bridges.push({ cx: -2.6 * sd, w: 1.15, amp: mv ? 0.6 : 0, f: 1.1, ph: R() * 6 }, { cx: 2.1 * sd, w: 1.15, amp: mv ? 0.8 : 0, f: 0.9 + R() * 0.4, ph: R() * 6 }); }
+      ev.push({ d, type: 'lava', sky: 1, len: 3.2, bridges });
+      d += 15;
     } else if (f === 'geyser') {
       const n = ri(2, 3 + (s >= 15 ? 1 : 0));
       const list = [];
@@ -337,10 +362,10 @@ function genStage(s, seed, opts) {
   }
   const bk = opts.boss || STAGES[s - 1].boss;
   const tier = opts.tier != null ? opts.tier : (s - 1) % 3;
-  const bossT = (11 + s * 0.15) * (opts.bossK || 1) * (hot && opts.bossK == null ? 1.1 : 1);
+  const bossT = (11 + s * 0.15) * (opts.bossK || 1) * ((hot || airy) && opts.bossK == null ? 1.1 : 1);
   ev.push({ d: len, type: 'boss', k: bk, tier, hp: dps() * bossT, eat: Math.max(1, N * 0.05), sHP: dps() / N, exp: dps() });
   ev.sort((a, b) => a.d - b.d);
-  return { s, len, spd, ev, theme: opts.theme || themeOf(s), name: opts.name || STAGES[s - 1].name, expN: N, rule: L.rule, feats: L.feats, hot };
+  return { s, len, spd, ev, theme: opts.theme || themeOf(s), name: opts.name || STAGES[s - 1].name, expN: N, rule: L.rule, feats: L.feats, hot, airy };
 }
 
 // ---- 無盡模式：一段一段接下去，每段尾巴有頭目 ----
@@ -350,8 +375,9 @@ const THEME_RULES = {
   snow:   ['ice', 'spike', 'horde', 'saw', 'crate', 'slide'],
   night:  ['dark', 'roul', 'spike', 'wall', 'saw', 'horde'],
   volcano: ['lava', 'geyser', 'inferno', 'lava', 'crate', 'saw'],
+  sky: ['wind', 'storm', 'wind', 'storm', 'crate', 'roul'],
 };
-const BOSS_OF_THEME = { meadow: 'golem', desert: 'scorpion', snow: 'yeti', night: 'mech', volcano: 'dragon' };
+const BOSS_OF_THEME = { meadow: 'golem', desert: 'scorpion', snow: 'yeti', night: 'mech', volcano: 'dragon', sky: 'thunder' };
 function featsOf(rule) { const st = STAGES.find(x => x.rule === rule); return st ? st.feats : []; }
 
 function legStage(leg, seed, carry) {
@@ -360,30 +386,30 @@ function legStage(leg, seed, carry) {
   const list = THEME_RULES[theme.id];
   const rule = leg === 0 ? 'crate' : list[Math.floor(R() * list.length)];
   const sv = Math.min(12, 2 + leg * 2);
-  return genStage(sv, (seed || 1) * 7 + leg * 101, { rule, feats: featsOf(rule).concat(leg >= 2 ? ['spec'] : []), hot: !!theme.hot, boss: BOSS_OF_THEME[theme.id], theme, name: `第 ${leg + 1} 段 · ${theme.name}`, len: 330 + Math.min(leg, 6) * 25, tier: Math.min(2, Math.floor(leg / 4)), bossK: 0.8, startN: carry && carry.N, wid: carry && carry.wid, lv: carry && carry.lv });
+  return genStage(sv, (seed || 1) * 7 + leg * 101, { rule, feats: featsOf(rule).concat(leg >= 2 ? ['spec'] : []), hot: !!theme.hot, airy: !!theme.airy, boss: BOSS_OF_THEME[theme.id], theme, name: `第 ${leg + 1} 段 · ${theme.name}`, len: 330 + Math.min(leg, 6) * 25, tier: Math.min(2, Math.floor(leg / 4)), bossK: 0.8, startN: carry && carry.N, wid: carry && carry.wid, lv: carry && carry.lv });
 }
 
 // ---- 每日挑戰：用日期當種子，每天一關不一樣 ----
 function todayKey(d) { d = d || new Date(); return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); }
 function dailyStage(key) {
   const R = rng(key * 31 + 17);
-  const nw = key >= 20261029 ? THEMES.length : 4;   // 火山世界從 10/29 開始加入每日挑戰
+  const nw = key >= 20261031 ? THEMES.length : key >= 20261029 ? 5 : 4;   // 火山 10/29、天空 10/31 起加入每日挑戰
   const theme = THEMES[Math.floor(R() * nw)];
   const list = THEME_RULES[theme.id];
   const rule = list[Math.floor(R() * list.length)];
   const sv = 5 + Math.floor(R() * 5);
-  const L = genStage(sv, key, { rule, feats: featsOf(rule).concat(nw > 4 ? ['spec'] : []), hot: !!theme.hot, boss: BOSS_OF_THEME[theme.id], theme, name: '每日挑戰' });
+  const L = genStage(sv, key, { rule, feats: featsOf(rule).concat(nw > 4 ? ['spec'] : []), hot: !!theme.hot, airy: !!theme.airy, boss: BOSS_OF_THEME[theme.id], theme, name: '每日挑戰' });
   L.daily = key;
   return L;
 }
 
-// ---- 頭目連戰：五個頭目一個接一個，中間只有一小段路 ----
-const BR_BOSSES = ['golem', 'scorpion', 'yeti', 'mech', 'dragon'];
+// ---- 頭目連戰：六個頭目一個接一個，中間只有一小段路 ----
+const BR_BOSSES = ['golem', 'scorpion', 'yeti', 'mech', 'dragon', 'thunder'];
 function bossLeg(i, seed, carry) {
   const R = rng((seed || 1) * 53 + i * 311 + 3);
   const theme = THEMES[i];
   const list = THEME_RULES[theme.id];
   const rule = i === 0 ? 'crate' : list[Math.floor(R() * list.length)];
   const sv = 3 + i * 3;
-  return genStage(sv, (seed || 1) * 11 + i * 211, { rule, feats: featsOf(rule).concat(['spec']), hot: !!theme.hot, boss: BR_BOSSES[i], theme, name: `第 ${i + 1} 戰 · ${BOSSES[BR_BOSSES[i]].name}`, len: 230 + i * 10, tier: Math.min(2, Math.floor((i + 1) / 2)), bossK: 0.85, startN: carry && carry.N, wid: carry && carry.wid, lv: carry && carry.lv });
+  return genStage(sv, (seed || 1) * 11 + i * 211, { rule, feats: featsOf(rule).concat(['spec']), hot: !!theme.hot, airy: !!theme.airy, boss: BR_BOSSES[i], theme, name: `第 ${i + 1} 戰 · ${BOSSES[BR_BOSSES[i]].name}`, len: 230 + i * 10, tier: Math.min(2, Math.floor((i + 1) / 2)), bossK: 0.85, startN: carry && carry.N, wid: carry && carry.wid, lv: carry && carry.lv });
 }

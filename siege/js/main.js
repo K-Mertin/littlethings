@@ -55,7 +55,7 @@ function startStage(n) {
   UI.ruleT = 2.8;
 }
 function featText(D) {
-  return `${D.rows} 排門${D.slide ? '・會動' : ''}${D.roul ? '・轉盤' : ''}${D.red ? '・✕ 門' : ''}${D.wall ? '・牆' : ''}${D.bomb ? '・砲擊' : ''}${D.pow ? '・強化門' : ''}${D.gey ? '・火口' : ''}`;
+  return `${D.rows} 排門${D.slide ? '・會動' : ''}${D.roul ? '・轉盤' : ''}${D.red ? '・✕ 門' : ''}${D.wall ? '・牆' : ''}${D.bomb ? '・砲擊' : ''}${D.pow ? '・強化門' : ''}${D.gey ? '・火口' : ''}${D.gap ? '・斷橋' : ''}${D.wind ? '・強風' : ''}${D.bolt ? '・雷擊' : ''}`;
 }
 function buildLevels() {
   const box = $('#levelGrid');
@@ -137,6 +137,11 @@ function handleEvents() {
       case 'giant': AU.sfx('gateWpn'); toast('金色大兵出動！', 1.4); break;
       case 'dboss': AU.sfx('boss'); toast('巨魔兵出現了！集中火力擋住它', 2.2); break;
       case 'geyser': AU.sfx('geyser'); break;
+      case 'gustwarn': AU.sfx('warn'); tipOnce('dgust', '強風要來了！小兵會被吹歪，砲台要往反方向修正', 3); break;
+      case 'gust': AU.sfx('gust'); break;
+      case 'boltwarn': tipOnce('dbolt', '藍圈會被雷劈！小兵和怪物都會被劈到——把怪物引進去', 3); break;
+      case 'zap': AU.sfx('zap'); G.shake = Math.max(G.shake, 0.25); break;
+      case 'fall': AU.sfx('fall'); break;
       case 'enheal': AU.sfx('heal'); break;
     }
   }
@@ -152,6 +157,8 @@ function tips() {
   for (const o of G.objs) {
     if (o.t === 'gate' && o.k === 'pow') { tipOnce('dpow', '黃色的強化門：人數不變，但穿過的小兵會變成兩倍強！', 3.4); break; }
     if (o.t === 'gate' && o.roul) { tipOnce('droul', '轉盤門的數字會一直換，下面有寫下一個是什麼', 3.2); break; }
+    if (o.t === 'en' && o.k === 'eagle') { tipOnce('deagle', '疾風鷹飛很快！砲台的機槍會優先打會飛的怪', 3); break; }
+    if (o.t === 'dgap') { tipOnce('dgap', '雲海上只有木板橋，小兵沒走在橋上會掉下去', 3.2); break; }
     if (o.t === 'dwall') { tipOnce('dwall', '中間有一道牆，要打破才能過去', 3); break; }
     if (o.t === 'geyser' && o.warn) { tipOnce('dgey', '火口冒煙就要噴火了，小兵和怪物經過都會被燒掉', 3.2); break; }
   }

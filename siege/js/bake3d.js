@@ -371,7 +371,7 @@ function bakeJobs() {
   // 萬軍守城用得到的：步槍士兵（小兵）、城堡砲台大兵、怪物、路邊擺設
   const J = [soldierJob('rifle')];
   if (typeof defJobs3 === 'function') J.push(...defJobs3());
-  for (const k in ENEMY3) if (k !== 'thrower') J.push(enemyJob(k));
+  for (const k in ENEMY3) if (k !== 'thrower' && k !== 'bomber') J.push(enemyJob(k));
   if (typeof sceneJobs3 === 'function') J.push(...sceneJobs3());
   return J;
 }

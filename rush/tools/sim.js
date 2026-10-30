@@ -28,8 +28,9 @@ function gateVal(G, g) {
 const G_boss = r => r.bossT0 != null;
 const LOSSLOG = process.env.LOSSLOG ? {} : null;
 const MODE = process.env.MODE || 'stage';
+const DF = process.env.DF ? JSON.parse(process.env.DF) : null;
 function play(s, seed) {
-  A.newGame(s, { sim: true, seed, mode: MODE, up: { men: upL, dmg: upL, rate: upL } });
+  A.newGame(s, { sim: true, seed, mode: MODE, up: { men: upL, dmg: upL, rate: upL }, df: DF && DF[s] != null ? DF[s] : undefined });
   let G = A.G;
   const dt = 1 / 60;
   const choice = new Map();
@@ -84,6 +85,10 @@ function play(s, seed) {
           if (o.t === 'spike' && o.z < 5 && o.z + o.len > -1 && x + cr.rx > o.x0 && x - cr.rx < o.x1) d += 2;
           if (o.t === 'lob' && o.T - o.age < 1.0 && Math.abs(o.tx - x) < o.rad + cr.rx * 0.6 + 0.3) d += 4;
           if (o.t === 'boss' && o.strike && Math.abs(o.strike.x - x) < 1.25 + cr.rx * 0.5 + 0.3) d += 5;
+          if (o.t === 'boss' && o.zap && o.zap.t > 0 && o.zap.lanes.some(lx => Math.abs(lx - x) < 1.3 + cr.rx * 0.35 + 0.3)) d += 5;
+          if (o.t === 'boss' && o.breath && o.breath.t > 0 && x * o.breath.side > -0.6) d += 5;
+          if (o.t === 'bolt' && o.warn > 0 && o.warn < 1.1 && Math.abs(o.z) < 4 && Math.abs(o.x - x) < o.r + cr.rx * 0.5 + 0.3) d += 4;
+          if (o.t === 'lava' && o.z < 7 && o.z + o.len > -2) { const T = Math.max(0, o.z) / Math.max(0.1, G.spd); if (!o.bridges.some(b => { const bx = b.cx + b.amp * Math.sin((G.t + T) * b.f + b.ph); return Math.abs(bx - x) < b.w - 0.25; })) d += 6; }
           if (o.t === 'boss' && o.breath && x * o.breath.side > -0.6) d += 5;
           if (o.t === 'geyser' && o.z > -2 && o.z < 6 && (o.warn || o.erupt) && Math.abs(o.x - x) < o.r + cr.rx * 0.6 + 0.3) d += 3;
           if (o.t === 'pool' && o.z > -1 && o.z < 5 && Math.abs(o.x - x) < o.r + cr.rx * 0.5 + 0.2) d += 1;
@@ -102,7 +107,9 @@ function play(s, seed) {
       }
     }
     const n0 = G.N;
-    A.step(dt, { abs: tx });
+    // 強風吹的時候，人要反應一下才拉得回來
+    const gusting = G.gust && G.gust.warn <= 0;
+    A.step(dt, gusting && (Math.floor(t * 60) % 15) ? null : { abs: tx });
     G = A.G;
     if (LOSSLOG && G.N < n0 && G.q.length === 0) { }
     if (G.boss && G.bossN0 == null) { G.bossN0 = G.N; G.bossT0 = G.t; }
