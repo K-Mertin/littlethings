@@ -30,6 +30,9 @@
 .band .meld{display:flex;gap:1px}
 .nmt{flex:none;align-self:center;background:rgba(255,255,255,.92);color:#065f46;border-radius:999px;padding:0 calc(var(--rw) * .35);font-weight:900;font-size:var(--fs);line-height:calc(var(--fs) * 1.6);margin-right:calc(var(--w) * .3);box-shadow:0 2px 6px rgba(6,40,30,.25)}
 .side.turn .nmt{background:#fde047;color:#713f12}
+.nmt .ps{font-size:.72em;font-weight:700;margin-left:.35em;padding:0 .45em;border-radius:999px;vertical-align:.08em}
+.ps-big{background:#fce7f3;color:#be185d}.ps-fast{background:#e0f2fe;color:#0369a1}.ps-safe{background:#dcfce7;color:#15803d}
+.wtitle .ps{font-size:12px;font-weight:700;margin-left:6px;padding:1px 8px;border-radius:999px}
 .lab{position:absolute;display:flex;align-items:center;justify-content:center;gap:calc(var(--rw) * .25);color:#fff;font-weight:900;font-size:var(--fs);border-radius:calc(var(--rw) * .3)}
 .lab .wd{display:inline-flex;align-items:center;justify-content:center;width:calc(var(--fs) * 1.5);height:calc(var(--fs) * 1.5);border-radius:50%;background:rgba(255,255,255,.18);font-size:calc(var(--fs) * 1.05)}
 .lab .dl{background:#f43f5e;color:#fff;border-radius:999px;padding:0 calc(var(--fs) * .45);font-size:calc(var(--fs) * .8);line-height:calc(var(--fs) * 1.35)}
@@ -394,6 +397,19 @@ function backHTML(cls) { return `<i class="tl bk${cls ? ' ' + cls : ''}"></i>`; 
 const NAMES = ['你', '小明', '阿珠', '老王'];
 const POS = ['', '下家', '對家', '上家'];
 const SPEED = { fast: 280, mid: 650, slow: 1050 };
+// 電腦個性：難度決定算得準不準，個性決定想做什麼牌
+const PERSONA = {
+  big: { label: '愛做大牌', short: '大牌', desc: '看到機會就往清一色、混一色、碰碰胡、字牌刻子做，喜歡碰、很少吃，小胡有時候會放過。' },
+  fast: { label: '快攻', short: '快攻', desc: '只想最快聽牌，吃碰都來，小胡也胡。' },
+  safe: { label: '保守', short: '保守', desc: '很怕放槍，別家快聽牌時就打安全牌，手好才進攻。' },
+};
+const persona = p => (S && S.persona && PERSONA[S.persona[p]]) ? S.persona[p] : 'fast';
+function assignPersona(mode) {
+  if (mode === 'fast') return ['fast', 'fast', 'fast', 'fast'];
+  if (mode === 'random') return ['fast'].concat([1, 2, 3].map(() => ['big', 'fast', 'safe'][Math.random() * 3 | 0]));
+  return ['fast'].concat(shuffle(['big', 'fast', 'safe']));
+}
+function psChip(p) { if (!p) return ''; const k = persona(p); return `<small class="ps ps-${k}">${PERSONA[k].short}</small>`; }
 let S = null, timer = 0, sel = null, hintId = null;
 const AUTO = () => !!window.__mjAuto;      // 測試用：四家都交給電腦
 const isAI = p => p !== 0 || AUTO();
@@ -405,13 +421,14 @@ const needSets = p => 5 - S.melds[p].length;
 const delay = () => window.__mjFast ? 0 : SPEED[S.opt.speed] || 650;
 const save = () => { if (S) TB.store.set('mahjong:state', S); };
 
-function defaultOpt() { return TB.store.get('mahjong:opt', { level: 'mid', length: 'one', score: 'b30', multi: 'jie', speed: 'mid', autoHu: '0', autoFlower: '1' }); }
+function defaultOpt() { return TB.store.get('mahjong:opt', { level: 'mid', length: 'one', score: 'b30', multi: 'jie', speed: 'mid', autoHu: '0', autoFlower: '1', persona: 'mix' }); }
 function scoreRule() { return { b30: { base: 30, per: 10 }, b100: { base: 100, per: 20 }, tai: { base: 0, per: 1 } }[S.opt.score] || { base: 30, per: 10 }; }
 
 function newMatch(opt) {
   clearTimeout(timer);
   S = { opt, scores: [0, 0, 0, 0], round: 0, dealer: Math.random() * 4 | 0, dealerMoves: 0, streak: 0, handNo: 0, over: false, log: [] };
   S.firstDealer = S.dealer;
+  S.persona = (window.__mjPersona || assignPersona(opt.persona || 'mix')).slice();
   newHand();
 }
 function newHand() {
@@ -697,7 +714,7 @@ function matchOver() {
   if (window.__mjFast) return;
   TB.sfx(rank[0] === 0 ? 'win' : 'draw');
   TB.dialog({ title: rank[0] === 0 ? '🏆 你是第一名！' : '一將結束', dismiss: false,
-    html: '<div class="pay">' + rank.map((p, i) => `<span><b>第 ${i + 1} 名</b>　${NAMES[p]}</span><span></span><span class="${S.scores[p] > 0 ? 'p' : S.scores[p] < 0 ? 'n' : 'z'}">${fmtPts(S.scores[p])}</span>`).join('') + '</div>',
+    html: '<div class="pay">' + rank.map((p, i) => `<span><b>第 ${i + 1} 名</b>　${NAMES[p]}${p ? '・' + PERSONA[persona(p)].short : ''}</span><span></span><span class="${S.scores[p] > 0 ? 'p' : S.scores[p] < 0 ? 'n' : 'z'}">${fmtPts(S.scores[p])}</span>`).join('') + '</div>',
     buttons: [{ label: '再來一將', primary: true, onClick: () => { setTimeout(() => newMatch(S.opt), 0); } }] });
 }
 const fmtPts = v => (v > 0 ? '+' : '') + v + (S.opt.score === 'tai' ? ' 台' : '');
@@ -716,11 +733,11 @@ function candKinds(c) {
   for (let k = 0; k < 34; k++) if (c[k]) { if (k >= 27) s.add(k); else { const b = k - k % 9; for (let j = Math.max(b, k - 2); j <= Math.min(b + 8, k + 2); j++) s.add(j); } }
   return [...s];
 }
-function threats(p) {
+function threats(p, timid) {
   const t = [];
   for (let q = 0; q < 4; q++) if (q !== p) {
-    const m = S.melds[q].filter(x => x.type !== 'ankan').length;
-    if (m >= 3 || (m >= 2 && S.rivers[q].length >= 8) || S.rivers[q].length >= 14) t.push(q);
+    const m = S.melds[q].filter(x => x.type !== 'ankan').length, r = S.rivers[q].length;
+    if (timid ? (m >= 2 || (m >= 1 && r >= 7) || r >= 10) : (m >= 3 || (m >= 2 && r >= 8) || r >= 14)) t.push(q);
   }
   return t;
 }
@@ -733,11 +750,31 @@ function danger(k, q, vis) {
   if (n === 0 || n === 8) d *= 0.75;
   return d;
 }
+// 大牌型：看手上的牌決定要往哪種大牌做（沒有方向就回傳 null）
+function bigPlan(p) {
+  const h = S.hands[p].filter(id => !MJ.isFlowerId(id)), suit = [0, 0, 0]; let hon = 0;
+  const cnt = new Array(34).fill(0); h.forEach(id => cnt[K(id)]++);
+  h.forEach(id => { const k = K(id); if (k >= 27) hon++; else suit[k / 9 | 0]++; });
+  let chiM = 0; const mSuit = new Set(); let mHon = 0, pairs = 0;
+  S.melds[p].forEach(m => { if (m.type === 'chi') chiM++; if (m.k >= 27) mHon++; else mSuit.add(m.k / 9 | 0); if (m.type !== 'chi') pairs++; });
+  for (let k = 0; k < 34; k++) if (cnt[k] >= 2) pairs++;
+  const D = [0, 1, 2].sort((a, b) => suit[b] - suit[a])[0], tot = h.length + S.melds[p].length * 3;
+  const flushOk = [...mSuit].every(x => x === D);
+  const fScore = flushOk ? (suit[D] + hon + (mSuit.size ? 3 : 0) * S.melds[p].filter(m => m.k < 27).length + mHon * 3) / tot : 0;
+  const pScore = chiM ? 0 : pairs / 6;
+  const plan = { D, flush: null, pon: false, strength: 0 };
+  if (fScore >= 0.52) { plan.flush = (hon + mHon * 3) / tot <= 0.12 ? 'qing' : 'hun'; plan.strength = fScore; }
+  if (pScore >= 0.8 && pScore > fScore) { plan.pon = true; plan.flush = null; plan.strength = pScore; }
+  return plan.flush || plan.pon ? plan : null;
+}
+const isValueHonor = (p, k) => k >= 31 || k === 27 + seatWind(p) || k === 27 + S.round;
 function aiDiscardChoice(p, level) {
   const h = S.hands[p], c = MJ.counts(h), N = needSets(p), vis = visible(p), sh = makeSh();
   const kinds = [...new Set(h.map(K))];
   if (level === 'easy' && Math.random() < 0.1) { const id = h[Math.random() * h.length | 0]; return { id, s: null }; }
-  const th = level === 'hard' ? threats(p) : [];
+  const ps = persona(p), plan = ps === 'big' ? bigPlan(p) : null;
+  const th = (level === 'hard' || ps === 'safe' || ps === 'big') ? threats(p, ps === 'safe') : [];
+  const early = S.wall.length >= 50 ? 1 : S.wall.length >= 35 ? 0.6 : 0.2;
   let best = null;
   for (const k of kinds) {
     c[k]--;
@@ -748,9 +785,24 @@ function aiDiscardChoice(p, level) {
     if (k >= 27 && c[k] === 1) score += 40; else if (k < 27 && (k % 9 === 0 || k % 9 === 8)) score += 12;
     if (level === 'easy') score = -s * 100000 + Math.random() * 3000;
     else score += Math.random() * 5;
+    if (plan) {
+      // 大牌：往目標牌型靠，早巡寧可多差一步
+      const B = 160000 * early;
+      if (plan.flush) {
+        // 只看「同花色（＋字牌）」那部分還差幾步：別的花色等於廢牌，先打掉
+        c[k]--;
+        const cf = c.map((v, j) => j < 27 ? ((j / 9 | 0) === plan.D ? v : 0) : (plan.flush === 'qing' && !isValueHonor(p, j) ? 0 : v));
+        const sP = sh(cf, N);
+        c[k]++;
+        if (S.wall.length >= 30 || sP <= s + 1) score = -sP * 100000 - s * 25000 + uke * 100 + Math.random() * 5;
+      }
+      if (plan.pon) { if (c[k] >= 2) score -= B; else score += B * 0.6; }
+    }
+    if (ps === 'big' && k >= 27 && c[k] >= 2 && isValueHonor(p, k)) score -= 40000;
     if (th.length) {
       const dz = th.reduce((a, q) => a + danger(k, q, vis), 0);
-      const w = s >= 2 ? 300000 : s === 1 ? 6000 : 0;
+      const w = ps === 'safe' ? (s >= 2 ? 400000 : s === 1 ? 120000 : s === 0 ? 40000 : 0)
+        : (s >= 2 ? 300000 : s === 1 ? 6000 : 0);
       score -= dz * w;
     }
     if (!best || score > best.score) best = { k, score, s };
@@ -774,20 +826,38 @@ function aiAct(p) {
 }
 function aiClaim(q, o, id) {
   if (!o) return null;
-  if (o.hu) return { type: 'hu' };
+  const ps = persona(q);
+  if (o.hu) {
+    // 大牌型：還很早、台數很小、手上有大牌方向時，偶爾放過小胡
+    if (ps === 'big' && S.wall.length >= 30 && bigPlan(q) && Math.random() < 0.8) {
+      const c = MJ.counts(S.hands[q]), N = needSets(q), kk = K(id), wc = MJ.waits(c, N).length; c[kk]++;
+      const t = MJ.calcTai(winCtx(q, { conc: c, winK: kk, selfDraw: false, waitCount: wc })).total;
+      if (t <= 3) return null;
+    }
+    return { type: 'hu' };
+  }
   if (!o.pon && !o.kan && !o.chi.length) return null;
   const lvl = AUTO() && q === 0 ? 'mid' : S.opt.level, k = K(id);
   const c = MJ.counts(S.hands[q]), N = needSets(q), sh = makeSh(), s0 = sh(c, N);
   const after = (rem, n) => { rem.forEach(r => c[r]--); let b = 99; for (let j = 0; j < 34; j++) if (c[j]) { c[j]--; b = Math.min(b, sh(c, n)); c[j]++; } rem.forEach(r => c[r]++); return b; };
   if (o.kan) { c[k] -= 3; const s = sh(c, N - 1); c[k] += 3; if (s <= s0 && (lvl !== 'easy' || Math.random() < .6)) return { type: 'kan' }; }
+  const plan = ps === 'big' ? bigPlan(q) : null;
   if (o.pon) {
     const s1 = after([k, k], N - 1);
-    const value = k >= 31 || k === 27 + seatWind(q) || k === 27 + S.round;
-    if (s1 < s0 || (value && s1 <= s0) || (lvl === 'easy' && s1 <= s0 && Math.random() < .5)) return { type: 'pon' };
+    const value = isValueHonor(q, k);
+    if (ps === 'big') {
+      const fits = plan && (plan.pon || (plan.flush && (k >= 27 || (k / 9 | 0) === plan.D)));
+      if (s1 < s0 || (value && s1 <= s0 + 1) || (fits && s1 <= s0 + (plan.pon ? 1 : 0))) return { type: 'pon' };
+      return null;
+    }
+    if (ps === 'safe') { if (s1 < s0 && (value || s0 <= 2)) return { type: 'pon' }; }
+    else if (s1 < s0 || (value && s1 <= s0) || (ps === 'fast' && s1 <= s0 && s0 <= 2) || (lvl === 'easy' && s1 <= s0 && Math.random() < .5)) return { type: 'pon' };
   }
   if (o.chi.length) {
+    if (ps === 'big' && !(plan && plan.flush && (k / 9 | 0) === plan.D)) return null;
     let bc = null, bs = 99; for (const cb of o.chi) { const s = after(cb, N - 1); if (s < bs) { bs = s; bc = cb; } }
-    if (bs < s0 && (lvl !== 'hard' || s0 <= 3)) return { type: 'chi', combo: bc };
+    if (ps === 'safe') { if (bs < s0 && s0 <= 1) return { type: 'chi', combo: bc }; return null; }
+    if (bs < s0 && (lvl !== 'hard' || s0 <= 3 || ps === 'fast')) return { type: 'chi', combo: bc };
     if (lvl === 'easy' && bs <= s0 && Math.random() < .3) return { type: 'chi', combo: bc };
   }
   return null;
@@ -924,12 +994,12 @@ function renderBoard(W, H) {
       // 桌緣：名字、手牌（牌背）、副露、花
       const backs = end ? sortIds(S.hands[p]).map(id => tileHTML(id)).join('') : S.hands[p].map(() => backHTML()).join('');
       const mt = meldTiles(p), fl = S.flowers[p].length, groups = (mt ? 1 : 0) + (fl ? 1 : 0);
-      const left = bandH0 + rw * 0.6, bw = w - 2 * left, nameW = fs * (NAMES[p].length + 1.6);
+      const left = bandH0 + rw * 0.6, bw = w - 2 * left, nameW = fs * (NAMES[p].length + 1.6 + (S.persona ? 2.3 : 0));
       const units = S.hands[p].length + mt + fl + groups * 0.55 + S.melds[p].length * 0.05;
       const ow = Math.max(8, Math.min(rw * 0.9, (bw - nameW - 8) / (units * 1.04)));
       const bandH = ow * 1.42 + 4;
       side += `<div class="band" style="--ow:${ow}px;left:${left}px;top:${h - bandH - rw * 0.42}px;width:${bw}px;height:${bandH}px;justify-content:center">
-        <span class="nmt">${NAMES[p]}</span><span class="grp">${backs}</span>${mt ? `<span class="gap"></span>${S.melds[p].map(m => meldHTML(m, !end)).join('')}` : ''}${fl ? `<span class="gap"></span><span class="grp">${S.flowers[p].map(id => tileHTML(id)).join('')}</span>` : ''}</div>`;
+        <span class="nmt">${NAMES[p]}${psChip(p)}</span><span class="grp">${backs}</span>${mt ? `<span class="gap"></span>${S.melds[p].map(m => meldHTML(m, !end)).join('')}` : ''}${fl ? `<span class="gap"></span><span class="grp">${S.flowers[p].map(id => tileHTML(id)).join('')}</span>` : ''}</div>`;
       side += `<span class="anc" id="anc${p}" style="left:${w / 2}px;top:${h - bandH - rw * 1.4}px"></span>`;
     }
     side += '</div>';
@@ -977,7 +1047,7 @@ function showResult() {
   else {
     title = r.res.length > 1 ? '一炮多響！' : (r.res[0].w === 0 ? (r.self ? '🎉 你自摸了！' : '🎉 你胡了！') : `${NAMES[r.res[0].w]}${r.self ? '自摸' : '胡牌'}`);
     r.res.forEach(x => {
-      html += `<div class="wtitle">${NAMES[x.w]}${x.special ? '' : r.self ? '自摸' : '胡'}${r.from != null && !r.self ? `・${NAMES[r.from]}放槍` : ''}</div>`;
+      html += `<div class="wtitle">${NAMES[x.w]}${psChip(x.w)}${x.special ? '' : r.self ? '自摸' : '胡'}${r.from != null && !r.self ? `・${NAMES[r.from]}放槍` : ''}</div>`;
       if (!x.special) html += handResultHTML(x.w, x.winTile);
       html += '<table class="tai">' + x.tai.items.map(([n, v]) => `<tr><td>${n}</td><td>${v} 台</td></tr>`).join('') + `<tr class="tot"><td>合計</td><td>${x.tai.total} 台</td></tr></table>`;
       const ex = x.pays.filter(pp => pp.extra);
@@ -999,6 +1069,7 @@ function newDialog(first) {
     title: '台灣麻將・新的一將', dismiss: !first,
     html: '<p>16 張麻將，你和三位電腦對打。</p>' +
       TB.seg('電腦強度', 'level', [['easy', '簡單'], ['mid', '普通'], ['hard', '困難']], o.level) +
+      TB.seg('電腦個性', 'persona', [['mix', '三種各一（大牌／快攻／保守）'], ['random', '隨機'], ['fast', '全部快攻（經典）']], o.persona || 'mix') +
       TB.seg('打多久', 'length', [['one', '一圈（4 局起）'], ['four', '一將（4 圈）']], o.length) +
       TB.seg('計分', 'score', [['b30', '底 30／台 10'], ['b100', '底 100／台 20'], ['tai', '只算台數']], o.score) +
       TB.seg('一炮多響', 'multi', [['jie', '截胡（下家優先）'], ['multi', '多響（都算）']], o.multi) +
@@ -1006,7 +1077,7 @@ function newDialog(first) {
       TB.seg('能胡時自動胡', 'autoHu', [['0', '關（自己按）'], ['1', '開']], o.autoHu) +
       TB.seg('補花提示', 'autoFlower', [['1', '自動補花，只提示我的'], ['0', '每家補花都提示']], o.autoFlower),
     buttons: (first ? [] : [{ label: '取消', value: null }]).concat([{ label: '開始', primary: true, onClick: d => {
-      const v = {}; ['level', 'length', 'score', 'multi', 'speed', 'autoHu', 'autoFlower'].forEach(k => v[k] = TB.segVal(d, k));
+      const v = {}; ['level', 'persona', 'length', 'score', 'multi', 'speed', 'autoHu', 'autoFlower'].forEach(k => v[k] = TB.segVal(d, k));
       TB.store.set('mahjong:opt', v); setTimeout(() => newMatch(v), 0);
     } }])
   });
@@ -1041,6 +1112,9 @@ document.getElementById('bInfo').onclick = () => {
     <li>正花各 1（東家：春、梅；南家：夏、蘭；西家：秋、竹；北家：冬、菊）、花槓 2（一整組春夏秋冬或梅蘭竹菊）、八仙過海 8（八張花都拿到，直接胡）、七搶一 8（你有七張花，別人摸到第八張就被你搶走，直接胡）</li>
     <li>搶槓 1、槓上開花 1、海底撈月 1（摸最後一張自摸）、河底撈魚 1（胡最後一張打出的牌）、獨聽 1（只聽一種牌）</li>
     <li>天胡 16（莊家拿到牌就胡）、地胡 16（閒家第一次摸牌就自摸）、人胡 16（閒家胡莊家打出的第一張）</li></ul>
+    <h4>電腦個性</h4><ul><li>強度（簡單／普通／困難）決定電腦算得準不準；個性決定它想做什麼牌，名字旁的小標籤就是它的個性。</li>
+    <li><b>大牌</b>：${PERSONA.big.desc}</li><li><b>快攻</b>：${PERSONA.fast.desc}</li><li><b>保守</b>：${PERSONA.safe.desc}</li>
+    <li>新局時可以選「三種各一」、「隨機」或「全部快攻」。</li></ul>
     <h4>計分</h4><ul><li>每家付「底＋台數×每台」。可以選底 30 台 10、底 100 台 20，或只算台數。</li></ul>
     <h4>操作</h4><ul><li>輪到你時點一張牌把它選起來，再點一次（或按「打出」）就打出去。</li>
     <li>能吃、碰、槓、胡時會跳出大按鈕，不要就按「過」。</li>
@@ -1061,7 +1135,8 @@ function boot() {
   const v = TB.store.get('mahjong:state', null);
   layout();
   if (v && validState(v) && !v.over) {
-    S = v; layout();
+    S = v; if (!Array.isArray(S.persona)) S.persona = assignPersona((S.opt && S.opt.persona) || 'mix');
+    layout();
     if (S.phase === 'end') { render(); showResult(); }
     else { if (S.phase === 'claim' || S.phase === 'rob') S.pending = null; render(); step(); }
   } else {
@@ -1069,7 +1144,7 @@ function boot() {
   }
 }
 window.MJ = MJ;
-window.__mj = { get S() { return S; }, step, newMatch, nextHand, validState, aiDiscardChoice, promptClaim, render };
+window.__mj = { get S() { return S; }, step, newMatch, nextHand, validState, aiDiscardChoice, promptClaim, render, bigPlan, persona };
 boot();
 </script>
 </body>
