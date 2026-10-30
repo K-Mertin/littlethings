@@ -172,6 +172,7 @@ let W = 0, H = 0, CW = 60, CH = 84;
 let CARDS = [], EL = [];
 let cur = null, busy = false;
 
+function kDayKey(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; }
 function range(n) { return [...Array(n).keys()]; }
 function std52() { return range(52).map(i => ({ s: Math.floor(i / 13), r: i % 13 + 1 })); }
@@ -301,7 +302,7 @@ const K = {
     this.slotStock.textContent = s.stock.length ? '' : (s.waste.length ? '↻' : '');
     this.hudUpd();
   },
-  hudUpd() { const s = this.st; hud.textContent = s ? `新接龍 · 翻${s.draw === 3 ? '三' : '一'}張 · 步數 ${s.moves} · ${fmtTime(s.time)}` : ''; },
+  hudUpd() { const s = this.st; hud.textContent = s ? `${s.daily ? '每日一局 ' + s.daily.slice(5).replace('-', '/') + ' · ' : ''}新接龍 · 翻${s.draw === 3 ? '三' : '一'}張 · 步數 ${s.moves} · ${fmtTime(s.time)}` : ''; },
   tick() { const s = this.st; if (s && s.counted && !s.done && !busy) { s.time++; this.hudUpd(); if (s.time % 5 === 0) this.save(); } },
   locate(id) {
     const s = this.st;
@@ -369,7 +370,8 @@ const K = {
     const s = this.st; if (s.done) return; s.done = true; this.save();
     TB.bump('poker', 'won'); TB.bump('poker-klondike', 'won');
     const best = TB.store.get('poker:best:klondike', 0); if (!best || s.time < best) TB.store.set('poker:best:klondike', s.time);
-    winDance(() => TB.dialog({ title: '過關！', html: `<p>新接龍完成了，共 ${s.moves} 步，用時 ${fmtTime(s.time)}。</p>`, buttons: [{ label: '重玩這一局', onClick: () => { setTimeout(() => this.replay(), 0); } }, { label: '再玩一局', primary: true, onClick: () => { setTimeout(() => newGame(), 0); } }] }));
+    const dmsg = s.daily ? this.dailyDone(s) : '';
+    winDance(() => TB.dialog({ title: '過關！', html: `<p>新接龍完成了，共 ${s.moves} 步，用時 ${fmtTime(s.time)}。</p>` + dmsg, buttons: [{ label: '重玩這一局', onClick: () => { setTimeout(() => this.replay(), 0); } }, { label: '再玩一局', primary: true, onClick: () => { setTimeout(() => newGame(), 0); } }] }));
   },
   click(id) {
     const s = this.st, loc = this.locate(id); if (!loc || s.done) return;
@@ -449,21 +451,38 @@ const K = {
     Object.assign(s, JSON.parse(h)); TB.sfx('flip'); clearHints(); this.render(); this.save();
   },
   newDialog() {
-    const o = this.opt();
+    const o = this.opt(), today = kDayKey(new Date()), rec = TB.store.get('poker:kdaily', {})[today], st = TB.store.get('poker:kdaily-streak', { n: 0, last: '' });
+    const dline = '<div style="background:var(--accent-soft);border-radius:14px;padding:10px 12px;margin:12px 0 4px;font-size:14px"><b>每日一局 · ' + today.slice(5).replace('-', '/') + '</b>　每天一副固定的牌（翻一張），大家玩的都一樣。<br>' +
+      (rec ? '<span style="color:#059669;font-weight:700">✓ 今天已完成：' + rec.moves + ' 步、' + fmtTime(rec.time) + '</span>' : '今天還沒完成') + ' · 連續 ' + (st.last === today || st.last === kDayKey(new Date(Date.now() - 864e5)) ? st.n : 0) + ' 天</div>';
     return TB.dialog({
-      title: '新接龍 · 新局', html: '<p>把所有的牌依花色從 A 排到 K，送進右上角四個回收區。</p>' + TB.seg('每次翻牌', 'draw', [[1, '翻一張（簡單）'], [3, '翻三張（經典）']], o.draw),
-      buttons: [{ label: '取消', value: null }].concat(this.canReplay() ? [{ label: '重玩這一局', value: 'replay', onClick: () => { setTimeout(() => this.replay(), 0); } }] : [], [{ label: '開始新的一局', primary: true, onClick: d => { const v = { draw: +TB.segVal(d, 'draw') }; TB.store.set('poker:opt:klondike', v); setTimeout(() => this.start(v), 0); } }])
+      title: '新接龍 · 新局', html: '<p>把所有的牌依花色從 A 排到 K，送進右上角四個回收區。</p>' + TB.seg('每次翻牌', 'draw', [[1, '翻一張（簡單）'], [3, '翻三張（經典）']], o.draw) + dline,
+      buttons: [{ label: '取消', value: null }, { label: '每日一局', value: 'daily', onClick: () => { setTimeout(() => this.startDaily(), 0); } }].concat(this.canReplay() ? [{ label: '重玩這一局', value: 'replay', onClick: () => { setTimeout(() => this.replay(), 0); } }] : [], [{ label: '開始新的一局', primary: true, onClick: d => { const v = { draw: +TB.segVal(d, 'draw') }; TB.store.set('poker:opt:klondike', v); setTimeout(() => this.start(v), 0); } }])
     });
   },
   start(opt, deck) { this.fresh(opt, deck); this.save(); this.layout(); dealAnim(this.g.x[0], this.g.top, this.dealOrder); },
   // 用同一副牌、同樣的翻牌設定從頭再玩一次
   canReplay() { return !!(this.st && Array.isArray(this.st.deck) && this.st.deck.length === 52); },
-  replay() { if (!this.canReplay()) return; const s = this.st; TB.sfx('click'); this.start({ draw: s.draw }, s.deck); TB.toast('重新發同一局的牌'); },
+  replay() { if (!this.canReplay()) return; const s = this.st, daily = s.daily; TB.sfx('click'); this.start({ draw: s.draw }, s.deck); if (daily) { this.st.daily = daily; this.save(); this.hudUpd(); } TB.toast('重新發同一局的牌'); },
+  // 每日一局：依日期用固定種子洗牌（翻一張），全世界同一副牌
+  startDaily() {
+    const day = kDayKey(new Date()); let h = 2166136261; for (const ch of 'klondike:' + day) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; }
+    this.start({ draw: 1 }, seededShuffle(range(52), h)); this.st.daily = day; this.save(); this.hudUpd();
+    TB.toast('每日一局 · ' + day.slice(5).replace('-', '/'));
+  },
+  dailyDone(s) {   // 記錄每日一局的成績（同一天保留最好的），回傳要顯示的文字
+    const all = TB.store.get('poker:kdaily', {}), old = all[s.daily], first = !old;
+    if (!old || s.moves < old.moves || (s.moves === old.moves && s.time < old.time)) all[s.daily] = { moves: s.moves, time: s.time };
+    TB.store.set('poker:kdaily', all);
+    const st = TB.store.get('poker:kdaily-streak', { n: 0, last: '' });
+    if (first && s.daily === kDayKey(new Date())) { st.n = st.last === kDayKey(new Date(Date.now() - 864e5)) ? st.n + 1 : (st.last === s.daily ? st.n : 1); st.last = s.daily; TB.store.set('poker:kdaily-streak', st); }
+    const r = all[s.daily];
+    return '<p style="background:var(--accent-soft);border-radius:12px;padding:8px 12px"><b>每日一局 ' + s.daily.slice(5).replace('-', '/') + '</b>：今日最佳 ' + r.moves + ' 步、' + fmtTime(r.time) + (first ? '' : '（重玩）') + '<br>連續完成 ' + st.n + ' 天</p>';
+  },
   resume() { const v = loadSave('poker:klondike'); if (v && this.valid(v)) { this.st = v; this.hist = []; return true; } return false; },
   rules: `<h4>目標</h4><p>把 52 張牌依花色從 A 排到 K，全部送進右上角的四個回收區。</p>
     <h4>怎麼玩</h4><ul><li>下面七疊牌：可以把牌接在<b>顏色不同、點數大一</b>的牌下面（例如黑 9 接在紅 10 下面）。整串翻開的牌可以一起移動。</li>
     <li>空出來的位置只能放 K（或以 K 開頭的一串）。</li><li>左上角的牌堆點一下就翻牌；翻完了再點一下重新翻。</li>
-    <li>用拖曳的方式移動牌：把牌拖到想放的位置再放開。</li><li>點兩下一張牌，可以直接把它收到上面的回收區（能收的話）。</li><li>按上方的「重玩」（或「新局」裡的「重玩這一局」），用同一副牌從頭再來一次。</li><li>所有牌都翻開後，會問你要不要自動收完。</li></ul>
+    <li>用拖曳的方式移動牌：把牌拖到想放的位置再放開。</li><li>點兩下一張牌，可以直接把它收到上面的回收區（能收的話）。</li><li>按上方的「重玩」（或「新局」裡的「重玩這一局」），用同一副牌從頭再來一次。</li><li><b>每日一局</b>：「新局」裡選「每日一局」，每天一副固定的牌（翻一張），大家玩的都一樣；完成會記下當天最好的步數和時間，每天都完成可以累積連續天數。</li><li>所有牌都翻開後，會問你要不要自動收完。</li></ul>
     <h4>翻一張 / 翻三張</h4><p>翻三張比較難：每次翻三張，只能用最上面那一張。</p>`,
 };
 
