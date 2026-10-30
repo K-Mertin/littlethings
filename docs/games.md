@@ -11,7 +11,7 @@
 | 3 | `abc/` | ABC Island | 單一 `index.html`＋`audio/`（Kokoro 預錄）；第二次答錯時 AI 英文提示（`/api/tutor`＋`/api/tts?v=en`） | — | ✓ | ✓ |
 | 4 | `zhuyin/` | ㄅㄆㄇ 小島 | `index.html`＋`data.js`＋`audio/`（預錄）；答錯時 AI 家教提示（`/api/tutor`），沒預錄的句子用 `/api/tts` | — | ✓ | ✓ |
 | M | `math/` | 123 小島 | `index.html`＋`data.js`＋`audio/`（預錄）；AI 家教 `/api/tutor` | — | ✓ | |
-| T | `table/` | 棋牌桌遊 | 每款一個 HTML，共用 `common.js`／`common.css`；電腦對手在 Web Worker | — | — | |
+| T | `table/` | 棋牌桌遊 | 每款一個 HTML，共用 `common.js`／`common.css`；電腦對手在 Web Worker。象棋、五子棋、暗棋可以**線上對戰**（`table/online.js`：房號＋QR code，沿用連線一起玩的 `/api/link/room` 轉送，房主的網頁當裁判；`?net=local` 可用同一台電腦兩個分頁測試） | — | — | |
 | 5 | `cobblekeep/` | Cobble Keep | 3D FPS | three、peerjs、qrcode | ✓ | ✓ |
 | 6 | `zijia/` | 銘甲戰記 | **有建置**：`zijia/src/` → `sh build.sh` → 複製 `index.html` 到 `zijia/`（離線那行在 build.sh 裡） | — | ✓ | ✓ |
 | 7 | `racing/` | Sunny Circuit | 3D 賽車 | three、peerjs、qrcode | ✓ | ✓ |
