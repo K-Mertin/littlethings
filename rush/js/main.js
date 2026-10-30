@@ -8,9 +8,7 @@ function show(id) {
   for (const el of document.querySelectorAll('.ov')) el.hidden = el.id !== id;
   $('#pauseBtn').hidden = id !== null;
   $('#speedBtn').hidden = id !== null;
-  const dc = $('#dcard'); if (dc) dc.hidden = !(id === null && G && G.mode === 'defense' && G.card && !G.demo);
   syncSpeed();
-  $('#giantBtn').hidden = !(id === null && G && G.mode === 'defense');
 }
 // 遊戲速度
 const SPEEDS = [0.5, 0.75, 1, 1.5, 2];
@@ -65,62 +63,6 @@ function showRule(rule, title) {
   el.hidden = false;
   el.classList.remove('in'); void el.offsetWidth; el.classList.add('in');
   UI.ruleT = 2.8;
-}
-
-// 守城模式
-function startDefense(n) {
-  AU.init();
-  setCam('defense');
-  newDefense(n, { up: Save.d.up });
-  UI.mode = 'play'; UI.banner = 0; UI.resultShown = false;
-  show(null);
-  AU.music(G.L.theme.bgm, false);
-  Save.d.dlast = n; Save.save();
-  const el = $('#ruleBanner');
-  el.querySelector('.rt').textContent = `守城模式 · 第 ${n} 關`;
-  el.querySelector('.rn').textContent = G.L.name;
-  el.querySelector('.rd').textContent = (n <= 2 ? '左右移動砲台，讓小兵穿過 ×2、+ 門變多，把敵方基地打爆！' : '') + (G.L.tip || '');
-  el.hidden = false; el.classList.remove('in'); void el.offsetWidth; el.classList.add('in');
-  UI.ruleT = 2.8;
-}
-function buildDLevels() {
-  const box = $('#dlevelGrid');
-  box.innerHTML = DSTAGES.map((D, i) => {
-    const n = i + 1, un = Save.dUnlocked(n), st = Save.d.dstars[n] || 0;
-    return `<button class="tile t-${THEMES[D.theme].id}" data-dstage="${n}" ${un ? '' : 'disabled'}>
-      <span class="n">${un ? n : '🔒'}</span><span class="nm">${D.name}</span>
-      <span class="rl">${D.rows} 排門${D.slide ? '・會動' : ''}${D.roul ? '・轉盤' : ''}${D.red ? '・✕ 門' : ''}${D.wall ? '・牆' : ''}${D.bomb ? '・砲擊' : ''}${D.pow ? '・強化門' : ''}${D.gey ? '・火口' : ''}</span>
-      <span class="ss">${[0, 1, 2].map(k => `<i class="${k < st ? 'on' : ''}">★</i>`).join('')}</span></button>`;
-  }).join('');
-  const total = Object.values(Save.d.dstars).reduce((a, b) => a + b, 0);
-  $('#dstarTotal').textContent = `★ ${total} / ${DSTAGES.length * 3}`;
-}
-function finishDefense(win) {
-  const d = Save.d, n = G.s;
-  const kc = G.castle / G.castleMax;
-  const st = win ? (kc >= 0.8 ? 3 : kc >= 0.45 ? 2 : 1) : 0;
-  const prev = d.dstars[n] || 0;
-  let coins = Math.round((win ? 30 + n * 10 + st * 12 + (prev === 0 ? 30 : 0) : 5 + n * 2 + Math.floor(G.kills / 10)) * coinK());
-  if (win) d.dstars[n] = Math.max(prev, st);
-  d.coins += coins; d.plays++; Save.save();
-  AU.sfx(win ? 'win' : 'lose');
-  $('#resultBody').innerHTML = `<p class="eyebrow">守城模式 · 第 ${n} 關 · ${G.L.name}</p>
-      <h2 class="big ${win ? 'ok' : 'bad'}">${win ? '基地攻破！' : '城被攻破了'}</h2>
-      ${win ? `<div class="stars">${[0, 1, 2].map(i => `<span class="st ${i < st ? 'on' : ''}" style="animation-delay:${0.25 + i * 0.25}s">★</span>`).join('')}</div>` : ''}
-      <div class="stats">
-        <div><b>${Math.round(kc * 100)}%</b><span>城的血量</span></div>
-        <div><b>${G.sent}</b><span>射出小兵</span></div>
-        <div><b>${G.kills}</b><span>打倒怪物</span></div>
-        <div><b class="gold">+${coins}</b><span>金幣</span></div>
-      </div>
-      <p class="hint">${win ? (st < 3 ? '少讓怪物撞到城，就能拿三顆星。' : '完美守城！') : '先讓小兵穿過 ×2、×3 的門變多，怪物靠近時再移過去擋。'}</p>
-      <div class="row">
-        ${win && n < DSTAGES.length ? '<button class="btn primary" data-act="dnext">下一關 →</button>' : `<button class="btn primary" data-act="retry">${win ? '再玩一次' : '再試一次'}</button>`}
-        ${win && n < DSTAGES.length ? '<button class="btn" data-act="retry">再玩一次</button>' : ''}
-        <button class="btn" data-act="dlevels">守城關卡</button>
-        <button class="btn ghost" data-act="title">回標題</button>
-      </div>`;
-  show('result'); refreshCoins();
 }
 
 // 無盡模式／每日挑戰
@@ -184,17 +126,6 @@ function handleEvents() {
       case 'miss': AU.sfx('gateBad'); break;
       case 'strikewarn': AU.sfx('warn'); break;
       case 'strike': AU.sfx('slam'); vibrate(60); break;
-      case 'dshot': AU.sfx('shot', 'rifle'); break;
-      case 'dcard': showCards(a); break;
-      case 'dpick': AU.sfx('gateWpn'); toast(DCARDS[a].ico + ' ' + DCARDS[a].name + '！', 1.4); break;
-      case 'dbomb': AU.sfx('warn'); tipOnce('dbomb', '基地要砲擊了！紅圈裡的小兵會被炸掉，快移開', 3); break;
-      case 'mult': AU.sfx('bump', 20); break;
-      case 'castlehit': AU.sfx('hit'); vibrate(25); break;
-      case 'basehit': if (a.giant) { AU.sfx('boom'); G.shake = Math.max(G.shake, 0.6); } else AU.sfx('kill'); break;
-      case 'baserage': AU.sfx('rage'); toast('敵方基地生氣了！怪物變多了', 2.2); break;
-      case 'giant': AU.sfx('gateWpn'); toast('金色大兵出動！', 1.4); break;
-      case 'dboss': AU.sfx('boss'); toast('巨魔兵出現了！集中火力擋住它', 2.2); break;
-      case 'dwave': break;
       case 'legclear': toast(G.mode === 'boss' ? `打倒頭目！還剩 ${BR_BOSSES.length - a.leg} 個` : `打倒頭目！第 ${a.leg} 段完成`, 1.6); break;
       case 'legtheme': AU.music(G.L.theme.bgm, false); showRule(G.rule, G.mode === 'boss' ? `頭目連戰 · 第 ${G.leg + 1} 戰 · ${BOSSES[BR_BOSSES[G.leg]].name}` : `無盡模式 · 第 ${G.leg + 1} 段 · ${G.L.theme.name}`); break;
       case 'spec': AU.sfx('gateWpn'); tipOnce('spec_' + a, `${SPEC[a].name}加入了：${SPEC[a].desc}`, 2.8); break;
@@ -212,17 +143,6 @@ function handleEvents() {
   G.q.length = 0;
 }
 function vibrate(ms) { try { if (navigator.vibrate && Save.d.sfx) navigator.vibrate(ms); } catch (e) { } }
-
-// 第一關的教學提示
-function defTips() {
-  if (G.t > 0.5 && G.t < 1) tipOnce('dmove', '左右拖曳砲台：讓小兵穿過 ×2、+ 的門會變多！', 3.4);
-  if (G.giant >= G.giantMax) tipOnce('dgiant', '能量滿了！按右下角的「大兵」放出金色大兵', 3);
-  for (const o of G.objs) if (o.t === 'en' && o.z < 14) { tipOnce('denemy', '怪物快到城了！把砲台移過去擋住它', 3); break; }
-  for (const o of G.objs) {
-    if (o.t === 'gate' && o.k === 'pow') { tipOnce('dpow', '黃色的強化門：人數不變，但穿過的小兵會變成兩倍強！', 3.4); break; }
-    if (o.t === 'geyser' && o.warn) { tipOnce('dgey', '火口冒煙就要噴火了，小兵和怪物經過都會被燒掉', 3.2); break; }
-  }
-}
 
 function tutorial() {
   for (const o of G.objs) {
@@ -352,7 +272,6 @@ function finish(win) {
   let html = '';
   if (G.mode === 'endless') return finishEndless();
   if (G.mode === 'boss') return finishBoss(win);
-  if (G.mode === 'defense') return finishDefense(win);
   if (G.mode === 'daily') return finishDaily(win);
   if (win) {
     const st = starsOf();
@@ -465,8 +384,6 @@ function goTitle() {
   AU.stop();
   const next = nextStage();
   $('#startBtn').textContent = next === 1 && !Save.d.stars[1] ? '開始遊戲' : `繼續：第 ${next} 關`;
-  const dn = Object.values(Save.d.dstars).reduce((a, b) => a + b, 0);
-  $('#defInfo').textContent = dn ? `守城星星 ★ ${dn} / ${DSTAGES.length * 3}` : '小兵穿過 ×2 門變多';
   $('#endInfo').textContent = Save.d.endBest ? `最遠 ${Save.d.endBest} 公尺` : '一直跑到全滅';
   const bOpen = bossOpen();
   $('#bossBtn').classList.toggle('locked', !bOpen);
@@ -482,23 +399,11 @@ function nextStage() {
   return Save.d.last || STAGES.length;
 }
 
-// 守城的強化卡
-function showCards(ks) {
-  const box = $('#dcard'), list = box.querySelector('.dcs');
-  list.innerHTML = ks.map((k, i) => `<button data-card="${k}"><i>${DCARDS[k].ico}</i><b>${DCARDS[k].name}</b><span>${DCARDS[k].desc}</span><kbd>${i + 1}</kbd></button>`).join('');
-  box.hidden = false;
-  AU.sfx('gateGood');
-}
-function pickCard(k) {
-  if (!G || !G.card || UI.mode !== 'play') return;
-  if (defPickCard(k)) $('#dcard').hidden = true;
-}
 function pause() {
   if (UI.mode !== 'play') return;
   UI.mode = 'pause';
   syncToggles();
   show('pause');
-  $('#dcard').hidden = true;
   if (AU.ctx) AU.ctx.suspend();
 }
 function resume() {
@@ -514,20 +419,17 @@ function onAct(act, el) {
   if (AU.ctx && AU.ctx.state === 'suspended' && act !== 'pause') AU.ctx.resume();
   switch (act) {
     case 'start': startStage(nextStage()); break;
-    case 'levels': if (G && G.mode === 'defense' && !G.demo) { onAct('dlevels'); break; } buildLevels(); if (!G || !G.demo) demoGame(); UI.mode = 'title'; AU.stop(); if (AU.ctx) AU.ctx.resume(); show('levels'); break;
+    case 'levels': buildLevels(); if (!G || !G.demo) demoGame(); UI.mode = 'title'; AU.stop(); if (AU.ctx) AU.ctx.resume(); show('levels'); break;
     case 'shop': buildShop(); if (!G || !G.demo) demoGame(); UI.mode = 'title'; AU.stop(); if (AU.ctx) AU.ctx.resume(); show('shop'); break;
     case 'help': show('help'); break;
     case 'title': goTitle(); if (AU.ctx) AU.ctx.resume(); break;
     case 'resume': resume(); break;
     case 'restart': case 'retry':
-      if (G && !G.demo && G.mode === 'defense') startDefense(G.s);
-      else if (G && !G.demo && G.mode !== 'stage') startMode(G.mode);
+      if (G && !G.demo && G.mode !== 'stage') startMode(G.mode);
       else startStage(G.s && !G.demo ? G.s : (Save.d.last || 1));
       break;
     case 'endless': startMode('endless'); break;
     case 'bossrush': if (bossOpen()) startMode('boss'); else toast('先通過第 3 關，就能挑戰頭目連戰！', 2.4); break;
-    case 'dlevels': buildDLevels(); if (!G || !G.demo) demoGame(); UI.mode = 'title'; AU.stop(); if (AU.ctx) AU.ctx.resume(); show('dlevels'); break;
-    case 'dnext': startDefense(Math.min(DSTAGES.length, G.s + 1)); break;
     case 'daily': startMode('daily'); break;
     case 'next': startStage(Math.min(STAGES.length, G.s + 1)); break;
     case 'quit': goTitle(); if (AU.ctx) AU.ctx.resume(); break;
@@ -546,18 +448,14 @@ function setupInput() {
   cv.addEventListener('pointermove', e => {
     const d = UI.drag;
     if (!d || d.id !== e.pointerId || UI.mode !== 'play') return;
-    const k = R.k0 * (G.mode === 'defense' ? 0.85 : 0.65) / R.dpr; // 每公尺幾個 CSS 像素（考慮鏡頭跟隨）
+    const k = R.k0 * 0.65 / R.dpr; // 每公尺幾個 CSS 像素（考慮鏡頭跟隨）
     G.tx = clamp(d.tx + (e.clientX - d.x) / k, -PX_MAX, PX_MAX);
   });
   const end = e => { if (UI.drag && UI.drag.id === e.pointerId) UI.drag = null; };
   cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
-  $('#dcard').addEventListener('click', e => { const b = e.target.closest('[data-card]'); if (b) { e.stopPropagation(); pickCard(b.dataset.card); } });
-  $('#dcard').addEventListener('pointerdown', e => e.stopPropagation());
   addEventListener('keydown', e => {
-    if (G && G.card && UI.mode === 'play' && e.key >= '1' && e.key <= '3') { const k = G.card[+e.key - 1]; if (k) { e.preventDefault(); pickCard(k); return; } }
     if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') { UI.kbL = 1; e.preventDefault(); }
     else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { UI.kbR = 1; e.preventDefault(); }
-    else if ((e.key === ' ' || e.key === 'g' || e.key === 'G') && UI.mode === 'play' && G.mode === 'defense') { e.preventDefault(); defLaunchGiant(); }
     else if ((e.key === 'f' || e.key === 'F') && UI.mode === 'play') cycleSpeed();
     else if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') { if (UI.mode === 'play') pause(); else if (UI.mode === 'pause') resume(); }
     else if (e.key === 'Enter' || e.key === ' ') {
@@ -572,8 +470,6 @@ function setupInput() {
   document.addEventListener('click', e => {
     const b = e.target.closest('[data-act]');
     if (b) { onAct(b.dataset.act, b); return; }
-    const dt2 = e.target.closest('[data-dstage]');
-    if (dt2 && !dt2.disabled) { startDefense(+dt2.dataset.dstage); return; }
     const t = e.target.closest('[data-stage]');
     if (t && !t.disabled) { startStage(+t.dataset.stage); return; }
     const wb = e.target.closest('[data-wpn]');
@@ -596,7 +492,6 @@ function setupInput() {
   });
   $('#pauseBtn').addEventListener('click', e => { e.stopPropagation(); pause(); });
   $('#speedBtn').addEventListener('click', e => { e.stopPropagation(); cycleSpeed(); });
-  $('#giantBtn').addEventListener('click', e => { e.stopPropagation(); if (UI.mode === 'play' && G.mode === 'defense' && !defLaunchGiant()) AU.sfx('click'); });
   document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
   addEventListener('resize', () => { UI.pendResize = true; });
 }
@@ -639,7 +534,7 @@ function frame(now) {
     let rem = dt * (Save.d.speed || 1);
     for (let k = 0; k < 6 && rem > 1e-5; k++) {
       const d = Math.min(rem, 1 / 60);
-      if (G.mode === 'defense') defStep(d, null); else step(d, null);
+      step(d, null);
       rem -= d;
       if (G.st === 'win' || G.st === 'lost') break;
     }
@@ -649,7 +544,7 @@ function frame(now) {
     if (G.themeFade > 0) G.themeFade = Math.max(0, G.themeFade - dt * 1.2);
     if (UI.banner > 0) UI.banner -= dt;
     handleEvents();
-    if (G.mode === 'defense') defTips(); else tutorial();
+    tutorial();
     if (G.st === 'win') finish(true);
     else if (G.st === 'lost') finish(false);
   } else if (UI.mode === 'title' && G.demo) {
@@ -657,18 +552,11 @@ function frame(now) {
     step(dt, null);
     G.q.length = 0;
   } else if (UI.mode === 'result') {
-    if (G.mode === 'defense') { defStep(dt, null); G.q.length = 0; } else stepFx(dt);
+    stepFx(dt);
   }
   if (UI.pendResize) { UI.pendResize = false; resizeRender(); }
-  if (G.mode === 'defense') {
-    renderDef(G, now / 1000);
-    if (UI.mode === 'play' || UI.mode === 'pause') drawDefHud(G);
-    const gb = $('#giantBtn');
-    if (!gb.hidden) { const p = Math.round(100 * G.giant / G.giantMax); gb.style.setProperty('--p', p); gb.classList.toggle('ready', p >= 100); }
-  } else {
-    render(G, now / 1000);
-    if (UI.mode === 'play' || UI.mode === 'pause') { drawHud(G); if (UI.banner > 0 && G.boss) drawBossBanner(UI.banner); }
-  }
+  render(G, now / 1000);
+  if (UI.mode === 'play' || UI.mode === 'pause') { drawHud(G); if (UI.banner > 0 && G.boss) drawBossBanner(UI.banner); }
   autoQuality(dt);
 }
 
@@ -708,6 +596,6 @@ function boot() {
   setTimeout(() => Bake.init(), 60);
   // 字型載入後重畫快取
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { R.bgKey = ''; });
-  window.__rush = { get G() { return G; }, UI, R, Save, startStage, startDefense, startMode, step, finish, Bake };
+  window.__rush = { get G() { return G; }, UI, R, Save, startStage, startMode, step, finish, Bake };
 }
 boot();

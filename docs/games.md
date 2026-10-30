@@ -18,7 +18,8 @@
 | 8 | `outpost/` | Crystal Outpost | 單一檔案 RTS；線上對戰走 `/api/outpost/room` | — | ✓ | |
 | 9 | `brawl/` | 小夥伴大作戰 | `index.html`＋`js/`；`controller.html` 手機手把 | peerjs、qrcode | ✓ | ✓ |
 | S | `sky/` | 空戰 | `index.html`＋`js/`；three 只用來預渲染 | three | — | |
-| G | `rush/` | 千軍突圍 | `index.html`＋`js/`；`tools/sim.js`、`defsim.js` 平衡模擬器 | three（失敗退回 2D） | — | |
+| G | `rush/` | 千軍突圍 | `index.html`＋`js/`；`tools/sim.js` 平衡模擬器 | three（失敗退回 2D） | — | |
+| W | `siege/` | 萬軍守城 | `index.html`＋`js/`（從 rush/js 複製，存檔 `siege:v1`）；`tools/defsim.js` 平衡模擬器 | three（失敗退回 2D） | — | |
 | D | `td/` | 守塔奇兵 | `index.html`＋`js/` | — | ✓ | |
 | B | `shop/` | 夜市小吃王 | `index.html`＋`js/` | — | ✓ | |
 | E | `escape/` | 八音盒謎屋 | `index.html`＋`css/`＋`js/`，美術全 SVG | — | ✓ | |

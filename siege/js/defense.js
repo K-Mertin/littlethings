@@ -1,4 +1,4 @@
-// 千軍突圍 — 守城模式：砲台不往前跑，一直射出小兵，穿過門變多，去打迎面來的怪物和敵方基地
+// 萬軍守城 — 遊戲邏輯：砲台不往前跑，一直射出小兵，穿過門變多，去打迎面來的怪物和敵方基地
 'use strict';
 
 const DEF_Z_BASE = 46;    // 敵方基地位置
@@ -122,18 +122,18 @@ function defPathGain(gates, x, t) {
 function newDefense(n, opts) {
   opts = opts || {};
   const L = genDefense(n, opts.seed);
-  const up = opts.up || { men: 0, dmg: 0, rate: 0 };
+  const up = Object.assign({ rate: 0, wall: 0, power: 0, giant: 0, card: 0 }, opts.up || {});
   G = {
     mode: 'defense', s: n, L, st: 'play', t: 0, dist: 0, spd: 0, scroll: false,
     px: 0, tx: 0, vx: 0,
     units: [], objs: L.gates.slice(), parts: [], floats: [], fx: [], decals: [], q: [], bullets: [], sold: [],
-    fireAcc: 0, rate: 5 * (1 + up.rate * 0.04), pow: 1 + up.dmg * 0.05,
-    castle: L.castle + up.men, castleMax: L.castle + up.men,
+    fireAcc: 0, rate: 5 * (1 + up.rate * 0.05), pow: 1 + up.power * 0.06,
+    castle: L.castle + up.wall * 2, castleMax: L.castle + up.wall * 2,
     base: { t: 'base', hp: L.baseHp, max: L.baseHp, hit: 0, rage: false, x: 0, z: DEF_Z_BASE },
-    spawnAcc: 0, waveT: 2.5, waveN: 0, giant: 0, giantMax: 90, sqId: 0,
+    spawnAcc: 0, waveT: 2.5, waveN: 0, giant: 0, giantMax: Math.round(90 * (1 - 0.06 * up.giant)), sqId: 0,
     shake: 0, flash: 0, kills: 0, sent: 0, peak: 0, endT: 0, sim: !!opts.sim,
     rule: 'none', N: 0, lost: 0,
-    squadN: DEF_SQUAD, card: null, cardT: 18, cards: 0, picked: [], bombT: 9,
+    squadN: DEF_SQUAD, card: null, cardT: 18 - up.card * 3, cards: 0, picked: [], bombT: 9,
   };
   return G;
 }

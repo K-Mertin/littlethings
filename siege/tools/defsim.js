@@ -1,4 +1,4 @@
-// 守城模式模擬：node rush/tools/defsim.js [policy=smart|lazy|center] [runs] [stages=1-12] [up]
+// 萬軍守城模擬：node siege/tools/defsim.js [policy=smart|lazy|center] [runs] [stages=1-12] [up]
 // 環境變數 K='{"flow":1.1}' 可以試平衡係數；GAME=1 只跑遊戲裡真正用的那個種子
 const fs = require('fs'), vm = require('vm'), path = require('path');
 const dir = path.join(__dirname, '..', 'js');
@@ -23,7 +23,7 @@ for (let s = s0; s <= s1; s++) {
   let w = 0, tt = 0, cs = 0, bl = 0, to = 0;
   const n = runs;
   for (let r = 0; r < n; r++) {
-    A.newDefense(s, { sim: true, seed: process.env.GAME ? undefined : 900 + r * 31 + s, up: { men: upL, dmg: upL, rate: upL } });
+    A.newDefense(s, { sim: true, seed: process.env.GAME ? undefined : 900 + r * 31 + s, up: { rate: upL, wall: upL, power: upL, giant: upL, card: Math.min(4, upL) } });
     let G = A.G, t = 0, tx = 0, thinkT = 0;
     while (G.st !== 'win' && G.st !== 'lost' && t < 300) {
       if (G.card) { A.defPickCard(pickCard(G)); continue; }

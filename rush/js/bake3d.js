@@ -373,7 +373,6 @@ function bakeJobs() {
   J.push(soldierJob('rocket'));
   if (typeof propJobs3 === 'function') J.push(...propJobs3());
   if (typeof sceneJobs3 === 'function') J.push(...sceneJobs3());
-  if (typeof defJobs3 === 'function') J.push(...defJobs3());
   // 頭目只先烤好存起來，用到才讀
   for (const k in BOSSES) J.push({ name: 'boss', key: bossKey(k), lazy: true, make: () => bakeBoss3(k), apply: () => { } });
   return J;
