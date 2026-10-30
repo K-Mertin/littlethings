@@ -22,7 +22,7 @@
 | `POST /api/chat` | `chat.js` | 大廳小幫手：Claude Messages API，工具 `open_game`、`draft_issue` |
 | `POST /api/issue` | `chat.js` | 使用者按「送出」後開 GitHub issue（草稿 HMAC 簽章防竄改） |
 | `GET /api/tts?t=…&r=+5%&v=en` | `tts.js` | Azure 神經語音 mp3，同一句存在 DO `TtsCache` 只合成一次 |
-| `POST /api/tutor` | `tutor.js` | 學習遊戲答錯時的 AI 家教一句話提示（math、zhuyin 中文；abc 簡單英文） |
+| `POST /api/tutor` | `tutor.js` | 學習遊戲答錯時的 AI 家教一句話提示（math、zhuyin 中文；abc 簡單英文）；`game:'go'`＝圍棋覆盤「講解這一手」（`table/go.html` 送勝率、較好的下法、引擎算好的事實短句，Claude 只講成 1～3 句白話，不自己讀盤） |
 | `POST /api/save`、`GET/PUT/DELETE /api/save/<代碼>` | `save.js` | 跨裝置進度備份（大廳「💾 進度備份」，前端 `helper/save.js`） |
 
 ### Durable Objects（`wrangler.jsonc`）
@@ -39,7 +39,7 @@
 ### 次數限制（都用 `allow()`）
 - chat：每 IP 每小時 30 則、每 IP 每天 5 份回報、全站每天 1,500 則。
 - tts：每 IP 每小時 80 句新句子、全站每天 15,000 字（Azure F0 每月 50 萬字）。超過回 429，前端改用瀏覽器語音。
-- tutor：每 IP 每小時 300 句、全站每天 4,000 句。
+- tutor：每 IP 每小時 300 句、全站每天 4,000 句（圍棋講解共用這個額度）。
 - save：每 IP 每天建立 10 份、每小時寫入 120 次、讀取 40 次（防猜代碼）；壓縮後最大 4 MB。
 
 ### Secrets 與變數（Cloudflare 後台 → littleland → Settings → Variables and Secrets）
