@@ -51,7 +51,35 @@ body.narrow .cs-last{display:block}
 .cs-promo button:hover{border-color:#3b82f6;background:#eff6ff}
 .cs-promo svg{width:44px;height:44px}
 @media (max-width:430px){.tb-bar{gap:4px;padding:0 6px}.tb-bar .tb-btn{padding:6px 8px}.tb-title{margin:0 2px;flex:none}}
-@media (max-width:350px){.tb-title{display:none}}
+@media (max-width:420px){.tb-title{display:none}}
+/* 覆盤 */
+.rv{display:flex;flex-direction:column;gap:6px;background:var(--panel);border-radius:16px;box-shadow:var(--shadow);padding:10px 10px 8px}
+.rv[hidden]{display:none}
+body.narrow .rv{padding:6px 8px;gap:4px;border-radius:12px}
+body.narrow.rvon .cs-pl{display:none}
+.rv-sum{font-size:13px;color:var(--mute);line-height:1.5}
+.rv-sum b{color:var(--ink)}
+.rv-sum .g{color:#059669}.rv-sum .i{color:#ca8a04}.rv-sum .m{color:#ea580c}.rv-sum .x{color:#dc2626}
+.rv canvas{width:100%;height:60px;display:block;border-radius:10px;cursor:pointer;touch-action:none}
+body.narrow .rv canvas{height:46px}
+.rv-ctl{display:flex;align-items:center;gap:4px}
+.rv-ctl button{appearance:none;border:0;background:var(--panel2);border-radius:10px;min-width:36px;min-height:40px;font-size:16px;cursor:pointer}
+.rv-ctl button:hover{background:#e6eaf2}
+.rv-ctl button:disabled{opacity:.35;cursor:default}
+.rv-ctl span{flex:1;text-align:center;white-space:nowrap;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+.rv-note{font-size:14px;line-height:1.5;min-height:3em;padding:6px 10px;border-radius:10px;background:var(--panel2)}
+body.narrow .rv-note{font-size:13px;min-height:2.6em;padding:4px 8px}
+.rv-note b{font-weight:900}
+.rv-note.good{background:#ecfdf5}.rv-note.inacc{background:#fefce8}.rv-note.mist{background:#fff7ed}.rv-note.blun{background:#fef2f2}
+.rv-prog{font-size:12px;color:var(--mute);display:flex;align-items:center;gap:8px}
+.rv-prog i{flex:1;height:6px;border-radius:99px;background:var(--panel2);overflow:hidden;position:relative}
+.rv-prog i::after{content:"";position:absolute;inset:0;width:var(--p,0%);background:#6366f1;border-radius:99px;transition:width .2s}
+.rv-prog[hidden]{display:none}
+.cs-moves li span[data-i]{cursor:pointer;border-radius:6px;padding:0 2px}
+.cs-moves li span[data-i]:hover{background:#eef2ff}
+.cs-moves sup{font-size:11px;font-weight:900;margin-left:2px}
+.sy-good{color:#059669;opacity:.55}.sy-inacc{color:#ca8a04}.sy-mist{color:#ea580c}.sy-blun{color:#dc2626}
+body.rvon #cv{cursor:grab}
 @keyframes csp{0%,100%{opacity:.25}50%{opacity:1}}
 </style>
 </head>
@@ -63,12 +91,20 @@ body.narrow .cs-last{display:block}
   <button class="tb-btn" id="bNew">新局</button>
   <button class="tb-btn" id="bUndo">悔棋</button>
   <button class="tb-btn" id="bHint">提示</button>
+  <button class="tb-btn" id="bReview">覆盤</button>
   <button class="tb-btn" id="bInfo"><span class="tb-hide-s">規則・</span>戰績</button>
   <button class="tb-btn icon" id="tb-mute"></button>
 </header>
 <main class="tb-main" id="main">
   <aside class="cs-side" id="side">
     <div class="cs-status" id="status"></div>
+    <div class="rv" id="rv" hidden>
+      <div class="rv-sum" id="rvSum"></div>
+      <canvas id="rvCurve" aria-label="形勢曲線"></canvas>
+      <div class="rv-ctl"><button data-a="first" aria-label="第一手">⏮</button><button data-a="prev" aria-label="上一手">◀</button><span id="rvPos"></span><button data-a="next" aria-label="下一手">▶</button><button data-a="last" aria-label="最後一手">⏭</button></div>
+      <div class="rv-note" id="rvNote"></div>
+      <div class="rv-prog" id="rvProg"><span id="rvProgT"></span><i id="rvProgB"></i></div>
+    </div>
     <div class="cs-pl">
       <div class="cs-p" id="pTop"><div class="nm"></div><div class="cs-cap"></div></div>
       <div class="cs-p" id="pBot"><div class="nm"></div><div class="cs-cap"></div></div>
@@ -122,13 +158,15 @@ function pieceSVG(p) {
 let settings = Object.assign({ mode: 'ai', level: 2, color: 'w' }, TB.store.get('chess:settings', {}));
 let G = null;   // {moves:[{m,san,cap}], hashes:[], over}
 let sel = -1, targets = [], hint = 0, thinking = false, anim = null, drag = null;
+let R = null;   // 覆盤中：見下方「覆盤」
 
 const humanColor = () => settings.color === 'w' ? 0 : 1;
 function aiTurn() { return settings.mode === 'ai' && !G.over && X.side !== humanColor(); }
-function flipped() { return settings.mode === 'ai' && settings.color === 'b'; }
+function flipped() { return R ? R.flip : settings.mode === 'ai' && settings.color === 'b'; }
 
 function resetPos() { X.init(X.fen(START)); G.hashes = [X.hash()]; }
 function newGame() {
+  if (R) exitReview(true);
   G = { moves: [], hashes: [], over: null };
   resetPos();
   sel = -1; targets = []; hint = 0; anim = null;
@@ -199,6 +237,7 @@ function checkEnd(quiet) {
 function finish() {
   const o = G.over, ai = settings.mode === 'ai', me = humanColor();
   TB.bump(GAME, 'played');
+  TB.store.set('chess:lastgame', { moves: G.moves.map(x => x.m), settings, over: o });
   if (o.winner === -1) TB.bump(GAME, 'draw');
   else if (ai && o.winner === me) { TB.bump(GAME, 'won'); TB.bump(GAME, 'won-lv' + settings.level); }
   save();
@@ -210,8 +249,8 @@ function finish() {
   setTimeout(() => {
     TB.sfx(snd);
     TB.dialog({ title, html: '<p>' + o.why + (o.winner >= 0 ? '，' + (o.winner === 0 ? '白方' : '黑方') + '獲勝。' : '。') + '</p><p>共 ' + Math.ceil(G.moves.length / 2) + ' 回合。</p>' + (eloRes ? TB.elo.html(eloRes) : ''),
-      buttons: [{ label: '看棋盤', value: 0 }, { label: '再來一局', primary: true, value: 1 }] })
-      .then(v => { if (v === 1) newGame(); });
+      buttons: [{ label: '看棋盤', value: 0 }, { label: '覆盤', value: 2 }, { label: '再來一局', primary: true, value: 1 }] })
+      .then(v => { if (v === 1) newGame(); else if (v === 2) enterReview(); });
   }, 450);
 }
 function maybeAI() {
@@ -300,6 +339,7 @@ function shade(sq, color) { const [x, y] = sq2xy(sq); g.fillStyle = color; g.fil
 function draw() {
   if (!G) return;
   g.setTransform(DPR, 0, 0, DPR, 0, 0);
+  if (R) { drawReview(); return; }
   drawBoard();
   const lm = G.moves[G.moves.length - 1];
   if (lm) { shade(lm.m & 127, 'rgba(250,204,21,.42)'); shade((lm.m >> 7) & 127, 'rgba(250,204,21,.55)'); }
@@ -346,6 +386,7 @@ function loop() { draw(); if (anim) requestAnimationFrame(loop); }
 // ---------------- 側欄 ----------------
 function render() {
   if (!G) return;
+  if (R) { renderReview(); return; }
   const st = document.getElementById('status');
   const who = s => s === 0 ? '<b>白方</b>' : '<b>黑方</b>';
   const lv = LEVELS[settings.level - 1] || LEVELS[1];
@@ -382,11 +423,12 @@ function render() {
   document.getElementById('last').textContent = lmv ? '第 ' + Math.ceil(G.moves.length / 2) + ' 回合：' + lmv.san : '白方先走';
   document.getElementById('bUndo').disabled = settings.mode === 'ai' ? G.moves.length < (settings.color === 'w' ? 1 : 2) : !G.moves.length;
   document.getElementById('bHint').disabled = !!G.over || aiTurn() || thinking;
+  document.getElementById('bReview').disabled = !G.moves.length && !TB.store.get('chess:lastgame', null);
   draw();
 }
 
 // ---------------- 操作 ----------------
-function canTouch() { return G && !G.over && !thinking && !anim && !aiTurn(); }
+function canTouch() { return G && !R && !G.over && !thinking && !anim && !aiTurn(); }
 function movesFrom(sq) { return X.legal().filter(m => (m & 127) === sq); }
 function pickTargets(sq) { return [...new Set(movesFrom(sq).map(m => (m >> 7) & 127))]; }
 function tryMove(from, to) {
@@ -494,10 +536,280 @@ document.getElementById('bInfo').onclick = () => {
     <h4>和局</h4><ul>
     <li><b>逼和</b>：輪到的一方沒有被將軍，但已經沒有任何合法的走法。</li>
     <li>同一局面出現三次、連續 50 回合沒有吃子也沒有動士兵、或雙方都不夠子將死對方（例如只剩兩個國王）。</li></ul>
+    <h4>覆盤</h4><p>按「覆盤」（或下完後在結果視窗按「覆盤」）可以一步一步回看整盤棋：用 ⏮ ◀ ▶ ⏭、鍵盤左右鍵、在棋盤上左右滑，或點棋譜、點形勢曲線跳到任一手。電腦會幫每一步打分：✓ 好棋、?! 緩著、? 失誤、?? 大失誤，並用藍色箭頭畫出比較好的走法。上方曲線是白方的勝算，往上是白方占優、往下是黑方占優。下到一半也可以覆盤，看完按「返回」接著下。</p>
     <h4>棋譜記法</h4><p>例如 e4 是士兵走到 e4，Nf3 是騎士走到 f3，Bxc6 是主教在 c6 吃子；N 騎士、B 主教、R 城堡、Q 皇后、K 國王，x 表示吃子，+ 是將軍，# 是將死，O-O 是短入堡、O-O-O 是長入堡。</p>
     <h4>操作</h4><p>點一下自己的棋子，藍點是可以走的地方，藍色圈是可以吃的子；也可以直接拖曳。走錯可以按「悔棋」，不知道怎麼走可以按「提示」。棋局會自動保存。</p>
     </div>`, buttons: [{ label: '關閉', primary: true }] });
 };
+
+// ======================================================================
+// 覆盤：一步一步回看整盤棋，電腦幫每一步打分（分析在另一個 worker 裡跑，不影響對局）
+// ======================================================================
+const AN = TB.worker(LOGIC);
+const RV_MATE = 29000;
+const RV_CLS = { good: ['✓', '好棋'], inacc: ['?!', '緩著'], mist: ['?', '失誤'], blun: ['??', '大失誤'], forced: ['', '唯一的走法'] };
+let RV_CACHE = null;  // { key, an } 同一盤棋再開覆盤時不用重算
+function rvWp(cp) { if (cp > RV_MATE) return 1; if (cp < -RV_MATE) return 0; return 1 / (1 + Math.pow(10, -cp / 500)); }
+function rvSource() {
+  if (G.moves.length) return { moves: G.moves.map(x => x.m), settings: Object.assign({}, settings), over: G.over };
+  return TB.store.get('chess:lastgame', null);
+}
+function enterReview() {
+  const src = rvSource(); if (!src || !src.moves || !src.moves.length) { TB.toast('還沒有棋可以覆盤'); return; }
+  TB.closeDialog();
+  sel = -1; targets = []; hint = 0; anim = null; drag = null;
+  // 回放出每個局面
+  const pos = [], list = [], hashes = [];
+  X.init(X.fen(START));
+  for (let i = 0; i <= src.moves.length; i++) {
+    const st = X.state(), lm = X.legal();
+    pos.push({ st, board: st.board, side: X.side, legalN: lm.length, chk: X.inCheck(X.side) });
+    hashes.push(X.hash());
+    if (i === src.moves.length) break;
+    const m = src.moves[i];
+    if (!lm.includes(m)) break;
+    const f = m & 127, to = (m >> 7) & 127, p = X.board[f];
+    let cap = X.board[to];
+    if (!cap && (p & 7) === X.P && (f & 7) !== (to & 7)) cap = X.side ? 1 : 9;
+    list.push({ m, txt: san(m), cap, mover: X.side });
+    X.make(m);
+  }
+  restoreMain();
+  const st = src.settings || settings;
+  const key = src.moves.join(',');
+  R = { list, pos, hashes, idx: list.length, an: [], cls: [], bt: [], done: 0, gen: (R ? R.gen : 0) + 1, over: src.over || null,
+    st, flip: st.mode === 'ai' && st.color === 'b', me: st.mode === 'ai' ? (st.color === 'w' ? 0 : 1) : -1 };
+  if (RV_CACHE && RV_CACHE.key === key) { R.an = RV_CACHE.an.slice(); R.done = R.an.length; for (let k = 1; k < R.pos.length; k++) rvClassify(k); }
+  document.body.classList.add('rvon');
+  document.getElementById('rv').hidden = false;
+  document.getElementById('bReview').textContent = '返回';
+  TB.sfx('click');
+  layout(); render();
+  if (R.done < R.pos.length) rvAnalyze(R.gen, key);
+}
+function exitReview(quiet) {
+  if (!R) return;
+  if (R.done < R.pos.length) AN.kill();
+  R = null;
+  document.body.classList.remove('rvon');
+  document.getElementById('rv').hidden = true;
+  document.getElementById('bReview').textContent = '覆盤';
+  if (!quiet) TB.sfx('click');
+  restoreMain();
+  layout(); render(); maybeAI();
+}
+// X 是對局用的引擎狀態；覆盤時借用之後要還原成目前對局的局面
+function restoreMain() { X.init(X.fen(START)); for (const mv of G.moves) X.make(mv.m); }
+const rvIdx = sq => (sq >> 4) * 8 + (sq & 7);
+async function rvAnalyze(gen, key) {
+  for (let i = R.done; i < R.pos.length; i++) {
+    if (!R || R.gen !== gen) return;
+    const p = R.pos[i];
+    let a;
+    if (!p.legalN) a = { best: 0, s: -30000 };                               // 將死、困斃：輪到的一方輸
+    else if (i === R.pos.length - 1 && R.over && R.over.winner === -1) a = { best: 0, s: 0 };
+    else {
+      let res;
+      try { res = await AN.ask(Object.assign({}, p.st, { hist: R.hashes.slice(Math.max(0, i - 200), i), depth: 40, time: 260 })); } catch (e) { res = null; }
+      if (!R || R.gen !== gen) return;
+      a = res && res.move ? { best: res.move, s: (res.depth === 0 && p.legalN === 1) ? null : res.score } : { best: 0, s: 0 };
+    }
+    R.an[i] = a; R.done = i + 1;
+    if (a.s == null) continue;
+    // 唯一走法的局面沒有分數：用下一個局面反推
+    for (let j = i - 1; j >= 0 && R.an[j] && R.an[j].s == null; j--) R.an[j].s = -R.an[j + 1].s;
+    for (let k = Math.max(1, i - 2); k <= i; k++) rvClassify(k);
+    renderReview();
+  }
+  if (!R || R.gen !== gen) return;
+  for (let j = R.pos.length - 1; j >= 0; j--) if (R.an[j] && R.an[j].s == null) R.an[j].s = j + 1 < R.pos.length ? -R.an[j + 1].s : 0;
+  for (let k = 1; k < R.pos.length; k++) rvClassify(k);
+  RV_CACHE = { key, an: R.an.slice() };
+  renderReview();
+}
+/** 第 k 手（從局面 k-1 走到 k）的評語 */
+function rvClassify(k) {
+  const A = R.an[k - 1], B = R.an[k], mv = R.list[k - 1];
+  if (!A || !B || A.s == null || B.s == null || !mv) return;
+  if (R.pos[k - 1].legalN === 1) { R.cls[k] = { c: 'forced' }; return; }
+  const before = A.s, after = -B.s;
+  let drop = Math.max(0, rvWp(before) - rvWp(after)), loss = Math.max(0, before - after);
+  if (mv.m === A.best) { drop = 0; loss = 0; }
+  let c = drop < 0.04 || loss < 40 ? 'good' : drop < 0.1 ? 'inacc' : drop < 0.2 ? 'mist' : 'blun';
+  if (after < -RV_MATE && before > -RV_MATE) c = 'blun';
+  if (before > RV_MATE && after <= RV_MATE && c === 'good') c = 'inacc';
+  R.cls[k] = { c, before, after };
+}
+function rvNote(k) {
+  if (k <= 0) return { c: '', html: '開局。按 ▶ 或鍵盤右鍵一步一步往下看。' };
+  const mv = R.list[k - 1], cl = R.cls[k], who = mv.mover === 0 ? '白方' : '黑方';
+  const head = '第 ' + Math.ceil(k / 2) + ' 回合　' + who + ' <b>' + mv.txt + '</b>';
+  if (!cl) return { c: '', html: head + '　<span style="color:var(--mute)">分析中…</span>' };
+  if (cl.c === 'forced') return { c: '', html: head + '　唯一的走法。' };
+  const A = R.an[k - 1], B = R.an[k];
+  if (cl.c === 'good') return { c: 'good', html: head + '　<b style="color:#059669">✓ 好棋</b>' + (mv.m === A.best ? '，跟電腦想的一樣。' : '。') };
+  const [sym, name] = RV_CLS[cl.c];
+  const colr = { inacc: '#ca8a04', mist: '#ea580c', blun: '#dc2626' }[cl.c];
+  let why = '';
+  if (cl.after < -RV_MATE) why = '這步讓對方有殺棋。';
+  else if (cl.before > RV_MATE) why = '錯過了殺棋。';
+  else if (B.best && R.pos[k].board[rvIdx((B.best >> 7) & 127)]) {
+    const q = R.pos[k].board[rvIdx((B.best >> 7) & 127)];
+    if ((q >> 3) === mv.mover && [2, 3, 4, 5].includes(q & 7)) why = '這步讓對方可以吃掉你的' + PNAME[q & 7] + '。';
+  }
+  let better = '';
+  if (A.best) {
+    const q = R.pos[k - 1].board[rvIdx((A.best >> 7) & 127)];
+    if (R.bt[k] == null) { X.init(R.pos[k - 1].st); R.bt[k] = san(A.best); restoreMain(); }
+    better = '較好的是 <b style="color:#2563eb">' + R.bt[k] + '</b>' + (q ? '（可以吃' + PNAME[q & 7] + '）' : '') + '。';
+  }
+  return { c: cl.c, html: head + '　<b style="color:' + colr + '">' + sym + ' ' + name + '</b>：' + why + better };
+}
+function rvGo(i) {
+  if (!R) return;
+  i = Math.max(0, Math.min(R.list.length, i));
+  if (i === R.idx) return;
+  const fwd = i === R.idx + 1;
+  R.idx = i;
+  if (fwd && R.list[i - 1]) TB.sfx(R.list[i - 1].cap ? 'capture' : 'place'); else TB.sfx('click');
+  renderReview();
+}
+function renderReview() {
+  if (!R) return;
+  const st = document.getElementById('status');
+  st.innerHTML = '覆盤中・' + (R.idx ? '第 ' + R.idx + ' 手' : '開局');
+  // 摘要
+  const sides = R.me >= 0 ? [R.me] : [0, 1];
+  const cnt = s => { const o = { good: 0, inacc: 0, mist: 0, blun: 0 }; R.cls.forEach((c, k) => { if (c && o[c.c] != null && R.list[k - 1].mover === s) o[c.c]++; }); return o; };
+  document.getElementById('rvSum').innerHTML = sides.map(s => {
+    const o = cnt(s), nm = (R.me >= 0 ? '你（' : '') + (s === 0 ? '白方' : '黑方') + (R.me >= 0 ? '）' : '');
+    return '<b>' + nm + '</b>　<span class="g">好棋 ' + o.good + '</span>・<span class="i">緩著 ' + o.inacc + '</span>・<span class="m">失誤 ' + o.mist + '</span>・<span class="x">大失誤 ' + o.blun + '</span>';
+  }).join('<br>');
+  document.getElementById('rvPos').textContent = '第 ' + R.idx + ' / ' + R.list.length + ' 手';
+  const btn = a => document.querySelector('.rv-ctl [data-a="' + a + '"]');
+  btn('first').disabled = btn('prev').disabled = R.idx === 0;
+  btn('next').disabled = btn('last').disabled = R.idx === R.list.length;
+  const n = rvNote(R.idx), note = document.getElementById('rvNote');
+  note.className = 'rv-note ' + n.c; note.innerHTML = n.html;
+  const pr = document.getElementById('rvProg');
+  pr.hidden = R.done >= R.pos.length;
+  document.getElementById('rvProgT').textContent = '分析中 ' + Math.min(R.done, R.list.length) + '/' + R.list.length;
+  document.getElementById('rvProgB').style.setProperty('--p', Math.round(R.done / R.pos.length * 100) + '%');
+  // 玩家欄
+  const topSide = R.flip ? 0 : 1, botSide = 1 - topSide, lv = LEVELS[(R.st.level || 2) - 1] || LEVELS[1];
+  const label = s => { const nm = s === 0 ? '白方' : '黑方'; return R.st.mode === 'pvp' ? nm : nm + (s === R.me ? '・你' : '・電腦 ' + lv.name); };
+  const VAL = [0, 1, 3, 3, 5, 9, 0]; let mat = 0;
+  for (const p of R.pos[R.idx].board) if (p) mat += (p >> 3 ? -1 : 1) * VAL[p & 7];
+  for (const [id, s] of [['pTop', topSide], ['pBot', botSide]]) {
+    const el = document.getElementById(id);
+    el.classList.toggle('on', R.pos[R.idx].side === s && R.idx < R.list.length);
+    el.querySelector('.nm').innerHTML = '<span class="cs-dot ' + (s === 0 ? 'w' : 'b') + '"></span>' + label(s);
+    const caps = R.list.slice(0, R.idx).filter(mv => mv.cap && mv.mover === s).map(mv => mv.cap).sort((a, b) => VAL[b & 7] - VAL[a & 7] || (b & 7) - (a & 7));
+    const adv = s === 0 ? mat : -mat;
+    el.querySelector('.cs-cap').innerHTML = caps.map(pieceSVG).join('') + (adv > 0 ? '<b>+' + adv + '</b>' : '');
+  }
+  // 棋譜（可點）
+  const sym = k => { const c = R.cls[k]; return c && RV_CLS[c.c] && RV_CLS[c.c][0] ? '<sup class="sy-' + c.c + '">' + RV_CLS[c.c][0] + '</sup>' : ''; };
+  let h = '';
+  for (let i = 0; i < R.list.length; i += 2) {
+    const a = R.list[i], b = R.list[i + 1];
+    h += '<li><span>' + (i / 2 + 1) + '.</span><span data-i="' + (i + 1) + '"' + (R.idx === i + 1 ? ' class="cur"' : '') + '>' + a.txt + sym(i + 1) + '</span>' +
+      (b ? '<span data-i="' + (i + 2) + '"' + (R.idx === i + 2 ? ' class="cur"' : '') + '>' + b.txt + sym(i + 2) + '</span>' : '<span></span>') + '</li>';
+  }
+  const ol = document.getElementById('moves'); ol.innerHTML = h;
+  const cur = ol.querySelector('.cur'), box = document.getElementById('movesBox');
+  if (cur) { const r1 = cur.getBoundingClientRect(), r2 = box.getBoundingClientRect(); if (r1.top < r2.top + 24 || r1.bottom > r2.bottom - 4) box.scrollTop += r1.top - r2.top - r2.height / 2; }
+  else if (!R.idx) box.scrollTop = 0;
+  const mv = R.list[R.idx - 1];
+  document.getElementById('last').textContent = mv ? '第 ' + Math.ceil(R.idx / 2) + ' 回合：' + mv.txt : '開局';
+  document.getElementById('bUndo').disabled = true;
+  document.getElementById('bHint').disabled = true;
+  document.getElementById('bReview').disabled = false;
+  rvCurve(); draw();
+}
+function rvCurve() {
+  const c = document.getElementById('rvCurve'), w = c.clientWidth, h = c.clientHeight;
+  if (!w || !h) return;
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
+  if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+  const x = c.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0);
+  x.clearRect(0, 0, w, h); x.fillStyle = '#f8fafc'; x.fillRect(0, 0, w, h);
+  const M = Math.max(1, R.list.length), X0 = 4, W0 = w - 8, px = i => X0 + i / M * W0;
+  const red = i => { const a = R.an[i]; if (!a || a.s == null) return null; return rvWp(R.pos[i].side === 0 ? a.s : -a.s); };
+  const pts = []; for (let i = 0; i < R.pos.length; i++) { const v = red(i); if (v != null) pts.push([px(i), 4 + (1 - v) * (h - 8)]); }
+  const mid = h / 2;
+  if (pts.length > 1) {
+    for (const [col, clipTop] of [['rgba(59,130,246,.2)', true], ['rgba(30,41,59,.18)', false]]) {
+      x.save(); x.beginPath(); clipTop ? x.rect(0, 0, w, mid) : x.rect(0, mid, w, h - mid); x.clip();
+      x.beginPath(); x.moveTo(pts[0][0], mid); for (const [a, b] of pts) x.lineTo(a, b); x.lineTo(pts[pts.length - 1][0], mid); x.closePath(); x.fillStyle = col; x.fill(); x.restore();
+    }
+    x.beginPath(); pts.forEach(([a, b], i) => i ? x.lineTo(a, b) : x.moveTo(a, b)); x.strokeStyle = '#6366f1'; x.lineWidth = 2; x.lineJoin = 'round'; x.stroke();
+  }
+  x.strokeStyle = 'rgba(100,116,139,.35)'; x.lineWidth = 1; x.setLineDash([3, 3]); x.beginPath(); x.moveTo(0, mid); x.lineTo(w, mid); x.stroke(); x.setLineDash([]);
+  R.cls.forEach((cl, k) => {
+    if (!cl || (cl.c !== 'mist' && cl.c !== 'blun')) return;
+    const v = red(k); if (v == null) return;
+    x.beginPath(); x.arc(px(k), 4 + (1 - v) * (h - 8), cl.c === 'blun' ? 4 : 3, 0, 7); x.fillStyle = cl.c === 'blun' ? '#dc2626' : '#ea580c'; x.fill();
+  });
+  x.strokeStyle = '#111827'; x.lineWidth = 2; x.beginPath(); x.moveTo(px(R.idx), 0); x.lineTo(px(R.idx), h); x.stroke();
+}
+function drawArrow(m, col) {
+  const [fx, fy] = sq2xy(m & 127), [tx, ty] = sq2xy((m >> 7) & 127);
+  g.save(); g.globalAlpha = .85; g.strokeStyle = col; g.fillStyle = col; g.lineWidth = U * 0.14; g.lineCap = 'round';
+  const ang = Math.atan2(ty - fy, tx - fx), hl = U * 0.36, ex = tx - Math.cos(ang) * hl * 0.8, ey = ty - Math.sin(ang) * hl * 0.8;
+  g.beginPath(); g.moveTo(fx, fy); g.lineTo(ex, ey); g.stroke();
+  g.beginPath(); g.moveTo(tx, ty); g.lineTo(tx - Math.cos(ang - 0.5) * hl, ty - Math.sin(ang - 0.5) * hl); g.lineTo(tx - Math.cos(ang + 0.5) * hl, ty - Math.sin(ang + 0.5) * hl); g.closePath(); g.fill();
+  g.restore();
+}
+function drawReview() {
+  drawBoard();
+  const P = R.pos[R.idx], b = P.board, mv = R.list[R.idx - 1];
+  if (mv) { shade(mv.m & 127, 'rgba(250,204,21,.42)'); shade((mv.m >> 7) & 127, 'rgba(250,204,21,.55)'); }
+  if (P.chk) for (let i = 0; i < 64; i++) if (b[i] === P.side * 8 + X.K) {
+    const [x, y] = sq2xy(toSq(i));
+    const gl = g.createRadialGradient(x, y, U * .1, x, y, U * .62); gl.addColorStop(0, 'rgba(244,63,94,.95)'); gl.addColorStop(1, 'rgba(244,63,94,0)');
+    g.fillStyle = gl; g.fillRect(x - U / 2, y - U / 2, U, U);
+  }
+  for (let i = 0; i < 64; i++) { const p = b[i]; if (!p) continue; const [x, y] = sq2xy(toSq(i)); drawPiece(p, x, y); }
+  if (mv) {
+    const A = R.an[R.idx - 1], cl = R.cls[R.idx];
+    if (A && A.best && A.best !== mv.m && cl && cl.c !== 'good' && cl.c !== 'forced') drawArrow(A.best, 'rgba(37,99,235,.9)');
+    if (cl && RV_CLS[cl.c] && RV_CLS[cl.c][0]) {
+      const [tx, ty] = sq2xy((mv.m >> 7) & 127), col = { good: '#10b981', inacc: '#eab308', mist: '#f97316', blun: '#dc2626' }[cl.c];
+      const bx = tx + U * 0.32, by = ty - U * 0.32, r = U * 0.18;
+      g.save(); g.beginPath(); g.arc(bx, by, r, 0, 7); g.fillStyle = col; g.shadowColor = 'rgba(0,0,0,.25)'; g.shadowBlur = 4; g.fill(); g.shadowColor = 'transparent';
+      g.lineWidth = Math.max(1.5, U * 0.03); g.strokeStyle = '#fff'; g.stroke();
+      g.fillStyle = '#fff'; g.font = '900 ' + Math.round(U * (RV_CLS[cl.c][0].length > 1 ? 0.2 : 0.24)) + 'px "Noto Sans TC",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(RV_CLS[cl.c][0], bx, by + 1); g.restore();
+    }
+  }
+}
+// 操作
+document.getElementById('bReview').onclick = () => { if (R) exitReview(); else enterReview(); };
+document.querySelector('.rv-ctl').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || !R) return;
+  const a = b.dataset.a; rvGo(a === 'first' ? 0 : a === 'prev' ? R.idx - 1 : a === 'next' ? R.idx + 1 : R.list.length);
+});
+document.getElementById('moves').addEventListener('click', e => { const t = e.target.closest('[data-i]'); if (t && R) rvGo(+t.dataset.i); });
+document.getElementById('rvCurve').addEventListener('pointerdown', e => {
+  if (!R) return; const r = e.currentTarget.getBoundingClientRect();
+  rvGo(Math.round((e.clientX - r.left - 4) / Math.max(1, r.width - 8) * R.list.length));
+});
+addEventListener('keydown', e => {
+  if (!R || document.querySelector('.tb-over')) return;
+  if (e.key === 'ArrowLeft') { rvGo(R.idx - 1); e.preventDefault(); }
+  else if (e.key === 'ArrowRight') { rvGo(R.idx + 1); e.preventDefault(); }
+  else if (e.key === 'Home') rvGo(0); else if (e.key === 'End') rvGo(R.list.length);
+  else if (e.key === 'Escape') exitReview();
+});
+{ // 棋盤上左右滑
+  let sx = null, sy = 0;
+  cv.addEventListener('pointerdown', e => { if (R) { sx = e.clientX; sy = e.clientY; } });
+  cv.addEventListener('pointerup', e => {
+    if (!R || sx == null) return; const dx = e.clientX - sx, dy = e.clientY - sy; sx = null;
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) rvGo(R.idx + (dx < 0 ? 1 : -1));
+  });
+}
 
 addEventListener('resize', () => layout());
 if (window.ResizeObserver) new ResizeObserver(() => layout()).observe(main);
