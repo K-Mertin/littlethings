@@ -117,6 +117,7 @@ body.rvon #cv{cursor:grab}
 </main>
 <script src="common.js"></script>
 <script src="xq-logic.js"></script>
+<script src="online.js"></script>
 <script>
 'use strict';
 const LOGIC = XQLOGIC;
@@ -151,8 +152,9 @@ let sel = -1, targets = [], hint = 0, thinking = false, anim = null, drag = null
 let R = null;        // 覆盤中：見下方「覆盤」
 
 function humanSide() { return settings.mode === 'pvp' ? G.side : (settings.color === 'r' ? 0 : 1); }
+const ON = () => settings.mode === 'online' && typeof ONL !== 'undefined' && ONL.active;
 function aiTurn() { return settings.mode === 'ai' && !G.over && G.side !== (settings.color === 'r' ? 0 : 1); }
-function flipped() { return R ? R.flip : settings.mode === 'ai' && settings.color === 'b'; }
+function flipped() { return R ? R.flip : (settings.mode === 'ai' || settings.mode === 'online') && settings.color === 'b'; }
 
 function newGame() {
   if (R) exitReview(true);
@@ -161,7 +163,7 @@ function newGame() {
   sel = -1; targets = []; hint = 0; anim = null;
   save(); render(); maybeAI();
 }
-function save() { TB.store.set('xiangqi:game', { settings, moves: G.moves.map(x => x.m), over: G.over }); }
+function save() { if (settings.mode === 'online') return; TB.store.set('xiangqi:game', { settings, moves: G.moves.map(x => x.m), over: G.over }); }
 function load() {
   const s = TB.store.get('xiangqi:game', null);
   if (!s || !Array.isArray(s.moves)) return false;
@@ -279,6 +281,9 @@ function checkEnd(quiet) {
 }
 function finish() {
   const o = G.over, ai = settings.mode === 'ai', me = settings.color === 'r' ? 0 : 1;
+  if (settings.mode === 'online') { // 線上對局：結果視窗、戰績由 online.js 處理；留一份棋譜給覆盤
+    TB.store.set('xiangqi:lastgame', { moves: G.moves.map(x => x.m), settings, over: o }); return;
+  }
   TB.bump(GAME, 'played');
   TB.store.set('xiangqi:lastgame', { moves: G.moves.map(x => x.m), settings, over: o });
   if (o.winner === -1) TB.bump(GAME, 'draw');
@@ -496,6 +501,7 @@ function render() {
   else {
     let s = '輪到 ' + who(G.side);
     if (settings.mode === 'ai') s += G.side === humanSide() ? '（你）' : '';
+    if (ON()) s += G.side === ONL.mySeat ? '（你）' : '（' + TB.esc(ONL.names()[G.side]) + '）';
     if (chk) s += '　<span class="warn">將軍！</span>';
     if (G.warn) s += '<br><span style="font-size:13px;color:#e11d48;font-weight:700">⚠ ' + SIDE_NAME[G.warn.loser] + '在' + G.warn.kind + '，再重複一次就會判負</span>';
     st.innerHTML = s;
@@ -505,6 +511,7 @@ function render() {
   const label = s => {
     const nm = s === 0 ? '紅方' : '黑方';
     if (settings.mode === 'pvp') return nm;
+    if (settings.mode === 'online') return nm + '・' + TB.esc(ONL.names()[s]) + (s === ONL.mySeat ? '（你）' : '');
     return nm + (s === (settings.color === 'r' ? 0 : 1) ? '・你' : '・電腦 ' + lv.name);
   };
   for (const [id, s] of [['pTop', topSide], ['pBot', botSide]]) {
@@ -526,14 +533,15 @@ function render() {
   const lastEl = document.getElementById('last');
   const lmv = G.moves[G.moves.length - 1];
   lastEl.textContent = lmv ? '第 ' + Math.ceil(G.moves.length / 2) + ' 回合：' + lmv.txt : '紅方先走';
-  document.getElementById('bUndo').disabled = settings.mode === 'ai' ? G.moves.length < (settings.color === 'r' ? 1 : 2) : !G.moves.length;
-  document.getElementById('bHint').disabled = !!G.over || aiTurn() || thinking;
+  document.getElementById('bUndo').disabled = settings.mode === 'ai' ? G.moves.length < (settings.color === 'r' ? 1 : 2) : !G.moves.length || (settings.mode === 'online' && (!ON() || ONL.mySeat < 0 || !!G.over));
+  document.getElementById('bUndo').textContent = settings.mode === 'online' ? '請求悔棋' : '悔棋';
+  document.getElementById('bHint').disabled = !!G.over || aiTurn() || thinking || settings.mode === 'online';
   document.getElementById('bReview').disabled = !G.moves.length && !TB.store.get('xiangqi:lastgame', null);
   draw();
 }
 
 // ---------------- 操作 ----------------
-function canTouch() { return G && !R && !G.over && !thinking && !anim && !aiTurn(); }
+function canTouch() { return G && !R && !G.over && !thinking && !anim && !aiTurn() && (!ON() || ONL.canMove()); }
 function pickTargets(sq) {
   X.init(G.board, G.side);
   return X.legal().filter(m => (m >> 7) === sq).map(m => m & 127);
@@ -541,12 +549,14 @@ function pickTargets(sq) {
 function tryMove(from, to) {
   if (!targets.includes(to)) return false;
   sel = -1; targets = []; hint = 0;
+  if (ON()) { ONL.move(from << 7 | to); render(); return true; }
   applyMove(from << 7 | to); save(); render(); loop();
   if (!G.over) setTimeout(maybeAI, 220);
   return true;
 }
 function evPos(e) { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
 cv.addEventListener('pointerdown', e => {
+  if (!R && ON() && G && !G.over && !anim && !ONL.canMove()) { const w = ONL.why(); if (w) TB.toast(w); return; }
   if (!canTouch()) return;
   const [x, y] = evPos(e), sq = xy2sq(x, y);
   if (sq < 0) { if (sel >= 0) { sel = -1; targets = []; draw(); } return; }
@@ -579,17 +589,26 @@ cv.addEventListener('pointerup', endDrag);
 cv.addEventListener('pointercancel', () => { drag = null; draw(); });
 
 document.getElementById('bNew').onclick = () => {
-  const html = TB.seg('對手', 'mode', [['ai', '電腦'], ['pvp', '兩人同一台']], settings.mode) +
+  const html = TB.seg('對手', 'mode', [['ai', '電腦'], ['pvp', '兩人同一台'], ['online', '線上對戰']], settings.mode === 'online' ? 'ai' : settings.mode) +
+    '<p style="font-size:13px;margin:4px 2px 0">線上對戰：兩個人各用自己的手機或平板，一個開房間、一個輸入房號加入。</p>' +
     TB.seg('電腦棋力', 'level', LEVELS.map((l, i) => [i + 1, l.name]), settings.level) + TB.elo.hint(GAME, LEVELS.map(l => l.name)) +
     TB.seg('我執', 'color', [['r', '紅方（先走）'], ['b', '黑方']], settings.color) +
     '<p style="font-size:13px">入門會常常走錯，適合剛學象棋的小朋友；大師每步大約想 3 秒。</p>';
   TB.dialog({ title: '新的一局', html, buttons: [{ label: '取消', value: 0 }, {
     label: '開始', primary: true, value: 1, onClick: dlg => {
-      settings = { mode: TB.segVal(dlg, 'mode'), level: +TB.segVal(dlg, 'level'), color: TB.segVal(dlg, 'color') };
-      TB.store.set('xiangqi:settings', settings);
-    } }] }).then(v => { if (v === 1) { if (thinking) { AI.kill(); thinking = false; } newGame(); } });
+      const pick = { mode: TB.segVal(dlg, 'mode'), level: +TB.segVal(dlg, 'level'), color: TB.segVal(dlg, 'color') };
+      if (pick.mode === 'online') { wantOnline = true; return; }
+      wantOnline = false; settings = pick; TB.store.set('xiangqi:settings', settings);
+    } }] }).then(v => {
+      if (v !== 1) return;
+      if (wantOnline) { wantOnline = false; ONL.menu(); return; }
+      if (ON()) ONL.leave();
+      if (thinking) { AI.kill(); thinking = false; } newGame();
+    });
 };
+let wantOnline = false;
 document.getElementById('bUndo').onclick = () => {
+  if (settings.mode === 'online') { ONL.request('undo'); return; }
   if (!G.moves.length) return;
   if (thinking) { AI.kill(); thinking = false; }
   let n = 1;
@@ -682,7 +701,7 @@ function enterReview() {
   const st = src.settings || settings;
   const key = src.moves.join(',');
   R = { list, pos, hashes, idx: list.length, an: [], cls: [], done: 0, gen: (R ? R.gen : 0) + 1, over: src.over || null,
-    st, flip: st.mode === 'ai' && st.color === 'b', me: st.mode === 'ai' ? (st.color === 'r' ? 0 : 1) : -1 };
+    st, flip: (st.mode === 'ai' || st.mode === 'online') && st.color === 'b', me: (st.mode === 'ai' || st.mode === 'online') ? (st.color === 'r' ? 0 : 1) : -1 };
   if (RV_CACHE && RV_CACHE.key === key) { R.an = RV_CACHE.an.slice(); R.done = R.an.length; for (let k = 1; k < R.pos.length; k++) rvClassify(k); }
   document.body.classList.add('rvon');
   document.getElementById('rv').hidden = false;
@@ -904,7 +923,65 @@ addEventListener('keydown', e => {
 
 addEventListener('resize', () => layout());
 if (window.ResizeObserver) new ResizeObserver(() => layout()).observe(main);
-if (!load()) newGame();
+// ======================================================================
+// 線上對戰（table/online.js）：seat 0 = 紅方、seat 1 = 黑方；房主的網頁當裁判
+// ======================================================================
+const offlineSettings = () => Object.assign({ mode: 'ai', level: 2, color: 'r' }, TB.store.get('xiangqi:settings', {}));
+function rebuildFrom(moves) {
+  G = { board: START.slice(), side: 0, moves: [], hashes: [], over: null };
+  X.init(G.board, 0); G.hashes.push(X.hash());
+  for (const m of moves) { X.init(G.board, G.side); if (!X.legal().includes(m)) break; applyMove(m, true); }
+}
+const ONL = TB.online({
+  game: 'xiangqi', title: '象棋',
+  seatName: s => s === 0 ? '紅方' : '黑方',
+  firstNote: s => s === 0 ? '（先走）' : '',
+  getState: () => ({ moves: G.moves.map(x => x.m), over: G.over }),
+  setState(st, info) {
+    if (R) exitReview(true);
+    if (thinking) { AI.kill(); thinking = false; }
+    settings = { mode: 'online', level: settings.level || 2, color: ONL.mySeat === 1 ? 'b' : 'r' };
+    const prev = G ? G.moves.length : 0;
+    rebuildFrom(st.moves || []);
+    G.over = st.over || null;
+    sel = -1; targets = []; hint = 0; anim = null;
+    const last = G.moves[G.moves.length - 1];
+    if (info && info.fresh && G.moves.length === prev + 1 && last) {
+      anim = { p: G.board[last.m & 127], from: last.m >> 7, to: last.m & 127, cap: last.cap, t0: performance.now() };
+      TB.sfx(last.cap ? 'capture' : 'place');
+      X.init(G.board, G.side); if (!G.over && X.inCheck(G.side)) TB.sfx('check');
+    }
+    layout(); render(); if (anim) loop();
+  },
+  newState(hostSeat) {
+    if (R) exitReview(true);
+    if (thinking) { AI.kill(); thinking = false; }
+    settings = { mode: 'online', level: settings.level || 2, color: hostSeat === 1 ? 'b' : 'r' };
+    rebuildFrom([]); sel = -1; targets = []; hint = 0; anim = null; layout(); render();
+  },
+  hostMove(seat, m) {
+    if (!G || G.over || G.side !== seat) return false;
+    X.init(G.board, G.side); if (!X.legal().includes(m)) return false;
+    applyMove(m); render(); loop(); return true;
+  },
+  undoFor(seat) {
+    const len = G.moves.length; let n = 0;
+    do { n++; } while (len - n > 0 && (len - n) % 2 !== seat);
+    if ((len - n) % 2 !== seat) return;
+    rebuildFrom(G.moves.slice(0, len - n).map(x => x.m)); sel = -1; targets = []; hint = 0; anim = null;
+    TB.sfx('click'); render();
+  },
+  forceOver(w, why) { G.over = { winner: w, why }; finish(); render(); },
+  overInfo: () => G && G.over ? { winner: G.over.winner, why: G.over.why + (G.over.winner >= 0 ? '，' + (G.over.winner === 0 ? '紅方' : '黑方') + '獲勝。' : '。') } : null,
+  turnSeat: () => G && !G.over ? G.side : -1,
+  moveCount: () => G ? G.moves.length : 0,
+  review: () => enterReview(),
+  onChange: () => { if (G && !R) render(); },
+  onLeave() { settings = offlineSettings(); if (!load()) newGame(); else { layout(); render(); maybeAI(); } },
+});
+
+if (ONL.resume()) { if (!G) { settings = Object.assign({}, settings, { mode: 'online' }); rebuildFrom([]); } layout(); render(); }
+else if (!load()) newGame();
 else { layout(); render(); maybeAI(); }
 layout();
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { grainCache = null; layout(); });

@@ -57,6 +57,7 @@
   </div>
 </main>
 <script src="common.js"></script>
+<script src="online.js"></script>
 <script>
 'use strict';
 // ======================================================================
@@ -373,9 +374,10 @@ let size = 300, cell = 20, pad = 20, dpr = 1, woodCv = null;
 const renju = () => set.rule === 'renju';
 const turn = () => (G.moves.length % 2) ? 2 : 1;
 const cpuTurn = () => set.mode === 'cpu' && !G.over && turn() !== set.me;
+const ON = () => set.mode === 'online' && ONL.active;
 
 function rebuild() { board.fill(0); G.moves.forEach((p, i) => board[p] = i % 2 ? 2 : 1); }
-function save() { TB.store.set('gomoku:game', { moves: G.moves, over: G.over, set }); }
+function save() { if (set.mode === 'online') return; TB.store.set('gomoku:game', { moves: G.moves, over: G.over, set }); }
 
 function newGame(s) {
   if (s) { set = s; TB.store.set('gomoku:set', set); }
@@ -384,13 +386,18 @@ function newGame(s) {
   rebuild(); save(); after();
 }
 function name(c) {
+  if (set.mode === 'online') return (ONL.names()[c - 1] || '') + (c - 1 === ONL.mySeat ? '（你）' : '');
   if (set.mode === 'pvp') return c === 1 ? '黑方' : '白方';
   return c === set.me ? '你' : '電腦';
 }
 function ui() {
   const t = turn();
-  document.getElementById('n1').textContent = set.mode === 'pvp' ? '黑方' : (set.me === 1 ? '你' : '電腦');
-  document.getElementById('n2').textContent = set.mode === 'pvp' ? '白方' : (set.me === 2 ? '你' : '電腦');
+  if (set.mode === 'online') {
+    document.getElementById('n1').textContent = name(1); document.getElementById('n2').textContent = name(2);
+  } else {
+    document.getElementById('n1').textContent = set.mode === 'pvp' ? '黑方' : (set.me === 1 ? '你' : '電腦');
+    document.getElementById('n2').textContent = set.mode === 'pvp' ? '白方' : (set.me === 2 ? '你' : '電腦');
+  }
   document.getElementById('m1').textContent = '黑・' + (set.mode === 'cpu' && set.me !== 1 ? LEVELS[set.level] : '先手');
   document.getElementById('m2').textContent = '白' + (set.mode === 'cpu' && set.me !== 2 ? '・' + LEVELS[set.level] : '');
   document.getElementById('p1').classList.toggle('on', !G.over && t === 1);
@@ -398,14 +405,17 @@ function ui() {
   const st = document.getElementById('status');
   if (G.over) st.innerHTML = G.over.w === 0 ? '<b>和局</b>' : '<b>' + (G.over.w === 1 ? '黑' : '白') + '勝</b>' + (G.over.why ? '・' + G.over.why : '');
   else if (thinking) st.textContent = '電腦思考中…';
+  else if (ON() && !ONL.canMove()) st.innerHTML = '輪到 <b>' + TB.esc(name(t)) + '</b>（' + (t === 1 ? '黑' : '白') + '）' + (ONL.why() && ONL.mySeat >= 0 && ONL.why() !== '等 ' + ONL.oppName() + ' 走' ? '・' + TB.esc(ONL.why()) : '');
   else st.innerHTML = '輪到 <b>' + name(t) + '</b>（' + (t === 1 ? '黑' : '白') + '）' + (pref.confirm ? '・點兩下落子' : '');
-  document.getElementById('meta').textContent = '第 ' + G.moves.length + ' 手・' + (renju() ? '黑棋禁手' : '一般規則') + (set.mode === 'cpu' ? '・' + LEVELS[set.level] : '・兩人對下');
-  document.getElementById('bUndo').disabled = !G.moves.length || (set.mode === 'cpu' && G.moves.length < (set.me === 2 ? 2 : 1));
-  document.getElementById('bHint').disabled = !!G.over || cpuTurn() || thinking;
+  document.getElementById('meta').textContent = '第 ' + G.moves.length + ' 手・' + (renju() ? '黑棋禁手' : '一般規則') + (set.mode === 'cpu' ? '・' + LEVELS[set.level] : set.mode === 'online' ? '・線上對戰' : '・兩人對下');
+  document.getElementById('bUndo').disabled = !G.moves.length || (set.mode === 'cpu' && G.moves.length < (set.me === 2 ? 2 : 1)) || (set.mode === 'online' && (!ONL.active || ONL.mySeat < 0 || !!G.over));
+  document.getElementById('bUndo').textContent = set.mode === 'online' ? '請求悔棋' : '悔棋';
+  document.getElementById('bHint').disabled = !!G.over || cpuTurn() || thinking || set.mode === 'online';
 }
 function computeBanned() {
   banned = [];
   if (!renju() || G.over || turn() !== 1 || cpuTurn()) return;
+  if (set.mode === 'online' && ONL.mySeat !== 0) return;
   for (const p of R.cands(board)) if (R.forbidden(board, p)) banned.push(p);
 }
 function after() {
@@ -434,6 +444,7 @@ function play(p) {
 }
 function end(w, line, why) {
   G.over = { w, line, why };
+  if (set.mode === 'online') return; // 線上對局的結果視窗、戰績由 online.js 處理
   const st = TB.bump('gomoku', 'played');
   const eloRes = set.mode === 'cpu' ? TB.elo.update('gomoku', +set.level, LEVELS.length, w === 0 ? 0.5 : w === set.me ? 1 : 0) : null;
   let title;
@@ -450,6 +461,7 @@ function end(w, line, why) {
   }, 650);
 }
 function undo() {
+  if (set.mode === 'online') { ONL.request('undo'); return; }
   if (!G.moves.length) return;
   token++; AI.kill(); thinking = false;
   let n = 1;
@@ -577,13 +589,15 @@ function hit(e) {
 cv.addEventListener('click', e => {
   if (!G || G.over) { if (G && G.over) TB.toast('這局已結束，按「新局」再來'); return; }
   if (thinking || cpuTurn()) return;
+  if (ON() && !ONL.canMove()) { const w = ONL.why(); if (w) TB.toast(w); return; }
   const p = hit(e); if (p < 0 || board[p]) return;
   if (renju() && turn() === 1 && R.forbidden(board, p)) { TB.sfx('bad'); TB.toast('這裡是禁手點（' + why(p) + '），黑棋不能下'); return; }
   if (pref.confirm && ghost !== p) { ghost = p; TB.sfx('select'); draw(); return; }
+  if (ON()) { ghost = -1; ONL.move(p); return; }
   play(p);
 });
 cv.addEventListener('mousemove', e => {
-  if (pref.confirm || coarse || !G || G.over || thinking || cpuTurn()) return;
+  if (pref.confirm || coarse || !G || G.over || thinking || cpuTurn() || (ON() && !ONL.canMove())) return;
   const p = hit(e); const g = p >= 0 && !board[p] ? p : -1;
   if (g !== ghost) { ghost = g; draw(); }
 });
@@ -599,13 +613,19 @@ function why(p) { // 給玩家看的禁手原因（粗略）
 function newDialog() {
   let pick = null;
   return TB.dialog({ title: '新局',
-    html: TB.seg('對手', 'mode', [['cpu', '電腦'], ['pvp', '兩人同一台']], set.mode) +
+    html: TB.seg('對手', 'mode', [['cpu', '電腦'], ['pvp', '兩人同一台'], ['online', '線上對戰']], set.mode === 'online' ? 'cpu' : set.mode) +
+      '<p style="font-size:13px;margin:4px 2px 0">線上對戰：兩個人各用自己的手機或平板，一個開房間、一個輸入房號加入。</p>' +
       TB.seg('電腦強度', 'level', LEVELS.map((l, i) => [i, l]), set.level) + TB.elo.hint('gomoku', LEVELS) +
       TB.seg('我執', 'me', [[1, '黑（先手）'], [2, '白（後手）']], set.me) +
       TB.seg('規則', 'rule', [['free', '一般（五連以上都算贏）'], ['renju', '黑棋禁手']], set.rule),
     buttons: [{ label: '取消', value: null }, { label: '開始', primary: true, value: 'go',
       onClick: d => { pick = { mode: TB.segVal(d, 'mode'), level: +TB.segVal(d, 'level'), me: +TB.segVal(d, 'me'), rule: TB.segVal(d, 'rule') }; } }],
-  }).then(v => { if (v === 'go') newGame(pick); else after(); });
+  }).then(v => {
+    if (v !== 'go') { after(); return; }
+    if (pick.mode === 'online') { ONL.menu().then(r => { if (!r && !ONL.active) after(); }); return; }
+    if (ONL.active) ONL.leave();
+    newGame(pick);
+  });
 }
 document.getElementById('bNew').onclick = () => newDialog();
 document.getElementById('bUndo').onclick = undo;
@@ -633,7 +653,49 @@ addEventListener('keydown', e => {
 // ---- 開始 ----
 new ResizeObserver(fit).observe(bb);
 addEventListener('resize', fit);
+// ---- 線上對戰（table/online.js）：seat 0 = 黑、seat 1 = 白 ----
+const offlineSet = () => Object.assign({ mode: 'cpu', level: 1, me: 1, rule: 'free' }, TB.store.get('gomoku:set', {}));
+const ONL = TB.online({
+  game: 'gomoku', title: '五子棋',
+  seatName: s => s === 0 ? '黑方' : '白方',
+  firstNote: s => s === 0 ? '（先手）' : '',
+  ruleHtml: () => TB.seg('規則', 'rule', [['free', '一般（五連以上都算贏）'], ['renju', '黑棋禁手']], offlineSet().rule),
+  readRule: d => ({ rule: TB.segVal(d, 'rule') }),
+  getState: () => ({ moves: G.moves.slice(), over: G.over, rule: set.rule }),
+  setState(st, info) {
+    token++; AI.kill(); thinking = false;
+    set = { mode: 'online', level: set.level, me: Math.max(0, ONL.mySeat) + 1, rule: st.rule === 'renju' ? 'renju' : 'free' };
+    const prev = G ? G.moves.length : 0;
+    G = { moves: (st.moves || []).filter(p => p >= 0 && p < N * N), over: st.over || null }; ghost = hint = -1;
+    rebuild(); fit();
+    if (info && info.fresh && G.moves.length > prev) { dropT = performance.now(); TB.sfx('place'); anim(); }
+    after();
+  },
+  newState(hostSeat, opts) {
+    token++; AI.kill(); thinking = false;
+    set = { mode: 'online', level: set.level, me: hostSeat + 1, rule: opts.rule === 'renju' ? 'renju' : 'free' };
+    G = { moves: [], over: null }; ghost = hint = -1; rebuild(); fit(); after();
+  },
+  hostMove(seat, p) {
+    if (G.over || turn() !== seat + 1 || !(p >= 0 && p < N * N) || board[p]) return false;
+    if (renju() && seat === 0 && R.forbidden(board, p)) return false;
+    play(p); return true;
+  },
+  undoFor(seat) {
+    let n = 0; do { n++; } while (G.moves.length - n > 0 && ((G.moves.length - n) % 2 ? 2 : 1) !== seat + 1);
+    if (((G.moves.length - n) % 2 ? 2 : 1) !== seat + 1) return;
+    G.moves.splice(G.moves.length - n, n); G.over = null; hint = -1; rebuild(); TB.sfx('flip'); after();
+  },
+  forceOver(w, why) { end(w < 0 ? 0 : w + 1, null, why); after(); },
+  overInfo: () => G && G.over ? { winner: G.over.w ? G.over.w - 1 : -1, why: G.over.why || (G.over.w ? (G.over.w === 1 ? '黑方' : '白方') + '連成五子' : '棋盤下滿了') } : null,
+  turnSeat: () => G && !G.over ? turn() - 1 : -1,
+  moveCount: () => G ? G.moves.length : 0,
+  onChange: () => { if (G) { computeBanned(); ui(); draw(); } },
+  onLeave() { set = offlineSet(); G = { moves: [], over: null }; rebuild(); ui(); draw(); newDialog(); },
+});
+
 (function start() {
+  if (ONL.resume()) { if (!G) { G = { moves: [], over: null }; rebuild(); } fit(); ui(); return; }
   const sv = TB.store.get('gomoku:game', null);
   if (sv && Array.isArray(sv.moves) && sv.moves.length && !sv.over) {
     set = Object.assign(set, sv.set || {}); G = { moves: sv.moves.filter(p => p >= 0 && p < N * N), over: null };
