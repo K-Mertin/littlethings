@@ -26,11 +26,44 @@
 .st.w{background:radial-gradient(circle at 34% 28%,#fff,#f3f4f6 60%,#d1d5db);box-shadow:0 2px 5px rgba(17,24,39,.2),inset 0 0 0 1px rgba(17,24,39,.08)}
 .meta{font-size:12px;color:var(--mute);text-align:center}
 @media (max-width:430px){.tb-title{display:none}}
+/* ---- 覆盤 ---- */
+.rv{display:none;flex-direction:column;gap:8px;background:var(--panel);border-radius:16px;box-shadow:var(--shadow);padding:10px 12px}
+body.review .rv{display:flex}
+body.review .players,body.review .meta{display:none}
+body.review #bUndo,body.review #bHint{display:none}
+@media (max-width:430px){.tb-bar{gap:4px;padding:0 6px}.tb-bar .tb-btn{padding:7px 8px}.tb-bar .tb-btn.icon{padding:7px 6px;min-width:32px}}
+.rv-sum{display:flex;flex-wrap:wrap;gap:6px;font-size:12px;color:var(--mute);align-items:center}
+.rv-sum b{color:var(--ink);font-size:13px;margin-right:2px}
+.rv-tag{display:inline-flex;align-items:center;gap:3px;border-radius:999px;padding:1px 8px;font-weight:700;font-size:12px}
+.q0{background:#dcfce7;color:#15803d}.q1{background:#fef9c3;color:#a16207}.q2{background:#ffedd5;color:#c2410c}.q3{background:#ffe4e6;color:#be123c}.qp{background:var(--panel2);color:var(--mute)}
+.rv-prog{font-size:12px;color:var(--mute);display:flex;align-items:center;gap:8px}
+.rv-prog i{flex:1;height:6px;border-radius:999px;background:var(--panel2);overflow:hidden;position:relative}
+.rv-prog i::after{content:"";position:absolute;inset:0;width:var(--w,0%);background:linear-gradient(90deg,#10b981,#059669);border-radius:inherit;transition:width .2s}
+#rvCurve{width:100%;height:60px;display:block;cursor:pointer;border-radius:10px;background:var(--panel2);touch-action:none}
+.rv-ctl{display:flex;align-items:center;gap:4px;justify-content:center}
+.rv-ctl .tb-btn{padding:6px 4px;min-width:38px;font-size:15px;flex:none}
+.rv-ctl span{flex:1;text-align:center;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.rv-note{font-size:13px;line-height:1.5;min-height:3em;padding:8px 10px;border-radius:12px;background:var(--panel2)}
+.rv-note b{font-weight:700}
+.rv-list{display:flex;flex-wrap:wrap;gap:4px;max-height:150px;overflow:auto;padding:1px}
+.rv-list button{appearance:none;border:0;border-radius:8px;padding:3px 7px;font-size:12px;font-weight:500;cursor:pointer;background:var(--panel2);color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap}
+.rv-list button.on{outline:2px solid #059669;outline-offset:0}
+.rv-list button.q0{background:#f0fdf4}.rv-list button.q1{background:#fef9c3}.rv-list button.q2{background:#ffedd5}.rv-list button.q3{background:#ffe4e6}
+@media (max-aspect-ratio:1/1),(max-width:719px){
+  .rv{padding:8px 10px;gap:6px}
+  .rv-list{flex-wrap:nowrap;overflow-x:auto;max-height:none}
+  #rvCurve{height:48px}
+  .rv-note{min-height:0}
+}
 @media (min-aspect-ratio:1/1) and (min-width:720px){
   .wrap{flex-direction:row;gap:22px;max-width:calc(100vh - var(--bar) + 230px);max-width:calc(100dvh - var(--bar) + 230px)}
   .info{width:230px;order:2}
   .players{flex-direction:column}
   .meta{text-align:left}.info .tb-status{text-align:left}
+}
+@media (min-aspect-ratio:1/1) and (min-width:720px){
+  body.review .wrap{max-width:calc(100vh - var(--bar) + 320px);max-width:calc(100dvh - var(--bar) + 320px)}
+  body.review .info{width:300px}
 }
 </style>
 </head>
@@ -42,6 +75,7 @@
   <button class="tb-btn" id="bNew">新局</button>
   <button class="tb-btn" id="bUndo">悔棋</button>
   <button class="tb-btn" id="bHint">提示</button>
+  <button class="tb-btn" id="bReview">覆盤</button>
   <button class="tb-btn" id="bInfo">規則<span class="tb-hide-s">・戰績</span></button>
   <button class="tb-btn icon" id="tb-mute"></button>
 </header>
@@ -54,6 +88,14 @@
       </div>
       <div class="tb-status" id="status"></div>
       <div class="meta" id="meta"></div>
+      <div class="rv" id="rv">
+        <div class="rv-sum" id="rvSum"></div>
+        <div class="rv-prog" id="rvProg"><span id="rvProgT">分析中…</span><i></i></div>
+        <canvas id="rvCurve" aria-label="形勢曲線"></canvas>
+        <div class="rv-ctl"><button class="tb-btn" id="rvFirst" aria-label="第一手">⏮</button><button class="tb-btn" id="rvPrev" aria-label="上一手">◀</button><span id="rvPos">開局</span><button class="tb-btn" id="rvNext" aria-label="下一手">▶</button><button class="tb-btn" id="rvLast" aria-label="最後一手">⏭</button></div>
+        <div class="rv-note" id="rvNote"></div>
+        <div class="rv-list" id="rvList"></div>
+      </div>
     </div>
     <div class="bb" id="bb"><canvas id="cv" aria-label="黑白棋棋盤"></canvas></div>
   </div>
@@ -213,8 +255,36 @@ function LOGIC(self) {
     }
     return best;
   }
-  self.api = { flips, moves, count, start, pick };
-  self.onmessage = e => pick(Int8Array.from(e.data.b), e.data.c, e.data.level);
+  // ---- 覆盤分析：回傳每一個合法步的價值（以「最後子數差」為單位，站在走棋方的角度） ----
+  function toDisc(v) {
+    if (Math.abs(v) >= 9e5) return Math.round((v - Math.sign(v) * 1e6) / 10000);
+    if (Math.abs(v) >= 9000) return Math.round(v / 10000);
+    return Math.max(-60, Math.min(60, v / 8));
+  }
+  function analyze(b, c) {
+    const ms = moves(b, c); if (!ms.length) return { vals: {}, exact: true };
+    let empt = 0; for (let p = 0; p < 64; p++) if (!b[p]) empt++;
+    order(b, ms);
+    if (empt <= 14) { // 殘局：每一步都讀到底，得到精確子數差
+      deadline = performance.now() + 900; aborted = false; nodes = 0;
+      const vals = {};
+      for (const p of ms) { const f = play(b, p, c); const v = -ab(b, 3 - c, 64, -Infinity, Infinity, true); unplay(b, p, c, f); if (aborted) break; vals[p] = toDisc(v); }
+      if (!aborted) return { vals, exact: true };
+    }
+    const T0 = performance.now(); let vals = null;
+    for (let d = 1; d <= 8; d++) {
+      deadline = T0 + 260; aborted = false; nodes = 0;
+      const tmp = {};
+      for (const p of ms) { const f = play(b, p, c); const v = -ab(b, 3 - c, d - 1, -Infinity, Infinity, false); unplay(b, p, c, f); if (aborted) break; tmp[p] = toDisc(v); }
+      if (aborted) break;
+      vals = tmp;
+      if (performance.now() > T0 + 110) break;
+    }
+    if (!vals) { vals = {}; for (const p of ms) { const f = play(b, p, c); vals[p] = toDisc(-evaluate(b, 3 - c)); unplay(b, p, c, f); } }
+    return { vals, exact: false };
+  }
+  self.api = { flips, moves, count, start, pick, analyze };
+  self.onmessage = e => e.data.type === 'an' ? analyze(Int8Array.from(e.data.b), e.data.c) : pick(Int8Array.from(e.data.b), e.data.c, e.data.level);
 }
 
 // ======================================================================
@@ -245,6 +315,7 @@ function newGame(s) {
 }
 function name(c) { return set.mode === 'pvp' ? (c === 1 ? '黑方' : '白方') : (c === set.me ? '你' : '電腦'); }
 function ui() {
+  if (RV) { rvUi(); return; }
   const h = cur(), [k, w] = R.count(h.b);
   document.getElementById('s1').textContent = k; document.getElementById('s2').textContent = w;
   document.getElementById('n1').textContent = set.mode === 'pvp' ? '黑方' : (set.me === 1 ? '你' : '電腦');
@@ -261,11 +332,12 @@ function ui() {
   const canUndo = set.mode === 'cpu' ? G.hist.slice(0, -1).some(x => x.t === set.me) : G.hist.length > 1;
   document.getElementById('bUndo').disabled = !canUndo;
   document.getElementById('bHint').disabled = !!G.over || cpuTurn() || thinking;
+  document.getElementById('bReview').disabled = G.hist.length <= 1 && !TB.store.get('reversi:lastgame', null);
 }
 function after() {
   legal = G.over ? [] : R.moves(board(), cur().t);
   ui(); draw();
-  if (cpuTurn()) cpu();
+  if (cpuTurn() && !RV) cpu();
 }
 async function cpu() {
   const my = ++token; thinking = true; ui();
@@ -301,6 +373,7 @@ function end(b) {
   const [k, w] = R.count(b);
   const win = k === w ? 0 : (k > w ? 1 : 2);
   G.over = { win };
+  TB.store.set('reversi:lastgame', { hist: G.hist.map(h => ({ b: Array.from(h.b), t: h.t, last: h.last })), set: Object.assign({}, set), ts: Date.now() });
   TB.bump('reversi', 'played');
   const eloRes = set.mode === 'cpu' ? TB.elo.update('reversi', +set.level, LEVELS.length, !win ? 0.5 : win === set.me ? 1 : 0) : null;
   let title;
@@ -312,8 +385,8 @@ function end(b) {
   setTimeout(() => {
     if (!G.over) return;
     TB.dialog({ title, html: '<p>黑 ' + k + ' 比 白 ' + w + '。</p>' + (eloRes ? TB.elo.html(eloRes) : ''),
-      buttons: [{ label: '看棋盤', value: 0 }, { label: '再來一局', primary: true, value: 1 }] })
-      .then(v => { if (v === 1) newGame(); });
+      buttons: [{ label: '看棋盤', value: 0 }, { label: '覆盤', value: 2 }, { label: '再來一局', primary: true, value: 1 }] })
+      .then(v => { if (v === 1) newGame(); else if (v === 2) openReview(); });
   }, 1100);
 }
 function undo() {
@@ -358,7 +431,7 @@ function disc(x, y, r, c, sx) {
 }
 function draw() {
   if (!G) return;
-  const now = performance.now(), h = cur(), b = h.b;
+  const now = performance.now(), h = RV ? RV.view() : cur(), b = h.b;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   // 鮮綠扁平棋盤：圓角底板＋一格一格的圓角方塊
   ctx.clearRect(0, 0, size, size);
@@ -393,12 +466,20 @@ function draw() {
     ctx.fillStyle = '#f43f5e'; ctx.beginPath();
     ctx.arc(pad + (h.last % 8 + .5) * cell, pad + ((h.last >> 3) + .5) * cell, r * .16, 0, 7); ctx.fill();
   }
-  const humanTurn = !G.over && !thinking && !cpuTurn();
+  const humanTurn = !RV && !G.over && !thinking && !cpuTurn();
   if (humanTurn && pref.dots) {
     ctx.fillStyle = h.t === 1 ? 'rgba(17,24,39,.28)' : 'rgba(255,255,255,.6)';
     for (const p of legal) { ctx.beginPath(); ctx.arc(pad + (p % 8 + .5) * cell, pad + ((p >> 3) + .5) * cell, r * .26, 0, 7); ctx.fill(); }
   }
-  if (hint >= 0 && !b[hint]) {
+  if (RV) { // 覆盤：藍圈標出比較好的那一步
+    const bp = RV.bestAt();
+    if (bp >= 0 && !b[bp]) {
+      ctx.strokeStyle = '#2563eb'; ctx.lineWidth = Math.max(2.5, cell * .07);
+      ctx.beginPath(); ctx.arc(pad + (bp % 8 + .5) * cell, pad + ((bp >> 3) + .5) * cell, r * .82, 0, 7); ctx.stroke();
+      ctx.fillStyle = 'rgba(37,99,235,.16)'; ctx.fill();
+    }
+  }
+  if (!RV && hint >= 0 && !b[hint]) {
     const ph = (Math.sin(now / 220) + 1) / 2;
     ctx.strokeStyle = 'rgba(255,255,255,' + (.65 + ph * .35) + ')'; ctx.lineWidth = 3.5;
     ctx.beginPath(); ctx.arc(pad + (hint % 8 + .5) * cell, pad + ((hint >> 3) + .5) * cell, r * (.8 + ph * .15), 0, 7); ctx.stroke();
@@ -415,6 +496,7 @@ function anim() {
 
 cv.addEventListener('click', e => {
   if (!G) return;
+  if (RV) { if (!swiped) TB.toast('覆盤中不能下棋，按「回到對局」繼續'); return; }
   if (G.over) { TB.toast('這局已結束，按「新局」再來'); return; }
   if (thinking || cpuTurn()) return;
   const rc = cv.getBoundingClientRect();
@@ -424,6 +506,197 @@ cv.addEventListener('click', e => {
   if (!legal.includes(p)) { if (!board()[p]) { TB.sfx('bad'); TB.toast('這裡不能下：要夾住對方的棋子才行'); } return; }
   play(p);
 });
+
+
+// ======================================================================
+// 覆盤
+// ======================================================================
+const AN = TB.worker(LOGIC); // 分析專用，不跟對局電腦搶
+const anCache = new Map();    // 盤面＋走棋方 → 分析結果
+let RV = null, swiped = false;
+const COLS = 'ABCDEFGH';
+const coord = p => COLS[p % 8] + ((p >> 3) + 1);
+const QN = [['✓', '好棋'], ['?!', '緩著'], ['?', '失誤'], ['??', '大失誤']];
+const quality = loss => loss <= 2 ? 0 : loss <= 5 ? 1 : loss <= 10 ? 2 : 3;
+const winP = d => 1 / (1 + Math.exp(-d / 6)); // 黑方子數差 → 黑方勝率
+const isX = p => [9, 14, 49, 54].includes(p), isC = p => [1, 8, 6, 15, 48, 57, 55, 62].includes(p), isCorner = p => [0, 7, 56, 63].includes(p);
+const cornerOf = p => isX(p) || isC(p) ? [0, 7, 56, 63].reduce((a, k) => Math.abs((k % 8) - (p % 8)) <= 1 && Math.abs((k >> 3) - (p >> 3)) <= 1 ? k : a, -1) : -1;
+
+function buildSteps(hist) {
+  // 每一步：{kind:'move'|'pass', mover, p, before, after}
+  const st = [{ kind: 'start', after: hist[0].b, last: -1 }];
+  for (let i = 1; i < hist.length; i++) {
+    const mover = hist[i - 1].t;
+    st.push({ kind: 'move', mover, p: hist[i].last, before: hist[i - 1].b, after: hist[i].b, last: hist[i].last });
+    // 下一步還是同一方 → 對手沒地方下（pass）
+    if (i < hist.length - 1 && hist[i].t === mover) st.push({ kind: 'pass', mover: 3 - mover, after: hist[i].b, last: -1 });
+  }
+  return st;
+}
+function openReview() {
+  let hist = G.hist, rset = set, src = 'cur';
+  if (hist.length <= 1) {
+    const lg = TB.store.get('reversi:lastgame', null);
+    if (!lg || !lg.hist || lg.hist.length <= 1) { TB.toast('還沒有可以覆盤的棋局'); return; }
+    hist = lg.hist.map(h => ({ b: Int8Array.from(h.b), t: h.t, last: h.last })); rset = lg.set || set; src = 'last';
+  }
+  token++; AI.kill(); thinking = false; hint = -1; anims = {};
+  const steps = buildSteps(hist);
+  RV = { steps, set: rset, src, k: steps.length - 1, an: new Array(steps.length).fill(null), done: 0, total: steps.filter(s => s.kind === 'move').length, tok: {},
+    view() { const s = this.steps[this.k]; return { b: s.after, last: s.last, t: 0 }; },
+    bestAt() { const a = this.an[this.k]; return a && a.best !== a.p ? a.best : -1; } };
+  document.body.classList.add('review');
+  document.getElementById('bReview').textContent = '回到對局';
+  ['bUndo', 'bHint'].forEach(id => document.getElementById(id).disabled = true);
+  TB.sfx('click');
+  rvGo(RV.k, true); runAnalysis(RV);
+}
+function closeReview() {
+  if (!RV) return;
+  RV.tok.dead = true; RV = null;
+  document.body.classList.remove('review');
+  document.getElementById('bReview').textContent = '覆盤';
+  document.getElementById('bNew').disabled = false;
+  TB.sfx('click'); fit(); after();
+}
+async function runAnalysis(rv) {
+  for (let k = 1; k < rv.steps.length; k++) {
+    const s = rv.steps[k];
+    if (s.kind !== 'move') continue;
+    if (rv.tok.dead) return;
+    const key = Array.from(s.before).join('') + s.mover;
+    let res = anCache.get(key);
+    if (!res) {
+      try { res = await AN.ask({ type: 'an', b: Array.from(s.before), c: s.mover }); } catch (e) { res = null; }
+      if (rv.tok.dead) return;
+      if (res) anCache.set(key, res);
+    }
+    if (res) {
+      const vals = res.vals, ps = Object.keys(vals).map(Number);
+      let best = s.p, bv = -Infinity; for (const p of ps) if (vals[p] > bv) { bv = vals[p]; best = p; }
+      const pv = vals[s.p] != null ? vals[s.p] : bv;
+      const loss = Math.max(0, Math.round((bv - pv) * 10) / 10);
+      // 黑方角度的形勢（走完這步之後）
+      const black = s.mover === 1 ? pv : -pv;
+      rv.an[k] = { best, bv, pv, loss, q: ps.length <= 1 ? 0 : quality(loss), forced: ps.length <= 1, exact: res.exact, black };
+    }
+    rv.done++;
+    if (RV === rv) { rvUi(); if (k === rv.k) draw(); }
+  }
+  // 最後一步：用實際子數
+  if (RV === rv) rvUi();
+}
+function evalAt(rv, k) { // 黑方勝率（0~1），沒有資料回 null
+  const s = rv.steps[k];
+  if (k === 0) return .5;
+  if (k === rv.steps.length - 1 && !R.moves(s.after, 1).length && !R.moves(s.after, 2).length) { const [a, w] = R.count(s.after); return a > w ? 1 : a < w ? 0 : .5; }
+  for (let j = k; j > 0; j--) { const a = rv.an[j]; if (a) return winP(a.black); if (rv.steps[j].kind === 'move') return null; }
+  return null;
+}
+function rvGo(k, quiet) {
+  if (!RV) return;
+  k = Math.max(0, Math.min(RV.steps.length - 1, k));
+  if (k === RV.k && !quiet) return;
+  RV.k = k; if (!quiet) TB.sfx('click');
+  rvUi(); draw();
+  const on = document.querySelector('#rvList button.on'); if (on) on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+function pname(rv, c) { return rv.set.mode === 'pvp' ? (c === 1 ? '黑方' : '白方') : (c === rv.set.me ? '你' : '電腦'); }
+function reason(a, s) {
+  const p = s.p, b = a.best;
+  if (isX(p) && s.before[cornerOf(p)] === 0) return '下在空角旁邊的斜角（X 位），把 ' + coord(cornerOf(p)) + ' 角送給對手。';
+  if (isCorner(b) && !isCorner(p)) return '可以搶 ' + coord(b) + ' 角卻沒有搶。';
+  if (isC(p) && s.before[cornerOf(p)] === 0) return '貼著空角的邊（C 位），容易讓對手拿到角。';
+  return '';
+}
+function rvUi() {
+  const rv = RV; if (!rv) return;
+  const s = rv.steps[rv.k], N = rv.steps.length - 1;
+  // 雙方子數（照目前這一步）
+  const [k, w] = R.count(s.after);
+  document.getElementById('s1').textContent = k; document.getElementById('s2').textContent = w;
+  // 位置
+  const mvNo = rv.steps.slice(1, rv.k + 1).length;
+  document.getElementById('rvPos').textContent = rv.k === 0 ? '開局 / 共 ' + N + ' 手' : '第 ' + mvNo + ' / ' + N + ' 手';
+  document.getElementById('rvFirst').disabled = document.getElementById('rvPrev').disabled = rv.k === 0;
+  document.getElementById('rvNext').disabled = document.getElementById('rvLast').disabled = rv.k === N;
+  // 進度
+  const prog = document.getElementById('rvProg');
+  if (rv.done < rv.total) { prog.style.display = ''; document.getElementById('rvProgT').textContent = '分析中 ' + rv.done + '/' + rv.total; prog.querySelector('i').style.setProperty('--w', (rv.done / Math.max(1, rv.total) * 100) + '%'); }
+  else prog.style.display = 'none';
+  // 摘要：玩家那方（對電腦）或雙方（兩人）
+  const sides = rv.set.mode === 'cpu' ? [rv.set.me] : [1, 2];
+  document.getElementById('rvSum').innerHTML = sides.map(c => {
+    const n = [0, 0, 0, 0]; rv.steps.forEach((st, i) => { const a = rv.an[i]; if (st.kind === 'move' && st.mover === c && a && !a.forced) n[a.q]++; });
+    return '<b>' + pname(rv, c) + (rv.set.mode === 'pvp' ? '' : '（' + (c === 1 ? '黑' : '白') + '）') + '</b>' + n.map((x, q) => '<span class="rv-tag q' + q + '">' + QN[q][0] + ' ' + x + '</span>').join('');
+  }).join('<span style="flex-basis:100%;height:0"></span>');
+  // 評語
+  const note = document.getElementById('rvNote');
+  if (s.kind === 'start') note.innerHTML = '開局。按 ▶ 或在棋盤上往左滑看下一手。';
+  else if (s.kind === 'pass') note.innerHTML = '<span class="rv-tag qp">過</span> ' + pname(rv, s.mover) + '沒有地方可以下，換對方繼續。';
+  else {
+    const a = rv.an[rv.k], who = pname(rv, s.mover) + (rv.set.mode === 'pvp' ? '' : '（' + (s.mover === 1 ? '黑' : '白') + '）') + '下 <b>' + coord(s.p) + '</b>';
+    if (!a) note.innerHTML = who + '。<span style="color:var(--mute)">分析中…</span>';
+    else if (a.forced) note.innerHTML = who + '。<span class="rv-tag qp">只有這一步</span>';
+    else {
+      const tag = '<span class="rv-tag q' + a.q + '">' + QN[a.q][0] + ' ' + QN[a.q][1] + '</span> ';
+      const fmt = x => (Math.round(x * 10) / 10).toString().replace(/\.0$/, '');
+      let t = tag + who + '。';
+      if (a.q === 0) t += a.best === s.p ? '這就是最好的一步。' : '跟最好的下法差不多。';
+      else t += reason(a, s) + '較好的是 <b style="color:#2563eb">' + coord(a.best) + '</b>（預估差 ' + fmt(a.loss) + ' 子）。';
+      const bl = a.black; t += '<br><span style="color:var(--mute);font-size:12px">' + (a.exact ? '精確計算：' : '預估：') + '最後' + (Math.abs(bl) < .5 ? '大約平手' : (bl > 0 ? '黑' : '白') + '多約 ' + fmt(Math.abs(bl)) + ' 子') + '</span>';
+      note.innerHTML = t;
+    }
+  }
+  // 手數列表
+  const list = document.getElementById('rvList');
+  if (list.childElementCount !== rv.steps.length) {
+    list.innerHTML = rv.steps.map((st, i) => '<button data-k="' + i + '">' + (i === 0 ? '開局' : st.kind === 'pass' ? '過' : i) + '</button>').join('');
+  }
+  let no = 0;
+  [...list.children].forEach((btn, i) => {
+    const st = rv.steps[i], a = rv.an[i];
+    if (st.kind === 'move') { no++; btn.textContent = no + (st.mover === 1 ? '●' : '○') + coord(st.p) + (a && !a.forced && a.q ? QN[a.q][0] : ''); }
+    btn.className = (a && !a.forced ? 'q' + a.q : '') + (i === rv.k ? ' on' : '');
+  });
+  drawCurve();
+  document.getElementById('status').innerHTML = rv.src === 'last' ? '覆盤：上一盤棋' : '覆盤中';
+}
+function drawCurve() {
+  const rv = RV, c = document.getElementById('rvCurve'); if (!rv || !c) return;
+  const W = c.clientWidth, H = c.clientHeight; if (!W || !H) return;
+  const d = Math.min(3, devicePixelRatio || 1); c.width = W * d; c.height = H * d;
+  const g = c.getContext('2d'); g.setTransform(d, 0, 0, d, 0, 0); g.clearRect(0, 0, W, H);
+  const N = rv.steps.length - 1, X = k => 6 + (W - 12) * (N ? k / N : 0), Y = v => 4 + (H - 8) * (1 - v);
+  g.strokeStyle = 'rgba(107,114,128,.35)'; g.setLineDash([3, 3]); g.lineWidth = 1; g.beginPath(); g.moveTo(0, Y(.5)); g.lineTo(W, Y(.5)); g.stroke(); g.setLineDash([]);
+  const pts = []; for (let k = 0; k <= N; k++) { const v = evalAt(rv, k); if (v != null) pts.push([X(k), Y(v), k]); }
+  if (pts.length > 1) {
+    g.beginPath(); g.moveTo(pts[0][0], Y(.5)); pts.forEach(p => g.lineTo(p[0], p[1])); g.lineTo(pts[pts.length - 1][0], Y(.5)); g.closePath();
+    g.fillStyle = 'rgba(17,24,39,.12)'; g.fill();
+    g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.strokeStyle = '#111827'; g.lineWidth = 2; g.stroke();
+  }
+  const col = ['', '#eab308', '#f97316', '#f43f5e'];
+  rv.steps.forEach((st, k) => { const a = rv.an[k]; if (!a || a.forced || a.q < 2) return; const v = evalAt(rv, k); if (v == null) return; g.fillStyle = col[a.q]; g.beginPath(); g.arc(X(k), Y(v), a.q === 3 ? 4 : 3, 0, 7); g.fill(); });
+  g.strokeStyle = '#059669'; g.lineWidth = 2; g.beginPath(); g.moveTo(X(rv.k), 0); g.lineTo(X(rv.k), H); g.stroke();
+  g.fillStyle = 'rgba(107,114,128,.8)'; g.font = '10px ' + getComputedStyle(document.body).fontFamily; g.fillText('黑', 4, 11); g.fillText('白', 4, H - 4);
+}
+(function rvWire() {
+  const $ = id => document.getElementById(id);
+  $('rvFirst').onclick = () => rvGo(0); $('rvPrev').onclick = () => rvGo(RV.k - 1);
+  $('rvNext').onclick = () => rvGo(RV.k + 1); $('rvLast').onclick = () => rvGo(RV.steps.length - 1);
+  $('rvList').addEventListener('click', e => { const b = e.target.closest('button[data-k]'); if (b && RV) rvGo(+b.dataset.k); });
+  const cj = e => { if (!RV) return; const r = $('rvCurve').getBoundingClientRect(); const N = RV.steps.length - 1; rvGo(Math.round((e.clientX - r.left - 6) / Math.max(1, r.width - 12) * N)); };
+  $('rvCurve').addEventListener('pointerdown', e => { cj(e); $('rvCurve').setPointerCapture(e.pointerId); });
+  $('rvCurve').addEventListener('pointermove', e => { if (e.buttons) cj(e); });
+  // 在棋盤上左右滑切換
+  let sx = 0, sy = 0;
+  cv.addEventListener('pointerdown', e => { sx = e.clientX; sy = e.clientY; swiped = false; });
+  cv.addEventListener('pointerup', e => {
+    if (!RV) return; const dx = e.clientX - sx, dy = e.clientY - sy;
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.3) { swiped = true; rvGo(RV.k + (dx < 0 ? 1 : -1)); }
+  });
+  new ResizeObserver(() => { if (RV) drawCurve(); }).observe($('rvCurve'));
+})();
 
 function newDialog() {
   let pick = null;
@@ -435,20 +708,30 @@ function newDialog() {
       onClick: d => { pick = { mode: TB.segVal(d, 'mode'), level: +TB.segVal(d, 'level'), me: +TB.segVal(d, 'me') }; } }],
   }).then(v => { if (v === 'go') newGame(pick); else after(); });
 }
-document.getElementById('bNew').onclick = () => newDialog();
+document.getElementById('bNew').onclick = () => { if (RV) closeReview(); newDialog(); };
 document.getElementById('bUndo').onclick = undo;
 document.getElementById('bHint').onclick = doHint;
+document.getElementById('bReview').onclick = () => { if (RV) closeReview(); else openReview(); };
 document.getElementById('bInfo').onclick = () => {
   const s = TB.stats('reversi');
   TB.dialog({ title: '黑白棋',
     html: TB.statsHtml([['已玩', s.played || 0], ['贏電腦', s.won || 0], ['和局', s.draw || 0], ...TB.elo.stat('reversi')]) +
       TB.seg('可以下的位置', 'dots', [[1, '顯示小點'], [0, '不顯示']], pref.dots ? 1 : 0) +
       '<div class="tb-rules"><h4>怎麼玩</h4><ul><li>黑棋先下。新的棋子必須和自己的另一顆棋子，在橫、直或斜線上<b>夾住</b>對方一顆以上的棋子。</li><li>被夾住的棋子全部翻成自己的顏色。一手可以同時夾好幾個方向。</li><li>沒有地方可以下時就換對方下（不能故意不下）。</li><li>雙方都不能下時遊戲結束，棋子多的人贏。</li></ul>' +
-      '<h4>小技巧</h4><ul><li><b>角落</b>最重要：角落的棋子永遠不會被翻。</li><li>角落旁邊的斜角格（X 位）通常很危險，會把角落送給對手。</li><li>前期不用急著吃很多子，讓對手「沒地方好下」比較厲害。</li><li>點「提示」會標出建議的位置。</li></ul></div>',
+      '<h4>小技巧</h4><ul><li><b>角落</b>最重要：角落的棋子永遠不會被翻。</li><li>角落旁邊的斜角格（X 位）通常很危險，會把角落送給對手。</li><li>前期不用急著吃很多子，讓對手「沒地方好下」比較厲害。</li><li>點「提示」會標出建議的位置。</li></ul>' +
+      '<h4>覆盤</h4><ul><li>下完一局（或下到一半）按「覆盤」，可以一步一步倒回去看。</li><li>電腦會幫每一手打分數：<b style="color:#15803d">✓ 好棋</b>、<b style="color:#a16207">?! 緩著</b>、<b style="color:#c2410c">? 失誤</b>、<b style="color:#be123c">?? 大失誤</b>，「預估差幾子」是跟最好的下法比，最後大概會少幾顆棋子。</li><li>棋盤上的<b style="color:#2563eb">藍圈</b>是當時比較好的位置；上方曲線是黑方的勝率，點曲線可以直接跳到那一手。</li><li>左右鍵、或在棋盤上左右滑，可以切換上一手／下一手。最後一盤棋會記下來，重新整理後也能覆盤。</li></ul></div>',
     buttons: [{ label: '好', primary: true, onClick: d => { pref = { dots: TB.segVal(d, 'dots') === '1' }; TB.store.set('reversi:pref', pref); draw(); } }],
   });
 };
-addEventListener('keydown', e => { if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); undo(); } });
+addEventListener('keydown', e => {
+  if (RV && !document.querySelector('.tb-over')) {
+    if (e.key === 'ArrowLeft') { e.preventDefault(); rvGo(RV.k - 1); return; }
+    if (e.key === 'ArrowRight') { e.preventDefault(); rvGo(RV.k + 1); return; }
+    if (e.key === 'Home') { rvGo(0); return; } if (e.key === 'End') { rvGo(RV.steps.length - 1); return; }
+    if (e.key === 'Escape') { closeReview(); return; }
+  }
+  if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (!RV) undo(); }
+});
 
 new ResizeObserver(fit).observe(bb);
 addEventListener('resize', fit);
