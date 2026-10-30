@@ -11,7 +11,7 @@
 | 3 | `abc/` | ABC Island | 單一 `index.html`＋`audio/`（Kokoro 預錄）；第二次答錯時 AI 英文提示（`/api/tutor`＋`/api/tts?v=en`） | — | ✓ | ✓ |
 | 4 | `zhuyin/` | ㄅㄆㄇ 小島 | `index.html`＋`data.js`＋`audio/`（預錄）；答錯時 AI 家教提示（`/api/tutor`），沒預錄的句子用 `/api/tts` | — | ✓ | ✓ |
 | M | `math/` | 123 小島 | `index.html`＋`data.js`＋`audio/`（預錄）；AI 家教 `/api/tutor` | — | ✓ | |
-| T | `table/` | 棋牌桌遊 | 每款一個 HTML，共用 `common.js`／`common.css`；電腦對手在 Web Worker。象棋、五子棋、暗棋可以**線上對戰**（`table/online.js`：房號＋QR code，沿用連線一起玩的 `/api/link/room` 轉送，房主的網頁當裁判；`?net=local` 可用同一台電腦兩個分頁測試）。麻將也能線上對戰（2～4 個真人，空位由房主的電腦補；房主跑整局，只把各人看得到的局面旋轉後單獨送給每位客人，別家手牌與牌牆不外送；斷線 30 秒電腦代打、回來接回；可選打牌限時；程式在 `mahjong.html` 的 `OL` 區塊，房主存檔 key `online:mahjong`） | — | — | |
+| T | `table/` | 棋牌桌遊 | 每款一個 HTML，共用 `common.js`／`common.css`；電腦對手在 Web Worker。西洋棋教室：`chess-learn.html`＋課程資料 `chess-lessons.js`（6 章 25 課，共用 `chess-logic.js`；`node table/tools/chess-lessons-check.mjs` 驗證每題；進度 key `tb:chl:done`、`tb:chl:cur`）。象棋、五子棋、暗棋可以**線上對戰**（`table/online.js`：房號＋QR code，沿用連線一起玩的 `/api/link/room` 轉送，房主的網頁當裁判；`?net=local` 可用同一台電腦兩個分頁測試）。麻將也能線上對戰（2～4 個真人，空位由房主的電腦補；房主跑整局，只把各人看得到的局面旋轉後單獨送給每位客人，別家手牌與牌牆不外送；斷線 30 秒電腦代打、回來接回；可選打牌限時；程式在 `mahjong.html` 的 `OL` 區塊，房主存檔 key `online:mahjong`） | — | — | |
 | 5 | `cobblekeep/` | Cobble Keep | 3D FPS | three、peerjs、qrcode | ✓ | ✓ |
 | 6 | `zijia/` | 銘甲戰記 | **有建置**：`zijia/src/` → `sh build.sh` → 複製 `index.html` 到 `zijia/`（離線那行在 build.sh 裡） | — | ✓ | ✓ |
 | 7 | `racing/` | Sunny Circuit | 3D 賽車 | three、peerjs、qrcode | ✓ | ✓ |
