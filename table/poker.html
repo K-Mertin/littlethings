@@ -370,6 +370,7 @@ const K = {
     const s = this.st; if (s.done) return; s.done = true; this.save();
     TB.bump('poker', 'won'); TB.bump('poker-klondike', 'won');
     const best = TB.store.get('poker:best:klondike', 0); if (!best || s.time < best) TB.store.set('poker:best:klondike', s.time);
+    const bm = TB.store.get('poker:bestmoves:klondike', 0); if (!bm || s.moves < bm) TB.store.set('poker:bestmoves:klondike', s.moves);   // 成就用：最少步數
     const dmsg = s.daily ? this.dailyDone(s) : '';
     winDance(() => TB.dialog({ title: '過關！', html: `<p>新接龍完成了，共 ${s.moves} 步，用時 ${fmtTime(s.time)}。</p>` + dmsg, buttons: [{ label: '重玩這一局', onClick: () => { setTimeout(() => this.replay(), 0); } }, { label: '再玩一局', primary: true, onClick: () => { setTimeout(() => newGame(), 0); } }] }));
   },
@@ -1092,6 +1093,7 @@ const F = {
   },
   win() {
     const s = this.st; if (s.done) return; s.done = true; this.save();
+    { const k = TB.store.get('poker:streak:freecell', { cur: 0, best: 0 }); k.cur = (k.cur || 0) + 1; k.best = Math.max(k.best || 0, k.cur); TB.store.set('poker:streak:freecell', k); }   // 成就用：連勝
     TB.bump('poker', 'won'); TB.bump('poker-freecell', 'won');
     const best = TB.store.get('poker:best:freecell', 0); if (!best || s.time < best) TB.store.set('poker:best:freecell', s.time);
     winDance(() => TB.dialog({ title: '過關！', html: `<p>空當接龍第 ${s.seed} 局完成了，共 ${s.moves} 步，用時 ${fmtTime(s.time)}。</p>`, buttons: [{ label: '重玩這一局', onClick: () => { setTimeout(() => this.replay(), 0); } }, { label: '再玩一局', primary: true, onClick: () => { setTimeout(() => newGame(), 0); } }] }));
@@ -1181,7 +1183,10 @@ const F = {
       buttons: [{ label: '取消', value: null }].concat(this.st ? [{ label: '重玩這一局', value: 'replay', onClick: () => { setTimeout(() => this.replay(), 0); } }] : [], [{ label: '開始', primary: true, onClick: d => { const v = parseInt(d.querySelector('#fc-no').value, 10); setTimeout(() => this.start(v >= 1 && v <= 1000000 ? v : 0), 0); } }])
     });
   },
-  start(seed) { this.fresh(seed); this.save(); this.layout(); dealAnim(W / 2 - CW / 2, H - CH - 30, this.dealOrder); },
+  start(seed) {
+    // 上一局動過卻沒過關就開新局＝放棄，連勝歸零
+    { const o = this.st; if (o && !o.done && o.moves > 0) { const k = TB.store.get('poker:streak:freecell', null); if (k && k.cur) { k.cur = 0; TB.store.set('poker:streak:freecell', k); } } }
+    this.fresh(seed); this.save(); this.layout(); dealAnim(W / 2 - CW / 2, H - CH - 30, this.dealOrder); },
   replay() { if (!this.st) return; TB.sfx('click'); this.start(this.st.seed); TB.toast('重新發第 ' + this.st.seed + ' 局'); },
   resume() { const v = loadSave('poker:freecell'); if (v && this.valid(v)) { this.st = v; this.hist = []; return true; } return false; },
   rules: `<h4>目標</h4><p>52 張牌一開始全部翻開，分成八疊。把牌依花色從 A 排到 K，全部送進右上角的四個回收區。</p>
