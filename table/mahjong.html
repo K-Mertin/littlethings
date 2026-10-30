@@ -117,6 +117,14 @@
 /* 線上對戰 */
 .ol-bar{flex:none;display:flex;align-items:center;gap:6px;padding:5px 10px;background:#eef0ff;border-bottom:1px solid var(--line);font-size:14px;min-height:40px;position:relative;z-index:4}
 .ol-bar[hidden]{display:none}
+/* 中途加入的請求（房主看到） */
+.ol-req{position:fixed;left:50%;top:calc(var(--bar,56px) + 54px);transform:translateX(-50%);z-index:45;background:#fff;border-radius:16px;box-shadow:0 12px 36px rgba(15,23,42,.25);padding:12px 14px;width:min(420px,calc(100vw - 24px));font-size:14px}
+.ol-req[hidden]{display:none}
+.ol-req .rq{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 0}
+.ol-req .rq+.rq{border-top:1px solid var(--line)}
+.ol-req .rq b{flex:1 1 100%}
+.ol-req button{appearance:none;border:0;border-radius:999px;padding:8px 12px;min-height:40px;font:inherit;font-weight:700;cursor:pointer;background:#059669;color:#fff}
+.ol-req button.no{background:var(--panel2);color:var(--ink)}
 .ol-dot{width:10px;height:10px;border-radius:50%;background:#9ca3af;flex:none}
 .ol-bar.ok .ol-dot{background:#10b981;box-shadow:0 0 0 3px rgba(16,185,129,.2)}
 .ol-bar.wait .ol-dot{background:#f59e0b;animation:olp 1s infinite alternate}
@@ -150,6 +158,7 @@
   <button class="tb-btn" id="bInfo">規則<span class="tb-hide-s">・戰績</span></button>
   <button class="tb-btn icon" id="tb-mute"></button>
 </header>
+<div class="ol-req" id="olReq" hidden></div>
 <div class="ol-bar" id="olBar" hidden><span class="ol-txt"><span class="ol-dot"></span><span class="ol-t"></span></span><span class="tb-sp"></span><button class="ol-b" data-a="invite">邀請</button><button class="ol-b" data-a="leave">離開</button></div>
 <main class="tb-main" id="main">
   <div id="tbl">
@@ -813,21 +822,46 @@ function danger(k, q, vis) {
   return d;
 }
 // 大牌型：看手上的牌決定要往哪種大牌做（沒有方向就回傳 null）
-function bigPlan(p) {
+// 一局裡一旦選定方向就盡量堅持（記在 BPM，不寫進存檔），除非副露讓它不可能再做成
+const BPM = new Map();
+const liveLeft = () => S.wall.length - 16;            // 還能摸的張數（留尾 16 張）
+function bigEval(p, Dforce) {
   const h = S.hands[p].filter(id => !MJ.isFlowerId(id)), suit = [0, 0, 0]; let hon = 0;
   const cnt = new Array(34).fill(0); h.forEach(id => cnt[K(id)]++);
   h.forEach(id => { const k = K(id); if (k >= 27) hon++; else suit[k / 9 | 0]++; });
-  let chiM = 0; const mSuit = new Set(); let mHon = 0, pairs = 0;
-  S.melds[p].forEach(m => { if (m.type === 'chi') chiM++; if (m.k >= 27) mHon++; else mSuit.add(m.k / 9 | 0); if (m.type !== 'chi') pairs++; });
-  for (let k = 0; k < 34; k++) if (cnt[k] >= 2) pairs++;
-  const D = [0, 1, 2].sort((a, b) => suit[b] - suit[a])[0], tot = h.length + S.melds[p].length * 3;
+  let chiM = 0; const mSuit = new Set(); let mHon = 0, trips = 0, pairs = 0, honPairs = 0;
+  S.melds[p].forEach(m => { if (m.type === 'chi') chiM++; if (m.k >= 27) mHon++; else mSuit.add(m.k / 9 | 0); if (m.type !== 'chi') trips++; });
+  for (let k = 0; k < 34; k++) { if (cnt[k] >= 3) trips++; else if (cnt[k] === 2) { pairs++; if (k >= 27) honPairs++; } }
+  const D = Dforce != null ? Dforce : [0, 1, 2].sort((a, b) => suit[b] - suit[a])[0], tot = h.length + S.melds[p].length * 3;
   const flushOk = [...mSuit].every(x => x === D);
-  const fScore = flushOk ? (suit[D] + hon + (mSuit.size ? 3 : 0) * S.melds[p].filter(m => m.k < 27).length + mHon * 3) / tot : 0;
-  const pScore = chiM ? 0 : pairs / 6;
-  const plan = { D, flush: null, pon: false, strength: 0 };
-  if (fScore >= 0.52) { plan.flush = (hon + mHon * 3) / tot <= 0.12 ? 'qing' : 'hun'; plan.strength = fScore; }
-  if (pScore >= 0.8 && pScore > fScore) { plan.pon = true; plan.flush = null; plan.strength = pScore; }
-  return plan.flush || plan.pon ? plan : null;
+  const inSuit = suit[D] + hon + 3 * S.melds[p].filter(m => m.k >= 27 || (m.k / 9 | 0) === D).length;
+  return { D, chiM, flushOk, fScore: flushOk ? inSuit / tot : 0, honFrac: (hon + mHon * 3) / tot, trips, pairs, honPairs, pon: chiM ? 0 : (trips * 1.6 + pairs) / 7 };
+}
+function bigPlan(p) {
+  const key = (S.mid || '') + ':' + S.handNo + ':' + p, e = bigEval(p), old = BPM.get(key);
+  // 已選定的方向：還做得到就繼續
+  if (old) {
+    const eo = old.flush ? bigEval(p, old.D) : e;
+    if (old.flush && eo.flushOk && eo.fScore >= 0.45) { const e = eo; old.strength = e.fScore; old.flush = e.honFrac <= 0.1 && old.flush === 'qing' ? 'qing' : (e.honFrac > 0.1 ? 'hun' : old.flush); return old; }
+    if (old.pon && !e.chiM && e.trips + e.pairs >= 4) { old.strength = e.pon; return old; }
+    BPM.delete(key);
+  }
+  const early = liveLeft() >= 40;                     // 前段才開新方向
+  const plan = { D: e.D, flush: null, pon: false, strength: 0 };
+  const fNeed = early ? 0.55 : 0.65, pNeed = early ? 0.62 : 0.75;
+  if (e.fScore >= fNeed) { plan.flush = e.honFrac <= 0.1 ? 'qing' : 'hun'; plan.strength = e.fScore; }
+  if (e.pon >= pNeed && (e.pon > e.fScore || !plan.flush)) { plan.pon = true; plan.flush = null; plan.strength = e.pon; }
+  if (!plan.flush && !plan.pon) return null;
+  BPM.set(key, plan); if (BPM.size > 200) BPM.delete(BPM.keys().next().value);
+  return plan;
+}
+// 碰碰胡還差幾張：挑 N 組最接近刻子的牌＋1 對當眼
+function ponDist(c, N) {
+  const v = []; for (let k = 0; k < 34; k++) if (c[k]) v.push(Math.min(3, c[k]));
+  v.sort((a, b) => b - a);
+  let d = 0; for (let i = 0; i < N; i++) d += 3 - (v[i] || 0);
+  const rest = v.slice(N); d += 2 - Math.min(2, rest.length ? Math.max(...rest) : 0);
+  return d;
 }
 const isValueHonor = (p, k) => k >= 31 || k === 27 + seatWind(p) || k === 27 + S.round;
 function aiDiscardChoice(p, level) {
@@ -850,20 +884,28 @@ function aiDiscardChoice(p, level) {
     if (plan) {
       // 大牌：往目標牌型靠，早巡寧可多差一步
       const B = 160000 * early;
+      const late = liveLeft() < 16;                     // 最後四分之一：回到一般打法
       if (plan.flush) {
         // 只看「同花色（＋字牌）」那部分還差幾步：別的花色等於廢牌，先打掉
         c[k]--;
         const cf = c.map((v, j) => j < 27 ? ((j / 9 | 0) === plan.D ? v : 0) : (plan.flush === 'qing' && !isValueHonor(p, j) ? 0 : v));
         const sP = sh(cf, N);
         c[k]++;
-        if (S.wall.length >= 30 || sP <= s + 1) score = -sP * 100000 - s * 25000 + uke * 100 + Math.random() * 5;
+        if (!late || sP <= s + 1) score = -sP * 100000 - s * 20000 + uke * 100 + Math.random() * 5;
+        // 別的花色（清一色時連字牌）優先打掉，就算一般打法覺得它們比較有用
+        if (!late && ((k < 27 && (k / 9 | 0) !== plan.D) || (plan.flush === 'qing' && k >= 27 && !isValueHonor(p, k)))) score += 45000;
       }
-      if (plan.pon) { if (c[k] >= 2) score -= B; else score += B * 0.6; }
+      if (plan.pon) {
+        c[k]--; const dP = ponDist(c, N); c[k]++;
+        if (!late) score = -dP * 100000 - s * 15000 + uke * 50 + Math.random() * 5;
+        else { if (c[k] >= 2) score -= B; else score += B * 0.6; }
+      }
     }
     if (ps === 'big' && k >= 27 && c[k] >= 2 && isValueHonor(p, k)) score -= 40000;
     if (th.length) {
       const dz = th.reduce((a, q) => a + danger(k, q, vis), 0);
       const w = ps === 'safe' ? (s >= 2 ? 400000 : s === 1 ? 120000 : s === 0 ? 40000 : 0)
+        : (plan && liveLeft() >= 16) ? (s >= 3 ? 150000 : s === 2 ? 90000 : s === 1 ? 6000 : 0)    // 做大牌時：只避開很危險的牌，不輕易拆方向
         : (s >= 2 ? 300000 : s === 1 ? 6000 : 0);
       score -= dz * w;
     }
@@ -876,7 +918,17 @@ function aiDiscardChoice(p, level) {
 function aiAct(p) {
   if (S.phase !== 'act' || S.cur !== p) return;
   const o = selfOptions(p);
-  if (o.win) return tsumo(p);
+  if (o.win) {
+    // 大牌型：前段摸到很小的自摸、而且離大牌只差一點時，偶爾不胡、繼續做大
+    const pl = persona(p) === 'big' && liveLeft() >= 30 ? bigPlan(p) : null;
+    if (pl && Math.random() < 0.35) {
+      const c1 = MJ.counts(S.hands[p]), c0 = c1.slice(); c0[K(S.drawn)]--;
+      const r = MJ.calcTai(winCtx(p, { conc: c1, winK: K(S.drawn), selfDraw: true, waitCount: MJ.waits(c0, needSets(p)).length }));
+      const big = r.items.some(([n]) => /一色|碰碰|三元|四喜/.test(n));
+      if (!big && r.total <= 2) { discard(p, aiDiscardChoice(p, S.opt.level).id); return; }
+    }
+    return tsumo(p);
+  }
   const lvl = AUTO() && p === 0 ? 'mid' : S.opt.level;
   const c = MJ.counts(S.hands[p]), N = needSets(p), sh = makeSh();
   if (o.ankan.length || o.kakan.length) {
@@ -891,10 +943,12 @@ function aiClaim(q, o, id) {
   const ps = persona(q);
   if (o.hu) {
     // 大牌型：還很早、台數很小、手上有大牌方向時，偶爾放過小胡
-    if (ps === 'big' && S.wall.length >= 30 && bigPlan(q) && Math.random() < 0.8) {
+    const pl = ps === 'big' && liveLeft() >= 16 ? bigPlan(q) : null;
+    if (pl && liveLeft() >= 22 && Math.random() < 0.85) {
       const c = MJ.counts(S.hands[q]), N = needSets(q), kk = K(id), wc = MJ.waits(c, N).length; c[kk]++;
-      const t = MJ.calcTai(winCtx(q, { conc: c, winK: kk, selfDraw: false, waitCount: wc })).total;
-      if (t <= 3) return null;
+      const r = MJ.calcTai(winCtx(q, { conc: c, winK: kk, selfDraw: false, waitCount: wc }));
+      const big = r.items.some(([n]) => /一色|碰碰|三元|四喜/.test(n));
+      if (!big && r.total <= (liveLeft() >= 34 ? 4 : 3)) { return null; }
     }
     return { type: 'hu' };
   }
@@ -902,14 +956,17 @@ function aiClaim(q, o, id) {
   const lvl = AUTO() && q === 0 ? 'mid' : S.opt.level, k = K(id);
   const c = MJ.counts(S.hands[q]), N = needSets(q), sh = makeSh(), s0 = sh(c, N);
   const after = (rem, n) => { rem.forEach(r => c[r]--); let b = 99; for (let j = 0; j < 34; j++) if (c[j]) { c[j]--; b = Math.min(b, sh(c, n)); c[j]++; } rem.forEach(r => c[r]++); return b; };
-  if (o.kan) { c[k] -= 3; const s = sh(c, N - 1); c[k] += 3; if (s <= s0 && (lvl !== 'easy' || Math.random() < .6)) return { type: 'kan' }; }
   const plan = ps === 'big' ? bigPlan(q) : null;
+  const offSuit = plan && plan.flush && k < 27 && (k / 9 | 0) !== plan.D && liveLeft() >= 16;
+  if (o.kan && !offSuit) { c[k] -= 3; const s = sh(c, N - 1); c[k] += 3; if (s <= s0 && (lvl !== 'easy' || Math.random() < .6)) return { type: 'kan' }; }
   if (o.pon) {
     const s1 = after([k, k], N - 1);
     const value = isValueHonor(q, k);
     if (ps === 'big') {
       const fits = plan && (plan.pon || (plan.flush && (k >= 27 || (k / 9 | 0) === plan.D)));
-      if (s1 < s0 || (value && s1 <= s0 + 1) || (fits && s1 <= s0 + (plan.pon ? 1 : 0))) return { type: 'pon' };
+      // 做清／混一色時，不碰別的花色（會把方向弄壞），最後四分之一才放寬
+      if (plan && plan.flush && !fits && liveLeft() >= 16) return null;
+      if (s1 < s0 || (value && s1 <= s0 + 1) || (fits && s1 <= s0 + (plan.pon || liveLeft() >= 30 ? 1 : 0))) return { type: 'pon' };
       return null;
     }
     if (ps === 'safe') { if (s1 < s0 && (value || s0 <= 2)) return { type: 'pon' }; }
@@ -1382,17 +1439,50 @@ const OL = (() => {
     }
     O.changed();
   }
+  // ---------- 房主：中途加入 ----------
+  const pend = {};
+  const reqEl = document.getElementById('olReq');
+  function paintReq() {
+    const ids = Object.keys(pend), ai = [1, 2, 3].filter(p => !seats[p]);
+    if (!O.host || !ids.length) { reqEl.hidden = true; reqEl.innerHTML = ''; return; }
+    reqEl.innerHTML = ids.map(id => '<div class="rq" data-id="' + esc(id) + '"><b>👋 ' + esc(pend[id].name) + ' 想中途加入</b>' +
+      ai.map(p => '<button data-seat="' + p + '">接手' + POS[p] + '・' + esc(AI_NAMES[p]) + '</button>').join('') +
+      '<button class="no" data-seat="0">不要</button></div>').join('');
+    reqEl.hidden = false;
+  }
+  reqEl.addEventListener('click', e => {
+    const b = e.target.closest('button'), row = e.target.closest('.rq'); if (!b || !row) return;
+    TB.sfx('click'); const id = row.dataset.id, seat = +b.dataset.seat;
+    if (seat) grant(id, seat); else { delete pend[id]; sendTo(id, { k: 'full', started: true, denied: true }); paintReq(); }
+  });
+  function grant(id, seat) {
+    const pd = pend[id]; if (!pd) return;
+    if (seats[seat] || !started) { paintReq(); return; }
+    delete pend[id];
+    seats[seat] = { id, name: pd.name, conn: true, t: 0 };
+    if (S && S.tags) S.tags[seat] = 'hum';
+    setNames(); TB.toast(pd.name + ' 接手了' + POS[seat]);
+    paintReq(); O.changed(); render();
+    // 剛好輪到這個座位：交給真人
+    if (S && !S.over && S.phase === 'act' && S.cur === seat) { clearTimeout(timer); step(); }
+  }
   function hostOn(m) {
     if (m.k === '_hello') { for (const k in seats) { const on = (m.ids || []).includes(seats[k].id); if (on) back(+k); else { seats[k].conn = false; away(+k); } } O.changed(); return; }
     if (m.k === '_join') { const s = seatOf(m.id); if (s > 0) back(s); return; }
-    if (m.k === '_leave') { const s = seatOf(m.id); if (s > 0) { seats[s].conn = false; TB.toast(seats[s].name + ' 斷線了'); away(s); O.changed(); } return; }
+    if (m.k === '_leave') { if (pend[m.id]) { delete pend[m.id]; paintReq(); } const s = seatOf(m.id); if (s > 0) { seats[s].conn = false; TB.toast(seats[s].name + ' 斷線了'); away(s); O.changed(); } return; }
     if (m.k !== '_msg') return;
     const id = m.id, x = m.m || {}, s0 = seatOf(id);
     if (x.k === 'hi') {
       const nm = String(x.name || '').slice(0, 12) || '客人';
       if (s0 > 0) { seats[s0].name = nm; back(s0); setNames(); O.changed(); return; }
       const free = [1, 2, 3].find(p => !seats[p]);
-      if (started || free == null) { sendTo(id, { k: 'full', started }); return; }
+      // 已經開始：可以中途加入，接手一個電腦座位（房主同意後）
+      if (started) {
+        if (![1, 2, 3].some(p => !seats[p])) { sendTo(id, { k: 'full', started }); return; }
+        pend[id] = { name: nm }; sendTo(id, { k: 'wait' });
+        TB.sfx('select'); paintReq(); return;
+      }
+      if (free == null) { sendTo(id, { k: 'full', started }); return; }
       seats[free] = { id, name: nm, conn: true, t: 0 }; setNames();
       TB.sfx('select'); TB.toast(nm + ' 加入了');
       O.changed(); return;
@@ -1413,7 +1503,8 @@ const OL = (() => {
   function guestOn(m) {
     if (m.k === '_host') { hostOn_(m.on); return; }
     if (m.k === 'lobby') { lobby = m; mySeat = m.you; hostUp = true; paintBar(); showGuestLobby(); return; }
-    if (m.k === 'full') { stop(true); TB.dialog({ title: '進不去', html: '<p>' + (m.started ? '這個房間已經開始打了，沒有空位。' : '這個房間已經滿了（最多 4 個人）。') + '</p>', buttons: [{ label: '好', primary: true }] }).then(() => boot()); return; }
+    if (m.k === 'wait') { O.waiting = true; TB.dialog({ title: '等房主同意', dismiss: false, html: '<p>這一局已經開始了。已經通知房主，房主同意後你就會接手一位電腦的座位（手牌和分數都接著打）。</p>', buttons: [{ label: '離開房間', value: 'leave' }] }).then(v => { if (v === 'leave') O.leave(); }); return; }
+    if (m.k === 'full') { O.waiting = false; stop(true); TB.dialog({ title: '進不去', html: '<p>' + (m.denied ? '房主這次沒有讓你加入。' : m.started ? '這個房間已經開始打了，沒有空位。' : '這個房間已經滿了（最多 4 個人）。') + '</p>', buttons: [{ label: '好', primary: true }] }).then(() => boot()); return; }
     if (m.k === 'bye') { stop(true); TB.dialog({ title: '房主離開了', html: '<p>房間關掉了。</p>', buttons: [{ label: '好', primary: true }] }).then(() => boot()); return; }
     if (m.k === 'v') applyView(m);
   }
@@ -1423,6 +1514,7 @@ const OL = (() => {
     lastSeq = m.seq; hostUp = true; O.busy = false; clearTimeout(busyT);
     const st = m.st, prev = S;
     if (lobby) { lobby = null; TB.closeDialog(); }
+    if (O.waiting) { O.waiting = false; TB.closeDialog(); TB.toast('房主同意了，接手座位開始打！'); }
     NAMES = st.names; S = st;
     if (sel != null && !S.hands[0].includes(sel)) sel = null;
     rDeadline = st.remain ? Date.now() + st.remain : (st.cremain ? Date.now() + st.cremain : 0);
@@ -1607,6 +1699,7 @@ const OL = (() => {
     O.clearTurn(); clearTimeout(ctimer);
     const was = O.on;
     Object.assign(O, { on: false, host: false, guest: false, busy: false });
+    for (const k in pend) delete pend[k]; paintReq(); O.waiting = false;
     conn = 'off'; if (forget) TB.store.del(KEY);
     if (was) { NAMES = AI_NAMES.slice(); S = null; clearActs(); boardEl.innerHTML = ''; meEl.innerHTML = ''; }
     paintBar();
