@@ -65,6 +65,7 @@ function buildBg(th) {
   const hy = H - 4;
   const r = rng(th.id.length * 97 + 7);
   if (th.id === 'volcano') bgVolcano(g, CW, hy, r);
+  else if (th.id === 'sky') bgSky(g, CW, hy, r);
   else if (th.id === 'night') {
     for (let i = 0; i < 90; i++) { g.fillStyle = `rgba(255,255,255,${0.3 + r() * 0.7})`; g.fillRect(r() * CW, r() * hy * 0.8, 1.5 * R.dpr, 1.5 * R.dpr); }
     g.fillStyle = radial(g, CW * 0.78, hy * 0.3, hy * 0.18, '#fff8e0', '#e8d8a0', 0, 0); ell(g, CW * 0.78, hy * 0.3, hy * 0.12, hy * 0.12); g.fill();

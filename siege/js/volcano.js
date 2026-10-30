@@ -178,6 +178,7 @@ function bgVolcano(g, CW, hy, r) {
 
 // ---------- 地上的新東西 ----------
 function drawLava(g, o, t) {
+  if (o.sky) return drawGap(g, o, t);
   const z0 = Math.max(o.z, -Z0 + 0.6), z1 = o.z + o.len;
   if (z1 <= z0 || o.z > ZSPAWN) return;
   // 岩漿（往旁邊流動）

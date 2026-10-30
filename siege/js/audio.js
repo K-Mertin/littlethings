@@ -90,6 +90,9 @@ const AU = {
       case 'mortar': if (this.ok('mortar', 4)) { this.tone(160, 0.18, 'sine', 0.22, 60); this.noiseHit(0.12, 0.12, 700, 0.7); } break;
       case 'lava': if (this.ok('lava', 5)) { this.noiseHit(0.25, 0.18, 900, 0.6); this.tone(240, 0.2, 'sawtooth', 0.06, 120); } break;
       case 'geyser': if (this.ok('geyser', 4)) { this.noiseHit(0.6, 0.22, 600, 0.4, null, null, 'lowpass'); this.tone(90, 0.5, 'sawtooth', 0.08, 50); } break;
+      case 'zap': if (this.ok('zap', 5)) { this.noiseHit(0.35, 0.3, 3200, 0.9, null, null, 'highpass'); this.tone(1400, 0.18, 'square', 0.07, 200); this.tone(70, 0.4, 'sine', 0.3, 40); } break;
+      case 'gust': if (this.ok('gust', 2)) this.noiseHit(1.4, 0.18, 700, 0.3, null, null, 'bandpass'); break;
+      case 'fall': if (this.ok('fall', 5)) this.tone(700, 0.35, 'triangle', 0.08, 180); break;
       case 'breath': this.noiseHit(1.2, 0.3, 500, 0.5, null, null, 'lowpass'); this.tone(140, 1.0, 'sawtooth', 0.1, 70); break;
       case 'buff': { const c = this.ctx.currentTime; [523, 784, 1047, 1568].forEach((f, i) => this.tone(f, 0.14, 'triangle', 0.13, 0, null, c + i * 0.05)); break; }
       case 'blocked': if (this.ok('blocked', 6)) this.tone(1200, 0.08, 'triangle', 0.08, 1800); break;
@@ -102,6 +105,7 @@ const AU = {
     { bpm: 120, root: 50, prog: [0, 8, 5, 7], scale: [0, 2, 3, 7, 8] },       // 雪原
     { bpm: 138, root: 43, prog: [0, 0, 3, 5], scale: [0, 3, 5, 6, 7, 10] },   // 夜城
     { bpm: 144, root: 40, prog: [0, 1, 0, 8], scale: [0, 1, 4, 5, 7, 8] },    // 火山：弗里吉亞屬音
+    { bpm: 128, root: 52, prog: [0, 2, 7, 5], scale: [0, 2, 4, 6, 7, 11] },   // 天空：利地亞
   ],
   music(i, boss) {
     if (!this.ctx) return;

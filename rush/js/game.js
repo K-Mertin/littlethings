@@ -29,11 +29,12 @@ function newGame(s, opts) {
     rule: L.rule, ice: L.rule === 'ice', vx: 0,
     mode, leg: 0, hpMul: 1, seed: opts.seed || 1, legStart: 0,
     spec: { medic: up.medic, mortar: up.mortar, guard: 0 }, buff: { shield: 0, fury: 0 }, armK: 1 - up.armor * 0.02,
-    wounded: 0, medT: 2, morT: 2, metT: 3, healed: 0,
+    wounded: 0, medT: 2, morT: 2, metT: 3, healed: 0, windT: 3.5, gust: null, windDX: 0, boltT: 2.5,
   };
   if (WEAPONS[opts.wpn]) G.wid = opts.wpn;
   if (mode === 'endless') { G.adE = 0.85; G.adMin = 0.12; G.hpMul = 0.8; }
   if (mode === 'boss') { G.hpMul = 0.9; }
+  if (mode === 'stage') G.hpMul = (opts.df != null ? opts.df : STAGES[s - 1].df) || 1;   // 每關的難度係數（用 tools/sim.js 校準）
   if (mode === 'daily') { G.N = startN(s); G.dmgK = 1; G.rateK = 1; G.spec = { medic: 0, mortar: 0, guard: 0 }; G.armK = 1; G.wid = 'rifle'; }
   G.peak = G.N;
   syncSoldiers(true);
@@ -103,6 +104,10 @@ function mkEnemy(k, x, z, hp, sHP) {
   if (k === 'thrower') { o.hold = 15 + Math.random() * 6; o.throws = 0; o.throwT = 0.6 + Math.random() * 0.8; }
   if (k === 'healer') { o.hold = 17 + Math.random() * 5; o.heals = 0; o.healT = 1.2 + Math.random() * 0.6; }
   if (k === 'bat') { o.fly = 1; o.bx = x; o.amp = 1.2 + Math.random() * 1.0; o.f = 2 + Math.random() * 1.2; o.zph = Math.random() * 6; }
+  // 疾風鷹：飛得更快、擺得更大，靠近時會往部隊俯衝
+  if (k === 'eagle') { o.fly = 1; o.bx = x; o.amp = 1.6 + Math.random() * 1.0; o.f = 1.4 + Math.random() * 0.8; o.zph = Math.random() * 6; }
+  // 氣球炸彈兵：飄在前面丟四顆炸彈才衝過來
+  if (k === 'bomber') { o.fly = 1; o.hold = 17 + Math.random() * 6; o.throws = 0; o.throwT = 0.8 + Math.random() * 0.8; }
   return o;
 }
 
@@ -164,7 +169,7 @@ function spawnEvents() {
     } else if (e.type === 'saw') {
       for (const m of e.list) G.objs.push({ t: 'saw', id: _uid++, cx: m.cx, amp: m.amp, f: m.f, ph: m.ph, x: m.cx, z: z0 + m.dz, r: 0.72, tick: 0, spin: 0 });
     } else if (e.type === 'lava') {
-      G.objs.push({ t: 'lava', id: _uid++, z: z0, len: e.len, bridges: e.bridges.map(b => Object.assign({ x: b.cx + b.amp * Math.sin(G.t * b.f + b.ph) }, b)), tick: 0 });
+      G.objs.push({ t: 'lava', id: _uid++, sky: e.sky ? 1 : 0, z: z0, len: e.len, bridges: e.bridges.map(b => Object.assign({ x: b.cx + b.amp * Math.sin(G.t * b.f + b.ph) }, b)), tick: 0 });
     } else if (e.type === 'geyser') {
       for (const m of e.list) G.objs.push({ t: 'geyser', id: _uid++, x: m.x, z: z0 + m.dz, per: m.per, ph: m.ph, r: 1.15, hitC: -1, killC: -1 });
     } else if (e.type === 'spike') {
@@ -200,6 +205,7 @@ const BOSS_MOVES = {
   scorpion: { kind: 'poison',  every: 2.9, n: 1 },
   yeti:     { kind: 'ice',     every: 3.2, n: 2 },
   mech:     { kind: 'missile', every: 3.3, n: 2 },
+  thunder:  { kind: 'orb',     every: 3.4, n: 2 },
 };
 
 // ---- 射擊 ----
@@ -304,7 +310,7 @@ function updateBullets(dt) {
     for (let j = 0; j < O.length; j++) {
       const o = O[j];
       if (o.dead || o === b.last) continue;
-      if (o.t === 'saw' || o.t === 'spike' || o.t === 'lob' || o.t === 'divider' || o.t === 'lava' || o.t === 'geyser' || o.t === 'pool' || o.t === 'shell') continue;
+      if (o.t === 'saw' || o.t === 'spike' || o.t === 'lob' || o.t === 'divider' || o.t === 'lava' || o.t === 'geyser' || o.t === 'pool' || o.t === 'shell' || o.t === 'bolt') continue;
       if (o.t === 'wall') {
         if (o.z < z0 - 0.2 || o.z > b.z + 0.2) continue;
         if (o.z < bz) { bz = o.z; best = o; }
@@ -482,10 +488,10 @@ function step(dt, input) {
           o.tick -= dt;
           if (o.tick <= 0) {
             o.tick = 0.22;
-            const loss = takeLoss(Math.max(1, Math.ceil(G.N * 0.07 * out)), 'lava');
-            floatText(G.px, 0.4, 1.5, lossTxt(loss), '#ffb04a', 1);
-            setN(G.N - loss, 'lava');
-            emit('lava', { loss });
+            const loss = takeLoss(Math.max(1, Math.ceil(G.N * 0.07 * out)), o.sky ? 'fall' : 'lava');
+            floatText(G.px, 0.4, 1.5, lossTxt(loss), o.sky ? '#9fd0ff' : '#ffb04a', 1);
+            setN(G.N - loss, o.sky ? 'fall' : 'lava');
+            emit(o.sky ? 'fall' : 'lava', { loss });
             if (G.N <= 0) { lose(); return; }
           }
         }
@@ -509,6 +515,27 @@ function step(dt, input) {
           if (G.N <= 0) { lose(); return; }
         }
       }
+      if (o.z < -6) O.splice(i, 1);
+    } else if (o.t === 'bolt') {
+      // 雷擊：藍圈預告，時間到劈下來，圈裡的士兵和怪物都會被劈到
+      o.z -= v * dt;
+      if (o.warn > 0) {
+        o.warn -= dt;
+        if (o.warn <= 0) {
+          o.flash = 0.28;
+          emit('zap', o);
+          if (fxOn()) FX.boom(o.x, o.z, o.r * 0.6, true);
+          for (const e of O) if (e.t === 'en' && !e.dead && Math.hypot(e.x - o.x, (e.z - o.z) * 0.8) < o.r + e.r * 0.4) hurt(e, e.max * 0.9);
+          if (G.N > 0 && Math.abs(o.z) < o.r + cr.rz * 0.7 && Math.abs(o.x - G.px) < o.r + cr.rx * 0.5) {
+            const loss = takeLoss(Math.max(1, Math.ceil(G.N * 0.11)) + 1, 'bolt');
+            floatText(G.px, 0.8, 1.8, lossTxt(loss), '#9fd8ff', 1.1);
+            setN(G.N - loss, 'bolt');
+            G.shake = Math.max(G.shake, 0.4);
+            emit('hit', { loss });
+            if (G.N <= 0) { lose(); return; }
+          }
+        }
+      } else { o.flash -= dt; if (o.flash <= 0) { O.splice(i, 1); continue; } }
       if (o.z < -6) O.splice(i, 1);
     } else if (o.t === 'pool') {
       o.z -= v * dt; o.life -= dt;
@@ -626,11 +653,12 @@ function step(dt, input) {
         // 橫越的怪：跟著地面捲過來，自己往旁邊走
         o.z -= v * dt; o.x += o.vx * dt; o.ph += dt * 9;
         if (o.x * o.vx > 0 && Math.abs(o.x) > ROAD + 3) { O.splice(i, 1); continue; }
-      } else if (o.k === 'bat') {
-        // 火蝙蝠：飛得快，左右擺來擺去
-        o.z -= (v + o.spd) * dt; o.ph += dt * 16;
+      } else if (o.k === 'bat' || o.k === 'eagle') {
+        // 火蝙蝠、疾風鷹：飛得快，左右擺來擺去（鷹靠近時擺幅變小，直接衝過來）
+        o.z -= (v + o.spd) * dt; o.ph += dt * (o.k === 'eagle' ? 11 : 16);
         if (o.z < 32) o.bx += clamp(G.px - o.bx, -1, 1) * o.home * dt;
-        o.x = clamp(o.bx + o.amp * Math.sin(G.t * o.f + o.zph), -ROAD + 0.3, ROAD - 0.3);
+        const amp = o.k === 'eagle' && o.z < 12 ? o.amp * Math.max(0.15, o.z / 12) : o.amp;
+        o.x = clamp(o.bx + amp * Math.sin(G.t * o.f + o.zph), -ROAD + 0.3, ROAD - 0.3);
       } else if (o.k === 'healer' && o.heals < 4 && o.z <= o.hold) {
         // 治療巫師：停在後面幫附近的怪補血，補四次才衝過來
         o.ph += dt * 3;
@@ -644,11 +672,11 @@ function step(dt, input) {
         }
         if (o.atk > 0) o.atk -= dt;
         o.x += clamp(G.px - o.x, -1, 1) * 0.4 * dt;
-      } else if (o.k === 'thrower' && o.throws < 3 && o.z <= o.hold) {
+      } else if ((o.k === 'thrower' || o.k === 'bomber') && o.throws < (o.k === 'bomber' ? 4 : 3) && o.z <= o.hold) {
         // 停在前面丟炸彈（跟著部隊一起往前），丟完三顆才衝過來
         o.ph += dt * 3;
         o.throwT -= dt;
-        if (o.throwT <= 0) { o.throwT = 1.9; o.throws++; o.atk = 0.3; lob(o.x, o.z - 0.3, 1.4, 'bomb', 1.25, 0.06, 1.05); }
+        if (o.throwT <= 0) { o.throwT = o.k === 'bomber' ? 1.6 : 1.9; o.throws++; o.atk = 0.3; lob(o.x, o.z - 0.3, o.k === 'bomber' ? 2.6 : 1.4, 'bomb', 1.25, 0.06, 1.05); }
         if (o.atk > 0) o.atk -= dt;
         o.x += clamp(G.px - o.x, -1, 1) * 0.6 * dt;
       } else {
@@ -732,8 +760,37 @@ function step(dt, input) {
           if (br.burn <= 0) { o.breath = null; o.brT = o.phase > 1 ? 3.4 : 4.8; }
         }
       }
+      // 雷霆巨鷹：三條路劈下兩條，要站到沒被標記的那一條
+      if (o.k === 'thunder') {
+        const zp = o.zap;
+        if (!zp) {
+          o.zapT = (o.zapT == null ? 2.6 : o.zapT) - dt;
+          if (o.zapT <= 0) {
+            const safe = Math.floor(Math.random() * 3);
+            o.zap = { lanes: [-2.6, 0, 2.6].filter((_, k) => k !== safe), t: 1.35, burn: 0 };
+            emit('strikewarn', o);
+          }
+        } else if (zp.t > 0) {
+          zp.t -= dt;
+          if (zp.t <= 0) {
+            zp.burn = 0.3; o.atk = 0.35;
+            emit('zap', o); G.shake = Math.max(G.shake, 0.6);
+            if (fxOn()) for (const lx of zp.lanes) FX.strike(lx, o.z);
+            if (zp.lanes.some(lx => Math.abs(G.px - lx) < 1.3 + cr.rx * 0.35)) {
+              const loss = takeLoss(Math.max(1, Math.ceil(G.N * 0.13)) + 1, 'zap');
+              floatText(G.px, 0.8, 2, lossTxt(loss), '#9fd8ff', 1.2);
+              setN(G.N - loss, 'zap');
+              emit('hit', { loss });
+              if (G.N <= 0) { lose(); return; }
+            }
+          }
+        } else {
+          zp.burn -= dt;
+          if (zp.burn <= 0) { o.zap = null; o.zapT = o.phase > 1 ? 3.6 : 5.0; }
+        }
+      }
       // 重擊（第 5 關以後的狂暴階段）：地上出現紅色長條，站在裡面會被打到
-      if (o.phase > 1 && G.s >= 5 && o.k !== 'dragon') {
+      if (o.phase > 1 && G.s >= 5 && o.k !== 'dragon' && o.k !== 'thunder') {
         if (!o.strike) {
           o.strT = (o.strT == null ? 1.5 : o.strT) - dt;
           if (o.strT <= 0) { o.strike = { x: clamp(G.px, -PX_MAX + 0.6, PX_MAX - 0.6), t: 1.05 }; emit('strikewarn', o); }
@@ -760,7 +817,7 @@ function step(dt, input) {
         emit('rage', o);
         // 叫小怪
         for (let k = 0; k < 6; k++) {
-          const e = mkEnemy(o.k === 'dragon' ? 'bat' : 'grunt', clamp(o.x + (k - 2.5) * 1.3, -PX_MAX, PX_MAX), Math.max(2.5, o.z - o.r * 0.6 - 0.8 - (k % 2) * 0.9), o.max * 0.012, o.sHP);
+          const e = mkEnemy(o.k === 'dragon' ? 'bat' : o.k === 'thunder' ? 'eagle' : 'grunt', clamp(o.x + (k - 2.5) * 1.3, -PX_MAX, PX_MAX), Math.max(2.5, o.z - o.r * 0.6 - 0.8 - (k % 2) * 0.9), o.max * 0.012, o.sHP);
           e.ph = k; O.push(e);
         }
       }
@@ -805,6 +862,33 @@ function tickSupport(dt, v) {
         G.objs.push({ t: 'shell', kind: 'shell', id: _uid++, sx: G.px, sz: 0.4, sh: 1.3, tx: clamp(best.x, -ROAD, ROAD), tz, T, age: 0, x: G.px, z: 0.4, h: 1.3, rel: boss || hold, dmg: curDps() * G.dmgK * G.rateK * 0.9 });
         emit('mortar');
       } else G.morT = 0.4;
+    }
+  }
+  // 強風：先出現箭頭，接著把部隊往旁邊吹（玩家要往反方向拉）
+  if ((G.rule === 'wind' || G.rule === 'skyfinal') && G.st === 'play') {
+    const gu = G.gust;
+    if (!gu) {
+      G.windT -= dt;
+      if (G.windT <= 0) { G.gust = { dir: Math.random() < 0.5 ? -1 : 1, warn: 1.3, push: 1.7 }; emit('gustwarn', G.gust); }
+    } else if (gu.warn > 0) { gu.warn -= dt; if (gu.warn <= 0) emit('gust', gu); }
+    else {
+      gu.push -= dt;
+      const dx = gu.dir * (G.rule === 'skyfinal' ? 2.9 : 2.5) * dt;
+      G.tx = clamp(G.tx + dx, -PX_MAX, PX_MAX); G.windDX += dx;
+      if (gu.push <= 0) { G.gust = null; G.windT = (G.rule === 'skyfinal' ? 4.2 : 3.6) + Math.random() * 2.2; }
+    }
+  }
+  // 雷雨：藍圈會被雷劈（頭目戰時停）
+  if ((G.rule === 'storm' || G.rule === 'skyfinal') && !G.boss && G.scroll) {
+    G.boltT -= dt;
+    if (G.boltT <= 0) {
+      G.boltT = (G.rule === 'skyfinal' ? 2.6 : 2.1) + Math.random() * 1.2;
+      const n = Math.random() < 0.35 ? 2 : 1;
+      for (let k = 0; k < n; k++) {
+        const x = clamp(G.px + (Math.random() - 0.5) * 3.4 + (k ? (Math.random() < 0.5 ? -2.4 : 2.4) : 0), -PX_MAX, PX_MAX);
+        G.objs.push({ t: 'bolt', id: _uid++, x, z: 9 + Math.random() * 8, r: 1.25, warn: 1.25 + k * 0.25, flash: 0 });
+      }
+      emit('boltwarn');
     }
   }
   // 火山爆發：天上一直掉火山彈

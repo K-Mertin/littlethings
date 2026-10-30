@@ -168,7 +168,7 @@ function drawWeather(g, th, t) {
   const W = R.W, H = R.H, d = R.dpr;
   if (SCN.wxTheme !== th.id + W) {
     SCN.wxTheme = th.id + W; SCN.wx = [];
-    const n = th.id === 'snow' ? 80 : th.id === 'night' ? 70 : th.id === 'desert' ? 36 : th.id === 'volcano' ? 46 : 18;
+    const n = th.id === 'snow' ? 80 : th.id === 'night' ? 70 : th.id === 'desert' ? 36 : th.id === 'volcano' ? 46 : th.id === 'sky' ? 26 : 18;
     for (let i = 0; i < n; i++) SCN.wx.push({ x: Math.random() * W, y: Math.random() * H, s: 0.5 + Math.random(), ph: Math.random() * 6 });
   }
   const scroll = G && G.scroll && G.st === 'play' ? 1 : 0.3;
@@ -179,6 +179,12 @@ function drawWeather(g, th, t) {
       if (p.y < -20) { p.y = H + 10; p.x = Math.random() * W; }
       if (p.ph > 2) { g.fillStyle = `rgba(255,${150 + (p.ph * 30 | 0) % 80},40,${0.55 + 0.35 * Math.sin(t * 6 + p.ph)})`; ell(g, p.x, p.y, 1.8 * p.s * d, 1.8 * p.s * d); g.fill(); }
       else { g.fillStyle = 'rgba(70,60,60,.5)'; ell(g, p.x, p.y, 2.6 * p.s * d, 2 * p.s * d); g.fill(); }
+    } else if (th.id === 'sky') {
+      // 飄過去的雲絲和羽毛
+      const wd = G && G.gust && G.gust.warn <= 0 ? G.gust.dir * 520 : -60;
+      p.x += (wd + Math.sin(t + p.ph) * 20) * d * dt; p.y += (18 + p.s * 10) * d * dt;
+      if (p.ph > 4.5) { g.fillStyle = 'rgba(255,255,255,.8)'; g.save(); g.translate(p.x, p.y); g.rotate(Math.sin(t * 2 + p.ph)); ell(g, 0, 0, 5 * p.s * d, 1.6 * p.s * d); g.fill(); g.restore(); }
+      else { g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 2 * d; g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(p.x + 30 * p.s * d, p.y); g.stroke(); }
     } else if (th.id === 'snow') {
       p.y += (40 + p.s * 50) * d * dt; p.x += Math.sin(t * 1.4 + p.ph) * 18 * d * dt;
       g.fillStyle = 'rgba(255,255,255,.85)'; ell(g, p.x, p.y, 2.2 * p.s * d, 2.2 * p.s * d); g.fill();

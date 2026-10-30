@@ -596,6 +596,7 @@ EM.render = function (dt) {
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   for (const h of Wd.hints) {
     if (h.room !== g.roomIdx || !vis(h.x, h.y, 0)) continue;
+    if ((h.need && g.save.abil[h.need]) || (h.have && !g.save.abil[h.have])) continue;
     const d = Math.abs(P.x - h.x);
     if (d > 260) continue;
     ctx.globalAlpha = Math.max(0, 1 - d / 260) * 0.9;

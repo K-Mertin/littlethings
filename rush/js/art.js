@@ -340,4 +340,5 @@ function buildArt() {
   if (typeof buildHaz === 'function') buildHaz();
   if (typeof buildDefArt === 'function') buildDefArt();
   if (typeof buildVolc === 'function') buildVolc();
+  if (typeof buildSky === 'function') buildSky();
 }

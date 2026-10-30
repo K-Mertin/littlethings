@@ -20,7 +20,10 @@ const DSTAGES = [
   { name: '熔岩前線', theme: 4, rows: 3, slide: 1, red: 1, lvl: 9, df: 1.08, pow: 1, gey: 1, tip: '黃色強化門讓小兵變兩倍強' },
   { name: '噴火峽谷', theme: 4, rows: 3, slide: 2, red: 1, lvl: 10, df: 1.43, pow: 1, gey: 2, roul: 1, tip: '火口冒煙就要噴火了' },
   { name: '火龍巢穴', theme: 4, rows: 4, slide: 2, red: 2, lvl: 11, df: 0.6, pow: 2, gey: 2, bomb: 1, tip: '火口加砲擊，別待在同一個地方' },
-  { name: '最終火山', theme: 4, rows: 4, slide: 2, red: 2, lvl: 12, df: 1.28, pow: 2, gey: 2, roul: 1, bomb: 1, wall: 1, tip: '最後一關，全部都來了！' },
+  { name: '最終火山', theme: 4, rows: 4, slide: 2, red: 2, lvl: 12, df: 1.28, pow: 2, gey: 2, roul: 1, bomb: 1, wall: 1, tip: '火山最後一關，全部都來了！' },
+  { name: '雲端前哨', theme: 5, rows: 3, slide: 1, red: 1, lvl: 13, df: 0.42, wind: 1, gap: 1, tip: '強風會把小兵吹歪；雲海上只有木板橋，掉下去就沒了' },
+  { name: '雷雲高原', theme: 5, rows: 3, slide: 1, red: 1, lvl: 14, df: 1.25, roul: 1, bolt: 1, gap: 1, tip: '藍圈會被雷劈，小兵和怪物都會被劈到' },
+  { name: '天空王座', theme: 5, rows: 4, slide: 2, red: 2, lvl: 15, df: 0.66, pow: 1, wind: 1, bolt: 1, gap: 1, bomb: 1, tip: '最後一關！強風、雷擊、斷橋、砲擊全部都來了' },
 ];
 
 // 砲台一次射出一小隊（3 個人）。門是對「整隊」算的：
@@ -68,6 +71,11 @@ function genDefense1(n, seed) {
       gates.push(o);
     });
   });
+  // 斷橋：雲海上只有木板橋，小兵要從橋上過
+  if (D.gap) {
+    const z = (rowZ[0] + rowZ[1]) / 2, sd = R() < 0.5 ? -1 : 1;
+    gates.push({ t: 'dgap', id: _uid++, sky: 1, z: z - 1.3, len: 2.6, bridges: [{ cx: -2.2 * sd, w: 1.5, amp: 0, f: 1, ph: 0, x: -2.2 * sd }, { cx: 1.7 * sd, w: 1.4, amp: D.lvl >= 14 ? 1.1 : 0.6, f: 0.7 + R() * 0.3, ph: R() * 6, x: 1.6 * sd }] });
+  }
   // 預期：好好瞄準時每秒能送出多少小兵
   const rate = 5;
   // 轉盤門算預期時用比較保守的那一格（+n），不然會把大獎當成常態
@@ -103,7 +111,7 @@ function genDefense1(n, seed) {
     baseHp: Math.round(E * DEF_K.base * (26 + lvE * 2.2)),
     castle: 15,
     flow: E * DEF_K.flow * (D.df || 1) * (0.42 + lvE * DEF_K.ls),   // 怪物每秒的血量
-    bomb: !!D.bomb, tip: D.tip, idleGain: idle, bestGain: best,
+    bomb: !!D.bomb, wind: !!D.wind, bolt: !!D.bolt, airy: !!THEMES[D.theme].airy, tip: D.tip, idleGain: idle, bestGain: best,
     dur: 0,
   };
 }
@@ -111,6 +119,7 @@ function genDefense1(n, seed) {
 // 從 x 直直往前，一隊會變成原本的幾倍（看當下門的位置）
 function defPathGain(gates, x, t) {
   let S = DEF_SQUAD;
+  for (const g of gates) if (g.t === 'dgap' && !g.bridges.some(b => Math.abs(x - (b.cx + b.amp * Math.sin(t * b.f + b.ph))) <= b.w)) return 0;
   const gs = gates.filter(g => g.t === 'gate').sort((a, b) => a.z - b.z);
   for (const g of gs) {
     const gx = g.slide ? g.slide.cx + g.slide.amp * Math.sin(t * g.slide.f + g.slide.ph) : g.x;
@@ -133,7 +142,7 @@ function newDefense(n, opts) {
     spawnAcc: 0, waveT: 2.5, waveN: 0, giant: 0, giantMax: Math.round(90 * (1 - 0.06 * up.giant)), sqId: 0,
     shake: 0, flash: 0, kills: 0, sent: 0, peak: 0, endT: 0, sim: !!opts.sim,
     rule: 'none', N: 0, lost: 0,
-    squadN: DEF_SQUAD, card: null, cardT: 18 - up.card * 3, cards: 0, picked: [], bombT: 9,
+    squadN: DEF_SQUAD, card: null, cardT: 18 - up.card * 3, cards: 0, picked: [], bombT: 9, gust: null, windT: 5, boltT: 4, freeze: 0, twin: 0,
   };
   return G;
 }
@@ -156,6 +165,10 @@ function defWave() {
   if (big) add('brute', 8);
   if (lv >= 3 && Math.random() < 0.5) add('shield', 3);
   if (lv >= 4 && Math.random() < 0.4) add('splitter', 3);
+  if (L.airy) {
+    for (let i = 1 + Math.floor(Math.random() * 2); i > 0; i--) add('eagle', 1);
+    if (Math.random() < 0.3) add('healer', 2);
+  }
   if (L.hot) {
     for (let i = 1 + Math.floor(Math.random() * 2); i > 0; i--) add('bat', 1);
     if (lv >= 10 && Math.random() < 0.35) add('healer', 2);
@@ -260,10 +273,50 @@ function defStep(dt, input) {
       for (let k = U.length - 1; k >= 0; k--) { const u = U[k]; if (Math.hypot(u.x - o.tx, (u.z - o.tz) * 0.8) < o.rad) { if (u.giant) { u.hp -= 8 * G.pow; if (u.hp > 0) continue; } U.splice(k, 1); defUnitGone(u); } }
     }
   }
+  // 強風：箭頭預告，接著把場上的小兵吹向一邊
+  if (G.L.wind) {
+    const gu = G.gust;
+    if (!gu) { G.windT -= dt; if (G.windT <= 0) { G.gust = { dir: Math.random() < 0.5 ? -1 : 1, warn: 1.3, push: 2.0 }; emit('gustwarn', G.gust); } }
+    else if (gu.warn > 0) { gu.warn -= dt; if (gu.warn <= 0) emit('gust', gu); }
+    else {
+      gu.push -= dt;
+      for (const u of G.units) if (!u.giant) u.x = clamp(u.x + gu.dir * 1.3 * dt, -ROAD + 0.3, ROAD - 0.3);
+      if (gu.push <= 0) { G.gust = null; G.windT = 5 + Math.random() * 3; }
+    }
+  }
+  // 雷擊：藍圈預告，劈下來時圈裡的小兵和怪物都會被劈到
+  if (G.L.bolt) {
+    G.boltT -= dt;
+    if (G.boltT <= 0) {
+      G.boltT = 3.2 + Math.random() * 1.6;
+      const u = G.units.length ? G.units[Math.floor(Math.random() * G.units.length)] : null;
+      const x = clamp(u ? u.x + (Math.random() - 0.5) * 1.5 : (Math.random() - 0.5) * 6, -PX_MAX, PX_MAX);
+      const z = clamp(u ? u.z + 3 + Math.random() * 4 : 12 + Math.random() * 18, 6, 36);
+      G.objs.push({ t: 'bolt', id: _uid++, x, z, r: 1.25, warn: 1.25, flash: 0 });
+      emit('boltwarn');
+    }
+  }
+  for (let i = G.objs.length - 1; i >= 0; i--) {
+    const o = G.objs[i];
+    if (o.t !== 'bolt') continue;
+    if (o.warn > 0) {
+      o.warn -= dt;
+      if (o.warn <= 0) {
+        o.flash = 0.28; emit('zap', o);
+        if (fxOn()) FX.boom(o.x, o.z, 0.8, true);
+        const U = G.units;
+        for (let k = U.length - 1; k >= 0; k--) { const u = U[k]; if (Math.hypot(u.x - o.x, (u.z - o.z) * 0.8) < o.r) { if (u.giant) { u.hp -= 6 * G.pow; if (u.hp > 0) continue; } U.splice(k, 1); defUnitGone(u); } }
+        for (const e of G.objs) if (e.t === 'en' && !e.dead && Math.hypot(e.x - o.x, (e.z - o.z) * 0.8) < o.r + e.r * 0.4) { e.hp -= e.max * 0.9; e.hit = 0.1; }
+      }
+    } else { o.flash -= dt; if (o.flash <= 0) G.objs.splice(i, 1); }
+  }
+  for (const o of G.objs) if (o.t === 'dgap') for (const b of o.bridges) b.x = b.cx + b.amp * Math.sin(G.t * b.f + b.ph);
+  if (G.freeze > 0) G.freeze -= dt;
+  if (G.twin > 0) G.twin -= dt;
   // 牆：被打破就消失
   for (let i = G.objs.length - 1; i >= 0; i--) { const o = G.objs[i]; if (o.t === 'dwall') { if (o.hit > 0) o.hit -= dt; if (o.hp <= 0) { G.objs.splice(i, 1); emit('wallbreak', o); if (fxOn()) FX.wallbreak(o); } } }
   // 發射：每次一小隊
-  G.fireAcc += dt * G.rate / DEF_SQUAD;   // 每秒幾隊不變；強化卡加的是每隊人數
+  G.fireAcc += dt * G.rate / DEF_SQUAD * (G.twin > 0 ? 2 : 1);   // 每秒幾隊不變；強化卡加的是每隊人數
   let shots = 0;
   while (G.fireAcc >= 1) { G.fireAcc -= 1; shots += defFireSquad(); G.giant = Math.min(G.giantMax, G.giant + G.squadN); }
   if (shots) emit('dshot', { n: shots });
@@ -297,7 +350,7 @@ function defStep(dt, input) {
   if (G.tAcc >= 0.25) {
     G.tAcc -= 0.25;
     let tgt = null, tz = 1e9;
-    for (const e of G.objs) if (e.t === 'en' && !e.dead && e.z < DEF_K.tz && Math.abs(e.x - G.px) < DEF_K.tw && e.z < tz) { tz = e.z; tgt = e; }
+    for (const e of G.objs) if (e.t === 'en' && !e.dead && e.z < DEF_K.tz && Math.abs(e.x - G.px) < DEF_K.tw) { const k = e.z - (e.fly ? 4 : 0); if (k < tz) { tz = k; tgt = e; } }   // 會飛的優先打
     if (tgt) {
       tgt.hp -= G.L.E * DEF_K.td * 0.25 * G.pow; tgt.hit = 0.08;
       G.tShot = { x: tgt.x, z: tgt.z, t: 0.12 };
@@ -329,6 +382,7 @@ function defStep(dt, input) {
       }
       if (o.atk > 0) o.atk -= dt;
     }
+    if (G.freeze > 0 && !o.boss) { o.hit = Math.max(o.hit, 0.02); continue; }   // 冰凍：怪物停住
     o.z -= o.spd * dt;
     o.ph += dt * (5 + o.spd);
     // 看到附近有小兵就衝過去打（兩邊的人會撞在一起）
@@ -392,6 +446,12 @@ function defUnitsMove(dt, endOnly) {
       }
     }
     if (U[i] !== u) continue;
+    // 斷橋：沒走在木板橋上就掉下去
+    if (!endOnly && !u.giant) {
+      let fell = false;
+      for (const o of O) if (o.t === 'dgap' && u.z > o.z && u.z < o.z + o.len && !o.bridges.some(b => Math.abs(u.x - b.x) <= b.w)) { fell = true; break; }
+      if (fell) { U.splice(i, 1); defUnitGone(u); if (Math.random() < 0.05) emit('fall'); continue; }
+    }
     // 撞到牆：把力氣都打在牆上
     if (!endOnly) {
       let wall = null;
@@ -445,9 +505,11 @@ const DCARDS = {
   gate:  { name: '門升級', desc: '+ 門再 +3、✕ 門變成 +3', ico: '🚪' },
   fix:   { name: '修補城牆', desc: '城的血量 +6', ico: '🧱' },
   giant: { name: '大兵支援', desc: '馬上放出金色大兵', ico: '💪' },
+  freeze: { name: '冰凍彈', desc: '所有怪物停住 4 秒', ico: '❄️' },
+  twin:  { name: '連發模式', desc: '8 秒內射兩倍快', ico: '🔥' },
 };
 function defCardOffer() {
-  const pool = ['rate', 'squad', 'armor', 'giant'];
+  const pool = ['rate', 'squad', 'armor', 'giant', 'freeze', 'twin'];
   if (G.objs.some(o => o.t === 'gate' && (o.k === 'add' || o.k === 'kill') && !o.roul)) pool.push('gate');
   if (G.castle < G.castleMax) pool.push('fix', 'fix');
   const out = [];
@@ -464,6 +526,8 @@ function defPickCard(k) {
   else if (k === 'gate') { for (const o of G.objs) if (o.t === 'gate' && !o.roul) { if (o.k === 'add') o.v += 3; else if (o.k === 'kill') { o.k = 'add'; o.v = 3; } o.bump = 0.8; } }
   else if (k === 'fix') G.castle = Math.min(G.castleMax, G.castle + 6);
   else if (k === 'giant') { G.giant = G.giantMax; defLaunchGiant(); }
+  else if (k === 'freeze') G.freeze = 4;
+  else if (k === 'twin') G.twin = 8;
   emit('dpick', k);
   return true;
 }
