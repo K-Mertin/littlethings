@@ -48,6 +48,8 @@ const ENEMIES = {
   bat:    { name: '火蝙蝠', r: 0.42, h: 1.0, spd: 3.6, home: 0.5, hpK: 0.5, mass: 1.0, fly: 1 },
   healer: { name: '治療巫師', r: 0.5, h: 1.55, spd: 1.6, home: 0.35, hpK: 2.0, mass: 0.8 },
   magma:  { name: '熔岩怪', r: 0.62, h: 1.5, spd: 1.5, home: 0.8, hpK: 2.4, mass: 1.0 },
+  eagle:  { name: '疾風鷹', r: 0.5, h: 1.1, spd: 4.4, home: 0.7, hpK: 0.6, mass: 1.0, fly: 1 },
+  bomber: { name: '氣球炸彈兵', r: 0.55, h: 1.6, spd: 1.6, home: 0.4, hpK: 1.4, mass: 0.8, fly: 1 },
 };
 
 // 兵種（穿過紫色的兵種門就會加入，整關都有效）

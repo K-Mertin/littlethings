@@ -22,6 +22,10 @@ const THEMES = [
     sky: ['#1e0a12', '#5a1a1c', '#c4482a'], far: '#4a1c18', far2: '#2e1012',
     side: ['#3e2c2a', '#372624'], road: ['#4f4644', '#47403e'], kerb: ['#ffb020', '#2a1a18'], line: '#ffcf4a',
     decor: ['lavarock', 'deadtree', 'vent', 'lavarock', 'obsidian', 'deadtree'], fog: 'rgba(110,40,24,', bgm: 4, hot: true },
+  { id: 'sky', name: '天空浮島',
+    sky: ['#4f9cff', '#9fd0ff', '#eaf6ff'], far: '#d6e8fb', far2: '#bcd6f4',
+    side: ['#f6f9ff', '#e9f1fd'], road: ['#a08a6c', '#957f62'], kerb: ['#ffffff', '#ffc83d'], line: '#fff4c0',
+    decor: ['cloudpuff', 'floatrock', 'balloon', 'cloudpuff', 'skytower', 'floatrock'], fog: 'rgba(236,246,255,', bgm: 5, airy: true },
 ];
 
 const STAGES = [

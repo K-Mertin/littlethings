@@ -67,7 +67,7 @@ function renderDef(G, t) {
   drawClouds(g, th, t);
   drawGround(g, th, 0);
   drawGroundDetail(g, th, 0);
-  for (const o of G.objs) if (o.t === 'geyser') drawGeyserGround(g, o, t); else if (o.t === 'pool') drawPool(g, o, t); else if (o.t === 'lob') drawLobWarn(g, o, t);
+  for (const o of G.objs) if (o.t === 'geyser') drawGeyserGround(g, o, t); else if (o.t === 'pool') drawPool(g, o, t); else if (o.t === 'lob') drawLobWarn(g, o, t); else if (o.t === 'dgap') drawGap(g, o, t); else if (o.t === 'bolt') drawBoltGround(g, o, t);
   // 自己這邊的城牆線
   const a = P(-ROAD, 0.2, 0), b = P(ROAD, 0.2, 0);
   g.strokeStyle = 'rgba(80,170,255,.75)'; g.lineWidth = Math.max(3, 0.12 * a.s);
@@ -113,6 +113,8 @@ function renderDef(G, t) {
   }
   drawParts(g, G);
   drawFloats(g, G);
+  drawSkyTop(g, G, t);
+  if (G.freeze > 0) { g.fillStyle = `rgba(150,220,255,${Math.min(0.18, G.freeze * 0.1)})`; g.fillRect(-20, -20, R.W + 40, R.H + 40); }
   drawWeather(g, th, t);
   if (th.dark) { g.fillStyle = 'rgba(30,10,60,.12)'; g.fillRect(-20, -20, R.W + 40, R.H + 40); }
   g.setTransform(1, 0, 0, 1, 0, 0);
