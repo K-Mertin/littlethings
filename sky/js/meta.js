@@ -199,7 +199,7 @@ function fireBlade() {
   const L = P.lvl;
   P.ft = Math.max(P.ft, -0.03) + 0.36 - L * 0.012;
   const angs = L >= 8 ? [-0.32, 0, 0.32] : L >= 5 ? [-0.2, 0.2] : [0];
-  for (const a of angs) G.pb3.push({ x: P.x, y: P.y - 16, vx: Math.sin(a) * 560, vy: -Math.cos(a) * 560, t: 0, spin: rnd(TAU), r: 10 + L * 0.7, dmg: 2.2 + L * 0.42, cd: new Map(), tr: [] });
+  for (const a of angs) G.pb3.push({ x: P.x, y: P.y - 16, vx: Math.sin(a) * 640, vy: -Math.cos(a) * 640, t: 0, spin: rnd(TAU), r: 10 + L * 0.7, dmg: 2.2 + L * 0.42, cd: new Map(), tr: [] });
   P.mf = 0.04; Snd.tone(900, 0.12, 'triangle', 0.035, 1500);
 }
 const _updatePBMeta = updatePB;
@@ -219,7 +219,7 @@ updatePB = function (dt) {
       const last = b.cd.get(e) || -1;
       if (b.t - last < 0.13) continue;
       for (const [cx, cy, r] of hitCircles(e)) if (d2(cx, cy, b.x, b.y) < (r + b.r) ** 2) {
-        hurt(e, b.dmg); b.cd.set(e, b.t); pulseFlash(e);
+        hurt(e, b.dmg, 'blade'); b.cd.set(e, b.t); pulseFlash(e);
         if ((e.boss || ET[e.type].big) && !b.ground) { b.ground = 1; b.grind = 0.55; } // 每片光刃只研磨一次
         for (let i = 0; i < 2; i++) fxP({ k: 'k', x: b.x, y: b.y, vx: rnd(-150, 150), vy: rnd(-150, 150), life: 0, max: 0.2, c: 'p' });
         Snd.play('hit'); break;

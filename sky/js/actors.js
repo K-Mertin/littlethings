@@ -78,7 +78,7 @@ function firePrimary(dt) {
     P.plasma.length = 0;
     for (let i = 0; i < nt; i++) {
       const e = list.length ? list[i % list.length] : null;
-      if (e) { hurt(e, dps * dt * (list.length < nt && i >= list.length ? 0.6 : 1)); P.plasma.push({ e, x: e.x, y: e.y, side: i % 2 ? 1 : -1 }); }
+      if (e) { hurt(e, dps * dt * (list.length < nt && i >= list.length ? 0.6 : 1), 'purple'); P.plasma.push({ e, x: e.x, y: e.y, side: i % 2 ? 1 : -1 }); }
       else P.plasma.push({ e: null, x: P.x + (i - (nt - 1) / 2) * 26, y: P.y - 170, side: i % 2 ? 1 : -1 });
     }
     if (list.length) Snd.play('plasma');
@@ -166,7 +166,7 @@ function updatePB(dt) {
     for (const e of G.enemies) {
       if (e.dead || e.hidden || e.y < -10) continue;
       if (hitTest(e, b)) {
-        hurt(e, b.dmg); b.dead = true;
+        hurt(e, b.dmg, b.ws); b.dead = true;
         if (b.kind === 'v') fxP({ k: 'k', x: b.x, y: b.y, vx: rnd(-60, 60), vy: rnd(40, 120), life: 0, max: 0.12 });
         else if (b.kind === 'l') fxP({ k: 'f', x: b.x + rnd(-3, 3), y: b.y - 28, vx: 0, vy: 0, r: b.w * 0.45, life: 0, max: 0.1 });
         else { fxP({ k: 'f', x: b.x, y: b.y, vx: 0, vy: 0, r: 7, life: 0, max: 0.25 }); fxP({ k: 'k', x: b.x, y: b.y, vx: rnd(-90, 90), vy: rnd(-90, 90), life: 0, max: 0.2 }); }

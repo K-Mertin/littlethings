@@ -66,7 +66,7 @@ updateBeam = function (dt) {
     const targets = pierce && bi === 0 ? cands : [cands[0]];
     if (!(pierce && bi === 0)) B.endY = targets[0][1];
     for (const [e, hy] of targets) {
-      hurt(e, dpsBase * B.dk * (pierce && bi === 0 ? 0.8 : 1) * dt); pulseFlash(e);
+      hurt(e, dpsBase * B.dk * (pierce && bi === 0 ? 0.8 : 1) * dt, 'blue'); pulseFlash(e);
       B.hits.push([beamX(pts, hy), hy]);
     }
     B.sparkT -= dt;
@@ -140,7 +140,7 @@ plasmaTick = function (dt) {
       }
       if (!best) break;
       used.add(best); t.chain.push([from, best]);
-      hurt(best, dps * (j ? 0.35 : 0.5) * dt); pulseFlash(best);
+      hurt(best, dps * (j ? 0.35 : 0.5) * dt, 'purple'); pulseFlash(best);
       from = best;
     }
   }

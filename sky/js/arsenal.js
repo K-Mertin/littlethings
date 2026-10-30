@@ -77,7 +77,7 @@ function fireRail() {
         if (cy > y0 + r || cy < -20 || Math.abs(cx - x) > r + 4) continue;
         // 打頭目／大型敵機時：主光槍 80%、副光槍 50%（避免三軌同打一點太快秒殺頭目）
         const heavy = e.boss || ET[e.type].big;
-        hurt(e, (8 + L * 2.2) * (heavy ? (oi === (offs.length >> 1) ? 0.8 : 0.5) : 1)); hits.push([x, Math.min(y0, cy + r * 0.4), e]); break;
+        hurt(e, (8 + L * 2.2) * (heavy ? (oi === (offs.length >> 1) ? 0.8 : 0.5) : 1), 'rail'); hits.push([x, Math.min(y0, cy + r * 0.4), e]); break;
       }
     }
     G.rails.push({ x, y0, t: 0, hits });
@@ -86,7 +86,7 @@ function fireRail() {
       fxP({ k: 'f', x: hx, y: hy, vx: 0, vy: 0, r: 7, life: 0, max: 0.18 });
       if (L >= 8) {
         fxP({ k: 'r', x: hx, y: hy, r: 4, R: 34, life: 0, max: 0.3 });
-        for (const e of G.enemies) if (!e.dead && !e.hidden && !e.inv && e !== he && !e.boss && d2(e.x, e.y, hx, hy) < 36 * 36) hurt(e, 4);
+        for (const e of G.enemies) if (!e.dead && !e.hidden && !e.inv && e !== he && !e.boss && d2(e.x, e.y, hx, hy) < 36 * 36) hurt(e, 4, 'rail');
       }
     }
   }
@@ -114,7 +114,7 @@ updatePB = function (dt) {
       if (e.dead || e.hidden || e.y < -10 || b.hit.has(e)) continue;
       for (const [cx, cy, r] of hitCircles(e)) {
         if (Math.abs(cx - b.x) < b.w / 2 + r && Math.abs(cy - b.y) < r + 9) {
-          b.hit.add(e); hurt(e, b.dmg);
+          b.hit.add(e); hurt(e, b.dmg, 'wave');
           for (let i = 0; i < 3; i++) fxP({ k: 'k', x: cx + rnd(-r, r) * 0.5, y: b.y, vx: rnd(-90, 90), vy: rnd(-120, 40), life: 0, max: 0.22, c: 'g' });
           Snd.play('hit');
           break;
