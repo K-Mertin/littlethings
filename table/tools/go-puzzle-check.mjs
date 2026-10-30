@@ -30,7 +30,8 @@ for (const [si, set] of SETS.entries()) {
     if (b[target] !== want) errs.push('目標棋子顏色不對');
     let region = null;
     if (z.reg) { region = new Set(); const [r0, c0, r1, c1] = z.reg; for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) region.add(r * N + M(c)); }
-    const pz = { b, goal: z.g, target, region, k: z.k || 3 };
+    if (z.rp) { region = new Set(z.rp.map(([r, c]) => r * N + M(c))); }   // rp：可以下的點（不規則形狀的眼位）
+    const pz = { b, goal: z.g, target, region, k: z.k || 3, vis: !!z.vis };
     let res = null;
     if (!errs.length) { try { res = buildTree(pz); if (res.err) errs.push(res.err); } catch (e) { errs.push(String(e.message || e)); } }
     if (res && !res.err) {
@@ -40,14 +41,21 @@ for (const [si, set] of SETS.entries()) {
       if (res.first.length > 2) errs.push('正解太多：' + res.first.map(name).join(' '));
       if (z.a && !res.first.map(name).includes(z.a)) errs.push('預期解 ' + z.a + ' 不是正解；引擎說 ' + res.first.map(name).join(' '));
       if (!Object.keys(res.tree.bad).length && z.g !== 'capture' && z.g !== 'save') errs.push('沒有任何錯手可以示範');
-      // 檢查樹裡每一手都合法
-      (function walk(node, bb, ko) {
+      // 檢查樹裡每一手都合法；正解在「白棋所有應手」下都還是贏；錯手的反擊真的讓黑失敗
+      let kLeft = res.k;
+      (function walk(node, bb, ko, k) {
+        for (const [m, rf] of Object.entries(node.bad)) {
+          const r1 = play(bb, ko, +m, 1); if (!r1) { errs.push('錯手不合法 ' + name(+m)); continue; }
+          if (rf >= 0) { const r2 = play(r1.b, r1.ko, rf, 2); if (!r2) errs.push('反擊不合法 ' + name(rf)); else if (!C2.fail(r2.b) && C2.win(r2.b, r2.ko, 1, k - 1)) errs.push('錯手 ' + name(+m) + ' 被反擊後黑還是能贏'); }
+          else if (C2.win(r1.b, r1.ko, 2, k - 1)) errs.push('錯手 ' + name(+m) + ' 其實是正解');
+        }
         for (const [m, v] of Object.entries(node.ok)) {
           const r1 = play(bb, ko, +m, 1); if (!r1) { errs.push('樹中有不合法的手 ' + name(+m)); continue; }
-          if (v.r != null) { const r2 = play(r1.b, r1.ko, v.r, 2); if (!r2) { errs.push('應手不合法'); continue; } if (v.n) walk(v.n, r2.b, r2.ko); else if (!C2.goal(r2.b, 1)) errs.push('樹的終點沒達成目標'); }
+          if (!C2.win(r1.b, r1.ko, 2, k - 1)) errs.push('正解 ' + name(+m) + ' 在某個白棋應手下會失敗');
+          if (v.r != null) { const r2 = play(r1.b, r1.ko, v.r, 2); if (!r2) { errs.push('應手不合法'); continue; } if (v.n) walk(v.n, r2.b, r2.ko, k - 1); else if (!C2.goal(r2.b, 1)) errs.push('樹的終點沒達成目標'); }
           else if (!C2.goal(r1.b, 2)) errs.push('樹的終點沒達成目標');
         }
-      })(res.tree, b, -1);
+      })(res.tree, b, -1, kLeft);
     }
     if (errs.length) { bad++; console.log('✗', id, errs.join('；')); }
     else console.log('✓', id, z.g, res.k + ' 手', '正解 ' + res.first.map(name).join('/'), '錯手示範 ' + Object.keys(res.tree.bad).length);
@@ -58,11 +66,14 @@ for (const [si, set] of SETS.entries()) {
       r1 = Math.min(8, Math.max(5, r1 + 1));
       let c0, c1; if (z.m) { c1 = 8; c0 = Math.max(0, Math.min(3, cmin - 1)); } else { c0 = 0; c1 = Math.min(8, Math.max(5, cmax + 1)); }
       const DEF = { kill: '找出白棋眼形的要點，讓它做不出兩隻眼。', live: '找出能分成兩隻眼的要點。', save: '黑棋快被吃了：往外長、或吃掉旁邊的白子。' };
-      const hint = z.h || DEF[z.g] || (res.k === 1 ? '數一數白棋還剩幾口氣。' : '想一想從哪一邊叫吃，白棋才逃不掉。');
-      list.push({ b: b.join(''), g: z.g, t: target, k: res.k, h: hint, v: [r1, c0, c1], tr: res.tree });
+      const TAGH = { '征子': '一直從同一個方向叫吃，把白棋趕向棋盤邊。', '倒撲': '先送一顆子給白棋吃，吃完之後白棋反而只剩一口氣。', '接不歸': '叫吃之後，白棋就算接上也只剩一口氣。', '枷': '不要急著叫吃，在白棋逃跑的路上先擋住。', '雙叫吃': '找一個點，同時叫吃兩塊白棋。', '多步殺': '眼位太大，先擠、扳把眼位縮小，再點眼。', '多步活': '先擴大眼位或佔住要點，再做出兩隻眼。' };
+      const hint = z.h || TAGH[z.tag] || DEF[z.g] || (res.k === 1 ? '數一數白棋還剩幾口氣。' : '想一想從哪一邊叫吃，白棋才逃不掉。');
+      const it = { b: b.join(''), g: z.g, t: target, k: res.k, h: hint, v: [r1, c0, c1], tr: res.tree };
+      if (z.tag) it.tag = z.tag;
+      list.push(it);
     }
   }
-  out.push({ name: set.name, desc: set.desc, list });
+  out.push(set.req != null ? { name: set.name, desc: set.desc, req: set.req, list } : { name: set.name, desc: set.desc, list });
 }
 console.log(`\n${total - bad} / ${total} 題通過`);
 if (bad) process.exitCode = 1;
