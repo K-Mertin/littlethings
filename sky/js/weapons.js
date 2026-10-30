@@ -110,7 +110,7 @@ function updateBeam(dt) {
     }
     if (best) {
       B.hit = best; B.endY = by;
-      hurt(best, (24 + P.lvl * 6.5) * dt); pulseFlash(best);
+      hurt(best, (24 + P.lvl * 6.5) * dt, 'blue'); pulseFlash(best);
       B.sparkT -= dt;
       if (B.sparkT <= 0) {
         B.sparkT = 0.035;
@@ -178,7 +178,7 @@ function plasmaTick(dt) {
     t.cx += (ccx - t.cx) * Math.min(1, dt * 10); t.cy += (ccy - t.cy) * Math.min(1, dt * 10);
     t.ox = ox;
     t.e = e && d2(t.x, t.y, e.x, e.y) < 26 * 26 ? e : null;
-    if (t.e) { hurt(t.e, dps * dt * (list.length < nt && i >= list.length ? 0.6 : 1)); pulseFlash(t.e); if (Math.random() < dt * 25) fxP({ k: 'k', x: t.x, y: t.y, vx: rnd(-150, 150), vy: rnd(-150, 150), life: 0, max: 0.2, c: 'p' }); }
+    if (t.e) { hurt(t.e, dps * dt * (list.length < nt && i >= list.length ? 0.6 : 1), 'purple'); pulseFlash(t.e); if (Math.random() < dt * 25) fxP({ k: 'k', x: t.x, y: t.y, vx: rnd(-150, 150), vy: rnd(-150, 150), life: 0, max: 0.2, c: 'p' }); }
   });
   P.plasma = P.tend;
 }
@@ -253,7 +253,7 @@ updatePB = function (dt) {
     for (const e of G.enemies) {
       if (e.dead || e.hidden || e.y < -10) continue;
       if (hitTest(e, b)) {
-        hurt(e, b.dmg); b.dead = true;
+        hurt(e, b.dmg, b.ws); b.dead = true;
         if (b.kind === 'v') {
           fxP({ k: 'f', x: b.x, y: b.y - 2, vx: 0, vy: 0, r: 3.5, life: 0, max: 0.08 });
           for (let i = 0; i < 2; i++) fxP({ k: 'k', x: b.x, y: b.y, vx: rnd(-90, 90), vy: rnd(30, 140), life: 0, max: 0.14 });
