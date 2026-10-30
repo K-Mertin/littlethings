@@ -19,6 +19,7 @@
 - `party/qrcode.js` 和 `minigames/qrcode.js` 內容相同（各 ~24 KB）：兩者是不同的離線範圍（遊戲小屋有自己的 SW），各留一份。
 - math 和 zhuyin 有 7 個相同的 mp3（相同句子）：各自的 `audio/` 是獨立的離線包，保留。
 - `cobblekeep` 有一批內容相同的材質圖（程式產生的），已知，影響很小。
+- `siege/js/` 大部分是 `rush/js/` 的複製（2026-10-30 守城獨立出來）：畫面、3D 模型、音效兩邊各一份，之後各自發展；修到共通的 bug（例如 3D 烘焙）兩邊都要看一下。IndexedDB 也分開（`rush3d`／`siege3d`）。
 - `sw.js` 和 `offline/offline.js` 各有一份 `keyOf()`：SW 不能直接 import 頁面腳本，**改一個要同步改另一個**。
 
 ### 待決定（需要 MK）

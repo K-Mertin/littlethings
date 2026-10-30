@@ -9,7 +9,7 @@
 ### 誰可以合併
 | 範圍 | 規則 |
 |---|---|
-| minigames、abc、racing、zijia、brawl、zhuyin、cobblekeep、rush | 驗證過可以自行合併（rush：MK 2026-10-26 說「每次都自己先合併」） |
+| minigames、abc、racing、zijia、brawl、zhuyin、cobblekeep、rush、siege | 驗證過可以自行合併（rush、siege：MK 2026-10-26 說千軍突圍「每次都自己先合併」，守城 2026-10-30 從 rush 獨立出來） |
 | 大廳小改動（文字、排序、小 bug） | 可以自行合併 |
 | 其他遊戲 | MK 說「合併」才合併 |
 | `worker/`、`wrangler.jsonc`、`sw.js`、`offline/`、`tools/`、`helper/`、全站性改動 | 一律先問 MK |

@@ -1,4 +1,4 @@
-// 千軍突圍 — 守城模式的畫面
+// 萬軍守城（複製自千軍突圍 rush/js）— 守城模式的畫面
 'use strict';
 
 function buildDefArt() {
@@ -202,7 +202,7 @@ function drawDefHud(G) {
   // 關卡名
   g.font = `900 ${12 * u}px "Noto Sans TC",system-ui,sans-serif`;
   g.lineJoin = 'round'; g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = 4 * u;
-  const lab = `守城 ${G.s} · ${G.L.name}`;
+  const lab = `第 ${G.s} 關 · ${G.L.name}`;
   g.strokeText(lab, cx, by + 40 * u); g.fillText(lab, cx, by + 40 * u);
   // 自己的城：血條（左下）
   const bw2 = 150 * u, bx2 = 12 * u, by2 = R.H - 40 * u - (R.safeBot || 0) * R.dpr;
