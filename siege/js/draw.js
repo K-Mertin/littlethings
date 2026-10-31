@@ -238,6 +238,7 @@ function drawGround(g, th, dist) {
 // ---------- 門 ----------
 const GATE_COL = { good: ['#2f9bff', '#7fd0ff', '#0b4fae'], bad: ['#ff3b4f', '#ff9aa4', '#9b0f22'], wpn: ['#ffb020', '#ffe08a', '#a86400'], lv: ['#2fd07a', '#a6f5c8', '#0d7a40'], spec: ['#9a4dff', '#d8b8ff', '#4a1a9a'], buff: ['#ff4fb8', '#ffb8e4', '#9a1060'] };
 function gateLook(o) {
+  if (o.look) return o.look;
   if (o.k === 'spec') return 'spec';
   if (o.k === 'buff') return 'buff';
   if (o.k === 'pow') return 'wpn';
