@@ -13,16 +13,27 @@
 - 天空浮島（13–15 關）：雲海斷橋（`dgap`，小兵沒走在木板橋上就掉下去，第二座橋會左右晃）、強風（箭頭預告後把小兵吹向一邊）、雷擊（藍圈預告，小兵和怪物都會被劈）、疾風鷹。
 - 15 關、6 個世界；星星照城剩下的血量；過關才開下一關。
 
+## 大軍對決（2026-10-31 新增，主選單「⚔️ 大軍對決」）
+- 照 MK 給的廣告影片做的第二種玩法：紅軍是一整片人海，和藍軍在中間撞成一條會前後移動的戰線。
+- 戰場分 7 路（`CL_NC`），每一路記戰線位置 `f`、頂在前線的藍軍 `b`、紅軍 `r`；人多的一邊往前推，兩邊會互相擴散。
+- 砲台射出的一團小兵（blob）穿過門變多，碰到戰線就加進那一路。中間一個紫色 + 門；兩側走廊一邊是一整排黃色 + 門、一邊是藍色 ×2 門——**走廊的門只有在戰線推過去之後才拿得到**，越推越多。
+- 紅軍推到城牆就扣城的血；把戰線推到敵方基地前面就開始打基地，基地打爆就贏。
+- 花樣：猛衝（紅箭頭預告，那一路紅軍變好幾倍）、紅軍巨兵、會左右跑的紫門、一開一關的 ✕ 門。右下按鈕變成「衝鋒」：5 秒內全軍兩倍強。
+- 6 關（`CSTAGES`），星星存在 `cstars`，照城剩下的血量。共用金幣和永久強化。
+- 紅軍的量：`feed × 開場暖身 × 時間 × (1 + home·戰線位置²) + rb × 藍軍到達速度`（藍軍來越多，紅軍也派越多，才會拉鋸）。係數在 `CL_K`。
+- 模擬：`node siege/tools/clashsim.js [smart|lazy|center] [次數] [關卡]`，`FEED='[…]'` 試每關紅軍量。第一版只粗調過：smart 機器人全過、站中間全輸，第 1 關亂走也會過。
+
 ## 檔案
 - `index.html`：版面、選單、強化卡畫面。
 - `js/defense.js`：遊戲邏輯（關卡表 `DSTAGES`、配置產生、怪物、強化卡、平衡係數 `DEF_K`、每關難度 `df`）。
 - `js/defdraw.js`：守城畫面（城堡、砲台、小兵、牆、HUD）。
 - `js/main.js`：選單、輸入、主迴圈。
+- `js/clash.js`／`js/clashdraw.js`：大軍對決的邏輯和畫面（人海是預先畫好的一排排小兵圖，依戰線一段一段貼上去）。
 - 其他檔案（`core.js`、`levels.js`、`game.js`、`draw.js`、`scene.js`、`fx.js`、`audio.js`、3D 模型 `bake3d.js`／`models3d.js`／`scene3d.js`／`volcano*.js` …）是從 `rush/js/` 複製過來的，各自獨立發展。
 - `tools/defsim.js`：無頭平衡模擬器。`node siege/tools/defsim.js [smart|lazy|center] [次數] [關卡範圍] [強化等級]`；`GAME=1` 用遊戲裡的固定配置、`K='{"flow":1.1}'` 試係數。
 
 ## 存檔（localStorage）
-- key `siege:v1`：`coins`、`up`（`rate`、`wall`、`power`、`giant`、`card`、`coin`）、`dstars`（每關星星）、`music`、`sfx`、`speed`、`tips`、`plays`、`dlast`。
+- key `siege:v1`：`coins`、`up`（`rate`、`wall`、`power`、`giant`、`card`、`coin`）、`dstars`（每關星星）、`cstars`（大軍對決星星，2026-10-31 新增，舊存檔讀進來會自動補空的）、`music`、`sfx`、`speed`、`tips`、`plays`、`dlast`。
 - 第一次開會從千軍突圍的 `rush:v1` 搬守城星星、音樂音效設定、速度，並送每顆星 40 金幣（`Save.migrate`）。之後兩邊互不影響。
 - `js/sky.js`／`js/sky3d.js`：天空浮島的 2D／3D 美術（從千軍突圍複製）。
 - 3D 模型快取在 IndexedDB `siege3d`（和千軍突圍的 `rush3d` 分開）。

@@ -82,7 +82,7 @@ const ARMORY = { rifle: 0, smg: 300, shotgun: 450, laser: 700, rocket: 900 };
 const SAVE_KEY = 'siege:v1';
 const Save = {
   d: null,
-  def() { return { coins: 0, up: { rate: 0, wall: 0, power: 0, giant: 0, card: 0, coin: 0 }, music: true, sfx: true, tips: {}, plays: 0, dstars: {}, speed: 1, dlast: 0 }; },
+  def() { return { coins: 0, up: { rate: 0, wall: 0, power: 0, giant: 0, card: 0, coin: 0 }, music: true, sfx: true, tips: {}, plays: 0, dstars: {}, cstars: {}, speed: 1, dlast: 0 }; },
   load() {
     let d = null;
     try { d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { d = null; }
@@ -92,6 +92,7 @@ const Save = {
     if (!d.up || typeof d.up !== 'object') d.up = def.up;
     for (const k in def.up) if (typeof d.up[k] !== 'number') d.up[k] = 0;
     if (!d.dstars || typeof d.dstars !== 'object') d.dstars = {};
+    if (!d.cstars || typeof d.cstars !== 'object') d.cstars = {};   // 大軍對決的星星（2026-10-31 新增）
     this.d = d;
     this.save();
     return d;
@@ -112,6 +113,7 @@ const Save = {
   save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(this.d)); } catch (e) { } },
   unlocked() { return true; },
   dUnlocked(n) { return n === 1 || (this.d.dstars[n - 1] || 0) > 0; },
+  cUnlocked(n) { return n === 1 || (this.d.cstars[n - 1] || 0) > 0; },
 };
 
 if (typeof module !== 'undefined') module.exports = { SPEC, BUFF, ARMORY, ROAD, PX_MAX, ZSPAWN, BULLET_V, BULLET_RANGE, MAX_SHOOTERS, VIS_CAP, MAX_N, clamp, lerp, rng, WEAPONS, WPN_ORDER, LV_MAX, lvMult, ENEMIES, UPGRADES, Save };

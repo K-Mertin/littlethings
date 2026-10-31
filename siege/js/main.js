@@ -11,6 +11,7 @@ function show(id) {
   $('#speedBtn').hidden = !playing;
   $('#dcard').hidden = !(playing && G.card);
   $('#giantBtn').hidden = !playing;
+  if (playing) $('#giantBtn span').textContent = G.mode === 'clash' ? '衝鋒' : '大兵';
   syncSpeed();
 }
 // 遊戲速度
@@ -38,6 +39,57 @@ function demoGame() {
   G.demo = true; G.cardT = 1e9; G.castle = G.castleMax = 999; G.base.hp = G.base.max = 1e9;
 }
 
+// ---------- 大軍對決 ----------
+function startClash(n) {
+  AU.init();
+  setCam('defense');
+  newClash(n, { up: Save.d.up });
+  UI.mode = 'play'; UI.banner = 0; UI.resultShown = false;
+  show(null);
+  AU.music(G.L.theme.bgm, false);
+  Save.d.clast = n; Save.save();
+  const el = $('#ruleBanner');
+  el.querySelector('.rt').textContent = `大軍對決 ${n}`;
+  el.querySelector('.rn').textContent = G.L.name;
+  el.querySelector('.rd').textContent = (n === 1 ? '移動砲台把小兵送進兩邊走廊變多，再把紅軍的戰線推回去，推到敵方基地就贏！' : '') + (G.L.tip || '');
+  el.hidden = false; el.classList.remove('in'); void el.offsetWidth; el.classList.add('in');
+  UI.ruleT = 3.4;
+}
+function nextClash() {
+  for (let n = 1; n <= CSTAGES.length; n++) if (!Save.d.cstars[n]) return n;
+  return Save.d.clast || CSTAGES.length;
+}
+function finishClash(win) {
+  UI.mode = 'result';
+  const d = Save.d, n = G.s;
+  const kc = G.castle / G.castleMax;
+  const st = win ? (kc >= 0.8 ? 3 : kc >= 0.45 ? 2 : 1) : 0;
+  const prev = d.cstars[n] || 0;
+  const coins = Math.round((win ? 40 + n * 12 + st * 12 + (prev === 0 ? 40 : 0) : 6 + n * 3) * coinK());
+  if (win) d.cstars[n] = Math.max(prev, st);
+  d.coins += coins; d.plays++; Save.save();
+  AU.sfx(win ? 'win' : 'lose');
+  const last = n >= CSTAGES.length;
+  $('#resultBody').innerHTML = `<p class="eyebrow">大軍對決 ${n} · ${G.L.name}</p>
+      <h2 class="big ${win ? 'ok' : 'bad'}">${win ? '紅軍被推回去了！' : '城被紅軍淹沒了'}</h2>
+      ${win ? `<div class="stars">${[0, 1, 2].map(i => `<span class="st ${i < st ? 'on' : ''}" style="animation-delay:${0.25 + i * 0.25}s">★</span>`).join('')}</div>` : ''}
+      <div class="stats">
+        <div><b>${Math.round(kc * 100)}%</b><span>城的血量</span></div>
+        <div><b>${fmtNum(G.sent)}</b><span>射出小兵</span></div>
+        <div><b>${fmtNum(G.kills)}</b><span>打倒紅軍</span></div>
+        <div><b class="gold">+${coins}</b><span>金幣</span></div>
+      </div>
+      <p class="hint">${win ? (st < 3 ? '別讓紅軍碰到城牆，就能拿三顆星。' : '大獲全勝！') : '多走兩邊的走廊讓小兵變多；哪一路快被推到城牆，就趕快送人過去頂住。'}</p>
+      <div class="row">
+        ${win && !last ? '<button class="btn primary" data-act="next">下一關 →</button>' : `<button class="btn primary" data-act="retry">${win ? '再玩一次' : '再試一次'}</button>`}
+        ${win && !last ? '<button class="btn" data-act="retry">再玩一次</button>' : ''}
+        <button class="btn" data-act="shop">強化砲台</button>
+        <button class="btn ghost" data-act="levels">選關</button>
+      </div>`;
+  show('result'); refreshCoins();
+  if (win) for (let i = 0; i < st; i++) setTimeout(() => AU.sfx('star', i), 250 + i * 250);
+}
+
 // ---------- 開始一關 ----------
 function startStage(n) {
   AU.init();
@@ -59,22 +111,29 @@ function featText(D) {
 }
 function buildLevels() {
   const box = $('#levelGrid');
+  const clashRow = `<div class="themeRow"><h3>⚔️ 大軍對決</h3><div class="tiles">${CSTAGES.map((C, i) => {
+    const n = i + 1, un = Save.cUnlocked(n), st = Save.d.cstars[n] || 0;
+    return `<button class="tile t-${THEMES[C.theme].id}" data-clash="${n}" ${un ? '' : 'disabled'}>
+      <span class="n">${un ? n : '🔒'}</span><span class="nm">${C.name}</span><span class="rl">推戰線${C.surge ? '・猛衝' : ''}${C.brute ? '・巨兵' : ''}${C.slide ? '・會動' : ''}${C.kill ? '・✕ 門' : ''}</span>
+      <span class="ss">${[0, 1, 2].map(k => `<i class="${k < st ? 'on' : ''}">★</i>`).join('')}</span></button>`;
+  }).join('')}</div></div>`;
   const groups = [];
   DSTAGES.forEach((D, i) => { const g = groups[groups.length - 1]; if (g && g.theme === D.theme) g.list.push(i + 1); else groups.push({ theme: D.theme, list: [i + 1] }); });
-  box.innerHTML = groups.map(gr => `<div class="themeRow"><h3>${THEMES[gr.theme].name}</h3><div class="tiles">${gr.list.map(n => {
+  box.innerHTML = clashRow + groups.map(gr => `<div class="themeRow"><h3>${THEMES[gr.theme].name}</h3><div class="tiles">${gr.list.map(n => {
     const D = DSTAGES[n - 1], un = Save.dUnlocked(n), st = Save.d.dstars[n] || 0;
     return `<button class="tile t-${THEMES[D.theme].id}" data-stage="${n}" ${un ? '' : 'disabled'}>
       <span class="n">${un ? n : '🔒'}</span><span class="nm">${D.name}</span><span class="rl">${featText(D)}</span>
       <span class="ss">${[0, 1, 2].map(k => `<i class="${k < st ? 'on' : ''}">★</i>`).join('')}</span></button>`;
   }).join('')}</div></div>`).join('');
-  $('#starTotal').textContent = `★ ${totalStars()} / ${DSTAGES.length * 3}`;
+  $('#starTotal').textContent = `★ ${totalStars()} / ${(DSTAGES.length + CSTAGES.length) * 3}`;
 }
-function totalStars() { return Object.values(Save.d.dstars).reduce((a, b) => a + b, 0); }
+function totalStars() { return Object.values(Save.d.dstars).reduce((a, b) => a + b, 0) + Object.values(Save.d.cstars).reduce((a, b) => a + b, 0); }
 function coinK() { return 1 + (Save.d.up.coin || 0) * 0.05; }
 
 function finish(win) {
   if (UI.resultShown) return;
   UI.resultShown = true;
+  if (G.mode === 'clash') return finishClash(win);
   UI.mode = 'result';
   const d = Save.d, n = G.s;
   const kc = G.castle / G.castleMax;
@@ -137,6 +196,10 @@ function handleEvents() {
       case 'giant': AU.sfx('gateWpn'); toast('金色大兵出動！', 1.4); break;
       case 'dboss': AU.sfx('boss'); toast('巨魔兵出現了！集中火力擋住它', 2.2); break;
       case 'geyser': AU.sfx('geyser'); break;
+      case 'csurge': AU.sfx('warn'); tipOnce('csurge', '紅色箭頭那一路要猛衝了！快把小兵送過去頂住', 3); break;
+      case 'cbrute': AU.sfx('boss'); G.shake = Math.max(G.shake, 0.4); tipOnce('cbrute', '紅軍巨兵！那一路會被壓下去，多送點人過去', 3); break;
+      case 'charge': AU.sfx('gateWpn'); toast('⚡ 全軍衝鋒！', 1.4); vibrate(30); break;
+      case 'cjoin': AU.sfx('bump', 30); break;
       case 'gustwarn': AU.sfx('warn'); tipOnce('dgust', '強風要來了！小兵會被吹歪，砲台要往反方向修正', 3); break;
       case 'gust': AU.sfx('gust'); break;
       case 'boltwarn': tipOnce('dbolt', '藍圈會被雷劈！小兵和怪物都會被劈到——把怪物引進去', 3); break;
@@ -151,6 +214,13 @@ function vibrate(ms) { try { if (navigator.vibrate && Save.d.sfx) navigator.vibr
 
 // 教學提示（每個只出現一次）
 function tips() {
+  if (G.mode === 'clash') {
+    if (G.t > 0.5 && G.t < 1) tipOnce('cmove', '把砲台移到兩邊的走廊：小兵穿過一整排門會變超多！', 3.6);
+    if (G.t > 9 && G.t < 9.5) tipOnce('cfront', '紅軍推到哪，走廊的門就只拿得到哪；把戰線往上推，後面的門才會亮起來', 4);
+    if (G.giant >= G.giantMax) tipOnce('ccharge', '能量滿了！按右下角的「衝鋒」，全軍 5 秒變兩倍強', 3);
+    if (G.L.C.kill && G.t > 3) tipOnce('ckill', '走廊裡的 ✕ 門一開一關，關著的時候走進去會整隊消失', 3.4);
+    return;
+  }
   if (G.t > 0.5 && G.t < 1) tipOnce('dmove', '左右拖曳砲台：讓小兵穿過 ×2、+ 的門會變多！', 3.4);
   if (G.giant >= G.giantMax) tipOnce('dgiant', '能量滿了！按右下角的「大兵」放出金色大兵', 3);
   for (const o of G.objs) if (o.t === 'en' && o.z < 14) { tipOnce('denemy', '怪物快到城了！把砲台移過去擋住它', 3); break; }
@@ -199,7 +269,9 @@ function goTitle() {
   const next = nextStage();
   $('#startBtn').textContent = next === 1 && !Save.d.dstars[1] ? '開始遊戲' : `繼續：第 ${next} 關`;
   const ts = totalStars();
-  $('#starInfo').textContent = `★ ${ts} / ${DSTAGES.length * 3}`;
+  $('#starInfo').textContent = `★ ${ts} / ${(DSTAGES.length + CSTAGES.length) * 3}`;
+  const cs = Object.values(Save.d.cstars).reduce((a, b) => a + b, 0);
+  $('#clashInfo').textContent = cs ? `第 ${nextClash()} 關 · ★ ${cs} / ${CSTAGES.length * 3}` : '新玩法：推戰線';
   refreshCoins();
   show('title');
 }
@@ -242,13 +314,14 @@ function onAct(act) {
   if (AU.ctx && AU.ctx.state === 'suspended' && act !== 'pause') AU.ctx.resume();
   switch (act) {
     case 'start': startStage(nextStage()); break;
+    case 'clash': startClash(nextClash()); break;
     case 'levels': toMenu('levels', buildLevels); break;
     case 'shop': toMenu('shop', buildShop); break;
     case 'help': show('help'); break;
     case 'title': case 'quit': goTitle(); if (AU.ctx) AU.ctx.resume(); break;
     case 'resume': resume(); break;
-    case 'restart': case 'retry': startStage(G && !G.demo ? G.s : (Save.d.dlast || 1)); break;
-    case 'next': startStage(Math.min(DSTAGES.length, G.s + 1)); break;
+    case 'restart': case 'retry': if (G && G.mode === 'clash') startClash(G.s); else startStage(G && !G.demo ? G.s : (Save.d.dlast || 1)); break;
+    case 'next': if (G && G.mode === 'clash') startClash(Math.min(CSTAGES.length, G.s + 1)); else startStage(Math.min(DSTAGES.length, G.s + 1)); break;
   }
 }
 
@@ -275,7 +348,7 @@ function setupInput() {
     if (G && G.card && UI.mode === 'play' && e.key >= '1' && e.key <= '3') { const k = G.card[+e.key - 1]; if (k) { e.preventDefault(); pickCard(k); return; } }
     if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') { UI.kbL = 1; e.preventDefault(); }
     else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { UI.kbR = 1; e.preventDefault(); }
-    else if ((e.key === ' ' || e.key === 'g' || e.key === 'G') && UI.mode === 'play') { e.preventDefault(); defLaunchGiant(); }
+    else if ((e.key === ' ' || e.key === 'g' || e.key === 'G') && UI.mode === 'play') { e.preventDefault(); if (G.mode === 'clash') clLaunchCharge(); else defLaunchGiant(); }
     else if ((e.key === 'f' || e.key === 'F') && UI.mode === 'play') cycleSpeed();
     else if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') { if (UI.mode === 'play') pause(); else if (UI.mode === 'pause') resume(); }
     else if (e.key === 'Enter') {
@@ -292,6 +365,8 @@ function setupInput() {
     if (b) { onAct(b.dataset.act); return; }
     const t = e.target.closest('[data-stage]');
     if (t && !t.disabled) { startStage(+t.dataset.stage); return; }
+    const tc = e.target.closest('[data-clash]');
+    if (tc && !tc.disabled) { startClash(+tc.dataset.clash); return; }
     const u = e.target.closest('[data-up]');
     if (u && !u.disabled) {
       const U = UPGRADES.find(x => x.id === u.dataset.up);
@@ -304,7 +379,7 @@ function setupInput() {
   });
   $('#pauseBtn').addEventListener('click', e => { e.stopPropagation(); pause(); });
   $('#speedBtn').addEventListener('click', e => { e.stopPropagation(); cycleSpeed(); });
-  $('#giantBtn').addEventListener('click', e => { e.stopPropagation(); if (UI.mode === 'play' && !defLaunchGiant()) AU.sfx('click'); });
+  $('#giantBtn').addEventListener('click', e => { e.stopPropagation(); if (UI.mode === 'play' && !(G.mode === 'clash' ? clLaunchCharge() : defLaunchGiant())) AU.sfx('click'); });
   document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
   addEventListener('resize', () => { UI.pendResize = true; });
 }
@@ -338,7 +413,7 @@ function frame(now) {
     let rem = dt * (Save.d.speed || 1);
     for (let k = 0; k < 6 && rem > 1e-5; k++) {
       const d = Math.min(rem, 1 / 60);
-      defStep(d, null);
+      if (G.mode === 'clash') clashStep(d, null); else defStep(d, null);
       rem -= d;
       if (G.st === 'win' || G.st === 'lost') break;
     }
@@ -355,11 +430,12 @@ function frame(now) {
     G.q.length = 0;
     if (G.t > 60) demoGame();
   } else if (UI.mode === 'result') {
-    defStep(dt, null); G.q.length = 0;
+    if (G.mode === 'clash') clashStep(dt, null); else defStep(dt, null);
+    G.q.length = 0;
   }
   if (UI.pendResize) { UI.pendResize = false; resizeRender(); }
-  renderDef(G, now / 1000);
-  if (UI.mode === 'play' || UI.mode === 'pause') drawDefHud(G);
+  if (G.mode === 'clash') { renderClash(G, now / 1000); if (UI.mode === 'play' || UI.mode === 'pause') drawClashHud(G); }
+  else { renderDef(G, now / 1000); if (UI.mode === 'play' || UI.mode === 'pause') drawDefHud(G); }
   const gb = $('#giantBtn');
   if (!gb.hidden) { const p = Math.round(100 * G.giant / G.giantMax); gb.style.setProperty('--p', p); gb.classList.toggle('ready', p >= 100); }
   autoQuality(dt);
@@ -400,6 +476,6 @@ function boot() {
   // 3D 模型在背景慢慢烤，烤好就換上
   setTimeout(() => Bake.init(), 60);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { R.bgKey = ''; });
-  window.__siege = { get G() { return G; }, UI, R, Save, startStage, finish, Bake };
+  window.__siege = { get G() { return G; }, UI, R, Save, startStage, startClash, finish, Bake };
 }
 boot();
