@@ -30,38 +30,46 @@ function clRedSpr(spr) {
   return c;
 }
 
-// 一排人海：在 z 這一排，畫 [x0,x1] 這一段
-function clCrowdSeg(g, img, x0, x1, z, k) {
+// 一排人海：在 z 這一排，畫 [x0,x1] 這一段（貼圖跟著世界座標走，戰線移動時小兵不會跳）
+function clCrowdSeg(g, img, x0, x1, z, k, bob) {
   if (x1 - x0 < 0.05) return;
   const a = P(x0, z, 0), b = P(x1, z, 0), top = P(x0, z, 0.95);
   const w = b.x - a.x, h = (a.y - top.y) * 1.25;
   if (h < 1) return;
-  const sw = (x1 - x0) / 12 * CLA.W, sx = ((x0 + 4) / 12) * CLA.W * 0.6 + (k * 173) % 300;
-  g.drawImage(img, sx, 0, sw, 64, a.x, a.y - h * 0.85, w, h);
+  const pm = CLA.W / 12, sw = (x1 - x0) * pm, sx = (x0 + CL_FW) * pm + ((k * 173) % 300 + 300) % 300;
+  g.drawImage(img, sx, 0, sw, 64, a.x, a.y - h * (0.85 + bob), w, h);
 }
 
-// 每一格 x 的戰線位置、藍軍厚度（每一幀算一次）
+// 每一格 x 的戰線位置、藍軍厚度（每一幀算一次；厚度慢慢變，援軍到了不會一下子跳）
 const CL_NS = 44;
-function clSamples(G) {
-  const S = R.clS || (R.clS = { x: new Float32Array(CL_NS + 1), f: new Float32Array(CL_NS + 1), d: new Float32Array(CL_NS + 1) });
+function clSamples(G, t) {
+  let S = R.clS;
+  if (!S || S.G !== G) S = R.clS = { G, t, x: new Float32Array(CL_NS + 1), f: new Float32Array(CL_NS + 1), d: new Float32Array(CL_NS + 1), seg: new Float32Array(CL_NS + 4), v: new Float32Array(CL_NS + 1) };
+  const dt = clamp(t - S.t, 0, 0.1); S.t = t;
+  const ease = S.init ? Math.min(1, dt * 4) : 1; S.init = 1;
   for (let k = 0; k <= CL_NS; k++) {
     const x = -CL_FW + 2 * CL_FW * k / CL_NS;
     S.x[k] = x; S.f[k] = clFrontAt(G.f, x);
     const bb = clFrontAt(G.b, x);
-    S.d[k] = bb > 0.6 ? clamp(Math.sqrt(bb) * 0.36, 0.45, 6.5) : 0;
+    const d = bb > 0.6 ? clamp(Math.sqrt(bb) * 0.36, 0.45, 6.5) : 0;
+    S.d[k] += (d - S.d[k]) * (d === 0 && S.d[k] < 0.5 ? 1 : ease);
   }
   return S;
 }
-// 在 z 這一排，符合條件的連續段落
-function clSegs(S, test) {
-  const out = [];
-  let a = null;
+// 在 z 這一排，S.v[k] > 0 的連續段落（邊界用內插算到剛好的位置）；結果放在 S.seg，回傳段數
+function clSegs(S) {
+  const v = S.v, out = S.seg, dx = 2 * CL_FW / CL_NS;
+  let n = 0, a = null;
   for (let k = 0; k <= CL_NS; k++) {
-    const ok = test(k);
-    if (ok && a == null) a = k;
-    if ((!ok || k === CL_NS) && a != null) { const e = ok ? k : k - 1; out.push([S.x[a] - (a === 0 ? 0 : CL_FW / CL_NS), S.x[e] + (e === CL_NS ? 0 : CL_FW / CL_NS)]); a = null; }
+    const ok = v[k] > 0;
+    if (ok && a == null) a = k === 0 ? S.x[0] : S.x[k] - dx * v[k] / (v[k] - v[k - 1]);
+    if (a != null && (!ok || k === CL_NS)) {
+      const e = ok ? S.x[k] : S.x[k - 1] + dx * v[k - 1] / (v[k - 1] - v[k]);
+      if (n + 2 <= out.length) { out[n++] = a; out[n++] = e; }
+      a = null;
+    }
   }
-  return out;
+  return n;
 }
 
 function renderClash(G, t) {
@@ -88,7 +96,7 @@ function renderClash(G, t) {
     g.strokeStyle = 'rgba(80,170,255,.75)'; g.lineWidth = Math.max(3, 0.12 * a.s);
     g.setLineDash([14 * R.dpr, 10 * R.dpr]); g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); g.setLineDash([]); }
   for (const e of G.fx) if (e.k === 'ring') drawRing(g, e);
-  const S = clSamples(G);
+  const S = clSamples(G, t);
 
   const items = R.items || (R.items = []);
   items.length = 0;
@@ -108,14 +116,22 @@ function renderClash(G, t) {
   for (let z = CL_FENCE; z < CL_TOP + 2; z += 2.5) for (const sx of [-1, 1]) items.push({ z: z + 0.01, wall: sx, z1: Math.min(CL_TOP + 2, z + 2.5) });
   for (const o of G.gates) items.push({ z: o.z, tile: o });
   items.push({ z: G.mid.z, o: G.mid });
-  // 人海：紅色從戰線一路排到基地，藍色頂在戰线前面
+  // 人海：紅色從基地一路往戰線湧下來，藍色往上頂（每一排會慢慢移動，看起來是一直在走）
   let fmin = 1e9, fmax = -1e9;
   for (let k = 0; k <= CL_NS; k++) { fmin = Math.min(fmin, S.f[k] - S.d[k]); fmax = Math.max(fmax, S.f[k]); }
-  const RZ = 0.45;
-  for (let k = Math.ceil((CL_TOP + 1.6) / RZ); k * RZ > fmin - RZ; k--) {
-    const z = k * RZ;
-    if (z > fmin - 0.1) items.push({ z, sea: 'r', k });
-    if (z <= fmax + 0.1) items.push({ z: z - 0.001, sea: 'b', k });
+  const RZ = 0.45, mv = G.st === 'play' ? 1 : 0.3;
+  const rOff = (t * 0.55 * mv) % RZ, rJ = Math.floor(t * 0.55 * mv / RZ);
+  for (let k = Math.ceil((CL_TOP + 1.6) / RZ) + 1; ; k--) {
+    const z = k * RZ - rOff;
+    if (z < fmin - 0.1) break;
+    if (z > CL_TOP + 1.6) continue;
+    items.push({ z, sea: 'r', k: k + rJ });
+  }
+  const bOff = (t * 0.7 * mv) % RZ, bJ = Math.floor(t * 0.7 * mv / RZ);
+  for (let k = Math.floor((fmin - 0.1) / RZ); ; k++) {
+    const z = k * RZ + bOff;
+    if (z > fmax + 0.1) break;
+    items.push({ z: z - 0.001, sea: 'b', k: k - bJ });
   }
   items.push({ z: (fmin + fmax) / 2 + 0.002, front: 1 });
   for (const q of G.brutes) items.push({ z: G.f[q.c] + 0.6, brute: q });
@@ -124,14 +140,16 @@ function renderClash(G, t) {
   items.push({ z: DEF_Z_BASE + 0.5, base: 1 });
   items.push({ z: DEF_Z_CANNON, cannon: 1 });
   items.sort((p, q) => q.z - p.z);
-  const fr = Math.floor(t * 4) & 1;
   for (const it of items) {
     if (it.kind) drawDecor(g, it);
     else if (it.fence) drawFence(g, it, th);
-    else if (it.sea === 'r') {
-      for (const [x0, x1] of clSegs(S, k => S.f[k] < it.z - 0.15)) clCrowdSeg(g, CLA.red[(fr + it.k) & 1], x0, x1, it.z, it.k);
-    } else if (it.sea === 'b') {
-      for (const [x0, x1] of clSegs(S, k => S.d[k] > 0 && it.z <= S.f[k] - 0.1 && it.z > S.f[k] - S.d[k])) clCrowdSeg(g, CLA.blue[(fr + it.k) & 1], x0, x1, it.z, it.k + 7);
+    else if (it.sea) {
+      const z = it.z, red = it.sea === 'r', v = S.v;
+      if (red) for (let k = 0; k <= CL_NS; k++) v[k] = z - 0.15 - S.f[k];
+      else for (let k = 0; k <= CL_NS; k++) v[k] = S.d[k] > 0 ? Math.min(S.f[k] - 0.1 - z, z - S.f[k] + S.d[k]) : -1;
+      const n = clSegs(S), ph = t * 6 + it.k * 0.9;
+      const img = (red ? CLA.red : CLA.blue)[Math.floor(ph / Math.PI) & 1], bob = 0.04 * Math.abs(Math.sin(ph));
+      for (let i = 0; i < n; i += 2) clCrowdSeg(g, img, S.seg[i], S.seg[i + 1], z, red ? it.k : it.k + 7, bob);
     } else if (it.front) drawClashFront(g, G, S, t);
     else if (it.wall) drawClashWall(g, it.wall * CL_WALL, it.z, it.z1);
     else if (it.tile) drawClashTile(g, it.tile, t);
@@ -181,34 +199,57 @@ function drawClashWall(g, x, z0, z1) {
   g.fillStyle = '#8b939e'; g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.lineTo(c.x, c.y); g.lineTo(d.x, d.y); g.fill();
   g.fillStyle = '#c3cad3'; g.beginPath(); g.moveTo(a2.x, a2.y); g.lineTo(b2.x, b2.y); g.lineTo(c2.x, c2.y); g.lineTo(d2.x, d2.y); g.fill();
   g.strokeStyle = 'rgba(0,0,0,.18)'; g.lineWidth = Math.max(1, 0.03 * a.s);
-  for (let z = z0 + 0.8; z < z1; z += 0.8) { const p = P(x, z, 0), q = P(x, z, H); g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(q.x, q.y); g.stroke(); }
+  g.beginPath();
+  for (let z = z0 + 0.8; z < z1; z += 0.8) { const p = P(x, z, 0), q = P(x, z, H); g.moveTo(p.x, p.y); g.lineTo(q.x, q.y); }
+  g.stroke();
 }
 
 // 走廊裡的門：像廣告那樣一格一格的牌子
 const CL_TILE = { wpn: ['#ffc21a', '#fff1a0', '#9a5a00'], good: ['#2f9bff', '#bfe6ff', '#0b4fae'], bad: ['#ff3b4f', '#ffc0c8', '#9b0f22'] };
+// 門牌每一格都重畫字很花時間：先畫成小圖存起來（依文字、顏色、大小分類），之後只要貼上去
+const CL_SPR = new Map();
+function clSprite(key, w, h, draw) {
+  let c = CL_SPR.get(key);
+  if (!c) {
+    if (CL_SPR.size > 240) CL_SPR.clear();
+    c = mk(Math.max(2, Math.ceil(w)), Math.max(2, Math.ceil(h)), draw);
+    CL_SPR.set(key, c);
+  }
+  return c;
+}
+function clTileSpr(txt, lookK, open, ar, hb) {
+  const pad = Math.ceil(hb * 0.1), H = hb, W = Math.round(hb * ar);
+  return clSprite(`t|${txt}|${lookK}|${open ? 1 : 0}|${ar}|${hb}`, W + pad * 2, H + pad * 2, g => {
+    const look = CL_TILE[lookK], x = pad, y = pad, rad = Math.max(2, H * 0.12);
+    g.fillStyle = open ? 'rgba(255,60,80,.15)' : look[0];
+    rr(g, x, y, W, H, rad); g.fill();
+    if (!open) { g.fillStyle = 'rgba(255,255,255,.22)'; rr(g, x + 2, y + 2, W - 4, H * 0.35, Math.max(2, H * 0.1)); g.fill(); }
+    g.lineWidth = Math.max(1.5, H * 0.05); g.strokeStyle = look[1];
+    if (open) g.setLineDash([H * 0.08, H * 0.06]);
+    rr(g, x, y, W, H, rad); g.stroke(); g.setLineDash([]);
+    let fs = H * 0.62;
+    g.font = `900 ${fs}px "Noto Sans TC",system-ui,sans-serif`;
+    const tw = g.measureText(txt).width; if (tw > W * 0.9) { fs *= W * 0.9 / tw; g.font = `900 ${fs}px "Noto Sans TC",system-ui,sans-serif`; }
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+    g.lineWidth = fs * 0.18; g.strokeStyle = look[2]; g.strokeText(txt, x + W / 2, y + H / 2 + fs * 0.04);
+    g.fillStyle = '#fff'; g.fillText(txt, x + W / 2, y + H / 2 + fs * 0.04);
+  });
+}
 function drawClashTile(g, o, t) {
-  const H = 1.25, look = CL_TILE[o.k === 'kill' ? 'bad' : o.look || 'good'];
+  const H = 1.25, lookK = o.k === 'kill' ? 'bad' : o.look || 'good';
   const A = P(o.x - o.w + 0.04, o.z, 0.05), B = P(o.x + o.w - 0.04, o.z, H);
   const w = B.x - A.x, h = A.y - B.y;
   if (h < 2) return;
+  const open = o.blink && !o.shut;
+  const txt = o.k === 'kill' ? (open ? '開' : '✕') : o.k === 'mul' ? '×' + o.v : '+' + o.v;
+  // 大小分級（每 12px 一級），太大就用最大那張放大
+  const hb = clamp(Math.ceil(h / 12) * 12, 12, 156), ar = Math.round(w / h * 4) / 4;
+  const spr = clTileSpr(txt, lookK, open, ar, hb), k = h / hb;
+  const bump = 1 + (o.bump || 0) * 0.12, cx = A.x + w / 2, cy = B.y + h / 2;
+  const dw = spr.width * k * bump, dh = spr.height * k * bump;
   const ga = g.globalAlpha;
   g.globalAlpha = ga * (1 - (o.fade || 0));
-  const bump = 1 + (o.bump || 0) * 0.12, cx = A.x + w / 2, cy = B.y + h / 2;
-  const ww = w * bump, hh = h * bump;
-  const open = o.blink && !o.shut;
-  g.fillStyle = open ? 'rgba(255,60,80,.15)' : look[0];
-  rr(g, cx - ww / 2, cy - hh / 2, ww, hh, Math.max(2, hh * 0.12)); g.fill();
-  if (!open) { g.fillStyle = 'rgba(255,255,255,.22)'; rr(g, cx - ww / 2 + 2, cy - hh / 2 + 2, ww - 4, hh * 0.35, Math.max(2, hh * 0.1)); g.fill(); }
-  g.lineWidth = Math.max(1.5, 0.06 * A.s); g.strokeStyle = look[1];
-  if (open) g.setLineDash([5 * R.dpr, 4 * R.dpr]);
-  rr(g, cx - ww / 2, cy - hh / 2, ww, hh, Math.max(2, hh * 0.12)); g.stroke(); g.setLineDash([]);
-  const txt = o.k === 'kill' ? (open ? '開' : '✕') : o.k === 'mul' ? '×' + o.v : '+' + o.v;
-  let fs = hh * 0.62;
-  g.font = `900 ${fs}px "Noto Sans TC",system-ui,sans-serif`;
-  const tw = g.measureText(txt).width; if (tw > ww * 0.9) { fs *= ww * 0.9 / tw; g.font = `900 ${fs}px "Noto Sans TC",system-ui,sans-serif`; }
-  g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
-  g.lineWidth = fs * 0.18; g.strokeStyle = look[2]; g.strokeText(txt, cx, cy + fs * 0.04);
-  g.fillStyle = '#fff'; g.fillText(txt, cx, cy + fs * 0.04);
+  g.drawImage(spr, cx - dw / 2, cy - dh / 2, dw, dh);
   g.globalAlpha = ga;
 }
 
@@ -228,11 +269,16 @@ function drawClashBlob(g, bl) {
   }
   if (bl.n > DEF_SQUAD) {
     const q = P(bl.x, bl.z, 1.5), u = R.u * R.dpr, fs = Math.max(11 * u, 0.55 * q.s) * (1 + bl.pop * 0.4);
-    const txt = fmtNum(bl.n);
-    g.font = `900 ${fs}px "Noto Sans TC",system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
-    const tw = g.measureText(txt).width + fs * 0.6;
-    g.fillStyle = 'rgba(20,60,150,.85)'; rr(g, q.x - tw / 2, q.y - fs * 0.62, tw, fs * 1.24, fs * 0.5); g.fill();
-    g.fillStyle = '#fff'; g.fillText(txt, q.x, q.y + fs * 0.04);
+    const txt = fmtNum(bl.n), fb = fs > 40 ? 72 : 40;   // 只有兩種大小，小隊往前走時不用一直產生新圖
+    const spr = clSprite(`n|${txt}|${fb}`, fb * (txt.length * 0.62 + 0.8), fb * 1.3, g2 => {
+      g2.font = `900 ${fb}px "Noto Sans TC",system-ui,sans-serif`; g2.textAlign = 'center'; g2.textBaseline = 'middle';
+      const W = g2.canvas.width, Hh = g2.canvas.height;
+      const tw = Math.min(W, g2.measureText(txt).width + fb * 0.6);
+      g2.fillStyle = 'rgba(20,60,150,.85)'; rr(g2, (W - tw) / 2, (Hh - fb * 1.24) / 2, tw, fb * 1.24, fb * 0.5); g2.fill();
+      g2.fillStyle = '#fff'; g2.fillText(txt, W / 2, Hh / 2 + fb * 0.04);
+    });
+    const k = fs / fb;
+    g.drawImage(spr, q.x - spr.width * k / 2, q.y - spr.height * k / 2, spr.width * k, spr.height * k);
   }
 }
 
