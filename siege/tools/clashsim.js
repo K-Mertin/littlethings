@@ -1,4 +1,5 @@
 // 大軍對決模擬：node siege/tools/clashsim.js [policy=smart|lazy|center] [runs] [stages=1-6] [up]
+// policy：smart 會挑走廊／支援、lazy 亂走、center 站中間、unit 只走兵種門（看兵種門有沒有太強）
 // 環境變數 K='{"kill":0.6}' 可以試平衡係數（CL_K）
 const fs = require('fs'), vm = require('vm'), path = require('path');
 const dir = path.join(__dirname, '..', 'js');
@@ -50,6 +51,7 @@ for (let s = s0; s <= s1; s++) {
       if (thinkT <= 0) {
         thinkT = policy === 'lazy' ? 3 : 0.4;
         if (policy === 'center') tx = 0;
+        else if (policy === 'unit') tx = G.ug.length ? G.ug[Math.floor(G.t / 6) % G.ug.length].x : 0;
         else if (policy === 'lazy') tx = [-A.CL_COR, A.CL_COR, 0, -1.5, 1.5][Math.floor(Math.random() * 5)];
         else tx = decide(G);
       }

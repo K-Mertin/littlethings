@@ -7,17 +7,19 @@
 const CL_NC = 7, CL_FW = 2.75, CL_CW = CL_FW * 2 / CL_NC;
 const CL_COR = 3.45, CL_CORW = 0.5, CL_WALL = 2.86;   // 走廊中心、半寬、走廊和戰場中間的矮牆
 const CL_FENCE = 7, CL_TOP = DEF_Z_BASE - 1.8;          // 走廊從柵欄開始；戰線最遠推到基地前
-const CL_MIDZ = 4.4, CL_SPD = 7;
+const CL_MIDZ = 4.4, CL_SPD = 7, CL_UZ = 7.6;   // CL_UZ：兵種門的位置
+const CL_UNIT = { arch: '🏹弓箭', cav: '🐎騎兵', shield: '🛡盾兵' };
 const CL_K = { kill: 0.9, move: 1.7, soft: 25, castle: 0.25, base: 0.5, home: 2, rb: 0.4, diffB: 1.0, diffR: 0.4, smooth: 1.2 };
 
 // L：左走廊（黃色 +），R：右走廊（藍色 ×），mid：中間紫門。swap：左右對調
+// units：場上的兵種門（arch 弓箭手、cav 騎兵、shield 盾兵）；cat：走廊投石車；rain：紅軍箭雨；wall：紅軍盾陣
 const CSTAGES = [
-  { name: '平原會戰', theme: 0, feed: 6, ramp: 0.5, base: 2600, castle: 300, mid: 9, L: [5, 7, 9, 12, 16, 20, 26, 32], R: [2, 2, 2, 2], tip: '紅軍一大片衝過來！小兵碰到戰線就會往前推。走廊的門要戰線推過去才拿得到' },
-  { name: '沙丘夾擊', theme: 1, feed: 13, ramp: 0.6, base: 3800, castle: 320, mid: 12, L: [6, 8, 11, 14, 18, 24, 30, 40], R: [2, 2, 2, 2, 3], surge: 1, swap: 1, tip: '紅色箭頭那一路會猛衝，快把小兵送過去頂住' },
-  { name: '冰原紅海', theme: 2, feed: 16, ramp: 0.7, base: 5200, castle: 340, mid: 14, L: [8, 10, 13, 17, 22, 28, 36, 46], R: [2, 2, 2, 2, 2], surge: 1, brute: 1, tip: '紅軍巨兵一上來，那一路就會被壓下去' },
-  { name: '霓虹決戰', theme: 3, feed: 26, ramp: 0.8, base: 6800, castle: 360, mid: 18, midW: 0.9, slide: 1, L: [9, 12, 16, 20, 26, 34, 44, 56], R: [2, 2, 2, 3, 3], surge: 1, swap: 1, tip: '中間的紫門會左右跑' },
-  { name: '熔岩大軍', theme: 4, feed: 13, ramp: 0.9, base: 8800, castle: 380, mid: 20, L: [10, 14, 18, 24, 30, 40, 52, 66], R: [2, 2, 3, 2, 3], kill: 1, surge: 1, brute: 1, tip: '走廊裡有 ✕ 門，戰線推過去前先別走那邊' },
-  { name: '天空總決戰', theme: 5, feed: 13, ramp: 1.0, base: 11000, castle: 400, mid: 24, midW: 0.9, slide: 1, L: [12, 16, 22, 28, 36, 46, 60, 78], R: [2, 2, 3, 2, 3, 3], kill: 1, surge: 1, brute: 1, swap: 1, tip: '最後一戰！全部都來了' },
+  { name: '平原會戰', theme: 0, feed: 6, ramp: 0.5, base: 2600, castle: 300, mid: 9, L: [5, 7, 9, 12, 16, 20, 26, 32], R: [2, 2, 2, 2], units: ['arch', 'cav'], tip: '紅軍一大片衝過來！小兵碰到戰線就會往前推。走廊的門要戰線推過去才拿得到' },
+  { name: '沙丘夾擊', theme: 1, feed: 13, ramp: 0.6, base: 3800, castle: 320, mid: 12, L: [6, 8, 11, 14, 18, 24, 30, 40], R: [2, 2, 2, 2, 3], surge: 1, swap: 1, units: ['arch', 'cav'], cat: 1, tip: '紅色箭頭那一路會猛衝；走廊的投石車會往紅軍最多的地方丟大石頭' },
+  { name: '冰原紅海', theme: 2, feed: 16, ramp: 0.7, base: 5200, castle: 340, mid: 14, L: [8, 10, 13, 17, 22, 28, 36, 46], R: [2, 2, 2, 2, 2], surge: 1, brute: 1, units: ['arch', 'shield'], rain: 1, tip: '紅圈是紅軍的箭雨，小兵別走進去；盾兵門讓那一路少死一半' },
+  { name: '霓虹決戰', theme: 3, feed: 26, ramp: 0.8, base: 6800, castle: 360, mid: 18, midW: 0.9, slide: 1, L: [9, 12, 16, 20, 26, 34, 44, 56], R: [2, 2, 2, 3, 3], surge: 1, swap: 1, units: ['cav', 'shield'], cat: 1, wall: 1, tip: '紅軍舉起盾陣那一路推不動——用騎兵或投石車把盾陣打破' },
+  { name: '熔岩大軍', theme: 4, feed: 13, ramp: 0.9, base: 8800, castle: 380, mid: 20, L: [10, 14, 18, 24, 30, 40, 52, 66], R: [2, 2, 3, 2, 3], kill: 1, surge: 1, brute: 1, units: ['arch', 'cav', 'shield'], cat: 2, rain: 1, tip: '走廊裡有 ✕ 門，戰線推過去前先別走那邊' },
+  { name: '天空總決戰', theme: 5, feed: 13, ramp: 1.0, base: 11000, castle: 400, mid: 24, midW: 0.9, slide: 1, L: [12, 16, 22, 28, 36, 46, 60, 78], R: [2, 2, 3, 2, 3, 3], kill: 1, surge: 1, brute: 1, swap: 1, units: ['arch', 'cav', 'shield'], cat: 2, rain: 1, wall: 1, tip: '最後一戰！全部都來了' },
 ];
 
 function clCol(x) { return clamp(Math.floor((x + CL_FW) / CL_CW), 0, CL_NC - 1); }
@@ -42,6 +44,15 @@ function newClash(n, opts) {
   if (C.kill) gates.push({ t: 'gate', id: _uid++, k: 'kill', v: 0, x: sL * CL_COR, w: CL_CORW, z: (gates[3].z + gates[4].z) / 2, fade: 0, bump: 0, side: sL, blink: 2.2, shut: true });
   const mid = { t: 'gate', id: _uid++, k: 'add', v: C.mid, x: 0, w: C.midW || 1.3, z: CL_MIDZ, fade: 0, bump: 0, look: 'spec', side: 0 };
   if (C.slide) { mid.slide = { cx: 0, amp: 1.5, f: 0.55, ph: 0 }; mid.pair = { used: false }; }
+  // 投石車：一座在 × 走廊、第二座在 + 走廊（戰線推過去才用得到）
+  if (C.cat) {
+    const gR = gates.filter(g => g.side === -sL), gL = gates.filter(g => g.side === sL && g.k === 'add');
+    gates.push({ t: 'gate', id: _uid++, k: 'cat', v: 0, x: -sL * CL_COR, w: CL_CORW, z: (gR[0].z + gR[1].z) / 2, fade: 0, bump: 0, side: -sL, cd: 0 });
+    if (C.cat > 1) gates.push({ t: 'gate', id: _uid++, k: 'cat', v: 0, x: sL * CL_COR, w: CL_CORW, z: (gL[5].z + gL[6].z) / 2, fade: 0, bump: 0, side: sL, cd: 0 });
+  }
+  // 兵種門：場上左右兩個，每 9 秒換一次種類
+  const ug = [];
+  if (C.units) for (const sx of [-1, 1]) ug.push({ t: 'gate', id: _uid++, k: 'unit', u: C.units[sx < 0 ? 0 : 1], v: Math.round(C.mid * 0.7), x: sx * 1.95, w: 0.7, z: CL_UZ, fade: 0, bump: 0, side: 0 });
   const f0 = 21;
   G = {
     mode: 'clash', s: n, L, st: 'play', t: 0, dist: 0, spd: 0, scroll: false,
@@ -52,7 +63,9 @@ function newClash(n, opts) {
     base: { t: 'base', hp: C.base, max: C.base, hit: 0, rage: false, x: 0, z: DEF_Z_BASE },
     giant: 0, giantMax: Math.round(90 * (1 - 0.06 * up.giant)), charge: 0,
     shake: 0, flash: 0, kills: 0, sent: 0, endT: 0, sim: !!opts.sim, card: null, squadN: DEF_SQUAD,
-    gates, mid, blobs: [], brutes: [],
+    gates, mid, ug, ugI: 0, ugT: 9, blobs: [], brutes: [], shots: [],
+    ar: new Array(CL_NC).fill(0), push: new Array(CL_NC).fill(0), sh: new Array(CL_NC).fill(0), rw: new Array(CL_NC).fill(0),
+    rain: null, rainT: 9, wallT: 16,
     f: new Array(CL_NC).fill(f0), b: new Array(CL_NC).fill(25), r: new Array(CL_NC).fill(25),
     inRate: 0, surge: null, surgeT: 13, bruteT: 17, castleHitT: 0, hits: 0,
   };
@@ -74,8 +87,28 @@ function clGate(bl, g) {
   if (g.k === 'add') bl.n += g.v;
   else if (g.k === 'mul') bl.n *= g.v;
   else if (g.k === 'kill') { bl.n = 0; emit('unitdie'); return; }
+  else if (g.k === 'unit') { bl.n += g.v; bl.u = g.u; g.bump = 1; bl.pop = 1; emit('cunit', g); return; }
+  else if (g.k === 'cat') { if (g.cd > 0) return; clThrow(g); g.bump = 1; return; }
   g.bump = 1; bl.pop = 1;
   emit('mult');
+}
+
+// 投石車：往紅軍最多（或有盾陣）的那一路丟一顆大石頭
+function clThrow(g) {
+  let best = 0, bv = -1;
+  for (let c = 0; c < CL_NC; c++) { const v = G.r[c] + (G.rw[c] > 0 ? 1e5 : 0); if (v > bv) { bv = v; best = c; } }
+  G.shots.push({ c: best, x0: g.x, z0: g.z, age: 0, T: 1.1 });
+  g.cd = 4;
+  emit('cthrow', g);
+}
+function clLand(s) {
+  const c = s.c, r = G.r, z = G.f[c] + 1.6;
+  const k = Math.min(r[c], 25 + 0.3 * r[c]); r[c] -= k; G.kills += k;
+  for (const d of [-1, 1]) if (r[c + d] != null) { const k2 = r[c + d] * 0.12; r[c + d] -= k2; G.kills += k2; }
+  if (G.rw[c] > 0) { G.rw[c] = 0; emit('cwallbreak', { c }); }
+  G.shake = Math.max(G.shake, 0.35);
+  if (fxOn()) FX.boom(clColX(c), z, 1.2);
+  emit('ccat', { c });
 }
 
 function clBlobs(dt) {
@@ -90,6 +123,7 @@ function clBlobs(dt) {
       if (bl.lane === 0) {
         const m = G.mid;
         if (z0 < m.z && bl.z >= m.z && m.z < fz - 0.2 && Math.abs(bl.x - m.x) <= m.w) clGate(bl, m);
+        for (const u of G.ug) if (z0 < u.z && bl.z >= u.z && u.z < fz - 0.2 && Math.abs(bl.x - u.x) <= u.w) clGate(bl, u);
       } else {
         for (const g of G.gates) {
           if (g.side !== bl.lane || g.z >= fz - 0.2) continue;
@@ -102,7 +136,18 @@ function clBlobs(dt) {
     // 碰到戰線：加進那一路
     if (bl.z >= fz - 0.25) {
       if (G.st === 'play') {
-        G.b[bl.col] += bl.n; G.inRate += bl.n / 3;
+        const c = bl.col;
+        if (bl.u === 'arch') { G.ar[c] += bl.n; emit('carch', bl); }   // 弓箭手站在後面一直射，不上前線
+        else {
+          if (bl.u === 'cav') {   // 騎兵：一衝進去就撞倒一堆紅軍，戰線往前推，盾陣也撞破
+            const k = Math.min(G.r[c], bl.n * 0.8 * G.pow); G.r[c] -= k; G.kills += k;
+            G.push[c] += Math.min(1.8, 0.4 + bl.n * 0.02);
+            if (G.rw[c] > 0) { G.rw[c] = 0; emit('cwallbreak', { c }); }
+            emit('ccav', bl);
+          } else if (bl.u === 'shield') { G.sh[c] = Math.max(G.sh[c], 9); emit('cshield', bl); }
+          G.b[c] += bl.n;
+        }
+        G.inRate += bl.n / 3;
         if (bl.n >= 30) emit('cjoin', bl);
         if (fxOn() && bl.n >= 10) FX.add({ k: 'ring', x: bl.lane ? clColX(bl.col) : bl.x, z: fz, life: 0.4, size: 1 + Math.min(3, bl.n / 60), col: '120,190,255' });
       }
@@ -138,7 +183,54 @@ function clashStep(dt, input) {
   if (m.slide) m.x = m.slide.cx + m.slide.amp * Math.sin(G.t * m.slide.f + m.slide.ph);
   m.fade = m.z < clFrontAt(f, m.x) - 0.2 ? 0 : 0.6;
   for (const g of G.gates) if (g.blink) g.shut = Math.floor(G.t / g.blink) % 2 === 0;
-  for (const g of G.gates) g.fade = g.z < f[g.side < 0 ? 0 : NC - 1] - 0.2 ? (g.blink && !g.shut ? 0.75 : 0) : 0.55;
+  for (const g of G.gates) {
+    g.fade = g.z < f[g.side < 0 ? 0 : NC - 1] - 0.2 ? (g.blink && !g.shut ? 0.75 : 0) : 0.55;
+    if (g.k === 'cat' && g.cd > 0) { g.cd -= dt; if (!g.fade) g.fade = 0.45; }
+  }
+  // 兵種門：每 9 秒左右換一次
+  if (G.ug.length) {
+    G.ugT -= dt;
+    if (G.ugT <= 0) {
+      G.ugT = 9; G.ugI++;
+      const U = C.units;
+      G.ug.forEach((u, i) => { u.u = U[(G.ugI + i) % U.length]; u.bump = 0.6; });
+    }
+    for (const u of G.ug) u.fade = u.z < clFrontAt(f, u.x) - 0.2 ? 0 : 0.6;
+  }
+  // 投石車的石頭
+  for (let i = G.shots.length - 1; i >= 0; i--) { const s = G.shots[i]; s.age += dt; if (s.age >= s.T) { clLand(s); G.shots.splice(i, 1); } }
+  // 紅軍箭雨：紅圈預告，落下時圈裡的小兵剩三成多
+  if (C.rain) {
+    const rn = G.rain;
+    if (!rn) {
+      G.rainT -= dt;
+      if (G.rainT <= 0) {
+        let x, z;
+        if (Math.abs(G.px) > CL_WALL) { const sd = Math.sign(G.px); x = sd * CL_COR; z = CL_FENCE + 0.5 + Math.random() * Math.max(0.5, Math.min(f[sd < 0 ? 0 : NC - 1], CL_TOP) - CL_FENCE - 1.3); }
+        else { x = clamp(G.px + (Math.random() - 0.5), -2.3, 2.3); const zt = Math.min(clFrontAt(f, x) - 1, 12); z = zt > 3.5 ? 3 + Math.random() * (zt - 3) : 3 + Math.random() * 2; }
+        G.rain = { x, z, warn: 1.5, rad: 1.1 };
+        emit('crainwarn', G.rain);
+      }
+    } else {
+      rn.warn -= dt;
+      if (rn.warn <= 0) {
+        let hit = 0;
+        for (const bl of G.blobs) { const dx = (bl.x - rn.x) / rn.rad, dz = (bl.z - rn.z) / rn.rad; if (dx * dx + dz * dz < 1) { const k = bl.n - Math.floor(bl.n * 0.35); bl.n -= k; hit += k; bl.pop = 0.8; } }
+        emit('crain', { x: rn.x, z: rn.z, hit });
+        if (fxOn()) for (let i = 0; i < 22; i++) { const a = Math.random() * 6.28, d = Math.sqrt(Math.random()) * rn.rad; FX.add({ k: 'carrow', x0: rn.x + Math.cos(a) * d + 0.8, z0: rn.z + Math.sin(a) * d + 2.5, h0: 5, x1: rn.x + Math.cos(a) * d, z1: rn.z + Math.sin(a) * d, h1: 0, arc: 0, life: 0.35 + Math.random() * 0.25, red: 1, x: rn.x, z: rn.z }); }
+        G.rain = null; G.rainT = 8 + Math.random() * 4;
+      }
+    }
+  }
+  // 紅軍盾陣：推最前面的那一路舉起盾，12 秒內很難推
+  if (C.wall) {
+    G.wallT -= dt;
+    if (G.wallT <= 0) {
+      let c = 0; for (let i = 1; i < NC; i++) if (f[i] > f[c] + 0.01 || (Math.abs(f[i] - f[c]) <= 0.01 && Math.random() < 0.5)) c = i;
+      G.rw[c] = 12; G.wallT = 18 + Math.random() * 6;
+      emit('cwall', { c });
+    }
+  }
   // 砲台
   G.fireAcc += dt * G.rate / DEF_SQUAD;
   while (G.fireAcc >= 1) { G.fireAcc -= 1; clFire(); G.giant = Math.min(G.giantMax, G.giant + G.squadN); }
@@ -177,12 +269,29 @@ function clashStep(dt, input) {
   }
   // 交戰、推戰線
   const pw = G.pow * (G.charge > 0 ? 2 : 1);
+  // 弓箭手：在後面一直射，打自己那一路和旁邊兩路，慢慢累了就散掉
+  for (let i = 0; i < NC; i++) {
+    const a = G.ar[i];
+    if (a < 0.5) { G.ar[i] = 0; continue; }
+    const k = dt * 0.2 * a * pw;
+    for (const [c, w2] of [[i, 0.6], [i - 1, 0.2], [i + 1, 0.2]]) if (r[c] != null) { const kk = Math.min(r[c], k * w2); r[c] -= kk; G.kills += kk; }
+    G.ar[i] *= Math.exp(-dt / 8);
+    if (fxOn() && Math.random() < dt * Math.min(14, 2 + a / 5)) {
+      const x = clColX(i) + (Math.random() - 0.5) * CL_CW, zf = f[i];
+      FX.add({ k: 'carrow', x0: x, z0: zf - 1.3, h0: 0.9, x1: x + (Math.random() - 0.5) * 0.6, z1: zf + 0.8 + Math.random() * 2, h1: 0.3, arc: 1.4, life: 0.5, x, z: zf });
+    }
+  }
   for (let i = 0; i < NC; i++) {
     const Bp = b[i] * pw, Rr = r[i];
     const k = dt * K.kill * Math.min(Bp, Rr);
-    b[i] = Math.max(0, b[i] - k / pw); r[i] = Math.max(0, r[i] - k);
+    const wall = G.rw[i] > 0, shd = G.sh[i] > 0;
+    b[i] = Math.max(0, b[i] - k / pw * (shd ? 0.5 : 1)); r[i] = Math.max(0, r[i] - k * (wall ? 0.35 : 1));
     G.kills += k;
-    const v = K.move * (Bp - Rr) / (Bp + Rr + K.soft) + (G.charge > 0 && Bp > 1 ? 0.6 : 0);
+    let v = K.move * (Bp - Rr) / (Bp + Rr + K.soft) + (G.charge > 0 && Bp > 1 ? 0.6 : 0);
+    if (wall && v > 0) v *= 0.25;
+    if (G.push[i] > 0) { const d = Math.min(G.push[i], dt * 3); G.push[i] -= d; v += d / dt; }
+    if (G.rw[i] > 0) G.rw[i] -= dt;
+    if (G.sh[i] > 0) G.sh[i] -= dt;
     f[i] = clamp(f[i] + v * dt, 0, CL_TOP);
     if (f[i] <= 0.05 && r[i] > 0.5) {
       const d = Math.min(r[i], (r[i] * K.castle + 3) * dt);
