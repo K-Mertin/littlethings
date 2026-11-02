@@ -96,6 +96,7 @@ function renderClash(G, t) {
     g.strokeStyle = 'rgba(80,170,255,.75)'; g.lineWidth = Math.max(3, 0.12 * a.s);
     g.setLineDash([14 * R.dpr, 10 * R.dpr]); g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); g.setLineDash([]); }
   for (const e of G.fx) if (e.k === 'ring') drawRing(g, e);
+  if (G.rain) drawClashRainWarn(g, G.rain, t);
   const S = clSamples(G, t);
 
   const items = R.items || (R.items = []);
@@ -116,6 +117,12 @@ function renderClash(G, t) {
   for (let z = CL_FENCE; z < CL_TOP + 2; z += 2.5) for (const sx of [-1, 1]) items.push({ z: z + 0.01, wall: sx, z1: Math.min(CL_TOP + 2, z + 2.5) });
   for (const o of G.gates) items.push({ z: o.z, tile: o });
   items.push({ z: G.mid.z, o: G.mid });
+  for (const u of G.ug) items.push({ z: u.z, tile: u });
+  for (const sh of G.shots) { const q = sh.age / sh.T; items.push({ z: sh.z0 + (G.f[sh.c] + 1.6 - sh.z0) * q, shot: sh }); }
+  for (let c = 0; c < CL_NC; c++) {
+    if (G.rw[c] > 0) items.push({ z: G.f[c] + 0.12, rwall: c });
+    if (G.ar[c] >= 1) items.push({ z: G.f[c] - 1.25, arch: c });
+  }
   // 人海：紅色從基地一路往戰線湧下來，藍色往上頂（每一排會慢慢移動，看起來是一直在走）
   let fmin = 1e9, fmax = -1e9;
   for (let k = 0; k <= CL_NS; k++) { fmin = Math.min(fmin, S.f[k] - S.d[k]); fmax = Math.max(fmax, S.f[k]); }
@@ -135,7 +142,7 @@ function renderClash(G, t) {
   }
   items.push({ z: (fmin + fmax) / 2 + 0.002, front: 1 });
   for (const q of G.brutes) items.push({ z: G.f[q.c] + 0.6, brute: q });
-  for (const e of G.fx) if (e.k !== 'ring') items.push({ z: e.z - 0.05, e });
+  for (const e of G.fx) if (e.k !== 'ring') items.push({ z: (e.k === 'carrow' ? e.z1 : e.z) - 0.05, e });
   for (const bl of G.blobs) items.push({ z: bl.z, bl });
   items.push({ z: DEF_Z_BASE + 0.5, base: 1 });
   items.push({ z: DEF_Z_CANNON, cannon: 1 });
@@ -156,7 +163,10 @@ function renderClash(G, t) {
     else if (it.o) drawGate(g, it.o, t);
     else if (it.brute) drawClashBrute(g, G, it.brute);
     else if (it.bl) drawClashBlob(g, it.bl);
-    else if (it.e) drawFxItem(g, it.e);
+    else if (it.e) { if (it.e.k === 'carrow') drawClashArrow(g, it.e); else drawFxItem(g, it.e); }
+    else if (it.shot) drawClashShot(g, G, it.shot);
+    else if (it.rwall != null) drawClashRedWall(g, G, it.rwall, t);
+    else if (it.arch != null) drawClashArchers(g, G, it.arch, t);
     else if (it.base) drawBase(g, G, t);
     else if (it.cannon) drawCannon(g, G, t);
   }
@@ -180,6 +190,14 @@ function drawClashFront(g, G, S, t) {
   g.closePath();
   g.fillStyle = 'rgba(70,64,64,.55)'; g.fill();
   g.restore();
+  for (let c = 0; c < CL_NC; c++) {
+    if (!(G.sh[c] > 0)) continue;
+    const x0 = -CL_FW + c * CL_CW, a = Math.min(1, G.sh[c] / 1.5) * (0.6 + 0.25 * Math.sin(t * 8 + c));
+    g.strokeStyle = `rgba(120,220,255,${a})`; g.lineWidth = Math.max(3, 0.12 * P(clColX(c), G.f[c], 0).s);
+    g.beginPath();
+    for (let k = 0; k <= 6; k++) { const x = x0 + CL_CW * k / 6, p = P(x, clFrontAt(G.f, x) - 0.15, 0.25); k ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y); }
+    g.stroke();
+  }
   // 塵土
   for (let k = 0; k <= CL_NS; k += 2) {
     const c = clCol(S.x[k]);
@@ -205,7 +223,14 @@ function drawClashWall(g, x, z0, z1) {
 }
 
 // 走廊裡的門：像廣告那樣一格一格的牌子
-const CL_TILE = { wpn: ['#ffc21a', '#fff1a0', '#9a5a00'], good: ['#2f9bff', '#bfe6ff', '#0b4fae'], bad: ['#ff3b4f', '#ffc0c8', '#9b0f22'] };
+const CL_TILE = {
+  wpn: ['#ffc21a', '#fff1a0', '#9a5a00'], good: ['#2f9bff', '#bfe6ff', '#0b4fae'], bad: ['#ff3b4f', '#ffc0c8', '#9b0f22'],
+  cat: ['#c9792b', '#ffd9a8', '#5a2d08'],
+  arch: ['#37b75a', '#c8ffd2', '#0d5a1d'], cav: ['#c94bd0', '#ffd0fa', '#5e0f5a'], shield: ['#7189ab', '#e4ecf7', '#22324a'],
+};
+// 帶兵種的一團小兵：人數牌子的顏色
+const CL_UCOL = { arch: 'rgba(25,120,55,.9)', cav: 'rgba(120,30,130,.9)', shield: 'rgba(60,80,110,.92)' };
+const CL_UICO = { arch: '🏹', cav: '🐎', shield: '🛡' };
 // 門牌每一格都重畫字很花時間：先畫成小圖存起來（依文字、顏色、大小分類），之後只要貼上去
 const CL_SPR = new Map();
 function clSprite(key, w, h, draw) {
@@ -236,12 +261,12 @@ function clTileSpr(txt, lookK, open, ar, hb) {
   });
 }
 function drawClashTile(g, o, t) {
-  const H = 1.25, lookK = o.k === 'kill' ? 'bad' : o.look || 'good';
+  const H = 1.25, lookK = o.k === 'kill' ? 'bad' : o.k === 'cat' ? 'cat' : o.k === 'unit' ? o.u : o.look || 'good';
   const A = P(o.x - o.w + 0.04, o.z, 0.05), B = P(o.x + o.w - 0.04, o.z, H);
   const w = B.x - A.x, h = A.y - B.y;
   if (h < 2) return;
   const open = o.blink && !o.shut;
-  const txt = o.k === 'kill' ? (open ? '開' : '✕') : o.k === 'mul' ? '×' + o.v : '+' + o.v;
+  const txt = o.k === 'kill' ? (open ? '開' : '✕') : o.k === 'mul' ? '×' + o.v : o.k === 'cat' ? (o.cd > 0 ? '裝填' : '投石') : o.k === 'unit' ? CL_UICO[o.u] + '+' + o.v : '+' + o.v;
   // 大小分級（每 12px 一級），太大就用最大那張放大
   const hb = clamp(Math.ceil(h / 12) * 12, 12, 156), ar = Math.round(w / h * 4) / 4;
   const spr = clTileSpr(txt, lookK, open, ar, hb), k = h / hb;
@@ -267,14 +292,14 @@ function drawClashBlob(g, bl) {
     const h = (spr.wh ? spr.wh * 0.765 : 0.78) * p.s * (1 + bl.pop * 0.4), w = h * spr.width / spr.height;
     g.drawImage(spr, p.x - w / 2, p.y - h * (1 - (spr.foot || 0)), w, h);
   }
-  if (bl.n > DEF_SQUAD) {
+  if (bl.n > DEF_SQUAD || bl.u) {
     const q = P(bl.x, bl.z, 1.5), u = R.u * R.dpr, fs = Math.max(11 * u, 0.55 * q.s) * (1 + bl.pop * 0.4);
-    const txt = fmtNum(bl.n), fb = fs > 40 ? 72 : 40;   // 只有兩種大小，小隊往前走時不用一直產生新圖
-    const spr = clSprite(`n|${txt}|${fb}`, fb * (txt.length * 0.62 + 0.8), fb * 1.3, g2 => {
+    const txt = (bl.u ? CL_UICO[bl.u] : '') + fmtNum(bl.n), fb = fs > 40 ? 72 : 40, bg = bl.u ? CL_UCOL[bl.u] : 'rgba(20,60,150,.85)';   // 只有兩種大小，小隊往前走時不用一直產生新圖
+    const spr = clSprite(`n|${txt}|${fb}`, fb * (txt.length * 0.62 + (bl.u ? 1.2 : 0.8)), fb * 1.3, g2 => {
       g2.font = `900 ${fb}px "Noto Sans TC",system-ui,sans-serif`; g2.textAlign = 'center'; g2.textBaseline = 'middle';
       const W = g2.canvas.width, Hh = g2.canvas.height;
       const tw = Math.min(W, g2.measureText(txt).width + fb * 0.6);
-      g2.fillStyle = 'rgba(20,60,150,.85)'; rr(g2, (W - tw) / 2, (Hh - fb * 1.24) / 2, tw, fb * 1.24, fb * 0.5); g2.fill();
+      g2.fillStyle = bg; rr(g2, (W - tw) / 2, (Hh - fb * 1.24) / 2, tw, fb * 1.24, fb * 0.5); g2.fill();
       g2.fillStyle = '#fff'; g2.fillText(txt, W / 2, Hh / 2 + fb * 0.04);
     });
     const k = fs / fb;
@@ -347,4 +372,100 @@ function drawClashHud(G) {
   g.fillStyle = kc > 0.5 ? '#33d17a' : kc > 0.25 ? '#ffb03a' : '#ff4040';
   if (kc > 0) { rr(g, bx2 + 30 * u, by2 + 7 * u, (bw2 - 38 * u) * kc, 14 * u, 7 * u); g.fill(); }
   g.fillStyle = '#fff'; g.font = `900 ${15 * u}px system-ui,sans-serif`; g.textAlign = 'center'; g.fillText('🏰', bx2 + 16 * u, by2 + 15 * u);
+}
+
+// 紅軍箭雨的紅圈（預告）
+function drawClashRainWarn(g, rn, t) {
+  const a = P(rn.x, rn.z - rn.rad, 0), b = P(rn.x, rn.z + rn.rad, 0), m = P(rn.x, rn.z, 0);
+  const rx = rn.rad * m.s, ry = Math.max(2, (a.y - b.y) / 2), cy = (a.y + b.y) / 2;
+  const k = 1 - rn.warn / 1.5;
+  g.fillStyle = `rgba(255,40,40,${0.16 + 0.14 * Math.abs(Math.sin(t * 10))})`;
+  g.beginPath(); g.ellipse(m.x, cy, rx, ry, 0, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = 'rgba(255,60,60,.95)'; g.lineWidth = Math.max(2, 0.07 * m.s);
+  g.setLineDash([8 * R.dpr, 6 * R.dpr]); g.stroke(); g.setLineDash([]);
+  g.fillStyle = 'rgba(255,40,40,.35)';
+  g.beginPath(); g.ellipse(m.x, cy, rx * k, ry * k, 0, 0, Math.PI * 2); g.fill();
+}
+
+// 箭：從 (x0,z0,h0) 飛到 (x1,z1,h1)，arc 是中間拱起的高度
+function clArrowAt(e, q) {
+  return P(e.x0 + (e.x1 - e.x0) * q, e.z0 + (e.z1 - e.z0) * q, e.h0 + (e.h1 - e.h0) * q + e.arc * Math.sin(Math.PI * q));
+}
+function drawClashArrow(g, e) {
+  const q = Math.min(1, e.t / e.life);
+  if (q >= 1) return;
+  const p = clArrowAt(e, q), p0 = clArrowAt(e, Math.max(0, q - 0.12));
+  const dx = p.x - p0.x, dy = p.y - p0.y, d = Math.hypot(dx, dy) || 1, L = Math.max(5, 0.42 * p.s);
+  const ux = dx / d, uy = dy / d;
+  g.strokeStyle = e.red ? '#5a1010' : '#3a2a14'; g.lineWidth = Math.max(1.2, 0.035 * p.s);
+  g.beginPath(); g.moveTo(p.x - ux * L, p.y - uy * L); g.lineTo(p.x, p.y); g.stroke();
+  g.fillStyle = e.red ? '#ff4a4a' : '#e8f6ff';
+  g.beginPath(); g.moveTo(p.x + ux * L * 0.25, p.y + uy * L * 0.25); g.lineTo(p.x - uy * L * 0.12, p.y + ux * L * 0.12); g.lineTo(p.x + uy * L * 0.12, p.y - ux * L * 0.12); g.fill();
+}
+
+// 投石車丟出去的大石頭
+function drawClashShot(g, G, sh) {
+  const q = sh.age / sh.T, x1 = clColX(sh.c), z1 = G.f[sh.c] + 1.6;
+  const x = sh.x0 + (x1 - sh.x0) * q, z = sh.z0 + (z1 - sh.z0) * q, h = 0.8 + 5.5 * Math.sin(Math.PI * q) * (1 - q * 0.15);
+  const gp = P(x, z, 0), p = P(x, z, h), r = 0.32 * p.s;
+  drawShadow(g, gp.x, gp.y, 0.7 * gp.s);
+  const gr = g.createRadialGradient(p.x - r * 0.35, p.y - r * 0.35, r * 0.1, p.x, p.y, r);
+  gr.addColorStop(0, '#b9a089'); gr.addColorStop(1, '#4e3b2c');
+  g.fillStyle = gr; g.beginPath(); g.arc(p.x, p.y, r, 0, Math.PI * 2); g.fill();
+}
+
+// 紅軍盾陣：那一路戰線前面一排灰色大盾
+function drawClashRedWall(g, G, c, t) {
+  const z = G.f[c] + 0.12, x0 = -CL_FW + c * CL_CW, n = 4;
+  const fade = Math.min(1, G.rw[c] / 0.6);
+  g.globalAlpha = fade;
+  for (let i = 0; i < n; i++) {
+    const x = x0 + CL_CW * (i + 0.5) / n, a = P(x - CL_CW / n * 0.5, z, 0), b = P(x + CL_CW / n * 0.5, z, 1.05);
+    const w = b.x - a.x, h = a.y - b.y;
+    g.fillStyle = '#2b2f38'; rr(g, a.x, b.y, w, h, w * 0.25); g.fill();
+    g.fillStyle = '#7d8696'; rr(g, a.x + w * 0.1, b.y + h * 0.07, w * 0.8, h * 0.86, w * 0.2); g.fill();
+    g.fillStyle = '#ffcf3a'; g.fillRect(a.x + w * 0.1, b.y + h * 0.07, w * 0.8, Math.max(1, h * 0.07));
+    g.fillStyle = '#d0202a'; g.beginPath(); g.arc(a.x + w / 2, b.y + h * 0.48, w * 0.2, 0, Math.PI * 2); g.fill();
+  }
+  // 上面一個紅色「盾陣」牌子，遠遠也看得到
+  const q = P(clColX(c), z, 2.0 + 0.1 * Math.sin(t * 6)), u = R.u * R.dpr, fs = Math.max(11 * u, 0.5 * q.s);
+  const fb = fs > 40 ? 72 : 40;
+  const lab = clSprite('rwl|' + fb, fb * 3.4, fb * 1.4, g2 => {
+    g2.font = `900 ${fb}px "Noto Sans TC",system-ui,sans-serif`; g2.textAlign = 'center'; g2.textBaseline = 'middle';
+    const W = g2.canvas.width, Hh = g2.canvas.height;
+    g2.fillStyle = 'rgba(170,20,30,.92)'; rr(g2, 2, 2, W - 4, Hh - 4, fb * 0.45); g2.fill();
+    g2.fillStyle = '#fff'; g2.fillText('🛡盾陣', W / 2, Hh / 2 + fb * 0.04);
+  });
+  const k = fs / fb;
+  g.drawImage(lab, q.x - lab.width * k / 2, q.y - lab.height * k / 2, lab.width * k, lab.height * k);
+  g.globalAlpha = 1;
+}
+
+// 弓箭手：站在戰線後面的一小排（綠色），上面寫人數
+const CL_GREEN = new WeakMap();
+function clGreenSpr(spr) {
+  let c = CL_GREEN.get(spr);
+  if (!c) { c = mk(spr.width, spr.height, g => { g.drawImage(spr, 0, 0); g.globalCompositeOperation = 'source-atop'; g.fillStyle = 'rgba(40,200,90,.5)'; g.fillRect(0, 0, spr.width, spr.height); }); c.wh = spr.wh; c.foot = spr.foot; CL_GREEN.set(spr, c); }
+  return c;
+}
+function drawClashArchers(g, G, c, t) {
+  const a = G.ar[c], m = Math.min(5, 1 + Math.floor(a / 8)), z = G.f[c] - 1.25;
+  for (let i = 0; i < m; i++) {
+    const x = clColX(c) + (i - (m - 1) / 2) * CL_CW / 5, p = P(x, z + (i % 2) * 0.18, 0);
+    const spr = clGreenSpr(ART.soldierV[i % 3][Math.floor(t * 3 + i) & 3]);
+    const h = (spr.wh ? spr.wh * 0.765 : 0.78) * p.s, w = h * spr.width / spr.height;
+    g.drawImage(spr, p.x - w / 2, p.y - h * (1 - (spr.foot || 0)), w, h);
+  }
+  if (a >= 3) {
+    const q = P(clColX(c), z, 1.25), u = R.u * R.dpr, fs = Math.max(10 * u, 0.42 * q.s);
+    const txt = '🏹' + fmtNum(a), fb = fs > 40 ? 72 : 40;
+    const spr = clSprite(`n|${txt}|${fb}|a`, fb * (txt.length * 0.62 + 1.2), fb * 1.3, g2 => {
+      g2.font = `900 ${fb}px "Noto Sans TC",system-ui,sans-serif`; g2.textAlign = 'center'; g2.textBaseline = 'middle';
+      const W = g2.canvas.width, Hh = g2.canvas.height, tw = Math.min(W, g2.measureText(txt).width + fb * 0.6);
+      g2.fillStyle = CL_UCOL.arch; rr(g2, (W - tw) / 2, (Hh - fb * 1.24) / 2, tw, fb * 1.24, fb * 0.5); g2.fill();
+      g2.fillStyle = '#fff'; g2.fillText(txt, W / 2, Hh / 2 + fb * 0.04);
+    });
+    const k = fs / fb;
+    g.drawImage(spr, q.x - spr.width * k / 2, q.y - spr.height * k / 2, spr.width * k, spr.height * k);
+  }
 }

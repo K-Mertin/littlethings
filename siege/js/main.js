@@ -200,6 +200,16 @@ function handleEvents() {
       case 'cbrute': AU.sfx('boss'); G.shake = Math.max(G.shake, 0.4); tipOnce('cbrute', '紅軍巨兵！那一路會被壓下去，多送點人過去', 3); break;
       case 'charge': AU.sfx('gateWpn'); toast('⚡ 全軍衝鋒！', 1.4); vibrate(30); break;
       case 'cjoin': AU.sfx('bump', 30); break;
+      case 'cunit': AU.sfx('buff'); break;
+      case 'carch': AU.sfx('shot'); break;
+      case 'ccav': AU.sfx('slam'); G.shake = Math.max(G.shake, 0.25); vibrate(20); break;
+      case 'cshield': AU.sfx('buff'); break;
+      case 'cthrow': AU.sfx('throw'); tipOnce('ccat', '投石車！小兵經過就會往紅軍最多的地方丟大石頭（4 秒裝填一次）', 3.2); break;
+      case 'ccat': AU.sfx('boom'); break;
+      case 'crainwarn': AU.sfx('warn'); tipOnce('crain', '紅圈是紅軍的箭雨！小兵在裡面會死掉大半，快換邊', 3); break;
+      case 'crain': AU.sfx('land'); if (a && a.hit >= 10) floatText(a.x, a.z, 1, '-' + fmtNum(a.hit), '#ff6a6a', 0.8); break;
+      case 'cwall': AU.sfx('blocked'); tipOnce('cwall', '紅軍舉起盾陣了！那一路很難推——送騎兵或用投石車把它打破', 3.4); break;
+      case 'cwallbreak': AU.sfx('wallbreak'); toast('盾陣被打破了！', 1.2); break;
       case 'gustwarn': AU.sfx('warn'); tipOnce('dgust', '強風要來了！小兵會被吹歪，砲台要往反方向修正', 3); break;
       case 'gust': AU.sfx('gust'); break;
       case 'boltwarn': tipOnce('dbolt', '藍圈會被雷劈！小兵和怪物都會被劈到——把怪物引進去', 3); break;
@@ -219,6 +229,7 @@ function tips() {
     if (G.t > 9 && G.t < 9.5) tipOnce('cfront', '紅軍推到哪，走廊的門就只拿得到哪；把戰線往上推，後面的門才會亮起來', 4);
     if (G.giant >= G.giantMax) tipOnce('ccharge', '能量滿了！按右下角的「衝鋒」，全軍 5 秒變兩倍強', 3);
     if (G.L.C.kill && G.t > 3) tipOnce('ckill', '走廊裡的 ✕ 門一開一關，關著的時候走進去會整隊消失', 3.4);
+    if (G.ug.length && G.t > 5 && G.t < 5.5) tipOnce('cunit', '兩邊的兵種門：🏹弓箭手站在後面一直射、🐎騎兵一衝撞倒一片、🛡盾兵讓那一路少死一半', 4.2);
     return;
   }
   if (G.t > 0.5 && G.t < 1) tipOnce('dmove', '左右拖曳砲台：讓小兵穿過 ×2、+ 的門會變多！', 3.4);
