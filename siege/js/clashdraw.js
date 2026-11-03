@@ -173,6 +173,14 @@ function renderClash(G, t) {
   drawParts(g, G);
   drawFloats(g, G);
   drawClashSurge(g, G, t);
+  if (G.flipWarn > 0) {   // 走廊要對調：兩邊走廊上閃 ⇄
+    const u = R.u * R.dpr;
+    g.globalAlpha = 0.6 + 0.4 * Math.sin(t * 16);
+    g.font = `900 ${30 * u}px "Noto Sans TC",system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.lineWidth = 6 * u; g.strokeStyle = 'rgba(0,0,0,.6)'; g.fillStyle = '#ffe14a';
+    for (const sx of [-1, 1]) { const q = P(sx * CL_COR, 14, 1.2); g.strokeText('⇄', q.x, q.y); g.fillText('⇄', q.x, q.y); }
+    g.globalAlpha = 1;
+  }
   drawWeather(g, th, t);
   if (th.dark) { g.fillStyle = 'rgba(30,10,60,.12)'; g.fillRect(-20, -20, R.W + 40, R.H + 40); }
   if (G.charge > 0) { g.fillStyle = `rgba(90,170,255,${0.06 + 0.04 * Math.sin(t * 12)})`; g.fillRect(-20, -20, R.W + 40, R.H + 40); }

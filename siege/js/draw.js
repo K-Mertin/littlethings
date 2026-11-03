@@ -11,6 +11,9 @@ const CAMS = {
   runL:     { th: 30, h: 10, d: 8, z0: 0,    y0: 0.85, zT: 80,  yT: 0.14, minRoad: 0.27 },
   defense:  { th: 52, h: 22, d: 8, z0: -1.2, y0: 0.87, zT: 46,  yT: 0.17, minRoad: 0 },
   defenseL: { th: 46, h: 20, d: 8, z0: -1.2, y0: 0.88, zT: 47,  yT: 0.24, minRoad: 0.12 },
+  // 大軍對決：路比較寬，鏡頭一樣要看得到整條戰場
+  clash:    { th: 52, h: 22, d: 8, z0: -1.2, y0: 0.88, zT: 46,  yT: 0.17, minRoad: 0 },
+  clashL:   { th: 31, h: 10, d: 6, z0: -1.2, y0: 0.95, zT: 46.5, yT: 0.2, minRoad: 0 },   // 橫向：低一點、近一點，戰場才不會只剩中間一小條
 };
 
 function resizeRender() {
@@ -21,7 +24,7 @@ function resizeRender() {
   cv.width = R.W; cv.height = R.H;
   R.cssW = cw; R.cssH = ch;
   const port = R.H > R.W * 1.05;
-  const C = CAMS[(R.camMode === 'defense' ? 'defense' : 'run') + (port ? '' : 'L')];
+  const C = CAMS[(R.camMode === 'defense' || R.camMode === 'clash' ? R.camMode : 'run') + (port ? '' : 'L')];
   const th = C.th * Math.PI / 180;
   R.cc = Math.cos(th); R.ss = Math.sin(th); R.ch = C.h; Z0 = C.d;
   const dep = z => (z + C.d) * R.cc + C.h * R.ss, ver = z => -C.h * R.cc + (z + C.d) * R.ss;

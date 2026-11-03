@@ -1,8 +1,9 @@
 // 萬軍守城（複製自千軍突圍 rush/js）— 共用常數、工具、存檔
 'use strict';
 
-const ROAD = 4.2;          // 路面半寬（公尺）
-const PX_MAX = ROAD - 0.55; // 部隊中心可移動範圍
+let ROAD = 4.2;            // 路面半寬（公尺）；大軍對決會換成比較寬的（setRoad）
+let PX_MAX = ROAD - 0.55;   // 部隊中心可移動範圍
+function setRoad(w) { ROAD = w; PX_MAX = w - 0.55; }
 const ZSPAWN = 100;        // 物件從多遠出現（俯瞰鏡頭看得比較遠）
 const BULLET_V = 38;       // 子彈速度
 const BULLET_RANGE = 58;   // 子彈射程

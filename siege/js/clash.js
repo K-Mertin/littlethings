@@ -4,14 +4,17 @@
 // 兩側走廊的門要「戰線推過去」才拿得到：越往前推，走廊越長、加越多。
 'use strict';
 
-const CL_NC = 7, CL_FW = 2.75, CL_CW = CL_FW * 2 / CL_NC;
-const CL_COR = 3.45, CL_CORW = 0.5, CL_WALL = 2.86;   // 走廊中心、半寬、走廊和戰場中間的矮牆
+// 戰場比守城關卡寬（路面半寬 CL_ROAD，進大軍對決時 setRoad 換過去）
+const CL_ROAD = 5.3;
+const CL_NC = 7, CL_FW = 3.55, CL_CW = CL_FW * 2 / CL_NC;
+const CL_COR = 4.45, CL_CORW = 0.55, CL_WALL = 3.67;   // 走廊中心、半寬、走廊和戰場中間的矮牆
 const CL_FENCE = 7, CL_TOP = DEF_Z_BASE - 1.8;          // 走廊從柵欄開始；戰線最遠推到基地前
 const CL_MIDZ = 4.4, CL_SPD = 7, CL_UZ = 7.6;   // CL_UZ：兵種門的位置
 const CL_UNIT = { arch: '🏹弓箭', cav: '🐎騎兵', shield: '🛡盾兵' };
 const CL_K = { kill: 0.9, move: 1.7, soft: 25, castle: 0.25, base: 0.5, home: 2, rb: 0.4, diffB: 1.0, diffR: 0.4, smooth: 1.2 };
 
 // L：左走廊（黃色 +），R：右走廊（藍色 ×），mid：中間紫門。swap：左右對調
+// flip：兩邊走廊每 22 秒對調一次
 // units：場上的兵種門（arch 弓箭手、cav 騎兵、shield 盾兵）；cat：走廊投石車；rain：紅軍箭雨；wall：紅軍盾陣
 const CSTAGES = [
   { name: '平原會戰', theme: 0, feed: 6, ramp: 0.5, base: 2600, castle: 300, mid: 9, L: [5, 7, 9, 12, 16, 20, 26, 32], R: [2, 2, 2, 2], units: ['arch', 'cav'], tip: '紅軍一大片衝過來！小兵碰到戰線就會往前推。走廊的門要戰線推過去才拿得到' },
@@ -19,7 +22,11 @@ const CSTAGES = [
   { name: '冰原紅海', theme: 2, feed: 16, ramp: 0.7, base: 5200, castle: 340, mid: 14, L: [8, 10, 13, 17, 22, 28, 36, 46], R: [2, 2, 2, 2, 2], surge: 1, brute: 1, units: ['arch', 'shield'], rain: 1, tip: '紅圈是紅軍的箭雨，小兵別走進去；盾兵門讓那一路少死一半' },
   { name: '霓虹決戰', theme: 3, feed: 26, ramp: 0.8, base: 6800, castle: 360, mid: 18, midW: 0.9, slide: 1, L: [9, 12, 16, 20, 26, 34, 44, 56], R: [2, 2, 2, 3, 3], surge: 1, swap: 1, units: ['cav', 'shield'], cat: 1, wall: 1, tip: '紅軍舉起盾陣那一路推不動——用騎兵或投石車把盾陣打破' },
   { name: '熔岩大軍', theme: 4, feed: 13, ramp: 0.9, base: 8800, castle: 380, mid: 20, L: [10, 14, 18, 24, 30, 40, 52, 66], R: [2, 2, 3, 2, 3], kill: 1, surge: 1, brute: 1, units: ['arch', 'cav', 'shield'], cat: 2, rain: 1, tip: '走廊裡有 ✕ 門，戰線推過去前先別走那邊' },
-  { name: '天空總決戰', theme: 5, feed: 13, ramp: 1.0, base: 11000, castle: 400, mid: 24, midW: 0.9, slide: 1, L: [12, 16, 22, 28, 36, 46, 60, 78], R: [2, 2, 3, 2, 3, 3], kill: 1, surge: 1, brute: 1, swap: 1, units: ['arch', 'cav', 'shield'], cat: 2, rain: 1, wall: 1, tip: '最後一戰！全部都來了' },
+  { name: '天空總決戰', theme: 5, feed: 13, ramp: 1.0, base: 11000, castle: 400, mid: 24, midW: 0.9, slide: 1, L: [12, 16, 22, 28, 36, 46, 60, 78], R: [2, 2, 3, 2, 3, 3], kill: 1, surge: 1, brute: 1, swap: 1, units: ['arch', 'cav', 'shield'], cat: 2, rain: 1, wall: 1, tip: '前面學過的花樣全部都來了！' },
+  { name: '沙暴突襲', theme: 1, feed: 26, ramp: 1.0, base: 12500, castle: 420, mid: 26, L: [13, 18, 24, 30, 38, 48, 62, 80], R: [2, 2, 3, 3, 2, 3], surge: 1, brute: 1, flip: 1, units: ['arch', 'cav'], cat: 1, tip: '走廊會對調！+ 門和 × 門每隔一陣子換邊，要跟著換' },
+  { name: '冰封要塞', theme: 2, feed: 30, ramp: 1.0, base: 14000, castle: 440, mid: 28, midW: 0.9, slide: 1, L: [14, 19, 25, 32, 40, 52, 66, 84], R: [2, 3, 2, 3, 3, 2], kill: 1, rain: 1, wall: 1, units: ['shield', 'cav'], cat: 2, tip: '盾陣、箭雨一起來：騎兵破盾，盾兵頂住' },
+  { name: '熔岩雙線', theme: 4, feed: 34, ramp: 1.1, base: 16000, castle: 460, mid: 30, L: [15, 20, 27, 34, 44, 56, 72, 92], R: [2, 3, 3, 2, 3, 3], kill: 1, surge: 1, brute: 1, rain: 1, flip: 1, swap: 1, units: ['arch', 'cav', 'shield'], cat: 2, tip: '走廊對調加上猛衝，兩邊都要顧' },
+  { name: '天空王座', theme: 5, feed: 38, ramp: 1.2, base: 19000, castle: 480, mid: 32, midW: 0.9, slide: 1, L: [16, 22, 29, 38, 48, 62, 80, 100], R: [2, 3, 3, 3, 2, 3, 3], kill: 1, surge: 1, brute: 1, rain: 1, wall: 1, flip: 1, units: ['arch', 'cav', 'shield'], cat: 2, tip: '真正的最後一戰：所有花樣都在這裡' },
 ];
 
 function clCol(x) { return clamp(Math.floor((x + CL_FW) / CL_CW), 0, CL_NC - 1); }
@@ -33,6 +40,7 @@ function clFrontAt(f, x) {
 function newClash(n, opts) {
   opts = opts || {};
   const C = CSTAGES[n - 1], th = THEMES[C.theme];
+  setRoad(CL_ROAD);
   const up = Object.assign({ rate: 0, wall: 0, power: 0, giant: 0, card: 0 }, opts.up || {});
   const L = { n, name: C.name, theme: th, tip: C.tip, C, airy: !!th.airy, hot: !!th.hot, E: 1, lv: n };
   const sL = C.swap ? 1 : -1;   // 黃色 + 走廊在哪一邊
@@ -52,7 +60,7 @@ function newClash(n, opts) {
   }
   // 兵種門：場上左右兩個，每 9 秒換一次種類
   const ug = [];
-  if (C.units) for (const sx of [-1, 1]) ug.push({ t: 'gate', id: _uid++, k: 'unit', u: C.units[sx < 0 ? 0 : 1], v: Math.round(C.mid * 0.7), x: sx * 1.95, w: 0.7, z: CL_UZ, fade: 0, bump: 0, side: 0 });
+  if (C.units) for (const sx of [-1, 1]) ug.push({ t: 'gate', id: _uid++, k: 'unit', u: C.units[sx < 0 ? 0 : 1], v: Math.round(C.mid * 0.7), x: sx * 2.5, w: 0.8, z: CL_UZ, fade: 0, bump: 0, side: 0 });
   const f0 = 21;
   G = {
     mode: 'clash', s: n, L, st: 'play', t: 0, dist: 0, spd: 0, scroll: false,
@@ -65,7 +73,7 @@ function newClash(n, opts) {
     shake: 0, flash: 0, kills: 0, sent: 0, endT: 0, sim: !!opts.sim, card: null, squadN: DEF_SQUAD,
     gates, mid, ug, ugI: 0, ugT: 9, blobs: [], brutes: [], shots: [],
     ar: new Array(CL_NC).fill(0), push: new Array(CL_NC).fill(0), sh: new Array(CL_NC).fill(0), rw: new Array(CL_NC).fill(0),
-    rain: null, rainT: 9, wallT: 16,
+    rain: null, rainT: 9, wallT: 16, flipT: 22, flipWarn: 0,
     f: new Array(CL_NC).fill(f0), b: new Array(CL_NC).fill(25), r: new Array(CL_NC).fill(25),
     inRate: 0, surge: null, surgeT: 13, bruteT: 17, castleHitT: 0, hits: 0,
   };
@@ -197,6 +205,20 @@ function clashStep(dt, input) {
     }
     for (const u of G.ug) u.fade = u.z < clFrontAt(f, u.x) - 0.2 ? 0 : 0.6;
   }
+  // 走廊對調：預告 2 秒，接著兩邊走廊的門（含投石車、✕ 門）一起換邊
+  if (C.flip) {
+    if (G.flipWarn > 0) {
+      G.flipWarn -= dt;
+      if (G.flipWarn <= 0) {
+        for (const g of G.gates) { g.side = -g.side; g.x = -g.x; g.bump = 1; }
+        G.flipT = 22;
+        emit('cflip');
+      }
+    } else {
+      G.flipT -= dt;
+      if (G.flipT <= 0) { G.flipWarn = 2; emit('cflipwarn'); }
+    }
+  }
   // 投石車的石頭
   for (let i = G.shots.length - 1; i >= 0; i--) { const s = G.shots[i]; s.age += dt; if (s.age >= s.T) { clLand(s); G.shots.splice(i, 1); } }
   // 紅軍箭雨：紅圈預告，落下時圈裡的小兵剩三成多
@@ -207,7 +229,7 @@ function clashStep(dt, input) {
       if (G.rainT <= 0) {
         let x, z;
         if (Math.abs(G.px) > CL_WALL) { const sd = Math.sign(G.px); x = sd * CL_COR; z = CL_FENCE + 0.5 + Math.random() * Math.max(0.5, Math.min(f[sd < 0 ? 0 : NC - 1], CL_TOP) - CL_FENCE - 1.3); }
-        else { x = clamp(G.px + (Math.random() - 0.5), -2.3, 2.3); const zt = Math.min(clFrontAt(f, x) - 1, 12); z = zt > 3.5 ? 3 + Math.random() * (zt - 3) : 3 + Math.random() * 2; }
+        else { x = clamp(G.px + (Math.random() - 0.5), -CL_FW + 0.5, CL_FW - 0.5); const zt = Math.min(clFrontAt(f, x) - 1, 12); z = zt > 3.5 ? 3 + Math.random() * (zt - 3) : 3 + Math.random() * 2; }
         G.rain = { x, z, warn: 1.5, rad: 1.1 };
         emit('crainwarn', G.rain);
       }
