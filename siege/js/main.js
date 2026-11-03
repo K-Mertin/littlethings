@@ -30,7 +30,10 @@ function cycleSpeed() {
   toast(`遊戲速度 ${Save.d.speed}×`, 1);
 }
 
-function setCam(m) { if (R.camMode !== m) { R.camMode = m; resizeRender(); } }
+function setCam(m) {
+  setRoad(m === 'clash' ? CL_ROAD : 4.2);   // 大軍對決的戰場比較寬
+  if (R.camMode !== m) { R.camMode = m; resizeRender(); }
+}
 
 // ---------- 標題畫面：砲台自己左右移動的展示 ----------
 function demoGame() {
@@ -42,7 +45,7 @@ function demoGame() {
 // ---------- 大軍對決 ----------
 function startClash(n) {
   AU.init();
-  setCam('defense');
+  setCam('clash');
   newClash(n, { up: Save.d.up });
   UI.mode = 'play'; UI.banner = 0; UI.resultShown = false;
   show(null);
@@ -109,12 +112,17 @@ function startStage(n) {
 function featText(D) {
   return `${D.rows} 排門${D.slide ? '・會動' : ''}${D.roul ? '・轉盤' : ''}${D.red ? '・✕ 門' : ''}${D.wall ? '・牆' : ''}${D.bomb ? '・砲擊' : ''}${D.pow ? '・強化門' : ''}${D.gey ? '・火口' : ''}${D.gap ? '・斷橋' : ''}${D.wind ? '・強風' : ''}${D.bolt ? '・雷擊' : ''}`;
 }
+// 大軍對決關卡的花樣（新的排前面，最多 4 個）
+function clashFeat(C) {
+  const f = [[C.flip, '對調'], [C.wall, '盾陣'], [C.rain, '箭雨'], [C.cat, '投石'], [C.units, '兵種'], [C.brute, '巨兵'], [C.surge, '猛衝'], [C.slide, '會動'], [C.kill, '✕ 門']].filter(x => x[0]).map(x => x[1]);
+  return f.length ? f.slice(0, 4).join('・') : '推戰線';
+}
 function buildLevels() {
   const box = $('#levelGrid');
   const clashRow = `<div class="themeRow"><h3>⚔️ 大軍對決</h3><div class="tiles">${CSTAGES.map((C, i) => {
     const n = i + 1, un = Save.cUnlocked(n), st = Save.d.cstars[n] || 0;
     return `<button class="tile t-${THEMES[C.theme].id}" data-clash="${n}" ${un ? '' : 'disabled'}>
-      <span class="n">${un ? n : '🔒'}</span><span class="nm">${C.name}</span><span class="rl">推戰線${C.surge ? '・猛衝' : ''}${C.brute ? '・巨兵' : ''}${C.slide ? '・會動' : ''}${C.kill ? '・✕ 門' : ''}</span>
+      <span class="n">${un ? n : '🔒'}</span><span class="nm">${C.name}</span><span class="rl">${clashFeat(C)}</span>
       <span class="ss">${[0, 1, 2].map(k => `<i class="${k < st ? 'on' : ''}">★</i>`).join('')}</span></button>`;
   }).join('')}</div></div>`;
   const groups = [];
@@ -209,6 +217,8 @@ function handleEvents() {
       case 'crainwarn': AU.sfx('warn'); tipOnce('crain', '紅圈是紅軍的箭雨！小兵在裡面會死掉大半，快換邊', 3); break;
       case 'crain': AU.sfx('land'); if (a && a.hit >= 10) floatText(a.x, a.z, 1, '-' + fmtNum(a.hit), '#ff6a6a', 0.8); break;
       case 'cwall': AU.sfx('blocked'); tipOnce('cwall', '紅軍舉起盾陣了！那一路很難推——送騎兵或用投石車把它打破', 3.4); break;
+      case 'cflipwarn': AU.sfx('warn'); toast('⇄ 走廊要對調了！', 1.8); tipOnce('cflip', '兩邊走廊要換邊了：+ 門和 × 門會對調，砲台記得跟著換', 3.2); break;
+      case 'cflip': AU.sfx('flip'); vibrate(20); break;
       case 'cwallbreak': AU.sfx('wallbreak'); toast('盾陣被打破了！', 1.2); break;
       case 'gustwarn': AU.sfx('warn'); tipOnce('dgust', '強風要來了！小兵會被吹歪，砲台要往反方向修正', 3); break;
       case 'gust': AU.sfx('gust'); break;
