@@ -26,7 +26,12 @@ const CSTAGES = [
   { name: '沙暴突襲', theme: 1, feed: 26, ramp: 1.0, base: 12500, castle: 420, mid: 26, L: [13, 18, 24, 30, 38, 48, 62, 80], R: [2, 2, 3, 3, 2, 3], surge: 1, brute: 1, flip: 1, units: ['arch', 'cav'], cat: 1, tip: '走廊會對調！+ 門和 × 門每隔一陣子換邊，要跟著換' },
   { name: '冰封要塞', theme: 2, feed: 30, ramp: 1.0, base: 14000, castle: 440, mid: 28, midW: 0.9, slide: 1, L: [14, 19, 25, 32, 40, 52, 66, 84], R: [2, 3, 2, 3, 3, 2], kill: 1, rain: 1, wall: 1, units: ['shield', 'cav'], cat: 2, tip: '盾陣、箭雨一起來：騎兵破盾，盾兵頂住' },
   { name: '熔岩雙線', theme: 4, feed: 34, ramp: 1.1, base: 16000, castle: 460, mid: 30, L: [15, 20, 27, 34, 44, 56, 72, 92], R: [2, 3, 3, 2, 3, 3], kill: 1, surge: 1, brute: 1, rain: 1, flip: 1, swap: 1, units: ['arch', 'cav', 'shield'], cat: 2, tip: '走廊對調加上猛衝，兩邊都要顧' },
-  { name: '天空王座', theme: 5, feed: 38, ramp: 1.2, base: 19000, castle: 480, mid: 32, midW: 0.9, slide: 1, L: [16, 22, 29, 38, 48, 62, 80, 100], R: [2, 3, 3, 3, 2, 3, 3], kill: 1, surge: 1, brute: 1, rain: 1, wall: 1, flip: 1, units: ['arch', 'cav', 'shield'], cat: 2, tip: '真正的最後一戰：所有花樣都在這裡' },
+  { name: '雲頂決戰', theme: 5, feed: 38, ramp: 1.2, base: 19000, castle: 480, mid: 32, midW: 0.9, slide: 1, L: [16, 22, 29, 38, 48, 62, 80, 100], R: [2, 3, 3, 3, 2, 3, 3], kill: 1, surge: 1, brute: 1, rain: 1, wall: 1, flip: 1, units: ['arch', 'cav', 'shield'], cat: 2, tip: '真正的最後一戰：所有花樣都在這裡' },
+  // 第三部 · 傳說戰場：所有花樣混在一起，紅軍更多
+  { name: '綠野大會戰', theme: 0, feed: 44, ramp: 1.2, base: 21000, castle: 500, mid: 34, L: [17, 23, 30, 39, 50, 64, 82, 104], R: [2, 3, 3, 2, 3, 3, 3], surge: 1, brute: 1, wall: 1, flip: 1, units: ['cav', 'arch', 'shield'], cat: 2, tip: '傳說戰場開打！盾陣會在走廊對調的時候出現' },
+  { name: '沙海長城', theme: 1, feed: 42, ramp: 1.25, base: 23000, castle: 520, mid: 36, midW: 0.9, slide: 1, L: [18, 24, 32, 41, 52, 67, 86, 110], R: [2, 3, 3, 3, 2, 3, 3], kill: 1, surge: 1, rain: 1, wall: 1, units: ['shield', 'arch', 'cav'], cat: 2, tip: '紫門會跑、箭雨會追：邊躲邊送兵' },
+  { name: '極光雪原', theme: 2, feed: 54, ramp: 1.3, base: 25000, castle: 540, mid: 38, L: [19, 26, 34, 44, 56, 72, 92, 118], R: [2, 3, 3, 3, 3, 2, 3], kill: 1, surge: 1, brute: 1, rain: 1, flip: 1, swap: 1, units: ['arch', 'shield', 'cav'], cat: 2, tip: '巨兵、猛衝一起壓上來，弓箭手和盾兵要搭配' },
+  { name: '霓虹終焉', theme: 3, feed: 52, ramp: 1.35, base: 28000, castle: 560, mid: 40, midW: 0.9, slide: 1, L: [20, 27, 36, 46, 60, 76, 98, 124], R: [2, 3, 3, 3, 3, 3, 3], kill: 1, surge: 1, brute: 1, rain: 1, wall: 1, flip: 1, units: ['cav', 'shield', 'arch'], cat: 2, tip: '大軍對決最終戰：全部的花樣，紅軍最多' },
 ];
 
 function clCol(x) { return clamp(Math.floor((x + CL_FW) / CL_CW), 0, CL_NC - 1); }
@@ -72,7 +77,7 @@ function newClash(n, opts) {
     giant: 0, giantMax: Math.round(90 * (1 - 0.06 * up.giant)), charge: 0,
     shake: 0, flash: 0, kills: 0, sent: 0, endT: 0, sim: !!opts.sim, card: null, squadN: DEF_SQUAD,
     gates, mid, ug, ugI: 0, ugT: 9, blobs: [], brutes: [], shots: [],
-    ar: new Array(CL_NC).fill(0), push: new Array(CL_NC).fill(0), sh: new Array(CL_NC).fill(0), rw: new Array(CL_NC).fill(0),
+    ar: new Array(CL_NC).fill(0), arK: new Array(CL_NC).fill(0), arT: new Array(CL_NC).fill(1), push: new Array(CL_NC).fill(0), sh: new Array(CL_NC).fill(0), rw: new Array(CL_NC).fill(0),
     rain: null, rainT: 9, wallT: 16, flipT: 22, flipWarn: 0,
     f: new Array(CL_NC).fill(f0), b: new Array(CL_NC).fill(25), r: new Array(CL_NC).fill(25),
     inRate: 0, surge: null, surgeT: 13, bruteT: 17, castleHitT: 0, hits: 0,
@@ -124,7 +129,8 @@ function clBlobs(dt) {
   for (let i = B.length - 1; i >= 0; i--) {
     const bl = B[i];
     const z0 = bl.z;
-    bl.z += CL_SPD * dt; bl.ph += dt * 12;
+    bl.z += CL_SPD * (bl.u === 'cav' ? 1.7 : 1) * dt; bl.ph += dt * (bl.u === 'cav' ? 20 : 12);   // 騎兵跑得快
+    if (bl.u === 'cav' && fxOn() && Math.random() < dt * 14) FX.add({ k: 'puff', spr: 'dust', x: bl.x + (Math.random() - 0.5) * 0.6, z: bl.z - 0.3, h: 0.15, life: 0.45, size: 0.7, grow: 1.6, rise: 0.3, a: 0.7 });
     if (bl.pop > 0) bl.pop = Math.max(0, bl.pop - dt * 3);
     const fz = bl.lane ? f[bl.col] : clFrontAt(f, bl.x);
     if (G.st === 'play') {
@@ -145,14 +151,27 @@ function clBlobs(dt) {
     if (bl.z >= fz - 0.25) {
       if (G.st === 'play') {
         const c = bl.col;
-        if (bl.u === 'arch') { G.ar[c] += bl.n; emit('carch', bl); }   // 弓箭手站在後面一直射，不上前線
+        if (bl.u === 'arch') { G.ar[c] += bl.n; if (fxOn()) floatText(clColX(c), fz - 1.2, 1.4, `🏹 +${fmtNum(bl.n)}`, '#9dffb5', 0.75); emit('carch', bl); }   // 弓箭手站在後面一直射，不上前線
         else {
           if (bl.u === 'cav') {   // 騎兵：一衝進去就撞倒一堆紅軍，戰線往前推，盾陣也撞破
-            const k = Math.min(G.r[c], bl.n * 0.8 * G.pow); G.r[c] -= k; G.kills += k;
-            G.push[c] += Math.min(1.8, 0.4 + bl.n * 0.02);
+            let k = Math.min(G.r[c], bl.n * 1.5 * G.pow); G.r[c] -= k;
+            for (const d of [-1, 1]) if (G.r[c + d] != null) { const k2 = Math.min(G.r[c + d], bl.n * 0.3 * G.pow); G.r[c + d] -= k2; k += k2; G.push[c + d] += Math.min(1, 0.2 + bl.n * 0.01); }
+            G.kills += k;
+            G.push[c] += Math.min(3, 0.6 + bl.n * 0.03);
             if (G.rw[c] > 0) { G.rw[c] = 0; emit('cwallbreak', { c }); }
+            if (fxOn()) {
+              const x = clColX(c), z = fz + 0.4;
+              FX.add({ k: 'ring', x, z, life: 0.5, size: 2.6, col: '230,120,255' });
+              for (let i = 0; i < 8; i++) FX.add({ k: 'puff', spr: 'dust', x: x + (Math.random() - 0.5) * 2, z: z + Math.random() * 1.5, h: 0.3, life: 0.6, size: 1.3, grow: 1.7, rise: 0.6, a: 0.85 });
+              floatText(x, z + 0.5, 1.6, `🐎 撞倒 ${fmtNum(k)}`, '#ffb8ff', 0.85);
+            }
             emit('ccav', bl);
-          } else if (bl.u === 'shield') { G.sh[c] = Math.max(G.sh[c], 9); emit('cshield', bl); }
+          } else if (bl.u === 'shield') {
+            G.sh[c] = Math.max(G.sh[c], 10);
+            for (const d of [-1, 1]) if (G.sh[c + d] != null) G.sh[c + d] = Math.max(G.sh[c + d], 6);   // 旁邊兩路也頂一下
+            if (fxOn()) floatText(clColX(c), fz, 1.6, '🛡 盾牆！', '#bfe6ff', 0.85);
+            emit('cshield', bl);
+          }
           G.b[c] += bl.n;
         }
         G.inRate += bl.n / 3;
@@ -295,10 +314,12 @@ function clashStep(dt, input) {
   for (let i = 0; i < NC; i++) {
     const a = G.ar[i];
     if (a < 0.5) { G.ar[i] = 0; continue; }
-    const k = dt * 0.2 * a * pw;
-    for (const [c, w2] of [[i, 0.6], [i - 1, 0.2], [i + 1, 0.2]]) if (r[c] != null) { const kk = Math.min(r[c], k * w2); r[c] -= kk; G.kills += kk; }
-    G.ar[i] *= Math.exp(-dt / 8);
-    if (fxOn() && Math.random() < dt * Math.min(14, 2 + a / 5)) {
+    const k = dt * 0.3 * a * pw;
+    for (const [c, w2] of [[i, 0.6], [i - 1, 0.2], [i + 1, 0.2]]) if (r[c] != null) { const kk = Math.min(r[c], k * w2); r[c] -= kk; G.kills += kk; G.arK[i] += kk; }
+    G.ar[i] *= Math.exp(-dt / 10);
+    G.arT[i] -= dt;
+    if (G.arT[i] <= 0) { G.arT[i] = 1; if (G.arK[i] >= 1 && fxOn()) floatText(clColX(i), f[i] + 0.8, 1.2, '-' + fmtNum(G.arK[i]), '#9dffb5', 0.6); G.arK[i] = 0; }
+    if (fxOn() && Math.random() < dt * Math.min(30, 4 + a / 2)) {
       const x = clColX(i) + (Math.random() - 0.5) * CL_CW, zf = f[i];
       FX.add({ k: 'carrow', x0: x, z0: zf - 1.3, h0: 0.9, x1: x + (Math.random() - 0.5) * 0.6, z1: zf + 0.8 + Math.random() * 2, h1: 0.3, arc: 1.4, life: 0.5, x, z: zf });
     }
@@ -307,7 +328,7 @@ function clashStep(dt, input) {
     const Bp = b[i] * pw, Rr = r[i];
     const k = dt * K.kill * Math.min(Bp, Rr);
     const wall = G.rw[i] > 0, shd = G.sh[i] > 0;
-    b[i] = Math.max(0, b[i] - k / pw * (shd ? 0.5 : 1)); r[i] = Math.max(0, r[i] - k * (wall ? 0.35 : 1));
+    b[i] = Math.max(0, b[i] - k / pw * (shd ? 0.35 : 1)); r[i] = Math.max(0, r[i] - k * (wall ? 0.35 : 1));
     G.kills += k;
     let v = K.move * (Bp - Rr) / (Bp + Rr + K.soft) + (G.charge > 0 && Bp > 1 ? 0.6 : 0);
     if (wall && v > 0) v *= 0.25;

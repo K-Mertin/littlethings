@@ -46,6 +46,7 @@ function demoGame() {
 function startClash(n) {
   AU.init();
   setCam('clash');
+  UI.lastMode = 'clash';
   newClash(n, { up: Save.d.up });
   UI.mode = 'play'; UI.banner = 0; UI.resultShown = false;
   show(null);
@@ -97,6 +98,7 @@ function finishClash(win) {
 function startStage(n) {
   AU.init();
   setCam('defense');
+  UI.lastMode = 'def';
   newDefense(n, { up: Save.d.up });
   UI.mode = 'play'; UI.banner = 0; UI.resultShown = false;
   show(null);
@@ -117,23 +119,35 @@ function clashFeat(C) {
   const f = [[C.flip, '對調'], [C.wall, '盾陣'], [C.rain, '箭雨'], [C.cat, '投石'], [C.units, '兵種'], [C.brute, '巨兵'], [C.surge, '猛衝'], [C.slide, '會動'], [C.kill, '✕ 門']].filter(x => x[0]).map(x => x[1]);
   return f.length ? f.slice(0, 4).join('・') : '推戰線';
 }
+// 選關：一次只顯示一個模式（上面的分頁切換），兩個模式不混在一起
 function buildLevels() {
-  const box = $('#levelGrid');
-  const clashRow = `<div class="themeRow"><h3>⚔️ 大軍對決</h3><div class="tiles">${CSTAGES.map((C, i) => {
-    const n = i + 1, un = Save.cUnlocked(n), st = Save.d.cstars[n] || 0;
-    return `<button class="tile t-${THEMES[C.theme].id}" data-clash="${n}" ${un ? '' : 'disabled'}>
+  const box = $('#levelGrid'), clash = UI.lvMode === 'clash';
+  $('#levelsTitle').textContent = '選擇關卡';   // 模式看上面的分頁
+  document.querySelectorAll('.mtab').forEach(b => b.classList.toggle('on', b.dataset.mode === (clash ? 'clash' : 'def')));
+  if (clash) {
+    const cs = Object.values(Save.d.cstars).reduce((a, b) => a + b, 0);
+    $('#starTotal').textContent = `★ ${cs} / ${CSTAGES.length * 3}`;
+    const groups = [];
+    CSTAGES.forEach((C, i) => { const k = i < 6 ? 0 : i < 10 ? 1 : 2; (groups[k] = groups[k] || []).push(i + 1); });   // 1–6、7–10、11–
+    box.innerHTML = groups.map((list, k) => `<div class="themeRow"><h3>${['第一部 · 六大戰場', '第二部 · 進階戰場', '第三部 · 傳說戰場'][k] || ''}</h3><div class="tiles">${list.map(n => {
+      const C = CSTAGES[n - 1], un = Save.cUnlocked(n), st = Save.d.cstars[n] || 0;
+      return `<button class="tile t-${THEMES[C.theme].id}" data-clash="${n}" ${un ? '' : 'disabled'}>
       <span class="n">${un ? n : '🔒'}</span><span class="nm">${C.name}</span><span class="rl">${clashFeat(C)}</span>
       <span class="ss">${[0, 1, 2].map(k => `<i class="${k < st ? 'on' : ''}">★</i>`).join('')}</span></button>`;
-  }).join('')}</div></div>`;
+    }).join('')}</div></div>`).join('');
+    return;
+  }
+
   const groups = [];
-  DSTAGES.forEach((D, i) => { const g = groups[groups.length - 1]; if (g && g.theme === D.theme) g.list.push(i + 1); else groups.push({ theme: D.theme, list: [i + 1] }); });
-  box.innerHTML = clashRow + groups.map(gr => `<div class="themeRow"><h3>${THEMES[gr.theme].name}</h3><div class="tiles">${gr.list.map(n => {
+  DSTAGES.forEach((D, i) => { const key = D.mix ? 'mix' : D.theme, g = groups[groups.length - 1]; if (g && g.key === key) g.list.push(i + 1); else groups.push({ key, theme: D.theme, list: [i + 1] }); });
+  box.innerHTML = groups.map(gr => `<div class="themeRow"><h3>${gr.key === 'mix' ? '進階 · 混合戰場' : THEMES[gr.theme].name}</h3><div class="tiles">${gr.list.map(n => {
     const D = DSTAGES[n - 1], un = Save.dUnlocked(n), st = Save.d.dstars[n] || 0;
     return `<button class="tile t-${THEMES[D.theme].id}" data-stage="${n}" ${un ? '' : 'disabled'}>
       <span class="n">${un ? n : '🔒'}</span><span class="nm">${D.name}</span><span class="rl">${featText(D)}</span>
       <span class="ss">${[0, 1, 2].map(k => `<i class="${k < st ? 'on' : ''}">★</i>`).join('')}</span></button>`;
   }).join('')}</div></div>`).join('');
-  $('#starTotal').textContent = `★ ${totalStars()} / ${(DSTAGES.length + CSTAGES.length) * 3}`;
+  const ds = Object.values(Save.d.dstars).reduce((a, b) => a + b, 0);
+  $('#starTotal').textContent = `★ ${ds} / ${DSTAGES.length * 3}`;
 }
 function totalStars() { return Object.values(Save.d.dstars).reduce((a, b) => a + b, 0) + Object.values(Save.d.cstars).reduce((a, b) => a + b, 0); }
 function coinK() { return 1 + (Save.d.up.coin || 0) * 0.05; }
@@ -288,11 +302,12 @@ function goTitle() {
   demoGame();
   AU.stop();
   const next = nextStage();
-  $('#startBtn').textContent = next === 1 && !Save.d.dstars[1] ? '開始遊戲' : `繼續：第 ${next} 關`;
-  const ts = totalStars();
-  $('#starInfo').textContent = `★ ${ts} / ${(DSTAGES.length + CSTAGES.length) * 3}`;
-  const cs = Object.values(Save.d.cstars).reduce((a, b) => a + b, 0);
-  $('#clashInfo').textContent = cs ? `第 ${nextClash()} 關 · ★ ${cs} / ${CSTAGES.length * 3}` : '新玩法：推戰線';
+  $('#startBtn').textContent = next === 1 && !Save.d.dstars[1] ? '開始' : `繼續 第 ${next} 關`;
+  const ds = Object.values(Save.d.dstars).reduce((a, b) => a + b, 0);
+  $('#defInfo').textContent = `${DSTAGES.length} 關 · ★ ${ds} / ${DSTAGES.length * 3}`;
+  const cs = Object.values(Save.d.cstars).reduce((a, b) => a + b, 0), nc = nextClash();
+  $('#clashBtn').textContent = nc === 1 && !Save.d.cstars[1] ? '開始' : `繼續 第 ${nc} 關`;
+  $('#clashInfo').textContent = `${CSTAGES.length} 關 · ★ ${cs} / ${CSTAGES.length * 3}`;
   refreshCoins();
   show('title');
 }
@@ -330,13 +345,17 @@ function resume() {
   UI.last = performance.now();
 }
 
-function onAct(act) {
+function onAct(act, el) {
   AU.init(); AU.sfx('click');
   if (AU.ctx && AU.ctx.state === 'suspended' && act !== 'pause') AU.ctx.resume();
   switch (act) {
     case 'start': startStage(nextStage()); break;
     case 'clash': startClash(nextClash()); break;
-    case 'levels': toMenu('levels', buildLevels); break;
+    case 'levels':
+      UI.lvMode = (el && el.dataset.mode) || (G && !G.demo && G.mode === 'clash' ? 'clash' : G && !G.demo ? 'def' : UI.lastMode || 'def');
+      toMenu('levels', buildLevels); break;
+    case 'lvtab': UI.lvMode = el.dataset.mode; buildLevels(); $('#levels').scrollTop = 0; break;
+    case 'go': if (UI.lastMode === 'clash') startClash(nextClash()); else startStage(nextStage()); break;
     case 'shop': toMenu('shop', buildShop); break;
     case 'help': show('help'); break;
     case 'title': case 'quit': goTitle(); if (AU.ctx) AU.ctx.resume(); break;
@@ -383,7 +402,7 @@ function setupInput() {
   });
   document.addEventListener('click', e => {
     const b = e.target.closest('[data-act]');
-    if (b) { onAct(b.dataset.act); return; }
+    if (b) { onAct(b.dataset.act, b); return; }
     const t = e.target.closest('[data-stage]');
     if (t && !t.disabled) { startStage(+t.dataset.stage); return; }
     const tc = e.target.closest('[data-clash]');

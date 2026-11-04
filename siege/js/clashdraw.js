@@ -122,6 +122,7 @@ function renderClash(G, t) {
   for (let c = 0; c < CL_NC; c++) {
     if (G.rw[c] > 0) items.push({ z: G.f[c] + 0.12, rwall: c });
     if (G.ar[c] >= 1) items.push({ z: G.f[c] - 1.25, arch: c });
+    if (G.sh[c] > 0) items.push({ z: G.f[c] - 0.16, bwall: c });
   }
   // 人海：紅色從基地一路往戰線湧下來，藍色往上頂（每一排會慢慢移動，看起來是一直在走）
   let fmin = 1e9, fmax = -1e9;
@@ -167,6 +168,7 @@ function renderClash(G, t) {
     else if (it.shot) drawClashShot(g, G, it.shot);
     else if (it.rwall != null) drawClashRedWall(g, G, it.rwall, t);
     else if (it.arch != null) drawClashArchers(g, G, it.arch, t);
+    else if (it.bwall != null) drawClashBlueWall(g, G, it.bwall, t);
     else if (it.base) drawBase(g, G, t);
     else if (it.cannon) drawCannon(g, G, t);
   }
@@ -296,9 +298,17 @@ function drawClashBlob(g, bl) {
     const i = r * cols + c; if (i >= m) continue;
     const x = bl.x + (c - (cols - 1) / 2) * 0.3 + ((i * 37) % 7 - 3) * 0.012, z = bl.z + (r - (rows - 1) / 2) * 0.3;
     const p = P(x, z, 0);
-    const spr = ART.soldierV[i % 3][Math.floor(bl.ph / (Math.PI / 2) + i) & 3];
-    const h = (spr.wh ? spr.wh * 0.765 : 0.78) * p.s * (1 + bl.pop * 0.4), w = h * spr.width / spr.height;
-    g.drawImage(spr, p.x - w / 2, p.y - h * (1 - (spr.foot || 0)), w, h);
+    const base = ART.soldierV[i % 3][Math.floor(bl.ph / (Math.PI / 2) + i) & 3];
+    const spr = bl.u ? clTintSpr(base, CL_UTINT[bl.u]) : base;
+    const big = bl.u === 'cav' ? 1.25 : 1;   // 騎兵大一點
+    const h = (spr.wh ? spr.wh * 0.765 : 0.78) * p.s * (1 + bl.pop * 0.4) * big, w = h * spr.width / spr.height;
+    const hop = bl.u === 'cav' ? Math.abs(Math.sin(bl.ph * 0.5 + i)) * 0.12 * p.s : 0;
+    g.drawImage(spr, p.x - w / 2, p.y - h * (1 - (spr.foot || 0)) - hop, w, h);
+    if (bl.u === 'shield') {   // 盾兵：前面舉一面藍色大盾
+      const sw = w * 0.55, sh2 = h * 0.5, sx = p.x - sw / 2, sy = p.y - h * 0.62;
+      g.fillStyle = '#2f5fa8'; rr(g, sx, sy, sw, sh2, sw * 0.3); g.fill();
+      g.fillStyle = '#bfe6ff'; rr(g, sx + sw * 0.18, sy + sh2 * 0.15, sw * 0.64, sh2 * 0.7, sw * 0.22); g.fill();
+    }
   }
   if (bl.n > DEF_SQUAD || bl.u) {
     const q = P(bl.x, bl.z, 1.5), u = R.u * R.dpr, fs = Math.max(11 * u, 0.55 * q.s) * (1 + bl.pop * 0.4);
@@ -403,11 +413,11 @@ function drawClashArrow(g, e) {
   const q = Math.min(1, e.t / e.life);
   if (q >= 1) return;
   const p = clArrowAt(e, q), p0 = clArrowAt(e, Math.max(0, q - 0.12));
-  const dx = p.x - p0.x, dy = p.y - p0.y, d = Math.hypot(dx, dy) || 1, L = Math.max(5, 0.42 * p.s);
+  const dx = p.x - p0.x, dy = p.y - p0.y, d = Math.hypot(dx, dy) || 1, L = Math.max(7, 0.55 * p.s);
   const ux = dx / d, uy = dy / d;
-  g.strokeStyle = e.red ? '#5a1010' : '#3a2a14'; g.lineWidth = Math.max(1.2, 0.035 * p.s);
+  g.strokeStyle = e.red ? '#5a1010' : '#3a2a14'; g.lineWidth = Math.max(2, 0.05 * p.s);
   g.beginPath(); g.moveTo(p.x - ux * L, p.y - uy * L); g.lineTo(p.x, p.y); g.stroke();
-  g.fillStyle = e.red ? '#ff4a4a' : '#e8f6ff';
+  g.fillStyle = e.red ? '#ff4a4a' : '#7dff9e';
   g.beginPath(); g.moveTo(p.x + ux * L * 0.25, p.y + uy * L * 0.25); g.lineTo(p.x - uy * L * 0.12, p.y + ux * L * 0.12); g.lineTo(p.x + uy * L * 0.12, p.y - ux * L * 0.12); g.fill();
 }
 
@@ -449,6 +459,29 @@ function drawClashRedWall(g, G, c, t) {
   g.globalAlpha = 1;
 }
 
+// 兵種的顏色（小兵整隻染色，遠遠就分得出來）
+const CL_UTINT = { arch: 'rgba(40,200,90,.5)', cav: 'rgba(210,70,230,.5)', shield: 'rgba(150,190,240,.55)' };
+const CL_TINTS = new Map();
+function clTintSpr(spr, col) {
+  let m = CL_TINTS.get(col); if (!m) CL_TINTS.set(col, m = new WeakMap());
+  let c = m.get(spr);
+  if (!c) { c = mk(spr.width, spr.height, g => { g.drawImage(spr, 0, 0); g.globalCompositeOperation = 'source-atop'; g.fillStyle = col; g.fillRect(0, 0, spr.width, spr.height); }); c.wh = spr.wh; c.foot = spr.foot; m.set(spr, c); }
+  return c;
+}
+// 盾兵頂住的那一路：前線上一排藍色大盾
+function drawClashBlueWall(g, G, c, t) {
+  const z = G.f[c] - 0.15, x0 = -CL_FW + c * CL_CW, n = 4, a = Math.min(1, G.sh[c] / 0.8);
+  g.globalAlpha = a;
+  for (let i = 0; i < n; i++) {
+    const x = x0 + CL_CW * (i + 0.5) / n, A = P(x - CL_CW / n * 0.48, z, 0), B = P(x + CL_CW / n * 0.48, z, 0.85);
+    const w = B.x - A.x, h = A.y - B.y;
+    g.fillStyle = '#1d3f7a'; rr(g, A.x, B.y, w, h, w * 0.3); g.fill();
+    g.fillStyle = '#5fa8ff'; rr(g, A.x + w * 0.12, B.y + h * 0.08, w * 0.76, h * 0.84, w * 0.24); g.fill();
+    g.fillStyle = '#e8f6ff'; g.beginPath(); g.arc(A.x + w / 2, B.y + h * 0.45, w * 0.16, 0, Math.PI * 2); g.fill();
+  }
+  g.globalAlpha = 1;
+}
+
 // 弓箭手：站在戰線後面的一小排（綠色），上面寫人數
 const CL_GREEN = new WeakMap();
 function clGreenSpr(spr) {
@@ -457,7 +490,7 @@ function clGreenSpr(spr) {
   return c;
 }
 function drawClashArchers(g, G, c, t) {
-  const a = G.ar[c], m = Math.min(5, 1 + Math.floor(a / 8)), z = G.f[c] - 1.25;
+  const a = G.ar[c], m = Math.min(7, 2 + Math.floor(a / 6)), z = G.f[c] - 1.25;
   for (let i = 0; i < m; i++) {
     const x = clColX(c) + (i - (m - 1) / 2) * CL_CW / 5, p = P(x, z + (i % 2) * 0.18, 0);
     const spr = clGreenSpr(ART.soldierV[i % 3][Math.floor(t * 3 + i) & 3]);

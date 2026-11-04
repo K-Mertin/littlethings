@@ -23,7 +23,11 @@ const DSTAGES = [
   { name: '最終火山', theme: 4, rows: 4, slide: 2, red: 2, lvl: 12, df: 1.28, pow: 2, gey: 2, roul: 1, bomb: 1, wall: 1, tip: '火山最後一關，全部都來了！' },
   { name: '雲端前哨', theme: 5, rows: 3, slide: 1, red: 1, lvl: 13, df: 0.42, wind: 1, gap: 1, tip: '強風會把小兵吹歪；雲海上只有木板橋，掉下去就沒了' },
   { name: '雷雲高原', theme: 5, rows: 3, slide: 1, red: 1, lvl: 14, df: 1.25, roul: 1, bolt: 1, gap: 1, tip: '藍圈會被雷劈，小兵和怪物都會被劈到' },
-  { name: '天空王座', theme: 5, rows: 4, slide: 2, red: 2, lvl: 15, df: 0.66, pow: 1, wind: 1, bolt: 1, gap: 1, bomb: 1, tip: '最後一關！強風、雷擊、斷橋、砲擊全部都來了' },
+  { name: '天空王座', theme: 5, rows: 4, slide: 2, red: 2, lvl: 15, df: 0.66, pow: 1, wind: 1, bolt: 1, gap: 1, bomb: 1, tip: '天空最後一關！強風、雷擊、斷橋、砲擊全部都來了' },
+  // 進階：混合戰場（不同世界的花樣混在一起）
+  { name: '沙塵風暴', theme: 1, rows: 4, slide: 2, red: 2, lvl: 16, df: 1.0, mix: 1, wind: 1, roul: 1, bomb: 1, pow: 1, tip: '沙塵暴會把小兵吹歪，轉盤門、砲擊也一起來' },
+  { name: '冰雷要塞', theme: 2, rows: 4, slide: 2, red: 2, lvl: 17, df: 1.4, mix: 1, bolt: 1, wall: 1, bomb: 1, pow: 1, tip: '雪地裡也會打雷！藍圈裡的怪物也會被劈' },
+  { name: '霓虹風暴', theme: 3, rows: 4, slide: 2, red: 2, lvl: 18, df: 1.6, mix: 1, wind: 1, bolt: 1, wall: 1, roul: 1, bomb: 1, pow: 2, tip: '守城戰最終關：強風、雷擊、牆、轉盤、砲擊全上' },
 ];
 
 // 砲台一次射出一小隊（3 個人）。門是對「整隊」算的：
