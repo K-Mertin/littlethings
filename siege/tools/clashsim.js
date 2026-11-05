@@ -1,12 +1,12 @@
 // 大軍對決模擬：node siege/tools/clashsim.js [policy=smart|lazy|center] [runs] [stages=1-6] [up]
-// policy：smart 會挑走廊／支援、lazy 亂走、center 站中間、unit 只走兵種門（看兵種門有沒有太強）
+// policy：smart 會挑走廊／支援（不懂兵種）、smartu 也會算兵種（約兩倍）、lazy 亂走、center 站中間、unit 只走兵種門（看兵種門有沒有太強）
 // 環境變數 K='{"kill":0.6}' 可以試平衡係數（CL_K）
 const fs = require('fs'), vm = require('vm'), path = require('path');
 const dir = path.join(__dirname, '..', 'js');
 const ctx = { console, Math, JSON, localStorage: { getItem() { return null; }, setItem() { } } };
 vm.createContext(ctx);
 vm.runInContext(['core.js', 'levels.js', 'game.js', 'defense.js', 'clash.js'].map(f => fs.readFileSync(path.join(dir, f), 'utf8')).join('\n;\n') +
-  '\n;this.api={newClash,clashStep,clLaunchCharge,clColX,clFrontAt,CSTAGES,CL_K,CL_NC,CL_COR,get G(){return G}};', ctx);
+  '\n;this.api={newClash,clashStep,clLaunchCharge,clColX,clFrontAt,CSTAGES,CL_K,CL_NC,CL_COR,CL_FW,CL_CW,get G(){return G}};', ctx);
 const A = ctx.api;
 if (process.env.K) Object.assign(A.CL_K, JSON.parse(process.env.K));
 // FEED='[30,38,…]' 試每關紅軍的量
@@ -15,13 +15,15 @@ const policy = process.argv[2] || 'smart', runs = +(process.argv[3] || 5);
 const [s0, s1] = (process.argv[4] || '1-' + A.CSTAGES.length).split('-').map(Number);
 const upL = +(process.argv[5] || 0);
 const NC = A.CL_NC;
+const UV = policy === 'smartu' ? 2 : 1;   // smartu：知道兵種大約值兩倍
 
 function corridorN(G, side) {
   const col = side < 0 ? 0 : NC - 1;
   let n = G.squadN;
   const gs = G.gates.filter(g => g.side === side).sort((a, b) => a.z - b.z);
-  for (const g of gs) { if (g.z >= G.f[col] - 0.2) break; if (g.k === 'add') n += g.v; else if (g.k === 'mul') n *= g.v; else if (g.k === 'kill' && g.shut) return 0; }
-  return n;
+  let u = 1;
+  for (const g of gs) { if (g.z >= G.f[col] - 0.2) break; if (g.k === 'add') n += g.v; else if (g.k === 'mul') n *= g.v; else if (g.k === 'kill' && g.shut) return 0; else if (g.k === 'unit') u = UV; }
+  return n * u;
 }
 function decide(G) {
   const urg = c => 1 + 12 / (G.f[c] + 2) + Math.max(0, G.r[c] - G.b[c] * G.pow) / 40 + (G.surge && Math.abs(G.surge.c - c) <= 1 ? 2 : 0);
@@ -30,6 +32,12 @@ function decide(G) {
   for (const side of [-1, 1]) {
     const v = corridorN(G, side) * (urg(side < 0 ? 0 : NC - 1) * 0.6 + avg * 0.4);
     if (v > best) { best = v; bx = side * A.CL_COR; }
+  }
+  if (policy === 'smartu') for (const u of G.ug) {   // 場上的兵種門
+    const c = Math.max(0, Math.min(NC - 1, Math.floor((u.x + A.CL_FW) / A.CL_CW)));
+    if (u.z >= A.clFrontAt(G.f, u.x) - 0.2) continue;
+    const v = (G.squadN + u.v) * UV * (urg(c) * 0.7 + avg * 0.3);
+    if (v > best) { best = v; bx = u.x; }
   }
   for (let c = 0; c < NC; c++) {
     const x = A.clColX(c), m = G.mid;
@@ -51,6 +59,8 @@ for (let s = s0; s <= s1; s++) {
       if (thinkT <= 0) {
         thinkT = policy === 'lazy' ? 3 : 0.4;
         if (policy === 'center') tx = 0;
+        else if (policy === 'cor') tx = (Math.floor(G.t / 8) % 2 ? 1 : -1) * A.CL_COR;
+        else if (policy === 'mid') tx = G.mid.x;
         else if (policy === 'unit') tx = G.ug.length ? G.ug[Math.floor(G.t / 6) % G.ug.length].x : 0;
         else if (policy === 'lazy') tx = [-A.CL_COR, A.CL_COR, 0, -1.5, 1.5][Math.floor(Math.random() * 5)];
         else tx = decide(G);
