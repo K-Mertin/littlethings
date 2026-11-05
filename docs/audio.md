@@ -6,7 +6,7 @@
 | 遊戲 | 音檔 | 台詞清單 | 聲音 | 工具 |
 |---|---|---|---|---|
 | ABC Island `abc/` | `audio/<id>.m4a`（約 7,600 個）＋`audio/index.json`（有哪些 id） | `audio/phrases.tsv`（`id`、聲音 pip/kid/zh、文字；id = FNV-1a 32-bit of `聲音|文字`） | Kokoro-82M：Pip = af_heart 0.8、小朋友 = af_sky 0.9；字母純音是家長真人錄音 | `abc/tools/`：`kokoro-record.mjs`、`kokoro-short.mjs`、`kokoro-letters.mjs`、`trim-silence.sh`、`soundbank/` |
-| ㄅㄆㄇ 小島 `zhuyin/` | `audio/<id>.mp3` | `node tools/lines.js > audio/phrases.tsv`（從 `data.js` 的 `allLines()` 產生） | 雲哲 zh-TW-YunJheNeural +5%；含注音符號的句子用曉臻 zh-TW-HsiaoChenNeural | `zhuyin/tools/record.py`（edge-tts） |
+| ㄅㄆㄇ 小島 `zhuyin/` | `audio/<id>.mp3` | `node tools/lines.js > audio/phrases.tsv`（從 `data.js` 的 `allLines()` 產生） | 雲哲 zh-TW-YunJheNeural +5%；含注音符號的句子用曉臻 zh-TW-HsiaoChenNeural +0%；出題的句子（`phrases.tsv` 第三欄 `q`）各慢 10%（雲哲 -5%、曉臻 -10%） | `zhuyin/tools/record.py`（edge-tts） |
 | 123 小島 `math/` | `audio/<id>.mp3` | `node tools/lines.js > audio/phrases.tsv` | 雲哲 +5% | `math/tools/record.py`（edge-tts）、`record_azure.py`（正式 Azure 金鑰） |
 
 ## 改台詞的流程（zhuyin / math）

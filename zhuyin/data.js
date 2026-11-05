@@ -750,6 +750,27 @@
     return Array.from(out);
   }
 
+  // 出題的句子：錄音時念得比一般句子慢一點（MK 2026-11-05：出題太快聽不清楚）。tools/record.py 依這個集合調語速。
+  function questionLines() {
+    const q = new Set();
+    const add = t => { if (t) q.add(typeof t === 'object' ? t.text : t); };
+    for (const x of SYMBOLS) add(P.find(x.s));
+    for (const w of WORDS) add(P.firstQ(w.w));
+    for (const w of ONE.concat(TWO)) { add(P.spellQ(w.w)); add(P.wwQ(w.w)); }
+    for (const w of TWO) add(P.wwNext(Array.from(w.w)[1]));
+    for (const c of COMBOS) add(P.comboFind(c));
+    for (const t of TONE_SETS) t.ch.forEach(c => add(P.toneQ(c)));
+    for (const pr in PAIRS) { const [a, b] = Array.from(pr); for (const w of WORDS) add(P.pairQ(w.w, a, b)); }
+    for (const w of TWO) add(P.ntQ(w.w));
+    for (const pr of TONE_PAIRS) for (const x of pr) add(P.tpHearQ(x.w));
+    for (const id in FIND_SCENES) for (const x of sceneObjs(id)) { add(P.scFind(x.w)); add(P.scFirstQ(syllables(x.z)[0].parts[0])); }
+    for (const st of STORIES.concat(PASSAGES, ALONG)) for (const qq of st.qs || []) add(qq.q);
+    add(P.wwTone); add(P.tdQ); P.tdNext.forEach(add);
+    // 其他問句（結尾是問號的）也算
+    for (const t of allLines()) if (/？$/.test(typeof t === 'object' ? t.text : t)) add(t);
+    return q;
+  }
+
 
   // 有注音符號的句子由曉臻（zh-TW-HsiaoChenNeural，語速 +0%）直接念，其他句子由雲哲念（MK 2026-10-27 試聽後決定：
   // 雲哲念單獨注音不自然、男女聲接在同一句又很怪）。錄音時 tools/record.py 依 ZY_RE 選聲音。
@@ -763,7 +784,7 @@
     return h.toString(16).padStart(8, '0');
   }
 
-  const ZY = { SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, SENTS, PASSAGES, LESSONS, PRACTICE, ADVANCED, ADV_AFTER, EXPLORE, EXP_AFTER, TONE_PAIRS, FIND_SCENES, sceneObjs, PHRASES, ALONG, TD_WORDS, PAIRS, NEUTRAL_WORDS, ORDER_SENTS, THEMES, themeWords, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
+  const ZY = { questionLines, SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, SENTS, PASSAGES, LESSONS, PRACTICE, ADVANCED, ADV_AFTER, EXPLORE, EXP_AFTER, TONE_PAIRS, FIND_SCENES, sceneObjs, PHRASES, ALONG, TD_WORDS, PAIRS, NEUTRAL_WORDS, ORDER_SENTS, THEMES, themeWords, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
     TONE_NAMES, TONE_MARKS, parseSyl, syllables, P, allLines, hash, symOf, spoken, TIPS, teachWords, strokeCount };
   if (typeof module !== 'undefined' && module.exports) module.exports = ZY;
   else root.ZY = ZY;
