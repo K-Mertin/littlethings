@@ -16,10 +16,18 @@ if os.environ.get("TTS_CA"):
 tsv, outdir = sys.argv[1], sys.argv[2]
 import re
 ZY = re.compile('[\u3105-\u3129]')
+QUESTIONS = set()   # phrases.tsv 第三欄是 q 的句子是出題，念慢一點（MK 2026-11-05）
 def voice_of(t):
     if len(sys.argv) > 3: return sys.argv[3], (sys.argv[4] if len(sys.argv) > 4 else '+5%')
-    return ('zh-TW-HsiaoChenNeural', '+0%') if ZY.search(t) else ('zh-TW-YunJheNeural', '+5%')
-rows = [l.rstrip('\n').split('\t', 1) for l in open(tsv, encoding='utf-8') if l.strip()]
+    q = t in QUESTIONS
+    if ZY.search(t): return 'zh-TW-HsiaoChenNeural', '-10%' if q else '+0%'
+    return 'zh-TW-YunJheNeural', '-5%' if q else '+5%'
+rows = []
+for l in open(tsv, encoding='utf-8'):
+    if not l.strip(): continue
+    f = l.rstrip('\n').split('\t')
+    rows.append((f[0], f[1]))
+    if len(f) > 2 and f[2] == 'q': QUESTIONS.add(f[1])
 todo = [(i, t) for i, t in rows if not os.path.exists(os.path.join(outdir, i + '.mp3'))]
 print(f'{len(rows)} 句，要錄 {len(todo)} 句')
 
@@ -34,7 +42,7 @@ async def one(i, t, sem):
         tmp = tempfile.mktemp(suffix='.mp3')
         for k in range(4):
             try:
-                await asyncio.wait_for(edge_tts.Communicate(t, *voice_of(t)[:1], rate=voice_of(t)[1]).save(tmp), 40)
+                await asyncio.wait_for(edge_tts.Communicate(t, voice_of(t)[0], rate=voice_of(t)[1]).save(tmp), 40)
                 if os.path.getsize(tmp) > 0:
                     trim(tmp, os.path.join(outdir, i + '.mp3')); os.remove(tmp); return
             except Exception as e:
