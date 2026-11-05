@@ -276,7 +276,7 @@ function drawClashTile(g, o, t) {
   const w = B.x - A.x, h = A.y - B.y;
   if (h < 2) return;
   const open = o.blink && !o.shut;
-  const txt = o.k === 'kill' ? (open ? '開' : '✕') : o.k === 'mul' ? '×' + o.v : o.k === 'cat' ? (o.cd > 0 ? '裝填' : '投石') : o.k === 'unit' ? CL_UICO[o.u] + '+' + o.v : '+' + o.v;
+  const txt = o.k === 'kill' ? (open ? '開' : '✕') : o.k === 'mul' ? '×' + o.v : o.k === 'cat' ? (o.cd > 0 ? '裝填' : '投石') : o.k === 'unit' ? CL_UICO[o.u] + (o.v ? '+' + o.v : '') : '+' + o.v;
   // 大小分級（每 12px 一級），太大就用最大那張放大
   const hb = clamp(Math.ceil(h / 12) * 12, 12, 156), ar = Math.round(w / h * 4) / 4;
   const spr = clTileSpr(txt, lookK, open, ar, hb), k = h / hb;

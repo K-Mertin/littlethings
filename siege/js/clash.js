@@ -17,21 +17,21 @@ const CL_K = { kill: 0.9, move: 1.7, soft: 25, castle: 0.25, base: 0.5, home: 2,
 // flip：兩邊走廊每 22 秒對調一次
 // units：場上的兵種門（arch 弓箭手、cav 騎兵、shield 盾兵）；cat：走廊投石車；rain：紅軍箭雨；wall：紅軍盾陣
 const CSTAGES = [
-  { name: '平原會戰', theme: 0, feed: 6, ramp: 0.5, base: 2600, castle: 300, mid: 9, L: [5, 7, 9, 12, 16, 20, 26, 32], R: [2, 2, 2, 2], units: ['arch', 'cav'], tip: '紅軍一大片衝過來！小兵碰到戰線就會往前推。走廊的門要戰線推過去才拿得到' },
-  { name: '沙丘夾擊', theme: 1, feed: 13, ramp: 0.6, base: 3800, castle: 320, mid: 12, L: [6, 8, 11, 14, 18, 24, 30, 40], R: [2, 2, 2, 2, 3], surge: 1, swap: 1, units: ['arch', 'cav'], cat: 1, tip: '紅色箭頭那一路會猛衝；走廊的投石車會往紅軍最多的地方丟大石頭' },
-  { name: '冰原紅海', theme: 2, feed: 16, ramp: 0.7, base: 5200, castle: 340, mid: 14, L: [8, 10, 13, 17, 22, 28, 36, 46], R: [2, 2, 2, 2, 2], surge: 1, brute: 1, units: ['arch', 'shield'], rain: 1, tip: '紅圈是紅軍的箭雨，小兵別走進去；盾兵門讓那一路少死一半' },
-  { name: '霓虹決戰', theme: 3, feed: 26, ramp: 0.8, base: 6800, castle: 360, mid: 18, midW: 0.9, slide: 1, L: [9, 12, 16, 20, 26, 34, 44, 56], R: [2, 2, 2, 3, 3], surge: 1, swap: 1, units: ['cav', 'shield'], cat: 1, wall: 1, tip: '紅軍舉起盾陣那一路推不動——用騎兵或投石車把盾陣打破' },
-  { name: '熔岩大軍', theme: 4, feed: 13, ramp: 0.9, base: 8800, castle: 380, mid: 20, L: [10, 14, 18, 24, 30, 40, 52, 66], R: [2, 2, 3, 2, 3], kill: 1, surge: 1, brute: 1, units: ['arch', 'cav', 'shield'], cat: 2, rain: 1, tip: '走廊裡有 ✕ 門，戰線推過去前先別走那邊' },
-  { name: '天空總決戰', theme: 5, feed: 13, ramp: 1.0, base: 11000, castle: 400, mid: 24, midW: 0.9, slide: 1, L: [12, 16, 22, 28, 36, 46, 60, 78], R: [2, 2, 3, 2, 3, 3], kill: 1, surge: 1, brute: 1, swap: 1, units: ['arch', 'cav', 'shield'], cat: 2, rain: 1, wall: 1, tip: '前面學過的花樣全部都來了！' },
-  { name: '沙暴突襲', theme: 1, feed: 26, ramp: 1.0, base: 12500, castle: 420, mid: 26, L: [13, 18, 24, 30, 38, 48, 62, 80], R: [2, 2, 3, 3, 2, 3], surge: 1, brute: 1, flip: 1, units: ['arch', 'cav'], cat: 1, tip: '走廊會對調！+ 門和 × 門每隔一陣子換邊，要跟著換' },
-  { name: '冰封要塞', theme: 2, feed: 30, ramp: 1.0, base: 14000, castle: 440, mid: 28, midW: 0.9, slide: 1, L: [14, 19, 25, 32, 40, 52, 66, 84], R: [2, 3, 2, 3, 3, 2], kill: 1, rain: 1, wall: 1, units: ['shield', 'cav'], cat: 2, tip: '盾陣、箭雨一起來：騎兵破盾，盾兵頂住' },
-  { name: '熔岩雙線', theme: 4, feed: 34, ramp: 1.1, base: 16000, castle: 460, mid: 30, L: [15, 20, 27, 34, 44, 56, 72, 92], R: [2, 3, 3, 2, 3, 3], kill: 1, surge: 1, brute: 1, rain: 1, flip: 1, swap: 1, units: ['arch', 'cav', 'shield'], cat: 2, tip: '走廊對調加上猛衝，兩邊都要顧' },
-  { name: '雲頂決戰', theme: 5, feed: 38, ramp: 1.2, base: 19000, castle: 480, mid: 32, midW: 0.9, slide: 1, L: [16, 22, 29, 38, 48, 62, 80, 100], R: [2, 3, 3, 3, 2, 3, 3], kill: 1, surge: 1, brute: 1, rain: 1, wall: 1, flip: 1, units: ['arch', 'cav', 'shield'], cat: 2, tip: '真正的最後一戰：所有花樣都在這裡' },
+  { name: '平原會戰', theme: 0, feed: 8, ramp: 0.5, base: 2600, castle: 300, mid: 9, L: [5, 7, 9, 12, 16, 20, 26, 32], R: [2, 2, 2, 2], units: ['arch', 'cav'], tip: '紅軍一大片衝過來！小兵碰到戰線就會往前推。走廊的門要戰線推過去才拿得到' },
+  { name: '沙丘夾擊', theme: 1, feed: 20, ramp: 0.6, base: 3800, castle: 320, mid: 12, L: [6, 8, 11, 14, 18, 24, 30, 40], R: [2, 2, 2, 2, 3], surge: 1, swap: 1, units: ['arch', 'cav'], cat: 1, tip: '紅色箭頭那一路會猛衝；走廊的投石車會往紅軍最多的地方丟大石頭' },
+  { name: '冰原紅海', theme: 2, feed: 21, ramp: 0.7, base: 5200, castle: 340, mid: 14, L: [8, 10, 13, 17, 22, 28, 36, 46], R: [2, 2, 2, 2, 2], surge: 1, brute: 1, units: ['arch', 'shield'], rain: 1, tip: '紅圈是紅軍的箭雨，小兵別走進去；盾兵門讓那一路少死一半' },
+  { name: '霓虹決戰', theme: 3, feed: 43, ramp: 0.8, base: 6800, castle: 360, mid: 18, midW: 0.9, slide: 1, L: [9, 12, 16, 20, 26, 34, 44, 56], R: [2, 2, 2, 3, 3], surge: 1, swap: 1, units: ['cav', 'shield'], cat: 1, wall: 1, tip: '紅軍舉起盾陣那一路推不動——用騎兵或投石車把盾陣打破' },
+  { name: '熔岩大軍', theme: 4, feed: 22, ramp: 0.9, base: 8800, castle: 380, mid: 20, L: [10, 14, 18, 24, 30, 40, 52, 66], R: [2, 2, 3, 2, 3], kill: 1, surge: 1, brute: 1, units: ['arch', 'cav', 'shield'], cat: 2, rain: 1, tip: '走廊裡有 ✕ 門，戰線推過去前先別走那邊' },
+  { name: '天空總決戰', theme: 5, feed: 23, ramp: 1.0, base: 11000, castle: 400, mid: 24, midW: 0.9, slide: 1, L: [12, 16, 22, 28, 36, 46, 60, 78], R: [2, 2, 3, 2, 3, 3], kill: 1, surge: 1, brute: 1, swap: 1, units: ['arch', 'cav', 'shield'], cat: 2, rain: 1, wall: 1, tip: '前面學過的花樣全部都來了！' },
+  { name: '沙暴突襲', theme: 1, feed: 47, ramp: 1.0, base: 12500, castle: 420, mid: 26, L: [13, 18, 24, 30, 38, 48, 62, 80], R: [2, 2, 3, 3, 2, 3], surge: 1, brute: 1, flip: 1, units: ['arch', 'cav'], cat: 1, tip: '走廊會對調！+ 門和 × 門每隔一陣子換邊，要跟著換' },
+  { name: '冰封要塞', theme: 2, feed: 54, ramp: 1.0, base: 14000, castle: 440, mid: 28, midW: 0.9, slide: 1, L: [14, 19, 25, 32, 40, 52, 66, 84], R: [2, 3, 2, 3, 3, 2], kill: 1, rain: 1, wall: 1, units: ['shield', 'cav'], cat: 2, tip: '盾陣、箭雨一起來：騎兵破盾，盾兵頂住' },
+  { name: '熔岩雙線', theme: 4, feed: 48, ramp: 1.1, base: 16000, castle: 460, mid: 30, L: [15, 20, 27, 34, 44, 56, 72, 92], R: [2, 3, 3, 2, 3, 3], kill: 1, surge: 1, brute: 1, rain: 1, flip: 1, swap: 1, units: ['arch', 'cav', 'shield'], cat: 2, tip: '走廊對調加上猛衝，兩邊都要顧' },
+  { name: '雲頂決戰', theme: 5, feed: 59, ramp: 1.2, base: 19000, castle: 480, mid: 32, midW: 0.9, slide: 1, L: [16, 22, 29, 38, 48, 62, 80, 100], R: [2, 3, 3, 3, 2, 3, 3], kill: 1, surge: 1, brute: 1, rain: 1, wall: 1, flip: 1, units: ['arch', 'cav', 'shield'], cat: 2, tip: '真正的最後一戰：所有花樣都在這裡' },
   // 第三部 · 傳說戰場：所有花樣混在一起，紅軍更多
-  { name: '綠野大會戰', theme: 0, feed: 44, ramp: 1.2, base: 21000, castle: 500, mid: 34, L: [17, 23, 30, 39, 50, 64, 82, 104], R: [2, 3, 3, 2, 3, 3, 3], surge: 1, brute: 1, wall: 1, flip: 1, units: ['cav', 'arch', 'shield'], cat: 2, tip: '傳說戰場開打！盾陣會在走廊對調的時候出現' },
-  { name: '沙海長城', theme: 1, feed: 42, ramp: 1.25, base: 23000, castle: 520, mid: 36, midW: 0.9, slide: 1, L: [18, 24, 32, 41, 52, 67, 86, 110], R: [2, 3, 3, 3, 2, 3, 3], kill: 1, surge: 1, rain: 1, wall: 1, units: ['shield', 'arch', 'cav'], cat: 2, tip: '紫門會跑、箭雨會追：邊躲邊送兵' },
-  { name: '極光雪原', theme: 2, feed: 54, ramp: 1.3, base: 25000, castle: 540, mid: 38, L: [19, 26, 34, 44, 56, 72, 92, 118], R: [2, 3, 3, 3, 3, 2, 3], kill: 1, surge: 1, brute: 1, rain: 1, flip: 1, swap: 1, units: ['arch', 'shield', 'cav'], cat: 2, tip: '巨兵、猛衝一起壓上來，弓箭手和盾兵要搭配' },
-  { name: '霓虹終焉', theme: 3, feed: 52, ramp: 1.35, base: 28000, castle: 560, mid: 40, midW: 0.9, slide: 1, L: [20, 27, 36, 46, 60, 76, 98, 124], R: [2, 3, 3, 3, 3, 3, 3], kill: 1, surge: 1, brute: 1, rain: 1, wall: 1, flip: 1, units: ['cav', 'shield', 'arch'], cat: 2, tip: '大軍對決最終戰：全部的花樣，紅軍最多' },
+  { name: '綠野大會戰', theme: 0, feed: 78, ramp: 1.2, base: 21000, castle: 500, mid: 34, L: [17, 23, 30, 39, 50, 64, 82, 104], R: [2, 3, 3, 2, 3, 3, 3], surge: 1, brute: 1, wall: 1, flip: 1, units: ['cav', 'arch', 'shield'], cat: 2, tip: '傳說戰場開打！盾陣會在走廊對調的時候出現' },
+  { name: '沙海長城', theme: 1, feed: 66, ramp: 1.25, base: 23000, castle: 520, mid: 36, midW: 0.9, slide: 1, L: [18, 24, 32, 41, 52, 67, 86, 110], R: [2, 3, 3, 3, 2, 3, 3], kill: 1, surge: 1, rain: 1, wall: 1, units: ['shield', 'arch', 'cav'], cat: 2, tip: '紫門會跑、箭雨會追：邊躲邊送兵' },
+  { name: '極光雪原', theme: 2, feed: 83, ramp: 1.3, base: 25000, castle: 540, mid: 38, L: [19, 26, 34, 44, 56, 72, 92, 118], R: [2, 3, 3, 3, 3, 2, 3], kill: 1, surge: 1, brute: 1, rain: 1, flip: 1, swap: 1, units: ['arch', 'shield', 'cav'], cat: 2, tip: '巨兵、猛衝一起壓上來，弓箭手和盾兵要搭配' },
+  { name: '霓虹終焉', theme: 3, feed: 64, ramp: 1.35, base: 28000, castle: 560, mid: 40, midW: 0.9, slide: 1, L: [20, 27, 36, 46, 60, 76, 98, 124], R: [2, 3, 3, 3, 3, 3, 3], kill: 1, surge: 1, brute: 1, rain: 1, wall: 1, flip: 1, units: ['cav', 'shield', 'arch'], cat: 2, tip: '大軍對決最終戰：全部的花樣，紅軍最多' },
 ];
 
 function clCol(x) { return clamp(Math.floor((x + CL_FW) / CL_CW), 0, CL_NC - 1); }
@@ -63,9 +63,15 @@ function newClash(n, opts) {
     gates.push({ t: 'gate', id: _uid++, k: 'cat', v: 0, x: -sL * CL_COR, w: CL_CORW, z: (gR[0].z + gR[1].z) / 2, fade: 0, bump: 0, side: -sL, cd: 0 });
     if (C.cat > 1) gates.push({ t: 'gate', id: _uid++, k: 'cat', v: 0, x: sL * CL_COR, w: CL_CORW, z: (gL[5].z + gL[6].z) / 2, fade: 0, bump: 0, side: sL, cd: 0 });
   }
-  // 兵種門：場上左右兩個，每 9 秒換一次種類
+  // 兵種門：場上左右兩個（加的人和紫門一樣多），每 9 秒換一次種類
   const ug = [];
-  if (C.units) for (const sx of [-1, 1]) ug.push({ t: 'gate', id: _uid++, k: 'unit', u: C.units[sx < 0 ? 0 : 1], v: Math.round(C.mid * 0.7), x: sx * 2.5, w: 0.8, z: CL_UZ, fade: 0, bump: 0, side: 0 });
+  if (C.units) for (const sx of [-1, 1]) ug.push({ t: 'gate', id: _uid++, k: 'unit', u: C.units[sx < 0 ? 0 : 1], v: C.mid, x: sx * 2.5, w: 0.8, z: CL_UZ, fade: 0, bump: 0, side: 0 });
+  // 走廊裡也各有一個兵種門（不加人，只換兵種）：走廊練出來的大隊也能變成兵種，數量和兵種才會相乘
+  if (C.units) {
+    const gL = gates.filter(g => g.side === sL && g.k === 'add'), gR = gates.filter(g => g.side === -sL && g.k === 'mul');
+    gates.push({ t: 'gate', id: _uid++, k: 'unit', u: C.units[(2) % C.units.length], v: 0, x: sL * CL_COR, w: CL_CORW, z: (gL[1].z + gL[2].z) / 2, fade: 0, bump: 0, side: sL, cor: 1 });
+    gates.push({ t: 'gate', id: _uid++, k: 'unit', u: C.units[(3) % C.units.length], v: 0, x: -sL * CL_COR, w: CL_CORW, z: (gR[1].z + gR[2].z) / 2, fade: 0, bump: 0, side: -sL, cor: 1 });
+  }
   const f0 = 21;
   G = {
     mode: 'clash', s: n, L, st: 'play', t: 0, dist: 0, spd: 0, scroll: false,
@@ -151,11 +157,14 @@ function clBlobs(dt) {
     if (bl.z >= fz - 0.25) {
       if (G.st === 'play') {
         const c = bl.col;
-        if (bl.u === 'arch') { G.ar[c] += bl.n; if (fxOn()) floatText(clColX(c), fz - 1.2, 1.4, `🏹 +${fmtNum(bl.n)}`, '#9dffb5', 0.75); emit('carch', bl); }   // 弓箭手站在後面一直射，不上前線
+        if (bl.u === 'arch') {   // 弓箭手：七成站在後面一直射，三成拿盾頂在前線（整隊都變弓箭手的話戰線會沒人頂）
+          G.ar[c] += bl.n * 0.7; G.b[c] += bl.n * 0.3;
+          if (fxOn()) floatText(clColX(c), fz - 1.2, 1.4, `🏹 +${fmtNum(bl.n * 0.7)}`, '#9dffb5', 0.75); emit('carch', bl);
+        }
         else {
           if (bl.u === 'cav') {   // 騎兵：一衝進去就撞倒一堆紅軍，戰線往前推，盾陣也撞破
-            let k = Math.min(G.r[c], bl.n * 1.5 * G.pow); G.r[c] -= k;
-            for (const d of [-1, 1]) if (G.r[c + d] != null) { const k2 = Math.min(G.r[c + d], bl.n * 0.3 * G.pow); G.r[c + d] -= k2; k += k2; G.push[c + d] += Math.min(1, 0.2 + bl.n * 0.01); }
+            let k = Math.min(G.r[c], bl.n * 0.9 * G.pow); G.r[c] -= k;
+            for (const d of [-1, 1]) if (G.r[c + d] != null) { const k2 = Math.min(G.r[c + d], bl.n * 0.15 * G.pow); G.r[c + d] -= k2; k += k2; G.push[c + d] += Math.min(1, 0.2 + bl.n * 0.01); }
             G.kills += k;
             G.push[c] += Math.min(3, 0.6 + bl.n * 0.03);
             if (G.rw[c] > 0) { G.rw[c] = 0; emit('cwallbreak', { c }); }
@@ -221,6 +230,7 @@ function clashStep(dt, input) {
       G.ugT = 9; G.ugI++;
       const U = C.units;
       G.ug.forEach((u, i) => { u.u = U[(G.ugI + i) % U.length]; u.bump = 0.6; });
+      G.gates.filter(g => g.k === 'unit').forEach((g, i) => { g.u = U[(G.ugI + 2 + i) % U.length]; g.bump = 0.6; });
     }
     for (const u of G.ug) u.fade = u.z < clFrontAt(f, u.x) - 0.2 ? 0 : 0.6;
   }
@@ -316,7 +326,7 @@ function clashStep(dt, input) {
     if (a < 0.5) { G.ar[i] = 0; continue; }
     const k = dt * 0.3 * a * pw;
     for (const [c, w2] of [[i, 0.6], [i - 1, 0.2], [i + 1, 0.2]]) if (r[c] != null) { const kk = Math.min(r[c], k * w2); r[c] -= kk; G.kills += kk; G.arK[i] += kk; }
-    G.ar[i] *= Math.exp(-dt / 10);
+    G.ar[i] *= Math.exp(-dt / 8);
     G.arT[i] -= dt;
     if (G.arT[i] <= 0) { G.arT[i] = 1; if (G.arK[i] >= 1 && fxOn()) floatText(clColX(i), f[i] + 0.8, 1.2, '-' + fmtNum(G.arK[i]), '#9dffb5', 0.6); G.arK[i] = 0; }
     if (fxOn() && Math.random() < dt * Math.min(30, 4 + a / 2)) {

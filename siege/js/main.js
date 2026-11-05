@@ -254,6 +254,7 @@ function tips() {
     if (G.giant >= G.giantMax) tipOnce('ccharge', '能量滿了！按右下角的「衝鋒」，全軍 5 秒變兩倍強', 3);
     if (G.L.C.kill && G.t > 3) tipOnce('ckill', '走廊裡的 ✕ 門一開一關，關著的時候走進去會整隊消失', 3.4);
     if (G.ug.length && G.t > 5 && G.t < 5.5) tipOnce('cunit', '兩邊的兵種門：🏹弓箭手站在後面一直射、🐎騎兵一衝撞倒一片、🛡盾兵讓那一路少死一半', 4.2);
+    if (G.ug.length && G.t > 12 && G.t < 12.5) tipOnce('ccorunit', '走廊裡也有兵種門！走廊練出來的大軍變成騎兵、弓箭手或盾兵，威力大約兩倍', 4);
     return;
   }
   if (G.t > 0.5 && G.t < 1) tipOnce('dmove', '左右拖曳砲台：讓小兵穿過 ×2、+ 的門會變多！', 3.4);
