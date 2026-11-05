@@ -942,7 +942,25 @@ const Clips = {
     return p;
   },
   prefetch(voice, texts) { for (const t of texts) if (t && this.has(voice, t)) this.get(this.id(voice, t)); },
-  stop() { if (this.src) { try { this.src.onended = null; this.src.stop(); } catch (e) {} this.src = null; } },
+  stop() {
+    if (this.src) { try { this.src.onended = null; this.src.stop(); } catch (e) {} this.src = null; }
+    if (this.el) { try { this.el.onended = this.el.onerror = null; this.el.pause(); } catch (e) {} const r = this.done; this.el = null; this.done = null; if (r) r(true); }
+  },
+  // questions are played a little slower than everything else, so a child can follow them
+  playSlow(voice, text, tok) {
+    const rate = Math.max(0.6, Math.min(1.2, S.settings.rate / 0.85 * ASK_RATE));
+    return new Promise(res => {
+      if (tok !== TTS.token) { res(true); return; }
+      const el = new Audio(`audio/${this.id(voice, text)}.m4a`);
+      el.preservesPitch = true; el.mozPreservesPitch = true; el.webkitPreservesPitch = true;
+      el.playbackRate = rate; el.defaultPlaybackRate = rate; this.lastRate = rate;
+      this.el = el; this.done = res;
+      const fin = ok => { if (this.el === el) { this.el = null; this.done = null; } res(ok); };
+      el.onended = () => fin(true);
+      el.onerror = () => fin(false);
+      const p = el.play(); if (p && p.catch) p.catch(() => fin(false));
+    });
+  },
   async play(voice, text, tok) {
     const a = ac(); if (!a) return false;
     const b = await this.get(this.id(voice, text));
@@ -960,6 +978,9 @@ const Clips = {
   }
 };
 Clips.load();
+const ASK_RATE = 0.87;
+// a question or a prompt to act on: these are the lines read a bit slower
+const isAsk = t => !/^(What next|What do you want|Pick a|Ready for)/.test(t) && (/\?/.test(t) || /^(Find|Let's spell|Listen|Look again|Capital ‹|Simon says|Where|Which|What|Who|Whose|How|Can you|Tap the|Put the|Say )/.test(t));
 
 const TTS = {
   ok: 'speechSynthesis' in window, en: null, zhv: null, list: [], token: 0, heard: false, broken: false, keep: [],
@@ -977,19 +998,22 @@ const TTS = {
     this.zhv = vs.find(v => /zh[-_](TW|Hant)/i.test(v.lang)) || vs.find(v => /zh[-_]HK/i.test(v.lang)) || vs.find(v => /^zh/i.test(v.lang)) || null;
   },
   cancel() { this.token++; Clips.stop(); if (this.ok) speechSynthesis.cancel(); Pip.talk(false); },
-  async one(text, lang, tok, pitch) {
+  async one(text, lang, tok, pitch, slow) {
     const voice = lang === 'zh' ? 'zh' : pitch ? 'kid' : 'pip';
-    if (Clips.has(voice, text)) { if (await Clips.play(voice, text, tok)) return; }
+    if (Clips.has(voice, text)) {
+      if (slow && voice !== 'zh') { if (await Clips.playSlow(voice, text, tok)) return; if (tok !== this.token) return; }
+      if (await Clips.play(voice, text, tok)) return;
+    }
     if (tok !== this.token) return;
     if (!this.ok || this.broken) { await sleep(lang === 'zh' ? 300 : 500 + text.length * 45); return; }
-    return this.speak(text, lang, tok, pitch);
+    return this.speak(text, lang, tok, pitch, slow);
   },
-  speak(text, lang, tok, pitch) {
+  speak(text, lang, tok, pitch, slow) {
     return new Promise(res => {
       if (!this.ok || tok !== this.token) { res(); return; }
       const u = new SpeechSynthesisUtterance(spokenLetters(text));
       if (lang === 'zh') { u.lang = this.zhv ? this.zhv.lang : 'zh-TW'; if (this.zhv) u.voice = this.zhv; u.rate = 1; }
-      else { u.lang = this.en ? this.en.lang : 'en-US'; if (this.en) u.voice = this.en; u.rate = S.settings.rate; }
+      else { u.lang = this.en ? this.en.lang : 'en-US'; if (this.en) u.voice = this.en; u.rate = S.settings.rate * (slow ? ASK_RATE : 1); }
       if (pitch) u.pitch = pitch;
       let done = false;
       const fin = () => { if (done) return; done = true; clearTimeout(to); res(); };
@@ -1005,7 +1029,8 @@ const TTS = {
     });
   },
   /* parts: strings (English), {zh}, {t, pitch}, or numbers (pause ms). Resolves true if it finished without being interrupted. */
-  async say(parts, show) {
+  // ask = true: every line of this one is part of a question (e.g. a sentence with a gap); otherwise questions are spotted by isAsk
+  async say(parts, show, ask) {
     if (!Array.isArray(parts)) parts = [parts];
     parts = parts.filter(Boolean);
     if (Clips.ready) await Clips.ready;
@@ -1031,14 +1056,15 @@ const TTS = {
     for (const g of segs) {
       if (tok !== this.token) break;
       if (typeof g === 'number') { Pip.talk(false); await sleep(g); if (tok === this.token) Pip.talk(true); continue; }
-      await this.one(g.t, g.v === 'zh' ? 'zh' : 'en', tok, g.pitch);
+      await this.one(g.t, g.v === 'zh' ? 'zh' : 'en', tok, g.pitch, g.v !== 'zh' && (ask || isAsk(g.t)));
     }
     if (tok === this.token) Pip.talk(false);
     return tok === this.token;
   }
 };
 if (TTS.ok) { TTS.load(); speechSynthesis.onvoiceschanged = () => TTS.load(); }
-const say = (p, s) => TTS.say(p, s);
+const say = (p, s, ask) => TTS.say(p, s, ask);
+const ask = (p, s) => TTS.say(p, s, true);
 
 /* ---------------- AI tutor hint (/api/tutor) ----------------
    On the second wrong tap most activities make the right card glow. When a card starts glowing right after a shake,
@@ -1047,7 +1073,7 @@ const say = (p, s) => TTS.say(p, s);
 const AIH = { busy: 0, shake: null, shakeAt: 0, done: new WeakSet() };
 {
   const real = TTS.say.bind(TTS);
-  TTS.say = async (p, sh) => { AIH.busy++; try { return await real(p, sh); } finally { AIH.busy--; } };
+  TTS.say = async (p, sh, ak) => { AIH.busy++; try { return await real(p, sh, ak); } finally { AIH.busy--; } };
 }
 const partsText = p => (Array.isArray(p) ? p : [p]).map(x => typeof x === 'string' ? x : x && x.t ? x.t : '').filter(Boolean).join(' ');
 function aihQuestion() {
@@ -3150,12 +3176,12 @@ const FG = { set: null, q: [], i: 0, wrong: 0, busy: false };
 async function fgRead(q, f) {
   // the sentence with a pause where the gap is, then each choice with its button lit
   const parts = q.read || [q.pre || 'Hmm.', 600, q.post || 'Hmm?'];
-  if (!await say(parts, q.read ? undefined : `${q.pre} ___ ${q.post}`.trim())) return;
+  if (!await ask(parts, q.read ? undefined : `${q.pre} ___ ${q.post}`.trim())) return;
   const bs = $$('#fgCh .wtile');
   for (let i = 0; i < q.opts.length; i++) {
     if (!live(f) || FG.busy) return;
     bs.forEach((b, j) => b.classList.toggle('reading', j === i));
-    const ok = await say(q.optSay ? q.optSay(q.opts[i]) : `${cap(q.opts[i])}?`); bs[i].classList.remove('reading');
+    const ok = await ask(q.optSay ? q.optSay(q.opts[i]) : `${cap(q.opts[i])}?`); bs[i].classList.remove('reading');
     if (!ok) return;
     await sleep(150);
   }
@@ -3450,8 +3476,8 @@ function lnCheck(c, f) {
     if (o.word && o.that) addSpk(b, o.that);
     box.appendChild(b);
   });
-  Pip.again = () => say(c.line);
-  say(c.line);
+  Pip.again = () => ask(c.line);
+  ask(c.line);
 }
 async function lnTap(b, i, c, f) {
   if (LRN.busy || !live(f)) return;

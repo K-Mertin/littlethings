@@ -59,6 +59,7 @@
 
 ## 語音
 - Pip 的聲音是預先錄好的音檔（`audio/`），用開源模型 Kokoro-82M（Apache-2.0）的 af_heart 聲音錄製（語速 0.8），小朋友角色用 af_sky（0.9）。字母的純音（自然發音）是家長錄的真人聲音。遊戲用 Web Audio 播放，所以不依賴瀏覽器的語音功能（Mac 上的 Chrome 就叫不出系統語音）。
+- 題目唸得比一般句子慢一點（`ASK_RATE` = 0.87，再乘上家長區設定的語速），音高不變：有問號的句子、Find…／Let's spell…／Listen…／Where…這類提示，還有填空句和它的選項、Learn 的小確認題。慢速的句子用 `<audio>` 播放（保留音高）；播放失敗時改回一般速度。教學、稱讚、故事朗讀維持原本速度。
 - 沒有音檔的句子才改用瀏覽器內建語音（`speechSynthesis`）。中文提示已關閉（`zh()` 一律回傳 null）。
 - 自然發音的字母音（⟦s⟧）和連音是家長用 `tools/soundbank/recorder.html` 錄的，原始錄音和處理方法在 `tools/soundbank/`。
 - 只有一個字的台詞（例如 "frog."）用 `tools/kokoro-short.mjs` 錄：唸三次取最後一次，避免 Kokoro 在很短的輸入前面多出一個 a 音。
