@@ -289,8 +289,8 @@ const Keyboard = {
 /* On-screen controls. One pad fills the screen in one-player games; with two
    players each gets a compact pad on their own side of the tablet. */
 const PAD_LAYOUT = {
-  full: { atk: [10, 14, 84], jmp: [100, 4, 64], def: [24, 106, 64], item: [34, 184, 50], s1: [176, 76, 58], s2: [108, 120, 58], s3: [96, 186, 58] },
-  half: { atk: [8, 10, 70], jmp: [84, 2, 54], def: [18, 88, 54], item: [24, 150, 42], s1: [146, 60, 48], s2: [90, 104, 48], s3: [80, 160, 48] }
+  full: { atk: [10, 14, 84], jmp: [100, 4, 64], def: [24, 106, 64], item: [100, 74, 46], s1: [176, 76, 58], s2: [108, 120, 58], s3: [96, 186, 58] },
+  half: { atk: [8, 10, 70], jmp: [84, 2, 54], def: [18, 88, 54], item: [82, 60, 38], s1: [146, 60, 48], s2: [90, 104, 48], s3: [80, 160, 48] }
 };
 class TouchPad {
   constructor(slot, side, compact) {
