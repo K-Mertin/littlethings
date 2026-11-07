@@ -105,6 +105,7 @@
 ## 語音
 - 台詞都寫在 `data.js` 的 `P`，`allLines()` 列出每一句；`node tools/lines.js > audio/phrases.tsv`
 - 音檔用 `tools/record.py`（edge-tts 的台灣男聲 zh-TW-YunJheNeural 雲哲，語速 +5%，ffmpeg 剪掉前後靜音；2026-10-21 從曉臻 -10% 換過來，因為 MK 覺得太慢、不夠自然）。換聲音要先刪掉 audio/*.mp3 再錄，檔名是文字的 FNV-1a 雜湊。只錄還沒有的句子
+- 單獨的數字（零～一百）用 `tools/fix_numbers.py` 從一串數字裡切出來，雲哲單獨念一個字時聲調會錯（一、三、七變四聲）。全部重錄後要再跑一次
 - 量詞照實際用法（兩顆蘋果、三隻小狗、一條小魚、一根香蕉、一台小汽車、一朵花）
 - 聲音授權的狀況同 ㄅㄆㄇ 小島（自己家用）
 
