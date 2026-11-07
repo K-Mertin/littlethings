@@ -10,9 +10,10 @@
 - 🔤 **Letters**：Write、Phonics、First Letter、Big & Small、ABC Order、What's Missing?
 - 🧩 **Words**：Things（19 組名詞，進去選一組）、Actions、Describing、My Day、Spell、Spell+ ⭐、Blends、Magic e ⭐、ee, oa, ai ⭐、Sight Words、Sight Words 2 ⭐、Sight Words 3 ⭐、Rhyme、Opposites
 - 📝 **Sentences**：a or an?、He / She / They、How?、What can it do?、Where is it?、One or many?、Is or are?、What, Who, Where?、Behind, between ⭐、How do I feel?、Make a Sentence、Big, bigger, biggest ⭐、This or that?、Can or can't?、Yesterday ⭐、Stories、Reading ⭐、Sentences ⭐、Listen ⭐
+- 🚀 **Next Level** ⭐⭐：Dictation、Read It!、Change a Letter、ar, or, ow、I am ___ing、Went, ate, saw、Stories ⭐⭐
 - 🎉 **Play**：Talk、Memory、Simon Says、Find it!、Story Order、Stickers
 
-⭐ 是比較難的挑戰；玩過的格子右上角有 ✔。從遊戲回到首頁會停在原本滑到的位置。
+⭐ 是比較難的挑戰，⭐⭐ 是下一階段；玩過的格子右上角有 ✔。從遊戲回到首頁會停在原本滑到的位置。
 
 | 活動 | 內容 |
 |---|---|
@@ -29,6 +30,7 @@
 | 🐐 ee, oa, ai | 母音組合：看圖，單字中間空兩格（b __ t），選 ee / oa / ai。Pip 唸單字再唸選項的兩個字母。Learn 一次教一組（bee、tree、feet…） |
 | 👀 Sight Words 3 | 第三級常見字 30 個（after、again、could、every、know、thank、when…） |
 | 📚 第二級故事書 ⭐ | The Lost Kitten、Pip's Garden、The Big Race：每本 8 頁，句子比較長、用到 Sight Words 2 的字，書單上標 ⭐ |
+| 🚀 Next Level ⭐⭐ | 下一階段（2026-11）：**👂 Dictation 聽寫**（沒有圖、沒有提示字，只聽 Pip 唸單字再拼，三個字母和進階單字混合，多 3 個干擾字母；拼完才出現圖）。**📰 Read It!**（只顯示一句話、Pip 不唸，自己讀完選圖：The duck is under the table.／I see three cats.／I am swimming.；選項是同一隻動物不同位置或不同動物、不同數量、不同動作，要每個字都讀懂；錯兩次 Pip 才唸出來）。**🪜 Change a Letter**（cat → hat：看兩張圖，新字缺一個字母，選出要換的字母）。**🦉 ar, or, ow**（第二組母音組合：car、fork、cow…）。**🏃 I am ___ing**（I can run.／Look at me! I am running.）。**🚌 Went, ate, saw**（不規則過去式，Yesterday／Today 標籤）。後四組都有 📖 Learn。**📚 第三級故事書 ⭐⭐**：Pip and the Storm、Lily's First Day，題目會問 why |
 | 📖 Learn | 先教再玩。Words 每一組（含 Actions、Describing）、Sentences 區的五組填空，和 Rhyme、Opposites、Big & Small，進到遊戲後上方有「📖 Learn」按鈕（不會自動跳出）。上課照「我說、一起說、你來」：一次一張大圖＋字，Pip 唸出來，再說「Say it with me!」（點圖可以再聽，按 🎤 可以跟著唸，Pip 會回應）；每教 3～4 個，就用剛教的內容出 1～2 題小確認（答錯會唸出選到的是什麼，錯兩次提示答案）。教完按 ▶️ Play 直接進遊戲，🔁 再上一次。一次教 8 個，下次打開接著教後面的 |
 | 🎲 Games | 小遊戲區（7 個）：🎵 Rhyme 押韻（22 組字族）、🃏 Memory 翻牌（任一組單字的 6 對圖）、🙋 Simon Says（聽指令點身體部位）、↔️ Opposites 相反詞（12 組）、❓ What's Missing?（看圖補字母，多半是中間的母音）、🔡 ABC Order（「a b _」接下一個字母）、🅰️ Big & Small（大寫配小寫，常混入 b/d/p/q 這類長得像的字母） |
 | 🆕 2026-10-28 | **🪥 My Day**（Words 區，日常作息：waking up、brushing teeth、taking a bath、going to bed…12 個，每張圖都是孩子在做那件事，有 Learn）。**🧸 Behind, between ⭐**（behind／in front of／between／next to the box，箱子和動物分層畫：behind 被箱子擋住一半、between 是兩個箱子中間；選項是整個片語）。**😊 How do I feel?**（看發生了什麼事推想心情：My balloon flew away. I feel ___；選項附表情，意思相近的心情不會同時出現；Learn 用新的情境出確認題）。**🧱 Make a Sentence**（看圖把字卡排成句子，例如 The dog / is / running.，多一張和圖不符的字卡；選錯會說「Look at the picture again」或「What comes first?」）。**🔎 Find it!**（聽力：公園、房間、農場、海邊四張大圖，每次換一張；前三題「Find the dog.」，後三題要聽位置、顏色、大小才分得出來：the cat under the tree／the cat next to the house、the red balloon、the big sheep；泡泡不顯示題目）。**🔢 Story Order**（Pip 講三段小故事，孩子依 First／Next／Last 排圖；剩最後一張時自動放上，不問沒有意義的題目；12 個故事，有 Learn）。手機橫拿時，填空和排句子畫面縮小圖片、🔊 改放在字卡旁，不再被切掉 |
