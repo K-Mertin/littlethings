@@ -31,5 +31,10 @@ python3 tools/record.py audio/phrases.tsv audio   # 只錄還沒有音檔的句�
 - 2026-10-29 檢查：有 267 個音檔（約 3.3 MB）不在 `phrases.tsv`，也有 355 句在清單裡但沒有音檔（這些會用瀏覽器語音）。因為句子是動態組的，**沒有辦法只靠靜態比對確定那 267 個沒在用**，所以暫時不刪。要清理的話：在遊戲裡記錄實際播放過的 id（或寫一支 `abc/tools/lines.mjs` 從程式列出所有句子），再比對。
 - 單字台詞（例如 "frog."）用 `kokoro-short.mjs`：唸三次取最後一次；單一字母用「b. b. b.」切最後一次。
 
+## 123 小島：單獨的數字要另外錄
+雲哲單獨念一個字時聲調常常錯（一、三、七念成往下掉，零、十不會上揚），一個一個數的時候特別明顯。
+所以「零」到「一百」這 101 個單獨數字的音檔，是用 `math/tools/fix_numbers.py` 從一整串數字（「八，零，一，二，三，四，二。」）裡切出來的，聲調才會對（「二」保留單獨念的版本，單獨念本來就對）。
+**用 `record.py`／`record_azure.py` 加 `--redo` 全部重錄之後，要再跑一次 `python3 tools/fix_numbers.py audio`**，然後把「二」換回單獨念的。
+
 ## 授權
 edge-tts 用的是 Edge「大聲朗讀」服務，不是正式授權的 API。正式公開前打算用 Azure Speech（同一個雲哲聲音）重錄：`math/tools/record_azure.py ... --redo`（zhuyin 還沒有對應的 Azure 版腳本）。
