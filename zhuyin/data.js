@@ -233,6 +233,10 @@
       qs: [{ q: '小藍去哪裡玩？', a: 0, o: [['🌊', '海邊'], ['🌳', '公園'], ['🏫', '學校']] }, { q: '城堡怎麼了？', a: 0, o: [['💨', '不見了'], ['🏰', '還在'], ['🎁', '變大了']] }] },
     { title: '種豆子', e: '🌱', t: '我ㄨㄛˇ|在ㄗㄞˋ|花盆ㄏㄨㄚ ㄆㄣˊ|裡ㄌㄧˇ|種ㄓㄨㄥˋ|了ㄌㄜ˙|豆子ㄉㄡˋ ㄗ˙|。||每天ㄇㄟˇ ㄊㄧㄢ|我ㄨㄛˇ|都ㄉㄡ|給ㄍㄟˇ|它ㄊㄚ|喝水ㄏㄜ ㄕㄨㄟˇ|。||過了ㄍㄨㄛˋ ㄌㄜ˙|幾天ㄐㄧˇ ㄊㄧㄢ|，|長出ㄓㄤˇ ㄔㄨ|綠綠ㄌㄩˋ ㄌㄩˋ|的ㄉㄜ˙|小芽ㄒㄧㄠˇ ㄧㄚˊ|。||我ㄨㄛˇ|好ㄏㄠˇ|高興ㄍㄠ ㄒㄧㄥˋ|！',
       qs: [{ q: '我種了什麼？', a: 0, o: [['🫘', '豆子'], ['🌻', '向日葵'], ['🍎', '蘋果']] }, { q: '過了幾天，長出了什麼？', a: 0, o: [['🌱', '小芽'], ['🍓', '草莓'], ['🍄', '香菇']] }] },
+    { title: '小狗找朋友', e: '🐶', t: '小狗ㄒㄧㄠˇ ㄍㄡˇ|想ㄒㄧㄤˇ|找ㄓㄠˇ|朋友ㄆㄥˊ ㄧㄡˇ|玩ㄨㄢˊ|。||牠ㄊㄚ|先ㄒㄧㄢ|去ㄑㄩˋ|找ㄓㄠˇ|小貓ㄒㄧㄠˇ ㄇㄠ|，|小貓ㄒㄧㄠˇ ㄇㄠ|在ㄗㄞˋ|睡覺ㄕㄨㄟˋ ㄐㄧㄠˋ|。||牠ㄊㄚ|再ㄗㄞˋ|去ㄑㄩˋ|找ㄓㄠˇ|小鴨ㄒㄧㄠˇ ㄧㄚ|，|小鴨ㄒㄧㄠˇ ㄧㄚ|在ㄗㄞˋ|游泳ㄧㄡˊ ㄩㄥˇ|。||最後ㄗㄨㄟˋ ㄏㄡˋ|，|牠ㄊㄚ|看到ㄎㄢˋ ㄉㄠˋ|小兔ㄒㄧㄠˇ ㄊㄨˋ|在ㄗㄞˋ|草地ㄘㄠˇ ㄉㄧˋ|上ㄕㄤˋ|跳ㄊㄧㄠˋ|。||小狗ㄒㄧㄠˇ ㄍㄡˇ|跟ㄍㄣ|小兔ㄒㄧㄠˇ ㄊㄨˋ|一起ㄧ ㄑㄧˇ|玩ㄨㄢˊ|，|好ㄏㄠˇ|開心ㄎㄞ ㄒㄧㄣ|！',
+      qs: [{ q: '小貓在做什麼？', a: 0, o: [['😴', '在睡覺'], ['🏊', '在游泳'], ['🍽️', '在吃飯']] }, { q: '小鴨在做什麼？', a: 0, o: [['🏊', '在游泳'], ['😴', '在睡覺'], ['🎵', '在唱歌']] }, { q: '最後，小狗跟誰一起玩？', a: 0, o: [['🐰', '小兔'], ['🐱', '小貓'], ['🦆', '小鴨']] }] },
+    { title: '下雪了', e: '❄️⛄', t: '早上ㄗㄠˇ ㄕㄤˋ|，|外面ㄨㄞˋ ㄇㄧㄢˋ|下雪ㄒㄧㄚˋ ㄒㄩㄝˇ|了ㄌㄜ˙|。||地上ㄉㄧˋ ㄕㄤˋ|白白ㄅㄞˊ ㄅㄞˊ|的ㄉㄜ˙|，|好像ㄏㄠˇ ㄒㄧㄤˋ|蓋了ㄍㄞˋ ㄌㄜ˙|大棉被ㄉㄚˋ ㄇㄧㄢˊ ㄅㄟˋ|。||我ㄨㄛˇ|穿上ㄔㄨㄢ ㄕㄤˋ|外套ㄨㄞˋ ㄊㄠˋ|，|戴上ㄉㄞˋ ㄕㄤˋ|手套ㄕㄡˇ ㄊㄠˋ|，|跑到ㄆㄠˇ ㄉㄠˋ|外面ㄨㄞˋ ㄇㄧㄢˋ|。||我ㄨㄛˇ|跟ㄍㄣ|弟弟ㄉㄧˋ ㄉㄧ˙|一起ㄧ ㄑㄧˇ|堆ㄉㄨㄟ|雪人ㄒㄩㄝˇ ㄖㄣˊ|。||雪人ㄒㄩㄝˇ ㄖㄣˊ|有ㄧㄡˇ|紅紅ㄏㄨㄥˊ ㄏㄨㄥˊ|的ㄉㄜ˙|鼻子ㄅㄧˊ ㄗ˙|，|真ㄓㄣ|可愛ㄎㄜˇ ㄞˋ|！',
+      qs: [{ q: '外面怎麼了？', a: 0, o: [['❄️', '下雪了'], ['🌧️', '下雨了'], ['☀️', '出太陽了']] }, { q: '我跟誰一起堆雪人？', a: 0, o: [['👦', '弟弟'], ['👵', '奶奶'], ['🐶', '小狗']] }, { q: '雪人的鼻子是什麼顏色？', a: 0, o: [['🔴', '紅色'], ['🔵', '藍色'], ['🟡', '黃色']] }] },
   ];
   // 把 '早安ㄗㄠˇ ㄢ' 拆成 { w:'早安', z:'ㄗㄠˇ ㄢ' }；標點 z 是空字串
   const ZY_RE = /[ㄅ-ㄩˊˇˋ˙]/;
@@ -522,6 +526,81 @@
 
   // ---- 台詞（小藍說的話）----
   const symOf = s => SYMBOLS.find(x => x.s === s);
+  // ===== 🏔️ 挑戰島（MK 2026-11-08：「增加下一階段難度的學習跟遊戲」）=====
+  // 基礎課程上到第 31 課（寫詞的注音）才打開，照順序過；大約是小一上學期學完注音以後的程度
+  const CHAL_AFTER = 31;
+  const CHALLENGE = [
+    { k: 'rhyme', t: '押韻' },
+    { k: 'swap', t: '換一個音' },
+    { k: 'zyPick', t: '看國字選注音' },
+    { k: 'toneFix', t: '聲調小醫生' },
+    { k: 'three', t: '三個字的詞' },
+    { k: 'measure', t: '一隻狗、一本書' },
+    { k: 'opp', t: '相反詞' },
+    { k: 'fill', t: '句子填空' },
+    { k: 'hz', i: 0, t: '認國字' },
+    { k: 'hz', i: 1, t: '認國字二' },
+    { k: 'longOrder', t: '長句子排排看' },
+    { k: 'rp', i: 8, t: '小狗找朋友' },
+    { k: 'rp', i: 9, t: '下雪了' },
+  ];
+  // 三個字的詞
+  const THREE = [
+    ['長頸鹿', '🦒', 'ㄔㄤˊ ㄐㄧㄥˇ ㄌㄨˋ'], ['冰淇淋', '🍦', 'ㄅㄧㄥ ㄑㄧˊ ㄌㄧㄣˊ'], ['向日葵', '🌻', 'ㄒㄧㄤˋ ㄖˋ ㄎㄨㄟˊ'],
+    ['救護車', '🚑', 'ㄐㄧㄡˋ ㄏㄨˋ ㄔㄜ'], ['消防車', '🚒', 'ㄒㄧㄠ ㄈㄤˊ ㄔㄜ'], ['毛毛蟲', '🐛', 'ㄇㄠˊ ㄇㄠˊ ㄔㄨㄥˊ'],
+    ['機器人', '🤖', 'ㄐㄧ ㄑㄧˋ ㄖㄣˊ'], ['直升機', '🚁', 'ㄓˊ ㄕㄥ ㄐㄧ'], ['腳踏車', '🚲', 'ㄐㄧㄠˇ ㄊㄚˋ ㄔㄜ'],
+    ['棒棒糖', '🍭', 'ㄅㄤˋ ㄅㄤˋ ㄊㄤˊ'], ['甜甜圈', '🍩', 'ㄊㄧㄢˊ ㄊㄧㄢˊ ㄑㄩㄢ'], ['巧克力', '🍫', 'ㄑㄧㄠˇ ㄎㄜˋ ㄌㄧˋ'],
+    ['聖誕樹', '🎄', 'ㄕㄥˋ ㄉㄢˋ ㄕㄨˋ'],
+  ].map(([w, e, z]) => ({ w, e, z }));
+  // 押韻：最後一個注音一樣
+  const lastPart = w => { const s = parseSyl(w.z.split(' ').pop()); return s.parts[s.parts.length - 1]; };
+  const RHYME_FINALS = ['ㄠ', 'ㄡ', 'ㄧ', 'ㄨ', 'ㄚ', 'ㄜ', 'ㄢ', 'ㄣ', 'ㄤ', 'ㄥ', 'ㄝ', 'ㄟ'];
+  const rhymeWords = f => ONE.filter(w => lastPart(w) === f);
+  // 換一個音：只差第一個注音（聲調也一樣）
+  const SWAPS = [['狗', '手'], ['牛', '球'], ['豬', '書'], ['花', '刷'], ['山', '三'], ['門', '人'], ['腳', '鳥'], ['米', '筆'], ['嘴', '水']]
+    .map(([a, b]) => [ONE.find(w => w.w === a), ONE.find(w => w.w === b)]);
+  // 量詞：一＿狗
+  const MEASURE = [
+    ['隻', 'ㄓ', '狗', 'ㄍㄡˇ', '🐶'], ['本', 'ㄅㄣˇ', '書', 'ㄕㄨ', '📖'], ['輛', 'ㄌㄧㄤˋ', '車', 'ㄔㄜ', '🚗'], ['朵', 'ㄉㄨㄛˇ', '花', 'ㄏㄨㄚ', '🌸'],
+    ['條', 'ㄊㄧㄠˊ', '魚', 'ㄩˊ', '🐟'], ['張', 'ㄓㄤ', '紙', 'ㄓˇ', '📄'], ['棵', 'ㄎㄜ', '樹', 'ㄕㄨˋ', '🌳'], ['雙', 'ㄕㄨㄤ', '鞋', 'ㄒㄧㄝˊ', '👟'],
+    ['杯', 'ㄅㄟ', '茶', 'ㄔㄚˊ', '🍵'], ['匹', 'ㄆㄧ', '馬', 'ㄇㄚˇ', '🐴'], ['頭', 'ㄊㄡˊ', '牛', 'ㄋㄧㄡˊ', '🐮'], ['頂', 'ㄉㄧㄥˇ', '帽子', 'ㄇㄠˋ ㄗ˙', '🧢'],
+  ].map(([m, mz, w, wz, e]) => ({ m, mz, w, wz, e, t: `一ㄧ|＿|${w}${wz}` }));
+  // 相反詞
+  const OPPOSITE = [
+    ['大', 'ㄉㄚˋ', '🐘', '小', 'ㄒㄧㄠˇ', '🐭'], ['冷', 'ㄌㄥˇ', '❄️', '熱', 'ㄖㄜˋ', '🔥'], ['快', 'ㄎㄨㄞˋ', '🐇', '慢', 'ㄇㄢˋ', '🐢'],
+    ['哭', 'ㄎㄨ', '😢', '笑', 'ㄒㄧㄠˋ', '😄'], ['上', 'ㄕㄤˋ', '⬆️', '下', 'ㄒㄧㄚˋ', '⬇️'], ['黑', 'ㄏㄟ', '⚫', '白', 'ㄅㄞˊ', '⚪'],
+    ['高', 'ㄍㄠ', '🦒', '矮', 'ㄞˇ', '🐁'], ['多', 'ㄉㄨㄛ', '🍎🍎🍎', '少', 'ㄕㄠˇ', '🍎'], ['早', 'ㄗㄠˇ', '🌅', '晚', 'ㄨㄢˇ', '🌙'],
+    ['開', 'ㄎㄞ', '🚪', '關', 'ㄍㄨㄢ', '🔒'], ['長', 'ㄔㄤˊ', '🐍', '短', 'ㄉㄨㄢˇ', '🐛'], ['左', 'ㄗㄨㄛˇ', '⬅️', '右', 'ㄧㄡˋ', '➡️'],
+  ].map(([a, az, ae, b, bz, be]) => [{ w: a, z: az, e: ae }, { w: b, z: bz, e: be }]);
+  // 句子填空：＿ 是空格，a 是答案，d 是兩個干擾
+  const FILL = [
+    { e: '🐶🦴', t: '小狗ㄒㄧㄠˇ ㄍㄡˇ|＿|骨頭ㄍㄨˊ ㄊㄡ˙|。', a: '吃ㄔ', d: ['喝ㄏㄜ', '穿ㄔㄨㄢ'] },
+    { e: '🥛', t: '我ㄨㄛˇ|＿|牛奶ㄋㄧㄡˊ ㄋㄞˇ|。', a: '喝ㄏㄜ', d: ['穿ㄔㄨㄢ', '跳ㄊㄧㄠˋ'] },
+    { e: '👧👟', t: '妹妹ㄇㄟˋ ㄇㄟ˙|＿|鞋子ㄒㄧㄝˊ ㄗ˙|。', a: '穿ㄔㄨㄢ', d: ['吃ㄔ', '喝ㄏㄜ'] },
+    { e: '🐦', t: '小鳥ㄒㄧㄠˇ ㄋㄧㄠˇ|在ㄗㄞˋ|天上ㄊㄧㄢ ㄕㄤˋ|＿|。', a: '飛ㄈㄟ', d: ['游ㄧㄡˊ', '吃ㄔ'] },
+    { e: '🐟', t: '魚ㄩˊ|在ㄗㄞˋ|水裡ㄕㄨㄟˇ ㄌㄧˇ|＿|。', a: '游ㄧㄡˊ', d: ['飛ㄈㄟ', '穿ㄔㄨㄢ'] },
+    { e: '👦📖', t: '哥哥ㄍㄜ ㄍㄜ˙|在ㄗㄞˋ|＿|書ㄕㄨ|。', a: '看ㄎㄢˋ', d: ['喝ㄏㄜ', '飛ㄈㄟ'] },
+    { e: '👨🚗', t: '爸爸ㄅㄚˋ ㄅㄚ˙|在ㄗㄞˋ|＿|車ㄔㄜ|。', a: '開ㄎㄞ', d: ['喝ㄏㄜ', '游ㄧㄡˊ'] },
+    { e: '🌧️', t: '外面ㄨㄞˋ ㄇㄧㄢˋ|在ㄗㄞˋ|＿|雨ㄩˇ|。', a: '下ㄒㄧㄚˋ', d: ['吃ㄔ', '開ㄎㄞ'] },
+    { e: '🐰', t: '小兔ㄒㄧㄠˇ ㄊㄨˋ|跳ㄊㄧㄠˋ|得ㄉㄜ˙|好ㄏㄠˇ|＿|。', a: '高ㄍㄠ', d: ['冷ㄌㄥˇ', '黑ㄏㄟ'] },
+    { e: '🌙😴', t: '天黑ㄊㄧㄢ ㄏㄟ|了ㄌㄜ˙|，|我ㄨㄛˇ|要ㄧㄠˋ|去ㄑㄩˋ|＿|覺ㄐㄧㄠˋ|了ㄌㄜ˙|。', a: '睡ㄕㄨㄟˋ', d: ['吃ㄔ', '開ㄎㄞ'] },
+  ];
+  // 認國字：不看注音認字（象形的字），每關 8 個
+  const HZ_SETS = [['山', '水', '火', '人', '手', '月', '雨', '日'], ['花', '魚', '鳥', '牛', '羊', '馬', '米', '門']];
+  const HZ_EXTRA = [{ w: '日', e: '☀️', z: 'ㄖˋ' }];
+  const hzWord = c => ONE.find(w => w.w === c) || HZ_EXTRA.find(w => w.w === c);
+  // 長句子排排看（5～6 個詞）
+  const LONG_SENTS = [
+    { e: '🐶⚽', t: '小狗ㄒㄧㄠˇ ㄍㄡˇ|在ㄗㄞˋ|公園ㄍㄨㄥ ㄩㄢˊ|追ㄓㄨㄟ|球ㄑㄧㄡˊ|。' },
+    { e: '👩🍜', t: '媽媽ㄇㄚ ㄇㄚ˙|在ㄗㄞˋ|廚房ㄔㄨˊ ㄈㄤˊ|煮ㄓㄨˇ|麵ㄇㄧㄢˋ|。' },
+    { e: '🏊', t: '我ㄨㄛˇ|跟ㄍㄣ|哥哥ㄍㄜ ㄍㄜ˙|一起ㄧ ㄑㄧˇ|去ㄑㄩˋ|游泳ㄧㄡˊ ㄩㄥˇ|。' },
+    { e: '🐦🌳', t: '兩隻ㄌㄧㄤˇ ㄓ|小鳥ㄒㄧㄠˇ ㄋㄧㄠˇ|在ㄗㄞˋ|樹上ㄕㄨˋ ㄕㄤˋ|唱歌ㄔㄤˋ ㄍㄜ|。' },
+    { e: '👧🖍️', t: '妹妹ㄇㄟˋ ㄇㄟ˙|用ㄩㄥˋ|紅色ㄏㄨㄥˊ ㄙㄜˋ|的ㄉㄜ˙|筆ㄅㄧˇ|畫畫ㄏㄨㄚˋ ㄏㄨㄚˋ|。' },
+    { e: '🐱🪑', t: '小貓ㄒㄧㄠˇ ㄇㄠ|躲在ㄉㄨㄛˇ ㄗㄞˋ|椅子ㄧˇ ㄗ˙|下面ㄒㄧㄚˋ ㄇㄧㄢˋ|睡覺ㄕㄨㄟˋ ㄐㄧㄠˋ|。' },
+    { e: '🚂👵', t: '我們ㄨㄛˇ ㄇㄣ˙|坐ㄗㄨㄛˋ|火車ㄏㄨㄛˇ ㄔㄜ|去ㄑㄩˋ|看ㄎㄢˋ|奶奶ㄋㄞˇ ㄋㄞ˙|。' },
+    { e: '👴🚶', t: '爺爺ㄧㄝˊ ㄧㄝ˙|每天早上ㄇㄟˇ ㄊㄧㄢ ㄗㄠˇ ㄕㄤˋ|去ㄑㄩˋ|公園ㄍㄨㄥ ㄩㄢˊ|散步ㄙㄢˋ ㄅㄨˋ|。' },
+  ];
+
   const P = {
     hello: '嗨！我們一起來玩注音！',
     palIntro: '選一個陪你玩的好朋友。',
@@ -680,6 +759,36 @@
     ch: c => c,
     word: w => w,
     // 回饋
+    // 🏔️ 挑戰島
+    chalIntro: (L, n) => `挑戰島第${CN[n]}關：${L.t}。`,
+    chalDone: n => `挑戰島第${CN[n]}關完成了！你真的好厲害！`,
+    trackChal: '這是挑戰島，學完基礎課程以後，更難一點的挑戰！',
+    chalLocked: '挑戰島要等基礎課程上到第三十一課才會打開喔。',
+    rhT: ['最後的音一樣，念起來就很像，這叫做押韻。', '換你找找看，哪一個跟它押韻。'],
+    rhEx: (ws, f) => `${ws.join('，')}，最後都是${f}。`,
+    rhQ: w => `哪一個跟${w}押韻？`,
+    rhA: f => `最後都是${f}，押韻了！`,
+    swT: ['把第一個注音換掉，就會變成另一個字。', '換你試試看。'],
+    swEx: (a, x, y, b) => `${a}。把${x}換成${y}，就變成${b}。`,
+    swQ: (a, x, y) => `${a}。把${x}換成${y}，會變成什麼？`,
+    swA: b => `變成${b}了！`,
+    zpT: ['看國字，找出它的注音。', '先想一想這個字怎麼念，再一個音一個音對對看，聲調也要看喔。'],
+    zpQ: w => `哪一個是${w}的注音？`,
+    tfT: ['我是聲調小醫生！有一個字的聲調寫錯了。', '蘋果。蘋是二聲，這裡寫成三聲，寫錯了。', '把它改成二聲，就對了！', '換你當聲調小醫生。'],
+    tfQ: w => `${w}。哪一個字的聲調寫錯了？`,
+    tfQ2: c => `${c}要改成第幾聲？`,
+    tfA: (c, n) => `${c}，${TONE_NAMES[n]}。`,
+    th3T: ['三個字的詞，也是一個字一個字拼。', '長頸鹿：長，頸，鹿。', '換你拼拼看。'],
+    mwT: ['說一隻狗、一本書的時候，中間的字要選對喔。', '狗用隻，書用本，車用輛。', '讀一讀，選一個字放進空格。'],
+    fbQ: '讀一讀，哪一個字放進空格？',
+    opT: ['相反詞，就是意思剛好相反的字。', '換你找找看。'],
+    opEx: (a, b) => `${a}的相反是${b}。`,
+    opQ: a => `${a}的相反是什麼？`,
+    fsT: ['句子少了一個字。', '讀一讀，想一想哪一個字放進去才通順。', '小狗，什麼，骨頭？小狗吃骨頭。'],
+    hzT: ['國字也可以不看注音認得喔。這些字，很像它畫的東西。', '換你看國字，找出對的圖片。看不懂可以按燈泡看注音。'],
+    hzThis: c => `這個字是${c}。`,
+    hzQ: '這個字是什麼？點對的圖片。',
+    loT: '這次的句子比較長，先仔細聽，再照順序排好。',
     praise: ['答對了！', '好棒！', '太厲害了！', '你好會喔！', '沒錯！'],
     retry: ['再聽一次。', '沒關係，再試試看。'],
     roundDone: '完成了！送你一張貼紙！',
@@ -747,6 +856,19 @@
     for (const w of TWO) { add(P.spellQ(w.w)); add(P.spellWordDone(w.w)); Array.from(w.w).forEach((ch, i) => add(P.spellSyl(ch, w.z.split(' ')[i]))); }
     for (const t of TONE_SETS) t.ch.forEach((c, n) => { add(P.ch(c)); add(P.toneEx(c, n)); add(P.toneQ(c)); });
     TONE_NAMES.forEach((_, n) => add(P.toneName(n)));
+    // 挑戰島
+    CHALLENGE.forEach((L, i) => { add(P.chalIntro(L, i + 1)); add(P.chalDone(i + 1)); }); add(P.trackChal); add(P.chalLocked);
+    for (const f of RHYME_FINALS) { const ws = rhymeWords(f); add(P.rhEx(ws.slice(0, 3).map(w => w.w), f)); add(P.rhA(f)); for (const a of ws) add(P.rhQ(a.w)); }
+    for (const [a, b] of SWAPS) { const x = parseSyl(a.z).parts[0], y = parseSyl(b.z).parts[0]; add(P.swEx(a.w, x, y, b.w)); add(P.swQ(a.w, x, y)); add(P.swA(b.w)); }
+    for (const w of ONE.concat(TWO)) add(P.zpQ(w.w));
+    for (const w of TD_WORDS()) { add(P.tfQ(w.w)); Array.from(w.w).forEach((c, k) => { add(P.tfQ2(c)); add(P.tfA(c, parseSyl(w.z.split(' ')[k]).tone)); }); }
+    for (const w of THREE) { add(w.w); add(P.spellQ(w.w)); add(P.spellWordDone(w.w)); Array.from(w.w).forEach((ch, i) => add(P.spellSyl(ch, w.z.split(' ')[i]))); }
+    for (const x of MEASURE) add(`一${x.m}${x.w}。`);
+    for (const pr of OPPOSITE) for (const [a, b] of [pr, [pr[1], pr[0]]]) { add(P.opEx(a.w, b.w)); add(P.opQ(a.w)); }
+    for (const x of FILL) add(pageText({ t: x.t.replace('＿', parseLine(x.a)[0].w) }));
+    for (const set of HZ_SETS) for (const c of set) { add(c); add(P.hzThis(c)); }
+    for (const x of LONG_SENTS) add(pageText(x));
+    [P.rhT, P.swT, P.zpT, P.tfT, P.th3T, P.mwT, P.opT, P.fsT, P.hzT].forEach(v => v.forEach(add)); add(P.fbQ); add(P.hzQ); add(P.loT);
     return Array.from(out);
   }
 
@@ -766,6 +888,13 @@
     for (const id in FIND_SCENES) for (const x of sceneObjs(id)) { add(P.scFind(x.w)); add(P.scFirstQ(syllables(x.z)[0].parts[0])); }
     for (const st of STORIES.concat(PASSAGES, ALONG)) for (const qq of st.qs || []) add(qq.q);
     add(P.wwTone); add(P.tdQ); P.tdNext.forEach(add);
+    for (const w of ONE) add(P.rhQ(w.w));
+    for (const [a, b] of SWAPS) add(P.swQ(a.w, parseSyl(a.z).parts[0], parseSyl(b.z).parts[0]));
+    for (const w of ONE.concat(TWO)) add(P.zpQ(w.w));
+    for (const w of TD_WORDS()) { add(P.tfQ(w.w)); Array.from(w.w).forEach(c => add(P.tfQ2(c))); }
+    for (const w of THREE) add(P.spellQ(w.w));
+    for (const pr of OPPOSITE) pr.forEach(x => add(P.opQ(x.w)));
+    add(P.fbQ); add(P.hzQ);
     // 其他問句（結尾是問號的）也算
     for (const t of allLines()) if (/？$/.test(typeof t === 'object' ? t.text : t)) add(t);
     return q;
@@ -784,7 +913,7 @@
     return h.toString(16).padStart(8, '0');
   }
 
-  const ZY = { questionLines, SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, SENTS, PASSAGES, LESSONS, PRACTICE, ADVANCED, ADV_AFTER, EXPLORE, EXP_AFTER, TONE_PAIRS, FIND_SCENES, sceneObjs, PHRASES, ALONG, TD_WORDS, PAIRS, NEUTRAL_WORDS, ORDER_SENTS, THEMES, themeWords, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
+  const ZY = { questionLines, CHALLENGE, CHAL_AFTER, THREE, lastPart, RHYME_FINALS, rhymeWords, SWAPS, MEASURE, OPPOSITE, FILL, HZ_SETS, hzWord, LONG_SENTS, SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, SENTS, PASSAGES, LESSONS, PRACTICE, ADVANCED, ADV_AFTER, EXPLORE, EXP_AFTER, TONE_PAIRS, FIND_SCENES, sceneObjs, PHRASES, ALONG, TD_WORDS, PAIRS, NEUTRAL_WORDS, ORDER_SENTS, THEMES, themeWords, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
     TONE_NAMES, TONE_MARKS, parseSyl, syllables, P, allLines, hash, symOf, spoken, TIPS, teachWords, strokeCount };
   if (typeof module !== 'undefined' && module.exports) module.exports = ZY;
   else root.ZY = ZY;
