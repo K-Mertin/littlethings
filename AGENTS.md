@@ -8,7 +8,7 @@
 | 文件 | 什麼時候讀 |
 |---|---|
 | [`docs/architecture.md`](docs/architecture.md) | 動到部署、`worker/`、`wrangler.jsonc`、離線、小幫手、API |
-| [`docs/workflow.md`](docs/workflow.md) | **每次都要**：分支、合併權限、大廳版本號、新增遊戲清單 |
+| [`docs/workflow.md`](docs/workflow.md) | **每次都要**：分支、合併權限、版本與更新紀錄、新增遊戲清單 |
 | [`docs/games.md`](docs/games.md) | 找某款遊戲在哪、怎麼組成、有沒有建置步驟 |
 | [`docs/audio.md`](docs/audio.md) | 改到有預錄語音的遊戲（abc、zhuyin、math）的台詞 |
 | [`docs/testing.md`](docs/testing.md) | 驗證改動：本機伺服器、Playwright、離線測試、dry-run |
@@ -21,7 +21,7 @@
 3. push 到 main = 自動上線（Cloudflare Workers Builds，約 1 分鐘）。`wrangler.jsonc` 寫錯會讓整站部署失敗 → 先 `npx wrangler deploy --dry-run`。
 4. 對 MK 只用**繁體中文**。程式註解、README 也用繁體中文。
 5. 金鑰只放在 Cloudflare 後台（MK 自己貼），絕不寫進 repo 或對話。repo 是 public。
-6. 改大廳（`index.html`、`helper/`）要更新 `index.html` 裡的 `const HALL = { VERSION, BUILT }`。
+6. **每次改到遊戲（或大廳）都要加版本與更新紀錄**：`node tools/release.mjs <遊戲|hall> <minor|patch> "給玩家看的一句話"`，和程式一起 commit。合併前跑 `node tools/release.mjs --check`。大廳版本會跟著自動往上加，不要手改。
 7. 新遊戲的首頁 `<head>` 要加 `<script src="/offline/offline.js" data-game="<資料夾>" defer></script>`，大廳加卡片；離線包會自動產生。
 8. 遊戲存檔在 localStorage，**不要改存檔格式**而不做遷移——孩子的進度會不見。
 

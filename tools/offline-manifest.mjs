@@ -60,7 +60,7 @@ try {
     try { games[slug] = pack(name, walk(path.join(ROOT, slug), slug + '/', [])); } catch (e) { console.log('offline-manifest: skip', slug, e.message); }
   }
   // 大廳本身：首頁、小幫手、圖示、每張卡片的截圖
-  const hallFiles = ['index.html', 'favicon.svg', 'favicon.ico', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'site.webmanifest', 'offline/offline.js']
+  const hallFiles = ['index.html', 'whatsnew.json', 'releases.json', 'favicon.svg', 'favicon.ico', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'site.webmanifest', 'offline/offline.js']
     .concat(fs.existsSync(path.join(ROOT, 'helper')) ? walk(path.join(ROOT, 'helper'), 'helper/', []) : [])
     .concat([...hall.matchAll(/<img src="([^"]+\/hall_shot\.jpg)"/g)].map(m => m[1]))
     .filter(f => fs.existsSync(path.join(ROOT, f)));

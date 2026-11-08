@@ -4,7 +4,7 @@
 - **Cloudflare Workers**（免費方案）：靜態檔（repo 根目錄就是網站根目錄）＋一支 Worker（`worker/index.js`）。
 - 網址 https://littleland.mwstudio.workers.dev/ — Worker `littleland`、帳號子網域 `mwstudio`。網站上刻意不出現 GitHub 帳號。
 - **push 到 main 就自動部署**（Cloudflare Workers Builds 連 GitHub `K-Mertin/littlethings`，約 1 分鐘）。沒有 GitHub Actions。
-- 部署前 Cloudflare 會跑 `wrangler.jsonc` 的 `build.command`：`node tools/offline-manifest.mjs`（產生離線清單；出錯也 exit 0，不會擋部署）。
+- 部署前 Cloudflare 會跑 `wrangler.jsonc` 的 `build.command`：`node tools/release.mjs --build && node tools/offline-manifest.mjs`（產生更新紀錄合成檔和離線清單；出錯也 exit 0，不會擋部署）。
 - `.assetsignore` 決定哪些檔案**不**上傳：`.git`、`.worktrees`、`*.md`、`*.zip`、`**/tools/`、`zijia/src/`、`worker/`、`.dev.vars`…
   - 所以 README、docs、各遊戲的 `tools/` 不會出現在網站上。新增「只給開發用」的檔案就放在 `tools/` 底下。
 - 限制：單檔 ≤ 25 MiB、≤ 20,000 個檔案（目前約 13,800）。
@@ -57,7 +57,7 @@
 
 ## 大廳 `index.html`
 - 遊戲卡片 `<a class="game" href="<slug>/index.html">` 是**唯一的遊戲清單來源**：離線清單（`tools/offline-manifest.mjs`）和小幫手的遊戲清單（`worker/chat.js` 抓大廳頁面解析）都從這裡讀。
-- `const HALL = { VERSION, BUILT }`：大廳版本號。
+- 版本與更新紀錄：讀 `/whatsnew.json`（部署時由 `tools/release.mjs --build` 從每款的 `releases.json` 合成），卡片上的版本小標籤和更新紀錄視窗（`WN.openGame`、`WN.openAll`）。
 - 需求標籤 `.reqs`：`.req.gl`（3D/WebGL，偵測不到會變紅）、`.req.sr`（語音辨識）、網路／手機。
 - 離線狀態小標籤（每張卡片右下）、斷網提示列 `#netBar`。
 - 載入 `/offline/offline.js`（`data-game="hall"`）和 `helper/helper.js`。
