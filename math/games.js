@@ -11,8 +11,15 @@ function gList(lv) {
   if (lv === 'sub' || lv === 'mix') for (let a = 2; a <= 10; a++) for (let b = 1; b < a; b++) list.push({ op: '-', a, b, r: a - b });
   if (lv === 'add5') for (let a = 1; a <= 4; a++) for (let b = 1; a + b <= 5; b++) list.push({ op: '+', a, b, r: a + b });
   if (lv === 'add20') M.LISTS.add20.forEach(q => list.push({ op: '+', a: q.a, b: q.b, r: q.a + q.b }));
+  const L = M.LISTS;
+  if (lv === 'two') [...L.carry1, ...L.borrow1, ...L.add2, ...L.add2c, ...L.sub2, ...L.sub2b].forEach(q => list.push({ op: q.op, a: q.a, b: q.b, r: q.op === '+' ? q.a + q.b : q.a - q.b }));
+  if (lv === 'times') L.tall.forEach(q => list.push({ op: '×', a: q.k, b: q.g, r: q.k * q.g }));
+  if (lv === 'div') L.divT.forEach(q => list.push({ op: '÷', a: q.n, b: q.k, r: q.q }));
   return list;
 }
+// 選項的範圍：答案大的時候放寬
+const gHi = q => q.r > 10 ? Math.min(100, q.r + 15) : 10;
+const gNear = q => q.op === '×' ? Math.max(2, Math.min(q.a, 9)) : q.r > 20 ? 10 : 3;
 const pkey = q => q.op === 'n' ? `${q.a}` : q.op === 'next' ? `>${q.a}` : `${q.a}${q.op}${q.b}`;
 const askLine = q => P.eqQ(q.a, q.op, q.b);
 const ansLine = q => P.eqA(q.a, q.op, q.b, q.r);
@@ -32,8 +39,8 @@ function gFrame(G, lv, c, html) {
   return view.querySelector('.gwrap');
 }
 async function runGame(G, lv, my) {
-  const n = G.id === 'ten' ? 3 : 6;
-  let qs = G.id === 'ten' ? null : lv === 'order' ? null : planNums(n, gList(lv), q => `g:${G.id}:${pkey(q)}`);
+  const n = G.id === 'ten' ? 3 : G.id === 'flip' ? 2 : 6;
+  let qs = G.id === 'ten' || G.id === 'flip' ? null : lv === 'order' ? null : planNums(n, gList(lv), q => `g:${G.id}:${pkey(q)}`);
   if (lv === 'order') { const s = rand(5); qs = range(0, n - 1).map(i => ({ op: 'next', a: s + i, r: s + i + 1 })); }   // 青蛙一格一格往下一個數跳
   for (let i = 0; i < n; i++) {
     const q = qs ? qs[i] : null;
@@ -96,7 +103,7 @@ GAME.balloon = async (q, c) => {
   const top = q.op === 'n'
     ? `<div class="card qpic">${trayHTML(it, q.a, { cols: Math.min(q.a, 5), cells: q.a, static: true, small: true, size: Math.min(52, fitCols(5, 2, 420, 60)) })}</div>`
     : `<div class="card qeq">${eqHTML(q.a, q.op, q.b)}</div>`;
-  const vals = shuffle(numOpts(q.r, 0, 10, 5, 3));
+  const vals = shuffle(numOpts(q.r, 0, gHi(q), 5, gNear(q)));
   const root = gFrame(c.G, c.lv, c, `${top}<div class="sky">${vals.map((v, i) => `<button class="bl" data-v="${v}" style="--x:${4 + i * 19}%;--d:${(i * 2.3 + rand(10) / 10) % 8}s;--c:${BCOL[i]}"><span>${v}</span></button>`).join('')}</div>`);
   const bls = [...root.querySelectorAll('.bl')];
   const ask = q.op === 'n' ? P.howMany(it) : askLine(q), ans = q.op === 'n' ? P.total(it, q.r) : ansLine(q);
@@ -183,7 +190,7 @@ GAME.mole = async (q, c) => {
     : `<div class="card qeq">${eqHTML(q.a, q.op, q.b)}</div>`;
   const root = gFrame(c.G, c.lv, c, `<div class="frow">${top}<div class="holes">${range(0, 5).map(() => `<button class="hole"><span class="mole"><i>🐹</i><b></b></span><span class="dirt"></span></button>`).join('')}</div></div>`);
   const holes = [...root.querySelectorAll('.hole')];
-  const pool = numOpts(q.r, 0, 10, 5, 3).filter(v => v !== q.r);
+  const pool = numOpts(q.r, 0, gHi(q), 5, gNear(q)).filter(v => v !== q.r);
   const ask = q.op === 'n' ? P.howMany(it) : askLine(q), ans = q.op === 'n' ? P.total(it, q.r) : ansLine(q);
   let done = false, first = true, sinceRight = 0, hint = false;
   T.right = () => holes.find(hh => hh.classList.contains('up') && +hh.dataset.v === q.r) || null;
@@ -247,6 +254,40 @@ GAME.frog = async (q, c) => {
     });
 };
 
+/* ---------- 🎴 九九翻翻樂：算式牌和答案牌配成一對 ---------- */
+GAME.flip = async (q, c) => {
+  const { my } = c, ks = c.lv === 't69' ? [6, 7, 8, 9] : [2, 3, 4, 5];
+  const pool = shuffle(M.LISTS.tall.filter(x => ks.includes(x.k)));
+  const used = new Set(), picks = [];
+  for (const x of pool) { const r = x.k * x.g; if (!used.has(r)) { used.add(r); picks.push(x); } if (picks.length === 6) break; }
+  const cards = shuffle([...picks.map((x, i) => ({ i, txt: `${x.k}×${x.g}`, eq: 1 })), ...picks.map((x, i) => ({ i, txt: `${x.k * x.g}`, eq: 0 }))]);
+  const root = gFrame(c.G, c.lv, c, `<div class="fgrid">${cards.map((cd, j) => `<button class="fc" data-j="${j}"><span class="back">🎴</span><span class="face ${cd.eq ? 'eqf' : ''}">${cd.txt}</span></button>`).join('')}</div>`);
+  const els = [...root.querySelectorAll('.fc')];
+  let open = null, busy = false, miss = 0, done = 0;
+  const known = new Map();   // 測試用：記得翻過的牌
+  T.right = () => { if (open != null) { const want = cards[open].i; return els.find((e, j) => j !== open && cards[j].i === want && !e.classList.contains('got')); } return els.find(e => !e.classList.contains('got')); };
+  T.wrong = () => open != null ? els.find((e, j) => j !== open && cards[j].i !== cards[open].i && !e.classList.contains('got')) : null;
+  if (c.first) await W(my, say(P.gIntro.flip));
+  return new Promise((resolve, reject) => els.forEach((el, j) => el.onclick = async () => {
+    if (busy || el.classList.contains('up') || el.classList.contains('got')) return;
+    try {
+      el.classList.add('up');
+      if (open == null) { open = j; return; }
+      busy = true; const a = open, A = cards[a], B = cards[j]; open = null;
+      if (A.i === B.i) {
+        chime(true); els[a].classList.add('got'); el.classList.add('got'); done++;
+        const x = picks[A.i]; await W(my, say(P.eqA(x.k, '×', x.g, x.k * x.g)));
+        if (done === picks.length) { await W(my, sleep(300)); resolve(miss <= 3); }
+      } else {
+        miss++; chime(false); await W(my, sleep(900));
+        els[a].classList.remove('up'); el.classList.remove('up');
+        if (miss % 3 === 1) say(P.flipNo);
+      }
+      busy = false;
+    } catch (e) { reject(e); }
+  }));
+};
+
 /* ---------- ⏱️ 快快算：練習（不計時，10 題）或挑戰（60 秒，答對幾題） ---------- */
 function quickScreen(G, my) {
   S.qbest = S.qbest || {};
@@ -276,7 +317,7 @@ async function runQuick(G, lv, mode, my) {
   for (let k = 0; mode === 'time' ? !over : k < TOTAL; k++) {
     const q = wpick(list.filter(x => x !== last), x => `g:quick:${pkey(x)}`); last = q;
     host.innerHTML = eqHTML(q.a, q.op, q.b);
-    opts.innerHTML = numOpts(q.r, 0, hi, 4, 3).map(v => numBtn(v)).join('');
+    opts.innerHTML = numOpts(q.r, 0, Math.max(hi, gHi(q)), 4, q.r > 10 ? gNear(q) : 3).map(v => numBtn(v)).join('');
     if (mode === 'practice') left.textContent = `${k + 1} / ${TOTAL}`;
     const btns = [...opts.querySelectorAll('.num')];
     if (mode === 'practice') say(askLine(q));

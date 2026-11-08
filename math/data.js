@@ -104,6 +104,25 @@
     { id: 62, t: '十和幾', e: '🔟', g: 'I' },
     { id: 63, t: '百數表', e: '💯', g: 'I' },
     { id: 64, t: '二位數比大小', e: '🐊', g: 'I' },
+    { id: 65, t: '加一位數（進位）', e: '⬆️', g: 'K' },
+    { id: 66, t: '減一位數（退位）', e: '⬇️', g: 'K' },
+    { id: 67, t: '二位數加二位數', e: '➕', g: 'K' },
+    { id: 68, t: '加二位數（進位）', e: '🔼', g: 'K' },
+    { id: 69, t: '二位數減二位數', e: '➖', g: 'K' },
+    { id: 70, t: '減二位數（退位）', e: '🔽', g: 'K' },
+    { id: 71, t: '直式加法', e: '📐', g: 'K' },
+    { id: 72, t: '直式減法', e: '📏', g: 'K' },
+    { id: 73, t: '九九 6、7', e: '6️⃣', g: 'L' },
+    { id: 74, t: '九九 8、9', e: '9️⃣', g: 'L' },
+    { id: 75, t: '九九大挑戰', e: '🏆', g: 'L' },
+    { id: 76, t: '乘以幾', e: '❓', g: 'L' },
+    { id: 77, t: '除法是乘法反過來', e: '🔄', g: 'M' },
+    { id: 78, t: '九九除法', e: '➗', g: 'M' },
+    { id: 79, t: '有餘數的除法', e: '🍪', g: 'M' },
+    { id: 80, t: '二位數乘一位數', e: '✖️', g: 'M' },
+    { id: 81, t: '加減應用題', e: '📖', g: 'N' },
+    { id: 82, t: '乘除應用題', e: '📚', g: 'N' },
+    { id: 83, t: '找錢', e: '🪙', g: 'N' },
   ];
   // 第 4 段：題目清單（和台詞一起列出，才知道要錄哪些句子）
   const rng = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
@@ -121,25 +140,56 @@
     two: [...rng(1, 8).flatMap(t => [1, 3, 5].flatMap(o => [2, 3, 4].map(b => ({ a: t * 10 + o, b, op: '+' })))),
       ...rng(1, 8).flatMap(t => [4, 6, 8].flatMap(o => [1, 2, 3].map(b => ({ a: t * 10 + o, b, op: '-' }))))],
   };
+  // 第 6 段：進位退位、九九、除法、應用題
+  {
+    const L = LISTS, tn = (t, o) => t * 10 + o;
+    L.carry1 = rng(1, 8).flatMap(t => [[6, 4], [6, 5], [6, 7], [8, 4], [8, 5], [8, 7], [9, 4], [9, 5], [9, 7]].map(([o, b]) => ({ a: tn(t, o), b, op: '+' })));
+    L.borrow1 = rng(2, 9).flatMap(t => [1, 2, 4].flatMap(o => [5, 6, 8].map(b => ({ a: tn(t, o), b, op: '-' }))));
+    const two = (tens, ones, op) => tens.flatMap(([t1, t2]) => ones.map(([o1, o2]) => ({ a: tn(t1, o1), b: tn(t2, o2), op })));
+    L.add2 = two([[1, 2], [2, 3], [3, 4], [1, 5], [4, 4], [2, 6], [5, 3], [6, 2]], [[1, 3], [2, 4], [3, 5], [4, 2], [5, 1]], '+');
+    L.add2c = two([[1, 2], [2, 3], [3, 4], [1, 5], [2, 4], [4, 3], [5, 1], [3, 3]], [[5, 7], [6, 8], [8, 5], [9, 3], [7, 6]], '+');
+    L.sub2 = two([[3, 1], [4, 2], [5, 2], [6, 3], [7, 4], [8, 5], [9, 6], [5, 1]], [[5, 3], [7, 2], [8, 6], [9, 4], [6, 1]], '-');
+    L.sub2b = two([[4, 1], [5, 2], [6, 3], [7, 2], [8, 4], [9, 5], [6, 1], [7, 4]], [[2, 5], [3, 7], [1, 6], [4, 8], [0, 4]], '-');
+    L.t67 = [6, 7].flatMap(k => rng(1, 9).map(g => ({ k, g })));
+    L.t89 = [8, 9].flatMap(k => rng(1, 9).map(g => ({ k, g })));
+    L.tall = rng(2, 9).flatMap(k => rng(2, 9).map(g => ({ k, g })));
+    L.divT = L.tall.map(({ k, g }) => ({ n: k * g, k, q: g }));
+    L.remD = rng(2, 9).flatMap(k => [3, 6, 8].map(q => ({ n: k * q + 1 + ((k + q) % (k - 1)), k, q, l: 1 + ((k + q) % (k - 1)) })));
+    L.mul21 = [...[12, 13, 14, 21, 22, 23, 24, 31, 32, 33, 41, 42, 43].flatMap(a => [2, 3].filter(b => a * b < 100).map(b => ({ a, b }))), ...[12, 13, 21, 22, 23].map(a => ({ a, b: 4 }))];
+    L.wp = [
+      { t: 'stick', a: 25, b: 13, op: '+' }, { t: 'bird', a: 38, b: 7, op: '+' }, { t: 'stick', a: 46, b: 25, op: '+' }, { t: 'bird', a: 17, b: 8, op: '+' }, { t: 'stick', a: 54, b: 32, op: '+' }, { t: 'bird', a: 29, b: 14, op: '+' },
+      { t: 'apple', a: 43, b: 12, op: '-' }, { t: 'bus', a: 35, b: 8, op: '-' }, { t: 'apple', a: 62, b: 27, op: '-' }, { t: 'bus', a: 50, b: 15, op: '-' }, { t: 'apple', a: 48, b: 6, op: '-' }, { t: 'bus', a: 71, b: 24, op: '-' },
+    ];
+    L.wpmd = [
+      { t: 'box', k: 6, g: 4 }, { t: 'box', k: 8, g: 3 }, { t: 'box', k: 7, g: 5 }, { t: 'legs', k: 4, g: 6 }, { t: 'legs', k: 4, g: 8 }, { t: 'legs', k: 4, g: 7 },
+      { t: 'share', n: 24, k: 4 }, { t: 'share', n: 36, k: 6 }, { t: 'share', n: 27, k: 3 }, { t: 'car', n: 20, k: 4 }, { t: 'car', n: 30, k: 5 }, { t: 'car', n: 42, k: 6 },
+    ];
+    L.change = [
+      { e: '🍞', n: '麵包', p: 35, pay: 50 }, { e: '✏️', n: '鉛筆', p: 12, pay: 50 }, { e: '🍦', n: '冰淇淋', p: 25, pay: 50 }, { e: '🧃', n: '果汁', p: 18, pay: 50 },
+      { e: '🍪', n: '餅乾', p: 43, pay: 50 }, { e: '🎈', n: '氣球', p: 9, pay: 50 }, { e: '🧸', n: '玩具熊', p: 68, pay: 100 }, { e: '📕', n: '故事書', p: 85, pay: 100 },
+      { e: '🚗', n: '玩具車', p: 74, pay: 100 }, { e: '⚽', n: '足球', p: 56, pay: 100 }, { e: '🖍️', n: '蠟筆', p: 39, pay: 100 }, { e: '🪁', n: '風箏', p: 92, pay: 100 },
+    ];
+  }
   const COINS = [1, 5, 10, 50];
   const SHOP = [{ e: '🍎', n: '蘋果' }, { e: '🍭', n: '棒棒糖' }, { e: '🧃', n: '果汁' }];
   // 小遊戲
   const GAMES = [
     { id: 'feed', t: '餵動物', e: '🐶', lv: ['count', 'add', 'sub', 'mix'] },
-    { id: 'balloon', t: '戳氣球', e: '🎈', lv: ['count', 'add', 'sub', 'mix'] },
+    { id: 'balloon', t: '戳氣球', e: '🎈', lv: ['count', 'add', 'sub', 'mix', 'two', 'times'] },
     { id: 'fish', t: '魚缸', e: '🐠', lv: ['add', 'sub', 'mix'] },
     { id: 'ten', t: '湊數配對', e: '🃏', lv: ['five', 'ten'] },
-    { id: 'mole', t: '打地鼠', e: '🐹', lv: ['count', 'add', 'sub', 'mix'] },
+    { id: 'mole', t: '打地鼠', e: '🐹', lv: ['count', 'add', 'sub', 'mix', 'two', 'times'] },
     { id: 'frog', t: '青蛙過河', e: '🐸', lv: ['order', 'add', 'sub', 'mix'] },
-    { id: 'quick', t: '快快算', e: '⏱️', lv: ['add5', 'add', 'sub', 'mix', 'add20'] },
+    { id: 'quick', t: '快快算', e: '⏱️', lv: ['add5', 'add', 'sub', 'mix', 'add20', 'two', 'times', 'div'] },
+    { id: 'flip', t: '九九翻翻樂', e: '🎴', lv: ['t25', 't69'] },
   ];
-  const LVNAME = { count: '數數', add: '加法', sub: '減法', mix: '加減', five: '湊五', ten: '湊十', order: '排順序', add5: '5 以內加法', add20: '20 以內加法' };
+  const LVNAME = { two: '二位數加減', times: '九九乘法', div: '九九除法', t25: '九九 2–5', t69: '九九 6–9', count: '數數', add: '加法', sub: '減法', mix: '加減', five: '湊五', ten: '湊十', order: '排順序', add5: '5 以內加法', add20: '20 以內加法' };
   // 第 5 段
   const SHAPES = ['圓形', '三角形', '正方形', '長方形'];
   const SHAPE_TIP = { 圓形: '圓形圓圓的，沒有角。', 三角形: '三角形有三條邊、三個角。', 正方形: '正方形有四條一樣長的邊。', 長方形: '長方形有四個角，兩條長邊、兩條短邊。' };
   const ANIMALS = [{ e: '🐶', n: '小狗', f: '🍖' }, { e: '🐰', n: '小兔子', f: '🥕' }, { e: '🐵', n: '小猴子', f: '🍌' }];
   const FISH = ITEMS.find(x => x.e === '🐟');
-  const GROUPS = { A: '數與量', J: '形狀、規律、時鐘', B: '分與合', C: '加法', D: '減法', E: '加減一起', F: '乘法入門', G: '除法入門', H: '錢幣', I: '二位數' };
+  const GROUPS = { A: '數與量', J: '形狀、規律、時鐘', B: '分與合', C: '加法', D: '減法', E: '加減一起', F: '乘法入門', G: '除法入門', H: '錢幣', I: '二位數', K: '進位和退位', L: '九九乘法', M: '除法', N: '應用題' };
 
   const P = {
     hello: '嗨！我是小白兔小白，我們一起來玩數字！',
@@ -216,7 +266,56 @@
       62: '十幾就是一個十，再加幾個一。十三就是十和三。',
       63: '百數表一排有十個數。往右一格多一，往下一格多十。',
       64: '兩個二位數比大小：先比十位，十位一樣，再比個位。',
+      65: '個位加起來超過十，十個一就換成一條十。',
+      66: '個位不夠減，就把一條十拆成十個一。',
+      67: '二位數加二位數：個位加個位，十位加十位。',
+      68: '個位加起來滿十，要進位到十位。',
+      69: '二位數減二位數：個位減個位，十位減十位。',
+      70: '個位不夠減，跟十位借一個十。',
+      71: '直式加法：先算個位，再算十位。用下面的數字鍵寫答案。',
+      72: '直式減法：先算個位，不夠減就跟十位借。',
+      73: '六和七的乘法，一排一排跳著數。',
+      74: '八和九的乘法，一排一排跳著數。',
+      75: '二到九的乘法都來了，看你記住了幾個！',
+      76: '乘以幾才會變成這個數？一排一排數上去。',
+      77: '除法是乘法反過來：想想看，乘以幾會變成這個數。',
+      78: '九九乘法表裡的除法，想想乘法就知道了。',
+      79: '分不完的就是餘數，餘數一定比除數小。',
+      80: '二位數乘一位數：有幾組一樣的，先數十，再數一。',
+      81: '聽故事，想一想要用加法還是減法。',
+      82: '聽故事，想一想要用乘法還是除法。',
+      83: '付的錢比較多，要找回多少？從價錢往上數到付的錢。',
     },
+    // 第 6 段
+    trade: '十個一，換成一條十。',
+    breakTen: '一條十，拆成十個一。',
+    addOnesL: '先加個位。', addTensL: '再加十位。',
+    takeOnesL: '先拿走個位。', takeTensL: '再拿走十位。',
+    colOnes: '先算個位。', colTens: '再算十位。',
+    carryNote: '滿十了，要進一到十位。',
+    borrowNote: '個位不夠減，跟十位借一。',
+    plusOne: n => `再加上進位的一，是${CN(n)}。`,
+    minusBorrow: '十位被借走了一。',
+    onesWrite: (d, c) => `個位寫${CN(d)}${c ? '，進一' : ''}。`,
+    tensWrite: d => `十位寫${CN(d)}。`,
+    tryAgain: '再想想看。',
+    mulMissQ: (k, n) => `${CN(k)}乘以幾等於${CN(n)}？`,
+    remQ: (n, k) => `${CN(n)}除以${CN(k)}，商是多少？`,
+    remLeftQ: '餘數是多少？',
+    remA: (n, k, q, l) => `${CN(n)}除以${CN(k)}，商${CN(q)}，餘${CN(l)}。`,
+    wpQ: q => ({
+      stick: `小明有${CN(q.a)}張貼紙，又拿到${CN(q.b)}張，現在有幾張？`,
+      bird: `樹上有${CN(q.a)}隻小鳥，又飛來${CN(q.b)}隻，一共有幾隻？`,
+      apple: `媽媽買了${CN(q.a)}顆蘋果，送給鄰居${CN(q.b)}顆，還剩幾顆？`,
+      bus: `公車上有${CN(q.a)}個人，下車${CN(q.b)}個人，車上還有幾個人？`,
+      box: `每盒有${CN(q.k)}顆糖，有${CN(q.g)}盒，一共有幾顆？`,
+      legs: `一隻小狗有四隻腳，${CN(q.g)}隻小狗一共有幾隻腳？`,
+      share: `${CN(q.n)}顆草莓，平分給${CN(q.k)}個小朋友，每人幾顆？`,
+      car: `${CN(q.n)}個小朋友，每${CN(q.k)}個人坐一台車，要幾台車？`,
+    })[q.t],
+    changeQ: q => `${q.n}要${CN(q.p)}元，付了${CN(q.pay)}元，要找回幾元？`,
+    changeA: c => `要找回${CN(c)}元。`,
+    countUp: '從價錢往上數到付的錢。',
     // 第 4 段
     subQ: '看一眼，是幾個？',
     more1Q: n => `比${CN(n)}多一是幾？`,
@@ -297,7 +396,9 @@
       feed: '小動物肚子餓了！點食物餵牠，餵好了就按吃飽了。',
       balloon: '點一下對的氣球，把它戳破！',
       fish: '看看魚缸裡的小魚，算算有幾條。',
+      flip: '翻兩張牌，把算式和答案配成一對。',
     },
+    flipNo: '不是一對，再翻翻看。',
     feed: (an, n) => `${an.n}想吃${Q(n)}個。`,
     feedEq: an => `${an.n}想吃幾個呢？`,
     ate: n => `吃了${Q(n)}個，吃飽了！`,
@@ -430,6 +531,23 @@
     for (let a = 2; a <= 10; a++) for (let c = 0; c < a; c++) add(P.missSubQ(a, c));
     for (let n = 11; n <= 19; n++) { add(P.teenQ(n)); add(P.teenA(n)); add(P.eqQ(10, '+', n - 10)); add(P.eqA(10, '+', n - 10, n)); }
     for (let n = 0; n <= 60; n++) add(P.quickScore(n));
+    // 第 6 段
+    ['trade', 'breakTen', 'addOnesL', 'addTensL', 'takeOnesL', 'takeTensL', 'colOnes', 'colTens', 'carryNote', 'borrowNote', 'minusBorrow', 'tryAgain', 'remLeftQ', 'countUp'].forEach(k => add(P[k]));
+    for (let n = 1; n <= 10; n++) add(P.plusOne(n));
+    for (let d = 0; d <= 9; d++) { add(P.onesWrite(d, 0)); add(P.onesWrite(d, 1)); add(P.tensWrite(d)); }
+    const L6 = LISTS;
+    for (const q of [...L6.carry1, ...L6.borrow1, ...L6.add2, ...L6.add2c, ...L6.sub2, ...L6.sub2b]) { const r = q.op === '+' ? q.a + q.b : q.a - q.b; add(P.eqQ(q.a, q.op, q.b)); add(P.eqA(q.a, q.op, q.b, r)); }
+    // 直式：每一位的算式
+    for (const q of [...L6.add2, ...L6.add2c]) { const o1 = q.a % 10, o2 = q.b % 10, t1 = Math.floor(q.a / 10), t2 = Math.floor(q.b / 10), os = o1 + o2; add(os > 10 && o1 < o2 ? P.eqA(o2, '+', o1, os) : P.eqA(o1, '+', o2, os)); add(P.eqA(t1, '+', t2, t1 + t2)); }
+    for (const q of [...L6.sub2, ...L6.sub2b]) { const o1 = q.a % 10, o2 = q.b % 10, t1 = Math.floor(q.a / 10), t2 = Math.floor(q.b / 10); const br = o1 < o2; add(P.eqA(o1 + (br ? 10 : 0), '-', o2, o1 + (br ? 10 : 0) - o2)); add(P.eqA(t1 - (br ? 1 : 0), '-', t2, t1 - (br ? 1 : 0) - t2)); }
+    for (const q of [...L6.t67, ...L6.t89, ...L6.tall]) { add(P.eqQ(q.k, '×', q.g)); add(P.eqA(q.k, '×', q.g, q.k * q.g)); add(P.mulMissQ(q.k, q.k * q.g)); }
+    for (const q of L6.divT) { add(P.eqQ(q.n, '÷', q.k)); add(P.eqA(q.n, '÷', q.k, q.q)); }
+    for (const q of L6.remD) { add(P.remQ(q.n, q.k)); add(P.remA(q.n, q.k, q.q, q.l)); }
+    for (const q of L6.mul21) { add(P.eqQ(q.a, '×', q.b)); add(P.eqA(q.a, '×', q.b, q.a * q.b)); }
+    for (const q of L6.wp) { add(P.wpQ(q)); add(P.eqA(q.a, q.op, q.b, q.op === '+' ? q.a + q.b : q.a - q.b)); }
+    for (const q of L6.wpmd) { add(P.wpQ(q)); if (q.g) add(P.eqA(q.k, '×', q.g, q.k * q.g)); else add(P.eqA(q.n, '÷', q.k, q.n / q.k)); }
+    for (const q of L6.change) { add(P.changeQ(q)); add(P.changeA(q.pay - q.p)); add(P.eqA(q.pay, '-', q.p, q.pay - q.p)); }
+    Object.values(P.gIntro).forEach(add); add(P.flipNo);
     return Array.from(out);
   }
 
