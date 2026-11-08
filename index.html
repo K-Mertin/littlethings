@@ -395,11 +395,78 @@ a.game[hidden]{display:none}
   <footer><span class="reqs" style="display:inline-flex;margin:0 0 8px"><span class="req">⚡ 📶 🎤</span></span> 黃色標籤是裝置或瀏覽器的需求，滑鼠移上去可以看說明；這台裝置不支援時會變紅色。<br>按 <kbd>1</kbd>–<kbd>9</kbd>、<kbd>L</kbd>、<kbd>M</kbd>、<kbd>S</kbd>、<kbd>G</kbd>、<kbd>T</kbd>、<kbd>D</kbd>、<kbd>B</kbd>、<kbd>E</kbd>、<kbd>R</kbd>、<kbd>Q</kbd>、<kbd>J</kbd>、<kbd>N</kbd> 直接進入。遊戲內可隨時返回大廳。<span id="hallFoot"></span></footer>
 </main>
 <script>
-// 大廳版本：改大廳（index.html、helper/）時把 VERSION 往上加、BUILT 改成當天日期
-//   改版面或加遊戲卡片 → 第二碼 +1（1.1.0）；修小地方 → 第三碼 +1（1.0.1）
-const HALL = { VERSION: '1.7.3', BUILT: '2026-11-08' };
-document.getElementById('hallVer').textContent = 'v' + HALL.VERSION;
-document.getElementById('hallFoot').textContent = `大廳版本 v${HALL.VERSION} · ${HALL.BUILT}`;
+// 版本與更新紀錄：每款遊戲的 <遊戲>/releases.json、大廳的 releases.json；部署時 tools/release.mjs 合成 /whatsnew.json。
+// 加紀錄：node tools/release.mjs <遊戲|hall> <minor|patch> "內容"。大廳版本會跟著任何一款遊戲的更新自動往上加。
+const WN = { data: null };
+(() => {
+  const NEWDAYS = 7;
+  const md = at => { const d = new Date(at); return isNaN(d) ? '' : `${d.getMonth() + 1}/${d.getDate()}`; };
+  const fresh = at => Date.now() - new Date(at) < NEWDAYS * 864e5;
+  const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const css = document.createElement('style');
+  css.textContent = `
+.vchip{display:inline-flex;align-items:center;gap:4px;margin-left:8px;font:500 12px var(--sans);letter-spacing:0;text-transform:none;color:var(--mute);background:#fff;border:1px dashed var(--line);border-radius:999px;padding:1px 9px;cursor:pointer;vertical-align:middle}
+.vchip:hover,.vchip:focus-visible{border-color:#f1c84b;color:var(--ink);outline:none}
+.vchip.new{color:#7a4f00;background:#fff3d6;border:1px solid #f1d08a}
+.eyebrow .ver{cursor:pointer}
+.eyebrow .ver:hover{border-color:#f1c84b;color:var(--ink)}
+#rnBack{position:fixed;inset:0;z-index:60;background:rgba(40,35,25,.35);display:none;align-items:center;justify-content:center;padding:16px}
+#rnBack.open{display:flex}
+#rn{width:min(520px,100%);max-height:calc(100dvh - 32px);overflow:auto;background:#fff;border:1px solid var(--line);border-radius:6px;padding:22px 22px 16px;position:relative;box-shadow:0 18px 40px rgba(0,0,0,.18);transform:rotate(-.4deg)}
+#rn::before{content:"";position:absolute;top:-12px;left:50%;width:110px;height:26px;margin-left:-55px;background:#9fd8ff;opacity:.85;transform:rotate(-3deg)}
+#rn h3{margin:0 0 4px;font-size:20px}
+#rn .sub{margin:0 0 12px;color:var(--mute);font-size:13px}
+#rn .x{position:absolute;top:8px;right:10px;border:0;background:transparent;font-size:22px;cursor:pointer;color:var(--mute)}
+#rn .r{border-top:1px dashed var(--line);padding:10px 0}
+#rn .r:first-of-type{border-top:0}
+#rn .r b{font-size:15px}
+#rn .r .g{display:inline-block;font-size:12px;font-weight:700;color:#5a4a00;background:#ffe066;border-radius:4px;padding:0 6px;margin-right:6px}
+#rn .r time{color:var(--mute);font-size:12px;margin-left:6px}
+#rn ul{margin:6px 0 0;padding-left:20px;font-size:14px;line-height:1.6}
+#rn .more{border:2px solid #2b2b2b;border-radius:10px;padding:6px 14px;font:600 14px var(--sans);background:#fff;cursor:pointer;box-shadow:2px 2px 0 #2b2b2b;margin-top:6px}`;
+  document.head.appendChild(css);
+  const back = document.createElement('div'); back.id = 'rnBack';
+  back.innerHTML = '<div id="rn" role="dialog" aria-modal="true" aria-labelledby="rnT"><button class="x" type="button" aria-label="關閉">×</button><div class="in"></div></div>';
+  document.body.appendChild(back);
+  const box = back.querySelector('.in');
+  const close = () => back.classList.remove('open');
+  back.addEventListener('click', e => { if (e.target === back) close(); });
+  back.querySelector('.x').addEventListener('click', close);
+  addEventListener('keydown', e => { if (e.key === 'Escape' && back.classList.contains('open')) close(); });
+  const row = (r, withGame) => `<div class="r">${withGame ? `<span class="g">${esc(r.name)}</span>` : ''}<b>v${esc(r.v)}</b><time>${md(r.at)}</time><ul>${r.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul></div>`;
+  function show(title, sub, rows, withGame) {
+    let n = 12;
+    const draw = () => {
+      box.innerHTML = `<h3 id="rnT">${esc(title)}</h3><p class="sub">${esc(sub)}</p>${rows.slice(0, n).map(r => row(r, withGame)).join('')}${rows.length > n ? '<button class="more" type="button">顯示更多</button>' : ''}`;
+      const m = box.querySelector('.more'); if (m) m.onclick = () => { n += 20; draw(); };
+    };
+    draw(); back.classList.add('open');
+  }
+  WN.openGame = slug => { const g = WN.data && WN.data.games[slug]; if (g) show(`${g.name} 更新紀錄`, `目前版本 v${g.v}`, g.list, false); };
+  WN.openAll = () => { if (WN.data) show('最新更新', `遊戲大廳 v${WN.data.hall.v}・所有遊戲的更新，新的在上面`, WN.data.feed, true); };
+  const hv = document.getElementById('hallVer');
+  hv.setAttribute('role', 'button'); hv.tabIndex = 0; hv.title = '看更新紀錄';
+  hv.addEventListener('click', () => WN.openAll());
+  hv.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); WN.openAll(); } });
+  fetch('/whatsnew.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).catch(() => null).then(d => {
+    if (!d) return;
+    WN.data = d;
+    hv.textContent = 'v' + d.hall.v + (fresh(d.hall.at) ? ' · 🆕 更新紀錄' : '');
+    document.getElementById('hallFoot').textContent = `大廳版本 v${d.hall.v} · 最後更新 ${String(d.hall.at).slice(0, 10)}`;
+    for (const a of document.querySelectorAll('a.game')) {
+      const slug = (a.getAttribute('href') || '').split('/')[0], g = d.games[slug], genre = a.querySelector('.genre');
+      if (!g || !genre) continue;
+      const c = document.createElement('span');
+      c.className = 'vchip' + (fresh(g.at) ? ' new' : ''); c.setAttribute('role', 'button'); c.tabIndex = 0;
+      c.title = `${g.name} 的更新紀錄`;
+      c.textContent = (fresh(g.at) ? '🆕 ' : '') + `v${g.v} · ${md(g.at)}`;
+      const open = e => { e.preventDefault(); e.stopPropagation(); WN.openGame(slug); };
+      c.addEventListener('click', open);
+      c.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') open(e); });
+      genre.appendChild(c);
+    }
+  });
+})();
 // 裝置檢查：這台不支援 3D（WebGL）或語音辨識時，把對應的標籤改成紅色提醒
 (() => {
   let gl = false;
