@@ -15,6 +15,7 @@ body.game{background:repeating-conic-gradient(#e8f4ff 0 25%,#f4faff 0 50%) 0 0/2
 .ch-score{display:flex;align-items:center;justify-content:center;gap:12px;font-size:40px;font-weight:900;color:var(--ink);margin:6px 0}
 .ch-dot{display:inline-block;width:34px;height:34px;border-radius:50%;border:3px solid;flex:none}
 .ch-dot.g{background:radial-gradient(circle at 35% 30%,#b8f5bb,#4fcf6c 45%,#2a9447);border-color:#145c2a}
+.ch-small{font-size:.85em;opacity:.75}
 .ch-dot.p{background:radial-gradient(circle at 35% 30%,#fff,#ffd3e4 40%,#ffa8c9);border-color:#b23a6d}
 </style>
 </head>
@@ -558,6 +559,7 @@ const PAL = {
 };
 
 // ---------- state ----------
+let puz = null;   // 🧩 小謎題進行中的狀態（null = 一般對下）
 let state = 'menu', gid = 'r8', kind = 'rv', N = 8, NR = 8, KW = 5, mode = 'cpu1', level = 1, vsCpu = true, human = 1, firstColor = 1;
 let board = LG.rvInit(8), turn = 1, last = -1, hist = [], moveNo = 0, winLine = null, result = null;
 let anims = new Map(), busyUntil = 0, clock = 0, t = 0, frames = 0, token = 0, think = null, passNote = null;
@@ -571,23 +573,30 @@ const thinkTimes = [];
 function setBoardType(id) { gid = BOARDS[id] ? id : 'r8'; kind = BOARDS[gid].kind; N = BOARDS[gid].N; NR = BOARDS[gid].R || N; KW = BOARDS[gid].K || 5; }
 const lnKind = () => kind === 'c4' || kind === 'tt';
 const aiOpts = (o = {}) => ({ ...o, R: NR, K: KW });
-const nameOf = p => vsCpu ? (p === human ? '你' : '電腦') : CN[p] + '噗噗';
+const nameOf = p => vsCpu ? (p === human ? '你' : '嘟嘟') : CN[p] + '噗噗';
 const cpuColor = () => 3 - human;
 const isBusy = () => clock < busyUntil;
-const humanTurn = () => state === 'play' && !result && turn > 0 && (!vsCpu || turn === human) && !isBusy() && !think;
+const humanTurn = () => state === 'play' && !result && turn > 0 && (!vsCpu || turn === human) && !isBusy() && !think && !(puz && puz.reply);
 const cssScale = () => Math.max(0.1, (parseFloat(cv.style.width) || W) / W);
 const needConfirm = (pt) => pt !== 'mouse' && cs * cssScale() < 34;
 
 // ---------- layout ----------
+// 右邊（直向時在下面）的面板：上面是兩張玩家卡，中間是「目標小卡」＋角色舞台（站在場景的地上），最下面是按鈕
+let goal = null, stage = null, feet = 0, hor = 0;
 function layout() {
   W = cv.lw; H = cv.lh; land = W > H;
   U = clamp(0.8 / cssScale(), 1, 1.5);
   const m = 6;
   if (land) { BRD = { x: m, y: m, s: H - 2 * m }; P = { x: H + 2, y: m, w: W - H - 2 - m, h: H - 2 * m }; }
-  else { BRD = { x: m, y: m, s: W - 2 * m }; P = { x: m, y: W + 2, w: W - 2 * m, h: H - W - 2 - m }; }
-  const pad = kind === 'rv' ? BRD.s * 0.035 : kind === 'c4' ? BRD.s * 0.03 : kind === 'tt' ? BRD.s * 0.05 : BRD.s * 0.012;
+  else {
+    // tall tablets: give the panel enough room for the characters by making the board a little smaller
+    const s = Math.round(clamp(H - 400 * U - 2 * m, W * 0.8, W - 2 * m));
+    BRD = { x: (W - s) / 2, y: m, s }; P = { x: m, y: s + m + 2, w: W - 2 * m, h: H - s - 2 * m - 2 };
+  }
+  const pad = kind === 'rv' ? BRD.s * 0.05 : kind === 'c4' ? BRD.s * 0.03 : kind === 'tt' ? BRD.s * 0.07 : BRD.s * 0.03;
   cs = (BRD.s - 2 * pad) / N; gx = BRD.x + pad; gy = BRD.y + pad + (N - NR) * cs / 2;
-  const g = 10, ch = Math.round(76 * U), bh = Math.round(64 * U), ids = kind === 'rv' ? ['undo', 'hint', 'dots'] : ['undo', 'hint'];
+  const g = 10, ch = Math.round(72 * U), bh = Math.round(62 * U);
+  const ids = puz ? (kind === 'rv' ? ['hint', 'dots'] : ['hint']) : kind === 'rv' ? ['undo', 'hint', 'dots'] : ['undo', 'hint'];
   cards = []; btns = [];
   let y0 = P.y + 8;
   if (P.w >= 2 * 215 * U) { const cw = (P.w - 16 - g) / 2; cards.push({ p: 1, x: P.x + 8, y: y0, w: cw, h: ch }, { p: 2, x: P.x + 8 + cw + g, y: y0, w: cw, h: ch }); y0 += ch + g; }
@@ -601,6 +610,13 @@ function layout() {
     btns.push({ id, x: P.x + 8 + col * (w2 + g), y: by0 + row * (bh + g), w: inRow === perRow ? bw : w2, h: bh });
   });
   mid = { x: P.x + 8, y: y0, w: P.w - 16, h: by0 - g - y0 };
+  if (mid.h >= 200) {
+    const gh = Math.round(clamp(mid.h * 0.3, 70, 112 * U));
+    goal = { x: mid.x, y: mid.y, w: mid.w, h: gh };
+    stage = { x: mid.x, y: mid.y + gh + 4, w: mid.w, h: mid.h - gh - 4 };
+  } else { goal = null; stage = { ...mid }; }
+  feet = stage.y + stage.h - Math.max(6, stage.h * 0.06);
+  hor = feet - clamp(stage.h * 0.3, 22, 90);
   layerKey = ''; sprites.clear();
 }
 cv.onfit = () => layout();
@@ -643,9 +659,10 @@ function emo(s, px, py, size, g = x) {
 const cellXY = i => ({ x: gx + (i % N + 0.5) * cs, y: gy + (((i / N) | 0) + 0.5) * cs });
 const stoneR = () => cs * (kind === 'rv' ? 0.4 : kind === 'tt' ? 0.34 : kind === 'c4' ? 0.42 : 0.45);
 
-// a cute jelly stone with a tiny face, drawn once per colour/size into a little canvas
-function stoneSprite(col, rL) {
-  const px = cv._mgScale || 1, R = Math.max(4, Math.round(rL * px)), key = col + '|' + R;
+// a cute jelly stone with a tiny face, drawn once per colour/size/face into a little canvas
+// face: 'happy'（平常）、'blink'（眨眼）、'wow'（剛被翻過來，嚇一跳）、'joy'（贏了，笑瞇瞇）
+function stoneSprite(col, rL, face = 'happy') {
+  const px = cv._mgScale || 1, R = Math.max(4, Math.round(rL * px)), key = col + '|' + R + '|' + face;
   let c = sprites.get(key); if (c) return c;
   const S = Math.ceil(R * 2.9), oy = Math.round(R * 0.16);
   c = document.createElement('canvas'); c.width = c.height = S;
@@ -661,6 +678,9 @@ function stoneSprite(col, rL) {
   g.fillStyle = 'rgba(255,255,255,.4)'; dot(g, -R * 0.45, R * 0.42, R * 0.07); dot(g, R * 0.5, R * 0.18, R * 0.05);
   g.restore();
   g.strokeStyle = pl.line; g.lineWidth = Math.max(1, R * 0.09); body(); g.stroke();
+  // rim light on the lower right
+  g.strokeStyle = col === 1 ? 'rgba(200,255,200,.5)' : 'rgba(255,255,255,.7)'; g.lineWidth = Math.max(1, R * 0.06);
+  g.beginPath(); g.ellipse(0, 0, R * 0.84, R * 0.78, 0, 0.15, 1.2); g.stroke();
   // top: green has a little leaf sprout, pink has a little bow
   if (R >= 7) {
     if (col === 1) {
@@ -680,23 +700,35 @@ function stoneSprite(col, rL) {
   }
   // glossy highlight
   g.fillStyle = 'rgba(255,255,255,.8)'; g.beginPath(); g.ellipse(-R * 0.46, -R * 0.45, R * 0.2, R * 0.11, -0.75, 0, 7); g.fill();
+  g.fillStyle = 'rgba(255,255,255,.6)'; dot(g, -R * 0.2, -R * 0.62, R * 0.05);
   // face
   if (R >= 6) {
     const ink = pl.ink;
-    g.fillStyle = ink;
-    for (const sd of [-1, 1]) { g.beginPath(); g.ellipse(sd * R * 0.3, R * 0.02, R * 0.1, R * 0.14, 0, 0, 7); g.fill(); }
-    if (R >= 10) { g.fillStyle = '#fff'; for (const sd of [-1, 1]) dot(g, sd * R * 0.3 - R * 0.03, -R * 0.04, R * 0.045); }
-    g.strokeStyle = ink; g.lineWidth = Math.max(1, R * 0.07); g.lineCap = 'round';
-    g.beginPath(); g.arc(0, R * 0.2, R * 0.13, 0.25, Math.PI - 0.25); g.stroke();
+    g.fillStyle = ink; g.strokeStyle = ink; g.lineCap = 'round'; g.lineWidth = Math.max(1, R * 0.08);
+    if (face === 'joy') {
+      for (const sd of [-1, 1]) { g.beginPath(); g.arc(sd * R * 0.3, R * 0.06, R * 0.11, Math.PI * 1.1, Math.PI * 1.9); g.stroke(); }
+      g.beginPath(); g.moveTo(-R * 0.17, R * 0.2); g.quadraticCurveTo(0, R * 0.48, R * 0.17, R * 0.2); g.closePath(); g.fill();
+    } else if (face === 'blink') {
+      for (const sd of [-1, 1]) { g.beginPath(); g.moveTo(sd * R * 0.3 - R * 0.1, R * 0.03); g.quadraticCurveTo(sd * R * 0.3, R * 0.1, sd * R * 0.3 + R * 0.1, R * 0.03); g.stroke(); }
+      g.beginPath(); g.arc(0, R * 0.2, R * 0.13, 0.25, Math.PI - 0.25); g.stroke();
+    } else if (face === 'wow') {
+      for (const sd of [-1, 1]) { g.fillStyle = '#fff'; g.beginPath(); g.ellipse(sd * R * 0.3, R * 0.0, R * 0.15, R * 0.18, 0, 0, 7); g.fill(); g.fillStyle = ink; g.beginPath(); g.ellipse(sd * R * 0.3, R * 0.02, R * 0.09, R * 0.12, 0, 0, 7); g.fill(); }
+      g.beginPath(); g.ellipse(0, R * 0.3, R * 0.08, R * 0.1, 0, 0, 7); g.fill();
+    } else {
+      for (const sd of [-1, 1]) { g.beginPath(); g.ellipse(sd * R * 0.3, R * 0.02, R * 0.1, R * 0.14, 0, 0, 7); g.fill(); }
+      if (R >= 10) { g.fillStyle = '#fff'; for (const sd of [-1, 1]) dot(g, sd * R * 0.3 - R * 0.03, -R * 0.04, R * 0.045); }
+      g.beginPath(); g.arc(0, R * 0.2, R * 0.13, 0.25, Math.PI - 0.25); g.stroke();
+    }
     g.fillStyle = col === 1 ? 'rgba(255,140,160,.55)' : 'rgba(255,90,140,.45)';
     for (const sd of [-1, 1]) { g.beginPath(); g.ellipse(sd * R * 0.58, R * 0.24, R * 0.13, R * 0.07, 0, 0, 7); g.fill(); }
   }
   c.R = R; c.S = S; c.oy = oy;
+  if (sprites.size > 400) sprites.clear();
   sprites.set(key, c);
   return c;
 }
 function drawStone(cx, cy, r, col, o = {}) {
-  const sp = stoneSprite(col, r), k = r / sp.R;
+  const sp = stoneSprite(col, r, o.face), k = r / sp.R;
   x.save(); x.translate(cx, cy + (o.dy || 0));
   if (o.rot) x.rotate(o.rot);
   x.scale(o.sx ?? 1, o.sy ?? 1);
@@ -705,64 +737,243 @@ function drawStone(cx, cy, r, col, o = {}) {
   x.restore();
 }
 
-// ---------- static layer: board + panel background ----------
-function buildLayer() {
-  const px = cv._mgScale || 1;
-  layer = document.createElement('canvas'); layer.width = Math.round(W * px); layer.height = Math.round(H * px);
-  const g = layer.getContext('2d'); g.scale(px, px);
-  g.fillStyle = '#f4f9ff'; g.fillRect(0, 0, W, H);
-  const B = BRD;
+// ---------- 場景：每一種棋都有自己的地方 ----------
+// 黑白棋＝花園野餐、五子棋＝溫暖的小房間、四子棋＝外太空、井字遊戲＝海邊
+const THEME = { rv: 'garden', gk: 'room', c4: 'space', tt: 'beach' };
+const THEME_INK = { garden: '#3f8a3a', room: '#a4702e', space: '#6a58d8', beach: '#2b8fc4' };
+const CONF = {
+  garden: ['#ff8ac2', '#ffd23f', '#8fe07a', '#fff', '#ff9b4a'], room: ['#ffcf6b', '#ff8a8a', '#8fd0ff', '#fff', '#c9a0ff'],
+  space: ['#fff6a0', '#8ff0ff', '#ff9be0', '#b9a4ff', '#fff'], beach: ['#4fd0ff', '#ffd23f', '#ff8a6b', '#fff', '#7ff0c8'],
+};
+const theme = () => THEME[kind] || 'garden';
+function srand(s) { s = (s | 0) % 2147483647 || 7; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
+function cloud(g, cx, cy, s, a = 0.95) {
+  g.fillStyle = `rgba(255,255,255,${a})`;
+  for (const [dx, dy, r] of [[-0.9, 0.15, 0.5], [-0.35, -0.2, 0.68], [0.4, -0.08, 0.58], [0.98, 0.2, 0.42]]) dot(g, cx + dx * s, cy + dy * s, r * s);
+  rr(g, cx - s * 1.3, cy + s * 0.05, s * 2.6, s * 0.6, s * 0.3); g.fill();
+}
+function flower(g, cx, cy, s, col) {
+  g.fillStyle = col; for (let k = 0; k < 5; k++) { const a = k * 1.2566; dot(g, cx + Math.cos(a) * s * 0.55, cy + Math.sin(a) * s * 0.55, s * 0.45); }
+  g.fillStyle = '#ffd84a'; dot(g, cx, cy, s * 0.38);
+}
+function hills(g, y0, amp, col, seed, x0 = 0, x1 = W) {
+  const rnd = srand(seed); g.fillStyle = col; g.beginPath(); g.moveTo(x0, H + 2); g.lineTo(x0, y0);
+  const n = Math.max(2, Math.round((x1 - x0) / 170)); let px0 = x0;
+  for (let k = 1; k <= n; k++) { const nx = x0 + (x1 - x0) * k / n; g.quadraticCurveTo((px0 + nx) / 2, y0 - amp * (0.5 + rnd()), nx, y0 + amp * 0.1 * rnd()); px0 = nx; }
+  g.lineTo(x1, H + 2); g.closePath(); g.fill();
+}
+function drawScene(g) {
+  const th = theme(), rnd = srand(W * 7 + H * 13 + th.length);
+  const sx0 = P.x, sx1 = P.x + P.w;
+  if (th === 'garden') {
+    const sk = g.createLinearGradient(0, 0, 0, hor); sk.addColorStop(0, '#7fcaf8'); sk.addColorStop(1, '#e2f6ff'); g.fillStyle = sk; g.fillRect(0, 0, W, H);
+    const sun = { x: sx1 - 46, y: stage.y + 34 };
+    const sg = g.createRadialGradient(sun.x, sun.y, 4, sun.x, sun.y, 70); sg.addColorStop(0, 'rgba(255,240,150,.9)'); sg.addColorStop(1, 'rgba(255,240,150,0)'); g.fillStyle = sg; dot(g, sun.x, sun.y, 70);
+    g.fillStyle = '#ffd84a'; dot(g, sun.x, sun.y, 22); g.strokeStyle = '#f5b31c'; g.lineWidth = 3; g.beginPath(); g.arc(sun.x, sun.y, 22, 0, 7); g.stroke();
+    for (let k = 0; k < 4; k++) cloud(g, sx0 + (sx1 - sx0) * (0.12 + k * 0.27) + rnd() * 20, stage.y + 20 + rnd() * Math.max(10, hor - stage.y - 90), 16 + rnd() * 10, 0.9);
+    hills(g, hor - 18, 46, '#bfe8a6', 3); hills(g, hor + 2, 30, '#a5dd8a', 9);
+    // round trees on the hills
+    for (const tx of [sx0 + 26, sx1 - 30, sx0 + (sx1 - sx0) * 0.5]) {
+      const ty = hor + 4, s = tx === sx0 + (sx1 - sx0) * 0.5 ? 14 : 22;
+      g.fillStyle = '#9a6a3c'; rr(g, tx - s * 0.13, ty - s * 1.1, s * 0.26, s * 1.2, 3); g.fill();
+      g.fillStyle = '#4fb15a'; for (const [dx, dy, r] of [[0, -1.6, 0.8], [-0.55, -1.15, 0.6], [0.55, -1.15, 0.6]]) dot(g, tx + dx * s, ty + dy * s, r * s);
+      g.fillStyle = 'rgba(255,255,255,.25)'; dot(g, tx - s * 0.3, ty - s * 1.9, s * 0.25);
+      g.fillStyle = '#ff6b6b'; for (const [dx, dy] of [[-0.3, -1.4], [0.35, -1.7], [0.5, -1.0]]) dot(g, tx + dx * s, ty + dy * s, s * 0.09);
+    }
+    const gr = g.createLinearGradient(0, hor, 0, H); gr.addColorStop(0, '#8fd96a'); gr.addColorStop(1, '#5fb84a');
+    g.fillStyle = gr; g.fillRect(0, hor + 8, W, H - hor);
+    g.beginPath(); g.moveTo(0, hor + 10); for (let xx = 0; xx <= W; xx += 40) g.quadraticCurveTo(xx + 20, hor - 2, xx + 40, hor + 10); g.lineTo(W, H); g.lineTo(0, H); g.fill();
+    // a picnic blanket under the characters
+    const bw = Math.min(stage.w * 0.86, 360), by = feet - 6;
+    g.save(); g.translate(stage.x + stage.w / 2, by); g.scale(1, 0.32);
+    g.fillStyle = '#ff8fa8'; rr(g, -bw / 2, -bw * 0.28, bw, bw * 0.56, 16); g.fill();
+    g.fillStyle = 'rgba(255,255,255,.55)'; for (let k = -4; k <= 4; k++) { g.fillRect(k * bw / 9 - 6, -bw * 0.28, 12, bw * 0.56); }
+    for (let k = -2; k <= 2; k++) g.fillRect(-bw / 2, k * bw * 0.1 - 6, bw, 12);
+    g.restore();
+    g.strokeStyle = 'rgba(40,120,40,.45)'; g.lineWidth = 2; g.lineCap = 'round';
+    for (let k = 0; k < 40; k++) { const tx = rnd() * W, ty = hor + 14 + rnd() * (H - hor - 14); g.beginPath(); g.moveTo(tx, ty); g.lineTo(tx - 3, ty - 7); g.moveTo(tx, ty); g.lineTo(tx + 3, ty - 8); g.stroke(); }
+    const fc = ['#ff7aa8', '#fff', '#ffd23f', '#b48cff', '#ff9b4a'];
+    for (let k = 0; k < 18; k++) flower(g, rnd() * W, hor + 18 + rnd() * (H - hor - 20), 4 + rnd() * 3, fc[k % fc.length]);
+  } else if (th === 'room') {
+    // wallpaper with soft stripes and little dots
+    g.fillStyle = '#fff1d8'; g.fillRect(0, 0, W, H);
+    g.fillStyle = 'rgba(255,190,120,.18)'; for (let xx = 0; xx < W; xx += 44) g.fillRect(xx, 0, 22, hor);
+    g.fillStyle = 'rgba(255,160,120,.35)'; for (let yy = 18; yy < hor; yy += 44) for (let xx = 11 + ((yy / 44) & 1) * 22; xx < W; xx += 44) dot(g, xx, yy, 2.5);
+    // window with a starry evening sky
+    const ww = Math.min(stage.w * 0.34, 150), wh = Math.min(ww * 0.9, Math.max(40, hor - stage.y - 30)), wx = sx0 + 16, wy = Math.max(stage.y + 10, hor - wh - 26);
+    if (wh > 40) {
+      const sk = g.createLinearGradient(0, wy, 0, wy + wh); sk.addColorStop(0, '#5b6fd6'); sk.addColorStop(1, '#f7a8c4');
+      g.fillStyle = '#c98b4a'; rr(g, wx - 6, wy - 6, ww + 12, wh + 12, 8); g.fill();
+      g.fillStyle = sk; rr(g, wx, wy, ww, wh, 4); g.fill();
+      g.fillStyle = '#fff6c8'; dot(g, wx + ww * 0.72, wy + wh * 0.3, Math.min(ww, wh) * 0.12);
+      g.fillStyle = '#fff'; for (let k = 0; k < 6; k++) dot(g, wx + rnd() * ww, wy + rnd() * wh * 0.6, 1.4);
+      g.strokeStyle = '#c98b4a'; g.lineWidth = 5; g.beginPath(); g.moveTo(wx + ww / 2, wy); g.lineTo(wx + ww / 2, wy + wh); g.moveTo(wx, wy + wh / 2); g.lineTo(wx + ww, wy + wh / 2); g.stroke();
+      g.fillStyle = '#ff9fb8'; for (const sd of [0, 1]) { g.beginPath(); const cx0 = sd ? wx + ww + 6 : wx - 6; g.moveTo(cx0, wy - 10); g.quadraticCurveTo(cx0 + (sd ? -ww * 0.25 : ww * 0.25), wy + wh * 0.5, cx0, wy + wh + 8); g.lineTo(cx0 + (sd ? 10 : -10), wy + wh + 8); g.lineTo(cx0 + (sd ? 10 : -10), wy - 10); g.fill(); }
+      g.fillStyle = '#d98b5a'; rr(g, wx - 14, wy - 16, ww + 28, 8, 4); g.fill();
+    }
+    // a shelf with books and a plant
+    const shx = sx1 - Math.min(stage.w * 0.36, 160) - 12, shw = Math.min(stage.w * 0.36, 160), shy = Math.max(stage.y + 50, hor - 70);
+    if (shy < hor - 20) {
+      const bc = ['#ff8a8a', '#7fc4ff', '#ffd23f', '#9be08a', '#c9a0ff'];
+      let bx2 = shx + 8; for (let k = 0; k < 5; k++) { const bh2 = 26 + rnd() * 12, bw2 = 10 + rnd() * 5; g.fillStyle = bc[k]; rr(g, bx2, shy - bh2, bw2, bh2, 2); g.fill(); g.fillStyle = 'rgba(255,255,255,.5)'; g.fillRect(bx2 + 2, shy - bh2 + 5, bw2 - 4, 2); bx2 += bw2 + 2; }
+      g.fillStyle = '#e48a5a'; rr(g, shx + shw - 34, shy - 18, 22, 18, 4); g.fill();
+      g.fillStyle = '#4fb15a'; for (const a of [-0.6, 0, 0.6]) { g.save(); g.translate(shx + shw - 23, shy - 18); g.rotate(a); g.beginPath(); g.ellipse(0, -11, 5, 12, 0, 0, 7); g.fill(); g.restore(); }
+      g.fillStyle = '#b8743a'; rr(g, shx, shy, shw, 8, 3); g.fill(); g.fillStyle = 'rgba(80,40,10,.2)'; g.fillRect(shx + 4, shy + 8, shw - 8, 4);
+    }
+    // wooden floor + a round rug
+    const fl = g.createLinearGradient(0, hor, 0, H); fl.addColorStop(0, '#e5b07a'); fl.addColorStop(1, '#c98b4a');
+    g.fillStyle = fl; g.fillRect(0, hor, W, H - hor);
+    g.fillStyle = '#b97a3e'; g.fillRect(0, hor, W, 6);
+    g.strokeStyle = 'rgba(120,70,30,.25)'; g.lineWidth = 2; for (let yy = hor + 22; yy < H; yy += 22) { g.beginPath(); g.moveTo(0, yy); g.lineTo(W, yy); g.stroke(); for (let xx = (yy * 3) % 120; xx < W; xx += 120) { g.beginPath(); g.moveTo(xx, yy - 22); g.lineTo(xx, yy); g.stroke(); } }
+    g.save(); g.translate(stage.x + stage.w / 2, feet - 4); g.scale(1, 0.3);
+    const rw = Math.min(stage.w * 0.46, 190);
+    g.fillStyle = '#8fc8f0'; dot(g, 0, 0, rw); g.fillStyle = '#fff3c4'; dot(g, 0, 0, rw * 0.78); g.fillStyle = '#ffb3c8'; dot(g, 0, 0, rw * 0.55);
+    g.restore();
+  } else if (th === 'space') {
+    const sk = g.createLinearGradient(0, 0, 0, H); sk.addColorStop(0, '#1b1a4a'); sk.addColorStop(0.6, '#3a2a7a'); sk.addColorStop(1, '#5a3a8a');
+    g.fillStyle = sk; g.fillRect(0, 0, W, H);
+    for (const [cx0, cy0, r0, col] of [[W * 0.2, H * 0.3, 220, 'rgba(255,120,200,.16)'], [W * 0.8, H * 0.7, 260, 'rgba(90,200,255,.14)'], [sx0 + (sx1 - sx0) * 0.5, stage.y + 30, 160, 'rgba(200,140,255,.18)']]) {
+      const ng = g.createRadialGradient(cx0, cy0, 0, cx0, cy0, r0); ng.addColorStop(0, col); ng.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = ng; g.fillRect(cx0 - r0, cy0 - r0, r0 * 2, r0 * 2);
+    }
+    for (let k = 0; k < 160; k++) { g.fillStyle = `rgba(255,255,255,${0.35 + rnd() * 0.6})`; dot(g, rnd() * W, rnd() * H, 0.6 + rnd() * 1.4); }
+    // a ringed planet
+    const pp = { x: sx1 - 52, y: stage.y + 40, r: 24 };
+    const pg2 = g.createRadialGradient(pp.x - 8, pp.y - 8, 2, pp.x, pp.y, pp.r); pg2.addColorStop(0, '#ffe0a0'); pg2.addColorStop(1, '#f08a5a');
+    g.strokeStyle = '#ffd6f0'; g.lineWidth = 4; g.beginPath(); g.ellipse(pp.x, pp.y, pp.r * 1.8, pp.r * 0.45, -0.3, Math.PI, 7); g.stroke();
+    g.fillStyle = pg2; dot(g, pp.x, pp.y, pp.r);
+    g.beginPath(); g.ellipse(pp.x, pp.y, pp.r * 1.8, pp.r * 0.45, -0.3, 0, Math.PI); g.stroke();
+    g.fillStyle = '#cfd8ff'; dot(g, sx0 + 30, stage.y + 26, 9); g.fillStyle = '#a8b4ec'; dot(g, sx0 + 27, stage.y + 24, 3);
+    // the moon ground with craters
+    const mg = g.createLinearGradient(0, hor, 0, H); mg.addColorStop(0, '#c9c3ef'); mg.addColorStop(1, '#9a90d6');
+    g.fillStyle = mg; g.beginPath(); g.moveTo(0, hor + 12); for (let xx = 0; xx <= W; xx += 80) g.quadraticCurveTo(xx + 40, hor - 6, xx + 80, hor + 12); g.lineTo(W, H); g.lineTo(0, H); g.fill();
+    for (let k = 0; k < 16; k++) { const cx0 = rnd() * W, cy0 = hor + 22 + rnd() * (H - hor - 24), r0 = 5 + rnd() * 12; g.fillStyle = 'rgba(110,100,180,.45)'; g.beginPath(); g.ellipse(cx0, cy0, r0, r0 * 0.4, 0, 0, 7); g.fill(); g.fillStyle = 'rgba(255,255,255,.3)'; g.beginPath(); g.ellipse(cx0, cy0 + r0 * 0.12, r0 * 0.8, r0 * 0.28, 0, 0, Math.PI); g.fill(); }
+    // a little flag
+    const fx2 = sx0 + 20, fy2 = hor + 14;
+    g.strokeStyle = '#e6e1f5'; g.lineWidth = 3; g.beginPath(); g.moveTo(fx2, fy2); g.lineTo(fx2, fy2 - 44); g.stroke();
+    g.fillStyle = '#ff7aa8'; g.beginPath(); g.moveTo(fx2, fy2 - 44); g.lineTo(fx2 + 26, fy2 - 37); g.lineTo(fx2, fy2 - 30); g.fill();
+  } else {
+    const sk = g.createLinearGradient(0, 0, 0, hor); sk.addColorStop(0, '#6cc8ff'); sk.addColorStop(1, '#e0f6ff'); g.fillStyle = sk; g.fillRect(0, 0, W, H);
+    const sun = { x: sx0 + 40, y: stage.y + 34 };
+    g.fillStyle = 'rgba(255,240,150,.5)'; dot(g, sun.x, sun.y, 34); g.fillStyle = '#ffd84a'; dot(g, sun.x, sun.y, 20);
+    for (let k = 0; k < 3; k++) cloud(g, sx0 + (sx1 - sx0) * (0.3 + k * 0.28), stage.y + 24 + rnd() * Math.max(10, hor - stage.y - 110), 14 + rnd() * 8, 0.92);
+    // the sea
+    const sy = hor - Math.min(46, stage.h * 0.2);
+    const sea = g.createLinearGradient(0, sy, 0, hor + 10); sea.addColorStop(0, '#2fa8e0'); sea.addColorStop(1, '#6fdcf0');
+    g.fillStyle = sea; g.fillRect(0, sy, W, hor + 12 - sy);
+    g.strokeStyle = 'rgba(255,255,255,.7)'; g.lineWidth = 2; g.lineCap = 'round';
+    for (let k = 0; k < 14; k++) { const wx = rnd() * W, wy = sy + 6 + rnd() * (hor - sy); g.beginPath(); g.arc(wx, wy, 6, Math.PI * 1.15, Math.PI * 1.85); g.stroke(); }
+    // a little sailboat far away
+    const bx = sx0 + (sx1 - sx0) * 0.62, by = sy + 8;
+    g.fillStyle = '#e06a4a'; g.beginPath(); g.moveTo(bx - 14, by); g.lineTo(bx + 14, by); g.lineTo(bx + 9, by + 6); g.lineTo(bx - 9, by + 6); g.fill();
+    g.fillStyle = '#fff'; g.beginPath(); g.moveTo(bx, by - 2); g.lineTo(bx, by - 24); g.lineTo(bx + 13, by - 4); g.fill();
+    // sand with foam edge
+    const sd = g.createLinearGradient(0, hor, 0, H); sd.addColorStop(0, '#ffe7b0'); sd.addColorStop(1, '#f2c983');
+    g.fillStyle = sd; g.beginPath(); g.moveTo(0, hor + 8); for (let xx = 0; xx <= W; xx += 60) g.quadraticCurveTo(xx + 30, hor - 2, xx + 60, hor + 8); g.lineTo(W, H); g.lineTo(0, H); g.fill();
+    g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 4; g.beginPath(); g.moveTo(0, hor + 8); for (let xx = 0; xx <= W; xx += 60) g.quadraticCurveTo(xx + 30, hor - 2, xx + 60, hor + 8); g.stroke();
+    g.fillStyle = 'rgba(200,150,80,.35)'; for (let k = 0; k < 90; k++) dot(g, rnd() * W, hor + 14 + rnd() * (H - hor), 1.2);
+    // shells and starfish
+    for (let k = 0; k < 7; k++) {
+      const cx0 = rnd() * W, cy0 = hor + 22 + rnd() * (H - hor - 26);
+      if (k % 2) { g.fillStyle = '#ff9b7a'; g.beginPath(); for (let a = 0; a < 10; a++) { const rr0 = a % 2 ? 3.5 : 9, an = a * Math.PI / 5 - Math.PI / 2; g.lineTo(cx0 + Math.cos(an) * rr0, cy0 + Math.sin(an) * rr0); } g.fill(); }
+      else { g.fillStyle = '#ffd6e0'; g.beginPath(); g.arc(cx0, cy0, 7, Math.PI, 0); g.lineTo(cx0, cy0 + 4); g.fill(); g.strokeStyle = '#e8a0b4'; g.lineWidth = 1.2; for (let a = -2; a <= 2; a++) { g.beginPath(); g.moveTo(cx0, cy0 + 3); g.lineTo(cx0 + a * 3, cy0 - 6); g.stroke(); } }
+    }
+    // a palm tree at the right edge
+    const px0 = sx1 - 18, py0 = hor + 10;
+    g.strokeStyle = '#b07a42'; g.lineWidth = 9; g.lineCap = 'round'; g.beginPath(); g.moveTo(px0, py0); g.quadraticCurveTo(px0 - 4, py0 - 50, px0 - 20, py0 - 92); g.stroke();
+    g.fillStyle = '#48b860'; for (const a of [-2.6, -2.0, -1.2, -0.5, 0.2]) { g.save(); g.translate(px0 - 20, py0 - 92); g.rotate(a); g.beginPath(); g.ellipse(24, 0, 26, 7, 0.2, 0, 7); g.fill(); g.restore(); }
+    g.fillStyle = '#8a5a2a'; dot(g, px0 - 24, py0 - 86, 5); dot(g, px0 - 15, py0 - 86, 5);
+    // a beach umbrella behind the characters
+    const ux = stage.x + stage.w * 0.5, uy = feet - Math.min(stage.h * 0.75, 170);
+    if (uy > stage.y + 10) {
+      g.strokeStyle = '#fff'; g.lineWidth = 4; g.beginPath(); g.moveTo(ux, uy); g.lineTo(ux, feet - 4); g.stroke();
+      const ur = Math.min(stage.w * 0.22, 80);
+      for (let k = 0; k < 6; k++) { g.fillStyle = k % 2 ? '#fff' : '#ff6b8a'; g.beginPath(); g.moveTo(ux, uy); g.arc(ux, uy + ur * 0.35, ur, Math.PI + k * Math.PI / 6 + 0.2, Math.PI + (k + 1) * Math.PI / 6 - 0.2 + 0.4); g.closePath(); g.fill(); }
+    }
+  }
+}
+// the board itself, on top of the scene
+function drawBoardBase(g) {
+  const B = BRD, th = theme();
   if (kind === 'rv') {
-    g.fillStyle = 'rgba(40,80,140,.25)'; rr(g, B.x + 2, B.y + 5, B.s, B.s, 18); g.fill();
-    const fr = g.createLinearGradient(0, B.y, 0, B.y + B.s); fr.addColorStop(0, '#6aa9e8'); fr.addColorStop(1, '#3f7fc8');
-    g.fillStyle = fr; rr(g, B.x, B.y, B.s, B.s, 18); g.fill();
-    g.strokeStyle = '#2d5f9e'; g.lineWidth = 3; g.stroke();
+    // a wooden garden table-top with a grass-green felt
+    g.fillStyle = 'rgba(40,60,20,.3)'; rr(g, B.x + 3, B.y + 8, B.s, B.s, 22); g.fill();
+    const fr = g.createLinearGradient(B.x, B.y, B.x + B.s, B.y + B.s); fr.addColorStop(0, '#e2a868'); fr.addColorStop(1, '#a8682e');
+    g.fillStyle = fr; rr(g, B.x, B.y, B.s, B.s, 22); g.fill();
+    g.strokeStyle = '#7a4a1c'; g.lineWidth = 3; g.stroke();
+    g.strokeStyle = 'rgba(255,230,190,.55)'; g.lineWidth = 2; rr(g, B.x + 4, B.y + 4, B.s - 8, B.s - 8, 18); g.stroke();
+    g.strokeStyle = 'rgba(120,70,20,.2)'; g.lineWidth = 2;
+    for (let k = 0; k < 10; k++) { const yy = B.y + 6 + k * (B.s - 12) / 9; g.beginPath(); g.moveTo(B.x + 6, yy); g.bezierCurveTo(B.x + B.s * 0.3, yy - 4, B.x + B.s * 0.6, yy + 5, B.x + B.s - 6, yy); g.stroke(); }
+    g.fillStyle = 'rgba(30,60,10,.35)'; g.fillRect(gx - 3, gy - 1, N * cs + 6, N * cs + 6);
     for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
-      g.fillStyle = (r + c) % 2 ? '#c4e4f8' : '#d6eefc';
+      g.fillStyle = (r + c) % 2 ? '#8fd46e' : '#9ee07f';
       g.fillRect(gx + c * cs, gy + r * cs, cs, cs);
     }
-    g.strokeStyle = 'rgba(60,110,170,.45)'; g.lineWidth = 1.5;
+    // soft light from the top left
+    const lg = g.createLinearGradient(gx, gy, gx + N * cs, gy + N * cs); lg.addColorStop(0, 'rgba(255,255,220,.22)'); lg.addColorStop(1, 'rgba(20,70,20,.12)');
+    g.fillStyle = lg; g.fillRect(gx, gy, N * cs, N * cs);
+    g.strokeStyle = 'rgba(50,120,40,.5)'; g.lineWidth = 1.5;
     for (let k = 0; k <= N; k++) { g.beginPath(); g.moveTo(gx + k * cs, gy); g.lineTo(gx + k * cs, gy + N * cs); g.stroke(); g.beginPath(); g.moveTo(gx, gy + k * cs); g.lineTo(gx + N * cs, gy + k * cs); g.stroke(); }
-    g.strokeStyle = '#2d5f9e'; g.lineWidth = 2.5; g.strokeRect(gx, gy, N * cs, N * cs);
-    if (N === 8) { g.fillStyle = '#4a7fbf'; for (const [a, b2] of [[2, 2], [2, 6], [6, 2], [6, 6]]) dot(g, gx + a * cs, gy + b2 * cs, Math.max(2.5, cs * 0.06)); }
-    // tiny sparkles on the frame
-    g.fillStyle = 'rgba(255,255,255,.55)';
-    for (const [a, b2] of [[0.1, 0.012], [0.5, 0.012], [0.9, 0.012], [0.012, 0.3], [0.988, 0.7]]) dot(g, B.x + a * B.s, B.y + b2 * B.s, 2.4);
+    g.strokeStyle = '#3f7a2a'; g.lineWidth = 3; g.strokeRect(gx, gy, N * cs, N * cs);
+    if (N === 8) { g.fillStyle = '#3f8a3a'; for (const [a, b2] of [[2, 2], [2, 6], [6, 2], [6, 6]]) dot(g, gx + a * cs, gy + b2 * cs, Math.max(2.5, cs * 0.06)); }
+    const fs = (gx - B.x) * 0.42;
+    for (const [fx2, fy2, col] of [[B.x + (gx - B.x) / 2, B.y + (gx - B.x) / 2, '#ff7aa8'], [B.x + B.s - (gx - B.x) / 2, B.y + (gx - B.x) / 2, '#ffd23f'], [B.x + (gx - B.x) / 2, B.y + B.s - (gx - B.x) / 2, '#b48cff'], [B.x + B.s - (gx - B.x) / 2, B.y + B.s - (gx - B.x) / 2, '#fff']]) flower(g, fx2, fy2, fs * 0.55, col);
   } else if (kind === 'c4') {
-    // a blue frame with round holes, standing on little feet
-    const fy0 = gy - cs * 0.1, fh = NR * cs + cs * 0.2;
-    g.fillStyle = 'rgba(30,60,140,.28)'; rr(g, gx - cs * 0.15 + 2, fy0 + 6, N * cs + cs * 0.3, fh, 20); g.fill();
-    g.fillStyle = '#3c6fd6'; for (const fx2 of [gx + cs * 0.2, gx + N * cs - cs * 0.6]) { rr(g, fx2, fy0 + fh - 8, cs * 0.4, Math.min(cs * 0.5, B.y + B.s - fy0 - fh + 6), 6); g.fill(); }
-    const fr = g.createLinearGradient(0, fy0, 0, fy0 + fh); fr.addColorStop(0, '#5d93f0'); fr.addColorStop(1, '#3466cc');
-    g.fillStyle = fr; rr(g, gx - cs * 0.15, fy0, N * cs + cs * 0.3, fh, 20); g.fill();
-    g.strokeStyle = '#21489a'; g.lineWidth = 3; g.stroke();
+    // a spaceship-style frame with round portholes, standing on two landing legs
+    const fy0 = gy - cs * 0.12, fh = NR * cs + cs * 0.24, fx0 = gx - cs * 0.18, fw = N * cs + cs * 0.36;
+    g.strokeStyle = '#8f86c8'; g.lineWidth = Math.max(4, cs * 0.12); g.lineCap = 'round';
+    for (const [lx, d] of [[fx0 + fw * 0.12, -1], [fx0 + fw * 0.88, 1]]) { g.beginPath(); g.moveTo(lx, fy0 + fh - 6); g.lineTo(lx + d * cs * 0.3, Math.min(B.y + B.s - 4, fy0 + fh + cs * 0.55)); g.stroke(); g.fillStyle = '#e6e1f5'; dot(g, lx + d * cs * 0.3, Math.min(B.y + B.s - 4, fy0 + fh + cs * 0.55), cs * 0.1); }
+    g.fillStyle = 'rgba(10,0,40,.4)'; rr(g, fx0 + 3, fy0 + 8, fw, fh, 24); g.fill();
+    const fr = g.createLinearGradient(0, fy0, 0, fy0 + fh); fr.addColorStop(0, '#9c8cff'); fr.addColorStop(1, '#5a46c8');
+    g.fillStyle = fr; rr(g, fx0, fy0, fw, fh, 24); g.fill();
+    g.strokeStyle = '#3a2a8a'; g.lineWidth = 3; g.stroke();
+    g.strokeStyle = 'rgba(255,255,255,.4)'; g.lineWidth = 2; rr(g, fx0 + 4, fy0 + 4, fw - 8, fh - 8, 20); g.stroke();
     for (let r = 0; r < NR; r++) for (let c = 0; c < N; c++) {
       const hx = gx + (c + 0.5) * cs, hy = gy + (r + 0.5) * cs;
-      g.fillStyle = '#21489a'; dot(g, hx, hy + 2, cs * 0.43);
-      g.fillStyle = '#e8f3ff'; dot(g, hx, hy, cs * 0.42);
-      g.fillStyle = 'rgba(60,100,170,.18)'; g.beginPath(); g.arc(hx, hy, cs * 0.42, Math.PI * 1.1, Math.PI * 1.9); g.arc(hx, hy + cs * 0.06, cs * 0.38, Math.PI * 1.9, Math.PI * 1.1, true); g.fill();
+      g.fillStyle = '#3a2a8a'; dot(g, hx, hy + 2, cs * 0.44);
+      const hg = g.createRadialGradient(hx, hy - cs * 0.15, cs * 0.05, hx, hy, cs * 0.42); hg.addColorStop(0, '#3a3a8a'); hg.addColorStop(1, '#14123a');
+      g.fillStyle = hg; dot(g, hx, hy, cs * 0.42);
+      g.fillStyle = 'rgba(255,255,255,.55)'; dot(g, hx - cs * 0.12, hy - cs * 0.1, cs * 0.025); dot(g, hx + cs * 0.15, hy + cs * 0.12, cs * 0.018);
+      g.strokeStyle = 'rgba(200,190,255,.6)'; g.lineWidth = 2; g.beginPath(); g.arc(hx, hy, cs * 0.42, Math.PI * 0.15, Math.PI * 0.85); g.stroke();
     }
-    g.fillStyle = 'rgba(255,255,255,.5)'; for (let c = 0; c < N; c++) { g.beginPath(); g.moveTo(gx + (c + 0.5) * cs - 6, fy0 - 4); g.lineTo(gx + (c + 0.5) * cs + 6, fy0 - 4); g.lineTo(gx + (c + 0.5) * cs, fy0 + 4); g.fill(); }
+    // rivets
+    g.fillStyle = '#e6e1f5'; for (let c = 0; c <= N; c++) { dot(g, gx + c * cs, fy0 + cs * 0.06, 2); dot(g, gx + c * cs, fy0 + fh - cs * 0.06, 2); }
+    // arrows above each column: "drop here"
+    g.fillStyle = 'rgba(255,255,255,.45)'; for (let c = 0; c < N; c++) { const ax = gx + (c + 0.5) * cs, ay = fy0 - cs * 0.12; g.beginPath(); g.moveTo(ax - 7, ay - 7); g.lineTo(ax + 7, ay - 7); g.lineTo(ax, ay + 1); g.fill(); }
   } else if (kind === 'tt') {
-    // a sheet of paper with chunky crayon lines
-    g.fillStyle = 'rgba(120,90,40,.22)'; rr(g, B.x + 2, B.y + 5, B.s, B.s, 18); g.fill();
-    g.fillStyle = '#fffdf4'; rr(g, B.x, B.y, B.s, B.s, 18); g.fill(); g.strokeStyle = '#e8d6a8'; g.lineWidth = 3; g.stroke();
-    g.strokeStyle = 'rgba(120,170,230,.2)'; g.lineWidth = 1.5; for (let yy = B.y + 24; yy < B.y + B.s - 10; yy += 24) { g.beginPath(); g.moveTo(B.x + 12, yy); g.lineTo(B.x + B.s - 12, yy); g.stroke(); }
-    const cols = ['#ff7aa8', '#ffb72b', '#4cb2f5', '#5ccf63', '#9b7cf7'];
-    g.lineCap = 'round'; g.lineWidth = Math.max(6, cs * 0.07);
+    // a sandbox: wooden planks around smooth sand, with sea-blue grooves
+    g.fillStyle = 'rgba(120,80,30,.3)'; rr(g, B.x + 3, B.y + 8, B.s, B.s, 22); g.fill();
+    const fr = g.createLinearGradient(B.x, B.y, B.x + B.s, B.y + B.s); fr.addColorStop(0, '#f0b878'); fr.addColorStop(1, '#c47f40');
+    g.fillStyle = fr; rr(g, B.x, B.y, B.s, B.s, 22); g.fill(); g.strokeStyle = '#8a5424'; g.lineWidth = 3; g.stroke();
+    const ins = (gx - B.x) * 0.55;
+    const sd = g.createLinearGradient(B.x, B.y, B.x + B.s, B.y + B.s); sd.addColorStop(0, '#fff3d0'); sd.addColorStop(1, '#f5d79a');
+    g.fillStyle = sd; rr(g, B.x + ins, B.y + ins, B.s - 2 * ins, B.s - 2 * ins, 14); g.fill();
+    g.strokeStyle = 'rgba(140,90,40,.4)'; g.lineWidth = 2; g.stroke();
+    const rnd = srand(N * 31 + 5); g.fillStyle = 'rgba(200,150,80,.4)'; for (let k = 0; k < 160; k++) dot(g, B.x + ins + rnd() * (B.s - 2 * ins), B.y + ins + rnd() * (B.s - 2 * ins), 1.3);
+    g.lineCap = 'round';
     for (let k = 1; k < N; k++) {
-      g.strokeStyle = cols[(k - 1) % cols.length]; g.beginPath(); g.moveTo(gx + k * cs, gy + cs * 0.08); g.quadraticCurveTo(gx + k * cs + 4, gy + N * cs / 2, gx + k * cs - 2, gy + N * cs - cs * 0.08); g.stroke();
-      g.strokeStyle = cols[(k + 1) % cols.length]; g.beginPath(); g.moveTo(gx + cs * 0.08, gy + k * cs); g.quadraticCurveTo(gx + N * cs / 2, gy + k * cs - 4, gx + N * cs - cs * 0.08, gy + k * cs + 2); g.stroke();
+      for (const [w, col] of [[Math.max(10, cs * 0.11), 'rgba(160,110,50,.35)'], [Math.max(6, cs * 0.07), '#5ec4ef']]) {
+        g.strokeStyle = col; g.lineWidth = w;
+        g.beginPath(); g.moveTo(gx + k * cs, gy + cs * 0.1); g.quadraticCurveTo(gx + k * cs + 4, gy + N * cs / 2, gx + k * cs - 2, gy + N * cs - cs * 0.1); g.stroke();
+        g.beginPath(); g.moveTo(gx + cs * 0.1, gy + k * cs); g.quadraticCurveTo(gx + N * cs / 2, gy + k * cs - 4, gx + N * cs - cs * 0.1, gy + k * cs + 2); g.stroke();
+      }
     }
+    g.strokeStyle = 'rgba(255,255,255,.6)'; g.lineWidth = 2;
+    for (let k = 1; k < N; k++) { g.beginPath(); g.moveTo(gx + k * cs - 2, gy + cs * 0.14); g.lineTo(gx + k * cs - 1, gy + cs * 0.4); g.stroke(); }
+    const sc = ins * 0.5;
+    for (const [fx2, fy2] of [[B.x + ins * 0.9, B.y + ins * 0.9], [B.x + B.s - ins * 0.9, B.y + B.s - ins * 0.9]]) { g.fillStyle = '#ff9b7a'; g.beginPath(); for (let a = 0; a < 10; a++) { const r0 = a % 2 ? sc * 0.4 : sc, an = a * Math.PI / 5 - Math.PI / 2; g.lineTo(fx2 + Math.cos(an) * r0, fy2 + Math.sin(an) * r0); } g.fill(); }
   } else {
-    g.fillStyle = 'rgba(110,70,20,.28)'; rr(g, B.x + 2, B.y + 5, B.s, B.s, 14); g.fill();
-    const wd = g.createLinearGradient(B.x, B.y, B.x + B.s, B.y + B.s); wd.addColorStop(0, '#f8dc9e'); wd.addColorStop(1, '#ebbf6e');
-    g.fillStyle = wd; rr(g, B.x, B.y, B.s, B.s, 14); g.fill();
-    g.save(); rr(g, B.x, B.y, B.s, B.s, 14); g.clip();
+    // five-in-a-row: a thick wooden board on the little table
+    g.fillStyle = 'rgba(80,40,10,.32)'; rr(g, B.x + 3, B.y + 8, B.s, B.s, 18); g.fill();
+    const fr = g.createLinearGradient(B.x, B.y, B.x + B.s, B.y + B.s); fr.addColorStop(0, '#c98b4a'); fr.addColorStop(1, '#8a5424');
+    g.fillStyle = fr; rr(g, B.x, B.y, B.s, B.s, 18); g.fill(); g.strokeStyle = '#6a3c14'; g.lineWidth = 3; g.stroke();
+    const ins = (gx - B.x) * 0.45;
+    const wd = g.createLinearGradient(B.x, B.y, B.x + B.s, B.y + B.s); wd.addColorStop(0, '#fbe3a8'); wd.addColorStop(1, '#ebbf6e');
+    g.fillStyle = wd; rr(g, B.x + ins, B.y + ins, B.s - 2 * ins, B.s - 2 * ins, 10); g.fill();
+    g.save(); rr(g, B.x + ins, B.y + ins, B.s - 2 * ins, B.s - 2 * ins, 10); g.clip();
     g.strokeStyle = 'rgba(170,110,40,.13)'; g.lineWidth = 2;
-    for (let k = 0; k < 16; k++) { const yy = B.y + (k + 0.5) * B.s / 16; g.beginPath(); g.moveTo(B.x, yy); g.bezierCurveTo(B.x + B.s * 0.3, yy - 6, B.x + B.s * 0.6, yy + 7, B.x + B.s, yy - 2); g.stroke(); }
+    for (let k = 0; k < 18; k++) { const yy = B.y + (k + 0.5) * B.s / 18; g.beginPath(); g.moveTo(B.x, yy); g.bezierCurveTo(B.x + B.s * 0.3, yy - 6, B.x + B.s * 0.6, yy + 7, B.x + B.s, yy - 2); g.stroke(); }
     g.restore();
-    g.strokeStyle = '#a4702e'; g.lineWidth = 3; rr(g, B.x, B.y, B.s, B.s, 14); g.stroke();
+    g.strokeStyle = 'rgba(255,240,200,.6)'; g.lineWidth = 2; rr(g, B.x + 3, B.y + 3, B.s - 6, B.s - 6, 16); g.stroke();
     const a0 = gx + cs / 2, a1 = gx + (N - 0.5) * cs, b0 = gy + cs / 2, b1 = gy + (N - 0.5) * cs;
     g.strokeStyle = '#9b6a2f'; g.lineWidth = Math.max(1.2, cs * 0.045);
     for (let k = 0; k < N; k++) { const q = gx + (k + 0.5) * cs; g.beginPath(); g.moveTo(q, b0); g.lineTo(q, b1); g.stroke(); const yy = gy + (k + 0.5) * cs; g.beginPath(); g.moveTo(a0, yy); g.lineTo(a1, yy); g.stroke(); }
@@ -771,9 +982,15 @@ function buildLayer() {
     g.fillStyle = '#7a4f1c';
     for (const r of st) for (const c of st) if ((r === st[1]) === (c === st[1]) || N === 15) dot(g, gx + (c + 0.5) * cs, gy + (r + 0.5) * cs, Math.max(2.5, cs * 0.1));
   }
-  // panel card
-  g.fillStyle = 'rgba(255,255,255,.72)'; rr(g, P.x, P.y, P.w, P.h, 16); g.fill();
-  g.strokeStyle = '#9cc8ee'; g.lineWidth = 2.5; g.stroke();
+  void th;
+}
+// ---------- static layer: scene + board ----------
+function buildLayer() {
+  const px = cv._mgScale || 1;
+  layer = document.createElement('canvas'); layer.width = Math.round(W * px); layer.height = Math.round(H * px);
+  const g = layer.getContext('2d'); g.scale(px, px);
+  drawScene(g);
+  drawBoardBase(g);
   layerKey = `${W}x${H}:${px}:${gid}`;
 }
 
@@ -819,6 +1036,9 @@ function startThink() {
 // ---------- moves ----------
 function snap() { return { b: board.slice(), turn, last, moveNo }; }
 function say(text, sec = 2, who = 0) { sayMsg = { text, until: clock + sec, who }; }
+// 嘟嘟（電腦）的表情：mood 會維持一小段時間
+let robo = { mood: 'happy', until: 0 };
+function roboMood(m, sec = 1.6) { robo = { mood: m, until: clock + sec }; }
 function doMove(i) {
   hist.push(snap());
   hint = null; ghost = -1; hover = -1;
@@ -835,9 +1055,11 @@ function doMove(i) {
   last = i; moveNo++; lastFlipN = flips.length;
   MG.sfx('place');
   busyUntil = clock + (kind === 'rv' ? 0.22 + flips.length * 0.085 + 0.36 : kind === 'c4' ? 0.2 + 0.06 * ((i / N) | 0) + 0.25 : 0.3);
-  if (kind === 'rv' && flips.length >= 4) say(vsCpu && p === cpuColor() ? `Oh no! −${flips.length} 😵` : `Wow! +${flips.length} ✨`, 1.8, vsCpu && p === cpuColor() ? human : p);
+  const cpuMoved = vsCpu && p === cpuColor();
+  if (kind === 'rv' && flips.length >= 4 && !puz) say(cpuMoved ? `Oh no! −${flips.length} 😵` : `Wow! +${flips.length} ✨`, 1.8, cpuMoved ? human : p);
+  if (vsCpu) { if (cpuMoved) roboMood(flips.length >= 4 ? 'laugh' : 'happy', 1.4); else if (flips.length >= 3) roboMood('wow', 1.6); }
   // a juicy chime once the last stone has flipped (only for the player's own good moves)
-  if (kind === 'rv' && flips.length >= 2 && !(vsCpu && p === cpuColor())) anims.get(flips[flips.length - 1]).big = flips.length;
+  if (kind === 'rv' && flips.length >= 2 && !cpuMoved) anims.get(flips[flips.length - 1]).big = flips.length;
   if (lnKind()) {
     if (LG.lnWinAt(board, N, NR, i, p, KW)) { winLine = LG.lnWinLine(board, N, NR, i, KW); return finish(p); }
     if (!board.includes(0)) return finish(0);
@@ -855,17 +1077,21 @@ function doMove(i) {
   hud();
 }
 function finish(w) {
-  result = { w, cel: false, at: busyUntil + 1.6, shown: false };
+  result = { w, cel: false, at: busyUntil + (puz ? 1.3 : 1.6), shown: false };
   turn = 0; hud();
 }
 function celebrate() {
   result.cel = true;
   const w = result.w;
-  if (vsCpu && w && w !== human) MG.sfx('over'); else { MG.sfx('win'); MG.sfx('yay'); }
-  const cols = ['#ff8ac2', '#ffd23f', '#8fd0ff', '#b8f5a0', '#fff'];
+  const lost = vsCpu && w && w !== human;
+  if (lost) MG.sfx('over'); else { MG.sfx('win'); MG.sfx('yay'); }
+  if (vsCpu) roboMood(lost ? 'laugh' : w ? 'dizzy' : 'happy', 9);
+  const cols = CONF[theme()];
   if (winLine) for (const j of winLine) { const c = cellXY(j); MG.fx.burst(c.x, c.y, { n: 10, colors: cols, speed: 200, up: 80, size: 5, shape: 'star', life: 0.9 }); }
   else for (let k = 0; k < 5; k++) MG.fx.burst(BRD.x + BRD.s * (0.15 + k * 0.175), BRD.y + BRD.s * 0.35, { n: 18, colors: cols, speed: 240, up: 140, size: 5, shape: 'sq', life: 1.1 });
-  banner = { text: w ? (vsCpu ? (w === human ? 'You win! 🏆' : '🤖 wins') : `${EN[w]} wins! 🏆`) : 'Draw! 🤝', t0: clock, life: 1.8, col: w ? PAL[w].ui : '#3a6fd8' };
+  if (!lost && stage) MG.fx.burst(stage.x + stage.w * 0.27, feet - stage.h * 0.4, { n: 16, colors: cols, speed: 220, up: 160, size: 5, shape: 'star', life: 1.0 });
+  const txt0 = puz ? MG.praise(puz.miss ? 2 : 3) : w ? (vsCpu ? (w === human ? 'You win! 🏆' : '🤖 wins') : `${EN[w]} wins! 🏆`) : 'Draw! 🤝';
+  banner = { text: txt0, t0: clock, life: 1.8, col: w ? PAL[w].ui : '#3a6fd8' };
 }
 function undo() {
   if (!canUndo()) return;
@@ -875,10 +1101,12 @@ function undo() {
   board = s.b; turn = s.turn; last = s.last; moveNo = s.moveNo; winLine = null;
   MG.sfx('flip'); MG.sfx('whoosh'); say('Undo ↩️', 1.6, turn); hud();
 }
-const canUndo = () => state === 'play' && !result && hist.length > 0 && (!vsCpu || hist.some(s => s.turn === human));
+const canUndo = () => !puz && state === 'play' && !result && hist.length > 0 && (!vsCpu || hist.some(s => s.turn === human));
 function giveHint() {
   if (!humanTurn()) return;
-  const m = LG.aiMove(kind, board, N, turn, 3, aiOpts({ time: 160 }));
+  let m;
+  if (puz) { if (!puz.sols.size) return; m = [...puz.sols][0]; puz.hints++; }
+  else m = LG.aiMove(kind, board, N, turn, 3, aiOpts({ time: 160 }));
   if (m < 0) return;
   hint = { cell: m, t0: clock };
   MG.sfx('good'); MG.sfx('sparkle'); say('Try here 💡', 2.2, turn);
@@ -887,6 +1115,19 @@ function toggleDots() {
   showDots = !showDots; MG.store.set('chess.dots', showDots);
   MG.toast(showDots ? '👀 • On' : '👀 Off', 1100);
 }
+
+// ---------- 提示：簡單模式和兩人模式，停一下就會看到「這裡可以贏 ⭐」和「小心這裡 ❗」 ----------
+let lastInput = 0, turnKey = -1, turnT0 = 0, cues = null;
+function lineWinsFor(p) {
+  if (kind === 'rv') return [];
+  const ms = kind === 'gk' ? LG.gkCands(board, N, 1) : LG.lnMoves(kind, board, N, NR);
+  return ms.filter(m => kind === 'gk' ? LG.gkWinAt(board, N, m, p) : (board[m] = p, (() => { const w = LG.lnWinAt(board, N, NR, m, p, KW); board[m] = 0; return w; })()));
+}
+function getCues() {
+  if (!cues || cues.key !== moveNo + ':' + turn) cues = { key: moveNo + ':' + turn, mine: lineWinsFor(turn), theirs: lineWinsFor(3 - turn) };
+  return cues;
+}
+const cueOn = () => !puz && (!vsCpu || level === 1) && kind !== 'rv' && humanTurn() && clock - Math.max(turnT0, lastInput) > 2.5;
 
 // ---------- input ----------
 function cellAt(p) {
@@ -909,11 +1150,12 @@ function pressBtn(b) {
 cv.addEventListener('pointerdown', e => {
   if (MG.panelOpen()) return;
   e.preventDefault(); MG.unlock();
+  lastInput = clock;
   const p = cv.logical(e);
   if (state !== 'play') return;
   const b = btnAt(p);
   if (b) { pressBtn(b); return; }
-  if (!humanTurn()) { if (think && cellAt(p) >= 0) say('Thinking… 🤔', 1.2, cpuColor()); return; }
+  if (!humanTurn()) { if ((think || (puz && puz.reply)) && cellAt(p) >= 0) say('Thinking… 🤔', 1.2, cpuColor()); return; }
   const i = target(cellAt(p));
   if (i < 0) return;
   press = { id: e.pointerId, cell: i };
@@ -931,6 +1173,7 @@ cv.addEventListener('pointermove', e => {
 cv.addEventListener('pointerup', e => {
   if (!press || press.id !== e.pointerId) return;
   const i = press.cell; press = null;
+  lastInput = clock;
   if (e.pointerType !== 'mouse') hover = -1;
   if (!humanTurn() || i < 0) return;
   if (!legal(i)) {
@@ -938,7 +1181,7 @@ cv.addEventListener('pointerup', e => {
     return;
   }
   if (needConfirm(e.pointerType) && ghost !== i) { ghost = i; MG.sfx('tick'); return; }
-  doMove(i);
+  if (puz) puzTap(i); else doMove(i);
 });
 const ptrCancel = () => { press = null; hover = -1; };
 cv.addEventListener('pointercancel', ptrCancel);
@@ -956,10 +1199,15 @@ function update(dt) {
   MG.fx.step(dt);
   pressT = Math.max(0, pressT - dt);
   for (const [j, a] of anims) {
-    if (a.type === 'flip' && !a.snd && clock >= a.t0) { a.snd = true; MG.sfx('flip'); if (a.big) { MG.sfx('match', a.big - 1); if (a.big >= 6) MG.sfx('combo', a.big); } }
-    if (clock > a.t0 + 0.6) anims.delete(j);
+    if (a.type === 'flip' && !a.snd && clock >= a.t0) {
+      a.snd = true; MG.sfx('flip');
+      if (a.big) { MG.sfx('match', a.big - 1); if (a.big >= 6) MG.sfx('combo', a.big); }
+      const c = cellXY(j); MG.fx.burst(c.x, c.y, { n: 5, colors: [PAL[a.to].a, '#fff', '#ffe66b'], speed: 110, up: 40, size: 3, shape: 'star', life: 0.5 });
+    }
+    if (clock > a.t0 + (a.type === 'flip' ? 1.2 : 0.6)) anims.delete(j);
   }
   if (state !== 'play') return;
+  if (humanTurn() && turnKey !== moveNo) { turnKey = moveNo; turnT0 = clock; }
   if (passNote && clock >= passNote.at) {
     const w = passNote.who; passNote = null;
     const msg = vsCpu ? (w === human ? 'Pass ⏭️' : '🤖 Pass ⏭️') : `${DOT[w]} Pass ⏭️`;
@@ -968,16 +1216,299 @@ function update(dt) {
   }
   if (result) {
     if (!result.cel && clock >= busyUntil) celebrate();
-    if (!result.shown && clock >= result.at) { result.shown = true; showOver(); }
+    if (!result.shown && clock >= result.at) { result.shown = true; if (puz) puzCleared(); else showOver(); }
     return;
   }
+  if (puz) { puzUpdate(); return; }
   if (vsCpu && turn === cpuColor() && !isBusy() && !MG.panelOpen()) {
     if (!think) startThink();
     else if (think.move != null && clock >= think.t0 + think.minT) { const m = think.move; think = null; if (m >= 0) doMove(m); }
   }
 }
 
+// ======================================================================
+// 🧩 下棋小謎題（36 關）：G = 你（綠色），P = 嘟嘟（粉色），. = 空格；棋盤由上往下一列一列寫，用 / 分開。
+// t：win1 一步就贏、block 擋住它、flip 翻最多（黑白棋）、win2 兩步就贏；mix = 一關裡有好幾題（大挑戰）
+// 只能往後加，不要改順序或刪掉（存檔的星星是照關卡號碼記的）
+// ======================================================================
+const PUZ = [
+  /* 1 */ { t: 'win1', g: 't3', b: 'GG./.P./..P' },
+  /* 2 */ { t: 'win1', g: 't3', b: 'G.P/G.P/.P.' },
+  /* 3 */ { t: 'win1', g: 't3', b: 'P.G/.G./..P' },
+  /* 4 */ { t: 'win1', g: 'c4', b: '......./......./......./...G.../...GP../..PGP..' },
+  /* 5 */ { t: 'block', g: 't3', b: 'PP./.G./...' },
+  /* 6 */ { t: 'flip', g: 'r4', b: 'GPP./.P../..../....' },
+  /* 7 */ { t: 'win1', g: 'c4', b: '......./......./......./......./..P..../.GGG.P.' },
+  /* 8 */ { t: 'block', g: 't3', b: 'P../.PG/G..' },
+  /* 9 */ { t: 'win1', g: 'g9', b: '........./........./......P../..P....../.PGGGG.../...P...../........./........./.........' },
+  /* 10 */ { t: 'flip', g: 'r6', b: '....../.PPPG./..G.../....../....../......' },
+  /* 11 */ { t: 'block', g: 'c4', b: '......./......./......./.....P./....GP./...GGP.' },
+  /* 12 */ { t: 'win1', g: 't3', b: 'P.P/.GP/GG.' },
+  /* 13 */ { t: 'win1', g: 'c4', b: '......./......./......./......./.GGG.../PPPGP..' },
+  /* 14 */ { t: 'block', g: 'g9', b: '........./........./...G...../...P...../...P.G.../...P...../...P...../......G../.........' },
+  /* 15 */ { t: 'flip', g: 'r6', b: 'G.G.../.PPG../GP..../....../....../......' },
+  /* 16 */ { t: 'win2', g: 't3', b: 'G../.P./..G' },
+  /* 17 */ { t: 'block', g: 'c4', b: '......./......./......./......./...G.../GPPP.G.' },
+  /* 18 */ { t: 'win1', g: 'g9', b: '........./....G..../....G..../...P.P.../....G..../....G..../...P...../.....P.../.........' },
+  /* 19 */ { t: 'win1', g: 'c4', b: '......./......./......./..GP.../.GPP.../GPPG...' },
+  /* 20 */ { t: 'flip', g: 'r8', b: '.PPPPPG./P......./P......./G......./...GPPP./......../......../........' },
+  /* 21 */ { t: 'block', g: 't3', b: 'GP./.P./..G' },
+  /* 22 */ { t: 'win2', g: 'c4', b: '......./......./......./......./..PP.../..GG...' },
+  /* 23 */ { t: 'win2', g: 'g9', b: '........./........./....P..../........./...GGG.../....P..../........./........./.........' },
+  /* 24 */ { t: 'block', g: 'c4', b: '......./......./......./...PG../..PGP../.PGGP..' },
+  /* 25 */ { t: 'win1', g: 't4', b: 'P..G/.P../.G../P..P' },
+  /* 26 */ { t: 'flip', g: 'r8', b: '....P.../....P.../..PGPPP./..GGP.../...PG.../..P..G../......../........' },
+  /* 27 */ { t: 'block', g: 'g9', b: '........./.G......./..P....../...P...G./.G......./.....P.../......P../..G....../.........' },
+  /* 28 */ { t: 'win2', g: 't3', b: 'G.P/.P./..G' },
+  /* 29 */ { t: 'win2', g: 't4', b: '..../.G../..P./....' },
+  /* 30 */ { t: 'win2', g: 'c4', b: '......./......./......./......./..GG.../PGPPGPG' },
+  /* 31 */ { t: 'win2', g: 'g9', b: '....P..../....G..../....G..../....G..../PGGG...../........./..P...P../........./.........' },
+  /* 32 */ { t: 'flip', g: 'r8', b: '..P...../..P...../..P...../..PPG.G./..PGGGP./..GPGP../..GPPG../.....GP.' },
+  /* 33 */ { mix: [{ t: 'win1', g: 't3', b: '.P./GG./.P.' }, { t: 'block', g: 'c4', b: '......./......./......./......./..G.G../.PPPG..' }, { t: 'flip', g: 'r6', b: 'P...../GPPP../.GGP../..GP../....../......' }] },
+  /* 34 */ { mix: [{ t: 'block', g: 'g9', b: '........./........./..G....../...P...../....P..../.....P.../......P../....G..../.........' }, { t: 'win2', g: 't3', b: '..G/.P./G..' }, { t: 'win1', g: 'c4', b: '......./......./......./....G../..PPG../.PGGG.P' }] },
+  /* 35 */ { mix: [{ t: 'flip', g: 'r8', b: '....G.../.P.G..../..PP.G../...PPG../.GGPPGG./...PP.../.....P../........' }, { t: 'win2', g: 'c4', b: '......./......./......./......./..PP.../P.GG..P' }, { t: 'win2', g: 'g9', b: '........./........./..P....../...GGG.../........./........./....P..../........./.........' }] },
+  /* 36 */ { mix: [{ t: 'win2', g: 't3', b: 'P.G/.P./G..' }, { t: 'block', g: 'g9', b: '........./.P......./.PP.PP.../........./....G..../...G...../........./........./.........' }, { t: 'win2', g: 'g9', b: '........./........./..P....../........./.....GGGP/....G..../....G..../....G..../....P....' }, { t: 'win1', g: 'c4', b: '......./......./......./..G..../..GP.../PPGP...' }] },
+];
+const PT = {   // 每種題目：一次性的中文說明、圖示、遊戲中的英文提示
+  win1: { ic: '🎯', name: '一步就贏', say: 'Make a line! 🎯', intro: '找一個格子，下下去就能<b>連成一排</b>！看看哪裡只差一顆？<br>（井字遊戲連 3 個、四子棋連 4 個、五子棋連 5 個）' },
+  block: { ic: '🛡️', name: '擋住它', say: 'Block it! 🛡️', intro: '小心！機器人<b>嘟嘟</b>快要連成一排了。把你的棋子放在它<b>缺的那一格</b>，擋住它！' },
+  flip: { ic: '🔄', name: '翻最多', say: 'Flip the most! 🔄', intro: '黑白棋：把粉紅棋子夾在中間就會翻成綠色。找出能<b>翻最多顆</b>的地方！<br>手指按著格子不放，會看到「+幾」。' },
+  win2: { ic: '✌️', name: '兩步就贏', say: 'Win in 2! ✌️', intro: '先下一顆，做出<b>兩個</b>「只差一顆就贏」的地方。嘟嘟只能擋一個，下一步你就贏了！' },
+  mix: { ic: '👑', name: '大挑戰', say: '', intro: '一關裡面有<b>好幾題</b>：不同的棋、不同的玩法，全部答對就過關！上面的小圓點是第幾題。' },
+};
+const puzStages = n => PUZ[n - 1].mix || [PUZ[n - 1]];
+const puzType = n => PUZ[n - 1].mix ? 'mix' : PUZ[n - 1].t;
+const puzStars = () => MG.store.get('chess.puz', {}) || {};
+
+function puzBoard(st) {
+  setBoardType(st.g);
+  const rows = st.b.split('/'), b = new Int8Array(N * NR);
+  rows.forEach((row, r) => [...row].forEach((ch, c) => { if (c < N && r < NR) b[r * N + c] = ch === 'G' ? 1 : ch === 'P' ? 2 : 0; }));
+  return b;
+}
+function pMoves(b, p) {
+  if (kind === 'rv') return LG.rvMoves(b, N, p);
+  if (lnKind()) return LG.lnMoves(kind, b, N, NR);
+  const o = []; for (let i = 0; i < b.length; i++) if (!b[i]) o.push(i); return o;
+}
+function pWins(b, m, p) {
+  if (kind === 'rv') return false;
+  const v = b[m]; b[m] = p;
+  const w = kind === 'gk' ? LG.gkWinAt(b, N, m, p) : LG.lnWinAt(b, N, NR, m, p, KW);
+  b[m] = v; return w;
+}
+// all the right answers for this board (the player is always green = 1)
+function puzSolve(b, t) {
+  const ms = pMoves(b, 1);
+  if (t === 'flip') { const f = ms.map(m => LG.rvFlips(b, N, m, 1).length), best = Math.max(0, ...f); return ms.filter((m, k) => f[k] === best && best > 0); }
+  if (t === 'win1') return ms.filter(m => pWins(b, m, 1));
+  if (t === 'block') return ms.filter(m => { b[m] = 1; const ok = !pMoves(b, 2).some(r => pWins(b, r, 2)); b[m] = 0; return ok; });
+  if (t === 'win2') return ms.filter(m => {
+    if (pWins(b, m, 1)) return false;
+    b[m] = 1;
+    const rs = pMoves(b, 2);
+    const ok = rs.length > 0 && rs.every(r => { if (pWins(b, r, 2)) return false; b[r] = 2; const w = pMoves(b, 1).some(m2 => pWins(b, m2, 1)); b[r] = 0; return w; });
+    b[m] = 0; return ok;
+  });
+  return [];
+}
+// the stones that belong to the answer (they wiggle when the child is stuck)
+function puzRelated(b, t, sols) {
+  const s = sols[0]; if (s == null) return [];
+  if (t === 'flip') return LG.rvFlips(b, N, s, 1);
+  const lineOf = (cell, p) => { const v = b[cell]; b[cell] = p; const L = kind === 'gk' ? LG.gkWinLine(b, N, cell) : LG.lnWinLine(b, N, NR, cell, KW); b[cell] = v; return (L || []).filter(j => j !== cell); };
+  if (t === 'win1') return lineOf(s, 1);
+  if (t === 'block') { const th = pMoves(b, 2).find(r => pWins(b, r, 2)); return th == null ? [] : lineOf(th, 2); }
+  return [];
+}
+// a check of every level (used by the tests): each stage must have answers and be the kind of puzzle it says
+function puzCheck() {
+  const keep = gid, out = [];
+  PUZ.forEach((L, k) => (L.mix || [L]).forEach((st, si) => {
+    const b = puzBoard(st), e = [];
+    if (st.b.split('/').length !== NR || st.b.split('/').some(r => r.length !== N)) e.push('size');
+    if (st.t === 'flip' && kind !== 'rv') e.push('flip needs 黑白棋');
+    if (kind === 'c4') for (let i = 0; i < N * (NR - 1); i++) if (b[i] && !b[i + N]) e.push('floating stone');
+    const mw = kind === 'rv' ? 0 : pMoves(b, 1).filter(m => pWins(b, m, 1)).length;
+    const ow = kind === 'rv' ? 0 : pMoves(b, 2).filter(m => pWins(b, m, 2)).length;
+    if (st.t === 'block' && (!ow || mw)) e.push(`block: they win ${ow}, you win ${mw}`);
+    if (st.t === 'win2' && mw) e.push(`win2: you can already win (${mw})`);   // 嘟嘟快贏的 win2 = 先擋住、同時做出兩個機會
+    const sols = puzSolve(b, st.t), all = pMoves(b, 1).length;
+    if (!sols.length) e.push('no answer');
+    out.push({ lv: k + 1, stage: si + 1, t: st.t, g: st.g, sols, all, err: e });
+  }));
+  setBoardType(keep);
+  return out;
+}
+function puzStart(lv) {
+  lv = clamp(lv | 0, 1, PUZ.length);
+  puz = { lv, stages: puzStages(lv), si: 0, miss: 0, hints: 0 };
+  vsCpu = true; human = 1; level = 1; mode = 'puz';
+  MG.store.set('chess.pickLevel', lv);
+  puzStage();
+}
+function puzStage() {
+  const st = puz.stages[puz.si];
+  token++; think = null; result = null; winLine = null; anims.clear(); hist = []; moveNo = 0; last = -1;
+  hint = null; ghost = -1; hover = -1; press = null; passNote = null; sayMsg = null; banner = null; lastFlipN = 0;
+  MG.fx.clear();
+  board = puzBoard(st);
+  Object.assign(puz, { st, phase: st.t, wrong: null, reply: null, t0: clock, solved: false });
+  puz.sols = new Set(puzSolve(board, st.t));
+  puz.rel = puzRelated(board, st.t, [...puz.sols]);
+  turn = 1; state = 'play'; busyUntil = clock + 0.45; lastInput = clock;
+  roboMood('happy', 0);
+  layout(); MG.hide(); hud();
+  say(PT[st.t].say, 3, 1);
+  if (puz.stages.length > 1) banner = { text: `${puz.si + 1} / ${puz.stages.length}`, t0: clock, life: 1.3, col: THEME_INK[theme()] };
+  // a new kind of puzzle: explain it once
+  const show = [];
+  if (puz.si === 0 && puz.stages.length > 1) show.push('mix');
+  show.push(st.t);
+  const todo = show.filter(k => !MG.store.get('chess.seen.' + k, false));
+  if (todo.length) {
+    todo.forEach(k => MG.store.set('chess.seen.' + k, true));
+    busyUntil = clock + 0.8;
+    MG.panel({ title: todo.map(k => `${PT[k].ic} ${PT[k].name}`).join('＋'), html: todo.map(k => `<p>${PT[k].intro}</p>`).join(''), buttons: [{ label: '開始', on: () => { MG.hide(); busyUntil = Math.max(busyUntil, clock + 0.4); lastInput = clock; } }] });
+  }
+}
+function puzTap(i) {
+  if (!puz.sols.has(i)) {
+    // not this one: the stone hops in, shakes its head and goes away again (nothing is lost)
+    puz.miss++; puz.wrong = { cell: i, t0: clock, col: 1 };
+    MG.sfx('miss'); roboMood('laugh', 1.2);
+    say(puz.miss >= 2 ? 'Look! 👀 💡' : 'Oops 💦 Try again!', 1.8, 1);
+    busyUntil = clock + 0.85;
+    if (puz.miss >= 2 && !hint) { const m = [...puz.sols][0]; hint = { cell: m, t0: clock + 0.85 }; }
+    return;
+  }
+  const t = puz.phase;
+  doMove(i);
+  passNote = null;
+  if (t === 'win2') {
+    // 嘟嘟 blocks one of the two ways … but there is still the other one
+    turn = 2; puz.phase = 'win1';
+    const wins = pMoves(board, 1).filter(m => pWins(board, m, 1));
+    const reply = wins.length ? MG.pick(wins) : pMoves(board, 2)[0];
+    puz.reply = { cell: reply, at: busyUntil + 0.9 };
+    roboMood('think', 3); MG.sfx('good');
+    say('Nice! ✨', 1.2, 1);
+    return;
+  }
+  if (result) { result.w = 1; return; }
+  turn = 0; puz.solved = true;
+  if (t === 'block') { roboMood('wow', 3); say('Blocked! 🛡️', 2, 1); }
+  else if (t === 'flip') roboMood('dizzy', 3);
+  result = { w: 1, cel: false, at: busyUntil + 1.3, shown: false };
+  hud();
+}
+function puzUpdate() {
+  if (puz.reply && clock >= puz.reply.at && !isBusy()) {
+    const r = puz.reply.cell; puz.reply = null;
+    turn = 2; doMove(r); turn = 1;
+    puz.sols = new Set(puzSolve(board, 'win1'));
+    puz.rel = puzRelated(board, 'win1', [...puz.sols]);
+    puz.t0 = clock; lastInput = clock;
+    roboMood('happy', 0); say('Your turn! 🎯', 2.2, 1);
+  }
+}
+function puzCleared() {
+  if (puz.si < puz.stages.length - 1) { puz.si++; MG.sfx('good'); puzStage(); return; }
+  state = 'over';
+  const lv = puz.lv, stars = puz.miss + puz.hints === 0 ? 3 : puz.miss + puz.hints <= 2 ? 2 : 1;
+  const all = puzStars(), old = all[lv] || 0;
+  if (stars > old) { all[lv] = stars; MG.store.set('chess.puz', all); }
+  const done = Object.keys(puzStars()).length;
+  if (lv < PUZ.length) MG.store.set('chess.pickLevel', lv + 1);
+  const st = '⭐'.repeat(stars) + '<span style="opacity:.3">' + '⭐'.repeat(3 - stars) + '</span>';
+  const next = lv < PUZ.length ? puzType(lv + 1) : null;
+  MG.panel({
+    title: lv === PUZ.length ? '全部破關！👑' : `第 ${lv} 關 過關！🎉`,
+    html: `<div class="ch-score">${st}</div>` + (stars < 3 ? '<p>不用提示、一次就對，可以拿到三顆星喔！</p>' : '<p>一次就答對，好厲害！</p>') +
+      (next ? `<p>下一關：${PT[next].ic} ${PT[next].name}</p>` : '<p>36 關都完成了，你是下棋小高手！</p>') + `<p class="ch-small">已經過了 ${done} / ${PUZ.length} 關</p>`,
+    buttons: [
+      ...(lv < PUZ.length ? [{ label: '下一關 ▶', on: () => puzStart(lv + 1) }] : []),
+      { label: '再玩一次', alt: true, on: () => puzStart(lv) },
+      { label: '選關卡', alt: true, on: menu },
+    ],
+  });
+}
+
+// ======================================================================
+// 機器人「嘟嘟」：電腦對手。螢幕臉會換表情（開心、想一想、哇、哈哈、頭暈暈）
+// ======================================================================
+function drawRobot(cx, fy, h, mood, o = {}) {
+  const r = h / 3.1, g = x;
+  g.save(); g.translate(cx, fy);
+  g.fillStyle = 'rgba(30,20,60,.2)'; g.beginPath(); g.ellipse(0, 0, r * 1.05, r * 0.2, 0, 0, 7); g.fill();
+  g.translate(0, -(o.hop || 0));
+  g.rotate(o.tilt || 0);
+  const ol = '#9a2f5d';
+  g.lineWidth = Math.max(1.5, r * 0.07); g.strokeStyle = ol; g.lineJoin = 'round'; g.lineCap = 'round';
+  // feet
+  g.fillStyle = '#e6e1f5';
+  for (const sd of [-1, 1]) { rr(g, sd * r * 0.42 - r * 0.25, -r * 0.24, r * 0.5, r * 0.24, r * 0.1); g.fill(); g.stroke(); }
+  // arms
+  const up = o.arms === 'up', wave = o.wave || 0;
+  for (const sd of [-1, 1]) {
+    g.save(); g.translate(sd * r * 0.7, -r * 0.8); g.rotate(sd * (up ? -2.3 : 0.35) + (sd > 0 ? wave : 0));
+    g.strokeStyle = '#b8b0d8'; g.lineWidth = r * 0.14; g.beginPath(); g.moveTo(0, 0); g.lineTo(0, r * 0.45); g.stroke();
+    g.fillStyle = '#ffb3cf'; g.strokeStyle = ol; g.lineWidth = Math.max(1.5, r * 0.06); dot(g, 0, r * 0.52, r * 0.15); g.beginPath(); g.arc(0, r * 0.52, r * 0.15, 0, 7); g.stroke();
+    g.restore();
+  }
+  // body
+  const bg2 = g.createLinearGradient(-r, -r * 1.1, r, -r * 0.2); bg2.addColorStop(0, '#ffe0ee'); bg2.addColorStop(1, '#f48fb8');
+  g.fillStyle = bg2; g.strokeStyle = ol; g.lineWidth = Math.max(1.5, r * 0.07);
+  rr(g, -r * 0.72, -r * 1.12, r * 1.44, r * 0.95, r * 0.3); g.fill(); g.stroke();
+  const beat = 1 + 0.12 * Math.max(0, Math.sin(t * 5));
+  g.fillStyle = '#ff4f8b'; g.save(); g.translate(0, -r * 0.66); g.scale(beat * r * 0.012, beat * r * 0.012);
+  g.beginPath(); g.moveTo(0, 6); g.bezierCurveTo(-14, -4, -8, -14, 0, -6); g.bezierCurveTo(8, -14, 14, -4, 0, 6); g.fill(); g.restore();
+  // neck + head
+  g.fillStyle = '#c9c1e8'; g.fillRect(-r * 0.18, -r * 1.25, r * 0.36, r * 0.16);
+  const hy = -r * 2.75, hh = r * 1.55, hw = r * 2.0;
+  for (const sd of [-1, 1]) { g.fillStyle = '#e6e1f5'; rr(g, sd * hw / 2 - (sd > 0 ? 0 : r * 0.2), hy + hh * 0.3, r * 0.2, hh * 0.4, r * 0.08); g.fill(); g.stroke(); }
+  const hg = g.createLinearGradient(-hw / 2, hy, hw / 2, hy + hh); hg.addColorStop(0, '#fff0f6'); hg.addColorStop(0.5, '#ffc2dc'); hg.addColorStop(1, '#f07aaa');
+  g.fillStyle = hg; rr(g, -hw / 2, hy, hw, hh, r * 0.5); g.fill(); g.stroke();
+  g.fillStyle = 'rgba(255,255,255,.7)'; g.beginPath(); g.ellipse(-hw * 0.3, hy + hh * 0.13, r * 0.25, r * 0.08, -0.3, 0, 7); g.fill();
+  // antenna with a blinking light
+  g.strokeStyle = ol; g.lineWidth = Math.max(1.5, r * 0.07); g.beginPath(); g.moveTo(0, hy); g.quadraticCurveTo(r * 0.05, hy - r * 0.3, r * 0.1, hy - r * 0.42); g.stroke();
+  const glow = mood === 'think' ? 0.5 + 0.5 * Math.sin(t * 10) : 0.6 + 0.4 * Math.sin(t * 3);
+  g.fillStyle = `rgba(255,230,100,${0.35 * glow})`; dot(g, r * 0.1, hy - r * 0.5, r * 0.26);
+  g.fillStyle = '#ffd84a'; dot(g, r * 0.1, hy - r * 0.5, r * 0.13); g.beginPath(); g.arc(r * 0.1, hy - r * 0.5, r * 0.13, 0, 7); g.stroke();
+  // the screen face
+  const sw = hw * 0.76, sh = hh * 0.66, sx = -sw / 2, sy = hy + hh * 0.17;
+  const sg = g.createLinearGradient(0, sy, 0, sy + sh); sg.addColorStop(0, '#2e2660'); sg.addColorStop(1, '#3f3480');
+  g.fillStyle = sg; rr(g, sx, sy, sw, sh, r * 0.3); g.fill(); g.strokeStyle = '#7a52d0'; g.lineWidth = Math.max(1, r * 0.05); g.stroke();
+  g.fillStyle = 'rgba(255,255,255,.12)'; g.beginPath(); g.ellipse(sx + sw * 0.28, sy + sh * 0.2, sw * 0.2, sh * 0.08, -0.2, 0, 7); g.fill();
+  const led = '#8ff6ff', ecy = sy + sh * 0.42, ex = sw * 0.24, look = (o.look || 0) * r * 0.08;
+  g.strokeStyle = led; g.fillStyle = led; g.lineWidth = Math.max(1.5, r * 0.09); g.lineCap = 'round';
+  const blink = mood === 'happy' && (t % 3.3) < 0.13;
+  if (mood === 'laugh' || mood === 'love') {
+    for (const sd of [-1, 1]) { g.beginPath(); g.arc(sd * ex, ecy + r * 0.06, r * 0.13, Math.PI * 1.15, Math.PI * 1.85); g.stroke(); }
+    g.beginPath(); g.moveTo(-r * 0.24, sy + sh * 0.62); g.quadraticCurveTo(0, sy + sh * 0.98, r * 0.24, sy + sh * 0.62); g.closePath(); g.fill();
+  } else if (mood === 'wow') {
+    for (const sd of [-1, 1]) { g.beginPath(); g.arc(sd * ex, ecy, r * 0.15, 0, 7); g.stroke(); dot(g, sd * ex, ecy, r * 0.06); }
+    g.beginPath(); g.ellipse(0, sy + sh * 0.75, r * 0.1, r * 0.12, 0, 0, 7); g.stroke();
+  } else if (mood === 'dizzy') {
+    for (const sd of [-1, 1]) { g.beginPath(); for (let a = 0; a < 12; a++) { const an = a * 0.9 + t * 6 * sd, rad = r * 0.02 + a * r * 0.013; g.lineTo(sd * ex + Math.cos(an) * rad, ecy + Math.sin(an) * rad); } g.stroke(); }
+    g.beginPath(); g.moveTo(-r * 0.22, sy + sh * 0.78); for (let k = 1; k <= 4; k++) g.lineTo(-r * 0.22 + k * r * 0.11, sy + sh * 0.78 + (k % 2 ? -r * 0.06 : 0)); g.stroke();
+  } else if (mood === 'think') {
+    for (const sd of [-1, 1]) { g.beginPath(); g.ellipse(sd * ex + look, ecy, r * 0.08, r * 0.11, 0, 0, 7); g.fill(); }
+    g.beginPath(); g.moveTo(ex - r * 0.13, ecy - r * 0.24); g.lineTo(ex + r * 0.13, ecy - r * 0.3); g.stroke();
+    g.beginPath(); g.moveTo(-r * 0.12, sy + sh * 0.76); g.lineTo(r * 0.14, sy + sh * 0.72); g.stroke();
+  } else {
+    for (const sd of [-1, 1]) {
+      if (blink) { g.beginPath(); g.moveTo(sd * ex - r * 0.1, ecy); g.lineTo(sd * ex + r * 0.1, ecy); g.stroke(); }
+      else { g.beginPath(); g.ellipse(sd * ex + look, ecy, r * 0.09, r * 0.13, 0, 0, 7); g.fill(); g.fillStyle = '#fff'; dot(g, sd * ex + look - r * 0.03, ecy - r * 0.05, r * 0.03); g.fillStyle = led; }
+    }
+    g.beginPath(); g.arc(0, sy + sh * 0.6, r * 0.17, 0.3, Math.PI - 0.3); g.stroke();
+  }
+  g.fillStyle = 'rgba(255,120,170,.55)'; for (const sd of [-1, 1]) { rr(g, sd * sw * 0.36 - r * 0.09, sy + sh * 0.62, r * 0.18, r * 0.08, r * 0.04); g.fill(); }
+  g.restore();
+}
+
 // ---------- draw ----------
+function ring(cx, cy, rad, col, w) { x.strokeStyle = col; x.lineWidth = w; x.beginPath(); x.arc(cx, cy, rad, 0, 7); x.stroke(); }
 function drawBoard() {
   const r = stoneR(), wl = winLine ? new Set(winLine) : null;
   // winning line glow (under the stones)
@@ -988,14 +1519,18 @@ function drawBoard() {
     x.beginPath(); x.moveTo(a.x, a.y); x.lineTo(b2.x, b2.y); x.stroke();
     x.strokeStyle = 'rgba(255,255,255,.7)'; x.lineWidth = cs * 0.18; x.stroke(); x.restore();
   }
+  // stuck on a puzzle for a while: the stones that matter wiggle and glow
+  const nudge = puz && !result && humanTurn() && clock - Math.max(puz.t0, lastInput) > 7 ? new Set(puz.rel) : null;
+  if (nudge) for (const j of nudge) { const c = cellXY(j); x.fillStyle = `rgba(255,240,120,${0.35 + 0.2 * Math.sin(t * 5)})`; dot(x, c.x, c.y, r * 1.2); }
   const wave = result && result.cel && kind === 'rv' && result.w;
   for (let i = 0; i < N * NR; i++) {
     const v = board[i]; if (!v) continue;
     const c = cellXY(i), a = anims.get(i);
-    let o = {};
+    const blink = ((t + i * 0.37) % 4.3) < 0.12;
+    let o = { face: blink ? 'blink' : 'happy' };
     if (a && a.type === 'drop' && kind === 'c4') {
       const row = (i / N) | 0, dur = 0.2 + 0.06 * row, k = (clock - a.t0) / dur;
-      if (k < 1) { if (k < 0) continue; o = { dy: -(1 - k * k) * ((row + 1) * cs + cs * 0.3) }; }
+      if (k < 1) { if (k < 0) continue; o = { dy: -(1 - k * k) * ((row + 1) * cs + cs * 0.3), face: 'wow' }; }
       else { const k2 = (clock - a.t0 - dur) / 0.25; if (k2 < 1) { const s = Math.sin(k2 * Math.PI * 2) * (1 - k2) * 0.2; o = { sx: 1 + s, sy: 1 - s, dy: s * r * 0.3 }; } }
     } else if (a && a.type === 'drop') {
       const k = (clock - a.t0) / 0.2;
@@ -1004,40 +1539,65 @@ function drawBoard() {
     } else if (a && a.type === 'flip') {
       const k = clamp((clock - a.t0) / 0.32, 0, 1);
       if (k <= 0) { drawStone(c.x, c.y, r, a.from); continue; }
-      const sx = Math.abs(Math.cos(k * Math.PI));
-      o = { sx: Math.max(0.06, sx), dy: -Math.sin(k * Math.PI) * r * 0.45, rot: Math.sin(k * Math.PI) * 0.35 };
-      drawStone(c.x, c.y, r, k < 0.5 ? a.from : a.to, o); continue;
+      if (k < 1) {
+        const sx = Math.abs(Math.cos(k * Math.PI));
+        drawStone(c.x, c.y, r, k < 0.5 ? a.from : a.to, { sx: Math.max(0.06, sx), dy: -Math.sin(k * Math.PI) * r * 0.45, rot: Math.sin(k * Math.PI) * 0.35, face: 'wow' }); continue;
+      }
+      o = { face: 'wow' };   // just flipped: still surprised for a moment
     }
-    if (wl && wl.has(i) && result.cel) o = { dy: -Math.abs(Math.sin(t * 7 + winLine.indexOf(i) * 0.6)) * r * 0.35 };
-    else if (wave && v === result.w) { const ph = t * 5 - (c.x + c.y) / 90; o = { dy: -Math.max(0, Math.sin(ph)) * r * 0.25 }; }
+    if (wl && wl.has(i) && result.cel) o = { dy: -Math.abs(Math.sin(t * 7 + winLine.indexOf(i) * 0.6)) * r * 0.35, face: 'joy' };
+    else if (wave && v === result.w) { const ph = t * 5 - (c.x + c.y) / 90; o = { dy: -Math.max(0, Math.sin(ph)) * r * 0.25, face: 'joy' }; }
+    else if (nudge && nudge.has(i)) o = { dy: -Math.abs(Math.sin(t * 6 + i)) * r * 0.18, rot: Math.sin(t * 9 + i) * 0.12, face: 'wow' };
     drawStone(c.x, c.y, r, v, o);
+  }
+  // a wrong puzzle answer: the stone hops in, shakes "no" and fades
+  if (puz && puz.wrong) {
+    const k = (clock - puz.wrong.t0) / 0.85;
+    if (k >= 1) puz.wrong = null;
+    else {
+      const c = cellXY(puz.wrong.cell);
+      drawStone(c.x + Math.sin(k * 30) * r * 0.18 * (1 - k), c.y - Math.sin(Math.min(1, k * 3) * Math.PI) * r * 0.4, r, 1, { a: 1 - k * k, face: 'wow' });
+      emo('❌', c.x + r * 0.8, c.y - r * 0.9, Math.max(16, r * 0.8));
+    }
   }
   // last move marker
   const la = anims.get(last);
   if (last >= 0 && board[last] && !(la && clock < la.t0 + (kind === 'c4' ? 0.65 : 0.3)) && !(result && result.cel)) {
     const c = cellXY(last);
-    x.strokeStyle = 'rgba(255,255,255,.95)'; x.lineWidth = Math.max(2, cs * 0.06);
-    x.beginPath(); x.arc(c.x, c.y, r * (1.12 + 0.05 * Math.sin(t * 4)), 0, 7); x.stroke();
-    x.strokeStyle = 'rgba(255,170,0,.85)'; x.lineWidth = Math.max(1.5, cs * 0.035);
-    x.beginPath(); x.arc(c.x, c.y, r * (1.12 + 0.05 * Math.sin(t * 4)) + x.lineWidth * 1.4, 0, 7); x.stroke();
+    ring(c.x, c.y, r * (1.12 + 0.05 * Math.sin(t * 4)), 'rgba(255,255,255,.95)', Math.max(2, cs * 0.06));
+    const lw = Math.max(1.5, cs * 0.035); ring(c.x, c.y, r * (1.12 + 0.05 * Math.sin(t * 4)) + lw * 1.4, 'rgba(255,170,0,.85)', lw);
   }
   if (state !== 'play' || result) return;
   const myTurn = humanTurn();
-  // legal-move dots (黑白棋)
+  // legal-move dots (黑白棋): soft glowing pads in the player's colour
   if (kind === 'rv' && showDots && myTurn) {
-    const pr = r * (0.3 + 0.04 * Math.sin(t * 3));
+    const pr = r * (0.3 + 0.05 * Math.sin(t * 3));
     for (let i = 0; i < N * N; i++) if (!board[i] && LG.rvCan(board, N, i, turn)) {
       const c = cellXY(i);
-      x.fillStyle = 'rgba(255,255,255,.75)'; dot(x, c.x, c.y, pr + 2.5);
-      x.fillStyle = turn === 1 ? 'rgba(47,160,78,.6)' : 'rgba(240,110,160,.7)'; dot(x, c.x, c.y, pr);
+      x.fillStyle = 'rgba(255,255,255,.55)'; dot(x, c.x, c.y, pr * 1.7);
+      x.fillStyle = turn === 1 ? 'rgba(47,160,78,.75)' : 'rgba(240,110,160,.8)'; dot(x, c.x, c.y, pr);
+      x.fillStyle = 'rgba(255,255,255,.8)'; dot(x, c.x - pr * 0.3, c.y - pr * 0.3, pr * 0.28);
     }
   }
-  // hint
-  if (hint && clock - hint.t0 < 3.5 && !board[hint.cell]) {
+  // easy mode / two players: after a little pause, show "you can win here ⭐" and "careful ❗"
+  if (cueOn()) {
+    const cu = getCues(), pulse = 1 + 0.1 * Math.sin(t * 6);
+    for (const j of cu.theirs) { const c = cellXY(j); x.fillStyle = 'rgba(255,80,80,.18)'; dot(x, c.x, c.y, r * 1.1 * pulse); ring(c.x, c.y, r * 1.05 * pulse, 'rgba(240,60,60,.85)', Math.max(2.5, cs * 0.07)); emo('❗', c.x, c.y, Math.max(14, r * 0.9)); }
+    for (const j of cu.mine) { const c = cellXY(j); x.fillStyle = 'rgba(255,220,60,.3)'; dot(x, c.x, c.y, r * 1.15 * pulse); ring(c.x, c.y, r * 1.05 * pulse, '#ffb300', Math.max(2.5, cs * 0.07)); emo('⭐', c.x, c.y, Math.max(14, r * 0.95)); }
+  }
+  // hint: a glowing ring and a pointing finger
+  if (hint && clock >= hint.t0 && clock - hint.t0 < (puz ? 6 : 3.5) && !board[hint.cell]) {
     const c = cellXY(hint.cell), k = 1 + 0.12 * Math.sin(t * 8);
     x.fillStyle = 'rgba(255,230,90,.45)'; dot(x, c.x, c.y, r * 1.25 * k);
-    x.strokeStyle = '#ffb300'; x.lineWidth = Math.max(2.5, cs * 0.08); x.beginPath(); x.arc(c.x, c.y, r * 1.1 * k, 0, 7); x.stroke();
-    emo('💡', c.x + r * 0.95, c.y - r * 1.05, Math.max(14, r * 0.9));
+    ring(c.x, c.y, r * 1.1 * k, '#ffb300', Math.max(2.5, cs * 0.08));
+    const bob = Math.abs(Math.sin(t * 5)) * r * 0.3;
+    emo('👆', c.x + r * 0.15, c.y + r * 1.15 + bob, Math.max(18, r * 1.1));
+  }
+  // 四子棋: a stone hovering over the column you point at, with a little arrow
+  if (kind === 'c4' && myTurn && hover >= 0 && legal(hover)) {
+    const col = hover % N, hx = gx + (col + 0.5) * cs, top = gy - cs * 0.1;
+    x.fillStyle = 'rgba(255,255,255,.18)'; rr(x, gx + col * cs + 3, gy, cs - 6, NR * cs, cs * 0.4); x.fill();
+    if (top - r > BRD.y - 2) drawStone(hx, top - r * 0.35 - Math.abs(Math.sin(t * 5)) * r * 0.2, r * 0.75, turn, { a: 0.9 });
   }
   // preview (hover / finger down) and the ghost waiting for a second tap
   const pv = myTurn ? (ghost >= 0 ? ghost : hover) : -1;
@@ -1046,8 +1606,7 @@ function drawBoard() {
     drawStone(c.x, c.y, r, turn, { a: ghost === pv ? 0.7 + 0.15 * Math.sin(t * 6) : 0.55 });
     if (kind === 'rv') {
       const fl = LG.rvFlips(board, N, pv, turn);
-      x.strokeStyle = turn === 1 ? '#1f9a45' : '#ff4f8b'; x.lineWidth = Math.max(2.5, cs * 0.07);
-      for (const j of fl) { const d = cellXY(j); x.beginPath(); x.arc(d.x, d.y, r * (1.05 + 0.05 * Math.sin(t * 7)), 0, 7); x.stroke(); }
+      for (const j of fl) { const d = cellXY(j); ring(d.x, d.y, r * (1.05 + 0.05 * Math.sin(t * 7)), turn === 1 ? '#1f9a45' : '#ff4f8b', Math.max(2.5, cs * 0.07)); }
       const lab = `+${fl.length}`, fs = Math.max(16, cs * 0.36);
       x.font = `900 ${fs}px ${FONT}`; const tw = x.measureText(lab).width + 14;
       let bx = c.x + r * 0.55, by = c.y - r * 1.25 - fs * 0.6;
@@ -1065,90 +1624,218 @@ function drawBoard() {
     }
   }
 }
+// small glossy card used by the panel
+function card(cx0, cy0, w, h, rad, fill, line, lw = 2.5, glow = null) {
+  // soft shadow / glow without shadowBlur (keeps tablets smooth)
+  if (glow) { x.save(); x.globalAlpha = 0.35 + 0.15 * Math.sin(t * 4); x.strokeStyle = glow; x.lineWidth = 9; rr(x, cx0, cy0, w, h, rad); x.stroke(); x.restore(); }
+  else { x.fillStyle = 'rgba(40,30,20,.13)'; rr(x, cx0 + 1, cy0 + 4, w, h, rad); x.fill(); }
+  x.fillStyle = fill; rr(x, cx0, cy0, w, h, rad); x.fill();
+  x.strokeStyle = line; x.lineWidth = lw; rr(x, cx0, cy0, w, h, rad); x.stroke();
+  x.fillStyle = 'rgba(255,255,255,.55)'; rr(x, cx0 + 6, cy0 + 4, w - 12, Math.min(10, h * 0.16), 5); x.fill();
+}
 function drawCards() {
   const [a, c] = kind === 'rv' ? LG.rvCount(board) : [0, 0];
   for (const cd of cards) {
     const p = cd.p, pl = PAL[p], active = state === 'play' && !result && turn === p, won = result && result.cel && result.w === p;
-    x.save();
-    if (active || won) { x.shadowColor = pl.ui; x.shadowBlur = 14; }
-    x.fillStyle = active ? (p === 1 ? '#effff0' : '#fff2f7') : '#fff'; rr(x, cd.x, cd.y, cd.w, cd.h, 14); x.fill();
-    x.restore();
-    x.strokeStyle = active || won ? pl.ui : '#d9e4ee'; x.lineWidth = active || won ? 4 : 2; rr(x, cd.x, cd.y, cd.w, cd.h, 14); x.stroke();
+    card(cd.x, cd.y, cd.w, cd.h, 16, active ? (p === 1 ? '#effff0' : '#fff2f7') : 'rgba(255,255,255,.94)', active || won ? pl.ui : '#e3d9c6', active || won ? 4 : 2.5, active || won ? pl.ui : null);
     const sr = cd.h * 0.3, hop = active ? Math.abs(Math.sin(t * 4)) * sr * 0.25 : won ? Math.abs(Math.sin(t * 7)) * sr * 0.4 : 0;
-    drawStone(cd.x + cd.h * 0.5, cd.y + cd.h * 0.53 - hop, sr, p);
-    const lx = cd.x + cd.h * 0.95, rw = kind === 'rv' ? cd.h * 0.95 : 0;
-    const nm = nameOf(p) + (vsCpu && p === cpuColor() ? `・${LV[level - 1]}` : '');
+    x.fillStyle = p === 1 ? '#dff7df' : '#ffe3ee'; dot(x, cd.x + cd.h * 0.5, cd.y + cd.h * 0.5, cd.h * 0.38);
+    drawStone(cd.x + cd.h * 0.5, cd.y + cd.h * 0.53 - hop, sr, p, { face: won ? 'joy' : 'happy' });
+    const ssz = Math.min(cd.h * 0.28, 20 * U), lx = cd.x + cd.h * 0.95, rw = kind === 'rv' ? cd.h * 0.95 : puz && p === 1 ? ssz * 3.2 + 10 : 0;
+    const nm = nameOf(p) + (vsCpu && !puz && p === cpuColor() ? `・${LV[level - 1]}` : '');
     fitTxt(nm, lx, cd.y + cd.h * 0.36, cd.x + cd.w - rw - lx - 6, 22 * U, '#3a2f22', 900, 'left');
     const sub = won ? 'Win! 🏆' : active ? (vsCpu && p === cpuColor() ? 'Thinking… 🤔' : 'Your turn 👆') : (state === 'play' && !result ? MG.WORDS.wait : '');
     if (sub) fitTxt(sub, lx, cd.y + cd.h * 0.7, cd.x + cd.w - rw - lx - 6, 16 * U, active || won ? pl.ui : '#9a8f80', 800, 'left');
-    if (kind === 'rv') txt(String(p === 1 ? a : c), cd.x + cd.w - rw / 2 - 6, cd.y + cd.h / 2 + 1, Math.min(cd.h * 0.5, 40 * U), pl.line, 'center', 900);
+    if (kind === 'rv') {
+      const n = String(p === 1 ? a : c), bx = cd.x + cd.w - rw / 2 - 8, bs = Math.min(cd.h * 0.62, 46 * U);
+      x.fillStyle = p === 1 ? '#dff7df' : '#ffe3ee'; rr(x, bx - bs * 0.62, cd.y + cd.h / 2 - bs / 2, bs * 1.24, bs, bs * 0.3); x.fill();
+      txt(n, bx, cd.y + cd.h / 2 + 1, Math.min(cd.h * 0.5, 40 * U), pl.line, 'center', 900);
+    } else if (puz && p === 1) {
+      // the stars you can still get on this level
+      const left = 3 - Math.min(2, puz.miss + puz.hints);
+      for (let k = 0; k < 3; k++) { x.save(); if (k >= left) x.globalAlpha = 0.25; emo('⭐', cd.x + cd.w - 10 - ssz * 0.55 - (2 - k) * ssz * 1.05, cd.y + cd.h / 2, ssz); x.restore(); }
+    }
+  }
+}
+// ---------- 目標小卡：要做什麼（用圖說，不用看字）----------
+function miniRow(cx, cy, n, size, cols, o = {}) {
+  const gap = size * 2.25, x0 = cx - (n - 1) * gap / 2;
+  for (let k = 0; k < n; k++) {
+    const col = cols[k]; const px2 = x0 + k * gap;
+    x.strokeStyle = 'rgba(120,100,70,.35)'; x.lineWidth = 2; x.setLineDash([4, 4]); x.beginPath(); x.arc(px2, cy, size * 0.95, 0, 7); x.stroke(); x.setLineDash([]);
+    if (col) drawStone(px2, cy - (o.hop === k ? Math.abs(Math.sin(t * 6)) * size * 0.5 : 0), size, col, { face: o.face || 'happy', a: o.blinkAt === k ? 0.5 + 0.5 * Math.abs(Math.sin(t * 4)) : 1 });
+  }
+  return x0 + (n - 1) * gap + size * 1.6;
+}
+function drawGoal() {
+  const G = goal; if (!G) return;
+  const ink = THEME_INK[theme()];
+  card(G.x, G.y, G.w, G.h, 18, 'rgba(255,255,255,.93)', ink, 2.5);
+  const ty = G.y + Math.min(24 * U, G.h * 0.26), fs = clamp(17 * U, 14, 24);
+  let title, emoji;
+  const tp = puz ? puz.phase : null;
+  if (puz) { title = `${PT[puz.st.t].ic} ${puz.lv}. ${PT[puz.st.t].say.replace(/ \S+$/, '')}`; emoji = ''; }
+  else if (kind === 'rv') title = 'Sandwich = flip! 🥪';
+  else title = `${KW} in a row = 🏆`;
+  fitTxt(title, G.x + 14, ty, G.w - 28 - (puz && puz.stages.length > 1 ? 70 : 0), fs, '#4a3b2a', 900, 'left');
+  if (puz && puz.stages.length > 1) for (let k = 0; k < puz.stages.length; k++) { const dx = G.x + G.w - 16 - (puz.stages.length - 1 - k) * 16; x.fillStyle = k < puz.si ? '#4cc96a' : k === puz.si ? '#ffb300' : '#ddd3c0'; dot(x, dx, ty, k === puz.si ? 6.5 : 5); }
+  void emoji;
+  const cy = ty + (G.y + G.h - ty) / 2 + 2, size = clamp(Math.min((G.y + G.h - ty) * 0.3, G.w / 22), 8, 22);
+  const cyc = (t * 0.7) % 1;
+  if (kind === 'rv' && (!puz || tp === 'flip')) {
+    // G P P · → G G G G : the pink ones in the middle flip to green
+    const flipK = cyc < 0.35 ? 0 : cyc < 0.7 ? 1 : 2;
+    const cols = [1, flipK >= 2 ? 1 : 2, flipK >= 2 ? 1 : 2, flipK >= 1 ? 1 : 0];
+    const ex = miniRow(G.x + G.w * 0.5 - size * 1.6, cy, 4, size, cols, { blinkAt: flipK === 0 ? 3 : -1, face: flipK >= 2 ? 'joy' : 'happy' });
+    emo(flipK >= 2 ? '✨' : '👈', ex + size * 0.4, cy, size * 1.6);
+    if (!puz) {
+      const [a, c] = LG.rvCount(board), tot = Math.max(1, a + c), bw = G.w - 28, by = G.y + G.h - 12;
+      x.fillStyle = '#ffd3e4'; rr(x, G.x + 14, by - 5, bw, 8, 4); x.fill();
+      x.fillStyle = '#4fcf6c'; rr(x, G.x + 14, by - 5, bw * a / tot, 8, 4); x.fill();
+    }
+  } else if (tp === 'block') {
+    const n = Math.min(KW, 5), cols = Array(n).fill(2); cols[n - 1] = cyc < 0.5 ? 0 : 1;
+    const ex = miniRow(G.x + G.w * 0.5 - size * 1.4, cy, n, size, cols, { blinkAt: cyc < 0.5 ? -1 : n - 1, hop: cyc < 0.5 ? -1 : n - 1 });
+    emo('🛡️', ex + size * 0.4, cy, size * 1.6);
+  } else if (tp === 'win2' || (puz && puz.st.t === 'win2')) {
+    const n = Math.min(KW, 5), cols = Array(n).fill(1); cols[0] = 0; cols[n - 1] = 0;
+    const ex = miniRow(G.x + G.w * 0.5 - size * 1.4, cy, n, size, cols);
+    const k2 = Math.floor(t * 2) % 2;
+    emo('✨', G.x + G.w * 0.5 - size * 1.4 - (n - 1) * size * 2.25 / 2, cy - size * 1.2 * k2, size * 1.2);
+    emo('✨', G.x + G.w * 0.5 - size * 1.4 + (n - 1) * size * 2.25 / 2, cy - size * 1.2 * (1 - k2), size * 1.2);
+    emo('✌️', ex + size * 0.4, cy, size * 1.6);
+  } else {
+    const n = Math.min(KW, 5), cols = Array(n).fill(1), shown = Math.floor(cyc * (n + 2));
+    for (let k = 0; k < n; k++) if (k >= shown && (!puz || k === n - 1)) cols[k] = 0;
+    if (puz) cols[n - 1] = cyc < 0.55 ? 0 : 1;
+    const full = cols.every(v => v);
+    const ex = miniRow(G.x + G.w * 0.5 - size * 1.4, cy, n, size, cols, { face: full ? 'joy' : 'happy', blinkAt: puz && !full ? n - 1 : -1 });
+    emo(full ? '🏆' : '🎯', ex + size * 0.4, cy - (full ? Math.abs(Math.sin(t * 6)) * size * 0.4 : 0), size * 1.6);
   }
 }
 function curMsg() {
   if (state !== 'play' && !result) return { text: '選一個棋來下吧！', who: 1 };
   if (result) {
     const w = result.w;
+    if (puz) return { text: puz.si < puz.stages.length - 1 ? 'Next! ➡️' : 'Yay! 🎉', who: 1 };
     if (!w) return { text: 'Draw! 🤝', who: 1 };
-    if (vsCpu) return w === human ? { text: 'You win! 🏆', who: w } : { text: '🤖 wins! Again? 🔁', who: w };
+    if (vsCpu) return w === human ? { text: 'You win! 🏆', who: w } : { text: 'Hehe! Again? 🔁', who: w };
     return { text: `${DOT[w]} ${EN[w]} wins! 🏆`, who: w };
   }
   if (sayMsg && clock < sayMsg.until) return { text: sayMsg.text, who: sayMsg.who || turn };
-  if (think) return { text: 'Thinking… 🤔', who: turn, think: true };
+  if (think || (puz && puz.reply)) return { text: 'Hmm… 🤔', who: 2, think: true };
   if (ghost >= 0 && humanTurn()) return { text: 'Tap again 👆', who: turn };
   if (passNote) return { text: '…', who: turn };
+  if (puz) return { text: PT[puz.phase].say, who: 1 };
+  if (cueOn()) { const cu = getCues(); if (cu.mine.length) return { text: 'Win here! ⭐', who: turn }; if (cu.theirs.length) return { text: 'Careful! ❗', who: turn }; }
   if (vsCpu) {
     if (turn === human) return { text: 'Your turn 👆', who: turn };
     return { text: '🤖 turn', who: turn };
   }
   return { text: `${DOT[turn]} ${EN[turn]}'s turn 👆`, who: turn };
 }
+// ambient critters for each place (drawn every frame, small and cheap)
+function drawAmbient() {
+  const th = theme(), S = stage; if (!S || S.h < 60) return;
+  const top = S.y + 6, w = S.w;
+  if (th === 'garden') {
+    for (let k = 0; k < 2; k++) {
+      const bx = S.x + w * (0.5 + 0.42 * Math.sin(t * 0.33 + k * 2.6)), by = top + (hor - top) * (0.35 + 0.25 * Math.sin(t * 0.9 + k * 1.7)), fl = Math.abs(Math.sin(t * 12 + k));
+      x.fillStyle = k ? '#ffb3e0' : '#ffd84a'; x.strokeStyle = k ? '#c0508a' : '#c08a10'; x.lineWidth = 1.2;
+      for (const sd of [-1, 1]) { x.beginPath(); x.ellipse(bx + sd * 5 * fl, by - 2, 5 * fl + 1, 6, sd * 0.4, 0, 7); x.fill(); x.stroke(); }
+      x.fillStyle = '#5a3a2a'; x.fillRect(bx - 1, by - 6, 2, 9);
+    }
+  } else if (th === 'space') {
+    const k = (t * 0.25) % 1; if (k < 0.25) { const sx0 = S.x + w * (0.1 + k * 3), sy0 = top + 10 + k * 160; x.strokeStyle = `rgba(255,255,255,${1 - k * 4})`; x.lineWidth = 2; x.beginPath(); x.moveTo(sx0, sy0); x.lineTo(sx0 - 26, sy0 - 13); x.stroke(); }
+    for (let j = 0; j < 6; j++) { const a = 0.5 + 0.5 * Math.sin(t * 3 + j * 1.9); x.fillStyle = `rgba(255,255,220,${a})`; const sx1 = S.x + ((j * 97) % 100) / 100 * w, sy1 = top + ((j * 53) % 100) / 100 * Math.max(10, hor - top - 20); x.fillRect(sx1 - 1, sy1 - 4, 2, 8); x.fillRect(sx1 - 4, sy1 - 1, 8, 2); }
+    // a tiny UFO
+    const ux = S.x + w * (0.5 + 0.38 * Math.sin(t * 0.4)), uy = top + 26 + Math.sin(t * 2) * 5;
+    x.fillStyle = 'rgba(140,255,240,.5)'; x.beginPath(); x.ellipse(ux, uy - 4, 8, 7, 0, Math.PI, 0); x.fill();
+    x.fillStyle = '#c9c3ef'; x.beginPath(); x.ellipse(ux, uy, 16, 5, 0, 0, 7); x.fill();
+    for (let j = 0; j < 3; j++) { x.fillStyle = Math.floor(t * 4 + j) % 3 === 0 ? '#ffd84a' : '#ff8ac2'; dot(x, ux - 8 + j * 8, uy + 1, 1.8); }
+  } else if (th === 'beach') {
+    for (let j = 0; j < 2; j++) { const gx2 = S.x + ((t * 18 + j * 140) % (w + 60)) - 30, gy2 = top + 20 + j * 22 + Math.sin(t * 2 + j) * 4, fl = Math.sin(t * 8 + j) * 3; x.strokeStyle = '#5a6a7a'; x.lineWidth = 2; x.beginPath(); x.moveTo(gx2 - 8, gy2 - fl); x.quadraticCurveTo(gx2 - 4, gy2 - 4, gx2, gy2); x.quadraticCurveTo(gx2 + 4, gy2 - 4, gx2 + 8, gy2 - fl); x.stroke(); }
+    const cx2 = S.x + w * (0.5 + 0.45 * Math.sin(t * 0.35)), cy2 = feet + Math.min(18, (H - feet) * 0.5);
+    if (cy2 < H - 6) {
+      x.fillStyle = '#ff6b4a'; x.strokeStyle = '#b8402a'; x.lineWidth = 1.5;
+      for (const sd of [-1, 1]) { x.beginPath(); x.arc(cx2 + sd * 11, cy2 - 6 + Math.sin(t * 6) * 1.5, 4, 0, 7); x.fill(); x.stroke(); }
+      x.beginPath(); x.ellipse(cx2, cy2, 9, 6, 0, 0, 7); x.fill(); x.stroke();
+      x.fillStyle = '#fff'; dot(x, cx2 - 3, cy2 - 6, 2); dot(x, cx2 + 3, cy2 - 6, 2); x.fillStyle = '#222'; dot(x, cx2 - 3, cy2 - 6, 1); dot(x, cx2 + 3, cy2 - 6, 1);
+    }
+  } else {
+    // room: a sleepy cat's tail swishing behind the rug, and steam from a cup
+    const kx = S.x + w * 0.5 + 14, ky = Math.min(H - 4, feet + 10);
+    x.fillStyle = '#ffb36b'; x.strokeStyle = '#b8642a'; x.lineWidth = 1.8;
+    x.beginPath(); x.ellipse(kx, ky - 10, 22, 12, 0, 0, 7); x.fill(); x.stroke();
+    x.beginPath(); x.arc(kx - 18, ky - 16, 10, 0, 7); x.fill(); x.stroke();
+    for (const sd of [-1, 1]) { x.beginPath(); x.moveTo(kx - 18 + sd * 4 - 4, ky - 23); x.lineTo(kx - 18 + sd * 6, ky - 32); x.lineTo(kx - 18 + sd * 8 + 1, ky - 22); x.fill(); x.stroke(); }
+    x.strokeStyle = '#6a3c14'; x.lineWidth = 1.5; for (const sd of [-1, 1]) { x.beginPath(); x.arc(kx - 18 + sd * 4, ky - 16, 2.5, 0.2, Math.PI - 0.2); x.stroke(); }
+    x.strokeStyle = '#ffb36b'; x.lineWidth = 6; x.lineCap = 'round'; x.beginPath(); x.moveTo(kx + 20, ky - 8); x.quadraticCurveTo(kx + 34, ky - 14 + Math.sin(t * 2) * 8, kx + 30 + Math.sin(t * 2) * 6, ky - 28); x.stroke();
+    const zx = kx - 30, zy = ky - 40 - ((t * 10) % 20); x.globalAlpha = 1 - ((t * 10) % 20) / 20; txt('z', zx, zy, 14, '#8a7aa0', 'center', 900); x.globalAlpha = 1;
+  }
+}
 function drawMid() {
-  const M = mid; if (!M || M.h < 40) return;
+  const M = stage; if (!M || M.h < 40) return;
   const msg = curMsg(), fs = clamp(19 * U, 16, 26);
   const showPu = M.h >= 96;
-  const r = showPu ? clamp(Math.min((M.h - fs - 30) * 0.32, M.w * 0.12), 16, 58 * U) : 0;
-  const bh0 = fs + 20, blockH = bh0 + 14 + r * 2.4;
-  const py = M.y + Math.max(0, (M.h - blockH) / 2) + bh0 + 14 + r * 1.3;
+  const bh = fs + 20;
+  const ch = showPu ? clamp(Math.min(M.h - bh - 30, M.w * 0.4), 40, 170 * U) : 0;   // character height
   const spots = { 1: M.x + M.w * 0.27, 2: M.x + M.w * 0.73 };
+  const robotSide = vsCpu ? cpuColor() : 0;
+  const heads = {};
   if (showPu) for (const p of [1, 2]) {
     const active = msg.who === p, won = result && result.cel && result.w === p, lost = result && result.cel && result.w && result.w !== p;
-    const hop = won ? Math.abs(Math.sin(t * 6)) * r * 0.35 : active ? Math.abs(Math.sin(t * 3)) * r * 0.12 : 0;
-    const look = msg.think && active ? Math.sin(t * 2.2) : p === 1 ? 0.5 : -0.5;
-    const mood = won ? 'love' : lost ? 'ouch' : msg.think && active ? 'happy' : active && lastFlipN >= 4 && sayMsg && clock < sayMsg.until ? 'wow' : 'happy';
-    const rr2 = r * (active || won ? 1 : 0.82);
-    MG.puPu(x, spots[p], py - hop + (r - rr2) * 0.9, rr2, mood, hop ? -0.04 : Math.sin(t * 2 + p) * 0.02, { pal: p === 1 ? MG.JELLY.green : MG.JELLY.pink, look, arms: won ? 'up' : false, leaf: p === 2 ? '#ff7aa8' : undefined });
-    if (msg.think && active) {   // thinking dots above the head
-      for (let k = 0; k < 3; k++) { const on = Math.floor(t * 3) % 3 >= k; x.fillStyle = on ? 'rgba(90,70,120,.85)' : 'rgba(90,70,120,.25)'; dot(x, spots[p] + r * 0.9 + k * r * 0.28, py - r * 1.35 - k * r * 0.22, r * (0.08 + k * 0.03)); }
+    if (p === robotSide) {
+      const mood = clock < robo.until ? robo.mood : msg.think ? 'think' : won ? 'laugh' : lost ? 'dizzy' : 'happy';
+      const hop = won || mood === 'laugh' ? Math.abs(Math.sin(t * 7)) * ch * 0.06 : 0;
+      drawRobot(spots[p], feet, ch * 0.98, mood, { look: Math.sin(t * 2.2), hop, arms: won || mood === 'laugh' ? 'up' : false, tilt: mood === 'dizzy' ? Math.sin(t * 5) * 0.08 : mood === 'think' ? 0.06 : 0, wave: mood === 'happy' ? Math.sin(t * 3) * 0.2 : 0 });
+      heads[p] = feet - ch * 1.02;
+    } else {
+      const r = ch / 2.25;
+      const hop = won ? Math.abs(Math.sin(t * 6)) * r * 0.35 : active ? Math.abs(Math.sin(t * 3)) * r * 0.12 : 0;
+      const look = p === 1 ? 0.5 : -0.5;
+      const mood = won ? 'love' : lost ? 'ouch' : puz && puz.wrong ? 'ouch' : active && lastFlipN >= 4 && sayMsg && clock < sayMsg.until ? 'wow' : 'happy';
+      const rr2 = r * (active || won || vsCpu ? 1 : 0.85);
+      const cy = feet - rr2 * 0.97 - hop;
+      // the hero follows 牛牛/噗噗; in a two-player game the pink one is a pink jelly
+      const hero = vsCpu || p === 1;
+      MG.puPu(x, spots[p], cy, rr2, mood, hop ? -0.04 : Math.sin(t * 2 + p) * 0.02, { pal: hero ? MG.JELLY.green : MG.JELLY.pink, look, arms: won ? 'up' : false, leaf: !hero ? '#ff7aa8' : undefined });
+      // a little badge with the stone colour this player uses
+      if (vsCpu) drawStone(spots[p] + rr2 * 0.95, cy + rr2 * 0.55, Math.max(8, rr2 * 0.26), human, { face: won ? 'joy' : 'happy' });
+      heads[p] = cy - rr2 * 1.15;
     }
   }
   // speech bubble
   x.font = `900 ${fs}px ${FONT}`;
-  const maxW = M.w - 12, tw = Math.min(maxW, x.measureText(msg.text).width + 34), bh = fs + 20;
+  const maxW = M.w - 12, tw = Math.min(maxW, x.measureText(msg.text).width + 34);
   const ax = showPu ? spots[msg.who] || M.x + M.w / 2 : M.x + M.w / 2;
   const bx = clamp(ax - tw / 2, M.x + 6, M.x + M.w - 6 - tw);
-  const by = showPu ? Math.max(M.y + 4, py - r * 1.25 - bh - 14) : M.y + (M.h - bh) / 2;
+  const by = showPu ? clamp((heads[msg.who] ?? M.y) - bh - 16, M.y + 2, M.y + M.h) : M.y + (M.h - bh) / 2;
   const bc = PAL[msg.who] ? PAL[msg.who].ui : '#7fb0e0';
-  x.fillStyle = '#fff'; x.strokeStyle = bc; x.lineWidth = 3;
-  rr(x, bx, by, tw, bh, bh / 2); x.fill(); x.stroke();
+  x.fillStyle = 'rgba(40,30,20,.14)'; rr(x, bx + 1, by + 3, tw, bh, bh / 2); x.fill();
+  x.fillStyle = '#fff'; rr(x, bx, by, tw, bh, bh / 2); x.fill();
+  x.strokeStyle = bc; x.lineWidth = 3; rr(x, bx, by, tw, bh, bh / 2); x.stroke();
   if (showPu) {
     const tx = clamp(ax, bx + 18, bx + tw - 18);
+    x.fillStyle = '#fff';
     x.beginPath(); x.moveTo(tx - 9, by + bh - 1.5); x.lineTo(tx, by + bh + 11); x.lineTo(tx + 9, by + bh - 1.5); x.closePath(); x.fill();
     x.beginPath(); x.moveTo(tx - 9, by + bh); x.lineTo(tx, by + bh + 11); x.lineTo(tx + 9, by + bh); x.stroke();
-    x.fillStyle = '#fff'; x.fillRect(tx - 7.5, by + bh - 4, 15, 4);
+    x.fillRect(tx - 7.5, by + bh - 4, 15, 4);
   }
   fitTxt(msg.text, bx + tw / 2, by + bh / 2 + 1, tw - 24, fs, '#3a2f22', 900);
 }
 function drawButtons() {
   for (const b of btns) {
     const on = btnEnabled(b), pressed = pressedBtn === b.id && pressT > 0;
-    x.save(); if (!on) x.globalAlpha = 0.42;
+    x.save(); if (!on) x.globalAlpha = 0.5;
     const dy = pressed ? 3 : 0;
-    x.fillStyle = '#c9a95a'; rr(x, b.x, b.y + 4, b.w, b.h - 2, 14); x.fill();
-    const gr = x.createLinearGradient(0, b.y, 0, b.y + b.h);
     const hot = b.id === 'hint' && on;
-    gr.addColorStop(0, hot ? '#fff7c9' : '#ffffff'); gr.addColorStop(1, hot ? '#ffe27a' : '#f3e8c8');
-    x.fillStyle = gr; rr(x, b.x, b.y + dy, b.w, b.h - 4, 14); x.fill();
-    x.strokeStyle = '#c9a95a'; x.lineWidth = 2; x.stroke();
+    x.fillStyle = hot ? '#d99a1c' : '#c9a95a'; rr(x, b.x, b.y + 4, b.w, b.h - 2, 16); x.fill();
+    const gr = x.createLinearGradient(0, b.y, 0, b.y + b.h);
+    gr.addColorStop(0, hot ? '#fff7c9' : '#ffffff'); gr.addColorStop(1, hot ? '#ffd65a' : '#f3e8c8');
+    x.fillStyle = gr; rr(x, b.x, b.y + dy, b.w, b.h - 4, 16); x.fill();
+    x.strokeStyle = hot ? '#d99a1c' : '#c9a95a'; x.lineWidth = 2; x.stroke();
+    x.fillStyle = 'rgba(255,255,255,.7)'; rr(x, b.x + 8, b.y + dy + 4, b.w - 16, 6, 3); x.fill();
     const cy = b.y + dy + (b.h - 4) / 2, sz = clamp(Math.min(b.h * 0.34, 24 * U), 14, 30);
     const ic = b.id === 'undo' ? '↩️' : b.id === 'hint' ? '💡' : '👀';
     const label = b.id === 'undo' ? '悔棋' : b.id === 'hint' ? '提示' : '可以下的地方';
@@ -1164,7 +1851,7 @@ function drawButtons() {
     } else {
       x.font = `900 ${sz}px ${FONT}`;
       const tw = x.measureText(label).width, tot = sz * 1.25 + 8 + tw, sx = b.x + b.w / 2 - tot / 2;
-      emo(ic, sx + sz * 0.6, cy, sz * 1.1);
+      emo(ic, sx + sz * 0.6, cy - (hot && puz && clock - Math.max(puz.t0, lastInput) > 7 ? Math.abs(Math.sin(t * 5)) * 4 : 0), sz * 1.1);
       txt(label, sx + sz * 1.25 + 8, cy + 1, sz, '#4a3b2a', 'left', 900);
     }
     x.restore();
@@ -1184,8 +1871,10 @@ function draw() {
   const px = cv._mgScale || 1;
   if (layerKey !== `${W}x${H}:${px}:${gid}`) buildLayer();
   x.drawImage(layer, 0, 0, W, H);
+  drawAmbient();
   drawBoard();
   drawCards();
+  drawGoal();
   drawMid();
   drawButtons();
   MG.fx.draw(x);
@@ -1195,12 +1884,13 @@ function draw() {
 // ---------- flow ----------
 function hud() {
   MG.stat('a', BOARDS[gid].nm);
-  MG.stat('b', vsCpu ? `🤖 ${LV[level - 1]}` : '👫 兩人');
+  MG.stat('b', puz ? `🧩 ${puz.lv}` : vsCpu ? `🤖 ${LV[level - 1]}` : '👫 兩人');
 }
 function newGame() {
+  puz = null;
   token++; think = null; result = null; winLine = null; anims.clear(); hist = []; moveNo = 0; last = -1;
-  hint = null; ghost = -1; hover = -1; press = null; passNote = null; sayMsg = null; banner = null; lastFlipN = 0;
-  MG.fx.clear();
+  hint = null; ghost = -1; hover = -1; press = null; passNote = null; sayMsg = null; banner = null; lastFlipN = 0; lastInput = clock;
+  MG.fx.clear(); roboMood('happy', 0);
   board = kind === 'rv' ? LG.rvInit(N) : new Int8Array(N * NR);
   turn = vsCpu ? 1 : firstColor;
   busyUntil = clock + 0.35;
@@ -1220,11 +1910,11 @@ function showOver() {
   const w = result.w;
   let title, extra = '';
   if (vsCpu) {
-    title = w === human ? '你贏了！🎉' : w ? '電腦贏了…' : '平手！';
+    title = w === human ? '你贏了！🎉' : w ? '嘟嘟贏了…' : '平手！';
     if (w === human) {
       const wins = MG.store.get('chess.wins', {}) || {}; const arr = wins[gid] || [0, 0, 0]; arr[level - 1]++; wins[gid] = arr; MG.store.set('chess.wins', wins);
       const rec = MG.record('chess', level);
-      extra = `<p class="new">打贏${LV[level - 1]}的電腦！^_^</p>` + (level < 3 ? `<p>要不要挑戰「${LV[level]}」？按 ☰ 選單就可以換</p>` : '<p>你是下棋高手！</p>');
+      extra = `<p class="new">打贏${LV[level - 1]}的嘟嘟！^_^</p>` + (level < 3 ? `<p>要不要挑戰「${LV[level]}」？按 ☰ 選單就可以換</p>` : '<p>你是下棋高手！</p>');
       if (rec.isNew && level > 1) extra += '<p>🏆 新紀錄！</p>';
     } else if (w) extra = '<p>差一點點！可以按 💡 提示幫忙，再下一盤吧</p>';
     else extra = '<p>一樣多，好厲害！</p>';
@@ -1241,29 +1931,39 @@ function showOver() {
     ],
   });
 }
+const PZ_SHORT = { win1: '🎯', block: '🛡️', flip: '🔄', win2: '✌️', mix: '👑' };
 const MENU = {
   id: 'chess', title: '噗噗下棋', menuLabel: '☰ 選單',
-  html: '<p>綠色噗噗和粉紅噗噗來下棋！<b>黑白棋</b>：把對方夾在中間就會翻成你的顏色，最後誰多誰贏。<b>五子棋</b>：輪流放一顆，先連成五個一排就贏！<b>四子棋</b>：棋子會掉到最下面，先連成四個就贏。<b>井字遊戲</b>：先連成三個就贏！</p>',
+  html: '<p>噗噗和機器人<b>嘟嘟</b>來下棋！<b>黑白棋</b>：把對方夾在中間就會翻成你的顏色，最後誰多誰贏。<b>五子棋</b>：輪流放一顆，先連成五個一排就贏！<b>四子棋</b>：棋子會掉到最下面，先連成四個就贏。<b>井字遊戲</b>：先連成三個就贏！<br>🧩 <b>下棋小謎題</b>：36 關，一步就贏、擋住它、翻最多、兩步就贏！</p>',
   picks: [
     { key: 'game', title: '下什麼棋？', def: 'r8', options: [
-      { id: 'r8', label: '⚫⚪ 黑白棋', sub: '8×8 標準棋盤' }, { id: 'r6', label: '⚫⚪ 小黑白棋', sub: '6×6 很快下完' }, { id: 'r4', label: '⚫⚪ 迷你黑白棋', sub: '4×4 一下就下完' },
-      { id: 'g9', label: '✖️⭕ 小五子棋', sub: '9×9 小棋盤' }, { id: 'g13', label: '✖️⭕ 五子棋', sub: '13×13 適合小朋友' }, { id: 'g15', label: '✖️⭕ 大五子棋', sub: '15×15 大棋盤' },
-      { id: 't3', label: '#️⃣ 井字遊戲', sub: '3×3 連成三個' }, { id: 't4', label: '#️⃣ 大井字遊戲', sub: '4×4 連成三個' }, { id: 'c4', label: '🔵 四子棋', sub: '7×6 丟下去連成四個' }] },
-    { key: 'first', title: '誰先下？', def: 'me', options: [{ id: 'me', label: '🟢 我先下', sub: '我是綠色噗噗' }, { id: 'cpu', label: '💗 對方先下', sub: '我是粉紅噗噗' }] },
+      { id: 'r8', label: '⚫⚪ 黑白棋', sub: '8×8 花園野餐' }, { id: 'r6', label: '⚫⚪ 小黑白棋', sub: '6×6 很快下完' }, { id: 'r4', label: '⚫⚪ 迷你黑白棋', sub: '4×4 一下就下完' },
+      { id: 'g9', label: '✖️⭕ 小五子棋', sub: '9×9 小房間' }, { id: 'g13', label: '✖️⭕ 五子棋', sub: '13×13 適合小朋友' }, { id: 'g15', label: '✖️⭕ 大五子棋', sub: '15×15 大棋盤' },
+      { id: 't3', label: '#️⃣ 井字遊戲', sub: '3×3 海邊沙堆' }, { id: 't4', label: '#️⃣ 大井字遊戲', sub: '4×4 連成三個' }, { id: 'c4', label: '🔵 四子棋', sub: '7×6 外太空' }] },
+    { key: 'first', title: '誰先下？', def: 'me', options: [{ id: 'me', label: '🟢 我先下', sub: '我是綠色' }, { id: 'cpu', label: '💗 對方先下', sub: '我是粉紅色' }] },
   ],
   modesTitle: '跟誰下？',
   get modes() {
-    const bl = MG.best('chess') || 0;
+    const bl = MG.best('chess') || 0, done = Object.keys(puzStars()).length;
     return [
-      { id: 'cpu1', label: '🐣 簡單', sub: bl >= 1 ? '已打贏 ✓' : '電腦隨便下' },
-      { id: 'cpu2', label: '⭐ 普通', sub: bl >= 2 ? '已打贏 ✓' : '電腦會擋你' },
-      { id: 'cpu3', label: '🔥 困難', sub: bl >= 3 ? '已打贏 ✓' : '電腦很厲害' },
-      { id: 'pvp', label: '👫 兩人對下', sub: '同一台輪流下' },
+      { id: 'cpu1', label: '🐣 簡單', sub: bl >= 1 ? '已打贏 ✓' : '嘟嘟隨便下・有提示', noLevels: true },
+      { id: 'cpu2', label: '⭐ 普通', sub: bl >= 2 ? '已打贏 ✓' : '嘟嘟會擋你', noLevels: true },
+      { id: 'cpu3', label: '🔥 困難', sub: bl >= 3 ? '已打贏 ✓' : '嘟嘟很厲害', noLevels: true },
+      { id: 'pvp', label: '👫 兩人對下', sub: '同一台輪流下', noLevels: true },
+      { id: 'puz', label: '🧩 下棋小謎題', sub: `36 關・已過 ${done} 關`, hide: ['game', 'first'], fresh: true },
     ];
   },
-  keys: '點格子就下棋；格子小的時候點一下會出現影子，再點一下確定　電腦：<kbd>U</kbd> 悔棋、<kbd>H</kbd> 提示',
+  levelsTitle: '第幾關？',
+  levels: {
+    count: PUZ.length, max: PUZ.length,
+    short: n => `${PZ_SHORT[puzType(n)]}${n}${puzStars()[n] ? '✓' : ''}`,
+    label: n => `${PZ_SHORT[puzType(n)]} ${PT[puzType(n)].name}${puzStars()[n] ? ' ' + '⭐'.repeat(puzStars()[n]) : ''}`,
+    fresh: n => n > 1 && puzType(n) !== puzType(n - 1),
+  },
+  keys: '點格子就下棋；格子小的時候點一下會出現影子，再點一下確定　<kbd>U</kbd> 悔棋、<kbd>H</kbd> 提示',
   playing: () => state === 'play',
   start: (m, lv, pk) => {
+    if (m === 'puz') { puzStart(lv); return; }
     setBoardType(pk && pk.game);
     mode = ['cpu1', 'cpu2', 'cpu3', 'pvp'].includes(m) ? m : 'cpu1';
     vsCpu = mode !== 'pvp'; level = vsCpu ? +mode.slice(3) : 1;
@@ -1273,6 +1973,7 @@ const MENU = {
   },
 };
 function menu() {
+  puz = null;
   state = 'menu'; token++; think = null; result = null; winLine = null; anims.clear(); hint = null; ghost = -1; hover = -1; passNote = null; sayMsg = null; banner = null;
   setBoardType(MG.store.get('chess.pick.game', 'r8'));
   board = kind === 'rv' ? LG.rvInit(N) : new Int8Array(N * NR);
@@ -1329,6 +2030,12 @@ window.CHT = {
     }
   },
   // load a position into the running game (for screenshots / UI tests)
+  // 🧩 puzzles
+  get puz() { return puz ? { lv: puz.lv, si: puz.si, stages: puz.stages.length, phase: puz.phase, sols: [...puz.sols], miss: puz.miss, hints: puz.hints, reply: !!puz.reply } : null; },
+  puzCount: PUZ.length, puzCheck, puzStars,
+  start: (m, lv, pk) => MENU.start(m, lv, pk || {}),
+  // tap the board like a finger would (logical cell index)
+  tapCell(i) { if (!humanTurn() || !legal(i)) return false; if (puz) puzTap(i); else doMove(i); return true; },
   load(arr, tn) { board = Int8Array.from(arr); turn = tn; hist = []; last = -1; anims.clear(); think = null; token++; result = null; winLine = null; busyUntil = clock; hud(); },
 };
 
