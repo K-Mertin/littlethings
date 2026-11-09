@@ -1151,25 +1151,66 @@ new MutationObserver(ms => {
 }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'], attributeOldValue: true });
 
 /* ---------------- speech in (talk) ---------------- */
+// speech recognition for the 🎤 buttons (Talk, Learn's "Say it with me").
+// Children's short words often only come back as interim (not final) results, and some tablets stop listening
+// right away before the child starts; so interim results count, and a session that ends quickly with nothing
+// heard is tried once more. listen() gives a list of lowercase guesses, or null; Rec.err says why it got nothing.
 const Rec = {
-  C: window.SpeechRecognition || window.webkitSpeechRecognition, r: null,
+  C: window.SpeechRecognition || window.webkitSpeechRecognition, r: null, err: '',
   ok() { return !!this.C && S.settings.mic; },
-  listen() {
+  once() {
     return new Promise(res => {
-      if (!this.ok()) { res(null); return; }
-      TTS.cancel();
-      let r; try { r = new this.C(); } catch (e) { res(null); return; }
-      this.r = r; r.lang = 'en-US'; r.interimResults = false; r.maxAlternatives = 5;
-      let got = null;
-      r.onresult = e => { got = [...e.results[0]].map(a => a.transcript.toLowerCase()); };
-      r.onerror = e => { if (!got && (e.error === 'not-allowed' || e.error === 'service-not-allowed')) got = 'denied'; };
-      r.onend = () => { this.r = null; res(got); };
-      try { r.start(); } catch (e) { this.r = null; res(null); }
+      let r; try { r = new this.C(); } catch (e) { res({ got: null, err: 'start' }); return; }
+      this.r = r; r.lang = 'en-US'; r.interimResults = true; r.maxAlternatives = 5; r.continuous = false;
+      let fin = null, mid = null, err = '';
+      const t0 = Date.now(), cap = setTimeout(() => { try { r.stop(); } catch (e) {} }, 8000);
+      r.onresult = e => {
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const alts = [...e.results[i]].map(a => a.transcript.toLowerCase().trim()).filter(Boolean);
+          if (!alts.length) continue;
+          if (e.results[i].isFinal) fin = alts; else mid = alts;
+        }
+      };
+      r.onerror = e => { err = e.error || 'error'; };
+      r.onend = () => { clearTimeout(cap); if (this.r === r) this.r = null; res({ got: fin || mid, err, ms: Date.now() - t0 }); };
+      try { r.start(); } catch (e) { clearTimeout(cap); this.r = null; res({ got: null, err: 'start' }); }
     });
+  },
+  async listen() {
+    this.err = '';
+    if (!this.ok()) { this.err = 'off'; return null; }
+    TTS.cancel();
+    let a = await this.once();
+    // ended almost at once with nothing: try again (not when the mic is blocked or the session was cancelled)
+    if (!a.got && a.ms < 1500 && !/not-allowed|service-not-allowed|aborted/.test(a.err)) a = await this.once();
+    if (!a.got && /not-allowed|service-not-allowed/.test(a.err)) return 'denied';
+    this.err = a.got ? '' : a.err || 'no-speech';
+    return a.got;
   },
   stop() { try { if (this.r) this.r.abort(); } catch (e) {} this.r = null; }
 };
-
+// does something the child said sound like this word? Speech engines often hear a child's "cat" as "kat", "cut" or "cats".
+const soundKey = w => w.toLowerCase().replace(/[^a-z]/g, '').replace(/ph/g, 'f').replace(/ck|q|c(?=[aou])|c$/g, 'k').replace(/(.)\1+/g, '$1').replace(/(?<=..)(es|s)$/, '');
+// the consonants only (vowels are what engines mishear most): blue, blew, bloo → bl
+const skel = w => w[0] + w.slice(1).replace(/[aeiouyw]/g, '');
+function editDist(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+// one target (a word or a few words) against everything heard
+function heardLike(alts, target) {
+  const t = target.toLowerCase().trim(); if (!t) return false;
+  const tw = t.split(/\s+/).map(soundKey);
+  for (const a of alts) {
+    if ((' ' + a + ' ').includes(' ' + t + ' ')) return true;
+    const ws = a.split(/\s+/).map(soundKey).filter(Boolean);
+    // every word of the target is close to some word that was heard
+    if (tw.every(k => ws.some(w => w === k || (k.length >= 3 && editDist(w, k) <= (k.length >= 6 ? 2 : 1) && w[0] === k[0]) || (k.length >= 3 && skel(w).length >= 2 && skel(w) === skel(k))))) return true;
+  }
+  return false;
+}
 /* ---------------- no voice notice ---------------- */
 function voiceMissing() {
   if ($('#voiceOv').dataset.shown) return;
@@ -1966,6 +2007,11 @@ const KT = { scene: null, ctx: {}, step: null, resolve: null, busy: false };
 const words = s => ' ' + s.toLowerCase().replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
 function matchSpoken(alts, opts) {
   for (const a of alts) { const w = words(a); for (const o of opts) if ((o.k || []).some(k => w.includes(' ' + k + ' '))) return o; }
+  // close enough: sounds like one of the words for an answer
+  const near = opts.filter(o => (o.k || []).some(k => heardLike(alts, k)));
+  if (near.length === 1) return near[0];
+  // only one thing to say ("Jump, jump, jump!"): the child said something, that's the answer
+  if (opts.length === 1 && alts.some(a => a.trim())) return opts[0];
   return null;
 }
 function optHTML(o) {
@@ -2015,7 +2061,11 @@ $('#mic').onclick = async () => {
     say(["Oops! I can't hear you. Tap a picture!", zh('micno', '沒有麥克風權限，請點圖片回答。')]);
     return;
   }
-  if (!got || !got.length) { say(["I didn't hear you. Try again, or tap a picture!", zh('mic0', '再說一次，或點圖片回答！')]); return; }
+  if (!got || !got.length) {
+    // no network: the browser's speech recognition needs it
+    if (/network/.test(Rec.err)) { mic.hidden = true; say(["Oops! I can't hear you. Tap a picture!"]); return; }
+    say(["I didn't hear you. Try again, or tap a picture!", zh('mic0', '再說一次，或點圖片回答！')]); return;
+  }
   const o = matchSpoken(got, KT.step.opts);
   if (o) {
     const i = KT.step.opts.indexOf(o);
@@ -3694,9 +3744,9 @@ $('#lnMic').onclick = async () => {
   const m = $('#lnMic'); m.classList.add('on'); LRN.busy = true;
   const got = await Rec.listen(); m.classList.remove('on'); LRN.busy = false;
   if (!live(f) || LRN.steps[LRN.i] !== s) return;
-  if (!got || got === 'denied') return say("I didn't hear you. Try again!");
-  const said = got.join(' ');
-  const hit = s.it.keys.some(k => said.includes(k.toLowerCase()));
+  if (got === 'denied' || /network/.test(Rec.err)) { m.hidden = true; return say("Oops! I can't hear you."); }
+  if (!got) return say("I didn't hear you. Try again!");
+  const hit = s.it.keys.some(k => heardLike(got, k));
   if (hit) { SFX.ding(); confetti(...centerOf(m), 6); say(pick(['Great job!', 'Super!', 'Well done!'])); }
   else say(['Good try!', 300, s.it.rep]);
 };
