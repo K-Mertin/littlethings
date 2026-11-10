@@ -12,7 +12,7 @@
 //   node tools/release.mjs --build
 //       部署時自動跑（wrangler.jsonc 的 build.command）：產生 /whatsnew.json 給大廳用。出錯不會擋部署。
 //
-// 大廳顯示的版本 = 大廳自己最新的版本，第三碼再加上「之後每一筆遊戲更新」的數量。
+// 大廳版本：大廳自己的每一筆紀錄是一個版本，之後每一筆遊戲更新讓第三碼 +1（大廳的更新紀錄會寫「哪款遊戲 v幾：內容」）。
 // 所以任何一款遊戲加了更新紀錄，大廳版本就會自動往上跳，不用另外改大廳。
 import fs from 'node:fs';
 import path from 'node:path';
@@ -80,26 +80,36 @@ function check() {
   console.log('版本與更新紀錄都對得上。');
 }
 
-function hallVersion() {
-  const base = read('hall')[0] || { v: '1.0.0', at: '2000-01-01T00:00Z' };
-  let after = 0;
-  for (const c of cards()) after += read(c.slug).filter(r => r.at > base.at).length;
-  const [a, b, c] = vnum(base.v);
-  return `${a}.${b}.${c + after}`;
+// 大廳的時間軸：大廳自己的每一筆是一個版本；之後任何一款遊戲的每一筆更新，大廳第三碼 +1（內容寫「哪款遊戲 v幾」）。
+// 大廳自己的紀錄如果寫的版本比目前小（舊紀錄），就接在目前版本後面 +1，版本永遠不倒退。
+function hallTimeline() {
+  const ev = read('hall').map(r => ({ ...r, hall: true }));
+  for (const c of cards()) for (const r of read(c.slug)) ev.push({ ...r, slug: c.slug, name: c.name });
+  ev.sort((x, y) => x.at.localeCompare(y.at) || (x.hall ? -1 : 1));
+  let cur = null;
+  const out = [];
+  for (const e of ev) {
+    if (e.hall) {
+      cur = !cur || cmpv(e.v, cur) > 0 ? e.v : bump(cur, 'patch');
+      out.push({ v: cur, at: e.at, notes: e.notes });
+    } else {
+      if (!cur) continue;   // 大廳開始有版本號之前的遊戲更新不算
+      cur = bump(cur, 'patch');
+      out.push({ v: cur, at: e.at, game: { slug: e.slug, name: e.name, v: e.v }, notes: e.notes });
+    }
+  }
+  return out.reverse();
 }
+function hallVersion() { const t = hallTimeline(); return t.length ? t[0].v : '1.0.0'; }
 function build() {
-  const hallList = read('hall');
-  const base = hallList[0] || { v: '1.0.0', at: '2000-01-01T00:00Z' };
-  const games = {}, feed = [];
+  const games = {};
   for (const c of cards()) {
     const list = read(c.slug);
     if (!list.length) continue;
     games[c.slug] = { name: c.name, v: list[0].v, at: list[0].at, list: list.slice(0, 20) };
-    for (const r of list) feed.push({ slug: c.slug, name: c.name, ...r });
   }
-  for (const r of hallList) feed.push({ slug: 'hall', name: '遊戲大廳', ...r });
-  feed.sort((a, b) => b.at.localeCompare(a.at));
-  const out = { built: nowZ(), hall: { v: hallVersion(), at: feed[0] ? feed[0].at : base.at }, games, feed: feed.slice(0, 80) };
+  const timeline = hallTimeline();
+  const out = { built: nowZ(), hall: { v: timeline[0] ? timeline[0].v : '1.0.0', at: timeline[0] ? timeline[0].at : nowZ(), list: timeline.slice(0, 100) }, games };
   fs.writeFileSync(rel('whatsnew.json'), JSON.stringify(out));
   console.log(`release: 大廳 v${out.hall.v}，${Object.keys(games).length} 款遊戲有更新紀錄 → whatsnew.json`);
 }
