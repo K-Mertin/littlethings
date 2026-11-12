@@ -8,7 +8,7 @@ const Core = require(path.join(dir, 'core.js'));
 const LEVELS = require(path.join(dir, 'levels.js'));
 
 const STEP = 0.05;          // 試射的角度間隔
-const MIN_WIN = 0.3;        // 一個解法的角度窗至少要這麼寬（玩家才調得出來）
+const MIN_WIN = +(process.env.MIN_WIN || 0.6);        // 一個解法的角度窗至少要這麼寬（玩家才調得出來）
 
 function analyse(def) {
   const w = Core.build(def);

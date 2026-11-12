@@ -27,7 +27,7 @@
 | Q | `rpg/` | 曉鐘傳說 | `index.html`＋`js/` | — | ✓ | |
 | J | `bounce/` | 彈彈球大冒險 | `index.html`＋`levels.js`（字元地圖）＋`game.js`，Canvas 2D | — | ✓ | |
 | N | `ember/` | 燼燈 | `index.html`＋`js/`（world、core、actors、render、main），Canvas 2D | — | ✓ | |
-| A | `ricochet/` | 反彈神射手 | `index.html`＋`core.js`（物理）＋`levels.js`＋`game.js`，Canvas 2D；改關卡後跑 `node ricochet/tools/solve.mjs` | — | ✓ | |
+| A | `ricochet/` | 反彈神射手 | `index.html`＋`core.js`（物理）＋`levels.js`＋`art.js`（美術）＋`game.js`，Canvas 2D；改關卡後跑 `node ricochet/tools/solve.mjs` | — | ✓ | ✓ |
 
 ## 未上架（大廳沒有卡片，網址可以直接進）
 | 資料夾 | 說明 |
