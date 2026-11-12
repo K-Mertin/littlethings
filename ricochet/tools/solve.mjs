@@ -1,5 +1,8 @@
-// 關卡解題器：每 0.05° 試射一發，算出最少幾發能清光、建議的 par（三星標準）是否合理。
+// 關卡解題器：在每個局面每 STEP 度試射一發，用廣度優先搜尋找出最少幾發能過關。
+// 會照遊戲的回合規則算（會動的牆、走路怪、射手反擊、玻璃、傳送門、人質、生命），所以解出來的角度在遊戲裡一定打得到。
 // 用法：node ricochet/tools/solve.mjs [關卡編號…]   （不帶參數 = 全部檢查，有問題 exit 1）
+//       MIN_WIN=0.8 node ricochet/tools/solve.mjs   改「角度窗至少多寬才算玩家調得出來」
+//       JSON=1 node ricochet/tools/solve.mjs        輸出每關解法（測試腳本用）
 import { createRequire } from 'node:module';
 import path from 'node:path';
 const require = createRequire(import.meta.url);
@@ -7,62 +10,40 @@ const dir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const Core = require(path.join(dir, 'core.js'));
 const LEVELS = require(path.join(dir, 'levels.js'));
 
-const STEP = 0.05;          // 試射的角度間隔
-const MIN_WIN = +(process.env.MIN_WIN || 0.6);        // 一個解法的角度窗至少要這麼寬（玩家才調得出來）
+const STEP = +(process.env.STEP || 0.1);
+const MIN_WIN = +(process.env.MIN_WIN || 0.6);
 
 function analyse(def) {
   const w = Core.build(def);
   const probs = [];
   if (Core.insideSolid(w, w.player.x, w.player.y)) probs.push('角色在牆裡');
-  for (const e of w.enemies) if (Core.insideSolid(w, e.x, e.y)) probs.push(`敵人 ${e.i} 在牆裡`);
+  w.enemies.forEach(e => { for (let t = 0; t < w.period; t++) { const [x, y] = Core.enemyPos(w, e, t); if (Core.insideSolid(w, x, y)) { probs.push(`敵人 ${e.i} 在牆裡（第 ${t} 回合）`); break; } } });
   for (const e of w.barrels) if (Core.insideSolid(w, e.x, e.y)) probs.push(`炸藥桶 ${e.i} 在牆裡`);
-  const N = Math.round(360 / STEP);
-  const masks = new Array(N);
-  for (let k = 0; k < N; k++) {
-    const r = Core.simulate(w, k * STEP);
-    let m = 0; for (const i of r.state.dead) m |= 1 << i;
-    masks[k] = m;
-  }
-  // 連續同一個結果的角度窗
-  const wins = new Map(); // mask -> [{from, width}]
-  let k0 = 0;
-  for (let k = 1; k <= N; k++) {
-    if (k === N || masks[k] !== masks[k0]) {
-      const width = (k - k0) * STEP;
-      if (masks[k0]) { if (!wins.has(masks[k0])) wins.set(masks[k0], []); wins.get(masks[k0]).push({ from: k0 * STEP, width }); }
-      k0 = k;
-    }
-  }
-  const all = (1 << w.enemies.length) - 1;
-  const good = [...wins].filter(([, ws]) => ws.some(x => x.width >= MIN_WIN)).map(([m]) => m);
-  // BFS：最少幾發
-  const dist = new Map([[0, 0]]); const q = [0]; const from = new Map();
-  while (q.length) {
-    const s = q.shift(); if (s === all) break;
-    for (const m of good) { const t = s | m; if (!dist.has(t)) { dist.set(t, dist.get(s) + 1); from.set(t, [s, m]); q.push(t); } }
-  }
-  const min = dist.has(all) ? dist.get(all) : Infinity;
-  const plan = [];
-  if (min < Infinity) { let s = all; while (s) { const [p, m] = from.get(s); const best = wins.get(m).sort((a, b) => b.width - a.width)[0]; plan.unshift({ mask: m, at: +(best.from + best.width / 2).toFixed(2), width: +best.width.toFixed(2) }); s = p; } }
-  // 每個敵人能被打到的角度總寬
-  const per = w.enemies.map(e => { let s = 0; for (const [m, ws] of wins) if (m & (1 << e.i)) for (const x of ws) s += x.width; return +s.toFixed(1); });
-  const oneShot = (wins.get(all) || []).reduce((s, x) => s + x.width, 0);
+  for (const e of w.hostages) if (Core.insideSolid(w, e.x, e.y)) probs.push(`人質 ${e.i} 在牆裡`);
+  const r = Core.solve(w, Core.newState(w), def.shots, { step: STEP, minWin: MIN_WIN });
+  if (r.capped) probs.push('局面太多，搜尋提早停止');
+  const min = r.min;
   if (min === Infinity) probs.push('打不完');
-  else if (min > def.shots) probs.push(`最少要 ${min} 發，但只給 ${def.shots} 發`);
   if (def.par < min) probs.push(`par ${def.par} 比最少發數 ${min} 還少`);
   if (def.par > def.shots) probs.push(`par ${def.par} 比子彈數 ${def.shots} 多`);
-  return { min, plan, per, oneShot: +oneShot.toFixed(2), probs };
+  return { min, plan: r.plan, oneShot: +r.oneShot.toFixed(1), probs, states: r.states };
 }
 
 const pick = process.argv.slice(2).map(Number);
 let bad = 0;
+const t0 = Date.now();
+const out = [];
 LEVELS.forEach((def, i) => {
   if (pick.length && !pick.includes(i + 1)) return;
+  const t = Date.now();
   const r = analyse(def);
-  const tag = r.probs.length ? '✗' : '✓';
   if (r.probs.length) bad++;
-  console.log(`${tag} ${String(i + 1).padStart(2)} ${def.name.padEnd(8, '　')} 敵 ${def.enemies.length} 發 ${def.shots} par ${def.par} | 最少 ${r.min} 發，一發清光角度寬 ${r.oneShot}° | 各敵可打角度 ${r.per.join(' / ')}`);
-  console.log(`      解法：${r.plan.map(p => `${p.at}°(寬${p.width}°,打${p.mask.toString(2)})`).join('  ')}`);
+  out.push({ lv: i + 1, plan: r.plan.map(p => p.at), ok: !r.probs.length });
+  if (process.env.JSON) return;
+  console.log(`${r.probs.length ? '✗' : '✓'} ${String(i + 1).padStart(2)} ${def.name.padEnd(8, '　')} 敵 ${def.enemies.length} 發 ${def.shots} par ${def.par} | 最少 ${r.min} 發，一發過關角度寬 ${r.oneShot}° | 局面 ${r.states} | ${Date.now() - t}ms`);
+  console.log(`      解法：${r.plan.map(p => `${p.at}°(寬${p.width}°)`).join('  ')}`);
   if (r.probs.length) console.log('      問題：' + r.probs.join('；'));
 });
+if (process.env.JSON) console.log(JSON.stringify(out));
+else console.log(`共 ${((Date.now() - t0) / 1000).toFixed(1)} 秒`);
 process.exit(bad ? 1 : 0);
