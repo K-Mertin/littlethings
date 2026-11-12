@@ -30,6 +30,7 @@ MW · Game Hall：MK 的瀏覽器遊戲合集，每個資料夾自成一體。�
 | [曉鐘傳說](https://littleland.mwstudio.workers.dev/rpg/) | [`rpg/`](rpg/README.md) | 經典回合制 RPG（原創劇情）：逐像素繪製的大陸與渡船、會掀屋頂的城鎮、側面戰鬥與各法術特效、劇情演出、5 位夥伴與隊伍編成、87 種怪物圖鑑、33 個成就、星之碎片、懸賞、賭場、大鬥技場、秘傳之書、交換之旅、通關後星之迴廊、新篇章「月汐群島」（新地區、伊芙、潮汐／迷途／鐘／日輪謎題、兩階段最終頭目與深淵隱藏頭目）、釣魚小遊戲、二周目、3 個記錄欄位、三種難度，支援觸控與鍵盤 |
 | [彈彈球大冒險](https://littleland.mwstudio.workers.dev/bounce/) | [`bounce/`](bounce/README.md) | 橫向捲軸闖關＋解謎：控制一顆球滾動跳躍，變大浮水、變小鑽洞，箱子／壓板／柵欄、風扇、冰、岩漿、火焰棒，4 個世界 12 關、36 顆星星，Canvas 2D 程式繪圖，支援觸控與鍵盤 |
 | [燼燈](https://littleland.mwstudio.workers.dev/ember/) | [`ember/`](ember/README.md) | 給大人的探索型銀河惡魔城：一張相連的大地圖（25 個房間、5 個區域），打倒 3 個頭目拿衝刺／蹬牆跳／二段跳回頭開新路，集齊印記挑戰最終頭目；篝火存檔、手把＋鍵盤＋觸控，Canvas 2D＋WebAudio |
+| [反彈神射手](https://littleland.mwstudio.workers.dev/ricochet/) | [`ricochet/`](ricochet/README.md) | 角度反彈射擊解謎：拖曳＋微調角度發射，子彈撞牆、鏡子反彈並穿過敵人，海綿牆會吸住子彈、炸藥桶連環爆，12 關、用最少子彈拿三星，Canvas 2D，支援觸控與鍵盤 |
 | [捏臉工坊](https://littleland.mwstudio.workers.dev/face/)（未上架） | [`face/`](face/README.md) | 2D 捏臉：臉型、五官、髮型、瀏海、配件、衣服，即時預覽縮圖、隨機、復原、存檔、下載 PNG，支援手機 |
 | [寫實捏臉 3D](https://littleland.mwstudio.workers.dev/face3d/)（未上架） | [`face3d/`](face3d/README.md) | 寫實 3D 捏臉：MakeHuman CC0 人體、417 個變形滑桿、寫實皮膚、3D 髮型眉毛睫毛、表情、眼睛看游標，支援手機 |
 | [MW 大街](https://littleland.mwstudio.workers.dev/street/)（未上架，開發中） | [`street/`](street/README.md) | 擬真 3D 商店街：操作寫實人物逛街，每間店是一款遊戲，給小學中年級以上 |
@@ -73,6 +74,7 @@ dungeon/          index.html＋js/（依序載入，無建置步驟，不需外�
 rpg/              index.html＋js/（依序載入，無建置步驟，不需外部函式庫）
 bounce/           index.html＋levels.js（關卡字元地圖）＋game.js，無建置步驟，不需外部函式庫（Canvas 2D 程式繪圖）
 ember/            index.html＋js/（world 地圖資料、core、actors、render、main），無建置步驟，不需外部函式庫（Canvas 2D 程式繪圖）
+ricochet/         index.html＋core.js（物理，和解題器共用）＋levels.js＋game.js，無建置步驟，不需外部函式庫（Canvas 2D 程式繪圖）；tools/solve.mjs 檢查關卡
 face/             單一檔案，無建置步驟，不需任何外部函式庫（純 SVG）
 face3d/           index.html＋預先處理的 data/（Three.js 由 CDN 載入）；data/ 由 tools/build.py 從 MakeHuman 素材產生
 street/           index.html＋js/＋assets/（Three.js 由 CDN 載入）
