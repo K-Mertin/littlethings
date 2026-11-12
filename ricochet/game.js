@@ -110,7 +110,7 @@
     looks = world.enemies.map(e => Art.enemyLook(e.i, i + 1, e.type));
     hostAnim = world.hostages.map(() => -1);
     eq = []; moveT = 1; prevTurn = 0; eWait = 0;
-    hintAngle = null; hintUsed = false;
+    hintAngle = null; hintUsed = false; hintId++;
     hero.recoil = 0; hero.mood = 'idle'; hero.moodT = 0;
     // 預設角度：朝場地中間
     angle = Math.round(norm(Math.atan2(-(C.H / 2 - world.player.y), C.W / 2 - world.player.x) * 180 / Math.PI) * 10) / 10;
@@ -292,17 +292,28 @@
     $('result').hidden = false;
   }
 
-  // ── 提示：用解題器找這個局面的下一發 ──
+  // ── 提示：用解題器找這個局面的下一發（在 Worker 裡算，畫面不會卡）──
+  let hintWorker = null, hintId = 0;
   function hint() {
     if (phase !== 'aim') return;
-    showTip('💡 想一想…', 1500);
-    setTimeout(() => {
-      const r = Core.solve(world, Core.cloneState(state), shotsLeft, { step: 0.2, minWin: 0.6, maxStates: 250 });
-      if (!r.plan.length) { showTip('這個局面好像過不了了，按 ↻ 重來吧！', 4000); return; }
-      hintAngle = r.plan[0].at; hintUsed = true;
+    const id = ++hintId, lv = lvIdx, shots = shotsLeft;
+    const st = { dead: [...state.dead], boom: [...state.boom], glass: [...state.glass], turn: state.turn, hp: state.hp, bossHp: state.bossHp.slice() };
+    showTip('💡 想一想…', 20000);
+    const done = plan => {
+      if (id !== hintId || lv !== lvIdx || phase !== 'aim' || shots !== shotsLeft) return;   // 局面已經變了
+      if (!plan.length) { showTip('這個局面好像過不了了，按 ↻ 重來吧！', 4000); return; }
+      hintAngle = plan[0].at; hintUsed = true;
       showTip(`💡 試試看 ${toShown(hintAngle).toFixed(1)}°（金色虛線）。用提示這關最多兩顆星。`, 6000);
-    }, 30);
+    };
+    try {
+      if (!hintWorker) { hintWorker = new Worker('hint-worker.js'); hintWorker.onmessage = e => hintCb[e.data.id] && hintCb[e.data.id](e.data.plan); }
+      hintCb[id] = plan => { delete hintCb[id]; done(plan); };
+      hintWorker.postMessage({ id, lv, st, shots });
+    } catch (e) {                                    // 不支援 Worker：直接算
+      setTimeout(() => { const s2 = Core.cloneState(state); done(Core.solve(world, s2, shots, { step: 0.25, minWin: 0.6, maxStates: 200 }).plan); }, 30);
+    }
   }
+  const hintCb = {};
 
   // ── 選關畫面 ──
   function unlocked(i) { return i === 0 || (save.best[i - 1] || 0) > 0; }
@@ -447,6 +458,10 @@
     const a = Core.moverBox(m, prevTurn), k = ease(moveT);
     return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, b[2], b[3]];
   }
+  function shieldAt(e, x, y) {
+    const P = Core.shieldPts(world, e, state.turn), [px, py] = Core.enemyPos(world, e, state.turn);
+    return P.map(q => [q[0] + x - px, q[1] + y - py]);
+  }
   function draw() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (!world) { ctx.fillStyle = '#e9dfc8'; ctx.fillRect(0, 0, vw, vh); return; }
@@ -481,7 +496,7 @@
       const L = Math.hypot(lp.x - x, lp.y - y) || 1;
       Art.enemy(x, y, looks[e.i], {
         t: time, dead: t, kx: kd[0], ky: kd[1], lookX: (lp.x - x) / L, lookY: (lp.y - y) / L, scared: !!bullet && bullet.owner === 'player',
-        type: e.type, face: e.face, hp: state.bossHp[e.i], maxHp: e.hp, hurt: hurtT[e.i], cd: e.every && t < 0 ? Core.turnsUntilFire(world, state, e.i) : 0, moving: moveT < 1 && !!e.path,
+        type: e.type, shield: e.face != null && t < 0 ? shieldAt(e, x, y) : null, hp: state.bossHp[e.i], maxHp: e.hp, hurt: hurtT[e.i], cd: e.every && t < 0 ? Core.turnsUntilFire(world, state, e.i) : 0, moving: moveT < 1 && !!e.path,
       });
     }
     // 射手的警告線：下一發就會開槍的

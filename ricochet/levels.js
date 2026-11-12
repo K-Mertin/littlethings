@@ -1,6 +1,11 @@
 // 反彈神射手：關卡資料（場地 800×560，左上角 (0,0)）
 //   player [x,y]      角色位置
-//   enemies [[x,y]…]  敵人（最多 8 個）
+//   enemies [[x,y]…]  敵人（最多 8 個）。第三個值可以指定種類：
+//     [x,y,{ type:'gunner', every:2 }]   射手：每 every 回合朝主角開一槍（頭上顯示倒數，快開槍時畫紅色警告線）
+//     [x,y,{ type:'shield', face:180 }]  盾牌兵：盾牌朝 face 角度，從前面打會被彈開
+//     [x,y,{ type:'walker', path:[[x,y]…] }]  走路怪：每回合走到下一格，走完回到起點
+//     [x,y,{ type:'boss', hp:3, every:2 }]   哥布林大王：要打 hp 下；every 不寫就是 2（0 = 不開槍）
+//     walker 也可以加 face（拿盾牌走路）、加 every（邊走邊開槍）
 //   walls  [[x,y,w,h]…]  會反彈的牆
 //   soft   [[x,y,w,h]…]  海綿牆：子彈會被吸住、不反彈
 //   softBorder {top,bottom,left,right}  外框哪幾邊是海綿
@@ -166,11 +171,131 @@
       movers: [{ box: [230, 240, 90, 26], path: [[0, 0], [250, 0]] }],
       portals: [[70, 480, 730, 480]],
     },
+
+    // ───────── 第三世界：機關工廠 ─────────
+    {
+      name: '會開槍的哥布林', shots: 3, par: 2,
+      tip: '橘色的射手頭上有倒數，數到「!」就會朝你開槍！先打倒牠。',
+      player: [120, 280], enemies: [[680, 280, { type: 'gunner', every: 2 }], [680, 80]],
+      walls: [[540, 130, 30, 100]],
+    },
+    {
+      name: '紅色警告線', shots: 3, par: 2,
+      tip: '紅色虛線是射手下一發的路線，躲在牆後面也可能被反彈打到喔。',
+      player: [110, 450], enemies: [[690, 110, { type: 'gunner', every: 1 }], [400, 110]],
+      walls: [[250, 220, 300, 30], [560, 0, 30, 160]],
+    },
+    {
+      name: '盾牌兵', shots: 3, par: 1,
+      tip: '盾牌兵的盾會把子彈彈回來，繞到牠後面打！',
+      player: [120, 280], enemies: [[600, 280, { type: 'shield', face: 180 }]],
+      walls: [[340, 0, 30, 170], [340, 390, 30, 170]],
+    },
+    {
+      name: '借盾反彈', shots: 3, par: 1,
+      tip: '盾牌也能當鏡子用，把子彈彈去打別人。',
+      player: [120, 460], enemies: [[400, 160, { type: 'shield', face: 270 }], [700, 460]],
+      walls: [[520, 300, 30, 260]],
+    },
+    {
+      name: '走來走去', shots: 3, par: 1,
+      tip: '紫色走路怪每回合走一步，虛線圈是牠下一步的位置。',
+      player: [120, 280], enemies: [[680, 120, { type: 'walker', path: [[680, 440]] }]],
+      walls: [[400, 0, 30, 220], [560, 230, 240, 30]],
+    },
+    {
+      name: '活塞通道', shots: 3, par: 2,
+      player: [100, 280], enemies: [[700, 280], [700, 80, { type: 'gunner', every: 2 }]],
+      movers: [{ box: [340, 200, 40, 160], path: [[0, 0], [0, -200], [0, 200]] }],
+      walls: [[340, 0, 40, 200], [340, 360, 40, 200]],
+    },
+    {
+      name: '打到自己人', shots: 3, par: 1,
+      tip: '射手的子彈也會打到自己人……利用牠！',
+      player: [110, 470], enemies: [[690, 90, { type: 'gunner', every: 1 }], [400, 280], [690, 470]],
+      walls: [[0, 330, 300, 30], [300, 330, 30, 120], [580, 330, 30, 230]],
+    },
+    {
+      name: '盾牌陣', shots: 3, par: 2,
+      player: [400, 480], enemies: [[200, 150, { type: 'shield', face: 300 }], [400, 120, { type: 'shield', face: 270 }], [600, 150, { type: 'shield', face: 240 }]],
+      walls: [[0, 260, 120, 30], [680, 260, 120, 30]],
+    },
+    {
+      name: '巡邏隊', shots: 4, par: 2,
+      player: [100, 470], enemies: [[300, 100, { type: 'walker', path: [[500, 100], [700, 100]] }], [700, 300, { type: 'walker', path: [[700, 470], [500, 300]], every: 3 }], [450, 300]],
+      walls: [[200, 200, 400, 30], [200, 360, 30, 200]],
+      barrels: [[560, 400]],
+    },
+    {
+      name: '工廠大考驗', shots: 4, par: 3,
+      player: [400, 500], enemies: [[100, 90, { type: 'gunner', every: 2 }], [700, 90, { type: 'gunner', every: 3 }], [400, 90, { type: 'shield', face: 270 }], [100, 330, { type: 'walker', path: [[250, 330]] }], [700, 330]],
+      walls: [[200, 180, 400, 26], [560, 280, 26, 120]],
+      glass: [[0, 400, 200, 22]],
+      movers: [{ box: [300, 280, 160, 26], path: [[0, 0], [-140, 0]] }],
+    },
+
+    // ───────── 第四世界：魔王城堡 ─────────
+    {
+      name: '哥布林大王', shots: 4, par: 2,
+      tip: '大王要打三下才會倒！同一發子彈來回穿過牠也算。',
+      player: [120, 280], enemies: [[600, 280, { type: 'boss', hp: 3, every: 0 }]],
+      walls: [[380, 0, 30, 140], [380, 420, 30, 140]],
+    },
+    {
+      name: '大王的護衛', shots: 4, par: 3,
+      player: [100, 460], enemies: [[620, 160, { type: 'boss', hp: 3, every: 3 }], [480, 160, { type: 'shield', face: 225 }], [620, 300, { type: 'shield', face: 260 }]],
+      walls: [[300, 0, 30, 200]],
+    },
+    {
+      name: '魔法傳送陣', shots: 4, par: 2,
+      player: [120, 460], enemies: [[660, 140, { type: 'boss', hp: 3, every: 2 }], [660, 420]],
+      walls: [[390, 0, 30, 560]],
+      portals: [[220, 160, 520, 460], [300, 420, 520, 120]],
+    },
+    {
+      name: '吊橋機關', shots: 4, par: 2,
+      player: [100, 280], enemies: [[700, 120, { type: 'walker', path: [[700, 280], [700, 440], [700, 280]] }], [700, 440, { type: 'gunner', every: 2 }]],
+      movers: [{ box: [380, 140, 40, 280], path: [[0, 0], [0, -140], [0, 0], [0, 140]] }],
+      walls: [[380, 0, 40, 140], [380, 420, 40, 140]],
+    },
+    {
+      name: '火藥庫', shots: 3, par: 2,
+      tip: '一連串的炸藥桶……小心別炸到小兔子和自己！',
+      player: [100, 100], enemies: [[680, 120, { type: 'boss', hp: 2, every: 2 }], [460, 460], [600, 460], [720, 360]],
+      barrels: [[530, 400], [660, 300], [560, 200]], hostages: [[300, 460]],
+      walls: [[0, 250, 300, 30], [380, 260, 30, 300]],
+    },
+    {
+      name: '王座之間', shots: 4, par: 3,
+      player: [400, 500], enemies: [[400, 110, { type: 'boss', hp: 3, every: 2 }], [150, 110, { type: 'gunner', every: 3 }], [650, 110, { type: 'gunner', every: 3 }]],
+      walls: [[260, 200, 30, 120], [510, 200, 30, 120]],
+      mirrors: [[60, 300, 140, 380], [660, 380, 740, 300]],
+    },
+    {
+      name: '最後的走廊', shots: 4, par: 3,
+      tip: '先打破冰晶玻璃打開通道，小心走廊上的小兔子。',
+      player: [80, 480], enemies: [[700, 90, { type: 'boss', hp: 2, every: 2 }], [300, 90, { type: 'walker', path: [[480, 90]] }], [700, 300]],
+      walls: [[0, 380, 560, 30], [240, 180, 560, 30]],
+      glass: [[560, 380, 240, 24]],
+      hostages: [[430, 345]],
+      mirrors: [[60, 230, 170, 340], [60, 150, 170, 40]],
+    },
+    {
+      name: '魔王決戰', shots: 5, par: 3,
+      tip: '最後一戰！大王會連續開槍，先解決牠的手下。',
+      player: [400, 500], enemies: [[400, 110, { type: 'boss', hp: 4, every: 2 }], [120, 100, { type: 'gunner', every: 3 }], [680, 100, { type: 'shield', face: 225 }], [130, 330, { type: 'walker', path: [[260, 330]] }], [670, 330]],
+      walls: [[240, 180, 30, 100], [530, 180, 30, 100]],
+      glass: [[330, 200, 140, 22]],
+      barrels: [[560, 400]],
+      portals: [[60, 480, 740, 480]],
+    },
   ];
   // 世界：每個世界一段連續的關卡、一種場景主題
   const WORLDS = [
     { name: '訓練營', theme: 'camp', from: 0, to: 11 },
     { name: '冰晶洞', theme: 'ice', from: 12, to: 21 },
+    { name: '機關工廠', theme: 'factory', from: 22, to: 31 },
+    { name: '魔王城堡', theme: 'castle', from: 32, to: 39 },
   ];
   WORLDS.forEach(w => { for (let i = w.from; i <= w.to; i++) if (LEVELS[i] && !LEVELS[i].theme) LEVELS[i].theme = w.theme; });
   LEVELS.WORLDS = WORLDS;

@@ -190,6 +190,8 @@
     touch(world, b, b.x, b.y, nx, ny, state, ev);
     if (b.dead) return t;
     b.x = nx; b.y = ny; b.dist += t;
+    // 路上剛打倒盾牌兵、或炸碎了玻璃：原本要撞的那條邊已經不在了，子彈繼續直飛
+    if (hit && t === hit.t && ((hit.e.enemy != null && state.dead.has(hit.e.enemy)) || (hit.e.glass != null && state.glass.has(hit.e.glass)))) return t;
     if (portal != null) {
       const from = portalPt(world, portal), to = portalPt(world, portal ^ 1);
       b.path.push([nx, ny]);
