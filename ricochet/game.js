@@ -506,7 +506,7 @@
       const ns = Core.cloneState(state); ns.turn++;
       const from = Core.enemyPos(world, e, ns.turn);
       const r = Core.aimPath(world, Core.enemyAim(world, ns, e.i), 1, 120, ns, from, e.i);
-      drawPath(r.segs, '#ff3b3b', 3, [6, 8], 0.55);
+      drawPath(r.segs, '#ff3b3b', 4, [8, 7], 0.8);
     }
     if (aiming && hintAngle != null) drawPath(Core.aimPath(world, hintAngle, 2, 120, state).segs, '#ffc23d', 5, [3, 9], 0.9);
     if (aiming) drawAim();

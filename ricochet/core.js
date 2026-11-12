@@ -188,7 +188,7 @@
     }
     const nx = b.x + b.vx * t, ny = b.y + b.vy * t;
     touch(world, b, b.x, b.y, nx, ny, state, ev);
-    if (b.dead) return t;
+    if (b.dead) { b.path.push([b.x, b.y]); return t; }      // 打到人質／主角／最後一隻敵人：停在碰到的地方
     b.x = nx; b.y = ny; b.dist += t;
     // 路上剛打倒盾牌兵、或炸碎了玻璃：原本要撞的那條邊已經不在了，子彈繼續直飛
     if (hit && t === hit.t && ((hit.e.enemy != null && state.dead.has(hit.e.enemy)) || (hit.e.glass != null && state.glass.has(hit.e.glass)))) return t;
@@ -260,20 +260,21 @@
     for (const h of hits) {
       if (h.t === 'e') {
         damage(world, h.o, state, ev, 'bullet', b);
-        if (mine && allDead(world, state)) { b.dead = true; ev('stop', { x: h.x, y: h.y, fizzle: 1 }); return; }   // 最後一隻倒下，子彈就消失（不會再彈回來打到自己）
+        if (mine && allDead(world, state)) { stopAt(b, ax, ay, bx, by, h.u); ev('stop', { x: b.x, y: b.y, fizzle: 1 }); return; }   // 最後一隻倒下，子彈就消失（不會再彈回來打到自己）
       }
       else if (h.t === 'b') explode(world, h.o, state, ev);
       else if (h.t === 'h') {
-        state.hostage = true; b.dead = true;
-        ev('hostage', h.o); ev('stop', { x: ax + (bx - ax) * h.u, y: ay + (by - ay) * h.u });
+        state.hostage = true; stopAt(b, ax, ay, bx, by, h.u);
+        ev('hostage', h.o); ev('stop', { x: b.x, y: b.y });
         return;
       } else if (h.t === 'p') {
-        state.hp = Math.max(0, state.hp - 1); b.dead = true;
-        ev('ouch', { x: world.player.x, y: world.player.y, by: b.owner }); ev('stop', { x: ax + (bx - ax) * h.u, y: ay + (by - ay) * h.u });
+        state.hp = Math.max(0, state.hp - 1); stopAt(b, ax, ay, bx, by, h.u);
+        ev('ouch', { x: world.player.x, y: world.player.y, by: b.owner }); ev('stop', { x: b.x, y: b.y });
         return;
       }
     }
   }
+  function stopAt(b, ax, ay, bx, by, u) { b.x = ax + (bx - ax) * u; b.y = ay + (by - ay) * u; b.dead = true; }
   function damage(world, e, state, ev, how, b) {
     if (state.dead.has(e.i)) return;
     state.bossHp[e.i]--;
