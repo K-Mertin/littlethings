@@ -384,49 +384,129 @@
   // ── 敵人：調皮的小哥布林，每隻配色和配件都不一樣 ──
   const SKINS = [['#6cc36a', '#3d8a3f'], ['#59b8a6', '#2f7f70'], ['#9bc95a', '#5d8a2a'], ['#7fc98a', '#3f8f52'], ['#4fae7e', '#2b7350']];
   const GEAR = ['none', 'helmet', 'horns', 'bandana', 'eyepatch', 'mohawk', 'none', 'cap'];
-  Art.enemyLook = (i, seed) => { const R = rng((seed || 1) * 97 + i * 31 + 5); return { skin: SKINS[Math.floor(R() * SKINS.length)], gear: GEAR[Math.floor(R() * GEAR.length)], ph: R() * TAU, size: 0.95 + R() * 0.12 }; };
-  // look：enemyLook；st：{ t, dead(秒，-1=活著), lookX/lookY（看向哪裡的世界方向）, kx/ky（被打飛的方向）, scared }
+  const TYPE_SKIN = { gunner: [['#f39a4a', '#b5571c'], ['#f08a5d', '#a94a22']], shield: [['#7fb4c9', '#3c6f86'], ['#8cc0b8', '#3f7a72']], walker: [['#b08be0', '#6c47a8'], ['#c39ae8', '#7a4fb4']], boss: [['#5fae5a', '#2c6a2a']] };
+  const TYPE_GEAR = { gunner: ['bandana', 'mohawk', 'eyepatch'], shield: ['helmet'], walker: ['cap', 'horns', 'none'], boss: ['crown'] };
+  Art.enemyLook = (i, seed, type) => {
+    const R = rng((seed || 1) * 97 + i * 31 + 5);
+    const skins = TYPE_SKIN[type] || SKINS, gears = TYPE_GEAR[type] || GEAR;
+    return { skin: skins[Math.floor(R() * skins.length)], gear: gears[Math.floor(R() * gears.length)], ph: R() * TAU, size: type === 'boss' ? C.BOSS_R / C.ENEMY_R : 0.95 + R() * 0.12, type: type || 'grunt' };
+  };
+  // look：enemyLook；st：{ t, dead(秒，-1=活著), lookX/lookY（看向哪裡的世界方向）, kx/ky（被打飛的方向）, scared,
+  //   type, shield(盾牌多邊形，世界座標), cd(幾回合後開槍，0=不開槍), hp/maxHp(魔王血量), hurt(被打到後幾秒), moving(正在走) }
   Art.enemy = function (x, y, look, st) {
     const R0 = C.ENEMY_R * look.size;
     const t = st.t + look.ph;
+    const type = look.type;
     if (st.dead >= 0) {
-      const d = st.dead;
+      const d = st.dead, fly = type === 'boss' ? 14 : 34;
       if (d < 0.7) {               // 被打飛：往子彈方向滑出去、轉圈、變小
         const k = d / 0.7, ease = 1 - (1 - k) * (1 - k);
-        upright(x + st.kx * 34 * ease, y + st.ky * 34 * ease, () => {
-          ctx.rotate(ease * 5 * (st.kx >= 0 ? 1 : -1)); ctx.globalAlpha = 1 - k * 0.6; const sc = 1 - k * 0.35; ctx.scale(sc, sc);
+        upright(x + st.kx * fly * ease, y + st.ky * fly * ease, () => {
+          ctx.rotate(ease * (type === 'boss' ? 2 : 5) * (st.kx >= 0 ? 1 : -1)); ctx.globalAlpha = 1 - k * 0.6; const sc = 1 - k * 0.35; ctx.scale(sc, sc);
           body(R0, look, t, d < 0.08 ? 'flash' : 'ko', 0, 0);
           ctx.globalAlpha = 1;
         });
-        upright(x + st.kx * 34 * ease, y + st.ky * 34 * ease, () => {    // 頭上轉圈的星星
-          for (let k2 = 0; k2 < 3; k2++) { const an = d * 9 + k2 * TAU / 3; ctx.fillStyle = '#ffd34d'; star(ctx, Math.cos(an) * 16, -R0 - 6 + Math.sin(an) * 5, 4); }
+        upright(x + st.kx * fly * ease, y + st.ky * fly * ease, () => {    // 頭上轉圈的星星
+          for (let k2 = 0; k2 < 3; k2++) { const an = d * 9 + k2 * TAU / 3; ctx.fillStyle = '#ffd34d'; star(ctx, Math.cos(an) * (R0 * 0.8), -R0 - 6 + Math.sin(an) * 5, 4); }
         });
       }
       if (d > 0.4 && d < 1.8) {     // 小幽靈飄上去
         const k = (d - 0.4) / 1.4;
-        upright(x + st.kx * 34, y + st.ky * 34, () => {
+        upright(x + st.kx * fly, y + st.ky * fly, () => {
           ctx.globalAlpha = (1 - k) * 0.8; ctx.translate(Math.sin(d * 6) * 4, -k * 50 - 10);
+          if (type === 'boss') ctx.scale(1.6, 1.6);
           ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0, 0, 9, Math.PI, 0); ctx.lineTo(9, 10); for (let q = 0; q < 3; q++) ctx.lineTo(6 - q * 6, q % 2 ? 10 : 6); ctx.lineTo(-9, 10); ctx.closePath(); ctx.fill();
           ctx.fillStyle = '#2b2340'; ctx.beginPath(); ctx.arc(-3, -1, 1.5, 0, TAU); ctx.arc(3, -1, 1.5, 0, TAU); ctx.fill();
           ctx.globalAlpha = 1;
         });
       }
-      if (d >= 0.7) upright(x + st.kx * 34, y + st.ky * 34, () => {    // 留在地上的小頭盔／印子
-        ctx.fillStyle = 'rgba(40,30,50,.18)'; ctx.beginPath(); ctx.ellipse(0, 6, 13, 5, 0, 0, TAU); ctx.fill();
-        ctx.fillStyle = look.skin[1]; ctx.globalAlpha = 0.55; ctx.beginPath(); ctx.arc(0, 3, 7, Math.PI, 0); ctx.fill(); ctx.globalAlpha = 1;
+      if (d >= 0.7) upright(x + st.kx * fly, y + st.ky * fly, () => {    // 留在地上的東西
+        ctx.fillStyle = 'rgba(40,30,50,.18)'; ctx.beginPath(); ctx.ellipse(0, 6, R0 * 0.65, 5, 0, 0, TAU); ctx.fill();
+        if (type === 'boss') { ctx.fillStyle = '#ffd34d'; crown(0, 2, 0.8); }
+        else { ctx.fillStyle = look.skin[1]; ctx.globalAlpha = 0.55; ctx.beginPath(); ctx.arc(0, 3, 7, Math.PI, 0); ctx.fill(); ctx.globalAlpha = 1; }
       });
       return;
     }
+    if (st.shield) shield(st.shield, t);
     upright(x, y, () => {
       const [lx, ly] = localDir(st.lookX || 0, st.lookY || 0);
       ctx.fillStyle = 'rgba(30,20,40,.25)'; ctx.beginPath(); ctx.ellipse(0, R0 * 0.85, R0 * 0.95, R0 * 0.32, 0, 0, TAU); ctx.fill();
-      const hop = Math.abs(Math.sin(t * 3)) * (st.scared ? 4 : 2);
+      const walk = st.moving ? Math.sin(t * 22) : 0;
+      if (type === 'walker') {          // 小靴子
+        ctx.fillStyle = '#5a3b22';
+        for (const sd of [-1, 1]) { ctx.save(); ctx.translate(sd * R0 * 0.4, R0 * 0.78 + (sd * walk) * 3); rr(ctx, -6, -4, 12, 8, 3); ctx.fill(); ctx.restore(); }
+      }
+      const hop = st.moving ? Math.abs(walk) * 5 : Math.abs(Math.sin(t * 3)) * (st.scared ? 4 : 2);
       ctx.translate(0, -hop);
+      if (type === 'boss') {             // 披風
+        ctx.fillStyle = '#b8323a'; ctx.beginPath(); ctx.moveTo(-R0 * 0.9, -R0 * 0.2); ctx.quadraticCurveTo(-R0 * 1.35, R0 * 0.9, -R0 * 0.7, R0 * 1.05); ctx.lineTo(R0 * 0.7, R0 * 1.05); ctx.quadraticCurveTo(R0 * 1.35, R0 * 0.9, R0 * 0.9, -R0 * 0.2); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#ffd34d'; ctx.fillRect(-R0 * 0.75, R0 * 0.95, R0 * 1.5, 4);
+      }
+      const hurt = st.hurt >= 0 && st.hurt < 0.35;
       const sq = 1 + Math.sin(t * 6) * 0.03;
-      ctx.scale(1 / sq, sq);
-      body(R0, look, t, st.scared ? 'scared' : 'idle', lx, ly);
+      ctx.save(); ctx.scale(1 / sq, sq);
+      if (hurt) ctx.translate(Math.sin(st.hurt * 80) * 3, 0);
+      body(R0, look, t, hurt ? 'flash' : st.scared ? 'scared' : st.cd === 1 ? 'angry' : 'idle', lx, ly);
+      ctx.restore();
+      if (type === 'gunner' || (type === 'boss' && st.cd)) blaster(R0, lx, ly, st.cd === 1, t);
+      // 頭上的資訊：開槍倒數、魔王血量
+      let top = -R0 - (look.gear === 'horns' || look.gear === 'mohawk' || type === 'boss' ? 26 : 16);
+      if (st.maxHp > 1) {
+        const n = st.maxHp, w = 13;
+        for (let k = 0; k < n; k++) { ctx.fillStyle = k < st.hp ? '#ef4b3f' : 'rgba(43,35,64,.25)'; heart(-((n - 1) * w) / 2 + k * w, top, 5.5); }
+        top -= 18;
+      }
+      if (st.cd) {
+        const warn = st.cd === 1, pul = warn ? 1 + Math.sin(t * 10) * 0.12 : 1;
+        ctx.save(); ctx.translate(R0 * 0.75, top + 6); ctx.scale(pul, pul);
+        ctx.fillStyle = warn ? '#ef4b3f' : '#fff'; ctx.beginPath(); ctx.arc(0, 0, 10, 0, TAU); ctx.fill();
+        ctx.lineWidth = 2; ctx.strokeStyle = warn ? '#8f1f17' : '#2b2340'; ctx.stroke();
+        ctx.fillStyle = warn ? '#fff' : '#2b2340'; ctx.font = '900 12px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(warn ? '!' : String(st.cd), 0, 0.5);
+        ctx.restore();
+      }
     });
   };
+  // 射手拿的小砲（跟著主角的方向轉）
+  function blaster(R, lx, ly, hot, t) {
+    const a = Math.atan2(ly, lx);
+    ctx.save(); ctx.translate(lx * R * 0.55, R * 0.15 + ly * R * 0.4); ctx.rotate(a);
+    ctx.fillStyle = '#4b4f5c'; rr(ctx, 2, -5, R * 0.95, 10, 3); ctx.fill();
+    ctx.fillStyle = hot ? '#ff6b5e' : '#7a7f8f'; ctx.fillRect(R * 0.75, -6, 6, 12);
+    if (hot) { ctx.fillStyle = `rgba(255,120,90,${0.5 + Math.sin(t * 14) * 0.3})`; ctx.beginPath(); ctx.arc(R * 0.95 + 6, 0, 5, 0, TAU); ctx.fill(); }
+    ctx.fillStyle = '#7a4a24'; rr(ctx, 0, 2, 8, 10, 2); ctx.fill();
+    ctx.restore();
+  }
+  // 盾牌（畫在世界座標：它真的會擋子彈）
+  function shield(P, t) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(20,10,30,.25)'; ctx.translate(4, 5); path(ctx, P); ctx.fill(); ctx.translate(-4, -5);
+    path(ctx, P);
+    const g = ctx.createLinearGradient(P[0][0], P[0][1], P[3][0], P[3][1]);
+    g.addColorStop(0, '#e8edf2'); g.addColorStop(0.5, '#a9b4c0'); g.addColorStop(1, '#6f7b88');
+    ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = '#3b444f'; ctx.stroke();
+    const mx = (P[0][0] + P[1][0] + P[2][0] + P[3][0]) / 4, my = (P[0][1] + P[1][1] + P[2][1] + P[3][1]) / 4;
+    ctx.fillStyle = '#c9a24a'; ctx.beginPath(); ctx.arc(mx, my, 4.5, 0, TAU); ctx.fill();
+    for (const k of [0.12, 0.88]) {
+      const bx = lerp((P[0][0] + P[3][0]) / 2, (P[1][0] + P[2][0]) / 2, k), by = lerp((P[0][1] + P[3][1]) / 2, (P[1][1] + P[2][1]) / 2, k);
+      ctx.fillStyle = '#3b444f'; ctx.beginPath(); ctx.arc(bx, by, 2, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+  }
+  function heart(x, y, r) {
+    ctx.beginPath(); ctx.moveTo(x, y + r * 0.9);
+    ctx.bezierCurveTo(x - r * 1.6, y - r * 0.2, x - r * 0.7, y - r * 1.3, x, y - r * 0.45);
+    ctx.bezierCurveTo(x + r * 0.7, y - r * 1.3, x + r * 1.6, y - r * 0.2, x, y + r * 0.9);
+    ctx.fill();
+  }
+  function crown(x, y, s) {
+    ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+    ctx.beginPath(); ctx.moveTo(-14, 0); ctx.lineTo(-16, -14); ctx.lineTo(-7, -6); ctx.lineTo(0, -18); ctx.lineTo(7, -6); ctx.lineTo(16, -14); ctx.lineTo(14, 0); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#a5761a'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = '#e8473c'; ctx.beginPath(); ctx.arc(0, -5, 2.6, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#4a9dff'; ctx.beginPath(); ctx.arc(-9, -3, 2, 0, TAU); ctx.arc(9, -3, 2, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
   function body(R, look, t, face, lx, ly) {
     const [skin, dark] = face === 'flash' ? ['#ffffff', '#dddddd'] : look.skin;
     // 耳朵
@@ -464,7 +544,7 @@
     }
     // 眉毛
     ctx.strokeStyle = '#2b2340'; ctx.lineWidth = 3; ctx.lineCap = 'round';
-    const bro = face === 'scared' ? -1 : 1;
+    const bro = face === 'scared' ? -1 : face === 'angry' ? 1.8 : 1;
     ctx.beginPath(); ctx.moveTo(-R * 0.62, eyeY - 9 - bro * 2); ctx.lineTo(-R * 0.14, eyeY - 6 + bro * 2); ctx.moveTo(R * 0.62, eyeY - 9 - bro * 2); ctx.lineTo(R * 0.14, eyeY - 6 + bro * 2); ctx.stroke();
     // 嘴巴＋獠牙
     ctx.fillStyle = '#5a1e2a';
@@ -477,6 +557,7 @@
     }
   }
   function gear(R, g, dark) {
+    if (g === 'crown') { ctx.fillStyle = '#ffd34d'; crown(0, -R * 0.72, R / 24); return; }
     if (g === 'helmet') {
       ctx.fillStyle = '#9aa3ad'; ctx.beginPath(); ctx.arc(0, -R * 0.35, R * 0.85, Math.PI * 1.05, Math.PI * 1.95); ctx.closePath(); ctx.fill();
       ctx.strokeStyle = '#5c6570'; ctx.lineWidth = 2; ctx.stroke(); ctx.fillStyle = '#c9d0d7'; ctx.fillRect(-R * 0.15, -R * 1.2, R * 0.3, R * 0.5);
