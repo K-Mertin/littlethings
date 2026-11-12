@@ -239,10 +239,10 @@
     camp(c, b, T, R) { bricks(c, b, R, ['#a29db0', '#948fa4', '#aaa5b8', '#8b869c'], '#4b4560', true); },
     ice(c, b, T, R) {
       const [x, y, w, h] = b;
-      const g = c.createLinearGradient(x, y, x + w, y + h); g.addColorStop(0, '#d9f3ff'); g.addColorStop(0.5, '#8fd0f0'); g.addColorStop(1, '#5aaed8');
-      c.fillStyle = g; rr(c, x, y, w, h, 6); c.fill(); c.lineWidth = 2.5; c.strokeStyle = '#3c7fa8'; c.stroke();
+      const g = c.createLinearGradient(x, y, x + w, y + h); g.addColorStop(0, '#6fb8e4'); g.addColorStop(0.5, '#3b88c0'); g.addColorStop(1, '#245f93');
+      c.fillStyle = g; rr(c, x, y, w, h, 6); c.fill(); c.lineWidth = 3; c.strokeStyle = '#173f66'; c.stroke();
       c.save(); rr(c, x, y, w, h, 6); c.clip();
-      c.strokeStyle = 'rgba(255,255,255,.7)'; c.lineWidth = 2;
+      c.strokeStyle = 'rgba(255,255,255,.4)'; c.lineWidth = 2;
       for (let k = 0; k < (w + h) / 30; k++) { const px = x + R() * w, py = y + R() * h; c.beginPath(); c.moveTo(px, py); c.lineTo(px + 8 + R() * 10, py - 8 - R() * 10); c.stroke(); }
       c.restore();
       c.fillStyle = '#fbfeff';                // 頂上的雪
@@ -545,6 +545,152 @@
       ctx.lineJoin = 'round'; ctx.lineWidth = 6; ctx.strokeStyle = '#2b2340'; ctx.strokeText(text, 0, 0);
       ctx.fillStyle = color || '#ffd34d'; ctx.fillText(text, 0, 0);
       ctx.globalAlpha = 1;
+    });
+  };
+
+
+  // ── 傳送門：旋轉的光圈，一對同顏色 ──
+  Art.portal = function (x, y, color, t, side) {
+    const R = C.PORTAL_R;
+    ctx.save(); ctx.translate(x, y);
+    const g = ctx.createRadialGradient(0, 0, 2, 0, 0, R * 1.3);
+    g.addColorStop(0, 'rgba(255,255,255,.95)'); g.addColorStop(0.35, color); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.globalAlpha = 0.55 + Math.sin(t * 3 + side) * 0.1; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, R * 1.3, 0, TAU); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#1b1530'; ctx.beginPath(); ctx.arc(0, 0, R * 0.72, 0, TAU); ctx.fill();
+    for (let k = 0; k < 3; k++) {          // 往裡面捲的漩渦
+      ctx.save(); ctx.rotate(t * (side ? -2.2 : 2.2) + k * TAU / 3);
+      ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.globalAlpha = 0.85;
+      ctx.beginPath(); for (let q = 0; q <= 20; q++) { const a = q / 20 * 2.4, r = R * 0.68 * (1 - q / 24); const px = Math.cos(a) * r, py = Math.sin(a) * r; q ? ctx.lineTo(px, py) : ctx.moveTo(px, py); } ctx.stroke();
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 4; ctx.strokeStyle = color; ctx.beginPath(); ctx.arc(0, 0, R * 0.78, 0, TAU); ctx.stroke();
+    ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.setLineDash([5, 6]); ctx.lineDashOffset = t * 20;
+    ctx.beginPath(); ctx.arc(0, 0, R * 0.95, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
+    for (let k = 0; k < 6; k++) {          // 繞著轉的小光點
+      const a = t * 1.6 + k * TAU / 6; ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.beginPath(); ctx.arc(Math.cos(a) * R * 1.05, Math.sin(a) * R * 1.05, 1.8, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+  };
+
+  // ── 會滑動的牆：有箭頭紋路的方塊；ghost = 下一回合的位置（虛線框）──
+  Art.mover = function (b, key, kind) {
+    const [x, y, w, h] = b;
+    ctx.fillStyle = 'rgba(20,10,30,.25)'; rr(ctx, x + 6, y + 8, w, h, 6); ctx.fill();
+    const base = kind === 'soft' ? ['#b393ff', '#7f4fe6', '#5a2fc0'] : key === 'ice' ? ['#9fe0ff', '#4aa8dc', '#2a6f9e'] : key === 'factory' ? ['#ffcf5a', '#e0a020', '#8a5c00'] : key === 'castle' ? ['#a88bd8', '#6c4fa8', '#3a2668'] : ['#9fd88a', '#5aa846', '#336a26'];
+    const g = ctx.createLinearGradient(x, y, x, y + h); g.addColorStop(0, base[0]); g.addColorStop(1, base[1]);
+    ctx.fillStyle = g; rr(ctx, x, y, w, h, 6); ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = base[2]; ctx.stroke();
+    ctx.save(); rr(ctx, x, y, w, h, 6); ctx.clip();
+    ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    const horiz = w >= h;
+    for (let k = -1; k <= 1; k++) {          // 雙向箭頭：表示會滑動
+      ctx.beginPath();
+      if (horiz) { const cx = x + w / 2 + k * 26; ctx.moveTo(cx - 5, y + h / 2 - 6); ctx.lineTo(cx + 2, y + h / 2); ctx.lineTo(cx - 5, y + h / 2 + 6); }
+      else { const cy = y + h / 2 + k * 26; ctx.moveTo(x + w / 2 - 6, cy - 5); ctx.lineTo(x + w / 2, cy + 2); ctx.lineTo(x + w / 2 + 6, cy - 5); }
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(255,255,255,.3)'; ctx.fillRect(x, y, w, 3);
+    ctx.restore();
+    ctx.fillStyle = base[2];
+    for (const [rx, ry] of [[x + 6, y + 6], [x + w - 6, y + 6], [x + 6, y + h - 6], [x + w - 6, y + h - 6]]) { ctx.beginPath(); ctx.arc(rx, ry, 2.4, 0, TAU); ctx.fill(); }
+  };
+  Art.moverGhost = function (b) {
+    const [x, y, w, h] = b;
+    ctx.save(); ctx.setLineDash([7, 6]); ctx.lineWidth = 2.5; ctx.strokeStyle = 'rgba(43,35,64,.45)'; ctx.fillStyle = 'rgba(255,255,255,.18)';
+    rr(ctx, x, y, w, h, 6); ctx.fill(); ctx.stroke(); ctx.restore();
+  };
+  // 走路怪下一步會走到哪：腳印＋虛線
+  Art.walkGhost = function (to, from) {
+    if (Math.hypot(to[0] - from[0], to[1] - from[1]) < 2) return;
+    ctx.save(); ctx.setLineDash([4, 7]); ctx.lineWidth = 2.5; ctx.strokeStyle = 'rgba(43,35,64,.4)';
+    ctx.beginPath(); ctx.moveTo(from[0], from[1]); ctx.lineTo(to[0], to[1]); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(43,35,64,.2)'; ctx.strokeStyle = 'rgba(43,35,64,.45)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(to[0], to[1], C.ENEMY_R, 0, TAU); ctx.fill(); ctx.stroke();
+    ctx.restore();
+    upright(to[0], to[1], () => { ctx.fillStyle = 'rgba(43,35,64,.5)'; for (const [fx, fy] of [[-5, -3], [5, 4]]) { ctx.beginPath(); ctx.ellipse(fx, fy, 3, 4.5, 0, 0, TAU); ctx.fill(); } });
+  };
+
+  // ── 冰晶玻璃：半透明、有切面和閃光 ──
+  Art.glass = function (b, t) {
+    const [x, y, w, h] = b;
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,.5)'; rr(ctx, x, y, w, h, 3); ctx.fill();
+    const g = ctx.createLinearGradient(x, y, x + w, y + h);
+    g.addColorStop(0, 'rgba(200,245,255,.55)'); g.addColorStop(0.5, 'rgba(255,255,255,.2)'); g.addColorStop(1, 'rgba(190,235,255,.55)');
+    ctx.fillStyle = g; rr(ctx, x, y, w, h, 3); ctx.fill();
+    ctx.setLineDash([6, 4]); ctx.lineWidth = 2.5; ctx.strokeStyle = '#33b5e5'; ctx.stroke(); ctx.setLineDash([]);
+    ctx.clip();
+    // 裂痕（一看就知道打得破）
+    ctx.strokeStyle = 'rgba(40,110,160,.55)'; ctx.lineWidth = 1.3;
+    const L = Math.max(w, h), n = Math.max(1, Math.round(L / 70));
+    for (let k = 0; k < n; k++) {
+      const u = (k + 0.5) / n;
+      const cx = w > h ? x + u * w : x + w / 2, cy = w > h ? y + h / 2 : y + u * h;
+      for (const a of [0.5, 2.1, 3.6, 5]) {
+        ctx.beginPath(); ctx.moveTo(cx, cy);
+        const r1 = Math.min(w, h) * 0.45 + 6;
+        ctx.lineTo(cx + Math.cos(a) * r1 * 0.5, cy + Math.sin(a) * r1 * 0.5 + 2); ctx.lineTo(cx + Math.cos(a + 0.3) * r1, cy + Math.sin(a + 0.3) * r1);
+        ctx.stroke();
+      }
+    }
+    const sp = (t * 0.25) % 1.6 - 0.3;                                   // 一道光掃過去
+    ctx.fillStyle = 'rgba(255,255,255,.7)';
+    ctx.beginPath();
+    if (w > h) { const sx = x + sp * w; ctx.moveTo(sx, y); ctx.lineTo(sx + 12, y); ctx.lineTo(sx + 2, y + h); ctx.lineTo(sx - 10, y + h); }
+    else { const sy = y + sp * h; ctx.moveTo(x, sy); ctx.lineTo(x, sy + 12); ctx.lineTo(x + w, sy + 2); ctx.lineTo(x + w, sy - 10); }
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = '#fff';
+    star4(ctx, x + w * 0.25, y + h * 0.2, 3.5 + Math.sin(t * 4) * 1.5);
+    star4(ctx, x + w * 0.7, y + h * 0.75, 3 + Math.cos(t * 3) * 1.2);
+  };
+
+  // ── 被抓住的小雪兔（人質）：綁著繩子，頭上冒「救命」──
+  Art.hostage = function (x, y, st) {
+    const R = C.HOSTAGE_R, t = st.t, hurt = st.hurt >= 0;
+    upright(x, y, () => {
+      ctx.fillStyle = 'rgba(30,20,40,.25)'; ctx.beginPath(); ctx.ellipse(0, R * 0.9, R, R * 0.32, 0, 0, TAU); ctx.fill();
+      const hop = st.happy ? -Math.abs(Math.sin(t * 8)) * 10 : st.scared ? Math.sin(t * 40) * 1.5 : 0;
+      ctx.translate(st.scared ? hop : 0, st.happy ? hop : 0);
+      // 耳朵
+      for (const sd of [-1, 1]) {
+        ctx.save(); ctx.translate(sd * 7, -R * 0.7); ctx.rotate(sd * (0.18 + Math.sin(t * 2 + sd) * 0.06));
+        ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#c9c3d6'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.ellipse(0, -12, 6, 14, 0, 0, TAU); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#ffc2d8'; ctx.beginPath(); ctx.ellipse(0, -12, 3, 10, 0, 0, TAU); ctx.fill();
+        ctx.restore();
+      }
+      ctx.fillStyle = hurt ? '#ffd6d6' : '#ffffff'; ctx.strokeStyle = '#c9c3d6'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.ellipse(0, 0, R, R * 0.92, 0, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,150,180,.5)'; ctx.beginPath(); ctx.arc(-9, 3, 3.5, 0, TAU); ctx.arc(9, 3, 3.5, 0, TAU); ctx.fill();
+      // 眼睛
+      ctx.fillStyle = '#2b2340';
+      if (hurt) { ctx.strokeStyle = '#2b2340'; ctx.lineWidth = 2; for (const sd of [-1, 1]) { ctx.beginPath(); ctx.moveTo(sd * 6 - 3, -6); ctx.lineTo(sd * 6 + 3, -1); ctx.moveTo(sd * 6 + 3, -6); ctx.lineTo(sd * 6 - 3, -1); ctx.stroke(); } }
+      else if (st.happy) { ctx.strokeStyle = '#2b2340'; ctx.lineWidth = 2.2; for (const sd of [-1, 1]) { ctx.beginPath(); ctx.arc(sd * 6, -3, 3, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke(); } }
+      else {
+        for (const sd of [-1, 1]) { ctx.beginPath(); ctx.ellipse(sd * 6, -4, 3, 3.8, 0, 0, TAU); ctx.fill(); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(sd * 6 + 1, -5, 1.1, 0, TAU); ctx.fill(); ctx.fillStyle = '#2b2340'; }
+        ctx.fillStyle = 'rgba(120,200,255,.9)'; ctx.beginPath(); ctx.arc(-6, 1 + (t * 2 % 1) * 6, 1.6, 0, TAU); ctx.fill();   // 眼淚
+      }
+      ctx.fillStyle = '#ff8fb0'; ctx.beginPath(); ctx.moveTo(-2, 2); ctx.lineTo(2, 2); ctx.lineTo(0, 4.5); ctx.closePath(); ctx.fill();
+      // 繩子
+      if (!st.happy) {
+        ctx.strokeStyle = '#b8864a'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(-R * 0.98, 6); ctx.quadraticCurveTo(0, 12, R * 0.98, 6); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-R * 0.9, 11); ctx.quadraticCurveTo(0, 17, R * 0.9, 11); ctx.stroke();
+        ctx.fillStyle = '#8a5a32'; ctx.beginPath(); ctx.arc(R * 0.6, 12, 3, 0, TAU); ctx.fill();
+      }
+      // 「救命」泡泡（一陣一陣出現）
+      const ph = (t % 4) / 4;
+      if (!st.happy && !hurt && ph < 0.45) {
+        const a = ph < 0.08 ? ph / 0.08 : ph > 0.37 ? (0.45 - ph) / 0.08 : 1;
+        ctx.globalAlpha = a; ctx.translate(16, -R - 24);
+        ctx.fillStyle = '#fff'; rr(ctx, -20, -11, 40, 20, 9); ctx.fill(); ctx.strokeStyle = '#2b2340'; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-10, 9); ctx.lineTo(-16, 16); ctx.lineTo(-4, 9); ctx.fill();
+        ctx.fillStyle = '#e8473c'; ctx.font = '900 11px "PingFang TC","Noto Sans TC",system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('救命！', 0, -1);
+        ctx.globalAlpha = 1;
+      }
     });
   };
 
