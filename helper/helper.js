@@ -180,7 +180,7 @@
       wait.remove();
       if (!r.ok || j.error) { msgs.pop(); save(); add('err', j.error || '小幫手連不上，等一下再試試看。'); ta.value = ta.value || text; return; }
       msgs.push({ role: 'assistant', content: j.reply }); save();
-      addBot(j.reply, true); games(j.games); if (j.draft) draftCard(j.draft);
+      addBot(j.reply, true); games(j.games); (j.drafts && j.drafts.length ? j.drafts : j.draft ? [j.draft] : []).forEach(draftCard);
     } catch (e) { wait.remove(); msgs.pop(); save(); add('err', '網路好像斷了，等一下再試試看。'); }
     finally { busy = false; send.disabled = false; ta.focus(); }
   }

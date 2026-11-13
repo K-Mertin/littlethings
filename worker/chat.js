@@ -48,7 +48,7 @@ function systemPrompt(games) {
 
 你可以做三件事：
 1. 回答遊戲怎麼玩、推薦適合的遊戲。對方想玩或你推薦某款時，呼叫 open_game，畫面會出現「去玩」按鈕（不用自己寫網址）。
-2. 收到 bug、問題或疑問：先問清楚是哪一款遊戲、做了什麼、發生了什麼（用什麼裝置更好）。資料夠了就呼叫 draft_issue 整理成回報草稿，對方按「送出」才會真的送出。
+2. 收到 bug、問題或疑問：先問清楚是哪一款遊戲、做了什麼、發生了什麼（用什麼裝置更好）。資料夠了就呼叫 draft_issue 整理成回報草稿，對方按「送出」才會真的送出。對方一次說了好幾件不同的事（例如兩款遊戲各一個問題），就每一件各呼叫一次 draft_issue，不要合成一份，也不要只處理第一件。資料已經夠清楚（知道哪款遊戲、發生什麼）就直接整理，不用再追問裝置。
 3. 收到新遊戲或新功能點子：問一兩句讓點子更清楚，然後一樣呼叫 draft_issue（kind = idea）。
 不要說「GitHub」或「issue」，就說「回報」或「送給製作團隊」。送出後團隊會評估，不保證一定會做。
 
@@ -132,13 +132,13 @@ async function chat(request, env) {
   if (!await allow(env, 'day:' + today(), LIMITS.perDay, 86400e3)) return json({ reply: '小幫手今天累了，明天再來找我玩喔！', games: [] });
 
   const games = await getCatalog(env, request);
-  const out = { reply: '', games: [], draft: null };
+  const out = { reply: '', games: [], draft: null, drafts: [] };
   const convo = [...msgs];
   for (let step = 0; step < 3; step++) {
     const res = await fetch(env.ANTHROPIC_API_URL || 'https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: (env.CLAUDE_MODEL || DEFAULT_MODEL).trim(), max_tokens: 600, system: systemPrompt(games), tools: tools(games), messages: convo }),
+      body: JSON.stringify({ model: (env.CLAUDE_MODEL || DEFAULT_MODEL).trim(), max_tokens: 2048, system: systemPrompt(games), tools: tools(games), messages: convo }),
     });
     if (!res.ok) {
       console.log('claude error', res.status, (await res.text()).slice(0, 300));
@@ -148,7 +148,10 @@ async function chat(request, env) {
     const text = data.content.filter(c => c.type === 'text').map(c => c.text).join('').trim();
     if (text) out.reply += (out.reply ? '\n' : '') + text;
     const uses = data.content.filter(c => c.type === 'tool_use');
-    if (data.stop_reason !== 'tool_use' || !uses.length) break;
+    if (data.stop_reason !== 'tool_use' || !uses.length) {
+      if (!out.reply && !out.drafts.length && !out.games.length) console.log('chat empty', data.stop_reason, JSON.stringify(data.content.map(c => c.type)), JSON.stringify(data.usage || {}));
+      break;
+    }
     const results = [];
     for (const u of uses) {
       let result = 'ok';
@@ -161,7 +164,8 @@ async function chat(request, env) {
         if (KINDS[d.kind] && d.title && d.body) {
           const draft = { kind: d.kind, game: String(d.game || 'site'), title: String(d.title).slice(0, 80), body: String(d.body).slice(0, 2000), ts: Date.now() };
           draft.sig = await hmac(env, draftText(draft));
-          out.draft = draft;
+          if (out.drafts.length < 5) out.drafts.push(draft);
+          out.draft = out.drafts[0];
           result = '草稿已顯示給使用者，等他按「送出」。請用一句話請他看一下草稿，沒問題就按送出。';
         } else result = '草稿資料不完整，請再問清楚。';
       }
@@ -169,7 +173,7 @@ async function chat(request, env) {
     }
     convo.push({ role: 'assistant', content: data.content }, { role: 'user', content: results });
   }
-  if (!out.reply) out.reply = out.draft ? '我幫你整理好了，看一下對不對，沒問題就按「送出」！' : out.games.length ? '點下面的按鈕就可以去玩囉！' : '嗯…可以再說一次嗎？';
+  if (!out.reply) out.reply = out.drafts.length > 1 ? `我幫你整理成 ${out.drafts.length} 份回報，看一下對不對，沒問題就一份一份按「送出」！` : out.draft ? '我幫你整理好了，看一下對不對，沒問題就按「送出」！' : out.games.length ? '點下面的按鈕就可以去玩囉！' : '嗯…可以再說一次嗎？';
   return json(out);
 }
 
