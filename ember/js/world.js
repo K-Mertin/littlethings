@@ -83,7 +83,7 @@ EM.buildWorld = function () {
     R.spawn(3, 11);
     R.bench(13, 11);
     R.tablet(6, 11, '這裡曾是灰燼城的入口。\n最後一個守燈人提著最後一盞燼燈，從井口墜了下來。\n他知道自己要去哪裡：城的最深處，火的心臟。');
-    R.hint(3, 11, '← → 移動　Z 跳　X 攻擊');
+    R.hint(3, 11, '← → 移動　X 跳　Z 攻擊');
     R.hint(13, 11, '在篝火旁按 ↑ 休息、存檔');
     R.decor('chain', 6, 4); R.decor('chain', 18, 5);
     R.door('E', 9);
@@ -95,7 +95,7 @@ EM.buildWorld = function () {
     R.door('S', 30); // 掉進墓穴的洞
     R.enemy('crawler', 12, 11); R.enemy('crawler', 24, 11); R.enemy('moth', 35, 6);
     R.tablet(19, 11, '國王說：「火是王國的心臟。\n只要火不熄，我們就永遠不會死。」\n他說對了一半。');
-    R.hint(30, 9, '↓＋Z 可以往下穿過薄平台');
+    R.hint(30, 9, '↓＋X 可以往下穿過薄平台');
     R.decor('arch', 6, 11); R.decor('arch', 22, 11); R.decor('chain', 16, 4);
     R.door('E', 4);
   });
@@ -155,7 +155,7 @@ EM.buildWorld = function () {
     R.tablet(5, 11, '守門的騎士至今仍在等候命令。\n沒有人告訴他，王國已經不在了。');
     R.hint(11, 9, '按 C 衝刺');
     R.hint(37, 9, '牆太高了，現在爬不上去⋯⋯先找找別的路', { need: 'wall' });
-    R.hint(37, 9, '貼著牆按住方向再按 Z：蹬牆跳', { have: 'wall' });
+    R.hint(37, 9, '貼著牆按住方向再按 X：蹬牆跳', { have: 'wall' });
     R.decor('arch', 28, 11); R.decor('chain', 34, 3);
     R.door('E', 2);
   });
@@ -268,7 +268,7 @@ EM.buildWorld = function () {
     for (const y of [5, 3, 1]) R.plat(16, 18, y);
     R.set(16, -1, TL.PLAT); R.set(17, -1, TL.PLAT); R.set(18, -1, TL.PLAT);
     R.enemy('jelly', 22, 10); R.enemy('jelly', 30, 9); R.enemy('jelly', 36, 11); R.enemy('shield', 44, 6);
-    R.hint(8, 6, '在水裡按 Z 往上游');
+    R.hint(8, 6, '在水裡按 X 往上游');
     R.decor('arch', 6, 6); R.decor('pipe', 30, 1);
     R.door('E', 4);
   });
@@ -286,7 +286,7 @@ EM.buildWorld = function () {
     R.fill(1, 8, 6, 12); R.fill(7, 9, 7, 11, TL.SPIKE);
     R.enemy('charger', 16, 11);
     R.tablet(12, 11, '再往下就是熔爐。\n守燈人的職責，是把火帶回它該去的地方。');
-    R.hint(12, 8, '在空中再按一次 Z：二段跳', { have: 'double' }); R.hint(12, 8, '太高了，現在還跳不上去⋯⋯', { need: 'double' });
+    R.hint(12, 8, '在空中再按一次 X：二段跳', { have: 'double' }); R.hint(12, 8, '太高了，現在還跳不上去⋯⋯', { need: 'double' });
     R.decor('pipe', 18, 2);
     R.door('W', 5);
   });

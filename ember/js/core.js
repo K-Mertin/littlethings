@@ -20,8 +20,9 @@ const IN = EM.IN = { left: false, right: false, up: false, down: false, jump: fa
   pressed: {}, _prev: {} };
 const KEYS = {
   ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down',
-  KeyZ: 'jump', Space: 'jump', KeyX: 'attack', KeyJ: 'attack', KeyC: 'dash', ShiftLeft: 'dash', ShiftRight: 'dash', KeyK: 'dash',
-  KeyV: 'heal', KeyL: 'heal', KeyM: 'map', Tab: 'map', Escape: 'pause', KeyP: 'pause', Enter: 'ok',
+  // 跳和衝刺相鄰：Z 砍、X 跳、C 衝刺、V 回復；WASD 手：J 砍、K 跳、L 衝刺、; 回復（2026-11-14 MK 決定）
+  KeyX: 'jump', Space: 'jump', KeyK: 'jump', KeyZ: 'attack', KeyJ: 'attack', KeyC: 'dash', KeyL: 'dash', ShiftLeft: 'dash', ShiftRight: 'dash',
+  KeyV: 'heal', Semicolon: 'heal', KeyM: 'map', Tab: 'map', Escape: 'pause', KeyP: 'pause', Enter: 'ok',
 };
 const kb = {}, touch = {}, pad = {};
 EM.touch = touch;

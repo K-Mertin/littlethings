@@ -26,8 +26,8 @@ const BOSS = {
 EM.BOSS = BOSS;
 const ABIL = {
   dash: { name: '影之衝刺', text: '按 C（或 Shift）向前衝刺。\n在空中也能衝一次，可以越過很寬的裂縫。' },
-  wall: { name: '攀岩之爪', text: '在空中貼著牆按住方向鍵，會沿著牆滑下。\n這時按 Z 可以蹬牆跳，一路往上爬。' },
-  double: { name: '燼之翼', text: '在空中再按一次 Z，可以再跳一次。' },
+  wall: { name: '攀岩之爪', text: '在空中貼著牆按住方向鍵，會沿著牆滑下。\n這時按 X 可以蹬牆跳，一路往上爬。' },
+  double: { name: '燼之翼', text: '在空中再按一次 X，可以再跳一次。' },
 };
 EM.ABIL = ABIL;
 
