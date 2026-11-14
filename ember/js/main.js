@@ -210,13 +210,37 @@ let helpFrom = 'title';
 const markTouch = () => document.body.classList.add('touch');
 if (matchMedia('(pointer: coarse)').matches) markTouch();
 addEventListener('touchstart', markTouch, { passive: true });
+// 動作鍵（跳、砍、衝刺、回復）：手指按著可以滑到旁邊的鍵（例如從衝刺滑到跳），不用抬起來重按
+const SLIDE = new Set(['jump', 'attack', 'dash', 'heal']);
+const ptr = new Map();   // pointerId → 目前按著的動作鍵
+const press = (btn, on) => { const k = btn.dataset.k; EM.touch[k] = on; btn.classList.toggle('on', on); };
 document.querySelectorAll('[data-k]').forEach(btn => {
   const k = btn.dataset.k;
-  const down = e => { e.preventDefault(); try { btn.setPointerCapture(e.pointerId); } catch (err) {} EM.touch[k] = true; btn.classList.add('on'); audio(); };
-  const up = e => { e.preventDefault(); EM.touch[k] = false; btn.classList.remove('on'); };
-  btn.addEventListener('pointerdown', down); btn.addEventListener('pointerup', up); btn.addEventListener('pointercancel', up); btn.addEventListener('lostpointercapture', up);
+  if (SLIDE.has(k)) {
+    btn.addEventListener('pointerdown', e => { e.preventDefault(); ptr.set(e.pointerId, btn); press(btn, true); audio(); });
+  } else {
+    const down = e => { e.preventDefault(); try { btn.setPointerCapture(e.pointerId); } catch (err) {} EM.touch[k] = true; btn.classList.add('on'); audio(); };
+    const up = e => { e.preventDefault(); EM.touch[k] = false; btn.classList.remove('on'); };
+    btn.addEventListener('pointerdown', down); btn.addEventListener('pointerup', up); btn.addEventListener('pointercancel', up); btn.addEventListener('lostpointercapture', up);
+  }
   btn.addEventListener('contextmenu', e => e.preventDefault());
 });
+addEventListener('pointermove', e => {
+  const was = ptr.get(e.pointerId); if (!was) return;
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  const now = el && el.closest && el.closest('.tb[data-k]');
+  if (now && now !== was && SLIDE.has(now.dataset.k)) {
+    // 原本的鍵：如果沒有別的手指按著才放開
+    if (![...ptr].some(([id, b]) => id !== e.pointerId && b === was)) press(was, false);
+    ptr.set(e.pointerId, now); press(now, true);
+  }
+}, { passive: true });
+const lift = e => {
+  const was = ptr.get(e.pointerId); if (!was) return;
+  ptr.delete(e.pointerId);
+  if (![...ptr.values()].includes(was)) press(was, false);
+};
+addEventListener('pointerup', lift); addEventListener('pointercancel', lift);
 
 // ───────────── 主迴圈 ─────────────
 let last = performance.now(), acc = 0, hold = false;
