@@ -108,6 +108,7 @@ function startLevel(li, diff, endless, chal, mode) {
 }
 App.startLevel = (...a) => startLevel(...a);
 function toScene(s) {
+  if (s !== 'title') lateInit();
   App.scene = s;
   app.classList.toggle('playing', s === 'play');
   if (s !== 'play') { App.game = null; App.paused = false; }
@@ -381,7 +382,7 @@ function bindClick(id, fn) { $(id).addEventListener('click', () => { Snd.init();
 bindClick('tPlay', () => toScene('levels'));
 bindClick('tMeta', () => { App.metaBack = 'title'; toScene('meta'); });
 bindClick('tHelp', () => UI.help());
-bindClick('tCodex', () => Codex.open(() => toScene('title')));
+bindClick('tCodex', () => { lateInit(); Codex.open(() => toScene('title')); });
 bindClick('tRush', () => UI.rush());
 bindClick('rsGo', () => startLevel(RUSH.li, 'normal', false, null, 'rush'));
 bindClick('rsBack', () => toScene('title'));
@@ -606,21 +607,32 @@ function loop(now) {
 }
 
 // ───────── 啟動 ─────────
-function boot() {
-  layout();
+// 標題畫面先出來（不等字型、不先做商店和圖鑑）；商店、圖鑑、技能圖示等字型好了或要離開標題時才做（lateInit）
+let lateDone = false;
+function lateInit() {
+  if (lateDone) return; lateDone = true;
   UI.buildShop();
   Codex.init();
   $('skMeteor').querySelector('img').src = UI.skillIcon('meteor');
   $('skFreeze').querySelector('img').src = UI.skillIcon('freeze');
+}
+function boot() {
+  layout();
   UI.syncToggles();
   Snd.setMusic(Store.data.music); Snd.setSfx(Store.data.sfx);
   newDemo();
   toScene('title');
   requestAnimationFrame(loop);
+  // 字型載好再畫圖示（圖示裡有文字）；最多等 1.5 秒
+  const later = () => (window.requestIdleCallback ? requestIdleCallback(lateInit, { timeout: 800 }) : setTimeout(lateInit, 50));
+  // 字型的 CSS 是非同步載入的（index.html 的 #fontCss），先等它載好、再等字型檔，最多等 2.5 秒
+  let done = false; const go = () => { if (!done) { done = true; later(); } };
+  setTimeout(go, 2500);
+  const fontsReady = () => { if (document.fonts && document.fonts.ready) document.fonts.ready.then(go); else go(); };
+  const css = document.getElementById('fontCss');
+  if (!css || window.__fontCss) fontsReady(); else { css.addEventListener('load', fontsReady); css.addEventListener('error', go); }
 }
-// 字型載好再畫（圖示裡有文字）
-if (document.fonts && document.fonts.ready) { let done = false; const go = () => { if (!done) { done = true; boot(); } }; document.fonts.ready.then(go); setTimeout(go, 1500); }
-else boot();
+boot();
 
 // ───────── 測試用掛勾 ─────────
 window.__td = {
