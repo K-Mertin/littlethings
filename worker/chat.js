@@ -22,7 +22,7 @@ async function getCatalog(env, request) {
   const res = await env.ASSETS.fetch(new Request(new URL('/index.html', request.url)));
   const html = await res.text();
   const list = [];
-  for (const m of html.matchAll(/<a class="game[^"]*" href="([^"\/]+)\/index\.html">([\s\S]*?)<\/a>/g)) {
+  for (const m of html.matchAll(/<a class="game[^"]*" href="([^"\/]+)\/index\.html"[^>]*>([\s\S]*?)<\/a>/g)) {
     const body = m[2], strip = s => (s || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
     list.push({
       slug: m[1],
