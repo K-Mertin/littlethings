@@ -63,6 +63,7 @@ export const LEVELS = [
     id: 'lava', name: '擋住岩漿', icon: '🌋',
     goal: '火山在噴岩漿了！用水、沙子或石牆保護右邊的小木屋，撐過 35 秒。（水碰到岩漿會變成石頭）',
     tools: ['water', 'sand', 'wall'], ink: 0.8, time: 35, keep: 0.85,
+    hint: '水碰到岩漿會變成石頭，在小屋前面倒水就能築一道石牆。',
     build(B) {
       ground(B, 0.93);
       B.line(0.0, 0.3, 0.42, 0.56, 0.022, M.WALL);
@@ -77,6 +78,7 @@ export const LEVELS = [
     id: 'forest', name: '森林救火', icon: '🚒',
     goal: '森林燒起來了！用水滅火、沙子蓋住，或用橡皮擦清出一條「防火巷」，保護小木屋撐過 40 秒。',
     tools: ['water', 'sand', 'erase'], ink: 0, time: 40, keep: 0.85,
+    hint: '用橡皮擦把小屋前面的草和樹擦掉，火就燒不過來（防火巷）。',
     build(B) {
       ground(B, 0.93);
       B.rect(0, 0.9, 0.72, 0.93, M.PLANT, false);
@@ -87,6 +89,49 @@ export const LEVELS = [
     emit: [{ x: 0.02, y: 0.86, r: 0.03, mat: M.FIRE, prob: 0.5, mode: 2, until: 1.5 }],
     drain: [],
     win(L) { return { kind: 'survive', region: L.home, mats: [M.WOOD], keep: 0.85, time: 40 }; },
+  },
+  {
+    id: 'melt', name: '冰山融化', icon: '🧊',
+    goal: '上面有一大塊冰。用火燒冰，冰會融成水，再畫石牆把水引進右下的杯子。',
+    tools: ['fire', 'wall', 'erase'], ink: 1.3,
+    build(B) {
+      ground(B);
+      B.line(0.03, 0.31, 0.42, 0.31, 0.012, M.WALL);
+      B.rect(0.05, 0.08, 0.38, 0.3, M.ICE, false);
+      this.cupR = B.cup(0.64, 0.62, 0.88, 0.95);
+    },
+    emit: [], drain: [{ x0: 0, y0: 0.9, x1: 0.55, y1: 0.95 }],
+    win(L) { return { kind: 'fill', region: L.cupR, mats: [M.WATER], need: 0.18 }; },
+  },
+  {
+    id: 'bloom', name: '花海', icon: '🌸',
+    goal: '讓花盆裡開出很多花！種子要碰到水才會發芽，植物長高了才會開花。',
+    tools: ['seed', 'water', 'spout'], ink: 0,
+    build(B) {
+      ground(B);
+      B.cup(0.2, 0.7, 0.8, 0.95);
+      B.rect(0.21, 0.84, 0.79, 0.935, M.SAND, false);
+      this.bed = { x0: B.X(0.2), y0: B.Y(0.15), x1: B.X(0.8), y1: B.Y(0.9) };
+    },
+    emit: [], drain: [{ x0: 0, y0: 0.9, x1: 0.18, y1: 0.95 }, { x0: 0.82, y0: 0.9, x1: 1, y1: 0.95 }],
+    win(L) { return { kind: 'fill', region: L.bed, mats: [M.FLOWER], need: 0.012 }; },
+  },
+  {
+    id: 'oilfire', name: '油槽大火', icon: '🛢️',
+    goal: '油槽著火了！火會沿著木頭圍籬燒向小屋。用水把火澆熄、用沙子把油蓋住，撐過 35 秒。',
+    tools: ['water', 'sand'], ink: 0, time: 35, keep: 0.85,
+    hint: '先在圍籬靠近油槽的地方澆水，火燒不過去就安全了；沙子蓋在油上，油就燒不起來。',
+    build(B) {
+      ground(B, 0.93);
+      B.cup(0.04, 0.72, 0.3, 0.93);
+      B.rect(0.05, 0.78, 0.29, 0.915, M.OIL, false);
+      B.rect(0.2, 0.745, 0.76, 0.765, M.WOOD, false);   // 從油槽上面一路接到小屋的木圍籬
+      for (let x = 0.34; x < 0.74; x += 0.06) B.rect(x, 0.765, x + 0.008, 0.93, M.WOOD, false);
+      this.home = B.house(0.76, 0.93, 0.15, 0.3);
+    },
+    emit: [{ x: 0.12, y: 0.76, r: 0.03, mat: M.FIRE, prob: 0.6, mode: 2, until: 1.2 }],
+    drain: [],
+    win(L) { return { kind: 'survive', region: L.home, mats: [M.WOOD], keep: 0.85, time: 35 }; },
   },
 ];
 

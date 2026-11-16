@@ -4,13 +4,13 @@ import { M } from './mats.js';
 
 const LOCK = 0x4000000;
 const DIRB = 0x1000000;
-const { EMPTY, WALL, SAND, WATER, LAVA, WOOD, PLANT, SEED, FIRE, STEAM, SMOKE, STONE, OIL, EMBER } = M;
-const DENS = new Int8Array(16).fill(99);
+const { EMPTY, WALL, SAND, WATER, LAVA, WOOD, PLANT, SEED, FIRE, STEAM, SMOKE, STONE, OIL, EMBER, ICE, FLOWER, SPOUT, VOID } = M;
+const DENS = new Int8Array(32).fill(99);
 DENS[EMPTY] = 0; DENS[SAND] = 5; DENS[WATER] = 2; DENS[LAVA] = 3; DENS[SEED] = 4; DENS[FIRE] = -1; DENS[STEAM] = -2; DENS[SMOKE] = -2; DENS[OIL] = 1;
-const MOV = new Uint8Array(16); [EMPTY, SAND, WATER, LAVA, SEED, FIRE, STEAM, SMOKE, OIL].forEach((t) => { MOV[t] = 1; });
-const LIQ = new Uint8Array(16); [WATER, LAVA, OIL].forEach((t) => { LIQ[t] = 1; });
-const GAS = new Uint8Array(16); [FIRE, STEAM, SMOKE].forEach((t) => { GAS[t] = 1; });
-const BURN = new Float32Array(16); BURN[WOOD] = 0.025; BURN[PLANT] = 0.015; BURN[SEED] = 0.08; BURN[OIL] = 0.3;
+const MOV = new Uint8Array(32); [EMPTY, SAND, WATER, LAVA, SEED, FIRE, STEAM, SMOKE, OIL].forEach((t) => { MOV[t] = 1; });
+const LIQ = new Uint8Array(32); [WATER, LAVA, OIL].forEach((t) => { LIQ[t] = 1; });
+const GAS = new Uint8Array(32); [FIRE, STEAM, SMOKE].forEach((t) => { GAS[t] = 1; });
+const BURN = new Float32Array(32); BURN[WOOD] = 0.025; BURN[PLANT] = 0.015; BURN[SEED] = 0.08; BURN[OIL] = 0.3; BURN[FLOWER] = 0.05;
 
 const rnd = Math.random;
 const ty = (c) => c & 255;
@@ -21,6 +21,7 @@ function mk(t) {
   if (t === FIRE) l = 25 + ((rnd() * 45) | 0);
   else if (t === STEAM) l = 90 + ((rnd() * 160) | 0);
   else if (t === SMOKE) l = 30 + ((rnd() * 50) | 0);
+  else if (t === ICE) l = 7;
   return (t | (((rnd() * 255) | 0) << 8) | (l << 16) | (rnd() < 0.5 ? DIRB : 0)) >>> 0;
 }
 
@@ -45,6 +46,10 @@ function rgbOf(c, x, y, cells, w, tm) {
     case SMOKE: return [0.2, 0.21, 0.27];
     case STONE: return [0.26 + v * 0.08, 0.24 + v * 0.08, 0.27 + v * 0.08];
     case EMBER: { const k = 0.5 + 0.5 * Math.sin(tm * 9 + v * 25); return [0.55 + 0.45 * k, 0.08 + 0.47 * k, 0.02 + 0.1 * k]; }
+    case ICE: return [0.68, 0.86, 0.98];
+    case FLOWER: return [[1, 0.45, 0.7], [1, 0.85, 0.25], [0.75, 0.5, 1], [1, 0.98, 0.95], [1, 0.3, 0.3]][Math.min(4, (v * 5) | 0)];
+    case SPOUT: return [0.7, 0.75, 0.82];
+    case VOID: return [0.3, 0.12, 0.5];
     case OIL: return [0.24 + v * 0.05, 0.15 + v * 0.05, 0.22 + v * 0.05];
     default: return null;
   }
@@ -76,7 +81,7 @@ export class CpuSim {
         const i = y * w + x, cur = cells[i], ct = cur & 255, locked = (cur & LOCK) !== 0;
         if (s.mode === 0) { if (ct === EMPTY || GAS[ct]) cells[i] = mk(s.mat); }
         else if (s.mode === 1) { if (!locked) cells[i] = s.mat === EMPTY ? 0 : mk(s.mat); }
-        else if (s.mode === 2) { if (BURN[ct] > 0) cells[i] = emberOf(ct); else if (ct === EMPTY) cells[i] = mk(FIRE); }
+        else if (s.mode === 2) { if (BURN[ct] > 0) cells[i] = emberOf(ct); else if (ct === EMPTY) cells[i] = mk(FIRE); else if (ct === ICE && rnd() < 0.25) cells[i] = mk(WATER); }
         else if (s.mode === 3) { if (!locked && ct !== WALL && ct !== STONE) cells[i] = 0; }
       }
     }
@@ -137,6 +142,14 @@ export class CpuSim {
   react(i, j) {
     const c = this.c, p = c[i] & 255, q = c[j] & 255;
     if (p === LAVA && q === WATER) { c[i] = mk(STONE); c[j] = mk(STEAM); return; }
+    if (p === ICE) {
+      if (q === FIRE || q === LAVA || q === EMBER) { if (rnd() < 0.3) { c[i] = mk(WATER); if (q === FIRE) c[j] = mk(STEAM); } return; }
+      if (q === WATER) { const l = life(c[i]); if (l > 0 && rnd() < 0.006) c[j] = setLife(mk(ICE), l - 1); return; }
+      if (q === STEAM) { if (rnd() < 0.1) c[j] = mk(WATER); return; }
+      return;
+    }
+    if (p === SPOUT && q === EMPTY) { if (rnd() < ((j >> 1) > (i >> 1) ? 0.35 : 0.06)) c[j] = mk(WATER); return; }
+    if (p === VOID) { if (q !== EMPTY && MOV[q] && rnd() < 0.9) c[j] = 0; return; }
     if ((p === FIRE || p === LAVA || p === EMBER) && BURN[q] > 0) { if (rnd() < BURN[q] * (p === LAVA ? 3 : p === EMBER ? 1 : 1)) c[j] = emberOf(q); return; }
     if (p === EMBER && q === WATER) { if (rnd() < 0.5) { c[i] = mk(SMOKE); if (rnd() < 0.5) c[j] = mk(STEAM); } return; }
     if (p === EMBER && q === EMPTY) {
@@ -151,7 +164,7 @@ export class CpuSim {
       const l = life(c[i]);
       const ri = i >> 1, rj = j >> 1;
       const gw = rj < ri ? ((i & 1) === (j & 1) ? 1 : 0.5) : rj === ri ? 0.15 : 0;
-      if (l > 0 && rnd() < 0.05 * gw) { c[j] = setLife(mk(PLANT), l - 1); if (rnd() < 0.85) c[i] = setLife(c[i], 0); }
+      if (l > 0 && rnd() < 0.05 * gw) { c[j] = l < 30 && rnd() < 0.045 ? mk(FLOWER) : setLife(mk(PLANT), l - 1); if (rnd() < 0.85) c[i] = setLife(c[i], 0); }
     }
   }
 

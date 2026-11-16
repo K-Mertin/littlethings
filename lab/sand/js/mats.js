@@ -1,20 +1,23 @@
 // 材料編號（和 shaders.js 的常數一致）與工具列
-export const M = { EMPTY: 0, WALL: 1, SAND: 2, WATER: 3, LAVA: 4, WOOD: 5, PLANT: 6, SEED: 7, FIRE: 8, STEAM: 9, SMOKE: 10, STONE: 11, OIL: 12, EMBER: 13 };
+export const M = { EMPTY: 0, WALL: 1, SAND: 2, WATER: 3, LAVA: 4, WOOD: 5, PLANT: 6, SEED: 7, FIRE: 8, STEAM: 9, SMOKE: 10, STONE: 11, OIL: 12, EMBER: 13, ICE: 14, FLOWER: 15, SPOUT: 16, VOID: 17 };
 export const LOCK = 0x4000000;
 
 // mode：0 倒進空的地方、1 蓋過去、2 點火（見 shaders.js 的 STAMP）
 export const TOOLS = {
-  sand: { name: '沙子', emoji: '🏖️', mat: M.SAND, mode: 0, prob: 0.45, color: '#f0cf85' },
-  water: { name: '水', emoji: '💧', mat: M.WATER, mode: 0, prob: 0.55, color: '#3d8ff0' },
-  lava: { name: '岩漿', emoji: '🌋', mat: M.LAVA, mode: 0, prob: 0.45, color: '#ff7a1c' },
-  seed: { name: '種子', emoji: '🌱', mat: M.SEED, mode: 0, prob: 0.06, color: '#9a7038' },
-  oil: { name: '油', emoji: '🛢️', mat: M.OIL, mode: 0, prob: 0.5, color: '#4d2c45' },
-  fire: { name: '火', emoji: '🔥', mat: M.FIRE, mode: 2, prob: 0.5, color: '#ff4d1a' },
-  wood: { name: '木頭', emoji: '🪵', mat: M.WOOD, mode: 1, prob: 1, color: '#7a4d26' },
-  wall: { name: '石牆', emoji: '🧱', mat: M.WALL, mode: 1, prob: 1, color: '#5d6476' },
-  erase: { name: '橡皮擦', emoji: '🧽', mat: M.EMPTY, mode: 1, prob: 1, color: '#e9eef8' },
+  sand: { name: '沙子', emoji: '🏖️', mat: M.SAND, mode: 0, prob: 0.45, color: '#f0cf85', desc: '會往下掉、堆成小山。太平的斜坡會卡住。' },
+  water: { name: '水', emoji: '💧', mat: M.WATER, mode: 0, prob: 0.55, color: '#3d8ff0', desc: '往低處流、攤平。碰到岩漿變石頭，澆在種子上會發芽。' },
+  lava: { name: '岩漿', emoji: '🌋', mat: M.LAVA, mode: 0, prob: 0.45, color: '#ff7a1c', desc: '很燙、流得很慢。會點燃木頭和植物，碰到水變成石頭。' },
+  seed: { name: '種子', emoji: '🌱', mat: M.SEED, mode: 0, prob: 0.06, color: '#9a7038', desc: '碰到水會發芽長高，喝越多水長越高，偶爾開花。' },
+  oil: { name: '油', emoji: '🛢️', mat: M.OIL, mode: 0, prob: 0.5, color: '#4d2c45', desc: '比水輕，會浮在水上。一點火就燒得很旺！' },
+  fire: { name: '火', emoji: '🔥', mat: M.FIRE, mode: 2, prob: 0.5, color: '#ff4d1a', desc: '點燃木頭、植物、油。水可以把火澆熄。' },
+  ice: { name: '冰', emoji: '🧊', mat: M.ICE, mode: 1, prob: 1, color: '#bfe8ff', desc: '會把旁邊的水慢慢凍住，碰到火和岩漿會融化成水。' },
+  wood: { name: '木頭', emoji: '🪵', mat: M.WOOD, mode: 1, prob: 1, color: '#7a4d26', desc: '不會動，可以蓋房子。會燒很久。' },
+  wall: { name: '石牆', emoji: '🧱', mat: M.WALL, mode: 1, prob: 1, color: '#5d6476', desc: '什麼都擋得住，燒不壞也融不掉。' },
+  spout: { name: '水龍頭', emoji: '🚰', mat: M.SPOUT, mode: 1, prob: 1, color: '#9aa7b8', desc: '一直往下出水。用小筆點一下就好。' },
+  void: { name: '黑洞', emoji: '🕳️', mat: M.VOID, mode: 1, prob: 1, color: '#8a4fff', desc: '吃掉碰到它的沙、水、岩漿……當排水孔很好用。' },
+  erase: { name: '橡皮擦', emoji: '🧽', mat: M.EMPTY, mode: 1, prob: 1, color: '#e9eef8', desc: '擦掉東西（關卡本來就有的東西擦不掉）。' },
 };
-export const FREE_TOOLS = ['sand', 'water', 'lava', 'seed', 'oil', 'fire', 'wood', 'wall', 'erase'];
+export const FREE_TOOLS = ['sand', 'water', 'lava', 'seed', 'oil', 'fire', 'ice', 'wood', 'wall', 'spout', 'void', 'erase'];
 
 // 用比例座標（0–1）在格子上畫關卡、場景
 export class Builder {
