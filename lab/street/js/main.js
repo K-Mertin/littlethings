@@ -14,6 +14,7 @@ import { STREET, PARTY, ZONES } from './games.js';
 import { setAniso } from './kit.js';
 import { Sound } from './sound.js';
 import { Env } from './gpu/env.js';
+import { Crowd } from './gpu/crowd.js';
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -131,12 +132,15 @@ async function loadAll() {
   const avs = await Promise.all(['boy', 'girl'].map((id) => loadAvatar(id, (e) => e.total && step(0.35 + 0.3 * e.loaded / e.total / 2))));
   step(0.7, '蓋房子');
   const world = await buildWorld(scene, { shots, quality, mini, atlas });
+  step(0.82, '準備路人');
+  crowd = new Crowd({ renderer, scene, high: HIGH, webgpu: GPU.webgpu });
+  await crowd.build({ boy: avs[0], girl: avs[1] }, Character, (k) => step(0.82 + 0.13 * k, '準備路人'));
   step(0.95, '準備好了');
   return { world, avs: { boy: avs[0], girl: avs[1] } };
 }
 
 // ------------------------------------------------------------------ state
-let world, avatars, player, env, avatarId = store.get('avatar', 'boy');
+let world, avatars, player, env, crowd, avatarId = store.get('avatar', 'boy');
 const GPU = { webgpu: false };
 const OFF = params.has('offscreen') ? new THREE.RenderTarget(1, 1) : null;
 const pos = new THREE.Vector3(), vel = new THREE.Vector3();
@@ -161,9 +165,9 @@ function setAvatar(id) {
 
 // ------------------------------------------------------------------ npcs
 function makeNPCs() {
-  const n = HIGH ? 5 : 2;
+  const n = 5;   // 街上的路人改由 GPU 的 Crowd 負責，這裡只留大廳裡夾娃娃的那位
   const tints = [[0x8c3a3a, 0x2a1d14], [0x3d5a80, 0x1a1a1a], [0x6b8f4e, 0x3b2a1a], [0xd9a441, 0x1d1712], [0x7a5c99, 0x281d18], [0x2f6d6d, 0x0f0f0f]];
-  for (let i = 0; i < n; i++) {
+  for (let i = 4; i < n; i++) {
     const g = i % 2 ? avatars.girl : avatars.boy;
     const t = tints[i % tints.length]; const tint = new THREE.Color(t[0]); tint.hair = new THREE.Color(t[1]).multiplyScalar(2.2);
     const c = new Character(g, { tint });
@@ -316,6 +320,10 @@ function collide(p) {
       const dx = p.x - n.c.root.position.x, dz = p.z - n.c.root.position.z, d = Math.hypot(dx, dz);
       if (d < 0.6 && d > 1e-4) { p.x += dx / d * (0.6 - d); p.z += dz / d * (0.6 - d); }
     }
+    if (crowd) crowd.forEachVisible((nx, nz) => {
+      const dx = p.x - nx, dz = p.z - nz; if (dx * dx + dz * dz > 0.36) return;
+      const d = Math.hypot(dx, dz); if (d > 1e-4) { p.x += dx / d * (0.6 - d); p.z += dz / d * (0.6 - d); }
+    });
   }
   p.z = Math.min(p.z, L.endZ);
 }
@@ -438,6 +446,7 @@ function frame() {
   updateNPCs(dt);
   world.update(dt, t, pos);
   env.update(dt, pos);
+  crowd.update(dt, pos);
   // 下雨才開螢幕空間反射（高畫質、WebGPU）；強度跟著地面濕度
   const wantSSR = HIGH && GPU.webgpu && env.wetK > 0.02;
   if (wantSSR !== post.ssrOn) buildPipeline(wantSSR);
@@ -546,6 +555,10 @@ function updateCamera(dt, t) {
     env = new Env({ renderer, scene, camera, sun, sunDir, sky, hemi, world, high: HIGH, webgpu: GPU.webgpu, sound });
     env.setTime(store.get('time', 'auto')); env.setWeather(store.get('weather', 'sun'));
     segInit('segT', env.mode, (v) => { env.setTime(v); store.set('time', v); });
+    const CROWD = { few: 0.25, some: 0.55, many: 1 };
+    const cn = store.get('crowd', 'some');
+    crowd.setCount(Math.round(crowd.max * (CROWD[cn] || 0.55)));
+    segInit('segC', cn, (v) => { crowd.setCount(Math.round(crowd.max * CROWD[v])); store.set('crowd', v); });
     segInit('segW', env.weather, (v) => { env.setWeather(v); store.set('weather', v); });
     $('gpuTag').textContent = GPU.webgpu ? 'WebGPU' : 'WebGL 相容模式';
     $('gpuTag').classList.toggle('gpu', GPU.webgpu);
@@ -574,11 +587,11 @@ function updateCamera(dt, t) {
 window.__street = {
   get pos() { return pos; }, setPos(x, z, h) { pos.set(x, 0, z); if (h !== undefined) heading = h; player.root.position.copy(pos); },
   cam(yaw, pitch, dist) { camYaw = yaw; camPitch = pitch; camDist = camDistNow = dist; lastCamInput = clock.elapsedTime + 1e6; },
-  sim(sec) { for (let i = 0; i < sec * 30; i++) { clock.elapsedTime += 1 / 30; if (mode === 'play') updatePlayer(1 / 30, clock.elapsedTime); player.update(1 / 30); updateNPCs(1 / 30); world.update(1 / 30, clock.elapsedTime, pos); env.update(1 / 30, pos); } return [pos.x.toFixed(2), pos.z.toFixed(2), near && near.game.id, !!auto].join(); },
+  sim(sec) { for (let i = 0; i < sec * 30; i++) { clock.elapsedTime += 1 / 30; if (mode === 'play') updatePlayer(1 / 30, clock.elapsedTime); player.update(1 / 30); updateNPCs(1 / 30); world.update(1 / 30, clock.elapsedTime, pos); env.update(1 / 30, pos); crowd.update(1 / 30, pos); } return [pos.x.toFixed(2), pos.z.toFixed(2), near && near.game.id, !!auto].join(); },
   key(code, on) { if (on) keys.add(code); else keys.delete(code); },
   launch: () => near && launch(near),
   start: () => startPlay(), goTo: (id) => goTo(world.interact.find((i) => i.game.id === id)),
-  get mode() { return mode; }, renderer, scene, camera, GPU, get env() { return env; },
+  get mode() { return mode; }, renderer, scene, camera, GPU, get env() { return env; }, get crowd() { return crowd; },
   // 把目前畫面讀回來成圖片（自動測試用；搭配 ?offscreen=1）
   // 自動測試：停下動畫迴圈、模擬 sec 秒，畫一張讀回來（軟體 GPU 很慢，一直畫的話讀回會排不到）
   async snap(sec = 0) {
