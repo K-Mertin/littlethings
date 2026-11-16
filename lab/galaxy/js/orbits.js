@@ -78,7 +78,7 @@ export class Orbits {
     this.t = 0; this.phase = 'aim'; this.result = null;
     this.placeBodies(0);
     this.p = V2(...M.player.pos); this.v = V2(0, 0); this.v0 = 0;
-    this.aimV = null; this.sweep = 0; this.sweepRel = 0; this.minR = Infinity;
+    this.aimV = null; this.sweep = 0; this.sweepRel = 0; this.minR = Infinity; this.maxR = 0;
     this.trailPts = [this.p.clone()]; setLine(this.trail, this.trailPts); setLine(this.pred, []); setLine(this.arrow, []);
     this.pObj.position.copy(this.p); this.handle.visible = true; this.handle.position.copy(this.p).setY(0.02);
     if (this.tail) this.tail.visible = false;
@@ -149,7 +149,7 @@ export class Orbits {
       const wrap = (d) => (d > Math.PI ? d - 2 * Math.PI : d < -Math.PI ? d + 2 * Math.PI : d);
       this.sweep += wrap(Math.atan2(this.p.z, this.p.x) - ang0);
       if (rb) this.sweepRel += wrap(Math.atan2(this.p.z - rb.p.z, this.p.x - rb.p.x) - relAng0);
-      this.minR = Math.min(this.minR, this.p.length());
+      this.minR = Math.min(this.minR, this.p.length()); this.maxR = Math.max(this.maxR, this.p.length());
     }
     const last = this.trailPts[this.trailPts.length - 1];
     if (last.distanceTo(this.p) > 0.25) { this.trailPts.push(this.p.clone()); if (this.trailPts.length > 6000) this.trailPts.shift(); setLine(this.trail, this.trailPts); }
@@ -161,7 +161,7 @@ export class Orbits {
       this.tail.rotation.y = Math.atan2(this.p.x, this.p.z);   // +z 指向背對太陽
       this.tail.scale.set(0.8 + k * 2.5, 1, 2 + k * 26);
     }
-    const st = { p: this.p, v: this.v, v0: this.v0, t: this.t, sweep: Math.abs(this.sweep), sweepRel: Math.abs(this.sweepRel), minR: this.minR, body: (id) => this.body(id) };
+    const st = { p: this.p, v: this.v, v0: this.v0, t: this.t, sweep: Math.abs(this.sweep), sweepRel: Math.abs(this.sweepRel), minR: this.minR, maxR: this.maxR, body: (id) => this.body(id) };
     const res = this.M.check(st);
     if (res) { this.phase = 'done'; this.result = res; }
     return res;

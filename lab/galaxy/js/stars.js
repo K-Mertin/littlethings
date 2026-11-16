@@ -71,8 +71,11 @@ export class Stars {
           // 顏色：核球偏黃、旋臂偏藍白、少數粉紅色的星雲團
           const temp = select(isBulge, h(13).mul(0.25).add(0.12), select(onArm, h(13).mul(0.45).add(0.55), h(13).mul(0.4).add(0.3)));
           const pink = onArm.and(h(14).lessThan(0.05));
-          np.assign(vec4(pos, 1));
-          nv.assign(vec4(vel, select(pink, float(2), temp)));
+          // 顏色溫度＋4×種類（0 核球、1 盤面、2 旋臂、3 星雲），畫氣體和塵埃時用得到
+          const cls = select(kind.greaterThan(0.5), float(3), select(isBulge, float(0), select(onArm, float(2), float(1))));
+          // w：活著 = 1 + 生出來時離中心多遠（0～1），塵埃只畫在外圈
+          np.assign(vec4(pos, float(1).add(clamp(r.div(R), 0, 1))));
+          nv.assign(vec4(vel, select(pink, float(2), temp).add(cls.mul(4))));
         }).Else(() => { np.assign(vec4(0, -9999, 0, 0)); nv.assign(vec4(0)); });
       });
       P.element(i).assign(np); V.element(i).assign(nv);
@@ -103,21 +106,65 @@ export class Stars {
     const p = P.element(instanceIndex), v = V.element(instanceIndex);
     const bright = hash(instanceIndex.add(7)).pow(6);   // 少數幾顆特別亮
     const camD = length(cameraPosition.sub(p.xyz));
-    const size = mix(0.22, 0.75, bright).mul(camD.mul(0.0045).add(0.35)).mul(p.w);
+    const size = mix(0.22, 0.75, bright).mul(camD.mul(0.0045).add(0.35)).mul(p.w.greaterThan(0.5).select(1, 0));
     mat.positionNode = positionGeometry.mul(size).add(p.xyz);
     mat.vertexNode = billboarding();
-    const t = v.w;
-    const c1 = mix(vec3(1, 0.42, 0.12), vec3(1, 0.78, 0.45), clamp(t.mul(2), 0, 1));
-    const c2 = mix(vec3(0.85, 0.85, 1), vec3(0.3, 0.5, 1), clamp(t.sub(0.5).mul(2.5), 0, 1));
-    const col = select(t.greaterThan(1.5), vec3(1, 0.3, 0.6), select(t.lessThan(0.5), c1, c2));
+    const t = v.w.mod(4);
+    // 顏色鮮豔一點：核球金黃、旋臂藍、少數粉紅；星雲（種類 3）偏紫藍
+    const c1 = mix(vec3(1, 0.32, 0.06), vec3(1, 0.7, 0.3), clamp(t.mul(2), 0, 1));
+    const c2 = mix(vec3(0.7, 0.8, 1), vec3(0.18, 0.4, 1), clamp(t.sub(0.5).mul(2.5), 0, 1));
+    const isNeb = v.w.greaterThan(11.5);
+    const col0 = select(t.greaterThan(1.5), vec3(1, 0.2, 0.55), select(t.lessThan(0.5), c1, c2));
+    const col = select(isNeb, mix(col0, vec3(0.75, 0.45, 1), hash(instanceIndex.add(3)).mul(0.6)), col0);
     const fall = smoothstep(0.5, 0.0, uv().sub(0.5).length());
     // 星星越多每顆越暗，不然中間疊成一團白
     const kN = Math.min(1.3, Math.sqrt(70000 / N));
-    mat.colorNode = col.mul(mix(0.7, 3.2, bright)).mul(fall.pow(1.8)).mul(kN);
+    const bulgeK = select(v.w.lessThan(4), float(0.5), float(1));   // 核球的星很密，暗一點才看得到金黃色而不是一團白
+    mat.colorNode = col.mul(mix(0.9, 3.6, bright)).mul(bulgeK).mul(fall.pow(1.8)).mul(kN);
     mat.opacityNode = fall;
     const mesh = this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
     mesh.count = N; mesh.frustumCulled = false;
     scene.add(mesh);
+
+    // ---------------- 氣體雲：每隔幾顆星挑一顆，畫成很大、很淡的彩色光團（旋臂上的粉紅、藍色星雲）
+    const pick = (count, off) => {
+      const stride = Math.max(1, Math.floor(N / count));
+      const j = instanceIndex.mul(stride).add(off % stride);
+      return { n: Math.floor(N / stride), p: P.element(j), v: V.element(j), j };
+    };
+    {
+      const g = pick(3200, 5), cls = g.v.w.div(4).floor(), hh = hash(g.j.add(11));
+      const show = cls.greaterThan(1.5).and(g.p.w.greaterThan(0.5));   // 只有旋臂和星雲
+      const gm = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+      gm.positionNode = positionGeometry.mul(select(show, mix(5, 12, hh), 0)).add(g.p.xyz);
+      gm.vertexNode = billboarding();
+      const f = smoothstep(0.5, 0.0, uv().sub(0.5).length());
+      const gc = select(cls.greaterThan(2.5),
+        mix(vec3(0.45, 0.2, 0.9), vec3(0.1, 0.55, 0.8), hh),            // 星雲：紫、青
+        select(hh.lessThan(0.45), vec3(1, 0.18, 0.45), vec3(0.2, 0.4, 1)));   // 旋臂：粉紅（氫）或藍（反射星雲）
+      gm.colorNode = gc.mul(f.pow(2.2)).mul(select(cls.greaterThan(2.5), float(0.03), float(0.08)));
+      gm.opacityNode = f;
+      const gas = this.gas = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), gm);
+      gas.count = g.n; gas.frustumCulled = false; gas.renderOrder = 1;
+      scene.add(gas);
+    }
+    // ---------------- 塵埃帶：暗暗的斑塊，用「乘法」把後面的星光變暗（旋臂內側那種黑黑的帶子）
+    {
+      const g = pick(2600, 9), cls = g.v.w.div(4).floor(), hh = hash(g.j.add(23));
+      const show = cls.greaterThan(0.5).and(cls.lessThan(2.5)).and(g.p.w.greaterThan(1.22));   // 核心附近不放，不然中間會黑掉
+      const dm = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false });
+      dm.blending = THREE.CustomBlending;
+      dm.blendEquation = THREE.AddEquation; dm.blendSrc = THREE.ZeroFactor; dm.blendDst = THREE.SrcColorFactor;
+      dm.blendEquationAlpha = THREE.AddEquation; dm.blendSrcAlpha = THREE.ZeroFactor; dm.blendDstAlpha = THREE.OneFactor;
+      dm.positionNode = positionGeometry.mul(select(show, mix(3, 6.5, hh), 0)).add(g.p.xyz);
+      dm.vertexNode = billboarding();
+      const f = smoothstep(0.5, 0.05, uv().sub(0.5).length());
+      dm.colorNode = mix(vec3(1), vec3(0.5, 0.38, 0.3), f.mul(0.42));   // 中間最暗，帶一點咖啡色
+      dm.opacityNode = float(1);
+      const dust = this.dust = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), dm);
+      dust.count = g.n; dust.frustumCulled = false; dust.renderOrder = 2;
+      scene.add(dust);
+    }
     this.group = new THREE.Group(); scene.add(this.group);
     this.kill(0, N);
   }
@@ -221,6 +268,7 @@ function coreMesh(mass) {
   m.vertexNode = billboarding();
   const s = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m);
   s.scale.setScalar(4 + mass / 800);
+  s.renderOrder = 3;   // 畫在塵埃後面，核心才不會被塵埃蓋暗
   return s;
 }
 // 黑洞：黑色的球＋發光的吸積盤
@@ -237,6 +285,7 @@ function blackHoleMesh(mass) {
   const halo = coreMesh(0); halo.material = halo.material.clone();
   halo.material.colorNode = vec3(1, 0.6, 0.3).mul(smoothstep(0.5, 0.0, uv().sub(0.5).length()).pow(3).mul(1.5));
   halo.scale.setScalar(8);
+  disk.renderOrder = 3; ball.renderOrder = 3;
   g.add(halo, disk, ball);
   g.scale.setScalar(1 + mass / 3000);
   return g;

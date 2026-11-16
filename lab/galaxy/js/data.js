@@ -12,7 +12,7 @@ export const PRESETS = [
     cam: { dist: 150, pitch: 0.85 },
   },
   {
-    id: 'collide', name: '兩個星系相撞', icon: '💥', info: 'collision',
+    id: 'collide', name: '兩個星系相撞', short: '星系相撞', icon: '💥', info: 'collision',
     tip: '兩個星系擦身而過，重力把星星甩出長長的「潮汐尾巴」。按 2× 或 4× 看快一點！',
     run(S) {
       S.addGalaxy({ pos: V(-42, -4, -14), vel: V(2.1, 0.15, 0.95), normal: tilt(0.35, 0.2), mass: 1800, radius: 30, slots: 2, arms: 2 });
@@ -21,7 +21,7 @@ export const PRESETS = [
     cam: { dist: 160, pitch: 1.0 },
   },
   {
-    id: 'merge', name: '大星系吃小星系', icon: '🍽️', info: 'merger',
+    id: 'merge', name: '大星系吃小星系', short: '大吃小', icon: '🍽️', info: 'merger',
     tip: '小星系繞著大星系越轉越近，最後被拉散、吞進去。銀河系也正在吃好幾個小星系喔！',
     run(S) {
       S.addGalaxy({ pos: V(0, 0, 0), mass: 3200, radius: 44, slots: 3, arms: 2, wind: 3.6 });
@@ -30,7 +30,7 @@ export const PRESETS = [
     cam: { dist: 200, pitch: 0.9 },
   },
   {
-    id: 'hole', name: '黑洞闖進來', icon: '🕳️', info: 'blackhole',
+    id: 'hole', name: '黑洞闖進來', short: '黑洞闖入', icon: '🕳️', info: 'blackhole',
     tip: '一顆超大質量黑洞衝過星系：靠太近的星星會被吃掉，其他的被甩得亂七八糟。',
     run(S) {
       S.addGalaxy({ pos: V(0, 0, 0), mass: 2600, radius: 46, slots: 4, arms: 3, wind: 3 });
@@ -43,6 +43,15 @@ export const PRESETS = [
     tip: '一大團亂亂的星雲繞著中心轉，慢慢被甩成一圈一圈的漩渦。',
     run(S) { S.addGalaxy({ pos: V(0, 0, 0), mass: 2600, radius: 60, slots: 4, kind: 1 }); },
     cam: { dist: 220, pitch: 0.7 },
+  },
+  {
+    id: 'ring', name: '車輪星系', icon: '🎡', info: 'ring',
+    tip: '一個小星系從大星系的正中間「穿」過去，重力像丟進水裡的石頭一樣，推出一圈往外跑的星星環。',
+    run(S) {
+      S.addGalaxy({ pos: V(0, 0, 0), mass: 2600, radius: 46, slots: 3, arms: 2, wind: 2.6, bulge: 0.1 });
+      S.addGalaxy({ pos: V(4, 75, 3), vel: V(0, -7.5, 0), normal: tilt(1.2, 0.4), mass: 2200, radius: 9, slots: 1, arms: 2, bulge: 0.5 });
+    },
+    cam: { dist: 190, pitch: 1.2 },
   },
 ];
 
@@ -131,6 +140,54 @@ export const MISSIONS = [
     },
     time: 40,
   },
+  {
+    id: 'ellipse', name: '長長的橢圓', icon: '🥚', info: 'kepler',
+    goal: '讓行星繞太陽一整圈，而且軌道要拉得長長的：最遠要飛到虛線圈外面。',
+    hint: '往側面丟，力氣比「繞一圈」大一點。太大力會飛走喔！看預測線有沒有碰到虛線圈。',
+    bodies: [{ id: 'sun', name: '太陽', gm: 400, r: 3.2, color: 0xffcc55, glow: 1 }],
+    ring: 50,
+    player: { name: '行星', pos: [26, 0], max: 7, color: 0xff9a5a, r: 1.1 },
+    check(st) {
+      const r = st.p.length();
+      if (r < 3.6) return { lose: '撞上太陽了！' };
+      if (r > 95) return { lose: '飛出太陽系了！力氣小一點點。' };
+      if (st.sweep >= Math.PI * 2) return st.maxR >= 50 ? { win: `繞了一圈，最遠飛到 ${st.maxR.toFixed(0)}！注意看：它在遠的地方跑得特別慢。` } : { lose: `繞了一圈，可是最遠只有 ${st.maxR.toFixed(0)}，要飛到 50 以外。` };
+      return null;
+    },
+  },
+  {
+    id: 'dock', name: '追上太空站', icon: '🛰️', info: 'rendezvous',
+    goal: '太空站在外圈繞太陽轉。從內圈發射太空船，飛過去和太空站碰在一起（對接）。',
+    hint: '不要直直朝太空站丟——它會跑掉！往側面丟，讓太空船畫半個橢圓，剛好在外圈「等」到太空站。',
+    bodies: [
+      { id: 'sun', name: '太陽', gm: 400, r: 3.2, color: 0xffcc55, glow: 1 },
+      { id: 'st', name: '太空站', gm: 0, r: 1.2, color: 0x9fffd0, rail: (t) => { const w = Math.sqrt(400 / 40 ** 3), a = w * t + 2.2; return [Math.cos(a) * 40, Math.sin(a) * 40, -Math.sin(a) * 40 * w, Math.cos(a) * 40 * w]; } },
+    ],
+    ring: 40,
+    player: { name: '太空船', pos: [20, 0], max: 6, color: 0xffffff, r: 0.6, probe: true },
+    check(st) {
+      const d = st.p.clone().sub(st.body('st').p).length();
+      if (st.p.length() < 3.6) return { lose: '掉進太陽了！' };
+      if (d < 2.8) return { win: `對接成功！太空船花了 ${st.t.toFixed(0)} 秒追上太空站。` };
+      if (st.p.length() > 90) return { lose: '飛太遠了！' };
+      if (st.t > 120) return { lose: '時間到，沒有追上。試試讓軌道最遠的地方剛好碰到外圈。' };
+      return null;
+    },
+  },
+  {
+    id: 'escape', name: '逃離太陽', icon: '🌠', info: 'escape',
+    goal: '探測器在離太陽很近的地方。用夠快的速度發射，讓它掙脫太陽的重力，飛出畫面。',
+    hint: '太陽很近、拉力很大，要用很大的力氣（接近最大速度），而且不要朝著太陽丟。',
+    bodies: [{ id: 'sun', name: '太陽', gm: 400, r: 3.2, color: 0xffcc55, glow: 1 }],
+    player: { name: '探測器', pos: [12, 0], max: 8.8, color: 0xd0e8ff, r: 0.5, probe: true },
+    check(st) {
+      const r = st.p.length();
+      if (r < 3.6) return { lose: '掉進太陽了！' };
+      if (r > 100) return { win: `逃出去了！離開時速度還有 ${st.v.length().toFixed(1)}。從這裡要逃走，最少要 8.2 的速度。` };
+      if (st.t > 50 || st.sweep > Math.PI * 2.2) return { lose: '被太陽拉回來了！速度要再快一點。' };
+      return null;
+    },
+  },
 ];
 
 // ---------------------------------------------------------------- 天文小百科
@@ -142,10 +199,13 @@ export const INFO = {
   comet: { t: '彗星的尾巴', e: '☄️', d: '彗星是冰和灰塵做的「髒雪球」。靠近太陽時冰被曬成氣體，太陽風把它往後吹，所以尾巴永遠指著「背對太陽」的方向，不是飛行的反方向！' },
   assist: { t: '彈弓效應', e: '🚀', d: '探測器從行星後面掠過，被行星拉著一起跑，就能「偷」到一點速度。航海家號就是靠木星和土星甩出太陽系的，現在已經飛了 240 億公里以上。' },
   binary: { t: '雙星', e: '♊', d: '天上大約一半的恆星有伴！兩顆星繞著共同的中心轉。星際大戰裡塔圖因星有兩個太陽，真的有類似的行星（克卜勒-16b）。' },
+  rendezvous: { t: '太空交會', e: '🛰️', d: '太空船要追上太空站，不能直直衝過去：在太空裡「加速」會飛到更高、更慢的軌道。太空人會先算好時間，畫半個橢圓（霍曼轉移）剛好在對的地方碰面。' },
+  escape: { t: '脫離速度', e: '🌠', d: '丟球越大力飛越高，夠快就再也不會掉下來。從地球表面要每秒 11.2 公里才逃得掉，從太陽系要更快。離得越近，要的速度越大。' },
+  ring: { t: '車輪星系', e: '🎡', d: '5 億光年外的車輪星系，就是被一個小星系從中間穿過去。小星系經過時把星星往內拉，走了以後星星又彈回去，像水波一樣推出一圈亮亮的環，環上一直誕生新的藍色星星。' },
   spiral: { t: '旋臂星系', e: '🌀', d: '銀河系就是旋臂星系，直徑大約 10 萬光年，有一、兩千億顆恆星。旋臂不是固定的星星，比較像塞車：星星經過時擠在一起，新的藍色星星在那裡誕生。' },
   collision: { t: '星系碰撞', e: '💥', d: '星系相撞時星星幾乎不會真的撞在一起（星星之間太空曠了），可是重力會把星星甩成長長的潮汐尾巴。大約 45 億年後，銀河系會和仙女座星系相撞。' },
   merger: { t: '星系吃星系', e: '🍽️', d: '大星系會把靠近的小星系撕開、吞掉。銀河系現在正在吞人馬座矮星系，天上還看得到被扯出來的「星流」。' },
   blackhole: { t: '黑洞', e: '🕳️', d: '黑洞的重力大到連光都逃不出去。星系中心都有超大質量黑洞，銀河系中心的人馬座 A* 大約是太陽的 400 萬倍重。掉進去的氣體會在外面轉成發光的吸積盤。' },
   nebula: { t: '星雲', e: '☁️', d: '星雲是太空中的氣體和灰塵。重力讓它慢慢縮在一起，越轉越快、變成扁扁的盤子，中間點燃成恆星，旁邊的碎片變成行星——太陽系就是這樣誕生的。' },
 };
-export const INFO_ORDER = ['gravity', 'orbit', 'kepler', 'moon', 'comet', 'assist', 'binary', 'nebula', 'spiral', 'collision', 'merger', 'blackhole'];
+export const INFO_ORDER = ['gravity', 'orbit', 'kepler', 'moon', 'comet', 'assist', 'binary', 'rendezvous', 'escape', 'nebula', 'spiral', 'collision', 'merger', 'ring', 'blackhole'];

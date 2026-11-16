@@ -61,7 +61,7 @@ function dockGalaxy() {
   const d = $('dock'); d.innerHTML = '';
   const add = (html, title, on, fn, cls = 'db') => { const b = document.createElement('button'); b.className = cls + (on ? ' on' : ''); b.innerHTML = html; b.title = title; b.onclick = fn; d.appendChild(b); return b; };
   const sep = () => { const s = document.createElement('span'); s.className = 'sep'; d.appendChild(s); };
-  PRESETS.forEach((p) => add(`<b>${p.icon}</b>${p.name.length > 5 ? p.name.slice(0, 5) : p.name}`, p.name, false, () => runPreset(p)));
+  PRESETS.forEach((p) => add(`<b>${p.icon}</b>${p.short || p.name}`, p.name, false, () => runPreset(p)));
   sep();
   for (const [id, ic, nm] of [['look', '👆', '轉視角'], ['galaxy', '🌀', '放星系'], ['hole', '🕳️', '放黑洞']]) add(`<b>${ic}</b>${nm}`, nm, tool === id, () => { tool = id; dockGalaxy(); if (id !== 'look') toast(isTouch ? '在畫面上按住、拖一下決定方向和速度' : '在畫面上按住、拖一下決定方向和速度（右鍵拖曳轉視角）'); });
   sep();
@@ -87,7 +87,7 @@ function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add(
 function setMode(m) {
   mode = m;
   for (const b of $('modeSeg').children) b.classList.toggle('on', b.dataset.v === m);
-  stars.mesh.visible = stars.group.visible = m === 'galaxy';
+  stars.mesh.visible = stars.group.visible = stars.gas.visible = stars.dust.visible = m === 'galaxy';
   orbits.group.visible = m === 'orbit';
   $('mhud').classList.toggle('hidden', m !== 'orbit');
   $('tip').classList.toggle('hidden', m !== 'galaxy');
@@ -221,12 +221,12 @@ const pinchD = () => { const [a, b] = [...ptrs.values()]; return Math.hypot(a.x 
 const clampDist = (d) => Math.min(700, Math.max(30, d));
 addEventListener('keydown', (e) => {
   if (e.code === 'Space') { e.preventDefault(); paused = !paused; if (mode === 'galaxy') dockGalaxy(); }
-  if (mode === 'galaxy' && /^Digit[1-5]$/.test(e.code)) runPreset(PRESETS[+e.code.slice(5) - 1]);
+  if (mode === 'galaxy' && /^Digit[1-6]$/.test(e.code)) runPreset(PRESETS[+e.code.slice(5) - 1]);
   if (mode === 'orbit' && e.code === 'KeyR') { orbits.reset(); updMHud(); }
 });
 
 // ---------------------------------------------------------------- 鏡頭
-const VIEW = { orbit: [0, 0, 95], moon: [0, 0, 100], comet: [-22, 18, 170], assist: [8, 0, 160], binary: [0, 0, 120] };
+const VIEW = { orbit: [0, 0, 95], moon: [0, 0, 100], comet: [-22, 18, 170], assist: [8, 0, 160], binary: [0, 0, 120], ellipse: [-8, 0, 140], dock: [0, 0, 110], escape: [0, 0, 150] };
 function updateCamera(dt) {
   if (mode === 'galaxy') {
     // 跟著重天體的質心（慢慢移過去），沒人操作時慢慢自轉
@@ -288,16 +288,29 @@ function starfield() {
   const g = x.createLinearGradient(0, H * 0.35, 0, H * 0.65);
   g.addColorStop(0, 'rgba(60,40,110,0)'); g.addColorStop(0.5, 'rgba(70,55,120,0.22)'); g.addColorStop(1, 'rgba(60,40,110,0)');
   x.fillStyle = g; x.fillRect(0, 0, W, H);
-  for (let i = 0; i < 9; i++) {
-    const cx = Math.random() * W, cy = H * (0.3 + Math.random() * 0.4), r = 80 + Math.random() * 220;
-    const rg = x.createRadialGradient(cx, cy, 0, cx, cy, r);
-    const hue = [270, 220, 320, 200][i % 4];
-    rg.addColorStop(0, `hsla(${hue},60%,45%,0.12)`); rg.addColorStop(1, `hsla(${hue},60%,30%,0)`);
-    x.fillStyle = rg; x.fillRect(cx - r, cy - r, r * 2, r * 2);
+  // 彩色星雲：一團一團疊起來，比較像照片裡的雲氣
+  for (let i = 0; i < 22; i++) {
+    const cx = Math.random() * W, cy = H * (0.25 + Math.random() * 0.5), r = 50 + Math.random() * 200;
+    const hue = [275, 215, 330, 190, 20][i % 5];
+    for (let k = 0; k < 14; k++) {
+      const ox = cx + (Math.random() - 0.5) * r * 1.6, oy = cy + (Math.random() - 0.5) * r * 0.7, rr = r * (0.15 + Math.random() * 0.4);
+      const h2 = hue + (Math.random() - 0.5) * 40;
+      for (const sx of [ox, ox - W, ox + W]) {   // 左右邊界要接得起來（不然貼成球會有一條線）
+        const rg = x.createRadialGradient(sx, oy, 0, sx, oy, rr);
+        rg.addColorStop(0, `hsla(${h2},75%,50%,0.06)`); rg.addColorStop(1, `hsla(${h2},75%,30%,0)`);
+        x.fillStyle = rg; x.fillRect(sx - rr, oy - rr, rr * 2, rr * 2);
+      }
+    }
   }
+  // 銀河帶：中間密密麻麻的小星星
+  for (let i = 0; i < 9000; i++) {
+    const y = H * 0.5 + (Math.random() + Math.random() + Math.random() - 1.5) * H * 0.12;
+    x.fillStyle = `rgba(230,225,255,${0.12 + Math.random() * 0.3})`; x.fillRect(Math.random() * W, y, 1, 1);
+  }
+  const tint = [[255, 200, 160], [255, 240, 220], [220, 230, 255], [170, 200, 255], [255, 170, 140]];
   for (let i = 0; i < 7000; i++) {
-    const s = Math.random() ** 4 * 1.1 + 0.25, a = 0.25 + Math.random() * 0.6;
-    x.fillStyle = `rgba(${220 + Math.random() * 35},${215 + Math.random() * 40},255,${a})`;
+    const s = Math.random() ** 4 * 1.1 + 0.25, a = 0.25 + Math.random() * 0.6, c = tint[Math.floor(Math.random() * tint.length)];
+    x.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},${a})`;
     x.beginPath(); x.arc(Math.random() * W, Math.random() * H, s, 0, Math.PI * 2); x.fill();
   }
   const t = new THREE.CanvasTexture(c); t.mapping = THREE.EquirectangularReflectionMapping; t.colorSpace = THREE.SRGBColorSpace;
