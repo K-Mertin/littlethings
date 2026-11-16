@@ -69,8 +69,8 @@ export function buildWorld(scene, { high, webgpu }) {
   const n = mx_noise_float(wp.mul(0.35)).mul(0.5).add(0.5);
   // 沙紋：海流在沙上推出一條一條的波紋，加上細小的顆粒
   const n2 = mx_noise_float(wp.mul(2.4)).mul(0.5).add(0.5);
-  const ripple = sin(wp.x.mul(1.7).add(wp.z.mul(0.6)).add(mx_noise_float(wp.mul(0.12)).mul(4))).mul(0.5).add(0.5);
-  const sand = mix(vec3(0.5, 0.46, 0.36), vec3(0.62, 0.57, 0.44), n).mul(mix(0.86, 1.04, ripple)).mul(mix(0.92, 1.05, n2));
+  const sandWave = sin(wp.x.mul(1.7).add(wp.z.mul(0.6)).add(mx_noise_float(wp.mul(0.12)).mul(4))).mul(0.5).add(0.5);
+  const sand = mix(vec3(0.5, 0.46, 0.36), vec3(0.62, 0.57, 0.44), n).mul(mix(0.86, 1.04, sandWave)).mul(mix(0.92, 1.05, n2));
   const rock = mix(vec3(0.33, 0.32, 0.31), vec3(0.42, 0.4, 0.37), n);
   const mud = vec3(0.24, 0.24, 0.26);
   tm.colorNode = mix(mud, mix(rock, sand, smoothstep(0.78, 0.93, slope)), smoothstep(-85, -38, wp.y));
