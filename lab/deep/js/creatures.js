@@ -68,8 +68,10 @@ export function buildCreatures(scene, W, { high }) {
       return mix(mix(scuteCol, margCol, marg), vec3(0.62, 0.55, 0.38), seam.mul(0.7));
     })();
     const shellG = bumpy(new THREE.SphereGeometry(1, 36, 18, 0, Math.PI * 2, 0, Math.PI / 2), 0.025, 5);
-    const shell = new THREE.Mesh(shellG, shellM); shell.scale.set(1, 0.4, 1.3);
-    const belly = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 8, 0, Math.PI * 2, Math.PI * 0.62, Math.PI * 0.38), std(0xd8c690, { roughness: 0.7 })); belly.scale.set(0.97, 0.45, 1.27); belly.position.y = 0.17;
+    // 殼是拱起來的（中間最高、前面稍高、往後收），中間有一條縱向的脊
+    { const p = shellG.attributes.position; for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i); const ridge = Math.exp(-x * x * 40) * 0.08 * y; p.setY(i, y * (1 + 0.15 * z) + ridge); } shellG.computeVertexNormals(); }
+    const shell = new THREE.Mesh(shellG, shellM); shell.scale.set(1, 0.62, 1.3);
+    const belly = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 8, 0, Math.PI * 2, Math.PI * 0.62, Math.PI * 0.38), std(0xd8c690, { roughness: 0.7 })); belly.scale.set(0.97, 0.55, 1.27); belly.position.y = 0.12;
     const skin = new THREE.MeshStandardNodeMaterial({ roughness: 0.6 });
     skin.colorNode = Fn(() => {
       const w = mx_worley_noise_float(positionLocal.mul(9));
@@ -82,7 +84,7 @@ export function buildCreatures(scene, W, { high }) {
     const fl = (x, z, len, wid, front) => {
       const pivot = new THREE.Group(); pivot.position.set(x, 0.05, z);
       const f = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 8), skin);
-      f.scale.set(len, 0.07, wid); f.position.x = Math.sign(x) * len * 0.45;
+      f.scale.set(len, 0.14, wid);   // 鰭有厚度 f.position.x = Math.sign(x) * len * 0.45;
       f.rotation.y = Math.sign(x) * (front ? -0.45 : 0.5);
       pivot.add(f); g.add(pivot); return pivot;
     };
