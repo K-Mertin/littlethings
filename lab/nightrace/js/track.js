@@ -144,13 +144,34 @@ export class Track {
     bm.roughnessNode = mix(float(0.85), float(0.12), inWin);   // 玻璃窗會反光
     // 泛光只吃「自發光」那一層、不會被霧蓋掉 → 遠方的窗戶要自己按距離變暗，不然天空會出現一團團灰霧
     const fogK = exp(positionWorld.distance(cameraPosition).mul(-0.011));
-    bm.emissiveNode = winCol.mul(inWin.mul(lit).mul(0.75)).mul(fogK);
+    // 一樓店面：靠地面一整排亮著的櫥窗（暖色、偶爾冷色），中間有柱子隔開
+    const shopCell = fract(side.div(5.5));
+    const shop = step(0.6, wpp.y).mul(step(wpp.y, 3.4)).mul(step(0.12, shopCell)).mul(step(shopCell, 0.88)).mul(step(abs(nw.y), 0.5));
+    const shopId = hash(floor(side.div(5.5)).add(floor(wpp.x.div(40)).mul(5.1)));
+    const shopCol = mix(vec3(1, 0.8, 0.5), vec3(0.75, 0.9, 1), step(0.75, shopId)).mul(step(0.25, shopId)).mul(0.6).mul(smoothstep(3.6, 0.8, wpp.y).mul(0.5).add(0.5)).mul(step(0.08, fract(shopCell.mul(4))).mul(0.3).add(0.7));   // 店裡下面亮上面暗、有窗框
+    bm.emissiveNode = winCol.mul(inWin.mul(lit).mul(0.75)).mul(float(1).sub(shop)).add(shopCol.mul(shop)).mul(fogK);
     const box = new THREE.BoxGeometry(1, 1, 1); box.translate(0, 0.5, 0);
     const im = new THREE.InstancedMesh(box, bm, builds.length);
     const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), Sc = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
     builds.forEach((b, i) => { Q.setFromAxisAngle(Y, b.rot); Sc.set(b.w, b.h, b.d); M.compose(new THREE.Vector3(b.x, 0, b.z), Q, Sc); im.setMatrixAt(i, M); });
     im.castShadow = false; im.receiveShadow = true; G.add(im);
     this.builds = builds;
+    // 高樓頂上再疊一層小一點的樓（退縮），屋頂放冷氣機、水塔
+    const tops = builds.filter((b) => b.h > 30);
+    const top = new THREE.InstancedMesh(box, bm, tops.length);
+    tops.forEach((b, i) => { Q.setFromAxisAngle(Y, b.rot); Sc.set(b.w * 0.6, b.h * 0.18, b.d * 0.6); M.compose(new THREE.Vector3(b.x, b.h, b.z), Q, Sc); top.setMatrixAt(i, M); });
+    G.add(top);
+    const roofM = new THREE.MeshStandardNodeMaterial({ color: 0x3a3d44, roughness: 0.6, metalness: 0.4 });
+    const units = []; const RR = rng(5);
+    for (const b of builds) { const nU = 1 + Math.floor(RR() * 3), h = b.h > 30 ? b.h * 1.18 : b.h; for (let k = 0; k < nU; k++) units.push({ x: b.x + (RR() - 0.5) * b.w * 0.4, z: b.z + (RR() - 0.5) * b.d * 0.4, y: h, s: 1.2 + RR() * 1.8, rot: b.rot }); }
+    const unitIm = new THREE.InstancedMesh(box, roofM, units.length);
+    units.forEach((u, i) => { Q.setFromAxisAngle(Y, u.rot); Sc.set(u.s, u.s * 0.7, u.s * 1.3); M.compose(new THREE.Vector3(u.x, u.y, u.z), Q, Sc); unitIm.setMatrixAt(i, M); });
+    G.add(unitIm);
+    // 屋頂的紅色航空警示燈（高樓才有）
+    const warnM = new THREE.MeshBasicNodeMaterial({ color: new THREE.Color(3, 0.2, 0.15) });
+    const warn = new THREE.InstancedMesh(new THREE.SphereGeometry(0.35, 6, 4), warnM, tops.length);
+    tops.forEach((b, i) => { M.compose(new THREE.Vector3(b.x, b.h * 1.18 + 0.4, b.z), Q.identity(), Sc.set(1, 1, 1)); warn.setMatrixAt(i, M); });
+    G.add(warn);
 
     // ---------------- 霓虹招牌：貼在靠路那一面
     const words = [['MW', '#ff4fd8'], ['GAME HALL', '#3fe0ff'], ['夜市', '#ffd23f'], ['拉麵', '#ff6a3d'], ['電玩', '#7dff6a'], ['甜點', '#ff8fd0'], ['ABC', '#5fb2ff'], ['123', '#ffe14d'], ['HOTEL', '#c08bff'], ['咖啡', '#ffb36b'], ['書店', '#8fffe0'], ['NIGHT GP', '#ff4f6d'], ['卡拉OK', '#ff5ac8'], ['24H', '#3fffa6']];
