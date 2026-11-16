@@ -138,7 +138,12 @@ W.trash.forEach((m, i) => { if (save.trash.includes(i)) { m.visible = false; } }
 // ---------------------------------------------------------------- 後製：泛光（發光水母、熱泉、燈）
 const pipeline = new THREE.RenderPipeline(renderer);
 const scenePass = pass(scene, camera);
-const col = scenePass.getTextureNode();
+const col0 = scenePass.getTextureNode();
+// 水會吸收光：紅色最先不見、接著綠色，藍色走最遠。離鏡頭越遠、潛得越深，紅色越少（真的水下照片就是這樣偏藍綠）
+const camDepthU = uniform(0);
+const dist = scenePass.getViewZNode().negate().min(45);
+const absorb = vec3(0.075, 0.024, 0.01).mul(dist).add(vec3(0.012, 0.004, 0.0015).mul(camDepthU)).negate().exp();
+const col = vec4(col0.rgb.mul(absorb), col0.a);
 const lit = HIGH ? col.add(bloom(col, 0.5, 0.45, 0.85)) : col;
 // 暗角＋水下的藍綠色調
 const vig = smoothstep(0.35, 0.95, uv().sub(0.5).length().mul(1.25));
@@ -382,6 +387,7 @@ function update(dt) {
 
   // 深度 → 霧、光、顏色
   const depth = -camera.position.y;
+  camDepthU.value = Math.max(0, depth);
   const k1 = Math.min(1, depth / 38), k2 = Math.min(1, Math.max(0, (depth - 32) / 45));
   fogCol.copy(SHALLOW).lerp(MID, k1).lerp(DEEP, k2);
   scene.fog.density = 0.017 + depth * 0.00011;

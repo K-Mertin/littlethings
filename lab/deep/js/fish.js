@@ -96,7 +96,7 @@ export class Fish {
     const GLOW = uniformArray(SCHOOLS.map((s) => new THREE.Vector3(...(s.glow || [0, 0, 0]))), 'vec3');
     const STR = uniformArray(SCHOOLS.map((s) => new THREE.Vector4(s.stripe[0], s.stripe[1], 0, 0)), 'vec4');   // 條紋：密度、深淺
     const STC = uniformArray(SCHOOLS.map((s) => new THREE.Vector3(...s.stripe[2])), 'vec3');
-    const mat = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide, roughness: 0.35, metalness: 0.25 });
+    const mat = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide, roughness: 0.28, metalness: 0.45 });   // 魚鱗有一點銀色光澤
     const p = P.element(instanceIndex), v = V.element(instanceIndex), si = int(p.w);
     mat.positionNode = Fn(() => {
       const sh = SH.element(si), size = PR.element(si).y;
