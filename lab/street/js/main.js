@@ -2,7 +2,7 @@
 // 和 /street/ 同一套場景，改用 three.js 的 WebGPURenderer（瀏覽器不支援 WebGPU 時自動改用 WebGL 2），
 // 後製用 TSL 節點（泛光、環境光遮蔽），另外加上 GPU 才跑得動的東西：大量行人、日夜與天氣、粒子特效（見 gpu/）。
 import * as THREE from 'three';
-import { pass, mrt, output, normalView, emissive, uniform, vec2, vec4, metalness, roughness } from 'three/tsl';
+import { pass, mrt, output, normalView, emissive, uniform, vec2, vec3, vec4, metalness, roughness, screenUV, smoothstep, dot, mix } from 'three/tsl';
 import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
@@ -87,7 +87,12 @@ function buildPipeline(withSSR = false) {
   }
   const glow = bloom(scenePass.getTextureNode('emissive'), 1, 0.45, 0.0);
   glow.strength = post.bloomK;
-  pipeline.outputNode = lit.add(glow);
+  // 調色：像相機拍的照片——四周稍微暗一點（暗角）、顏色飽和一點點、暗部帶一點冷色
+  const c0 = lit.add(glow).rgb;
+  const lum = dot(c0, vec3(0.2126, 0.7152, 0.0722));
+  const graded = mix(vec3(lum), c0, 1.12).max(0).add(vec3(-0.004, 0, 0.006).mul(smoothstep(0.25, 0, lum)));
+  const vig = smoothstep(0.95, 0.35, screenUV.sub(0.5).mul(vec2(1.25, 1)).length()).mul(0.28).add(0.72);
+  pipeline.outputNode = vec4(graded.mul(vig), 1);
   pipeline.needsUpdate = true;
 }
 function resize() {
