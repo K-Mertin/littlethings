@@ -2,7 +2,7 @@
 // 為了快，每條魚只看緩衝區裡前後幾條「同一群」的鄰居（同一群的魚放在連續的位置）。
 import * as THREE from 'three';
 import {
-  Fn, uniform, uniformArray, float, int, vec3, vec4, mix, smoothstep, sin, cos, normalize, cross, length, max, min, clamp, select, If,
+  Fn, uniform, uniformArray, float, int, vec2, vec3, vec4, mix, smoothstep, sin, cos, normalize, cross, length, max, min, clamp, select, If,
   instancedArray, instanceIndex, positionGeometry, normalGeometry, normalLocal, deltaTime, time, hash,
 } from 'three/tsl';
 import { floorY, rng } from './world.js';
@@ -14,7 +14,7 @@ export const SCHOOLS = [
   { id: 'tang', share: 0.11, home: [-26, -128], h: 4, R: 14, color: [0.08, 0.32, 0.95], belly: [0.15, 0.45, 1], tail: [1, 0.85, 0.1], size: 0.55, shape: [0.28, 0.75, 0.9], speed: 2.6, rad: 5, stripe: [1.6, 0.8, [0.02, 0.04, 0.12]] },
   { id: 'yellow', share: 0.11, home: [30, -132], h: 4, R: 14, color: [1, 0.82, 0.08], belly: [1, 0.92, 0.45], size: 0.5, shape: [0.25, 0.85, 0.85], speed: 2.4, rad: 5, stripe: [0, 0, [1, 1, 1]] },
   { id: 'red', share: 0.08, home: [-45, -60], h: 5, R: 18, color: [0.92, 0.3, 0.25], belly: [1, 0.7, 0.6], size: 0.5, shape: [0.32, 0.5, 1], speed: 3, rad: 5, stripe: [7, 0.5, [1, 0.9, 0.85]] },
-  { id: 'parrot', share: 0.07, home: [8, -88], h: 3, R: 16, color: [0.15, 0.75, 0.6], belly: [0.45, 0.9, 0.8], tail: [0.95, 0.4, 0.7], size: 0.85, shape: [0.36, 0.55, 1], speed: 2, rad: 6, stripe: [5, 0.6, [0.95, 0.45, 0.7]] },
+  { id: 'parrot', share: 0.035, home: [8, -88], h: 3, R: 24, color: [0.15, 0.75, 0.6], belly: [0.45, 0.9, 0.8], tail: [0.95, 0.4, 0.7], size: 0.85, shape: [0.36, 0.55, 1], speed: 2, rad: 10, stripe: [5, 0.6, [0.95, 0.45, 0.7]] },
   { id: 'jack', share: 0.05, home: [-8, -30], h: 10, R: 34, color: [0.62, 0.68, 0.75], belly: [0.92, 0.94, 0.97], tail: [0.95, 0.8, 0.3], size: 1.3, shape: [0.28, 0.48, 1], speed: 5.5, rad: 8, stripe: [0, 0, [1, 1, 1]] },
   { id: 'lantern', share: 0.1, home: [20, 95], h: 10, R: 26, color: [0.12, 0.14, 0.2], belly: [0.25, 0.3, 0.4], glow: [0.3, 0.8, 1], size: 0.4, shape: [0.3, 0.42, 1], speed: 3.2, rad: 7, stripe: [0, 0, [1, 1, 1]] },
 ];
@@ -83,12 +83,25 @@ export class Fish {
       V.element(i).assign(vec4(vel, v.w.add(dt.mul(spd.mul(2.2).add(3)))));
     })().compute(count);
 
-    // ---------------- 外形：橢圓身體＋尾鰭（往 +z 是頭）
-    const body = new THREE.SphereGeometry(0.5, 10, 7); body.deleteAttribute('uv');
-    const tail = new THREE.BufferGeometry();
-    tail.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, -0.38, 0, 0.32, -0.78, 0, -0.32, -0.78], 3));
-    tail.setAttribute('normal', new THREE.Float32BufferAttribute([1, 0, 0, 1, 0, 0, 1, 0, 0], 3));
-    const geo = mergeTwo(body.toNonIndexed(), tail);
+    // ---------------- 外形：流線型的魚身（前三分之一最厚、尾柄很細）＋分叉尾鰭、背鰭、腹鰭、胸鰭（往 +z 是頭）
+    const prof = [];
+    for (let i = 0; i <= 16; i++) {
+      const t = i / 16, y = -0.42 + t * 0.92;   // 尾柄 → 吻端
+      const r = t < 0.55 ? 0.06 + 0.44 * Math.pow(Math.sin(t / 0.55 * Math.PI / 2), 1.6) : 0.5 * Math.pow(Math.cos((t - 0.55) / 0.45 * Math.PI / 2), 0.75);   // 頭比較尖
+      prof.push(new THREE.Vector2(Math.max(0.004, r), y));
+    }
+    const body = new THREE.LatheGeometry(prof, 10); body.rotateX(Math.PI / 2); body.deleteAttribute('uv');
+    const tri = (pts, n) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(Array.from({ length: pts.length / 3 }, () => n).flat(), 3)); return g; };
+    const fins = [
+      // 分叉的尾鰭（兩片）
+      tri([0, 0, -0.4, 0, 0.36, -0.8, 0, 0.05, -0.62, 0, 0, -0.4, 0, -0.05, -0.62, 0, -0.36, -0.8], [1, 0, 0]),
+      // 背鰭、腹鰭（臀鰭）
+      tri([0, 0.42, 0.12, 0, 0.66, -0.06, 0, 0.36, -0.18, 0, -0.4, -0.02, 0, -0.55, -0.16, 0, -0.3, -0.2], [1, 0, 0]),
+      // 胸鰭（兩側，往後斜）
+      tri([0.38, -0.08, 0.2, 0.62, -0.2, -0.02, 0.4, -0.16, 0.06, -0.38, -0.08, 0.2, -0.62, -0.2, -0.02, -0.4, -0.16, 0.06], [0, 1, 0]),
+    ];
+    let geo = body.toNonIndexed();
+    for (const f of fins) geo = mergeTwo(geo, f);
     const SH = uniformArray(SCHOOLS.map((s) => new THREE.Vector4(...s.shape, 0)), 'vec4');
     const COL = uniformArray(SCHOOLS.map((s) => new THREE.Vector3(...s.color)), 'vec3');
     const BEL = uniformArray(SCHOOLS.map((s) => new THREE.Vector3(...s.belly)), 'vec3');
@@ -99,7 +112,7 @@ export class Fish {
     const mat = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide, roughness: 0.28, metalness: 0.45 });   // 魚鱗有一點銀色光澤
     const p = P.element(instanceIndex), v = V.element(instanceIndex), si = int(p.w);
     mat.positionNode = Fn(() => {
-      const sh = SH.element(si), size = PR.element(si).y;
+      const sh = SH.element(si), size = PR.element(si).y.mul(hash(instanceIndex.add(911)).mul(0.35).add(0.82));   // 每條魚大小不太一樣
       const l = positionGeometry.mul(sh.xyz).toVar();
       // 尾巴擺動：越後面擺越大
       const back = smoothstep(0.2, -0.75, positionGeometry.z);
@@ -109,11 +122,21 @@ export class Fish {
       normalLocal.assign(normalize(r.mul(normalGeometry.x).add(u.mul(normalGeometry.y)).add(f.mul(normalGeometry.z))));
       return r.mul(l.x).add(u.mul(l.y)).add(f.mul(l.z)).mul(size).add(p.xyz);
     })();
-    const isTail = smoothstep(-0.36, -0.42, positionGeometry.z);
+    const isTail = smoothstep(-0.4, -0.46, positionGeometry.z);
     const base = mix(mix(BEL.element(si), COL.element(si), smoothstep(-0.25, 0.15, positionGeometry.y)), TAIL.element(si), isTail);
     const st = STR.element(si);
     const band = smoothstep(0.55, 0.75, sin(positionGeometry.z.mul(st.x).mul(6.28).add(positionGeometry.y.mul(2))).mul(0.5).add(0.5)).mul(st.y).mul(float(1).sub(isTail));
-    mat.colorNode = mix(base, STC.element(si), band);
+    const pg = positionGeometry;
+    // 眼睛：頭兩側的黑點加一圈亮邊；鰓蓋：一條淡淡的弧線；側線：身體中間一條細線
+    const eyeD = vec2(pg.y.sub(0.08), pg.z.sub(0.33)).length();
+    const side = smoothstep(0.12, 0.2, pg.x.abs());
+    const eye = smoothstep(0.065, 0.05, eyeD).mul(side), eyeRing = smoothstep(0.085, 0.07, eyeD).mul(side).sub(eye).max(0);
+    const gill = smoothstep(0.02, 0.0, pg.z.sub(0.2).add(pg.y.mul(pg.y).mul(0.8)).abs()).mul(side).mul(0.35);
+    const lateral = smoothstep(0.018, 0.0, pg.y.sub(0.04).abs()).mul(side).mul(0.25).mul(smoothstep(0.3, 0.1, pg.z));
+    const finMask = smoothstep(0.43, 0.46, pg.y.abs()).max(smoothstep(0.5, 0.56, pg.x.abs())).max(isTail);
+    const skin = mix(base, STC.element(si), band).mul(float(1).sub(gill).sub(lateral));
+    const withFins = mix(skin, mix(base, TAIL.element(si), 0.6).mul(0.85), finMask.mul(float(1).sub(isTail)));
+    mat.colorNode = mix(mix(withFins, vec3(0.92, 0.9, 0.75), eyeRing), vec3(0.02), eye);
     // 燈籠魚：身上一排發光點
     const dots = smoothstep(0.82, 0.95, sin(positionGeometry.z.mul(40)).mul(0.5).add(0.5)).mul(smoothstep(-0.05, -0.2, positionGeometry.y));
     mat.emissiveNode = GLOW.element(si).mul(dots.mul(2.5));
