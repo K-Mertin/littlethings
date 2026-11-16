@@ -1,11 +1,12 @@
 // 萬軍對決 3D：渲染、鏡頭、選隊伍、下命令、戰役流程
 import * as THREE from 'three';
-import { pass, uniform, vec3, uv, smoothstep, mix } from 'three/tsl';
+import { pass, uniform, vec3, vec4, uv, smoothstep, mix, positionGeometry, sin, time, select, float, texture } from 'three/tsl';
 import { Terrain } from './terrain.js';
 import { Battle, T, STATS } from './sim.js';
 import { UnitMeshes } from './units.js';
 import { BATTLES, FREE_TERRAINS, freeBattle } from './battles.js';
 import { Sound } from './audio.js';
+import { Dust } from './dust.js';
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -31,8 +32,8 @@ renderer.shadowMap.enabled = HIGH; renderer.shadowMap.type = THREE.PCFSoftShadow
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xa9cde8);
-scene.fog = new THREE.Fog(0xa9cde8, 160, 420);
-const camera = new THREE.PerspectiveCamera(48, innerWidth / innerHeight, 0.5, 900);
+scene.fog = new THREE.Fog(0xa9cde8, 170, 460);
+const camera = new THREE.PerspectiveCamera(48, innerWidth / innerHeight, 0.5, 1800);
 scene.add(new THREE.HemisphereLight(0xdcefff, 0x56603e, 1.4));
 const sun = new THREE.DirectionalLight(0xfff1d6, 2.6); sun.position.set(60, 120, 40); scene.add(sun, sun.target);
 if (HIGH) { sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); const c = sun.shadow.camera; c.left = c.bottom = -90; c.right = c.top = 90; c.near = 10; c.far = 400; sun.shadow.bias = -0.0006; }
@@ -40,6 +41,7 @@ if (HIGH) { sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); const c =
 step(0.3, '打造士兵…');
 const MAXU = 4000;
 const meshes = new UnitMeshes(scene, MAXU, { high: HIGH });
+const dust = new Dust(scene);
 const pipeline = new THREE.RenderPipeline(renderer);
 pipeline.outputNode = pass(scene, camera);
 const OFF = params.has('offscreen') ? new THREE.RenderTarget(1, 1) : null;
@@ -62,7 +64,7 @@ function loadBattle(d, idx) {
     sq.waitT = s.waitT;
   }
   for (let i = 0; i < b.n; i++) b.y[i] = ter.height(b.x[i], b.z[i]);
-  sel.clear(); phase = 'deploy'; paused = false;
+  sel.clear(); phase = 'deploy'; paused = false; dust.clear(); miniBg = null; miniT = 0;
   buildMarkers();
   cam.x = 0; cam.z = 10; cam.yaw = 0; cam.pitch = 0.85; cam.dist = d.id === 'grand' ? 130 : 88;
   $('bTitle').textContent = `${d.icon} ${d.name}`; $('bText').textContent = d.intro; $('brief').classList.remove('hidden');
@@ -80,27 +82,72 @@ function badge(type, team) {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 const BADGES = [[0, 1, 2].map((t) => badge(t, 0)), [0, 1, 2].map((t) => badge(t, 1))];
+// 軍旗的布：隊伍色＋金邊＋兵種圖示
+function flagTex(type, team) {
+  const c = document.createElement('canvas'); c.width = 192; c.height = 128; const x = c.getContext('2d');
+  x.fillStyle = team ? '#c62f30' : '#2a62cf'; x.fillRect(0, 0, 192, 128);
+  x.fillStyle = team ? '#8f1f22' : '#1b438f'; for (let i = 0; i < 192; i += 32) x.fillRect(i, 0, 16, 128);
+  x.strokeStyle = '#f2c94c'; x.lineWidth = 10; x.strokeRect(5, 5, 182, 118);
+  x.beginPath(); x.arc(96, 64, 40, 0, Math.PI * 2); x.fillStyle = 'rgba(255,255,255,.92)'; x.fill();
+  x.font = '50px system-ui, "Apple Color Emoji", "Segoe UI Emoji"'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText(['⚔️', '🏹', '🐎'][type], 96, 68);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const FLAGS = [[0, 1, 2].map((t) => flagTex(t, 0)), [0, 1, 2].map((t) => flagTex(t, 1))];
+const poleMat = new THREE.MeshStandardNodeMaterial({ color: 0x6b4a2b, roughness: 0.8 });
+const poleGeo = new THREE.CylinderGeometry(0.07, 0.09, 6.4, 6); poleGeo.translate(0, 3.2, 0);
+const tipGeo = new THREE.ConeGeometry(0.18, 0.5, 6); tipGeo.translate(0, 6.6, 0);
+const clothGeo = new THREE.PlaneGeometry(2.6, 1.7, 14, 2); clothGeo.translate(1.3, 5.35, 0);
+function makeFlag(sq) {
+  const g = new THREE.Group();
+  const pole = new THREE.Mesh(poleGeo, poleMat); pole.castShadow = HIGH;
+  const tip = new THREE.Mesh(tipGeo, new THREE.MeshStandardNodeMaterial({ color: 0xf2c94c, metalness: 0.7, roughness: 0.35 }));
+  const m = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide, roughness: 0.85 });
+  const ph = Math.random() * 6;
+  // 旗子隨風飄：離旗桿越遠擺越大
+  const along = positionGeometry.x.div(2.6);
+  m.positionNode = positionGeometry.add(vec3(0, sin(time.mul(3.2).add(ph).sub(positionGeometry.x.mul(2.2))).mul(0.06).mul(along), sin(time.mul(4).add(ph).sub(positionGeometry.x.mul(2.4))).mul(0.32).mul(along)));
+  m.colorNode = texture(FLAGS[sq.team][sq.type]).rgb;
+  const cloth = new THREE.Mesh(clothGeo, m); cloth.castShadow = HIGH;
+  // 血條：一直面向鏡頭的小長條
+  const hp = uniform(1);
+  const hm = new THREE.SpriteNodeMaterial({ depthTest: false, transparent: true });
+  const u = uv(), edge = u.x.lessThan(0.03).or(u.x.greaterThan(0.97)).or(u.y.lessThan(0.12)).or(u.y.greaterThan(0.88));
+  const fillC = mix(vec3(0.95, 0.25, 0.2), vec3(0.3, 0.9, 0.35), smoothstep(0.25, 0.6, hp));
+  hm.colorNode = select(edge, vec3(0.08), select(u.x.lessThan(hp), fillC, vec3(0.2)));
+  hm.opacityNode = float(0.92);
+  const bar = new THREE.Sprite(hm); bar.center.set(0.5, 0); bar.renderOrder = 10;
+  g.add(pole, tip, cloth, bar);
+  scene.add(g);
+  return { g, bar, hp, cloth };
+}
 function buildMarkers() {
-  for (const m of markers) { scene.remove(m.spr, m.ring); }
+  for (const m of markers) { scene.remove(m.spr, m.ring, m.flag.g); }
   markers = b.squads.map((sq) => {
     const spr = new THREE.Sprite(new THREE.SpriteNodeMaterial({ map: BADGES[sq.team][sq.type], depthTest: false, transparent: true }));
     spr.renderOrder = 10; spr.scale.setScalar(4.2); scene.add(spr);
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.92, 1, 48), new THREE.MeshBasicNodeMaterial({ color: 0xffe066, transparent: true, opacity: 0.85, depthWrite: false }));
     ring.rotation.x = -Math.PI / 2; ring.visible = false; scene.add(ring);
-    return { sq, spr, ring };
+    return { sq, spr, ring, flag: makeFlag(sq), fx: sq.cx, fz: sq.cz };
   });
 }
-function updMarkers() {
+function updMarkers(dt = 0.016) {
   const k = cam.dist / 120;
   for (const m of markers) {
     const sq = m.sq, show = sq.alive > 0;
-    m.spr.visible = show; if (!show) { m.ring.visible = false; continue; }
-    m.spr.position.set(sq.cx, ter.height(sq.cx, sq.cz) + 5 + k * 3, sq.cz); m.spr.scale.setScalar((sel.has(sq) ? 5.2 : 4) * Math.max(0.8, k));
+    m.spr.visible = show && (k > 1.25 || sel.has(sq)); m.flag.g.visible = show; if (!show) { m.ring.visible = false; continue; }
+    // 軍旗跟在隊伍中間（慢慢跟上，不會抖）；離很遠時只看得到小圖示
+    const a = Math.min(1, dt * 3); m.fx += (sq.cx - m.fx) * a; m.fz += (sq.cz - m.fz) * a;
+    const fs = Math.min(3, Math.max(1, k * 2)), gy = ter.height(m.fx, m.fz);
+    m.flag.g.position.set(m.fx, gy, m.fz); m.flag.g.scale.setScalar(fs);
+    m.flag.g.rotation.y = cam.yaw + 0.45;   // 旗面大致朝鏡頭（斜一點比較立體）
+    m.flag.hp.value = sq.alive / sq.n0;
+    m.flag.bar.position.set(0, 7.3, 0); m.flag.bar.scale.set(2.6, 0.38, 1);
+    m.spr.position.set(sq.cx, gy + 9 * fs + 2, sq.cz); m.spr.scale.setScalar((sel.has(sq) ? 5.2 : 4) * Math.max(0.8, k));
     m.ring.visible = sel.has(sq);
     if (m.ring.visible) { const r = Math.sqrt(sq.alive) * STATS[sq.type].spacing * 0.75 + 2; m.ring.scale.setScalar(r); m.ring.position.set(sq.cx, ter.height(sq.cx, sq.cz) + 0.3, sq.cz); }
   }
 }
-
 // ---------------------------------------------------------------- 下方按鈕
 function dock() {
   const d = $('dock'); d.innerHTML = '';
@@ -305,13 +352,69 @@ function updateCamera(dt) {
   const y0 = ter ? ter.height(cam.x, cam.z) : 0, cp = Math.cos(cam.pitch);
   camera.position.set(cam.x + Math.sin(cam.yaw) * cp * cam.dist, y0 + Math.sin(cam.pitch) * cam.dist, cam.z + Math.cos(cam.yaw) * cp * cam.dist);
   camera.lookAt(cam.x, y0, cam.z);
+  scene.fog.near = cam.dist + 60; scene.fog.far = cam.dist + 380;   // 拉遠時霧也跟著退，不會整片白
   sun.position.set(cam.x + 60, 120, cam.z + 40); sun.target.position.set(cam.x, 0, cam.z);
 }
+// ---------------------------------------------------------------- 小地圖
+const mini = $('mini'), mctx = mini.getContext('2d');
+let miniBg = null, miniT = 0;
+const MW = 240, MH = 160;   // 地圖範圍 x −120～120、z −80～80
+function miniSize() { const r = mini.getBoundingClientRect(), d = Math.min(2, devicePixelRatio); mini.width = Math.round(r.width * d); mini.height = Math.round(r.height * d); miniBg = null; }
+function miniBgDraw() {
+  const W = mini.width, H = mini.height, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d'), sx = W / MW, sz = H / MH;
+  x.fillStyle = '#5f7f3a'; x.fillRect(0, 0, W, H);
+  // 山丘：顏色深淺
+  for (let j = 0; j < H; j += 3) for (let i = 0; i < W; i += 3) {
+    const h = ter.height(i / sx - MW / 2, j / sz - MH / 2);
+    if (h > 0.8) { x.fillStyle = `rgba(230,220,160,${Math.min(0.35, (h - 0.8) * 0.06)})`; x.fillRect(i, j, 3, 3); }
+  }
+  if (ter.river) {
+    const r = ter.river; x.strokeStyle = '#4b97c6'; x.lineWidth = r.w * 2 * sz; x.beginPath();
+    for (let X = -MW / 2; X <= MW / 2; X += 2) { const Z = r.z + r.amp * Math.sin(X * r.f); X === -MW / 2 ? x.moveTo((X + MW / 2) * sx, (Z + MH / 2) * sz) : x.lineTo((X + MW / 2) * sx, (Z + MH / 2) * sz); }
+    x.stroke();
+    x.fillStyle = '#9b7444';
+    for (const bx of r.bridges || []) { const Z = r.z + r.amp * Math.sin(bx * r.f); x.fillRect((bx - 4.5 + MW / 2) * sx, (Z - r.w - 2 + MH / 2) * sz, 9 * sx, (r.w * 2 + 4) * sz); }
+  }
+  x.fillStyle = '#2f5a2c';
+  for (const f of ter.forests) { x.beginPath(); x.ellipse((f.x + MW / 2) * sx, (f.z + MH / 2) * sz, f.r * sx, f.r * sz, 0, 0, Math.PI * 2); x.fill(); }
+  miniBg = c;
+}
+function drawMini() {
+  if (!mini.width) miniSize();
+  if (!miniBg) miniBgDraw();
+  const W = mini.width, H = mini.height, sx = W / MW, sz = H / MH, x = mctx;
+  x.drawImage(miniBg, 0, 0);
+  const d = Math.max(1.5, W / 120);
+  for (let i = 0; i < b.n; i++) {
+    if (!b.alive[i]) continue;
+    x.fillStyle = b.team[i] ? '#ff5a4f' : '#5fa0ff';
+    x.fillRect((b.x[i] + MW / 2) * sx - d / 2, (b.z[i] + MH / 2) * sz - d / 2, d, d);
+  }
+  for (const sq of sel) { x.strokeStyle = '#ffe066'; x.lineWidth = 1.5; x.beginPath(); x.arc((sq.cx + MW / 2) * sx, (sq.cz + MH / 2) * sz, 5, 0, Math.PI * 2); x.stroke(); }
+  // 鏡頭看到的範圍（螢幕四個角投到地面）
+  const pts = [[0, 0], [innerWidth, 0], [innerWidth, innerHeight], [0, innerHeight]].map(([px, py]) => {
+    ndc.set(px / innerWidth * 2 - 1, -(py / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera);
+    const p = ray.ray.intersectPlane(ground, new THREE.Vector3());
+    if (!p || p.distanceTo(camera.position) > 600) { const dir = ray.ray.direction.clone().setY(0).normalize().multiplyScalar(400); return camera.position.clone().add(dir); }
+    return p;
+  });
+  x.strokeStyle = 'rgba(255,255,255,.9)'; x.lineWidth = 1.5; x.beginPath();
+  pts.forEach((p, i) => { const X = (p.x + MW / 2) * sx, Y = (p.z + MH / 2) * sz; i ? x.lineTo(X, Y) : x.moveTo(X, Y); }); x.closePath(); x.stroke();
+}
+let miniDrag = false;
+const miniGo = (e) => { const r = mini.getBoundingClientRect(); cam.x = (e.clientX - r.left) / r.width * MW - MW / 2; cam.z = (e.clientY - r.top) / r.height * MH - MH / 2; };
+mini.addEventListener('pointerdown', (e) => { miniDrag = true; mini.setPointerCapture(e.pointerId); miniGo(e); });
+mini.addEventListener('pointermove', (e) => { if (miniDrag) miniGo(e); });
+mini.addEventListener('pointerup', () => { miniDrag = false; });
+addEventListener('resize', miniSize);
+
 let checkT = 0;
 function update(dt) {
   if (phase === 'fight' && !paused) {
     const h = dt * speed, n = Math.ceil(h / 0.034);
     for (let i = 0; i < n; i++) b.step(h / n);
+    dust.emit(b, h);
     checkT -= dt;
     if (checkT <= 0) {
       checkT = 0.5;
@@ -321,8 +424,10 @@ function update(dt) {
   } else if (phase === 'done' && !paused) { b.step(dt * 0.5); }
   for (const sq of [...sel]) if (!sq.alive) { sel.delete(sq); updSel(); }
   meshes.sync(b);
-  updMarkers();
+  updMarkers(dt);
   updateCamera(dt);
+  dust.update(paused ? 0 : dt * speed, camera);
+  miniT -= dt; if (miniT <= 0) { miniT = 0.12; drawMini(); }
   const c0 = b.count(0), c1 = b.count(1);
   $('sb').textContent = c0; $('sr').textContent = c1;
   $('tb').style.width = (c0 / Math.max(1, c0 + c1) * 100) + '%'; $('tr').style.width = (c1 / Math.max(1, c0 + c1) * 100) + '%';

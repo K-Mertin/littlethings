@@ -8,8 +8,8 @@ import {
 } from 'three/tsl';
 import { T } from './sim.js';
 
-// kind：0 隊伍色（衣服）1 皮膚 2 金屬 3 木頭 4 深色（褲子、靴子）5 馬 6 白（馬鬃、羽毛）
-// part：0 不動 1 左腳 2 右腳 3 左手 4 右手（含武器）5 馬腳 A 6 馬腳 B
+// kind：0 隊伍色（衣服）1 皮膚 2 金屬 3 木頭 4 深色（褲子、靴子）5 馬 6 白（馬鬃、羽毛）7 深隊伍色（披風）8 金色（裝飾）
+// part：0 不動 1 左腳 2 右腳 3 左手 4 右手（含武器）5 馬腳 A 6 馬腳 B 7 披風（跑起來往後飄）
 class Kit {
   constructor() { this.pos = []; this.nrm = []; this.part = []; this.piv = []; this.kind = []; }
   add(geo, { x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1, part = 0, piv = [0, 0, 0], kind = 0 }) {
@@ -43,18 +43,37 @@ function body(k, { shield = false, helmet = 'round', weapon = 'sword', y0 = 0, l
     k.box(0.17, 0.9, 0.2, { x: -0.12, y: y0 + 0.47, part: 2, piv: HIP, kind: 4 });
   }
   k.box(0.48, 0.58, 0.3, { y: y0 + 1.2, kind: 0 });                 // 上衣
+  if (legs) k.add(new THREE.CylinderGeometry(0.25, 0.3, 0.26, 8), { y: y0 + 0.8, kind: 0 });   // 下襬
   k.box(0.5, 0.12, 0.32, { y: y0 + 0.93, kind: 3 });                // 腰帶
+  k.box(0.1, 0.09, 0.04, { y: y0 + 0.93, z: 0.17, kind: 8 });       // 腰帶扣
+  if (legs) for (const sx of [0.12, -0.12]) k.box(0.2, 0.2, 0.26, { x: sx, y: y0 + 0.1, z: 0.03, part: sx > 0 ? 1 : 2, piv: HIP, kind: 4 });   // 靴子
+  // 披風：掛在肩膀後面，跑起來往後飄
+  k.box(0.46, 0.78, 0.035, { y: y0 + 1.04, z: -0.215, part: 7, piv: [0, y0 + 1.43, -0.2], kind: 7 });
+  // 眼睛
+  for (const ex of [0.06, -0.06]) k.box(0.035, 0.035, 0.02, { x: ex, y: y0 + 1.68, z: 0.16, kind: 4 });
   k.add(new THREE.SphereGeometry(0.17, 10, 8), { y: y0 + 1.66, kind: 1 });   // 頭
-  if (helmet === 'round') k.add(new THREE.SphereGeometry(0.19, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), { y: y0 + 1.7, kind: 2 });
+  if (helmet === 'round') {
+    k.add(new THREE.SphereGeometry(0.19, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), { y: y0 + 1.7, kind: 2 });
+    k.box(0.04, 0.16, 0.06, { y: y0 + 1.62, z: 0.17, kind: 2 });   // 護鼻
+    for (const sx of [0.3, -0.3]) k.add(new THREE.SphereGeometry(0.13, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), { x: sx, y: y0 + 1.42, kind: 2 });   // 肩甲
+  }
   if (helmet === 'hood') k.add(new THREE.ConeGeometry(0.2, 0.32, 8), { y: y0 + 1.84, kind: 0 });
   if (helmet === 'plume') { k.add(new THREE.SphereGeometry(0.19, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), { y: y0 + 1.7, kind: 2 }); k.box(0.05, 0.22, 0.3, { y: y0 + 1.92, z: -0.04, kind: 0 }); }
   // 左手（拿盾或弓）
   k.box(0.13, 0.6, 0.14, { x: 0.33, y: y0 + 1.14, part: 3, piv: SH_L, kind: 0 });
   if (shield) k.add(new THREE.CylinderGeometry(0.34, 0.34, 0.06, 14), { x: 0.44, y: y0 + 1.1, z: 0.12, rz: Math.PI / 2, part: 3, piv: SH_L, kind: 2 });
+  if (weapon === 'bow') {   // 背上的箭袋
+    k.add(new THREE.CylinderGeometry(0.08, 0.07, 0.6, 7), { x: -0.12, y: y0 + 1.3, z: -0.24, rz: 0.35, kind: 3 });
+    for (const ax of [-0.02, -0.08, -0.14]) k.box(0.05, 0.08, 0.05, { x: ax - 0.12, y: y0 + 1.62, z: -0.24, kind: 6 });
+  }
   if (weapon === 'bow') k.add(new THREE.TorusGeometry(0.42, 0.025, 4, 12, Math.PI), { x: 0.38, y: y0 + 1.0, z: 0.25, ry: Math.PI / 2, rz: Math.PI / 2, part: 3, piv: SH_L, kind: 3 });
   // 右手（拿劍或長槍）
   k.box(0.13, 0.6, 0.14, { x: -0.33, y: y0 + 1.14, part: 4, piv: SH_R, kind: 0 });
-  if (weapon === 'sword') k.box(0.06, 0.85, 0.04, { x: -0.36, y: y0 + 1.15, z: 0.35, rx: Math.PI / 2 - 0.4, part: 4, piv: SH_R, kind: 2 });
+  if (weapon === 'sword') {
+    k.box(0.06, 0.85, 0.04, { x: -0.36, y: y0 + 1.15, z: 0.35, rx: Math.PI / 2 - 0.4, part: 4, piv: SH_R, kind: 2 });
+    k.box(0.24, 0.05, 0.06, { x: -0.36, y: y0 + 0.97, z: 0.06, rx: Math.PI / 2 - 0.4, part: 4, piv: SH_R, kind: 8 });   // 護手
+  }
+  if (shield) k.add(new THREE.CylinderGeometry(0.12, 0.12, 0.08, 10), { x: 0.48, y: y0 + 1.1, z: 0.12, rz: Math.PI / 2, part: 3, piv: SH_L, kind: 8 });   // 盾心
   if (weapon === 'lance') k.add(new THREE.CylinderGeometry(0.03, 0.04, 3.2, 5), { x: -0.38, y: y0 + 1.0, z: 0.9, rx: Math.PI / 2 - 0.12, part: 4, piv: SH_R, kind: 3 });
   return k;
 }
@@ -68,6 +87,10 @@ function horse(k) {
   k.box(0.08, 0.4, 0.5, { y: 1.75, z: 0.85, rx: -0.5, kind: 6 });                 // 鬃毛
   k.box(0.12, 0.55, 0.12, { y: 1.05, z: -0.95, rx: 0.5, kind: 6 });               // 尾巴
   k.box(0.6, 0.1, 0.7, { y: 1.42, kind: 0 });                                     // 馬鞍布（隊伍色）
+  for (const sx of [0.31, -0.31]) k.box(0.03, 0.38, 0.9, { x: sx, y: 1.18, kind: 7 });   // 馬衣（兩側垂下來）
+  k.box(0.3, 0.06, 0.3, { y: 1.87, z: 1.25, kind: 4 });                          // 韁繩
+  for (const ex of [0.14, -0.14]) k.box(0.02, 0.05, 0.05, { x: ex, y: 1.92, z: 1.3, kind: 4 });   // 眼睛
+  for (const ex of [0.08, -0.08]) k.box(0.06, 0.14, 0.06, { x: ex, y: 2.05, z: 1.05, kind: 5 });  // 耳朵
   return k;
 }
 
@@ -86,7 +109,8 @@ export class UnitMeshes {
       const B = instancedArray(new Float32Array(maxN * 4), 'vec4');   // 跑步相位、攻擊、倒下、隊伍
       const mat = new THREE.MeshStandardNodeMaterial({ roughness: 0.7 });
       const a = A.element(instanceIndex), b = B.element(instanceIndex);
-      const part = attribute('part', 'float'), piv = attribute('pivot', 'vec3'), kind = attribute('kind', 'float');
+      // 插值後的浮點數不一定剛好是整數（4.9999…），先四捨五入再比較，不然顏色會一點一點跳錯
+      const part = attribute('part', 'float').add(0.5).floor(), piv = attribute('pivot', 'vec3'), kind = attribute('kind', 'float').add(0.5).floor();
       const rotX = (v, c, s) => vec3(v.x, v.y.mul(c).sub(v.z.mul(s)), v.y.mul(s).add(v.z.mul(c)));
       const run = clamp(b.y.mul(0).add(1), 0, 1);
       mat.positionNode = Fn(() => {
@@ -100,6 +124,7 @@ export class UnitMeshes {
         ang.assign(select(part.equal(4), ty === T.ARCHER ? mix(sw.mul(0.5), float(-1.3), smoothstep(0.05, 0.3, atk)) : sw.mul(0.45).sub(swing.mul(1.9)), ang));
         ang.assign(select(part.equal(5), sw.mul(0.6), ang));
         ang.assign(select(part.equal(6), sw.mul(-0.6), ang));
+        ang.assign(select(part.equal(7), sin(ph.mul(2)).mul(0.08).add(ty === T.CAV ? 0.55 : 0.18).add(abs(sw).mul(0.15)), ang));
         void run;
         const c = cos(ang), s = sin(ang);
         const lp = rotX(positionGeometry.sub(piv), c, s).add(piv).toVar();
@@ -120,11 +145,12 @@ export class UnitMeshes {
       const team = b.w;
       const tc = mix(vec3(...TEAM[0].toArray()), vec3(...TEAM[1].toArray()), team);
       const dead = clamp(b.z, 0, 1);
-      const pal = [tc, vec3(0.93, 0.74, 0.58), vec3(0.72, 0.74, 0.78), vec3(0.45, 0.3, 0.16), vec3(0.2, 0.18, 0.17), vec3(0.42, 0.28, 0.17), vec3(0.92, 0.9, 0.86)];
+      const pal = [tc, vec3(0.93, 0.74, 0.58), vec3(0.72, 0.74, 0.78), vec3(0.45, 0.3, 0.16), vec3(0.2, 0.18, 0.17), vec3(0.42, 0.28, 0.17), vec3(0.92, 0.9, 0.86), tc.mul(0.55), vec3(0.95, 0.75, 0.25)];
       let col = pal[0];
       for (let k2 = 1; k2 < pal.length; k2++) col = select(kind.equal(k2), pal[k2], col);
       mat.colorNode = mix(col, col.mul(0.55), dead);   // 倒下的變暗
-      mat.metalnessNode = select(kind.equal(2), float(0.6), float(0));
+      mat.metalnessNode = select(kind.equal(2).or(kind.equal(8)), float(0.6), float(0));
+      mat.roughnessNode = select(kind.equal(2).or(kind.equal(8)), float(0.35), float(0.75));
       const mesh = new THREE.Mesh(geo, mat); mesh.count = 0; mesh.frustumCulled = false;
       mesh.castShadow = high; mesh.receiveShadow = false;
       scene.add(mesh);
