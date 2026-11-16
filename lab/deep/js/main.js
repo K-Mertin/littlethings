@@ -1,6 +1,6 @@
 // 深海探險隊：潛水艇、鏡頭、操作、圖鑑、垃圾、光線與霧
 import * as THREE from 'three';
-import { pass, uniform, vec3, vec4, mix, sin, time, uv, smoothstep, float, instancedArray, instanceIndex, positionGeometry, billboarding } from 'three/tsl';
+import { pass, uniform, vec3, vec4, mix, sin, time, uv, smoothstep, float, instancedArray, instanceIndex, positionGeometry, billboarding, normalView, positionView, positionWorld, mx_noise_float } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { buildWorld, floorY, HALF } from './world.js';
 import { Fish } from './fish.js';
@@ -66,7 +66,10 @@ const cone = (() => {
   const g = new THREE.ConeGeometry(4.6, 18, 32, 1, true); g.translate(0, -9, 0); g.rotateX(-Math.PI / 2 - 0.14);
   const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
   const along = uv().y;
-  m.colorNode = vec3(1, 0.95, 0.8).mul(0.07).mul(along.mul(along.oneMinus()).mul(4));
+  // 光束：邊緣淡掉（從後面看不會變成一個硬硬的圓盤），裡面有慢慢飄動的懸浮物明暗
+  const soft = normalView.dot(positionView.normalize()).abs().pow(1.8);
+  const murk = mx_noise_float(positionWorld.mul(0.6).add(vec3(0, time.mul(0.15), 0))).mul(0.35).add(0.8);
+  m.colorNode = vec3(1, 0.95, 0.8).mul(0.08).mul(along.mul(along.oneMinus()).mul(4)).mul(soft).mul(murk);
   const c = new THREE.Mesh(g, m); c.position.set(0, -0.4, 1.25); c.renderOrder = 5; sub.add(c); return c;
 })();
 // 氣泡：從螺旋槳冒出來，往上飄、慢慢變大
@@ -379,6 +382,10 @@ function update(dt) {
   renderer.toneMappingExposure = 1.0 + Math.min(0.25, depth / 200);
   spot.visible = S.light; fill.intensity = S.light ? 3 : 0.4;
   sub.userData.lampOn.value = S.light ? 1 : 0;
+  // 讓海雪知道燈在哪裡、往哪裡照（回散射）
+  W.lampK.value = S.light ? 1 : 0;
+  sub.updateMatrixWorld(); W.lampPos.value.set(0, -0.4, 1.4).applyMatrix4(sub.matrixWorld);
+  W.lampDir.value.set(0, -0.14, 1).normalize().transformDirection(sub.matrixWorld);
 
   W.update(camera, depth);
   cone.visible = S.light; updateBubbles(dt); updateMission(); updateZone(); updateSonar(dt);
