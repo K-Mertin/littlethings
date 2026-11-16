@@ -1,7 +1,7 @@
 // 單獨的大動物：海龜、鬼蝠魟、鯨鯊、章魚、小丑魚、發光水母、鮟鱇魚
 // 全部用簡單幾何拼出來，動作用 CPU 算（數量少）或頂點 shader（翅膀拍動、尾巴擺動）
 import * as THREE from 'three';
-import { Fn, float, vec3, mix, smoothstep, sin, cos, abs, time, positionLocal, positionGeometry, normalLocal, mx_worley_noise_float, mx_noise_float, uniform, hash, instanceIndex, uv, vec2, atan, normalView, positionView } from 'three/tsl';
+import { Fn, float, vec3, mix, smoothstep, sin, cos, abs, time, positionLocal, positionGeometry, normalLocal, mx_worley_noise_float, mx_noise_float, uniform, hash, instanceIndex, uv, vec2, atan, normalView, positionView, select } from 'three/tsl';
 import { floorY, rng, VENT } from './world.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -47,13 +47,25 @@ export function buildCreatures(scene, W, { high }) {
   {
     const g = new THREE.Group();
     const shellM = new THREE.MeshStandardNodeMaterial({ roughness: 0.45 });
+    // 殼的盾片照真的海龜排：中間一排 5 片椎盾、兩邊各 4 片肋盾、最外圈一圈小緣盾；
+    // 每片之間有淺色的縫，每片上有從中心往外放射的深淺紋路（像真的龜殼那種「玳瑁紋」）
     shellM.colorNode = Fn(() => {
-      const p = positionLocal.mul(vec3(1, 1, 0.8));
-      const w = mx_worley_noise_float(p.mul(1.6));
-      const seam = smoothstep(0.42, 0.62, w);                                 // 盾片之間的縫（暗）
-      const streak = mx_noise_float(p.mul(vec3(9, 2, 9))).mul(0.5).add(0.5); // 每片上放射狀的紋路
-      const base = mix(vec3(0.24, 0.19, 0.09), vec3(0.47, 0.37, 0.17), streak);
-      return mix(base, vec3(0.1, 0.08, 0.04), seam.mul(0.8));
+      const p = positionLocal, ax = p.x.abs(), z = p.z, rr = vec2(p.x, p.z).length();
+      const marg = smoothstep(0.86, 0.9, rr);
+      const zi = z.add(1).mul(2.5);                                   // 椎盾：5 片
+      const vert = ax.lessThan(0.27);
+      const cz = select(vert, zi.floor().add(0.5).div(2.5).sub(1), z.add(0.95).mul(2.1).floor().add(0.5).div(2.1).sub(0.95));
+      const cx = select(vert, float(0), p.x.sign().mul(0.55));
+      const segF = select(vert, zi.fract(), z.add(0.95).mul(2.1).fract());
+      const seamV = smoothstep(0.06, 0.0, segF.min(float(1).sub(segF)));
+      const seamX = smoothstep(0.03, 0.0, ax.sub(0.27).abs());
+      const ang = atan(p.z.sub(cz), p.x.sub(cx)), dc = vec2(p.x.sub(cx), p.z.sub(cz)).length();
+      const rays = sin(ang.mul(9).add(dc.mul(14))).mul(0.5).add(0.5);
+      const tort = mx_noise_float(vec3(ang.mul(1.5), dc.mul(6), cz.mul(3))).mul(0.5).add(0.5);
+      const scuteCol = mix(vec3(0.16, 0.11, 0.05), vec3(0.55, 0.4, 0.17), tort.mul(0.7).add(rays.mul(0.3)));
+      const margCol = mix(vec3(0.2, 0.15, 0.07), vec3(0.45, 0.33, 0.15), sin(atan(p.z, p.x).mul(28)).mul(0.5).add(0.5));
+      const seam = seamV.mul(float(1).sub(marg)).max(seamX.mul(float(1).sub(marg))).max(smoothstep(0.02, 0.0, rr.sub(0.88).abs()));
+      return mix(mix(scuteCol, margCol, marg), vec3(0.62, 0.55, 0.38), seam.mul(0.7));
     })();
     const shellG = bumpy(new THREE.SphereGeometry(1, 36, 18, 0, Math.PI * 2, 0, Math.PI / 2), 0.025, 5);
     const shell = new THREE.Mesh(shellG, shellM); shell.scale.set(1, 0.4, 1.3);
@@ -63,10 +75,10 @@ export function buildCreatures(scene, W, { high }) {
       const w = mx_worley_noise_float(positionLocal.mul(9));
       return mix(vec3(0.2, 0.21, 0.14), vec3(0.45, 0.43, 0.32), smoothstep(0.45, 0.7, w));   // 深色皮膚、淡色鱗片邊
     })();
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 18, 12), skin); head.position.set(0, 0.04, 1.55); head.scale.set(0.95, 0.85, 1.35);
+    const head = new THREE.Mesh(bumpy(new THREE.SphereGeometry(0.34, 22, 16), 0.012, 14, 3), skin); head.position.set(0, 0.06, 1.6); head.scale.set(0.95, 0.85, 1.3);   // 頭大一點
     const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, 0.45, 12), skin); neck.rotation.x = Math.PI / 2; neck.position.set(0, 0.02, 1.2);
     const beak = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.2, 10), std(0x3a3426, { roughness: 0.4 })); beak.rotation.x = Math.PI / 2 + 0.5; beak.position.set(0, -0.06, 1.93);
-    const eyes = [-1, 1].map((s2) => { const e = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), std(0x0d0d0d, { roughness: 0.15 })); e.position.set(s2 * 0.2, 0.1, 1.75); return e; });
+    const eyes = [-1, 1].map((s2) => { const e = new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 10), std(0x0d0d0d, { roughness: 0.1 })); e.position.set(s2 * 0.25, 0.14, 1.82); const lid = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 6, 0, Math.PI * 2, 0, Math.PI * 0.45), skin); lid.position.copy(e.position).add(V(0, 0.015, 0)); g.add(lid); return e; });
     const fl = (x, z, len, wid, front) => {
       const pivot = new THREE.Group(); pivot.position.set(x, 0.05, z);
       const f = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 8), skin);
@@ -229,23 +241,40 @@ export function buildCreatures(scene, W, { high }) {
     am.colorNode = mix(skinCol(), vec3(0.95, 0.78, 0.72), sucker.mul(0.8).add(down.mul(0.25)));
     am.positionNode = Fn(() => {
       const p = positionLocal.toVar(), d = p.xz.length();
-      p.y.addAssign(sin(time.mul(1.6).add(d.mul(2.4)).add(p.x.mul(0.8))).mul(d.mul(0.08)));
-      p.x.addAssign(sin(time.mul(1.1).add(d.mul(1.7)).add(p.z)).mul(d.mul(0.05)));
+      p.y.addAssign(sin(time.mul(1.6).add(d.mul(2.4)).add(p.x.mul(0.8))).mul(d.mul(0.02)));   // 擺動小一點，吸盤才跟得上
+      p.x.addAssign(sin(time.mul(1.1).add(d.mul(1.7)).add(p.z)).mul(d.mul(0.012)));
       return p;
     })();
     const RR = rng(77);
+    const suckerPos = [];
     for (let k = 0; k < 8; k++) {
-      const a = k / 8 * Math.PI * 2 + 0.2, pts = [], curl = 0.6 + RR() * 0.8, len = 2.0 + RR() * 0.8;
-      for (let s2 = 0; s2 <= 12; s2++) {
-        const t = s2 / 12, d = 0.25 + t * len;
-        const aa = a + Math.sin(t * 3 + k) * 0.25;
-        // 腳沿著石頭往下垂，尖端捲起來
-        const y = 0.25 - t * 0.55 + (t > 0.7 ? Math.sin((t - 0.7) / 0.3 * Math.PI) * 0.35 * curl : 0);
-        const dd = t > 0.75 ? d - Math.sin((t - 0.75) / 0.25 * Math.PI) * 0.25 * curl : d;
+      const a = k / 8 * Math.PI * 2 + 0.2, pts = [], curl = 0.7 + RR() * 0.7, len = 2.1 + RR() * 0.8;
+      for (let s2 = 0; s2 <= 16; s2++) {
+        const t = s2 / 16, d = 0.25 + t * len;
+        const aa = a + Math.sin(t * 3 + k) * 0.22;
+        // 腳沿著石頭往下垂，最後三成捲成一圈圈的螺旋（不是鉤子）
+        const ct = Math.max(0, (t - 0.68) / 0.32), spin = ct * ct * Math.PI * 1.6 * curl;
+        const y = 0.25 - t * 0.5 + Math.sin(spin) * 0.22 * ct;
+        const dd = d - (1 - Math.cos(spin)) * 0.22 * ct;
         pts.push(V(Math.cos(aa) * dd, y, Math.sin(aa) * dd));
       }
-      g.add(new THREE.Mesh(taperTube(new THREE.CatmullRomCurve3(pts), 40, 0.21, 0.015, 9), am));
+      const curve = new THREE.CatmullRomCurve3(pts);
+      g.add(new THREE.Mesh(taperTube(curve, 56, 0.2, 0.006, 10), am));
+      // 吸盤：沿著腳的下面兩排，越往尖端越小
+      for (let i = 2; i < 34; i++) {
+        const t = i / 40, c = curve.getPointAt(t), tg = curve.getTangentAt(t), side = new THREE.Vector3().crossVectors(tg, V(0, 1, 0)).normalize();
+        const r = (0.2 + (0.006 - 0.2) * Math.pow(t, 0.8));
+        for (const sd of [-1, 1]) suckerPos.push({ p: c.clone().addScaledVector(side, sd * r * 0.45).add(V(0, -r * 0.85, 0)), s: r * 0.42 });
+      }
     }
+    // 腳和腳之間的蹼（膜）：連到腳的前三成
+    const webG = new THREE.CylinderGeometry(0.28, 0.95, 0.35, 32, 1, true); webG.translate(0, 0.12, 0);
+    { const p = webG.attributes.position; for (let i = 0; i < p.count; i++) { const x = p.getX(i), z = p.getZ(i), y = p.getY(i); if (y < 0.1) { const ang = Math.atan2(z, x) - 0.2, sc = 0.82 + 0.18 * Math.abs(Math.cos(ang * 4)); p.setXYZ(i, x * sc, y + (1 - sc) * 0.6, z * sc); } } webG.computeVertexNormals(); }
+    const webM = am.clone(); webM.side = THREE.DoubleSide; webM.positionNode = null;
+    g.add(new THREE.Mesh(webG, webM));
+    const sk = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 8, 5, 0, Math.PI * 2, 0, Math.PI * 0.6), std(0xe8c4b8, { roughness: 0.5 }), suckerPos.length);
+    { const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion().setFromAxisAngle(V(1, 0, 0), Math.PI); suckerPos.forEach((o, i) => { M4.compose(o.p, Q, V(o.s, o.s * 0.5, o.s)); sk.setMatrixAt(i, M4); }); }
+    g.add(sk);
     g.position.copy(W.poi.octopusRock); shadow(g, high); scene.add(g);
     list.push({ id: 'octopus', obj: g, r: 8, update(t) { g.rotation.y = Math.sin(t * 0.2) * 0.6; mantle.scale.y = 1.4 + Math.sin(t * 1.4) * 0.05; } });
   }
