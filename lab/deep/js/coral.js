@@ -5,6 +5,7 @@
 // - 指狀珊瑚：一叢圓圓的短指頭，頂端圓圓的
 // 表面都有一顆一顆的珊瑚蟲小孔（worley 噪聲），顏色用比較自然的土黃、橄欖、粉褐、紫褐，少數鮮豔的
 import * as THREE from 'three';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { attribute, mix, smoothstep, vec3, float, positionLocal, positionWorld, mx_worley_noise_float, mx_noise_float, sin, abs } from 'three/tsl';
 
 function rngOf(seed) { let s = seed >>> 0; return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }; }
@@ -23,10 +24,34 @@ function merge(list) {
   out.setAttribute('position', new THREE.BufferAttribute(pos, 3)); out.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); out.setAttribute('tip', new THREE.BufferAttribute(tip, 1));
   return out;
 }
+
+// 表面變粗糙：一顆顆凸起的珊瑚蟲小杯（每格一個隨機點，離點越近越鼓、正中間凹一個小洞）＋細細的起伏
+function cellBump(x, y, z, f) {
+  const X = x * f, Y = y * f, Z = z * f, xi = Math.floor(X), yi = Math.floor(Y), zi = Math.floor(Z); let best = 9;
+  for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (let c = -1; c <= 1; c++) {
+    const h = h3(xi + a, yi + b, zi + c), px = xi + a + h, py = yi + b + h3(zi + c, xi + a, yi + b), pz = zi + c + h3(yi + b, zi + c, xi + a);
+    const d = (X - px) ** 2 + (Y - py) ** 2 + (Z - pz) ** 2; if (d < best) best = d;
+  }
+  const d = Math.sqrt(best);
+  return Math.exp(-(((d - 0.24) / 0.11) ** 2)) - (d < 0.13 ? 0.9 * (1 - d / 0.13) : 0) - 0.25;   // 每顆珊瑚蟲：一圈凸起的杯緣、中間一個小洞
+}
+function roughen(geo, amp, freq) {
+  const g = mergeVertices(geo, 1e-4); g.computeVertexNormals();
+  const p = g.attributes.position, n = g.attributes.normal, v = new THREE.Vector3(), nn = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i); nn.fromBufferAttribute(n, i);
+    const k = cellBump(v.x, v.y, v.z, freq) + n3(v.x * freq * 0.35, v.y * freq * 0.35, v.z * freq * 0.35) * 0.4;
+    v.addScaledVector(nn, k * amp); p.setXYZ(i, v.x, v.y, v.z);
+  }
+  g.computeVertexNormals(); return g;
+}
 const UP = new THREE.Vector3(0, 1, 0);
 // 一段樹枝：從 p 沿 dir 長 len，半徑 r0 → r1；tip 從 t0 漸變到 t1
-function limb(p, dir, len, r0, r1, t0, t1, seg = 7) {
-  const g = new THREE.CylinderGeometry(r1, r0, len, seg, 1, true); g.translate(0, len / 2, 0);
+// FINE：要做粗糙表面的珊瑚用比較密的網格（凹凸才不會被網格吃掉）
+let FINE = 0;
+function limb(p, dir, len, r0, r1, t0, t1, seg = 9) {
+  if (FINE) seg = Math.max(seg, FINE);
+  const g = new THREE.CylinderGeometry(r1, r0, len, seg, Math.max(2, Math.round(len / (FINE ? 0.025 : 0.07))), true); g.translate(0, len / 2, 0);
   const tip = new Float32Array(g.attributes.position.count);
   for (let i = 0; i < tip.length; i++) tip[i] = t0 + (t1 - t0) * (g.attributes.position.getY(i) / len);
   g.setAttribute('tip', new THREE.BufferAttribute(tip, 1));
@@ -34,14 +59,14 @@ function limb(p, dir, len, r0, r1, t0, t1, seg = 7) {
   return g;
 }
 function cap(p, r, t) {
-  const g = new THREE.SphereGeometry(r, 7, 5); g.translate(p.x, p.y, p.z);
+  const g = FINE ? new THREE.SphereGeometry(r, FINE, Math.ceil(FINE * 0.6)) : new THREE.SphereGeometry(r, 9, 6); g.translate(p.x, p.y, p.z);
   g.setAttribute('tip', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count).fill(t), 1));
   return g;
 }
 
 // 鹿角珊瑚
 export function staghornGeo(seed = 7) {
-  const r = rngOf(seed), parts = [], MAXD = 3;
+  const r = rngOf(seed), parts = [], MAXD = 3; FINE = 14;
   const grow = (p, dir, len, rad, d) => {
     const t0 = d / (MAXD + 1), t1 = (d + 1) / (MAXD + 1);
     parts.push(limb(p, dir, len, rad, rad * 0.8, t0, t1));
@@ -58,7 +83,7 @@ export function staghornGeo(seed = 7) {
     const a = i / 3 * Math.PI * 2 + r();
     grow(new THREE.Vector3(Math.cos(a) * 0.12, 0, Math.sin(a) * 0.12), new THREE.Vector3(Math.cos(a) * 0.35, 1, Math.sin(a) * 0.35).normalize(), 0.5, 0.11, 0);
   }
-  return merge(parts);
+  FINE = 0; return roughen(merge(parts), 0.022, 24);
 }
 
 // 3D 數值噪聲（給腦珊瑚的迷宮紋路用）
@@ -91,8 +116,8 @@ export function brainGeo() {
 // 桌形珊瑚
 export function tableGeo(seed = 5) {
   const r = rngOf(seed), parts = [];
-  parts.push(limb(new THREE.Vector3(), UP, 0.95, 0.2, 0.13, 0, 0.2, 9));
-  const plate = new THREE.CylinderGeometry(1.05, 0.85, 0.14, 28, 1); plate.translate(0, 1.0, 0);
+  FINE = 18; parts.push(limb(new THREE.Vector3(), UP, 0.95, 0.2, 0.13, 0, 0.2, 9));
+  const plate = new THREE.CylinderGeometry(1.05, 0.85, 0.14, 96, 4); plate.translate(0, 1.0, 0);
   const pa = plate.attributes.position, tip = new Float32Array(pa.count);
   for (let i = 0; i < pa.count; i++) {
     const x = pa.getX(i), z = pa.getZ(i), d = Math.hypot(x, z);
@@ -101,12 +126,12 @@ export function tableGeo(seed = 5) {
   }
   plate.setAttribute('tip', new THREE.BufferAttribute(tip, 1)); plate.computeVertexNormals();
   parts.push(plate);
-  return merge(parts);
+  FINE = 0; return roughen(merge(parts), 0.022, 18);
 }
 
 // 指狀珊瑚
 export function fingerGeo(seed = 3) {
-  const r = rngOf(seed), parts = [];
+  const r = rngOf(seed), parts = []; FINE = 16;
   for (let i = 0; i < 16; i++) {
     const a = r() * Math.PI * 2, d = Math.sqrt(r()) * 0.5, h = 0.25 + r() * 0.45;
     const p = new THREE.Vector3(Math.cos(a) * d, 0, Math.sin(a) * d);
@@ -115,7 +140,7 @@ export function fingerGeo(seed = 3) {
     parts.push(limb(p, dir, h, rad * 1.1, rad, 0, 0.9, 8));
     parts.push(cap(p.clone().addScaledVector(dir, h), rad, 1));
   }
-  return merge(parts);
+  FINE = 0; return roughen(merge(parts), 0.024, 21);
 }
 
 // 柳珊瑚（海扇）：在同一個平面上一直分岔的細枝，像一張網
