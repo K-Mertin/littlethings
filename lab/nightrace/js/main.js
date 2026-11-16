@@ -3,10 +3,11 @@ import * as THREE from 'three';
 import { pass, mrt, output, normalView, emissive, uniform, vec2, metalness, roughness } from 'three/tsl';
 import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
-import { Track } from './track.js';
+import { Track, TRACKS } from './track.js';
 import { Car, carMesh, collideCars, CAR_COLORS } from './car.js';
 import { FX } from './fx.js';
 import { Sound } from './audio.js';
+import { Skids } from './skid.js';
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -14,7 +15,11 @@ const isTouch = matchMedia('(pointer: coarse)').matches;
 const step = (k, m) => { $('loadBar').style.width = Math.round(k * 100) + '%'; if (m) $('loadMsg').textContent = m; };
 const SAVE_KEY = 'mwLabNight.v1';
 const save = (() => { try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch { return {}; } })();
-save.opts = Object.assign({ mode: 'race', laps: 3, diff: 1, rain: 1, color: 0 }, save.opts || {});
+save.opts = Object.assign({ mode: 'race', laps: 3, diff: 1, rain: 1, color: 0, track: 0 }, save.opts || {});
+// 每條賽道的最快一圈：第 1 條沿用舊的 save.best，其他放在 save.bests[id]
+save.bests = save.bests || {};
+const getBest = (ti) => (ti === 0 ? save.best : save.bests[TRACKS[ti].id]);
+const setBest = (ti, v) => { if (ti === 0) save.best = v; else save.bests[TRACKS[ti].id] = v; persist(); };
 const persist = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch { } };
 
 // ---------------------------------------------------------------- 渲染器
@@ -31,14 +36,23 @@ renderer.shadowMap.enabled = HIGH;
 
 const scene = new THREE.Scene();
 scene.background = skyTex();
+// 環境貼圖：程式畫的夜景（窗戶、霓虹、路燈），讓車漆、玻璃、濕路反射出城市的光
+scene.environment = envTex(); scene.environmentIntensity = 0.55;
 scene.fog = new THREE.FogExp2(0x1a1028, 0.008);
 const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.2, 1200);
 const hemi = new THREE.HemisphereLight(0x6a5aa8, 0x120c18, 0.35); scene.add(hemi);
 const moon = new THREE.DirectionalLight(0x9fb4ff, 0.25); moon.position.set(-80, 120, 40); scene.add(moon);
 
 step(0.25, '鋪路…');
-const track = new Track();
+const wetU = uniform(1);
+let track = new Track(TRACKS[save.opts.track] || TRACKS[0], wetU), trackIdx = TRACKS.indexOf(track.def);
 track.build(scene, { high: HIGH });
+function useTrack(i) {
+  if (i === trackIdx) return;
+  scene.remove(track.group); track.group.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+  track = new Track(TRACKS[i], wetU); trackIdx = i; track.build(scene, { high: HIGH });
+  miniBounds();
+}
 // 路燈：只有離玩家最近的幾盞是真的燈
 const LAMPS = HIGH ? 10 : 6;
 const lampLights = Array.from({ length: LAMPS }, () => { const l = new THREE.PointLight(0xffd9a0, 70, 30, 1.5); scene.add(l); return l; });
@@ -46,6 +60,7 @@ const lampLights = Array.from({ length: LAMPS }, () => { const l = new THREE.Poi
 step(0.45, '準備雨和水花…');
 const NCARS = 6;
 const fx = new FX(scene, renderer, { high: HIGH, webgpu: WEBGPU, cars: NCARS });
+const skids = new Skids(scene, wetU);
 
 // ---------------------------------------------------------------- 後製：濕路反射（SSR）＋泛光
 const pipeline = new THREE.RenderPipeline(renderer);
@@ -74,6 +89,7 @@ let cars = [], player = null, phase = 'menu', raceT = 0, countT = 0, opts = { ..
 const DIFF = [{ top: 0.8, grip: 12.5 }, { top: 0.88, grip: 14.5 }, { top: 0.95, grip: 16.5 }];
 function startRace(o = opts) {
   opts = { ...o }; save.opts = opts; persist();
+  useTrack(opts.track || 0);
   for (const c of cars) scene.remove(c.mesh);
   cars = []; finishOrder = []; bestThisRace = Infinity;
   const n = track.n, rivals = opts.mode === 'race' ? NCARS - 1 : 0;
@@ -97,15 +113,44 @@ function startRace(o = opts) {
   for (const c of cars) c.lap = -1;   // 第一次過起跑線算「開始第 1 圈」
   track.wet.value = Math.max(0.55, opts.rain);
   scene.fog.density = 0.006 + opts.rain * 0.007;
+  skids.clear(); rec = []; recT = 0; ghost = loadGhost(trackIdx);
   phase = 'count'; countT = 3; raceT = 0;
   closeAll(); $('count').textContent = '3'; sound.start(); sound.beep(false);
 }
+// ---------------------------------------------------------------- 幽靈車：記下自己最快那一圈的路線，計時賽時陪你跑
+const GHOST_KEY = (ti) => 'mwLabNight.ghost.' + TRACKS[ti].id;
+const loadGhost = (ti) => { try { return JSON.parse(localStorage.getItem(GHOST_KEY(ti))); } catch { return null; } };
+let rec = [], recT = 0, ghost = null, ghostMesh = null;
+function ghostShow(on) {
+  if (!ghostMesh) { ghostMesh = carMesh(0x8fd0ff, { ghost: true }); scene.add(ghostMesh); }
+  ghostMesh.visible = on;
+}
+function ghostUpdate() {
+  if (!ghost || !player || player.lap < 0 || opts.mode !== 'tt') { ghostShow(false); return; }
+  const t = (raceT - player.lapStart) / 0.1, i = Math.floor(t), a = ghost.p[i], b = ghost.p[i + 1];
+  if (!a || !b) { ghostShow(false); return; }
+  const f = t - i, d = Math.atan2(Math.sin(b[2] - a[2]), Math.cos(b[2] - a[2]));
+  ghostShow(true);
+  ghostMesh.position.set(a[0] + (b[0] - a[0]) * f, 0, a[1] + (b[1] - a[1]) * f); ghostMesh.rotation.set(0, a[2] + d * f, 0);
+}
+function recordPlayer() {
+  if (!player || player.lap < 0 || phase !== 'race') return;
+  const t = raceT - player.lapStart;
+  while (recT <= t) { rec.push([+player.pos.x.toFixed(2), +player.pos.z.toFixed(2), +player.hd.toFixed(3)]); recT += 0.1; }
+}
+
 function onLap(car) {
+  if (car.isPlayer) { var lapRec = rec; rec = []; recT = 0; }
   if (car.lap === 0) { car.lapStart = raceT; car.lapTimes = []; return; }   // 剛起跑過線
   const lt = car.lapTimes[car.lapTimes.length - 1];
+  if (car.isPlayer && lapRec && lapRec.length > 20 && (!ghost || lt < ghost.t)) {
+    ghost = { t: lt, p: lapRec };
+    try { localStorage.setItem(GHOST_KEY(trackIdx), JSON.stringify(ghost)); } catch { }
+    if (opts.mode === 'tt') setTimeout(() => flash('👻 幽靈車更新了：下一圈和自己比！'), 2300);
+  }
   if (car.isPlayer) {
     if (lt < bestThisRace) bestThisRace = lt;
-    if (!save.best || lt < save.best) { save.best = lt; persist(); if (car.lap >= 1) flash(`🏆 最快一圈 ${fmt(lt)}！`); }
+    if (!getBest(trackIdx) || lt < getBest(trackIdx)) { setBest(trackIdx, lt); if (car.lap >= 1) flash(`🏆 最快一圈 ${fmt(lt)}！`); }
     else flash(`第 ${car.lap} 圈 ${fmt(lt)}`);
     if (car.lap === opts.laps - 1) setTimeout(() => flash('🔔 最後一圈！'), 1300);
   }
@@ -124,7 +169,7 @@ function showResult() {
   const rows = finishOrder.map((c) => ({ c, t: c.finishT })).concat(rest);
   const me = rows.findIndex((r) => r.c.isPlayer) + 1;
   $('rTitle').textContent = opts.mode === 'tt' ? '計時賽完成！' : me === 1 ? '🏆 冠軍！' : `第 ${me} 名`;
-  $('rText').textContent = `總時間 ${fmt(player.finishT)} · 這場最快一圈 ${fmt(bestThisRace)} · 歷史最快 ${fmt(save.best)}`;
+  $('rText').textContent = `總時間 ${fmt(player.finishT)} · 這場最快一圈 ${fmt(bestThisRace)} · 歷史最快 ${fmt(getBest(trackIdx))}`;
   $('rTable').innerHTML = rows.map((r, i) => `<tr class="${r.c.isPlayer ? 'me' : ''}"><td>${i + 1}</td><td>${r.c.name}</td><td style="text-align:right">${fmt(r.t)}</td></tr>`).join('');
   $('result').classList.remove('hidden');
 }
@@ -139,13 +184,13 @@ function segInit(id, key, cast = (v) => v) {
   el.onclick = (e) => { const v = e.target.dataset && e.target.dataset.v; if (v == null) return; opts[key] = cast(v); paint(); };
   paint();
 }
-segInit('oMode', 'mode'); segInit('oLaps', 'laps', Number); segInit('oDiff', 'diff', Number); segInit('oRain', 'rain', Number);
+segInit('oMode', 'mode'); segInit('oLaps', 'laps', Number); segInit('oDiff', 'diff', Number); segInit('oRain', 'rain', Number); segInit('oTrack', 'track', Number);
 $('oColor').innerHTML = CAR_COLORS.map((c, i) => `<button data-i="${i}" style="background:#${c.toString(16).padStart(6, '0')}"></button>`).join('');
 const paintCol = () => [...$('oColor').children].forEach((b, i) => b.classList.toggle('on', i === opts.color));
 $('oColor').onclick = (e) => { const i = e.target.dataset && e.target.dataset.i; if (i == null) return; opts.color = +i; paintCol(); };
 paintCol();
 function showMenu() {
-  $('best').textContent = fmt(save.best);
+  $('best').textContent = TRACKS.map((t, i) => `${t.name} ${fmt(getBest(i))}`).join(' · ');
   $('resume').classList.toggle('hidden', !(phase === 'race' || phase === 'count'));
   $('menu').classList.remove('hidden');
   if (phase === 'race' || phase === 'count') { pausedPhase = phase; phase = 'paused'; }
@@ -166,7 +211,7 @@ addEventListener('keydown', (e) => {
   keys.add(e.code); sound.start();
   if (e.code === 'Escape' || e.code === 'KeyP') { if ($('menu').classList.contains('hidden')) showMenu(); else $('resume').click(); }
   if (e.code === 'KeyR' && player) resetCar(player);
-  if (e.code === 'KeyC') camMode = (camMode + 1) % 2;
+  if (e.code === 'KeyC') nextCam();
   if (e.code === 'Enter' && !$('menu').classList.contains('hidden')) startRace(opts);
   if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
 });
@@ -190,6 +235,9 @@ function readInput() {
   inp.steer = ((k('ArrowRight') || k('KeyD') || touch.R) ? 1 : 0) - ((k('ArrowLeft') || k('KeyA') || touch.L) ? 1 : 0);
   inp.hand = (k('Space') || k('ShiftLeft') || touch.H) ? 1 : 0;
 }
+const CAM_NAMES = ['追車視角', '車頭視角', '車內視角'];
+function nextCam() { camMode = (camMode + 1) % 3; flash('🎥 ' + CAM_NAMES[camMode]); }
+$('camBtn').onclick = nextCam;
 function resetCar(c) {
   const i = track.nearest(c.pos, c.idx), p = track.P[i];
   c.pos.set(p.x, 0, p.z); c.vel.set(0, 0, 0); c.hd = Math.atan2(track.Tn[i].x, track.Tn[i].z); c.idx = i; c.place();
@@ -197,7 +245,7 @@ function resetCar(c) {
 
 // ---------------------------------------------------------------- 每一格
 const camPos = new THREE.Vector3(0, 5, -10), camLook = new THREE.Vector3();
-let lampT = 0, lastHit = 0;
+let lampT = 0, lastHit = 0, boltT = 6, flashSeq = null, flashAge = 0;
 function update(dt) {
   const racing = phase === 'race' || phase === 'done';
   if (phase === 'count') {
@@ -213,6 +261,7 @@ function update(dt) {
     for (const c of cars) if (c.ai && !c.isPlayer) { const gap = c.progress - player.progress; c.vmax = 56 * (gap < -90 ? 1.07 : gap > 110 ? 0.93 : 1); }
     const sub = 2;
     for (let s = 0; s < sub; s++) { for (const c of cars) c.update(dt / sub, track.wet.value, (p) => track.puddleAt(p, c.idx), raceT); collideCars(cars); }
+    recordPlayer();
     if (player.hit > 0.2 && raceT - lastHit > 0.4) { sound.hit(player.hit); lastHit = raceT; }
   } else if (player) { player.place(); }
   // 鏡頭
@@ -222,12 +271,18 @@ function update(dt) {
     if (camMode === 0) {
       const want = player.pos.clone().addScaledVector(fwd, -7.2 - v * 0.03).add(new THREE.Vector3(0, 2.5, 0));
       camPos.lerp(want, Math.min(1, dt * 6)); camLook.lerp(player.pos.clone().addScaledVector(fwd, 5).add(new THREE.Vector3(0, 1, 0)), Math.min(1, dt * 10));
-    } else {
+    } else if (camMode === 1) {
       camPos.copy(player.pos).addScaledVector(fwd, 0.6).add(new THREE.Vector3(0, 1.15, 0)); camLook.copy(player.pos).addScaledVector(fwd, 20).add(new THREE.Vector3(0, 0.9, 0));
+    } else {
+      // 車內：駕駛座的位置，看得到儀表板和方向盤
+      player.mesh.updateMatrixWorld();
+      camPos.copy(player.mesh.localToWorld(new THREE.Vector3(-0.38, 1.13, -0.2)));
+      camLook.copy(player.mesh.localToWorld(new THREE.Vector3(-0.38, 0.75, 20)));
     }
     camera.position.copy(camPos); camera.lookAt(camLook);
-    camera.fov = 62 + Math.min(14, v * 0.25); camera.updateProjectionMatrix();
-    player.mesh.visible = camMode === 0;
+    camera.fov = (camMode === 2 ? 66 : 62) + Math.min(14, v * 0.25); camera.updateProjectionMatrix();
+    player.mesh.visible = camMode !== 1;
+    if (player.mesh.userData.inner) player.mesh.userData.inner.visible = camMode === 2;
     // 路燈：每 0.25 秒換成最近的幾盞
     lampT -= dt;
     if (lampT <= 0) {
@@ -235,6 +290,13 @@ function update(dt) {
       const near = track.lamps.map((l) => ({ l, d: l.light.distanceToSquared(player.pos) })).sort((a, b) => a.d - b.d).slice(0, LAMPS);
       near.forEach((x, i) => lampLights[i].position.copy(x.l.light));
     }
+    // 輪胎痕：側滑、手煞車、急煞
+    if (racing) cars.forEach((c, ci) => {
+      const sp = Math.abs(c.speed);
+      const k = sp < 4 ? 0 : Math.min(1, Math.max(0, (c.slip - 3.5) / 5) + (c.input.hand ? 0.6 : 0) + (c.input.brake && sp > 20 ? 0.35 : 0));
+      [-0.9, 0.9].forEach((x, wi) => skids.mark(ci * 2 + wi, c.mesh.localToWorld(new THREE.Vector3(x, 0, -1.35)), k));
+    });
+    skids.update();
     // 水花噴口
     const em = [];
     for (const c of cars) {
@@ -251,6 +313,18 @@ function update(dt) {
     $('time').textContent = fmt(raceT);
     sound.update({ speed: player.speed, gas: player.input.gas, slip: player.slip, rain: opts.rain, racing });
   }
+  // 閃電：大雨時偶爾天空一亮（閃兩下），過一下才聽到雷聲
+  if (opts.rain >= 1 && phase !== 'menu') {
+    boltT -= dt;
+    if (boltT <= 0) { boltT = 9 + Math.random() * 14; flashSeq = [0, 0.12, 0.22]; flashAge = 0; const d = 0.5 + Math.random() * 1.8; setTimeout(() => sound.thunder(1.4 - d * 0.4), d * 1000); }
+  }
+  if (flashSeq) {
+    flashAge += dt; let f = 0;
+    for (const s0 of flashSeq) { const a = flashAge - s0; if (a >= 0) f = Math.max(f, Math.exp(-a * 14)); }
+    hemi.intensity = 0.35 + f * 4; moon.intensity = 0.25 + f * 5; scene.backgroundIntensity = 1 + f * 6;
+    if (flashAge > 1) { flashSeq = null; hemi.intensity = 0.35; moon.intensity = 0.25; scene.backgroundIntensity = 1; }
+  }
+  ghostUpdate();
   fx.update(camera, opts.rain, dt);
   drawMini();
 }
@@ -265,14 +339,19 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
 
 // ---------------------------------------------------------------- 小地圖
 const mini = $('mini'), mx = mini.getContext('2d');
-let bx0 = Infinity, bx1 = -Infinity, bz0 = Infinity, bz1 = -Infinity;
-for (const p of track.P) { bx0 = Math.min(bx0, p.x); bx1 = Math.max(bx1, p.x); bz0 = Math.min(bz0, p.z); bz1 = Math.max(bz1, p.z); }
-const msc = 150 / Math.max(bx1 - bx0, bz1 - bz0);
+let bx0, bx1, bz0, bz1, msc;
+function miniBounds() {
+  bx0 = Infinity; bx1 = -Infinity; bz0 = Infinity; bz1 = -Infinity;
+  for (const p of track.P) { bx0 = Math.min(bx0, p.x); bx1 = Math.max(bx1, p.x); bz0 = Math.min(bz0, p.z); bz1 = Math.max(bz1, p.z); }
+  msc = 150 / Math.max(bx1 - bx0, bz1 - bz0);
+}
+miniBounds();
 const mp = (p) => [10 + (bx1 - p.x) * msc, 10 + (bz1 - p.z) * msc];
 function drawMini() {
   mx.clearRect(0, 0, 170, 170);
   mx.strokeStyle = 'rgba(255,255,255,.55)'; mx.lineWidth = 4; mx.beginPath();
   track.P.forEach((p, i) => { const [x, y] = mp(p); if (i) mx.lineTo(x, y); else mx.moveTo(x, y); }); mx.closePath(); mx.stroke();
+  if (ghostMesh && ghostMesh.visible) { const [x, y] = mp(ghostMesh.position); mx.fillStyle = 'rgba(143,208,255,.8)'; mx.beginPath(); mx.arc(x, y, 4, 0, Math.PI * 2); mx.fill(); }
   for (const c of cars) { const [x, y] = mp(c.pos); mx.fillStyle = c.isPlayer ? '#ffd23f' : '#ff4fd8'; mx.beginPath(); mx.arc(x, y, c.isPlayer ? 5 : 3.5, 0, Math.PI * 2); mx.fill(); }
 }
 
@@ -294,10 +373,31 @@ function skyTex() {
   const t = new THREE.CanvasTexture(c); t.mapping = THREE.EquirectangularReflectionMapping; t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 
+function envTex() {
+  const W = 1024, H = 512, c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d');
+  const g = x.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#05040a'); g.addColorStop(0.45, '#1c1230'); g.addColorStop(0.52, '#2a1838'); g.addColorStop(0.6, '#0c0a12'); g.addColorStop(1, '#050507');
+  x.fillStyle = g; x.fillRect(0, 0, W, H);
+  // 地平線上的大樓與亮窗
+  let r = 7; const R = () => { r = (r * 16807) % 2147483647; return r / 2147483647; };
+  for (let bx = 0; bx < W; bx += 14 + R() * 30) {
+    const bw = 12 + R() * 34, bh = 30 + R() * 120, top = H * 0.53 - bh;
+    x.fillStyle = '#0d0c14'; x.fillRect(bx, top, bw, bh);
+    for (let wy = top + 4; wy < H * 0.53 - 3; wy += 6) for (let wx = bx + 3; wx < bx + bw - 3; wx += 5) if (R() < 0.45) { x.fillStyle = R() < 0.8 ? '#ffcf8a' : '#cfe4ff'; x.fillRect(wx, wy, 2.5, 3); }
+  }
+  // 霓虹條和路燈
+  const neon = ['#ff4fd8', '#3fe0ff', '#ffd23f', '#7dff6a', '#ff6a3d'];
+  for (let i = 0; i < 26; i++) { x.fillStyle = neon[i % neon.length]; x.fillRect(R() * W, H * (0.38 + R() * 0.14), 18 + R() * 40, 3 + R() * 4); }
+  for (let i = 0; i < 16; i++) { const lx = R() * W, ly = H * (0.2 + R() * 0.12); const rg = x.createRadialGradient(lx, ly, 0, lx, ly, 26); rg.addColorStop(0, 'rgba(255,225,170,1)'); rg.addColorStop(1, 'rgba(255,200,120,0)'); x.fillStyle = rg; x.fillRect(lx - 26, ly - 26, 52, 52); }
+  const t = new THREE.CanvasTexture(c); t.mapping = THREE.EquirectangularReflectionMapping; t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+
 // 自動測試用
 window.__night = {
-  track, renderer, WEBGPU, HIGH, fx, get cars() { return cars; }, get player() { return player; }, get phase() { return phase; },
+  get track() { return track; }, renderer, WEBGPU, HIGH, fx, get cars() { return cars; }, get player() { return player; }, get phase() { return phase; }, skids,
   start: (o) => startRace({ ...opts, ...o }), go() { phase = 'race'; countT = 0; $('count').textContent = ''; },
+  setCam(m) { camMode = m; },
+  bolt() { boltT = 0; }, get ghost() { return ghost; }, get ghostMesh() { return ghostMesh; },
   autopilot() { player.ai = { top: 0.9, grip: 15 }; },
   finish() { player.finished = true; player.finishT = raceT; finishOrder.push(player); phase = 'done'; showResult(); },
   sim(sec) { for (let i = 0; i < sec * 30; i++) update(1 / 30); },
