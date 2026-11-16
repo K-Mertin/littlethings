@@ -491,12 +491,24 @@ fn sky(uv: vec2f) -> vec3f {
   if (t == EMPTY && filled(ty(at(x - 1, y - 1)))) { rgb *= 0.82; }
   // 火、岩漿照亮附近（越近越亮）
   if (S.glow > 0.0 && lit < 1.0) {
+    // 光線追蹤（簡化版）：往 12 個方向一格一格走，碰到發光的東西就加亮，碰到牆、石頭會擋光（產生影子），水會讓光變弱。
+    // 這是落沙遊戲常見的做法（參考 Noita 類遊戲公開分享的 2D 光照），每個像素最多看 12 × 14 格。
     var g = 0.0;
-    var dirs = array<vec2i, 8>(vec2i(1, 0), vec2i(-1, 0), vec2i(0, 1), vec2i(0, -1), vec2i(1, 1), vec2i(-1, 1), vec2i(1, -1), vec2i(-1, -1));
-    var rings = array<i32, 4>(2, 4, 7, 11);
-    var wts = array<f32, 4>(1.0, 0.7, 0.45, 0.25);
-    for (var r = 0; r < 4; r++) { for (var d = 0; d < 8; d++) { let o = dirs[d] * rings[r]; g += hot(x + o.x, y + o.y) * wts[r]; } }
-    rgb += vec3f(1.0, 0.48, 0.15) * g * 0.035 * S.glow;
+    for (var d = 0; d < 12; d++) {
+      let a = f32(d) * 0.5236 + 0.26;
+      let dir = vec2f(cos(a), sin(a));
+      var tr = 1.0;
+      for (var k = 1; k <= 14; k++) {
+        let q = vec2i(vec2f(f32(x), f32(y)) + dir * f32(k));
+        let qt = ty(at(q.x, q.y));
+        let hv = hot(q.x, q.y);
+        if (hv > 0.0) { g += hv * tr / (1.0 + f32(k) * 0.35); break; }
+        if (qt == WALL || qt == STONE || qt == WOOD || qt == SAND || qt == PLANT) { tr *= 0.15; }
+        else if (qt == WATER || qt == OIL || qt == ICE) { tr *= 0.8; }
+        if (tr < 0.04) { break; }
+      }
+    }
+    rgb += vec3f(1.0, 0.5, 0.17) * g * 0.11 * S.glow;
   }
   return vec4f(rgb, 1.0);
 }
