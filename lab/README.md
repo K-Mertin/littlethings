@@ -4,12 +4,13 @@
 
 ## 小大廳 `lab/index.html`
 - 單一檔案，藍圖方格風格；上方會偵測瀏覽器有沒有 WebGPU（`navigator.gpu.requestAdapter()`），顯示在 `#gpu`。
-- 「可以玩」：MW 大街 · WebGPU 版（`street/`）、沙之實驗室（`sand/`）、深海探險隊（`deep/`）、銀河建造師（`galaxy/`）、萬軍對決 3D（`army/`）。
-- 「規劃中」卡片（只有 SVG 圖和說明，還沒有程式）：夜雨賽車。做好一款就把該卡片換成可點的 `<a>`（`hall_shot.jpg` 640×360）。
+- 「可以玩」：MW 大街 · WebGPU 版（`street/`）、沙之實驗室（`sand/`）、深海探險隊（`deep/`）、銀河建造師（`galaxy/`）、萬軍對決 3D（`army/`）、夜雨賽車（`nightrace/`）。
+- 原本規劃的五款都做完了。之後新增作品：加資料夾、`hall_shot.jpg`（640×360）、在「可以玩了」加一張 `<a class="card">`；想先記下的點子可以放回「規劃中」區塊。
 
 | 資料夾 | 遊戲 | 技術 |
 |---|---|---|
 | `street/` | MW 大街 · WebGPU 版 | three.js 0.187 WebGPURenderer |
+| `nightrace/` | 夜雨賽車 | three.js 0.187＋SSR、TSL compute（雨、水花） |
 | `army/` | 萬軍對決 3D | three.js 0.187；模擬在 CPU，士兵動畫在頂點 shader |
 | `galaxy/` | 銀河建造師 | three.js 0.187＋TSL compute（受限 N 體星系） |
 | `deep/` | 深海探險隊 | three.js 0.187 WebGPURenderer＋TSL compute（魚群） |
