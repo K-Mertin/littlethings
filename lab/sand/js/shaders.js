@@ -376,7 +376,13 @@ fn sky(uv: vec2f) -> vec3f {
   let grain = 1.0 - smoothstep(0.28, 0.5, e) * 0.28;
 
   switch t {
-    case 0u { shade = false; }
+    case 0u {   // 空氣：旁邊有煙或蒸氣的話畫一點淡淡的邊，雲看起來是柔的
+      var sm = 0.0; var st = 0.0;
+      for (var dy = -2; dy <= 2; dy++) { for (var dx = -2; dx <= 2; dx++) { let q = ty(at(x + dx, y + dy)); if (q == SMOKE) { sm += 1.0; } if (q == STEAM) { st += 1.0; } } }
+      rgb = mix(bg, vec3f(0.30, 0.29, 0.32), smoothstep(0.0, 18.0, sm) * 0.6);
+      rgb = mix(rgb, vec3f(0.9, 0.93, 0.98), smoothstep(0.0, 18.0, st) * 0.45);
+      shade = false;
+    }
     case 1u {   // 牆：磚塊，每塊有自己的亮暗和斜角
       let row = y / 3; let bx = (x + (row % 2) * 3) / 6;
       let fx = (f32((x + (row % 2) * 3) % 6) + f.x) / 6.0; let fy = (f32(y % 3) + f.y) / 3.0;
@@ -387,13 +393,25 @@ fn sky(uv: vec2f) -> vec3f {
       rgb += vec3f(0.06) * smoothstep(0.6, 0.0, fy) * smoothstep(0.1, 0.3, mortar);
       shade = false;
     }
-    case 2u { rgb = mix(vec3f(0.98, 0.84, 0.55), vec3f(0.84, 0.64, 0.36), v) * grain; }
+    case 2u {   // 沙：每一粒顏色都不太一樣（淺黃、土黃、少數深色的小石英和黑色礦物），表面有一點閃光
+      let r1 = h2(vec2f(f32(x), f32(y)) * 0.731);
+      var sc = mix(vec3f(0.93, 0.80, 0.56), vec3f(0.78, 0.60, 0.37), v);
+      sc = mix(sc, vec3f(0.55, 0.45, 0.33), step(0.93, r1));            // 深色顆粒
+      sc = mix(sc, vec3f(0.25, 0.22, 0.20), step(0.985, r1));           // 黑色礦物
+      sc = mix(sc, vec3f(1.0, 0.97, 0.88), step(0.975, h2(vec2f(f32(x), f32(y)) + floor(tm * 3.0))) * 0.5 * select(0.0, 1.0, !filled(up)));   // 表面偶爾閃一下
+      rgb = sc * (1.0 - smoothstep(0.3, 0.5, e) * 0.12);
+    }
     case 3u {   // 水：越深越藍，表面亮，半透明
       let d = 0.0 + depth;
-      var w = mix(vec3f(0.30, 0.68, 0.98), vec3f(0.06, 0.24, 0.62), clamp(d / 6.0, 0.0, 1.0));
-      w += 0.025 * sin(tm * 2.0 + f32(x) * 0.31 + f32(y) * 0.9) * vec3f(0.6, 0.8, 1.0);
-      if (up != WATER && up != OIL) { w = mix(w, vec3f(0.85, 0.96, 1.0), smoothstep(0.55, 0.0, f.y) * 0.75); }
-      rgb = mix(bg, w, 0.8);
+      // 真的水是透明的：看得到後面（稍微被折射扭曲），越深越偏藍綠、越暗；表面有一條反光
+      let wob = vec2f(sin(tm * 1.7 + gy * 0.35), cos(tm * 1.3 + gx * 0.29)) * 0.004;
+      let behind = sky(in.uv + wob);
+      let k = clamp(d / 6.0, 0.0, 1.0);
+      let absorb = exp(-vec3f(0.55, 0.22, 0.12) * (d + 1.0) * 0.35);
+      var w = behind * absorb + vec3f(0.05, 0.2, 0.32) * (0.7 + k * 0.6);
+      w += vec3f(0.5, 0.75, 1.0) * 0.06 * (0.5 + 0.5 * sin(tm * 2.2 + f32(x) * 0.45 + f32(y) * 0.8)) * (1.0 - k);   // 水裡的光紋
+      if (up != WATER && up != OIL) { w = mix(w, vec3f(0.85, 0.95, 1.0), smoothstep(0.6, 0.0, f.y) * 0.65); }
+      rgb = w;
       shade = false;
     }
     case 4u {   // 岩漿：亮橘色，表面有慢慢流動的暗色硬殼
@@ -419,8 +437,14 @@ fn sky(uv: vec2f) -> vec3f {
       rgb = mix(bg, rgb, 0.65 + 0.35 * k);
       lit = 1.0; shade = false;
     }
-    case 9u { rgb = mix(bg, vec3f(0.88, 0.92, 0.98), 0.32 + v * 0.12); shade = false; }
-    case 10u { rgb = mix(bg, vec3f(0.30, 0.30, 0.34), 0.5); shade = false; }
+    case 9u, 10u {   // 蒸氣、煙：看周圍 5×5 有多少同樣的氣體，做成一團一團柔柔的雲，而不是一格一格
+      var cnt = 0.0;
+      for (var dy = -2; dy <= 2; dy++) { for (var dx = -2; dx <= 2; dx++) { if (ty(at(x + dx, y + dy)) == t) { cnt += 1.0; } } }
+      let dens = smoothstep(0.0, 18.0, cnt);
+      let gc = select(vec3f(0.30, 0.29, 0.32), vec3f(0.9, 0.93, 0.98), t == 9u);
+      rgb = mix(bg, gc, dens * select(0.75, 0.55, t == 9u));
+      shade = false;
+    }
     case 11u { rgb = (vec3f(0.30, 0.28, 0.31) + v * 0.08 + 0.05 * h2(vec2f(f32(x), f32(y)) * 1.7)) * grain; }
     case 12u {   // 油：深色，表面有彩虹光
       rgb = vec3f(0.20, 0.13, 0.18) + v * 0.04;
