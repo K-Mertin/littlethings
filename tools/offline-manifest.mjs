@@ -9,7 +9,7 @@ import crypto from 'node:crypto';
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const OUT = path.join(ROOT, 'offline', 'manifest.json');
 // 這些遊戲不做離線包：遊戲小屋有自己的離線機制；兩個多人專區本來就要網路
-const SKIP = new Set(['minigames', 'party', 'link']);
+const SKIP = new Set(['minigames', 'party', 'link', 'lab']);   // lab：3D 引擎從 CDN 載入、素材在 /street/，還不做離線包
 const SKIP_DIRS = new Set(['tools', 'src', 'node_modules', '.wrangler', '.git', '.worktrees']);
 const SKIP_FILE = /(^\.|\.md$|\.zip$|\.py$|\.sh$|\.mjs\.map$|^hall_shot\.jpg$)/i;
 const CODE = /\.(html|js|mjs|css|json|webmanifest)$/i;

@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import {
   Fn, uniform, float, vec2, vec3, vec4, mix, smoothstep, hash, instancedArray, instanceIndex, deltaTime, If, uv, billboarding,
-  positionGeometry, attribute, sin, cos, min, max, abs, length, normalize, time, fract, select, step, PI, atan, normalLocal, sign, cross, dot, int,
+  positionGeometry, attribute, sin, cos, min, max, abs, length, normalize, time, fract, select, step, PI, atan, normalLocal, sign, cross, dot, int, uniformArray,
 } from 'three/tsl';
 
 const FOUNTAIN = new THREE.Vector3(-6.6, 0, 2.2);
@@ -26,8 +26,8 @@ export class FX {
     const trees = this.world.gpu.trees;
     const N = this.webgpu ? (this.high ? 3000 : 1200) : 600;
     const T = trees.length;
-    const treeArr = new Float32Array(T * 4); trees.forEach((t, i) => treeArr.set([t.x, t.y, t.z, 0], i * 4));
-    const treeBuf = instancedArray(treeArr, 'vec4');
+    // 樹的位置用 uniform 陣列（WebGL 相容模式的 compute 會把用到的 storage buffer 都綁成輸出，長度不同會出錯）
+    const treeBuf = uniformArray(trees.map((t) => new THREE.Vector4(t.x, t.y, t.z, 0)), 'vec4');
     const P = instancedArray(N, 'vec4');   // xyz, 落地後剩下的時間（<0 表示還在飄）
     const V = instancedArray(N, 'vec4');   // 旋轉軸 xyz、翻轉速度
     const u = this.u;

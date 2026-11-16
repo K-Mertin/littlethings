@@ -594,7 +594,7 @@ window.__street = {
   key(code, on) { if (on) keys.add(code); else keys.delete(code); },
   launch: () => near && launch(near),
   start: () => startPlay(), goTo: (id) => goTo(world.interact.find((i) => i.game.id === id)),
-  get mode() { return mode; }, renderer, scene, camera, GPU, get env() { return env; }, get crowd() { return crowd; },
+  get mode() { return mode; }, renderer, scene, camera, GPU, get env() { return env; }, get crowd() { return crowd; }, get fx() { return fx; },
   // 把目前畫面讀回來成圖片（自動測試用；搭配 ?offscreen=1）
   // 自動測試：停下動畫迴圈、模擬 sec 秒，畫一張讀回來（軟體 GPU 很慢，一直畫的話讀回會排不到）
   async snap(sec = 0) {

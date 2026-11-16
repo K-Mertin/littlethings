@@ -88,7 +88,7 @@ export class Env {
     const N = this.webgpu ? (this.high ? 24000 : 9000) : 4000;
     const B = 34, H = 16;
     this.rainN = N;
-    const pos = instancedArray(N, 'vec3'), rip = instancedArray(N, 'vec4');   // rip: xyz 位置, w 經過時間
+    const pos = instancedArray(N, 'vec4'), rip = instancedArray(N, 'vec4');   // rip: xyz 位置, w 經過時間
     const u = this.u, camU = this.camU = uniform(new THREE.Vector3());
     // 在大街、廣場露天的地方才下得到（大樓裡、店裡不下）
     const outdoor = (p) => {
@@ -140,14 +140,14 @@ export class Env {
 
     // 漣漪：地上擴散的小圓圈
     const ring = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false });
-    const rg = new THREE.PlaneGeometry(0.34, 0.34); rg.rotateX(-Math.PI / 2);
+    const rg = new THREE.PlaneGeometry(0.22, 0.22); rg.rotateX(-Math.PI / 2);
     const R = rip.element(instanceIndex);
-    ring.positionNode = positionGeometry.mul(R.w.mul(2.2).add(0.2)).add(R.xyz);
+    ring.positionNode = positionGeometry.mul(R.w.mul(1.3).add(0.15)).add(R.xyz);
     const d = uv().sub(0.5).length().mul(2);
     const k = R.w.mul(2.4);
     const band = smoothstep(0.12, 0, abs(d.sub(min(k, 1))));
     ring.colorNode = vec3(0.86, 0.9, 0.96);
-    ring.opacityNode = band.mul(float(1).sub(k).max(0)).mul(0.55).mul(u.rain).mul(outdoor(R.xyz));
+    ring.opacityNode = band.mul(float(1).sub(k).max(0)).mul(0.22).mul(u.rain).mul(outdoor(R.xyz));
     this.ripMesh = new THREE.Mesh(rg, ring);
     this.ripMesh.count = this.high ? N : Math.floor(N / 2); this.ripMesh.frustumCulled = false; this.ripMesh.visible = false;
     this.scene.add(this.ripMesh);

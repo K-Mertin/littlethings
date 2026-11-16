@@ -33,6 +33,7 @@ MW · Game Hall：MK 的瀏覽器遊戲合集，每個資料夾自成一體。�
 | [反彈神射手](https://littleland.mwstudio.workers.dev/ricochet/) | [`ricochet/`](ricochet/README.md) | 角度反彈射擊解謎（回合制）：拖曳＋微調角度發射，子彈撞牆、鏡子反彈並穿過敵人；海綿牆、炸藥桶、冰晶玻璃、傳送門、滑動牆、要救的小雪兔；哥布林射手反擊、盾牌兵、走路怪、哥布林大王；4 個世界 40 關、愛心、💡 提示（解題器即時算），Canvas 2D，支援觸控與鍵盤 |
 | [捏臉工坊](https://littleland.mwstudio.workers.dev/face/)（未上架） | [`face/`](face/README.md) | 2D 捏臉：臉型、五官、髮型、瀏海、配件、衣服，即時預覽縮圖、隨機、復原、存檔、下載 PNG，支援手機 |
 | [寫實捏臉 3D](https://littleland.mwstudio.workers.dev/face3d/)（未上架） | [`face3d/`](face3d/README.md) | 寫實 3D 捏臉：MakeHuman CC0 人體、417 個變形滑桿、寫實皮膚、3D 髮型眉毛睫毛、表情、眼睛看游標，支援手機 |
+| [MW 實驗室](https://littleland.mwstudio.workers.dev/lab/) | [`lab/`](lab/README.md) | WebGPU 進階遊戲的小大廳：MW 大街 WebGPU 版（上百個行人、晨昏與下雨、積水倒影、落葉／噴水池／鴿子粒子），以及規劃中的新遊戲 |
 | [MW 大街](https://littleland.mwstudio.workers.dev/street/)（未上架，開發中） | [`street/`](street/README.md) | 擬真 3D 商店街：操作寫實人物逛街，每間店是一款遊戲，給小學中年級以上 |
 
 ## 遊玩
@@ -77,6 +78,7 @@ ember/            index.html＋js/（world 地圖資料、core、actors、render
 ricochet/         index.html＋core.js（物理，和解題器共用）＋levels.js＋game.js，無建置步驟，不需外部函式庫（Canvas 2D 程式繪圖）；tools/solve.mjs 檢查關卡
 face/             單一檔案，無建置步驟，不需任何外部函式庫（純 SVG）
 face3d/           index.html＋預先處理的 data/（Three.js 由 CDN 載入）；data/ 由 tools/build.py 從 MakeHuman 素材產生
+lab/              WebGPU 實驗室小大廳＋lab/street/（three 0.187 WebGPU，素材讀 /street/assets/），不做離線包
 street/           index.html＋js/＋assets/（Three.js 由 CDN 載入）
 party/            index.html（大螢幕）＋pad.html（手機手把）＋core.js、games/；PeerJS 由 CDN 載入
 link/             index.html＋core.js、net.js、games/；房間由 worker 的 /api/link/room 轉送
