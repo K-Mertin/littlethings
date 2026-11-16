@@ -1,6 +1,7 @@
 // 海底世界：地形、珊瑚礁、昆布、海面、光束、海雪、熱泉
 // 座標：x 左右、z 往前越來越深（z −170 珊瑚礁淺海 → z +170 深海海溝），y 是高度（海面 0，往下是負的）
 import * as THREE from 'three';
+import { staghornGeo, brainGeo, tableGeo, fingerGeo, seaFanGeo, coralMaterial, CORAL_COLORS } from './coral.js';
 import {
   Fn, uniform, float, vec2, vec3, vec4, mix, smoothstep, pow, sin, cos, abs, exp, max, min, clamp, time, hash, uv, atan,
   positionWorld, positionLocal, positionGeometry, normalWorld, instanceIndex, instancedArray, billboarding, mx_worley_noise_float, mx_noise_float, fract, length,
@@ -104,38 +105,20 @@ export function buildWorld(scene, { high, webgpu }) {
   const REEF = new THREE.Vector3(-10, 0, -112); REEF.y = floorY(REEF.x, REEF.z);
   W.poi.coral = { p: REEF.clone().add(new THREE.Vector3(0, 3, 0)), r: 18 };
 
-  // 樹枝珊瑚：幾根歪歪的圓柱合在一起
-  const branchGeo = (() => {
-    const parts = [], r = rng(7);
-    const add = (x, y, z, len, rad, ax, az) => {
-      const c = new THREE.CylinderGeometry(rad * 0.55, rad, len, 6); c.translate(0, len / 2, 0);
-      c.rotateX(ax); c.rotateZ(az); c.translate(x, y, z); parts.push(c);
-      return [x - Math.sin(az) * len * Math.cos(ax), y + Math.cos(az) * Math.cos(ax) * len, z + Math.sin(ax) * len];
-    };
-    for (let i = 0; i < 5; i++) {
-      const [x, y, z] = add(0, 0, 0, 0.9 + r() * 0.5, 0.13, (r() - 0.5) * 0.9, (r() - 0.5) * 0.9);
-      for (let k = 0; k < 2; k++) add(x, y, z, 0.5 + r() * 0.4, 0.08, (r() - 0.5) * 1.2, (r() - 0.5) * 1.2);
-    }
-    return mergeGeos(parts);
-  })();
-  const brainGeo = (() => {
-    const s = new THREE.SphereGeometry(1, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.55);
-    const a = s.attributes.position;
-    for (let i = 0; i < a.count; i++) { const x = a.getX(i), y = a.getY(i), z = a.getZ(i); const k = 1 + 0.06 * Math.sin(x * 9) * Math.cos(z * 9 + y * 5); a.setXYZ(i, x * k, y * k * 0.75, z * k); }
-    s.computeVertexNormals(); return s;
-  })();
-  const tubeGeo = (() => {
-    const parts = [], r = rng(3);
-    for (let i = 0; i < 7; i++) { const h = 0.5 + r() * 0.9; const c = new THREE.CylinderGeometry(0.12, 0.14, h, 8, 1, true); c.translate((r() - 0.5) * 0.6, h / 2, (r() - 0.5) * 0.6); parts.push(c); }
-    return mergeGeos(parts);
-  })();
-  const coralMat = new THREE.MeshStandardNodeMaterial({ roughness: 0.8, side: THREE.DoubleSide });
+  // 珊瑚：形狀、花紋、顏色在 coral.js
+  const stagGeo = staghornGeo(7), stagGeo2 = staghornGeo(19), brGeo = brainGeo(), tabGeo = tableGeo(5), fingGeo = fingerGeo(3);
+  const stagMat = coralMaterial({ tipPale: 0.6, pores: 14 }), brainMat = coralMaterial({ brain: true, pores: 6 }), tableMat = coralMaterial({ tipPale: 0.35, pores: 18 }), fingMat = coralMaterial({ tipPale: 0.45, pores: 16 });
   const cnt = high ? 1 : 0.6;
   const reefPick = () => { const p = near(REEF.x, REEF.z, 55); return isReef(p.x, p.z) ? p : null; };
-  const listOf = (n, sMin, sMax) => { const out = []; for (let i = 0; i < n * cnt; i++) { const p = reefPick(); if (p) out.push({ p, ry: R() * 6.28, s: sMin + R() * (sMax - sMin) }); } return out; };
-  inst(branchGeo, coralMat, listOf(320, 0.7, 1.9), ['#ff6f91', '#ff9f43', '#c56cf0', '#ffd23f', '#ff4d6d', '#7bed9f']);
-  inst(brainGeo, coralMat, listOf(170, 0.5, 1.4), ['#e9a35b', '#b8e994', '#f8a5c2', '#c7ecee', '#f19066']);
-  inst(tubeGeo, coralMat, listOf(170, 0.7, 1.6), ['#f368e0', '#ff9ff3', '#48dbfb', '#feca57']);
+  // 珊瑚長成一叢一叢的（真的珊瑚礁是一塊一塊密密的，中間有沙地）
+  const clusters = Array.from({ length: 46 }, () => reefPick()).filter(Boolean);
+  const clusterPick = () => { const c = clusters[Math.floor(R() * clusters.length)]; const a = R() * 6.28, d = Math.sqrt(R()) * 6.5; const x = c.x + Math.cos(a) * d, z = c.z + Math.sin(a) * d; return isReef(x, z) ? new THREE.Vector3(x, floorY(x, z) - 0.05, z) : null; };
+  const listOf = (n, sMin, sMax) => { const out = []; for (let i = 0; i < n * cnt; i++) { const p = R() < 0.8 ? clusterPick() : reefPick(); if (p) out.push({ p, ry: R() * 6.28, s: sMin + R() * (sMax - sMin) }); } return out; };
+  inst(stagGeo, stagMat, listOf(230, 0.9, 2.2), CORAL_COLORS.stag);
+  inst(stagGeo2, stagMat, listOf(210, 0.9, 2.2), CORAL_COLORS.stag.slice().reverse());
+  inst(brGeo, brainMat, listOf(200, 0.5, 1.5), CORAL_COLORS.brain);
+  inst(tabGeo, tableMat, listOf(55, 0.7, 1.4), CORAL_COLORS.table);
+  inst(fingGeo, fingMat, listOf(220, 0.7, 1.5), CORAL_COLORS.finger);
 
   // 石頭：到處都有
   const rockGeo = (() => {
@@ -223,18 +206,15 @@ export function buildWorld(scene, { high, webgpu }) {
     }
     sway({ geo: g, mat: m, data: blades, amp: 0.25, speed: 1.4, narrow: 0.7 });
   }
-  // ---------------- 柳珊瑚（扇子形狀，網狀花紋）
+  // ---------------- 柳珊瑚（海扇）：平面上一直分岔的細枝
   {
-    const g = new THREE.CircleGeometry(1, 24, 0, Math.PI); g.translate(0, 0, 0);
-    const m = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide, roughness: 0.7 });
-    const u2 = uv().sub(vec2(0.5, 0)).mul(vec2(2, 1));
-    const ang = atan(u2.y, u2.x), rad = u2.length();
-    const lat = smoothstep(0.55, 0.75, sin(ang.mul(30)).mul(0.5).add(0.5)).max(smoothstep(0.6, 0.8, sin(rad.mul(30)).mul(0.5).add(0.5))).max(smoothstep(0.86, 0.95, rad));
-    m.colorNode = mix(mix(vec3(0.55, 0.1, 0.28), vec3(0.75, 0.25, 0.2), rad), mix(vec3(1, 0.45, 0.65), vec3(1, 0.7, 0.4), rad), lat);
-    m.emissiveNode = m.colorNode.mul(0.35);   // 立著的扇子背光，補一點亮度
+    const g = seaFanGeo(11), g2 = seaFanGeo(29);
+    const m = coralMaterial({ tipPale: 0.15, pores: 30 });
     const fans = [];
-    for (let i = 0; i < 70 * cnt; i++) { const p = reefPick(); if (p) fans.push({ p, ry: R() * 6.28, s: 0.8 + R() * 1.2 }); }
-    const im = inst(g, m, fans); im.castShadow = false;
+    for (let i = 0; i < 70 * cnt; i++) { const p = reefPick(); if (p) fans.push({ p, ry: R() * 6.28, s: 1.4 + R() * 1.6 }); }
+    const half = Math.floor(fans.length / 2);
+    inst(g, m, fans.slice(0, half), CORAL_COLORS.fan).castShadow = false;
+    inst(g2, m, fans.slice(half), CORAL_COLORS.fan.slice().reverse()).castShadow = false;
   }
   // ---------------- 貝殼、海膽
   {
