@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import {
   Fn, uniform, uniformArray, float, int, vec2, vec3, vec4, mix, smoothstep, sin, cos, normalize, cross, length, max, min, clamp, select, If,
-  instancedArray, instanceIndex, positionGeometry, normalGeometry, normalLocal, deltaTime, time, hash,
+  instancedArray, instanceIndex, positionGeometry, normalGeometry, normalLocal, deltaTime, time, hash, fract, floor, abs, normalView, positionView,
 } from 'three/tsl';
 import { floorY, rng } from './world.js';
 
@@ -135,8 +135,20 @@ export class Fish {
     const gill = smoothstep(0.02, 0.0, pg.z.sub(0.2).add(pg.y.mul(pg.y).mul(0.8)).abs()).mul(side).mul(0.35);
     const lateral = smoothstep(0.018, 0.0, pg.y.sub(0.04).abs()).mul(side).mul(0.25).mul(smoothstep(0.3, 0.1, pg.z));
     const finMask = smoothstep(0.43, 0.46, pg.y.abs()).max(smoothstep(0.5, 0.56, pg.x.abs())).max(isTail);
-    const skin = mix(base, STC.element(si), band).mul(float(1).sub(gill).sub(lateral));
-    const withFins = mix(skin, mix(base, TAIL.element(si), 0.6).mul(0.85), finMask.mul(float(1).sub(isTail)));
+    // 鱗片：一排排錯開的半圓（像瓦片一樣疊著），每片的邊比較暗、中間亮一點
+    const sc = vec2(pg.z.mul(26), pg.y.mul(30));
+    const col = floor(sc.x), off = col.mod(2).mul(0.5);
+    const cellUV = vec2(fract(sc.x), fract(sc.y.add(off)));
+    const scaleEdge = smoothstep(0.32, 0.5, vec2(cellUV.x.mul(1.1), cellUV.y.sub(0.5)).length()).mul(side).mul(float(1).sub(finMask)).mul(smoothstep(0.3, 0.12, pg.z));
+    const scaleShade = hash(col.add(floor(sc.y.add(off)).mul(31))).mul(0.12).add(0.94);
+    // 銀色魚的側面會閃彩虹光（看的角度越斜越明顯）
+    const fres = float(1).sub(normalView.dot(positionView.normalize().negate()).abs()).pow(2);
+    const irid = mix(vec3(0.2, 0.6, 1), vec3(1, 0.4, 0.9), sin(pg.y.mul(9).add(pg.z.mul(5))).mul(0.5).add(0.5)).mul(fres.mul(0.25));
+    const skin = mix(base, STC.element(si), band).mul(float(1).sub(gill).sub(lateral)).mul(float(1).sub(scaleEdge.mul(0.22))).mul(scaleShade).add(irid);
+    // 鰭：比身體淡、有一條條放射狀的鰭條
+    const rays = smoothstep(0.75, 0.95, sin(pg.y.mul(42).add(pg.x.mul(42)).add(pg.z.mul(20))).abs()).mul(0.3);
+    const finCol = mix(base, TAIL.element(si), 0.6).mul(float(0.95).sub(rays)).add(vec3(0.08));
+    const withFins = mix(skin, finCol, finMask);
     mat.colorNode = mix(mix(withFins, vec3(0.92, 0.9, 0.75), eyeRing), vec3(0.02), eye);
     // 燈籠魚：身上一排發光點
     const dots = smoothstep(0.82, 0.95, sin(positionGeometry.z.mul(40)).mul(0.5).add(0.5)).mul(smoothstep(-0.05, -0.2, positionGeometry.y));
