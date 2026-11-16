@@ -6,11 +6,11 @@ export const LOCK = 0x4000000;
 export const TOOLS = {
   sand: { name: '沙子', emoji: '🏖️', mat: M.SAND, mode: 0, prob: 0.45, color: '#f0cf85', desc: '會往下掉、堆成小山。太平的斜坡會卡住。' },
   water: { name: '水', emoji: '💧', mat: M.WATER, mode: 0, prob: 0.55, color: '#3d8ff0', desc: '往低處流、攤平。碰到岩漿變石頭，澆在種子上會發芽。' },
-  lava: { name: '岩漿', emoji: '🌋', mat: M.LAVA, mode: 0, prob: 0.45, color: '#ff7a1c', desc: '很燙、流得很慢。會點燃木頭和植物，碰到水變成石頭。' },
+  lava: { name: '岩漿', emoji: '🌋', mat: M.LAVA, mode: 0, prob: 0.45, color: '#ff7a1c', desc: '很燙、流得很慢。會點燃木頭和植物，碰到水變成石頭；一直倒水或冰，裡面也會慢慢變冷凝固。' },
   seed: { name: '種子', emoji: '🌱', mat: M.SEED, mode: 0, prob: 0.06, color: '#9a7038', desc: '碰到水會發芽長高，喝越多水長越高，偶爾開花。' },
   oil: { name: '油', emoji: '🛢️', mat: M.OIL, mode: 0, prob: 0.5, color: '#4d2c45', desc: '比水輕，會浮在水上。一點火就燒得很旺！' },
   fire: { name: '火', emoji: '🔥', mat: M.FIRE, mode: 2, prob: 0.5, color: '#ff4d1a', desc: '點燃木頭、植物、油。水可以把火澆熄。' },
-  ice: { name: '冰', emoji: '🧊', mat: M.ICE, mode: 1, prob: 1, color: '#bfe8ff', desc: '會把旁邊的水慢慢凍住，碰到火和岩漿會融化成水。' },
+  ice: { name: '冰', emoji: '🧊', mat: M.ICE, mode: 1, prob: 1, color: '#bfe8ff', desc: '一大塊冰能把少少的水凍住，丟進一大池水裡反而會融掉；碰到火和岩漿會融化。' },
   wood: { name: '木頭', emoji: '🪵', mat: M.WOOD, mode: 1, prob: 1, color: '#7a4d26', desc: '不會動，可以蓋房子。會燒很久。' },
   wall: { name: '石牆', emoji: '🧱', mat: M.WALL, mode: 1, prob: 1, color: '#5d6476', desc: '什麼都擋得住，燒不壞也融不掉。' },
   spout: { name: '水龍頭', emoji: '🚰', mat: M.SPOUT, mode: 1, prob: 1, color: '#9aa7b8', desc: '一直往下出水。用小筆點一下就好。' },
@@ -24,7 +24,8 @@ export class Builder {
   constructor(w, h) { this.w = w; this.h = h; this.a = new Uint32Array(w * h); }
   put(x, y, mat, lock) {
     if (x < 0 || y < 0 || x >= this.w || y >= this.h) return;
-    this.a[y * this.w + x] = (mat | (((Math.random() * 255) | 0) << 8) | (lock ? LOCK : 0)) >>> 0;
+    const l = mat === M.ICE ? 40 : mat === M.LAVA ? 200 : 0;   // 冰的冷度、岩漿的熱度（和 mk() 一樣）
+    this.a[y * this.w + x] = (mat | (((Math.random() * 255) | 0) << 8) | (l << 16) | (lock ? LOCK : 0)) >>> 0;
   }
   X(v) { return Math.round(v * this.w); }
   Y(v) { return Math.round(v * this.h); }
