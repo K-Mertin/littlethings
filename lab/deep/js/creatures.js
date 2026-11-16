@@ -376,26 +376,66 @@ export function buildCreatures(scene, W, { high }) {
     });
   }
 
-  // ---------------- 鮟鱇魚（深海海底，頭上一盞小燈）
+  // ---------------- 鮟鱇魚（黑角鮟鱇）：圓滾滾的深褐色身體、往上斜的大嘴（下巴突出）、上下顎一排排細長半透明往內彎的尖牙、
+  //                  很小的眼睛、頭上一根釣竿、尖端的誘餌發藍綠色的光；尾巴是扇形，鰭上有一條條鰭條
   {
     const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), std(0x2b2a33, { roughness: 0.8 })); body.scale.set(1.15, 0.95, 1.4);
-    const jaw = new THREE.Mesh(new THREE.SphereGeometry(0.8, 16, 10, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), std(0x1b1a22)); jaw.position.set(0, -0.1, 0.8); jaw.scale.set(1.2, 0.9, 0.8);
-    const teethM = std(0xeeeeee, { roughness: 0.3 });
-    for (let k = 0; k < 10; k++) { const a = (k / 9 - 0.5) * 2.2; const t = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.22, 4), teethM); t.position.set(Math.sin(a) * 0.85, -0.05, 0.8 + Math.cos(a) * 0.55); t.rotation.x = Math.PI; g.add(t); }
-    const eye = [-1, 1].map((s) => { const e = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), std(0xd8f0ff, { emissive: 0x335566 })); e.position.set(s * 0.55, 0.5, 0.95); return e; });
-    const rodPts = [V(0, 0.9, 0.5), V(0, 1.7, 0.9), V(0, 1.85, 1.6), V(0, 1.55, 2.1)];
-    const rod = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rodPts), 16, 0.03, 5), std(0x3a3944));
-    const lureM = new THREE.MeshStandardNodeMaterial({ color: 0xfff2b0 });
-    lureM.emissiveNode = vec3(1, 0.9, 0.5).mul(sin(time.mul(2.4)).mul(0.6).add(2.2));
-    const lure = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10), lureM); lure.position.copy(rodPts[3]);
-    const light = new THREE.PointLight(0xffe6a0, 6, 9, 1.6); light.position.copy(rodPts[3]);
-    g.add(body, jaw, ...eye, rod, lure, light);
+    const skin = new THREE.MeshStandardNodeMaterial({ roughness: 0.85 });
+    skin.colorNode = Fn(() => {
+      const p = positionLocal;
+      const mott = mx_noise_float(p.mul(3)).mul(0.5).add(0.5);
+      const pores = smoothstep(0.12, 0.05, mx_worley_noise_float(p.mul(11))).mul(0.25);
+      return mix(vec3(0.07, 0.05, 0.05), vec3(0.17, 0.12, 0.1), mott).add(vec3(0.2, 0.18, 0.15).mul(pores));
+    })();
+    const bodyG = bumpy(new THREE.SphereGeometry(1, 40, 28), 0.025, 6, 4);
+    const body = new THREE.Mesh(bodyG, skin); body.scale.set(0.95, 1, 1.0); body.position.z = -0.32;   // 身體往後一點，嘴巴才會突出來
+    // 嘴：前面一大片暗紅色的口腔，上下兩片嘴唇（下巴比較大、往前突）
+    const mouthIn = new THREE.Mesh(new THREE.SphereGeometry(0.72, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.5), std(0x2a0608, { roughness: 0.6, side: THREE.DoubleSide }));
+    mouthIn.rotation.x = Math.PI / 2; mouthIn.position.set(0, -0.05, 0.55); mouthIn.scale.set(0.9, 0.62, 0.55);
+    const lipU = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.07, 8, 28, Math.PI), skin); lipU.position.set(0, 0.22, 0.45); lipU.rotation.x = Math.PI / 2 - 0.45;   // 上唇：水平的弧，往前
+    const jaw = new THREE.Group(); jaw.position.set(0, -0.3, 0.55);
+    const lipL = new THREE.Mesh(new THREE.TorusGeometry(0.76, 0.09, 8, 28, Math.PI), skin); lipL.rotation.x = Math.PI / 2 + 0.3; lipL.position.set(0, 0.0, -0.05);   // 下唇：比較大、往前突
+    jaw.add(lipL);
+    // 牙齒：細長、半透明、往嘴裡彎
+    const toothM = new THREE.MeshStandardNodeMaterial({ color: 0xf2efe6, roughness: 0.25, transparent: true, opacity: 0.85 });
+    const toothG = new THREE.ConeGeometry(0.025, 0.36, 5); toothG.translate(0, -0.18, 0);
+    const addTeeth = (parent, R0, y, z, n, up, tilt) => {
+      for (let k = 0; k < n; k++) {
+        const a = (k + 0.5) / n * Math.PI, len = 0.6 + 0.6 * Math.sin(a) * (0.6 + 0.4 * ((k * 7) % 3) / 2);
+        const t = new THREE.Mesh(toothG, toothM);
+        t.position.set(Math.cos(a) * R0, y, z + Math.sin(a) * R0);
+        t.scale.set(1, len, 1); t.rotation.set(up ? Math.PI + tilt : tilt, 0, 0); t.rotateZ((Math.cos(a)) * 0.25);
+        parent.add(t);
+      }
+    };
+    addTeeth(g, 0.62, 0.2, 0.42, 13, false, 0.35);       // 上顎：往下
+    addTeeth(jaw, 0.72, 0.06, -0.08, 15, true, -0.35);   // 下顎：往上
+    // 小眼睛
+    const eyes = [-1, 1].map((s2) => { const e = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), std(0x0a0c10, { roughness: 0.1 })); e.position.set(s2 * 0.42, 0.62, 0.72); return e; });
+    // 釣竿與誘餌
+    const rodPts = [V(0, 0.95, 0.45), V(0, 1.55, 0.6), V(0, 1.85, 1.15), V(0, 1.65, 1.75)];
+    const rod = new THREE.Mesh(taperTube(new THREE.CatmullRomCurve3(rodPts), 24, 0.045, 0.018, 6), skin);
+    const lureM = new THREE.MeshStandardNodeMaterial({ color: 0xbfe8e0, roughness: 0.2 });
+    lureM.emissiveNode = vec3(0.45, 1, 0.85).mul(sin(time.mul(2.4)).mul(0.8).add(2.4));
+    const lure = new THREE.Mesh(new THREE.SphereGeometry(0.13, 14, 10), lureM); lure.position.copy(rodPts[3]); lure.scale.set(1, 1.3, 1);
+    const fil = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.25, 5), lureM); fil.position.copy(rodPts[3]).add(V(0, -0.22, 0)); fil.rotation.x = Math.PI;
+    const light = new THREE.PointLight(0x8fffe0, 6, 9, 1.6); light.position.copy(rodPts[3]);
+    // 鰭：扇形尾鰭、胸鰭、背鰭（半透明、有鰭條）
+    const finM = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide, transparent: true, roughness: 0.6, depthWrite: false });
+    const fv = uv();
+    finM.colorNode = vec3(0.12, 0.09, 0.08); finM.opacityNode = float(0.55).add(smoothstep(0.88, 1, sin(atan(fv.y.sub(0.5), fv.x).mul(14)).abs()).mul(0.4));
+    const fan = (r, a0, a1) => { const sh = new THREE.Shape(); sh.moveTo(0, 0); for (let i = 0; i <= 12; i++) { const a = a0 + (a1 - a0) * i / 12; sh.lineTo(Math.cos(a) * r * (1 + 0.08 * Math.sin(i * 2.7)), Math.sin(a) * r); } sh.lineTo(0, 0); return new THREE.ShapeGeometry(sh, 4); };
+    const tailG = fan(0.7, Math.PI * 0.72, Math.PI * 1.28); tailG.rotateY(-Math.PI / 2);
+    const tail = new THREE.Mesh(tailG, finM); tail.position.set(0, 0.05, -1.05);
+    const pecs = [-1, 1].map((s2) => { const pg = fan(0.35, -0.7, 0.7); const m = new THREE.Mesh(pg, finM); m.position.set(s2 * 0.88, -0.15, -0.15); m.rotation.set(0, s2 > 0 ? -2.4 : -0.7, 0); return m; });
+    const dorsG = fan(0.38, Math.PI * 0.55, Math.PI * 0.95); dorsG.rotateY(-Math.PI / 2);
+    const dors = new THREE.Mesh(dorsG, finM); dors.position.set(0, 0.75, -0.65);
+    g.add(body, mouthIn, lipU, jaw, ...eyes, rod, lure, fil, light, tail, ...pecs, dors);
     const P0 = V(-48, 0, 118); P0.y = floorY(P0.x, P0.z) + 2.2;
     g.position.copy(P0); g.scale.setScalar(1.4); shadow(g, high); scene.add(g);
     list.push({
       id: 'angler', obj: g, r: 10,
-      update(t) { g.position.set(P0.x + Math.sin(t * 0.07) * 6, P0.y + Math.sin(t * 0.6) * 0.3, P0.z + Math.cos(t * 0.05) * 4); g.rotation.y = Math.sin(t * 0.07) * 1.2 + 0.4; jaw.rotation.x = Math.max(0, Math.sin(t * 0.5)) * 0.25; },
+      update(t) { g.position.set(P0.x + Math.sin(t * 0.07) * 6, P0.y + Math.sin(t * 0.6) * 0.3, P0.z + Math.cos(t * 0.05) * 4); g.rotation.y = Math.sin(t * 0.07) * 1.2 + 0.4; jaw.rotation.x = Math.max(0, Math.sin(t * 0.5)) * 0.3; tail.rotation.y = Math.sin(t * 2) * 0.25; },
     });
   }
 
