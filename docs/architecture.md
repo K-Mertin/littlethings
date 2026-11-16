@@ -86,11 +86,12 @@
   - 只重抓雜湊有變的檔案；順著 three.js 子模組的 import 一起抓。
   - 8 MB 以下的遊戲打開一次自動存；存過的有新版自動在背景更新。
 - `tools/offline-manifest.mjs`：部署時產生 `offline/manifest.json`（小索引）和 `offline/packs/<slug>.json`（完整清單）。兩者不進 git。
-  - `SKIP = minigames, party, link`（遊戲小屋有自己的 `minigames/sw.js`；兩個多人遊戲本來就要網路）。
+  - `SKIP = minigames, party, link, lab`（遊戲小屋有自己的 `minigames/sw.js`；兩個多人遊戲本來就要網路；lab 的引擎在 CDN、素材借 `/street/`）。
 - 噗噗的遊戲小屋的 `minigames/sw.js` 範圍 `/minigames/`，兩個 SW 並存。
 
 ## 外部套件（全部從 CDN、版本固定）
 - `three@0.160.0`（jsdelivr，importmap）：cobblekeep、racing、rush、sky、minigames、face3d、street。
+- `three@0.187.0`（`three.webgpu.js`＋`three.tsl.js`）：只有 `lab/`（WebGPU 實驗室）。和 0.160 分開升級。
 - `peerjs@1.5.4`：brawl、cobblekeep、racing、party（手機手把／連線）。
 - `qrcode-generator@1.4.4`（CDN）：brawl、cobblekeep、racing。party 和 minigames 各有一份相同的本機 `qrcode.js`（刻意保留，見 maintenance.md）。
 升級版本要整站搜尋一起改，離線包會跟著抓新網址。
