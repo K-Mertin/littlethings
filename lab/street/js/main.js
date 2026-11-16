@@ -15,6 +15,7 @@ import { setAniso } from './kit.js';
 import { Sound } from './sound.js';
 import { Env } from './gpu/env.js';
 import { Crowd } from './gpu/crowd.js';
+import { FX } from './gpu/fx.js';
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -140,7 +141,7 @@ async function loadAll() {
 }
 
 // ------------------------------------------------------------------ state
-let world, avatars, player, env, crowd, avatarId = store.get('avatar', 'boy');
+let world, avatars, player, env, crowd, fx, avatarId = store.get('avatar', 'boy');
 const GPU = { webgpu: false };
 const OFF = params.has('offscreen') ? new THREE.RenderTarget(1, 1) : null;
 const pos = new THREE.Vector3(), vel = new THREE.Vector3();
@@ -447,6 +448,7 @@ function frame() {
   world.update(dt, t, pos);
   env.update(dt, pos);
   crowd.update(dt, pos);
+  fx.update(dt, pos);
   // 下雨才開螢幕空間反射（高畫質、WebGPU）；強度跟著地面濕度
   const wantSSR = HIGH && GPU.webgpu && env.wetK > 0.02;
   if (wantSSR !== post.ssrOn) buildPipeline(wantSSR);
@@ -553,6 +555,7 @@ function updateCamera(dt, t) {
     setAvatar(avatarId);
     makeNPCs();
     env = new Env({ renderer, scene, camera, sun, sunDir, sky, hemi, world, high: HIGH, webgpu: GPU.webgpu, sound });
+    fx = new FX({ renderer, scene, world, high: HIGH, webgpu: GPU.webgpu, env });
     env.setTime(store.get('time', 'auto')); env.setWeather(store.get('weather', 'sun'));
     segInit('segT', env.mode, (v) => { env.setTime(v); store.set('time', v); });
     const CROWD = { few: 0.25, some: 0.55, many: 1 };
@@ -587,7 +590,7 @@ function updateCamera(dt, t) {
 window.__street = {
   get pos() { return pos; }, setPos(x, z, h) { pos.set(x, 0, z); if (h !== undefined) heading = h; player.root.position.copy(pos); },
   cam(yaw, pitch, dist) { camYaw = yaw; camPitch = pitch; camDist = camDistNow = dist; lastCamInput = clock.elapsedTime + 1e6; },
-  sim(sec) { for (let i = 0; i < sec * 30; i++) { clock.elapsedTime += 1 / 30; if (mode === 'play') updatePlayer(1 / 30, clock.elapsedTime); player.update(1 / 30); updateNPCs(1 / 30); world.update(1 / 30, clock.elapsedTime, pos); env.update(1 / 30, pos); crowd.update(1 / 30, pos); } return [pos.x.toFixed(2), pos.z.toFixed(2), near && near.game.id, !!auto].join(); },
+  sim(sec) { for (let i = 0; i < sec * 30; i++) { clock.elapsedTime += 1 / 30; if (mode === 'play') updatePlayer(1 / 30, clock.elapsedTime); player.update(1 / 30); updateNPCs(1 / 30); world.update(1 / 30, clock.elapsedTime, pos); env.update(1 / 30, pos); crowd.update(1 / 30, pos); fx.update(1 / 30, pos); } return [pos.x.toFixed(2), pos.z.toFixed(2), near && near.game.id, !!auto].join(); },
   key(code, on) { if (on) keys.add(code); else keys.delete(code); },
   launch: () => near && launch(near),
   start: () => startPlay(), goTo: (id) => goTo(world.interact.find((i) => i.game.id === id)),
