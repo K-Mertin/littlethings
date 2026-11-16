@@ -45,7 +45,7 @@ const trailK = uniform(0.86);
 let trailsOn = save.trails ?? false;
 function buildPipe() {
   const col = scenePass.getTextureNode();
-  let out = col.add(bloom(col, HIGH ? 0.6 : 0.5, 0.4, 0.62));
+  let out = col.add(bloom(col, HIGH ? 0.42 : 0.36, 0.35, 0.72));   // 泛光淡一點，星星才看得出一顆一顆
   if (trailsOn && mode === 'galaxy') out = afterImage(out, trailK);
   pipeline.outputNode = out; pipeline.needsUpdate = true;
 }

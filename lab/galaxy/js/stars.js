@@ -106,7 +106,7 @@ export class Stars {
     const p = P.element(instanceIndex), v = V.element(instanceIndex);
     const bright = hash(instanceIndex.add(7)).pow(6);   // 少數幾顆特別亮
     const camD = length(cameraPosition.sub(p.xyz));
-    const size = mix(0.22, 0.75, bright).mul(camD.mul(0.0045).add(0.35)).mul(p.w.greaterThan(0.5).select(1, 0));
+    const size = mix(0.16, 0.6, bright).mul(camD.mul(0.0045).add(0.35)).mul(p.w.greaterThan(0.5).select(1, 0));
     mat.positionNode = positionGeometry.mul(size).add(p.xyz);
     mat.vertexNode = billboarding();
     const t = v.w.mod(4);
@@ -119,8 +119,12 @@ export class Stars {
     const fall = smoothstep(0.5, 0.0, uv().sub(0.5).length());
     // 星星越多每顆越暗，不然中間疊成一團白
     const kN = Math.min(1.3, Math.sqrt(70000 / N));
-    const bulgeK = select(v.w.lessThan(4), float(0.5), float(1));   // 核球的星很密，暗一點才看得到金黃色而不是一團白
-    mat.colorNode = col.mul(mix(0.9, 3.6, bright)).mul(bulgeK).mul(fall.pow(1.8)).mul(kN);
+    const bulgeK = select(v.w.lessThan(4), float(0.32), float(1));   // 核球的星很密，暗一點才看得到金黃色而不是一團白
+    // 靠近中心的星很密：越靠中間越暗、越偏金黃（真的星系照片中心是黃色的，不是一團白）
+    const rr = p.w.sub(1).clamp(0, 1);
+    const inner = smoothstep(0.45, 0.0, rr);
+    const colR = mix(col, vec3(1, 0.62, 0.3), inner.mul(0.9));
+    mat.colorNode = colR.mul(mix(0.9, 3.6, bright)).mul(bulgeK).mul(mix(1, 0.12, inner)).mul(fall.pow(1.8)).mul(kN);
     mat.opacityNode = fall;
     const mesh = this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
     mesh.count = N; mesh.frustumCulled = false;
@@ -134,7 +138,7 @@ export class Stars {
     };
     {
       const g = pick(3200, 5), cls = g.v.w.div(4).floor(), hh = hash(g.j.add(11));
-      const show = cls.greaterThan(1.5).and(g.p.w.greaterThan(0.5));   // 只有旋臂和星雲
+      const show = cls.greaterThan(1.5).and(g.p.w.greaterThan(1.2).or(cls.greaterThan(2.5)));   // 只有旋臂（不含中心附近）和星雲
       const gm = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
       gm.positionNode = positionGeometry.mul(select(show, mix(5, 12, hh), 0)).add(g.p.xyz);
       gm.vertexNode = billboarding();
@@ -263,11 +267,11 @@ function abs1(x) { return x.abs(); }
 function coreMesh(mass) {
   const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
   const f = smoothstep(0.5, 0.0, uv().sub(0.5).length());
-  m.colorNode = vec3(1, 0.75, 0.45).mul(f.pow(3.5).mul(0.55));
+  m.colorNode = vec3(1, 0.68, 0.36).mul(f.pow(3).mul(0.07));   // 核心：小一點、暖黃色，不要過曝成一團白
   m.opacityNode = f;
   m.vertexNode = billboarding();
   const s = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m);
-  s.scale.setScalar(4 + mass / 800);
+  s.scale.setScalar(3 + mass / 1100);
   s.renderOrder = 3;   // 畫在塵埃後面，核心才不會被塵埃蓋暗
   return s;
 }
