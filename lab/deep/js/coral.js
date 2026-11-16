@@ -61,17 +61,28 @@ export function staghornGeo(seed = 7) {
   return merge(parts);
 }
 
-// 腦珊瑚：用噪聲的等高線做出彎彎曲曲的溝，壓進球面
+// 3D 數值噪聲（給腦珊瑚的迷宮紋路用）
+function h3(x, y, z) { let h = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263) ^ Math.imul(z | 0, 1274126177); h = Math.imul(h ^ (h >>> 13), 1103515245); return ((h ^ (h >>> 16)) >>> 0) / 4294967295; }
+function n3(x, y, z) {
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z), xf = x - xi, yf = y - yi, zf = z - zi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf), w = zf * zf * (3 - 2 * zf);
+  const L = (a, b, t) => a + (b - a) * t;
+  const c = (dx, dy, dz) => h3(xi + dx, yi + dy, zi + dz);
+  return L(L(L(c(0, 0, 0), c(1, 0, 0), u), L(c(0, 1, 0), c(1, 1, 0), u), v), L(L(c(0, 0, 1), c(1, 0, 1), u), L(c(0, 1, 1), c(1, 1, 1), u), v), w) * 2 - 1;
+}
+// 腦珊瑚：噪聲先扭曲（domain warp）再取「接近 0 的地方」當溝 → 彎彎曲曲、互相連起來的迷宮，而不是一圈一圈的年輪
 export function brainGeo() {
-  const s = new THREE.SphereGeometry(1, 64, 40, 0, Math.PI * 2, 0, Math.PI * 0.56);
+  const s = new THREE.SphereGeometry(1, 96, 60, 0, Math.PI * 2, 0, Math.PI * 0.56);
   const a = s.attributes.position, tip = new Float32Array(a.count);
-  const vn = (x, y, z) => Math.sin(x * 3.1 + Math.sin(z * 2.3 + y * 1.7) * 1.6) + Math.sin(z * 2.9 + Math.sin(x * 2.1) * 1.8) + Math.sin(y * 3.7 + x * 1.3);
+  const F = 3.2;
   for (let i = 0; i < a.count; i++) {
     const x = a.getX(i), y = a.getY(i), z = a.getZ(i);
-    const groove = Math.abs(Math.sin(vn(x, y, z) * 3.2));      // 0 在溝底、1 在脊
-    const k = 1 + 0.035 * groove + 0.04 * Math.sin(x * 4 + z * 3);
+    const wx = x + 0.35 * n3(x * 2 + 11, y * 2, z * 2), wy = y + 0.35 * n3(x * 2, y * 2 + 23, z * 2), wz = z + 0.35 * n3(x * 2, y * 2, z * 2 + 37);
+    const nn = n3(wx * F, wy * F, wz * F) + 0.5 * n3(wx * F * 2.1 + 5, wy * F * 2.1, wz * F * 2.1);
+    const ridge = Math.min(1, Math.abs(Math.sin(nn * Math.PI * 1.6)) * 1.25);   // 0 在溝底、1 在脊上
+    const k = 1 + 0.045 * ridge + 0.03 * n3(x * 1.5 + 3, y * 1.5, z * 1.5);
     a.setXYZ(i, x * k, y * k * 0.72, z * k);
-    tip[i] = groove;
+    tip[i] = ridge;
   }
   s.setAttribute('tip', new THREE.BufferAttribute(tip, 1));
   s.computeVertexNormals(); return s;
