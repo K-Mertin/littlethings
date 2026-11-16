@@ -371,6 +371,7 @@ function update(dt) {
   camDepthU.value = Math.max(0, depth);
   const k1 = Math.min(1, depth / 38), k2 = Math.min(1, Math.max(0, (depth - 32) / 45));
   fogCol.copy(SHALLOW).lerp(MID, k1).lerp(DEEP, k2);
+  W.fogU.value.copy(fogCol);   // 背景球用同一個顏色
   scene.fog.density = 0.017 + depth * 0.00011;
   hemi.intensity = 1.15 * Math.exp(-depth / 32) + 0.025;
   sun.intensity = 1.7 * Math.exp(-depth / 24);
