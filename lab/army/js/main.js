@@ -28,19 +28,19 @@ await renderer.init();
 const WEBGPU = !!renderer.backend.isWebGPUBackend;
 const HIGH = (params.get('q') || (WEBGPU && !isTouch ? 'high' : 'low')) === 'high';
 const SCALE = +(params.get('scale') || (WEBGPU ? (HIGH ? 1 : 0.6) : 0.4));   // 人數倍率
-renderer.shadowMap.enabled = HIGH; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.enabled = WEBGPU || HIGH;   // 有影子才像真的（WebGPU 低畫質也開，貼圖小一點） renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xa9cde8);
 scene.fog = new THREE.Fog(0xa9cde8, 170, 460);
 const camera = new THREE.PerspectiveCamera(48, innerWidth / innerHeight, 0.5, 1800);
-scene.add(new THREE.HemisphereLight(0xdcefff, 0x56603e, 1.4));
-const sun = new THREE.DirectionalLight(0xfff1d6, 2.6); sun.position.set(60, 120, 40); scene.add(sun, sun.target);
-if (HIGH) { sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); const c = sun.shadow.camera; c.left = c.bottom = -90; c.right = c.top = 90; c.near = 10; c.far = 400; sun.shadow.bias = -0.0006; }
+scene.add(new THREE.HemisphereLight(0xd6e8ff, 0x4f5a38, 1.3));
+const sun = new THREE.DirectionalLight(0xffe6c0, 3.4);   // 偏暖的午後陽光，斜一點影子比較長 sun.position.set(60, 120, 40); scene.add(sun, sun.target);
+if (WEBGPU || HIGH) { sun.castShadow = true; sun.shadow.mapSize.set(HIGH ? 2048 : 1024, HIGH ? 2048 : 1024); const c = sun.shadow.camera; c.left = c.bottom = -90; c.right = c.top = 90; c.near = 10; c.far = 400; sun.shadow.bias = -0.0006; }
 
 step(0.3, '打造士兵…');
 const MAXU = 4000;
-const meshes = new UnitMeshes(scene, MAXU, { high: HIGH });
+const meshes = new UnitMeshes(scene, MAXU, { high: HIGH, shadows: WEBGPU || HIGH });
 const dust = new Dust(scene);
 const pipeline = new THREE.RenderPipeline(renderer);
 pipeline.outputNode = pass(scene, camera);
@@ -353,7 +353,7 @@ function updateCamera(dt) {
   camera.position.set(cam.x + Math.sin(cam.yaw) * cp * cam.dist, y0 + Math.sin(cam.pitch) * cam.dist, cam.z + Math.cos(cam.yaw) * cp * cam.dist);
   camera.lookAt(cam.x, y0, cam.z);
   scene.fog.near = cam.dist + 60; scene.fog.far = cam.dist + 380;   // 拉遠時霧也跟著退，不會整片白
-  sun.position.set(cam.x + 60, 120, cam.z + 40); sun.target.position.set(cam.x, 0, cam.z);
+  sun.position.set(cam.x + 80, 95, cam.z + 55); sun.target.position.set(cam.x, 0, cam.z);
 }
 // ---------------------------------------------------------------- 小地圖
 const mini = $('mini'), mctx = mini.getContext('2d');
@@ -453,7 +453,7 @@ if (!params.has('paused') && !params.has('nomenu')) showMenu();
 
 // 自動測試用
 window.__army = {
-  get b() { return b; }, cam, sel, BATTLES, WEBGPU, HIGH, SCALE,
+  get b() { return b; }, cam, sel, sun, renderer, scene, BATTLES, WEBGPU, HIGH, SCALE,
   load: (i) => loadBattle(BATTLES[i], i), fight, tapAt: (x, z) => tapAt(new THREE.Vector3(x, 0, z)), lineOrder: (x0, z0, x1, z1) => lineOrder(new THREE.Vector3(x0, 0, z0), new THREE.Vector3(x1, 0, z1)),
   get phase() { return phase; },
   sim(sec) { for (let i = 0; i < sec * 30; i++) update(1 / 30); },

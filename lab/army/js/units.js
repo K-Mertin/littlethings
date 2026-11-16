@@ -39,18 +39,20 @@ class Kit {
 function body(k, { shield = false, helmet = 'round', weapon = 'sword', y0 = 0, legs = true }) {
   const HIP = [0, y0 + 0.92, 0], SH_L = [0.3, y0 + 1.42, 0], SH_R = [-0.3, y0 + 1.42, 0];
   if (legs) {
-    k.box(0.17, 0.9, 0.2, { x: 0.12, y: y0 + 0.47, part: 1, piv: HIP, kind: 4 });
-    k.box(0.17, 0.9, 0.2, { x: -0.12, y: y0 + 0.47, part: 2, piv: HIP, kind: 4 });
+    // 圓圓的手腳（膠囊），比方塊像真的人
+    k.add(new THREE.CapsuleGeometry(0.085, 0.72, 2, 7), { x: 0.12, y: y0 + 0.5, part: 1, piv: HIP, kind: 4 });
+    k.add(new THREE.CapsuleGeometry(0.085, 0.72, 2, 7), { x: -0.12, y: y0 + 0.5, part: 2, piv: HIP, kind: 4 });
   }
-  k.box(0.48, 0.58, 0.3, { y: y0 + 1.2, kind: 0 });                 // 上衣
+  k.add(new THREE.CylinderGeometry(0.23, 0.2, 0.6, 10), { y: y0 + 1.2, sz: 0.68, kind: 0 });   // 上衣（肩膀寬、腰細）
+  k.add(new THREE.SphereGeometry(0.075, 8, 6), { y: y0 + 1.5, kind: 1 });                        // 脖子
   if (legs) k.add(new THREE.CylinderGeometry(0.25, 0.3, 0.26, 8), { y: y0 + 0.8, kind: 0 });   // 下襬
   k.box(0.5, 0.12, 0.32, { y: y0 + 0.93, kind: 3 });                // 腰帶
   k.box(0.1, 0.09, 0.04, { y: y0 + 0.93, z: 0.17, kind: 8 });       // 腰帶扣
-  if (legs) for (const sx of [0.12, -0.12]) k.box(0.2, 0.2, 0.26, { x: sx, y: y0 + 0.1, z: 0.03, part: sx > 0 ? 1 : 2, piv: HIP, kind: 4 });   // 靴子
+  if (legs) for (const sx of [0.12, -0.12]) k.add(new THREE.CapsuleGeometry(0.09, 0.14, 2, 7), { x: sx, y: y0 + 0.08, z: 0.05, rx: Math.PI / 2, part: sx > 0 ? 1 : 2, piv: HIP, kind: 4 });   // 靴子
   // 披風：掛在肩膀後面，跑起來往後飄
   k.box(0.46, 0.78, 0.035, { y: y0 + 1.04, z: -0.215, part: 7, piv: [0, y0 + 1.43, -0.2], kind: 7 });
   // 眼睛
-  for (const ex of [0.06, -0.06]) k.box(0.035, 0.035, 0.02, { x: ex, y: y0 + 1.68, z: 0.16, kind: 4 });
+  for (const ex of [0.06, -0.06]) k.box(0.035, 0.035, 0.03, { x: ex, y: y0 + 1.68, z: 0.168, kind: 4 });
   k.add(new THREE.SphereGeometry(0.17, 10, 8), { y: y0 + 1.66, kind: 1 });   // 頭
   if (helmet === 'round') {
     k.add(new THREE.SphereGeometry(0.19, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), { y: y0 + 1.7, kind: 2 });
@@ -60,7 +62,8 @@ function body(k, { shield = false, helmet = 'round', weapon = 'sword', y0 = 0, l
   if (helmet === 'hood') k.add(new THREE.ConeGeometry(0.2, 0.32, 8), { y: y0 + 1.84, kind: 0 });
   if (helmet === 'plume') { k.add(new THREE.SphereGeometry(0.19, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), { y: y0 + 1.7, kind: 2 }); k.box(0.05, 0.22, 0.3, { y: y0 + 1.92, z: -0.04, kind: 0 }); }
   // 左手（拿盾或弓）
-  k.box(0.13, 0.6, 0.14, { x: 0.33, y: y0 + 1.14, part: 3, piv: SH_L, kind: 0 });
+  k.add(new THREE.CapsuleGeometry(0.062, 0.48, 2, 7), { x: 0.3, y: y0 + 1.14, part: 3, piv: SH_L, kind: 0 });
+  k.add(new THREE.SphereGeometry(0.06, 7, 5), { x: 0.3, y: y0 + 0.84, part: 3, piv: SH_L, kind: 1 });   // 左手掌
   if (shield) k.add(new THREE.CylinderGeometry(0.34, 0.34, 0.06, 14), { x: 0.44, y: y0 + 1.1, z: 0.12, rz: Math.PI / 2, part: 3, piv: SH_L, kind: 2 });
   if (weapon === 'bow') {   // 背上的箭袋
     k.add(new THREE.CylinderGeometry(0.08, 0.07, 0.6, 7), { x: -0.12, y: y0 + 1.3, z: -0.24, rz: 0.35, kind: 3 });
@@ -68,7 +71,8 @@ function body(k, { shield = false, helmet = 'round', weapon = 'sword', y0 = 0, l
   }
   if (weapon === 'bow') k.add(new THREE.TorusGeometry(0.42, 0.025, 4, 12, Math.PI), { x: 0.38, y: y0 + 1.0, z: 0.25, ry: Math.PI / 2, rz: Math.PI / 2, part: 3, piv: SH_L, kind: 3 });
   // 右手（拿劍或長槍）
-  k.box(0.13, 0.6, 0.14, { x: -0.33, y: y0 + 1.14, part: 4, piv: SH_R, kind: 0 });
+  k.add(new THREE.CapsuleGeometry(0.062, 0.48, 2, 7), { x: -0.3, y: y0 + 1.14, part: 4, piv: SH_R, kind: 0 });
+  k.add(new THREE.SphereGeometry(0.06, 7, 5), { x: -0.3, y: y0 + 0.84, part: 4, piv: SH_R, kind: 1 });   // 右手掌
   if (weapon === 'sword') {
     k.box(0.06, 0.85, 0.04, { x: -0.36, y: y0 + 1.15, z: 0.35, rx: Math.PI / 2 - 0.4, part: 4, piv: SH_R, kind: 2 });
     k.box(0.24, 0.05, 0.06, { x: -0.36, y: y0 + 0.97, z: 0.06, rx: Math.PI / 2 - 0.4, part: 4, piv: SH_R, kind: 8 });   // 護手
@@ -94,10 +98,10 @@ function horse(k) {
   return k;
 }
 
-const TEAM = [new THREE.Color(0x2f6fe0), new THREE.Color(0xd8393a)];
+const TEAM = [new THREE.Color(0x2c55a8), new THREE.Color(0xb3302e)];   // 比較像布料染色的藍和紅（不要螢光）
 
 export class UnitMeshes {
-  constructor(scene, maxN, { high }) {
+  constructor(scene, maxN, { high, shadows = high }) {
     this.max = maxN;
     const defs = [
       body(new Kit(), { shield: true, helmet: 'round', weapon: 'sword' }).geo(),
@@ -152,9 +156,19 @@ export class UnitMeshes {
       mat.metalnessNode = select(kind.equal(2).or(kind.equal(8)), float(0.6), float(0));
       mat.roughnessNode = select(kind.equal(2).or(kind.equal(8)), float(0.35), float(0.75));
       const mesh = new THREE.Mesh(geo, mat); mesh.count = 0; mesh.frustumCulled = false;
-      mesh.castShadow = high; mesh.receiveShadow = false;
+      mesh.castShadow = shadows; mesh.receiveShadow = shadows;
       scene.add(mesh);
-      return { mesh, A, B };
+      // 腳下的接觸陰影：一個淡淡的黑色圓（讓人「站」在地上；倒下的人也有）
+      const bm = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false });
+      const lx = positionGeometry.x.mul(ty === T.CAV ? 1.3 : 0.8), lz = positionGeometry.z.mul(ty === T.CAV ? 2.4 : 0.8);
+      const hc = cos(a.w), hs = sin(a.w);
+      bm.positionNode = vec3(lx.mul(hc).add(lz.mul(hs)), 0.06, lz.mul(hc).sub(lx.mul(hs))).add(a.xyz);
+      bm.colorNode = vec3(0);
+      bm.opacityNode = smoothstep(0.5, 0.1, positionGeometry.xz.length()).mul(0.45);
+      const bg = new THREE.PlaneGeometry(1, 1); bg.rotateX(-Math.PI / 2);
+      const blob = new THREE.Mesh(bg, bm); blob.count = 0; blob.frustumCulled = false; blob.renderOrder = 1;
+      scene.add(blob);
+      return { mesh, A, B, blob };
     });
 
     // 箭：細長的棍子，沿速度方向
@@ -182,7 +196,7 @@ export class UnitMeshes {
       A[o] = b.x[i]; A[o + 1] = b.y[i]; A[o + 2] = b.z[i]; A[o + 3] = b.hd[i];
       B[o] = b.ph[i]; B[o + 1] = b.atk[i]; B[o + 2] = b.alive[i] ? 0 : b.death[i]; B[o + 3] = b.team[i];
     }
-    this.types.forEach((t, ty) => { t.mesh.count = cnt[ty]; t.A.value.needsUpdate = true; t.B.value.needsUpdate = true; });
+    this.types.forEach((t, ty) => { t.mesh.count = t.blob.count = cnt[ty]; t.A.value.needsUpdate = true; t.B.value.needsUpdate = true; });
     const P = this.AR.value.array, D = this.AD.value.array;
     let n = 0;
     for (const a of b.arrows) {
