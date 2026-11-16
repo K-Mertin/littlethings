@@ -6,6 +6,7 @@
 export const COMMON = /* wgsl */`
 const EMPTY = 0u; const WALL = 1u; const SAND = 2u; const WATER = 3u; const LAVA = 4u; const WOOD = 5u; const PLANT = 6u;
 const SEED = 7u; const FIRE = 8u; const STEAM = 9u; const SMOKE = 10u; const STONE = 11u; const OIL = 12u; const EMBER = 13u;
+const ICE = 14u; const FLOWER = 15u; const SPOUT = 16u; const VOID = 17u;
 const LOCK = 0x4000000u;
 const DIRB = 0x1000000u;   // 液體往哪邊流（1 ＝ 往左）：液體記得自己的方向一路流下去，比亂走快很多
 
@@ -26,6 +27,7 @@ fn mk(t: u32) -> u32 {
   if (t == FIRE) { l = 25u + u32(rnd() * 45.0); }
   else if (t == STEAM) { l = 90u + u32(rnd() * 160.0); }
   else if (t == SMOKE) { l = 30u + u32(rnd() * 50.0); }
+  else if (t == ICE) { l = 7u; }   // 冰：還能再把旁邊的水凍住幾代
   return t | (u32(rnd() * 255.0) << 8u) | (l << 16u) | select(0u, DIRB, rnd() < 0.5);
 }
 fn dens(t: u32) -> i32 {
@@ -61,6 +63,7 @@ fn burnP(t: u32) -> f32 {
   if (t == WOOD) { return 0.025; }
   if (t == PLANT) { return 0.015; }
   if (t == SEED) { return 0.08; }
+  if (t == FLOWER) { return 0.05; }
   if (t == OIL) { return 0.3; }
   return 0.0;
 }
@@ -90,7 +93,7 @@ fn main(@builtin(global_invocation_id) g: vec3u) {
     let ct = ty(cur); let locked = (cur & LOCK) != 0u;
     if (mode == 0u) { if (ct == EMPTY || gas(ct)) { cur = mk(mat); } }                 // 倒進空的地方
     else if (mode == 1u) { if (!locked) { cur = select(mk(mat), 0u, mat == EMPTY); } }  // 蓋過去（牆、木頭、橡皮擦）
-    else if (mode == 2u) { if (burnP(ct) > 0.0) { cur = emberOf(ct); } else if (ct == EMPTY) { cur = mk(FIRE); } }    // 點火
+    else if (mode == 2u) { if (burnP(ct) > 0.0) { cur = emberOf(ct); } else if (ct == EMPTY) { cur = mk(FIRE); } else if (ct == ICE && rnd() < 0.25) { cur = mk(WATER); } }   // 火燒冰 → 水    // 點火
     else if (mode == 3u) { if (!locked && ct != WALL && ct != STONE) { cur = 0u; } }     // 排水孔：吃掉會動的東西
   }
   cells[idx] = cur;
@@ -121,6 +124,17 @@ fn growW(i: u32, j: u32) -> f32 {
 fn react(i: u32, j: u32) {
   let p = ty(c[i]); let q = ty(c[j]);
   if (p == LAVA && q == WATER) { c[i] = mk(STONE); c[j] = mk(STEAM); return; }
+  // 冰：碰到熱的會融化；碰到水會慢慢把水凍住（有代數限制）；讓蒸氣凝結
+  if (p == ICE) {
+    if (q == FIRE || q == LAVA || q == EMBER) { if (rnd() < 0.3) { c[i] = mk(WATER); if (q == FIRE) { c[j] = mk(STEAM); } } return; }
+    if (q == WATER) { let l = life(c[i]); if (l > 0u && rnd() < 0.006) { c[j] = setLife(mk(ICE), l - 1u); } return; }
+    if (q == STEAM) { if (rnd() < 0.1) { c[j] = mk(WATER); } return; }
+    return;
+  }
+  // 水龍頭：往下（偶爾往旁邊）出水
+  if (p == SPOUT && q == EMPTY) { let down = (j / 2u) > (i / 2u); if (rnd() < select(0.06, 0.35, down)) { c[j] = mk(WATER); } return; }
+  // 黑洞：吃掉旁邊會動的東西
+  if (p == VOID) { if (q != EMPTY && mov(q)) { if (rnd() < 0.9) { c[j] = 0u; } } return; }
   if ((p == FIRE || p == LAVA || p == EMBER) && burnP(q) > 0.0) {
     var k = 1.0;
     if (p == LAVA) { k = 3.0; } else if (p == EMBER) { k = 1.0; }
@@ -147,7 +161,8 @@ fn react(i: u32, j: u32) {
   if (p == PLANT && q == EMPTY) {
     let l = life(c[i]);
     if (l > 0u && rnd() < 0.05 * growW(i, j)) {
-      c[j] = setLife(mk(PLANT), l - 1u);
+      // 長到一定高度，偶爾開出一朵花（花不再往上長）
+      c[j] = select(setLife(mk(PLANT), l - 1u), mk(FLOWER), l < 30u && rnd() < 0.045);
       if (rnd() < 0.85) { c[i] = setLife(c[i], 0u); }
     }
   }
@@ -297,6 +312,8 @@ fn main(@builtin(global_invocation_id) g: vec3u) {
 `;
 
 // ---------------------------------------------------------------- 畫面
+// 每個畫面像素：找到自己落在哪一格、格子裡的哪個位置（做顆粒、磚塊的立體感），
+// 再看上面、左邊是不是空的（受光面）、上面堆了多深（越深越暗），最後加上火和岩漿照亮附近的光。
 export const DRAW = COMMON + /* wgsl */`
 @group(0) @binding(0) var<storage, read> cells: array<u32>;
 @group(0) @binding(1) var<uniform> S: Shared;
@@ -310,67 +327,152 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
   return o;
 }
 fn at(x: i32, y: i32) -> u32 {
-  if (x < 0 || y < 0 || x >= i32(S.w) || y >= i32(S.h)) { return WALL; }
+  if (x < 0 || y < 0 || x >= i32(S.w) || y >= i32(S.h)) { return 0u; }
   return cells[u32(y) * S.w + u32(x)];
 }
 fn hot(x: i32, y: i32) -> f32 {
   let t = ty(at(x, y));
   if (t == FIRE) { return 1.0; }
-  if (t == LAVA || t == EMBER) { return 0.8; }
+  if (t == LAVA) { return 0.9; }
+  if (t == EMBER) { return 0.7; }
   return 0.0;
+}
+fn filled(t: u32) -> bool { return t != EMPTY && !gas(t); }
+fn h2(p: vec2f) -> f32 { return fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453); }
+
+// 背景：黃昏的天空、遠山、星星
+fn sky(uv: vec2f) -> vec3f {
+  var c = mix(vec3f(0.05, 0.06, 0.15), vec3f(0.20, 0.13, 0.26), smoothstep(0.0, 1.0, uv.y));
+  c = mix(c, vec3f(0.36, 0.20, 0.30), smoothstep(0.55, 1.0, uv.y) * 0.5);
+  let sg = uv * vec2f(160.0, 95.0);
+  let st = floor(sg);
+  let tw = h2(st);
+  let sd = length(fract(sg) - vec2f(h2(st + 3.1), h2(st + 7.7)) * 0.6 - 0.2);
+  if (tw > 0.975 && uv.y < 0.62) { c += vec3f(0.75, 0.75, 0.9) * smoothstep(0.09, 0.0, sd) * (0.6 + 0.4 * sin(S.time * 2.0 + tw * 40.0)) * (1.0 - uv.y / 0.62); }
+  let h1 = 0.70 + 0.05 * sin(uv.x * 6.0 + 1.0) + 0.025 * sin(uv.x * 17.0 + 2.0);
+  if (uv.y > h1) { c = mix(c, vec3f(0.09, 0.08, 0.17), 0.85); }
+  let hh = 0.80 + 0.04 * sin(uv.x * 9.0 + 4.0) + 0.02 * sin(uv.x * 23.0);
+  if (uv.y > hh) { c = mix(c, vec3f(0.06, 0.06, 0.12), 0.9); }
+  return c;
 }
 
 @fragment fn fs(in: VO) -> @location(0) vec4f {
-  let x = clamp(i32(in.uv.x * f32(S.w)), 0, i32(S.w) - 1);
-  let y = clamp(i32(in.uv.y * f32(S.h)), 0, i32(S.h) - 1);
+  let gx = in.uv.x * f32(S.w); let gy = in.uv.y * f32(S.h);
+  let x = clamp(i32(gx), 0, i32(S.w) - 1); let y = clamp(i32(gy), 0, i32(S.h) - 1);
+  let f = vec2f(fract(gx), fract(gy));
   let c = at(x, y); let t = ty(c);
   let v = f32((c >> 8u) & 255u) / 255.0;
   let tm = S.time;
-  var bg = mix(vec3f(0.05, 0.07, 0.13), vec3f(0.08, 0.10, 0.19), in.uv.y);
-  if (x % 16 == 0 || y % 16 == 0) { bg += vec3f(0.012, 0.016, 0.03); }
+  let bg = sky(in.uv);
   var rgb = bg;
-  var lit = 0.0;   // 自己會發光的
+  var lit = 0.0;      // 自己發光
+  var shade = true;   // 要不要做立體感
+  let up = ty(at(x, y - 1)); let lf = ty(at(x - 1, y)); let dn = ty(at(x, y + 1)); let rt = ty(at(x + 1, y));
+  // 往上數堆了幾格（越深越暗）
+  var depth = 0.0;
+  for (var k = 1; k <= 6; k++) { if (filled(ty(at(x, y - k)))) { depth += 1.0; } else { break; } }
+  // 顆粒：格子邊緣暗一點，看起來是一粒一粒的
+  let e = max(abs(f.x - 0.5), abs(f.y - 0.5));
+  let grain = 1.0 - smoothstep(0.28, 0.5, e) * 0.28;
+
   switch t {
-    case 1u {   // 牆：磚塊
-      rgb = vec3f(0.34, 0.37, 0.45) + v * 0.05;
-      let row = y / 4;
-      if (y % 4 == 0 || (x + (row % 2) * 4) % 8 == 0) { rgb *= 0.72; }
+    case 0u { shade = false; }
+    case 1u {   // 牆：磚塊，每塊有自己的亮暗和斜角
+      let row = y / 3; let bx = (x + (row % 2) * 3) / 6;
+      let fx = (f32((x + (row % 2) * 3) % 6) + f.x) / 6.0; let fy = (f32(y % 3) + f.y) / 3.0;
+      let bv = h2(vec2f(f32(bx), f32(row)));
+      rgb = vec3f(0.42, 0.40, 0.46) * (0.85 + bv * 0.25);
+      let mortar = min(min(fx, 1.0 - fx) * 6.0, min(fy, 1.0 - fy) * 3.0);
+      rgb *= mix(0.55, 1.0, smoothstep(0.05, 0.25, mortar));
+      rgb += vec3f(0.06) * smoothstep(0.6, 0.0, fy) * smoothstep(0.1, 0.3, mortar);
+      shade = false;
     }
-    case 2u { rgb = mix(vec3f(0.95, 0.82, 0.52), vec3f(0.80, 0.63, 0.35), v); }
-    case 3u {
-      rgb = mix(vec3f(0.13, 0.42, 0.88), vec3f(0.20, 0.53, 0.96), v) + 0.035 * sin(tm * 3.0 + f32(x) * 0.31 + f32(y) * 0.17);
-      if (ty(at(x, y - 1)) != WATER) { rgb = mix(rgb, vec3f(0.62, 0.85, 1.0), 0.6); }   // 水面
+    case 2u { rgb = mix(vec3f(0.98, 0.84, 0.55), vec3f(0.84, 0.64, 0.36), v) * grain; }
+    case 3u {   // 水：越深越藍，表面亮，半透明
+      let d = 0.0 + depth;
+      var w = mix(vec3f(0.30, 0.68, 0.98), vec3f(0.06, 0.24, 0.62), clamp(d / 6.0, 0.0, 1.0));
+      w += 0.025 * sin(tm * 2.0 + f32(x) * 0.31 + f32(y) * 0.9) * vec3f(0.6, 0.8, 1.0);
+      if (up != WATER && up != OIL) { w = mix(w, vec3f(0.85, 0.96, 1.0), smoothstep(0.55, 0.0, f.y) * 0.75); }
+      rgb = mix(bg, w, 0.8);
+      shade = false;
     }
-    case 4u {
-      let k = 0.5 + 0.5 * sin(tm * 2.0 + v * 6.28 + f32(x) * 0.15 - f32(y) * 0.1);
-      rgb = mix(vec3f(0.95, 0.28, 0.04), vec3f(1.0, 0.72, 0.15), k); lit = 1.0;
+    case 4u {   // 岩漿：亮橘色，表面有慢慢流動的暗色硬殼
+      let k = 0.5 + 0.5 * sin(tm * 1.6 + v * 6.28 + f32(x) * 0.17 - f32(y) * 0.11);
+      rgb = mix(vec3f(1.0, 0.35, 0.05), vec3f(1.0, 0.85, 0.3), k);
+      let crust = smoothstep(0.62, 0.8, h2(vec2f(f32(x / 2), f32(y / 2)) + floor(tm * 0.6)));
+      rgb = mix(rgb, vec3f(0.35, 0.07, 0.03), crust * 0.6 * step(0.5, depth + 0.6));
+      lit = 1.0; shade = false;
     }
-    case 5u { rgb = vec3f(0.47, 0.30, 0.15) + 0.05 * sin(f32(y) * 1.7 + v * 3.0) + v * 0.04; }
-    case 6u {
-      rgb = mix(vec3f(0.16, 0.56, 0.20), vec3f(0.33, 0.77, 0.27), v);
-      if (life(c) > 0u) { rgb = mix(rgb, vec3f(0.6, 0.95, 0.45), 0.5); }
+    case 5u {   // 木頭：木紋
+      let ring = 0.5 + 0.5 * sin(f32(y) * 0.9 + sin(f32(x) * 0.25 + v * 3.0) * 2.0);
+      rgb = mix(vec3f(0.40, 0.24, 0.12), vec3f(0.60, 0.40, 0.21), ring) * (0.92 + v * 0.12);
     }
-    case 7u { rgb = vec3f(0.58, 0.43, 0.22) * (0.8 + v * 0.35); }
+    case 6u {   // 植物：葉子圓圓的
+      let leaf = 1.0 - smoothstep(0.2, 0.6, length(f - 0.5)) * 0.35;
+      rgb = mix(vec3f(0.14, 0.52, 0.20), vec3f(0.36, 0.80, 0.30), v) * leaf;
+      if (life(c) > 0u) { rgb = mix(rgb, vec3f(0.65, 1.0, 0.5), 0.45); }
+    }
+    case 7u { rgb = vec3f(0.62, 0.45, 0.22) * (0.8 + v * 0.35) * grain; }
     case 8u {
-      let k = clamp(f32(life(c)) / 60.0, 0.0, 1.0);
-      rgb = mix(vec3f(0.95, 0.22, 0.05), vec3f(1.0, 0.92, 0.4), k); lit = 1.0;
+      let k = clamp(f32(life(c)) / 55.0, 0.0, 1.0);
+      rgb = mix(vec3f(0.95, 0.20, 0.05), vec3f(1.0, 0.95, 0.55), k * k);
+      rgb = mix(bg, rgb, 0.65 + 0.35 * k);
+      lit = 1.0; shade = false;
     }
-    case 9u { rgb = mix(bg, vec3f(0.86, 0.90, 0.96), 0.42 + v * 0.12); }
-    case 10u { rgb = mix(bg, vec3f(0.33, 0.33, 0.36), 0.55); }
-    case 11u { rgb = vec3f(0.26, 0.24, 0.27) + v * 0.08; }
+    case 9u { rgb = mix(bg, vec3f(0.88, 0.92, 0.98), 0.32 + v * 0.12); shade = false; }
+    case 10u { rgb = mix(bg, vec3f(0.30, 0.30, 0.34), 0.5); shade = false; }
+    case 11u { rgb = (vec3f(0.30, 0.28, 0.31) + v * 0.08 + 0.05 * h2(vec2f(f32(x), f32(y)) * 1.7)) * grain; }
+    case 12u {   // 油：深色，表面有彩虹光
+      rgb = vec3f(0.20, 0.13, 0.18) + v * 0.04;
+      if (up != OIL) {
+        let hue = f32(x) * 0.08 + tm * 0.4;
+        rgb += (0.5 + 0.5 * cos(vec3f(0.0, 2.1, 4.2) + hue)) * 0.25 * smoothstep(0.6, 0.0, f.y);
+      }
+      shade = false;
+    }
     case 13u {
       let k = 0.5 + 0.5 * sin(tm * 9.0 + v * 25.0);
-      rgb = mix(vec3f(0.55, 0.08, 0.02), vec3f(1.0, 0.55, 0.12), k); lit = 1.0;
+      rgb = mix(vec3f(0.55, 0.08, 0.02), vec3f(1.0, 0.6, 0.15), k); lit = 1.0; shade = false;
     }
-    case 12u { rgb = vec3f(0.24, 0.15, 0.22) + v * 0.05 + 0.03 * sin(tm * 2.0 + f32(x) * 0.5); }
+    case 14u {   // 冰：淡藍、半透明、斜斜的反光
+      rgb = mix(bg, vec3f(0.72, 0.90, 1.0), 0.78) + vec3f(0.12) * step(0.9, fract((f32(x) + f.x + f32(y) + f.y) * 0.18 + v * 0.3));
+    }
+    case 15u {   // 花：五種顏色，中間黃色花心
+      var pal = array<vec3f, 5>(vec3f(1.0, 0.45, 0.70), vec3f(1.0, 0.85, 0.25), vec3f(0.75, 0.50, 1.0), vec3f(1.0, 0.98, 0.95), vec3f(1.0, 0.30, 0.30));
+      let col = pal[min(4u, u32(v * 5.0))];
+      let r = length(f - 0.5);
+      rgb = mix(col, vec3f(1.0, 0.9, 0.3), smoothstep(0.22, 0.12, r)) * (1.0 - smoothstep(0.42, 0.55, r) * 0.4);
+    }
+    case 16u {   // 水龍頭：金屬管
+      rgb = mix(vec3f(0.55, 0.60, 0.68), vec3f(0.85, 0.90, 0.95), smoothstep(0.0, 1.0, 1.0 - abs(f.x - 0.5) * 2.0));
+      rgb = mix(rgb, vec3f(0.35, 0.65, 1.0), smoothstep(0.25, 0.1, length(f - 0.5)));
+      shade = false;
+    }
+    case 17u {   // 黑洞：黑色、外圈紫色旋轉
+      let ang = atan2(f.y - 0.5, f.x - 0.5);
+      rgb = mix(vec3f(0.01), vec3f(0.55, 0.25, 0.95), smoothstep(0.25, 0.5, length(f - 0.5)) * (0.5 + 0.5 * sin(ang * 3.0 + tm * 6.0)));
+      lit = 0.5; shade = false;
+    }
     default {}
   }
-  // 火和岩漿照亮附近
-  if (S.glow > 0.0 && lit == 0.0) {
+  // 立體感：上面空著的受光、左邊空著的受光、下面空著的有陰影；被埋越深越暗
+  if (shade) {
+    if (!filled(up)) { rgb += vec3f(0.16, 0.14, 0.10) * smoothstep(0.45, 0.0, f.y); }
+    if (!filled(lf)) { rgb += vec3f(0.07) * smoothstep(0.45, 0.0, f.x); }
+    if (!filled(rt)) { rgb *= mix(1.0, 0.82, smoothstep(0.55, 1.0, f.x)); }
+    if (!filled(dn)) { rgb *= mix(1.0, 0.75, smoothstep(0.5, 1.0, f.y)); }
+    rgb *= 1.0 - depth * 0.035;
+  }
+  // 物體在背景上投下一點影子（讓東西浮在畫面上）
+  if (t == EMPTY && filled(ty(at(x - 1, y - 1)))) { rgb *= 0.82; }
+  // 火、岩漿照亮附近（越近越亮）
+  if (S.glow > 0.0 && lit < 1.0) {
     var g = 0.0;
-    g += hot(x + 3, y) + hot(x - 3, y) + hot(x, y + 3) + hot(x, y - 3);
-    g += 0.5 * (hot(x + 7, y + 4) + hot(x - 7, y - 4) + hot(x - 4, y + 7) + hot(x + 4, y - 7));
-    rgb += vec3f(1.0, 0.45, 0.12) * g * 0.07 * S.glow;
+    var dirs = array<vec2i, 8>(vec2i(1, 0), vec2i(-1, 0), vec2i(0, 1), vec2i(0, -1), vec2i(1, 1), vec2i(-1, 1), vec2i(1, -1), vec2i(-1, -1));
+    var rings = array<i32, 4>(2, 4, 7, 11);
+    var wts = array<f32, 4>(1.0, 0.7, 0.45, 0.25);
+    for (var r = 0; r < 4; r++) { for (var d = 0; d < 8; d++) { let o = dirs[d] * rings[r]; g += hot(x + o.x, y + o.y) * wts[r]; } }
+    rgb += vec3f(1.0, 0.48, 0.15) * g * 0.035 * S.glow;
   }
   return vec4f(rgb, 1.0);
 }

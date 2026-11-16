@@ -3,6 +3,8 @@ import { createGPU } from './gpu.js';
 import { CpuSim } from './cpu.js';
 import { M, TOOLS, FREE_TOOLS } from './mats.js';
 import { LEVELS, buildLevel, freeScene } from './levels.js';
+import { Sound } from './audio.js';
+const sound = new Sound();
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -68,9 +70,9 @@ function buildTools() {
   list.forEach((id, i) => {
     const t = TOOLS[id], b = document.createElement('button');
     b.className = 'tool' + (id === tool ? ' on' : ''); b.dataset.id = id;
-    b.innerHTML = `<b>${t.emoji}</b>${t.name}<span class="sw" style="background:${t.color}"></span>`;
-    b.title = `${t.name}（${i + 1}）`;
-    b.onclick = () => setTool(id);
+    b.innerHTML = `<b>${t.emoji}</b>${t.name}<span class="sw" style="background:linear-gradient(90deg, ${t.color}, ${t.color}aa, ${t.color})"></span>`;
+    b.title = `${t.name}（${i + 1}）：${t.desc}`;
+    b.onclick = () => { setTool(id); sound.start(); sound.click(); };
     f.appendChild(b);
   });
   const sep = document.createElement('span'); sep.className = 'sep'; f.appendChild(sep);
@@ -82,6 +84,7 @@ function buildTools() {
     sz.appendChild(b);
   });
   f.appendChild(sz);
+  const t = TOOLS[tool]; $('toolTip').innerHTML = `<b>${t.emoji} ${t.name}</b>　${t.desc}`;
 }
 function setTool(id) { tool = id; save.tool = id; persist(); buildTools(); }
 
@@ -95,11 +98,12 @@ canvas.addEventListener('pointerdown', (e) => {
   if (ptr.down) return;
   canvas.setPointerCapture(e.pointerId);
   ptr.down = true; ptr.id = e.pointerId;
+  sound.start(); sound.pour(tool); hideHint();
   [ptr.x, ptr.y] = toCell(e); ptr.lx = ptr.x; ptr.ly = ptr.y;
 });
 canvas.addEventListener('pointermove', (e) => { [ptr.x, ptr.y] = toCell(e); ptr.over = true; });
 canvas.addEventListener('pointerleave', () => { ptr.over = false; });
-const up = (e) => { if (e.pointerId === ptr.id) { ptr.down = false; ptr.id = null; } };
+const up = (e) => { if (e.pointerId === ptr.id) { ptr.down = false; ptr.id = null; sound.stop(); } };
 canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
 
 addEventListener('keydown', (e) => {
@@ -151,7 +155,7 @@ function startFree() {
 }
 
 function startLevel(i) {
-  level = LEVELS[i]; mode = 'level';
+  level = LEVELS[i]; mode = 'level'; $('hint').classList.add('hidden');
   buildTools();
   const [w, h] = GPU ? [400, 250] : [240, 150];
   sim.resize(w, h); layout();
@@ -185,7 +189,7 @@ function showLevels() {
   LEVELS.forEach((lv, i) => {
     const s = save.stars[lv.id] || 0, b = document.createElement('button');
     b.className = 'lv';
-    b.innerHTML = `<span class="em">${lv.icon}</span><span><span class="n">第 ${i + 1} 關</span><br><span class="t">${lv.name}</span><br><span class="st">${'★'.repeat(s)}${'☆'.repeat(3 - s)}</span></span>`;
+    b.innerHTML = `<span class="em">${lv.icon}</span><span><span class="n">第 ${i + 1} 關 · ${lv.tools.map((k) => TOOLS[k].emoji).join('')}</span><br><span class="t">${lv.name}</span><br><span class="st">${'★'.repeat(s)}${'<i>☆</i>'.repeat(3 - s)}</span></span>`;
     b.onclick = () => startLevel(i);
     list.appendChild(b);
   });
@@ -244,14 +248,32 @@ function finish(ok) {
     $('resStars').textContent = '★'.repeat(s) + '☆'.repeat(3 - s);
     $('resText').textContent = L.win.kind === 'survive' ? `小屋保住了 ${Math.round(L.best * 100)}%。` : L.inkMax ? `用了 ${Math.round(L.ink / L.inkMax * 100)}% 的石牆。用越少星星越多。` : `花了 ${Math.round(simTime)} 秒。`;
     $('resNext').style.display = L.i < LEVELS.length - 1 ? '' : 'none';
+    sound.win(); confetti();
   } else {
     $('resTitle').textContent = '小屋燒起來了 😢';
     $('resStars').textContent = '';
-    $('resText').textContent = '再想想看：水碰到岩漿會變成石頭；把小屋前面的植物擦掉，火就燒不過來。';
+    $('resText').textContent = '再想想看：' + (lv.hint || '換個方法試試看！');
     $('resNext').style.display = 'none';
+    sound.lose();
   }
   setTimeout(() => $('result').classList.remove('hidden'), ok ? 500 : 900);
 }
+
+// 過關的彩紙
+function confetti() {
+  const box = $('confetti'); box.innerHTML = '';
+  const em = ['🎉', '✨', '⭐', '🌟', '💛', '💎'];
+  for (let i = 0; i < 36; i++) {
+    const s = document.createElement('span'); s.textContent = em[i % em.length];
+    s.style.left = Math.random() * 100 + '%'; s.style.animationDelay = Math.random() * 0.6 + 's'; s.style.fontSize = 16 + Math.random() * 20 + 'px';
+    s.style.setProperty('--dx', (Math.random() - 0.5) * 200 + 'px');
+    box.appendChild(s);
+  }
+  setTimeout(() => { box.innerHTML = ''; }, 3200);
+}
+// 第一次玩的提示
+function showHint() { if (save.hinted) return; $('hint').classList.remove('hidden'); }
+function hideHint() { if (!$('hint').classList.contains('hidden')) { $('hint').classList.add('hidden'); save.hinted = 1; persist(); } }
 
 function updateHud() {
   if (mode !== 'level') return;
@@ -294,12 +316,15 @@ function loop(t) {
   requestAnimationFrame(loop);
   if (t - last < 1000 / 62) return;
   last = t;
-  step(); drawCursor();
+  step(); drawCursor(); if (ptr.down) sound.tick();
 }
 
 
 startFree();
 $('loading').remove();
+setTool(tool); showHint();
+$('soundBtn').onclick = () => { sound.start(); sound.setOn(!sound.on); save.soundOff = !sound.on; persist(); $('soundBtn').textContent = sound.on ? '🔊' : '🔇'; };
+if (save.soundOff) sound.setOn(false); $('soundBtn').textContent = sound.on ? '🔊' : '🔇';
 if (!params.has('paused')) requestAnimationFrame(loop);
 
 // 自動測試用
