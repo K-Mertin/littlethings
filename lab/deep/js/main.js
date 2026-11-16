@@ -103,7 +103,7 @@ function updateBubbles(dt) {
 // ---------------------------------------------------------------- 狀態
 const S = {
   pos: new THREE.Vector3(0, -6, -150), vel: new THREE.Vector3(),
-  yaw: 0, camYaw: 0, camPitch: 0.22, camDist: 8.5,
+  yaw: 0, camYaw: 0, camPitch: 0.24, camDist: 10.5,
   light: !!save.light, t: 0,
 };
 S.pos.y = Math.max(floorY(S.pos.x, S.pos.z) + 6, -8);

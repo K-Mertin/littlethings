@@ -52,6 +52,8 @@ export const causticNode = Fn(([p]) => {
 });
 // 越深陽光越弱
 export const sunAt = Fn(([y]) => exp(y.div(15)));
+// 水面光紋打在朝上的表面（珊瑚、石頭、動物背上）
+export const causticOn = (k = 0.35) => vec3(0.5, 0.82, 1).mul(causticNode(positionWorld)).mul(sunAt(positionWorld.y)).mul(smoothstep(0.05, 0.8, normalWorld.y)).mul(k);
 
 export function buildWorld(scene, { high, webgpu }) {
   const W = { poi: {}, update: null, trash: [], solid: [] };
@@ -108,6 +110,7 @@ export function buildWorld(scene, { high, webgpu }) {
   // 珊瑚：形狀、花紋、顏色在 coral.js
   const stagGeo = staghornGeo(7), stagGeo2 = staghornGeo(19), brGeo = brainGeo(), tabGeo = tableGeo(5), fingGeo = fingerGeo(3);
   const stagMat = coralMaterial({ tipPale: 0.6, pores: 14 }), brainMat = coralMaterial({ brain: true, pores: 6 }), tableMat = coralMaterial({ tipPale: 0.35, pores: 18 }), fingMat = coralMaterial({ tipPale: 0.45, pores: 16 });
+  for (const m of [stagMat, brainMat, tableMat, fingMat]) m.emissiveNode = causticOn(0.3);
   const cnt = high ? 1 : 0.6;
   const reefPick = () => { const p = near(REEF.x, REEF.z, 55); return isReef(p.x, p.z) ? p : null; };
   // 珊瑚長成一叢一叢的（真的珊瑚礁是一塊一塊密密的，中間有沙地）
@@ -132,11 +135,22 @@ export function buildWorld(scene, { high, webgpu }) {
   })();
   const rocks = [];
   for (let i = 0; i < 260 * cnt; i++) { const p = place(() => true); if (p) rocks.push({ p: p.clone().add(new THREE.Vector3(0, -0.3, 0)), ry: R() * 6, rx: R() * 0.3, s: 0.6 + R() * R() * 3.5 }); }
-  inst(rockGeo, new THREE.MeshStandardNodeMaterial({ roughness: 0.9, color: 0x8a847a }), rocks);
+  // 石頭：灰褐色、有小坑，朝上的面長了一層綠褐色的藻類和粉紅色的殼狀珊瑚藻，身上也有光紋
+  const rockMat = new THREE.MeshStandardNodeMaterial({ roughness: 0.92 });
+  {
+    const lp = positionWorld, up = smoothstep(0.1, 0.7, normalWorld.y);
+    const pits = smoothstep(0.05, 0.25, mx_worley_noise_float(lp.mul(4)));
+    const algae = smoothstep(0.35, 0.65, mx_noise_float(lp.mul(1.3)).mul(0.5).add(0.5)).mul(up);
+    const crust = smoothstep(0.6, 0.75, mx_noise_float(lp.mul(2.1).add(5)).mul(0.5).add(0.5)).mul(float(1).sub(up).mul(0.6).add(0.2));
+    const stone = mix(vec3(0.25, 0.23, 0.21), vec3(0.36, 0.33, 0.29), mx_noise_float(lp.mul(0.7)).mul(0.5).add(0.5)).mul(mix(0.65, 1, pits));
+    rockMat.colorNode = mix(mix(stone, vec3(0.62, 0.38, 0.42), crust), vec3(0.24, 0.3, 0.12), algae.mul(0.85));
+    rockMat.emissiveNode = causticOn(0.3);
+  }
+  inst(rockGeo, rockMat, rocks);
 
   // 章魚的大石頭
   const OCTO = new THREE.Vector3(28, 0, -95); OCTO.y = floorY(OCTO.x, OCTO.z);
-  const bigRock = new THREE.Mesh(rockGeo, new THREE.MeshStandardNodeMaterial({ roughness: 0.9, color: 0x8a847a }));
+  const bigRock = new THREE.Mesh(rockGeo, rockMat);
   bigRock.position.copy(OCTO).add(new THREE.Vector3(0, 0.6, 0)); bigRock.scale.set(3.4, 3, 3.2); bigRock.castShadow = bigRock.receiveShadow = true;
   scene.add(bigRock);
   W.poi.octopusRock = OCTO.clone().add(new THREE.Vector3(0, 2.7, 0));
