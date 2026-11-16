@@ -6,7 +6,7 @@
 // 表面都有一顆一顆的珊瑚蟲小孔（worley 噪聲），顏色用比較自然的土黃、橄欖、粉褐、紫褐，少數鮮豔的
 import * as THREE from 'three';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { attribute, mix, smoothstep, vec3, float, positionLocal, positionWorld, mx_worley_noise_float, mx_noise_float, sin, abs } from 'three/tsl';
+import { attribute, mix, smoothstep, vec3, float, positionLocal, positionWorld, mx_worley_noise_float, mx_noise_float, sin, abs, exp, vec2, positionView, normalView, faceDirection } from 'three/tsl';
 
 function rngOf(seed) { let s = seed >>> 0; return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }; }
 
@@ -48,7 +48,7 @@ function roughen(geo, amp, freq) {
 const UP = new THREE.Vector3(0, 1, 0);
 // 一段樹枝：從 p 沿 dir 長 len，半徑 r0 → r1；tip 從 t0 漸變到 t1
 // FINE：要做粗糙表面的珊瑚用比較密的網格（凹凸才不會被網格吃掉）
-let FINE = 0;
+let FINE = 0;   // 0 = 不加密（太密會讓幾百叢珊瑚的頂點數爆掉、變卡；小杯改在 shader 裡用凹凸法線做）
 function limb(p, dir, len, r0, r1, t0, t1, seg = 9) {
   if (FINE) seg = Math.max(seg, FINE);
   const g = new THREE.CylinderGeometry(r1, r0, len, seg, Math.max(2, Math.round(len / (FINE ? 0.025 : 0.07))), true); g.translate(0, len / 2, 0);
@@ -66,7 +66,7 @@ function cap(p, r, t) {
 
 // 鹿角珊瑚
 export function staghornGeo(seed = 7) {
-  const r = rngOf(seed), parts = [], MAXD = 3; FINE = 14;
+  const r = rngOf(seed), parts = [], MAXD = 3; FINE = 0;
   const grow = (p, dir, len, rad, d) => {
     const t0 = d / (MAXD + 1), t1 = (d + 1) / (MAXD + 1);
     parts.push(limb(p, dir, len, rad, rad * 0.8, t0, t1));
@@ -83,7 +83,7 @@ export function staghornGeo(seed = 7) {
     const a = i / 3 * Math.PI * 2 + r();
     grow(new THREE.Vector3(Math.cos(a) * 0.12, 0, Math.sin(a) * 0.12), new THREE.Vector3(Math.cos(a) * 0.35, 1, Math.sin(a) * 0.35).normalize(), 0.5, 0.11, 0);
   }
-  FINE = 0; return roughen(merge(parts), 0.022, 24);
+  FINE = 0; return roughen(merge(parts), 0.012, 7);
 }
 
 // 3D 數值噪聲（給腦珊瑚的迷宮紋路用）
@@ -116,8 +116,8 @@ export function brainGeo() {
 // 桌形珊瑚
 export function tableGeo(seed = 5) {
   const r = rngOf(seed), parts = [];
-  FINE = 18; parts.push(limb(new THREE.Vector3(), UP, 0.95, 0.2, 0.13, 0, 0.2, 9));
-  const plate = new THREE.CylinderGeometry(1.05, 0.85, 0.14, 96, 4); plate.translate(0, 1.0, 0);
+  FINE = 0; parts.push(limb(new THREE.Vector3(), UP, 0.95, 0.2, 0.13, 0, 0.2, 9));
+  const plate = new THREE.CylinderGeometry(1.05, 0.85, 0.14, 40, 2); plate.translate(0, 1.0, 0);
   const pa = plate.attributes.position, tip = new Float32Array(pa.count);
   for (let i = 0; i < pa.count; i++) {
     const x = pa.getX(i), z = pa.getZ(i), d = Math.hypot(x, z);
@@ -126,12 +126,12 @@ export function tableGeo(seed = 5) {
   }
   plate.setAttribute('tip', new THREE.BufferAttribute(tip, 1)); plate.computeVertexNormals();
   parts.push(plate);
-  FINE = 0; return roughen(merge(parts), 0.022, 18);
+  FINE = 0; return roughen(merge(parts), 0.012, 6);
 }
 
 // 指狀珊瑚
 export function fingerGeo(seed = 3) {
-  const r = rngOf(seed), parts = []; FINE = 16;
+  const r = rngOf(seed), parts = []; FINE = 0;
   for (let i = 0; i < 16; i++) {
     const a = r() * Math.PI * 2, d = Math.sqrt(r()) * 0.5, h = 0.25 + r() * 0.45;
     const p = new THREE.Vector3(Math.cos(a) * d, 0, Math.sin(a) * d);
@@ -140,7 +140,7 @@ export function fingerGeo(seed = 3) {
     parts.push(limb(p, dir, h, rad * 1.1, rad, 0, 0.9, 8));
     parts.push(cap(p.clone().addScaledVector(dir, h), rad, 1));
   }
-  FINE = 0; return roughen(merge(parts), 0.024, 21);
+  FINE = 0; return roughen(merge(parts), 0.012, 8);
 }
 
 // 柳珊瑚（海扇）：在同一個平面上一直分岔的細枝，像一張網
@@ -174,6 +174,13 @@ export function coralMaterial({ tipPale = 0.55, pores = 9, brain = false } = {})
   // 尖端的新芽偏白（鹿角珊瑚、指狀珊瑚都這樣）
   const pale = smoothstep(0.75, 1, tip).mul(tipPale);
   m.colorNode = mix(vec3(1).mul(shade), vec3(1.6, 1.55, 1.45), pale);    // 乘上 instance 顏色後：底色 × 明暗，尖端泛白
+  // 珊瑚蟲小杯的凹凸：每顆是一圈凸起的杯緣、中間一個小洞。不加頂點，改用螢幕空間導數算凹凸法線
+  // （Mikkelsen「Bump Mapping Unparametrized Surfaces on the GPU」，three.js 的 bumpMap 也是這個做法）
+  const cupH = exp(pore.sub(0.24).div(0.11).pow(2).negate()).sub(smoothstep(0.13, 0.0, pore).mul(0.9)).mul(brain ? 0.5 : 1);
+  const dH = vec2(cupH.dFdx(), cupH.dFdy()).mul(brain ? 0.6 : 1.1);
+  const sX = positionView.dFdx().normalize(), sY = positionView.dFdy().normalize(), N = normalView;
+  const R1 = sY.cross(N), R2 = N.cross(sX), det = sX.dot(R1).mul(faceDirection);
+  m.normalNode = det.abs().mul(N).sub(det.sign().mul(dH.x.mul(R1).add(dH.y.mul(R2)))).normalize();
   void sin; void abs;
   return m;
 }
