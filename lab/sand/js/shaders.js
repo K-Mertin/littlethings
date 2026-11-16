@@ -407,8 +407,8 @@ fn sky(uv: vec2f) -> vec3f {
       let wob = vec2f(sin(tm * 1.7 + gy * 0.35), cos(tm * 1.3 + gx * 0.29)) * 0.004;
       let behind = sky(in.uv + wob);
       let k = clamp(d / 6.0, 0.0, 1.0);
-      let absorb = exp(-vec3f(0.55, 0.22, 0.12) * (d + 1.0) * 0.55);
-      var w = behind * absorb + vec3f(0.03, 0.12, 0.2) * (0.6 + k);
+      let absorb = exp(-vec3f(0.55, 0.22, 0.12) * (d + 1.0) * 0.35);
+      var w = behind * absorb + vec3f(0.05, 0.2, 0.32) * (0.7 + k * 0.6);
       w += vec3f(0.5, 0.75, 1.0) * 0.06 * (0.5 + 0.5 * sin(tm * 2.2 + f32(x) * 0.45 + f32(y) * 0.8)) * (1.0 - k);   // 水裡的光紋
       if (up != WATER && up != OIL) { w = mix(w, vec3f(0.85, 0.95, 1.0), smoothstep(0.6, 0.0, f.y) * 0.65); }
       rgb = w;
