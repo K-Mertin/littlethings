@@ -1,6 +1,7 @@
 // 戰場地形：山丘（高度）、河流（走得慢，淺灘和橋走得快）、樹林（走得慢、可以擋箭）
 // 地圖：x −120～120、z −80～80；藍軍（玩家）在 +z（靠鏡頭），紅軍在 −z。
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { vec3, vec4, float, mix, smoothstep, positionWorld, normalWorld, mx_noise_float, time, sin, cos, uv, instancedArray, instanceIndex, positionGeometry, hash } from 'three/tsl';
 
 export const MAP = { w: 240, h: 160 };
@@ -88,15 +89,19 @@ export class Terrain {
     }
     if (trees.length) {
       const trunk = new THREE.CylinderGeometry(0.22, 0.3, 2.4, 6); trunk.translate(0, 1.2, 0);
-      const crown = new THREE.ConeGeometry(1.7, 4.2, 7); crown.translate(0, 4, 0);
-      const crown2 = new THREE.ConeGeometry(1.2, 3, 7); crown2.translate(0, 5.6, 0);
+      // 樹冠：幾顆凹凸不平的球疊在一起（闊葉樹），比圓錐像真的樹
+      const blob = (r, x, y, z, seed) => { const g = new THREE.IcosahedronGeometry(r, 2); const p = g.attributes.position, v = new THREE.Vector3();
+        for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i); const k = 1 + 0.18 * Math.sin(v.x * 3.1 + seed) * Math.sin(v.y * 2.7 + seed * 2) * Math.sin(v.z * 3.3 + 1); v.multiplyScalar(k); p.setXYZ(i, v.x + x, v.y + y, v.z + z); }
+        g.computeVertexNormals(); return g; };
+      const crown = mergeGeometries([blob(1.7, 0, 3.6, 0, 1), blob(1.2, 0.9, 4.3, 0.3, 2), blob(1.25, -0.8, 4.4, -0.4, 3)].map((g) => g.toNonIndexed()));
+      const crown2 = mergeGeometries([blob(1.05, 0.2, 5.3, 0.2, 4), blob(0.9, -0.5, 3.4, 1.0, 5)].map((g) => g.toNonIndexed()));
       const mk = (geo, color) => {
         const im = new THREE.InstancedMesh(geo, new THREE.MeshStandardNodeMaterial({ color, roughness: 0.85 }), trees.length);
         const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), S = new THREE.Vector3();
         trees.forEach((t, i) => { Q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), t.x * 7.1); S.setScalar(t.s); M.compose(new THREE.Vector3(t.x, t.y, t.z), Q, S); im.setMatrixAt(i, M); });
         im.castShadow = true; im.receiveShadow = true; scene.add(im); return im;
       };
-      mk(trunk, 0x6b4a2b); mk(crown, 0x2f6b34); mk(crown2, 0x3b7d3e);
+      mk(trunk, 0x5a3f27); mk(crown, 0x2d5a28); mk(crown2, 0x3f6e31);
     }
   }
 }

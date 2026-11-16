@@ -83,13 +83,14 @@ function body(k, { shield = false, helmet = 'round', weapon = 'sword', y0 = 0, l
 }
 function horse(k) {
   const L = [[0.22, 0.75], [-0.22, -0.75]], R = [[-0.22, 0.75], [0.22, -0.75]];
-  for (const [x, z] of L) k.box(0.16, 0.85, 0.18, { x, y: 0.45, z, part: 5, piv: [x, 0.88, z], kind: 5 });
-  for (const [x, z] of R) k.box(0.16, 0.85, 0.18, { x, y: 0.45, z, part: 6, piv: [x, 0.88, z], kind: 5 });
-  k.box(0.55, 0.55, 1.7, { y: 1.12, kind: 5 });                                   // 身體
-  k.box(0.28, 0.75, 0.32, { y: 1.55, z: 0.95, rx: -0.5, kind: 5 });               // 脖子
-  k.box(0.26, 0.28, 0.55, { y: 1.85, z: 1.2, kind: 5 });                          // 頭
-  k.box(0.08, 0.4, 0.5, { y: 1.75, z: 0.85, rx: -0.5, kind: 6 });                 // 鬃毛
-  k.box(0.12, 0.55, 0.12, { y: 1.05, z: -0.95, rx: 0.5, kind: 6 });               // 尾巴
+  // 馬腳：上粗下細的圓柱＋深色的蹄
+  for (const [x, z] of L) { k.add(new THREE.CylinderGeometry(0.09, 0.055, 0.82, 7), { x, y: 0.48, z, part: 5, piv: [x, 0.88, z], kind: 5 }); k.add(new THREE.CylinderGeometry(0.07, 0.08, 0.1, 7), { x, y: 0.05, z, part: 5, piv: [x, 0.88, z], kind: 4 }); }
+  for (const [x, z] of R) { k.add(new THREE.CylinderGeometry(0.09, 0.055, 0.82, 7), { x, y: 0.48, z, part: 6, piv: [x, 0.88, z], kind: 5 }); k.add(new THREE.CylinderGeometry(0.07, 0.08, 0.1, 7), { x, y: 0.05, z, part: 6, piv: [x, 0.88, z], kind: 4 }); }
+  k.add(new THREE.CapsuleGeometry(0.3, 1.1, 4, 12), { y: 1.12, rx: Math.PI / 2, sx: 0.95, kind: 5 });   // 身體（圓桶狀）
+  k.add(new THREE.CylinderGeometry(0.13, 0.2, 0.8, 9), { y: 1.55, z: 0.95, rx: 0.55, kind: 5 });   // 脖子
+  k.add(new THREE.CapsuleGeometry(0.12, 0.38, 4, 9), { y: 1.82, z: 1.22, rx: Math.PI / 2 + 0.35, kind: 5 });   // 頭（長長的馬臉）
+  k.box(0.07, 0.75, 0.12, { y: 1.62, z: 0.86, rx: 0.55, kind: 6 });               // 鬃毛（沿著脖子後面）
+  k.add(new THREE.ConeGeometry(0.09, 0.7, 6), { y: 0.95, z: -0.98, rx: -2.7, kind: 6 });   // 尾巴（垂下來）
   k.box(0.6, 0.1, 0.7, { y: 1.42, kind: 0 });                                     // 馬鞍布（隊伍色）
   for (const sx of [0.31, -0.31]) k.box(0.03, 0.38, 0.9, { x: sx, y: 1.18, kind: 7 });   // 馬衣（兩側垂下來）
   k.box(0.3, 0.06, 0.3, { y: 1.87, z: 1.25, kind: 4 });                          // 韁繩
