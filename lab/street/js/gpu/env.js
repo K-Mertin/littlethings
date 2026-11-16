@@ -182,7 +182,7 @@ export class Env {
       this.sunDir.copy(sd);
       this._c.copy(this.sunLow).lerp(this.sunCol, sstep(0.02, 0.4, sinEl));
       sun.color.copy(this._c);
-      sun.intensity = 4.6 * sstep(-0.02, 0.2, sinEl) * (1 - overcast * 0.8);
+      sun.intensity = 3.7 * sstep(-0.02, 0.2, sinEl) * (1 - overcast * 0.8);
     } else {
       this.sunDir.set(-0.35, 0.75, -0.5).normalize();
       sun.color.copy(this.moonCol);
@@ -191,7 +191,7 @@ export class Env {
     this.hemi.intensity = (0.33 * day + 0.05) * (1 - overcast * 0.3);
     this.hemi.color.setRGB(0.81 - 0.4 * night, 0.89 - 0.35 * night, 1);
     this.scene.environmentIntensity = (0.025 + 0.975 * day) * (1 - overcast * 0.45);
-    this.renderer.toneMappingExposure = 0.95 + night * 0.15;
+    this.renderer.toneMappingExposure = 0.85 + night * 0.25;   // 白天不要過曝（地磚原本白成一片）
     // 天空與霧
     this.sky.sunPosition.value.copy(sd);
     this.sky.cloudCoverage.value = 0.4 + rain * 0.5; this.sky.cloudDensity.value = 0.4 + rain * 0.5;
@@ -204,6 +204,7 @@ export class Env {
     // 路燈與招牌
     const lampOn = sstep(0.25, 0.02, sinEl);
     for (const l of this.lamps) l.intensity = lampOn * 16;
+    if (this.world.skyNight) this.world.skyNight.value = lampOn;
     for (const e of this.emis) e.m.emissiveIntensity = e.base * (1 + lampOn * e.k);
     // 雨
     this.u.rain.value = rain; this.u.wet.value = this.wetK;

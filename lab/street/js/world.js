@@ -5,6 +5,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Batch, mbox, mplane, mat4, pbr, std, canvasTex, FONT, SERIF, roundRect, fitText, rand, pick, TAU } from './kit.js';
 import { STREET, PARTY, ZONES } from './games.js';
+import { uniform, positionWorld, normalWorld, vec2, vec3, fract, floor, step, abs, hash, mix, select } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // ------------------------------------------------------------------ layout (meters)
@@ -99,8 +100,8 @@ export async function buildWorld(scene, opts) {
 
   // ---------------- materials
   const M = {
-    paving: pbr('paving', { tile: 2.4, env: .5 }),
-    paving2: pbr('paving2', { tile: 1.6, color: 0xd8d8d8, env: .5 }),
+    paving: pbr('paving', { tile: 2.4, env: .5, color: 0xc2bcb2 }),
+    paving2: pbr('paving2', { tile: 1.6, color: 0xb0aaa2, env: .5 }),
     brick: pbr('brick', { tile: 1.6, env: .4 }),
     brick2: pbr('brick2', { tile: 1.6, env: .4 }),
     concrete: pbr('concrete', { tile: 3, env: .5 }),
@@ -357,7 +358,19 @@ export async function buildWorld(scene, opts) {
   for (const side of [-1, 1]) for (let z = -40; z < 100; z += 14 + rand() * 8) skyline.push({ x: side * (26 + rand() * 18), z, w: 12 + rand() * 10, d: 12 + rand() * 8, h: 22 + rand() * 30 });
   for (let x = -40; x <= 40; x += 16) skyline.push({ x: x + rand() * 4, z: -48 - rand() * 10, w: 14, d: 12, h: 30 + rand() * 25 });
   for (let x = -40; x <= 40; x += 16) skyline.push({ x: x + rand() * 4, z: 95 + rand() * 10, w: 14, d: 12, h: 26 + rand() * 25 });
-  for (const s of skyline) B.add(mbox(s.w, s.h, s.d), M.facade, mat4(s.x, s.h / 2, s.z), { noCast: true });
+  // 遠方大樓：晚上窗戶一格一格亮起來（skyNight 由天氣系統依路燈亮度設定）
+  const skyNight = uniform(0);
+  const skyMat = M.facade.clone();
+  {
+    const wp = positionWorld, nw = normalWorld;
+    const side = select(abs(nw.x).greaterThan(abs(nw.z)), wp.z, wp.x);
+    const cell = vec2(side.div(2.6), wp.y.div(3.2));
+    const inWin = step(0.25, fract(cell.x)).mul(step(fract(cell.x), 0.75)).mul(step(0.3, fract(cell.y))).mul(step(fract(cell.y), 0.72)).mul(step(abs(nw.y), 0.5)).mul(step(4, wp.y));
+    const hid = hash(floor(cell.x).add(floor(cell.y).mul(57.3)).add(floor(wp.x.div(11)).mul(13.1)).add(floor(wp.z.div(11)).mul(7.7)));
+    const col = mix(vec3(1, 0.72, 0.4), vec3(0.75, 0.86, 1), step(0.82, hid)).mul(hash(hid.mul(77.1)).mul(0.6).add(0.4));
+    skyMat.emissiveNode = col.mul(inWin.mul(step(0.5, hid))).mul(skyNight.mul(1.4));
+  }
+  for (const s of skyline) B.add(mbox(s.w, s.h, s.d), skyMat, mat4(s.x, s.h / 2, s.z), { noCast: true });
   // backs of the shop rows (rooftops seen from the hall) – flat roofs with water tanks
   for (const b of blocks) {
     const H = L.ground + b.floors * L.floor;
@@ -798,7 +811,7 @@ export async function buildWorld(scene, opts) {
 
   const area = (p) => (p.z < L.hallFront - 0.3 ? 'hall' : p.z < L.shopZ0 ? 'plaza' : 'street');
   return {
-    root, colliders, interact, solid,
+    root, colliders, interact, solid, skyNight,
     gpu: Object.assign(gpu, { M, ground: [M.paving, M.paving2, M.curb, M.concrete, M.concrete2] }),
     doors: hall.doors,
     update(dt, t, playerPos) {
