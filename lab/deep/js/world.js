@@ -281,30 +281,62 @@ export function buildWorld(scene, { high, webgpu }) {
     inst(g, m, fans.slice(0, half), CORAL_COLORS.fan).castShadow = false;
     inst(g2, m, fans.slice(half), CORAL_COLORS.fan.slice().reverse()).castShadow = false;
   }
-  // ---------------- 貝殼、海膽
+  // ---------------- 貝殼、海膽、海星（照真的做：扇貝有放射狀的肋、寶螺圓亮有斑點、海膽有上百根細長的棘、海星的腕是圓的、表面有小疣）
   {
-    const shell = new THREE.SphereGeometry(0.25, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2); shell.scale(1, 0.5, 1.2);
-    const urch = new THREE.IcosahedronGeometry(0.22, 0);
-    const spikes = [];
-    for (let i = 0; i < 14; i++) { const c = new THREE.ConeGeometry(0.03, 0.4, 3); const d = new THREE.Vector3().randomDirection(); d.y = Math.abs(d.y) * 0.8 + 0.1; d.normalize(); c.translate(0, 0.2, 0); c.lookAt(d); c.rotateX(Math.PI / 2); spikes.push(c); }
-    const urchin = mergeGeos([urch, ...spikes]);
-    const sl = [], ul = [];
-    for (let i = 0; i < 160 * cnt; i++) { const p = place((x, z) => z < 40 && floorY(x, z) > -60); if (p) sl.push({ p: p.add(new THREE.Vector3(0, 0.05, 0)), ry: R() * 6, s: 0.6 + R() * 0.9 }); }
-    for (let i = 0; i < 90 * cnt; i++) { const p = reefPick(); if (p) ul.push({ p: p.add(new THREE.Vector3(0, 0.1, 0)), ry: R() * 6, s: 0.8 + R() * 0.6 }); }
-    inst(shell, new THREE.MeshStandardNodeMaterial({ roughness: 0.4 }), sl, ['#f4e3d0', '#f7c6b5', '#e8d7a8', '#fff3e6']);
-    inst(urchin, new THREE.MeshStandardNodeMaterial({ roughness: 0.6 }), ul, ['#2b1a3a', '#4a1f4f', '#1d1d2b']);
+    // 扇貝：扇形殼、放射狀的肋、兩邊有小耳朵
+    const scallop = (() => {
+      const g = new THREE.SphereGeometry(0.3, 28, 10, -Math.PI * 0.42, Math.PI * 0.84, 0, Math.PI / 2);
+      const p = g.attributes.position;
+      for (let i = 0; i < p.count; i++) { const x = p.getX(i), z = p.getZ(i); const ang = Math.atan2(x, z), rib = 1 + 0.06 * Math.abs(Math.sin(ang * 18)); p.setXYZ(i, x * rib, p.getY(i) * 0.4, z * rib - 0.12); }
+      g.computeVertexNormals(); return g;
+    })();
+    // 寶螺：亮亮的蛋形，底下一條細縫
+    const cowrie = new THREE.SphereGeometry(0.16, 20, 12); cowrie.scale(0.8, 0.6, 1.25);
+    // 海膽：圓殼＋120 根細長的棘（各方向長短不一）
+    const urch = (() => {
+      const parts = [new THREE.SphereGeometry(0.16, 14, 10)]; const RR = rng(8);
+      for (let i = 0; i < 120; i++) {
+        const d = new THREE.Vector3().randomDirection(); if (d.y < -0.2) d.y = -d.y * 0.3; d.normalize();
+        const L = 0.32 + RR() * 0.35, c = new THREE.ConeGeometry(0.011, L, 3); c.translate(0, L / 2 + 0.12, 0);
+        c.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d)); parts.push(c);
+      }
+      return mergeGeos(parts);
+    })();
+    const sl = [], cl = [], ul = [];
+    for (let i = 0; i < 120 * cnt; i++) { const p = place((x, z) => z < 40 && floorY(x, z) > -60); if (p) sl.push({ p: p.add(new THREE.Vector3(0, 0.02, 0)), ry: R() * 6, s: 0.6 + R() * 0.8 }); }
+    for (let i = 0; i < 70 * cnt; i++) { const p = place((x, z) => z < 20 && floorY(x, z) > -50); if (p) cl.push({ p: p.add(new THREE.Vector3(0, 0.06, 0)), ry: R() * 6, s: 0.7 + R() * 0.6 }); }
+    for (let i = 0; i < 90 * cnt; i++) { const p = reefPick(); if (p) ul.push({ p: p.add(new THREE.Vector3(0, 0.05, 0)), ry: R() * 6, s: 0.8 + R() * 0.6 }); }
+    const shM = new THREE.MeshStandardNodeMaterial({ roughness: 0.45 });
+    const shAng = atan(positionGeometry.x, positionGeometry.z.add(0.12));
+    shM.colorNode = mix(vec3(1), vec3(0.7, 0.55, 0.5), smoothstep(0.3, 0.9, sin(positionGeometry.xz.length().mul(60)).mul(0.5).add(0.5)).mul(0.4)).mul(smoothstep(0.0, 0.5, sin(shAng.mul(18)).abs()).mul(0.2).add(0.8));
+    inst(scallop, shM, sl, ['#f2c9a0', '#e8a17a', '#f5e2c8', '#d97b63', '#f0d7b5']);
+    const cwM = new THREE.MeshStandardNodeMaterial({ roughness: 0.12, metalness: 0.05 });
+    const spots = smoothstep(0.2, 0.08, mx_worley_noise_float(positionGeometry.mul(28)));
+    cwM.colorNode = mix(vec3(1), vec3(0.35, 0.22, 0.12), spots.mul(0.8)).mul(mix(0.25, 1, smoothstep(0.003, 0.03, positionGeometry.x.abs().add(positionGeometry.y.add(0.08).max(0)))));
+    inst(cowrie, cwM, cl, ['#e8c58a', '#d9b27a', '#f2dfb8']);
+    const urM = new THREE.MeshStandardNodeMaterial({ roughness: 0.5 });
+    urM.colorNode = mix(vec3(0.08, 0.04, 0.1), vec3(0.32, 0.12, 0.3), smoothstep(0.15, 0.6, positionGeometry.length()));   // 棘的尖端偏紫
+    inst(urch, urM, ul, ['#ffffff', '#c8b0d0', '#a0a0b8']);
   }
 
-  // ---------------- 海星
+  // ---------------- 海星：五條圓圓、慢慢變細、微微彎的腕，中間盤狀；背上有一排排淡色小疣
   const starGeo = (() => {
-    const s = new THREE.Shape();
-    for (let i = 0; i <= 10; i++) { const a = i / 10 * Math.PI * 2, r = i % 2 ? 0.22 : 0.6; const x = Math.cos(a) * r, y = Math.sin(a) * r; if (i) s.lineTo(x, y); else s.moveTo(x, y); }
-    const e = new THREE.ExtrudeGeometry(s, { depth: 0.08, bevelEnabled: true, bevelThickness: 0.06, bevelSize: 0.05, bevelSegments: 2 });
-    e.rotateX(-Math.PI / 2); return e;
+    const parts = [new THREE.SphereGeometry(0.17, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2)]; const RR = rng(12);
+    for (let k = 0; k < 5; k++) {
+      const a = k / 5 * Math.PI * 2 + (RR() - 0.5) * 0.15, L = 0.5 + RR() * 0.12, bend = (RR() - 0.5) * 0.4, pts = [];
+      for (let i = 0; i <= 8; i++) { const t = i / 8, aa = a + bend * t * t; pts.push(new THREE.Vector3(Math.cos(aa) * t * L, 0.05 * (1 - t) + 0.03 * Math.sin(t * 3), Math.sin(aa) * t * L)); }
+      const tube = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 16, 0.1, 8, false);
+      const p = tube.attributes.position, c = new THREE.Vector3(), v = new THREE.Vector3(), curve = new THREE.CatmullRomCurve3(pts);
+      for (let i = 0; i <= 16; i++) { const t = i / 16, r = 1 - t * 0.78; curve.getPointAt(t, c); for (let j = 0; j <= 8; j++) { const q = i * 9 + j; v.fromBufferAttribute(p, q).sub(c); v.y = Math.max(v.y, -0.02); v.multiplyScalar(r).add(c); p.setXYZ(q, v.x, v.y * 0.7, v.z); } }
+      tube.computeVertexNormals(); parts.push(tube, new THREE.SphereGeometry(0.025, 6, 4).translate(pts[8].x, pts[8].y, pts[8].z));
+    }
+    return mergeGeos(parts);
   })();
   const stars = [];
-  for (let i = 0; i < 26; i++) { const p = place((x, z) => z > -150 && z < 40 && floorY(x, z) > -55); if (p) stars.push({ p: p.add(new THREE.Vector3(0, 0.05, 0)), ry: R() * 6, s: 0.7 + R() * 0.6 }); }
-  inst(starGeo, new THREE.MeshStandardNodeMaterial({ roughness: 0.7 }), stars, ['#ff7a3d', '#e84393', '#fdcb6e', '#a55eea']);
+  for (let i = 0; i < 30; i++) { const p = place((x, z) => z > -150 && z < 40 && floorY(x, z) > -55); if (p) stars.push({ p: p.add(new THREE.Vector3(0, 0.1, 0)), ry: R() * 6, s: 0.8 + R() * 0.6 }); }
+  const stM = new THREE.MeshStandardNodeMaterial({ roughness: 0.75 });
+  stM.colorNode = mix(vec3(1), vec3(1.25, 1.2, 1.1), smoothstep(0.18, 0.06, mx_worley_noise_float(positionGeometry.mul(26)))).mul(mix(0.85, 1, mx_noise_float(positionGeometry.mul(9)).mul(0.5).add(0.5)));
+  inst(starGeo, stM, stars, ['#e8632a', '#c8326e', '#e0a33a', '#7a3fa0', '#d94a3a']);
   W.poi.starfish = stars.slice(0, 26).map((o) => ({ p: o.p, r: 4 }));
 
   // ---------------- 熱泉＋管蟲（最深的海溝）
@@ -324,10 +356,19 @@ export function buildWorld(scene, { high, webgpu }) {
       tubes.push({ p: new THREE.Vector3(x, y, z), sv: new THREE.Vector3(1, h, 1), rx: (R() - 0.5) * 0.2, rz: (R() - 0.5) * 0.2 });
       plumes.push({ p: new THREE.Vector3(x, y + h, z), s: 0.9 + R() * 0.4 });
     }
-    const tg = new THREE.CylinderGeometry(0.07, 0.09, 1, 6); tg.translate(0, 0.5, 0);
-    inst(tg, new THREE.MeshStandardNodeMaterial({ color: 0xe8e2d6, roughness: 0.6 }), tubes);
-    const pg = new THREE.ConeGeometry(0.16, 0.36, 7); pg.translate(0, 0.16, 0);
-    const pm = new THREE.MeshStandardNodeMaterial({ color: 0xd8282e, roughness: 0.5 });
+    // 管蟲（巨型管蟲）：白色的幾丁質長管（有一圈圈的環紋），頂端是一叢鮮紅色、羽毛狀的鰓
+    const tg = new THREE.CylinderGeometry(0.07, 0.09, 1, 10, 8); tg.translate(0, 0.5, 0);
+    { const p = tg.attributes.position; for (let i = 0; i < p.count; i++) { const y = p.getY(i), k = 1 + 0.08 * Math.sin(y * 40); p.setX(i, p.getX(i) * k + Math.sin(y * 3) * 0.02); p.setZ(i, p.getZ(i) * k); } tg.computeVertexNormals(); }
+    const tubeM = new THREE.MeshStandardNodeMaterial({ roughness: 0.55 });
+    tubeM.colorNode = mix(vec3(0.92, 0.9, 0.84), vec3(0.62, 0.58, 0.5), smoothstep(0.6, 0.95, sin(positionGeometry.y.mul(40)).mul(0.5).add(0.5)));
+    inst(tg, tubeM, tubes);
+    const pg = (() => {   // 羽毛狀的鰓：很多片細長的葉片從中間往上、往外散開
+      const parts = []; const RR = rng(5);
+      for (let k = 0; k < 26; k++) { const a = k / 26 * Math.PI * 2, tilt = 0.25 + RR() * 0.35, L = 0.32 + RR() * 0.12; const f = new THREE.PlaneGeometry(0.045, L, 1, 3); f.translate(0, L / 2, 0); f.rotateX(tilt); f.rotateY(a); parts.push(f); }
+      return mergeGeos(parts);
+    })();
+    const pm = new THREE.MeshStandardNodeMaterial({ roughness: 0.5, side: THREE.DoubleSide });
+    pm.colorNode = mix(vec3(0.75, 0.05, 0.08), vec3(1, 0.35, 0.3), smoothstep(0.1, 0.4, positionGeometry.y));
     pm.emissiveNode = vec3(0.45, 0.02, 0.02).mul(sin(time.mul(1.5).add(hash(instanceIndex).mul(6))).mul(0.3).add(0.7));
     inst(pg, pm, plumes);
     const glow = new THREE.PointLight(0xff7a2a, 40, 30, 1.6); glow.position.copy(VENT).add(new THREE.Vector3(0, 5, 0)); scene.add(glow);
