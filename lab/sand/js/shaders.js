@@ -508,7 +508,7 @@ fn sky(uv: vec2f) -> vec3f {
         if (tr < 0.04) { break; }
       }
     }
-    rgb += vec3f(1.0, 0.5, 0.17) * g * 0.07 * S.glow;
+    rgb += vec3f(1.0, 0.5, 0.17) * g * 0.11 * S.glow;
   }
   return vec4f(rgb, 1.0);
 }
