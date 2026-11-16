@@ -2,14 +2,20 @@
 // 物理用的資料：每 1.5 公尺一個取樣點（位置、切線、法線、彎曲程度、累積距離）
 import * as THREE from 'three';
 import {
-  Fn, uniform, float, vec2, vec3, mix, smoothstep, step, fract, floor, abs, sin, hash, uv, positionWorld, normalWorld, mx_noise_float, time, select, max, texture,
+  Fn, uniform, float, cameraPosition, exp, vec2, vec3, mix, smoothstep, step, fract, floor, abs, sin, hash, uv, positionWorld, normalWorld, mx_noise_float, time, select, max, texture,
 } from 'three/tsl';
 
 export const ROAD_W = 14;   // 路寬
-const CTRL = [[0, 0], [150, -4], [205, 22], [222, 92], [196, 150], [130, 160], [95, 205], [10, 222], [-70, 205], [-118, 160], [-122, 92], [-82, 60], [-100, 24], [-62, -14]];
+// 兩條賽道：控制點（x, z）、護欄燈條顏色、水窪亂數種子
+export const TRACKS = [
+  { id: 'city', name: '霓虹市區', ctrl: [[0, 0], [150, -4], [205, 22], [222, 92], [196, 150], [130, 160], [95, 205], [10, 222], [-70, 205], [-118, 160], [-122, 92], [-82, 60], [-100, 24], [-62, -14]], glow: [0x35d6ff, 0xff4fa3], seed: 9 },
+  { id: 'harbor', name: '港灣大道', ctrl: [[0, 0], [190, 0], [245, 38], [238, 112], [176, 126], [124, 88], [66, 96], [34, 166], [-58, 178], [-142, 128], [-156, 46], [-96, -8]], glow: [0xffb02e, 0x3fffa6], seed: 23 },
+];
 
 export class Track {
-  constructor() {
+  constructor(def = TRACKS[0], wet = uniform(1)) {
+    this.def = def; this.wet = wet;
+    const CTRL = def.ctrl;
     this.curve = new THREE.CatmullRomCurve3(CTRL.map(([x, z]) => new THREE.Vector3(x, 0, z)), true, 'centripetal');
     const L = this.length = this.curve.getLength();
     const n = this.n = Math.round(L / 1.5);
@@ -20,7 +26,7 @@ export class Track {
       this.S[i] = u * L;
     }
     // 水窪：沿著賽道的一張小圖（長 × 寬 16 格），shader 和物理用同一份
-    const PW = 1024, PH = 16, pd = new Uint8Array(PW * PH), R = rng(9);
+    const PW = 1024, PH = 16, pd = new Uint8Array(PW * PH), R = rng(def.seed);
     const spots = Array.from({ length: 70 }, () => ({ u: R(), v: 0.12 + R() * 0.76, ru: (4 + R() * 9) / L, rv: 0.08 + R() * 0.16 }));
     for (let y = 0; y < PH; y++) for (let x = 0; x < PW; x++) {
       const u = x / PW, v = (y + 0.5) / PH; let k = 0;
@@ -70,7 +76,6 @@ export class Track {
       g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
       g.setIndex(idx); g.computeVertexNormals(); return g;
     };
-    this.wet = uniform(1);
     // 路面：瀝青＋白線；濕的時候變暗、變亮滑，有水窪
     const road = new THREE.MeshStandardNodeMaterial({ metalness: 0 });
     const u = uv(), across = u.x, along = u.y;
@@ -91,12 +96,12 @@ export class Track {
     for (const s of [-1, 1]) { const g = ribbon(s * ROAD_W / 2, s * (ROAD_W / 2 + 0.9), 0.04, 0.04); G.add(new THREE.Mesh(g, curbM)); }
     // 護欄（水泥牆＋上面一條發光的線）
     const wallM = new THREE.MeshStandardNodeMaterial({ color: 0x8a8d94, roughness: 0.8 });
-    const glowM = new THREE.MeshBasicNodeMaterial({ color: 0x35d6ff });
+    const glowM = new THREE.MeshBasicNodeMaterial({ color: this.def.glow[0] });
     const W2 = ROAD_W / 2 + 1.3;
     for (const s of [-1, 1]) {
       const inner = ribbon(s * W2, s * W2, 0, 1.0); const m = new THREE.Mesh(inner, wallM); m.material.side = THREE.DoubleSide; m.castShadow = true; m.receiveShadow = true; G.add(m);
       const top = ribbon(s * W2, s * (W2 + 0.35), 1.0, 1.0); G.add(new THREE.Mesh(top, wallM));
-      const line = ribbon(s * (W2 - 0.02), s * (W2 - 0.02), 0.82, 0.92); G.add(new THREE.Mesh(line, s > 0 ? glowM : new THREE.MeshBasicNodeMaterial({ color: 0xff4fa3 })));
+      const line = ribbon(s * (W2 - 0.02), s * (W2 - 0.02), 0.82, 0.92); G.add(new THREE.Mesh(line, s > 0 ? glowM : new THREE.MeshBasicNodeMaterial({ color: this.def.glow[1] })));
     }
     // 人行道與遠處地面
     const walk = new THREE.MeshStandardNodeMaterial({ color: 0x3a3c44, roughness: 0.4 });
@@ -105,7 +110,7 @@ export class Track {
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400), groundM); ground.rotation.x = -Math.PI / 2; ground.position.set(50, -0.05, 100); ground.receiveShadow = true; G.add(ground);
 
     // ---------------- 大樓：沿著賽道兩邊排；不能擋到路
-    const R = rng(77), builds = [];
+    const R = rng(77 + this.def.seed), builds = [];
     const okSpot = (x, z, r) => { for (let i = 0; i < n; i += 4) { const p = this.P[i]; if ((p.x - x) ** 2 + (p.z - z) ** 2 < (r + ROAD_W / 2 + 9) ** 2) return false; } for (const b of builds) if ((b.x - x) ** 2 + (b.z - z) ** 2 < (r + b.r) ** 2) return false; return true; };
     for (let i = 0; i < n; i += 9) {
       for (const s of [-1, 1]) {
@@ -130,9 +135,16 @@ export class Track {
     const inWin = step(0.22, fract(cell.x)).mul(step(fract(cell.x), 0.78)).mul(step(0.25, fract(cell.y))).mul(step(fract(cell.y), 0.75)).mul(step(abs(nw.y), 0.5)).mul(step(2.5, wpp.y));
     const hid = hash(floor(cell.x).add(floor(cell.y).mul(57.3)).add(floor(wpp.x.div(40)).mul(13.1)).add(floor(wpp.z.div(40)).mul(7.7)));
     const lit = step(0.55, hid);
-    const winCol = mix(vec3(1, 0.78, 0.45), vec3(0.75, 0.88, 1), step(0.8, hid));
-    bm.colorNode = mix(vec3(0.16, 0.17, 0.21), vec3(0.05, 0.06, 0.08), inWin);
-    bm.emissiveNode = winCol.mul(inWin.mul(lit).mul(0.75));
+    // 每扇窗亮度不一樣，有的拉了窗簾（暗一點）；樓層之間有一條橫的水泥帶、窗與窗之間有窗框
+    const bright = hash(hid.mul(91.7)).mul(0.75).add(0.25);
+    const winCol = mix(vec3(1, 0.74, 0.42), vec3(0.72, 0.86, 1), step(0.8, hid)).mul(bright);
+    const band = step(fract(cell.y), 0.12).mul(step(abs(nw.y), 0.5));
+    const facade = mix(vec3(0.11, 0.115, 0.135), vec3(0.17, 0.165, 0.16), hash(floor(wpp.x.div(40)).add(floor(wpp.z.div(40)).mul(3.3))));
+    bm.colorNode = mix(mix(facade, facade.mul(1.5), band), vec3(0.03, 0.035, 0.05), inWin);
+    bm.roughnessNode = mix(float(0.85), float(0.12), inWin);   // 玻璃窗會反光
+    // 泛光只吃「自發光」那一層、不會被霧蓋掉 → 遠方的窗戶要自己按距離變暗，不然天空會出現一團團灰霧
+    const fogK = exp(positionWorld.distance(cameraPosition).mul(-0.011));
+    bm.emissiveNode = winCol.mul(inWin.mul(lit).mul(0.75)).mul(fogK);
     const box = new THREE.BoxGeometry(1, 1, 1); box.translate(0, 0.5, 0);
     const im = new THREE.InstancedMesh(box, bm, builds.length);
     const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), Sc = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);

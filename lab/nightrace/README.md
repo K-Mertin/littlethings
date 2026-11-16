@@ -1,16 +1,17 @@
 # 夜雨賽車（`lab/nightrace/`）
 
-下雨的城市夜賽 MW NIGHT GP：濕路映著霓虹和路燈、車燈照亮雨幕、車輪甩起水花，路上的水窪會讓車子打滑。
-和 5 台電腦車比賽，或自己跑計時賽。比賽結束可以「開回大街」（連到 `/lab/street/`）。
+下雨的城市夜賽 MW NIGHT GP：濕路映著霓虹和路燈、車燈照亮雨幕、車輪甩起水花，路上的水窪會讓車子打滑，大雨時會打雷閃電。
+兩條賽道（霓虹市區、港灣大道）。和 5 台電腦車比賽，或自己跑計時賽（有幽靈車陪跑）。比賽結束可以「開回大街」（連到 `/lab/street/`）。
 three.js **0.187.0** WebGPURenderer（沒有 WebGPU 自動退回 WebGL2）。
 
 ## 檔案
 | 檔案 | 內容 |
 |---|---|
-| `index.html` | 版面：頂列（名次、圈數、時間）、速度表、小地圖、倒數、觸控按鈕、選單、結果 |
-| `js/main.js` | 渲染器與後製（MRT → 高畫質＋WebGPU 時 SSR 濕路反射、只對自發光泛光）、比賽流程、操作、鏡頭（追車／車頭）、路燈點光源輪替、小地圖、測試掛勾 |
-| `js/track.js` | 賽道：封閉 Catmull-Rom 曲線（約 1 km），每 1.5 m 取樣（位置、切線、法線、彎曲度、距離）；路面（白線、濕度、水窪圖）、路緣、護欄、人行道、大樓（InstancedMesh，窗戶用 shader 畫）、霓虹招牌、路燈、起跑門架 |
-| `js/car.js` | 車子外形（程式拼的小跑車、車燈、煞車燈）、街機物理、電腦車手、車子互撞 |
+| `index.html` | 版面：頂列（名次、圈數、時間、換視角）、速度表、小地圖、倒數、觸控按鈕、選單、結果 |
+| `js/main.js` | 渲染器與後製（MRT → 高畫質＋WebGPU 時 SSR 濕路反射、只對自發光泛光）、環境貼圖（程式畫的夜景，給車漆和濕路反射）、比賽流程、換賽道、操作、鏡頭（追車／車頭／車內）、閃電與雷聲、幽靈車、路燈點光源輪替、小地圖、測試掛勾 |
+| `js/track.js` | 賽道：`TRACKS`（控制點、護欄燈條顏色、水窪種子）；封閉 Catmull-Rom 曲線（約 1 km），每 1.5 m 取樣（位置、切線、法線、彎曲度、距離）；路面（白線、濕度、水窪圖）、路緣、護欄、人行道、大樓（InstancedMesh，窗戶用 shader 畫）、霓虹招牌、路燈、起跑門架 |
+| `js/car.js` | 車子外形（側面輪廓用曲線畫、擠出＋合併頂點算圓滑法線；清漆車漆、玻璃、尾燈條、車燈光束、車底接觸陰影；玩家的車有車內儀表板和會轉的方向盤）、幽靈車外觀、街機物理、電腦車手、車子互撞 |
+| `js/skid.js` | 胎痕：打滑、手煞車、急煞時後輪留下痕跡（環狀緩衝區 3000 段；濕路是比較亮的「擠開水」痕跡） |
 | `js/fx.js` | GPU compute：雨滴＋地面漣漪、車輪水花（每台車兩個噴口，強度看速度、濕度、打滑、水窪） |
 | `js/audio.js` | WebAudio 合成：引擎（假的換檔轉速）、雨聲、打滑、撞牆、倒數、完賽 |
 
@@ -22,12 +23,17 @@ three.js **0.187.0** WebGPURenderer（沒有 WebGPU 自動退回 WebGL2）。
 - 電腦：往前 0～90 m 每一段算「過彎速度＋來得及煞車」取最小值當目標速度，方向盤對準前方的點；落後太多會快一點、領先太多慢一點。
 
 ## 存檔
-`localStorage['mwLabNight.v1']` = `{ best: 最快一圈秒數, opts: { mode, laps, diff, rain, color }, soundOff }`
+`localStorage['mwLabNight.v1']` = `{ best: 霓虹市區最快一圈秒數, bests: { harbor: … }, opts: { mode, laps, diff, rain, color, track }, soundOff }`（`best` 沿用舊格式，新賽道放 `bests`）
+幽靈車：`localStorage['mwLabNight.ghost.<賽道 id>']` = `{ t: 那圈秒數, p: [[x, z, 方向]…] }`（每 0.1 秒一筆）。比幽靈車快就換掉。
+
+## 畫面小撇步
+- 泛光只吃 MRT 的自發光層，**不會被霧蓋掉** → 大樓窗戶的自發光要自己乘上 `exp(-距離 × 0.011)`，不然遠方天空會有一團團灰霧。
+- 車燈光束用 `|normalView · 視線|` 讓邊緣淡掉，才不會出現硬邊三角形。
 
 ## 操作
-↑／W 油門、↓／S 煞車倒車、←→／AD 轉彎、空白鍵 手煞車、R 回賽道、C 換視角、Esc 暫停。觸控：左邊 ◀▶、右邊油門／煞車、↯ 手煞車。
+↑／W 油門、↓／S 煞車倒車、←→／AD 轉彎、空白鍵 手煞車、R 回賽道、C 換視角（追車／車頭／車內）、Esc 暫停。觸控：左邊 ◀▶、右邊油門／煞車、↯ 手煞車。
 
 ## 測試
 - `?q=low|high`、`?gl=1`、`?offscreen=1&paused=1`。
-- `window.__night`：`start({laps, rain, mode, diff})`、`go()`（跳過倒數）、`autopilot()`（玩家的車也交給電腦開）、`finish()`、`sim(秒)`、`snap(秒)`、`cars`、`player`、`fx`、`track`。
+- `window.__night`：`start({laps, rain, mode, diff, track})`、`setCam(0–2)`、`bolt()`（馬上閃電）、`ghost`、`skids`、`go()`（跳過倒數）、`autopilot()`（玩家的車也交給電腦開）、`finish()`、`sim(秒)`、`snap(秒)`、`cars`、`player`、`fx`、`track`。
 - 注意：`fx.js` 的粒子用自己的 `dt` uniform（不用渲染器的 deltaTime），這樣 `sim()` 快轉時粒子也正確。

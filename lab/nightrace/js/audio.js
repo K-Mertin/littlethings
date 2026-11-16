@@ -48,6 +48,14 @@ export class Sound {
     e.gain.setValueAtTime(0.25 * k, t); e.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
     s.connect(fl).connect(e).connect(this.master); s.start(t); s.stop(t + 0.32);
   }
+  // 打雷：低沉的隆隆聲（濾過的噪音，慢慢變小）
+  thunder(k = 1) {
+    if (!this.ctx) return;
+    const c = this.ctx, t = c.currentTime, s = c.createBufferSource(); s.buffer = this.noise; s.loop = true;
+    const fl = c.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.setValueAtTime(380, t); fl.frequency.exponentialRampToValueAtTime(90, t + 3);
+    const e = c.createGain(); e.gain.setValueAtTime(0.0001, t); e.gain.exponentialRampToValueAtTime(0.5 * k, t + 0.08); e.gain.exponentialRampToValueAtTime(0.0001, t + 3.5);
+    s.connect(fl).connect(e).connect(this.master); s.start(t); s.stop(t + 3.6);
+  }
   fanfare() {
     if (!this.ctx) return;
     const c = this.ctx, t = c.currentTime;
