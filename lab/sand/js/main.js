@@ -161,7 +161,9 @@ function startLevel(i) {
   sim.resize(w, h); layout();
   sim.load(buildLevel(level, w, h));
   const win = level.win(level);
-  L = { i, win, ink: 0, inkMax: level.ink * 1, held: 0, start: null, best: 1, done: false, inkWarned: false, prog: 0 };
+  L = { i, win, ink: 0, inkMax: level.ink * 1, held: 0, start: null, best: 1, done: false, inkWarned: false, prog: 0, inkBase: null };
+  // 關卡一開始就有的石牆、木頭不算玩家的用量：先數一次當基準
+  if (L.inkMax) { const L0 = L; const tryBase = () => { const q = sim.count([{ x0: 0, y0: 0, x1: sim.w, y1: sim.h, mats: [M.WALL, M.WOOD] }]); if (!q) { setTimeout(tryBase, 30); return; } q.then((n) => { if (L === L0 && n) L0.inkBase = n[0]; else if (L === L0) setTimeout(tryBase, 30); }); }; tryBase(); }
   simTime = 0; frames = 0; lastCount = 0;
   $('goal').textContent = `第 ${i + 1} 關 ${level.icon} ${level.name}：${level.goal}`;
   $('hud').classList.remove('hidden');
@@ -210,11 +212,17 @@ function checkLevel() {
   const w = L.win;
   const regs = [{ ...w.region, mats: w.mats }];
   if (w.region2) regs.push({ ...w.region2, mats: w.mats });
+  // 有石牆額度的關卡：順便數整張圖有幾格石牆＋木頭，用「實際還在畫面上的」算用量 → 擦掉、燒掉都會還回來
+  const inkIdx = L.inkMax ? regs.push({ x0: 0, y0: 0, x1: sim.w, y1: sim.h, mats: [M.WALL, M.WOOD] }) - 1 : -1;
   const p = sim.count(regs);
   if (!p) return;
   const t0 = simTime;
   p.then((n) => {
     if (!n || mode !== 'level' || L.done) return;
+    if (inkIdx >= 0 && L.inkBase != null && !ptr.down) {
+      L.ink = Math.max(0, n[inkIdx] - L.inkBase) / (sim.w * 9);   // 一個單位的筆畫大約是 9 × 寬 格
+      if (L.ink < L.inkMax * 0.98) L.inkWarned = false;
+    }
     if (w.kind === 'fill') {
       const area = (r) => Math.max(1, (r.x1 - r.x0) * (r.y1 - r.y0));
       const k = Math.min(...n.map((v, i) => v / area(regs[i]) / w.need));
