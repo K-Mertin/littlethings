@@ -111,10 +111,17 @@ export class Stars {
     mat.vertexNode = billboarding();
     const t = v.w.mod(4);
     // 顏色鮮豔一點：核球金黃、旋臂藍、少數粉紅；星雲（種類 3）偏紫藍
-    const c1 = mix(vec3(1, 0.32, 0.06), vec3(1, 0.7, 0.3), clamp(t.mul(2), 0, 1));
-    const c2 = mix(vec3(0.7, 0.8, 1), vec3(0.18, 0.4, 1), clamp(t.sub(0.5).mul(2.5), 0, 1));
+    // 星星的顏色用「黑體輻射」：溫度 2800 K（紅）→ 6000 K（黃白，像太陽）→ 30000 K（藍白）。
+    // 參考公開的星系渲染做法（density-wave galaxy renderer），溫度越高也越亮。
+    const K = mix(float(2800), float(30000), clamp(t, 0, 1).pow(2.2)), k100 = K.div(100);
+    const bbR = select(k100.lessThan(66), float(1), k100.sub(60).max(1).pow(-0.1332).mul(1.293));
+    const bbG = select(k100.lessThan(66), k100.max(1).log().mul(0.39).sub(0.634), k100.sub(60).max(1).pow(-0.0755).mul(1.13));
+    const bbB = select(k100.greaterThan(65.9), float(1), select(k100.lessThan(19), float(0), k100.sub(10).max(1).log().mul(0.543).sub(1.186)));
+    const bb = vec3(bbR, bbG, bbB).clamp(0, 1);
+    const c1 = bb, c2 = bb;
     const isNeb = v.w.greaterThan(11.5);
-    const col0 = select(t.greaterThan(1.5), vec3(1, 0.2, 0.55), select(t.lessThan(0.5), c1, c2));
+    const col0 = select(t.greaterThan(1.5), vec3(1, 0.2, 0.55), c1);
+    const lumK = K.div(6000).pow(0.6).clamp(0.45, 2.2);   // 熱的星比較亮
     const col = select(isNeb, mix(col0, vec3(0.75, 0.45, 1), hash(instanceIndex.add(3)).mul(0.6)), col0);
     const fall = smoothstep(0.5, 0.0, uv().sub(0.5).length());
     // 星星越多每顆越暗，不然中間疊成一團白
@@ -124,7 +131,7 @@ export class Stars {
     const rr = p.w.sub(1).clamp(0, 1);
     const inner = smoothstep(0.45, 0.0, rr);
     const colR = mix(col, vec3(1, 0.62, 0.3), inner.mul(0.9));
-    mat.colorNode = colR.mul(mix(0.9, 3.6, bright)).mul(bulgeK).mul(mix(1, 0.12, inner)).mul(fall.pow(1.8)).mul(kN);
+    mat.colorNode = colR.mul(lumK).mul(mix(0.9, 3.6, bright)).mul(bulgeK).mul(mix(1, 0.12, inner)).mul(fall.pow(1.8)).mul(kN);
     mat.opacityNode = fall;
     const mesh = this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
     mesh.count = N; mesh.frustumCulled = false;
