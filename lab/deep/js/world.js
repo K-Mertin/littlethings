@@ -177,12 +177,48 @@ export function buildWorld(scene, { high, webgpu }) {
     const m = new THREE.Mesh(geo, mat); m.count = data.length; m.frustumCulled = false; m.receiveShadow = true;
     scene.add(m); return m;
   };
-  const kelpGeo = new THREE.PlaneGeometry(0.7, 1, 1, 14); kelpGeo.translate(0, 0.5, 0);
-  const kelpMat = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide, roughness: 0.7 });
-  kelpMat.colorNode = mix(vec3(0.28, 0.24, 0.07), vec3(0.45, 0.55, 0.12), uv().y);
+  // 巨藻：一根細細的莖一路往上，莖上左右交錯長出一片片長葉；每片葉子根部有一顆金色的小氣囊（讓它浮起來）；
+  // 葉子邊緣是波浪狀、中間有一條葉脈、有點透光。y 是 0～1（之後乘上高度），x、z 是公尺。
+  const kelpGeo = (() => {
+    const parts = [], H = 11, R2 = rng(31);
+    const stipe = new THREE.CylinderGeometry(0.01, 0.02, 1, 5, 12); stipe.translate(0, 0.5, 0); parts.push(stipe);
+    const hold = new THREE.SphereGeometry(0.22, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2); hold.scale(1, 0.25 / H, 1); parts.push(hold);
+    for (let i = 0; i < 18; i++) {
+      const y0 = 0.06 + i / 18 * 0.9, a = i * 2.4 + R2() * 0.5, len = 1.3 + R2() * 0.9, w = 0.13 + R2() * 0.06;
+      const ca = Math.cos(a), sa = Math.sin(a);
+      // 氣囊
+      const b = new THREE.SphereGeometry(0.045, 7, 5); b.scale(1, 1.4 / H, 1); b.translate(ca * 0.06, y0, sa * 0.06); parts.push(b);
+      // 葉片：沿著 (ca, sa) 方向伸出去、稍微往上，邊緣波浪
+      const seg = 10, pos = [], idx = [];
+      for (let k = 0; k <= seg; k++) {
+        const t = k / seg, along = 0.08 + t * len, wid = w * Math.sin(Math.min(1, t * 1.15) * Math.PI) * (t < 0.1 ? 0.5 : 1) + 0.008;
+        // 葉片往上斜著漂（巨藻的葉子會被浮力和水流往上帶），邊緣在「葉面的法線方向」起伏
+        const out = along * 0.35, up = (along * 0.9) / H;
+        for (const sd of [-1, 1]) {
+          const ox = -sa * wid * sd, oz = ca * wid * sd;
+          const ruffle = Math.sin(t * 26 + i + sd) * 0.03 * Math.abs(sd);
+          pos.push(ca * out + ox + ca * ruffle, y0 + up, sa * out + oz + sa * ruffle);
+        }
+        if (k < seg) { const o = k * 2; idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2); }
+      }
+      const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); bg.setIndex(idx); bg.computeVertexNormals();
+      parts.push(bg.toNonIndexed());
+    }
+    return mergeGeos(parts);
+  })();
+  const kelpMat = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide, roughness: 0.55 });
+  {
+    const r = positionGeometry.xz.length();
+    const isBlade = smoothstep(0.05, 0.09, r);
+    const streak = mx_noise_float(positionGeometry.mul(vec3(14, 40, 14))).mul(0.5).add(0.5);
+    const blade = mix(vec3(0.3, 0.22, 0.06), vec3(0.48, 0.38, 0.11), streak).mul(mix(1, 0.85, smoothstep(0.6, 1, streak)));
+    const stem = vec3(0.24, 0.17, 0.06), bladder = vec3(0.62, 0.48, 0.16);
+    kelpMat.colorNode = mix(mix(stem, bladder, smoothstep(0.035, 0.05, r)), blade, isBlade);
+    kelpMat.emissiveNode = vec3(0.3, 0.26, 0.06).mul(isBlade).mul(0.18);   // 陽光從背面透過葉子
+  }
   const kelps = [];
   for (let i = 0; i < 260 * cnt; i++) { const p = near(KELP.x, KELP.z, 20); kelps.push({ x: p.x, y: p.y, z: p.z, h: 7 + R() * 9, yaw: R() * 6.28 }); }
-  sway({ geo: kelpGeo, mat: kelpMat, data: kelps, amp: 2.2, speed: 0.9, narrow: 0.45 });
+  sway({ geo: kelpGeo, mat: kelpMat, data: kelps, amp: 2.2, speed: 0.9, narrow: 0.2 });
 
   // ---------------- 海葵（小丑魚的家）
   const ANEM = new THREE.Vector3(6, 0, -128); ANEM.y = floorY(ANEM.x, ANEM.z);
