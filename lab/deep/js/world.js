@@ -187,19 +187,34 @@ export function buildWorld(scene, { high, webgpu }) {
   // ---------------- 海葵（小丑魚的家）
   const ANEM = new THREE.Vector3(6, 0, -128); ANEM.y = floorY(ANEM.x, ANEM.z);
   W.poi.anemone = { p: ANEM.clone().add(new THREE.Vector3(0, 1, 0)), r: 7 };
+  // 照真的「奶嘴海葵」做：暗紅色、有一顆顆小疣的柱狀身體；上面是一大片觸手，
+  // 每根觸手是褐綠色、靠近尖端鼓成一個泡泡、泡泡下面一圈白、最尖端是粉紅色
   {
-    const tg = new THREE.CylinderGeometry(0.035, 0.06, 1, 5, 6); tg.translate(0, 0.5, 0);
-    const am = new THREE.MeshStandardNodeMaterial({ roughness: 0.6 });
-    am.colorNode = mix(vec3(0.85, 0.5, 0.65), vec3(1, 0.85, 0.95), uv().y);
-    am.emissiveNode = vec3(0.6, 0.2, 0.5).mul(uv().y.pow(4)).mul(0.25);
+    const prof = [new THREE.Vector2(0.001, 0), new THREE.Vector2(0.05, 0.02), new THREE.Vector2(0.045, 0.25), new THREE.Vector2(0.035, 0.55),
+      new THREE.Vector2(0.034, 0.68), new THREE.Vector2(0.06, 0.78), new THREE.Vector2(0.066, 0.86), new THREE.Vector2(0.05, 0.94), new THREE.Vector2(0.022, 0.99), new THREE.Vector2(0.001, 1)];
+    const tg = new THREE.LatheGeometry(prof, 8);
+    const am = new THREE.MeshStandardNodeMaterial({ roughness: 0.45 });
+    const ty = positionGeometry.y;
+    const stalk = mix(vec3(0.36, 0.33, 0.16), vec3(0.55, 0.5, 0.28), ty);                // 褐綠色
+    const ringW = smoothstep(0.66, 0.71, ty).mul(smoothstep(0.78, 0.73, ty));            // 泡泡下面的白圈
+    const bulb = smoothstep(0.72, 0.8, ty);
+    am.colorNode = mix(mix(stalk, vec3(0.62, 0.55, 0.32), bulb), vec3(0.95, 0.92, 0.85), ringW).add(vec3(0.55, 0.12, 0.25).mul(smoothstep(0.9, 1, ty)));
+    am.emissiveNode = vec3(0.25, 0.35, 0.12).mul(bulb).mul(0.12);                     // 共生藻有一點螢光綠
     const list = [];
-    for (let i = 0; i < 160; i++) {
-      const a = R() * Math.PI * 2, d = Math.sqrt(R()) * 1.1;
-      list.push({ x: ANEM.x + Math.cos(a) * d, y: ANEM.y + 0.3, z: ANEM.z + Math.sin(a) * d, h: 0.8 + R() * 0.7, yaw: 0, lx: Math.cos(a) * d * 0.45, lz: Math.sin(a) * d * 0.45 });
+    for (let i = 0; i < 420; i++) {
+      const a = R() * Math.PI * 2, d = Math.pow(R(), 0.6) * 1.15;
+      list.push({ x: ANEM.x + Math.cos(a) * d, y: ANEM.y + 0.42 + (1.15 - d) * 0.1, z: ANEM.z + Math.sin(a) * d, h: 0.45 + R() * 0.35, yaw: 0, lx: Math.cos(a) * d * 0.5, lz: Math.sin(a) * d * 0.5 });
     }
-    sway({ geo: tg, mat: am, data: list, amp: 0.25, speed: 1.6 });
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.3, 0.5, 20), new THREE.MeshStandardNodeMaterial({ color: 0x8e4a6a, roughness: 0.7 }));
-    base.position.copy(ANEM).add(new THREE.Vector3(0, 0.15, 0)); scene.add(base);
+    sway({ geo: tg, mat: am, data: list, amp: 0.18, speed: 1.4 });
+    // 身體：旋轉體、上面寬一點（口盤），表面有小疣
+    const colP = [];
+    for (let i = 0; i <= 12; i++) { const t = i / 12; colP.push(new THREE.Vector2(1.0 + 0.18 * Math.sin(t * Math.PI) + (t > 0.85 ? (t - 0.85) * 1.4 : 0), t * 0.5)); }
+    colP.unshift(new THREE.Vector2(0.001, 0)); colP.push(new THREE.Vector2(0.001, 0.5));
+    const cm = new THREE.MeshStandardNodeMaterial({ roughness: 0.5 });
+    const warts = smoothstep(0.22, 0.08, mx_worley_noise_float(positionWorld.mul(9)));
+    cm.colorNode = mix(vec3(0.42, 0.06, 0.1), vec3(0.75, 0.25, 0.3), warts);
+    const base = new THREE.Mesh(new THREE.LatheGeometry(colP, 32), cm);
+    base.position.copy(ANEM).add(new THREE.Vector3(0, -0.05, 0)); scene.add(base);
   }
 
   // ---------------- 海草地毯：沙地上一叢一叢會擺動的短草
