@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { staghornGeo, brainGeo, tableGeo, fingerGeo, seaFanGeo, coralMaterial, CORAL_COLORS } from './coral.js';
 import {
   Fn, uniform, float, vec2, vec3, vec4, mix, smoothstep, pow, sin, cos, abs, exp, max, min, clamp, time, hash, uv, atan,
-  positionWorld, positionLocal, positionGeometry, normalWorld, instanceIndex, instancedArray, billboarding, mx_worley_noise_float, mx_noise_float, fract, length,
+  positionWorld, positionLocal, positionGeometry, normalWorld, instanceIndex, instancedArray, billboarding, mx_worley_noise_float, mx_noise_float, fract, length, cameraPosition,
 } from 'three/tsl';
 
 // ---------------------------------------------------------------- 地形高度（CPU；碰撞、擺東西都用這個）
@@ -302,14 +302,28 @@ export function buildWorld(scene, { high, webgpu }) {
   const surfM = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide, transparent: true, depthWrite: false });
   const sp = positionWorld;
   const ripple = causticNode(sp.mul(0.8));
-  surfM.colorNode = mix(vec3(0.25, 0.65, 0.75), vec3(0.85, 1, 1), ripple.mul(0.8));
+  // 斯涅耳窗：從水裡往上看，只有頭頂一個圓（約 97° 寬）看得到天空，又亮又會晃；
+  // 圓外面是「全反射」，看起來是暗暗的、反射水下的藍綠色。圓的邊緣有一圈亮亮的彩色光。
+  const vdir = sp.sub(cameraPosition).normalize();
+  const cosA = vdir.y;                                                   // 往上看 = 1
+  const wobble = ripple.sub(0.5).mul(0.06);
+  const inWin = smoothstep(0.62, 0.7, cosA.add(wobble));
+  const rim = smoothstep(0.06, 0.0, cosA.add(wobble).sub(0.66).abs());
+  const skyC = mix(vec3(0.55, 0.85, 0.95), vec3(1, 1, 1), ripple.mul(0.9)).mul(1.35);
+  const tirC = mix(vec3(0.03, 0.2, 0.26), vec3(0.12, 0.42, 0.5), ripple.mul(0.7));
+  surfM.colorNode = mix(tirC, skyC, inWin).add(vec3(0.9, 0.95, 1).mul(rim).mul(0.5));
   W.surfFade = uniform(1);
-  surfM.opacityNode = W.surfFade.mul(0.85);
+  surfM.opacityNode = W.surfFade.mul(0.92);
   const surf = new THREE.Mesh(new THREE.PlaneGeometry(SIZE * 1.5, SIZE * 1.5), surfM);
   surf.rotation.x = Math.PI / 2; surf.position.y = 0; scene.add(surf);
 
   // ---------------- 背景：一顆包住鏡頭的大球，經過同樣的霧，遠方和霧色完全一樣
-  const dome = new THREE.Mesh(new THREE.SphereGeometry(360, 24, 12), new THREE.MeshBasicNodeMaterial({ color: 0x000000, side: THREE.BackSide, depthWrite: false }));
+  // 往上越亮（光從海面來）、往下越暗；水平方向剛好等於霧的顏色，和遠方接得起來
+  const domeM = new THREE.MeshBasicNodeMaterial({ side: THREE.BackSide, depthWrite: false, fog: false });
+  W.fogU = uniform(new THREE.Color(0x0b5a74));
+  const dy = positionWorld.sub(cameraPosition).normalize().y;
+  domeM.colorNode = W.fogU.mul(mix(mix(float(0.35), float(1), smoothstep(-0.7, 0, dy)), float(1.9), smoothstep(0, 0.9, dy)));
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(360, 32, 16), domeM);
   dome.renderOrder = -10; dome.frustumCulled = false; scene.add(dome);
   W.dome = dome;
 
