@@ -86,6 +86,116 @@ export function staghornGeo(seed = 7) {
   FINE = 0; return roughen(merge(parts), 0.012, 7);
 }
 
+// 鹿角珊瑚叢林：真的鹿角珊瑚會長成一大片（好幾公尺寬、密密麻麻的枝），而不是一棵一棵分開的小樹
+// 底下很多根短主幹，各自分岔兩三層；邊緣矮、中間高，整片像一塊起伏的灌木叢
+export function thicketGeo(seed = 41, R = 2.2) {
+  const r = rngOf(seed), parts = [], MAXD = 2;
+  const grow = (p, dir, len, rad, d) => {
+    parts.push(limb(p, dir, len, rad, rad * 0.8, d / (MAXD + 1), (d + 1) / (MAXD + 1), 6));
+    const end = p.clone().addScaledVector(dir, len);
+    if (d >= MAXD) { parts.push(cap(end, rad * 0.8, 1)); return; }
+    const kids = 2 + (r() < 0.45 ? 1 : 0);
+    for (let k = 0; k < kids; k++) {
+      const nd = dir.clone().add(new THREE.Vector3(r() - 0.5, 0, r() - 0.5).multiplyScalar(1.4)).add(new THREE.Vector3(0, 0.35, 0)).normalize();
+      grow(end, nd, len * (0.72 + r() * 0.2), rad * 0.78, d + 1);
+    }
+  };
+  const N = Math.round(R * R * 5);
+  for (let i = 0; i < N; i++) {
+    const a = r() * Math.PI * 2, d = Math.sqrt(r()) * R;
+    const edge = 1 - (d / R) ** 2;                                  // 中間高、邊緣矮
+    const p = new THREE.Vector3(Math.cos(a) * d, -0.15, Math.sin(a) * d);
+    const out = new THREE.Vector3(Math.cos(a), 0, Math.sin(a)).multiplyScalar(0.25 + (1 - edge) * 0.6);
+    grow(p, out.add(new THREE.Vector3((r() - 0.5) * 0.5, 1, (r() - 0.5) * 0.5)).normalize(), 0.35 + edge * 0.5 + r() * 0.15, 0.065 + r() * 0.02, 0);
+  }
+  return roughen(merge(parts), 0.008, 9);
+}
+
+// 層疊的葉狀／板狀珊瑚：一片一片薄薄的扇形盤子，高高低低疊在一起（像書架、像花瓣），邊緣淡色有波浪
+export function plateTierGeo(seed = 53) {
+  const r = rngOf(seed), parts = [];
+  for (let i = 0; i < 9; i++) {
+    const rad = 0.35 + r() * 0.45, th0 = r() * Math.PI * 2, thL = 1.8 + r() * 2.2;
+    const g = new THREE.CylinderGeometry(rad, rad * 0.95, 0.035, 22, 1, false, th0, thL);
+    const pa = g.attributes.position, tip = new Float32Array(pa.count), ph = r() * 6;
+    for (let k = 0; k < pa.count; k++) {
+      const x = pa.getX(k), z = pa.getZ(k), d = Math.hypot(x, z) / rad;
+      pa.setY(k, pa.getY(k) + d * d * 0.16 + Math.sin(Math.atan2(z, x) * 6 + ph) * 0.03 * d);   // 往外翹、邊緣波浪
+      tip[k] = 0.3 + d * 0.7;
+    }
+    g.setAttribute('tip', new THREE.BufferAttribute(tip, 1));
+    const ox = (r() - 0.5) * 0.5, oz = (r() - 0.5) * 0.5;
+    g.translate(ox, 0.08 + i * 0.09 + r() * 0.05, oz); g.computeVertexNormals();
+    parts.push(g);
+  }
+  parts.push(limb(new THREE.Vector3(0, -0.1, 0), UP, 0.6, 0.12, 0.08, 0, 0.3, 7));
+  return roughen(merge(parts), 0.006, 10);
+}
+
+// 地毯：殼狀珊瑚和軟珊瑚、群體海葵鋪成的一大片，矮矮的、一團一團鼓起來，邊緣不規則
+export function carpetGeo(seed = 61) {
+  const r = rngOf(seed), off = r() * 50, n = 30;
+  const g = new THREE.PlaneGeometry(2, 2, n, n); g.rotateX(-Math.PI / 2);
+  const pa = g.attributes.position, tip = new Float32Array(pa.count);
+  for (let k = 0; k < pa.count; k++) {
+    const x = pa.getX(k), z = pa.getZ(k), ang = Math.atan2(z, x);
+    const edge = 0.72 + 0.22 * n3(Math.cos(ang) * 1.5 + off, Math.sin(ang) * 1.5, off);   // 不規則的邊
+    const d = Math.hypot(x, z) / edge;
+    const lump = 0.5 + 0.5 * n3(x * 5 + off, z * 5, 3) + 0.3 * n3(x * 13, z * 13 + off, 7);
+    let y = Math.max(0, 1 - d ** 4) * (0.04 + lump * 0.15);
+    if (d > 1) { const k2 = 1 / d; pa.setX(k, x * k2); pa.setZ(k, z * k2); y = -0.03; }   // 外面的點收到邊上、壓進沙裡
+    pa.setY(k, y - 0.02);
+    tip[k] = Math.min(1, lump * 0.8);
+  }
+  g.setAttribute('tip', new THREE.BufferAttribute(tip, 1)); g.computeVertexNormals();
+  return g;
+}
+
+// 皮革珊瑚（軟珊瑚）：一根粗短的柄，上面一個大大的、邊緣捲起來皺皺的帽子
+export function leatherGeo(seed = 71) {
+  const r = rngOf(seed), parts = [];
+  parts.push(limb(new THREE.Vector3(0, -0.1, 0), UP, 0.45, 0.16, 0.13, 0, 0.4, 10));
+  const cap2 = new THREE.CylinderGeometry(0.5, 0.18, 0.12, 44, 3); cap2.translate(0, 0.42, 0);
+  const pa = cap2.attributes.position, tip = new Float32Array(pa.count), ph = r() * 6;
+  for (let k = 0; k < pa.count; k++) {
+    const x = pa.getX(k), z = pa.getZ(k), d = Math.hypot(x, z) / 0.5, a = Math.atan2(z, x);
+    pa.setY(k, pa.getY(k) + d * d * (0.1 + Math.sin(a * 7 + ph) * 0.09 + Math.sin(a * 3 + ph * 2) * 0.05));   // 皺褶
+    tip[k] = 0.5 + d * 0.5;
+  }
+  cap2.setAttribute('tip', new THREE.BufferAttribute(tip, 1)); cap2.computeVertexNormals();
+  parts.push(cap2);
+  return merge(parts);
+}
+
+// 把一堆擺好位置的珊瑚合成一個大網格，每個頂點的高度跟著地形走（大片的珊瑚叢和地毯才會貼著起伏的海底）
+export function bake(items, floorY) {
+  const out = [], col = new THREE.Color(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), nn = new THREE.Vector3();
+  let n = 0;
+  for (const it of items) {
+    const g = it.geo.index ? it.geo.toNonIndexed() : it.geo;
+    n += g.attributes.position.count; out.push([g, it]);
+  }
+  const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), tip = new Float32Array(n), clr = new Float32Array(n * 3);
+  let o = 0;
+  for (const [g, it] of out) {
+    q.setFromEuler(e.set(0, it.ry, 0)); col.set(it.color);
+    const p = g.attributes.position, nr = g.attributes.normal, tp = g.attributes.tip;
+    for (let i = 0; i < p.count; i++, o++) {
+      v.fromBufferAttribute(p, i).multiplyScalar(it.s); if (it.sy) v.y *= it.sy; v.applyQuaternion(q);
+      const x = v.x + it.x, z = v.z + it.z;
+      pos[o * 3] = x; pos[o * 3 + 1] = v.y + floorY(x, z); pos[o * 3 + 2] = z;
+      nn.fromBufferAttribute(nr, i).applyQuaternion(q); nor[o * 3] = nn.x; nor[o * 3 + 1] = nn.y; nor[o * 3 + 2] = nn.z;
+      tip[o] = tp ? tp.getX(i) : 0.5;
+      const k = it.vary ? 0.85 + 0.3 * h3(Math.floor(x * 1.3), 0, Math.floor(z * 1.3)) : 1;   // 同一片裡顏色也有一塊一塊的深淺
+      clr[o * 3] = col.r * k; clr[o * 3 + 1] = col.g * k; clr[o * 3 + 2] = col.b * k;
+    }
+  }
+  const b = new THREE.BufferGeometry();
+  b.setAttribute('position', new THREE.BufferAttribute(pos, 3)); b.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  b.setAttribute('tip', new THREE.BufferAttribute(tip, 1)); b.setAttribute('color', new THREE.BufferAttribute(clr, 3));
+  return b;
+}
+
 // 3D 數值噪聲（給腦珊瑚的迷宮紋路用）
 function h3(x, y, z) { let h = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263) ^ Math.imul(z | 0, 1274126177); h = Math.imul(h ^ (h >>> 13), 1103515245); return ((h ^ (h >>> 16)) >>> 0) / 4294967295; }
 function n3(x, y, z) {
@@ -145,18 +255,28 @@ export function fingerGeo(seed = 3) {
 
 // 柳珊瑚（海扇）：在同一個平面上一直分岔的細枝，像一張網
 export function seaFanGeo(seed = 11) {
-  const r = rngOf(seed), parts = [], MAXD = 6;
+  // 真的海扇：很短的柄，往上長出很多幾乎平行、慢慢分岔的細枝，枝和枝之間還會互相長在一起變成一張網；
+  // 整體外形是寬寬的扇形或橢圓，而不是一棵樹
+  const r = rngOf(seed), parts = [], MAXD = 5, nodes = [];
   const grow = (p, ang, len, rad, d) => {
-    const dir = new THREE.Vector3(Math.sin(ang), Math.cos(ang), (r() - 0.5) * 0.08).normalize();
-    parts.push(limb(p, dir, len, rad, rad * 0.8, d / (MAXD + 1), (d + 1) / (MAXD + 1), 4));
-    if (d >= MAXD) return;
+    const dir = new THREE.Vector3(Math.sin(ang), Math.cos(ang), (r() - 0.5) * 0.06).normalize();
+    parts.push(limb(p, dir, len, rad, rad * 0.85, 0.2 + d * 0.13, 0.33 + d * 0.13, 4));
     const end = p.clone().addScaledVector(dir, len);
-    const spread = 0.28 + r() * 0.25;
-    grow(end, ang - spread + (r() - 0.5) * 0.15, len * (0.8 + r() * 0.15), rad * 0.78, d + 1);
-    grow(end, ang + spread + (r() - 0.5) * 0.15, len * (0.8 + r() * 0.15), rad * 0.78, d + 1);
+    nodes.push(end);
+    if (d >= MAXD) return;
+    const na = ang * 0.82 + (r() - 0.5) * 0.14;                  // 越往上越直，但有一點彎彎曲曲
+    const sp = 0.12 + r() * 0.1;
+    if (r() < 0.75) { grow(end, na - sp, len * 0.95, rad * 0.85, d + 1); grow(end, na + sp, len * 0.95, rad * 0.85, d + 1); }
+    else grow(end, na + (r() - 0.5) * 0.1, len, rad * 0.9, d + 1);
   };
-  grow(new THREE.Vector3(), 0, 0.35, 0.045, 0);
-  for (const a of [-0.9, 0.9]) grow(new THREE.Vector3(0, 0.15, 0), a, 0.3, 0.032, 1);
+  parts.push(limb(new THREE.Vector3(0, -0.05, 0), UP, 0.14, 0.04, 0.035, 0, 0.15, 5));
+  for (let i = 0; i < 6; i++) { const a = -1.15 + i * 0.46 + (r() - 0.5) * 0.15; grow(new THREE.Vector3(Math.sin(a) * 0.03, 0.1, 0), a, 0.17 + r() * 0.04, 0.022, 0); }
+  // 網：相鄰的枝之間接上細細的橫枝
+  let links = 0;
+  for (let i = 0; i < nodes.length && links < 90; i++) for (let j = i + 1; j < nodes.length; j++) {
+    const d = nodes[i].distanceTo(nodes[j]);
+    if (d > 0.04 && d < 0.11 && r() < 0.18) { const dir = nodes[j].clone().sub(nodes[i]).normalize(); parts.push(limb(nodes[i], dir, d, 0.007, 0.007, 0.8, 0.8, 3)); links++; break; }
+  }
   return merge(parts);
 }
 
@@ -192,4 +312,8 @@ export const CORAL_COLORS = {
   table: ['#a9a874', '#b9a77d', '#9a9a70', '#c4a184', '#a88f7a'],
   fan: ['#c45a96', '#e0607a', '#e8904c', '#a86ac0', '#f0b84e'],
   finger: ['#c9b48a', '#d29a7e', '#8db0a6', '#b98fb6', '#e3c27a'],
+  thicket: ['#c9a26b', '#b98c6a', '#a58a5a', '#9c7aa0', '#c98b8b', '#8a9a5b'],
+  plate: ['#a9a874', '#8a6a8f', '#b9a77d', '#6f7f5a', '#c4a184'],
+  carpet: ['#6f8a5a', '#8a7a9a', '#a08a5a', '#5f8f7f', '#b07a6a', '#7f6f4f', '#8f9f6a'],
+  leather: ['#c9c08a', '#b8b49a', '#d6c79a', '#a9b48a', '#c7a98a'],
 };

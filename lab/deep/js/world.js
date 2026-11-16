@@ -1,7 +1,7 @@
 // 海底世界：地形、珊瑚礁、昆布、海面、光束、海雪、熱泉
 // 座標：x 左右、z 往前越來越深（z −170 珊瑚礁淺海 → z +170 深海海溝），y 是高度（海面 0，往下是負的）
 import * as THREE from 'three';
-import { staghornGeo, brainGeo, tableGeo, fingerGeo, seaFanGeo, coralMaterial, CORAL_COLORS } from './coral.js';
+import { staghornGeo, brainGeo, tableGeo, fingerGeo, seaFanGeo, thicketGeo, plateTierGeo, carpetGeo, leatherGeo, bake, coralMaterial, CORAL_COLORS } from './coral.js';
 import {
   Fn, uniform, float, vec2, vec3, vec4, mix, smoothstep, pow, sin, cos, abs, exp, max, min, clamp, time, hash, uv, atan,
   positionWorld, positionLocal, positionGeometry, normalWorld, instanceIndex, instancedArray, billboarding, mx_worley_noise_float, mx_noise_float, fract, length, cameraPosition,
@@ -117,11 +117,45 @@ export function buildWorld(scene, { high, webgpu }) {
   const clusters = Array.from({ length: 46 }, () => reefPick()).filter(Boolean);
   const clusterPick = () => { const c = clusters[Math.floor(R() * clusters.length)]; const a = R() * 6.28, d = Math.sqrt(R()) * 6.5; const x = c.x + Math.cos(a) * d, z = c.z + Math.sin(a) * d; return isReef(x, z) ? new THREE.Vector3(x, floorY(x, z) - 0.05, z) : null; };
   const listOf = (n, sMin, sMax) => { const out = []; for (let i = 0; i < n * cnt; i++) { const p = R() < 0.8 ? clusterPick() : reefPick(); if (p) out.push({ p, ry: R() * 6.28, s: sMin + R() * (sMax - sMin) }); } return out; };
-  inst(stagGeo, stagMat, listOf(230, 0.9, 2.2), CORAL_COLORS.stag);
-  inst(stagGeo2, stagMat, listOf(210, 0.9, 2.2), CORAL_COLORS.stag.slice().reverse());
-  inst(brGeo, brainMat, listOf(200, 0.5, 1.5), CORAL_COLORS.brain);
+  // 單獨的一叢（比以前少，空出來的地方給一大片的鹿角珊瑚叢林、地毯和其他種類）
+  inst(stagGeo, stagMat, listOf(120, 0.9, 2.2), CORAL_COLORS.stag);
+  inst(stagGeo2, stagMat, listOf(100, 0.9, 2.2), CORAL_COLORS.stag.slice().reverse());
+  inst(brGeo, brainMat, listOf(170, 0.5, 1.5), CORAL_COLORS.brain);
+  // 很大的團塊珊瑚（濱珊瑚）：兩三公尺寬、扁扁的大圓丘
+  inst(brGeo, brainMat, listOf(22, 1, 1).map((o) => { const k = 2 + R() * 1.4; return { ...o, sv: new THREE.Vector3(k, k * (0.55 + R() * 0.25), k) }; }), CORAL_COLORS.brain.slice().reverse());
   inst(tabGeo, tableMat, listOf(55, 0.7, 1.4), CORAL_COLORS.table);
-  inst(fingGeo, fingMat, listOf(220, 0.7, 1.5), CORAL_COLORS.finger);
+  inst(fingGeo, fingMat, listOf(170, 0.7, 1.5), CORAL_COLORS.finger);
+  // 層疊的板狀珊瑚、皮革軟珊瑚
+  const plateMat = coralMaterial({ tipPale: 0.4, pores: 20 }), leatherMat = coralMaterial({ tipPale: 0.25, pores: 34 });
+  for (const m of [plateMat, leatherMat]) m.emissiveNode = causticOn(0.3);
+  inst(plateTierGeo(53), plateMat, listOf(45, 0.9, 1.7), CORAL_COLORS.plate);
+  inst(plateTierGeo(97), plateMat, listOf(40, 0.9, 1.7), CORAL_COLORS.plate.slice().reverse());
+  inst(leatherGeo(71), leatherMat, listOf(45, 0.7, 1.4), CORAL_COLORS.leather);
+  inst(leatherGeo(83), leatherMat, listOf(40, 0.7, 1.4), CORAL_COLORS.leather.slice().reverse());
+  // 一大片的：鹿角珊瑚叢林（每個珊瑚叢的中心都長一片）和殼狀珊瑚、軟珊瑚鋪成的地毯
+  // 這兩種合成一個大網格、頂點貼著地形，才不會在斜坡上懸空
+  {
+    const tGeos = [thicketGeo(41), thicketGeo(43, 1.6), thicketGeo(47, 2.6)];
+    const items = [];
+    for (const c of clusters) {
+      if (R() > 0.75 * cnt + 0.1) continue;
+      const a = R() * 6.28, d = R() * 2.5, x = c.x + Math.cos(a) * d, z = c.z + Math.sin(a) * d;
+      if (!isReef(x, z)) continue;
+      items.push({ geo: tGeos[Math.floor(R() * 3)], x, z, ry: R() * 6.28, s: 0.85 + R() * 0.5, color: CORAL_COLORS.thicket[Math.floor(R() * CORAL_COLORS.thicket.length)], vary: true });
+    }
+    const tMat = coralMaterial({ tipPale: 0.6, pores: 14 }); tMat.vertexColors = true; tMat.emissiveNode = causticOn(0.3);
+    W.reefThickets = items.map((o) => [o.x, o.z]);   // 測試用
+    const tm2 = new THREE.Mesh(bake(items, floorY), tMat); tm2.castShadow = high; tm2.receiveShadow = true; scene.add(tm2);
+
+    const cGeos = [carpetGeo(61), carpetGeo(67), carpetGeo(73)];
+    const mats = [];
+    for (let i = 0; i < 150 * cnt; i++) {
+      const p = R() < 0.75 ? clusterPick() : reefPick(); if (!p) continue;
+      mats.push({ geo: cGeos[i % 3], x: p.x, z: p.z, ry: R() * 6.28, s: 1.2 + R() * 2.4, sy: 0.8 + R() * 0.7, color: CORAL_COLORS.carpet[Math.floor(R() * CORAL_COLORS.carpet.length)], vary: true });
+    }
+    const cMat = coralMaterial({ tipPale: 0.18, pores: 24 }); cMat.vertexColors = true; cMat.emissiveNode = causticOn(0.3);
+    const cm = new THREE.Mesh(bake(mats, floorY), cMat); cm.receiveShadow = true; scene.add(cm);
+  }
 
   // 石頭：到處都有
   const rockGeo = (() => {
@@ -276,7 +310,7 @@ export function buildWorld(scene, { high, webgpu }) {
     const g = seaFanGeo(11), g2 = seaFanGeo(29);
     const m = coralMaterial({ tipPale: 0.15, pores: 30 });
     const fans = [];
-    for (let i = 0; i < 70 * cnt; i++) { const p = reefPick(); if (p) fans.push({ p, ry: R() * 6.28, s: 1.4 + R() * 1.6 }); }
+    for (let i = 0; i < 70 * cnt; i++) { const p = reefPick(); if (p) fans.push({ p, ry: R() * 6.28, s: 1.6 + R() * 1.4 }); }
     const half = Math.floor(fans.length / 2);
     inst(g, m, fans.slice(0, half), CORAL_COLORS.fan).castShadow = false;
     inst(g2, m, fans.slice(half), CORAL_COLORS.fan.slice().reverse()).castShadow = false;
