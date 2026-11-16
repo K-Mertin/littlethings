@@ -1,7 +1,7 @@
 // 單獨的大動物：海龜、鬼蝠魟、鯨鯊、章魚、小丑魚、發光水母、鮟鱇魚
 // 全部用簡單幾何拼出來，動作用 CPU 算（數量少）或頂點 shader（翅膀拍動、尾巴擺動）
 import * as THREE from 'three';
-import { Fn, float, vec3, mix, smoothstep, sin, cos, abs, time, positionLocal, positionGeometry, mx_worley_noise_float, uniform, hash, instanceIndex } from 'three/tsl';
+import { Fn, float, vec3, mix, smoothstep, sin, cos, abs, time, positionLocal, positionGeometry, normalLocal, mx_worley_noise_float, mx_noise_float, uniform, hash, instanceIndex } from 'three/tsl';
 import { floorY, rng, VENT } from './world.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -17,31 +17,66 @@ function pathPose(obj, cx, cz, rx, rz, w, t, y, ph = 0) {
   obj.rotation.y = Math.atan2(dx, dz);
 }
 
+// 粗細漸變的管子（章魚的腳）：先做等粗的 TubeGeometry，再把每一圈往中心縮
+function taperTube(curve, segs, r0, r1, radial = 8) {
+  const g = new THREE.TubeGeometry(curve, segs, r0, radial, false);
+  const p = g.attributes.position, c = new THREE.Vector3(), v = new THREE.Vector3();
+  for (let i = 0; i <= segs; i++) {
+    const t = i / segs, r = r0 + (r1 - r0) * Math.pow(t, 0.8);
+    curve.getPointAt(t, c);
+    for (let j = 0; j <= radial; j++) { const k = i * (radial + 1) + j; v.fromBufferAttribute(p, k).sub(c).multiplyScalar(r / r0).add(c); p.setXYZ(k, v.x, v.y, v.z); }
+  }
+  g.computeVertexNormals(); return g;
+}
+// 把球面沿法線推一推（皺皺的皮膚）
+function bumpy(geo, amp, freq, seed = 0) {
+  const p = geo.attributes.position, n = geo.attributes.normal, v = new THREE.Vector3(), nn = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i); nn.fromBufferAttribute(n, i);
+    const k = Math.sin(v.x * freq + seed) * Math.sin(v.y * freq * 1.3 + 1.7) * Math.sin(v.z * freq * 0.9 + 2.3) + 0.5 * Math.sin(v.x * freq * 2.7 + v.z * freq * 2.1);
+    v.addScaledVector(nn, k * amp); p.setXYZ(i, v.x, v.y, v.z);
+  }
+  geo.computeVertexNormals(); return geo;
+}
+
 export function buildCreatures(scene, W, { high }) {
   const list = [];
   const R = rng(4242);
 
-  // ---------------- 綠蠵龜
+  // ---------------- 綠蠵龜：盾片一塊一塊的殼、鳥嘴般的頭、長長的槳狀前鰭，皮膚有淡色鱗紋
   {
     const g = new THREE.Group();
-    const shellM = std(0x6b6a35, { roughness: 0.5 });
+    const shellM = new THREE.MeshStandardNodeMaterial({ roughness: 0.45 });
     shellM.colorNode = Fn(() => {
-      const w = mx_worley_noise_float(positionLocal.mul(2.2));
-      return mix(vec3(0.28, 0.24, 0.1), vec3(0.5, 0.45, 0.2), smoothstep(0.15, 0.55, w));
+      const p = positionLocal.mul(vec3(1, 1, 0.8));
+      const w = mx_worley_noise_float(p.mul(1.6));
+      const seam = smoothstep(0.42, 0.62, w);                                 // 盾片之間的縫（暗）
+      const streak = mx_noise_float(p.mul(vec3(9, 2, 9))).mul(0.5).add(0.5); // 每片上放射狀的紋路
+      const base = mix(vec3(0.24, 0.19, 0.09), vec3(0.47, 0.37, 0.17), streak);
+      return mix(base, vec3(0.1, 0.08, 0.04), seam.mul(0.8));
     })();
-    const shell = new THREE.Mesh(new THREE.SphereGeometry(1, 22, 12, 0, Math.PI * 2, 0, Math.PI / 2), shellM);
-    shell.scale.set(1, 0.42, 1.3);
-    const belly = new THREE.Mesh(new THREE.CircleGeometry(1, 22), std(0xd8c690)); belly.rotation.x = Math.PI / 2; belly.scale.set(0.98, 1.28, 1);
-    const skin = std(0x7d8a5a);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.34, 14, 10), skin); head.position.set(0, 0.05, 1.5); head.scale.set(1, 0.85, 1.25);
-    const fl = (x, z, len, front) => {
-      const pivot = new THREE.Group(); pivot.position.set(x, 0, z);
-      const f = new THREE.Mesh(new THREE.BoxGeometry(len, 0.07, front ? 0.5 : 0.35), skin);
-      f.position.x = Math.sign(x) * len / 2; f.rotation.y = Math.sign(x) * (front ? -0.35 : 0.4);
+    const shellG = bumpy(new THREE.SphereGeometry(1, 36, 18, 0, Math.PI * 2, 0, Math.PI / 2), 0.025, 5);
+    const shell = new THREE.Mesh(shellG, shellM); shell.scale.set(1, 0.4, 1.3);
+    const belly = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 8, 0, Math.PI * 2, Math.PI * 0.62, Math.PI * 0.38), std(0xd8c690, { roughness: 0.7 })); belly.scale.set(0.97, 0.45, 1.27); belly.position.y = 0.17;
+    const skin = new THREE.MeshStandardNodeMaterial({ roughness: 0.6 });
+    skin.colorNode = Fn(() => {
+      const w = mx_worley_noise_float(positionLocal.mul(9));
+      return mix(vec3(0.2, 0.21, 0.14), vec3(0.45, 0.43, 0.32), smoothstep(0.45, 0.7, w));   // 深色皮膚、淡色鱗片邊
+    })();
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 18, 12), skin); head.position.set(0, 0.04, 1.55); head.scale.set(0.95, 0.85, 1.35);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, 0.45, 12), skin); neck.rotation.x = Math.PI / 2; neck.position.set(0, 0.02, 1.2);
+    const beak = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.2, 10), std(0x3a3426, { roughness: 0.4 })); beak.rotation.x = Math.PI / 2 + 0.5; beak.position.set(0, -0.06, 1.93);
+    const eyes = [-1, 1].map((s2) => { const e = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), std(0x0d0d0d, { roughness: 0.15 })); e.position.set(s2 * 0.2, 0.1, 1.75); return e; });
+    const fl = (x, z, len, wid, front) => {
+      const pivot = new THREE.Group(); pivot.position.set(x, 0.05, z);
+      const f = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 8), skin);
+      f.scale.set(len, 0.07, wid); f.position.x = Math.sign(x) * len * 0.45;
+      f.rotation.y = Math.sign(x) * (front ? -0.45 : 0.5);
       pivot.add(f); g.add(pivot); return pivot;
     };
-    const fins = [fl(0.85, 0.7, 1.4, true), fl(-0.85, 0.7, 1.4, true), fl(0.65, -0.95, 0.6, false), fl(-0.65, -0.95, 0.6, false)];
-    g.add(shell, belly, head); shadow(g, high); g.scale.setScalar(1.15); scene.add(g);
+    const fins = [fl(0.8, 0.75, 1.9, 0.5, true), fl(-0.8, 0.75, 1.9, 0.5, true), fl(0.6, -0.95, 0.8, 0.38, false), fl(-0.6, -0.95, 0.8, 0.38, false)];
+    const tailT = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.4, 8), skin); tailT.rotation.x = -Math.PI / 2; tailT.position.set(0, 0, -1.35);
+    g.add(shell, belly, neck, head, beak, ...eyes, tailT); shadow(g, high); g.scale.setScalar(1.15); scene.add(g);
     const c = W.reef;
     list.push({
       id: 'turtle', obj: g, r: 9,
@@ -68,9 +103,15 @@ export function buildCreatures(scene, W, { high }) {
     m.positionNode = Fn(() => {
       const p = positionLocal.toVar(), ax = abs(p.x);
       p.y.addAssign(sin(time.mul(1.4).sub(ax.mul(0.55))).mul(ax.mul(ax)).mul(0.09));
+      p.y.addAssign(ax.mul(-1.3).exp().mul(0.3).mul(smoothstep(1.6, 0.2, p.z.abs())));   // 身體中間比較厚，往翅膀邊緣變薄
       return p;
     })();
-    m.color.set(0x1e2533);
+    // 背上黑色、肩膀兩塊白斑（真的鬼蝠魟背上就有）
+    m.colorNode = Fn(() => {
+      const p = positionLocal;
+      const patch = smoothstep(0.7, 0.1, vec3(p.x.abs().sub(1.05), 0, p.z.sub(0.55).mul(1.5)).length()).mul(mx_noise_float(p.mul(3)).mul(0.3).add(0.7));
+      return mix(vec3(0.07, 0.08, 0.11), vec3(0.55, 0.57, 0.58), patch.mul(0.75));
+    })();
     const ray = new THREE.Mesh(geo, m);
     // 肚子是白的：同一片形狀往下一點點、只畫背面
     const bm = new THREE.MeshStandardNodeMaterial({ side: THREE.BackSide, roughness: 0.6, color: 0xeef0f4 });
@@ -78,8 +119,8 @@ export function buildCreatures(scene, W, { high }) {
     const belly = new THREE.Mesh(geo, bm); belly.position.y = -0.025;
     const back = new THREE.Mesh(new THREE.SphereGeometry(0.7, 14, 8), std(0x1e2230)); back.scale.set(0.8, 0.28, 1.6); back.position.z = 0.1;
     const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.01, 2.6, 5), std(0x1e2230)); tail.rotation.x = Math.PI / 2; tail.position.z = -2.6;
-    const horns = [-0.45, 0.45].map((x) => { const h = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.06, 0.6), std(0x1e2230)); h.position.set(x, 0, 1.75); return h; });
-    const g = new THREE.Group(); g.add(ray, belly, back, tail, ...horns); g.scale.setScalar(1.5); shadow(g, high); scene.add(g);
+    const horns = [-0.42, 0.42].map((x) => { const h = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.5, 4, 8), std(0x1e2230)); h.rotation.set(Math.PI / 2 + 0.25, 0, 0); h.scale.set(1.7, 1, 0.6); h.position.set(x, -0.02, 1.75); h.rotation.y = -x * 0.3; return h; });   // 頭鰭：往前伸、稍微往下彎的扁片
+    const g = new THREE.Group(); g.add(ray, belly, tail, ...horns); void back; g.scale.setScalar(1.5); shadow(g, high); scene.add(g);
     list.push({
       id: 'manta', obj: g, r: 12,
       update(t) {
@@ -124,31 +165,54 @@ export function buildCreatures(scene, W, { high }) {
     });
   }
 
-  // ---------------- 章魚（在大石頭上，顏色會變）
+  // ---------------- 章魚：皺皺的外套膜、斑駁會變色的皮膚、八隻由粗變細又捲起來的腳（底下有吸盤）
   {
     const g = new THREE.Group();
-    const col = uniform(new THREE.Color(0xd2553b));
-    const mm = new THREE.MeshStandardNodeMaterial({ roughness: 0.5 });
-    mm.colorNode = mix(vec3(0.85, 0.3, 0.2), vec3(0.55, 0.35, 0.6), sin(time.mul(0.5)).mul(0.5).add(0.5)).mul(0.85);
-    const tm = new THREE.MeshStandardNodeMaterial({ roughness: 0.5 });
-    tm.colorNode = mm.colorNode;
-    tm.positionNode = Fn(() => {
+    const shift = sin(time.mul(0.35)).mul(0.5).add(0.5);   // 慢慢變色（偽裝）
+    const skinCol = Fn(() => {
+      const p = positionLocal;
+      const mott = mx_noise_float(p.mul(3.2)).mul(0.5).add(0.5);
+      const spots = smoothstep(0.18, 0.05, mx_worley_noise_float(p.mul(7)));       // 小白點（皮膚上的突起）
+      const base = mix(mix(vec3(0.55, 0.16, 0.1), vec3(0.32, 0.12, 0.12), mott), mix(vec3(0.5, 0.36, 0.25), vec3(0.3, 0.24, 0.2), mott), shift);
+      return mix(base, vec3(0.85, 0.7, 0.6), spots.mul(0.55));
+    });
+    const mm = new THREE.MeshStandardNodeMaterial({ roughness: 0.42 });
+    mm.colorNode = skinCol();
+    const mantle = new THREE.Mesh(bumpy(new THREE.SphereGeometry(0.62, 36, 24), 0.03, 9, 1), mm);
+    mantle.scale.set(1, 1.4, 1.15); mantle.position.set(0, 1.0, -0.25); mantle.rotation.x = -0.55;
+    const headB = new THREE.Mesh(bumpy(new THREE.SphereGeometry(0.42, 28, 18), 0.02, 11, 2), mm); headB.position.set(0, 0.42, 0.12);
+    // 眼睛：金色、橫的瞳孔
+    const eyes = [-1, 1].map((s2) => {
+      const e = new THREE.Mesh(new THREE.SphereGeometry(0.11, 14, 10), std(0xc9a640, { roughness: 0.2 })); e.position.set(s2 * 0.33, 0.62, 0.22);
+      const pu = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.035, 0.03), std(0x080808)); pu.position.set(0, 0, 0.1); e.add(pu); e.lookAt(e.position.clone().multiplyScalar(3).setY(0.7));
+      return e;
+    });
+    g.add(mantle, headB, ...eyes);
+    const am = new THREE.MeshStandardNodeMaterial({ roughness: 0.45 });
+    const down = smoothstep(0.1, -0.6, normalLocal.y);
+    const sucker = smoothstep(0.22, 0.08, mx_worley_noise_float(positionLocal.mul(14))).mul(down);
+    am.colorNode = mix(skinCol(), vec3(0.95, 0.78, 0.72), sucker.mul(0.8).add(down.mul(0.25)));
+    am.positionNode = Fn(() => {
       const p = positionLocal.toVar(), d = p.xz.length();
-      p.y.addAssign(sin(time.mul(2).add(d.mul(2.2)).add(p.x.mul(0.7))).mul(d).mul(0.12));
+      p.y.addAssign(sin(time.mul(1.6).add(d.mul(2.4)).add(p.x.mul(0.8))).mul(d.mul(0.08)));
+      p.x.addAssign(sin(time.mul(1.1).add(d.mul(1.7)).add(p.z)).mul(d.mul(0.05)));
       return p;
     })();
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.7, 18, 12), mm); head.scale.set(1, 1.25, 1.05); head.position.y = 0.85; head.rotation.x = -0.35;
-    const eyes = [-1, 1].map((s) => { const e = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), std(0xf5f0d0)); e.position.set(s * 0.38, 0.65, 0.5); const pu = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), std(0x111111)); pu.position.set(0, 0, 0.09); e.add(pu); return e; });
-    g.add(head, ...eyes);
+    const RR = rng(77);
     for (let k = 0; k < 8; k++) {
-      const a = k / 8 * Math.PI * 2, pts = [];
-      for (let s = 0; s <= 8; s++) { const d = 0.3 + s * 0.28; pts.push(V(Math.cos(a) * d, 0.35 - Math.sin(s * 0.45) * 0.3 + (s > 5 ? (s - 5) * 0.1 : 0), Math.sin(a) * d)); }
-      const tube = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 20, 0.11, 6), tm);
-      g.add(tube);
+      const a = k / 8 * Math.PI * 2 + 0.2, pts = [], curl = 0.6 + RR() * 0.8, len = 2.0 + RR() * 0.8;
+      for (let s2 = 0; s2 <= 12; s2++) {
+        const t = s2 / 12, d = 0.25 + t * len;
+        const aa = a + Math.sin(t * 3 + k) * 0.25;
+        // 腳沿著石頭往下垂，尖端捲起來
+        const y = 0.25 - t * 0.55 + (t > 0.7 ? Math.sin((t - 0.7) / 0.3 * Math.PI) * 0.35 * curl : 0);
+        const dd = t > 0.75 ? d - Math.sin((t - 0.75) / 0.25 * Math.PI) * 0.25 * curl : d;
+        pts.push(V(Math.cos(aa) * dd, y, Math.sin(aa) * dd));
+      }
+      g.add(new THREE.Mesh(taperTube(new THREE.CatmullRomCurve3(pts), 40, 0.21, 0.015, 9), am));
     }
-    void col;
     g.position.copy(W.poi.octopusRock); shadow(g, high); scene.add(g);
-    list.push({ id: 'octopus', obj: g, r: 8, update(t) { g.rotation.y = Math.sin(t * 0.2) * 0.6; head.scale.y = 1.25 + Math.sin(t * 1.4) * 0.05; } });
+    list.push({ id: 'octopus', obj: g, r: 8, update(t) { g.rotation.y = Math.sin(t * 0.2) * 0.6; mantle.scale.y = 1.4 + Math.sin(t * 1.4) * 0.05; } });
   }
 
   // ---------------- 小丑魚（繞著海葵）
