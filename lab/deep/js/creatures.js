@@ -1,7 +1,7 @@
 // 單獨的大動物：海龜、鬼蝠魟、鯨鯊、章魚、小丑魚、發光水母、鮟鱇魚
 // 全部用簡單幾何拼出來，動作用 CPU 算（數量少）或頂點 shader（翅膀拍動、尾巴擺動）
 import * as THREE from 'three';
-import { Fn, float, vec3, mix, smoothstep, sin, cos, abs, time, positionLocal, positionGeometry, normalLocal, mx_worley_noise_float, mx_noise_float, uniform, hash, instanceIndex, uv, vec2 } from 'three/tsl';
+import { Fn, float, vec3, mix, smoothstep, sin, cos, abs, time, positionLocal, positionGeometry, normalLocal, mx_worley_noise_float, mx_noise_float, uniform, hash, instanceIndex, uv, vec2, atan, normalView, positionView } from 'three/tsl';
 import { floorY, rng, VENT } from './world.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -312,23 +312,52 @@ export function buildCreatures(scene, W, { high }) {
   // ---------------- 發光水母（深海，一群）
   {
     const JN = 16, JC = V(26, 0, 92);
-    const bellG = new THREE.SphereGeometry(1, 22, 10, 0, Math.PI * 2, 0, Math.PI / 2);
-    const tenG = new THREE.CylinderGeometry(0.015, 0.005, 3.2, 3, 8); tenG.translate(0, -1.6, 0);
+    // 真實的水母：透明的傘（邊緣有一瓣一瓣的缺刻），從側面看邊緣最亮（菲涅耳）；傘裡看得到放射狀的水管和四個馬蹄形的生殖腺；
+    // 傘緣一圈會一閃一閃的生物光；中間垂下四條皺皺的口腕；傘緣垂下很多細長的觸手。傘一縮一放地游（頂點 shader）
+    const prof = [];
+    for (let i = 0; i <= 16; i++) { const t = i / 16; prof.push(new THREE.Vector2(Math.sin(t * Math.PI / 2) * 1.0, Math.cos(t * Math.PI / 2) * 0.75 * (1 - 0.15 * t))); }
+    prof.push(new THREE.Vector2(0.92, -0.06));
+    const bellG = new THREE.LatheGeometry(prof.reverse(), 40);
+    const fres = float(1).sub(normalView.dot(positionView.normalize().negate()).abs()).pow(1.6);
+    const armPts = (k) => { const pts = []; const a0 = k / 4 * Math.PI * 2 + 0.4; for (let s2 = 0; s2 <= 10; s2++) { const t = s2 / 10; pts.push(V(Math.cos(a0) * (0.12 + t * 0.18), -0.05 - t * 1.6, Math.sin(a0) * (0.12 + t * 0.18))); } return pts; };
+    const armG = Array.from({ length: 4 }, (_, k) => { const g2 = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(armPts(k)), 30, 0.09, 6, false); const p = g2.attributes.position;
+      for (let i = 0; i < p.count; i++) { const y = p.getY(i); const w = 1 + 0.6 * Math.sin(y * 18 + i * 0.7); p.setX(i, p.getX(i) * (1 + 0.15 * w)); p.setZ(i, p.getZ(i) * (1 + 0.15 * w)); } g2.computeVertexNormals(); return g2; });
+    const tenG = new THREE.CylinderGeometry(0.008, 0.003, 4.5, 3, 16); tenG.translate(0, -2.25, 0);
     const jellies = [];
     for (let i = 0; i < JN; i++) {
-      const hue = [0xff6ad5, 0x6ae4ff, 0xb38bff, 0x7dffb0][i % 4];
-      const bm = new THREE.MeshStandardNodeMaterial({ color: hue, transparent: true, opacity: 0.55, roughness: 0.2, side: THREE.DoubleSide, depthWrite: false });
-      const pulse = sin(time.mul(1.8).add(i * 0.7)).mul(0.5).add(0.5);
-      bm.emissiveNode = vec3(...new THREE.Color(hue).toArray()).mul(pulse.mul(0.9).add(0.4));
-      const tm = new THREE.MeshBasicNodeMaterial({ color: hue, transparent: true, opacity: 0.45, depthWrite: false });
+      const hue = new THREE.Color([0xff8ad8, 0x8ae8ff, 0xc5a6ff, 0x9dffc8][i % 4]);
+      const hv = vec3(hue.r, hue.g, hue.b), ph = i * 0.7;
+      const pulse = sin(time.mul(1.8).add(ph));                                   // 收縮節奏
+      const bm = new THREE.MeshStandardNodeMaterial({ transparent: true, roughness: 0.15, side: THREE.DoubleSide, depthWrite: false });
+      bm.positionNode = Fn(() => {
+        const p = positionLocal.toVar(), rim = smoothstep(0.2, 0.75, p.y.negate().add(0.75));   // 越靠傘緣收縮越大
+        const sq = pulse.max(0).mul(0.16).mul(rim);
+        p.x.mulAssign(float(1).sub(sq)); p.z.mulAssign(float(1).sub(sq)); p.y.addAssign(pulse.max(0).mul(0.06).mul(rim));
+        return p;
+      })();
+      const lp = positionLocal;
+      const theta = atan(lp.z, lp.x);
+      const canals = smoothstep(0.06, 0.0, sin(theta.mul(8)).abs()).mul(0.35);                              // 8 條放射水管
+      const gon = smoothstep(0.08, 0.0, vec2(lp.xz.length().sub(0.42), sin(theta.mul(2)).mul(0.2)).length()).mul(0.6);   // 四個馬蹄形生殖腺
+      const margin = smoothstep(0.12, 0.0, lp.y.add(0.02).abs());                                            // 傘緣
+      bm.colorNode = hv.mul(0.35).add(hv.mul(canals.add(gon)));
+      bm.opacityNode = float(0.12).add(fres.mul(0.55)).add(gon.mul(0.4)).add(canals.mul(0.3)).clamp(0, 0.9);
+      bm.emissiveNode = hv.mul(fres.mul(0.5).add(gon.mul(0.8))).add(hv.mul(margin.mul(sin(time.mul(3).add(theta.mul(4)).add(ph)).mul(0.5).add(0.5)).mul(2.2)));
+      const om = new THREE.MeshStandardNodeMaterial({ transparent: true, roughness: 0.3, depthWrite: false, side: THREE.DoubleSide });
+      om.colorNode = hv.mul(0.6); om.opacityNode = float(0.35).add(fres.mul(0.4)); om.emissiveNode = hv.mul(0.35);
+      om.positionNode = Fn(() => { const p = positionLocal.toVar(); p.x.addAssign(sin(time.mul(1.2).add(p.y.mul(2.5)).add(ph)).mul(p.y.mul(p.y)).mul(0.05)); return p; })();
+      const tm = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false });
+      tm.colorNode = hv; tm.opacityNode = float(0.35);
       tm.positionNode = Fn(() => {
         const p = positionLocal.toVar();
-        p.x.addAssign(sin(time.mul(1.5).add(p.y.mul(1.6)).add(i)).mul(p.y.mul(p.y)).mul(0.04));
+        p.x.addAssign(sin(time.mul(1.5).add(p.y.mul(1.6)).add(ph)).mul(p.y.mul(p.y)).mul(0.03));
+        p.z.addAssign(cos(time.mul(1.1).add(p.y.mul(1.3)).add(ph)).mul(p.y.mul(p.y)).mul(0.02));
         return p;
       })();
       const j = new THREE.Group();
       const bell = new THREE.Mesh(bellG, bm); j.add(bell);
-      for (let k = 0; k < 7; k++) { const a = k / 7 * Math.PI * 2; const tt = new THREE.Mesh(tenG, tm); tt.position.set(Math.cos(a) * 0.6, 0, Math.sin(a) * 0.6); tt.scale.y = 0.7 + R() * 0.6; j.add(tt); }
+      for (const ag of armG) j.add(new THREE.Mesh(ag, om));
+      for (let k = 0; k < 24; k++) { const a = k / 24 * Math.PI * 2; const tt = new THREE.Mesh(tenG, tm); tt.position.set(Math.cos(a) * 0.9, -0.05, Math.sin(a) * 0.9); tt.scale.y = 0.6 + R() * 0.7; j.add(tt); }
       const x = JC.x + (R() - 0.5) * 30, z = JC.z + (R() - 0.5) * 30;
       j.userData = { x, z, y0: floorY(x, z) + 6 + R() * 14, ph: R() * 6.28 };
       j.scale.setScalar(0.6 + R() * 0.7);
@@ -342,7 +371,6 @@ export function buildCreatures(scene, W, { high }) {
         jellies.forEach((j) => {
           const u = j.userData, k = Math.sin(t * 1.8 + u.ph);
           j.position.set(u.x + Math.sin(t * 0.1 + u.ph) * 3, u.y0 + Math.sin(t * 0.25 + u.ph) * 3 + Math.max(0, k) * 0.2, u.z + Math.cos(t * 0.08 + u.ph) * 3);
-          j.children[0].scale.set(1 + k * 0.12, 1 - k * 0.15, 1 + k * 0.12);
         });
       },
     });
