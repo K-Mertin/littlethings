@@ -355,16 +355,20 @@ export function buildWorld(scene, { high, webgpu }) {
 
   // ---------------- 海雪（漂浮的小顆粒），跟著鏡頭循環
   const camU = uniform(new THREE.Vector3());
-  const SN = high ? 4000 : 1800, BOX = 36;
+  const SN = high ? 7000 : 3200, BOX = 36;
   const snowM = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false });
   const seed = vec3(hash(instanceIndex), hash(instanceIndex.add(17)), hash(instanceIndex.add(41)));
   const drift = vec3(sin(time.mul(0.1).add(seed.x.mul(9))).mul(0.02), time.mul(-0.006), cos(time.mul(0.08).add(seed.z.mul(9))).mul(0.02));
   const rel = fract(seed.add(drift).sub(camU.div(BOX))).sub(0.5).mul(BOX);
   snowM.positionNode = positionGeometry.add(camU).add(rel);
   snowM.vertexNode = billboarding();
-  snowM.colorNode = vec3(0.8, 0.9, 0.95);
-  snowM.opacityNode = smoothstep(0.5, 0.1, uv().sub(0.5).length()).mul(smoothstep(BOX * 0.5, BOX * 0.2, length(rel))).mul(0.55);
-  const snow = new THREE.Mesh(new THREE.PlaneGeometry(0.035, 0.035), snowM); snow.count = SN; snow.frustumCulled = false; scene.add(snow);
+  // 「回散射」（backscatter）：真的水下攝影開燈時，燈光前面的懸浮顆粒會一顆顆亮起來
+  W.lampPos = uniform(new THREE.Vector3()); W.lampDir = uniform(new THREE.Vector3(0, 0, 1)); W.lampK = uniform(0);
+  const wpS = camU.add(rel), toP = wpS.sub(W.lampPos), dl = length(toP);
+  const inBeam = smoothstep(0.86, 0.97, toP.div(dl.max(0.01)).dot(W.lampDir)).mul(smoothstep(22, 2, dl)).mul(W.lampK);
+  snowM.colorNode = mix(vec3(0.8, 0.9, 0.95), vec3(1, 0.97, 0.88).mul(2.2), inBeam);
+  snowM.opacityNode = smoothstep(0.5, 0.1, uv().sub(0.5).length()).mul(smoothstep(BOX * 0.5, BOX * 0.2, length(rel))).mul(float(0.38).add(inBeam.mul(0.62)));
+  const snow = new THREE.Mesh(new THREE.PlaneGeometry(0.05, 0.05), snowM); snow.count = SN; snow.frustumCulled = false; scene.add(snow);
 
   W.reef = REEF; W.kelp = KELP; W.anem = ANEM; W.octo = OCTO;
   const M = new THREE.Matrix4(), q = new THREE.Quaternion(), s3 = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
