@@ -339,6 +339,15 @@ fn hot(x: i32, y: i32) -> f32 {
 }
 fn filled(t: u32) -> bool { return t != EMPTY && !gas(t); }
 fn h2(p: vec2f) -> f32 { return fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453); }
+// 立體光影用：哪些格子算「實心表面」（液體、氣體不算）
+fn solid(t: u32) -> bool { return filled(t) && !liquid(t); }
+fn occ1(x: i32, y: i32) -> f32 { return select(0.0, 1.0, solid(ty(at(x, y)))); }
+// 在任意位置（格子座標）取「實心程度」，雙線性內插 → 邊緣變成圓滑的斜坡
+fn occ(p: vec2f) -> f32 {
+  let q = p - 0.5; let i = vec2i(floor(q)); let fr = q - floor(q);
+  let a = occ1(i.x, i.y); let b = occ1(i.x + 1, i.y); let c = occ1(i.x, i.y + 1); let d = occ1(i.x + 1, i.y + 1);
+  return mix(mix(a, b, fr.x), mix(c, d, fr.x), fr.y);
+}
 
 // 背景：黃昏的天空、遠山、星星
 fn sky(uv: vec2f) -> vec3f {
@@ -367,6 +376,7 @@ fn sky(uv: vec2f) -> vec3f {
   var rgb = bg;
   var lit = 0.0;      // 自己發光
   var shade = true;   // 要不要做立體感
+  var bumpN = vec2f(0.0);   // 材質自己的小凹凸（磚縫、木紋、沙粒），加在法線上
   let up = ty(at(x, y - 1)); let lf = ty(at(x - 1, y)); let dn = ty(at(x, y + 1)); let rt = ty(at(x + 1, y));
   // 往上數堆了幾格（越深越暗）
   var depth = 0.0;
@@ -390,8 +400,9 @@ fn sky(uv: vec2f) -> vec3f {
       rgb = vec3f(0.42, 0.40, 0.46) * (0.85 + bv * 0.25);
       let mortar = min(min(fx, 1.0 - fx) * 6.0, min(fy, 1.0 - fy) * 3.0);
       rgb *= mix(0.55, 1.0, smoothstep(0.05, 0.25, mortar));
-      rgb += vec3f(0.06) * smoothstep(0.6, 0.0, fy) * smoothstep(0.1, 0.3, mortar);
-      shade = false;
+      // 磚縫是凹下去的：在縫的兩側給法線一個斜度，讓上緣、左緣受光，下緣、右緣有影子
+      bumpN = vec2f(smoothstep(0.25, 0.0, fx * 6.0) - smoothstep(0.25, 0.0, (1.0 - fx) * 6.0), smoothstep(0.25, 0.0, fy * 3.0) - smoothstep(0.25, 0.0, (1.0 - fy) * 3.0)) * 0.9;
+      bumpN += (vec2f(h2(vec2f(f32(x), f32(y)) * 1.3), h2(vec2f(f32(y), f32(x)) * 2.1)) - 0.5) * 0.25;   // 磚面粗粗的
     }
     case 2u {   // 沙：每一粒顏色都不太一樣（淺黃、土黃、少數深色的小石英和黑色礦物），表面有一點閃光
       let r1 = h2(vec2f(f32(x), f32(y)) * 0.731);
@@ -400,6 +411,7 @@ fn sky(uv: vec2f) -> vec3f {
       sc = mix(sc, vec3f(0.25, 0.22, 0.20), step(0.985, r1));           // 黑色礦物
       sc = mix(sc, vec3f(1.0, 0.97, 0.88), step(0.975, h2(vec2f(f32(x), f32(y)) + floor(tm * 3.0))) * 0.5 * select(0.0, 1.0, !filled(up)));   // 表面偶爾閃一下
       rgb = sc * (1.0 - smoothstep(0.3, 0.5, e) * 0.12);
+      bumpN = (f - 0.5) * 0.7 + (vec2f(h2(vec2f(f32(x), f32(y)) * 0.37), h2(vec2f(f32(y), f32(x)) * 0.53)) - 0.5) * 0.4;   // 每一粒圓圓鼓鼓、方向不一樣
     }
     case 3u {   // 水：越深越藍，表面亮，半透明
       let d = 0.0 + depth;
@@ -424,6 +436,7 @@ fn sky(uv: vec2f) -> vec3f {
     case 5u {   // 木頭：木紋
       let ring = 0.5 + 0.5 * sin(f32(y) * 0.9 + sin(f32(x) * 0.25 + v * 3.0) * 2.0);
       rgb = mix(vec3f(0.40, 0.24, 0.12), vec3f(0.60, 0.40, 0.21), ring) * (0.92 + v * 0.12);
+      bumpN = vec2f(0.0, cos(f32(y) * 0.9 + sin(f32(x) * 0.25 + v * 3.0) * 2.0) * 0.45);   // 木紋一條一條有起伏
     }
     case 6u {   // 植物：葉子圓圓的
       let leaf = 1.0 - smoothstep(0.2, 0.6, length(f - 0.5)) * 0.35;
@@ -445,7 +458,7 @@ fn sky(uv: vec2f) -> vec3f {
       rgb = mix(bg, gc, dens * select(0.75, 0.55, t == 9u));
       shade = false;
     }
-    case 11u { rgb = (vec3f(0.30, 0.28, 0.31) + v * 0.08 + 0.05 * h2(vec2f(f32(x), f32(y)) * 1.7)) * grain; }
+    case 11u { rgb = (vec3f(0.30, 0.28, 0.31) + v * 0.08 + 0.05 * h2(vec2f(f32(x), f32(y)) * 1.7)) * grain; bumpN = (f - 0.5) * 0.5 + (vec2f(h2(vec2f(f32(x / 2), f32(y / 2))), h2(vec2f(f32(y / 2), f32(x / 2)) * 1.9)) - 0.5) * 0.6; }
     case 12u {   // 油：深色，表面有彩虹光
       rgb = vec3f(0.20, 0.13, 0.18) + v * 0.04;
       if (up != OIL) {
@@ -479,13 +492,27 @@ fn sky(uv: vec2f) -> vec3f {
     }
     default {}
   }
-  // 立體感：上面空著的受光、左邊空著的受光、下面空著的有陰影；被埋越深越暗
-  if (shade) {
-    if (!filled(up)) { rgb += vec3f(0.16, 0.14, 0.10) * smoothstep(0.45, 0.0, f.y); }
-    if (!filled(lf)) { rgb += vec3f(0.07) * smoothstep(0.45, 0.0, f.x); }
-    if (!filled(rt)) { rgb *= mix(1.0, 0.82, smoothstep(0.55, 1.0, f.x)); }
-    if (!filled(dn)) { rgb *= mix(1.0, 0.75, smoothstep(0.5, 1.0, f.y)); }
-    rgb *= 1.0 - depth * 0.035;
+  // 立體光影：把「實心程度」當成高度圖，用 Sobel 算出表面法線（2D 落沙遊戲常見的 normal-from-heightmap 做法），
+  // 光從左上方照過來 → 沙堆、牆、木頭的邊緣變成圓滑的斜面，朝光的一面亮、背光的一面暗；再加上材質自己的小凹凸
+  if (shade || t == WALL) {
+    let P = vec2f(gx, gy);
+    let o = 0.9;
+    let tl = occ(P + vec2f(-o, -o)); let tc = occ(P + vec2f(0.0, -o)); let tr = occ(P + vec2f(o, -o));
+    let ml = occ(P + vec2f(-o, 0.0)); let mr = occ(P + vec2f(o, 0.0));
+    let bl = occ(P + vec2f(-o, o)); let bc = occ(P + vec2f(0.0, o)); let br = occ(P + vec2f(o, o));
+    let sx = (tr + 2.0 * mr + br) - (tl + 2.0 * ml + bl);
+    let sy = (bl + 2.0 * bc + br) - (tl + 2.0 * tc + tr);
+    // 高度往外降 → 法線指向空的那一邊
+    let nn = normalize(vec3f(-sx * 0.9 + bumpN.x * 0.35, -sy * 0.9 + bumpN.y * 0.35, 1.0));
+    let L = normalize(vec3f(-0.55, -0.75, 0.6));   // 光從左上方、偏前面
+    let dif = max(dot(nn, L), 0.0);
+    let flt = L.z;
+    let k = 0.62 + 0.38 * dif / flt;
+    // 反光：表面朝向光和眼睛中間的地方有一點亮點（濕的沙、磨過的石頭）
+    let hv = normalize(L + vec3f(0.0, 0.0, 1.0));
+    let spec = pow(max(dot(nn, hv), 0.0), 24.0) * select(0.06, 0.12, t == STONE || t == ICE);
+    rgb = rgb * k + vec3f(1.0, 0.95, 0.85) * spec;
+    if (shade) { rgb *= 1.0 - depth * 0.035; }
   }
   // 物體在背景上投下一點影子（讓東西浮在畫面上）
   if (t == EMPTY && filled(ty(at(x - 1, y - 1)))) { rgb *= 0.82; }
