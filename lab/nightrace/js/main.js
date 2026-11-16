@@ -1,6 +1,6 @@
 // 夜雨賽車：渲染（濕路反射＋泛光）、比賽流程、操作、鏡頭、介面
 import * as THREE from 'three';
-import { pass, mrt, output, normalView, emissive, uniform, vec2, metalness, roughness } from 'three/tsl';
+import { pass, mrt, output, normalView, emissive, uniform, vec2, vec3, vec4, metalness, roughness, screenUV, hash, floor, fract, smoothstep, float, time, atan, mix, select } from 'three/tsl';
 import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { Track, TRACKS } from './track.js';
@@ -64,6 +64,7 @@ const skids = new Skids(scene, wetU);
 
 // ---------------------------------------------------------------- 後製：濕路反射（SSR）＋泛光
 const pipeline = new THREE.RenderPipeline(renderer);
+const rainU = uniform(1), cockpitU = uniform(0);
 const USE_SSR = HIGH && WEBGPU;
 {
   const sp = pass(scene, camera, { samples: HIGH ? 4 : 0 });
@@ -79,7 +80,25 @@ const USE_SSR = HIGH && WEBGPU;
     lit = lit.add(r.rgb.mul(0.9));
   }
   const glow = bloom(sp.getTextureNode('emissive'), 0.75, 0.4, 0.1);
-  pipeline.outputNode = lit.add(glow);
+  // 車內視角：擋風玻璃上的雨滴（會折射後面的畫面），雨刷每 2.4 秒刷一次，刷過的地方雨滴再慢慢冒出來
+  const uvS = screenUV, asp = float(innerWidth / innerHeight);
+  const grid = vec2(26, 15), cell = floor(uvS.mul(grid)), fr = fract(uvS.mul(grid));
+  const hh = hash(cell.x.add(cell.y.mul(57.1)));
+  const ctr = vec2(hash(cell.x.add(cell.y.mul(13.7)).add(3.1)), hash(cell.x.mul(7.3).add(cell.y).add(9.2))).mul(0.6).add(0.2);
+  const rad = hh.mul(0.25).add(0.12);
+  const dv = fr.sub(ctr).mul(vec2(1, grid.y.div(grid.x).mul(asp).reciprocal()));
+  const inDrop = smoothstep(rad, rad.mul(0.75), dv.length());
+  // 雨刷：以畫面下方中間為軸，從右掃到左；算這個像素上次被刷到是多久以前
+  const P = float(2.4), ph = time.mod(P);
+  const ang = atan(float(1.15).sub(uvS.y), uvS.x.sub(0.5).mul(asp));   // 軸在畫面正下方外面：0（右）→ π（左）
+  const tw = ang.div(Math.PI).mul(0.7);                                                       // 這個角度被刷到的時刻（每輪內）
+  const age = select(ph.greaterThan(tw), ph.sub(tw), ph.add(P).sub(tw));
+  const show = smoothstep(hh.mul(P).mul(0.9), hh.mul(P).mul(0.9).add(0.15), age).mul(rainU).mul(cockpitU).mul(smoothstep(0.64, 0.56, uvS.y));   // 只在擋風玻璃（畫面上半部）
+  const refr = sp.getTextureNode('output').sample(uvS.sub(dv.mul(0.06)));                      // 水滴像小透鏡，把後面的畫面倒過來一點
+  const hl = smoothstep(rad.mul(0.35), 0.0, dv.sub(vec2(rad.mul(-0.35), rad.mul(-0.35))).length());   // 左上角一點反光
+  const dropC = refr.rgb.mul(1.15).add(vec3(0.9, 0.92, 1).mul(hl).mul(0.35));
+  const base = lit.add(glow);
+  pipeline.outputNode = vec4(mix(base.rgb, dropC.add(glow.rgb.mul(0.5)), inDrop.mul(show).mul(0.85)), 1);
 }
 const OFF = params.has('offscreen') ? new THREE.RenderTarget(1, 1) : null;
 const sound = new Sound(); if (save.soundOff) sound.setOn(false);
@@ -283,6 +302,7 @@ function update(dt) {
     camera.fov = (camMode === 2 ? 66 : 62) + Math.min(14, v * 0.25); camera.updateProjectionMatrix();
     player.mesh.visible = camMode !== 1;
     if (player.mesh.userData.inner) player.mesh.userData.inner.visible = camMode === 2;
+    cockpitU.value = camMode === 2 ? 1 : 0; rainU.value = opts.rain;
     // 路燈：每 0.25 秒換成最近的幾盞
     lampT -= dt;
     if (lampT <= 0) {

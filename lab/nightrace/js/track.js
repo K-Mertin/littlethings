@@ -2,7 +2,7 @@
 // 物理用的資料：每 1.5 公尺一個取樣點（位置、切線、法線、彎曲程度、累積距離）
 import * as THREE from 'three';
 import {
-  Fn, uniform, float, cameraPosition, exp, vec2, vec3, mix, smoothstep, step, fract, floor, abs, sin, hash, uv, positionWorld, normalWorld, mx_noise_float, time, select, max, texture,
+  Fn, uniform, float, cameraPosition, exp, normalView, positionView, positionGeometry, instancedArray, instanceIndex, normalize, vec2, vec3, mix, smoothstep, step, fract, floor, abs, sin, hash, uv, positionWorld, normalWorld, mx_noise_float, time, select, max, texture,
 } from 'three/tsl';
 
 export const ROAD_W = 14;   // 路寬
@@ -212,6 +212,31 @@ export class Track {
     });
     G.add(poles, heads);
     this.lamps = lamps;
+
+    // ---------------- 雨中的路燈光錐：看得到雨絲在光裡往下落（往下捲動的噪聲），邊緣淡掉
+    const coneG = new THREE.ConeGeometry(3.2, 7.6, 20, 1, true); coneG.translate(0, -3.8, 0);
+    const coneM = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
+    const cy = positionGeometry.y.negate().div(7.6);                                   // 0 在燈、1 在地面
+    const streaks = mx_noise_float(positionWorld.mul(vec3(5, 0.35, 5)).add(vec3(0, time.mul(9), 0))).mul(0.5).add(0.5);
+    const soft = normalView.dot(positionView.normalize()).abs().pow(1.5);
+    coneM.colorNode = vec3(1, 0.85, 0.6).mul(float(1).sub(cy).pow(1.5).mul(0.09)).mul(soft).mul(streaks.mul(1.4).add(0.3)).mul(this.wet);
+    const cones = new THREE.InstancedMesh(coneG, coneM, lamps.length);
+    lamps.forEach((l, i) => { M.compose(l.light, Q.identity(), Sc.set(1, 1, 1)); cones.setMatrixAt(i, M); });
+    cones.frustumCulled = false; cones.renderOrder = 3; G.add(cones);
+    // ---------------- 濕路上的長條倒影：每盞燈在路面拉出一條朝向鏡頭的光（真實的雨夜街道就是這樣）
+    const LP = instancedArray(new Float32Array(lamps.flatMap((l) => [l.light.x, 0, l.light.z, 0])), 'vec4');
+    const stG = new THREE.PlaneGeometry(1, 1); stG.translate(0, 0.5, 0);
+    const stM = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: true });
+    stM.positionNode = Fn(() => {
+      const L0 = LP.element(instanceIndex).xyz;
+      const d = normalize(vec3(cameraPosition.x.sub(L0.x), 0, cameraPosition.z.sub(L0.z)));
+      const side = vec3(d.z, 0, d.x.negate());
+      const len = float(14), wid = float(1.1);
+      return L0.add(d.mul(positionGeometry.y.mul(len))).add(side.mul(positionGeometry.x.mul(wid))).add(vec3(0, 0.03, 0));
+    })();
+    const sv = uv();
+    stM.colorNode = vec3(1, 0.8, 0.55).mul(float(1).sub(sv.y).pow(2.2)).mul(smoothstep(0.5, 0.0, sv.x.sub(0.5).abs())).mul(1.3).mul(this.wet.mul(this.wet));
+    const strk = new THREE.Mesh(stG, stM); strk.count = lamps.length; strk.frustumCulled = false; strk.renderOrder = 2; G.add(strk);
 
     // ---------------- 起跑線（黑白格）＋門架
     const i0 = 0, p0 = this.P[i0], t0 = this.Tn[i0], n0 = this.Nn[i0];
