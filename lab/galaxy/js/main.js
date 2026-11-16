@@ -297,7 +297,7 @@ function starfield() {
       const h2 = hue + (Math.random() - 0.5) * 40;
       for (const sx of [ox, ox - W, ox + W]) {   // 左右邊界要接得起來（不然貼成球會有一條線）
         const rg = x.createRadialGradient(sx, oy, 0, sx, oy, rr);
-        rg.addColorStop(0, `hsla(${h2},75%,50%,0.06)`); rg.addColorStop(1, `hsla(${h2},75%,30%,0)`);
+        rg.addColorStop(0, `hsla(${h2},55%,45%,0.04)`); rg.addColorStop(1, `hsla(${h2},75%,30%,0)`);
         x.fillStyle = rg; x.fillRect(sx - rr, oy - rr, rr * 2, rr * 2);
       }
     }
@@ -307,11 +307,23 @@ function starfield() {
     const y = H * 0.5 + (Math.random() + Math.random() + Math.random() - 1.5) * H * 0.12;
     x.fillStyle = `rgba(230,225,255,${0.12 + Math.random() * 0.3})`; x.fillRect(Math.random() * W, y, 1, 1);
   }
+  // 星星：大部分很暗很小，少數亮的；最亮的幾顆有望遠鏡照片那種十字繞射光芒
   const tint = [[255, 200, 160], [255, 240, 220], [220, 230, 255], [170, 200, 255], [255, 170, 140]];
-  for (let i = 0; i < 7000; i++) {
-    const s = Math.random() ** 4 * 1.1 + 0.25, a = 0.25 + Math.random() * 0.6, c = tint[Math.floor(Math.random() * tint.length)];
+  for (let i = 0; i < 14000; i++) {
+    const s = Math.random() ** 6 * 1.2 + 0.2, a = 0.15 + Math.random() ** 2 * 0.75, c = tint[Math.floor(Math.random() * tint.length)];
     x.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},${a})`;
     x.beginPath(); x.arc(Math.random() * W, Math.random() * H, s, 0, Math.PI * 2); x.fill();
+  }
+  for (let i = 0; i < 26; i++) {
+    const px = Math.random() * W, py = H * (0.15 + Math.random() * 0.7), c = tint[i % tint.length], L = 8 + Math.random() * 16;
+    const rg = x.createRadialGradient(px, py, 0, px, py, 5);
+    rg.addColorStop(0, `rgba(255,255,255,1)`); rg.addColorStop(0.4, `rgba(${c[0]},${c[1]},${c[2]},0.8)`); rg.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`);
+    x.fillStyle = rg; x.fillRect(px - 5, py - 5, 10, 10);
+    for (const [dx, dy] of [[1, 0], [0, 1]]) {
+      const lg = x.createLinearGradient(px - dx * L, py - dy * L, px + dx * L, py + dy * L);
+      lg.addColorStop(0, 'rgba(255,255,255,0)'); lg.addColorStop(0.5, `rgba(${c[0]},${c[1]},${c[2]},0.75)`); lg.addColorStop(1, 'rgba(255,255,255,0)');
+      x.fillStyle = lg; x.fillRect(px - dx * L - dy * 0.6, py - dy * L - dx * 0.6, dx * 2 * L + dy * 1.2, dy * 2 * L + dx * 1.2);
+    }
   }
   const t = new THREE.CanvasTexture(c); t.mapping = THREE.EquirectangularReflectionMapping; t.colorSpace = THREE.SRGBColorSpace;
   return t;
