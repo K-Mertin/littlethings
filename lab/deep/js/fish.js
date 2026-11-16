@@ -9,12 +9,14 @@ import { floorY, rng } from './world.js';
 
 // 每一群：中心在哪附近晃、顏色、大小、身形（寬、高、長）、速度
 export const SCHOOLS = [
-  { id: 'sardine', share: 0.34, home: [18, -112], h: 7, R: 22, color: [0.78, 0.84, 0.9], belly: [0.95, 0.97, 1], size: 0.42, shape: [0.32, 0.38, 1], speed: 4.2, rad: 6 },
-  { id: 'sardine', share: 0.2, home: [-22, 5], h: 9, R: 30, color: [0.7, 0.78, 0.86], belly: [0.95, 0.97, 1], size: 0.45, shape: [0.32, 0.38, 1], speed: 4.6, rad: 7 },
-  { id: 'tang', share: 0.12, home: [-26, -128], h: 4, R: 14, color: [0.08, 0.32, 0.95], belly: [0.15, 0.45, 1], tail: [1, 0.85, 0.1], size: 0.55, shape: [0.28, 0.75, 0.9], speed: 2.6, rad: 5 },
-  { id: 'yellow', share: 0.12, home: [30, -132], h: 4, R: 14, color: [1, 0.82, 0.08], belly: [1, 0.92, 0.45], size: 0.5, shape: [0.25, 0.85, 0.85], speed: 2.4, rad: 5 },
-  { id: 'red', share: 0.1, home: [-45, -60], h: 5, R: 18, color: [0.92, 0.3, 0.25], belly: [1, 0.7, 0.6], size: 0.5, shape: [0.32, 0.5, 1], speed: 3, rad: 5 },
-  { id: 'lantern', share: 0.12, home: [20, 95], h: 10, R: 26, color: [0.12, 0.14, 0.2], belly: [0.25, 0.3, 0.4], glow: [0.3, 0.8, 1], size: 0.4, shape: [0.3, 0.42, 1], speed: 3.2, rad: 7 },
+  { id: 'sardine', share: 0.3, home: [18, -112], h: 7, R: 22, color: [0.78, 0.84, 0.9], belly: [0.95, 0.97, 1], size: 0.42, shape: [0.32, 0.38, 1], speed: 4.2, rad: 6, stripe: [0, 0, [0.3, 0.45, 0.6]] },
+  { id: 'sardine', share: 0.18, home: [-22, 5], h: 9, R: 30, color: [0.7, 0.78, 0.86], belly: [0.95, 0.97, 1], size: 0.45, shape: [0.32, 0.38, 1], speed: 4.6, rad: 7, stripe: [0, 0, [0.3, 0.45, 0.6]] },
+  { id: 'tang', share: 0.11, home: [-26, -128], h: 4, R: 14, color: [0.08, 0.32, 0.95], belly: [0.15, 0.45, 1], tail: [1, 0.85, 0.1], size: 0.55, shape: [0.28, 0.75, 0.9], speed: 2.6, rad: 5, stripe: [1.6, 0.8, [0.02, 0.04, 0.12]] },
+  { id: 'yellow', share: 0.11, home: [30, -132], h: 4, R: 14, color: [1, 0.82, 0.08], belly: [1, 0.92, 0.45], size: 0.5, shape: [0.25, 0.85, 0.85], speed: 2.4, rad: 5, stripe: [0, 0, [1, 1, 1]] },
+  { id: 'red', share: 0.08, home: [-45, -60], h: 5, R: 18, color: [0.92, 0.3, 0.25], belly: [1, 0.7, 0.6], size: 0.5, shape: [0.32, 0.5, 1], speed: 3, rad: 5, stripe: [7, 0.5, [1, 0.9, 0.85]] },
+  { id: 'parrot', share: 0.07, home: [8, -88], h: 3, R: 16, color: [0.15, 0.75, 0.6], belly: [0.45, 0.9, 0.8], tail: [0.95, 0.4, 0.7], size: 0.85, shape: [0.36, 0.55, 1], speed: 2, rad: 6, stripe: [5, 0.6, [0.95, 0.45, 0.7]] },
+  { id: 'jack', share: 0.05, home: [-8, -30], h: 10, R: 34, color: [0.62, 0.68, 0.75], belly: [0.92, 0.94, 0.97], tail: [0.95, 0.8, 0.3], size: 1.3, shape: [0.28, 0.48, 1], speed: 5.5, rad: 8, stripe: [0, 0, [1, 1, 1]] },
+  { id: 'lantern', share: 0.1, home: [20, 95], h: 10, R: 26, color: [0.12, 0.14, 0.2], belly: [0.25, 0.3, 0.4], glow: [0.3, 0.8, 1], size: 0.4, shape: [0.3, 0.42, 1], speed: 3.2, rad: 7, stripe: [0, 0, [1, 1, 1]] },
 ];
 const NB = [1, 2, 3, 5, 8];   // 看前後第幾條鄰居
 
@@ -92,6 +94,8 @@ export class Fish {
     const BEL = uniformArray(SCHOOLS.map((s) => new THREE.Vector3(...s.belly)), 'vec3');
     const TAIL = uniformArray(SCHOOLS.map((s) => new THREE.Vector3(...(s.tail || s.color))), 'vec3');
     const GLOW = uniformArray(SCHOOLS.map((s) => new THREE.Vector3(...(s.glow || [0, 0, 0]))), 'vec3');
+    const STR = uniformArray(SCHOOLS.map((s) => new THREE.Vector4(s.stripe[0], s.stripe[1], 0, 0)), 'vec4');   // 條紋：密度、深淺
+    const STC = uniformArray(SCHOOLS.map((s) => new THREE.Vector3(...s.stripe[2])), 'vec3');
     const mat = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide, roughness: 0.35, metalness: 0.25 });
     const p = P.element(instanceIndex), v = V.element(instanceIndex), si = int(p.w);
     mat.positionNode = Fn(() => {
@@ -106,7 +110,10 @@ export class Fish {
       return r.mul(l.x).add(u.mul(l.y)).add(f.mul(l.z)).mul(size).add(p.xyz);
     })();
     const isTail = smoothstep(-0.36, -0.42, positionGeometry.z);
-    mat.colorNode = mix(mix(BEL.element(si), COL.element(si), smoothstep(-0.25, 0.15, positionGeometry.y)), TAIL.element(si), isTail);
+    const base = mix(mix(BEL.element(si), COL.element(si), smoothstep(-0.25, 0.15, positionGeometry.y)), TAIL.element(si), isTail);
+    const st = STR.element(si);
+    const band = smoothstep(0.55, 0.75, sin(positionGeometry.z.mul(st.x).mul(6.28).add(positionGeometry.y.mul(2))).mul(0.5).add(0.5)).mul(st.y).mul(float(1).sub(isTail));
+    mat.colorNode = mix(base, STC.element(si), band);
     // 燈籠魚：身上一排發光點
     const dots = smoothstep(0.82, 0.95, sin(positionGeometry.z.mul(40)).mul(0.5).add(0.5)).mul(smoothstep(-0.05, -0.2, positionGeometry.y));
     mat.emissiveNode = GLOW.element(si).mul(dots.mul(2.5));

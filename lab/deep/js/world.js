@@ -2,7 +2,7 @@
 // 座標：x 左右、z 往前越來越深（z −170 珊瑚礁淺海 → z +170 深海海溝），y 是高度（海面 0，往下是負的）
 import * as THREE from 'three';
 import {
-  Fn, uniform, float, vec2, vec3, vec4, mix, smoothstep, pow, sin, cos, abs, exp, max, min, clamp, time, hash, uv,
+  Fn, uniform, float, vec2, vec3, vec4, mix, smoothstep, pow, sin, cos, abs, exp, max, min, clamp, time, hash, uv, atan,
   positionWorld, positionLocal, positionGeometry, normalWorld, instanceIndex, instancedArray, billboarding, mx_worley_noise_float, mx_noise_float, fract, length,
 } from 'three/tsl';
 
@@ -200,6 +200,51 @@ export function buildWorld(scene, { high, webgpu }) {
     sway({ geo: tg, mat: am, data: list, amp: 0.25, speed: 1.6 });
     const base = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.3, 0.5, 20), new THREE.MeshStandardNodeMaterial({ color: 0x8e4a6a, roughness: 0.7 }));
     base.position.copy(ANEM).add(new THREE.Vector3(0, 0.15, 0)); scene.add(base);
+  }
+
+  // ---------------- 海草地毯：沙地上一叢一叢會擺動的短草
+  {
+    const g = new THREE.PlaneGeometry(0.12, 1, 1, 4); g.translate(0, 0.5, 0);
+    const m = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide, roughness: 0.8 });
+    m.colorNode = mix(vec3(0.18, 0.32, 0.1), vec3(0.42, 0.62, 0.2), uv().y);
+    const blades = [];
+    const patches = high ? 70 : 40;
+    for (let k = 0; k < patches; k++) {
+      const c = place((x, z) => z > -165 && z < 30 && floorY(x, z) > -45);
+      if (!c) continue;
+      const n = 30 + Math.floor(R() * 40);
+      for (let i = 0; i < n * cnt; i++) {
+        const a = R() * Math.PI * 2, d = Math.sqrt(R()) * 3.2, x = c.x + Math.cos(a) * d, z = c.z + Math.sin(a) * d;
+        blades.push({ x, y: floorY(x, z), z, h: 0.5 + R() * 0.9, yaw: R() * 6.28 });
+      }
+    }
+    sway({ geo: g, mat: m, data: blades, amp: 0.25, speed: 1.4, narrow: 0.7 });
+  }
+  // ---------------- 柳珊瑚（扇子形狀，網狀花紋）
+  {
+    const g = new THREE.CircleGeometry(1, 24, 0, Math.PI); g.translate(0, 0, 0);
+    const m = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide, roughness: 0.7 });
+    const u2 = uv().sub(vec2(0.5, 0)).mul(vec2(2, 1));
+    const ang = atan(u2.y, u2.x), rad = u2.length();
+    const lat = smoothstep(0.55, 0.75, sin(ang.mul(30)).mul(0.5).add(0.5)).max(smoothstep(0.6, 0.8, sin(rad.mul(30)).mul(0.5).add(0.5))).max(smoothstep(0.86, 0.95, rad));
+    m.colorNode = mix(mix(vec3(0.55, 0.1, 0.28), vec3(0.75, 0.25, 0.2), rad), mix(vec3(1, 0.45, 0.65), vec3(1, 0.7, 0.4), rad), lat);
+    m.emissiveNode = m.colorNode.mul(0.35);   // 立著的扇子背光，補一點亮度
+    const fans = [];
+    for (let i = 0; i < 70 * cnt; i++) { const p = reefPick(); if (p) fans.push({ p, ry: R() * 6.28, s: 0.8 + R() * 1.2 }); }
+    const im = inst(g, m, fans); im.castShadow = false;
+  }
+  // ---------------- 貝殼、海膽
+  {
+    const shell = new THREE.SphereGeometry(0.25, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2); shell.scale(1, 0.5, 1.2);
+    const urch = new THREE.IcosahedronGeometry(0.22, 0);
+    const spikes = [];
+    for (let i = 0; i < 14; i++) { const c = new THREE.ConeGeometry(0.03, 0.4, 3); const d = new THREE.Vector3().randomDirection(); d.y = Math.abs(d.y) * 0.8 + 0.1; d.normalize(); c.translate(0, 0.2, 0); c.lookAt(d); c.rotateX(Math.PI / 2); spikes.push(c); }
+    const urchin = mergeGeos([urch, ...spikes]);
+    const sl = [], ul = [];
+    for (let i = 0; i < 160 * cnt; i++) { const p = place((x, z) => z < 40 && floorY(x, z) > -60); if (p) sl.push({ p: p.add(new THREE.Vector3(0, 0.05, 0)), ry: R() * 6, s: 0.6 + R() * 0.9 }); }
+    for (let i = 0; i < 90 * cnt; i++) { const p = reefPick(); if (p) ul.push({ p: p.add(new THREE.Vector3(0, 0.1, 0)), ry: R() * 6, s: 0.8 + R() * 0.6 }); }
+    inst(shell, new THREE.MeshStandardNodeMaterial({ roughness: 0.4 }), sl, ['#f4e3d0', '#f7c6b5', '#e8d7a8', '#fff3e6']);
+    inst(urchin, new THREE.MeshStandardNodeMaterial({ roughness: 0.6 }), ul, ['#2b1a3a', '#4a1f4f', '#1d1d2b']);
   }
 
   // ---------------- 海星

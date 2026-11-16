@@ -1,17 +1,17 @@
 # 深海探險隊（`lab/deep/`）
 
-駕駛小潛水艇探索海底：珊瑚礁淺海 → 斜坡 → 很暗的深海和海溝。靠近生物就記進「海洋圖鑑」（15 種），順便撿 20 個垃圾。
+駕駛小潛水艇探索海底：珊瑚礁淺海 → 斜坡 → 很暗的深海和海溝。靠近生物就記進「海洋圖鑑」（17 種），順便撿 20 個垃圾；左上有 9 個依序解鎖的探險任務，R 鍵聲納會指向還沒找到的生物。
 three.js **0.187.0** WebGPURenderer（沒有 WebGPU 自動退回 WebGL2）。
 
 ## 檔案
 | 檔案 | 內容 |
 |---|---|
-| `index.html` | 版面：頂列（深度、圖鑑、垃圾、探照燈、聲音）、深度條、發現卡片、圖鑑視窗、觸控搖桿 |
-| `js/main.js` | 渲染器、霧與光（跟著深度變暗）、潛水艇、操作、鏡頭、發現／撿垃圾、存檔、測試掛勾 |
-| `js/world.js` | `floorY(x,z)` 地形高度（CPU，碰撞和擺東西共用）、地形材質（沙／石／泥＋水底光紋）、珊瑚（InstancedMesh）、石頭、昆布、海葵、海星、熱泉＋管蟲＋黑煙、垃圾、海面、陽光光束、海雪、背景球 |
-| `js/fish.js` | 魚群（boids compute）：6 群、WebGPU 高畫質 9000 條／低畫質 3500／相容模式 1500 |
+| `index.html` | 版面：頂列（深度、圖鑑、垃圾、聲納、探照燈、聲音）、任務框、區域名稱、聲納箭頭、深度條、發現卡片、圖鑑視窗、觸控搖桿 |
+| `js/main.js` | 渲染器、霧與光（跟著深度變暗）、畫面暗角、潛水艇、探照燈光束、螺旋槳氣泡、操作、鏡頭、發現／撿垃圾、任務（`MISSIONS`）、區域名稱、聲納、存檔、測試掛勾 |
+| `js/world.js` | `floorY(x,z)` 地形高度（CPU，碰撞和擺東西共用）、地形材質（沙／石／泥＋水底光紋）、珊瑚（InstancedMesh）、石頭、昆布、海葵、海草地毯、海扇、貝殼、海膽、海星、熱泉＋管蟲＋黑煙、垃圾、海面、陽光光束、海雪、背景球 |
+| `js/fish.js` | 魚群（boids compute）：8 群（每群有自己的條紋顏色）、WebGPU 高畫質 9000 條／低畫質 3500／相容模式 1500 |
 | `js/creatures.js` | 海龜、鬼蝠魟、鯨鯊、章魚、小丑魚、發光水母、鮟鱇魚（簡單幾何拼的，動作在 CPU 或頂點 shader） |
-| `js/data.js` | 圖鑑 15 種的名字、在哪裡、小知識 |
+| `js/data.js` | 圖鑑 17 種的名字、在哪裡、小知識 |
 | `js/audio.js` | WebAudio 合成：環境音、馬達、聲納叮、泡泡、完成音效 |
 
 ## 世界
@@ -25,15 +25,20 @@ three.js **0.187.0** WebGPURenderer（沒有 WebGPU 自動退回 WebGL2）。
 - 魚群中心在 CPU 上沿各自的路線晃，潛艇靠太近整群會躲開一陣子。
 - 外形：橢圓身體＋尾鰭，頂點 shader 依速度轉向、擺尾巴。
 
+## 細節效果
+- **氣泡**：CPU 環狀緩衝 260 顆，每格上傳到 `instancedArray`；幾何本身就是小方塊（0.22），`positionNode` 只加位移——在 positionNode 裡縮放會讓 billboard 出錯（潛艇周圍出現白圈）。
+- **探照燈光束**：加法混色的圓錐，亮度 ∝ `along*(1-along)`，只在開燈時顯示。
+- **海扇**：半圓 + 格子紋 colorNode，不用 alphaTest（會變灰色弧線）。
+
 ## 坑
 - **InstancedMesh 加 `positionNode` 時，three 0.187 不會套用每棵的矩陣**（全部擠在原點）。昆布、海葵改成自己做 instancing：位置放在 `instancedArray`，`mesh.count = N`，在 positionNode 裡自己加位置（見 `world.js` 的 `sway()`）。
 - `new THREE.FogExp2(color)` 會**複製**顏色，要改霧色得改 `scene.fog.color`。
 
 ## 存檔
-`localStorage['mwLabDeep.v1']` = `{ found: [圖鑑 id…], trash: [垃圾編號…], light, soundOff }`。圖鑑視窗有「重新開始探險」。
+`localStorage['mwLabDeep.v1']` = `{ found: [圖鑑 id…], trash: [垃圾編號…], light, soundOff, mission, maxDepth }`（`mission`、`maxDepth` 是新欄位，舊存檔沒有就從 0 開始）。圖鑑視窗有「重新開始探險」。
 
 ## 操作
-- 鍵盤：W／S 前進後退、A／D 轉彎、空白鍵（或 E）上浮、Shift（或 Q、C）下潛、F 探照燈、B／Tab 圖鑑、滑鼠拖曳看四周、滾輪拉遠拉近。
+- 鍵盤：W／S 前進後退、A／D 轉彎、空白鍵（或 E）上浮、Shift（或 Q、C）下潛、F 探照燈、R 聲納、B／Tab 圖鑑、滑鼠拖曳看四周、滾輪拉遠拉近。
 - 觸控：左下搖桿、右下 ⬆️⬇️、拖曳畫面看四周。
 
 ## 測試

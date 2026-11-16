@@ -1,6 +1,6 @@
 // 深海探險隊：潛水艇、鏡頭、操作、圖鑑、垃圾、光線與霧
 import * as THREE from 'three';
-import { pass, uniform, vec3, mix, sin, time } from 'three/tsl';
+import { pass, uniform, vec3, vec4, mix, sin, time, uv, smoothstep, float, instancedArray, instanceIndex, positionGeometry, billboarding } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { buildWorld, floorY, HALF } from './world.js';
 import { Fish } from './fish.js';
@@ -81,6 +81,44 @@ spot.position.set(0, -0.3, 1.4); sub.add(spot);
 const spotTarget = new THREE.Object3D(); spotTarget.position.set(0, -2.5, 14); sub.add(spotTarget); spot.target = spotTarget;
 if (HIGH) { spot.castShadow = true; spot.shadow.mapSize.set(1024, 1024); spot.shadow.camera.near = 0.5; spot.shadow.camera.far = 55; spot.shadow.bias = -0.0005; }
 const fill = new THREE.PointLight(0xbfefff, 3, 9, 1.5); fill.position.set(0, 1.5, 0); sub.add(fill);
+// 探照燈的光束（看得到的光錐，加法混色）
+const cone = (() => {
+  const g = new THREE.ConeGeometry(4.6, 18, 32, 1, true); g.translate(0, -9, 0); g.rotateX(-Math.PI / 2 - 0.14);
+  const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
+  const along = uv().y;
+  m.colorNode = vec3(1, 0.95, 0.8).mul(0.07).mul(along.mul(along.oneMinus()).mul(4));
+  const c = new THREE.Mesh(g, m); c.position.set(0, -0.3, 1.5); c.renderOrder = 5; sub.add(c); return c;
+})();
+// 氣泡：從螺旋槳冒出來，往上飄、慢慢變大
+const BN = 260, bub = { p: new Float32Array(BN * 4), v: [], i: 0, acc: 0 };
+for (let i = 0; i < BN; i++) { bub.p[i * 4 + 1] = -999; bub.v.push(0); }
+const BA = instancedArray(bub.p, 'vec4');
+const bubMesh = (() => {
+  const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false });
+  const d = BA.element(instanceIndex);
+  m.positionNode = positionGeometry.add(d.xyz);   // billboarding 用幾何本身的大小（不能在 positionNode 裡縮放）
+  m.vertexNode = billboarding();
+  const r = uv().sub(0.5).length();
+  m.colorNode = vec3(0.85, 0.95, 1);
+  m.opacityNode = smoothstep(0.5, 0.42, r).mul(smoothstep(0.2, 0.42, r).mul(0.7).add(0.15)).mul(0.8);
+  const me = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.22), m); me.count = BN; me.frustumCulled = false; scene.add(me); return me;
+})();
+function updateBubbles(dt) {
+  const sp = S.vel.length() + Math.abs(input.vert) * 2;
+  bub.acc += dt * (2 + sp * 5);
+  const back = new THREE.Vector3(0, 0, -1.9).applyQuaternion(sub.quaternion).add(sub.position);
+  while (bub.acc > 1) {
+    bub.acc -= 1; const k = bub.i++ % BN, o = k * 4;
+    bub.p[o] = back.x + (Math.random() - 0.5) * 0.5; bub.p[o + 1] = back.y + (Math.random() - 0.5) * 0.5; bub.p[o + 2] = back.z + (Math.random() - 0.5) * 0.5;
+    bub.p[o + 3] = 0.05 + Math.random() * 0.1; bub.v[k] = 1 + Math.random() * 1.5;
+  }
+  for (let k = 0; k < BN; k++) {
+    const o = k * 4; if (bub.p[o + 1] < -900) continue;
+    bub.p[o + 1] += bub.v[k] * dt; bub.p[o] += Math.sin(S.t * 3 + k) * dt * 0.3; bub.p[o + 3] = Math.min(0.35, bub.p[o + 3] + dt * 0.03);
+    if (bub.p[o + 1] > -0.3) bub.p[o + 1] = -999;
+  }
+  BA.value.needsUpdate = true;
+}
 
 // ---------------------------------------------------------------- 狀態
 const S = {
@@ -101,7 +139,10 @@ W.trash.forEach((m, i) => { if (save.trash.includes(i)) { m.visible = false; } }
 const pipeline = new THREE.RenderPipeline(renderer);
 const scenePass = pass(scene, camera);
 const col = scenePass.getTextureNode();
-pipeline.outputNode = HIGH ? col.add(bloom(col, 0.5, 0.45, 0.85)) : col;
+const lit = HIGH ? col.add(bloom(col, 0.5, 0.45, 0.85)) : col;
+// 暗角＋水下的藍綠色調
+const vig = smoothstep(0.35, 0.95, uv().sub(0.5).length().mul(1.25));
+pipeline.outputNode = vec4(mix(lit.rgb, lit.rgb.mul(vec3(0.55, 0.7, 0.8)), vig), 1);
 const OFF = params.has('offscreen') ? new THREE.RenderTarget(1, 1) : null;
 
 // ---------------------------------------------------------------- 操作
@@ -109,6 +150,7 @@ addEventListener('keydown', (e) => {
   if (e.repeat) return;
   keys.add(e.code); sound.start(); hideHelp();
   if (e.code === 'KeyF') toggleLight();
+  if (e.code === 'KeyR') pingSonar();
   if (e.code === 'KeyB' || e.code === 'Tab') { e.preventDefault(); toggleCodex(); }
   if (e.code === 'Space') e.preventDefault();
 });
@@ -167,6 +209,7 @@ function toggleLight(v) {
   $('lightBtn').classList.toggle('on', S.light);
 }
 $('lightBtn').onclick = () => toggleLight();
+$('sonarBtn').onclick = () => { sound.start(); pingSonar(); };
 $('soundBtn').onclick = () => { sound.start(); sound.setOn(!sound.on); save.soundOff = !sound.on; persist(); $('soundBtn').textContent = sound.on ? '🔊' : '🔇'; };
 $('soundBtn').textContent = sound.on ? '🔊' : '🔇';
 let helpT = null;
@@ -215,7 +258,7 @@ function msg(t) { const el = $('msg'); el.textContent = t; el.classList.add('sho
 const DEEP_NEED_LIGHT = new Set(['jelly', 'angler', 'tubeworm']);
 const targets = () => {
   const out = [];
-  for (const id of ['sardine', 'tang', 'yellow']) { const c = fish.center(id); if (c) out.push({ id, p: c, r: c.w + 7 }); }
+  for (const id of ['sardine', 'tang', 'yellow', 'parrot', 'jack']) { const c = fish.center(id); if (c) out.push({ id, p: c, r: c.w + 7 }); }
   out.push({ id: 'coral', ...W.poi.coral }, { id: 'kelp', ...W.poi.kelp }, { id: 'anemone', ...W.poi.anemone }, { id: 'tubeworm', ...W.poi.vent });
   for (const s of W.poi.starfish) out.push({ id: 'starfish', ...s });
   for (const c of creatures) out.push({ id: c.id, p: c.obj.position, r: c.r });
@@ -244,6 +287,60 @@ function checkTrash() {
       else { showToast({ emoji: '🪸', title: '海底變乾淨了！', fact: '20 個垃圾都撿完了。海龜不會再誤吃塑膠袋，珊瑚也能好好長大，謝謝你！' }); sound.fanfare(); }
     }
   });
+}
+
+// ---------------------------------------------------------------- 探險任務：一個完成換下一個
+const MISSIONS = [
+  { t: '發現 3 種海洋生物', p: () => [save.found.length, 3] },
+  { t: '撿起 5 個垃圾', p: () => [save.trash.length, 5] },
+  { t: '潛到 40 公尺深', p: () => [Math.min(40, save.maxDepth || 0), 40] },
+  { t: '找到昆布森林和海葵', p: () => [['kelp', 'anemone'].filter((x) => save.found.includes(x)).length, 2] },
+  { t: '打開探照燈 💡，找到發光水母', p: () => [save.found.includes('jelly') ? 1 : 0, 1] },
+  { t: '潛到最深的海溝（100 公尺）', p: () => [Math.min(100, save.maxDepth || 0), 100] },
+  { t: '找到海溝裡的管蟲熱泉', p: () => [save.found.includes('tubeworm') ? 1 : 0, 1] },
+  { t: '撿完全部 20 個垃圾', p: () => [save.trash.length, TRASH_TOTAL] },
+  { t: '完成整本海洋圖鑑', p: () => [save.found.length, CODEX.length] },
+];
+let missionShown = -1;
+function updateMission() {
+  let i = save.mission || 0;
+  while (i < MISSIONS.length) { const [a, b] = MISSIONS[i].p(); if (a >= b) { i++; if (i > (save.mission || 0)) { save.mission = i; persist(); if (missionShown >= 0) { sound.ping(); msg(`✅ 任務完成！${MISSIONS[i - 1].t}`); } } } else break; }
+  const el = $('mission');
+  if (i >= MISSIONS.length) { el.innerHTML = '🏅 所有探險任務都完成了！'; missionShown = i; return; }
+  const [a, b] = MISSIONS[i].p();
+  el.innerHTML = `<small>任務 ${i + 1}/${MISSIONS.length}</small> ${MISSIONS[i].t} <b>${a}/${b}</b>`;
+  missionShown = i;
+}
+// ---------------------------------------------------------------- 區域名稱
+let zoneNow = '';
+function updateZone() {
+  const d = -S.pos.y, z = S.pos.z;
+  const name = z > 95 && d > 80 ? '🌋 海溝' : d > 70 ? '🌑 深海平原' : z > -40 ? '⛰️ 大斜坡' : Math.hypot(S.pos.x - W.kelp.x, z - W.kelp.z) < 25 ? '🌿 昆布森林' : '🪸 珊瑚礁淺海';
+  if (name !== zoneNow) { zoneNow = name; const el = $('zone'); el.textContent = name; el.classList.add('show'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 2600); }
+}
+// ---------------------------------------------------------------- 聲納：指出最近還沒找到的生物
+let sonar = { t: 0, cd: 0, target: null };
+function pingSonar() {
+  if (sonar.cd > 0) return;
+  sonar.cd = 4;
+  let best = null, bd = Infinity;
+  for (const t of targets()) { if (save.found.includes(t.id)) continue; const d = t.p.distanceTo(S.pos); if (d < bd) { bd = d; best = t; } }
+  sound.ping();
+  if (!best) { msg('圖鑑都找齊了！'); return; }
+  sonar.target = best; sonar.t = 7;
+}
+function updateSonar(dt) {
+  sonar.cd = Math.max(0, sonar.cd - dt); sonar.t = Math.max(0, sonar.t - dt);
+  const el = $('sonar');
+  $('sonarBtn').classList.toggle('cool', sonar.cd > 0);
+  if (!sonar.target || sonar.t <= 0) { el.classList.add('hidden'); return; }
+  const tp = sonar.target.p, dx = tp.x - S.pos.x, dz = tp.z - S.pos.z;
+  const ang = Math.atan2(dx, dz) - S.camYaw;   // 相對鏡頭的方向（0 ＝ 正前方）
+  const dist = Math.round(Math.hypot(dx, tp.y - S.pos.y, dz)), dy = tp.y - S.pos.y;
+  el.classList.remove('hidden');
+  el.querySelector('i').style.transform = `rotate(${-ang}rad)`;
+  el.querySelector('span').textContent = `${dist} m ${dy > 4 ? '⬆️' : dy < -4 ? '⬇️' : ''}`;
+  if (save.found.includes(sonar.target.id)) sonar.t = 0;
 }
 
 // ---------------------------------------------------------------- 每一格
@@ -296,6 +393,8 @@ function update(dt) {
   sub.userData.lampOn.value = S.light ? 1 : 0;
 
   W.update(camera, depth);
+  cone.visible = S.light; updateBubbles(dt); updateMission(); updateZone(); updateSonar(dt);
+  save.maxDepth = Math.max(save.maxDepth || 0, Math.round(-S.pos.y));
   fish.update(renderer, S.t, dt, S.pos);
   for (const c of creatures) c.update(S.t, dt);
   checkDiscover(); checkTrash();
@@ -339,7 +438,7 @@ else { $('startBtn').classList.remove('hidden'); $('startBtn').onclick = begin; 
 
 // 自動測試用
 window.__deep = {
-  S, W, fish, creatures, renderer, scene, camera, WEBGPU, HIGH, save, sub,
+  S, W, fish, creatures, renderer, scene, camera, WEBGPU, HIGH, save, sub, bubMesh, cone,
   set(x, y, z, yaw = 0, pitch = 0.2) { S.pos.set(x, y, z); S.camYaw = S.yaw = yaw; S.camPitch = pitch; S.vel.set(0, 0, 0); },
   light: toggleLight,
   // 測試：把潛艇放在某隻動物旁邊、面向牠
