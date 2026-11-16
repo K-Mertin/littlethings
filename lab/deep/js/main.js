@@ -7,6 +7,7 @@ import { Fish } from './fish.js';
 import { buildCreatures } from './creatures.js';
 import { CODEX, TRASH_TOTAL } from './data.js';
 import { Sound } from './audio.js';
+import { buildSub } from './sub.js';
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -53,31 +54,10 @@ step(0.55, '叫醒海底的動物…');
 const creatures = buildCreatures(scene, W, { high: HIGH });
 
 // ---------------------------------------------------------------- 潛水艇
-const sub = new THREE.Group();
-{
-  const yellow = new THREE.MeshStandardNodeMaterial({ color: 0xffc928, roughness: 0.35, metalness: 0.2 });
-  const dark = new THREE.MeshStandardNodeMaterial({ color: 0x2b3440, roughness: 0.5, metalness: 0.4 });
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.75, 1.9, 8, 20), yellow); body.rotation.x = Math.PI / 2;
-  const glassM = new THREE.MeshStandardNodeMaterial({ color: 0x6fe3ff, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.75 });
-  glassM.emissiveNode = vec3(0.1, 0.35, 0.45);
-  const glass = new THREE.Mesh(new THREE.SphereGeometry(0.62, 20, 14, 0, Math.PI * 2, 0, Math.PI / 2), glassM); glass.rotation.x = Math.PI / 2; glass.position.z = 1.35;
-  const tower = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.45, 0.9), yellow); tower.position.set(0, 0.85, 0.1);
-  const peri = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.5, 6), dark); peri.position.set(0, 1.25, 0.3);
-  const fins = [-1, 1].map((s) => { const f = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.06, 0.45), dark); f.position.set(s * 0.95, 0, -0.7); return f; });
-  const vfin = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.7, 0.45), dark); vfin.position.set(0, 0.55, -1.3);
-  const prop = new THREE.Group(); prop.position.z = -1.75;
-  for (let i = 0; i < 3; i++) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.6, 0.12), dark); b.position.y = 0.3; const p = new THREE.Group(); p.rotation.z = i * 2.094; p.add(b); prop.add(p); }
-  const lampM = new THREE.MeshStandardNodeMaterial({ color: 0xfff7d0 });
-  const lampOn = uniform(0);
-  lampM.emissiveNode = vec3(1, 0.95, 0.75).mul(lampOn.mul(6));
-  const lamps = [-1, 1].map((s) => { const l = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.16, 0.18, 12), lampM); l.rotation.x = Math.PI / 2; l.position.set(s * 0.5, -0.45, 1.2); return l; });
-  sub.add(body, glass, tower, peri, ...fins, vfin, prop, ...lamps);
-  sub.traverse((m) => { if (m.isMesh) { m.castShadow = HIGH; } });
-  sub.userData = { prop, lampOn };
-  scene.add(sub);
-}
+const sub = buildSub(HIGH);
+scene.add(sub);
 const spot = new THREE.SpotLight(0xfff1d6, 160, 55, 0.5, 0.55, 1.4);
-spot.position.set(0, -0.3, 1.4); sub.add(spot);
+spot.position.set(0, -0.4, 1.3); sub.add(spot);
 const spotTarget = new THREE.Object3D(); spotTarget.position.set(0, -2.5, 14); sub.add(spotTarget); spot.target = spotTarget;
 if (HIGH) { spot.castShadow = true; spot.shadow.mapSize.set(1024, 1024); spot.shadow.camera.near = 0.5; spot.shadow.camera.far = 55; spot.shadow.bias = -0.0005; }
 const fill = new THREE.PointLight(0xbfefff, 3, 9, 1.5); fill.position.set(0, 1.5, 0); sub.add(fill);
@@ -87,7 +67,7 @@ const cone = (() => {
   const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
   const along = uv().y;
   m.colorNode = vec3(1, 0.95, 0.8).mul(0.07).mul(along.mul(along.oneMinus()).mul(4));
-  const c = new THREE.Mesh(g, m); c.position.set(0, -0.3, 1.5); c.renderOrder = 5; sub.add(c); return c;
+  const c = new THREE.Mesh(g, m); c.position.set(0, -0.4, 1.25); c.renderOrder = 5; sub.add(c); return c;
 })();
 // 氣泡：從螺旋槳冒出來，往上飄、慢慢變大
 const BN = 260, bub = { p: new Float32Array(BN * 4), v: [], i: 0, acc: 0 };
@@ -377,6 +357,7 @@ function update(dt) {
   sub.rotation.set(0, 0, 0); sub.rotateY(S.yaw); sub.rotateX(-Math.max(-0.5, Math.min(0.5, S.vel.y * 0.08))); sub.rotateZ(-dy * 0.4);
   sub.position.y += Math.sin(S.t * 1.3) * 0.06;
   sub.userData.prop.rotation.z += dt * (3 + S.vel.length() * 4);
+  sub.userData.strobe.value = (S.t % 1.6) < 0.08 ? 4 : 0.3;   // 頂上的閃燈
   // 鏡頭
   const cp = Math.cos(S.camPitch), d = S.camDist;
   camera.position.set(S.pos.x - Math.sin(S.camYaw) * cp * d, S.pos.y + Math.sin(S.camPitch) * d + 1.2, S.pos.z - Math.cos(S.camYaw) * cp * d);
