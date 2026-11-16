@@ -8,15 +8,16 @@ import {
 import { floorY, rng } from './world.js';
 
 // 每一群：中心在哪附近晃、顏色、大小、身形（寬、高、長）、速度
+// shape：寬、高、長。珊瑚礁的魚大多是「側扁」的（從正面看很薄、從側面看很高）
 export const SCHOOLS = [
-  { id: 'sardine', share: 0.3, home: [18, -112], h: 7, R: 22, color: [0.78, 0.84, 0.9], belly: [0.95, 0.97, 1], size: 0.42, shape: [0.32, 0.38, 1], speed: 4.2, rad: 6, stripe: [0, 0, [0.3, 0.45, 0.6]] },
-  { id: 'sardine', share: 0.18, home: [-22, 5], h: 9, R: 30, color: [0.7, 0.78, 0.86], belly: [0.95, 0.97, 1], size: 0.45, shape: [0.32, 0.38, 1], speed: 4.6, rad: 7, stripe: [0, 0, [0.3, 0.45, 0.6]] },
-  { id: 'tang', share: 0.11, home: [-26, -128], h: 4, R: 14, color: [0.08, 0.32, 0.95], belly: [0.15, 0.45, 1], tail: [1, 0.85, 0.1], size: 0.55, shape: [0.28, 0.75, 0.9], speed: 2.6, rad: 5, stripe: [1.6, 0.8, [0.02, 0.04, 0.12]] },
-  { id: 'yellow', share: 0.11, home: [30, -132], h: 4, R: 14, color: [1, 0.82, 0.08], belly: [1, 0.92, 0.45], size: 0.5, shape: [0.25, 0.85, 0.85], speed: 2.4, rad: 5, stripe: [0, 0, [1, 1, 1]] },
-  { id: 'red', share: 0.08, home: [-45, -60], h: 5, R: 18, color: [0.92, 0.3, 0.25], belly: [1, 0.7, 0.6], size: 0.5, shape: [0.32, 0.5, 1], speed: 3, rad: 5, stripe: [7, 0.5, [1, 0.9, 0.85]] },
-  { id: 'parrot', share: 0.035, home: [8, -88], h: 3, R: 24, color: [0.15, 0.75, 0.6], belly: [0.45, 0.9, 0.8], tail: [0.95, 0.4, 0.7], size: 0.85, shape: [0.36, 0.55, 1], speed: 2, rad: 10, stripe: [5, 0.6, [0.95, 0.45, 0.7]] },
-  { id: 'jack', share: 0.05, home: [-8, -30], h: 10, R: 34, color: [0.62, 0.68, 0.75], belly: [0.92, 0.94, 0.97], tail: [0.95, 0.8, 0.3], size: 1.3, shape: [0.28, 0.48, 1], speed: 5.5, rad: 8, stripe: [0, 0, [1, 1, 1]] },
-  { id: 'lantern', share: 0.1, home: [20, 95], h: 10, R: 26, color: [0.12, 0.14, 0.2], belly: [0.25, 0.3, 0.4], glow: [0.3, 0.8, 1], size: 0.4, shape: [0.3, 0.42, 1], speed: 3.2, rad: 7, stripe: [0, 0, [1, 1, 1]] },
+  { id: 'sardine', share: 0.3, home: [18, -112], h: 7, R: 22, color: [0.78, 0.84, 0.9], belly: [0.95, 0.97, 1], size: 0.42, shape: [0.15, 0.3, 1.15], speed: 4.2, rad: 6, stripe: [0, 0, [0.3, 0.45, 0.6]] },
+  { id: 'sardine', share: 0.18, home: [-22, 5], h: 9, R: 30, color: [0.7, 0.78, 0.86], belly: [0.95, 0.97, 1], size: 0.45, shape: [0.15, 0.3, 1.15], speed: 4.6, rad: 7, stripe: [0, 0, [0.3, 0.45, 0.6]] },
+  { id: 'tang', share: 0.11, home: [-26, -128], h: 4, R: 14, color: [0.08, 0.32, 0.95], belly: [0.15, 0.45, 1], tail: [1, 0.85, 0.1], size: 0.55, shape: [0.12, 0.8, 0.9], speed: 2.6, rad: 5, stripe: [1.6, 0.8, [0.02, 0.04, 0.12]] },
+  { id: 'yellow', share: 0.11, home: [30, -132], h: 4, R: 14, color: [1, 0.82, 0.08], belly: [1, 0.92, 0.45], size: 0.5, shape: [0.1, 0.92, 0.8], speed: 2.4, rad: 5, stripe: [0, 0, [1, 1, 1]] },
+  { id: 'red', share: 0.08, home: [-45, -60], h: 5, R: 18, color: [0.92, 0.3, 0.25], belly: [1, 0.7, 0.6], size: 0.5, shape: [0.16, 0.5, 1], speed: 3, rad: 5, stripe: [7, 0.5, [1, 0.9, 0.85]] },
+  { id: 'parrot', share: 0.035, home: [8, -88], h: 3, R: 24, color: [0.15, 0.75, 0.6], belly: [0.45, 0.9, 0.8], tail: [0.95, 0.4, 0.7], size: 0.85, shape: [0.22, 0.5, 1.05], speed: 2, rad: 10, stripe: [5, 0.6, [0.95, 0.45, 0.7]] },
+  { id: 'jack', share: 0.05, home: [-8, -30], h: 10, R: 34, color: [0.62, 0.68, 0.75], belly: [0.92, 0.94, 0.97], tail: [0.95, 0.8, 0.3], size: 1.3, shape: [0.15, 0.46, 1.1], speed: 5.5, rad: 8, stripe: [0, 0, [1, 1, 1]] },
+  { id: 'lantern', share: 0.1, home: [20, 95], h: 10, R: 26, color: [0.12, 0.14, 0.2], belly: [0.25, 0.3, 0.4], glow: [0.3, 0.8, 1], size: 0.4, shape: [0.16, 0.36, 1], speed: 3.2, rad: 7, stripe: [0, 0, [1, 1, 1]] },
 ];
 const NB = [1, 2, 3, 5, 8];   // 看前後第幾條鄰居
 
