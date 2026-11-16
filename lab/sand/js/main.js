@@ -272,7 +272,8 @@ function confetti() {
   setTimeout(() => { box.innerHTML = ''; }, 3200);
 }
 // 第一次玩的提示
-function showHint() { if (save.hinted) return; $('hint').classList.remove('hidden'); }
+// 第一次進來的提示：開始倒東西、或過 9 秒就自動收起來
+function showHint() { if (save.hinted) return; $('hint').classList.remove('hidden'); setTimeout(hideHint, 9000); }
 function hideHint() { if (!$('hint').classList.contains('hidden')) { $('hint').classList.add('hidden'); save.hinted = 1; persist(); } }
 
 function updateHud() {
