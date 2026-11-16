@@ -131,30 +131,65 @@ export function buildCreatures(scene, W, { high }) {
     });
   }
 
-  // ---------------- 鯨鯊：大大的身體、白色斑點
+  // ---------------- 鯨鯊：又寬又扁的頭、嘴巴在最前面、身體兩側有稜脊、上大下小的新月形尾鰭；
+  //                  背上深灰藍色，白點加淡色直條紋排成棋盤格，肚子白色
   {
     const g = new THREE.Group();
-    const bm = new THREE.MeshStandardNodeMaterial({ roughness: 0.55 });
+    const prof = [];
+    for (let i = 0; i <= 28; i++) {
+      const t = i / 28, z = -4.2 + t * 8.4;                // 尾柄 → 吻端
+      const r = t < 0.6 ? 0.12 + 0.98 * Math.pow(Math.sin(t / 0.6 * Math.PI / 2), 1.3) : 1.1 * Math.pow(Math.cos((t - 0.6) / 0.4 * Math.PI / 2), 0.35);
+      prof.push(new THREE.Vector2(Math.max(0.01, r), z));
+    }
+    const geo = new THREE.LatheGeometry(prof, 32); geo.rotateX(Math.PI / 2);
+    {
+      // 頭部壓扁變寬（越前面越扁），身體兩側加三條稜脊
+      const p = geo.attributes.position, v = new THREE.Vector3();
+      for (let i = 0; i < p.count; i++) {
+        v.fromBufferAttribute(p, i);
+        const front = Math.min(1, Math.max(0, (v.z - 1.2) / 3));
+        v.y *= 1 - 0.42 * front; v.x *= 1 + 0.28 * front;
+        const ang = Math.atan2(v.y, v.x), rr = Math.hypot(v.x, v.y);
+        const ridge = [0.35, 0.6, -0.15].reduce((acc, a0) => acc + Math.exp(-Math.pow((Math.abs(ang) - Math.abs(a0) - (a0 < 0 ? 0 : 0)) / 0.05, 2)), 0) * 0.04 * (v.z < 2.5 ? 1 : 0);
+        const k = (rr + ridge) / Math.max(1e-4, rr); v.x *= k; v.y *= k;
+        p.setXYZ(i, v.x, v.y, v.z);
+      }
+      geo.computeVertexNormals();
+    }
+    const bm = new THREE.MeshStandardNodeMaterial({ roughness: 0.6 });
     bm.colorNode = Fn(() => {
-      const w = mx_worley_noise_float(positionGeometry.mul(vec3(2.4, 2.4, 1.6)));
-      const top = mix(vec3(0.85, 0.87, 0.9), vec3(0.16, 0.22, 0.3), smoothstep(-0.35, 0.1, positionGeometry.y));
-      return mix(top, vec3(0.9, 0.92, 0.95), smoothstep(0.17, 0.08, w).mul(smoothstep(-0.1, 0.2, positionGeometry.y)));
+      const p = positionGeometry;
+      const up = smoothstep(-0.45, 0.05, p.y.div(p.xy.length().max(0.01)));      // 背 → 肚
+      const back = mix(vec3(0.85, 0.87, 0.88), vec3(0.17, 0.22, 0.28), up);
+      // 棋盤格：直條紋＋條紋之間的白點
+      const band = smoothstep(0.1, 0.0, sin(p.z.mul(3.4)).abs()).mul(0.7);
+      const dots = smoothstep(0.2, 0.08, mx_worley_noise_float(p.mul(vec3(3.2, 3.2, 2.6))));
+      const head = smoothstep(2.6, 3.6, p.z);
+      const pat = band.max(dots).mul(up).mul(float(1).sub(head.mul(0.5)));
+      // 嘴巴：最前面一條橫的暗線
+      const mouth = smoothstep(0.06, 0.0, p.y.add(0.12).abs()).mul(smoothstep(3.6, 4.1, p.z));
+      const gills = smoothstep(0.04, 0.0, sin(p.z.mul(11)).abs()).mul(smoothstep(1.6, 1.9, p.z)).mul(smoothstep(2.6, 2.3, p.z)).mul(smoothstep(0.5, 0.8, p.x.abs())).mul(0.6);
+      return mix(back, vec3(0.86, 0.88, 0.9), pat).mul(float(1).sub(mouth.mul(0.85)).sub(gills));
     })();
     bm.positionNode = Fn(() => {
       const p = positionLocal.toVar();
-      const back = smoothstep(0.3, -1, p.z);
-      p.x.addAssign(sin(time.mul(1.3).add(p.z.mul(0.9))).mul(back).mul(0.35));
+      const back = smoothstep(1, -4, p.z);
+      p.x.addAssign(sin(time.mul(1.1).add(p.z.mul(0.7))).mul(back.mul(back)).mul(0.55));
       return p;
     })();
-    const body = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 16), bm); body.scale.set(1.15, 1, 4.4);
-    const tailG = new THREE.BufferGeometry();
-    tailG.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, -3.8, 0, 2.2, -5.8, 0, 0, -4.4, 0, 0, -3.8, 0, 0, -4.4, 0, -1.4, -5.4], 3));
-    tailG.computeVertexNormals();
-    const fin = std(0x223040, { side: THREE.DoubleSide });
-    const tail = new THREE.Mesh(tailG, fin);
-    const dors = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.3, 3), fin); dors.position.set(0, 1.25, -0.6); dors.scale.z = 0.25; dors.rotation.x = -0.3;
-    const pecs = [-1, 1].map((s) => { const p = new THREE.Mesh(new THREE.ConeGeometry(0.35, 1.8, 3), fin); p.position.set(s * 1.3, -0.4, 1.0); p.rotation.set(0.5, 0, s * 1.9); p.scale.z = 0.25; return p; });
-    g.add(body, tail, dors, ...pecs); g.scale.setScalar(1.6); shadow(g, high); scene.add(g);
+    const body = new THREE.Mesh(geo, bm);
+    const fin = std(0x1f2a36, { side: THREE.DoubleSide, roughness: 0.6 });
+    // 新月形尾鰭（上半片比較大）
+    const ts = new THREE.Shape();
+    ts.moveTo(0, 0); ts.quadraticCurveTo(-0.6, 1.3, -1.4, 2.7); ts.quadraticCurveTo(-0.9, 1.2, -0.5, 0.2);
+    ts.quadraticCurveTo(-0.8, -0.6, -1.1, -1.6); ts.quadraticCurveTo(-0.4, -0.7, 0, 0);
+    const tailG = new THREE.ShapeGeometry(ts, 10); tailG.rotateY(-Math.PI / 2);
+    const tail = new THREE.Mesh(tailG, fin); tail.position.set(0, 0, -4.1);
+    const finShape = (h, len) => { const f = new THREE.Shape(); f.moveTo(0, 0); f.quadraticCurveTo(-0.15 * len, h * 0.7, -0.55 * len, h); f.quadraticCurveTo(-0.6 * len, h * 0.4, -len, 0); f.lineTo(0, 0); const sg = new THREE.ShapeGeometry(f, 8); sg.rotateY(-Math.PI / 2); return sg; };
+    const dors = new THREE.Mesh(finShape(1.2, 1.4), fin); dors.position.set(0, 0.9, -0.2);
+    const dors2 = new THREE.Mesh(finShape(0.45, 0.6), fin); dors2.position.set(0, 0.45, -2.6);
+    const pecs = [-1, 1].map((sx) => { const pf = new THREE.Mesh(finShape(1.9, 1.1), fin); pf.rotation.set(0, 0, sx * 1.85); pf.position.set(sx * 0.85, -0.55, 1.4); return pf; });
+    g.add(body, tail, dors, dors2, ...pecs); g.scale.setScalar(1.45); shadow(g, high); scene.add(g);
     list.push({
       id: 'whaleshark', obj: g, r: 18,
       update(t) {
