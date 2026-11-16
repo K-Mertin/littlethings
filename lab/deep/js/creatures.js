@@ -1,7 +1,7 @@
 // 單獨的大動物：海龜、鬼蝠魟、鯨鯊、章魚、小丑魚、發光水母、鮟鱇魚
 // 全部用簡單幾何拼出來，動作用 CPU 算（數量少）或頂點 shader（翅膀拍動、尾巴擺動）
 import * as THREE from 'three';
-import { Fn, float, vec3, mix, smoothstep, sin, cos, abs, time, positionLocal, positionGeometry, normalLocal, mx_worley_noise_float, mx_noise_float, uniform, hash, instanceIndex } from 'three/tsl';
+import { Fn, float, vec3, mix, smoothstep, sin, cos, abs, time, positionLocal, positionGeometry, normalLocal, mx_worley_noise_float, mx_noise_float, uniform, hash, instanceIndex, uv, vec2 } from 'three/tsl';
 import { floorY, rng, VENT } from './world.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -250,27 +250,60 @@ export function buildCreatures(scene, W, { high }) {
     list.push({ id: 'octopus', obj: g, r: 8, update(t) { g.rotation.y = Math.sin(t * 0.2) * 0.6; mantle.scale.y = 1.4 + Math.sin(t * 1.4) * 0.05; } });
   }
 
-  // ---------------- 小丑魚（繞著海葵）
+  // ---------------- 小丑魚（公子小丑）：圓胖的橘色身體、三條白色寬帶（邊上有細黑線）、
+  //                  圓圓的鰭（鰭的邊是黑的）、黑眼睛；繞著海葵游
   {
     const g = new THREE.Group();
-    const m = new THREE.MeshStandardNodeMaterial({ roughness: 0.4 });
-    const z = positionGeometry.z;
-    const stripe = smoothstep(0.05, 0.0, abs(z.sub(0.22))).add(smoothstep(0.05, 0.0, abs(z.add(0.05)))).add(smoothstep(0.04, 0.0, abs(z.add(0.33))));
-    m.colorNode = mix(vec3(1, 0.42, 0.05), vec3(1, 1, 1), stripe.clamp(0, 1));
+    const prof = [];
+    for (let i = 0; i <= 18; i++) {
+      const t = i / 18, y = -0.5 + t;
+      // 尾柄細 → 身體最高在中間偏前 → 頭是圓鈍的（不是尖的）
+      const r = t < 0.15 ? 0.1 + t * 1.3 : t < 0.6 ? 0.29 + 0.21 * Math.sin((t - 0.15) / 0.45 * Math.PI / 2) : 0.5 * Math.sqrt(Math.max(0, 1 - Math.pow((t - 0.6) / 0.4, 2.2)));
+      prof.push(new THREE.Vector2(Math.max(0.01, r), y));
+    }
+    prof[prof.length - 1].x = 0.001;
+    const bodyG = new THREE.LatheGeometry(prof, 16); bodyG.rotateX(Math.PI / 2);
+    const bm = new THREE.MeshStandardNodeMaterial({ roughness: 0.32 });
+    const pz = positionGeometry.z, py = positionGeometry.y;
+    const band = (c, w) => smoothstep(w, w - 0.03, pz.sub(c).abs());
+    const edge = (c, w) => smoothstep(w + 0.03, w + 0.012, pz.sub(c).abs()).mul(smoothstep(w - 0.005, w + 0.01, pz.sub(c).abs()));
+    // 頭帶往前彎（沿著鰓蓋）
+    const c1 = py.mul(py).mul(-0.5).add(0.2), c2 = py.mul(py).mul(-0.4).add(-0.04), c3 = float(-0.37);   // 頭帶、中間帶往前彎成弧形
+    const white = band(c1, 0.055).max(band(c2, 0.05)).max(band(c3, 0.03));
+    const black = edge(c1, 0.055).max(edge(c2, 0.05)).max(edge(c3, 0.03));
+    const eyeD = vec2(py.sub(0.07), pz.sub(0.375)).length();
+    const eye = smoothstep(0.072, 0.06, eyeD).mul(smoothstep(0.1, 0.18, positionGeometry.x.abs()));
+    bm.colorNode = mix(mix(mix(vec3(1, 0.34, 0.0), vec3(1, 0.98, 0.95), white), vec3(0.03), black.mul(0.9)), vec3(0.02), eye);
+    const finM = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide, roughness: 0.4 });
+    const fu = uv();
+    finM.colorNode = mix(vec3(1, 0.42, 0.06), vec3(0.04), smoothstep(0.82, 0.95, fu.y));   // 鰭的外緣黑色
+    const fin = (pts) => { const sh = new THREE.Shape(); pts.forEach(([a, b], i) => (i ? sh.lineTo(a, b) : sh.moveTo(a, b))); const sg = new THREE.ShapeGeometry(sh, 6);
+      const p = sg.attributes.position, u2 = sg.attributes.uv; let mx = 0; for (let i = 0; i < p.count; i++) mx = Math.max(mx, Math.hypot(p.getX(i), p.getY(i)));
+      for (let i = 0; i < p.count; i++) u2.setXY(i, 0, Math.hypot(p.getX(i), p.getY(i)) / mx); return sg; };
+    // 尾鰭（圓扇形）、背鰭、臀鰭；形狀在 (z, y) 平面
+    const arc = (cx, cy, r, a0, a1, n = 10) => { const out = [[cx, cy]]; for (let i = 0; i <= n; i++) { const a = a0 + (a1 - a0) * i / n; out.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]); } return out; };
+    const tailG = fin(arc(0, 0, 0.32, Math.PI * 0.62, Math.PI * 1.38)); tailG.rotateY(-Math.PI / 2); tailG.translate(0, 0, -0.42);
+    const dorsG = fin([[0, 0], [0.2, 0.18], [0.05, 0.14], [-0.1, 0.22], [-0.3, 0.16], [-0.38, 0]]); dorsG.rotateY(-Math.PI / 2); dorsG.translate(0, 0.38, 0.05);
+    const analG = fin([[0, 0], [-0.08, -0.18], [-0.25, -0.15], [-0.3, 0]]); analG.rotateY(-Math.PI / 2); analG.translate(0, -0.36, -0.05);
+    const pecG = fin(arc(0, 0, 0.2, -0.6, 0.6, 6));
     const fishes = [];
     for (let i = 0; i < 4; i++) {
-      const f = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 8), m); f.scale.set(0.32, 0.45, 1);
-      const tail = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.3, 3), m); tail.rotation.x = -Math.PI / 2; tail.position.z = -0.55; tail.scale.set(0.4, 1, 1);
-      const o = new THREE.Group(); o.add(f, tail); o.scale.setScalar(0.55); g.add(o); fishes.push(o);
+      const o = new THREE.Group();
+      const tail = new THREE.Mesh(tailG, finM);
+      const pecs = [-1, 1].map((sx) => { const m = new THREE.Mesh(pecG, finM); m.position.set(sx * 0.27, -0.06, 0.12); m.rotation.set(0, sx * -2.2, 0.3 * sx); return m; });
+      o.add(new THREE.Mesh(bodyG, bm), tail, new THREE.Mesh(dorsG, finM), new THREE.Mesh(analG, finM), ...pecs);
+      o.scale.set(0.42, 0.5, 0.78).multiplyScalar(0.62); g.add(o); fishes.push({ o, tail, pecs });   // 比較長、側扁
     }
     g.position.copy(W.anem); scene.add(g);
     list.push({
       id: 'clown', obj: g, r: 7,
       update(t) {
-        fishes.forEach((o, i) => {
+        fishes.forEach(({ o, tail, pecs }, i) => {
           const a = t * (0.6 + i * 0.12) + i * 1.6, r = 0.9 + Math.sin(t * 0.7 + i) * 0.35;
           o.position.set(Math.cos(a) * r, 1.4 + Math.sin(t * 1.1 + i) * 0.35, Math.sin(a) * r);
-          o.rotation.y = -a; o.rotation.z = Math.sin(t * 8 + i) * 0.1;
+          o.rotation.y = -a; o.rotation.z = Math.sin(t * 8 + i) * 0.06;
+          tail.rotation.y = Math.sin(t * 9 + i) * 0.35;                               // 尾巴擺
+          pecs.forEach((pf, k) => { pf.rotation.x = Math.sin(t * 12 + i + k * 3) * 0.5; });   // 胸鰭一直搧（小丑魚游泳就是這樣）
         });
       },
     });

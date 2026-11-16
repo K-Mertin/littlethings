@@ -368,6 +368,7 @@ function update(dt) {
   if (camera.position.y < cf) camera.position.y = cf;
   if (camera.position.y > -0.4) camera.position.y = -0.4;
   camera.lookAt(lookAt.copy(S.pos).add(new THREE.Vector3(0, 0.8, 0)));
+  if (S.peek) { camera.position.copy(S.peek[0]); camera.lookAt(S.peek[1]); }   // 測試用：指定鏡頭位置看近照
 
   // 深度 → 霧、光、顏色
   const depth = -camera.position.y;
@@ -436,6 +437,8 @@ window.__deep = {
   S, W, fish, creatures, renderer, scene, camera, WEBGPU, HIGH, save, sub, bubMesh, cone,
   set(x, y, z, yaw = 0, pitch = 0.2) { S.pos.set(x, y, z); S.camYaw = S.yaw = yaw; S.camPitch = pitch; S.vel.set(0, 0, 0); },
   light: toggleLight,
+  // 測試：鏡頭放在 (x,y,z) 看著 (tx,ty,tz)；obj 是某個物件時看著它（距離 d、方位 a）
+  peek(o, d = 2, a = 0, h = 0) { if (!o) { S.peek = null; return; } const p = o.isObject3D ? o.getWorldPosition(new THREE.Vector3()) : o; S.peek = [p.clone().add(new THREE.Vector3(Math.sin(a) * d, h, Math.cos(a) * d)), p.clone()]; },
   // 測試：把潛艇放在某隻動物旁邊、面向牠
   look(id, dist = 7, side = 1.2) {
     const c = creatures.find((x) => x.id === id); const o = c.obj.position;
