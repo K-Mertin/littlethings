@@ -4,12 +4,13 @@
 
 ## 小大廳 `lab/index.html`
 - 單一檔案，藍圖方格風格；上方會偵測瀏覽器有沒有 WebGPU（`navigator.gpu.requestAdapter()`），顯示在 `#gpu`。
-- 「可以玩」：MW 大街 · WebGPU 版（`street/`）、沙之實驗室（`sand/`）。
-- 「規劃中」卡片（只有 SVG 圖和說明，還沒有程式）：深海探險隊、萬軍對決 3D、銀河建造師、夜雨賽車。做好一款就把該卡片換成可點的 `<a>`（`hall_shot.jpg` 640×360）。
+- 「可以玩」：MW 大街 · WebGPU 版（`street/`）、沙之實驗室（`sand/`）、深海探險隊（`deep/`）。
+- 「規劃中」卡片（只有 SVG 圖和說明，還沒有程式）：萬軍對決 3D、銀河建造師、夜雨賽車。做好一款就把該卡片換成可點的 `<a>`（`hall_shot.jpg` 640×360）。
 
 | 資料夾 | 遊戲 | 技術 |
 |---|---|---|
 | `street/` | MW 大街 · WebGPU 版 | three.js 0.187 WebGPURenderer |
+| `deep/` | 深海探險隊 | three.js 0.187 WebGPURenderer＋TSL compute（魚群） |
 | `sand/` | 沙之實驗室 | 直接用 WebGPU API（WGSL compute）；沒有 WebGPU 時用 CPU 跑同一套規則 |
 
 ## 共通原則
