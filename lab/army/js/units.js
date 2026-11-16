@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import {
   Fn, float, vec3, vec4, mix, select, sin, cos, clamp, max, min, abs, attribute, instancedArray, instanceIndex,
-  positionGeometry, normalGeometry, normalLocal, smoothstep, PI, int, uniform,
+  positionGeometry, normalGeometry, normalLocal, smoothstep, PI, int, uniform, hash, step,
 } from 'three/tsl';
 import { T } from './sim.js';
 
@@ -143,14 +143,17 @@ export class UnitMeshes {
         if (ty === T.CAV) lp.y.addAssign(abs(sin(ph)).mul(0.12));
         // 轉向、放到位置
         const hc = cos(a.w), hs = sin(a.w);
+        lp.mulAssign(hash(b.w.div(2).floor().add(17)).mul(0.16).add(0.92));   // 每個人高矮胖瘦不太一樣
         const wp = vec3(lp.x.mul(hc).add(lp.z.mul(hs)), lp.y, lp.z.mul(hc).sub(lp.x.mul(hs)));
         normalLocal.assign(vec3(ln.x.mul(hc).add(ln.z.mul(hs)), ln.y, ln.z.mul(hc).sub(ln.x.mul(hs))));
         return wp.add(a.xyz);
       })();
-      const team = b.w;
-      const tc = mix(vec3(...TEAM[0].toArray()), vec3(...TEAM[1].toArray()), team);
+      const team = b.w.mod(2), uid = b.w.div(2).floor();
+      // 制服是手工染的：每個人的顏色深淺有一點差；膚色也各不相同
+      const tc = mix(vec3(...TEAM[0].toArray()), vec3(...TEAM[1].toArray()), team).mul(hash(uid.add(3)).mul(0.22).add(0.88));
+      const skin = mix(mix(vec3(0.96, 0.8, 0.66), vec3(0.78, 0.56, 0.4), hash(uid.add(5))), vec3(0.45, 0.3, 0.2), step(0.85, hash(uid.add(9))));
       const dead = clamp(b.z, 0, 1);
-      const pal = [tc, vec3(0.93, 0.74, 0.58), vec3(0.72, 0.74, 0.78), vec3(0.45, 0.3, 0.16), vec3(0.2, 0.18, 0.17), vec3(0.42, 0.28, 0.17), vec3(0.92, 0.9, 0.86), tc.mul(0.55), vec3(0.95, 0.75, 0.25)];
+      const pal = [tc, skin, vec3(0.72, 0.74, 0.78), vec3(0.45, 0.3, 0.16), vec3(0.2, 0.18, 0.17), vec3(0.42, 0.28, 0.17), vec3(0.92, 0.9, 0.86), tc.mul(0.55), vec3(0.95, 0.75, 0.25)];
       let col = pal[0];
       for (let k2 = 1; k2 < pal.length; k2++) col = select(kind.equal(k2), pal[k2], col);
       mat.colorNode = mix(col, col.mul(0.55), dead);   // 倒下的變暗
@@ -195,7 +198,7 @@ export class UnitMeshes {
       if (!b.alive[i] && b.death[i] >= 2.2) continue;   // 沉下去了，不畫
       const ty = b.type[i], k = cnt[ty]++, [A, B] = arrs[ty], o = k * 4;
       A[o] = b.x[i]; A[o + 1] = b.y[i]; A[o + 2] = b.z[i]; A[o + 3] = b.hd[i];
-      B[o] = b.ph[i]; B[o + 1] = b.atk[i]; B[o + 2] = b.alive[i] ? 0 : b.death[i]; B[o + 3] = b.team[i];
+      B[o] = b.ph[i]; B[o + 1] = b.atk[i]; B[o + 2] = b.alive[i] ? 0 : b.death[i]; B[o + 3] = b.team[i] + 2 * (i % 4096);   // 隊伍（0/1）＋每個人固定的編號（給長相變化用）
     }
     this.types.forEach((t, ty) => { t.mesh.count = t.blob.count = cnt[ty]; t.A.value.needsUpdate = true; t.B.value.needsUpdate = true; });
     const P = this.AR.value.array, D = this.AD.value.array;
