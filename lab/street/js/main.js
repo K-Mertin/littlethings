@@ -2,7 +2,8 @@
 // 和 /street/ 同一套場景，改用 three.js 的 WebGPURenderer（瀏覽器不支援 WebGPU 時自動改用 WebGL 2），
 // 後製用 TSL 節點（泛光、環境光遮蔽），另外加上 GPU 才跑得動的東西：大量行人、日夜與天氣、粒子特效（見 gpu/）。
 import * as THREE from 'three';
-import { pass, mrt, output, normalView, emissive, uniform, vec4 } from 'three/tsl';
+import { pass, mrt, output, normalView, emissive, uniform, vec2, vec4, metalness, roughness } from 'three/tsl';
+import { ssr } from 'three/addons/tsl/display/SSRNode.js';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
@@ -12,6 +13,7 @@ import { loadAvatar, Character } from './avatar.js';
 import { STREET, PARTY, ZONES } from './games.js';
 import { setAniso } from './kit.js';
 import { Sound } from './sound.js';
+import { Env } from './gpu/env.js';
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -56,13 +58,17 @@ sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03;
 scene.add(sun, sun.target);
 const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x8a7a66, 0.35); scene.add(hemi);
 
-// post（RenderPipeline）：場景一次畫出顏色＋法線＋自發光 → 環境光遮蔽（GTAO）乘上去 → 只對自發光做泛光
+// post（RenderPipeline）：場景一次畫出顏色＋法線＋自發光（＋金屬度／粗糙度）
+// → 環境光遮蔽（GTAO）乘上去 → 下雨時加螢幕空間反射（SSR，水窪映出招牌和燈） → 只對自發光做泛光
 let pipeline = null;
-const post = { bloomK: uniform(HIGH ? 0.9 : 0.6), aoK: uniform(1) };
-function buildPipeline() {
-  pipeline = new THREE.RenderPipeline(renderer);
+const post = { bloomK: uniform(HIGH ? 0.9 : 0.6), aoK: uniform(1), ssrK: uniform(0), ssrOn: false };
+function buildPipeline(withSSR = false) {
+  post.ssrOn = withSSR;
+  if (!pipeline) pipeline = new THREE.RenderPipeline(renderer);
   const scenePass = pass(scene, camera, { samples: HIGH ? 4 : 0 });
-  scenePass.setMRT(mrt({ output, normal: normalView, emissive }));
+  const outs = { output, normal: normalView, emissive };
+  if (withSSR) outs.metalrough = vec2(metalness, roughness);
+  scenePass.setMRT(mrt(outs));
   const color = scenePass.getTextureNode('output');
   let lit = color;
   if (HIGH) {
@@ -71,9 +77,16 @@ function buildPipeline() {
     const aoV = aoPass.getTextureNode().r;
     lit = vec4(color.rgb.mul(aoV.oneMinus().mul(post.aoK).oneMinus()), color.a);
   }
+  if (withSSR) {
+    const mr = scenePass.getTextureNode('metalrough');
+    const r = ssr(color, scenePass.getTextureNode('depth'), scenePass.getTextureNode('normal'), { metalnessNode: mr.r, roughnessNode: mr.g });
+    r.resolutionScale = 0.5; r.maxDistance.value = 18; r.thickness.value = 0.08;
+    lit = lit.add(r.rgb.mul(post.ssrK));
+  }
   const glow = bloom(scenePass.getTextureNode('emissive'), 1, 0.45, 0.0);
   glow.strength = post.bloomK;
   pipeline.outputNode = lit.add(glow);
+  pipeline.needsUpdate = true;
 }
 function resize() {
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
@@ -123,7 +136,7 @@ async function loadAll() {
 }
 
 // ------------------------------------------------------------------ state
-let world, avatars, player, avatarId = store.get('avatar', 'boy');
+let world, avatars, player, env, avatarId = store.get('avatar', 'boy');
 const GPU = { webgpu: false };
 const OFF = params.has('offscreen') ? new THREE.RenderTarget(1, 1) : null;
 const pos = new THREE.Vector3(), vel = new THREE.Vector3();
@@ -413,6 +426,7 @@ const clock = new THREE.Clock();
 const tmp = new THREE.Vector3(), head = new THREE.Vector3(), camWant = new THREE.Vector3();
 function angLerp(a, b, k) { let d = ((b - a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI; return a + d * k; }
 
+let frameN = 0;
 function frame() {
   const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
   if (mode === 'play') updatePlayer(dt, t);
@@ -423,6 +437,13 @@ function frame() {
   player.update(dt);
   updateNPCs(dt);
   world.update(dt, t, pos);
+  env.update(dt, pos);
+  // 下雨才開螢幕空間反射（高畫質、WebGPU）；強度跟著地面濕度
+  const wantSSR = HIGH && GPU.webgpu && env.wetK > 0.02;
+  if (wantSSR !== post.ssrOn) buildPipeline(wantSSR);
+  post.ssrK.value = Math.min(1, env.wetK * 1.2);
+  sound.night = env.night > 0.5;
+  if ((frameN++ & 15) === 0) { const c = env.label; if ($('clock').textContent !== c) $('clock').textContent = c; }
   sound.update(dt, world.area(pos), pos);
   if (mode === 'launching' && launchAnim) launchAnim(t);
   else updateCamera(dt, t);
@@ -522,6 +543,12 @@ function updateCamera(dt, t) {
     else { pos.set(world.spawn.x, 0, world.spawn.z); heading = world.spawn.heading; }
     setAvatar(avatarId);
     makeNPCs();
+    env = new Env({ renderer, scene, camera, sun, sunDir, sky, hemi, world, high: HIGH, webgpu: GPU.webgpu, sound });
+    env.setTime(store.get('time', 'auto')); env.setWeather(store.get('weather', 'sun'));
+    segInit('segT', env.mode, (v) => { env.setTime(v); store.set('time', v); });
+    segInit('segW', env.weather, (v) => { env.setWeather(v); store.set('weather', v); });
+    $('gpuTag').textContent = GPU.webgpu ? 'WebGPU' : 'WebGL 相容模式';
+    $('gpuTag').classList.toggle('gpu', GPU.webgpu);
     // the HDRI is bright and even: keep it for reflections/fill but let the sun draw shadows
     const seen = new Set();
     scene.traverse((o) => { if (!o.isMesh) return; for (const m of [].concat(o.material)) if (!seen.has(m)) { seen.add(m); if ('envMapIntensity' in m) m.envMapIntensity *= ENV_K; } });
@@ -547,11 +574,11 @@ function updateCamera(dt, t) {
 window.__street = {
   get pos() { return pos; }, setPos(x, z, h) { pos.set(x, 0, z); if (h !== undefined) heading = h; player.root.position.copy(pos); },
   cam(yaw, pitch, dist) { camYaw = yaw; camPitch = pitch; camDist = camDistNow = dist; lastCamInput = clock.elapsedTime + 1e6; },
-  sim(sec) { for (let i = 0; i < sec * 30; i++) { clock.elapsedTime += 1 / 30; if (mode === 'play') updatePlayer(1 / 30, clock.elapsedTime); player.update(1 / 30); updateNPCs(1 / 30); world.update(1 / 30, clock.elapsedTime, pos); } return [pos.x.toFixed(2), pos.z.toFixed(2), near && near.game.id, !!auto].join(); },
+  sim(sec) { for (let i = 0; i < sec * 30; i++) { clock.elapsedTime += 1 / 30; if (mode === 'play') updatePlayer(1 / 30, clock.elapsedTime); player.update(1 / 30); updateNPCs(1 / 30); world.update(1 / 30, clock.elapsedTime, pos); env.update(1 / 30, pos); } return [pos.x.toFixed(2), pos.z.toFixed(2), near && near.game.id, !!auto].join(); },
   key(code, on) { if (on) keys.add(code); else keys.delete(code); },
   launch: () => near && launch(near),
   start: () => startPlay(), goTo: (id) => goTo(world.interact.find((i) => i.game.id === id)),
-  get mode() { return mode; }, renderer, scene, camera, GPU,
+  get mode() { return mode; }, renderer, scene, camera, GPU, get env() { return env; },
   // 把目前畫面讀回來成圖片（自動測試用；搭配 ?offscreen=1）
   // 自動測試：停下動畫迴圈、模擬 sec 秒，畫一張讀回來（軟體 GPU 很慢，一直畫的話讀回會排不到）
   async snap(sec = 0) {

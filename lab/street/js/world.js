@@ -94,6 +94,7 @@ export async function buildWorld(scene, opts) {
   const colliders = [];   // {x0,x1,z0,z1,y0,y1,cam}
   const interact = [];
   const animated = [];
+  const gpu = { lamps: [], trees: [] };   // 給 WebGPU 版的天氣、行人、粒子用
   const solid = (x0, x1, z0, z1, y0 = 0, y1 = 3, cam = true) => colliders.push({ x0: Math.min(x0, x1), x1: Math.max(x0, x1), z0: Math.min(z0, z1), z1: Math.max(z0, z1), y0, y1, cam });
 
   // ---------------- materials
@@ -375,6 +376,7 @@ export async function buildWorld(scene, opts) {
     B.add(new THREE.CylinderGeometry(0.26, 0.3, 0.22, 12), M.darkMetal, mat4(x - sx * 0.8, 4.5, z));
     B.add(new THREE.CylinderGeometry(0.24, 0.24, 0.03, 12), M.lampHead, mat4(x - sx * 0.8, 4.38, z), { noShadow: true });
     solid(x - .15, x + .15, z - .15, z + .15, 0, 4.6, false);
+    gpu.lamps.push(new THREE.Vector3(x - sx * 0.8, 4.3, z));
   }
   // benches (wood slats + steel legs) + planters with small trees, along the middle
   const benchMat = std(0x9b6a43, .75);
@@ -415,6 +417,7 @@ export async function buildWorld(scene, opts) {
     B.add(core, crownMat, mat4(cx, cy, cz, 0, 0, 0, 1, 0.8, 1));
   }
   function tree(x, z, s = 1) {
+    gpu.trees.push(new THREE.Vector3(x, 3.6 * s + 0.4, z));
     B.add(new THREE.CylinderGeometry(0.08 * s, 0.13 * s, 2.7 * s, 8), M.trunk, mat4(x, 1.35 * s + 0.45, z));
     for (let k = 0; k < 3; k++) {
       const a = rand() * TAU, r = k === 0 ? 0 : 0.5 * s;
@@ -795,7 +798,8 @@ export async function buildWorld(scene, opts) {
 
   const area = (p) => (p.z < L.hallFront - 0.3 ? 'hall' : p.z < L.shopZ0 ? 'plaza' : 'street');
   return {
-    root, colliders, interact,
+    root, colliders, interact, solid,
+    gpu: Object.assign(gpu, { M, ground: [M.paving, M.paving2, M.curb, M.concrete, M.concrete2] }),
     doors: hall.doors,
     update(dt, t, playerPos) {
       for (const f of animated) f(dt, t);

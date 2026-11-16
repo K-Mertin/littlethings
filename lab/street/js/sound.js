@@ -14,6 +14,8 @@ export class Sound {
     // ambience beds
     const bed = (freq, q, gain) => { const s = c.createBufferSource(); s.buffer = buf; s.loop = true; const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = freq; f.Q.value = q; const g = c.createGain(); g.gain.value = 0; s.connect(f).connect(g).connect(this.master); s.start(); return g; };
     this.streetBed = bed(700, .3, 0); this.hallBed = bed(260, .5, 0);
+    // 雨聲：高頻的沙沙聲＋低頻的嘩啦聲
+    this.rainHi = bed(5200, .2, 0); this.rainLo = bed(900, .4, 0);
   }
   setOn(v) { this.on = v; if (this.master) this.master.gain.setTargetAtTime(v ? 0.9 : 0, this.ctx.currentTime, .05); }
   _tone(type, f0, f1, t0, dur, vol, dest) {
@@ -43,18 +45,21 @@ export class Sound {
     const t = this.ctx.currentTime;
     this._tone('sine', 1318, 0, t, 0.9, 0.12); this._tone('sine', 1046, 0, t + 0.35, 1.1, 0.12);
   }
+  setRain(k) { this.rainK = k; }
   update(dt, area, pos) {
     if (!this.ctx) return;
     const c = this.ctx, t = c.currentTime;
     const inHall = area === 'hall';
     this.streetBed.gain.setTargetAtTime(inHall ? 0.02 : 0.11, t, 0.6);
     this.hallBed.gain.setTargetAtTime(inHall ? 0.16 : 0.0, t, 0.6);
+    const rk = (this.rainK || 0) * (inHall ? 0.25 : 1);
+    this.rainHi.gain.setTargetAtTime(rk * 0.16, t, 0.8); this.rainLo.gain.setTargetAtTime(rk * 0.12, t, 0.8);
     // door chime when entering
     const atDoor = Math.abs(pos.x) < 2.2 && Math.abs(pos.z + 2.2) < 1.2;
     if (atDoor && !this.doorDing) { this.doorDing = true; this.ding(); }
     if (!atDoor && Math.abs(pos.z + 2.2) > 4) this.doorDing = false;
     if (!this.on) return;
-    if (!inHall) {
+    if (!inHall && !(this.rainK > 0.3) && !this.night) {
       this.birdT -= dt;
       if (this.birdT < 0) {
         this.birdT = 2 + Math.random() * 5;

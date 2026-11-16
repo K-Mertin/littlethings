@@ -73,7 +73,8 @@ export function tex(url, { color = false, repeat = 1, rot = 0 } = {}) {
 // PBR material from a texture set in assets/tex: name_c / name_n / name_orm. tile = meters per texture repeat
 export function pbr(name, { tile = 2, color = 0xffffff, rough = 1, metal = 0, normal = 1, env = 0.7, side } = {}) {
   const r = 1 / tile, base = '/street/assets/tex/' + name;
-  const m = new THREE.MeshStandardMaterial({
+  // NodeMaterial：天氣系統要能改它的粗糙度和顏色（下雨變濕、變暗）
+  const m = new THREE.MeshStandardNodeMaterial({
     map: tex(base + '_c.webp', { color: true, repeat: r }),
     normalMap: tex(base + '_n.webp', { repeat: r }),
     roughnessMap: tex(base + '_orm.webp', { repeat: r }),
