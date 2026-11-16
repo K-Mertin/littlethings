@@ -21,7 +21,8 @@ function mk(t) {
   if (t === FIRE) l = 25 + ((rnd() * 45) | 0);
   else if (t === STEAM) l = 90 + ((rnd() * 160) | 0);
   else if (t === SMOKE) l = 30 + ((rnd() * 50) | 0);
-  else if (t === ICE) l = 7;
+  else if (t === ICE) l = 40;
+  else if (t === LAVA) l = 200;
   return (t | (((rnd() * 255) | 0) << 8) | (l << 16) | (rnd() < 0.5 ? DIRB : 0)) >>> 0;
 }
 
@@ -37,7 +38,7 @@ function rgbOf(c, x, y, cells, w, tm) {
     case WALL: { const k = (y % 4 === 0 || (x + ((y >> 2) % 2) * 4) % 8 === 0) ? 0.72 : 1; return [(0.34 + v * 0.05) * k, (0.37 + v * 0.05) * k, (0.45 + v * 0.05) * k]; }
     case SAND: return [0.95 - 0.15 * v, 0.82 - 0.19 * v, 0.52 - 0.17 * v];
     case WATER: { const top = y === 0 || (cells[(y - 1) * w + x] & 255) !== WATER; return top ? [0.5, 0.75, 0.98] : [0.13 + 0.07 * v, 0.42 + 0.11 * v, 0.88 + 0.08 * v]; }
-    case LAVA: { const k = 0.5 + 0.5 * Math.sin(tm * 2 + v * 6.28 + x * 0.15 - y * 0.1); return [0.95 + 0.05 * k, 0.28 + 0.44 * k, 0.04 + 0.11 * k]; }
+    case LAVA: { const h = Math.min(1, life(c) / 200), k = (0.5 + 0.5 * Math.sin(tm * 2 + v * 6.28 + x * 0.15 - y * 0.1)) * h, m = Math.min(1, h / 0.6); return [0.45 + 0.5 * m + 0.05 * k, 0.07 + 0.21 * m + 0.44 * k, 0.02 + 0.02 * m + 0.11 * k]; }
     case WOOD: { const s = 0.05 * Math.sin(y * 1.7 + v * 3); return [0.47 + s + v * 0.04, 0.30 + s + v * 0.04, 0.15 + s + v * 0.04]; }
     case PLANT: return life(c) > 0 ? [0.45, 0.85, 0.36] : [0.16 + 0.17 * v, 0.56 + 0.21 * v, 0.2 + 0.07 * v];
     case SEED: return [0.58 * (0.8 + v * 0.35), 0.43 * (0.8 + v * 0.35), 0.22 * (0.8 + v * 0.35)];
@@ -141,10 +142,32 @@ export class CpuSim {
 
   react(i, j) {
     const c = this.c, p = c[i] & 255, q = c[j] & 255;
-    if (p === LAVA && q === WATER) { c[i] = mk(STONE); c[j] = mk(STEAM); return; }
+    // 岩漿／石頭／冰的冷熱規則：和 shaders.js 的 react() 一樣
+    if (p === LAVA) {
+      if (q === WATER) { c[i] = setLife(mk(STONE), 60); c[j] = mk(STEAM); return; }
+      if (q === ICE) { if (rnd() < 0.3) { const h = life(c[i]); c[i] = h <= 50 ? setLife(mk(STONE), 40) : setLife(c[i], h - 50); } return; }
+      if (q === STONE) {
+        const ch = life(c[j]);
+        if (ch > 3 && rnd() < 0.15) { const tr = ch >> 1; c[j] = setLife(c[j], ch - tr); const h = life(c[i]); c[i] = h <= tr * 3 ? setLife(mk(STONE), tr) : setLife(c[i], h - tr * 3); }
+        return;
+      }
+      if (q === LAVA) { const a = life(c[i]), b = life(c[j]); if (a > b + 6 && rnd() < 0.3) { const d = ((a - b) / 3) | 0; c[i] = setLife(c[i], a - d); c[j] = setLife(c[j], b + d); } return; }
+    }
+    if (p === STONE) {
+      if (q === WATER) { if (life(c[i]) < 60 && rnd() < 0.08) c[i] = setLife(c[i], 60); return; }
+      if (q === ICE) { if (life(c[i]) < 80 && rnd() < 0.08) c[i] = setLife(c[i], 80); return; }
+      if (q === STONE) { const a = life(c[i]), b = life(c[j]); if (a > b + 4 && rnd() < 0.25) { const d = (a - b) >> 1; c[i] = setLife(c[i], a - d); c[j] = setLife(c[j], b + d); } return; }
+      return;
+    }
     if (p === ICE) {
       if (q === FIRE || q === LAVA || q === EMBER) { if (rnd() < 0.3) { c[i] = mk(WATER); if (q === FIRE) c[j] = mk(STEAM); } return; }
-      if (q === WATER) { const l = life(c[i]); if (l > 0 && rnd() < 0.006) c[j] = setLife(mk(ICE), l - 1); return; }
+      if (q === WATER) {
+        const l = life(c[i]);
+        if (l >= 12 && rnd() < 0.006) { const h = l >> 1; c[i] = setLife(c[i], h); c[j] = setLife(mk(ICE), h); }
+        else if (rnd() < 0.05) { if (l > 0) c[i] = setLife(c[i], l - 1); else if (rnd() < 0.15) c[i] = mk(WATER); }
+        return;
+      }
+      if (q === ICE) { const a = life(c[i]), b = life(c[j]); if (a > b + 3 && rnd() < 0.1) { const d = (a - b) >> 1; c[i] = setLife(c[i], a - d); c[j] = setLife(c[j], b + d); } return; }
       if (q === STEAM) { if (rnd() < 0.1) c[j] = mk(WATER); return; }
       return;
     }

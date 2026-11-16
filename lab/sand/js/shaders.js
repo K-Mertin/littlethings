@@ -27,7 +27,8 @@ fn mk(t: u32) -> u32 {
   if (t == FIRE) { l = 25u + u32(rnd() * 45.0); }
   else if (t == STEAM) { l = 90u + u32(rnd() * 160.0); }
   else if (t == SMOKE) { l = 30u + u32(rnd() * 50.0); }
-  else if (t == ICE) { l = 7u; }   // 冰：還能再把旁邊的水凍住幾代
+  else if (t == ICE) { l = 40u; }    // 冰：life 是「冷度」，凍住水、被水溫暖都會用掉
+  else if (t == LAVA) { l = 200u; }  // 岩漿：life 是「熱度」，被冷卻到 0 就變成石頭
   return t | (u32(rnd() * 255.0) << 8u) | (l << 16u) | select(0u, DIRB, rnd() < 0.5);
 }
 fn dens(t: u32) -> i32 {
@@ -123,11 +124,41 @@ fn growW(i: u32, j: u32) -> f32 {
 
 fn react(i: u32, j: u32) {
   let p = ty(c[i]); let q = ty(c[j]);
-  if (p == LAVA && q == WATER) { c[i] = mk(STONE); c[j] = mk(STEAM); return; }
-  // 冰：碰到熱的會融化；碰到水會慢慢把水凍住（有代數限制）；讓蒸氣凝結
+  // 岩漿：熱度（life）會被冷卻。碰到水 → 表面馬上變石頭（帶著「冷度」）；冷的石頭會把冷傳進裡面的岩漿，
+  // 所以一直倒水或冰，整池岩漿會從外往內慢慢凝固，而不是只有表面一層殼
+  if (p == LAVA) {
+    if (q == WATER) { c[i] = setLife(mk(STONE), 60u); c[j] = mk(STEAM); return; }
+    if (q == ICE) { if (rnd() < 0.3) { let h = life(c[i]); if (h <= 50u) { c[i] = setLife(mk(STONE), 40u); } else { c[i] = setLife(c[i], h - 50u); } } return; }
+    if (q == STONE) {
+      let ch = life(c[j]);
+      if (ch > 3u && rnd() < 0.15) {
+        let tr = ch / 2u; c[j] = setLife(c[j], ch - tr);
+        let h = life(c[i]);
+        if (h <= tr * 3u) { c[i] = setLife(mk(STONE), tr); } else { c[i] = setLife(c[i], h - tr * 3u); }
+      }
+      return;
+    }
+    // 岩漿之間熱度慢慢平均（熱會在岩漿裡傳開，裡面也會跟著變冷）
+    if (q == LAVA) { let a = life(c[i]); let b = life(c[j]); if (a > b + 6u && rnd() < 0.3) { let d = (a - b) / 3u; c[i] = setLife(c[i], a - d); c[j] = setLife(c[j], b + d); } return; }
+  }
+  // 石頭：被水沖會一直保持冷；冷會在石頭之間傳下去
+  if (p == STONE) {
+    if (q == WATER) { if (life(c[i]) < 60u && rnd() < 0.08) { c[i] = setLife(c[i], 60u); } return; }
+    if (q == ICE) { if (life(c[i]) < 80u && rnd() < 0.08) { c[i] = setLife(c[i], 80u); } return; }
+    if (q == STONE) { let a = life(c[i]); let b = life(c[j]); if (a > b + 4u && rnd() < 0.25) { let d = (a - b) / 2u; c[i] = setLife(c[i], a - d); c[j] = setLife(c[j], b + d); } return; }
+    return;
+  }
+  // 冰：碰到熱的會融化；冰的「冷度」有限：凍住一格水要分一半冷度出去，被水碰著也會慢慢變暖，
+  // 冷度用完就融化 → 一大塊冰丟進一點點水會把水凍住，一小塊冰丟進一大池水會融掉
   if (p == ICE) {
     if (q == FIRE || q == LAVA || q == EMBER) { if (rnd() < 0.3) { c[i] = mk(WATER); if (q == FIRE) { c[j] = mk(STEAM); } } return; }
-    if (q == WATER) { let l = life(c[i]); if (l > 0u && rnd() < 0.006) { c[j] = setLife(mk(ICE), l - 1u); } return; }
+    if (q == WATER) {
+      let l = life(c[i]);
+      if (l >= 12u && rnd() < 0.006) { let h = l / 2u; c[i] = setLife(c[i], h); c[j] = setLife(mk(ICE), h); }
+      else if (rnd() < 0.05) { if (l > 0u) { c[i] = setLife(c[i], l - 1u); } else if (rnd() < 0.15) { c[i] = mk(WATER); } }
+      return;
+    }
+    if (q == ICE) { let a = life(c[i]); let b = life(c[j]); if (a > b + 3u && rnd() < 0.1) { let d = (a - b) / 2u; c[i] = setLife(c[i], a - d); c[j] = setLife(c[j], b + d); } return; }
     if (q == STEAM) { if (rnd() < 0.1) { c[j] = mk(WATER); } return; }
     return;
   }
@@ -333,7 +364,7 @@ fn at(x: i32, y: i32) -> u32 {
 fn hot(x: i32, y: i32) -> f32 {
   let t = ty(at(x, y));
   if (t == FIRE) { return 1.0; }
-  if (t == LAVA) { return 0.9; }
+  if (t == LAVA) { return 0.9 * (0.3 + 0.7 * clamp(f32(life(at(x, y))) / 200.0, 0.0, 1.0)); }
   if (t == EMBER) { return 0.7; }
   return 0.0;
 }
@@ -428,7 +459,9 @@ fn sky(uv: vec2f) -> vec3f {
     }
     case 4u {   // 岩漿：亮橘色，表面有慢慢流動的暗色硬殼
       let k = 0.5 + 0.5 * sin(tm * 1.6 + v * 6.28 + f32(x) * 0.17 - f32(y) * 0.11);
-      rgb = mix(vec3f(1.0, 0.35, 0.05), vec3f(1.0, 0.85, 0.3), k);
+      let heat = clamp(f32(life(c)) / 200.0, 0.0, 1.0);
+      rgb = mix(vec3f(1.0, 0.35, 0.05), vec3f(1.0, 0.85, 0.3), k * heat);
+      rgb = mix(vec3f(0.45, 0.07, 0.02), rgb, smoothstep(0.0, 0.6, heat));   // 冷下來的岩漿變暗紅、快凝固
       let crust = smoothstep(0.62, 0.8, h2(vec2f(f32(x / 2), f32(y / 2)) + floor(tm * 0.6)));
       rgb = mix(rgb, vec3f(0.35, 0.07, 0.03), crust * 0.6 * step(0.5, depth + 0.6));
       lit = 1.0; shade = false;
