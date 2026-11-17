@@ -312,7 +312,7 @@ function pingSonar() {
   if (sonar.cd > 0) return;
   sonar.cd = 4;
   let best = null, bd = Infinity;
-  for (const t of targets()) { if (save.found.includes(t.id)) continue; const d = t.p.distanceTo(S.pos); if (d < bd) { bd = d; best = t; } }
+  for (const t of targets()) { if (save.found.includes(t.id)) continue; const d = Math.hypot(t.p.x - S.pos.x, t.p.y - S.pos.y, t.p.z - S.pos.z); if (d < bd) { bd = d; best = t; } }   // 魚群中心是一般物件（不是 Vector3），不能用 distanceTo
   sound.ping();
   if (!best) { msg('圖鑑都找齊了！'); return; }
   sonar.target = best; sonar.t = 7;
@@ -322,6 +322,7 @@ function updateSonar(dt) {
   const el = $('sonar');
   $('sonarBtn').classList.toggle('cool', sonar.cd > 0);
   if (!sonar.target || sonar.t <= 0) { el.classList.add('hidden'); return; }
+  const fc = fish.center(sonar.target.id); if (fc) sonar.target.p = fc;   // 魚群會游走，每一格重新抓牠們的中心
   const tp = sonar.target.p, dx = tp.x - S.pos.x, dz = tp.z - S.pos.z;
   const ang = Math.atan2(dx, dz) - S.camYaw;   // 相對鏡頭的方向（0 ＝ 正前方）
   const dist = Math.round(Math.hypot(dx, tp.y - S.pos.y, dz)), dy = tp.y - S.pos.y;
