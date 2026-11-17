@@ -23,7 +23,14 @@ const cursor = document.createElement('canvas'); cursor.id = 'cursor';
 stage.appendChild(cursor);
 const cctx = cursor.getContext('2d');
 
-let sim = params.has('cpu') ? null : await createGPU(canvas, { offscreen: params.has('offscreen') }).catch(() => null);
+// 載入畫面：每一步更新進度條和說明；中間讓瀏覽器有機會把畫面畫出來
+const loadStep = async (k, msg) => {
+  const b = $('loadBar'), m = $('loadMsg'); if (b) b.style.width = Math.round(k * 100) + '%'; if (m && msg) m.textContent = msg;
+  await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+};
+await loadStep(0.15, '啟動顯示卡…');
+let sim = params.has('cpu') ? null : await createGPU(canvas, { offscreen: params.has('offscreen'), onStep: loadStep }).catch(() => null);
+if (!sim) await loadStep(0.7, '這台裝置不支援 WebGPU，改用相容模式…');
 if (!sim) { canvas.classList.add('cpu'); sim = new CpuSim(canvas); }
 const GPU = sim.kind === 'gpu';
 $('engine').textContent = GPU ? 'WebGPU' : '相容模式（CPU）';
@@ -329,8 +336,10 @@ function loop(t) {
 }
 
 
+await loadStep(0.9, '鋪沙子…');
 startFree();
-$('loading').remove();
+await loadStep(1, '好了！');
+{ const el = $('loading'); el.style.opacity = 0; setTimeout(() => el.remove(), 400); }
 setTool(tool); showHint();
 $('soundBtn').onclick = () => { sound.start(); sound.setOn(!sound.on); save.soundOff = !sound.on; persist(); $('soundBtn').textContent = sound.on ? '🔊' : '🔇'; };
 if (save.soundOff) sound.setOn(false); $('soundBtn').textContent = sound.on ? '🔊' : '🔇';
