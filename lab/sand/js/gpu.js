@@ -3,33 +3,42 @@ import { STAMP, STEP, FLOW, COUNT, DRAW } from './shaders.js';
 
 const ORDER = [0, 3, 1, 2];   // 區塊位移輪流：(0,0) (1,1) (1,0) (0,1)
 
-export async function createGPU(canvas, { offscreen = false } = {}) {
+export async function createGPU(canvas, { offscreen = false, onStep = async () => {} } = {}) {
   if (!navigator.gpu) return null;
   let adapter;
   try { adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' }); } catch { return null; }
   if (!adapter) return null;
   const device = await adapter.requestDevice();
-  return new GpuSim(device, canvas, offscreen, adapter);
+  await onStep(0.3, '編譯沙子的物理規則…');
+  // 著色器用非同步編譯：編譯的時候瀏覽器不會卡住，載入畫面可以一直更新
+  const mod = (code) => device.createShaderModule({ code });
+  const comp = (code) => device.createComputePipelineAsync({ layout: 'auto', compute: { module: mod(code), entryPoint: 'main' } });
+  const pStamp = await comp(STAMP);
+  await onStep(0.42, '編譯沙子的物理規則…');
+  const pStep = await comp(STEP);
+  await onStep(0.58, '編譯水流和計數…');
+  const [pFlow, pCount] = await Promise.all([comp(FLOW), comp(COUNT)]);
+  await onStep(0.7, '編譯畫面和光影…');
+  const format = offscreen ? 'rgba8unorm' : navigator.gpu.getPreferredCanvasFormat();
+  const dm = mod(DRAW);
+  const pDraw = await device.createRenderPipelineAsync({
+    layout: 'auto', vertex: { module: dm, entryPoint: 'vs' },
+    fragment: { module: dm, entryPoint: 'fs', targets: [{ format }] }, primitive: { topology: 'triangle-list' },
+  });
+  return new GpuSim(device, canvas, offscreen, adapter, { pStamp, pStep, pFlow, pCount, pDraw, format });
 }
 
 class GpuSim {
-  constructor(device, canvas, offscreen, adapter) {
+  constructor(device, canvas, offscreen, adapter, P) {
     this.kind = 'gpu';
     this.device = device; this.canvas = canvas; this.offscreen = offscreen;
     this.info = adapter.info || {};
-    this.format = offscreen ? 'rgba8unorm' : navigator.gpu.getPreferredCanvasFormat();
+    this.format = P.format;
     if (!offscreen) {
       this.ctx = canvas.getContext('webgpu');
       this.ctx.configure({ device, format: this.format, alphaMode: 'opaque' });
     }
-    const mod = (code) => device.createShaderModule({ code });
-    const comp = (code) => device.createComputePipeline({ layout: 'auto', compute: { module: mod(code), entryPoint: 'main' } });
-    this.pStamp = comp(STAMP); this.pStep = comp(STEP); this.pFlow = comp(FLOW); this.pCount = comp(COUNT);
-    const dm = mod(DRAW);
-    this.pDraw = device.createRenderPipeline({
-      layout: 'auto', vertex: { module: dm, entryPoint: 'vs' },
-      fragment: { module: dm, entryPoint: 'fs', targets: [{ format: this.format }] }, primitive: { topology: 'triangle-list' },
-    });
+    Object.assign(this, { pStamp: P.pStamp, pStep: P.pStep, pFlow: P.pFlow, pCount: P.pCount, pDraw: P.pDraw });
     const U = GPUBufferUsage;
     this.shared = device.createBuffer({ size: 32, usage: U.UNIFORM | U.COPY_DST });
     this.stampBuf = device.createBuffer({ size: 16 * 32, usage: U.UNIFORM | U.COPY_DST });
