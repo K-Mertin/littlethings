@@ -132,20 +132,20 @@ fn react(i: u32, j: u32) {
     if (q == STONE) {
       let ch = life(c[j]);
       if (ch > 3u && rnd() < 0.15) {
-        let tr = ch / 2u; c[j] = setLife(c[j], ch - tr);
+        let tr = ch * 2u / 3u; c[j] = setLife(c[j], ch - tr);
         let h = life(c[i]);
-        if (h <= tr * 3u) { c[i] = setLife(mk(STONE), tr); } else { c[i] = setLife(c[i], h - tr * 3u); }
+        if (h <= tr * 4u + 60u) { c[i] = setLife(mk(STONE), tr); } else { c[i] = setLife(c[i], h - tr * 4u); }
       }
       return;
     }
     // 岩漿之間熱度慢慢平均（熱會在岩漿裡傳開，裡面也會跟著變冷）
-    if (q == LAVA) { let a = life(c[i]); let b = life(c[j]); if (a > b + 6u && rnd() < 0.3) { let d = (a - b) / 3u; c[i] = setLife(c[i], a - d); c[j] = setLife(c[j], b + d); } return; }
+    if (q == LAVA) { let a = life(c[i]); let b = life(c[j]); if (a > b + 6u && rnd() < 0.5) { let d = (a - b) / 2u; c[i] = setLife(c[i], a - d); c[j] = setLife(c[j], b + d); } return; }
   }
   // 石頭：被水沖會一直保持冷；冷會在石頭之間傳下去
   if (p == STONE) {
-    if (q == WATER) { if (life(c[i]) < 60u && rnd() < 0.08) { c[i] = setLife(c[i], 60u); } return; }
-    if (q == ICE) { if (life(c[i]) < 80u && rnd() < 0.08) { c[i] = setLife(c[i], 80u); } return; }
-    if (q == STONE) { let a = life(c[i]); let b = life(c[j]); if (a > b + 4u && rnd() < 0.25) { let d = (a - b) / 2u; c[i] = setLife(c[i], a - d); c[j] = setLife(c[j], b + d); } return; }
+    if (q == WATER) { if (life(c[i]) < 100u && rnd() < 0.1) { c[i] = setLife(c[i], 120u); if (rnd() < 0.6) { c[j] = mk(STEAM); } } return; }   // 水把熱石頭變冷，自己被燒成蒸氣（要一直倒）
+    if (q == ICE) { if (life(c[i]) < 140u && rnd() < 0.1) { c[i] = setLife(c[i], 160u); if (rnd() < 0.4) { c[j] = mk(WATER); } } return; }
+    if (q == STONE) { let a = life(c[i]); let b = life(c[j]); if (a > b + 4u && rnd() < 0.5) { let d = (a - b) / 2u; c[i] = setLife(c[i], a - d); c[j] = setLife(c[j], b + d); } return; }
     return;
   }
   // 冰：碰到熱的會融化；冰的「冷度」有限：凍住一格水要分一半冷度出去，被水碰著也會慢慢變暖，

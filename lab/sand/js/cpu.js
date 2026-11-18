@@ -148,15 +148,15 @@ export class CpuSim {
       if (q === ICE) { if (rnd() < 0.3) { const h = life(c[i]); c[i] = h <= 50 ? setLife(mk(STONE), 40) : setLife(c[i], h - 50); } return; }
       if (q === STONE) {
         const ch = life(c[j]);
-        if (ch > 3 && rnd() < 0.15) { const tr = ch >> 1; c[j] = setLife(c[j], ch - tr); const h = life(c[i]); c[i] = h <= tr * 3 ? setLife(mk(STONE), tr) : setLife(c[i], h - tr * 3); }
+        if (ch > 3 && rnd() < 0.15) { const tr = ((ch * 2) / 3) | 0; c[j] = setLife(c[j], ch - tr); const h = life(c[i]); c[i] = h <= tr * 4 + 60 ? setLife(mk(STONE), tr) : setLife(c[i], h - tr * 4); }
         return;
       }
-      if (q === LAVA) { const a = life(c[i]), b = life(c[j]); if (a > b + 6 && rnd() < 0.3) { const d = ((a - b) / 3) | 0; c[i] = setLife(c[i], a - d); c[j] = setLife(c[j], b + d); } return; }
+      if (q === LAVA) { const a = life(c[i]), b = life(c[j]); if (a > b + 6 && rnd() < 0.5) { const d = (a - b) >> 1; c[i] = setLife(c[i], a - d); c[j] = setLife(c[j], b + d); } return; }
     }
     if (p === STONE) {
-      if (q === WATER) { if (life(c[i]) < 60 && rnd() < 0.08) c[i] = setLife(c[i], 60); return; }
-      if (q === ICE) { if (life(c[i]) < 80 && rnd() < 0.08) c[i] = setLife(c[i], 80); return; }
-      if (q === STONE) { const a = life(c[i]), b = life(c[j]); if (a > b + 4 && rnd() < 0.25) { const d = (a - b) >> 1; c[i] = setLife(c[i], a - d); c[j] = setLife(c[j], b + d); } return; }
+      if (q === WATER) { if (life(c[i]) < 100 && rnd() < 0.1) { c[i] = setLife(c[i], 120); if (rnd() < 0.6) c[j] = mk(STEAM); } return; }
+      if (q === ICE) { if (life(c[i]) < 140 && rnd() < 0.1) { c[i] = setLife(c[i], 160); if (rnd() < 0.4) c[j] = mk(WATER); } return; }
+      if (q === STONE) { const a = life(c[i]), b = life(c[j]); if (a > b + 4 && rnd() < 0.5) { const d = (a - b) >> 1; c[i] = setLife(c[i], a - d); c[j] = setLife(c[j], b + d); } return; }
       return;
     }
     if (p === ICE) {
