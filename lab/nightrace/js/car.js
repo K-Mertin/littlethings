@@ -1,6 +1,6 @@
 // 車子：外形（程式拼的小跑車）、街機式物理（濕地抓地力比較差、水窪更滑、手煞車甩尾）、電腦車手
 import * as THREE from 'three';
-import { vec3, uniform, uv, smoothstep, float, normalView, positionView } from 'three/tsl';
+import { vec3, uniform, uv, smoothstep, float, normalView, positionView, attribute, mix, positionLocal, abs, max, min, step, normalLocal, mx_worley_noise_float, mx_noise_float, hash, vec2, faceDirection } from 'three/tsl';
 import { ROAD_W } from './track.js';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
@@ -13,11 +13,11 @@ function bodyShape() {
   s.quadraticCurveTo(2.34, 0.32, 2.32, 0.5);       // 車頭下巴
   s.quadraticCurveTo(2.3, 0.68, 2.0, 0.72);        // 車頭
   s.lineTo(1.05, 0.85);                            // 引擎蓋
-  s.quadraticCurveTo(0.62, 1.1, 0.22, 1.26);       // 擋風玻璃
-  s.quadraticCurveTo(-0.3, 1.34, -0.86, 1.3);      // 車頂
-  s.quadraticCurveTo(-1.42, 1.2, -1.82, 0.98);     // 後窗
-  s.lineTo(-2.16, 0.94);                           // 行李箱
-  s.quadraticCurveTo(-2.32, 0.9, -2.29, 0.6);      // 車尾
+  s.quadraticCurveTo(0.55, 1.08, 0.12, 1.22);       // 擋風玻璃（斜一點）
+  s.quadraticCurveTo(-0.35, 1.29, -0.86, 1.25);      // 車頂（低一點）
+  s.quadraticCurveTo(-1.42, 1.15, -1.86, 0.96);     // 後窗（快背）
+  s.lineTo(-2.14, 0.93);                           // 行李箱（尾端微微翹起＝鴨尾）
+  s.quadraticCurveTo(-2.3, 0.92, -2.28, 0.6);      // 車尾
   s.lineTo(-2.2, 0.3);
   return s;
 }
@@ -34,12 +34,147 @@ function extrude(shape, width, bevel) {
   g.translate(0, 0, -width / 2); g.rotateY(-Math.PI / 2); g.computeVertexNormals();
   return g;
 }
+// ---------------------------------------------------------------- 車身：用「斷面」一圈一圈接起來（loft）
+// 側面輪廓決定每個位置的頂和底；俯視時車頭、車尾收窄；斷面下半部是車身（腰線以下微微鼓起、底角圓），
+// 腰線以上是車窗（往內收的 tumblehome）。輪子的位置把車底挖成圓弧（輪拱）。
+// 每個頂點帶 part：0 車漆、1 玻璃、2 黑色飾條（A／B／C 柱、窗框）、3 輪拱裡面（暗）
+const WHEELS = [[1.45, 0.35], [-1.5, 0.35]];   // [z, 半徑]
+function profileYs(z) {
+  // 從原本的側面輪廓（polygon）求這個 z 的頂和底
+  const pts = bodyShape().getPoints(24);
+  let top = -1, bot = 9;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    if ((a.x - z) * (b.x - z) > 0 || a.x === b.x) continue;
+    const t = (z - a.x) / (b.x - a.x), y = a.y + (b.y - a.y) * t;
+    top = Math.max(top, y); bot = Math.min(bot, y);
+  }
+  return [top, bot];
+}
+const smoothK = (t) => { const k = Math.min(1, Math.max(0, t)); return k * k * (3 - 2 * k); };
+function halfW(z) {
+  let w = 0.96;
+  if (z > 1.5) w -= 0.2 * ((z - 1.5) / 0.84) ** 2;
+  if (z < -1.7) w -= 0.13 * ((-1.7 - z) / 0.6) ** 2;
+  return w;
+}
+function loftBody() {
+  const NZ = 72, z0 = -2.29, z1 = 2.33, BELT = 0.86;
+  const rows = [];
+  for (let iz = 0; iz <= NZ; iz++) {
+    // 兩端多取幾個點（圓弧收尾）
+    const u = iz / NZ, zz = z0 + (z1 - z0) * (0.5 - 0.5 * Math.cos(Math.PI * u));
+    let [top, bot] = profileYs(zz);
+    if (top < 0) { top = 0.6; bot = 0.5; }
+    // 輪拱：車底在輪子上方挖成圓弧
+    let arch = 0;
+    for (const [wz, wr] of WHEELS) { const R = wr + 0.05, d = zz - wz; if (Math.abs(d) < R) arch = Math.max(arch, wr + Math.sqrt(R * R - d * d) - bot); }
+    arch = Math.max(0, Math.min(arch, top - bot - 0.22));   // 輪拱上面至少留一點車身
+    const w = halfW(zz), green = top > BELT + 0.06 && zz > -1.8 && zz < 1.08;
+    // 斷面右半邊：從底部中間 → 底角 → 側面 → 腰線 → 車窗 → 車頂中間
+    const ring = [];
+    const yb = bot + arch, rb = arch > 0 ? 0.05 : 0.1, yt = top;   // 輪拱的地方整個斷面底部抬高（從側面看就是一個圓拱）
+    const low = Math.min(yt, BELT);
+    const pushP = (x, y, part) => ring.push([x, y, part]);
+    pushP(0, yb, arch > 0 ? 3 : 0);
+    for (let k = 0; k <= 4; k++) { const a = -Math.PI / 2 + k / 4 * Math.PI / 2; pushP(w - rb + Math.cos(a) * rb, yb + rb + Math.sin(a) * rb, arch > 0 && k < 3 ? 3 : 0); }   // 底角圓
+    const nSide = 7;
+    const ys0 = yb + rb, ys1 = Math.max(ys0 + 0.01, low - (green ? 0 : 0.1));
+    for (let k = 1; k <= nSide; k++) {
+      const y = ys0 + (ys1 - ys0) * k / nSide;
+      const bulge = 1 + 0.035 * Math.sin(Math.PI * (y - yb) / Math.max(0.1, low - yb));   // 側面微微鼓起
+      // 輪子上面的葉子板往外鼓（後輪更明顯，像跑車的「肩膀」），車門下緣往內收
+      const flare = WHEELS.reduce((a, [wz], i) => a + (i ? 0.06 : 0.04) * Math.exp(-(((zz - wz) / 0.55) ** 2)), 0) * smoothK((y - 0.42) / 0.2) * (1 - smoothK((y - 0.84) / 0.06));
+      const tuck = 1 - 0.05 * (1 - smoothK((y - yb) / 0.2)) * (arch > 0 ? 0 : 1);
+      pushP(w * bulge * (1 + flare) * tuck, y, 0);
+    }
+    if (green) {
+      // 車窗：往內收，車頂邊緣圓角
+      const nG = 6, tw = w * 0.66;
+      for (let k = 1; k <= nG; k++) { const t = k / nG, y = BELT + (yt - 0.05 - BELT) * t; pushP(w * 0.99 - (w * 0.99 - tw) * t, y, 1); }
+      for (let k = 1; k <= 3; k++) { const a = k / 3 * Math.PI / 2; pushP(tw - 0.05 + Math.cos(a) * 0.05 - (1 - Math.cos(a)) * 0.04, yt - 0.05 + Math.sin(a) * 0.05, 0); }
+      pushP(tw * 0.5, yt + 0.005, 0);
+    } else {
+      // 引擎蓋、行李箱：上面的圓角比較大，中間稍微拱起
+      for (let k = 1; k <= 4; k++) { const a = k / 4 * Math.PI / 2; pushP(w - 0.1 + Math.cos(a) * 0.1, yt - 0.1 + Math.sin(a) * 0.1, 0); }
+      pushP(w * 0.5, yt + 0.012, 0);
+    }
+    pushP(0, yt + (green ? 0.008 : 0.018), 0);
+    rows.push({ z: zz, ring, arch, w, green, top: yt });
+  }
+  // 每一圈的點數要一樣：重新取樣成固定數量（照弧長）
+  const K = 30;
+  const res = rows.map((r) => {
+    const P = r.ring, L = [0];
+    for (let i = 1; i < P.length; i++) L.push(L[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]));
+    const out = [];
+    for (let k = 0; k < K; k++) {
+      const s2 = L[L.length - 1] * k / (K - 1); let i = 1; while (i < L.length - 1 && L[i] < s2) i++;
+      const t = (s2 - L[i - 1]) / Math.max(1e-6, L[i] - L[i - 1]), a = P[i - 1], b = P[i];
+      out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, t < 0.5 ? a[2] : b[2]]);
+    }
+    return { ...r, ring: out };
+  });
+  // 拼成網格（右半邊＋左半邊鏡像）
+  const pos = [], part = [], idx = [];
+  const W2 = K * 2 - 1;   // 右邊 K 個＋左邊 K−1 個（中間底部那點共用）
+  for (const r of res) {
+    const ring = [...r.ring.slice().reverse().map(([x, y, pt]) => [-x, y, pt]), ...r.ring.slice(1)];   // 從頂部中間繞左邊到底部，再繞右邊回頂部
+    for (const [x, y, pt] of ring) {
+      let pp = pt;
+      // 擋風玻璃、後窗：斜的那一段車頂本身就是玻璃
+      if (pp === 0 && y > 0.9 && ((r.z > 0.22 && r.z < 1.02) || (r.z > -1.72 && r.z < -1.02))) pp = 1;
+      // 柱子和窗框：擋風玻璃兩側（A 柱）、側窗中間（B 柱）、後窗兩側（C 柱）、車頂不是玻璃
+      if (pp === 1) {
+        const ax = Math.abs(x) / Math.max(0.01, r.w);
+        if (r.z > 0.32 && ax > 0.62) pp = 2;
+        if (Math.abs(r.z + 0.4) < 0.07 && ax > 0.55) pp = 2;
+        if (r.z < -1.3 && ax > 0.6) pp = 2;
+        if (r.z > -1.0 && r.z < 0.2 && y > r.top - 0.08) pp = 0;
+      }
+      pos.push(x, y, r.z); part.push(pp);
+    }
+  }
+  for (let iz = 0; iz < res.length - 1; iz++) for (let k = 0; k < W2 - 1; k++) {
+    const a = iz * W2 + k, b = a + 1, c = a + W2, d = c + 1;
+    idx.push(a, b, c, b, d, c);
+  }
+  // 前後封口
+  for (const [iz, flip] of [[0, true], [res.length - 1, false]]) {
+    const base = iz * W2, cz = res[iz].z;
+    const ci = pos.length / 3; pos.push(0, (res[iz].top + res[iz].ring[0][1]) / 2, cz); part.push(0);
+    for (let k = 0; k < W2 - 1; k++) flip ? idx.push(ci, base + k + 1, base + k) : idx.push(ci, base + k, base + k + 1);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('part', new THREE.Float32BufferAttribute(part, 1));
+  g.setIndex(idx); g.computeVertexNormals();
+  return g;
+}
 let GEO = null;
+function mergeGeos(list) {
+  const pos = [], nor = []; for (const g0 of list) { const g = g0.index ? g0.toNonIndexed() : g0; pos.push(...g.attributes.position.array); nor.push(...g.attributes.normal.array); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); return g;
+}
+const DBG = typeof location !== 'undefined' && location.search.includes('cardbg');
 function geos() {
   if (GEO) return GEO;
-  const wg = new THREE.CylinderGeometry(0.36, 0.36, 0.3, 18); wg.rotateZ(Math.PI / 2);
-  const hub = new THREE.CylinderGeometry(0.24, 0.24, 0.32, 5); hub.rotateZ(Math.PI / 2);   // 五角輪框
-  GEO = { body: extrude(bodyShape(), 1.7, 0.12), glass: extrude(glassShape(), 1.9, 0.03), wheel: wg, hub };
+  // 輪胎：側面輪廓轉一圈（圓圓的胎肩、胎壁），軸朝 x
+  const prof = [[0.232, -0.12], [0.29, -0.128], [0.322, -0.118], [0.338, -0.085], [0.342, -0.03], [0.342, 0.03], [0.338, 0.085], [0.322, 0.118], [0.29, 0.128], [0.232, 0.12]].map(([r, y]) => new THREE.Vector2(r, y));
+  const wg = new THREE.LatheGeometry(prof, 40); wg.rotateZ(Math.PI / 2);
+  // 輪框（外側朝 +x）：淺淺的碗＋10 根輻條＋中間的蓋子；後面是煞車碟
+  const parts = [];
+  const lip = new THREE.TorusGeometry(0.228, 0.012, 6, 40); lip.rotateY(Math.PI / 2); lip.translate(0.1, 0, 0); parts.push(lip);
+  const barrel = new THREE.CylinderGeometry(0.226, 0.226, 0.2, 32, 1, true); barrel.rotateZ(Math.PI / 2); parts.push(barrel);
+  for (let k = 0; k < 10; k++) {
+    const sp = new THREE.BoxGeometry(0.025, 0.19, 0.03); sp.translate(0, 0.12, 0); sp.rotateZ(k % 2 ? 0.05 : -0.05);
+    sp.rotateX(k / 10 * Math.PI * 2); sp.translate(0.085, 0, 0); parts.push(sp);
+  }
+  const cap = new THREE.CylinderGeometry(0.05, 0.055, 0.04, 12); cap.rotateZ(Math.PI / 2); cap.translate(0.095, 0, 0); parts.push(cap);
+  const hub = mergeGeos(parts);
+  const disc = new THREE.CylinderGeometry(0.19, 0.19, 0.025, 28); disc.rotateZ(Math.PI / 2); disc.translate(0.02, 0, 0);
+  GEO = { body: loftBody(), wheel: wg, hub, disc };
+  void extrude; void glassShape;
   return GEO;
 }
 
@@ -48,25 +183,86 @@ export function carMesh(color, { lights = false, ghost = false } = {}) {
   const g = new THREE.Group();
   // 車漆：清漆感（低粗糙度），反射環境貼圖的城市燈光
   const paint = ghost ? new THREE.MeshStandardNodeMaterial({ color, roughness: 0.3, metalness: 0.4 }) : new THREE.MeshPhysicalNodeMaterial({ color, roughness: 0.32, metalness: 0.45, clearcoat: 1, clearcoatRoughness: 0.06 });
+  // 車身：同一個網格，依頂點的 part 分成車漆／玻璃／黑色飾條／輪拱內側
+  const bodyM = ghost ? paint : new THREE.MeshPhysicalNodeMaterial({ clearcoat: 1, clearcoatRoughness: 0.05 });
+  if (!ghost) {
+    const pt = attribute('part', 'float').add(0.5).floor();
+    const isG = pt.equal(1).select(float(1), float(0)), isT = pt.equal(2).select(float(1), float(0)), isW = pt.equal(3).select(float(1), float(0));
+    const pc = new THREE.Color(color);
+    let col = mix(vec3(pc.r, pc.g, pc.b), vec3(0.02, 0.03, 0.04), isG);
+    col = mix(col, vec3(0.015, 0.015, 0.017), isT); col = mix(col, vec3(0.01, 0.01, 0.01), isW);
+    // 車板縫（車門前後、引擎蓋、行李箱）：細細的暗線；側裙（兩個輪子中間的下緣）是黑色碳纖維
+    const P = positionLocal, ax = abs(P.x);
+    const line = (v, at, wd = 0.006) => smoothstep(wd, 0, abs(v.sub(at)));
+    const side = smoothstep(0.62, 0.72, ax);
+    const gaps = max(max(line(P.z, 0.98), line(P.z, -0.86)).mul(side).mul(step(P.y, 0.86)).mul(step(0.34, P.y)),
+      max(line(P.z, 1.1), line(P.z, -1.84)).mul(step(0.66, P.y)).mul(step(ax, 0.82)));
+    const skirt = step(P.y, 0.37).mul(step(P.z, 0.95)).mul(step(-0.95, P.z)).mul(side);
+    col = mix(col, vec3(0.02, 0.02, 0.022), max(gaps.mul(0.85), skirt));
+    // 金屬漆：一顆一顆的鋁片亮度不一樣（近看會閃）
+    const flake = hash(P.mul(260).floor().dot(vec3(1, 57, 113)));
+    // 路面濺起的水和髒污：車身下半部比較暗、有斑駁
+    const grime = smoothstep(0.62, 0.3, P.y).mul(mx_noise_float(P.mul(vec3(3, 9, 3))).mul(0.3).add(0.7)).mul(0.45);
+    const isPaint = float(1).sub(isG).sub(isT).sub(isW).max(0);
+    col = col.mul(mix(float(1), flake.mul(0.16).add(0.92), isPaint)).mul(float(1).sub(grime.mul(isPaint)));
+    // 雨珠：朝上的面是一顆一顆的圓水珠，側面被風吹成往後拉長的水痕
+    const up = smoothstep(0.25, 0.7, normalLocal.y);
+    const dTop = mx_worley_noise_float(P.mul(26)), dSide = mx_worley_noise_float(P.mul(vec3(30, 14, 7)));
+    const bead = mix(smoothstep(0.26, 0.1, dSide).mul(0.6), smoothstep(0.24, 0.08, dTop), up);
+    const beadH = mix(smoothstep(0.3, 0.0, dSide), smoothstep(0.28, 0.0, dTop), up).mul(float(1).sub(isW));
+    // 水珠凹凸用螢幕空間導數做（不用貼圖）
+    const dH = vec2(beadH.dFdx(), beadH.dFdy()).mul(0.9);
+    const sX = positionView.dFdx().normalize(), sY = positionView.dFdy().normalize(), Nn = normalView;
+    const R1 = sY.cross(Nn), R2 = Nn.cross(sX), det = sX.dot(R1).mul(faceDirection);
+    bodyM.normalNode = det.abs().mul(Nn).sub(det.sign().mul(dH.x.mul(R1).add(dH.y.mul(R2)))).normalize();
+    col = mix(col, col.mul(0.8), bead.mul(isPaint).mul(0.5));
+    bodyM.colorNode = DBG ? mix(mix(mix(vec3(0.8, 0.8, 0.8), vec3(0, 1, 1), isG), vec3(0, 0, 1), isT), vec3(0, 1, 0), isW) : col;
+    bodyM.roughnessNode = mix(mix(mix(float(0.3), float(0.38), grime.mul(2)), float(0.03), isG), float(0.9), isW);
+    bodyM.metalnessNode = mix(float(0.45), float(0.1), isG.add(isT).add(isW).min(1));
+    bodyM.clearcoatNode = float(1).sub(isW);
+  }
   const dark = new THREE.MeshStandardNodeMaterial({ color: 0x15161a, roughness: 0.6 });
-  const glass = new THREE.MeshStandardNodeMaterial({ color: 0x0e1824, roughness: 0.04, metalness: 0.5 });
-  const body = new THREE.Mesh(G.body, paint);
-  const win = new THREE.Mesh(G.glass, glass);
-  const wing = new THREE.Mesh(new THREE.BoxGeometry(1.86, 0.07, 0.42), dark); wing.position.set(0, 1.2, -2.0);
-  const wl = [-0.7, 0.7].map((x) => { const p = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.28, 0.25), dark); p.position.set(x, 1.04, -1.98); return p; });
-  const skirt = new THREE.Mesh(new THREE.BoxGeometry(1.96, 0.12, 3.0), dark); skirt.position.set(0, 0.33, 0);
-  const grille = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.14, 0.05), dark); grille.position.set(0, 0.45, 2.33);
-  const mirrors = [-1, 1].map((s) => { const m = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.14), paint); m.position.set(s * 1.02, 0.98, 0.72); return m; });
-  // 車頂的賽車號碼條紋
-  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.02, 4.0), new THREE.MeshStandardNodeMaterial({ color: 0xf2f2f2, roughness: 0.3 }));
-  stripe.position.set(0, 0.86, 0.15); stripe.visible = false;
-  g.add(body, win, wing, ...wl, skirt, grille, ...mirrors);
-  // 車燈：前白、後面一整條紅燈（煞車時更亮）
+  const glass = new THREE.MeshPhysicalNodeMaterial({ color: 0x0b0f14, roughness: 0.05, metalness: 0.1, clearcoat: 1, transparent: true, opacity: 0.85 });
+  const chrome = new THREE.MeshStandardNodeMaterial({ color: 0xd8dde3, metalness: 1, roughness: 0.15 });
+  const body = new THREE.Mesh(G.body, bodyM);
+  void glass;
+  // 尾翼：薄薄的翼片（中間厚、前後緣尖），兩根支架立在行李箱上
+  const wingG = new THREE.CylinderGeometry(0.2, 0.2, 1.74, 12, 1); wingG.rotateZ(Math.PI / 2); wingG.scale(1, 0.16, 1);
+  const wing = new THREE.Mesh(wingG, dark); wing.position.set(0, 1.12, -2.02); wing.rotation.x = 0.08;
+  const wl = [-0.62, 0.62].map((x) => { const p = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.2, 0.16), dark); p.position.set(x, 1.02, -2.0); return p; });
+  const plates = [-0.88, 0.88].map((x) => { const p = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.12, 0.44), dark); p.position.set(x, 1.12, -2.02); return p; });   // 翼端板
+  // 車頭下面：進氣口（黑色、往內凹）＋前下巴擾流板
+  const grille = new THREE.Mesh(new THREE.BoxGeometry(1.16, 0.11, 0.06), dark); grille.position.set(0, 0.44, 2.27); grille.rotation.x = 0.35;
+  const splitter = new THREE.Mesh(new THREE.BoxGeometry(1.66, 0.025, 0.28), dark); splitter.position.set(0, 0.315, 2.2);
+  // 車尾：擴散器＋兩支排氣管
+  const diff = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.1, 0.3), dark); diff.position.set(0, 0.36, -2.14);
+  const pipes = [-0.42, 0.42].map((x) => { const pg = new THREE.CylinderGeometry(0.048, 0.05, 0.16, 14, 1, true); pg.rotateX(Math.PI / 2); const p = new THREE.Mesh(pg, chrome); p.position.set(x, 0.37, -2.27); return p; });
+  // 後照鏡：細支架＋水滴形的鏡殼（車色）
+  const mirrors = [-1, 1].flatMap((s2) => {
+    const hs = new THREE.Mesh(new THREE.SphereGeometry(0.1, 14, 10), paint); hs.scale.set(0.75, 0.55, 1.15); hs.position.set(s2 * 1.0, 0.95, 0.84);
+    const st = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.025, 0.05), dark); st.position.set(s2 * 0.92, 0.93, 0.86);
+    const gl = new THREE.Mesh(new THREE.PlaneGeometry(0.11, 0.07), chrome); gl.position.set(s2 * 1.0, 0.95, 0.75); gl.rotation.y = Math.PI;
+    return [hs, st, gl];
+  });
+  // 門把：嵌在車門上的小黑條
+  const handles = [-1, 1].map((s2) => { const h = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.03, 0.16), dark); h.position.set(s2 * 0.985, 0.78, -0.5); return h; });
+  const stripe = null;
+  g.add(body, wing, ...wl, ...plates, grille, splitter, diff, ...pipes, ...mirrors, ...handles);
+  // 車燈：頭燈是貼著車頭斜面的透明燈殼，裡面有投射燈和一條 L 形的日行燈；尾燈是一整條細細的 LED 燈條＋兩邊的燈組
   const brake = uniform(0);
   const head = new THREE.MeshStandardNodeMaterial({ color: 0xffffff }); head.emissiveNode = vec3(1, 0.97, 0.88).mul(9);
+  const drl = new THREE.MeshStandardNodeMaterial({ color: 0xffffff }); drl.emissiveNode = vec3(0.85, 0.92, 1).mul(5);
   const tail = new THREE.MeshStandardNodeMaterial({ color: 0x550000 }); tail.emissiveNode = vec3(1, 0.06, 0.04).mul(brake.mul(9).add(3));
-  for (const x of [-0.68, 0.68]) { const h = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.1, 0.06), head); h.position.set(x, 0.66, 2.24); h.rotation.x = -0.15; g.add(h); }
-  const tb = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.08, 0.05), tail); tb.position.set(0, 0.8, -2.26); g.add(tb);
+  const lensM = new THREE.MeshPhysicalNodeMaterial({ color: 0x9aa4b0, roughness: 0.02, metalness: 0.2, clearcoat: 1, transparent: true, opacity: 0.35 });
+  for (const x of [-0.6, 0.6]) {
+    const lens = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 12), lensM); lens.scale.set(0.27, 0.06, 0.15); lens.position.set(x, 0.655, 2.16); lens.rotation.x = -0.38; g.add(lens);
+    const inner = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.04, 0.2), dark); inner.position.set(x, 0.64, 2.15); inner.rotation.x = -0.38; g.add(inner);
+    for (const dx of [-0.07, 0.07]) { const pr = new THREE.Mesh(new THREE.SphereGeometry(0.038, 12, 8), head); pr.position.set(x + dx * Math.sign(x), 0.668, 2.19); g.add(pr); }
+    const d1 = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.014, 0.02), drl); d1.position.set(x, 0.627, 2.25); d1.rotation.x = -0.38; g.add(d1);
+    const d2 = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.05, 0.02), drl); d2.position.set(x + Math.sign(x) * 0.17, 0.645, 2.22); g.add(d2);
+  }
+  const tb = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.022, 0.03), tail); tb.position.set(0, 0.745, -2.3); g.add(tb);
+  for (const x of [-0.64, 0.64]) { const t2 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.075, 0.03), tail); t2.position.set(x, 0.705, -2.3); g.add(t2); const rf = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.03, 0.025), dark); rf.position.set(x, 0.65, -2.3); g.add(rf); }
   // 車底的接觸陰影：讓車子「貼」在地上
   const ao = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false });
   const q = uv().sub(0.5).mul(2);
@@ -84,11 +280,17 @@ export function carMesh(color, { lights = false, ghost = false } = {}) {
     const beam = new THREE.Mesh(cg, beamM); beam.position.set(x, 0.66, 2.26); g.add(beam);
   }
   // 輪子
-  const rim = new THREE.MeshStandardNodeMaterial({ color: 0xb8bec8, metalness: 0.85, roughness: 0.25 });
+  const rim = new THREE.MeshStandardNodeMaterial({ color: 0x9aa1ab, metalness: 0.9, roughness: 0.22 });
+  const rubber = new THREE.MeshStandardNodeMaterial({ color: 0x121214, roughness: 0.82 });
+  const discM = new THREE.MeshStandardNodeMaterial({ color: 0x6d6a66, metalness: 0.8, roughness: 0.45 });
+  const calM = new THREE.MeshStandardNodeMaterial({ color: 0xc81d25, roughness: 0.4 });
   const wheels = [];
-  for (const [x, z] of [[-0.9, 1.4], [0.9, 1.4], [-0.9, -1.35], [0.9, -1.35]]) {
-    const w = new THREE.Group(); w.position.set(x, 0.36, z);
-    w.add(new THREE.Mesh(G.wheel, dark), new THREE.Mesh(G.hub, rim)); g.add(w); wheels.push(w);
+  for (const [x, z] of [[-0.85, 1.45], [0.85, 1.45], [-0.86, -1.5], [0.86, -1.5]]) {
+    const w = new THREE.Group(); w.position.set(x, 0.35, z); w.scale.setScalar(0.35 / 0.342);
+    const spin = new THREE.Group(); spin.add(new THREE.Mesh(G.wheel, rubber), new THREE.Mesh(G.hub, rim), new THREE.Mesh(G.disc, discM));
+    if (x < 0) spin.scale.x = -1;   // 輪框的外側永遠朝外
+    const cal = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.14, 0.1), calM); cal.position.set(x < 0 ? -0.05 : 0.05, 0.12, z > 0 ? -0.1 : 0.1);   // 煞車卡鉗（不跟著轉）
+    w.add(spin, cal); w.userData.spin = spin; g.add(w); wheels.push(w);
   }
   g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   under.castShadow = false; g.traverse((o) => { if (o.material === beamM) o.castShadow = false; });
@@ -121,10 +323,11 @@ export function carMesh(color, { lights = false, ghost = false } = {}) {
     const doors = [-1, 1].map((s) => { const d = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.16, 2.0), trim); d.position.set(s * 0.86, 0.9, -0.1); return d; });
     const liner = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.03, 0.8), trim); liner.position.set(0, 1.26, -0.5);
     const pillars = [-1, 1].map((s) => { const p = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.9), trim); p.position.set(s * 0.8, 1.06, 0.63); p.rotation.x = 0.5; return p; });
-    inner.add(dash, gz, wheelG, ...doors, liner, ...pillars);
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.04, 2.6), trim); floor.position.set(0, 0.42, 0.1);   // 車內地板（不然從車裡看得到輪子）
+    const cowl = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.4, 0.06), trim); cowl.position.set(0, 0.62, 1.08);
+    inner.add(dash, gz, wheelG, ...doors, liner, ...pillars, floor, cowl);
     g.add(inner);
     g.userData.inner = inner; g.userData.steerWheel = wheelG;
-    void stripe;
   }
   return g;
 }
@@ -204,7 +407,7 @@ export class Car {
     const ud = m.userData;
     if (ud.wheels) {
       const spin = (this.speed * dt) / 0.36;
-      ud.wheels.forEach((w, i) => { w.children[0].rotation.x += spin; w.children[1].rotation.x += spin; if (i < 2) w.rotation.y = -this.steer * 0.45; });
+      ud.wheels.forEach((w, i) => { w.userData.spin.rotation.x += spin; if (i < 2) w.rotation.y = -this.steer * 0.45; });
       if (ud.steerWheel) ud.steerWheel.rotation.z = this.steer * 1.6;
       ud.brake.value = this.input.brake > 0 ? 1 : 0;
     }
