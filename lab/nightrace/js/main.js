@@ -106,12 +106,18 @@ const sound = new Sound(); if (save.soundOff) sound.setOn(false);
 // ---------------------------------------------------------------- 比賽
 let cars = [], player = null, phase = 'menu', raceT = 0, countT = 0, opts = { ...save.opts }, camMode = 0, finishOrder = [], bestThisRace = Infinity;
 const DIFF = [{ top: 0.8, grip: 12.5 }, { top: 0.88, grip: 14.5 }, { top: 0.95, grip: 16.5 }];
+// 錦標賽：三條賽道連續比三場，照名次拿積分，最後積分最高的是總冠軍
+const CUP_PTS = [10, 8, 6, 4, 3, 2];
+let cup = null;   // { round: 0–2, pts: { 名字: 分數 } }
 function startRace(o = opts) {
   opts = { ...o }; save.opts = opts; persist();
-  useTrack(opts.track || 0);
+  if (opts.mode === 'cup' && !cup) cup = { round: 0, pts: {} };
+  if (opts.mode !== 'cup') cup = null;
+  useTrack(cup ? cup.round % TRACKS.length : opts.track || 0);
+  if (cup) flash(`🏁 錦標賽第 ${cup.round + 1} 場：${TRACKS[trackIdx].name}`);
   for (const c of cars) scene.remove(c.mesh);
   cars = []; finishOrder = []; bestThisRace = Infinity;
-  const n = track.n, rivals = opts.mode === 'race' ? NCARS - 1 : 0;
+  const n = track.n, rivals = opts.mode !== 'tt' ? NCARS - 1 : 0;
   const slot = (k) => ({ idx: (n - 6 - Math.floor(k / 2) * 6) % n, lane: k % 2 ? -3.2 : 3.2 });
   // 玩家排最後面（起跑後追上去比較好玩）
   const total = rivals + 1;
@@ -190,6 +196,19 @@ function showResult() {
   $('rTitle').textContent = opts.mode === 'tt' ? '計時賽完成！' : me === 1 ? '🏆 冠軍！' : `第 ${me} 名`;
   $('rText').textContent = `總時間 ${fmt(player.finishT)} · 這場最快一圈 ${fmt(bestThisRace)} · 歷史最快 ${fmt(getBest(trackIdx))}`;
   $('rTable').innerHTML = rows.map((r, i) => `<tr class="${r.c.isPlayer ? 'me' : ''}"><td>${i + 1}</td><td>${r.c.name}</td><td style="text-align:right">${fmt(r.t)}</td></tr>`).join('');
+  $('rAgain').textContent = '再跑一次';
+  if (cup) {
+    rows.forEach((r, i) => { cup.pts[r.c.name] = (cup.pts[r.c.name] || 0) + CUP_PTS[i]; });
+    const last = cup.round >= TRACKS.length - 1;
+    const table = Object.entries(cup.pts).sort((a, b) => b[1] - a[1]);
+    const myRank = table.findIndex(([n]) => n === player.name) + 1;
+    $('rTitle').textContent = last ? (myRank === 1 ? '🏆 錦標賽總冠軍！' : `錦標賽總排名第 ${myRank} 名`) : `第 ${cup.round + 1} 場：第 ${me} 名`;
+    $('rText').textContent = (last ? '三場比完了！' : `${TRACKS[trackIdx].name}跑完了，下一場是${TRACKS[cup.round + 1].name}。`) + ` 這場拿到 ${CUP_PTS[me - 1]} 分。`;
+    $('rTable').innerHTML = `<tr><td colspan="3" style="color:var(--mute)">積分榜（第 1 名 10 分、第 2 名 8 分、第 3 名 6 分…）</td></tr>` +
+      table.map(([n, p], i) => `<tr class="${n === player.name ? 'me' : ''}"><td>${i + 1}</td><td>${n}</td><td style="text-align:right">${p} 分</td></tr>`).join('');
+    if (last) { if (!save.cupBest || myRank < save.cupBest) { save.cupBest = myRank; persist(); } cup.done = true; $('rAgain').textContent = '再比一次錦標賽'; }
+    else $('rAgain').textContent = '下一場 ▶';
+  }
   $('result').classList.remove('hidden');
 }
 const fmt = (t) => (t == null || !isFinite(t)) ? '—' : `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
@@ -209,18 +228,18 @@ const paintCol = () => [...$('oColor').children].forEach((b, i) => b.classList.t
 $('oColor').onclick = (e) => { const i = e.target.dataset && e.target.dataset.i; if (i == null) return; opts.color = +i; paintCol(); };
 paintCol();
 function showMenu() {
-  $('best').textContent = TRACKS.map((t, i) => `${t.name} ${fmt(getBest(i))}`).join(' · ');
+  $('best').textContent = TRACKS.map((t, i) => `${t.name} ${fmt(getBest(i))}`).join(' · ') + (save.cupBest ? ` · 錦標賽最好第 ${save.cupBest} 名` : '');
   $('resume').classList.toggle('hidden', !(phase === 'race' || phase === 'count'));
   $('menu').classList.remove('hidden');
   if (phase === 'race' || phase === 'count') { pausedPhase = phase; phase = 'paused'; }
 }
 let pausedPhase = null;
 function closeAll() { $('menu').classList.add('hidden'); $('result').classList.add('hidden'); }
-$('go').onclick = () => startRace(opts);
+$('go').onclick = () => { cup = null; startRace(opts); };
 $('resume').onclick = () => { closeAll(); if (phase === 'paused') phase = pausedPhase; };
 $('menuBtn').onclick = showMenu;
 $('rMenu').onclick = () => { closeAll(); showMenu(); };
-$('rAgain').onclick = () => startRace(opts);
+$('rAgain').onclick = () => { if (cup) { if (cup.done) cup = null; else cup.round++; } startRace(opts); };
 $('soundBtn').onclick = () => { sound.start(); sound.setOn(!sound.on); save.soundOff = !sound.on; persist(); $('soundBtn').textContent = sound.on ? '🔊' : '🔇'; };
 $('soundBtn').textContent = sound.on ? '🔊' : '🔇';
 
@@ -328,7 +347,7 @@ function update(dt) {
     // 介面
     $('kmh').textContent = Math.round(Math.abs(player.speed) * 3.6);
     const order = [...cars].sort((a, b) => b.progress - a.progress);
-    $('pos').textContent = opts.mode === 'race' ? `${order.indexOf(player) + 1}/${cars.length}` : '—';
+    $('pos').textContent = opts.mode !== 'tt' ? `${order.indexOf(player) + 1}/${cars.length}` : '—';
     $('lap').textContent = `${Math.min(opts.laps, Math.max(1, player.lap + 1))}/${opts.laps}`;
     $('time').textContent = fmt(raceT);
     sound.update({ speed: player.speed, gas: player.input.gas, slip: player.slip, rain: opts.rain, racing });
