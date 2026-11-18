@@ -104,6 +104,7 @@ const OFF = params.has('offscreen') ? new THREE.RenderTarget(1, 1) : null;
 const sound = new Sound(); if (save.soundOff) sound.setOn(false);
 
 // ---------------------------------------------------------------- 比賽
+let peekCar = null;
 let cars = [], player = null, phase = 'menu', raceT = 0, countT = 0, opts = { ...save.opts }, camMode = 0, finishOrder = [], bestThisRace = Infinity;
 const DIFF = [{ top: 0.8, grip: 12.5 }, { top: 0.88, grip: 14.5 }, { top: 0.95, grip: 16.5 }];
 // 錦標賽：三條賽道連續比三場，照名次拿積分，最後積分最高的是總冠軍
@@ -317,6 +318,10 @@ function update(dt) {
       camPos.copy(player.mesh.localToWorld(new THREE.Vector3(-0.38, 1.13, -0.2)));
       camLook.copy(player.mesh.localToWorld(new THREE.Vector3(-0.38, 0.75, 20)));
     }
+    if (peekCar) {   // 測試：繞著某台車看（看車身細節用）
+      const c = cars[peekCar.i] || player, f2 = new THREE.Vector3(Math.sin(c.hd + peekCar.a), 0, Math.cos(c.hd + peekCar.a));
+      camPos.copy(c.pos).addScaledVector(f2, peekCar.d).add(new THREE.Vector3(0, peekCar.h, 0)); camLook.copy(c.pos).add(new THREE.Vector3(0, 0.7, 0));
+    }
     camera.position.copy(camPos); camera.lookAt(camLook);
     camera.fov = (camMode === 2 ? 66 : 62) + Math.min(14, v * 0.25); camera.updateProjectionMatrix();
     player.mesh.visible = camMode !== 1;
@@ -436,6 +441,7 @@ window.__night = {
   get track() { return track; }, renderer, WEBGPU, HIGH, fx, get cars() { return cars; }, get player() { return player; }, get phase() { return phase; }, skids,
   start: (o) => startRace({ ...opts, ...o }), go() { phase = 'race'; countT = 0; $('count').textContent = ''; },
   setCam(m) { camMode = m; },
+  peekCar(i, a = 0.8, d = 6, h = 1.2) { peekCar = i == null ? null : { i, a, d, h }; },
   bolt() { boltT = 0; }, get ghost() { return ghost; }, get ghostMesh() { return ghostMesh; },
   autopilot() { player.ai = { top: 0.9, grip: 15 }; },
   finish() { player.finished = true; player.finishT = raceT; finishOrder.push(player); phase = 'done'; showResult(); },
