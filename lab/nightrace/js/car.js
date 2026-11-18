@@ -1,6 +1,6 @@
 // 車子：外形（程式拼的小跑車）、街機式物理（濕地抓地力比較差、水窪更滑、手煞車甩尾）、電腦車手
 import * as THREE from 'three';
-import { vec3, uniform, uv, smoothstep, float, normalView, positionView, attribute, mix, positionLocal, abs, max, min, step } from 'three/tsl';
+import { vec3, uniform, uv, smoothstep, float, normalView, positionView, attribute, mix, positionLocal, abs, max, min, step, normalLocal, mx_worley_noise_float, mx_noise_float, hash, vec2, faceDirection } from 'three/tsl';
 import { ROAD_W } from './track.js';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
@@ -156,7 +156,7 @@ function mergeGeos(list) {
   const pos = [], nor = []; for (const g0 of list) { const g = g0.index ? g0.toNonIndexed() : g0; pos.push(...g.attributes.position.array); nor.push(...g.attributes.normal.array); }
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); return g;
 }
-const DBG = typeof location !== 'undefined' && location.search.includes('dbg');
+const DBG = typeof location !== 'undefined' && location.search.includes('cardbg');
 function geos() {
   if (GEO) return GEO;
   // 輪胎：側面輪廓轉一圈（圓圓的胎肩、胎壁），軸朝 x
@@ -199,8 +199,25 @@ export function carMesh(color, { lights = false, ghost = false } = {}) {
       max(line(P.z, 1.1), line(P.z, -1.84)).mul(step(0.66, P.y)).mul(step(ax, 0.82)));
     const skirt = step(P.y, 0.37).mul(step(P.z, 0.95)).mul(step(-0.95, P.z)).mul(side);
     col = mix(col, vec3(0.02, 0.02, 0.022), max(gaps.mul(0.85), skirt));
+    // 金屬漆：一顆一顆的鋁片亮度不一樣（近看會閃）
+    const flake = hash(P.mul(260).floor().dot(vec3(1, 57, 113)));
+    // 路面濺起的水和髒污：車身下半部比較暗、有斑駁
+    const grime = smoothstep(0.62, 0.3, P.y).mul(mx_noise_float(P.mul(vec3(3, 9, 3))).mul(0.3).add(0.7)).mul(0.45);
+    const isPaint = float(1).sub(isG).sub(isT).sub(isW).max(0);
+    col = col.mul(mix(float(1), flake.mul(0.16).add(0.92), isPaint)).mul(float(1).sub(grime.mul(isPaint)));
+    // 雨珠：朝上的面是一顆一顆的圓水珠，側面被風吹成往後拉長的水痕
+    const up = smoothstep(0.25, 0.7, normalLocal.y);
+    const dTop = mx_worley_noise_float(P.mul(26)), dSide = mx_worley_noise_float(P.mul(vec3(30, 14, 7)));
+    const bead = mix(smoothstep(0.26, 0.1, dSide).mul(0.6), smoothstep(0.24, 0.08, dTop), up);
+    const beadH = mix(smoothstep(0.3, 0.0, dSide), smoothstep(0.28, 0.0, dTop), up).mul(float(1).sub(isW));
+    // 水珠凹凸用螢幕空間導數做（不用貼圖）
+    const dH = vec2(beadH.dFdx(), beadH.dFdy()).mul(0.9);
+    const sX = positionView.dFdx().normalize(), sY = positionView.dFdy().normalize(), Nn = normalView;
+    const R1 = sY.cross(Nn), R2 = Nn.cross(sX), det = sX.dot(R1).mul(faceDirection);
+    bodyM.normalNode = det.abs().mul(Nn).sub(det.sign().mul(dH.x.mul(R1).add(dH.y.mul(R2)))).normalize();
+    col = mix(col, col.mul(0.8), bead.mul(isPaint).mul(0.5));
     bodyM.colorNode = DBG ? mix(mix(mix(vec3(0.8, 0.8, 0.8), vec3(0, 1, 1), isG), vec3(0, 0, 1), isT), vec3(0, 1, 0), isW) : col;
-    bodyM.roughnessNode = mix(mix(float(0.32), float(0.03), isG), float(0.9), isW);
+    bodyM.roughnessNode = mix(mix(mix(float(0.3), float(0.38), grime.mul(2)), float(0.03), isG), float(0.9), isW);
     bodyM.metalnessNode = mix(float(0.45), float(0.1), isG.add(isT).add(isW).min(1));
     bodyM.clearcoatNode = float(1).sub(isW);
   }
@@ -306,7 +323,9 @@ export function carMesh(color, { lights = false, ghost = false } = {}) {
     const doors = [-1, 1].map((s) => { const d = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.16, 2.0), trim); d.position.set(s * 0.86, 0.9, -0.1); return d; });
     const liner = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.03, 0.8), trim); liner.position.set(0, 1.26, -0.5);
     const pillars = [-1, 1].map((s) => { const p = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.9), trim); p.position.set(s * 0.8, 1.06, 0.63); p.rotation.x = 0.5; return p; });
-    inner.add(dash, gz, wheelG, ...doors, liner, ...pillars);
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.04, 2.6), trim); floor.position.set(0, 0.42, 0.1);   // 車內地板（不然從車裡看得到輪子）
+    const cowl = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.4, 0.06), trim); cowl.position.set(0, 0.62, 1.08);
+    inner.add(dash, gz, wheelG, ...doors, liner, ...pillars, floor, cowl);
     g.add(inner);
     g.userData.inner = inner; g.userData.steerWheel = wheelG;
   }
