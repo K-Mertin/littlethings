@@ -1,4 +1,4 @@
-// 單獨的大動物：海龜、鬼蝠魟、鯨鯊、章魚、小丑魚、發光水母、鮟鱇魚
+// 單獨的大動物：海龜、鬼蝠魟、鯨鯊、章魚、小丑魚、發光水母、鮟鱇魚、海馬、黑鰭鯊、皇帶魚、小飛象章魚
 // 全部用簡單幾何拼出來，動作用 CPU 算（數量少）或頂點 shader（翅膀拍動、尾巴擺動）
 import * as THREE from 'three';
 import { Fn, float, vec3, mix, smoothstep, sin, cos, abs, time, positionLocal, positionGeometry, normalLocal, mx_worley_noise_float, mx_noise_float, uniform, hash, instanceIndex, uv, vec2, atan, normalView, positionView, select } from 'three/tsl';
@@ -467,6 +467,144 @@ export function buildCreatures(scene, W, { high }) {
     list.push({
       id: 'angler', obj: g, r: 10,
       update(t) { g.position.set(P0.x + Math.sin(t * 0.07) * 6, P0.y + Math.sin(t * 0.6) * 0.3, P0.z + Math.cos(t * 0.05) * 4); g.rotation.y = Math.sin(t * 0.07) * 1.2 + 0.4; jaw.rotation.x = Math.max(0, Math.sin(t * 0.5)) * 0.3; tail.rotation.y = Math.sin(t * 2) * 0.25; },
+    });
+  }
+
+  // ---------------- 海馬：住在昆布森林裡，尾巴捲起來、直直立著游；長嘴、頭上有小冠，背鰭一直快速搧動
+  {
+    const sk = new THREE.MeshStandardNodeMaterial({ roughness: 0.5 });
+    // 一節一節的骨環（橫紋）＋斑駁的黃橘色
+    sk.colorNode = Fn(() => {
+      const p = positionLocal;
+      const ring = sin(p.y.mul(70)).mul(0.5).add(0.5);
+      const mot = mx_noise_float(p.mul(14)).mul(0.5).add(0.5);
+      return mix(vec3(0.72, 0.42, 0.1), vec3(0.98, 0.78, 0.3), mot).mul(mix(0.78, 1.05, ring));
+    })();
+    const path = new THREE.CatmullRomCurve3([V(0, 1.0, 0), V(0, 0.82, 0.15), V(0, 0.58, 0.19), V(0, 0.34, 0.09), V(0, 0.16, -0.06), V(0, 0.05, -0.05), V(0, 0.02, 0.05), V(0, 0.08, 0.12), V(0, 0.15, 0.08), V(0, 0.14, 0.01)]);
+    const bodyG = taperTube(path, 60, 0.11, 0.014, 10);
+    const make = () => {
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(bodyG, sk);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.1, 14, 10), sk); head.position.set(0, 1.05, 0.03); head.scale.set(0.85, 1, 1.15);
+      const snout = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.24, 8), sk); snout.rotation.x = Math.PI / 2 + 0.35; snout.position.set(0, 1.0, 0.17);
+      const crown = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.09, 6), sk); crown.position.set(0, 1.15, -0.01);
+      const eyes = [-1, 1].map((s2) => { const e = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 6), std(0x111111, { roughness: 0.15 })); e.position.set(s2 * 0.075, 1.07, 0.06); return e; });
+      const finM = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide, transparent: true, opacity: 0.55, color: 0xffe2a0, roughness: 0.5, depthWrite: false });
+      const fin = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.12, 4, 1), finM); fin.rotation.y = Math.PI / 2; fin.position.set(0, 0.55, -0.02);
+      g.add(body, head, snout, crown, ...eyes, fin);
+      shadow(g, high); scene.add(g); g.userData.fin = fin; return g;
+    };
+    const horses = [0, 1, 2].map(make);
+    const K = W.kelp, base = horses.map((h, i) => { const a = i * 2.1 + 0.6, d = 5 + i * 2.5; const x = K.x + Math.cos(a) * d, z = K.z + Math.sin(a) * d; return V(x, floorY(x, z) + 2.2 + i * 0.8, z); });
+    horses.forEach((h) => h.scale.setScalar(1.6));
+    list.push({
+      id: 'seahorse', obj: horses[0], r: 7,
+      update(t) {
+        horses.forEach((h, i) => {
+          const b = base[i];
+          h.position.set(b.x + Math.sin(t * 0.3 + i) * 0.6, b.y + Math.sin(t * 0.8 + i * 2) * 0.25, b.z + Math.cos(t * 0.25 + i) * 0.6);
+          h.rotation.y = Math.sin(t * 0.2 + i) * 1.2; h.rotation.z = Math.sin(t * 0.9 + i) * 0.06;
+          h.userData.fin.scale.x = 1 + Math.sin(t * 30 + i) * 0.25;   // 背鰭一秒搧好幾十下
+        });
+      },
+    });
+  }
+
+  // ---------------- 黑鰭鯊：在珊瑚礁外圍繞圈巡邏；灰背白肚、背鰭和尾鰭尖端黑色，尾巴左右擺
+  {
+    const prof = [[0, -1.25], [0.06, -1.1], [0.14, -0.8], [0.24, -0.35], [0.3, 0.1], [0.3, 0.45], [0.25, 0.8], [0.16, 1.05], [0.05, 1.2], [0, 1.24]].map(([r, z]) => new THREE.Vector2(r, z));
+    const bodyG = new THREE.LatheGeometry(prof, 22); bodyG.rotateX(Math.PI / 2); bodyG.scale(0.85, 1, 1);
+    const sm = new THREE.MeshStandardNodeMaterial({ roughness: 0.45 });
+    sm.colorNode = mix(vec3(0.92, 0.92, 0.9), vec3(0.38, 0.4, 0.42), smoothstep(-0.12, 0.08, positionLocal.y));   // 上面灰、下面白（反蔭蔽）
+    const finM = new THREE.MeshStandardNodeMaterial({ roughness: 0.5, side: THREE.DoubleSide });
+    finM.colorNode = mix(vec3(0.38, 0.4, 0.42), vec3(0.04, 0.04, 0.05), smoothstep(0.75, 0.95, uv().y));   // 鰭尖是黑的
+    const tri = (a, b2, c2) => { const sh = new THREE.Shape(); sh.moveTo(...a); sh.quadraticCurveTo(...b2); sh.lineTo(...c2); sh.lineTo(...a); const g2 = new THREE.ShapeGeometry(sh, 6); g2.computeBoundingBox(); const bb = g2.boundingBox, u2 = g2.attributes.uv, p2 = g2.attributes.position; for (let i = 0; i < p2.count; i++) u2.setXY(i, 0, (p2.getY(i) - bb.min.y) / (bb.max.y - bb.min.y)); return g2; };
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(bodyG, sm);
+    const dors = new THREE.Mesh(tri([-0.3, 0], [-0.05, 0.25], [0.12, 0.5]), finM); dors.rotation.y = -Math.PI / 2; dors.position.set(0, 0.24, 0.05);
+    const pecs = [-1, 1].map((s2) => { const m = new THREE.Mesh(tri([0, 0], [0.2, -0.1], [0.55, -0.35]), finM); m.rotation.set(-Math.PI / 2 + 0.3, 0, s2 > 0 ? -0.3 : Math.PI + 0.3); m.position.set(s2 * 0.2, -0.12, 0.35); return m; });
+    const tail = new THREE.Group(); tail.position.z = -1.15;
+    const tg = new THREE.Shape(); tg.moveTo(0, 0); tg.quadraticCurveTo(-0.25, 0.3, -0.55, 0.62); tg.lineTo(-0.35, 0.05); tg.lineTo(-0.38, -0.32); tg.quadraticCurveTo(-0.15, -0.1, 0, 0);
+    const tgeo = new THREE.ShapeGeometry(tg, 8); { tgeo.computeBoundingBox(); const bb = tgeo.boundingBox, u2 = tgeo.attributes.uv, p2 = tgeo.attributes.position; for (let i = 0; i < p2.count; i++) u2.setXY(i, 0, Math.abs(p2.getY(i)) / Math.max(bb.max.y, -bb.min.y)); }
+    const tf = new THREE.Mesh(tgeo, finM); tf.rotation.y = -Math.PI / 2; tail.add(tf);
+    const eyes = [-1, 1].map((s2) => { const e = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), std(0x0a0a0a, { roughness: 0.1 })); e.position.set(s2 * 0.14, 0.06, 0.92); return e; });
+    const gills = [-1, 1].flatMap((s2) => [0, 1, 2, 3].map((k) => { const m = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.12, 0.015), std(0x2a2c2e)); m.position.set(s2 * 0.235, 0, 0.62 - k * 0.06); return m; }));
+    g.add(body, dors, ...pecs, tail, ...eyes, ...gills); g.scale.setScalar(1.3); shadow(g, high); scene.add(g);
+    const c = W.reef;
+    list.push({
+      id: 'shark', obj: g, r: 10,
+      update(t) {
+        pathPose(g, c.x - 4, c.z + 2, 46, 34, 0.07, t, 0, 3.2);
+        g.position.y = Math.max(floorY(g.position.x, g.position.z) + 3.5, -24) + Math.sin(t * 0.5) * 0.6;
+        tail.rotation.y = Math.sin(t * 3.2) * 0.45; g.rotation.z = Math.sin(t * 3.2) * 0.03;
+      },
+    });
+  }
+
+  // ---------------- 皇帶魚：在斜坡和深海之間，八公尺長的銀色緞帶，紅色的背鰭從頭一路到尾，整條身體像波浪一樣扭動
+  {
+    const L = 8, seg = 120;
+    // 身體高度：尾巴很細、往前慢慢變高，頭是圓鈍的（k：0 尾 → 1 頭）
+    const oarH = (k) => k <= 0.85 ? 0.15 + 0.85 * Math.pow(k / 0.85, 0.7) : Math.max(0.35, Math.sqrt(Math.max(0, 1 - ((k - 0.85) / 0.155) ** 2)));
+    const geo = new THREE.BoxGeometry(0.08, 0.8, L, 1, 4, seg);
+    { const p = geo.attributes.position; for (let i = 0; i < p.count; i++) { const z = p.getZ(i), k = (z + L / 2) / L; const h = oarH(k); p.setY(i, p.getY(i) * h); p.setX(i, p.getX(i) * (0.4 + 0.6 * h)); } geo.computeVertexNormals(); }
+    const wave = (p) => p.x.add(sin(p.z.mul(1.1).sub(time.mul(1.6))).mul(0.35).mul(smoothstep(4, -4, p.z).mul(0.8).add(0.2)));
+    const bm = new THREE.MeshStandardNodeMaterial({ roughness: 0.25, metalness: 0.6 });
+    bm.positionNode = Fn(() => { const p = positionLocal.toVar(); p.x.assign(wave(p)); return p; })();
+    bm.colorNode = Fn(() => {   // 銀色身體上有一點一點的深色斑和斜紋
+      const p = positionLocal;
+      const spot = smoothstep(0.25, 0.1, mx_worley_noise_float(vec3(p.z.mul(3), p.y.mul(6), 0)));
+      return mix(vec3(0.82, 0.85, 0.9), vec3(0.25, 0.27, 0.32), spot.mul(0.7)).mul(mix(0.85, 1.05, sin(p.z.mul(9).add(p.y.mul(14))).mul(0.5).add(0.5)));
+    })();
+    bm.emissiveNode = vec3(0.1, 0.12, 0.16);   // 銀色鱗片在暗暗的水裡還是反著一點光
+    const fm = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide, transparent: true, opacity: 0.8, color: 0xff4a3a, emissive: 0x802018, roughness: 0.5, depthWrite: false });
+    const fg = new THREE.PlaneGeometry(0.3, L * 0.95, 1, seg); fg.rotateX(Math.PI / 2); fg.rotateZ(Math.PI / 2);
+    fm.positionNode = Fn(() => { const p = positionLocal.toVar(); p.y.addAssign(sin(p.z.mul(14).sub(time.mul(6))).mul(0.03)); p.x.assign(wave(p)); return p; })();
+    const fin = new THREE.Mesh(fg, fm);
+    { const pz = fg.attributes.position; for (let i = 0; i < pz.count; i++) { const z = pz.getZ(i), k = (z + L / 2) / L; pz.setY(i, pz.getY(i) + 0.4 * oarH(Math.min(k, 0.85)) + 0.1); } }
+    const crest = [0, 1, 2, 3, 4].map((k) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.02, 0.5 + k * 0.08, 5), std(0xe2302a)); m.position.set(0, 0.45 + k * 0.03, L / 2 - 0.25 - k * 0.07); m.rotation.x = -0.5 - k * 0.12; return m; });   // 頭上的紅色長鰭條（像雞冠）
+    const eyes = [-1, 1].map((s2) => { const e = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), std(0x0a0a0a, { roughness: 0.1 })); e.position.set(s2 * 0.04, 0.05, L / 2 - 0.2); return e; });
+    const g = new THREE.Group(); g.add(new THREE.Mesh(geo, bm), fin, ...crest, ...eyes); shadow(g, false); scene.add(g);
+    const C0 = V(34, -40, 58);
+    list.push({
+      id: 'oarfish', obj: g, r: 12,
+      update(t) {
+        pathPose(g, C0.x, C0.z, 16, 10, 0.06, t, 0, 0.5);
+        g.position.y = Math.max(floorY(g.position.x, g.position.z) + 8, C0.y) + Math.sin(t * 0.2) * 3;
+        g.rotation.x = Math.sin(t * 0.15) * 0.35;   // 有時候頭朝上、有時候平著游
+      },
+    });
+  }
+
+  // ---------------- 小飛象章魚：住在很深的海底，頭上兩片像大象耳朵的鰭一直拍；八隻短短的腳之間有蹼，像一把小傘
+  {
+    const m = new THREE.MeshStandardNodeMaterial({ roughness: 0.45, transparent: true, opacity: 0.92 });
+    m.colorNode = Fn(() => mix(vec3(1.0, 0.62, 0.55), vec3(0.85, 0.36, 0.38), mx_noise_float(positionLocal.mul(5)).mul(0.5).add(0.5)))();
+    m.emissiveNode = vec3(0.12, 0.03, 0.03);
+    const g = new THREE.Group();
+    const bell = new THREE.Mesh(new THREE.SphereGeometry(0.5, 24, 18), m); bell.scale.set(1, 1.05, 0.95); bell.position.y = 0.35;
+    // 腳和蹼：一個往下打開的圓錐裙子，邊緣分成八個圓圓的瓣
+    const sk = new THREE.LatheGeometry([[0.36, 0.2], [0.48, 0.08], [0.6, -0.08], [0.7, -0.22], [0.74, -0.3]].map(([r, y]) => new THREE.Vector2(r, y)), 64);
+    // 蹼的邊緣在腳和腳之間往上縮，腳尖往下垂 → 一瓣一瓣的
+    { const p = sk.attributes.position; for (let i = 0; i < p.count; i++) { const x = p.getX(i), z = p.getZ(i), y = p.getY(i), a = Math.atan2(z, x), k = Math.max(0, (0.2 - y) / 0.5); const c8 = Math.cos(a * 8); p.setX(i, x * (1 + 0.12 * c8 * k)); p.setZ(i, z * (1 + 0.12 * c8 * k)); p.setY(i, y - 0.08 * k * (c8 + 1) * k); } sk.computeVertexNormals(); }
+    const skirtM = m.clone(); skirtM.side = THREE.DoubleSide; skirtM.colorNode = m.colorNode;
+    const skirt = new THREE.Mesh(sk, skirtM);
+    // 八隻腳：沿著蹼裡面的細長圓錐，腳尖捲一點點
+    const armG = new THREE.CylinderGeometry(0.012, 0.05, 0.62, 6); armG.translate(0, -0.31, 0);
+    for (let k = 0; k < 8; k++) { const a = k / 8 * Math.PI * 2; const arm = new THREE.Mesh(armG, m); arm.position.set(Math.cos(a) * 0.32, 0.18, Math.sin(a) * 0.32); arm.rotation.set(0, -a, 0); arm.rotateZ(1.0); skirt.add(arm); }
+    const ears = [-1, 1].map((s2) => { const e = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 8), m); e.scale.set(1.2, 0.18, 0.8); e.position.set(s2 * 0.5, 0.62, 0); return e; });
+    const eyes = [-1, 1].map((s2) => { const e = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), std(0x101010, { roughness: 0.1 })); e.position.set(s2 * 0.22, 0.42, 0.38); return e; });
+    g.add(bell, skirt, ...ears, ...eyes); g.scale.setScalar(1.3); shadow(g, false); scene.add(g);
+    const P0 = V(-30, 0, 126); P0.y = floorY(P0.x, P0.z) + 2.5;
+    list.push({
+      id: 'dumbo', obj: g, r: 9,
+      update(t) {
+        const flap = Math.sin(t * 2.4);
+        ears[0].rotation.z = 0.35 + flap * 0.5; ears[1].rotation.z = -0.35 - flap * 0.5;
+        skirt.scale.set(1 + Math.sin(t * 1.2) * 0.08, 1 - Math.sin(t * 1.2) * 0.06, 1 + Math.sin(t * 1.2) * 0.08);
+        g.position.set(P0.x + Math.sin(t * 0.1) * 5, P0.y + Math.sin(t * 0.7) * 0.6 + Math.max(0, flap) * 0.15, P0.z + Math.cos(t * 0.08) * 4);
+        g.rotation.y = t * 0.15; g.rotation.z = Math.sin(t * 0.5) * 0.12;
+      },
     });
   }
 
