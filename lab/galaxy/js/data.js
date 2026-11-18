@@ -188,12 +188,32 @@ export const MISSIONS = [
       return null;
     },
   },
+  {
+    id: 'system', name: '設計太陽系', icon: '☀️', info: 'planets',
+    goal: '依序發射 3 顆行星（近、中、遠）。三顆都要繞太陽轉滿 2 圈，一顆都不能掉進太陽或飛走。',
+    hint: '離太陽越近要丟越快、越遠要越慢；每一顆都往「側面」丟。發射完第一顆，下一顆會出現在更外面。',
+    bodies: [{ id: 'sun', name: '太陽', gm: 400, r: 3.2, color: 0xffcc55, glow: 1 }],
+    multi: [[12, 0], [24, 0], [40, 0]], colors: [0xff9a5a, 0x5aa8ff, 0x9fe07a], laps: 2,
+    player: { name: '行星', pos: [12, 0], max: 8, color: 0xff9a5a, r: 1.0 },
+    check() { return null; },
+  },
+  {
+    id: 'sandbox', name: '自由設計太陽系', icon: '🎨', info: 'planets', sandbox: true,
+    goal: '沒有任務！想放幾顆行星就放幾顆（最多 12 顆），看看你的太陽系可以有幾顆穩定的行星。',
+    hint: '每發射一顆，下一顆會出現在另一個位置。掉進太陽或飛走的會消失。按「重來」清空。',
+    bodies: [{ id: 'sun', name: '太陽', gm: 400, r: 3.2, color: 0xffcc55, glow: 1 }],
+    multi: [[10, 0], [0, 16], [-24, 0], [0, -32], [42, 0], [0, 52], [-62, 0], [0, -72]],
+    colors: [0xff9a5a, 0x5aa8ff, 0x9fe07a, 0xe08aff, 0xffe066, 0x66e0d8, 0xff6b8b, 0xc8c8ff],
+    player: { name: '行星', pos: [10, 0], max: 9, color: 0xff9a5a, r: 1.0 },
+    check() { return null; },
+  },
 ];
 
 // ---------------------------------------------------------------- 天文小百科
 export const INFO = {
   gravity: { t: '萬有引力', e: '🍎', d: '所有東西都會互相吸引，越重吸得越大力、越近也越大力（距離變兩倍，力氣只剩四分之一）。牛頓看到蘋果掉下來，想到月亮也是被地球「拉著」。' },
   orbit: { t: '軌道是一直在「掉」', e: '🪐', d: '行星其實一直往太陽掉，可是它往旁邊跑得夠快，每次都「掉偏了」，就變成繞圈圈。速度剛好就是圓形，快一點變成橢圓，太快就飛走了。' },
+  planets: { t: '太陽系是怎麼排的', e: '☀️', d: '太陽系的八顆行星都在差不多同一個平面上、往同一個方向繞太陽。越靠近太陽的跑越快（水星每秒 47 公里），越遠的越慢（海王星每秒 5 公里），所以它們不會撞在一起。' },
   kepler: { t: '離得近跑得快', e: '⏱️', d: '克卜勒發現：行星靠近太陽時跑得比較快、離遠時比較慢。水星一年只有 88 天，海王星一年要 165 年！' },
   moon: { t: '月亮和希爾球', e: '🌙', d: '行星周圍有一塊它「抓得住」的範圍叫希爾球。月亮要在這裡面才不會被太陽搶走。地球的希爾球大約 150 萬公里，月亮在 38 萬公里的地方。' },
   comet: { t: '彗星的尾巴', e: '☄️', d: '彗星是冰和灰塵做的「髒雪球」。靠近太陽時冰被曬成氣體，太陽風把它往後吹，所以尾巴永遠指著「背對太陽」的方向，不是飛行的反方向！' },
@@ -208,4 +228,4 @@ export const INFO = {
   blackhole: { t: '黑洞', e: '🕳️', d: '黑洞的重力大到連光都逃不出去。星系中心都有超大質量黑洞，銀河系中心的人馬座 A* 大約是太陽的 400 萬倍重。掉進去的氣體會在外面轉成發光的吸積盤。' },
   nebula: { t: '星雲', e: '☁️', d: '星雲是太空中的氣體和灰塵。重力讓它慢慢縮在一起，越轉越快、變成扁扁的盤子，中間點燃成恆星，旁邊的碎片變成行星——太陽系就是這樣誕生的。' },
 };
-export const INFO_ORDER = ['gravity', 'orbit', 'kepler', 'moon', 'comet', 'assist', 'binary', 'rendezvous', 'escape', 'nebula', 'spiral', 'collision', 'merger', 'ring', 'blackhole'];
+export const INFO_ORDER = ['gravity', 'orbit', 'planets', 'kepler', 'moon', 'comet', 'assist', 'binary', 'rendezvous', 'escape', 'nebula', 'spiral', 'collision', 'merger', 'ring', 'blackhole'];

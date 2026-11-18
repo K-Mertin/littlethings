@@ -109,7 +109,7 @@ function showMissions() {
   const L = $('missionList'); L.innerHTML = '';
   MISSIONS.forEach((m, i) => {
     const s = save.stars[m.id] || 0, b = document.createElement('button'); b.className = 'card';
-    b.innerHTML = `<div class="h"><span>${m.icon}</span>${i + 1}. ${m.name}</div><p>${m.goal}</p><div class="st">${'★'.repeat(s)}${'☆'.repeat(3 - s)}</div>`;
+    b.innerHTML = `<div class="h"><span>${m.icon}</span>${i + 1}. ${m.name}</div><p>${m.goal}</p><div class="st">${m.sandbox ? '自由玩' : '★'.repeat(s) + '☆'.repeat(3 - s)}</div>`;
     b.onclick = () => startMission(i); L.appendChild(b);
   });
   $('missionPick').classList.remove('hidden');
@@ -121,7 +121,8 @@ function startMission(i) {
   updMHud();
 }
 function updMHud() {
-  $('mTries').textContent = `發射了 ${tries} 次`;
+  $('mTries').textContent = mission && mission.sandbox ? `穩定繞了一圈以上的行星：${orbits.stable()} 顆${orbits.lost ? ` · 掉進太陽或飛走：${orbits.lost} 顆` : ''}`
+    : mission && mission.multi ? `第 ${Math.min(orbits.k + 1, mission.multi.length)} / ${mission.multi.length} 顆 · 發射了 ${tries} 次` : `發射了 ${tries} 次`;
   $('mTime').textContent = mission && mission.time && orbits.phase === 'fly' ? `${Math.max(0, Math.ceil(mission.time - orbits.t))} 秒` : '';
 }
 $('mHint').onclick = () => toast(mission.hint);
@@ -134,7 +135,7 @@ function finish(res) {
   const ok = !!res.win;
   $('rTitle').textContent = ok ? '任務成功！🎉' : '再試一次！';
   let s = 0;
-  if (ok) { s = tries <= 1 ? 3 : tries <= 3 ? 2 : 1; save.stars[mission.id] = Math.max(save.stars[mission.id] || 0, s); persist(); }
+  if (ok) { const tr = mission.multi ? Math.ceil(tries / mission.multi.length) : tries; s = tr <= 1 ? 3 : tr <= 3 ? 2 : 1; save.stars[mission.id] = Math.max(save.stars[mission.id] || 0, s); persist(); }
   $('rStars').textContent = ok ? '★'.repeat(s) + '☆'.repeat(3 - s) : '';
   $('rText').textContent = (ok ? res.win : res.lose) + (ok ? `（發射 ${tries} 次）` : '');
   const inf = INFO[mission.info];
@@ -226,7 +227,7 @@ addEventListener('keydown', (e) => {
 });
 
 // ---------------------------------------------------------------- 鏡頭
-const VIEW = { orbit: [0, 0, 95], moon: [0, 0, 100], comet: [-22, 18, 170], assist: [8, 0, 160], binary: [0, 0, 120], ellipse: [-8, 0, 140], dock: [0, 0, 110], escape: [0, 0, 150] };
+const VIEW = { orbit: [0, 0, 95], moon: [0, 0, 100], comet: [-22, 18, 170], assist: [8, 0, 160], binary: [0, 0, 120], ellipse: [-8, 0, 140], dock: [0, 0, 110], escape: [0, 0, 150], system: [0, 0, 110], sandbox: [0, 0, 175] };
 function updateCamera(dt) {
   if (mode === 'galaxy') {
     // 跟著重天體的質心（慢慢移過去），沒人操作時慢慢自轉
