@@ -15,6 +15,7 @@ const step = (k, m) => { $('loadBar').style.width = Math.round(k * 100) + '%'; i
 const SAVE_KEY = 'mwLabArmy.v1';
 const save = (() => { try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch { return {}; } })();
 save.stars = save.stars || {}; save.free = save.free || { blue: { sword: 3, archer: 2, cav: 1 }, red: { sword: 3, archer: 2, cav: 1 }, terrain: 'plain' };
+for (const sd of ['blue', 'red']) if (save.free[sd].spear == null) save.free[sd].spear = 0;   // 舊存檔沒有長槍兵
 const persist = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch { } };
 
 // ---------------------------------------------------------------- 渲染器
@@ -78,10 +79,10 @@ function badge(type, team) {
   x.beginPath(); x.arc(64, 60, 50, 0, Math.PI * 2); x.fill(); x.stroke();
   x.beginPath(); x.moveTo(44, 104); x.lineTo(64, 126); x.lineTo(84, 104); x.fillStyle = '#fff'; x.fill();
   x.font = '56px system-ui, "Apple Color Emoji", "Segoe UI Emoji"'; x.textAlign = 'center'; x.textBaseline = 'middle';
-  x.fillText(['⚔️', '🏹', '🐎'][type], 64, 64);
+  x.fillText(['⚔️', '🏹', '🐎', '🔱'][type], 64, 64);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
-const BADGES = [[0, 1, 2].map((t) => badge(t, 0)), [0, 1, 2].map((t) => badge(t, 1))];
+const BADGES = [[0, 1, 2, 3].map((t) => badge(t, 0)), [0, 1, 2, 3].map((t) => badge(t, 1))];
 // 軍旗的布：隊伍色＋金邊＋兵種圖示
 function flagTex(type, team) {
   const c = document.createElement('canvas'); c.width = 192; c.height = 128; const x = c.getContext('2d');
@@ -90,10 +91,10 @@ function flagTex(type, team) {
   x.strokeStyle = '#f2c94c'; x.lineWidth = 10; x.strokeRect(5, 5, 182, 118);
   x.beginPath(); x.arc(96, 64, 40, 0, Math.PI * 2); x.fillStyle = 'rgba(255,255,255,.92)'; x.fill();
   x.font = '50px system-ui, "Apple Color Emoji", "Segoe UI Emoji"'; x.textAlign = 'center'; x.textBaseline = 'middle';
-  x.fillText(['⚔️', '🏹', '🐎'][type], 96, 68);
+  x.fillText(['⚔️', '🏹', '🐎', '🔱'][type], 96, 68);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
-const FLAGS = [[0, 1, 2].map((t) => flagTex(t, 0)), [0, 1, 2].map((t) => flagTex(t, 1))];
+const FLAGS = [[0, 1, 2, 3].map((t) => flagTex(t, 0)), [0, 1, 2, 3].map((t) => flagTex(t, 1))];
 const poleMat = new THREE.MeshStandardNodeMaterial({ color: 0x6b4a2b, roughness: 0.8 });
 const poleGeo = new THREE.CylinderGeometry(0.07, 0.09, 6.4, 6); poleGeo.translate(0, 3.2, 0);
 const tipGeo = new THREE.ConeGeometry(0.18, 0.5, 6); tipGeo.translate(0, 6.6, 0);
@@ -156,6 +157,7 @@ function dock() {
   add('<b>⚔️</b>只選劍兵', '選劍盾兵', () => selType(T.SWORD));
   add('<b>🏹</b>只選弓兵', '選弓箭手', () => selType(T.ARCHER));
   add('<b>🐎</b>只選騎兵', '選騎兵', () => selType(T.CAV));
+  if (b.squads.some((sq) => sq.team === 0 && sq.type === T.SPEAR)) add('<b>🔱</b>只選槍兵', '選長槍兵', () => selType(T.SPEAR));
   if (phase === 'deploy') { add('<b>📯</b>開戰！', '開始戰鬥', fight, 'go'); return; }
   const s = document.createElement('span'); s.className = 'sep'; d.appendChild(s);
   add('<b>🚩</b>衝鋒', '選取的隊伍（沒選就是全軍）往最近的敵人衝', () => { for (const sq of targets()) { sq.mode = 'charge'; if (sq.order) sq.order.move = false; } toast('衝啊！'); });
@@ -167,9 +169,9 @@ const targets = () => (sel.size ? [...sel] : b.squads.filter((sq) => sq.team ===
 function updSel() {
   const el = $('selInfo');
   if (!sel.size) { el.classList.add('hidden'); return; }
-  const by = [0, 0, 0], men = [0, 0, 0];
+  const by = [0, 0, 0, 0], men = [0, 0, 0, 0];
   for (const sq of sel) { by[sq.type]++; men[sq.type] += sq.alive; }
-  el.innerHTML = '已選：' + [0, 1, 2].filter((t) => by[t]).map((t) => `${STATS[t].name} ${by[t]} 隊（${men[t]} 人）`).join('、') + `<br><span style="opacity:.75">點地面＝走過去 · 拖一條線＝沿線排開</span>`;
+  el.innerHTML = '已選：' + [0, 1, 2, 3].filter((t) => by[t]).map((t) => `${STATS[t].name} ${by[t]} 隊（${men[t]} 人）`).join('、') + `<br><span style="opacity:.75">點地面＝走過去 · 拖一條線＝沿線排開</span>`;
   el.classList.remove('hidden');
 }
 function fight() {
@@ -192,7 +194,7 @@ function showMenu() {
   });
   // 自由對戰設定
   const F = save.free, f = $('free'); f.innerHTML = '<span></span><span class="hd b">藍軍（你）</span><span class="hd r">紅軍</span>';
-  for (const [k, nm] of [['sword', '劍盾兵（隊）'], ['archer', '弓箭手（隊）'], ['cav', '騎兵（隊）']]) {
+  for (const [k, nm] of [['sword', '劍盾兵（隊）'], ['spear', '長槍兵（隊）'], ['archer', '弓箭手（隊）'], ['cav', '騎兵（隊）']]) {
     f.insertAdjacentHTML('beforeend', `<span>${nm}</span>`);
     for (const side of ['blue', 'red']) {
       const w = document.createElement('span'); w.className = 'stp';

@@ -78,6 +78,11 @@ function body(k, { shield = false, helmet = 'round', weapon = 'sword', y0 = 0, l
     k.box(0.24, 0.05, 0.06, { x: -0.36, y: y0 + 0.97, z: 0.06, rx: Math.PI / 2 - 0.4, part: 4, piv: SH_R, kind: 8 });   // 護手
   }
   if (shield) k.add(new THREE.CylinderGeometry(0.12, 0.12, 0.08, 10), { x: 0.48, y: y0 + 1.1, z: 0.12, rz: Math.PI / 2, part: 3, piv: SH_L, kind: 8 });   // 盾心
+  // 長槍：很長的木桿＋鐵槍頭，兩手往前斜舉
+  if (weapon === 'pike') {
+    k.add(new THREE.CylinderGeometry(0.028, 0.034, 3.6, 5), { x: -0.32, y: y0 + 1.25, z: 0.85, rx: Math.PI / 2 - 0.5, part: 4, piv: SH_R, kind: 3 });
+    k.add(new THREE.ConeGeometry(0.06, 0.32, 5), { x: -0.32, y: y0 + 2.12, z: 2.5, rx: Math.PI / 2 - 0.5, part: 4, piv: SH_R, kind: 2 });
+  }
   if (weapon === 'lance') k.add(new THREE.CylinderGeometry(0.03, 0.04, 3.2, 5), { x: -0.38, y: y0 + 1.0, z: 0.9, rx: Math.PI / 2 - 0.12, part: 4, piv: SH_R, kind: 3 });
   return k;
 }
@@ -108,6 +113,7 @@ export class UnitMeshes {
       body(new Kit(), { shield: true, helmet: 'round', weapon: 'sword' }).geo(),
       body(new Kit(), { helmet: 'hood', weapon: 'bow' }).geo(),
       body(horse(new Kit()), { helmet: 'plume', weapon: 'lance', y0: 0.62, legs: false }).geo(),
+      body(new Kit(), { helmet: 'round', weapon: 'pike' }).geo(),
     ];
     this.types = defs.map((geo, ty) => {
       const A = instancedArray(new Float32Array(maxN * 4), 'vec4');   // x y z 方向
@@ -126,7 +132,7 @@ export class UnitMeshes {
         ang.assign(select(part.equal(1), sw.mul(0.75), ang));
         ang.assign(select(part.equal(2), sw.mul(-0.75), ang));
         ang.assign(select(part.equal(3), ty === T.ARCHER ? mix(sw.mul(-0.5), float(-1.45), smoothstep(0.05, 0.3, atk)) : sw.mul(-0.5).sub(0.35), ang));
-        ang.assign(select(part.equal(4), ty === T.ARCHER ? mix(sw.mul(0.5), float(-1.3), smoothstep(0.05, 0.3, atk)) : sw.mul(0.45).sub(swing.mul(1.9)), ang));
+        ang.assign(select(part.equal(4), ty === T.ARCHER ? mix(sw.mul(0.5), float(-1.3), smoothstep(0.05, 0.3, atk)) : ty === T.SPEAR ? sw.mul(0.15).sub(swing.mul(0.35)) : sw.mul(0.45).sub(swing.mul(1.9)), ang));   // 長槍兵：槍一直舉著，攻擊時往前刺一下
         ang.assign(select(part.equal(5), sw.mul(0.6), ang));
         ang.assign(select(part.equal(6), sw.mul(-0.6), ang));
         ang.assign(select(part.equal(7), sin(ph.mul(2)).mul(0.08).add(ty === T.CAV ? 0.55 : 0.18).add(abs(sw).mul(0.15)), ang));
@@ -192,7 +198,7 @@ export class UnitMeshes {
 
   // 把模擬結果寫進 GPU 緩衝區
   sync(b) {
-    const cnt = [0, 0, 0];
+    const cnt = this.types.map(() => 0);
     const arrs = this.types.map((t) => [t.A.value.array, t.B.value.array]);
     for (let i = 0; i < b.n; i++) {
       if (!b.alive[i] && b.death[i] >= 2.2) continue;   // 沉下去了，不畫

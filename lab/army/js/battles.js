@@ -47,6 +47,24 @@ export const BATTLES = [
       S(T.CAV, 25, -70, -30, { behavior: 'flank' }), S(T.CAV, 25, 70, -30, { behavior: 'flank' })],
   },
   {
+    id: 'pike', name: '長槍陣', icon: '🔱',
+    intro: '新兵種：長槍兵！敵人派了一大群騎兵衝過來。長槍兵的槍很長，打騎兵傷害 3 倍，騎兵衝進槍陣反而會受傷。',
+    tip: '把長槍兵排在最前面擋騎兵，弓箭手躲在後面射。長槍兵沒有盾，怕箭，不要讓他們站在敵人弓箭手前面發呆。',
+    terrain: { hills: [{ x: 0, z: 48, r: 26, h: 4 }] },
+    blue: [S(T.SPEAR, 110, -24, 26), S(T.SPEAR, 110, 24, 26), S(T.ARCHER, 90, -16, 44), S(T.ARCHER, 90, 16, 44)],
+    red: [S(T.CAV, 70, -50, -40, { behavior: 'advance' }), S(T.CAV, 70, 0, -44, { behavior: 'advance' }), S(T.CAV, 70, 50, -40, { behavior: 'advance' }),
+      S(T.SWORD, 70, -18, -60, { behavior: 'wait', waitT: 22 }), S(T.SWORD, 70, 18, -60, { behavior: 'wait', waitT: 22 })],
+  },
+  {
+    id: 'pass', name: '山谷關口', icon: '⛰️',
+    intro: '敵軍要穿過兩座山中間的關口。守住出口！敵人有劍盾兵、長槍兵和騎兵，兵種要互相剋：長槍剋騎兵、劍盾兵擋箭、騎兵繞後打弓箭手和槍兵。',
+    tip: '關口很窄，敵人會擠在一起，弓箭手站在兩邊的山上射最痛。',
+    terrain: { hills: [{ x: -62, z: 0, r: 40, h: 9 }, { x: 62, z: 0, r: 40, h: 9 }], forests: [{ x: -95, z: 40, r: 14 }, { x: 95, z: 40, r: 14 }] },
+    blue: [S(T.SWORD, 120, -14, 30), S(T.SPEAR, 110, 14, 30), S(T.ARCHER, 90, -44, 12), S(T.ARCHER, 90, 44, 12), S(T.CAV, 70, 0, 52)],
+    red: [S(T.SWORD, 80, -14, -40, { behavior: 'advance' }), S(T.SWORD, 80, 14, -40, { behavior: 'advance' }), S(T.SPEAR, 60, 0, -56, { behavior: 'advance' }),
+      S(T.ARCHER, 50, 0, -70, { behavior: 'wait', waitT: 6 }), S(T.CAV, 35, -30, -64, { behavior: 'advance' }), S(T.CAV, 35, 30, -64, { behavior: 'advance' })],
+  },
+  {
     id: 'grand', name: '萬軍大決戰', icon: '🏰',
     intro: '最後一戰：兩邊加起來快三千人。弓箭手、劍盾兵、騎兵全部用上！',
     tip: '先用弓箭手消耗敵人，劍盾兵頂住，騎兵等敵人纏住了再從側面衝。',
@@ -68,7 +86,7 @@ export function freeBattle(cfg) {
   const side = (team, c) => {
     const out = [], z0 = team === 0 ? 1 : -1;
     const row = (type, k, z, n) => { for (let i = 0; i < k; i++) out.push(S(type, n, (i - (k - 1) / 2) * 26, z * z0, team === 1 ? { behavior: 'wait', waitT: 5 } : {})); };
-    row(T.SWORD, c.sword, 26, 110); row(T.ARCHER, c.archer, 44, 100);
+    row(T.SWORD, c.sword, 26, 110); row(T.SPEAR, c.spear || 0, 14, 110); row(T.ARCHER, c.archer, 44, 100);
     for (let i = 0; i < c.cav; i++) out.push(S(T.CAV, 60, (i % 2 ? 1 : -1) * (75 + Math.floor(i / 2) * 18), 34 * z0, team === 1 ? { behavior: 'flank' } : {}));
     return out;
   };
