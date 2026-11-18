@@ -148,12 +148,28 @@ function loftBody() {
   return g;
 }
 let GEO = null;
+function mergeGeos(list) {
+  const pos = [], nor = []; for (const g0 of list) { const g = g0.index ? g0.toNonIndexed() : g0; pos.push(...g.attributes.position.array); nor.push(...g.attributes.normal.array); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); return g;
+}
 const DBG = typeof location !== 'undefined' && location.search.includes('dbg');
 function geos() {
   if (GEO) return GEO;
-  const wg = new THREE.CylinderGeometry(0.36, 0.36, 0.3, 18); wg.rotateZ(Math.PI / 2);
-  const hub = new THREE.CylinderGeometry(0.24, 0.24, 0.32, 5); hub.rotateZ(Math.PI / 2);   // 五角輪框
-  GEO = { body: loftBody(), wheel: wg, hub };
+  // 輪胎：側面輪廓轉一圈（圓圓的胎肩、胎壁），軸朝 x
+  const prof = [[0.232, -0.12], [0.29, -0.128], [0.322, -0.118], [0.338, -0.085], [0.342, -0.03], [0.342, 0.03], [0.338, 0.085], [0.322, 0.118], [0.29, 0.128], [0.232, 0.12]].map(([r, y]) => new THREE.Vector2(r, y));
+  const wg = new THREE.LatheGeometry(prof, 40); wg.rotateZ(Math.PI / 2);
+  // 輪框（外側朝 +x）：淺淺的碗＋10 根輻條＋中間的蓋子；後面是煞車碟
+  const parts = [];
+  const lip = new THREE.TorusGeometry(0.228, 0.012, 6, 40); lip.rotateY(Math.PI / 2); lip.translate(0.1, 0, 0); parts.push(lip);
+  const barrel = new THREE.CylinderGeometry(0.226, 0.226, 0.2, 32, 1, true); barrel.rotateZ(Math.PI / 2); parts.push(barrel);
+  for (let k = 0; k < 10; k++) {
+    const sp = new THREE.BoxGeometry(0.025, 0.19, 0.03); sp.translate(0, 0.12, 0); sp.rotateZ(k % 2 ? 0.05 : -0.05);
+    sp.rotateX(k / 10 * Math.PI * 2); sp.translate(0.085, 0, 0); parts.push(sp);
+  }
+  const cap = new THREE.CylinderGeometry(0.05, 0.055, 0.04, 12); cap.rotateZ(Math.PI / 2); cap.translate(0.095, 0, 0); parts.push(cap);
+  const hub = mergeGeos(parts);
+  const disc = new THREE.CylinderGeometry(0.19, 0.19, 0.025, 28); disc.rotateZ(Math.PI / 2); disc.translate(0.02, 0, 0);
+  GEO = { body: loftBody(), wheel: wg, hub, disc };
   void extrude; void glassShape;
   return GEO;
 }
@@ -212,11 +228,17 @@ export function carMesh(color, { lights = false, ghost = false } = {}) {
     const beam = new THREE.Mesh(cg, beamM); beam.position.set(x, 0.66, 2.26); g.add(beam);
   }
   // 輪子
-  const rim = new THREE.MeshStandardNodeMaterial({ color: 0xb8bec8, metalness: 0.85, roughness: 0.25 });
+  const rim = new THREE.MeshStandardNodeMaterial({ color: 0x9aa1ab, metalness: 0.9, roughness: 0.22 });
+  const rubber = new THREE.MeshStandardNodeMaterial({ color: 0x121214, roughness: 0.82 });
+  const discM = new THREE.MeshStandardNodeMaterial({ color: 0x6d6a66, metalness: 0.8, roughness: 0.45 });
+  const calM = new THREE.MeshStandardNodeMaterial({ color: 0xc81d25, roughness: 0.4 });
   const wheels = [];
-  for (const [x, z] of [[-0.9, 1.4], [0.9, 1.4], [-0.9, -1.35], [0.9, -1.35]]) {
-    const w = new THREE.Group(); w.position.set(x, 0.36, z);
-    w.add(new THREE.Mesh(G.wheel, dark), new THREE.Mesh(G.hub, rim)); g.add(w); wheels.push(w);
+  for (const [x, z] of [[-0.84, 1.4], [0.84, 1.4], [-0.84, -1.35], [0.84, -1.35]]) {
+    const w = new THREE.Group(); w.position.set(x, 0.34, z);
+    const spin = new THREE.Group(); spin.add(new THREE.Mesh(G.wheel, rubber), new THREE.Mesh(G.hub, rim), new THREE.Mesh(G.disc, discM));
+    if (x < 0) spin.scale.x = -1;   // 輪框的外側永遠朝外
+    const cal = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.14, 0.1), calM); cal.position.set(x < 0 ? -0.05 : 0.05, 0.12, z > 0 ? -0.1 : 0.1);   // 煞車卡鉗（不跟著轉）
+    w.add(spin, cal); w.userData.spin = spin; g.add(w); wheels.push(w);
   }
   g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   under.castShadow = false; g.traverse((o) => { if (o.material === beamM) o.castShadow = false; });
@@ -332,7 +354,7 @@ export class Car {
     const ud = m.userData;
     if (ud.wheels) {
       const spin = (this.speed * dt) / 0.36;
-      ud.wheels.forEach((w, i) => { w.children[0].rotation.x += spin; w.children[1].rotation.x += spin; if (i < 2) w.rotation.y = -this.steer * 0.45; });
+      ud.wheels.forEach((w, i) => { w.userData.spin.rotation.x += spin; if (i < 2) w.rotation.y = -this.steer * 0.45; });
       if (ud.steerWheel) ud.steerWheel.rotation.z = this.steer * 1.6;
       ud.brake.value = this.input.brake > 0 ? 1 : 0;
     }
