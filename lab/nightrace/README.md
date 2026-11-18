@@ -1,7 +1,7 @@
 # 夜雨賽車（`lab/nightrace/`）
 
 下雨的城市夜賽 MW NIGHT GP：濕路映著霓虹和路燈、車燈照亮雨幕、車輪甩起水花，路上的水窪會讓車子打滑，大雨時會打雷閃電。
-兩條賽道（霓虹市區、港灣大道）。和 5 台電腦車比賽，或自己跑計時賽（有幽靈車陪跑）。比賽結束可以「開回大街」（連到 `/lab/street/`）。
+三條賽道（霓虹市區、港灣大道、環城高架）。和 5 台電腦車比賽、跑**錦標賽**（三條賽道連比三場，名次積分 10／8／6／4／3／2，最後積分最高的是總冠軍），或自己跑計時賽（有幽靈車陪跑）。比賽結束可以「開回大街」（連到 `/lab/street/`）。
 three.js **0.187.0** WebGPURenderer（沒有 WebGPU 自動退回 WebGL2）。
 
 ## 檔案
@@ -23,7 +23,7 @@ three.js **0.187.0** WebGPURenderer（沒有 WebGPU 自動退回 WebGL2）。
 - 電腦：往前 0～90 m 每一段算「過彎速度＋來得及煞車」取最小值當目標速度，方向盤對準前方的點；落後太多會快一點、領先太多慢一點。
 
 ## 存檔
-`localStorage['mwLabNight.v1']` = `{ best: 霓虹市區最快一圈秒數, bests: { harbor: … }, opts: { mode, laps, diff, rain, color, track }, soundOff }`（`best` 沿用舊格式，新賽道放 `bests`）
+`localStorage['mwLabNight.v1']` = `{ best: 霓虹市區最快一圈秒數, bests: { harbor: … }, opts: { mode（race／cup／tt）, laps, diff, rain, color, track }, cupBest: 錦標賽最好名次, soundOff }`（`best` 沿用舊格式，新賽道放 `bests`）
 幽靈車：`localStorage['mwLabNight.ghost.<賽道 id>']` = `{ t: 那圈秒數, p: [[x, z, 方向]…] }`（每 0.1 秒一筆）。比幽靈車快就換掉。
 
 ## 畫面小撇步
