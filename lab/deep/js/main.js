@@ -17,6 +17,7 @@ const isTouch = matchMedia('(pointer: coarse)').matches;
 const SAVE_KEY = 'mwLabDeep.v1';
 const save = (() => { try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch { return {}; } })();
 save.found = save.found || []; save.trash = save.trash || [];
+save.up = Object.assign({ eng: 0, lamp: 0, sonar: 0 }, save.up || {});   // 潛艇升級（舊存檔沒有，從 0 開始）
 const persist = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch { } };
 
 // ---------------------------------------------------------------- 載入畫面
@@ -203,6 +204,42 @@ $('soundBtn').textContent = sound.on ? '🔊' : '🔇';
 let helpT = null;
 function hideHelp() { if (helpT) return; helpT = setTimeout(() => { $('help').style.opacity = 0; }, 6000); }
 
+// ---------------------------------------------------------------- 潛艇升級：用發現生物和撿垃圾得到的貝殼買
+// 貝殼不另外存：賺到的（發現數 × 3 + 垃圾數 × 2）減掉已經花掉的（目前等級的價錢加總）
+const UPS = [
+  { k: 'eng', emoji: '🚀', name: '推進器', desc: (l) => `速度 ×${(1 + 0.2 * l).toFixed(1)}`, cost: [6, 10, 16] },
+  { k: 'lamp', emoji: '🔦', name: '探照燈', desc: (l) => ['照 55 公尺', '照 72 公尺、更亮', '照 90 公尺、最亮最寬'][l], cost: [8, 14] },
+  { k: 'sonar', emoji: '📡', name: '聲納', desc: (l) => ['每 4 秒一次', '每 2.5 秒一次', '每 1.5 秒一次，還會說是什麼生物'][l], cost: [6, 12] },
+];
+const shells = () => save.found.length * 3 + save.trash.length * 2 - UPS.reduce((a, u) => a + u.cost.slice(0, save.up[u.k]).reduce((x, y) => x + y, 0), 0);
+function applyUps() {
+  const l = save.up.lamp;
+  spot.distance = [55, 72, 90][l]; spot.intensity = [160, 210, 260][l]; spot.angle = [0.5, 0.55, 0.62][l];
+  if (HIGH) spot.shadow.camera.far = spot.distance;
+  cone.scale.setScalar([1, 1.2, 1.45][l]);   // 看得到的光束也跟著變長
+}
+function renderUps() {
+  $('shellN').textContent = `🐚 ${shells()}`;
+  $('ups').innerHTML = UPS.map((u) => {
+    const l = save.up[u.k], max = u.cost.length, c = u.cost[l];
+    return `<div class="card"><div class="h"><span>${u.emoji}</span>${u.name} <span class="lv">${'●'.repeat(l)}${'○'.repeat(max - l)}</span></div><p>${u.desc(l)}${l < max ? ` → 升級後：${u.desc(l + 1)}` : '（已經最強了）'}</p>${l < max ? `<button data-k="${u.k}" ${shells() < c ? 'disabled' : ''}>升級 🐚 ${c}</button>` : ''}</div>`;
+  }).join('');
+}
+$('ups').onclick = (e) => {
+  const k = e.target.dataset && e.target.dataset.k; if (!k) return;
+  const u = UPS.find((x) => x.k === k), l = save.up[k];
+  if (l >= u.cost.length || shells() < u.cost[l]) return;
+  save.up[k] = l + 1; persist(); applyUps(); sound.ping(); renderUps();
+  msg(`${u.emoji} ${u.name}升級了！`);
+};
+applyUps();
+// 貝殼夠買新的升級時提醒一次（每次開遊戲最多提醒一次）
+let upHinted = false;
+function upHint() {
+  if (upHinted) return;
+  if (UPS.some((u) => save.up[u.k] < u.cost.length && shells() >= u.cost[save.up[u.k]])) { upHinted = true; setTimeout(() => msg('🐚 貝殼夠了！打開 📖 圖鑑，到「潛艇工廠」升級潛水艇'), 2600); }
+}
+
 // ---------------------------------------------------------------- 圖鑑
 $('codexT').textContent = CODEX.length;
 function renderCodex() {
@@ -213,6 +250,7 @@ function renderCodex() {
     const ok = save.found.includes(c.id);
     return `<div class="card${ok ? '' : ' lock'}"><div class="h"><span>${c.emoji}</span>${ok ? c.name : '？？？'}</div><p>${ok ? c.fact : '在「' + c.zone + '」附近找找看。'}</p></div>`;
   }).join('');
+  renderUps();
 }
 function toggleCodex(v) {
   const el = $('codex'), show = typeof v === 'boolean' ? v : el.classList.contains('hidden');
@@ -222,7 +260,7 @@ $('codexBtn').onclick = () => toggleCodex(true);
 $('closeCodex').onclick = () => toggleCodex(false);
 $('resetBtn').onclick = () => {
   if (!confirm('要清掉圖鑑和撿垃圾的紀錄，重新開始嗎？')) return;
-  save.found = []; save.trash = []; persist();
+  save.found = []; save.trash = []; save.up = { eng: 0, lamp: 0, sonar: 0 }; persist(); applyUps();
   W.trash.forEach((m) => { m.visible = true; });
   renderCodex();
 };
@@ -243,7 +281,7 @@ let msgT;
 function msg(t) { const el = $('msg'); el.textContent = t; el.classList.add('show'); clearTimeout(msgT); msgT = setTimeout(() => el.classList.remove('show'), 2200); }
 
 // 圖鑑要怎麼「找到」：每一種的位置和距離
-const DEEP_NEED_LIGHT = new Set(['jelly', 'angler', 'tubeworm']);
+const DEEP_NEED_LIGHT = new Set(['jelly', 'angler', 'tubeworm', 'dumbo']);
 const targets = () => {
   const out = [];
   for (const id of ['sardine', 'tang', 'yellow', 'parrot', 'jack']) { const c = fish.center(id); if (c) out.push({ id, p: c, r: c.w + 7 }); }
@@ -259,7 +297,7 @@ function checkDiscover() {
     const d = Math.hypot(t.p.x - S.pos.x, t.p.y - S.pos.y, t.p.z - S.pos.z);
     if (d > t.r) continue;
     if (DEEP_NEED_LIGHT.has(t.id) && !S.light) { if (S.t > darkHintT) { msg('這裡好暗…打開探照燈 💡 才看得清楚'); darkHintT = S.t + 8; } continue; }
-    save.found.push(t.id); persist();
+    save.found.push(t.id); persist(); upHint();
     const c = CODEX.find((x) => x.id === t.id);
     showToast(c); sound.ping(); renderCodex();
     if (save.found.length === CODEX.length) setTimeout(() => { showToast({ emoji: '🏅', title: '海洋圖鑑全部完成！', fact: '你是真正的深海探險家！' }); sound.fanfare(); }, 7200);
@@ -269,7 +307,7 @@ function checkTrash() {
   W.trash.forEach((m, i) => {
     if (!m.visible) return;
     if (m.position.distanceTo(S.pos) < 3) {
-      m.visible = false; save.trash.push(i); persist(); sound.bubble(); renderCodex();
+      m.visible = false; save.trash.push(i); persist(); sound.bubble(); renderCodex(); upHint();
       const left = TRASH_TOTAL - save.trash.length;
       if (left > 0) msg(`撿起垃圾！還剩 ${left} 個`);
       else { showToast({ emoji: '🪸', title: '海底變乾淨了！', fact: '20 個垃圾都撿完了。海龜不會再誤吃塑膠袋，珊瑚也能好好長大，謝謝你！' }); sound.fanfare(); }
@@ -310,12 +348,13 @@ function updateZone() {
 let sonar = { t: 0, cd: 0, target: null };
 function pingSonar() {
   if (sonar.cd > 0) return;
-  sonar.cd = 4;
+  sonar.cd = [4, 2.5, 1.5][save.up.sonar];
   let best = null, bd = Infinity;
   for (const t of targets()) { if (save.found.includes(t.id)) continue; const d = Math.hypot(t.p.x - S.pos.x, t.p.y - S.pos.y, t.p.z - S.pos.z); if (d < bd) { bd = d; best = t; } }   // 魚群中心是一般物件（不是 Vector3），不能用 distanceTo
   sound.ping();
   if (!best) { msg('圖鑑都找齊了！'); return; }
   sonar.target = best; sonar.t = 7;
+  if (save.up.sonar >= 2) { const c = CODEX.find((x) => x.id === best.id); if (c) msg(`📡 最近的是：${c.emoji} ${c.name}`); }
 }
 function updateSonar(dt) {
   sonar.cd = Math.max(0, sonar.cd - dt); sonar.t = Math.max(0, sonar.t - dt);
@@ -341,7 +380,7 @@ function update(dt) {
   // 轉向（鍵盤 A/D、搖桿左右）
   S.camYaw -= input.turn * 1.7 * dt;
   const dir = tmpV.set(Math.sin(S.camYaw), 0, Math.cos(S.camYaw));
-  const acc = new THREE.Vector3().addScaledVector(dir, input.fwd * 11).add(new THREE.Vector3(0, input.vert * 7, 0));
+  const acc = new THREE.Vector3().addScaledVector(dir, input.fwd * 11 * (1 + 0.2 * save.up.eng)).add(new THREE.Vector3(0, input.vert * 7, 0));
   S.vel.addScaledVector(acc, dt).multiplyScalar(Math.exp(-dt * 1.5));
   if (S.vel.length() > 9) S.vel.setLength(9);
   S.pos.addScaledVector(S.vel, dt);
