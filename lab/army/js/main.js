@@ -51,6 +51,7 @@ const sound = new Sound(); if (save.soundOff) sound.setOn(false);
 // ---------------------------------------------------------------- 狀態
 let world = null, ter = null, b = null, def = null, defIdx = -1, phase = 'deploy', speed = 1, paused = false;
 const sel = new Set();
+let cmd = null;   // 'line'：按了「排隊形」，下一次在地上拖曳是畫線
 const cam = { x: 0, z: 30, yaw: 0, pitch: 0.95, dist: 120 };
 let markers = [];
 
@@ -158,11 +159,15 @@ function dock() {
   add('<b>🏹</b>只選弓兵', '選弓箭手', () => selType(T.ARCHER));
   add('<b>🐎</b>只選騎兵', '選騎兵', () => selType(T.CAV));
   if (b.squads.some((sq) => sq.team === 0 && sq.type === T.SPEAR)) add('<b>🔱</b>只選槍兵', '選長槍兵', () => selType(T.SPEAR));
+  add('<b>📏</b>排隊形', '先選隊伍，再按這個，然後在地上拖一條線：隊伍會沿著線排好（近戰在前、弓箭手在後）', () => {
+    if (!sel.size) { sel.clear(); for (const sq of b.squads) if (sq.team === 0 && sq.alive) sel.add(sq); updSel(); }
+    cmd = cmd === 'line' ? null : 'line'; dock(); updSel(); if (cmd) toast('在地上拖一條線，隊伍會沿著線排好');
+  }, cmd === 'line' ? 'on' : '');
   if (phase === 'deploy') { add('<b>📯</b>開戰！', '開始戰鬥', fight, 'go'); return; }
   const s = document.createElement('span'); s.className = 'sep'; d.appendChild(s);
   add('<b>🚩</b>衝鋒', '選取的隊伍（沒選就是全軍）往最近的敵人衝', () => { for (const sq of targets()) { sq.mode = 'charge'; if (sq.order) sq.order.move = false; } toast('衝啊！'); });
   add('<b>✋</b>停下', '選取的隊伍停在原地', () => { for (const sq of targets()) { sq.mode = 'hold'; b.orderSquad(sq, sq.cx, sq.cz, sq.order.fx, sq.order.fz, sq.order.cols * STATS[sq.type].spacing); } toast('原地守住'); });
-  add('<b>✖️</b>取消選取', '取消選取', () => { sel.clear(); updSel(); });
+  add('<b>✖️</b>取消選取', '取消選取', () => { sel.clear(); cmd = null; updSel(); dock(); });
 }
 function selType(t) { sel.clear(); for (const sq of b.squads) if (sq.team === 0 && sq.alive && sq.type === t) sel.add(sq); updSel(); }
 const targets = () => (sel.size ? [...sel] : b.squads.filter((sq) => sq.team === 0 && sq.alive));
@@ -171,7 +176,7 @@ function updSel() {
   if (!sel.size) { el.classList.add('hidden'); return; }
   const by = [0, 0, 0, 0], men = [0, 0, 0, 0];
   for (const sq of sel) { by[sq.type]++; men[sq.type] += sq.alive; }
-  el.innerHTML = '已選：' + [0, 1, 2, 3].filter((t) => by[t]).map((t) => `${STATS[t].name} ${by[t]} 隊（${men[t]} 人）`).join('、') + `<br><span style="opacity:.75">點地面＝走過去 · 拖一條線＝沿線排開</span>`;
+  el.innerHTML = '已選：' + [0, 1, 2, 3].filter((t) => by[t]).map((t) => `${STATS[t].name} ${by[t]} 隊（${men[t]} 人）`).join('、') + `<br><span style="opacity:.75">${cmd === 'line' ? '📏 在地上拖一條線排隊形' : '點地面＝走過去 · 長按另一隊＝加選 · 📏＝畫線排隊形'}</span>`;
   el.classList.remove('hidden');
 }
 function fight() {
@@ -249,7 +254,10 @@ canvas.addEventListener('pointerdown', (e) => {
   sound.start();
   canvas.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (ptrs.size === 2) { const [p1, p2] = [...ptrs.values()]; drag = { kind: 'two', d0: Math.hypot(p1.x - p2.x, p1.y - p2.y), a0: Math.atan2(p2.y - p1.y, p2.x - p1.x), dist0: cam.dist, yaw0: cam.yaw }; preview.visible = false; return; }
-  drag = { kind: e.button === 2 ? 'rot' : 'tap', sx: e.clientX, sy: e.clientY, lx: e.clientX, ly: e.clientY, g0: groundAt(e.clientX, e.clientY), shift: e.shiftKey };
+  drag = { kind: e.button === 2 ? 'rot' : 'tap', sx: e.clientX, sy: e.clientY, lx: e.clientX, ly: e.clientY, g0: groundAt(e.clientX, e.clientY), shift: e.shiftKey, t0: performance.now() };
+  // 長按自己的隊伍＝加選／取消（手機上一次選好幾隊）
+  const d0 = drag;
+  if (d0.kind === 'tap' && d0.g0) setTimeout(() => { if (drag === d0 && d0.kind === 'tap') { const sq = squadAt(d0.g0); if (sq) { d0.kind = 'done'; if (sel.has(sq)) sel.delete(sq); else sel.add(sq); updSel(); navigator.vibrate?.(20); toast(sel.has(sq) ? '加選一隊' : '取消這一隊'); } } }, 480);
 });
 canvas.addEventListener('pointermove', (e) => {
   if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -261,7 +269,8 @@ canvas.addEventListener('pointermove', (e) => {
   }
   const dx = e.clientX - drag.lx, dy = e.clientY - drag.ly; drag.lx = e.clientX; drag.ly = e.clientY;
   if (drag.kind === 'rot') { cam.yaw -= dx * 0.005; cam.pitch = Math.min(1.45, Math.max(0.35, cam.pitch + dy * 0.004)); return; }
-  if (drag.kind === 'tap' && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 10) drag.kind = sel.size && drag.g0 ? 'line' : 'pan';
+  // 手指移動超過 14 px 就不算點一下：一般是移動畫面；只有按了「排隊形」才是畫線
+  if (drag.kind === 'tap' && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 14) drag.kind = cmd === 'line' && sel.size && drag.g0 ? 'line' : 'pan';
   if (drag.kind === 'pan') {
     const k = cam.dist * 0.0016, c = Math.cos(cam.yaw), s = Math.sin(cam.yaw);
     cam.x -= (dx * c + dy * s) * k; cam.z -= (-dx * s + dy * c) * k;
@@ -269,14 +278,15 @@ canvas.addEventListener('pointermove', (e) => {
   if (drag.kind === 'line') {
     const g = groundAt(e.clientX, e.clientY); if (!g) return; drag.g1 = g;
     const a = preview.geometry.attributes.position; a.setXYZ(0, drag.g0.x, drag.g0.y + 0.5, drag.g0.z); a.setXYZ(1, g.x, g.y + 0.5, g.z); a.needsUpdate = true; preview.visible = true;
+    const pl = planLine(drag.g0, g); if (pl) ghostPlan = pl;   // 一邊拉一邊看排好會長什麼樣子
   }
 });
 const endP = (e) => {
   ptrs.delete(e.pointerId);
   if (!drag) return;
-  if (drag.kind === 'tap' && drag.g0) tapAt(drag.g0, drag.shift);
-  if (drag.kind === 'line' && drag.g1) lineOrder(drag.g0, drag.g1);
-  preview.visible = false;
+  if (drag.kind === 'tap' && drag.g0 && performance.now() - drag.t0 < 600) tapAt(drag.g0, drag.shift);
+  if (drag.kind === 'line') { if (drag.g1) lineOrder(drag.g0, drag.g1); cmd = null; dock(); }
+  preview.visible = false; ghostPlan = null;
   drag = ptrs.size ? null : null;
 };
 canvas.addEventListener('pointerup', endP); canvas.addEventListener('pointercancel', endP);
@@ -285,57 +295,119 @@ const keys = new Set();
 addEventListener('keydown', (e) => {
   keys.add(e.code); sound.start();
   if (e.code === 'Space') { e.preventDefault(); if (phase === 'deploy') fight(); else $('pauseBtn').click(); }
-  if (e.code === 'Escape') { sel.clear(); updSel(); }
+  if (e.code === 'Escape') { sel.clear(); cmd = null; updSel(); dock(); }
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
 
 function enemyCenter() { let x = 0, z = 0, n = 0; for (const sq of b.squads) if (sq.team === 1 && sq.alive) { x += sq.cx * sq.alive; z += sq.cz * sq.alive; n += sq.alive; } return n ? { x: x / n, z: z / n } : { x: 0, z: -40 }; }
 function clampDeploy(p) { if (phase === 'deploy') { p.z = Math.max(10, Math.min(76, p.z)); p.x = Math.max(-115, Math.min(115, p.x)); } return p; }
-function tapAt(g, shift) {
-  // 點到自己的隊伍：選取
+function squadAt(g) {
   let best = null, bd = Infinity;
   for (const sq of b.squads) {
     if (sq.team !== 0 || !sq.alive) continue;
     const r = Math.sqrt(sq.alive) * STATS[sq.type].spacing * 0.7 + 3, d = Math.hypot(sq.cx - g.x, sq.cz - g.z);
     if (d < r && d < bd) { bd = d; best = sq; }
   }
+  return best;
+}
+function tapAt(g, shift) {
+  const best = squadAt(g);
   if (best) {
-    // 一般：只選這一隊（再點一次取消）；按住 Shift 或觸控：加選／取消這一隊
-    if (shift || isTouch) { if (sel.has(best)) sel.delete(best); else sel.add(best); }
+    // 點一隊＝只選這一隊；再點一次取消；Shift 或長按＝加選
+    if (shift) { if (sel.has(best)) sel.delete(best); else sel.add(best); }
     else if (sel.has(best) && sel.size === 1) sel.clear();
     else { sel.clear(); sel.add(best); }
     updSel(); return;
   }
   if (!sel.size) return;
-  // 點地面：選到的隊伍走過去（多隊就左右排開）
-  const p = clampDeploy(g.clone()), list = [...sel].sort((a, c) => a.cx - c.cx);
-  const e = enemyCenter(); let fx = e.x - p.x, fz = e.z - p.z; const L = Math.hypot(fx, fz) || 1; fx /= L; fz /= L;
-  const widths = list.map((sq) => sq.order.cols * STATS[sq.type].spacing), total = widths.reduce((a, w) => a + w + 3, -3);
-  let off = -total / 2;
-  list.forEach((sq, i) => {
-    const c = off + widths[i] / 2; off += widths[i] + 3;
-    const x = p.x - fz * c, z = p.z + fx * c;
-    sq.mode = 'hold'; b.orderSquad(sq, x, z, fx, fz, widths[i], phase !== 'deploy');
-    if (phase === 'deploy') snapSquad(sq);
-  });
-  toast(list.length > 1 ? `${list.length} 隊出發` : '出發！');
+  const p = clampDeploy(g.clone()), e = enemyCenter();
+  let fx = e.x - p.x, fz = e.z - p.z; const L = Math.hypot(fx, fz) || 1; fx /= L; fz /= L;
+  applyPlan(planAt(p, fx, fz));
+  toast(sel.size > 1 ? `${sel.size} 隊出發（近戰在前、弓箭手在後、騎兵在兩邊）` : '出發！');
 }
-function lineOrder(a, c) {
+// 一隊排成寬 w 時有幾列、幾排、多深
+const colsFor = (sq, w) => Math.max(3, Math.round(w / STATS[sq.type].spacing));
+const depthOf = (sq, w) => Math.ceil(Math.max(1, sq.alive) / colsFor(sq, w)) * STATS[sq.type].spacing;
+const defWidth = (sq) => sq.order.cols * STATS[sq.type].spacing;
+// 自動隊形：劍盾兵、長槍兵排前面（長槍兵放中間），弓箭手排在後面，騎兵在兩邊
+// 中心 c、面向 f、前排總寬 front（沒給就用每隊原本的寬度）
+function arrange(list, cx, cz, fx, fz, front) {
+  const rx = -fz, rz = fx, out = [];
+  const melee = list.filter((q) => q.type === T.SWORD || q.type === T.SPEAR).sort((a, c) => (a.type === T.SPEAR) - (c.type === T.SPEAR));
+  // 長槍兵放中間：把排序後的槍兵插到中間
+  const sw = melee.filter((q) => q.type === T.SWORD), sp = melee.filter((q) => q.type === T.SPEAR);
+  const mid = Math.ceil(sw.length / 2), frontRow = [...sw.slice(0, mid), ...sp, ...sw.slice(mid)];
+  const arch = list.filter((q) => q.type === T.ARCHER), cav = list.filter((q) => q.type === T.CAV);
+  const row = (squads, offBack, total) => {
+    if (!squads.length) return 0;
+    let ws = squads.map(defWidth);
+    if (total) { const sum = ws.reduce((x, y) => x + y, 0), gaps = 3 * (squads.length - 1); ws = ws.map((w) => Math.max(5, w * (total - gaps) / sum)); }
+    const W = ws.reduce((x, y) => x + y + 3, -3);
+    let off = -W / 2, depth = 0;
+    squads.forEach((q, i) => { const c = off + ws[i] / 2; off += ws[i] + 3; const d = depthOf(q, ws[i]); depth = Math.max(depth, d); out.push({ sq: q, x: cx + rx * c - fx * (offBack + d / 2), z: cz + rz * c - fz * (offBack + d / 2), fx, fz, w: ws[i] }); });
+    return depth;
+  };
+  // 沒有近戰兵：選到的全部排成一排
+  if (!frontRow.length) { row(arch.length ? arch : cav, 0, front); if (arch.length && cav.length) placeCav(cav, out, cx, cz, fx, fz, (front || arch.reduce((a, q) => a + defWidth(q) + 3, -3)) / 2, 0); return out; }
+  const d1 = row(frontRow, 0, front);
+  if (arch.length) row(arch, d1 + 5, front ? Math.min(front, arch.reduce((a, q) => a + defWidth(q) + 3, -3) * 1.3) : 0);
+  const half = (front || frontRow.reduce((a, q) => a + defWidth(q) + 3, -3)) / 2;
+  placeCav(cav, out, cx, cz, fx, fz, half, d1 * 0.5);
+  return out;
+}
+function placeCav(cav, out, cx, cz, fx, fz, half, back) {
+  const rx = -fz, rz = fx;
+  cav.forEach((q, i) => {
+    const side = i % 2 ? 1 : -1, k = Math.floor(i / 2), w = defWidth(q), c = side * (half + 6 + w / 2 + k * (w + 4));
+    out.push({ sq: q, x: cx + rx * c - fx * back, z: cz + rz * c - fz * back, fx, fz, w });
+  });
+}
+function planAt(p, fx, fz) { return arrange([...sel], p.x, p.z, fx, fz, 0); }
+function planLine(a, c) {
   const A = clampDeploy(a.clone()), C = clampDeploy(c.clone());
-  let dx = C.x - A.x, dz = C.z - A.z; const L = Math.hypot(dx, dz); if (L < 3) return;
+  let dx = C.x - A.x, dz = C.z - A.z; const L = Math.hypot(dx, dz); if (L < 3) return null;
   dx /= L; dz /= L;
   // 面向：垂直於線、朝向敵人那一邊
   const e = enemyCenter(); let fx = -dz, fz = dx;
   const mx = (A.x + C.x) / 2, mz = (A.z + C.z) / 2;
   if (fx * (e.x - mx) + fz * (e.z - mz) < 0) { fx = -fx; fz = -fz; }
-  const list = [...sel].sort((p, q) => ((p.cx - A.x) * dx + (p.cz - A.z) * dz) - ((q.cx - A.x) * dx + (q.cz - A.z) * dz));
-  const seg = L / list.length;
-  list.forEach((sq, i) => {
-    const t = seg * (i + 0.5);
-    sq.mode = 'hold'; b.orderSquad(sq, A.x + dx * t, A.z + dz * t, fx, fz, Math.max(seg - 2, 4), phase !== 'deploy');
-    if (phase === 'deploy') snapSquad(sq);
-  });
-  toast('沿著線排開！');
+  return arrange([...sel], mx, mz, fx, fz, L);
+}
+function applyPlan(plan) {
+  for (const o of plan) {
+    o.sq.mode = 'hold'; b.orderSquad(o.sq, o.x, o.z, o.fx, o.fz, o.w, phase !== 'deploy');
+    if (phase === 'deploy') snapSquad(o.sq);
+  }
+  ghostFlash = 1.2; ghostLast = plan;
+}
+function lineOrder(a, c) {
+  const pl = planLine(a, c); if (!pl) return;
+  applyPlan(pl); toast('照著線排好隊形！');
+}
+// ---------------------------------------------------------------- 隊形預覽：每一隊要站的方框＋面向的小箭頭
+let ghostPlan = null, ghostFlash = 0, ghostLast = null;
+const ghost = (() => {
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(64 * 7 * 2 * 3), 3)); g.setDrawRange(0, 0);
+  const m = new THREE.LineBasicNodeMaterial({ color: 0xffe066, depthTest: false, transparent: true, opacity: 0.9 });
+  const l = new THREE.LineSegments(g, m); l.renderOrder = 11; l.frustumCulled = false; scene.add(l); return l;
+})();
+function drawGhost(dt) {
+  ghostFlash = Math.max(0, ghostFlash - dt);
+  // 拉線時：預覽；剛下完命令：閃一下目的地；平常：選到的隊伍還在走的話，顯示要去的地方
+  let list = ghostPlan || (ghostFlash > 0 ? ghostLast : null);
+  if (!list) list = [...sel].filter((q) => q.alive && q.mode !== 'charge' && Math.hypot(q.cx - q.order.x, q.cz - q.order.z) > 4).map((q) => ({ sq: q, x: q.order.x, z: q.order.z, fx: q.order.fx, fz: q.order.fz, w: q.order.cols * STATS[q.type].spacing }));
+  const a = ghost.geometry.attributes.position; let n = 0;
+  const put = (x, z) => { a.setXYZ(n++, x, ter.height(x, z) + 0.4, z); };
+  for (const o of list.slice(0, 64)) {
+    const hw = o.w / 2, hd = depthOf(o.sq, o.w) / 2, rx = -o.fz, rz = o.fx;
+    const P = (u, v) => [o.x + rx * u + o.fx * v, o.z + rz * u + o.fz * v];
+    const c = [P(-hw, hd), P(hw, hd), P(hw, -hd), P(-hw, -hd)];
+    for (let k = 0; k < 4; k++) { put(...c[k]); put(...c[(k + 1) % 4]); }
+    const tip = P(0, hd + 3.5), l1 = P(-1.5, hd + 1.5), r1 = P(1.5, hd + 1.5);
+    put(...l1); put(...tip); put(...r1); put(...tip); put(...P(0, hd)); put(...tip);
+  }
+  a.needsUpdate = true; ghost.geometry.setDrawRange(0, n); ghost.visible = n > 0;
+  ghost.material.opacity = ghostPlan ? 0.95 : ghostFlash > 0 ? 0.5 + ghostFlash * 0.4 : 0.45;
 }
 // 佈陣時直接把人放到位置上
 function snapSquad(sq) {
@@ -427,6 +499,7 @@ function update(dt) {
   for (const sq of [...sel]) if (!sq.alive) { sel.delete(sq); updSel(); }
   meshes.sync(b);
   updMarkers(dt);
+  drawGhost(dt);
   updateCamera(dt);
   dust.update(paused ? 0 : dt * speed, camera);
   miniT -= dt; if (miniT <= 0) { miniT = 0.12; drawMini(); }
