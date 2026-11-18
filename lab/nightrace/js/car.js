@@ -13,11 +13,11 @@ function bodyShape() {
   s.quadraticCurveTo(2.34, 0.32, 2.32, 0.5);       // 車頭下巴
   s.quadraticCurveTo(2.3, 0.68, 2.0, 0.72);        // 車頭
   s.lineTo(1.05, 0.85);                            // 引擎蓋
-  s.quadraticCurveTo(0.62, 1.1, 0.22, 1.26);       // 擋風玻璃
-  s.quadraticCurveTo(-0.3, 1.34, -0.86, 1.3);      // 車頂
-  s.quadraticCurveTo(-1.42, 1.2, -1.82, 0.98);     // 後窗
-  s.lineTo(-2.16, 0.94);                           // 行李箱
-  s.quadraticCurveTo(-2.32, 0.9, -2.29, 0.6);      // 車尾
+  s.quadraticCurveTo(0.55, 1.08, 0.12, 1.22);       // 擋風玻璃（斜一點）
+  s.quadraticCurveTo(-0.35, 1.29, -0.86, 1.25);      // 車頂（低一點）
+  s.quadraticCurveTo(-1.42, 1.15, -1.86, 0.96);     // 後窗（快背）
+  s.lineTo(-2.14, 0.93);                           // 行李箱（尾端微微翹起＝鴨尾）
+  s.quadraticCurveTo(-2.3, 0.92, -2.28, 0.6);      // 車尾
   s.lineTo(-2.2, 0.3);
   return s;
 }
@@ -38,7 +38,7 @@ function extrude(shape, width, bevel) {
 // 側面輪廓決定每個位置的頂和底；俯視時車頭、車尾收窄；斷面下半部是車身（腰線以下微微鼓起、底角圓），
 // 腰線以上是車窗（往內收的 tumblehome）。輪子的位置把車底挖成圓弧（輪拱）。
 // 每個頂點帶 part：0 車漆、1 玻璃、2 黑色飾條（A／B／C 柱、窗框）、3 輪拱裡面（暗）
-const WHEELS = [[1.4, 0.34], [-1.35, 0.34]];   // [z, 半徑]
+const WHEELS = [[1.45, 0.35], [-1.5, 0.35]];   // [z, 半徑]
 function profileYs(z) {
   // 從原本的側面輪廓（polygon）求這個 z 的頂和底
   const pts = bodyShape().getPoints(24);
@@ -51,6 +51,7 @@ function profileYs(z) {
   }
   return [top, bot];
 }
+const smoothK = (t) => { const k = Math.min(1, Math.max(0, t)); return k * k * (3 - 2 * k); };
 function halfW(z) {
   let w = 0.96;
   if (z > 1.5) w -= 0.2 * ((z - 1.5) / 0.84) ** 2;
@@ -82,11 +83,14 @@ function loftBody() {
     for (let k = 1; k <= nSide; k++) {
       const y = ys0 + (ys1 - ys0) * k / nSide;
       const bulge = 1 + 0.035 * Math.sin(Math.PI * (y - yb) / Math.max(0.1, low - yb));   // 側面微微鼓起
-      pushP(w * bulge, y, 0);
+      // 輪子上面的葉子板往外鼓（後輪更明顯，像跑車的「肩膀」），車門下緣往內收
+      const flare = WHEELS.reduce((a, [wz], i) => a + (i ? 0.06 : 0.04) * Math.exp(-(((zz - wz) / 0.55) ** 2)), 0) * smoothK((y - 0.42) / 0.2) * (1 - smoothK((y - 0.84) / 0.06));
+      const tuck = 1 - 0.05 * (1 - smoothK((y - yb) / 0.2)) * (arch > 0 ? 0 : 1);
+      pushP(w * bulge * (1 + flare) * tuck, y, 0);
     }
     if (green) {
       // 車窗：往內收，車頂邊緣圓角
-      const nG = 6, tw = w * 0.7;
+      const nG = 6, tw = w * 0.66;
       for (let k = 1; k <= nG; k++) { const t = k / nG, y = BELT + (yt - 0.05 - BELT) * t; pushP(w * 0.99 - (w * 0.99 - tw) * t, y, 1); }
       for (let k = 1; k <= 3; k++) { const a = k / 3 * Math.PI / 2; pushP(tw - 0.05 + Math.cos(a) * 0.05 - (1 - Math.cos(a)) * 0.04, yt - 0.05 + Math.sin(a) * 0.05, 0); }
       pushP(tw * 0.5, yt + 0.005, 0);
@@ -264,8 +268,8 @@ export function carMesh(color, { lights = false, ghost = false } = {}) {
   const discM = new THREE.MeshStandardNodeMaterial({ color: 0x6d6a66, metalness: 0.8, roughness: 0.45 });
   const calM = new THREE.MeshStandardNodeMaterial({ color: 0xc81d25, roughness: 0.4 });
   const wheels = [];
-  for (const [x, z] of [[-0.84, 1.4], [0.84, 1.4], [-0.84, -1.35], [0.84, -1.35]]) {
-    const w = new THREE.Group(); w.position.set(x, 0.34, z);
+  for (const [x, z] of [[-0.85, 1.45], [0.85, 1.45], [-0.86, -1.5], [0.86, -1.5]]) {
+    const w = new THREE.Group(); w.position.set(x, 0.35, z); w.scale.setScalar(0.35 / 0.342);
     const spin = new THREE.Group(); spin.add(new THREE.Mesh(G.wheel, rubber), new THREE.Mesh(G.hub, rim), new THREE.Mesh(G.disc, discM));
     if (x < 0) spin.scale.x = -1;   // 輪框的外側永遠朝外
     const cal = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.14, 0.1), calM); cal.position.set(x < 0 ? -0.05 : 0.05, 0.12, z > 0 ? -0.1 : 0.1);   // 煞車卡鉗（不跟著轉）
