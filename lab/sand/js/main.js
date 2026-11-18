@@ -232,7 +232,8 @@ function checkLevel() {
     }
     if (w.kind === 'fill') {
       const area = (r) => Math.max(1, (r.x1 - r.x0) * (r.y1 - r.y0));
-      const k = Math.min(...n.map((v, i) => v / area(regs[i]) / w.need));
+      const nWin = w.region2 ? 2 : 1;   // 只看目標區域；最後一格是石牆額度用的整張圖，不能算進去
+      const k = Math.min(...n.slice(0, nWin).map((v, i) => v / area(regs[i]) / w.need));
       L.prog = Math.min(1, k);
       if (k >= 1) { L.held += 0.3; if (L.held >= 1) finish(true); } else L.held = 0;
     } else {
@@ -265,7 +266,7 @@ function finish(ok) {
     $('resNext').style.display = L.i < LEVELS.length - 1 ? '' : 'none';
     sound.win(); confetti();
   } else {
-    $('resTitle').textContent = '小屋燒起來了 😢';
+    $('resTitle').textContent = lv.fail || '小屋燒起來了 😢';
     $('resStars').textContent = '';
     $('resText').textContent = '再想想看：' + (lv.hint || '換個方法試試看！');
     $('resNext').style.display = 'none';

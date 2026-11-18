@@ -133,6 +133,68 @@ export const LEVELS = [
     drain: [],
     win(L) { return { kind: 'survive', region: L.home, mats: [M.WOOD], keep: 0.85, time: 35 }; },
   },
+  {
+    id: 'cool', name: '冷卻熔岩池', icon: '🪨',
+    goal: '盆子裡裝滿了岩漿。一直倒水或丟冰，讓整池岩漿從外往裡面冷卻，變成石頭！',
+    tools: ['water', 'ice'], ink: 0,
+    hint: '只澆表面一下下，裡面還是很燙。要一直澆，冷才會一層一層傳進去。',
+    build(B) {
+      ground(B);
+      const c = B.cup(0.25, 0.5, 0.75, 0.95);
+      B.rect(0.26, 0.66, 0.74, 0.94, M.LAVA, false);
+      this.pool = { ...c, y0: B.Y(0.66) };
+    },
+    emit: [], drain: [{ x0: 0, y0: 0.9, x1: 0.23, y1: 0.95 }, { x0: 0.77, y0: 0.9, x1: 1, y1: 0.95 }],
+    win(L) { return { kind: 'fill', region: L.pool, mats: [M.STONE], need: 0.7 }; },
+  },
+  {
+    id: 'dam', name: '燒掉水壩', icon: '🪵',
+    goal: '水被木頭水壩擋在上面。用火把水壩燒開，再畫石牆把水引進右下的杯子。',
+    tools: ['fire', 'wall', 'erase'], ink: 1.0,
+    hint: '火只能燒木頭；石牆可以當水管，讓水沿著它流到杯子。',
+    build(B) {
+      ground(B);
+      B.line(0.04, 0.1, 0.04, 0.46, 0.012, M.WALL);
+      B.line(0.04, 0.46, 0.36, 0.46, 0.012, M.WALL);
+      B.rect(0.33, 0.12, 0.36, 0.455, M.WOOD);           // 木頭水壩
+      B.rect(0.05, 0.14, 0.33, 0.45, M.WATER, false);
+      this.cupR = B.cup(0.66, 0.66, 0.9, 0.95);
+    },
+    emit: [], drain: [{ x0: 0, y0: 0.9, x1: 0.62, y1: 0.95 }],
+    win(L) { return { kind: 'fill', region: L.cupR, mats: [M.WATER], need: 0.18 }; },
+  },
+  {
+    id: 'flood', name: '大雨防洪', icon: '☔',
+    goal: '大雨一直下，下面的小地下室快要淹水了！用石牆擋雨、用黑洞把水吸掉，撐過 35 秒，不要讓地下室進水。',
+    tools: ['wall', 'void', 'erase'], ink: 0.7, time: 35, keep: 0.85, fail: '地下室淹水了 😢',
+    hint: '石牆可以當屋頂，但額度不多；黑洞會一直把碰到的水吃掉，放在水流的路上最有用。',
+    build(B) {
+      ground(B, 0.93);
+      B.rect(0.3, 0.02, 0.7, 0.04, M.WALL);
+      const c = B.cup(0.36, 0.7, 0.64, 0.93);
+      this.room = { ...c, y0: B.Y(0.74) };
+    },
+    emit: [{ x: 0.4, y: 0.06, r: 0.012, mat: M.WATER, prob: 0.35 }, { x: 0.5, y: 0.06, r: 0.012, mat: M.WATER, prob: 0.35 }, { x: 0.6, y: 0.06, r: 0.012, mat: M.WATER, prob: 0.35 }],
+    drain: [{ x0: 0, y0: 0.88, x1: 0.32, y1: 0.93 }, { x0: 0.68, y0: 0.88, x1: 1, y1: 0.93 }],
+    win(L) { return { kind: 'survive', region: L.room, mats: [M.EMPTY], keep: 0.85, time: 35 }; },
+  },
+  {
+    id: 'oil', name: '油水分離', icon: '🫗',
+    goal: '水和油一起倒進水槽。油比水輕會浮在上面、從右邊溢出來。畫石牆把溢出來的油送進右下的杯子！',
+    tools: ['wall', 'erase'], ink: 1.0,
+    hint: '水槽底下有排水孔，水會慢慢漏掉；浮在上面的油才會溢出來。',
+    build(B) {
+      ground(B);
+      B.line(0.05, 0.25, 0.05, 0.75, 0.012, M.WALL);
+      B.line(0.05, 0.75, 0.4, 0.75, 0.012, M.WALL);
+      B.line(0.4, 0.42, 0.4, 0.75, 0.012, M.WALL);      // 右邊比較矮：滿了從這裡溢出
+      B.rect(0.12, 0.02, 0.32, 0.045, M.WALL);
+      this.cupR = B.cup(0.64, 0.66, 0.9, 0.95);
+    },
+    emit: [{ x: 0.17, y: 0.06, r: 0.01, mat: M.WATER, prob: 0.35 }, { x: 0.28, y: 0.06, r: 0.01, mat: M.OIL, prob: 0.3 }],
+    drain: [{ x0: 0.06, y0: 0.72, x1: 0.16, y1: 0.745 }, { x0: 0, y0: 0.9, x1: 0.6, y1: 0.95 }],
+    win(L) { return { kind: 'fill', region: L.cupR, mats: [M.OIL], need: 0.2 }; },
+  },
 ];
 
 export function buildLevel(L, w, h) {
