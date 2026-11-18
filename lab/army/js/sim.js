@@ -1,11 +1,13 @@
 // 戰鬥模擬（CPU，用 typed array，幾千個士兵也跑得動）
 // 每格：重建空間格子 → 每隊算中心 → 每個士兵找敵人、移動、閃開隊友、攻擊 → 箭飛行與落地 → 判斷勝負
 // 畫面（顯示卡）只負責把結果畫出來：見 units.js。
-export const T = { SWORD: 0, ARCHER: 1, CAV: 2 };
+export const T = { SWORD: 0, ARCHER: 1, CAV: 2, SPEAR: 3 };
 export const STATS = [
   { name: '劍盾兵', hp: 100, dmg: 11, cd: 1.0, range: 1.15, speed: 3.2, look: 10, spacing: 1.3 },
   { name: '弓箭手', hp: 70, dmg: 6, cd: 1.0, range: 1.1, speed: 3.0, look: 34, spacing: 1.4, shoot: 15, shootCd: 3.2 },
   { name: '騎兵', hp: 200, dmg: 18, cd: 1.0, range: 1.6, speed: 7.2, look: 14, spacing: 2.3 },
+  // 長槍兵：槍很長（打得到比較遠），專門剋騎兵：打騎兵傷害 ×3，騎兵衝過來會被槍尖頂住（衝鋒加成沒了，還會被刺傷）；沒有盾，怕箭
+  { name: '長槍兵', hp: 110, dmg: 8, cd: 1.15, range: 2.0, speed: 2.9, look: 10, spacing: 1.2 },
 ];
 const CELL = 2, GW = 200, GH = 140, GOX = 200, GOZ = 140;   // 格子覆蓋 x −200～200、z −140～140
 const G = 9.8;
@@ -139,7 +141,13 @@ export class Battle {
           if (this.cd[i] <= 0) {
             const sp = Math.hypot(this.vx[i], this.vz[i]);
             let dmg = st.dmg * (0.8 + Math.random() * 0.4);
-            if (ty === T.CAV && sp > 4.5 && this.shotCd[i] <= 0) { dmg *= 2.5; this.shotCd[i] = 5; }   // 騎兵衝鋒：第一下特別痛，之後要跑開再衝才有
+            const tt = this.type[t];
+            if (ty === T.CAV && sp > 4.5 && this.shotCd[i] <= 0) {
+              this.shotCd[i] = 5;
+              if (tt === T.SPEAR) this.hurt(i, 30 * (0.8 + Math.random() * 0.4));   // 衝進槍陣：自己被槍尖刺到，衝鋒也沒用
+              else dmg *= 2.5;   // 騎兵衝鋒：第一下特別痛，之後要跑開再衝才有
+            }
+            if (ty === T.SPEAR && tt === T.CAV) dmg *= 3;   // 長槍剋騎兵
             this.hurt(t, dmg, i);
             this.cd[i] = st.cd * (0.85 + Math.random() * 0.3); this.atk[i] = 1; this.events.clash++;
           }
