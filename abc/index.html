@@ -399,15 +399,15 @@ div.ltile{display:flex;align-items:center;justify-content:center}
 .ttabs{flex:0 0 auto;display:flex;flex-direction:column;gap:4px;justify-content:center}
 .ttabs button{border:none;border-radius:12px;background:#eef2f7;font-family:var(--emoji);font-size:20px;line-height:1;width:44px;flex:1;min-height:34px;opacity:.55}
 .ttabs button.on{background:var(--yellow);opacity:1;box-shadow:0 2px 0 #d49b00}
-.tray{flex:1;min-width:0;display:flex;gap:6px;overflow-x:auto;padding:2px 4px;scrollbar-width:thin;align-items:center}
+.tray{flex:1;min-width:0;display:flex;gap:6px;overflow-x:auto;overflow-y:hidden;padding:2px 4px;scrollbar-width:thin;align-items:center;touch-action:pan-x;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
 .tempty{font-family:var(--ui);font-weight:700;color:var(--mute);padding:8px}
-.ti{flex:0 0 auto;position:relative;border:none;background:none;width:clamp(50px,8.4vmin,74px);aspect-ratio:1;border-radius:14px;padding:0;touch-action:none}
+.ti{flex:0 0 auto;position:relative;border:none;background:none;width:clamp(50px,8.4vmin,74px);aspect-ratio:1;border-radius:14px;padding:0;touch-action:pan-x}
 .ti .e{font-family:var(--emoji);font-size:clamp(34px,6vmin,54px);line-height:1;display:block}
 .ti.no .e{filter:brightness(0);opacity:.13}
 .ti.used .e{opacity:.35}
 .ti.used::after{content:"✓";position:absolute;right:2px;bottom:0;font-family:var(--ui);font-weight:700;color:var(--green);font-size:16px}
 .ti b{position:absolute;right:0;top:0;background:var(--orange);color:#fff;font-family:var(--ui);font-size:12px;border-radius:999px;min-width:20px;height:20px;line-height:20px}
-@media (orientation:portrait){.ptabs{flex-wrap:wrap;justify-content:center;overflow:visible}.tray{flex-wrap:wrap;justify-content:center;overflow-x:hidden;overflow-y:auto;max-height:26vh;align-content:flex-start}.ttabs{justify-content:flex-start}.ttabs button{flex:0 0 auto;height:44px}}
+@media (orientation:portrait){.ptabs{flex-wrap:wrap;justify-content:center;overflow:visible}.tray{display:grid;grid-auto-flow:column;grid-template-rows:repeat(2,auto);justify-content:start;align-items:center}.ttabs{justify-content:flex-start}.ttabs button{flex:0 0 auto;height:44px}}
 .rwpage{font-family:var(--ui);font-weight:700;font-size:clamp(16px,2.8vmin,24px);color:var(--mute);margin:-4px 0 10px}
 .rwpage .e{font-family:var(--emoji)}.rwpage b{color:var(--ink)}
 @media (orientation:landscape) and (max-height:520px){.ttabs button{width:36px;min-height:24px;font-size:16px}.ptab{flex-direction:row;gap:4px;padding:2px 8px;min-width:0}.ptab .e{font-size:22px}.ptabs{padding-bottom:4px}.book{gap:4px}.ti{width:44px}.ti .e{font-size:30px}.stk{font-size:clamp(32px,9vh,56px)}}
@@ -4190,26 +4190,40 @@ $$('#trayTabs button').forEach(b => b.onclick = () => { const all = b.dataset.t 
 const inTray = (x, y) => { const r = $('#trayWrap').getBoundingClientRect(); return y > r.top - 10 && x > r.left && x < r.right; };
 const boardPos = (x, y) => { const r = $('#board').getBoundingClientRect(); return { x: Math.max(5, Math.min(95, (x - r.left) / r.width * 100)), y: Math.max(7, Math.min(93, (y - r.top) / r.height * 100)) }; };
 // from the tray: drag a copy onto the page, or tap to drop it somewhere on the page
+// from the tray: slide sideways to scroll the tray; drag a sticker up onto the page; or tap it to drop it somewhere on the page
 function trayDrag(b, st) {
   let start = null, ghost = null;
-  b.onpointerdown = e => { e.preventDefault(); if (stkFree(st.e) <= 0) { SFX.pop(); say(stkSay(st)); return; } try { b.setPointerCapture(e.pointerId); } catch (_) {} start = { x: e.clientX, y: e.clientY }; };
+  b.onpointerdown = e => {
+    if (stkFree(st.e) <= 0) { SFX.pop(); say(stkSay(st)); return; }
+    // no preventDefault here: a sideways swipe must stay a scroll (touch-action: pan-x)
+    start = { x: e.clientX, y: e.clientY, id: e.pointerId };
+  };
   b.onpointermove = e => {
     if (!start) return;
-    if (!ghost && Math.hypot(e.clientX - start.x, e.clientY - start.y) < 8) return;
-    if (!ghost) { ghost = el('div', 'stk ghost', st.e); document.body.appendChild(ghost); }
+    const dx = e.clientX - start.x, dy = e.clientY - start.y;
+    if (!ghost) {
+      if (Math.hypot(dx, dy) < 10) return;
+      // mostly sideways: that's scrolling the tray, not picking the sticker up
+      if (Math.abs(dx) > Math.abs(dy)) { start = null; return; }
+      try { b.setPointerCapture(start.id); } catch (_) {}
+      ghost = el('div', 'stk ghost', st.e); document.body.appendChild(ghost);
+    }
+    e.preventDefault();
     ghost.style.left = e.clientX + 'px'; ghost.style.top = e.clientY + 'px';
   };
-  const up = e => {
-    if (!start) return; start = null;
-    let pos = null;
-    if (ghost) { ghost.remove(); ghost = null; if (e.type === 'pointerup' && !inTray(e.clientX, e.clientY)) pos = boardPos(e.clientX, e.clientY); else return; }
-    else pos = { x: 15 + rnd(70), y: 20 + rnd(60) };
+  const place = pos => {
     const o = { e: st.e, x: pos.x, y: pos.y, r: rnd(30) - 15 };
     S.book.place[BK.pg.id].push(o); save();
     const d = stickerEl(o); $('#board').appendChild(d); d.classList.add('bounce');
     SFX.pop(); say(placeSay(st)); sbTray();
   };
-  b.onpointerup = up; b.onpointercancel = up;
+  b.onpointerup = e => {
+    if (!start) return; start = null;
+    if (ghost) { ghost.remove(); ghost = null; if (!inTray(e.clientX, e.clientY)) place(boardPos(e.clientX, e.clientY)); return; }
+    place({ x: 15 + rnd(70), y: 20 + rnd(60) });
+  };
+  // the browser took the touch over to scroll: nothing is placed
+  b.onpointercancel = () => { start = null; if (ghost) { ghost.remove(); ghost = null; } };
 }
 // on the page: tap to hear it, drag to move it, drag it down onto the tray to put it away
 function stickerEl(s) {
