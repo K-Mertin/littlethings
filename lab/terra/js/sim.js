@@ -7,9 +7,9 @@
 //   C 沖刷：水流越快、坡越陡，能帶走的泥沙越多（搬運能力）；帶得動就把地面挖掉，帶不動就把泥沙放下來
 //   D 搬運：泥沙順著水流往下游移動；把結果寫進一張貼圖給畫面用
 import * as THREE from 'three';
-import { Fn, instancedArray, instanceIndex, uniform, uniformArray, float, int, vec2, vec4, floor, clamp, max, min, abs, sqrt, select, smoothstep, length, textureStore, uvec2, If } from 'three/tsl';
+import { Fn, instancedArray, instanceIndex, uniform, uniformArray, float, int, vec2, vec4, floor, clamp, max, min, abs, sqrt, select, smoothstep, length, mix, textureStore, uvec2, If } from 'three/tsl';
 
-export const K = { G: 9.8, Kc: 0.1, Ks: 0.008, Kd: 0.015, Ke: 0.004, minH: -12, maxH: 70 };
+export const K = { G: 9.8, Kc: 0.1, Ks: 0.008, Kd: 0.015, Ke: 0.004, talus: 1.3, Kt: 0.06, minH: -12, maxH: 70 };
 
 export class GpuSim {
   constructor(renderer, N, initH) {
@@ -24,7 +24,7 @@ export class GpuSim {
     // 參數（每一步都可能改）
     this.u = {
       dt: uniform(0.05), rain: uniform(0),
-      brush: uniform(new THREE.Vector4(0, 0, 8, 0)),      // x, y（格子座標）, 半徑, 種類（0 沒有 1 堆高 2 挖低 3 下雨）
+      brush: uniform(new THREE.Vector4(0, 0, 8, 0)),      // x, y（格子座標）, 半徑, 種類（0 沒有 1 堆高 2 挖低 3 下雨 4 整平 5 火山）
       bAmt: uniform(0),
     };
     this.springsArr = Array.from({ length: 8 }, () => new THREE.Vector4(0, 0, 0, 0));
@@ -90,6 +90,16 @@ export class GpuSim {
       // 筆刷：堆高、挖低
       const bk = brushK(x, y).mul(u.bAmt).mul(u.dt);
       h2 = h2.add(select(u.brush.w.equal(1), bk, float(0))).sub(select(u.brush.w.equal(2), bk, float(0)));
+      // 整平：慢慢變成四周的平均（磨掉尖角、填平小坑）
+      const avg = H.element(id(x.add(1), y)).add(H.element(id(x.sub(1), y))).add(H.element(id(x, y.add(1)))).add(H.element(id(x, y.sub(1)))).mul(0.25);
+      h2 = select(u.brush.w.equal(4), mix(h2, avg, min(bk, 0.5)), h2);
+      // 火山：外圈長高、正中間不長 → 自然長出一個火山口
+      const bd = vec2(x, y).sub(vec2(u.brush.x, u.brush.y)).length();
+      const crater = smoothstep(u.brush.z.mul(0.28), u.brush.z.mul(0.12), bd), cone = max(float(1).sub(bd.div(u.brush.z)), 0);
+      h2 = h2.add(select(u.brush.w.equal(5), u.bAmt.mul(u.dt).mul(cone).mul(float(1).sub(crater)), float(0)));
+      // 崩落（thermal erosion）：比旁邊高太多（太陡）的土會往下滑，山不會變成一根柱子、挖的洞邊也會塌一點
+      const slide = (j) => { const d = h.sub(H.element(j)); return max(d.sub(K.talus), 0).sub(max(d.negate().sub(K.talus), 0)); };
+      h2 = h2.sub(slide(id(x.add(1), y)).add(slide(id(x.sub(1), y))).add(slide(id(x, y.add(1)))).add(slide(id(x, y.sub(1)))).mul(K.Kt));
       H2.element(i).assign(clamp(h2, K.minH, K.maxH));
       S2.element(i).assign(max(s.add(take), 0));
     })().compute(NN);
@@ -117,6 +127,8 @@ export class GpuSim {
     const b = o.brush; if (b) { u.brush.value.set(b.x, b.y, b.r, b.mode); u.bAmt.value = b.amt; } else { u.brush.value.w = 0; u.bAmt.value = 0; }
     this.renderer.compute(this.passA); this.renderer.compute(this.passB); this.renderer.compute(this.passC); this.renderer.compute(this.passD);
   }
+  // 復原：把地面高度整個換掉（水、泥沙留著）
+  setH(h) { for (const b of [this.H, this.H2]) { b.value.array.set(h); b.value.needsUpdate = true; } }
   // 把 H、W 讀回 CPU（點選地面、判斷任務用）；非同步、偶爾做一次
   async read() {
     const [h, w] = await Promise.all([this.renderer.getArrayBufferAsync(this.H.value), this.renderer.getArrayBufferAsync(this.W.value)]);
