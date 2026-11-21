@@ -56,6 +56,11 @@ export class CpuSim {
       const take = cap > s ? K.Ks * (cap - s) : -K.Kd * (s - cap);
       let h2 = Math.max(h - take, K.minH);
       if (b && (b.mode === 1 || b.mode === 2)) h2 += (b.mode === 1 ? 1 : -1) * bk(x, y) * b.amt * dt;
+      if (b && b.mode === 4) { const avg = (H[y * N + Math.min(N - 1, x + 1)] + H[y * N + Math.max(0, x - 1)] + H[Math.min(N - 1, y + 1) * N + x] + H[Math.max(0, y - 1) * N + x]) * 0.25; h2 += (avg - h2) * Math.min(0.5, bk(x, y) * b.amt * dt); }
+      if (b && b.mode === 5) { const d = Math.hypot(x - b.x, y - b.y), t = Math.min(1, Math.max(0, (b.r * 0.28 - d) / (b.r * 0.16))); h2 += Math.max(0, 1 - d / b.r) * b.amt * dt * (1 - t * t * (3 - 2 * t)); }
+      // 崩落：太陡的土往下滑
+      const sl = (j) => { const d = h - H[j]; return Math.max(0, d - K.talus) - Math.max(0, -d - K.talus); };
+      h2 -= (sl(y * N + Math.min(N - 1, x + 1)) + sl(y * N + Math.max(0, x - 1)) + sl(Math.min(N - 1, y + 1) * N + x) + sl(Math.max(0, y - 1) * N + x)) * K.Kt;
       H2[i] = Math.min(K.maxH, Math.max(K.minH, h2)); S2[i] = Math.max(0, s + take);
     }
     // D 搬運＋寫貼圖
@@ -71,5 +76,6 @@ export class CpuSim {
     this.tex.needsUpdate = true;
     void NN;
   }
+  setH(h) { this.H.set(h); this.H2.set(h); }
   async read() { return { H: this.H, W: this.W }; }
 }
