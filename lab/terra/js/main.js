@@ -1,6 +1,6 @@
 // 造物主之島：渲染器、天空與光、工具（堆山、挖地、下雨、泉水）、鏡頭、任務、存檔
 import * as THREE from 'three';
-import { pass, vec3, mix, smoothstep, positionWorld, normalize, float, max } from 'three/tsl';
+import { pass, vec3, mix, smoothstep, positionWorld, normalize, float, max, uniform } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { GpuSim } from './sim.js';
 import { CpuSim } from './simcpu.js';
@@ -33,7 +33,8 @@ renderer.shadowMap.enabled = HIGH;
 const scene = new THREE.Scene();
 // 天空：上深下淺的藍，地平線偏暖；也拿來當環境光（水面、反射）
 const skyMat = new THREE.MeshBasicNodeMaterial({ side: THREE.BackSide, depthWrite: false });
-skyMat.colorNode = (() => { const d = normalize(positionWorld); return mix(mix(vec3(0.85, 0.78, 0.68), vec3(0.45, 0.66, 0.9), smoothstep(-0.02, 0.25, d.y)), vec3(0.18, 0.36, 0.7), smoothstep(0.25, 0.9, d.y)); })();
+const gloom = uniform(0);   // 下雨時天空變灰
+skyMat.colorNode = (() => { const d = normalize(positionWorld); const c = mix(mix(vec3(0.85, 0.78, 0.68), vec3(0.45, 0.66, 0.9), smoothstep(-0.02, 0.25, d.y)), vec3(0.18, 0.36, 0.7), smoothstep(0.25, 0.9, d.y)); return mix(c, vec3(0.5, 0.55, 0.6).mul(float(1).sub(d.y.mul(0.3))), gloom.mul(0.8)); })();
 const sky = new THREE.Mesh(new THREE.SphereGeometry(1500, 32, 16), skyMat); scene.add(sky);
 scene.fog = new THREE.Fog(0xa9c4d8, N * 1.2, N * 4);
 const sun = new THREE.DirectionalLight(0xfff1dc, 2.6); sun.position.set(-N * 0.5, N * 0.6, N * 0.3); scene.add(sun, sun.target);
@@ -54,7 +55,7 @@ function build(seed) {
   springs = []; sim.setSprings(springs); refreshSpringMarks();
   if (!villages) villages = new Villages(scene, N); villages.clear(); undoStack.length = 0; touched = new Uint8Array(N * N);
 }
-let villages = null; const undoStack = [];
+let villages = null, lastTapV = null, lastTapT = 0; const undoStack = [];
 // 被工具直接改過的格子：三角洲、山谷任務只算「水和泥沙自己做出來的」，不算用工具堆的、挖的
 let touched = new Uint8Array(N * N);
 function markTouched(b) { const r = Math.ceil(b.r); for (let y = Math.max(0, Math.floor(b.y - r)); y <= Math.min(N - 1, b.y + r); y++) for (let x = Math.max(0, Math.floor(b.x - r)); x <= Math.min(N - 1, b.x + r); x++) if (Math.hypot(x - b.x, y - b.y) < b.r) touched[y * N + x] = 1; }
@@ -92,7 +93,7 @@ function updateCamera(dt) {
   camera.updateMatrixWorld();
 }
 function clampCam() { const L = N * 0.6; for (const o of [cam, goal]) { o.tx = clampN(o.tx, -L, L); o.tz = clampN(o.tz, -L, L); } goal.dist = clampN(goal.dist, DMIN, DMAX); goal.pitch = clampN(goal.pitch, PMIN, PMAX); }
-addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight, false); });
+addEventListener('resize', () => { if (typeof dock === 'function' && villages) dock(); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight, false); });
 camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
 
 // 螢幕上的一點，對到「看的那一點同高的水平面」上的哪裡（拿來抓著地面平移、對著手指縮放）
@@ -136,7 +137,7 @@ function pick(cx, cy) {
 
 // ---------------------------------------------------------------- 工具
 const TOOLS = [
-  { k: 'look', emoji: '✋', name: '移動', tip: '拖曳移動地圖、兩根手指縮放和轉向。滑鼠：右鍵拖曳轉向、滾輪縮放。' },
+  { k: 'look', emoji: '✋', name: '移動', tip: isTouch ? '拖曳移動地圖。兩根手指：捏合縮放、轉一轉轉向、一起上下推改變角度。' : '拖曳移動地圖。滾輪縮放、右鍵拖曳轉向，也可以用 WASD 和 Q／E。' },
   { k: 'raise', emoji: '⛰️', name: '堆山', mode: 1, amt: 14, r: 9, tip: '按住拖曳，地面會慢慢長高。' },
   { k: 'dig', emoji: '⛏️', name: '挖地', mode: 2, amt: 12, r: 6, tip: '按住拖曳，挖出河道或湖。挖到海平面以下，海水就會灌進來。' },
   { k: 'rain', emoji: '🌧️', name: '下雨', mode: 3, amt: 2.2, r: 12, tip: '按住拖曳，那裡會下大雨。雨水會往低處流，匯成小河。' },
@@ -161,6 +162,8 @@ function dock() {
   sb.classList.toggle('hidden', !t.mode);
   sb.innerHTML = '<span>筆刷</span>' + SIZES.map(([n, k], i) => `<button data-i="${i}" class="${sizeK === i ? 'on' : ''}">${n}</button>`).join('');
   sb.querySelectorAll('button').forEach((b) => { b.onclick = () => { sizeK = +b.dataset.i; save.size = sizeK; persist(); dock(); }; });
+  // 工具列可能換行（手機）：訊息、說明、筆刷大小都放在工具列上面
+  const r = d.getBoundingClientRect(); document.documentElement.style.setProperty('--dockH', Math.round(innerHeight - r.top) + 'px');
 }
 // 復原：每一筆開始畫之前記下地形（最多 10 筆）
 function pushUndo() { undoStack.push({ H: snap.H.slice(), springs: springs.map((q) => ({ ...q })) }); if (undoStack.length > 10) undoStack.shift(); if (undoStack.length === 1) dock(); }
@@ -170,7 +173,13 @@ function undo() {
   toast('↩️ 回到上一步'); dock();
 }
 let toastT;
-function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), 2600); }
+// 訊息：一次一則；很多則一起來（村莊、任務）就排隊，不會一閃就被蓋掉
+const toastQ = [];
+function toast(t, wait) {
+  if (wait && toastT) { if (toastQ.length < 4) toastQ.push(t); return; }
+  const el = $('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toastT);
+  toastT = setTimeout(() => { el.classList.remove('show'); toastT = null; if (toastQ.length) setTimeout(() => toast(toastQ.shift()), 300); }, 2600);
+}
 
 // ---------------------------------------------------------------- 操作
 // 不讓瀏覽器把整個網頁放大（按鈕和文字跟著變大）：兩根手指、觸控板捏合、連點兩下都只動鏡頭
@@ -323,8 +332,13 @@ function useTool(cx, cy, first) {
   if (!h) { brush = null; return; }
   if (t.mode) { if (first && t.mode !== 3) pushUndo(); brush = { x: h.x, y: h.y, r: radius(t), mode: t.mode, amt: t.amt }; if (first && tool === 'rain') sound.rain(true); return; }
   if (tool === 'village' && first) {
-    const old = villages.removeNear(h.x, h.y);
-    if (old) { toast(`拿掉了${old.name}`); villages.draw(snap); return; }
+    const near = villages.list.find((v) => Math.hypot(v.x - h.x, v.y - h.y) < 5);
+    if (near) {
+      // 點一下看村莊的狀況；很快再點一次才拿掉（不會一不小心就把村莊拆了）
+      if (near === lastTapV && performance.now() - lastTapT < 2500) { villages.removeNear(h.x, h.y); villages.draw(snap); toast(`拿掉了${near.name}`); lastTapV = null; return; }
+      lastTapV = near; lastTapT = performance.now();
+      toast(`${near.name}：${near.pop} 間房子，${near.wet ? '淹水了！' : near.fresh > 6 ? '附近有河或湖 👍' : near.sea > 4 ? '靠海捕魚，長得慢' : '附近沒有水 😢'}（再點一次拿掉）`); return;
+    }
     const why = villages.canBuild(snap, h.x, h.y);
     if (why) { toast('🏘️ ' + why); return; }
     if (!villages.add(h.x, h.y)) { toast(`村莊最多 ${VMAX} 個`); return; }
@@ -380,13 +394,14 @@ $('goalsToggle').onclick = () => { goalsOpen = !goalsOpen; $('goalsToggle').text
 const prog = {};
 function renderGoals() {
   const L = $('goalList');
+  $('goalCount').textContent = `${GOALS.filter((g) => save.done[g.id]).length}/${GOALS.length}`;
   L.innerHTML = !goalsOpen ? '' : GOALS.map((g) => { const d = save.done[g.id], p = d ? 1 : prog[g.id] || 0; return `<li class="${d ? 'done' : ''}">${d ? '✅' : '⬜'} ${g.t}${d ? '' : `<div class="bar2"><i style="width:${Math.round(p * 100)}%"></i></div>`}</li>`; }).join('');
 }
 function checkGoals() {
   for (const g of GOALS) {
     if (save.done[g.id]) continue;
     const p = g.check(snap); prog[g.id] = p;
-    if (p >= 1) { save.done[g.id] = true; persist(); toast(`✅ 任務完成：${g.t}`); sound.ding(); }
+    if (p >= 1) { save.done[g.id] = true; persist(); toast(`✅ 任務完成：${g.t}`, true); sound.ding(); }
   }
   renderGoals();
 }
@@ -406,6 +421,42 @@ $('soundBtn').onclick = () => { sound.start(); sound.on = !sound.on; save.soundO
 $('speedBtn').onclick = () => { speed = speed === 1 ? 2 : speed === 2 ? 4 : 1; $('speedBtn').textContent = `⏩ ×${speed}`; };
 addEventListener('pointerdown', () => sound.start(), { once: true });
 
+// ---------------------------------------------------------------- 雨滴（看得到在下雨）、下雨時天變暗；村莊頭上的名牌
+const DROPS = 1400, rainPos = new Float32Array(DROPS * 6), rainSeed = Float32Array.from({ length: DROPS * 3 }, Math.random);
+const rainGeo = new THREE.BufferGeometry(); rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+const rainLines = new THREE.LineSegments(rainGeo, new THREE.LineBasicNodeMaterial({ color: 0xcfe6ff, transparent: true, opacity: 0.45, depthWrite: false }));
+rainLines.frustumCulled = false; rainLines.visible = false; scene.add(rainLines);
+let rainT = 0, weather = 0;
+function updateRain(dt) {
+  rainT += dt; weather += ((globalRain ? 1 : 0) - weather) * (1 - Math.exp(-dt * 1.5));
+  gloom.value = weather; sun.intensity = 2.6 - weather * 1.6; renderer.toneMappingExposure = 0.95 - weather * 0.12;
+  // 雨下在哪裡：全島下雨＝鏡頭看的地方附近；🌧️ 筆刷＝筆刷底下
+  const half = (N - 1) / 2, br = brush && brush.mode === 3 ? brush : null;
+  const n = br ? Math.min(DROPS, Math.round(br.r * br.r * 4)) : globalRain ? DROPS : 0;
+  rainLines.visible = n > 0; if (!n) return;
+  const cx = br ? br.x - half : cam.tx, cz = br ? br.y - half : cam.tz, R = br ? br.r : Math.min(cam.dist * 0.7, N * 0.6), top = 26;
+  for (let k = 0; k < n; k++) {
+    const a = rainSeed[k * 3] * 6.283, r = Math.sqrt(rainSeed[k * 3 + 1]) * R, x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
+    const g = groundH(x, z), y = g + top - ((rainT * 38 + rainSeed[k * 3 + 2] * top) % top), o = k * 6;
+    rainPos[o] = x; rainPos[o + 1] = y; rainPos[o + 2] = z; rainPos[o + 3] = x + 0.15; rainPos[o + 4] = y + 1.4; rainPos[o + 5] = z;
+  }
+  rainGeo.setDrawRange(0, n * 2); rainGeo.attributes.position.needsUpdate = true;
+}
+const vlabels = $('vlabels'), _vp = new THREE.Vector3();
+function updateLabels() {
+  const L = villages.list, half = (N - 1) / 2;
+  while (vlabels.children.length < L.length) { const d = document.createElement('div'); d.className = 'vlabel'; vlabels.appendChild(d); }
+  [...vlabels.children].forEach((el, k) => {
+    const v = L[k]; if (!v) { el.style.display = 'none'; return; }
+    const i = Math.round(v.y) * N + Math.round(v.x);
+    _vp.set(v.x - half, (snap.H[i] || 0) + 3.5, v.y - half).project(camera);
+    if (_vp.z > 1 || Math.abs(_vp.x) > 1.1 || Math.abs(_vp.y) > 1.1) { el.style.display = 'none'; return; }
+    el.style.display = ''; el.style.left = ((_vp.x + 1) / 2 * innerWidth).toFixed(0) + 'px'; el.style.top = ((1 - _vp.y) / 2 * innerHeight).toFixed(0) + 'px';
+    const txt = `${v.wet ? '🌊' : '🏘️'} ${v.name} ${v.pop}`; if (el.textContent !== txt) el.textContent = txt;
+    el.className = 'vlabel' + (v.wet ? ' wet' : v.need ? ' dry' : '');
+  });
+}
+
 // ---------------------------------------------------------------- 主迴圈
 let reading = false, readT = 0, treeT = 0, simT = 0, last = performance.now();
 const STEPS = WEBGPU ? 3 : 1, DT = 0.05;
@@ -418,12 +469,12 @@ function update(dt) {
   readT -= dt; treeT += dt; simT += dt * speed;
   if (readT <= 0 && !reading) {
     readT = 0.5; reading = true;
-    sim.read().then((s) => { snap = s; reading = false; villages.update(s, simT); simT = 0; while (villages.events.length) toast(villages.events.shift()); checkGoals(); drawMiniBase(s); trees.update(s.H, s.W, treeT); treeT = 0; }).catch(() => { reading = false; });
+    sim.read().then((s) => { snap = s; reading = false; villages.update(s, simT); simT = 0; while (villages.events.length) toast(villages.events.shift(), true); checkGoals(); drawMiniBase(s); trees.update(s.H, s.W, treeT); treeT = 0; }).catch(() => { reading = false; });
   }
   // 泉水標記跟著地面
   for (const m of springMarks.children) { const s = m.userData.s, i = Math.round(s.y) * N + Math.round(s.x); m.position.set(s.x - (N - 1) / 2, (snap.H[i] || 0) + (snap.W[i] || 0) + 0.4, s.y - (N - 1) / 2); }
   sound.update(brush && brush.mode === 3 ? 0.12 : globalRain ? 0.08 : 0);
-  moveInput(dt); updateCamera(dt); drawMini();
+  moveInput(dt); updateCamera(dt); drawMini(); updateRain(dt); updateLabels();
 }
 function render() {
   if (OFF) { OFF.setSize(Math.round(innerWidth * renderer.getPixelRatio()), Math.round(innerHeight * renderer.getPixelRatio())); renderer.setRenderTarget(OFF); }
@@ -432,6 +483,9 @@ function render() {
 }
 function frame() { const now = performance.now(), dt = Math.min(0.05, (now - last) / 1000); last = now; update(dt); render(); }
 
+$('help').innerHTML = isTouch
+  ? '選一個工具，用一根手指在島上畫：⛰️ 堆山、⛏️ 挖地、🌧️ 下雨、🌋 火山、🏘️ 蓋村莊…<br>兩根手指＝移動鏡頭（捏合縮放、轉一轉轉向、一起上下推改變角度）。右上小地圖點一下就飛過去。'
+  : '選一個工具，在島上按住拖曳：⛰️ 堆山、⛏️ 挖地、🌧️ 下雨、🌋 火山、🏘️ 蓋村莊…<br>滾輪縮放、右鍵拖曳轉向、中鍵或空白鍵＋拖曳移動，也可以用 WASD／Q E。右上小地圖點一下就飛過去。';
 dock(); renderGoals(); updateCamera(); drawMiniBase(snap); drawMini();
 await step(0.85, '暖機…');
 sim.step(DT, { rain: 0 }); render();
@@ -445,7 +499,7 @@ window.__ready = true;
 window.__terra = {
   get sim() { return sim; }, get snap() { return snap; }, get world() { return world; }, cam, goal, WEBGPU, N, renderer, zoomAt, grabPan, planeAt,
   rain(v) { globalRain = v; },
-  get villages() { return villages; }, undo, pushUndo, setTool(k) { tool = k; dock(); }, useTool,
+  get villages() { return villages; }, updateRain, updateLabels, undo, pushUndo, setTool(k) { tool = k; dock(); }, useTool,
   spring(x, y) { springs.push({ x, y, r: 2.2, rate: 2.5 }); sim.setSprings(springs); refreshSpringMarks(); },
   brush(b) { brush = b; },
   async sim2(sec) { if (brush && brush.mode !== 3) markTouched(brush); for (let i = 0; i < sec * 20; i++) { sim.step(DT, { rain: globalRain ? 0.035 : 0, brush }); if (i % 40 === 39) await new Promise((r) => setTimeout(r, 0)); } snap = await sim.read(); villages.update(snap, sec); checkGoals(); trees.update(snap.H, snap.W, sec); return GOALS.map((g) => [g.id, +(prog[g.id] || 0).toFixed(2), !!save.done[g.id]]); },
