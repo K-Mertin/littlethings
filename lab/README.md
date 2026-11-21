@@ -4,7 +4,7 @@
 
 ## 小大廳 `lab/index.html`
 - 單一檔案，藍圖方格風格；上方會偵測瀏覽器有沒有 WebGPU（`navigator.gpu.requestAdapter()`），顯示在 `#gpu`。
-- 「可以玩」：MW 大街 · WebGPU 版（`street/`）、沙之實驗室（`sand/`）、深海探險隊（`deep/`）、銀河建造師（`galaxy/`）、萬軍對決 3D（`army/`）、夜雨賽車（`nightrace/`）、星塵彈幕（`bullet/`）。
+- 「可以玩」：MW 大街 · WebGPU 版（`street/`）、沙之實驗室（`sand/`）、深海探險隊（`deep/`）、銀河建造師（`galaxy/`）、萬軍對決 3D（`army/`）、夜雨賽車（`nightrace/`）、星塵彈幕（`bullet/`）、造物主之島（`terra/`）。
 - 原本規劃的五款都做完了。之後新增作品：加資料夾、`hall_shot.jpg`（640×360）、在「可以玩了」加一張 `<a class="card">`；想先記下的點子可以放回「規劃中」區塊。
 
 | 資料夾 | 遊戲 | 技術 |
@@ -14,6 +14,7 @@
 | `army/` | 萬軍對決 3D | three.js 0.187；模擬在 CPU，士兵動畫在頂點 shader |
 | `galaxy/` | 銀河建造師 | three.js 0.187＋TSL compute（受限 N 體星系） |
 | `deep/` | 深海探險隊 | three.js 0.187 WebGPURenderer＋TSL compute（魚群） |
+| `terra/` | 造物主之島 | three.js 0.187＋TSL compute（虛擬水管水流＋沖刷）寫進 `StorageTexture`；沒有 WebGPU 時 CPU 跑同一套 |
 | `bullet/` | 星塵彈幕 | three.js 0.187；子彈和爆炸火花的位置都是公式，直接在頂點 shader 裡算（`uniformArray` 放發射器參數） |
 | `sand/` | 沙之實驗室 | 直接用 WebGPU API（WGSL compute）；沒有 WebGPU 時用 CPU 跑同一套規則 |
 
