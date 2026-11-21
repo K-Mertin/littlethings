@@ -156,7 +156,7 @@ function dock() {
   const sep = document.createElement('span'); sep.className = 'sep'; d.appendChild(sep);
   add(`<b>${globalRain ? '☔' : '☀️'}</b>${globalRain ? '全島下雨' : '晴天'}`, '整座島一起下雨', () => { globalRain = !globalRain; dock(); toast(globalRain ? '☔ 整座島都在下雨，看看河流會怎麼長出來' : '☀️ 雨停了，水會慢慢流走、蒸發'); }, globalRain);
   add('<b>↩️</b>復原', '回到上一筆之前的地形', undo).disabled = !undoStack.length;
-  add('<b>🔄</b>新的島', '換一座新的島（會清掉現在的地形）', () => { if (!confirm('要換一座新的島嗎？現在的地形會不見。')) return; save.seed = (save.seed * 31 + 17) % 9973; persist(); build(save.seed); toast('🏝️ 新的島出現了'); });
+  add('<b>🔄</b>新的島', '換一座新的島（會清掉現在的地形）', () => { if (!confirm('要換一座新的島嗎？現在的地形會不見。')) return; save.seed = (save.seed * 31 + 17) % 9973; persist(); clearWorld(); build(save.seed); toast('🏝️ 新的島出現了'); });
   // 筆刷大小：只有用筆刷的工具才出現
   const sb = $('sizeBar'), t = curTool();
   sb.classList.toggle('hidden', !t.mode);
@@ -167,10 +167,11 @@ function dock() {
 }
 // 復原：每一筆開始畫之前記下地形（最多 10 筆）
 function pushUndo() { undoStack.push({ H: snap.H.slice(), springs: springs.map((q) => ({ ...q })) }); if (undoStack.length > 10) undoStack.shift(); if (undoStack.length === 1) dock(); }
+function silentUndo() { const u = undoStack.pop(); if (!u) return; sim.setH(u.H); snap = { H: u.H, W: snap.W }; springs = u.springs; sim.setSprings(springs); refreshSpringMarks(); dock(); }
 function undo() {
   const u = undoStack.pop(); if (!u) return;
   sim.setH(u.H); snap = { H: u.H, W: snap.W }; springs = u.springs; sim.setSprings(springs); refreshSpringMarks();
-  toast('↩️ 回到上一步'); dock();
+  toast('↩️ 回到上一步'); dock(); dirty = true;
 }
 let toastT;
 // 訊息：一次一則；很多則一起來（村莊、任務）就排隊，不會一閃就被蓋掉
@@ -206,12 +207,18 @@ canvas.addEventListener('pointerdown', (e) => {
   try { canvas.setPointerCapture(e.pointerId); } catch { }
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   $('help').style.opacity = 0; fling.x = fling.z = 0;
-  if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; drag = { kind: 'two', a: { ...a }, b: { ...b }, mode: null, acc: 0 }; brush = null; cursor.visible = false; return; }
+  if (ptrs.size === 2) {
+    // 手指還沒真的開始畫就變成兩根：取消；剛畫一下下（不到 0.3 秒）就變成兩根：當作誤觸，悄悄復原
+    if (drag && drag.kind === 'tool') { clearTimeout(drag.timer); if (drag.started && performance.now() - drag.started < 300 && undoStack.length > drag.undoLen) silentUndo(); }
+    const [a, b] = [...ptrs.values()]; drag = { kind: 'two', a: { ...a }, b: { ...b }, mode: null, acc: 0 }; brush = null; cursor.visible = false; return; }
   if (ptrs.size > 2) return;
   // 右鍵轉向；中鍵、按著空白鍵或用「移動」工具＝拖曳平移；其他＝用工具
   const kind = e.button === 2 ? 'rot' : (e.button === 1 || keys.has(' ') || tool === 'look') ? 'pan' : 'tool';
   drag = { kind, lx: e.clientX, ly: e.clientY, t: performance.now() };
-  if (kind === 'tool') useTool(e.clientX, e.clientY, true);
+  if (kind !== 'tool') return;
+  // 觸控：等一下下再開始畫，看是不是要變成兩根手指（移動鏡頭），才不會先在島上畫出一坨
+  const go = () => { if (drag && drag.kind === 'tool') { drag.started = performance.now(); drag.undoLen = undoStack.length; useTool(drag.lx, drag.ly, true); } };
+  if (e.pointerType === 'touch') drag.timer = setTimeout(go, 110); else go();
 });
 canvas.addEventListener('pointermove', (e) => {
   if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -240,10 +247,12 @@ canvas.addEventListener('pointermove', (e) => {
   const lx = drag.lx, ly = drag.ly; drag.lx = e.clientX; drag.ly = e.clientY;
   if (drag.kind === 'rot') { rotateBy(-(e.clientX - lx) * 0.006, (e.clientY - ly) * 0.004, false); return; }
   if (drag.kind === 'pan') { grabPan(lx, ly, e.clientX, e.clientY, dt); return; }
-  useTool(e.clientX, e.clientY, false);
+  if (drag.kind === 'tool' && drag.started) useTool(e.clientX, e.clientY, false);
 });
 const endP = (e) => {
   ptrs.delete(e.pointerId);
+  // 很快點一下（放泉水、蓋村莊）：還沒等到開始就放手了 → 現在做
+  if (drag && drag.kind === 'tool' && !drag.started && !ptrs.size) { clearTimeout(drag.timer); drag.started = 1; useTool(drag.lx, drag.ly, true); }
   if (drag && drag.kind === 'pan' && performance.now() - drag.t > 80) fling.x = fling.z = 0;   // 停住才放手就不要滑
   if (!ptrs.size) { if (!drag || drag.kind !== 'pan') fling.x = fling.z = 0; drag = null; brush = null; return; }
   // 兩根手指放掉一根：用「移動」工具時接著平移，用其他工具時不要突然開始畫
@@ -350,7 +359,7 @@ function useTool(cx, cy, first) {
     if (near >= 0) { springs.splice(near, 1); toast('拿掉一個泉水'); }
     else if (springs.length >= 8) toast('泉水最多 8 個');
     else { springs.push({ x: h.x, y: h.y, r: 2.2, rate: 2.5 }); toast('💧 放了一個泉水'); }
-    sim.setSprings(springs); refreshSpringMarks();
+    sim.setSprings(springs); refreshSpringMarks(); dirty = true;
   }
 }
 
@@ -421,6 +430,37 @@ $('soundBtn').onclick = () => { sound.start(); sound.on = !sound.on; save.soundO
 $('speedBtn').onclick = () => { speed = speed === 1 ? 2 : speed === 2 ? 4 : 1; $('speedBtn').textContent = `⏩ ×${speed}`; };
 addEventListener('pointerdown', () => sound.start(), { once: true });
 
+// ---------------------------------------------------------------- 存下做好的島（地形、泉水、村莊）：重新整理、下次再來都還在
+// 另一個 key，不動原本的存檔格式。地形用 Int16（公尺 × 400）再轉 base64，256×256 大約 175KB；水不存（泉水和雨會再把湖填滿）
+const WORLD_KEY = 'mwLabTerra.world.v1';
+let dirty = false, saveT = 0;
+function b64(u8) { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
+function saveWorld() {
+  if (!dirty || !snap) return; dirty = false;
+  const q = new Int16Array(N * N); for (let i = 0; i < N * N; i++) q[i] = Math.round(clampN(snap.H[i], -80, 80) * 400);
+  const data = { seed: save.seed, N, h: b64(new Uint8Array(q.buffer)), springs, villages: villages.list.map((v) => ({ x: v.x, y: v.y, pop: v.pop, name: v.name, seed: v.seed })), touched: b64(touched) };
+  try { localStorage.setItem(WORLD_KEY, JSON.stringify(data)); } catch { /* 空間不夠就算了，下次再試 */ dirty = true; }
+}
+function loadWorld() {
+  let d; try { d = JSON.parse(localStorage.getItem(WORLD_KEY)); } catch { return false; }
+  if (!d || d.seed !== save.seed || !d.h) return false;
+  const raw = Uint8Array.from(atob(d.h), (c) => c.charCodeAt(0)), q = new Int16Array(raw.buffer), M = d.N;
+  if (q.length !== M * M) return false;
+  // 畫質不一樣（格子數不同）：用最近的格子換算
+  const H = new Float32Array(N * N), k = (M - 1) / (N - 1);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) H[y * N + x] = q[Math.round(y * k) * M + Math.round(x * k)] / 400;
+  sim.setH(H); snap = { H, W: snap.W };
+  if (M === N && d.touched) touched = Uint8Array.from(atob(d.touched), (c) => c.charCodeAt(0));
+  const r = (N - 1) / (M - 1);
+  springs = (d.springs || []).slice(0, 8).map((s) => ({ ...s, x: s.x * r, y: s.y * r })); sim.setSprings(springs); refreshSpringMarks();
+  for (const v of d.villages || []) { villages.add(v.x * r, v.y * r); Object.assign(villages.list[villages.list.length - 1], { pop: v.pop, best: v.pop, name: v.name, seed: v.seed ?? 0 }); }
+  villages.draw(snap);
+  return true;
+}
+function clearWorld() { try { localStorage.removeItem(WORLD_KEY); } catch { } dirty = false; }
+addEventListener('pagehide', saveWorld);
+document.addEventListener('visibilitychange', () => { if (document.hidden) saveWorld(); });
+
 // ---------------------------------------------------------------- 雨滴（看得到在下雨）、下雨時天變暗；村莊頭上的名牌
 const DROPS = 1400, rainPos = new Float32Array(DROPS * 6), rainSeed = Float32Array.from({ length: DROPS * 3 }, Math.random);
 const rainGeo = new THREE.BufferGeometry(); rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
@@ -464,9 +504,10 @@ function update(dt) {
   const n = STEPS * speed;
   // 堆山、挖地、火山、整平：速度用「每一秒真實時間」算（不管顯示卡一秒跑幾步、有沒有快轉，手感都一樣）
   const b = brush && brush.mode !== 3 ? { ...brush, amt: brush.amt * dt / (n * DT) } : brush;
-  if (b && b.mode !== 3) markTouched(b);
+  if (b && b.mode !== 3) { markTouched(b); dirty = true; }
   for (let k = 0; k < n; k++) sim.step(DT, { rain: globalRain ? 0.035 : 0, brush: b });
   readT -= dt; treeT += dt; simT += dt * speed;
+  saveT += dt; if (saveT > 15) { saveT = 0; if (villages.list.length) dirty = true; saveWorld(); }
   if (readT <= 0 && !reading) {
     readT = 0.5; reading = true;
     sim.read().then((s) => { snap = s; reading = false; villages.update(s, simT); simT = 0; while (villages.events.length) toast(villages.events.shift(), true); checkGoals(); drawMiniBase(s); trees.update(s.H, s.W, treeT); treeT = 0; }).catch(() => { reading = false; });
@@ -487,6 +528,8 @@ $('help').innerHTML = isTouch
   ? '選一個工具，用一根手指在島上畫：⛰️ 堆山、⛏️ 挖地、🌧️ 下雨、🌋 火山、🏘️ 蓋村莊…<br>兩根手指＝移動鏡頭（捏合縮放、轉一轉轉向、一起上下推改變角度）。右上小地圖點一下就飛過去。'
   : '選一個工具，在島上按住拖曳：⛰️ 堆山、⛏️ 挖地、🌧️ 下雨、🌋 火山、🏘️ 蓋村莊…<br>滾輪縮放、右鍵拖曳轉向、中鍵或空白鍵＋拖曳移動，也可以用 WASD／Q E。右上小地圖點一下就飛過去。';
 dock(); renderGoals(); updateCamera(); drawMiniBase(snap); drawMini();
+await step(0.8, '讀取你做好的島…');
+if (loadWorld()) setTimeout(() => toast('🏝️ 你上次做好的島回來了'), 800);
 await step(0.85, '暖機…');
 sim.step(DT, { rain: 0 }); render();
 await step(1, '好了！');
@@ -499,7 +542,7 @@ window.__ready = true;
 window.__terra = {
   get sim() { return sim; }, get snap() { return snap; }, get world() { return world; }, cam, goal, WEBGPU, N, renderer, zoomAt, grabPan, planeAt,
   rain(v) { globalRain = v; },
-  get villages() { return villages; }, updateRain, updateLabels, undo, pushUndo, setTool(k) { tool = k; dock(); }, useTool,
+  get villages() { return villages; }, saveWorld() { dirty = true; saveWorld(); }, loadWorld, updateRain, updateLabels, undo, pushUndo, setTool(k) { tool = k; dock(); }, useTool,
   spring(x, y) { springs.push({ x, y, r: 2.2, rate: 2.5 }); sim.setSprings(springs); refreshSpringMarks(); },
   brush(b) { brush = b; },
   async sim2(sec) { if (brush && brush.mode !== 3) markTouched(brush); for (let i = 0; i < sec * 20; i++) { sim.step(DT, { rain: globalRain ? 0.035 : 0, brush }); if (i % 40 === 39) await new Promise((r) => setTimeout(r, 0)); } snap = await sim.read(); villages.update(snap, sec); checkGoals(); trees.update(snap.H, snap.W, sec); return GOALS.map((g) => [g.id, +(prog[g.id] || 0).toFixed(2), !!save.done[g.id]]); },
