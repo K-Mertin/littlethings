@@ -28,6 +28,7 @@
 | J | `bounce/` | 彈彈球大冒險 | `index.html`＋`levels.js`（字元地圖）＋`game.js`，Canvas 2D | — | ✓ | |
 | N | `ember/` | 燼燈 | `index.html`＋`js/`（world、core、actors、render、main），Canvas 2D | — | ✓ | |
 | A | `ricochet/` | 反彈神射手 | `index.html`＋`core.js`（物理）＋`levels.js`＋`art.js`（美術）＋`game.js`，Canvas 2D；改關卡後跑 `node ricochet/tools/solve.mjs` | — | ✓ | ✓ |
+| O | `boom/` | 砰砰小隊 | `index.html`＋`core.js`（規則、關卡、電腦對手，和模擬器共用）＋`game.js`，Canvas 2D；改 `core.js` 後跑 `node boom/tools/sim.mjs`；存檔 `boom:v1` | — | ✓ | |
 | X | `lab/` | MW 實驗室 | 小大廳 `lab/index.html`＋`lab/street/`（MW 大街 WebGPU 版：`index.html`＋`js/`＋`js/gpu/`，素材讀 `/street/assets/`）＋`lab/sand/`（沙之實驗室：WGSL compute 落沙、6 關，存檔 `mwLabSand.v1`）＋`lab/deep/`（深海探險隊：潛水艇、boids 魚群、圖鑑，存檔 `mwLabDeep.v1`）＋`lab/galaxy/`（銀河建造師：星系沙盒＋軌道任務，存檔 `mwLabGalaxy.v1`）＋`lab/army/`（萬軍對決 3D：6 場戰役＋自由對戰，存檔 `mwLabArmy.v1`）＋`lab/nightrace/`（夜雨賽車：城市夜賽、雨、水花、濕路反射，存檔 `mwLabNight.v1`）；不做離線包 | three 0.187（WebGPU，退回 WebGL2） | ✓ | |
 
 ## 未上架（大廳沒有卡片，網址可以直接進）
