@@ -27,6 +27,7 @@ const WORLDS = [
   { key: 'grass', name: '青草原', kit: { b: 1, f: 2 }, sp: 1 },
   { key: 'snow', name: '雪花谷', kit: { b: 2, f: 2 }, sp: 1.08 },
   { key: 'lava', name: '火山口', kit: { b: 2, f: 3 }, sp: 1.16 },
+  { key: 'castle', name: '月光古堡', kit: { b: 2, f: 3 }, sp: 1.2 },
 ];
 // m：怪物（s 史萊姆、b 蝙蝠、g 幽靈、c 小惡魔、K 大王）；d：木箱密度；it：藏在木箱裡的道具；lay：場地樣式
 const STAGES = [
@@ -57,6 +58,15 @@ const STAGES = [
   { m: 'bbbgcccc', d: .64, it: 'BBFFSHL', lay: 0 },
   { m: 'ggbbcccc', d: .66, it: 'BBFFSSHK', lay: 3 },
   { m: 'KKcc', d: .3, it: 'BBFFSHL', lay: 1, boss: 4 },
+  // 月光古堡（S 分裂史萊姆、x 炸彈怪）
+  { m: 'SSsb', d: .5, it: 'BFS', lay: 0 },
+  { m: 'xxss', d: .55, it: 'BFH', lay: 2 },
+  { m: 'SSxbc', d: .55, it: 'BFSK', lay: 3 },
+  { m: 'xxgcc', d: .6, it: 'BBFH', lay: 0 },
+  { m: 'SSSxcc', d: .6, it: 'BFFSL', lay: 1 },
+  { m: 'xxxggc', d: .62, it: 'BFSKH', lay: 3 },
+  { m: 'SSxxbccg', d: .64, it: 'BBFFSHL', lay: 2 },
+  { m: 'KxSc', d: .3, it: 'BBFFSHL', lay: 1, boss: 5 },
 ];
 const PER_WORLD = 8;
 const MON = {
@@ -65,6 +75,8 @@ const MON = {
   g: { type: 'ghost', sp: 1.2, hp: 1 },
   c: { type: 'imp', sp: 2.0, hp: 1 },
   K: { type: 'boss', sp: 1.35, hp: 3 },
+  S: { type: 'split', sp: 1.3, hp: 1 },
+  x: { type: 'bomber', sp: 1.5, hp: 1 },
 };
 
 // ───────── 場地產生 ─────────
@@ -142,7 +154,7 @@ function newAdventure(stage, opts) {
   const mspots = spots.slice(0, mdefs.length);
   // 世界機關：雪花谷有傳送門，火山口有會噴火的地洞
   const k8 = stage % PER_WORLD, extra = spots.slice(mdefs.length);
-  const nTp = world.key === 'snow' ? (k8 < 4 ? 1 : 2) : 0, nVent = world.key === 'lava' ? [2, 2, 3, 3, 3, 4, 4, 3][k8] : 0;
+  const nTp = world.key === 'snow' ? (k8 < 4 ? 1 : 2) : world.key === 'castle' ? 1 : 0, nVent = world.key === 'lava' ? [2, 2, 3, 3, 3, 4, 4, 3][k8] : world.key === 'castle' ? 2 : 0;
   for (let k = 0; k < nTp && extra.length >= 2; k++) addPortal(G, extra.shift(), extra.shift(), safe);
   for (let k = 0; k < nVent && extra.length; k++) { const i = extra.shift(); safe.add(i); G.vents.push({ i, t: 3 + k * 1.3, period: 5.2 }); }
   for (const i of mspots) { safe.add(i); const x = i % W; safe.add(i + (x < W - 2 ? 1 : -1)); }
@@ -151,7 +163,7 @@ function newAdventure(stage, opts) {
     const d = MON[c], i = mspots[k];
     G.mons.push({
       id: k, type: d.type, x: i % W, y: (i / W) | 0, tx: i % W, ty: (i / W) | 0, px: i % W, py: (i / W) | 0, dx: 0, dy: 0,
-      speed: d.sp * world.sp, hp: c === 'K' ? (def.boss || 3) : d.hp, maxHp: c === 'K' ? (def.boss || 3) : d.hp, inv: 0, alive: true, deadT: 0, wait: .6 + r() * .8,
+      speed: d.sp * world.sp, hp: c === 'K' ? (def.boss || 3) : d.hp, maxHp: c === 'K' ? (def.boss || 3) : d.hp, inv: 0, alive: true, deadT: 0, wait: .6 + r() * .8, bombT: 3 + r() * 3,
     });
   });
   // 門和道具藏在木箱下
@@ -172,14 +184,14 @@ function newBattle(opts) {
   const seed = opts.seed != null ? opts.seed : (Math.random() * 1e9) | 0;
   const r = mulberry(seed);
   const G = mkState('battle'); G.rnd = mulberry(seed ^ 0x5bd1e995);
-  G.world = opts.world || ['grass', 'snow', 'lava'][(r() * 3) | 0];
+  G.world = opts.world || ['grass', 'snow', 'lava', 'castle'][(r() * 4) | 0];
   const total = Math.min(4, opts.humans + opts.bots);
   const safe = new Set();
   for (let k = 0; k < 4; k++) for (const i of safeZone(SPAWN[k][0], SPAWN[k][1])) safe.add(i);
   G.grid = genGrid(r, opts.lay != null ? opts.lay : [0, 0, 1, 2][(r() * 4) | 0], .78, safe);
   const clear = i => { G.grid[i] = FLOOR; };
-  if (G.world === 'snow') { const a = 5 * W + 3, b = 5 * W + 9; clear(a); clear(b); clear(a + 1); clear(b - 1); addPortal(G, a, b); }
-  if (G.world === 'lava') for (const [i, t] of [[3 * W + 6, 4], [7 * W + 6, 6.6]]) { clear(i); G.vents.push({ i, t, period: 5.2 }); }
+  if (G.world === 'snow' || G.world === 'castle') { const a = 5 * W + 3, b = 5 * W + 9; clear(a); clear(b); clear(a + 1); clear(b - 1); addPortal(G, a, b); }
+  if (G.world === 'lava' || G.world === 'castle') for (const [i, t] of [[3 * W + 6, 4], [7 * W + 6, 6.6]]) { clear(i); G.vents.push({ i, t, period: 5.2 }); }
   const bag = 'BBBBBBBFFFFFFFSSSSKKKHHPPZXX';
   for (let i = 0; i < N; i++) if (G.grid[i] === SOFT && r() < .4) G.hidden[i] = IT[bag[(r() * bag.length) | 0]];
   // 兩個人時坐對角
@@ -352,7 +364,13 @@ function hurtPlayer(G, p, by) {
 function hurtMon(G, m) {
   if (!m.alive || m.inv > 0) return;
   m.hp--;
-  if (m.hp <= 0) { m.alive = false; m.deadT = 0; G.ev.push({ t: 'mdie', x: m.x, y: m.y, type: m.type }); }
+  if (m.hp <= 0) {
+    m.alive = false; m.deadT = 0; G.ev.push({ t: 'mdie', x: m.x, y: m.y, type: m.type });
+    if (m.type === 'split') for (let k = 0; k < 2; k++) {          // 分裂成兩隻小的
+      const x = Math.round(m.x), y = Math.round(m.y);
+      G.mons.push({ id: G.mons.length, type: 'mini', x, y, tx: x, ty: y, px: x, py: y, dx: 0, dy: 0, speed: m.speed * 1.75, hp: 1, maxHp: 1, inv: .9, alive: true, deadT: 0, wait: .55 + k * .25, bombT: 0 });
+    }
+  }
   else { m.inv = 1.2; G.ev.push({ t: 'mhurt', x: m.x, y: m.y }); }
 }
 
@@ -376,8 +394,24 @@ function bfsStep(G, m, sx, sy, goals) {
   }
   return -1;
 }
+function monBomb(G, m) {
+  const i = m.ty * W + m.tx;
+  if (G.bombAt[i] || G.grid[i] !== FLOOR || G.portalAt[i] >= 0) return;
+  const b = { tx: m.tx, ty: m.ty, ox: 0, oy: 0, vx: 0, vy: 0, owner: -1, range: 2, pierce: false, t: FUSE + .4, pass: new Set(), born: G.time };
+  for (const e of G.players) if (e.alive && Math.abs(e.x - b.tx) < 1 && Math.abs(e.y - b.ty) < 1) b.pass.add(e);
+  G.bombs.push(b); G.bombAt[i] = b; G.ev.push({ t: 'place', x: b.tx, y: b.ty });
+}
 function monChoose(G, m) {
   const x = m.tx, y = m.ty, r = G.rnd;
+  if (m.type === 'bomber') {
+    if (m.bombT <= 0) { m.bombT = 4 + r() * 2.5; monBomb(G, m); }
+    const D = dangerMap(G, null, null, true);
+    if (D[y * W + x] !== Infinity) {          // 自己放的也會怕：往安全的地方跑
+      const goals = new Set(); for (let i = 0; i < N; i++) if (D[i] === Infinity && G.grid[i] === FLOOR) goals.add(i);
+      const st = bfsStep(G, m, x, y, goals);
+      if (st >= 0) { m.dx = st % W - x; m.dy = ((st / W) | 0) - y; m.px = x; m.py = y; m.tx = x + m.dx; m.ty = y + m.dy; return; }
+    }
+  }
   const opts = DIRS.filter(([dx, dy]) => monOk(G, m, x + dx, y + dy));
   if (!opts.length) { m.dx = m.dy = 0; return; }
   const fwd = opts.find(([dx, dy]) => dx === m.dx && dy === m.dy && (dx || dy));
@@ -405,6 +439,7 @@ function stepMons(G, dt) {
     if (m.inv > 0) m.inv -= dt;
     if (m.wait > 0) { m.wait -= dt; continue; }
     if (G.freezeT > 0) continue;
+    if (m.bombT > 0) m.bombT -= dt;
     let dist = m.speed * dt, guard = 0;
     while (dist > 1e-6 && guard++ < 4) {
       const rx = m.tx - m.x, ry = m.ty - m.y, rem = Math.abs(rx) + Math.abs(ry);
@@ -451,7 +486,7 @@ function crateCount(G, bx, by, range) {
   }
   return n;
 }
-function dangerMap(G, extra, me) {
+function dangerMap(G, extra, me, noMons) {
   const D = new Float32Array(N).fill(Infinity);
   // 弱一點的電腦有時候「沒注意到」別人的炸彈
   const blind = me && me.bot ? me.bot.blind : 0;
@@ -473,7 +508,7 @@ function dangerMap(G, extra, me) {
     }
   }
   for (const v of G.vents) if (v.t < 2.6 && G.grid[v.i] === FLOOR) for (const i of blast(G, v.i % W, (v.i / W) | 0, 1, set, [])) if (v.t < D[i]) D[i] = Math.max(.01, v.t);
-  for (const m of G.mons) if (m.alive) {
+  if (!noMons) for (const m of G.mons) if (m.alive) {
     const mx = Math.round(m.x), my = Math.round(m.y);
     D[my * W + mx] = Math.min(D[my * W + mx], .2);
     for (const [dx, dy] of DIRS) { const j = (my + dy) * W + mx + dx; D[j] = Math.min(D[j], .3); }
