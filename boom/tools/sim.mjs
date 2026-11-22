@@ -17,6 +17,17 @@ for (const level of [0, 1, 2]) {
   }
   console.log(`對戰 level ${level}: 平均 ${(tsum / n).toFixed(1)}s 最長 ${tmax.toFixed(0)}s 平手 ${draws}/${n} 15 秒內結束 ${early}`);
 }
+// 3) 站著不動的人：電腦多久會把他炸掉（太久代表電腦不會進攻）
+for (const level of [0, 1, 2]) {
+  let ts = 0, killed = 0;
+  for (let k = 0; k < n; k++) {
+    const G = C.newBattle({ humans: 1, bots: 3, level, seed: k * 31 + 7 });
+    let steps = 0; const me = G.players[0];
+    while (!G.over && me.alive && steps++ < 60 * 200) { C.step(G, 1 / 60); G.ev.length = 0; }
+    ts += G.time; if (G.time < G.sd.start) killed++;
+  }
+  console.log(`不動的人 level ${level}: 平均活 ${(ts / n).toFixed(0)}s，驟死前被炸掉 ${killed}/${n}`);
+}
 let fail = 0;
 for (let s = 0; s < C.STAGES.length; s++) {
   let wins = 0, t = 0; const tries = 6;

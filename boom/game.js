@@ -549,6 +549,7 @@ function frame(ms) {
   updateHud(G); draw(G, false);
   if (G.over && !S.shownOver) { S.shownOver = true; setTimeout(() => onOver(G), 500); }
 }
+S.dev = { stage: startStage, battle: startMatch, menu: toMenu };
 toMenu();
 requestAnimationFrame(frame);
 })();
