@@ -164,6 +164,7 @@ function newAdventure(stage, opts) {
     G.mons.push({
       id: k, type: d.type, x: i % W, y: (i / W) | 0, tx: i % W, ty: (i / W) | 0, px: i % W, py: (i / W) | 0, dx: 0, dy: 0,
       speed: d.sp * world.sp, hp: c === 'K' ? (def.boss || 3) : d.hp, maxHp: c === 'K' ? (def.boss || 3) : d.hp, inv: 0, alive: true, deadT: 0, wait: .6 + r() * .8, bombT: 3 + r() * 3,
+      boss: c === 'K' ? ['summon', 'dash', 'bomb', 'blink'][(stage / PER_WORLD) | 0] : null, skillT: 4 + r() * 2, tele: 0, dashing: false, base: d.sp * world.sp,
     });
   });
   // 門和道具藏在木箱下
@@ -371,7 +372,7 @@ function hurtMon(G, m) {
       G.mons.push({ id: G.mons.length, type: 'mini', x, y, tx: x, ty: y, px: x, py: y, dx: 0, dy: 0, speed: m.speed * 1.75, hp: 1, maxHp: 1, inv: .9, alive: true, deadT: 0, wait: .55 + k * .25, bombT: 0 });
     }
   }
-  else { m.inv = 1.2; G.ev.push({ t: 'mhurt', x: m.x, y: m.y }); }
+  else { m.inv = 1.2; if (m.dashing) { m.dashing = false; m.speed = m.base; m.skillT = 3; } G.ev.push({ t: 'mhurt', x: m.x, y: m.y }); }
 }
 
 // ───────── 怪物 ─────────
@@ -394,17 +395,48 @@ function bfsStep(G, m, sx, sy, goals) {
   }
   return -1;
 }
-function monBomb(G, m) {
+// 大王的招式。回傳 true 表示這一步已經決定好了
+function bossSkill(G, m) {
+  const x = m.tx, y = m.ty, r = G.rnd, pl = G.players.find(p => p.alive);
+  if (m.dashing) {                                             // 衝刺中：一直往前直到撞牆
+    if (monOk(G, m, x + m.dx, y + m.dy)) { m.px = x; m.py = y; m.tx = x + m.dx; m.ty = y + m.dy; return true; }
+    m.dashing = false; m.speed = m.base; m.skillT = 4.5; return false;
+  }
+  if (m.skillT > 0 || !pl) return false;
+  const minions = G.mons.filter(q => q.alive && q.minion).length;
+  const spawn = type => {
+    const o = DIRS.filter(([dx, dy]) => G.grid[(y + dy) * W + x + dx] === FLOOR && !G.bombAt[(y + dy) * W + x + dx])[0]; if (!o) return;
+    const d = type === 'bat' ? MON.b : MON.s, nx = x + o[0], ny = y + o[1];
+    G.mons.push({ id: G.mons.length, type, x, y, tx: nx, ty: ny, px: x, py: y, dx: o[0], dy: o[1], speed: d.sp * 1.1, hp: 1, maxHp: 1, inv: .6, alive: true, deadT: 0, wait: .3, bombT: 0, minion: true });
+    G.ev.push({ t: 'summon', x, y });
+  };
+  if (m.boss === 'summon') { m.skillT = 6.5; if (minions < 3) spawn('slime'); return false; }
+  if (m.boss === 'dash') {
+    const px = Math.round(pl.x), py = Math.round(pl.y);
+    const dx = py === y ? Math.sign(px - x) : 0, dy = px === x ? Math.sign(py - y) : 0;
+    if ((dx || dy) && monOk(G, m, x + dx, y + dy)) { m.dx = dx; m.dy = dy; m.dashing = true; m.speed = m.base * 3.2; m.wait = .7; m.tele = .7; G.ev.push({ t: 'tele', x, y }); return true; }
+    return false;
+  }
+  if (m.boss === 'blink') {
+    m.skillT = 7;
+    const D = dangerMap(G, null, null, true), c = [];
+    for (let i = 0; i < N; i++) if (G.grid[i] === FLOOR && !G.bombAt[i] && D[i] === Infinity && Math.abs(i % W - pl.x) + Math.abs(((i / W) | 0) - pl.y) >= 3) c.push(i);
+    if (c.length) { const i = c[(r() * c.length) | 0]; G.ev.push({ t: 'tp', x: i % W, y: (i / W) | 0, fx: x, fy: y }); m.x = m.tx = m.px = i % W; m.y = m.ty = m.py = (i / W) | 0; m.dx = m.dy = 0; m.wait = .5; if (minions < 2) spawn('bat'); return true; }
+  }
+  return false;
+}
+function monBomb(G, m, range) {
   const i = m.ty * W + m.tx;
   if (G.bombAt[i] || G.grid[i] !== FLOOR || G.portalAt[i] >= 0) return;
-  const b = { tx: m.tx, ty: m.ty, ox: 0, oy: 0, vx: 0, vy: 0, owner: -1, range: 2, pierce: false, t: FUSE + .4, pass: new Set(), born: G.time };
+  const b = { tx: m.tx, ty: m.ty, ox: 0, oy: 0, vx: 0, vy: 0, owner: -1, range: range || 2, pierce: false, t: FUSE + .4, pass: new Set(), born: G.time };
   for (const e of G.players) if (e.alive && Math.abs(e.x - b.tx) < 1 && Math.abs(e.y - b.ty) < 1) b.pass.add(e);
   G.bombs.push(b); G.bombAt[i] = b; G.ev.push({ t: 'place', x: b.tx, y: b.ty });
 }
 function monChoose(G, m) {
   const x = m.tx, y = m.ty, r = G.rnd;
-  if (m.type === 'bomber') {
-    if (m.bombT <= 0) { m.bombT = 4 + r() * 2.5; monBomb(G, m); }
+  if (m.type === 'boss' && bossSkill(G, m)) return;
+  if (m.type === 'bomber' || m.boss === 'bomb') {
+    if (m.bombT <= 0) { m.bombT = 4 + r() * 2.5; monBomb(G, m, m.boss ? 3 : 2); }
     const D = dangerMap(G, null, null, true);
     if (D[y * W + x] !== Infinity) {          // 自己放的也會怕：往安全的地方跑
       const goals = new Set(); for (let i = 0; i < N; i++) if (D[i] === Infinity && G.grid[i] === FLOOR) goals.add(i);
@@ -437,9 +469,11 @@ function stepMons(G, dt) {
   for (const m of G.mons) {
     if (!m.alive) { m.deadT += dt; continue; }
     if (m.inv > 0) m.inv -= dt;
+    if (m.tele > 0) m.tele -= dt;
     if (m.wait > 0) { m.wait -= dt; continue; }
     if (G.freezeT > 0) continue;
     if (m.bombT > 0) m.bombT -= dt;
+    if (m.skillT > 0) m.skillT -= dt;
     let dist = m.speed * dt, guard = 0;
     while (dist > 1e-6 && guard++ < 4) {
       const rx = m.tx - m.x, ry = m.ty - m.y, rem = Math.abs(rx) + Math.abs(ry);
@@ -451,7 +485,7 @@ function stepMons(G, dt) {
           m.x = m.tx = pj % W; m.y = m.ty = (pj / W) | 0; m.tpLock = true; m.wait = .25; break;
         } else if (pj < 0) m.tpLock = false;
         monChoose(G, m);
-        if (!m.dx && !m.dy) break;
+        if ((!m.dx && !m.dy) || m.wait > 0) break;
         continue;
       }
       // 路上被炸彈擋住就掉頭
@@ -677,6 +711,7 @@ function step(G, dt) {
       hurtPlayer(G, p, owner);
     }
     for (const m of G.mons) if (m.alive && Math.abs(m.x - fx) < .6 && Math.abs(m.y - fy) < .6) {
+      if (m.type === 'boss' && owner < 0) continue;       // 大王不怕怪物的炸彈和地洞的火
       const was = m.alive; hurtMon(G, m);
       if (was && !m.alive && G.players[owner]) G.players[owner].kills++;
     }

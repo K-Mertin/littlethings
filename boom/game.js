@@ -244,9 +244,10 @@ function drawMon(m) {
   if (m.type === 'slime' || m.type === 'boss' || m.type === 'split' || m.type === 'mini') {
     const boss = m.type === 'boss', rx = s * .34 * (1 + wob * .06), ry = s * .3 * (1 - wob * .06), by = py + s * .32;
     const teal = m.type === 'split' || m.type === 'mini';
-    c.fillStyle = flash ? '#fff' : boss ? '#8a4fd6' : teal ? '#35c2c9' : '#58c95a';
+    const BC = { summon: ['#8a4fd6', '#5a2c9c'], dash: ['#5fb8f2', '#2a6fa8'], bomb: ['#f0673a', '#9c2f14'], blink: ['#4b4a8f', '#23225a'] }[m.boss] || ['#8a4fd6', '#5a2c9c'];
+    c.fillStyle = flash ? '#fff' : boss ? BC[0] : teal ? '#35c2c9' : '#58c95a';
     c.beginPath(); c.moveTo(px - rx, by); c.bezierCurveTo(px - rx, by - ry * 2.3, px + rx, by - ry * 2.3, px + rx, by); c.closePath(); c.fill();
-    c.strokeStyle = boss ? '#5a2c9c' : teal ? '#1b8088' : '#2f8f3a'; c.lineWidth = Math.max(1.5, s * .04); c.stroke();
+    c.strokeStyle = boss ? BC[1] : teal ? '#1b8088' : '#2f8f3a'; c.lineWidth = Math.max(1.5, s * .04); c.stroke();
     c.fillStyle = 'rgba(255,255,255,.35)'; c.beginPath(); c.ellipse(px - rx * .4, by - ry * 1.25, rx * .2, ry * .22, -.5, 0, 7); c.fill();
     eyes(by - ry * .75, rx * .36, s * .075);
     if (m.type === 'split') { c.strokeStyle = '#1b8088'; c.setLineDash([s * .06, s * .06]); c.beginPath(); c.moveTo(px, by - ry * 1.7); c.lineTo(px, by - ry * 1.05); c.stroke(); c.setLineDash([]); }
@@ -255,6 +256,7 @@ function drawMon(m) {
       c.moveTo(px - s * .2, cy); c.lineTo(px - s * .2, cy - s * .2); c.lineTo(px - s * .1, cy - s * .1); c.lineTo(px, cy - s * .24); c.lineTo(px + s * .1, cy - s * .1); c.lineTo(px + s * .2, cy - s * .2); c.lineTo(px + s * .2, cy); c.closePath(); c.fill();
       c.strokeStyle = '#c98a0f'; c.stroke();
       c.strokeStyle = '#2b2340'; c.lineWidth = Math.max(2, s * .04); c.beginPath(); c.moveTo(px - rx * .6, by - ry * 1.12); c.lineTo(px - rx * .15, by - ry * .98); c.moveTo(px + rx * .6, by - ry * 1.12); c.lineTo(px + rx * .15, by - ry * .98); c.stroke();
+      if (m.tele > 0 && Math.floor(tNow * 12) % 2) { c.fillStyle = '#ef4b3f'; c.font = `900 ${Math.round(ts * .6)}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('!', px + m.dx * ts * .8, py + m.dy * ts * .8 - ts * .1); }
       for (let k = 0; k < m.maxHp; k++) { c.fillStyle = k < m.hp ? '#ef4b3f' : 'rgba(43,35,64,.25)'; c.beginPath(); c.arc(px + (k - (m.maxHp - 1) / 2) * ts * .2, py - s * .62, ts * .07, 0, 7); c.fill(); }
     }
   } else if (m.type === 'bomber') {       // 炸彈怪：長腳的小炸彈
@@ -303,6 +305,8 @@ function onEvents(G, quiet) {
       case 'boom': puff(e.x, e.y, 6, 'rgba(90,80,90,.55)', 1.2, .2, .7); shake = Math.min(.3, shake + .12); if (!quiet) sfx.boom(); break;
       case 'crate': puff(e.x, e.y, 7, P.crD, 3, .1, .5); puff(e.x, e.y, 4, P.cr, 2.5, .1, .5); break;
       case 'item': puff(e.x, e.y, 8, '#ffd23d', 2.5, .07, .45); floats.push({ x: e.x, y: e.y - .3, text: '+' + ICON[e.it], life: 0 }); if (!quiet) sfx.item(); break;
+      case 'summon': puff(e.x, e.y, 10, '#c9a6ff', 3, .09, .5); if (!quiet) sfx.tp(); break;
+      case 'tele': if (!quiet) sfx.alarm(); break;
       case 'freeze': banner(G.mode === 'adv' ? '❄️ 怪物被凍住了！' : '❄️ 冰凍！', 1.2); if (!quiet) sfx.freeze(); break;
       case 'curse': floats.push({ x: e.x, y: e.y - .5, text: '💀 ' + CURSE[e.type], life: -0.6 }); if (!quiet) sfx.curse(); break;
       case 'itemburn': puff(e.x, e.y, 5, '#888', 1.5, .08, .4); break;
