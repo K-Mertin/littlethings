@@ -3,18 +3,36 @@
 'use strict';
 const C = BoomCore, W = C.W, H = C.H, IT = C.IT;
 const $ = id => document.getElementById(id);
-const cv = $('cv'), c = cv.getContext('2d');
+const cv = $('cv'); let c = cv.getContext('2d');
 
 // ───────── 存檔 ─────────
 const SAVE_KEY = 'boom:v1';
-const save = Object.assign({ stars: [], best: 0, kid: false, mute: false, music: true, bt: { h: 1, b: 3, l: 1, w: 2 } }, (() => { try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch (e) { return {}; } })());
+const save = Object.assign({ stars: [], best: 0, look: { c: 0, hat: 0 }, kid: false, mute: false, music: true, bt: { h: 1, b: 3, l: 1, w: 2 } }, (() => { try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch (e) { return {}; } })());
 if (!Array.isArray(save.stars)) save.stars = [];
 function store() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} }
 
 // ───────── 狀態 ─────────
 const S = { scene: 'menu', G: null, paused: false, intro: 0, match: null, stage: 0, shownOver: false, fast: false };
 window.__boom = S;
-const COLORS = ['#ef4b3f', '#4a9dff', '#3fcf8e', '#ffc23d'], DARK = ['#b02a21', '#2767c2', '#22915f', '#c98a0f'], LIGHT = ['#ffd9d4', '#d9eaff', '#d5f7e6', '#fff0c4'];
+// 造型：顏色與帽子。need 是要幾顆星，end 是無盡迷宮要過第幾層
+const SKINS = [
+  { name: '紅', col: '#ef4b3f', dark: '#b02a21', light: '#ffd9d4' }, { name: '藍', col: '#4a9dff', dark: '#2767c2', light: '#d9eaff' },
+  { name: '綠', col: '#3fcf8e', dark: '#22915f', light: '#d5f7e6' }, { name: '黃', col: '#ffc23d', dark: '#c98a0f', light: '#fff0c4' },
+  { name: '粉紅', col: '#ff8fc0', dark: '#c9558a', light: '#ffe3f0', need: 6 }, { name: '紫', col: '#a47bff', dark: '#6b45c4', light: '#ebe0ff', need: 15 },
+  { name: '橘', col: '#ff9442', dark: '#c4601a', light: '#ffe6d0', need: 30 }, { name: '青', col: '#37c8d6', dark: '#1a8a96', light: '#d3f6f9', need: 50 },
+];
+const HATS = [{ name: '沒有', icon: '🚫' }, { name: '蝴蝶結', icon: '🎀', need: 3 }, { name: '棒球帽', icon: '🧢', need: 9 }, { name: '皇冠', icon: '👑', need: 20 },
+  { name: '魔法帽', icon: '🧙', need: 36 }, { name: '光環', icon: '😇', end: 5 }, { name: '小花', icon: '🌸', need: 60 }, { name: '廚師帽', icon: '👨‍🍳', end: 10 }];
+const COLORS = SKINS.slice(0, 4).map(k => k.col), DARK = SKINS.slice(0, 4).map(k => k.dark), LIGHT = SKINS.slice(0, 4).map(k => k.light), PHAT = [0, 0, 0, 0];
+function starTotal() { return save.stars.reduce((a, b) => a + (b || 0), 0); }
+function lookOk(o) { return o.end ? save.best >= o.end : starTotal() >= (o.need || 0); }
+// 1P 用自己選的造型，其他人依序拿沒被用掉的預設顏色
+function applyLooks(custom) {
+  let lc = custom ? save.look.c | 0 : 0, lh = custom ? save.look.hat | 0 : 0;
+  if (!SKINS[lc] || !lookOk(SKINS[lc])) lc = 0; if (!HATS[lh] || !lookOk(HATS[lh])) lh = 0;
+  const rest = [0, 1, 2, 3].filter(k => k !== lc), ids = [lc, ...rest];
+  for (let k = 0; k < 4; k++) { const sk = SKINS[ids[k]]; COLORS[k] = sk.col; DARK[k] = sk.dark; LIGHT[k] = sk.light; PHAT[k] = k === 0 ? lh : 0; }
+}
 const FONT = '"PingFang TC","Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif';
 const NAMES = ['阿砰', '小藍', '阿綠', '黃黃'];
 const PAL = {
@@ -231,6 +249,16 @@ function drawFlames(G) {
     }
   }
 }
+function drawHat(h, x, y, s, fx) {
+  c.lineWidth = Math.max(1.5, s * .035);
+  if (h === 1) { const bx = x + s * .2, by = y + s * .02; c.fillStyle = '#ff6fa8'; c.beginPath(); c.moveTo(bx, by); c.lineTo(bx - s * .16, by - s * .1); c.lineTo(bx - s * .16, by + s * .1); c.closePath(); c.moveTo(bx, by); c.lineTo(bx + s * .16, by - s * .1); c.lineTo(bx + s * .16, by + s * .1); c.closePath(); c.fill(); c.fillStyle = '#d94886'; c.beginPath(); c.arc(bx, by, s * .045, 0, 7); c.fill(); }
+  else if (h === 2) { c.fillStyle = '#3d7fe0'; c.beginPath(); c.arc(x, y + s * .06, s * .26, Math.PI, 0); c.closePath(); c.fill(); c.fillStyle = '#2b5cab'; rr(x + (fx < 0 ? -s * .44 : fx > 0 ? s * .1 : -s * .17), y + s * .02, s * .34, s * .07, s * .03); c.fill(); c.fillStyle = '#fff'; c.beginPath(); c.arc(x, y - s * .19, s * .035, 0, 7); c.fill(); }
+  else if (h === 3) { c.fillStyle = '#ffc23d'; c.strokeStyle = '#c98a0f'; c.beginPath(); c.moveTo(x - s * .2, y + s * .06); c.lineTo(x - s * .22, y - s * .16); c.lineTo(x - s * .1, y - s * .06); c.lineTo(x, y - s * .2); c.lineTo(x + s * .1, y - s * .06); c.lineTo(x + s * .22, y - s * .16); c.lineTo(x + s * .2, y + s * .06); c.closePath(); c.fill(); c.stroke(); c.fillStyle = '#ef4b3f'; c.beginPath(); c.arc(x, y - s * .03, s * .035, 0, 7); c.fill(); }
+  else if (h === 4) { c.fillStyle = '#6b45c4'; c.beginPath(); c.moveTo(x - s * .22, y + s * .06); c.lineTo(x + s * .04, y - s * .42); c.lineTo(x + s * .22, y + s * .06); c.closePath(); c.fill(); c.beginPath(); c.ellipse(x, y + s * .06, s * .32, s * .07, 0, 0, 7); c.fill(); c.fillStyle = '#ffd23d'; c.beginPath(); c.arc(x + s * .02, y - s * .12, s * .045, 0, 7); c.fill(); }
+  else if (h === 5) { c.strokeStyle = '#ffd23d'; c.lineWidth = Math.max(2, s * .06); c.beginPath(); c.ellipse(x, y - s * .14 + Math.sin(tNow * 4) * s * .015, s * .2, s * .06, 0, 0, 7); c.stroke(); }
+  else if (h === 6) { const bx = x - s * .2, by = y + s * .0; c.fillStyle = '#ff9ec7'; for (let k = 0; k < 5; k++) { const a = k * 1.2566 + .3; c.beginPath(); c.arc(bx + Math.cos(a) * s * .07, by + Math.sin(a) * s * .07, s * .055, 0, 7); c.fill(); } c.fillStyle = '#ffd23d'; c.beginPath(); c.arc(bx, by, s * .045, 0, 7); c.fill(); }
+  else if (h === 7) { c.fillStyle = '#fff'; c.strokeStyle = '#c9cfdb'; c.beginPath(); c.arc(x - s * .12, y - s * .14, s * .12, 0, 7); c.arc(x + s * .12, y - s * .14, s * .12, 0, 7); c.arc(x, y - s * .2, s * .13, 0, 7); c.fill(); rr(x - s * .17, y - s * .12, s * .34, s * .18, s * .03); c.fill(); c.stroke(); }
+}
 function drawBuddy(p) {
   const s = ts, id = p.id; let px = ox + (p.x + .5) * s, py = oy + (p.y + .5) * s;
   c.save();
@@ -256,6 +284,7 @@ function drawBuddy(p) {
     c.fillStyle = '#fff'; c.beginPath(); c.arc(px + fx - s * .095, py - s * .09 + fy + bob, s * .016, 0, 7); c.arc(px + fx + s * .125, py - s * .09 + fy + bob, s * .016, 0, 7); c.fill();
     c.fillStyle = '#2b2340'; c.beginPath(); c.arc(px + fx, py + s * .06 + bob, s * .03, 0, Math.PI); c.fill();
   }
+  if (PHAT[id] && p.fy >= 0 || PHAT[id] > 1) drawHat(PHAT[id], px, py - s * .3 + bob, s, p.fx);
   if (p.frozen > 0) { c.fillStyle = 'rgba(140,205,255,.55)'; rr(px - s * .42, py - s * .44, s * .84, s * .88, s * .14); c.fill(); c.strokeStyle = '#fff'; c.lineWidth = Math.max(1.5, s * .04); c.stroke(); }
   if (p.curse && p.alive) { c.font = `${Math.round(s * .34)}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = '#000'; c.fillText('💀', px, py - s * .56 + Math.sin(tNow * 8) * s * .03); }
   if (p.shield) { c.strokeStyle = 'rgba(63,207,142,.85)'; c.lineWidth = Math.max(2, s * .07); c.beginPath(); c.arc(px, py, s * (.46 + Math.sin(tNow * 6) * .015), 0, 7); c.stroke(); }
@@ -505,6 +534,7 @@ function dlg(title, body, btns) {
   $('dlg').hidden = false;
 }
 function enterPlay(G) {
+  applyLooks(true);
   S.G = G; S.scene = 'play'; S.paused = false; S.intro = 1.3; S.shownOver = false; S.fast = false; parts.length = 0; floats.length = 0; rings.length = 0; scorch.fill(0); hitStop = 0; lastSec = -1; bannerT = 0; shake = 0;
   stacks[0].length = stacks[1].length = 0; sticks.forEach(st => { st.id = null; st.dir = null; });
   show(''); $('hud').hidden = false; $('dlg').hidden = true;
@@ -512,6 +542,7 @@ function enterPlay(G) {
   updateHud(G); showTouch(); layout(); requestAnimationFrame(layout);
 }
 function toMenu(screen) {
+  applyLooks(false);
   S.scene = 'menu'; S.paused = false; $('hud').hidden = true; $('dlg').hidden = true; showTouch();
   S.G = C.newBattle({ humans: 0, bots: 4, level: 1 }); parts.length = 0; floats.length = 0;
   show(screen || 'sTitle'); layout(); paintBest();
@@ -609,7 +640,7 @@ function renderStages() {
     b.innerHTML = ok ? `${C.STAGES[i].boss ? '👑' : k + 1}<small>${starsHtml(st)}</small>` : '🔒';
     b.onclick = () => { sfx.ui(); startStage(i); }; g.appendChild(b);
   }
-  $('starTotal').textContent = '★ ' + save.stars.reduce((a, b) => a + (b || 0), 0) + ' / ' + C.STAGES.length * 3;
+  $('starTotal').textContent = '★ ' + starTotal() + ' / ' + C.STAGES.length * 3;
 }
 function seg(id, key, after) {
   const el = $(id);
@@ -627,6 +658,29 @@ seg('oH', 'h', fixBots); seg('oB', 'b', fixBots); seg('oL', 'l'); seg('oW', 'w')
 $('mAdv').onclick = () => { sfx.ui(); let i = 0; while (i < C.STAGES.length - 1 && (save.stars[i] || 0) > 0) i++; curWorld = (i / C.PER_WORLD) | 0; show('sStages'); renderStages(); };
 $('mEnd').onclick = () => { sfx.ui(); startEndless(); };
 function paintBest() { $('mEndBest').textContent = save.best ? `最高過了第 ${save.best} 層` : '一層一層往下闖'; }
+function drawPreview() {
+  const pv = $('lookPv'), keep = [c, ts, ox, oy]; applyLooks(true);
+  c = pv.getContext('2d'); c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, pv.width, pv.height);
+  ts = pv.width * .8; ox = pv.width / 2 - ts / 2; oy = pv.height / 2 - ts / 2 + ts * .08;
+  drawBuddy({ id: 0, x: 0, y: 0, fx: 0, fy: 1, alive: true, moving: true, inv: 0 });
+  [c, ts, ox, oy] = keep; applyLooks(false);
+}
+function renderLook() {
+  const st = starTotal();
+  $('lookInfo').textContent = `★ ${st}　♾️ 最高第 ${save.best} 層`;
+  const mk = (box, list, key, html) => {
+    box.innerHTML = '';
+    list.forEach((o, k) => {
+      const b = document.createElement('button'), ok = lookOk(o);
+      b.className = 'lk' + (save.look[key] === k ? ' on' : ''); b.disabled = !ok; b.innerHTML = html(o, ok) + (ok ? '' : `<small>🔒 ${o.end ? '無盡第 ' + o.end + ' 層' : '★ ' + o.need}</small>`);
+      b.title = o.name; b.onclick = () => { sfx.ui(); save.look[key] = k; store(); renderLook(); }; box.appendChild(b);
+    });
+  };
+  mk($('lookCols'), SKINS, 'c', o => `<i style="background:${o.col};box-shadow:inset 0 0 0 4px ${o.dark}"></i>`);
+  mk($('lookHats'), HATS, 'hat', o => `<span>${o.icon}</span>`);
+}
+setInterval(() => { if (!$('sLook').hidden) drawPreview(); }, 50);
+$('mLook').onclick = () => { sfx.ui(); show('sLook'); renderLook(); };
 $('mBat').onclick = () => { sfx.ui(); show('sBattle'); };
 $('mHelp').onclick = () => { sfx.ui(); show('sHelp'); };
 $('bGo').onclick = () => { sfx.ui(); startMatch(); };
