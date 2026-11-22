@@ -138,7 +138,7 @@ function mkPlayer(id, x, y, kit) {
 
 function newAdventure(stage, opts) {
   opts = opts || {};
-  const def = STAGES[stage], world = WORLDS[(stage / PER_WORLD) | 0];
+  const def = opts.def || STAGES[stage], world = opts.world || WORLDS[(stage / PER_WORLD) | 0];
   const r = mulberry(7919 * (stage + 1) + (opts.seed || 0));
   const G = mkState('adv'); G.rnd = mulberry(1234567 + stage * 31 + (opts.seed || 0) + ((Math.random() * 1e9) | 0));
   G.stage = stage; G.world = world.key; G.kid = !!opts.kid;
@@ -164,7 +164,7 @@ function newAdventure(stage, opts) {
     G.mons.push({
       id: k, type: d.type, x: i % W, y: (i / W) | 0, tx: i % W, ty: (i / W) | 0, px: i % W, py: (i / W) | 0, dx: 0, dy: 0,
       speed: d.sp * world.sp, hp: c === 'K' ? (def.boss || 3) : d.hp, maxHp: c === 'K' ? (def.boss || 3) : d.hp, inv: 0, alive: true, deadT: 0, wait: .6 + r() * .8, bombT: 3 + r() * 3,
-      boss: c === 'K' ? ['summon', 'dash', 'bomb', 'blink'][(stage / PER_WORLD) | 0] : null, skillT: 4 + r() * 2, tele: 0, dashing: false, base: d.sp * world.sp,
+      boss: c === 'K' ? ['summon', 'dash', 'bomb', 'blink'][((stage / PER_WORLD) | 0) % 4] : null, skillT: 4 + r() * 2, tele: 0, dashing: false, base: d.sp * world.sp,
     });
   });
   // 門和道具藏在木箱下
@@ -180,6 +180,26 @@ function newAdventure(stage, opts) {
   return G;
 }
 
+// 無盡迷宮：一層一層往下，道具和愛心帶著走，越深怪物越多越快
+function newEndless(floor, carry, opts) {
+  opts = opts || {};
+  const r = mulberry(opts.seed != null ? opts.seed : (Math.random() * 1e9) | 0);
+  const world = WORLDS[(((floor - 1) / 3) | 0) % WORLDS.length], boss = floor % 5 === 0;
+  const pool = floor < 3 ? 'ssb' : floor < 6 ? 'ssbbgc' : floor < 10 ? 'sbbgccSx' : 'bgccSSxx';
+  let m = boss ? 'K' : ''; const n = Math.min(8, 2 + (floor >> 1)) - (boss ? 2 : 0);
+  for (let k = 0; k < n; k++) m += pool[(r() * pool.length) | 0];
+  const bag = 'BBFFSHKPZL'; let it = '';
+  for (let k = 0; k < 3 + (floor % 2); k++) it += bag[(r() * bag.length) | 0];
+  const G = newAdventure(floor - 1, { def: { m, d: .42 + Math.min(.22, floor * .02), it, lay: (r() * 4) | 0, boss: Math.min(6, 3 + ((floor / 10) | 0)) }, world, seed: (r() * 1e9) | 0, kid: opts.kid });
+  G.endless = floor;
+  const k = 1 + Math.min(.45, (floor - 1) * .03);
+  for (const q of G.mons) { q.speed *= k; q.base *= k; }
+  const p = G.players[0];
+  if (carry) { p.bombsMax = carry.bombsMax; p.range = carry.range; p.shoes = carry.shoes; p.speed = 3.4 + .45 * carry.shoes; p.kick = carry.kick; p.pierce = carry.pierce; p.hearts = carry.hearts; }
+  else { p.bombsMax = 1; p.range = 2; }
+  G.timeLeft = G.kid ? Infinity : 240;
+  return G;
+}
 const SPAWN = [[1, 1], [W - 2, H - 2], [W - 2, 1], [1, H - 2]];
 function newBattle(opts) {
   const seed = opts.seed != null ? opts.seed : (Math.random() * 1e9) | 0;
@@ -749,5 +769,5 @@ function step(G, dt) {
   }
 }
 
-return { W, H, N, FLOOR, HARD, SOFT, FUSE, FLAME_T, BURN_T, IT, WORLDS, STAGES, PER_WORLD, newAdventure, newBattle, step, mkBot, dangerMap, connected, placeBomb };
+return { W, H, N, FLOOR, HARD, SOFT, FUSE, FLAME_T, BURN_T, IT, WORLDS, STAGES, PER_WORLD, newAdventure, newEndless, newBattle, step, mkBot, dangerMap, connected, placeBomb };
 });

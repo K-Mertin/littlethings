@@ -7,7 +7,7 @@ const cv = $('cv'), c = cv.getContext('2d');
 
 // ───────── 存檔 ─────────
 const SAVE_KEY = 'boom:v1';
-const save = Object.assign({ stars: [], kid: false, mute: false, music: true, bt: { h: 1, b: 3, l: 1, w: 2 } }, (() => { try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch (e) { return {}; } })());
+const save = Object.assign({ stars: [], best: 0, kid: false, mute: false, music: true, bt: { h: 1, b: 3, l: 1, w: 2 } }, (() => { try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch (e) { return {}; } })());
 if (!Array.isArray(save.stars)) save.stars = [];
 function store() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} }
 
@@ -424,7 +424,7 @@ function fmt(t) { t = Math.max(0, Math.ceil(t)); return ((t / 60) | 0) + ':' + S
 function updateHud(G) {
   if (G.mode === 'adv') {
     const p = G.players[0], w = (S.stage / C.PER_WORLD) | 0, max = G.kid ? 5 : 3;
-    setHtml('cTitle', `<span class="t">${C.WORLDS[w].name}</span>${w + 1}-${S.stage % C.PER_WORLD + 1}`);
+    setHtml('cTitle', G.endless ? `<span class="t">無盡迷宮</span>第 ${G.endless} 層` : `<span class="t">${C.WORLDS[w].name}</span>${w + 1}-${S.stage % C.PER_WORLD + 1}`);
     let h = ''; for (let k = 0; k < Math.max(max, p.hearts); k++) h += k < p.hearts ? '♥' : '<span class="lost">♥</span>';
     setHtml('cHearts', h);
     setHtml('cKit', `<span>💣${p.bombsMax}</span><span>🔥${p.range}</span><i class="${p.shoes ? 'on' : ''}">👟${p.shoes || ''}</i><i class="${p.kick ? 'on' : ''}">🥾</i><i class="${p.shield ? 'on' : ''}">🛡️</i>${p.pierce ? '<span>🌟</span>' : ''}`);
@@ -514,13 +514,19 @@ function enterPlay(G) {
 function toMenu(screen) {
   S.scene = 'menu'; S.paused = false; $('hud').hidden = true; $('dlg').hidden = true; showTouch();
   S.G = C.newBattle({ humans: 0, bots: 4, level: 1 }); parts.length = 0; floats.length = 0;
-  show(screen || 'sTitle'); layout();
+  show(screen || 'sTitle'); layout(); paintBest();
   if (screen === 'sStages') renderStages();
 }
 function startStage(i) {
-  S.stage = i; S.match = null;
+  S.stage = i; S.match = null; S.endless = null;
   const G = C.newAdventure(i, { kid: save.kid });
   if (/[?&]auto=1/.test(location.search)) { G.players[0].bot = C.mkBot(2); }
+  enterPlay(G);
+}
+function startEndless(floor, carry) {
+  S.match = null; S.endless = { floor: floor || 1 };
+  const G = C.newEndless(S.endless.floor, carry || null, { kid: save.kid });
+  if (/[?&]auto=1/.test(location.search)) G.players[0].bot = C.mkBot(2);
   enterPlay(G);
 }
 function startMatch() {
@@ -536,13 +542,28 @@ function togglePause() {
   const adv = S.G.mode === 'adv';
   dlg('暫停', '', [
     { label: '繼續', pri: true, fn: () => { S.paused = false; } },
-    { label: '重新開始', fn: () => adv ? startStage(S.stage) : startMatch() },
-    { label: adv ? '回選關' : '回對戰設定', fn: () => toMenu(adv ? 'sStages' : 'sBattle') },
+    { label: '重新開始', fn: () => S.G.endless ? startEndless() : adv ? startStage(S.stage) : startMatch() },
+    { label: S.G.endless ? '回主選單' : adv ? '回選關' : '回對戰設定', fn: () => toMenu(S.G.endless ? '' : adv ? 'sStages' : 'sBattle') },
   ]);
 }
 $('bPause').onclick = togglePause;
 function starsHtml(n) { return '★'.repeat(n) + '<i>' + '★'.repeat(3 - n) + '</i>'; }
 function onOver(G) {
+  if (G.endless) {
+    const o = G.over, f = G.endless, p = G.players[0];
+    if (o.win) {
+      sfx.win(); if (f > save.best) { save.best = f; store(); }
+      const bonus = f % 5 === 0 && p.hearts < 5;
+      dlg(`第 ${f} 層過關！`, (bonus ? '打倒大王，補一顆 ❤️<br>' : '') + '道具和愛心會帶到下一層。', [
+        { label: `往第 ${f + 1} 層 →`, pri: true, fn: () => startEndless(f + 1, { bombsMax: p.bombsMax, range: p.range, shoes: p.shoes, kick: p.kick, pierce: p.pierce, hearts: p.hearts + (bonus ? 1 : 0) }) },
+        { label: '先到這裡', fn: () => toMenu() }]);
+    } else {
+      sfx.lose();
+      dlg(o.timeout ? '時間到了' : '被打倒了', `這次到了<b>第 ${f} 層</b>，最高紀錄是第 ${Math.max(save.best + 1, f)} 層。`, [
+        { label: '再挑戰一次', pri: true, fn: () => startEndless() }, { label: '回主選單', fn: () => toMenu() }]);
+    }
+    return;
+  }
   if (G.mode === 'adv') {
     const o = G.over;
     if (o.win) {
@@ -604,6 +625,8 @@ function fixBots() {
 }
 seg('oH', 'h', fixBots); seg('oB', 'b', fixBots); seg('oL', 'l'); seg('oW', 'w'); fixBots();
 $('mAdv').onclick = () => { sfx.ui(); let i = 0; while (i < C.STAGES.length - 1 && (save.stars[i] || 0) > 0) i++; curWorld = (i / C.PER_WORLD) | 0; show('sStages'); renderStages(); };
+$('mEnd').onclick = () => { sfx.ui(); startEndless(); };
+function paintBest() { $('mEndBest').textContent = save.best ? `最高過了第 ${save.best} 層` : '一層一層往下闖'; }
 $('mBat').onclick = () => { sfx.ui(); show('sBattle'); };
 $('mHelp').onclick = () => { sfx.ui(); show('sHelp'); };
 $('bGo').onclick = () => { sfx.ui(); startMatch(); };
@@ -652,7 +675,7 @@ function frame(ms) {
   updateHud(G); draw(G, false);
   if (G.over && !S.shownOver) { S.shownOver = true; setTimeout(() => onOver(G), 500); }
 }
-S.dev = { stage: startStage, battle: startMatch, menu: toMenu };
+S.dev = { stage: startStage, battle: startMatch, menu: toMenu, endless: startEndless };
 toMenu();
 requestAnimationFrame(frame);
 })();

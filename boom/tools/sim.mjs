@@ -42,4 +42,23 @@ for (let s = 0; s < C.STAGES.length; s++) {
   if (!wins) fail++;
   console.log(`第 ${s + 1} 關: 自動通關 ${wins}/${tries}` + (wins ? ` 平均 ${(t / wins).toFixed(0)}s（三星時間 ${C.newAdventure(s).par}s）` : ''));
 }
+// 4) 無盡迷宮：電腦連續闖，看每一層都產生得出來、過得了
+{
+  let deepest = 0;
+  for (let k = 0; k < 4; k++) {
+    let carry = null, f = 1;
+    for (; f <= 25; f++) {
+      const G = C.newEndless(f, carry, { seed: k * 1000 + f });
+      if (!C.connected(G.grid)) throw new Error('無盡迷宮場地不連通 ' + f);
+      const p = G.players[0]; p.bot = C.mkBot(2); G.timeLeft = Infinity;
+      let steps = 0;
+      while (!G.over && steps++ < 60 * 600) { C.step(G, 1 / 60); G.ev.length = 0; p.hearts = 99; }
+      if (!(G.over && G.over.win)) break;
+      carry = { bombsMax: p.bombsMax, range: p.range, shoes: p.shoes, kick: p.kick, pierce: p.pierce, hearts: 3 };
+    }
+    deepest = Math.max(deepest, f - 1);
+  }
+  console.log('無盡迷宮：電腦最深過了第 ' + deepest + ' 層');
+  if (deepest < 5) fail++;
+}
 process.exit(fail ? 1 : 0);
