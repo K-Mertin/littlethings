@@ -60,6 +60,8 @@ const sfx = {
   tick() { tone(440, .08, 'triangle', .07); },
   alarm() { tone(880, .14, 'square', .06); tone(660, .14, 'square', .06, 0, .16); },
   crush() { noise(.15, .18, 500); },
+  freeze() { tone(1200, .3, 'sine', .08, -700); tone(1500, .25, 'triangle', .05, -900, .05); },
+  curse() { tone(180, .35, 'sawtooth', .08, -90); },
   tp() { tone(500, .18, 'sine', .09, 700); },
   vent() { noise(.25, .14, 900); },
   ui() { tone(520, .05, 'triangle', .05); },
@@ -126,7 +128,8 @@ function drawCrate(px, py, P, world, burn) {
   }
   if (burn > 0) { c.globalAlpha = .75 * (1 - k * .4); c.fillStyle = k > .5 ? '#fff3b0' : '#ff8a2a'; rr(px + m, py + m, s - 2 * m, s - 2 * m, s * .14); c.fill(); c.globalAlpha = 1; }
 }
-const ICON = { 1: '💣', 2: '🔥', 3: '👟', 4: '🥾', 5: '🛡️', 6: '❤️' }, ICOL = { 1: '#2b2340', 2: '#ef4b3f', 3: '#4a9dff', 4: '#9b6bff', 5: '#3fcf8e', 6: '#ff7aa8' };
+const ICON = { 1: '💣', 2: '🔥', 3: '👟', 4: '🥾', 5: '🛡️', 6: '❤️', 7: '🌟', 8: '❄️', 10: '💀' }, ICOL = { 1: '#2b2340', 2: '#ef4b3f', 3: '#4a9dff', 4: '#9b6bff', 5: '#3fcf8e', 6: '#ff7aa8', 7: '#ffc23d', 8: '#6fc3ff', 10: '#6d6787' };
+const CURSE = { slow: '變慢了', rev: '方向相反', leak: '炸彈亂掉' };
 function drawItem(px, py, it, i) {
   const bob = Math.sin(tNow * 4 + i) * ts * .03, s = ts;
   c.fillStyle = 'rgba(0,0,0,.15)'; c.beginPath(); c.ellipse(px + s / 2, py + s * .86, s * .28, s * .07, 0, 0, 7); c.fill();
@@ -218,6 +221,8 @@ function drawBuddy(p) {
     c.fillStyle = '#fff'; c.beginPath(); c.arc(px + fx - s * .095, py - s * .09 + fy + bob, s * .016, 0, 7); c.arc(px + fx + s * .125, py - s * .09 + fy + bob, s * .016, 0, 7); c.fill();
     c.fillStyle = '#2b2340'; c.beginPath(); c.arc(px + fx, py + s * .06 + bob, s * .03, 0, Math.PI); c.fill();
   }
+  if (p.frozen > 0) { c.fillStyle = 'rgba(140,205,255,.55)'; rr(px - s * .42, py - s * .44, s * .84, s * .88, s * .14); c.fill(); c.strokeStyle = '#fff'; c.lineWidth = Math.max(1.5, s * .04); c.stroke(); }
+  if (p.curse && p.alive) { c.font = `${Math.round(s * .34)}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = '#000'; c.fillText('💀', px, py - s * .56 + Math.sin(tNow * 8) * s * .03); }
   if (p.shield) { c.strokeStyle = 'rgba(63,207,142,.85)'; c.lineWidth = Math.max(2, s * .07); c.beginPath(); c.arc(px, py, s * (.46 + Math.sin(tNow * 6) * .015), 0, 7); c.stroke(); }
   c.restore();
 }
@@ -225,6 +230,7 @@ function drawMon(m) {
   const s = ts * (m.type === 'boss' ? 1.3 : 1), px = ox + (m.x + .5) * ts; let py = oy + (m.y + .5) * ts;
   c.save();
   if (!m.alive) { if (m.deadT > .4) { c.restore(); return; } const k = 1 - m.deadT / .4; c.globalAlpha = k; c.translate(px, py); c.scale(k, k); c.translate(-px, -py); }
+  const frozen = m.alive && S.G && S.G.freezeT > 0, tSave = tNow; if (frozen) tNow = m.id;      // 凍住：動畫停格
   const flash = m.inv > 0 && Math.floor(tNow * 14) % 2, wob = Math.sin(tNow * 7 + m.id * 2);
   c.fillStyle = 'rgba(0,0,0,.2)'; c.beginPath(); c.ellipse(px, oy + (m.y + .5) * ts + ts * .38, s * .28, s * .08, 0, 0, 7); c.fill();
   const eyes = (ey, sp, r, col) => {
@@ -269,6 +275,7 @@ function drawMon(m) {
     c.strokeStyle = '#2b2340'; c.lineWidth = Math.max(2, s * .045); c.beginPath(); c.moveTo(px - s * .2, py - s * .15); c.lineTo(px - s * .05, py - s * .08); c.moveTo(px + s * .2, py - s * .15); c.lineTo(px + s * .05, py - s * .08); c.stroke();
     c.fillStyle = '#fff'; c.beginPath(); c.moveTo(px - s * .08, py + s * .14); c.lineTo(px - s * .04, py + s * .21); c.lineTo(px, py + s * .14); c.lineTo(px + s * .04, py + s * .21); c.lineTo(px + s * .08, py + s * .14); c.fill();
   }
+  if (frozen) { tNow = tSave; const blink = S.G.freezeT < 1.2 && Math.floor(tNow * 10) % 2; if (!blink) { c.fillStyle = 'rgba(140,205,255,.5)'; rr(px - s * .42, oy + (m.y + .5) * ts - s * .46, s * .84, s * .9, s * .14); c.fill(); c.strokeStyle = '#fff'; c.lineWidth = Math.max(1.5, s * .04); c.stroke(); } }
   c.restore();
 }
 function puff(x, y, n, col, sp, size, life) {
@@ -282,6 +289,8 @@ function onEvents(G, quiet) {
       case 'boom': puff(e.x, e.y, 6, 'rgba(90,80,90,.55)', 1.2, .2, .7); shake = Math.min(.3, shake + .12); if (!quiet) sfx.boom(); break;
       case 'crate': puff(e.x, e.y, 7, P.crD, 3, .1, .5); puff(e.x, e.y, 4, P.cr, 2.5, .1, .5); break;
       case 'item': puff(e.x, e.y, 8, '#ffd23d', 2.5, .07, .45); floats.push({ x: e.x, y: e.y - .3, text: '+' + ICON[e.it], life: 0 }); if (!quiet) sfx.item(); break;
+      case 'freeze': banner(G.mode === 'adv' ? '❄️ 怪物被凍住了！' : '❄️ 冰凍！', 1.2); if (!quiet) sfx.freeze(); break;
+      case 'curse': floats.push({ x: e.x, y: e.y - .5, text: '💀 ' + CURSE[e.type], life: -0.6 }); if (!quiet) sfx.curse(); break;
       case 'itemburn': puff(e.x, e.y, 5, '#888', 1.5, .08, .4); break;
       case 'hurt': puff(e.x, e.y, 8, '#ef4b3f', 3, .08, .4); shake = .3; if (!quiet) sfx.hurt(); break;
       case 'shield': puff(e.x, e.y, 10, '#3fcf8e', 3, .08, .5); if (!quiet) sfx.kick(); break;
@@ -332,7 +341,7 @@ function draw(G, dim) {
   for (const p of parts) { const k = 1 - p.life / p.max; c.globalAlpha = k; c.fillStyle = p.col; c.beginPath(); c.arc(ox + (p.x + .5) * ts, oy + (p.y + .5) * ts, p.size * ts * (.5 + k * .5), 0, 7); c.fill(); }
   c.globalAlpha = 1;
   c.font = `900 ${Math.round(ts * .42)}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle';
-  for (const f of floats) { c.globalAlpha = 1 - f.life / .9; c.fillStyle = '#000'; c.fillText(f.text, ox + (f.x + .5) * ts, oy + (f.y + .5 - f.life * .8) * ts); }
+  for (const f of floats) { c.globalAlpha = Math.min(1, 1 - f.life / .9); c.fillStyle = '#000'; c.fillText(f.text, ox + (f.x + .5) * ts, oy + (f.y + .5 - f.life * .8) * ts); }
   c.globalAlpha = 1; c.restore();
   if (dim) return;
   // 兩人對戰：頭上標 1P／2P
@@ -366,7 +375,7 @@ function updateHud(G) {
     setHtml('cTitle', `<span class="t">${C.WORLDS[w].name}</span>${w + 1}-${S.stage % C.PER_WORLD + 1}`);
     let h = ''; for (let k = 0; k < Math.max(max, p.hearts); k++) h += k < p.hearts ? '♥' : '<span class="lost">♥</span>';
     setHtml('cHearts', h);
-    setHtml('cKit', `<span>💣${p.bombsMax}</span><span>🔥${p.range}</span><i class="${p.shoes ? 'on' : ''}">👟${p.shoes || ''}</i><i class="${p.kick ? 'on' : ''}">🥾</i><i class="${p.shield ? 'on' : ''}">🛡️</i>`);
+    setHtml('cKit', `<span>💣${p.bombsMax}</span><span>🔥${p.range}</span><i class="${p.shoes ? 'on' : ''}">👟${p.shoes || ''}</i><i class="${p.kick ? 'on' : ''}">🥾</i><i class="${p.shield ? 'on' : ''}">🛡️</i>${p.pierce ? '<span>🌟</span>' : ''}`);
     const left = G.mons.filter(m => m.alive).length;
     setHtml('cTime', (left ? `👾 ${left}　` : '🚪　') + '⏱ ' + (G.timeLeft === Infinity ? fmt(G.time) : fmt(G.timeLeft)));
     $('cTime').classList.toggle('low', G.timeLeft < 30);

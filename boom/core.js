@@ -11,7 +11,7 @@ const FLOOR = 0, HARD = 1, SOFT = 2;
 const FUSE = 2.4, FLAME_T = 0.5, BURN_T = 0.4;
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 // 道具代碼
-const IT = { B: 1, F: 2, S: 3, K: 4, H: 5, L: 6, DOOR: 9 };
+const IT = { B: 1, F: 2, S: 3, K: 4, H: 5, L: 6, P: 7, Z: 8, DOOR: 9, X: 10 };   // P 穿透火焰、Z 冰凍、X 骷髏（詛咒）
 
 function mulberry(a) {
   return function () {
@@ -112,7 +112,7 @@ function mkState(mode) {
     W, H, mode, grid: null, items: new Int8Array(N), hidden: new Int8Array(N),
     flameT: new Float32Array(N), flameOwner: new Int8Array(N), flameDir: new Uint8Array(N), burnT: new Float32Array(N),
     bombs: [], bombAt: new Array(N).fill(null), players: [], mons: [], ev: [],
-    time: 0, timeLeft: Infinity, over: null, endT: 0, kid: false, doorI: -1, doorOpen: false, doorShown: false,
+    time: 0, freezeT: 0, timeLeft: Infinity, over: null, endT: 0, kid: false, doorI: -1, doorOpen: false, doorShown: false,
     sd: null, rnd: Math.random, portalAt: new Int16Array(N).fill(-1), portals: [], vents: [],
   };
 }
@@ -120,7 +120,7 @@ function addPortal(G, a, b, safe) { G.portalAt[a] = b; G.portalAt[b] = a; G.port
 function mkPlayer(id, x, y, kit) {
   return {
     id, x, y, fx: 0, fy: 1, alive: true, bombsMax: kit.b, range: kit.f, speed: 3.4, shoes: 0, kick: false, shield: false,
-    inv: 0, hearts: 1, lost: 0, active: 0, ix: 0, iy: 0, wantBomb: false, bot: null, moving: false, deadT: 0, human: true, kills: 0,
+    inv: 0, hearts: 1, lost: 0, pierce: false, frozen: 0, curse: null, active: 0, ix: 0, iy: 0, wantBomb: false, bot: null, moving: false, deadT: 0, human: true, kills: 0,
   };
 }
 
@@ -160,7 +160,7 @@ function newAdventure(stage, opts) {
   for (let i = crates.length - 1; i > 0; i--) { const j = (r() * (i + 1)) | 0; [crates[i], crates[j]] = [crates[j], crates[i]]; }
   let di = crates.findIndex(i => (i % W) + ((i / W) | 0) - 2 >= 6); if (di < 0) di = 0;
   G.doorI = crates[di]; G.hidden[G.doorI] = IT.DOOR; crates.splice(di, 1);
-  def.it.split('').forEach((c, k) => { if (crates[k] != null) G.hidden[crates[k]] = IT[c]; });
+  (def.it + (stage % 4 === 2 ? 'P' : '') + (stage % 5 === 4 ? 'Z' : '')).split('').forEach((c, k) => { if (crates[k] != null) G.hidden[crates[k]] = IT[c]; });
   const p = mkPlayer(0, 1, 1, world.kit); p.hearts = G.kid ? 5 : 3; G.players.push(p);
   G.timeLeft = G.kid ? Infinity : 300; G.par = 100 + 12 * mdefs.length + (def.boss ? 30 : 0);
   G.cratesLeft = crates.length + 1;
@@ -180,7 +180,7 @@ function newBattle(opts) {
   const clear = i => { G.grid[i] = FLOOR; };
   if (G.world === 'snow') { const a = 5 * W + 3, b = 5 * W + 9; clear(a); clear(b); clear(a + 1); clear(b - 1); addPortal(G, a, b); }
   if (G.world === 'lava') for (const [i, t] of [[3 * W + 6, 4], [7 * W + 6, 6.6]]) { clear(i); G.vents.push({ i, t, period: 5.2 }); }
-  const bag = 'BBBBBBFFFFFFSSSSKKHH';
+  const bag = 'BBBBBBBFFFFFFFSSSSKKKHHPPZXX';
   for (let i = 0; i < N; i++) if (G.grid[i] === SOFT && r() < .4) G.hidden[i] = IT[bag[(r() * bag.length) | 0]];
   // 兩個人時坐對角
   const order = total === 2 ? [0, 1] : [0, 1, 2, 3];
@@ -252,7 +252,7 @@ function placeBomb(G, p) {
   if (!p.alive || p.active >= p.bombsMax) return false;
   const tx = Math.round(p.x), ty = Math.round(p.y), i = ty * W + tx;
   if (G.bombAt[i] || G.grid[i] !== FLOOR) return false;
-  const b = { tx, ty, ox: 0, oy: 0, vx: 0, vy: 0, owner: p.id, range: p.range, t: FUSE, pass: new Set(), born: G.time };
+  const b = { tx, ty, ox: 0, oy: 0, vx: 0, vy: 0, owner: p.id, range: p.range, pierce: p.pierce, t: FUSE, pass: new Set(), born: G.time };
   for (const e of G.players) if (e.alive && Math.abs(e.x - tx) < 1 && Math.abs(e.y - ty) < 1) b.pass.add(e);
   G.bombs.push(b); G.bombAt[i] = b; p.active++;
   G.ev.push({ t: 'place', x: tx, y: ty });
@@ -268,15 +268,15 @@ function explode(G, b) {
   G.bombs.splice(k, 1); G.bombAt[b.ty * W + b.tx] = null;
   const o = G.players[b.owner]; if (o) o.active = Math.max(0, o.active - 1);
   G.ev.push({ t: 'boom', x: b.tx, y: b.ty, r: b.range });
-  fireAt(G, b.tx, b.ty, b.range, b.owner);
+  fireAt(G, b.tx, b.ty, b.range, b.owner, b.pierce);
 }
-function fireAt(G, tx, ty, range, owner) {
+function fireAt(G, tx, ty, range, owner, pierce) {
   G.flameDir[ty * W + tx] = 0; addFlame(G, ty * W + tx, owner, 3);
   for (const [dx, dy] of DIRS) {
     for (let s = 1; s <= range; s++) {
       const x = tx + dx * s, y = ty + dy * s, i = y * W + x, g = G.grid[i];
       if (g === HARD) break;
-      if (g === SOFT) { if (G.burnT[i] <= 0) { G.burnT[i] = BURN_T; G.ev.push({ t: 'crate', x, y }); } break; }
+      if (g === SOFT) { if (G.burnT[i] <= 0) { G.burnT[i] = BURN_T; G.ev.push({ t: 'crate', x, y }); } if (pierce) continue; break; }
       const ob = G.bombAt[i];
       if (ob) { ob.t = Math.min(ob.t, .07); break; }
       if (G.flameT[i] <= 0) G.flameDir[i] = 0;
@@ -399,10 +399,12 @@ function monChoose(G, m) {
   m.dx = pick[0]; m.dy = pick[1]; m.px = x; m.py = y; m.tx = x + pick[0]; m.ty = y + pick[1];
 }
 function stepMons(G, dt) {
+  if (G.freezeT > 0) G.freezeT -= dt;
   for (const m of G.mons) {
     if (!m.alive) { m.deadT += dt; continue; }
     if (m.inv > 0) m.inv -= dt;
     if (m.wait > 0) { m.wait -= dt; continue; }
+    if (G.freezeT > 0) continue;
     let dist = m.speed * dt, guard = 0;
     while (dist > 1e-6 && guard++ < 4) {
       const rx = m.tx - m.x, ry = m.ty - m.y, rem = Math.abs(rx) + Math.abs(ry);
@@ -522,6 +524,7 @@ function botThink(G, p) {
     let sc = -d * .6 + (((i * 2654435761 + B.noise) >>> 0) % 100) / 40, want = false;
     const it = G.items[i];
     if (it === IT.DOOR) { if (G.doorOpen) sc += 300; }
+    else if (it === IT.X) sc -= 40;
     else if (it) sc += 60 - d * 3;
     if (canBomb && !(B.bad.get(i) > G.time)) {
       const c = crateCount(G, x, y, p.range);
@@ -600,6 +603,11 @@ function pickup(G, p) {
   else if (it === IT.K) p.kick = true;
   else if (it === IT.H) p.shield = true;
   else if (it === IT.L) p.hearts = Math.min(5, p.hearts + 1);
+  else if (it === IT.P) p.pierce = true;
+  else if (it === IT.Z) {                       // 冰凍：闖關凍住怪物，對戰凍住其他人
+    if (G.mode === 'adv') G.freezeT = 5; else for (const e of G.players) if (e !== p && e.alive) e.frozen = 2.2;
+    G.ev.push({ t: 'freeze' });
+  } else if (it === IT.X) { p.curse = { type: ['slow', 'rev', 'leak'][(G.rnd() * 3) | 0], t: 8 }; G.ev.push({ t: 'curse', x: p.x, y: p.y, type: p.curse.type }); }
   G.ev.push({ t: 'item', x: p.x, y: p.y, it, id: p.id });
 }
 function step(G, dt) {
@@ -610,10 +618,13 @@ function step(G, dt) {
     if (p.inv > 0) p.inv -= dt;
     if (p.bot) stepBot(G, p, dt);
     p.moving = false;
+    let sp = p.speed;
+    if (p.curse) { p.curse.t -= dt; const ct = p.curse.type; if (ct === 'slow') sp *= .55; else if (ct === 'rev') { p.ix = -p.ix; p.iy = -p.iy; } else p.wantBomb = true; if (p.curse.t <= 0) p.curse = null; }
+    if (p.frozen > 0) { p.frozen -= dt; p.ix = p.iy = 0; }
     if (p.ix || p.iy) {
       const dx = p.ix ? Math.sign(p.ix) : 0, dy = p.ix ? 0 : Math.sign(p.iy);
       p.fx = dx; p.fy = dy;
-      p.moving = moveEnt(G, p, dx, dy, p.speed * dt);
+      p.moving = moveEnt(G, p, dx, dy, sp * dt);
     }
     if (p.wantBomb) { p.wantBomb = false; placeBomb(G, p); }
     pickup(G, p);
@@ -636,7 +647,7 @@ function step(G, dt) {
     }
   }
   // 怪物碰到人
-  for (const m of G.mons) if (m.alive) for (const p of G.players)
+  if (!(G.freezeT > 0)) for (const m of G.mons) if (m.alive) for (const p of G.players)
     if (p.alive && Math.abs(p.x - m.x) < .62 && Math.abs(p.y - m.y) < .62) hurtPlayer(G, p, null);
 
   if (G.mode === 'adv') {
