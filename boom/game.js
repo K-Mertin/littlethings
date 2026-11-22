@@ -75,11 +75,17 @@ function layout() {
   ox = Math.floor((cw - ts * W) / 2); oy = hudH + Math.floor((ch - hudH - padH - ts * H) / 2);
   bgDirty = true; stickHome();
 }
+function duoTouch() { return touch && S.scene === 'play' && S.G && S.G.mode === 'battle' && S.match && S.match.humans > 1; }
 function stickHome() {
-  const st = $('stick'); if (stickId != null) return;
-  const x = Math.max(95, Math.min(ox / 2, 160)), y = padH ? ch - padH / 2 : ch - 115;
-  st.style.left = x + 'px'; st.style.top = y + 'px'; st.firstElementChild.style.transform = '';
-  st.classList.add('idle');
+  const dt = duoTouch(), narrow = cw < 700;
+  document.body.classList.toggle('duo', !!dt);
+  sticks.forEach((st, k) => {
+    if (st.id != null) return;
+    const x = k === 0 ? (dt ? (narrow ? 75 : 95) : Math.max(95, Math.min(ox / 2, 160))) : cw - (narrow ? 75 : 95);
+    const y = padH ? ch - Math.min(padH / 2, dt && narrow ? 82 : 999) : ch - 115;
+    st.el.style.left = x + 'px'; st.el.style.top = y + 'px'; st.el.firstElementChild.style.transform = '';
+    st.el.classList.add('idle');
+  });
 }
 addEventListener('resize', layout);
 
@@ -356,7 +362,7 @@ const stacks = [[], []], DV = { u: [0, -1], d: [0, 1], l: [-1, 0], r: [1, 0] };
 const SOLO = { ArrowUp: [0, 'u'], ArrowDown: [0, 'd'], ArrowLeft: [0, 'l'], ArrowRight: [0, 'r'], KeyW: [0, 'u'], KeyS: [0, 'd'], KeyA: [0, 'l'], KeyD: [0, 'r'] };
 const DUO = { ArrowUp: [1, 'u'], ArrowDown: [1, 'd'], ArrowLeft: [1, 'l'], ArrowRight: [1, 'r'], KeyW: [0, 'u'], KeyS: [0, 'd'], KeyA: [0, 'l'], KeyD: [0, 'r'] };
 const BOMB_SOLO = { Space: 0, Enter: 0, NumpadEnter: 0, KeyX: 0, KeyJ: 0 }, BOMB_DUO = { Space: 0, KeyF: 0, Enter: 1, NumpadEnter: 1, Slash: 1, Period: 1, ShiftRight: 1 };
-let stickDir = null, stickId = null, stickO = null;
+const sticks = [{ id: null, o: null, dir: null, el: $('stick') }, { id: null, o: null, dir: null, el: $('stick2') }];
 function duo() { return S.G && S.G.mode === 'battle' && S.match && S.match.humans > 1; }
 function wantBomb(i) { const G = S.G; if (!G || S.scene !== 'play' || S.paused || S.intro > 0) return; const p = G.players[i]; if (p && p.human && p.alive) p.wantBomb = true; }
 addEventListener('keydown', e => {
@@ -369,36 +375,40 @@ addEventListener('keydown', e => {
 });
 addEventListener('keyup', e => { for (const map of [SOLO, DUO]) { const m = map[e.code]; if (m) { const st = stacks[m[0]], k = st.indexOf(m[1]); if (k >= 0) st.splice(k, 1); } } });
 addEventListener('blur', () => { stacks[0].length = stacks[1].length = 0; });
-function showTouch() { const on = touch && S.scene === 'play'; $('stick').hidden = !on; $('bBomb').hidden = !on; }
+function showTouch() {
+  const on = touch && S.scene === 'play', dt = on && duoTouch();
+  $('stick').hidden = !on; $('bBomb').hidden = !on; $('stick2').hidden = !dt; $('bBomb2').hidden = !dt;
+}
 cv.addEventListener('pointerdown', e => {
   if (e.pointerType === 'touch' && !touch) { touch = true; layout(); showTouch(); }
   if (S.scene !== 'play' || !touch) return;
-  if (e.clientX < cw * .55) {
-    if (stickId != null) return;
-    stickId = e.pointerId; stickO = { x: e.clientX, y: e.clientY }; stickDir = null;
-    const st = $('stick'); st.style.left = e.clientX + 'px'; st.style.top = e.clientY + 'px'; st.classList.remove('idle');
-    try { cv.setPointerCapture(e.pointerId); } catch (err) {}
-  } else wantBomb(0);
   au();
+  // 一個人：左半邊是搖桿、右半邊點一下放炸彈。兩個人：左半邊 1P、右半邊 2P，各有自己的炸彈鈕
+  const k = duoTouch() ? (e.clientX < cw / 2 ? 0 : 1) : (e.clientX < cw * .55 ? 0 : -1);
+  if (k < 0) { wantBomb(0); return; }
+  const st = sticks[k]; if (st.id != null) return;
+  st.id = e.pointerId; st.o = { x: e.clientX, y: e.clientY }; st.dir = null;
+  st.el.style.left = e.clientX + 'px'; st.el.style.top = e.clientY + 'px'; st.el.classList.remove('idle');
+  try { cv.setPointerCapture(e.pointerId); } catch (err) {}
 });
 cv.addEventListener('pointermove', e => {
-  if (e.pointerId !== stickId) return;
-  const dx = e.clientX - stickO.x, dy = e.clientY - stickO.y, d = Math.hypot(dx, dy);
+  const st = sticks.find(q => q.id === e.pointerId); if (!st) return;
+  const dx = e.clientX - st.o.x, dy = e.clientY - st.o.y, d = Math.hypot(dx, dy);
   // 手指滑太遠時底座跟著走，換方向不用把手指拉回來
-  if (d > 60) { stickO.x += dx * (d - 60) / d; stickO.y += dy * (d - 60) / d; const st = $('stick'); st.style.left = stickO.x + 'px'; st.style.top = stickO.y + 'px'; }
-  stickDir = d < 14 ? null : Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'r' : 'l') : (dy > 0 ? 'd' : 'u');
+  if (d > 60) { st.o.x += dx * (d - 60) / d; st.o.y += dy * (d - 60) / d; st.el.style.left = st.o.x + 'px'; st.el.style.top = st.o.y + 'px'; }
+  st.dir = d < 14 ? null : Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'r' : 'l') : (dy > 0 ? 'd' : 'u');
   const k = Math.min(1, 42 / (d || 1));
-  $('stick').firstElementChild.style.transform = `translate(${dx * k}px,${dy * k}px)`;
+  st.el.firstElementChild.style.transform = `translate(${dx * k}px,${dy * k}px)`;
 });
-function stickUp(e) { if (e.pointerId !== stickId) return; stickId = null; stickDir = null; stickHome(); }
+function stickUp(e) { const st = sticks.find(q => q.id === e.pointerId); if (!st) return; st.id = null; st.dir = null; stickHome(); }
 cv.addEventListener('pointerup', stickUp); cv.addEventListener('pointercancel', stickUp);
-$('bBomb').addEventListener('pointerdown', e => { e.preventDefault(); wantBomb(0); $('bBomb').classList.add('on'); setTimeout(() => $('bBomb').classList.remove('on'), 120); au(); });
+[['bBomb', 0], ['bBomb2', 1]].forEach(([id, k]) => $(id).addEventListener('pointerdown', e => { e.preventDefault(); wantBomb(k); $(id).classList.add('on'); setTimeout(() => $(id).classList.remove('on'), 120); au(); }));
 addEventListener('contextmenu', e => e.preventDefault());
 function applyInput(G) {
   for (const p of G.players) {
     if (!p.human || p.bot) continue;
     let d = stacks[p.id] && stacks[p.id][stacks[p.id].length - 1];
-    if (p.id === 0 && stickDir) d = stickDir;
+    if (sticks[p.id] && sticks[p.id].dir) d = sticks[p.id].dir;
     const v = d ? DV[d] : [0, 0]; p.ix = v[0]; p.iy = v[1];
   }
 }
@@ -412,7 +422,7 @@ function dlg(title, body, btns) {
 }
 function enterPlay(G) {
   S.G = G; S.scene = 'play'; S.paused = false; S.intro = 1.3; S.shownOver = false; S.fast = false; parts.length = 0; floats.length = 0; bannerT = 0; shake = 0;
-  stacks[0].length = stacks[1].length = 0; stickDir = null;
+  stacks[0].length = stacks[1].length = 0; sticks.forEach(st => { st.id = null; st.dir = null; });
   show(''); $('hud').hidden = false; $('dlg').hidden = true;
   const adv = G.mode === 'adv'; $('cHearts').hidden = !adv; $('cKit').hidden = !adv; $('cScore').hidden = adv;
   updateHud(G); showTouch(); layout(); requestAnimationFrame(layout);
