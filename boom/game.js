@@ -20,6 +20,7 @@ const NAMES = ['阿砰', '小藍', '阿綠', '黃黃'];
 const PAL = {
   grass: { out: '#dff0c2', f1: '#c3e596', f2: '#b6dc86', hard: '#a3adbf', top: '#c4ccda', sh: '#737e93', cr: '#d9a05f', crD: '#a8733b', crL: '#efc488' },
   snow: { out: '#e3f1fa', f1: '#f2f9fd', f2: '#e2f0f9', hard: '#6f8fb5', top: '#93b4d9', sh: '#4f6d91', cr: '#ffffff', crD: '#a5c5e0', crL: '#d9ecf9' },
+  castle: { out: '#2a2540', f1: '#9089ad', f2: '#837ca1', hard: '#3f3860', top: '#5b5488', sh: '#262040', cr: '#bf8f5c', crD: '#7a5530', crL: '#dbb283' },
   lava: { out: '#3a2c33', f1: '#6d5863', f2: '#614d58', hard: '#35272e', top: '#4f3d46', sh: '#1e151a', cr: '#cf6f3e', crD: '#8f4322', crL: '#ec9862' },
 };
 let cw = 0, ch = 0, dpr = 1, ts = 40, ox = 0, oy = 0, hudH = 54, padH = 0, touch = matchMedia('(pointer:coarse)').matches;
@@ -119,6 +120,9 @@ function drawCrate(px, py, P, world, burn) {
   if (world === 'grass') {
     c.fillStyle = P.crL; rr(px + s * .16, py + s * .14, s * .68, s * .56, s * .06); c.fill();
     c.beginPath(); c.moveTo(px + s * .18, py + s * .16); c.lineTo(px + s * .82, py + s * .68); c.moveTo(px + s * .82, py + s * .16); c.lineTo(px + s * .18, py + s * .68); c.stroke();
+  } else if (world === 'castle') {          // 木桶
+    c.fillStyle = P.crL; rr(px + s * .2, py + s * .1, s * .6, s * .62, s * .1); c.fill();
+    c.beginPath(); c.moveTo(px + s * .08, py + s * .26); c.lineTo(px + s * .92, py + s * .26); c.moveTo(px + s * .08, py + s * .58); c.lineTo(px + s * .92, py + s * .58); c.stroke();
   } else if (world === 'snow') {
     c.fillStyle = P.crL; rr(px + s * .16, py + s * .44, s * .68, s * .28, s * .08); c.fill();
     c.fillStyle = 'rgba(111,143,181,.5)'; c.beginPath(); c.arc(px + s * .3, py + s * .28, s * .05, 0, 7); c.arc(px + s * .66, py + s * .34, s * .035, 0, 7); c.fill();
@@ -227,7 +231,7 @@ function drawBuddy(p) {
   c.restore();
 }
 function drawMon(m) {
-  const s = ts * (m.type === 'boss' ? 1.3 : 1), px = ox + (m.x + .5) * ts; let py = oy + (m.y + .5) * ts;
+  const s = ts * (m.type === 'boss' ? 1.3 : m.type === 'mini' ? .62 : m.type === 'split' ? 1.12 : 1), px = ox + (m.x + .5) * ts; let py = oy + (m.y + .5) * ts;
   c.save();
   if (!m.alive) { if (m.deadT > .4) { c.restore(); return; } const k = 1 - m.deadT / .4; c.globalAlpha = k; c.translate(px, py); c.scale(k, k); c.translate(-px, -py); }
   const frozen = m.alive && S.G && S.G.freezeT > 0, tSave = tNow; if (frozen) tNow = m.id;      // 凍住：動畫停格
@@ -237,13 +241,15 @@ function drawMon(m) {
     c.fillStyle = '#fff'; c.beginPath(); c.arc(px - sp, ey, r, 0, 7); c.arc(px + sp, ey, r, 0, 7); c.fill();
     c.fillStyle = col || '#2b2340'; c.beginPath(); c.arc(px - sp + m.dx * r * .4, ey + m.dy * r * .4, r * .55, 0, 7); c.arc(px + sp + m.dx * r * .4, ey + m.dy * r * .4, r * .55, 0, 7); c.fill();
   };
-  if (m.type === 'slime' || m.type === 'boss') {
+  if (m.type === 'slime' || m.type === 'boss' || m.type === 'split' || m.type === 'mini') {
     const boss = m.type === 'boss', rx = s * .34 * (1 + wob * .06), ry = s * .3 * (1 - wob * .06), by = py + s * .32;
-    c.fillStyle = flash ? '#fff' : boss ? '#8a4fd6' : '#58c95a';
+    const teal = m.type === 'split' || m.type === 'mini';
+    c.fillStyle = flash ? '#fff' : boss ? '#8a4fd6' : teal ? '#35c2c9' : '#58c95a';
     c.beginPath(); c.moveTo(px - rx, by); c.bezierCurveTo(px - rx, by - ry * 2.3, px + rx, by - ry * 2.3, px + rx, by); c.closePath(); c.fill();
-    c.strokeStyle = boss ? '#5a2c9c' : '#2f8f3a'; c.lineWidth = Math.max(1.5, s * .04); c.stroke();
+    c.strokeStyle = boss ? '#5a2c9c' : teal ? '#1b8088' : '#2f8f3a'; c.lineWidth = Math.max(1.5, s * .04); c.stroke();
     c.fillStyle = 'rgba(255,255,255,.35)'; c.beginPath(); c.ellipse(px - rx * .4, by - ry * 1.25, rx * .2, ry * .22, -.5, 0, 7); c.fill();
     eyes(by - ry * .75, rx * .36, s * .075);
+    if (m.type === 'split') { c.strokeStyle = '#1b8088'; c.setLineDash([s * .06, s * .06]); c.beginPath(); c.moveTo(px, by - ry * 1.7); c.lineTo(px, by - ry * 1.05); c.stroke(); c.setLineDash([]); }
     if (boss) {
       c.fillStyle = '#ffc23d'; c.beginPath(); const cy = by - ry * 1.72;
       c.moveTo(px - s * .2, cy); c.lineTo(px - s * .2, cy - s * .2); c.lineTo(px - s * .1, cy - s * .1); c.lineTo(px, cy - s * .24); c.lineTo(px + s * .1, cy - s * .1); c.lineTo(px + s * .2, cy - s * .2); c.lineTo(px + s * .2, cy); c.closePath(); c.fill();
@@ -251,6 +257,14 @@ function drawMon(m) {
       c.strokeStyle = '#2b2340'; c.lineWidth = Math.max(2, s * .04); c.beginPath(); c.moveTo(px - rx * .6, by - ry * 1.12); c.lineTo(px - rx * .15, by - ry * .98); c.moveTo(px + rx * .6, by - ry * 1.12); c.lineTo(px + rx * .15, by - ry * .98); c.stroke();
       for (let k = 0; k < m.maxHp; k++) { c.fillStyle = k < m.hp ? '#ef4b3f' : 'rgba(43,35,64,.25)'; c.beginPath(); c.arc(px + (k - (m.maxHp - 1) / 2) * ts * .2, py - s * .62, ts * .07, 0, 7); c.fill(); }
     }
+  } else if (m.type === 'bomber') {       // 炸彈怪：長腳的小炸彈
+    const hop = Math.abs(Math.sin(tNow * 9 + m.id)) * s * .04, soon = m.bombT < .8 && Math.floor(tNow * 10) % 2; py -= hop;
+    c.fillStyle = '#5a3a2a'; c.beginPath(); c.ellipse(px - s * .13, py + s * .32 + hop, s * .09, s * .05, 0, 0, 7); c.ellipse(px + s * .13, py + s * .32 + hop, s * .09, s * .05, 0, 0, 7); c.fill();
+    c.fillStyle = flash ? '#fff' : soon ? '#ff8a2a' : '#f2a03d'; c.beginPath(); c.arc(px, py + s * .04, s * .28, 0, 7); c.fill(); c.strokeStyle = '#a8601a'; c.lineWidth = Math.max(1.5, s * .04); c.stroke();
+    c.strokeStyle = '#5a3a2a'; c.lineWidth = Math.max(2, s * .05); c.beginPath(); c.moveTo(px, py - s * .24); c.quadraticCurveTo(px + s * .12, py - s * .42, px + s * .2, py - s * .36); c.stroke();
+    c.fillStyle = Math.floor(tNow * 16) % 2 ? '#ffd23d' : '#ff5a2a'; c.beginPath(); c.arc(px + s * .2, py - s * .36, s * .06, 0, 7); c.fill();
+    eyes(py + s * .02, s * .1, s * .065);
+    c.strokeStyle = '#2b2340'; c.lineWidth = Math.max(2, s * .04); c.beginPath(); c.moveTo(px - s * .18, py - s * .1); c.lineTo(px - s * .04, py - s * .05); c.moveTo(px + s * .18, py - s * .1); c.lineTo(px + s * .04, py - s * .05); c.stroke();
   } else if (m.type === 'bat') {
     const fl = Math.sin(tNow * 18 + m.id) * s * .14; py += Math.sin(tNow * 5 + m.id) * s * .04 - s * .04;
     c.fillStyle = flash ? '#fff' : '#7d5bd0';
