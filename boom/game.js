@@ -235,6 +235,16 @@ function drawBomb(b) {
   c.beginPath(); c.moveTo(px + r * .3, py + s * .04 - r * .85); c.quadraticCurveTo(px + r * .7, py - r * 1.5, px + r * .95, py - r * 1.15); c.stroke();
   c.fillStyle = Math.floor(tNow * 20) % 2 ? '#ffd23d' : '#ff6a2a'; c.beginPath(); c.arc(px + r * .95, py - r * 1.15, s * (.07 + Math.random() * .04), 0, 7); c.fill();
 }
+function reach(G, b) {
+  const out = [b.ty * W + b.tx];
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) for (let k = 1; k <= b.range; k++) {
+    const i = (b.ty + dy * k) * W + b.tx + dx * k, g = G.grid[i];
+    if (g === C.HARD) break;
+    out.push(i);
+    if ((g === C.SOFT && !b.pierce) || G.bombAt[i]) break;
+  }
+  return out;
+}
 function drawFlames(G) {
   const s = ts, lay = [['#ff6a1a', .78], ['#ffc23d', .5], ['#fff6c8', .24]];
   for (const [col, wd] of lay) {
@@ -414,6 +424,10 @@ function draw(G, dim) {
       }
     }
   }
+  if (!dim && G.mode === 'adv' && (G.kid || (!G.endless && S.stage < 3))) {      // 小朋友模式和前三關：先畫出火焰會到哪裡
+    c.fillStyle = `rgba(239,75,63,${(.16 + .08 * Math.sin(tNow * 8)).toFixed(3)})`;
+    for (const b of G.bombs) for (const i of reach(G, b)) { rr(ox + (i % W) * ts + ts * .1, oy + ((i / W) | 0) * ts + ts * .1, ts * .8, ts * .8, ts * .16); c.fill(); }
+  }
   for (const b of G.bombs) drawBomb(b);
   drawFlames(G);
   for (const m of G.mons) drawMon(m);
@@ -432,6 +446,15 @@ function draw(G, dim) {
     c.font = `900 ${Math.round(ts * .34)}px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle';
     const px = ox + (p.x + .5) * ts, py = oy + (p.y - .25) * ts - Math.abs(Math.sin(tNow * 5)) * ts * .1;
     c.fillStyle = COLORS[p.id]; rr(px - ts * .32, py - ts * .22, ts * .64, ts * .44, ts * .14); c.fill(); c.fillStyle = '#fff'; c.fillText(label, px, py + 1);
+  }
+  if (G.mode === 'adv' && !G.endless && S.stage === 0 && !G.over && S.intro <= 0) {
+    const p = G.players[0];
+    const tip = G.doorOpen ? (G.doorShown ? '走進發亮的出口！' : '出口藏在閃 ✨ 的木箱底下，把它炸開') : G.bombs.length ? '快躲到轉角後面，別站在紅色格子上！' : G.time < 12 && !p.lost ? (touch ? '走到木箱旁邊，按 💣 放炸彈' : '走到木箱旁邊，按空白鍵放炸彈') : '用炸彈把怪物全部炸掉';
+    const fs = Math.round(Math.max(13, Math.min(ts * .42, 22)));
+    c.font = `900 ${fs}px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle';
+    const w = c.measureText(tip).width + fs * 1.6, y = oy + ts * (H - .5);
+    c.fillStyle = 'rgba(255,255,255,.93)'; rr(cw / 2 - w / 2, y - fs * .95, w, fs * 1.9, fs * .95); c.fill();
+    c.fillStyle = '#2b2340'; c.fillText(tip, cw / 2, y + 1);
   }
   let text = '';
   if (S.intro > 0) text = S.intro > .45 ? '預備…' : '開始！';
@@ -517,11 +540,28 @@ function stickUp(e) { const st = sticks.find(q => q.id === e.pointerId); if (!st
 cv.addEventListener('pointerup', stickUp); cv.addEventListener('pointercancel', stickUp);
 [['bBomb', 0], ['bBomb2', 1]].forEach(([id, k]) => $(id).addEventListener('pointerdown', e => { e.preventDefault(); wantBomb(k); $(id).classList.add('on'); setTimeout(() => $(id).classList.remove('on'), 120); au(); }));
 addEventListener('contextmenu', e => e.preventDefault());
+// 手把：第 1 支控制 1P、第 2 支控制 2P。方向鍵或左搖桿走路，任一顆主要按鈕放炸彈，Start 暫停
+const padDir = [null, null], padPrev = [{}, {}];
+function pollPads() {
+  let list = []; try { list = navigator.getGamepads ? navigator.getGamepads() : []; } catch (e) {}
+  let k = 0;
+  for (const g of list) {
+    if (!g || !g.connected || k > 1) continue;
+    const ax = g.axes || [], pr = i => !!(g.buttons[i] && g.buttons[i].pressed);
+    padDir[k] = pr(12) || ax[1] < -.5 ? 'u' : pr(13) || ax[1] > .5 ? 'd' : pr(14) || ax[0] < -.5 ? 'l' : pr(15) || ax[0] > .5 ? 'r' : null;
+    const bomb = pr(0) || pr(1) || pr(2) || pr(3), st = pr(9);
+    if (bomb && !padPrev[k].bomb) wantBomb(k);
+    if (st && !padPrev[k].st) togglePause();
+    padPrev[k] = { bomb, st }; k++;
+  }
+  for (; k < 2; k++) padDir[k] = null;
+}
 function applyInput(G) {
   for (const p of G.players) {
     if (!p.human || p.bot) continue;
     let d = stacks[p.id] && stacks[p.id][stacks[p.id].length - 1];
     if (sticks[p.id] && sticks[p.id].dir) d = sticks[p.id].dir;
+    if (padDir[p.id]) d = padDir[p.id];
     const v = d ? DV[d] : [0, 0]; p.ix = v[0]; p.iy = v[1];
   }
 }
@@ -723,6 +763,7 @@ function frame(ms) {
     if (bannerT > 0) bannerT -= d;
   }
   if (menu) { mus.on = false; if (G.over) { S.G = C.newBattle({ humans: 0, bots: 4, level: 1 }); bgDirty = true; } draw(S.G, true); return; }
+  pollPads();
   const low = G.mode === 'adv' ? G.timeLeft < 30 : G.time > G.sd.start;
   musTick(!S.paused && !G.over && S.intro <= 0, low);
   if (G.mode === 'adv' && G.timeLeft < 10 && !G.over && !S.paused) { const sec = Math.ceil(G.timeLeft); if (sec !== lastSec) { lastSec = sec; sfx.tick(); } }
