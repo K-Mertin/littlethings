@@ -113,9 +113,10 @@ function mkState(mode) {
     flameT: new Float32Array(N), flameOwner: new Int8Array(N), flameDir: new Uint8Array(N), burnT: new Float32Array(N),
     bombs: [], bombAt: new Array(N).fill(null), players: [], mons: [], ev: [],
     time: 0, timeLeft: Infinity, over: null, endT: 0, kid: false, doorI: -1, doorOpen: false, doorShown: false,
-    sd: null, rnd: Math.random,
+    sd: null, rnd: Math.random, portalAt: new Int16Array(N).fill(-1), portals: [], vents: [],
   };
 }
+function addPortal(G, a, b, safe) { G.portalAt[a] = b; G.portalAt[b] = a; G.portals.push([a, b]); if (safe) for (const i of [a, b]) { safe.add(i); safe.add(i + (i % W < W - 2 ? 1 : -1)); } }   // 門旁邊留一格空地，傳過去才不會被木箱關住
 function mkPlayer(id, x, y, kit) {
   return {
     id, x, y, fx: 0, fy: 1, alive: true, bombsMax: kit.b, range: kit.f, speed: 3.4, shoes: 0, kick: false, shield: false,
@@ -139,6 +140,11 @@ function newAdventure(stage, opts) {
   for (let i = spots.length - 1; i > 0; i--) { const j = (r() * (i + 1)) | 0; [spots[i], spots[j]] = [spots[j], spots[i]]; }
   const mdefs = def.m.split('');
   const mspots = spots.slice(0, mdefs.length);
+  // 世界機關：雪花谷有傳送門，火山口有會噴火的地洞
+  const k8 = stage % PER_WORLD, extra = spots.slice(mdefs.length);
+  const nTp = world.key === 'snow' ? (k8 < 4 ? 1 : 2) : 0, nVent = world.key === 'lava' ? [2, 2, 3, 3, 3, 4, 4, 3][k8] : 0;
+  for (let k = 0; k < nTp && extra.length >= 2; k++) addPortal(G, extra.shift(), extra.shift(), safe);
+  for (let k = 0; k < nVent && extra.length; k++) { const i = extra.shift(); safe.add(i); G.vents.push({ i, t: 3 + k * 1.3, period: 5.2 }); }
   for (const i of mspots) { safe.add(i); const x = i % W; safe.add(i + (x < W - 2 ? 1 : -1)); }
   G.grid = genGrid(r, def.lay || 0, def.d, safe);
   mdefs.forEach((c, k) => {
@@ -171,6 +177,9 @@ function newBattle(opts) {
   const safe = new Set();
   for (let k = 0; k < 4; k++) for (const i of safeZone(SPAWN[k][0], SPAWN[k][1])) safe.add(i);
   G.grid = genGrid(r, opts.lay != null ? opts.lay : [0, 0, 1, 2][(r() * 4) | 0], .78, safe);
+  const clear = i => { G.grid[i] = FLOOR; };
+  if (G.world === 'snow') { const a = 5 * W + 3, b = 5 * W + 9; clear(a); clear(b); clear(a + 1); clear(b - 1); addPortal(G, a, b); }
+  if (G.world === 'lava') for (const [i, t] of [[3 * W + 6, 4], [7 * W + 6, 6.6]]) { clear(i); G.vents.push({ i, t, period: 5.2 }); }
   const bag = 'BBBBBBFFFFFFSSSSKKHH';
   for (let i = 0; i < N; i++) if (G.grid[i] === SOFT && r() < .4) G.hidden[i] = IT[bag[(r() * bag.length) | 0]];
   // 兩個人時坐對角
@@ -259,17 +268,34 @@ function explode(G, b) {
   G.bombs.splice(k, 1); G.bombAt[b.ty * W + b.tx] = null;
   const o = G.players[b.owner]; if (o) o.active = Math.max(0, o.active - 1);
   G.ev.push({ t: 'boom', x: b.tx, y: b.ty, r: b.range });
-  G.flameDir[b.ty * W + b.tx] = 0; addFlame(G, b.ty * W + b.tx, b.owner, 3);
+  fireAt(G, b.tx, b.ty, b.range, b.owner);
+}
+function fireAt(G, tx, ty, range, owner) {
+  G.flameDir[ty * W + tx] = 0; addFlame(G, ty * W + tx, owner, 3);
   for (const [dx, dy] of DIRS) {
-    for (let s = 1; s <= b.range; s++) {
-      const x = b.tx + dx * s, y = b.ty + dy * s, i = y * W + x, g = G.grid[i];
+    for (let s = 1; s <= range; s++) {
+      const x = tx + dx * s, y = ty + dy * s, i = y * W + x, g = G.grid[i];
       if (g === HARD) break;
       if (g === SOFT) { if (G.burnT[i] <= 0) { G.burnT[i] = BURN_T; G.ev.push({ t: 'crate', x, y }); } break; }
       const ob = G.bombAt[i];
       if (ob) { ob.t = Math.min(ob.t, .07); break; }
       if (G.flameT[i] <= 0) G.flameDir[i] = 0;
-      addFlame(G, i, b.owner, dx ? 1 : 2);
+      addFlame(G, i, owner, dx ? 1 : 2);
     }
+  }
+}
+function teleport(G, e) {
+  const i = Math.round(e.y) * W + Math.round(e.x);
+  if (e.tpFrom != null) { if (e.tpFrom !== i) e.tpFrom = null; else return; }
+  const j = G.portalAt[i]; if (j < 0 || G.bombAt[j]) return;
+  if (Math.abs(e.x - i % W) > .12 || Math.abs(e.y - ((i / W) | 0)) > .12) return;
+  G.ev.push({ t: 'tp', x: j % W, y: (j / W) | 0, fx: i % W, fy: (i / W) | 0 });
+  e.x = j % W; e.y = (j / W) | 0; e.tpFrom = j;
+}
+function stepVents(G, dt) {
+  for (const v of G.vents) {
+    v.t -= dt;
+    if (v.t <= 0) { v.t = v.period; if (G.grid[v.i] !== FLOOR) continue; fireAt(G, v.i % W, (v.i / W) | 0, 1, -1); G.ev.push({ t: 'vent', x: v.i % W, y: (v.i / W) | 0 }); }
   }
 }
 function stepBombs(G, dt) {
@@ -381,7 +407,13 @@ function stepMons(G, dt) {
     while (dist > 1e-6 && guard++ < 4) {
       const rx = m.tx - m.x, ry = m.ty - m.y, rem = Math.abs(rx) + Math.abs(ry);
       if (rem < 1e-6) {
-        m.x = m.tx; m.y = m.ty; monChoose(G, m);
+        m.x = m.tx; m.y = m.ty;
+        const pj = G.portalAt[m.ty * W + m.tx];
+        if (pj >= 0 && !m.tpLock && !G.bombAt[pj]) {
+          G.ev.push({ t: 'tp', x: pj % W, y: (pj / W) | 0, fx: m.tx, fy: m.ty });
+          m.x = m.tx = pj % W; m.y = m.ty = (pj / W) | 0; m.tpLock = true; m.wait = .25; break;
+        } else if (pj < 0) m.tpLock = false;
+        monChoose(G, m);
         if (!m.dx && !m.dy) break;
         continue;
       }
@@ -438,6 +470,7 @@ function dangerMap(G, extra, me) {
       const i = G.sd.order[k]; if (t < D[i]) D[i] = Math.max(.01, t);
     }
   }
+  for (const v of G.vents) if (v.t < 2.6 && G.grid[v.i] === FLOOR) for (const i of blast(G, v.i % W, (v.i / W) | 0, 1, set, [])) if (v.t < D[i]) D[i] = Math.max(.01, v.t);
   for (const m of G.mons) if (m.alive) {
     const mx = Math.round(m.x), my = Math.round(m.y);
     D[my * W + mx] = Math.min(D[my * W + mx], .2);
@@ -584,8 +617,10 @@ function step(G, dt) {
     }
     if (p.wantBomb) { p.wantBomb = false; placeBomb(G, p); }
     pickup(G, p);
+    if (G.portals.length) teleport(G, p);
   }
   stepBombs(G, dt);
+  if (G.vents.length) stepVents(G, dt);
   stepFlames(G, dt);
   stepMons(G, dt);
   // 火焰
