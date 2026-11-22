@@ -35,13 +35,15 @@
 | `newfriend` | You meet a new friend. → Nice to meet you! | leo, mia | At a sunny playground, Leo and Mia meet for the first time and shake hands, both smiling a little shyly; a slide and a tree behind them. |
 | `cookie` | Mom asks, do you want a cookie? → Yes, please! | mom, leo | In the kitchen, Mom bends down a little and offers Leo a plate of fresh chocolate-chip cookies with a questioning smile. Leo looks at the cookies with wide happy eyes. |
 | `winrace` | Your friend wins the race. → Good job! | mia, leo | At a school sports day, Mia runs through the finish-line ribbon first with both arms raised, a gold medal on her chest. Leo cheers and claps at the side of the track. |
-| `inway` | Someone is in your way. → Excuse me. | leo, dad | In a narrow hallway, a grown-up man (not Dad: a neighbour in a grey sweater) stands in the middle, blocking the way. Leo, holding a ball, stands behind him and needs to get past. |
+| `inway` | Someone is in your way. → Excuse me. | leo | A very narrow apartment hallway seen from behind Leo. A tall grown-up man (a neighbour in a grey sweater, NOT Dad) stands right in the middle of the narrow hallway with his back to us, looking at his phone, completely blocking the way so nobody can pass on either side. Leo stands just behind him holding a ball, looking up at the man, politely waiting to get past. |
 | `keys` | Dad asks for his keys. You give them to him. → Here you are. | dad, leo | By the front door, Dad holds out his open hand. Leo hands him a bunch of keys (a big gold key and a small silver key on a ring). |
 | `stuck` | Your balloon is stuck in a tree. → Help me, please. | mia | Outdoors, a red balloon is caught high in the branches of a tree, its string tangled. Mia stands below, pointing up at it with a sad, worried face. |
 
-## 生好之後
+## 怎麼產生的（2026-11-22）
 
-把 `art/` 整個資料夾放到 `abc/tools/studio/art/`（或直接告訴我在哪裡），我會：
-1. 縮成遊戲用的大小（約 800×600，WebP，每張 60～100 KB），放到 `abc/art/`；
-2. 讓遊戲優先用這些圖，沒有圖的才用程式畫的版本；
-3. 離線包會自動把圖片一起打包。
+- image-studio 專案放在 MK 的 Mac：`~/main/image-studio/projects/abc/`（這個資料夾的 `image-studio.json`、`CHARACTERS.md` 和這裡同步），已登記在 image-studio 的 `projects.json`。
+- 先用「角色定裝」生五個角色（Leo、Mia 各生 2 張挑 1），存成 `art/chars/<代號>.png`；再用 CLI `generate` 一張張生情境圖，參考圖帶上出場角色的定稿圖。
+- 原圖（1200×900 PNG）在 `art/<檔名>.png`，所有候選在 `art/studio/<時間>/`。遊戲用的是縮成 800×600 的 WebP（品質 78，每張 30～70 KB），放在 `abc/art/`。
+- 遊戲裡 `ART` 的 `PAINTED` 清單列出有畫好圖片的檔名；不在清單裡的，照舊用程式畫的 SVG。
+
+新增一張：在這份清單加一列 → 用 image-studio 生圖存到 `art/<檔名>.png` → 縮成 WebP 放進 `abc/art/` → 在 `PAINTED` 加上檔名。
