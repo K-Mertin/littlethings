@@ -36,7 +36,7 @@ for (let s = 0; s < C.STAGES.length; s++) {
     if (!C.connected(G.grid)) throw new Error('場地不連通 ' + s);
     const p = G.players[0]; p.bot = C.mkBot(2); p.hearts = 99; G.timeLeft = Infinity;
     let steps = 0;
-    while (!G.over && steps++ < 60 * 900) { C.step(G, 1 / 60); G.ev.length = 0; }
+    while (!G.over && steps++ < 60 * 900) { C.step(G, 1 / 60); G.ev.length = 0; p.hearts = 99; }
     if (G.over && G.over.win) { wins++; t += G.time; }
   }
   if (!wins) fail++;

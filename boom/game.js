@@ -60,6 +60,8 @@ const sfx = {
   tick() { tone(440, .08, 'triangle', .07); },
   alarm() { tone(880, .14, 'square', .06); tone(660, .14, 'square', .06, 0, .16); },
   crush() { noise(.15, .18, 500); },
+  tp() { tone(500, .18, 'sine', .09, 700); },
+  vent() { noise(.25, .14, 900); },
   ui() { tone(520, .05, 'triangle', .05); },
 };
 
@@ -148,6 +150,23 @@ function drawDoor(px, py, open) {
     c.fillStyle = '#6b5644'; for (let k = 0; k < 3; k++) c.fillRect(px + s * (.24 + k * .06), py + s * (.56 - k * .14), s * (.52 - k * .12), s * .08);
     c.font = `${Math.round(s * .3)}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('🔒', px + s * .68, py + s * .32);
   }
+}
+function drawPortal(px, py, pair) {
+  const s = ts, cx = px + s / 2, cy = py + s / 2, col = pair ? ['#ff7ac8', '#ffd0ec'] : ['#4a9dff', '#cfe6ff'];
+  c.fillStyle = 'rgba(43,35,64,.25)'; c.beginPath(); c.ellipse(cx, cy + s * .04, s * .42, s * .36, 0, 0, 7); c.fill();
+  for (let k = 0; k < 3; k++) {
+    c.strokeStyle = k & 1 ? col[1] : col[0]; c.lineWidth = Math.max(2, s * .07);
+    const a = tNow * (2.4 - k * .5) + k * 2; c.beginPath(); c.ellipse(cx, cy, s * (.38 - k * .11), s * (.32 - k * .09), 0, a, a + 4.4); c.stroke();
+  }
+  c.fillStyle = '#fff'; c.beginPath(); c.arc(cx, cy, s * .05, 0, 7); c.fill();
+}
+function drawVent(v) {
+  const s = ts, cx = ox + (v.i % W + .5) * s, cy = oy + (((v.i / W) | 0) + .5) * s, warn = v.t < 1.3 ? 1 - v.t / 1.3 : 0;
+  c.fillStyle = '#1e151a'; c.beginPath(); c.ellipse(cx, cy, s * .36, s * .3, 0, 0, 7); c.fill();
+  c.fillStyle = warn ? `rgba(255,${Math.round(150 - warn * 90)},40,${.5 + warn * .5})` : '#7a2f1c';
+  c.beginPath(); c.ellipse(cx, cy, s * (.24 + warn * .08 * (1 + Math.sin(tNow * 30))), s * (.19 + warn * .06), 0, 0, 7); c.fill();
+  if (warn) { c.fillStyle = '#fff3b0'; c.beginPath(); c.ellipse(cx, cy, s * .1 * warn, s * .08 * warn, 0, 0, 7); c.fill();
+    c.fillStyle = '#ffc23d'; c.font = `900 ${Math.round(s * .4)}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; if (Math.floor(tNow * 8) % 2) c.fillText('!', cx, cy - s * .5); }
 }
 function drawBomb(b) {
   const s = ts, px = ox + (b.tx + b.ox + .5) * s, py = oy + (b.ty + b.oy + .5) * s;
@@ -272,6 +291,8 @@ function onEvents(G, quiet) {
       case 'kick': if (!quiet) sfx.kick(); break;
       case 'door': puff(e.x, e.y, 10, '#ffc23d', 2, .07, .7); break;
       case 'open': puff(e.x, e.y, 14, '#ffc23d', 3, .08, .9); banner('出口打開了！', 1.6); if (!quiet) sfx.open(); break;
+      case 'tp': puff(e.fx, e.fy, 8, '#cfe6ff', 2.5, .08, .4); puff(e.x, e.y, 10, '#fff', 3, .08, .5); if (!quiet) sfx.tp(); break;
+      case 'vent': puff(e.x, e.y, 6, '#ff8a2a', 2.5, .1, .5); if (!quiet) sfx.vent(); break;
       case 'crush': puff(e.x, e.y, 5, P.sh, 2, .12, .4); shake = Math.min(.25, shake + .08); bgDirty = true; if (!quiet) sfx.crush(); break;
       case 'sudden': banner('⚠️ 場地開始縮小！', 2); if (!quiet) sfx.alarm(); break;
     }
@@ -290,6 +311,8 @@ function draw(G, dim) {
   c.save(); c.translate(sx, sy);
   c.fillStyle = 'rgba(0,0,0,.18)'; rr(ox - 3, oy - 1, ts * W + 6, ts * H + 8, ts * .2); c.fill();
   c.drawImage(bg, ox, oy, ts * W, ts * H);
+  for (const v of G.vents) if (G.grid[v.i] === C.FLOOR) drawVent(v);
+  G.portals.forEach((pr, k) => { for (const i of pr) if (G.grid[i] === C.FLOOR) drawPortal(ox + (i % W) * ts, oy + ((i / W) | 0) * ts, k); });
   for (let i = 0; i < C.N; i++) {
     const x = i % W, y = (i / W) | 0, px = ox + x * ts, py = oy + y * ts;
     if (G.items[i] === IT.DOOR) drawDoor(px, py, G.doorOpen);
