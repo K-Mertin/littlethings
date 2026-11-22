@@ -31,7 +31,7 @@ MW · Game Hall：MK 的瀏覽器遊戲合集，每個資料夾自成一體。�
 | [彈彈球大冒險](https://littleland.mwstudio.workers.dev/bounce/) | [`bounce/`](bounce/README.md) | 橫向捲軸闖關＋解謎：控制一顆球滾動跳躍，變大浮水、變小鑽洞，箱子／壓板／柵欄、風扇、冰、岩漿、火焰棒，4 個世界 12 關、36 顆星星，Canvas 2D 程式繪圖，支援觸控與鍵盤 |
 | [燼燈](https://littleland.mwstudio.workers.dev/ember/) | [`ember/`](ember/README.md) | 給大人的探索型銀河惡魔城：一張相連的大地圖（25 個房間、5 個區域），打倒 3 個頭目拿衝刺／蹬牆跳／二段跳回頭開新路，集齊印記挑戰最終頭目；篝火存檔、手把＋鍵盤＋觸控，Canvas 2D＋WebAudio |
 | [反彈神射手](https://littleland.mwstudio.workers.dev/ricochet/) | [`ricochet/`](ricochet/README.md) | 角度反彈射擊解謎（回合制）：拖曳＋微調角度發射，子彈撞牆、鏡子反彈並穿過敵人；海綿牆、炸藥桶、冰晶玻璃、傳送門、滑動牆、要救的小雪兔；哥布林射手反擊、盾牌兵、走路怪、哥布林大王；4 個世界 40 關、愛心、💡 提示（解題器即時算），Canvas 2D，支援觸控與鍵盤 |
-| [砰砰小隊](https://littleland.mwstudio.workers.dev/boom/) | [`boom/`](boom/README.md) | 炸彈迷宮：放炸彈炸木箱、躲火焰；闖關冒險 3 個世界 24 關（史萊姆、蝙蝠、幽靈、小惡魔、大王）＋對戰（1～2 人同一個鍵盤＋電腦，驟死縮圈）；道具、踢炸彈、小朋友模式，Canvas 2D，支援觸控與鍵盤 |
+| [砰砰小隊](https://littleland.mwstudio.workers.dev/boom/) | [`boom/`](boom/README.md) | 炸彈迷宮：放炸彈炸木箱、躲火焰；闖關冒險 4 個世界 32 關（傳送門、噴火地洞、各有招式的大王）＋無盡迷宮＋對戰（1～2 人同一個鍵盤或同一台平板＋電腦，驟死縮圈）；道具、踢炸彈、造型解鎖、背景音樂、小朋友模式，Canvas 2D，支援觸控、鍵盤、手把 |
 | [捏臉工坊](https://littleland.mwstudio.workers.dev/face/)（未上架） | [`face/`](face/README.md) | 2D 捏臉：臉型、五官、髮型、瀏海、配件、衣服，即時預覽縮圖、隨機、復原、存檔、下載 PNG，支援手機 |
 | [寫實捏臉 3D](https://littleland.mwstudio.workers.dev/face3d/)（未上架） | [`face3d/`](face3d/README.md) | 寫實 3D 捏臉：MakeHuman CC0 人體、417 個變形滑桿、寫實皮膚、3D 髮型眉毛睫毛、表情、眼睛看游標，支援手機 |
 | [MW 實驗室](https://littleland.mwstudio.workers.dev/lab/) | [`lab/`](lab/README.md) | WebGPU 進階遊戲的小大廳：MW 大街 WebGPU 版（上百個行人、晨昏與下雨、積水倒影、落葉／噴水池／鴿子粒子），以及規劃中的新遊戲 |
