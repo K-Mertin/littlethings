@@ -54,3 +54,10 @@
 `cards.tsv` 列出 57 張：檔名、比例、角色、提示詞。
 - **單字卡（1:1，縮成 360×360）**：Actions 16 張（`actions-<字>`）、More actions 14 張（`actions2-<字>`）、My Day 12 張（`day-<字，空格換成 ->`）。畫風改成「單字圖卡」：一個角色做一個動作、主體放大、背景很淡，縮小也看得懂。遊戲的 `PAINTED_CARDS` 列出有圖的卡片，其他照舊用 emoji。
 - **How do I feel?（4:3，800×600）**：15 個情境（`why-<名稱>`），順序和程式裡的 `WHY` 一樣。
+
+## 第三批（2026-11-23）：形容詞、心情、句型圖
+
+`cards2.tsv` 列出 70 張（實際生 67 張：Can or can't? 的 fish swim／bird fly／frog jump 直接沿用 What can it do? 的圖）。
+- **單字卡（1:1）**：Describing 16 張、Describing 2 共 14 張、Feelings 8 張（`describe-*`、`describe2-*`、`feel-*`），一樣列在 `PAINTED_CARDS`。
+- **句型圖（4:3）**：How? 10 張（`how-*`，程式用 `HOW_ART` 依句子開頭對應）、What can it do? 10 張（`can-*`，`CAN_ART` 依動詞對應）、Can or can't? 9 張（`cant-<動物>-<動作>`，`cantPic()`）。沒有圖的（例如 Learn 裡的 kangaroo hop）照舊用 emoji。
+- 沒有指定角色的圖要在提示詞寫「No people」，不然模型會自己加一個陌生小孩。
