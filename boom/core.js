@@ -477,8 +477,8 @@ function botThink(G, p) {
   }
   if (r() < B.lazy * .3) { B.path = []; return; }
   if (G.time > B.noiseT) { B.noise = (r() * 1e6) | 0; B.noiseT = G.time + 2.5; }
-  const foes = [];
-  for (const e of G.players) if (e !== p && e.alive) foes.push(Math.round(e.y) * W + Math.round(e.x));
+  const foes = [], foeP = [];
+  for (const e of G.players) if (e !== p && e.alive) { foes.push(Math.round(e.y) * W + Math.round(e.x)); foeP.push(e); }
   for (const m of G.mons) if (m.alive) foes.push(Math.round(m.y) * W + Math.round(m.x));
   const canBomb = p.active < p.bombsMax;
   const set = new Set(G.bombs.map(b => b.ty * W + b.tx));
@@ -496,12 +496,30 @@ function botThink(G, p) {
       if (foes.length && (B.foe || G.mode === 'adv')) {
         const tiles = blast(G, x, y, p.range, set, []);
         let hit = false; for (const f of foes) if (tiles.includes(f) && f !== i) { hit = true; break; }
-        if (hit) { sc += (B.foe || 30) - d * 3; want = true; }
+        if (hit) {
+          sc += (B.foe || 30) - d * 3; want = true;
+          // 這顆放下去對手就無路可逃：非常想放
+          if (B.level > 0 && d <= 3) for (const e of foeP) {
+            const ei = Math.round(e.y) * W + Math.round(e.x);
+            if (!tiles.includes(ei)) continue;
+            const D2 = dangerMap(G, { i, x, y, r: p.range, t: FUSE });
+            const esc = botBfs(G, e, D2, 0); let free = false;
+            for (const j of esc.order) if (D2[j] === Infinity) { free = true; break; }
+            if (!free) { sc += 45; break; }
+          }
+        }
       }
+      // 對手就在旁邊：放一顆逼他走位
+      if (B.foe && !want) for (const f of foes) {
+        const md = Math.abs(f % W - x) + Math.abs(((f / W) | 0) - y);
+        if (md > 0 && md <= 2) { sc += B.foe * .45 - d * 3; want = true; break; }
+      }
+      // 炸箱子時優先炸通往對手的路
+      if (c && B.foe && foes.length) { let md = 99; for (const f of foes) md = Math.min(md, Math.abs(f % W - x) + Math.abs(((f / W) | 0) - y)); sc += (16 - md) * .9; }
     }
     if (!want && foes.length && B.foe) {      // 沒事做就往對手靠
       let md = 99; for (const f of foes) md = Math.min(md, Math.abs(f % W - x) + Math.abs(((f / W) | 0) - y));
-      sc += (14 - md) * .5;
+      sc += (14 - md) * (B.foe / 26);
     }
     if (sc > best) { best = sc; bt = i; bWant = want; }
   }
@@ -611,7 +629,7 @@ function step(G, dt) {
     }
     const alive = G.players.filter(p => p.alive);
     if (sd && G.time > sd.start + 60) { G.over = { winner: -1, timeout: true }; return; }
-    if (alive.length <= 1) { G.endT += dt; if (G.endT > 1.1) G.over = { winner: alive.length ? alive[0].id : -1 }; }
+    if (alive.length <= 1) { G.endT += dt; if (G.endT > .7) G.over = { winner: alive.length ? alive[0].id : -1 }; }
   }
 }
 
