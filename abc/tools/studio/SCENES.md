@@ -61,3 +61,9 @@
 - **單字卡（1:1）**：Describing 16 張、Describing 2 共 14 張、Feelings 8 張（`describe-*`、`describe2-*`、`feel-*`），一樣列在 `PAINTED_CARDS`。
 - **句型圖（4:3）**：How? 10 張（`how-*`，程式用 `HOW_ART` 依句子開頭對應）、What can it do? 10 張（`can-*`，`CAN_ART` 依動詞對應）、Can or can't? 9 張（`cant-<動物>-<動作>`，`cantPic()`）。沒有圖的（例如 Learn 裡的 kangaroo hop）照舊用 emoji。
 - 沒有指定角色的圖要在提示詞寫「No people」，不然模型會自己加一個陌生小孩。
+
+## 第四批（2026-11-23）：He/She/They、Yesterday、Went、I am ___ing
+
+`cards3.tsv` 列出這批新生的 16 張；其他直接沿用前幾批的圖（例如 I am swimming 用 `actions-swimming`）。
+- **He, She, It, They**：`HE_ART` 依原本的 emoji 對應圖（👦 → `he-running`、👭 → `they-sisters`…），Learn 和 What, who, where? 的 who 也一起用。
+- **I am ___ing／Went, ate, saw／Yesterday（-ed）**：程式在載入時把 `ING`、`WENT`、`PAST` 每列的 emoji 換成圖（依動詞對應），Read It! 的「I am …ing」卡片也跟著換。
