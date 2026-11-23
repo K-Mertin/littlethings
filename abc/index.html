@@ -122,7 +122,7 @@ main{flex:1;min-height:0;position:relative}
 .dayp{display:inline-flex;flex-direction:column;align-items:center;gap:.04em;line-height:1}.dayp .e{font-size:1em}
 .day{font-family:var(--ui);font-weight:700;font-size:max(.2em,16px);color:#fff;border-radius:999px;padding:.2em .7em;white-space:nowrap}.day.y{background:#8a63ff}.day.t{background:#ffb020}
 /* drawn pictures (ART) */
-.art{width:2.5em;height:1.875em;display:block;border-radius:.12em;overflow:hidden;object-fit:cover}#fgPic .art{width:min(70vw,34vh,420px);height:auto;aspect-ratio:4/3}.lpic .art{width:min(80vw,40vh,480px);height:auto;aspect-ratio:4/3}.dayp .art{margin-top:.04em}.card .e .art{width:100%;height:auto;font-size:1rem}@media (orientation:landscape) and (max-height:520px){#fgPic .dayp .art{width:21vh}#fgPic:has(.dayp){padding-top:2px;padding-bottom:2px}}.pimg{display:block;width:82%;height:auto;aspect-ratio:1;object-fit:cover;border-radius:18px}#mPic .pimg{width:min(46vw,30vh,280px);border-radius:22px}.lpic .pimg{width:min(64vw,38vh,340px);border-radius:24px}.day.m{background:#ff8a3d}.day.a{background:#2fbf68}.day.n{background:#4c6ef5}
+.art{width:2.5em;height:1.875em;display:block;border-radius:.12em;overflow:hidden;object-fit:cover}#fgPic .art{width:min(70vw,34vh,420px);height:auto;aspect-ratio:4/3}.lpic .art{width:min(80vw,40vh,480px);height:auto;aspect-ratio:4/3}.dayp .art{margin-top:.04em}.card .e .art{width:100%;height:auto;font-size:1rem}@media (orientation:landscape) and (max-height:520px){#fgPic .dayp .art{width:21vh}#fgPic:has(.dayp){padding-top:2px;padding-bottom:2px}}#story .book{align-items:center;justify-content:center}#story .book>*{width:auto;max-width:96%}#sbScene.painted{padding:.06em;line-height:0}#sbScene .art{width:min(82vw,54vh,660px);height:auto;aspect-ratio:4/3;border-radius:24px}.pimg{display:block;width:82%;height:auto;aspect-ratio:1;object-fit:cover;border-radius:18px}#mPic .pimg{width:min(46vw,30vh,280px);border-radius:22px}.lpic .pimg{width:min(64vw,38vh,340px);border-radius:24px}.day.m{background:#ff8a3d}.day.a{background:#2fbf68}.day.n{background:#4c6ef5}
 .nearp{display:inline-flex;align-items:flex-end;gap:.04em;line-height:1;font-family:var(--emoji);width:3.2em;justify-content:flex-start}
 .nearp .kid{font-size:.8em}.nearp .pt{font-size:.38em;margin-bottom:.6em}
 .nearp .road{flex:0 0 auto;height:.06em;border-radius:.03em;margin:0 .05em .12em;background:repeating-linear-gradient(90deg,#b9cde0 0 .14em,transparent .14em .26em)}
@@ -2787,6 +2787,7 @@ const STORIES = [
       ['Who is her new friend?', [['Sam', '👦'], ['Pip', '🦊'], ['Mom', '👩']], 0, 'Yes! Sam is her new friend.']] }
 ];
 const SB = { s: null, p: 0, tok: 0, busy: false };
+const STORY_ART = new Set([['hat', 7], ['bed', 6], ['rain', 6]].flatMap(([id, n]) => [...Array(n)].map((_, i) => `story-${id}-${i}`)));
 Screens.storyPick = {
   title: 'Stories', back: 'home',
   enter() {
@@ -2818,7 +2819,10 @@ async function sbRead(f) {
 function sbPage(f) {
   const [pic, text] = SB.s.pages[SB.p];
   setProg(SB.s.pages.length, SB.p);
-  $('#sbScene').textContent = pic;
+  // painted story pages (abc/art/story-<book>-<page>.webp); other books still use their emoji
+  const art = `story-${SB.s.id}-${SB.p}`;
+  if (STORY_ART.has(art)) $('#sbScene').innerHTML = paintImg(art); else $('#sbScene').textContent = pic;
+  $('#sbScene').classList.toggle('painted', STORY_ART.has(art));
   $('#sbText').innerHTML = text.split(' ').map(w => `<span class="w">${esc(w)}</span>`).join(' ');
   $$('#sbText .w').forEach(s => s.onclick = () => { SB.tok++; $$('#sbText .w').forEach(x => x.classList.remove('lit')); s.classList.add('lit'); SFX.pop(); say(bare(s.textContent), s.textContent); });
   $('#sbPrev').style.visibility = SB.p ? '' : 'hidden';
@@ -4034,6 +4038,19 @@ const LESSONS = {
     return { title: pack.name, back: pack.more ? 'home' : 'matchPick', play: () => go('match', pack.id), key: 'match:' + pack.id,
       groups: lnChunk(items, 4).map(g => ({ items: g, checks: shuffle(g).slice(0, g.length > 2 ? 2 : 1).map(it => lnFind(g, it, it.find)) })) };
   },
+  // spelling: see the word, hear it letter by letter, then two little checks (first letter, which word)
+  spell(mode) {
+    const hard = mode === 'hard', list = hard ? HARD : CVC, key = hard ? 'spell2' : 'spell';
+    const words = lnSlice(key, list);
+    const spellLine = w => [`${w}.`, 300, ...[...w].flatMap((l, i) => i ? [180, L(l)] : [L(l)]), 300, `${cap(w)}!`];
+    return { title: hard ? 'Spell+' : 'Spell', back: 'home', play: () => go('spell', hard ? 'hard' : undefined), key,
+      groups: lnChunk(words, 4).map(g => ({
+        items: g.map(([w, e]) => ({ pic: lnPic(e), word: [...w].map(l => B(l)).join(' '), lines: spellLine(w), rep: `${cap(w)}!`, keys: [w] })),
+        checks: [(() => { const [w, e] = pick(g), opts = shuffle([w[0], ...shuffle('bcdfghjklmnprstw'.split('').filter(l => l !== w[0])).slice(0, 2)]);
+            return { pic: lnPic(e), line: [`${w}.`, 300, 'What is the first letter?'], opts: opts.map(o => ({ html: lnTxt(o), word: o, that: [L(o)] })), ans: opts.indexOf(w[0]), right: ['Yes!', 200, L(w[0]), 200, `${cap(w)}!`] }; })(),
+          (() => { const [w, e] = pick(g), ws = shuffle([w, ...shuffle(g.filter(x => x[0] !== w)).slice(0, 2).map(x => x[0])]);
+            return lnWords(lnPic(e), 'Which word is it?', ws, w, ['Yes!', 200, `${cap(w)}!`]); })()] })) };
+  },
   fill(id) { if (!FILLS[id]) id = 'an'; return { title: FILLS[id].name, back: 'home', play: () => go('fill', id), key: 'fill:' + id, groups: FILL_LESSONS[id]() }; },
   rhyme() {
     const fams = lnSlice('rhyme', RHYMES, 6).map(f => f.slice(0, 3));
@@ -4358,7 +4375,7 @@ $('#lnMic').onclick = async () => {
 $('#lnAgain').onclick = () => { SFX.pop(); go('learn', LRN.les.key); };
 $('#lnPlay').onclick = () => { SFX.pop(); LRN.les.play(); };
 // the 📖 button in the top bar: from a game, open the lesson for what is being played
-const LEARN_FROM = { match: () => 'match:' + MT.pack.id, fill: () => 'fill:' + FG.set, rhyme: () => 'rhyme', opposite: () => 'opposite', cases: () => 'cases', seq: () => 'seq' };
+const LEARN_FROM = { spell: () => 'spell:' + (SP.hard || SP.dict ? 'hard' : 'easy'), match: () => 'match:' + MT.pack.id, fill: () => 'fill:' + FG.set, rhyme: () => 'rhyme', opposite: () => 'opposite', cases: () => 'cases', seq: () => 'seq' };
 $('#learnBtn').onclick = () => { if (!LEARN_FROM[cur]) return; SFX.pop(); go('learn', LEARN_FROM[cur]()); };
 
 /* ---------------- more to learn and play (2026-10-28) ----------------
