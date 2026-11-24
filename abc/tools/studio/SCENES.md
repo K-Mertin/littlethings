@@ -67,3 +67,9 @@
 `cards3.tsv` 列出這批新生的 16 張；其他直接沿用前幾批的圖（例如 I am swimming 用 `actions-swimming`）。
 - **He, She, It, They**：`HE_ART` 依原本的 emoji 對應圖（👦 → `he-running`、👭 → `they-sisters`…），Learn 和 What, who, where? 的 who 也一起用。
 - **I am ___ing／Went, ate, saw／Yesterday（-ed）**：程式在載入時把 `ING`、`WENT`、`PAST` 每列的 emoji 換成圖（依動詞對應），Read It! 的「I am …ing」卡片也跟著換。
+
+## 故事書（2026-11-23～24）
+
+14 本故事書全部換成繪本插圖，每頁一張（`story-<書>-<頁>.webp`，800×600），第 0 頁也當書架上的封面。
+- Pip 有自己的定稿圖（`art/chars/pip.png`，用遊戲裡的 Pip 當參考生成）；Pip's Hat 的紅色棒球帽用 `pip-hat.png` 當參考，整本同一頂帽子。
+- 前三本（hat、bed、rain）的提示詞在 git 紀錄裡；其他 11 本在 `stories.tsv`。每本先生第 0 頁，再把第 0 頁當參考圖生其他頁，書裡的角色（Max 猴子、Tom 小貓、烏龜兔子、Lily 和 Sam…）才會一致。
