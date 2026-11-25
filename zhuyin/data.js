@@ -291,6 +291,13 @@
     { k: 'sceneP', t: '找找看', after: 12 },
     { k: 'tdP', t: '聲調小偵探', after: 16 },
     { k: 'phP', t: '讀短語', after: 22 },
+    // 挑戰島的內容（基礎課上到第 31 課就能練）
+    { k: 'rhymeP', t: '押韻', after: 31 },
+    { k: 'swapP', t: '換一個音', after: 31 },
+    { k: 'zyP', t: '看國字選注音', after: 31 },
+    { k: 'oppP', t: '相反詞', after: 31 },
+    { k: 'fillP', t: '量詞和填空', after: 31 },
+    { k: 'hzP', t: '認國字', after: 31 },
   ];
 
   // 進階島：基礎課上到第 16 課才打開，一關一關往前
