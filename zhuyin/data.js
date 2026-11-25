@@ -273,6 +273,7 @@
   const themeWords = th => THEMES[th].w.split(' ').map(w => WORDS.find(x => x.w === w)).filter(Boolean);
   // 練習島：跟著基礎課的進度解鎖（after = 基礎課完成到第幾課），可以任意順序玩
   const PRACTICE = [
+    { k: 'weak', t: '常錯的注音', after: 2 },
     { k: 'rev', s: 'ㄅㄆㄇㄈㄉㄊㄋㄌ', t: '複習 ㄅ到ㄌ', after: 2 },
     { k: 'rev', s: 'ㄍㄎㄏㄐㄑㄒ', t: '複習 ㄍ到ㄒ', after: 4 },
     { k: 'rev', s: 'ㄓㄔㄕㄖㄗㄘㄙ', t: '複習 ㄓ到ㄙ', after: 6 },
