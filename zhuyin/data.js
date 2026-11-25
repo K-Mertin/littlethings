@@ -85,6 +85,26 @@
     'ㄥ': '52,17 32,48 13,78 26,83 87,78',
     'ㄦ': '35,16 32,59 13,86 | 58,15 58,49 57,82 87,79',
   };
+  // 國字的筆順（筆畫中心線，0～100 的格子，照教育部筆順：先上後下、先左後右、先橫後豎…）
+  const HZ_WRITE = [
+    ['一', 'ㄧ', '15,50 85,50'],
+    ['二', 'ㄦˋ', '27,34 73,34 | 15,70 85,70'],
+    ['三', 'ㄙㄢ', '26,24 74,24 | 31,50 69,50 | 15,78 85,78'],
+    ['十', 'ㄕˊ', '15,45 85,45 | 50,12 50,90'],
+    ['人', 'ㄖㄣˊ', '52,14 49,42 37,66 16,88 | 50,44 64,66 86,88'],
+    ['大', 'ㄉㄚˋ', '15,38 85,38 | 50,12 48,44 36,68 15,90 | 50,46 66,68 86,88'],
+    ['口', 'ㄎㄡˇ', '25,26 25,80 | 25,26 75,26 75,80 | 25,78 75,78'],
+    ['山', 'ㄕㄢ', '50,14 50,78 | 22,40 22,78 78,78 | 78,40 78,82'],
+    ['上', 'ㄕㄤˋ', '45,14 45,80 | 45,48 72,48 | 15,82 85,82'],
+    ['下', 'ㄒㄧㄚˋ', '15,22 85,22 | 45,22 45,88 | 52,44 66,58'],
+    ['小', 'ㄒㄧㄠˇ', '50,12 50,82 42,76 | 31,38 20,62 | 69,38 82,62'],
+    ['中', 'ㄓㄨㄥ', '25,30 25,64 | 25,30 75,30 75,64 | 25,62 75,62 | 50,10 50,92'],
+    ['日', 'ㄖˋ', '30,15 30,85 | 30,15 70,15 70,85 | 30,50 70,50 | 30,83 70,83'],
+    ['月', 'ㄩㄝˋ', '30,15 30,66 20,88 | 30,15 72,15 72,84 62,79 | 30,40 72,40 | 30,62 72,62'],
+    ['木', 'ㄇㄨˋ', '15,35 85,35 | 50,12 50,90 | 48,38 31,62 15,75 | 52,38 69,62 85,75'],
+  ].map(([w, z, st]) => ({ w, z, st }));
+  HZ_WRITE.forEach(x => { STROKES[x.w] = x.st; });
+  const HZ_WRITE_SETS = ['一二三十人大', '口山上下', '小中日月木'];
   const strokesOf = s => STROKES[s].split(' | ').map(st => st.split(' ').map(p => p.split(',').map(Number)));
 
   // 注音小故事：每頁 e 圖、t 句子（詞用 | 分開，字後面接注音，音節用空白；標點沒有注音）
@@ -556,6 +576,9 @@
     { k: 'hz', i: 3, t: '認國字四' },
     { k: 'fill', set: 2, t: '句子填空二' },
     { k: 'num', t: '數字一到十' },
+    { k: 'hzw', i: 0, t: '寫國字' },
+    { k: 'hzw', i: 1, t: '寫國字二' },
+    { k: 'hzw', i: 2, t: '寫國字三' },
   ];
   // 三個字的詞
   const THREE = [
@@ -816,6 +839,8 @@
     opEx: (a, b) => `${a}的相反是${b}。`,
     opQ: a => `${a}的相反是什麼？`,
     fsT: ['句子少了一個字。', '讀一讀，想一想哪一個字放進去才通順。', '小狗，什麼，骨頭？小狗吃骨頭。'],
+    hwT: ['國字也要照筆順寫。', '先寫上面，再寫下面；先寫左邊，再寫右邊。跟著紅色的箭頭寫。'],
+    hwThis: (c, n) => `${c}，有${CN[n]}筆。`,
     numT: ['國字也有數字喔！', '一，二，三，四，五，六，七，八，九，十。', '換你看國字，找出一樣多的東西。'],
     numQ: '這個字是幾？點一樣多的東西。',
     numQ2: '數一數，有幾個？點對的國字。',
@@ -902,6 +927,7 @@
     for (const pr of OPPOSITE) for (const [a, b] of [pr, [pr[1], pr[0]]]) { add(P.opEx(a.w, b.w)); add(P.opQ(a.w)); }
     for (const x of FILL.concat(FILL2)) add(pageText({ t: x.t.replace('＿', parseLine(x.a)[0].w) }));
     for (const set of HZ_SETS) for (const c of set) { add(c); add(P.hzThis(c)); }
+    for (const x of HZ_WRITE) { add(x.w); add(P.hwThis(x.w, x.st.split(' | ').length)); for (const f of ['write0', 'write1', 'write2', 'writeDemo', 'writeAll']) add(P[f](x.w)); } P.hwT.forEach(add);
     for (const x of NUMS) add(x.w); P.numT.forEach(add); add(P.numQ); add(P.numQ2);
     for (const x of LONG_SENTS) add(pageText(x));
     [P.rhT, P.swT, P.zpT, P.tfT, P.th3T, P.mwT, P.opT, P.fsT, P.fsT2, P.hzT].forEach(v => v.forEach(add)); add(P.fbQ); add(P.hzQ); add(P.loT);
@@ -949,7 +975,7 @@
     return h.toString(16).padStart(8, '0');
   }
 
-  const ZY = { questionLines, CHALLENGE, CHAL_AFTER, THREE, lastPart, RHYME_FINALS, rhymeWords, SWAPS, MEASURE, OPPOSITE, FILL, FILL2, NUMS, HZ_SETS, hzWord, LONG_SENTS, SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, SENTS, PASSAGES, LESSONS, PRACTICE, ADVANCED, ADV_AFTER, EXPLORE, EXP_AFTER, TONE_PAIRS, FIND_SCENES, sceneObjs, PHRASES, ALONG, TD_WORDS, PAIRS, NEUTRAL_WORDS, ORDER_SENTS, THEMES, themeWords, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
+  const ZY = { questionLines, CHALLENGE, CHAL_AFTER, THREE, lastPart, RHYME_FINALS, rhymeWords, SWAPS, MEASURE, OPPOSITE, FILL, FILL2, NUMS, HZ_WRITE, HZ_WRITE_SETS, HZ_SETS, hzWord, LONG_SENTS, SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, SENTS, PASSAGES, LESSONS, PRACTICE, ADVANCED, ADV_AFTER, EXPLORE, EXP_AFTER, TONE_PAIRS, FIND_SCENES, sceneObjs, PHRASES, ALONG, TD_WORDS, PAIRS, NEUTRAL_WORDS, ORDER_SENTS, THEMES, themeWords, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
     TONE_NAMES, TONE_MARKS, parseSyl, syllables, P, allLines, hash, symOf, spoken, TIPS, teachWords, strokeCount };
   if (typeof module !== 'undefined' && module.exports) module.exports = ZY;
   else root.ZY = ZY;
