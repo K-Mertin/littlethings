@@ -1345,8 +1345,24 @@ function buildSteps(n) {
   if (L.k === 'read2') return [['read', { two: true, N: 5 }]];
   return [['storyRead', L.i, {}]];
 }
+// 常錯的注音：答錯比例高的排前面；還沒答錯過的，就挑答對次數最少的
+function weakSyms(n = 4) {
+  const learned = learnedUpTo(Math.max(1, lessonsDone())); const pool = learned.length ? learned : Array.from(LESSONS[0].s);
+  const sc = s => { const v = S.score[s] || [0, 0]; return [v[1] ? (v[1] + 1) / (v[0] + v[1] + 2) : 0, -v[0]]; };
+  return pool.slice().sort((a, b) => { const x = sc(a), y = sc(b); return y[0] - x[0] || y[1] - x[1]; }).slice(0, n);
+}
 function buildPracSteps(L) {
   const learned = learnedUpTo(LESSONS.length);
+  if (L.k === 'weak') {
+    const weak = weakSyms(4); const have = learnedUpTo(Math.max(1, lessonsDone()));
+    const near = weak.flatMap(s => Array.from((CONFUSE.find(c => c.includes(s)) || '').replace(s, ''))).filter(x => have.includes(x));
+    const pool = [...new Set(weak.concat(near))]; while (pool.length < 4) { const x = pick(have.length > 3 ? have : SYMBOLS.map(y => y.s)); if (!pool.includes(x)) pool.push(x); }
+    const steps = [['listen', { pool, focus: weak, N: 8 }]];
+    const fw = WORDS.filter(w => weak.includes(syllables(w.z)[0].parts[0]));
+    if (fw.length >= 3) steps.push(['first', { words: fw, pool, N: 6 }]);
+    steps.push(['writeOne', weak[0], { start: 1, stages: 2 }]);
+    return steps;
+  }
   if (L.k === 'rev') {
     const syms = Array.from(L.s);
     const steps = [['listen', { pool: syms, focus: syms, N: 8 }]];
@@ -1468,7 +1484,7 @@ SCREENS.map = (fromTab) => {
   if (mapTrack === 'prac') {
     S.prac = S.prac || {};
     view.innerHTML = tabs + `<div class="pracgrid">${PRACTICE.map((L, k) => { const open = pracOpen(L), d = S.prac[k + 1];
-      return `<button class="pcard ${open ? '' : 'lock'} ${d ? 'done' : ''}" data-n="${k + 1}"><span class="pe">${open ? (L.k === 'theme' ? THEMES[L.th].e : L.k === 'rev' ? L.s.slice(0, 3) : { wch: '✏️', tone2: 'ˊˇˋ', comboRev: 'ㄧㄚ', read2p: '📖', rsp: '📖', tpP: 'ˊˇ', sceneP: '🔍', tdP: '🔎', phP: '📝', rhymeP: '🎶', swapP: '🔁', zyP: '🔤', oppP: '↔️', fillP: '✍️', hzP: '🀄' }[L.k]) : '🔒'}</span><span class="pt">${L.t}</span>${d ? `<span class="pd">⭐${d > 1 ? '×' + d : ''}</span>` : ''}</button>`; }).join('')}</div>`;
+      return `<button class="pcard ${open ? '' : 'lock'} ${d ? 'done' : ''}" data-n="${k + 1}"><span class="pe">${open ? (L.k === 'theme' ? THEMES[L.th].e : L.k === 'rev' ? L.s.slice(0, 3) : L.k === 'weak' ? weakSyms(3).join('') : { wch: '✏️', tone2: 'ˊˇˋ', comboRev: 'ㄧㄚ', read2p: '📖', rsp: '📖', tpP: 'ˊˇ', sceneP: '🔍', tdP: '🔎', phP: '📝', rhymeP: '🎶', swapP: '🔁', zyP: '🔤', oppP: '↔️', fillP: '✍️', hzP: '🀄' }[L.k]) : '🔒'}</span><span class="pt">${L.t}</span>${d ? `<span class="pd">⭐${d > 1 ? '×' + d : ''}</span>` : ''}</button>`; }).join('')}</div>`;
     bindTabs();
     view.querySelectorAll('.pcard').forEach(b => b.onclick = () => { const L = PRACTICE[+b.dataset.n - 1]; pracOpen(L) ? startLesson(+b.dataset.n, 'prac') : say(P.trackLocked); });
     say(P.trackPrac); return;
