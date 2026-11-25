@@ -273,7 +273,6 @@
   const themeWords = th => THEMES[th].w.split(' ').map(w => WORDS.find(x => x.w === w)).filter(Boolean);
   // 練習島：跟著基礎課的進度解鎖（after = 基礎課完成到第幾課），可以任意順序玩
   const PRACTICE = [
-    { k: 'weak', t: '常錯的注音', after: 2 },
     { k: 'rev', s: 'ㄅㄆㄇㄈㄉㄊㄋㄌ', t: '複習 ㄅ到ㄌ', after: 2 },
     { k: 'rev', s: 'ㄍㄎㄏㄐㄑㄒ', t: '複習 ㄍ到ㄒ', after: 4 },
     { k: 'rev', s: 'ㄓㄔㄕㄖㄗㄘㄙ', t: '複習 ㄓ到ㄙ', after: 6 },
@@ -299,6 +298,8 @@
     { k: 'oppP', t: '相反詞', after: 31 },
     { k: 'fillP', t: '量詞和填空', after: 31 },
     { k: 'hzP', t: '認國字', after: 31 },
+    // 新的卡一律加在最後面：S.prac 用卡片順序當 key
+    { k: 'weak', t: '常錯的注音', after: 2 },
   ];
 
   // 進階島：基礎課上到第 16 課才打開，一關一關往前
