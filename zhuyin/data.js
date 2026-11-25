@@ -555,6 +555,7 @@
     { k: 'hz', i: 2, t: '認國字三' },
     { k: 'hz', i: 3, t: '認國字四' },
     { k: 'fill', set: 2, t: '句子填空二' },
+    { k: 'num', t: '數字一到十' },
   ];
   // 三個字的詞
   const THREE = [
@@ -610,6 +611,8 @@
     { e: '🐶🚪', t: '小狗ㄒㄧㄠˇ ㄍㄡˇ|在ㄗㄞˋ|門ㄇㄣˊ|＿|等ㄉㄥˇ|我ㄨㄛˇ|。', a: '外ㄨㄞˋ', d: ['吃ㄔ', '紅ㄏㄨㄥˊ'] },
     { e: '🐰🥕', t: '小兔ㄒㄧㄠˇ ㄊㄨˋ|愛ㄞˋ|吃ㄔ|＿|蘿蔔ㄌㄨㄛˊ ㄅㄛ˙|。', a: '紅ㄏㄨㄥˊ', d: ['飛ㄈㄟ', '跑ㄆㄠˇ'] },
   ];
+  // 數字國字 一～十
+  const NUMS = [['一', 'ㄧ'], ['二', 'ㄦˋ'], ['三', 'ㄙㄢ'], ['四', 'ㄙˋ'], ['五', 'ㄨˇ'], ['六', 'ㄌㄧㄡˋ'], ['七', 'ㄑㄧ'], ['八', 'ㄅㄚ'], ['九', 'ㄐㄧㄡˇ'], ['十', 'ㄕˊ']].map(([w, z], k) => ({ w, z, n: k + 1 }));
   // 認國字：不看注音認字（象形的字），每關 8 個
   const HZ_SETS = [['山', '水', '火', '人', '手', '月', '雨', '日'], ['花', '魚', '鳥', '牛', '羊', '馬', '米', '門'],
     ['口', '目', '耳', '竹', '石', '田', '刀', '貝'], ['車', '雲', '衣', '瓜', '蟲', '象', '龜', '羽']];
@@ -813,6 +816,9 @@
     opEx: (a, b) => `${a}的相反是${b}。`,
     opQ: a => `${a}的相反是什麼？`,
     fsT: ['句子少了一個字。', '讀一讀，想一想哪一個字放進去才通順。', '小狗，什麼，骨頭？小狗吃骨頭。'],
+    numT: ['國字也有數字喔！', '一，二，三，四，五，六，七，八，九，十。', '換你看國字，找出一樣多的東西。'],
+    numQ: '這個字是幾？點一樣多的東西。',
+    numQ2: '數一數，有幾個？點對的國字。',
     fsT2: ['這次空格裡要放顏色、位置，或是什麼樣子的字。', '香蕉是什麼色的？香蕉是黃色的。'],
     hzT: ['國字也可以不看注音認得喔。這些字，很像它畫的東西。', '換你看國字，找出對的圖片。看不懂可以按燈泡看注音。'],
     hzThis: c => `這個字是${c}。`,
@@ -896,6 +902,7 @@
     for (const pr of OPPOSITE) for (const [a, b] of [pr, [pr[1], pr[0]]]) { add(P.opEx(a.w, b.w)); add(P.opQ(a.w)); }
     for (const x of FILL.concat(FILL2)) add(pageText({ t: x.t.replace('＿', parseLine(x.a)[0].w) }));
     for (const set of HZ_SETS) for (const c of set) { add(c); add(P.hzThis(c)); }
+    for (const x of NUMS) add(x.w); P.numT.forEach(add); add(P.numQ); add(P.numQ2);
     for (const x of LONG_SENTS) add(pageText(x));
     [P.rhT, P.swT, P.zpT, P.tfT, P.th3T, P.mwT, P.opT, P.fsT, P.fsT2, P.hzT].forEach(v => v.forEach(add)); add(P.fbQ); add(P.hzQ); add(P.loT);
     return Array.from(out);
@@ -923,7 +930,7 @@
     for (const w of TD_WORDS()) { add(P.tfQ(w.w)); Array.from(w.w).forEach(c => add(P.tfQ2(c))); }
     for (const w of THREE) add(P.spellQ(w.w));
     for (const pr of OPPOSITE) pr.forEach(x => add(P.opQ(x.w)));
-    add(P.fbQ); add(P.hzQ);
+    add(P.fbQ); add(P.hzQ); add(P.numQ); add(P.numQ2);
     // 其他問句（結尾是問號的）也算
     for (const t of allLines()) if (/？$/.test(typeof t === 'object' ? t.text : t)) add(t);
     return q;
@@ -942,7 +949,7 @@
     return h.toString(16).padStart(8, '0');
   }
 
-  const ZY = { questionLines, CHALLENGE, CHAL_AFTER, THREE, lastPart, RHYME_FINALS, rhymeWords, SWAPS, MEASURE, OPPOSITE, FILL, FILL2, HZ_SETS, hzWord, LONG_SENTS, SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, SENTS, PASSAGES, LESSONS, PRACTICE, ADVANCED, ADV_AFTER, EXPLORE, EXP_AFTER, TONE_PAIRS, FIND_SCENES, sceneObjs, PHRASES, ALONG, TD_WORDS, PAIRS, NEUTRAL_WORDS, ORDER_SENTS, THEMES, themeWords, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
+  const ZY = { questionLines, CHALLENGE, CHAL_AFTER, THREE, lastPart, RHYME_FINALS, rhymeWords, SWAPS, MEASURE, OPPOSITE, FILL, FILL2, NUMS, HZ_SETS, hzWord, LONG_SENTS, SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, SENTS, PASSAGES, LESSONS, PRACTICE, ADVANCED, ADV_AFTER, EXPLORE, EXP_AFTER, TONE_PAIRS, FIND_SCENES, sceneObjs, PHRASES, ALONG, TD_WORDS, PAIRS, NEUTRAL_WORDS, ORDER_SENTS, THEMES, themeWords, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
     TONE_NAMES, TONE_MARKS, parseSyl, syllables, P, allLines, hash, symOf, spoken, TIPS, teachWords, strokeCount };
   if (typeof module !== 'undefined' && module.exports) module.exports = ZY;
   else root.ZY = ZY;
