@@ -554,6 +554,7 @@
     { k: 'rp', i: 9, t: '下雪了' },
     { k: 'hz', i: 2, t: '認國字三' },
     { k: 'hz', i: 3, t: '認國字四' },
+    { k: 'fill', set: 2, t: '句子填空二' },
   ];
   // 三個字的詞
   const THREE = [
@@ -595,6 +596,19 @@
     { e: '🌧️', t: '外面ㄨㄞˋ ㄇㄧㄢˋ|在ㄗㄞˋ|＿|雨ㄩˇ|。', a: '下ㄒㄧㄚˋ', d: ['吃ㄔ', '開ㄎㄞ'] },
     { e: '🐰', t: '小兔ㄒㄧㄠˇ ㄊㄨˋ|跳ㄊㄧㄠˋ|得ㄉㄜ˙|好ㄏㄠˇ|＿|。', a: '高ㄍㄠ', d: ['冷ㄌㄥˇ', '黑ㄏㄟ'] },
     { e: '🌙😴', t: '天黑ㄊㄧㄢ ㄏㄟ|了ㄌㄜ˙|，|我ㄨㄛˇ|要ㄧㄠˋ|去ㄑㄩˋ|＿|覺ㄐㄧㄠˋ|了ㄌㄜ˙|。', a: '睡ㄕㄨㄟˋ', d: ['吃ㄔ', '開ㄎㄞ'] },
+  ];
+  // 句子填空二：顏色、位置、形容詞（第一句是教一教的例子）
+  const FILL2 = [
+    { e: '🍌', t: '香蕉ㄒㄧㄤ ㄐㄧㄠ|是ㄕˋ|＿|色ㄙㄜˋ|的ㄉㄜ˙|。', a: '黃ㄏㄨㄤˊ', d: ['喝ㄏㄜ', '裡ㄌㄧˇ'] },
+    { e: '🐦🌳', t: '小鳥ㄒㄧㄠˇ ㄋㄧㄠˇ|在ㄗㄞˋ|樹ㄕㄨˋ|＿|。', a: '上ㄕㄤˋ', d: ['吃ㄔ', '紅ㄏㄨㄥˊ'] },
+    { e: '🐟🌊', t: '魚ㄩˊ|在ㄗㄞˋ|水ㄕㄨㄟˇ|＿|。', a: '裡ㄌㄧˇ', d: ['跑ㄆㄠˇ', '高ㄍㄠ'] },
+    { e: '🍎', t: '蘋果ㄆㄧㄥˊ ㄍㄨㄛˇ|是ㄕˋ|＿|色ㄙㄜˋ|的ㄉㄜ˙|。', a: '紅ㄏㄨㄥˊ', d: ['跳ㄊㄧㄠˋ', '上ㄕㄤˋ'] },
+    { e: '❄️⛄', t: '冬天ㄉㄨㄥ ㄊㄧㄢ|好ㄏㄠˇ|＿|。', a: '冷ㄌㄥˇ', d: ['吃ㄔ', '裡ㄌㄧˇ'] },
+    { e: '☀️', t: '太陽ㄊㄞˋ ㄧㄤˊ|好ㄏㄠˇ|＿|。', a: '大ㄉㄚˋ', d: ['游ㄧㄡˊ', '喝ㄏㄜ'] },
+    { e: '🐘', t: '大象ㄉㄚˋ ㄒㄧㄤˋ|的ㄉㄜ˙|鼻子ㄅㄧˊ ㄗ˙|好ㄏㄠˇ|＿|。', a: '長ㄔㄤˊ', d: ['飛ㄈㄟ', '吃ㄔ'] },
+    { e: '🐢', t: '烏龜ㄨ ㄍㄨㄟ|走ㄗㄡˇ|得ㄉㄜ˙|好ㄏㄠˇ|＿|。', a: '慢ㄇㄢˋ', d: ['喝ㄏㄜ', '裡ㄌㄧˇ'] },
+    { e: '🐶🚪', t: '小狗ㄒㄧㄠˇ ㄍㄡˇ|在ㄗㄞˋ|門ㄇㄣˊ|＿|等ㄉㄥˇ|我ㄨㄛˇ|。', a: '外ㄨㄞˋ', d: ['吃ㄔ', '紅ㄏㄨㄥˊ'] },
+    { e: '🐰🥕', t: '小兔ㄒㄧㄠˇ ㄊㄨˋ|愛ㄞˋ|吃ㄔ|＿|蘿蔔ㄌㄨㄛˊ ㄅㄛ˙|。', a: '紅ㄏㄨㄥˊ', d: ['飛ㄈㄟ', '跑ㄆㄠˇ'] },
   ];
   // 認國字：不看注音認字（象形的字），每關 8 個
   const HZ_SETS = [['山', '水', '火', '人', '手', '月', '雨', '日'], ['花', '魚', '鳥', '牛', '羊', '馬', '米', '門'],
@@ -799,6 +813,7 @@
     opEx: (a, b) => `${a}的相反是${b}。`,
     opQ: a => `${a}的相反是什麼？`,
     fsT: ['句子少了一個字。', '讀一讀，想一想哪一個字放進去才通順。', '小狗，什麼，骨頭？小狗吃骨頭。'],
+    fsT2: ['這次空格裡要放顏色、位置，或是什麼樣子的字。', '香蕉是什麼色的？香蕉是黃色的。'],
     hzT: ['國字也可以不看注音認得喔。這些字，很像它畫的東西。', '換你看國字，找出對的圖片。看不懂可以按燈泡看注音。'],
     hzThis: c => `這個字是${c}。`,
     hzQ: '這個字是什麼？點對的圖片。',
@@ -879,10 +894,10 @@
     for (const w of THREE) { add(w.w); add(P.spellQ(w.w)); add(P.spellWordDone(w.w)); Array.from(w.w).forEach((ch, i) => add(P.spellSyl(ch, w.z.split(' ')[i]))); }
     for (const x of MEASURE) add(`一${x.m}${x.w}。`);
     for (const pr of OPPOSITE) for (const [a, b] of [pr, [pr[1], pr[0]]]) { add(P.opEx(a.w, b.w)); add(P.opQ(a.w)); }
-    for (const x of FILL) add(pageText({ t: x.t.replace('＿', parseLine(x.a)[0].w) }));
+    for (const x of FILL.concat(FILL2)) add(pageText({ t: x.t.replace('＿', parseLine(x.a)[0].w) }));
     for (const set of HZ_SETS) for (const c of set) { add(c); add(P.hzThis(c)); }
     for (const x of LONG_SENTS) add(pageText(x));
-    [P.rhT, P.swT, P.zpT, P.tfT, P.th3T, P.mwT, P.opT, P.fsT, P.hzT].forEach(v => v.forEach(add)); add(P.fbQ); add(P.hzQ); add(P.loT);
+    [P.rhT, P.swT, P.zpT, P.tfT, P.th3T, P.mwT, P.opT, P.fsT, P.fsT2, P.hzT].forEach(v => v.forEach(add)); add(P.fbQ); add(P.hzQ); add(P.loT);
     return Array.from(out);
   }
 
@@ -927,7 +942,7 @@
     return h.toString(16).padStart(8, '0');
   }
 
-  const ZY = { questionLines, CHALLENGE, CHAL_AFTER, THREE, lastPart, RHYME_FINALS, rhymeWords, SWAPS, MEASURE, OPPOSITE, FILL, HZ_SETS, hzWord, LONG_SENTS, SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, SENTS, PASSAGES, LESSONS, PRACTICE, ADVANCED, ADV_AFTER, EXPLORE, EXP_AFTER, TONE_PAIRS, FIND_SCENES, sceneObjs, PHRASES, ALONG, TD_WORDS, PAIRS, NEUTRAL_WORDS, ORDER_SENTS, THEMES, themeWords, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
+  const ZY = { questionLines, CHALLENGE, CHAL_AFTER, THREE, lastPart, RHYME_FINALS, rhymeWords, SWAPS, MEASURE, OPPOSITE, FILL, FILL2, HZ_SETS, hzWord, LONG_SENTS, SYMBOLS, GROUPS, TONES, INITIALS, MEDIALS, FINALS, CONFUSE, ONE, TWO, WORDS, COMBOS, SENTS, PASSAGES, LESSONS, PRACTICE, ADVANCED, ADV_AFTER, EXPLORE, EXP_AFTER, TONE_PAIRS, FIND_SCENES, sceneObjs, PHRASES, ALONG, TD_WORDS, PAIRS, NEUTRAL_WORDS, ORDER_SENTS, THEMES, themeWords, CN, lessonTitle, STORIES, parseLine, pageText, NO_TAP, STROKES, strokesOf, TONE_SETS,
     TONE_NAMES, TONE_MARKS, parseSyl, syllables, P, allLines, hash, symOf, spoken, TIPS, teachWords, strokeCount };
   if (typeof module !== 'undefined' && module.exports) module.exports = ZY;
   else root.ZY = ZY;
