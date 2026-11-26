@@ -158,3 +158,69 @@ GEN[92] = {
     });
   },
 };
+
+/* ---------- 93：直式乘法（二位數 × 一位數，數字鍵盤，先個位再十位） ---------- */
+GEN[93] = {
+  plan: mkPlan(93, LISTS.vmul, q => `${q.a}x${q.b}`), key: q => `${q.a}x${q.b}`,
+  async ask(q, c) {
+    const { a, b } = q, my = c.my, o = onesOf(a), t = tensOf(a), p = o * b, cr = Math.floor(p / 10), y = t * b + cr;
+    const qa = frame({
+      main: `<div class="card vert">
+        <div class="vrow mark"><span class="vc"><b class="cm"></b></span><span class="vc"><b class="bm"></b></span></div>
+        <div class="vrow"><span class="vop"></span><span class="vc">${t}</span><span class="vc">${o}</span></div>
+        <div class="vrow"><span class="vop">×</span><span class="vc"></span><span class="vc">${b}</span></div>
+        <div class="vline"></div>
+        <div class="vrow"><span class="vop"></span><span class="vc box" data-s="1"></span><span class="vc box" data-s="0"></span></div></div>`,
+      opts: keypadHTML(),
+    }, c.dots);
+    qa.querySelector('.opts').classList.add('kopts');
+    const boxes = [qa.querySelector('[data-s="0"]'), qa.querySelector('[data-s="1"]')];
+    const keys = [...qa.querySelectorAll('.key')];
+    const onesW = cr > 1 ? P.onesWriteC(p % 10, cr) : P.onesWrite(p % 10, cr);
+    const steps = [
+      { want: p % 10, box: boxes[0], start: [P.colOnes], help: () => [P.eqA(o, '×', b, p), onesW],
+        after: async () => { if (cr) { const cm = qa.querySelector('.cm'); cm.textContent = cr; cm.classList.add('on'); await W(my, say(cr > 1 ? P.carryN(cr) : P.carryNote)); } } },
+      { want: y, box: boxes[1], start: [P.colTens], help: () => cr ? [P.eqA(t, '×', b, t * b), P.plusCarry(cr, y), P.tensWrite(y)] : [P.eqA(t, '×', b, t * b), P.tensWrite(y)], after: async () => {} },
+    ];
+    preload(P.eqQ(a, '×', b), P.eqA(a, '×', b, a * b), P.colOnes, P.colTens, ...steps[0].help(), ...steps[1].help());
+    if (c.intro) await W(my, say(c.intro));
+    await W(my, say(P.eqQ(a, '×', b)));
+    let first = true;
+    const teach = TEACH;
+    if (teach) await W(my, say(P.watchMe));
+    for (const st of steps) {
+      st.box.classList.add('cur');
+      if (teach) {
+        await W(my, say(...st.help()));
+        const k = keys.find(x => +x.dataset.d === st.want); k.classList.add('glow'); await W(my, sleep(500)); k.classList.remove('glow');
+        st.box.textContent = st.want; st.box.classList.remove('cur'); st.box.classList.add('fill'); chime(true);
+        await st.after(); continue;
+      }
+      say(...st.start);
+      T.right = () => keys.find(x => +x.dataset.d === st.want); T.wrong = () => keys.find(x => +x.dataset.d !== st.want);
+      await new Promise((resolve, reject) => {
+        let busy = false, missed = false;
+        keys.forEach(k => k.onclick = async () => {
+          if (busy) return;
+          try {
+            if (+k.dataset.d === st.want) {
+              busy = true; chime(true); keys.forEach(x => x.classList.remove('glow'));
+              st.box.textContent = st.want; st.box.classList.remove('cur', 'no'); st.box.classList.add('fill');
+              await st.after(); resolve();
+            } else {
+              chime(false); st.box.textContent = k.dataset.d; st.box.classList.remove('no'); void st.box.offsetWidth; st.box.classList.add('no');
+              if (missed) return;
+              missed = true; first = false; busy = true;
+              await W(my, say(...st.help()));
+              st.box.textContent = ''; keys.find(x => +x.dataset.d === st.want).classList.add('glow'); busy = false;
+            }
+          } catch (e) { reject(e); }
+        });
+      });
+      live(my);
+    }
+    keys.forEach(k => k.onclick = null);
+    await W(my, say(...(teach ? [] : [praise()]), P.eqA(a, '×', b, a * b)));
+    return first;
+  },
+};
