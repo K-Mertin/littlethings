@@ -7,8 +7,14 @@
   function CN(n) {
     if (n <= 10) return D[n];
     if (n < 20) return '十' + D[n - 10];
-    if (n >= 100) return '一百';
-    return D[Math.floor(n / 10)] + '十' + (n % 10 ? D[n % 10] : '');
+    if (n < 100) return D[Math.floor(n / 10)] + '十' + (n % 10 ? D[n % 10] : '');
+    if (n === 100 || n >= 1000) return '一百';
+    // 三位數：一百零五、一百一十、兩百三十四
+    const h = Math.floor(n / 100), r = n % 100, hs = (h === 2 ? '兩' : D[h]) + '百';
+    if (!r) return hs;
+    if (r < 10) return hs + '零' + D[r];
+    if (r < 20) return hs + '一十' + (r % 10 ? D[r % 10] : '');
+    return hs + CN(r);
   }
   // 接量詞時 2 念「兩」
   const Q = n => (n === 2 ? '兩' : CN(n));
@@ -130,6 +136,9 @@
     { id: 87, t: '先乘除後加減', e: '🥇', g: 'O' },
     { id: 88, t: '括號先算', e: '🫧', g: 'O' },
     { id: 89, t: '從左邊算起', e: '👈', g: 'O' },
+    { id: 90, t: '幾個百', e: '🟦', g: 'P' },
+    { id: 91, t: '三位數比大小', e: '🐊', g: 'P' },
+    { id: 92, t: '整百整十加減', e: '🏢', g: 'P' },
   ];
   // 第 4 段：題目清單（和台詞一起列出，才知道要錄哪些句子）
   const rng = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
@@ -195,6 +204,12 @@
       X('R', 4, '×', 1, '+', 6), X('R', 24, '÷', 2, '+', 4), X('R', 36, '÷', 10, '-', 6), X('R', 20, '-', 3, '+', 5), X('R', 15, '-', 9, '-', 4), X('R', 30, '-', 6, '×', 4)];
     L.mix3 = [X(0, 15, '+', 8, '-', 6), X(0, 20, '-', 7, '+', 5), X(0, 12, '+', 9, '-', 10), X(0, 30, '-', 12, '+', 8), X(0, 25, '+', 15, '-', 20), X(0, 9, '+', 6, '+', 8),
       X(0, 40, '-', 15, '-', 5), X(0, 17, '+', 5, '-', 9), X(0, 50, '-', 20, '+', 6), X(0, 33, '+', 7, '-', 12), X(0, 4, '×', 5, '÷', 2), X(0, 36, '÷', 4, '×', 3)];
+    // 三位數
+    L.h3 = [100, 105, 120, 134, 203, 215, 246, 300, 307, 350, 362, 411, 428, 503, 537, 615, 640, 702, 758, 809, 861, 930, 172, 284];
+    L.cmp3 = [[352, 325], [418, 481], [506, 560], [273, 237], [641, 614], [789, 798], [905, 950], [134, 143], [620, 602], [455, 545], [318, 381], [727, 772],
+      [290, 209], [863, 836], [574, 547], [199, 201], [300, 299], [480, 408], [512, 498], [266, 626]].map(([a, b]) => ({ a, b }));
+    L.hadd = [[300, 200, '+'], [400, 500, '+'], [100, 600, '+'], [700, 200, '-'], [900, 400, '-'], [500, 300, '-'], [230, 40, '+'], [450, 200, '+'], [312, 500, '+'],
+      [641, 30, '+'], [680, 50, '-'], [760, 300, '-'], [895, 70, '-'], [523, 400, '-'], [150, 30, '+'], [405, 200, '+'], [270, 20, '+'], [836, 600, '-']].map(([a, b, op]) => ({ a, b, op }));
   }
   const COINS = [1, 5, 10, 50];
   const SHOP = [{ e: '🍎', n: '蘋果' }, { e: '🍭', n: '棒棒糖' }, { e: '🧃', n: '果汁' }];
@@ -215,7 +230,7 @@
   const SHAPE_TIP = { 圓形: '圓形圓圓的，沒有角。', 三角形: '三角形有三條邊、三個角。', 正方形: '正方形有四條一樣長的邊。', 長方形: '長方形有四個角，兩條長邊、兩條短邊。' };
   const ANIMALS = [{ e: '🐶', n: '小狗', f: '🍖' }, { e: '🐰', n: '小兔子', f: '🥕' }, { e: '🐵', n: '小猴子', f: '🍌' }];
   const FISH = ITEMS.find(x => x.e === '🐟');
-  const GROUPS = { A: '數與量', J: '形狀、規律、時鐘', B: '分與合', C: '加法', D: '減法', E: '加減一起', F: '乘法入門', G: '除法入門', H: '錢幣', I: '二位數', K: '進位和退位', L: '九九乘法', M: '除法', N: '應用題', O: '混合運算' };
+  const GROUPS = { A: '數與量', J: '形狀、規律、時鐘', B: '分與合', C: '加法', D: '減法', E: '加減一起', F: '乘法入門', G: '除法入門', H: '錢幣', I: '二位數', K: '進位和退位', L: '九九乘法', M: '除法', N: '應用題', O: '混合運算', P: '三位數' };
 
   const P = {
     hello: '嗨！我是小白兔小白，我們一起來玩數字！',
@@ -317,6 +332,9 @@
       87: '加減和乘除在一起的時候，要先算乘除，再算加減。',
       88: '有括號的時候，括號裡面要先算。',
       89: '只有加減，或只有乘除的時候，從左邊開始，一步一步算。',
+      90: '十條十是一百。一大片是一百，一條是十，一顆是一。先數百，再數十，最後數一。',
+      91: '三位數比大小：先比百位，百位一樣，再比十位，再比個位。',
+      92: '整百整十的加減：百位和百位算，十位和十位算。',
     },
     // 第 7 段
     divTensL: '先把十平分。',
@@ -326,6 +344,12 @@
     parenFirst: '括號裡面要先算。',
     leftFirst: '從左邊開始算。',
     thenRest: '再算下一步。',
+    tenTens: '十條十，是一百。',
+    cmpHund: '先比百位，百位大的就比較大。',
+    cmpTens3: '百位一樣，再比十位。',
+    cmpOnes3: '十位也一樣，再比個位。',
+    bigger: (a, b) => `${CN(a)}比${CN(b)}大。`,
+    colSay: (u, a, op, b, r) => `${u}：${CN(a)}${OPW[op]}${CN(b)}是${CN(r)}。`,
     // 第 6 段
     trade: '十個一，換成一條十。',
     breakTen: '一條十，拆成十個一。',
@@ -593,7 +617,26 @@
     for (const q of [...L6.div10, ...L6.div21, ...L6.div21r]) { add(P.eqQ(q.n, '÷', q.k)); add(P.eqA(q.n, '÷', q.k, q.n / q.k)); add(P.eachPart(q.n / q.k)); }
     ['mulFirst', 'parenFirst', 'leftFirst', 'thenRest'].forEach(k => add(P[k]));
     for (const q of [...L6.mix1, ...L6.mix2, ...L6.mix3]) for (const [a, op, b] of mixSteps(q)) { add(P.eqQ(a, op, b)); add(P.eqA(a, op, b, calc(a, op, b))); }
+    ['tenTens', 'cmpHund', 'cmpTens3', 'cmpOnes3', 'bigQ', 'smallQ', 'tensQ'].forEach(k => add(P[k]));
+    for (const n of L6.h3) { add(P.thisIs(n)); countSteps(n).forEach(t => add(CN(t))); }
+    for (let t = 10; t <= 100; t += 10) add(CN(t));
+    for (const { a, b } of L6.cmp3) { add(P.bigger(Math.max(a, b), Math.min(a, b))); }
+    for (const q of L6.hadd) { const r = calc(q.a, q.op, q.b); add(P.eqQ(q.a, q.op, q.b)); add(P.eqA(q.a, q.op, q.b, r)); colParts(q).forEach(x => add(P.colSay(...x))); }
     return Array.from(out);
+  }
+  // 數積木時一路念出來的數：先百、再十、再一
+  function countSteps(n) {
+    const out = []; let t = 0;
+    for (let i = 0; i < Math.floor(n / 100); i++) out.push(t += 100);
+    for (let i = 0; i < Math.floor(n / 10) % 10; i++) out.push(t += 10);
+    for (let i = 0; i < n % 10; i++) out.push(t += 1);
+    return out;
+  }
+  // 整百整十加減：哪一位要算（[位名, a 的那一位, 運算, b 的那一位, 結果]）
+  function colParts(q) {
+    const r = calc(q.a, q.op, q.b), out = [];
+    [['百位', 100], ['十位', 10]].forEach(([u, m]) => { const d = x => Math.floor(x / m) % 10; if (d(q.b)) out.push([u, d(q.a), q.op, d(q.b), d(r)]); });
+    return out;
   }
   const calc = (a, op, b) => op === '+' ? a + b : op === '-' ? a - b : op === '×' ? a * b : a / b;
   // 混合運算的兩步：先算哪一段，再算剩下的
@@ -612,7 +655,7 @@
     return h.toString(16).padStart(8, '0');
   }
 
-  const M = { mixSteps, SHAPES, LISTS, COINS, SHOP, GAMES, LVNAME, ANIMALS, FISH, CN, Q, ITEMS, BOXABLE, FOOD, STORY, LESSONS, GROUPS, P, allLines, hash };
+  const M = { mixSteps, countSteps, colParts, SHAPES, LISTS, COINS, SHOP, GAMES, LVNAME, ANIMALS, FISH, CN, Q, ITEMS, BOXABLE, FOOD, STORY, LESSONS, GROUPS, P, allLines, hash };
   if (typeof module !== 'undefined' && module.exports) module.exports = M;
   else root.M = M;
 })(typeof window !== 'undefined' ? window : globalThis);
