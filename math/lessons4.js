@@ -224,3 +224,43 @@ GEN[93] = {
     return first;
   },
 };
+
+/* ---------- 94、95：半點、幾點幾分（長針會轉） ---------- */
+function clockAt(h, m) {
+  const w = h12 => ((h12 - 1 + 12) % 12) + 1;
+  return clockHTML(w(h)).replace('<g class="mh">', `<g class="mh" style="transform:rotate(${m * 6}deg)">`)
+    .replace(/<g class="hh" style="transform:rotate\([^)]*\)">/, `<g class="hh" style="transform:rotate(${(h % 12) * 30 + m / 2}deg)">`);
+}
+const tLabel = (h, m) => `${h}:${String(m).padStart(2, '0')}`;
+function timeLesson(id, list, half) {
+  return {
+    plan: n => planPairs(id, n, list, q => tLabel(q.h, q.m)), key: q => tLabel(q.h, q.m),
+    async ask(q, c) {
+      const { my } = c, { h, m } = q, nh = h % 12 + 1;
+      const ans = m === 0 ? P.clockA(h) : m === 30 && half ? P.halfA(h) : P.timeA(h, m);
+      const lab = (hh, mm) => half ? (mm === 30 ? `${hh} 點半` : `${hh} 點`) : tLabel(hh, mm);
+      // 選項：答案、短針看成下一個數、（幾分）長針指的數字當成分
+      const cands = half ? [[h, m], [nh, m], [h, m === 30 ? 0 : 30], [nh, 0]] : [[h, m], [nh, m], [h, m / 5], [h, (m + 30) % 60]];
+      const seen = new Set(), opts = [];
+      for (const [hh, mm] of cands) { const k = lab(hh, mm); if (!seen.has(k) && opts.length < 3) { seen.add(k); opts.push([k, hh === h && mm === m]); } }
+      const qa = frame({ main: clockAt(h, m), opts: shuffle(opts).map(([k, ok]) => `<button class="num tbtn" data-v="${k}" data-ok="${ok ? 1 : ''}">${k}</button>`).join('') }, c.dots);
+      const right = lab(h, m), mh = qa.querySelector('.mh'), hh = qa.querySelector('.hh'), cn = [...qa.querySelectorAll('.cn')];
+      preload(P.clockQ, ans, half ? P.halfHint : P.fiveHint);
+      if (c.intro) await W(my, say(c.intro));
+      say(P.clockQ);
+      return choose(my, [...qa.querySelectorAll('.opts .num')], x => x.dataset.v === right,
+        async () => {
+          if (half || m === 0) { mh.classList.add('hl'); await say(m === 30 ? P.halfHint : P.clockHint); }
+          else {
+            mh.classList.add('hl'); await say(P.fiveHint);
+            for (let i = 1; i <= m / 5; i++) { cn[i - 1].classList.add('on'); stopAll(); await W(my, play(CN(i * 5))); await W(my, sleep(150)); }
+          }
+          mh.classList.remove('hl'); hh.classList.add('hl'); if (m >= 30) await say(P.shortPast); await say(ans);
+          hh.classList.remove('hl'); cn.forEach(x => x.classList.remove('on')); say(P.tapGlow);
+        },
+        async () => { await say(praise(), ans); });
+    },
+  };
+}
+GEN[94] = timeLesson(94, [...range(1, 12).map(h => ({ h, m: 30 })), ...[3, 6, 9, 12].map(h => ({ h, m: 0 }))], true);
+GEN[95] = timeLesson(95, range(1, 12).flatMap(h => [5, 10, 15, 20, 25, 35, 40, 45, 50, 55].filter((m, i) => (h + i) % 3 === 0).map(m => ({ h, m }))), false);

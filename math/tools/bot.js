@@ -51,7 +51,7 @@ const V = { tabletL: [1280, 800], tabletP: [800, 1280], phoneP: [390, 844], phon
       if (st.k === 'click' && (!shot || clicks < +(process.env.SHOTS || 0))) { await p.waitForTimeout(300); await p.screenshot({ path: `${OUT}/M-${name}-${job.replace(/:/g, '_')}${shot ? '-' + clicks : ''}.png` }); shot = true; }
       const sig = JSON.stringify(st); same = sig === lastSig ? same + 1 : 0; lastSig = sig;
       if (st.k === 'click') {
-        try { await p.click(st.sel, { timeout: 2000, force: true }); clicks++; } catch (e) {}
+        try { await p.$eval(st.sel, e => e.click()); clicks++; } catch (e) {}   // 直接對元素點，不會點到剛跳出來的貼紙畫面
         if (st.wrong) { wrongDone = true; await p.waitForTimeout(600); }
         await p.waitForTimeout(260);
       }

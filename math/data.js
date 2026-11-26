@@ -140,6 +140,8 @@
     { id: 91, t: '三位數比大小', e: '🐊', g: 'P' },
     { id: 92, t: '整百整十加減', e: '🏢', g: 'P' },
     { id: 93, t: '直式乘法', e: '🧾', g: 'M' },
+    { id: 94, t: '半點', e: '🕞', g: 'J' },
+    { id: 95, t: '幾點幾分', e: '⏰', g: 'J' },
   ];
   // 第 4 段：題目清單（和台詞一起列出，才知道要錄哪些句子）
   const rng = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
@@ -339,6 +341,8 @@
       91: '三位數比大小：先比百位，百位一樣，再比十位，再比個位。',
       92: '整百整十的加減：百位和百位算，十位和十位算。',
       93: '直式乘法：先用個位乘，再用十位乘，別忘了加上進位。',
+      94: '長針指著六，就是半點。這時候短針走到兩個數字的中間。',
+      95: '長針走一大格是五分。長針指著幾，就五分、五分地數。',
     },
     // 第 7 段
     divTensL: '先把十平分。',
@@ -350,6 +354,11 @@
     thenRest: '再算下一步。',
     tenTens: '十條十，是一百。',
     onesWriteC: (d, c) => `個位寫${CN(d)}，進${CN(c)}。`,
+    halfA: h => `現在是${Q(h)}點半。`,
+    halfHint: '長針指著六，就是半點。短針剛走過幾，就是幾點半。',
+    shortPast: '短針剛走過幾，就是幾點。',
+    timeA: (h, m) => `現在是${Q(h)}點${CN(m)}分。`,
+    fiveHint: '長針一大格是五分，我們五分、五分地數。',
     carryN: c => `要進${CN(c)}到十位。`,
     plusCarry: (c, n) => `再加上進位的${CN(c)}，是${CN(n)}。`,
     cmpHund: '先比百位，百位大的就比較大。',
@@ -630,6 +639,9 @@
       add(P.eqQ(a, '×', b)); add(P.eqA(a, '×', b, a * b)); add(P.eqA(o, '×', b, p)); add(P.eqA(t, '×', b, t * b));
       add(c > 1 ? P.onesWriteC(p % 10, c) : P.onesWrite(p % 10, c)); if (c) add(P.plusCarry(c, y)); if (c > 1) add(P.carryN(c)); add(P.tensWrite(y));
     }
+    ['halfHint', 'shortPast', 'fiveHint', 'clockQ'].forEach(k => add(P[k]));
+    for (let h = 1; h <= 12; h++) { add(P.halfA(h)); add(P.clockA(h)); for (let m = 5; m < 60; m += 5) add(P.timeA(h, m)); }
+    for (let m = 5; m <= 60; m += 5) add(CN(m));
     for (const n of L6.h3) { add(P.thisIs(n)); countSteps(n).forEach(t => add(CN(t))); }
     for (let t = 10; t <= 100; t += 10) add(CN(t));
     for (const { a, b } of L6.cmp3) { add(P.bigger(Math.max(a, b), Math.min(a, b))); }
