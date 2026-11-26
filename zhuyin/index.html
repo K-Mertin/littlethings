@@ -58,6 +58,15 @@ button:focus-visible{outline:4px solid var(--sun);outline-offset:3px}
 #bird.talk .beakBot{transform:translateY(3px)}
 .beakTop,.beakBot{transition:transform .09s}
 #bird.hop{animation:hop .5s}
+/* 繪本風吉祥物（art/mascot-<id>-idle|talk|blink.webp，用 image-studio 畫的）：講話時嘴巴開合、偶爾眨眼 */
+.mimg{position:relative;display:block;width:100%;height:100%;transform-origin:50% 95%;animation:mbob 2.6s ease-in-out infinite}
+.mimg img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:50% 100%;pointer-events:none;user-select:none;-webkit-user-drag:none}
+.mimg .m-blink,.mimg .m-talk{opacity:0}.mimg.blink .m-blink{opacity:1}
+#bird.talk .mimg .m-talk{animation:mtalk .34s steps(1) infinite}#bird.talk .mimg .m-blink{opacity:0}
+@keyframes mtalk{0%{opacity:0}45%{opacity:1}}
+@keyframes mbob{50%{transform:translateY(-2px) rotate(-2deg)}}
+/* 手繪插圖取代不貼切的 emoji：跟著外框的字級縮放 */
+img.artemo{height:1.15em;width:auto;vertical-align:middle;display:inline-block;pointer-events:none;user-select:none;-webkit-user-drag:none}
 @keyframes hop{30%{transform:translateY(-14px)}60%{transform:translateY(0)}}
 #bubble{position:relative;background:var(--card);border-radius:22px;padding:14px 20px;font-size:22px;font-weight:700;line-height:1.4;max-width:640px;box-shadow:0 3px 0 #b7d5bd}
 #bubble::before{content:"";position:absolute;left:-14px;top:50%;margin-top:-10px;border:10px solid transparent;border-right:14px solid var(--card);border-left:0}
@@ -630,11 +639,38 @@ const MASCOTS = {
 };
 const MASCOT_IDS = Object.keys(MASCOTS);
 let BIRD = MASCOTS.penguin.svg;
+// 繪本風吉祥物：三張圖疊在一起（平常、張嘴、閉眼）；圖載不到就退回原本畫的 SVG
+function mascotHTML(id) {
+  if (!MASCOTS[id]) id = 'penguin';
+  return `<span class="mimg" data-id="${id}">${['idle', 'blink', 'talk'].map(f => `<img class="m-${f}" src="art/mascot-${id}-${f}.webp" alt="" draggable="false"${f === 'idle' ? ' onerror="mascotFallback(this)"' : ''}>`).join('')}</span>`;
+}
+function mascotFallback(img) { const m = img.parentNode; if (m && m.parentNode) m.outerHTML = MASCOTS[m.dataset.id].svg; }
 function setMascot(id) {
   if (!MASCOTS[id]) id = 'penguin';
-  BIRD = MASCOTS[id].svg;
+  BIRD = mascotHTML(id);
   $('#bird').innerHTML = BIRD; $('#startBird').innerHTML = BIRD;
 }
+(function blink() {
+  document.querySelectorAll('.mimg').forEach(p => { p.classList.add('blink'); setTimeout(() => p.classList.remove('blink'), 160); });
+  setTimeout(blink, 2500 + Math.random() * 3500);
+})();
+// 資料裡的 ⟦名字⟧ 是手繪插圖（art/card-<名字>.webp）：畫面上一出現就換成圖片
+const ART_RE = /⟦([a-z]+)⟧/;
+function artify(root) {
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => n.data.includes('⟦') ? 1 : 2 });
+  const list = []; while (w.nextNode()) list.push(w.currentNode);
+  for (const t of list) {
+    const frag = document.createDocumentFragment();
+    for (const part of t.data.split(/(⟦[a-z]+⟧)/)) {
+      const m = part.match(ART_RE);
+      if (m) { const i = document.createElement('img'); i.className = 'artemo'; i.src = `art/card-${m[1]}.webp`; i.alt = ''; i.draggable = false; frag.appendChild(i); }
+      else if (part) frag.appendChild(document.createTextNode(part));
+    }
+    t.replaceWith(frag);
+  }
+}
+new MutationObserver(ms => { for (const m of ms) { if (m.type === 'characterData') { if (m.target.data.includes('⟦') && m.target.parentNode) artify(m.target.parentNode); } else for (const n of m.addedNodes) if (n.nodeType === 1 ? n.textContent.includes('⟦') : n.nodeType === 3 && n.data.includes('⟦')) artify(n.nodeType === 1 ? n : n.parentNode); } })
+  .observe(document.documentElement, { childList: true, subtree: true, characterData: true });
 
 /* ---------- 進度 ---------- */
 const KEY = 'zhuyin-v1';
@@ -3272,7 +3308,7 @@ function bindBookTabs() { view.querySelectorAll('.booktabs .tab').forEach(b => b
 function palPicker() {
   stopAll();
   const o = h(`<div id="sheet"><div class="card palcard"><div class="paltitle">選一個好朋友</div>
-    <div class="pals">${MASCOT_IDS.map(id => `<button class="pal ${S.mascot === id ? 'on' : ''}" data-id="${id}"><span class="palsvg">${MASCOTS[id].svg}</span><span class="nm">${MASCOTS[id].name}</span></button>`).join('')}</div>
+    <div class="pals">${MASCOT_IDS.map(id => `<button class="pal ${S.mascot === id ? 'on' : ''}" data-id="${id}"><span class="palsvg">${mascotHTML(id)}</span><span class="nm">${MASCOTS[id].name}</span></button>`).join('')}</div>
     <div class="acts"><button class="say alt" data-a="close">✔ 好了</button></div></div></div>`);
   document.body.appendChild(o);
   o.querySelectorAll('.pal').forEach(b => b.onclick = () => {

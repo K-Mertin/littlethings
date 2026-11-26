@@ -117,6 +117,11 @@
 - 結合韻不直接把「ㄧㄚ」丟給語音（有幾個會念得不準），而是用同音的一聲字代替（ㄧㄚ 念「鴨」、ㄩㄥ 念「雍」），畫面上還是顯示注音。台詞物件是 `{ text: 念的字, show: 泡泡顯示的字 }`。
 - **授權注意**：edge-tts 用的是 Edge「大聲朗讀」的服務，不是有授權的 Azure API。正式公開前打算改用 Azure AI Speech（同一個聲音）重錄。
 
+## 圖畫（art/）
+- 吉祥物是用 image-studio（MK 的 Mac：`~/main/image-studio`，專案 zhuyin）畫的繪本風半身像，每隻三張：`art/mascot-<id>-idle|talk|blink.webp`（平常、張嘴、閉眼）。講話時張嘴那張會一閃一閃，偶爾眨眼；圖載不到就退回 `index.html` 裡畫的 SVG（`MASCOTS`）。
+- 不貼切的 emoji 換成手繪插圖 `art/card-<名字>.webp`：在 `data.js` 把 `e` 寫成 `⟦名字⟧`，畫面上一出現就由 `artify()` 換成圖片（跟著字級縮放）。目前有鵝、包子、字、竹、田、刷牙、杯子、開門／關門、高（積木塔）／矮（積木房子）、長／短鉛筆、森林、桃子、人、米。
+- 提示詞與設定放在 `tools/studio/`（`image-studio.json`、`CHARACTERS.md`、`cards.tsv`）。卡片用綠色或洋紅色底生圖，去背後存 320px webp。要加新圖：在 Mac 上用 image-studio 生圖 → 去背 → 放 `art/` → `data.js` 改成 `⟦名字⟧`。
+
 ## 遊玩
 ```sh
 python3 -m http.server 8000   # 在 littlethings 根目錄，然後打開 http://localhost:8000/zhuyin/
