@@ -15,6 +15,12 @@ function gList(lv) {
   if (lv === 'two') [...L.carry1, ...L.borrow1, ...L.add2, ...L.add2c, ...L.sub2, ...L.sub2b].forEach(q => list.push({ op: q.op, a: q.a, b: q.b, r: q.op === '+' ? q.a + q.b : q.a - q.b }));
   if (lv === 'times') L.tall.forEach(q => list.push({ op: '×', a: q.k, b: q.g, r: q.k * q.g }));
   if (lv === 'div') L.divT.forEach(q => list.push({ op: '÷', a: q.n, b: q.k, r: q.q }));
+  // 天平：左邊 a○b，右邊 c○?（a、b、c 是數字，op 是 + 或 ×）
+  const bal = (a, o, b, c) => ({ op: '=', a: `${a}${o}${b}`, b: `${c}${o}?`, L: [a, o, b], c, r: o === '+' ? a + b - c : a * b / c, s: o === '+' ? a + b : a * b });
+  if (lv === 'bal10') for (let a = 1; a <= 8; a++) for (let b = 1; a + b <= 10; b++) for (let c = 1; c < a + b; c++) if (c !== a && c !== b && (a + b + c) % 2 === 0) list.push(bal(a, '+', b, c));
+  if (lv === 'bal20') for (let a = 6; a <= 9; a++) for (let b = 3; b <= 9; b++) for (let c = 2; c <= 9; c++) { const s = a + b; if (s > 10 && s <= 18 && s - c <= 9 && s - c >= 1 && c !== a && c !== b) list.push(bal(a, '+', b, c)); }
+  if (lv === 'balx') [[2, 6, 3], [3, 4, 2], [2, 9, 3], [3, 6, 2], [3, 8, 4], [4, 6, 3], [2, 8, 4], [4, 4, 2], [4, 5, 2], [4, 9, 6], [6, 6, 4], [5, 6, 3], [2, 4, 1], [3, 3, 1], [6, 4, 8], [2, 10, 4], [9, 2, 6], [8, 3, 6]]
+    .forEach(([a, b, c]) => list.push(bal(a, '×', b, c)));
   return list;
 }
 // 選項的範圍：答案大的時候放寬
@@ -355,3 +361,23 @@ async function runQuick(G, lv, mode, my) {
   S.rounds['g:quick'] = (S.rounds['g:quick'] || 0) + 1; save();
   finishRound('g:quick', () => go('game', 'quick'));
 }
+
+/* ---------- ⚖️ 天平：右邊放一個數，兩邊一樣重 ---------- */
+GAME.balance = async (q, c) => {
+  const { my } = c, [a, o, b] = q.L, op = OPS[o];
+  const root = gFrame(c.G, c.lv, c, `<div class="balrow"><div class="bal"><div class="beam"><div class="pan pl"><div class="pc">${a} ${op} ${b}</div><i class="dish"></i></div><div class="pan pr"><div class="pc">${q.c} ${op} <span class="slot">?</span></div><i class="dish"></i></div></div><div class="post"></div></div>
+    <div class="opts">${numOpts(q.r, 1, Math.max(10, q.r + 3), 3, 2).map(v => numBtn(v)).join('')}</div></div>`);
+  const beam = root.querySelector('.beam'), slot = root.querySelector('.slot');
+  // 左邊重就往左下（角度是負的）
+  const tilt = v => { const mx = innerHeight < 600 ? 6 : 12, d = v == null ? -mx * .8 : -Math.max(-mx, Math.min(mx, (q.s - (o === '+' ? q.c + v : q.c * v)) * 3)); beam.style.setProperty('--t', d + 'deg'); };
+  tilt(null);
+  if (c.first && !S.rounds['g:balance']) await W(my, say(P.gIntro.balance));
+  say(P.balQ);
+  return choose(my, [...root.querySelectorAll('.opts .num')], x => +x.dataset.v === q.r,
+    async x => {
+      const v = +x.dataset.v; slot.textContent = v; slot.classList.add('put'); tilt(v);
+      await W(my, sleep(600)); await say(v > q.r ? P.rightHeavy : P.leftHeavy);
+      slot.textContent = '?'; slot.classList.remove('put'); tilt(null); say(P.tapGlow);
+    },
+    async () => { slot.textContent = q.r; slot.classList.add('put'); tilt(q.r); await W(my, sleep(500)); await say(P.balanced, P.balA(q.s, q.s)); });
+};

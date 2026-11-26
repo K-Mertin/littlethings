@@ -228,8 +228,9 @@
     { id: 'frog', t: '青蛙過河', e: '🐸', lv: ['order', 'add', 'sub', 'mix'] },
     { id: 'quick', t: '快快算', e: '⏱️', lv: ['add5', 'add', 'sub', 'mix', 'add20', 'two', 'times', 'div'] },
     { id: 'flip', t: '九九翻翻樂', e: '🎴', lv: ['t25', 't69'] },
+    { id: 'balance', t: '天平', e: '⚖️', lv: ['bal10', 'bal20', 'balx'] },
   ];
-  const LVNAME = { two: '二位數加減', times: '九九乘法', div: '九九除法', t25: '九九 2–5', t69: '九九 6–9', count: '數數', add: '加法', sub: '減法', mix: '加減', five: '湊五', ten: '湊十', order: '排順序', add5: '5 以內加法', add20: '20 以內加法' };
+  const LVNAME = { bal10: '10 以內', bal20: '20 以內', balx: '乘法', two: '二位數加減', times: '九九乘法', div: '九九除法', t25: '九九 2–5', t69: '九九 6–9', count: '數數', add: '加法', sub: '減法', mix: '加減', five: '湊五', ten: '湊十', order: '排順序', add5: '5 以內加法', add20: '20 以內加法' };
   // 第 5 段
   const SHAPES = ['圓形', '三角形', '正方形', '長方形'];
   const SHAPE_TIP = { 圓形: '圓形圓圓的，沒有角。', 三角形: '三角形有三條邊、三個角。', 正方形: '正方形有四條一樣長的邊。', 長方形: '長方形有四個角，兩條長邊、兩條短邊。' };
@@ -478,8 +479,14 @@
       balloon: '點一下對的氣球，把它戳破！',
       fish: '看看魚缸裡的小魚，算算有幾條。',
       flip: '翻兩張牌，把算式和答案配成一對。',
+      balance: '天平兩邊要一樣重！選一個數字放上去。',
     },
     flipNo: '不是一對，再翻翻看。',
+    balQ: '放幾，兩邊才會一樣重？',
+    leftHeavy: '左邊比較重，要放大一點的數。',
+    rightHeavy: '右邊比較重，要放小一點的數。',
+    balanced: '一樣重了！',
+    balA: (l, r) => `兩邊都是${CN(l)}。`,
     feed: (an, n) => `${an.n}想吃${Q(n)}個。`,
     feedEq: an => `${an.n}想吃幾個呢？`,
     ate: n => `吃了${Q(n)}個，吃飽了！`,
@@ -629,6 +636,8 @@
     for (const q of L6.wpmd) { add(P.wpQ(q)); if (q.g) add(P.eqA(q.k, '×', q.g, q.k * q.g)); else add(P.eqA(q.n, '÷', q.k, q.n / q.k)); }
     for (const q of L6.change) { add(P.changeQ(q)); add(P.changeA(q.pay - q.p)); add(P.eqA(q.pay, '-', q.p, q.pay - q.p)); }
     Object.values(P.gIntro).forEach(add); add(P.flipNo);
+    ['balQ', 'leftHeavy', 'rightHeavy', 'balanced'].forEach(k => add(P[k]));
+    for (let n = 2; n <= 40; n++) add(P.balA(n, n));
     // 第 7 段
     add(P.divTensL); add(P.divOnesL); add(P.breakTen);
     for (const q of [...L6.div10, ...L6.div21, ...L6.div21r]) { add(P.eqQ(q.n, '÷', q.k)); add(P.eqA(q.n, '÷', q.k, q.n / q.k)); add(P.eachPart(q.n / q.k)); }
