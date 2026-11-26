@@ -90,3 +90,71 @@ function mixLesson(id, list) {
 GEN[87] = mixLesson(87, LISTS.mix1);
 GEN[88] = mixLesson(88, LISTS.mix2);
 GEN[89] = mixLesson(89, LISTS.mix3);
+
+/* ---------- 90–92：三位數（一大片是一百） ---------- */
+const blocks3HTML = n => `<div class="blocks b3">${range(1, Math.floor(n / 100)).map(() => `<span class="flat"><span class="bd"></span></span>`).join('')}${range(1, Math.floor(n / 10) % 10).map(() => `<span class="rod"><i></i><span class="bd"></span></span>`).join('')}<span class="ones">${range(1, n % 10).map(() => `<span class="cube"><span class="bd"></span></span>`).join('')}</span></div>`;
+async function countBlocks3(my, root) {
+  let t = 0;
+  for (const el of root.querySelectorAll('.flat, .rod, .cube')) {
+    t += el.classList.contains('flat') ? 100 : el.classList.contains('rod') ? 10 : 1;
+    el.classList.add('cnt'); el.querySelector('.bd').textContent = t; stopAll(); await W(my, play(CN(t))); await W(my, sleep(140));
+  }
+}
+const digitsOf = n => [Math.floor(n / 100), Math.floor(n / 10) % 10, n % 10];
+// 選項：答案、位數弄反（十位和個位對調）、差一百
+function placeOpts(n) {
+  const [h, t, o] = digitsOf(n), set = new Set([n]);
+  for (const w of [h * 100 + o * 10 + t, n + 100, n - 100, n + 10, n - 10]) if (set.size < 3 && w >= 100 && w <= 999 && !set.has(w)) set.add(w);
+  return [...set].sort((a, b) => a - b).map(v => numBtn(v)).join('');
+}
+GEN[90] = {
+  plan: mkPlan(90, LISTS.h3.map(n => ({ n })), q => q.n), key: q => q.n,
+  ask(q, c) {
+    return simpleAsk(q, c, {
+      main: `<div class="card">${blocks3HTML(q.n)}</div>`, opts: placeOpts(q.n), r: q.n, ask: [P.tensQ], ans: P.thisIs(q.n), after: qa => qa.querySelector('.opts').classList.add('o3'),
+      demo: async qa => { if (q.n >= 100 && (S.rounds[90] || 0) < 3) await say(P.tenTens); await countBlocks3(c.my, qa); },
+      undo: qa => qa.querySelectorAll('.cnt').forEach(e => e.classList.remove('cnt')),
+    });
+  },
+};
+GEN[91] = {
+  plan: n => planPairs(91, n, LISTS.cmp3, q => `${q.a}:${q.b}`).map(q => ({ ...q, t: rand(2) ? 'big' : 'small' })),
+  key: q => `${q.a}:${q.b}`, again: q => ({ ...q, a: q.b, b: q.a }),
+  async ask(q, c) {
+    const { my } = c, { a, b, t } = q, r = t === 'big' ? Math.max(a, b) : Math.min(a, b);
+    const [da, db] = [digitsOf(a), digitsOf(b)], at = da.findIndex((d, i) => d !== db[i]);
+    const card = v => `<button class="num cmp3" data-v="${v}">${digitsOf(v).map((d, i) => `<span class="dg d${i}">${d}</span>`).join('')}</button>`;
+    const qa = frame({ main: `<div class="pvhead"><span>百</span><span>十</span><span>一</span></div>`, opts: card(a) + card(b) }, c.dots, false);
+    qa.querySelector('.opts').classList.add('o3');
+    const btns = [...qa.querySelectorAll('.cmp3')];
+    const LN = [P.cmpHund, P.cmpTens3, P.cmpOnes3];
+    preload(t === 'big' ? P.bigQ : P.smallQ, ...LN.slice(0, at + 1), P.bigger(Math.max(a, b), Math.min(a, b)));
+    if (c.intro) await W(my, say(c.intro));
+    say(t === 'big' ? P.bigQ : P.smallQ);
+    const clear = () => qa.querySelectorAll('.dg.on').forEach(e => e.classList.remove('on'));
+    return choose(my, btns, x => +x.dataset.v === r,
+      async () => {
+        for (let i = 0; i <= at; i++) { clear(); btns.forEach(x => x.querySelector('.d' + i).classList.add('on')); await say(LN[i]); await W(my, sleep(300)); }
+        await say(P.bigger(Math.max(a, b), Math.min(a, b))); clear(); say(P.tapGlow);
+      },
+      async () => { await say(praise(), P.bigger(Math.max(a, b), Math.min(a, b))); });
+  },
+};
+GEN[92] = {
+  plan: mkPlan(92, LISTS.hadd, q => `${q.a}${q.op}${q.b}`), key: q => `${q.a}${q.op}${q.b}`,
+  ask(q, c) {
+    const { a, b, op } = q, r = calc(a, op, b), parts = M.colParts(q);
+    const wrong = b < 100 ? calc(a, op, b * 10) : calc(a, op, b / 10);
+    const row = (v, o = '') => `<tr><td class="po">${o}</td>${digitsOf(v).map((d, i) => `<td class="c${i}">${i === 0 || v >= 10 ** (2 - i) ? d : ''}</td>`).join('')}</tr>`;
+    return simpleAsk(q, c, {
+      after: qa => qa.querySelector('.opts').classList.add('o3'),
+      main: `<div class="card story eq3">${eqHTML(a, op, b)}<table class="pvt"><tr><td></td><th>百</th><th>十</th><th>一</th></tr>${row(a)}${row(b, OPS[op])}</table></div>`,
+      opts: (() => { const set = new Set([r]); for (const w of [wrong, r + 100, r - 100, r + 10]) if (set.size < 3 && w >= 0 && w <= 999 && !set.has(w)) set.add(w); return [...set].sort((x, y) => x - y).map(v => numBtn(v)).join(''); })(),
+      r, side: false, ask: [P.eqQ(a, op, b)], ans: P.eqA(a, op, b, r),
+      demo: async qa => {
+        for (const pt of parts) { const ci = pt[0] === '百位' ? 0 : 1; qa.querySelectorAll('.pvt .c' + ci).forEach(e => e.classList.add('on')); await say(P.colSay(...pt)); }
+      },
+      undo: qa => qa.querySelectorAll('.pvt .on').forEach(e => e.classList.remove('on')),
+    });
+  },
+};
