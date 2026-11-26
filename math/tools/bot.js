@@ -48,7 +48,7 @@ const V = { tabletL: [1280, 800], tabletP: [800, 1280], phoneP: [390, 844], phon
       }, wrongDone).catch(e => ({ k: 'err', e: e.message }));
       if (st.k === 'err') { errs.push(st.e.split('\n')[0]); break; }
       if (st.k === 'reward') { await p.screenshot({ path: `${OUT}/M-${name}-done-${job.replace(/:/g, '_')}.png` }); await p.evaluate(() => document.querySelector('#reward').remove()); ok = true; break; }
-      if (!shot && st.k === 'click') { await p.waitForTimeout(300); await p.screenshot({ path: `${OUT}/M-${name}-${job.replace(/:/g, '_')}.png` }); shot = true; }
+      if (st.k === 'click' && (!shot || clicks < +(process.env.SHOTS || 0))) { await p.waitForTimeout(300); await p.screenshot({ path: `${OUT}/M-${name}-${job.replace(/:/g, '_')}${shot ? '-' + clicks : ''}.png` }); shot = true; }
       const sig = JSON.stringify(st); same = sig === lastSig ? same + 1 : 0; lastSig = sig;
       if (st.k === 'click') {
         try { await p.click(st.sel, { timeout: 2000, force: true }); clicks++; } catch (e) {}
