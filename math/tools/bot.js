@@ -1,6 +1,6 @@
 // 自動上課機器人（測試用，不會部署）：先在 repo 根目錄 python3 -m http.server 8123，再
 //   node math/tools/bot.js <tabletL|tabletP|phoneP|phoneL> <課或遊戲...>
-// 課：數字（例如 84）；小遊戲：g:<id>[:<程度>]（例如 g:flip:t69）；畫面：s:<名稱>（只截圖，例如 s:home）。
+// 課：數字（例如 84）；review＝複習（seedmiss 先把每課一題放進答錯過的題目）；小遊戲：g:<id>[:<程度>]（例如 g:flip:t69）；畫面：s:<名稱>（只截圖，例如 s:home）。
 // 每課第一題故意先點錯一次（測示範），之後點正確答案（index.html 的 T.right）。截圖存在環境變數 OUT（預設 /tmp）。
 const { chromium } = require('playwright');
 const OUT = process.env.OUT || '/tmp';
@@ -28,7 +28,13 @@ const V = { tabletL: [1280, 800], tabletP: [800, 1280], phoneP: [390, 844], phon
       await p.waitForTimeout(900); await p.screenshot({ path: `${OUT}/M-${name}-${job.replace(/:/g, '_')}.png` });
       console.log(`${name} ${job} shot`); continue;
     }
-    if (job.startsWith('g:')) {
+    if (job.startsWith('seedmiss')) {   // seedmiss:1-40：每一課出一題，當成答錯過的題目（測複習）
+      const [lo, hi] = (job.split(':')[1] || '1-999').split('-').map(Number);
+      const n = await p.evaluate(([lo, hi]) => { S.miss = []; for (const L of LESSONS) if (L.id >= lo && L.id <= hi) addMiss(L.id, 'x', GEN[L.id].plan(1)[0]); return S.miss.length; }, [lo, hi]);
+      console.log(`${name} seedmiss ${n}`); continue;
+    }
+    if (job === 'review') await p.evaluate(() => window.__m.go('review'));
+    else if (job.startsWith('g:')) {
       const [, id, lv] = job.split(':');
       await p.evaluate(([id, lv]) => { const S = window.__m.S(); S.glv = S.glv || {}; if (lv) S.glv[id] = lv; window.__m.go('game', id); }, [id, lv]);
     } else await p.evaluate(id => window.__m.go('lesson', id), +job);
