@@ -33,7 +33,7 @@ const V = { tabletL: [1280, 800], tabletP: [800, 1280], phoneP: [390, 844], phon
       const n = await p.evaluate(([lo, hi]) => { S.miss = []; for (const L of LESSONS) if (L.id >= lo && L.id <= hi) addMiss(L.id, 'x', GEN[L.id].plan(1)[0]); return S.miss.length; }, [lo, hi]);
       console.log(`${name} seedmiss ${n}`); continue;
     }
-    if (job === 'review') await p.evaluate(() => window.__m.go('review'));
+    if (job === 'review' || job === 'free') await p.evaluate(j => window.__m.go(j), job);
     else if (job.startsWith('g:')) {
       const [, id, lv] = job.split(':');
       await p.evaluate(([id, lv]) => { const S = window.__m.S(); S.glv = S.glv || {}; if (lv) S.glv[id] = lv; window.__m.go('game', id); }, [id, lv]);

@@ -381,3 +381,51 @@ GAME.balance = async (q, c) => {
     },
     async () => { slot.textContent = q.r; slot.classList.add('put'); tilt(q.r); await W(my, sleep(500)); await say(P.balanced, P.balA(q.s, q.s)); });
 };
+
+/* ---------- 🧮 自由練習：自己選加減乘除和範圍，一輪 10 題 ---------- */
+const FREE_OPS = ['+', '-', '×', '÷'], FREE_MAX = [10, 20, 100];
+function freeQ(ops, max) {
+  const op = pick(ops), R = n => rand(n + 1);
+  if (op === '+') { const a = R(max - 1), b = R(max - a); return { op, a, b, r: a + b }; }
+  if (op === '-') { const a = 1 + R(max - 1), b = R(a); return { op, a, b, r: a - b }; }
+  // 乘除：10 以內用 1–5，20 以內積不超過 20，100 就是九九
+  let k, g; do { k = (max === 100 ? 2 : 1) + R(max === 100 ? 7 : 4); g = (max === 100 ? 2 : 1) + R(max === 100 ? 7 : max === 10 ? 4 : 9); } while (k * g > Math.min(max, 81));
+  return op === '×' ? { op, a: k, b: g, r: k * g } : { op, a: k * g, b: k, r: g };
+}
+SCREENS.free = () => {
+  const my = sess;
+  S.free = S.free || { ops: ['+'], max: 10 };
+  const F = S.free;
+  $('#ltag').textContent = '🧮 自由練習'; $('#ltag').classList.remove('hide');
+  view.innerHTML = `<div class="gwrap quick"><div class="gtop"><div class="lvls">${FREE_OPS.map(o => `<button class="chip opc ${F.ops.includes(o) ? 'on' : ''}" data-op="${o}">${OPS[o]}</button>`).join('')}</div>
+      <div class="lvls">${FREE_MAX.map(m => `<button class="chip ${F.max === m ? 'on' : ''}" data-mx="${m}">${m} 以內</button>`).join('')}</div></div>
+    <div class="qstat"><span class="qscore">✔ 0</span><span class="qleft"></span></div>
+    <div class="frow"><div class="card bigeq qcard"><div class="eqhost"></div></div><div class="opts qopts"></div></div></div>`;
+  // 運算可以複選（至少留一個）
+  view.querySelectorAll('[data-op]').forEach(b => b.onclick = () => { const o = b.dataset.op; F.ops = F.ops.includes(o) ? (F.ops.length > 1 ? F.ops.filter(x => x !== o) : F.ops) : [...F.ops, o]; save(); go('free'); });
+  view.querySelectorAll('[data-mx]').forEach(b => b.onclick = () => { F.max = +b.dataset.mx; save(); go('free'); });
+  runFree(F, my).catch(e => { if (e !== STOP) console.error(e); });
+};
+async function runFree(F, my) {
+  const host = view.querySelector('.eqhost'), opts = view.querySelector('.qopts'), sc = view.querySelector('.qscore'), left = view.querySelector('.qleft');
+  const TOTAL = 10; let score = 0, last = '';
+  if (!S.rounds.free) await W(my, say(P.freeIntro));
+  for (let k = 0; k < TOTAL; k++) {
+    let q; do { q = freeQ(F.ops, F.max); } while (pkey(q) === last); last = pkey(q);
+    host.innerHTML = eqHTML(q.a, q.op, q.b); left.textContent = `${k + 1} / ${TOTAL}`;
+    const hi = Math.max(10, q.op === '+' || q.op === '-' ? F.max : q.r + 10);
+    opts.innerHTML = numOpts(q.r, 0, hi, 4, q.op === '×' ? Math.max(2, Math.min(q.a, 9)) : q.r > 20 ? 10 : 3).map(v => numBtn(v)).join('');
+    const btns = [...opts.querySelectorAll('.num')];
+    say(askLine(q));
+    const ok = await choose(my, btns, x => +x.dataset.v === q.r,
+      async () => { await say(ansLine(q)); say(P.tapGlow); },
+      async () => { fillEq(host, q.r); await say(praise()); });
+    live(my);
+    mark(`free:${pkey(q)}`, ok);
+    if (ok) { score++; sc.textContent = '✔ ' + score; sc.animate([{ transform: 'scale(1.3)' }, { transform: 'none' }], 300); }
+    await W(my, sleep(400));
+  }
+  await W(my, say(P.quickScore(score)));
+  S.rounds.free = (S.rounds.free || 0) + 1; save();
+  finishRound('free', () => go('free'));
+}
