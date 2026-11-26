@@ -482,6 +482,7 @@
       balance: '天平兩邊要一樣重！選一個數字放上去。',
     },
     flipNo: '不是一對，再翻翻看。',
+    freeIntro: '自由練習！上面可以選加減乘除，還有數字多大。',
     balQ: '放幾，兩邊才會一樣重？',
     leftHeavy: '左邊比較重，要放大一點的數。',
     rightHeavy: '右邊比較重，要放小一點的數。',
@@ -636,7 +637,7 @@
     for (const q of L6.wpmd) { add(P.wpQ(q)); if (q.g) add(P.eqA(q.k, '×', q.g, q.k * q.g)); else add(P.eqA(q.n, '÷', q.k, q.n / q.k)); }
     for (const q of L6.change) { add(P.changeQ(q)); add(P.changeA(q.pay - q.p)); add(P.eqA(q.pay, '-', q.p, q.pay - q.p)); }
     Object.values(P.gIntro).forEach(add); add(P.flipNo);
-    ['balQ', 'leftHeavy', 'rightHeavy', 'balanced'].forEach(k => add(P[k]));
+    ['freeIntro', 'balQ', 'leftHeavy', 'rightHeavy', 'balanced'].forEach(k => add(P[k]));
     for (let n = 2; n <= 40; n++) add(P.balA(n, n));
     // 第 7 段
     add(P.divTensL); add(P.divOnesL); add(P.breakTen);
