@@ -354,6 +354,7 @@
     thenRest: '再算下一步。',
     tenTens: '十條十，是一百。',
     onesWriteC: (d, c) => `個位寫${CN(d)}，進${CN(c)}。`,
+    reviewIntro: '這些是之前答錯過的題目，我們再試一次！',
     halfA: h => `現在是${Q(h)}點半。`,
     halfHint: '長針指著六，就是半點。短針剛走過幾，就是幾點半。',
     shortPast: '短針剛走過幾，就是幾點。',
@@ -639,7 +640,7 @@
       add(P.eqQ(a, '×', b)); add(P.eqA(a, '×', b, a * b)); add(P.eqA(o, '×', b, p)); add(P.eqA(t, '×', b, t * b));
       add(c > 1 ? P.onesWriteC(p % 10, c) : P.onesWrite(p % 10, c)); if (c) add(P.plusCarry(c, y)); if (c > 1) add(P.carryN(c)); add(P.tensWrite(y));
     }
-    ['halfHint', 'shortPast', 'fiveHint', 'clockQ'].forEach(k => add(P[k]));
+    ['reviewIntro', 'halfHint', 'shortPast', 'fiveHint', 'clockQ'].forEach(k => add(P[k]));
     for (let h = 1; h <= 12; h++) { add(P.halfA(h)); add(P.clockA(h)); for (let m = 5; m < 60; m += 5) add(P.timeA(h, m)); }
     for (let m = 5; m <= 60; m += 5) add(CN(m));
     for (const n of L6.h3) { add(P.thisIs(n)); countSteps(n).forEach(t => add(CN(t))); }
